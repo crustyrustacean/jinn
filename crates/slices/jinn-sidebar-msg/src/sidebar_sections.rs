@@ -8,6 +8,7 @@
 
 use std::collections::HashMap;
 
+use crate::sessions_list_state::PreviewLoad;
 use crate::sidebar_section_id::SidebarSectionId;
 use jinn_core_types::SessionId;
 use jinn_slices::SlotKey;
@@ -411,6 +412,16 @@ pub struct SessionsSectionState {
     /// Updated reactively in `remove_and_replace()`, invalidated on session load.
     /// Empty when no intermediate parents have been hidden.
     pub visual_parents: HashMap<SessionId, SessionId>,
+    /// Where the session preview popup is in its load.
+    pub preview: PreviewLoad,
+    /// The width the preview was last rendered at, or `0` if never.
+    ///
+    /// Written by the render pass, read by the keyboard trigger — because the
+    /// preview wraps at 60% of the *frame* width while the chat log's
+    /// `content_width` is the main column's, so the trigger cannot derive it.
+    /// A zero means "not rendered yet", which is distinct from a real width and
+    /// deliberately forces a request rather than a lookup.
+    pub preview_content_width: u16,
 }
 
 /// Persona section cursor state - stored on `FrontendState`.

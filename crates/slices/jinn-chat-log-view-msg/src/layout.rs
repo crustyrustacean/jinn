@@ -143,3 +143,207 @@ impl BusMessage for ChatLogLayoutComputed {}
 impl BusMessage for ArmLayoutDeadline {}
 impl BusMessage for LayoutDeadlineExpired {}
 impl BusMessage for Escalated {}
+
+/// Render a session's preview lines off the render thread.
+///
+/// Wrapping the last few entries of a large session is enough work to be felt as
+/// a stutter when it happens inside a frame, so the sidebar's preview popup hands
+/// it to the same layout pool the chat log measures on. Only the trailing
+/// entries travel, so this is small work done in the wrong place — not a repeat
+/// of the measurement problem.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Render a session's preview lines off the render thread.")]
+pub struct PreviewSessionRequested {
+    /// The session to preview.
+    pub session_id: SessionId,
+    /// The width to wrap the preview at — the popup's inner width.
+    pub content_width: u16,
+    /// Which request this is.
+    ///
+    /// Monotonic per sidebar, so a result belonging to a request the cursor has
+    /// moved past can be recognised and dropped rather than shown against the
+    /// wrong session's content.
+    pub generation: u64,
+    /// The session's flat history, shared with the worker rather than copied
+    /// into it. The worker reads only its tail.
+    pub entries: Arc<[ChatEntry]>,
+    /// Lines before a tool call or result is truncated.
+    pub tool_entry_max_lines: u16,
+    /// A summary of the previewed entries' content, as the requester saw it.
+    ///
+    /// Carried so the result can be checked against current content: a session
+    /// that is streaming changes under the request, and a result built from the
+    /// older text must not be served as current.
+    pub signature: u64,
+}
+
+/// A session's preview lines are rendered and available.
+///
+/// OWNER: `SidebarStateActor` (completes the preview) and the render pass
+/// (draws the lines).
+///
+/// Serde is implemented by hand rather than derived, because the payload is
+/// rendered `Line`s and ratatui does not derive serde on its text types —
+/// `ratatui-core`'s `serde` feature covers style and layout, not `text`. The
+/// manual pair projects through an intermediate type, so this type itself
+/// remains the single description of the message. Without it the
+/// `Message: Serialize` bound would have to be given up, and the bus's journal
+/// door could not encode the event.
+#[derive(Debug, Clone, trouper::schema::Event)]
+#[schema(description = "Session preview lines are available.")]
+pub struct SessionPreviewRendered {
+    /// The session the lines describe.
+    pub session_id: SessionId,
+    /// The request that produced them.
+    pub generation: u64,
+    /// A summary of the previewed entries' content, as the worker saw it.
+    pub signature: u64,
+    /// The width the lines were wrapped at.
+    pub content_width: u16,
+    /// The truncated preview lines.
+    ///
+    /// Shared rather than copied: the sidebar hands these to the render pass
+    /// every frame, and copying them there is the cost this work exists to
+    /// remove.
+    pub lines: Arc<Vec<ratatui::text::Line<'static>>>,
+}
+
+/// The serializable form of [`SessionPreviewRendered`]: its lines flattened to
+/// text, since styling is a presentation detail the wire does not need.
+#[derive(Serialize, Deserialize)]
+struct SessionPreviewRenderedWire {
+    session_id: SessionId,
+    generation: u64,
+    signature: u64,
+    content_width: u16,
+    lines: Vec<String>,
+}
+
+impl Serialize for SessionPreviewRendered {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        SessionPreviewRenderedWire {
+            session_id: self.session_id.clone(),
+            generation: self.generation,
+            signature: self.signature,
+            content_width: self.content_width,
+            lines: self
+                .lines
+                .iter()
+                .map(|line| {
+                    line.spans
+                        .iter()
+                        .map(|span| span.content.as_ref())
+                        .collect::<String>()
+                })
+                .collect(),
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for SessionPreviewRendered {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = SessionPreviewRenderedWire::deserialize(deserializer)?;
+        Ok(Self {
+            session_id: wire.session_id,
+            generation: wire.generation,
+            signature: wire.signature,
+            content_width: wire.content_width,
+            lines: Arc::new(
+                wire.lines
+                    .into_iter()
+                    .map(ratatui::text::Line::from)
+                    .collect(),
+            ),
+        })
+    }
+}
+
+/// Arm the deadline after which a preview render is abandoned.
+///
+/// A preview has no inline fallback the way a chat-log measurement does, so the
+/// deadline is what stops a slow or wedged worker from leaving the popup
+/// spinning forever. On expiry the preview is dropped and the next cursor move
+/// re-requests.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Arm the session preview render deadline.")]
+pub struct ArmPreviewDeadline {
+    /// The session being previewed.
+    pub session_id: SessionId,
+    /// Which request the deadline covers, so an expiry cannot clear a newer one.
+    pub generation: u64,
+    /// How long to wait before abandoning the render.
+    pub after: Duration,
+}
+
+impl BusMessage for PreviewSessionRequested {}
+impl BusMessage for SessionPreviewRendered {}
+impl BusMessage for ArmPreviewDeadline {}
+
+#[cfg(test)]
+mod preview_serde_tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+
+    use super::*;
+
+    /// A result carrying `lines`, as a worker would publish.
+    fn rendered(lines: &[&str]) -> SessionPreviewRendered {
+        SessionPreviewRendered {
+            session_id: SessionId::new(),
+            generation: 4,
+            signature: 99,
+            content_width: 40,
+            lines: Arc::new(
+                lines
+                    .iter()
+                    .map(|text| ratatui::text::Line::from((*text).to_owned()))
+                    .collect(),
+            ),
+        }
+    }
+
+    #[rstest::rstest]
+    fn a_preview_result_roundtrips_through_json() {
+        // Given a published preview result.
+        let original = rendered(&["first", "second"]);
+
+        // When it is encoded and decoded.
+        let json = serde_json::to_string(&original).expect("encode");
+        let decoded: SessionPreviewRendered = serde_json::from_str(&json).expect("decode");
+
+        // Then every field survived the roundtrip.
+        assert_eq!(decoded.session_id, original.session_id);
+        assert_eq!(decoded.generation, original.generation);
+        assert_eq!(decoded.signature, original.signature);
+        assert_eq!(decoded.content_width, original.content_width);
+    }
+
+    #[rstest::rstest]
+    fn preview_line_text_survives_the_roundtrip() {
+        // Given a result with two lines of text.
+        let original = rendered(&["first", "second"]);
+
+        // When it is encoded and decoded.
+        let json = serde_json::to_string(&original).expect("encode");
+        let decoded: SessionPreviewRendered = serde_json::from_str(&json).expect("decode");
+
+        // Then the line text came back, in order.
+        let text: Vec<String> = decoded
+            .lines
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect();
+        assert_eq!(text, vec!["first", "second"]);
+    }
+}

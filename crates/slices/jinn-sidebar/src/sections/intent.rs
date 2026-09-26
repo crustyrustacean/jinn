@@ -76,7 +76,10 @@ pub fn handle_sidebar_leave(state: &mut AppState) -> IntentResult {
 /// previous section's cursor and placing cursor on the first session).
 /// If not in the sidebar, pushes `jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope()` and
 /// calls `receive_cursor`.
-pub fn handle_sidebar_focus_sessions(state: &mut AppState) -> IntentResult {
+pub fn handle_sidebar_focus_sessions(
+    state: &mut AppState,
+    config: &jinn_slices::ConfigLayer,
+) -> IntentResult {
     use crate::sections::section_trait::EnterFrom;
 
     if state.frontend.is_sidebar() {
@@ -102,16 +105,14 @@ pub fn handle_sidebar_focus_sessions(state: &mut AppState) -> IntentResult {
         state
             .frontend
             .scope_set_sidebar_section(jinn_sidebar_msg::SidebarSectionId::Sessions);
-        crate::sections::sessions::navigate::receive_cursor(state, EnterFrom::Top);
+        crate::sections::sessions::navigate::receive_cursor(state, EnterFrom::Top, config)
     } else {
         // Not in sidebar \u{2014} enter sidebar directly on Sessions.
         state
             .frontend
             .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-        crate::sections::sessions::navigate::receive_cursor(state, EnterFrom::Top);
+        crate::sections::sessions::navigate::receive_cursor(state, EnterFrom::Top, config)
     }
-
-    IntentResult::empty()
 }
 
 #[cfg(test)]
@@ -243,7 +244,7 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
 
         // When handling sidebar focus sessions.
-        let result = handle_sidebar_focus_sessions(&mut state);
+        handle_sidebar_focus_sessions(&mut state, jinn_slices::empty_config_layer());
 
         // Then scope is the sessions section.
         assert_eq!(
@@ -257,7 +258,22 @@ mod tests {
                 .with_sections(|s| s.sessions.selected_index, || None)
                 .is_some()
         );
-        assert!(result.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn sidebar_focus_sessions_requests_the_landed_on_preview() {
+        // Given default app state, which holds a session under the cursor.
+        let mut state = AppState::default_with_scope_focus();
+
+        // When handling sidebar focus sessions.
+        let result = handle_sidebar_focus_sessions(&mut state, jinn_slices::empty_config_layer());
+
+        // Then the landed-on session's preview is requested for rendering.
+        assert!(
+            result.message_names.contains(&"PreviewSessionRequested"),
+            "expected a preview request, got {:?}",
+            result.message_names
+        );
     }
 
     #[rstest::rstest]
@@ -267,7 +283,7 @@ mod tests {
         state.frontend.scope_push(FocusScope::Input);
 
         // When handling sidebar focus sessions.
-        handle_sidebar_focus_sessions(&mut state);
+        handle_sidebar_focus_sessions(&mut state, jinn_slices::empty_config_layer());
 
         // Then scope is the sessions section.
         assert_eq!(
@@ -288,7 +304,7 @@ mod tests {
             .update_sections(|s| s.persona.cursor = Some(0));
 
         // When handling sidebar focus sessions.
-        handle_sidebar_focus_sessions(&mut state);
+        handle_sidebar_focus_sessions(&mut state, jinn_slices::empty_config_layer());
 
         // Then scope is the sessions section.
         assert_eq!(
@@ -323,7 +339,7 @@ mod tests {
             .update_sections(|s| s.sessions.selected_index = Some(0));
 
         // When handling sidebar focus sessions.
-        let result = handle_sidebar_focus_sessions(&mut state);
+        let result = handle_sidebar_focus_sessions(&mut state, jinn_slices::empty_config_layer());
 
         // Then scope stays the sessions section.
         assert_eq!(
@@ -357,7 +373,7 @@ mod tests {
             .scope_push(jinn_sidebar_msg::SidebarSectionId::Pins.focus_scope());
 
         // When handling sidebar focus sessions.
-        handle_sidebar_focus_sessions(&mut state);
+        handle_sidebar_focus_sessions(&mut state, jinn_slices::empty_config_layer());
 
         // Then scope is the sessions section.
         assert_eq!(

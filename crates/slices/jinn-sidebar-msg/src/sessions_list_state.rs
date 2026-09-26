@@ -7,6 +7,7 @@
 //! interactions. Both speak these types.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use jinn_core_types::SessionId;
 
@@ -57,6 +58,143 @@ pub enum ArchiveTreePrompt {
 type HistoryLen = usize;
 /// Content width component of the preview cache key.
 type ContentWidth = u16;
+
+/// Where the session preview popup is in its load.
+///
+/// Distinct from the session load guard in the session map, and deliberately so:
+/// a preview is not a session switch, so it must not take the guard's single
+/// shared slot — doing so would raise the chat log's loading indication for a
+/// session that is not switching, and would have two unrelated features fight
+/// over one flag.
+///
+/// OWNER: `SidebarStateActor` (arms and completes) and the render pass (reads
+/// the cached lines and records the width it rendered at).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum PreviewLoad {
+    /// No request in flight, and nothing to show.
+    #[default]
+    Idle,
+    /// A render is in flight for this session at this generation.
+    Loading {
+        /// The session being previewed.
+        session_id: SessionId,
+        /// Which request this is.
+        ///
+        /// Monotonic, because moving the cursor A → B → A leaves two requests
+        /// for A in flight, and without a generation the first A's result could
+        /// land after the second's and be shown against the wrong content.
+        generation: u64,
+    },
+    /// Rendered lines are available and current.
+    Ready {
+        /// The session these lines describe.
+        session_id: SessionId,
+        /// The request that produced them.
+        generation: u64,
+        /// A summary of the previewed entries' content, so a streaming entry
+        /// invalidates the result rather than showing stale text.
+        signature: u64,
+        /// The width the lines were wrapped at.
+        content_width: u16,
+        /// The rendered lines.
+        ///
+        /// Shared, not owned: the render pass reads these every frame, and a
+        /// per-frame `Vec` clone of up to 20 styled lines is exactly the cost
+        /// this work exists to remove.
+        lines: Arc<Vec<ratatui::text::Line<'static>>>,
+    },
+}
+
+impl PreviewLoad {
+    /// Arms a request, discarding anything previously held.
+    ///
+    /// Bumps the generation so a result from a superseded request is recognisable
+    /// when it arrives.
+    pub fn request(&mut self, session_id: SessionId) -> u64 {
+        let generation = self.generation().saturating_add(1);
+        *self = Self::Loading {
+            session_id,
+            generation,
+        };
+        generation
+    }
+
+    /// Stores a rendered result, returning whether it was current.
+    ///
+    /// `false` means the result belongs to a request the cursor has already
+    /// moved past, and nothing was written.
+    pub fn complete(
+        &mut self,
+        session_id: SessionId,
+        generation: u64,
+        signature: u64,
+        content_width: u16,
+        lines: Arc<Vec<ratatui::text::Line<'static>>>,
+    ) -> bool {
+        if self.generation() != generation {
+            return false;
+        }
+        *self = Self::Ready {
+            session_id,
+            generation,
+            signature,
+            content_width,
+            lines,
+        };
+        true
+    }
+
+    /// The generation of the request currently held, or `0` when idle.
+    ///
+    /// A result whose generation differs from this is stale, which also covers a
+    /// result arriving with no request outstanding at all.
+    #[must_use]
+    pub fn generation(&self) -> u64 {
+        match self {
+            Self::Idle => 0,
+            Self::Loading { generation, .. } | Self::Ready { generation, .. } => *generation,
+        }
+    }
+
+    /// The cached lines, when they match what the caller wants to draw.
+    ///
+    /// `None` means the caller must show the loading state — which is what
+    /// distinguishes loading from a session that genuinely has nothing to
+    /// preview, since that renders as `Ready` with zero lines.
+    #[must_use]
+    pub fn cached(
+        &self,
+        session_id: &SessionId,
+        signature: u64,
+        content_width: u16,
+    ) -> Option<&[ratatui::text::Line<'static>]> {
+        match self {
+            Self::Ready {
+                session_id: ready_id,
+                signature: ready_signature,
+                content_width: ready_width,
+                lines,
+                ..
+            } if ready_id == session_id
+                && *ready_signature == signature
+                && *ready_width == content_width =>
+            {
+                Some(lines.as_slice())
+            }
+            _ => None,
+        }
+    }
+
+    /// Drops an in-flight request for `session_id`.
+    ///
+    /// Id-scoped, like the session map's `clear_load_for`: a preview abandoned
+    /// for one session must not strand another session's spinner.
+    pub fn abandon(&mut self, session_id: &SessionId) {
+        if matches!(self, Self::Loading { session_id: loading, .. } if loading == session_id) {
+            *self = Self::Idle;
+        }
+    }
+}
 
 /// Cache for session preview popup rendered lines.
 ///
@@ -110,5 +248,187 @@ impl SessionPreviewCache {
         lines: Vec<ratatui::text::Line<'static>>,
     ) {
         self.entries.insert((session_id, history_len, width), lines);
+    }
+}
+
+#[cfg(test)]
+mod preview_load_tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        // The shared Vec IS the production payload; the helper only names it.
+        clippy::rc_buffer,
+        reason = "test code"
+    )]
+
+    use super::*;
+
+    /// The lines a worker would have produced for a preview.
+    fn lines(text: &str) -> Arc<Vec<ratatui::text::Line<'static>>> {
+        Arc::new(vec![ratatui::text::Line::from(text.to_owned())])
+    }
+
+    #[rstest::rstest]
+    fn complete_discards_a_result_from_an_older_generation() {
+        // Given a request in flight, superseded by a second one.
+        let mut load = PreviewLoad::default();
+        load.request(SessionId::new());
+        let stale = load.request(SessionId::new());
+
+        // When the first request's result arrives late.
+        let accepted = load.complete(
+            SessionId::new(),
+            stale.saturating_sub(1),
+            7,
+            40,
+            lines("stale"),
+        );
+
+        // Then it is refused and the current request is untouched.
+        assert!(!accepted, "a superseded result must not be stored");
+        assert_eq!(
+            load,
+            PreviewLoad::Loading {
+                session_id: match &load {
+                    PreviewLoad::Loading { session_id, .. } => session_id.clone(),
+                    _ => unreachable!("just armed"),
+                },
+                generation: stale,
+            },
+            "the in-flight request must survive a late result"
+        );
+    }
+
+    #[rstest::rstest]
+    fn complete_stores_a_result_for_the_current_generation() {
+        // Given a request in flight.
+        let session_id = SessionId::new();
+        let mut load = PreviewLoad::default();
+        let generation = load.request(session_id.clone());
+
+        // When its result arrives.
+        let accepted = load.complete(session_id.clone(), generation, 7, 40, lines("hello"));
+
+        // Then it becomes the renderable state.
+        assert!(accepted, "a current result must be stored");
+        assert!(matches!(load, PreviewLoad::Ready { .. }));
+    }
+
+    #[rstest::rstest]
+    fn cached_misses_when_the_content_width_differs() {
+        // Given a preview rendered at one width.
+        let session_id = SessionId::new();
+        let mut load = PreviewLoad::default();
+        let generation = load.request(session_id.clone());
+        load.complete(session_id.clone(), generation, 7, 40, lines("hello"));
+
+        // When asked for a different width.
+        let hit = load.cached(&session_id, 7, 60);
+
+        // Then there is nothing to draw — the lines would be wrapped wrong.
+        assert!(hit.is_none(), "a resize must invalidate the cached lines");
+    }
+
+    #[rstest::rstest]
+    fn cached_misses_when_the_previewed_content_changed() {
+        // Given a preview of a session whose entry is streaming.
+        let session_id = SessionId::new();
+        let mut load = PreviewLoad::default();
+        let generation = load.request(session_id.clone());
+        load.complete(session_id.clone(), generation, 7, 40, lines("partial answ"));
+
+        // When the entry's content has since changed.
+        let hit = load.cached(&session_id, 8, 40);
+
+        // Then there is nothing to draw — serving it would show stale text.
+        assert!(
+            hit.is_none(),
+            "a streaming entry must invalidate the preview, not serve stale text"
+        );
+    }
+
+    #[rstest::rstest]
+    fn cached_hits_for_matching_session_signature_and_width() {
+        // Given a completed preview.
+        let session_id = SessionId::new();
+        let mut load = PreviewLoad::default();
+        let generation = load.request(session_id.clone());
+        load.complete(session_id.clone(), generation, 7, 40, lines("hello"));
+
+        // When asked for exactly that.
+        let hit = load.cached(&session_id, 7, 40);
+
+        // Then the lines come back.
+        let hit = hit.expect("matching lookup should hit");
+        assert_eq!(hit.len(), 1, "one line was rendered");
+    }
+
+    #[rstest::rstest]
+    fn abandon_clears_only_the_named_session() {
+        // Given a request in flight for one session.
+        let in_flight = SessionId::new();
+        let other = SessionId::new();
+        let mut load = PreviewLoad::default();
+        load.request(in_flight.clone());
+
+        // When another session's request is abandoned.
+        load.abandon(&other);
+
+        // Then the in-flight request is untouched.
+        assert!(
+            matches!(load, PreviewLoad::Loading { .. }),
+            "abandoning one session must not strand another's spinner"
+        );
+    }
+
+    #[rstest::rstest]
+    fn abandon_clears_the_named_sessions_request() {
+        // Given a request in flight.
+        let in_flight = SessionId::new();
+        let mut load = PreviewLoad::default();
+        load.request(in_flight.clone());
+
+        // When that request is abandoned.
+        load.abandon(&in_flight);
+
+        // Then nothing is in flight.
+        assert_eq!(load, PreviewLoad::Idle, "a stuck spinner must be clearable");
+    }
+
+    #[rstest::rstest]
+    fn request_bumps_the_generation() {
+        // Given a state that has already served one request.
+        let mut load = PreviewLoad::default();
+        let first = load.request(SessionId::new());
+
+        // When a second request is armed.
+        let second = load.request(SessionId::new());
+
+        // Then the generation moved on, so the first result is recognisable.
+        assert_eq!(
+            second,
+            first + 1,
+            "each request must advance the generation"
+        );
+    }
+
+    #[rstest::rstest]
+    fn request_discards_a_completed_preview() {
+        // Given a ready preview.
+        let mut load = PreviewLoad::default();
+        let generation = load.request(SessionId::new());
+        load.complete(SessionId::new(), generation, 7, 40, lines("hello"));
+
+        // When a new request is armed.
+        load.request(SessionId::new());
+
+        // Then the old lines are gone — the render pass must show a spinner
+        // rather than the previous session's text.
+        assert!(
+            matches!(load, PreviewLoad::Loading { .. }),
+            "a new request must not leave stale lines on screen"
+        );
     }
 }

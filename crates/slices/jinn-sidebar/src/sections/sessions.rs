@@ -12,6 +12,7 @@ pub mod r#continue;
 pub mod load_subagent;
 pub mod navigate;
 pub mod preview;
+pub mod preview_load;
 pub mod reconcile;
 pub mod render;
 

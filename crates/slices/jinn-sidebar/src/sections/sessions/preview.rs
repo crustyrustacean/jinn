@@ -26,7 +26,7 @@ use jinn_sidebar_msg::SessionPreviewCache;
 use jinn_theme::Theme;
 
 /// Default max lines for tool entries when no preference is set.
-const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
+pub(crate) const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
 /// Rows between the popup and the cursor row it describes.
 ///
 /// Two rows leaves a one-row gap, so the popup reads as a separate surface
