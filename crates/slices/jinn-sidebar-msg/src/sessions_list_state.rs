@@ -6,6 +6,7 @@
 //! map, reconcile on removal); the sidebar slice owns the section's
 //! interactions. Both speak these types.
 
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use jinn_core_types::SessionId;

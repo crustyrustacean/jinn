@@ -38,6 +38,15 @@ use jinn_theme::Theme;
 
 /// Default max lines for tool entries when no preference is set.
 pub(crate) const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
+/// Content rows the loading popup reserves.
+///
+/// The popup's height is derived from the line count, and a render that has
+/// not come back has none to report. Sizing from zero lands the box on its
+/// 5-row floor — two borders and the three footer rows — which leaves no
+/// content rows at all, and the content guard then drops the spinner line.
+/// Three matches the usual preview length, so the box barely moves once the
+/// real lines land.
+pub(crate) const LOADING_CONTENT_ROWS: usize = 3;
 /// Rows between the popup and the cursor row it describes.
 ///
 /// Two rows leaves a one-row gap, so the popup reads as a separate surface
@@ -119,7 +128,8 @@ pub fn render_session_preview_for_state(
         // `None` is what distinguishes loading from empty — an empty session
         // renders zero lines but is still `Ready`, so it takes the branch below
         // and shows the empty state rather than spinning forever.
-        let popup_rect = session_preview_popup_rect(frame_area, cursor_y, 0);
+        let popup_rect =
+            session_preview_popup_rect(frame_area, cursor_y, LOADING_CONTENT_ROWS);
         render_session_preview_loading(frame, popup_rect, session, theme);
         return;
     };
@@ -150,11 +160,13 @@ fn spinner_elapsed() -> std::time::Duration {
 
 /// Renders the popup's chrome with a spinner where the content will go.
 ///
-/// Drawn at the popup's minimum height rather than a content-derived one: there
-/// are no lines yet to measure, and sizing from a count that arrives a frame
-/// later would make the box jump as the cursor moves between sessions. The
-/// chrome, title, badge, and footer are identical to the ready state so only
-/// the content area changes when the render lands.
+/// Sized from [`LOADING_CONTENT_ROWS`] rather than the popup's minimum height:
+/// there are no lines yet to measure, but the minimum is exactly the chrome —
+/// two borders and the three footer rows — so a box at the minimum has no
+/// content rows and the spinner would be dropped. Three rows is a nominal
+/// height that still reads as a nearly-empty preview rather than a void, so the
+/// box barely moves when the real lines land. The chrome, title, badge, and
+/// footer are identical to the ready state, so only the content area changes.
 pub fn render_session_preview_loading(
     frame: &mut Frame<'_>,
     popup_area: Rect,

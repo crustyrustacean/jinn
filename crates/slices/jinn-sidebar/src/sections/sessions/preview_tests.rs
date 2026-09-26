@@ -9,8 +9,8 @@
 )]
 
 use crate::sections::sessions::preview::{
-    DEFAULT_TOOL_ENTRY_MAX_LINES, render_session_preview, render_session_preview_loading,
-    session_preview_popup_rect,
+    DEFAULT_TOOL_ENTRY_MAX_LINES, LOADING_CONTENT_ROWS, render_session_preview,
+    render_session_preview_loading, session_preview_popup_rect,
 };
 use jinn_chat_log_view::chat_log::RenderContext;
 use jinn_chat_log_view_msg::{PREVIEW_ENTRY_COUNT, PREVIEW_MAX_LINES};
@@ -515,8 +515,12 @@ mod loading_state {
     use super::*;
     use jinn_slices::spinner_glyph;
 
-    /// The popup drawn by the loading renderer, at the same geometry the ready
-    /// renderer would use for a one-line preview.
+    /// The popup drawn by the loading renderer, at the geometry production uses.
+    ///
+    /// Sized from [`LOADING_CONTENT_ROWS`], the same constant the render pass
+    /// draws with. A hand-picked count here would let the test pass against
+    /// geometry production never uses — which is exactly how the spinner went
+    /// missing while this test stayed green.
     fn draw_loading(
         session: &ChatSessionState,
         term_width: u16,
@@ -524,7 +528,8 @@ mod loading_state {
     ) -> ratatui::buffer::Buffer {
         let theme = default_theme();
         let frame_area = Rect::new(0, 0, term_width, term_height);
-        let popup_area = session_preview_popup_rect(frame_area, 30, 1);
+        let popup_area =
+            session_preview_popup_rect(frame_area, 30, LOADING_CONTENT_ROWS);
 
         let (mut terminal, _) = setup_term(term_width, term_height);
         terminal
@@ -555,6 +560,26 @@ mod loading_state {
                 .to_owned()
             })
             .collect()
+    }
+
+    #[rstest::rstest]
+    fn the_loading_popup_reserves_a_content_row() {
+        // Given a frame with room above the cursor for a small popup.
+        let frame_area = Rect::new(0, 0, 100, 40);
+
+        // When the loading popup's rect is computed the way production does.
+        let popup_area =
+            session_preview_popup_rect(frame_area, 30, LOADING_CONTENT_ROWS);
+
+        // Then rows remain for content once the borders and footer are taken.
+        // At the popup's 5-row floor this would be zero, and the content guard
+        // would drop the spinner line entirely.
+        let content_rows = popup_area.height.saturating_sub(2).saturating_sub(3);
+        assert!(
+            content_rows > 0,
+            "the loading popup must leave room for the spinner, got {content_rows} content rows in a {} row popup",
+            popup_area.height
+        );
     }
 
     #[rstest::rstest]
