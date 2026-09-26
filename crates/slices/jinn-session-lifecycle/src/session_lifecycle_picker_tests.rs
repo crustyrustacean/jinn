@@ -33,6 +33,9 @@ use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{EditIntent, ScopeSignal};
 use jinn_slices::{KeyRoutes, SliceHost, Slices};
 
+/// The route action name that opens the picker.
+const OPEN_ACTION: &str = "open-session-lifecycle-picker";
+
 /// Renders `lifecycles` as the `[[session_lifecycle.script]]` document the
 /// configuration layer parses. The picker reads its rows through the layer
 /// rather than through kernel frontend state, so the test seeds the layer.
@@ -133,9 +136,46 @@ impl Wired {
         self.cell().read().results_viewport
     }
 
-    /// Opens the picker through its real `open` route action.
-    fn open(&self) -> jinn_slices::RouteResult {
-        self.fire("open-session-lifecycle-picker")
+    /// Opens the picker the way the kernel does: dispatch the row's action,
+    /// then apply the scope signal it requested, firing the picker's
+    /// scope-enter hook.
+    ///
+    /// The hook is what seeds the rows and clears the filter, so a test that
+    /// only fired the action would exercise a picker that never opened.
+    fn open(&self) {
+        let result = self.fire(OPEN_ACTION);
+        self.apply_signal(
+            result
+                .scope_signal
+                .expect("the open action requests a push"),
+        );
+    }
+
+    /// Applies a scope signal the way the kernel does, so a slice's
+    /// scope-enter hook fires on a push.
+    fn apply_signal(&self, signal: ScopeSignal) {
+        let mut state = self.state.borrow_mut();
+        match signal {
+            ScopeSignal::Push(id) => {
+                state
+                    .frontend
+                    .scope_push(jinn_slices::FocusScope::Dynamic(id.clone()));
+                if let Some(hook) = self.routes.scope_enter_hook(&id) {
+                    hook(jinn_slices::ActionCtx {
+                        state: &mut *state,
+                        slices: &self.slices,
+                        config: &self.config,
+                        key_bytes: Vec::new(),
+                    });
+                }
+            }
+            ScopeSignal::PopIf(id) => {
+                if matches!(&state.frontend.scope(), jinn_slices::FocusScope::Dynamic(cur) if *cur == id)
+                {
+                    state.frontend.scope_pop();
+                }
+            }
+        }
     }
 
     /// Dispatches one of the picker's actions by its route action name.
@@ -250,8 +290,8 @@ async fn opening_the_picker_pushes_its_own_scope() {
     // Given a wired picker.
     let wired = Wired::new(vec![]).await;
 
-    // When the picker opens.
-    let result = wired.open();
+    // When the open action is dispatched.
+    let result = wired.fire(OPEN_ACTION);
 
     // Then the picker's scope lands on the stack.
     assert_eq!(
@@ -262,6 +302,42 @@ async fn opening_the_picker_pushes_its_own_scope() {
 }
 
 // ── 2. Filter narrows ───────────────────────────────────────────────────
+
+#[rstest::rstest]
+#[tokio::test]
+async fn reopening_the_picker_clears_the_filter() {
+    // Given a picker that was opened and then filtered.
+    let wired = Wired::new(vec![plain("dev"), plain("review")]).await;
+    wired.open();
+    wired.edit(&EditIntent::InsertChar('r'));
+    assert_eq!(wired.filter(), "r", "the filter is set before reopening");
+
+    // When the picker is opened again.
+    wired.open();
+
+    // Then the filter is empty — every open starts fresh.
+    assert_eq!(wired.filter(), "");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn reopening_the_picker_moves_the_highlight_back_to_the_first_row() {
+    // Given a picker that was opened and then navigated.
+    let wired = Wired::new(vec![plain("dev"), plain("review")]).await;
+    wired.open();
+    wired.fire("move-lifecycle-picker-down");
+    assert_eq!(
+        wired.highlighted(),
+        1,
+        "the highlight moved before reopening"
+    );
+
+    // When the picker is opened again.
+    wired.open();
+
+    // Then the highlight is back on the first row.
+    assert_eq!(wired.highlighted(), 0);
+}
 
 #[rstest::rstest]
 #[tokio::test]

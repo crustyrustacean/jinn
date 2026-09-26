@@ -30,6 +30,9 @@ use jinn_theme::Theme;
 ///
 /// Always leads with the implicit blank lifecycle — the "new empty session"
 /// row is not in `jinn.toml`, it is what you get with no configuration.
+///
+/// Called by the picker's scope-enter hook, on every entry, so each open
+/// starts from a clean filter and highlight.
 pub fn open(
     state: &mut SessionLifecyclePickerState,
     lifecycles: &[jinn_preferences_config::schemas::SessionLifecycle],
