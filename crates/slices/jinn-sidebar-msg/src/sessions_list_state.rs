@@ -6,7 +6,6 @@
 //! map, reconcile on removal); the sidebar slice owns the section's
 //! interactions. Both speak these types.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use jinn_core_types::SessionId;
@@ -53,11 +52,6 @@ pub enum ArchiveTreePrompt {
     /// Blocked: at least one member is busy; nothing will archive.
     Busy,
 }
-
-/// History length component of the preview cache key.
-type HistoryLen = usize;
-/// Content width component of the preview cache key.
-type ContentWidth = u16;
 
 /// Where the session preview popup is in its load.
 ///
@@ -242,61 +236,6 @@ impl PreviewLoad {
     }
 }
 
-/// Cache for session preview popup rendered lines.
-///
-/// Keyed by `(SessionId, HistoryLen, ContentWidth)` so that:
-/// - Switching sessions produces a cache miss (different `SessionId`).
-/// - New completed messages produce a cache miss (different `HistoryLen`).
-/// - Terminal resize produces a cache miss (different `ContentWidth`).
-#[derive(Debug, Default)]
-pub struct SessionPreviewCache {
-    entries: HashMap<(SessionId, HistoryLen, ContentWidth), Vec<ratatui::text::Line<'static>>>,
-}
-
-impl SessionPreviewCache {
-    /// Creates a new empty cache.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Looks up cached preview lines for the given key.
-    pub fn get(
-        &self,
-        session_id: &SessionId,
-        history_len: HistoryLen,
-        width: ContentWidth,
-    ) -> Option<&Vec<ratatui::text::Line<'static>>> {
-        self.entries.get(&(session_id.clone(), history_len, width))
-    }
-
-    /// How many cached entries the cache holds.
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    /// Whether the cache holds no entries.
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-
-    /// Drops all cached entries.
-    pub fn clear(&mut self) {
-        self.entries.clear();
-    }
-
-    /// Stores preview lines for the given key.
-    pub fn insert(
-        &mut self,
-        session_id: SessionId,
-        history_len: HistoryLen,
-        width: ContentWidth,
-        lines: Vec<ratatui::text::Line<'static>>,
-    ) {
-        self.entries.insert((session_id, history_len, width), lines);
-    }
-}
-
 #[cfg(test)]
 mod preview_load_tests {
     #![allow(
@@ -476,5 +415,134 @@ mod preview_load_tests {
             matches!(load, PreviewLoad::Loading { .. }),
             "a new request must not leave stale lines on screen"
         );
+    }
+}
+
+/// The preview's keying, which is what makes a streaming session preview live.
+///
+/// The key is the previewed entries' *content*, not the history's length. A
+/// streaming assistant appends to an entry many times before the history grows
+/// at all, so a length key serves stale text for the whole turn.
+#[cfg(test)]
+mod preview_freshness_tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+    use super::*;
+    use ratatui::text::Line;
+
+    /// A preview carrying `text`, ready for `session_id` at `content_width`.
+    fn ready(
+        load: &mut PreviewLoad,
+        session_id: &SessionId,
+        signature: u64,
+        content_width: u16,
+        text: &'static str,
+    ) {
+        let generation = load.request(session_id.clone());
+        load.complete(
+            session_id.clone(),
+            generation,
+            signature,
+            content_width,
+            Arc::new(vec![Line::from(text)]),
+        );
+    }
+
+    #[rstest::rstest]
+    fn unchanged_content_is_served_from_the_same_generation() {
+        // Given a preview rendered for a session at a width.
+        let id = SessionId::new();
+        let mut load = PreviewLoad::default();
+        ready(&mut load, &id, 7, 40, "hello");
+
+        // When the render pass asks for the same session, width, and content.
+        let cached = load.cached(&id, 7, 40);
+
+        // Then it is served without a new request.
+        assert!(cached.is_some(), "unchanged content must be a cache hit");
+    }
+
+    #[rstest::rstest]
+    fn a_streamed_token_invalidates_the_preview() {
+        // Given a preview rendered before a token arrived.
+        let id = SessionId::new();
+        let mut load = PreviewLoad::default();
+        ready(&mut load, &id, 7, 40, "hel");
+
+        // When the render pass asks again with the entry's new content.
+        let cached = load.cached(&id, 8, 40);
+
+        // Then it is a miss, so the popup shows its spinner rather than the
+        // text the assistant had already replaced.
+        assert!(
+            cached.is_none(),
+            "a streamed token must invalidate the preview"
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_resize_invalidates_the_preview() {
+        // Given a preview rendered at one width.
+        let id = SessionId::new();
+        let mut load = PreviewLoad::default();
+        ready(&mut load, &id, 7, 40, "hello");
+
+        // When the terminal is resized.
+        let cached = load.cached(&id, 7, 80);
+
+        // Then it is a miss, so the lines are re-wrapped for the new width.
+        assert!(cached.is_none(), "a resize must invalidate the preview");
+    }
+
+    #[rstest::rstest]
+    fn another_session_does_not_invalidate_the_preview() {
+        // Given a preview rendered for one session.
+        let id = SessionId::new();
+        let mut load = PreviewLoad::default();
+        ready(&mut load, &id, 7, 40, "hello");
+
+        // When the cursor moves to a different session with the same signature.
+        let cached = load.cached(&SessionId::new(), 7, 40);
+
+        // Then it is a miss: the lines belong to the session left behind.
+        assert!(
+            cached.is_none(),
+            "another session's preview must not be served"
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_served_preview_is_shared_rather_than_copied() {
+        // Given a preview holding rendered lines.
+        let id = SessionId::new();
+        let mut load = PreviewLoad::default();
+        ready(&mut load, &id, 7, 40, "hello");
+
+        // When it is read twice for the same content.
+        let first = load.cached(&id, 7, 40).expect("hit");
+        let second = load.cached(&id, 7, 40).expect("hit");
+
+        // Then both reads are the same allocation, not two copies.
+        assert!(
+            std::sync::Arc::ptr_eq(first, second),
+            "a cache hit must not copy the lines"
+        );
+    }
+
+    #[rstest::rstest]
+    fn an_idle_preview_serves_nothing() {
+        // Given a preview that was never requested.
+        let load = PreviewLoad::default();
+
+        // When the render pass asks for lines anyway.
+        let cached = load.cached(&SessionId::new(), 7, 40);
+
+        // Then there is nothing, which is what shows the spinner.
+        assert!(cached.is_none());
     }
 }

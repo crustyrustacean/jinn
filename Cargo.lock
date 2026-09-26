@@ -3424,6 +3424,7 @@ name = "jinn-theme-slice"
 version = "0.118.0"
 dependencies = [
  "error-stack",
+ "jinn-chat-log-view",
  "jinn-core-types",
  "jinn-domain",
  "jinn-picker",

@@ -121,14 +121,28 @@ impl Wired {
     }
 
     /// Seeds a theme-sensitive cache so invalidation is observable.
+    ///
+    /// The entry line cache is the one that remains: it holds rendered lines as
+    /// well as counts, so a theme switch has to clear it. The session preview's
+    /// lines moved into the sidebar slice's cell and are reset there instead.
     fn seed_theme_cache(&self) {
         self.state
             .borrow_mut()
             .frontend
             .caches
-            .session_preview_cache
+            .entry_line_cache
             .write()
-            .insert(jinn_core_types::SessionId::new(), 0, 80, Vec::new());
+            .insert(
+                &jinn_core_types::ChatEntry::user("seeded"),
+                jinn_chat_log_view::chat_log::ContentIdentity {
+                    signature: 1,
+                    fingerprint: 1,
+                },
+                false,
+                0,
+                80,
+                1,
+            );
     }
 
     /// How many entries the theme-sensitive cache holds.
@@ -137,7 +151,7 @@ impl Wired {
             .borrow()
             .frontend
             .caches
-            .session_preview_cache
+            .entry_line_cache
             .read()
             .len()
     }

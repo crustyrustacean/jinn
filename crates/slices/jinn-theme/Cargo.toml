@@ -17,6 +17,7 @@ error-stack = { workspace = true }
 wherror = { workspace = true }
 
 [dev-dependencies]
+jinn-chat-log-view = { workspace = true }
 jinn-core-types = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
