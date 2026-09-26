@@ -230,3 +230,6 @@ Entries are added or amended **only with human approval**.
 - (sessions) Startup hydration reads each unarchived session on a worker pool, so the store actor's mailbox is free while history is still being read.
 - (ui) The sidebar lists each session as its history finishes loading, rather than after all sessions have loaded.
 - (sessions) A session's chat log is shared with the layout workers as a single `Arc` snapshot, so activating a session copies its history once rather than per worker.
+- (chat-log) A session that has not yet rendered a frame records no content width, and a measurement of such a session is applied rather than treated as stale.
+- (chat-log) The chat log's line counts are keyed to the width each entry was measured at, so a resize invalidates only the counts taken at the old width.
+- (chat-log) The session loading guard is released only by the session that holds it, so a deadline armed for a session the user has left cannot end another session's load.
