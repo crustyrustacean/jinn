@@ -10,7 +10,6 @@ symbol; forks get the fork origin even when forked from a subagent).
 | Key          | Action                                                           |
 | ------------ | ---------------------------------------------------------------- |
 | `n`          | New session (immediately active)                                 |
-| `N`          | New session, choosing a **lifecycle recipe** first               |
 | `<c-n>`      | New session from most scopes (also inside pickers)               |
 | `<leader>sp` | Project picker — create a session in a curated project directory |
 | `<leader>sl` | Session lifecycle recipe picker                                  |

@@ -178,8 +178,7 @@ impl CrossSlice {
     /// The lifecycle picker's cell.
     fn lifecycle_cell(
         &self,
-    ) -> jinn_slices::cell::TypedCell<jinn_session_lifecycle_msg::SessionLifecyclePickerState>
-    {
+    ) -> jinn_slices::cell::TypedCell<jinn_session_lifecycle_msg::SessionLifecyclePickerState> {
         self.slices
             .reader(&jinn_session_lifecycle_msg::session_lifecycle_picker_slot())
             .expect("the lifecycle picker registers its cell at activation")
@@ -206,8 +205,7 @@ impl CrossSlice {
             .routes
             .input_hook(&jinn_session_lifecycle_msg::session_lifecycle_picker_scope())
             .expect("the lifecycle picker registers a filter hook");
-        hook(&EditIntent::InsertChar(ch))
-            .expect("the filter hook always consumes the edit");
+        hook(&EditIntent::InsertChar(ch)).expect("the filter hook always consumes the edit");
     }
 }
 

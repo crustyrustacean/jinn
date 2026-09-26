@@ -266,9 +266,9 @@ pub fn register_session_lifecycle_picker_enter_hook(
             .unwrap_or_default();
         // The rows must be seeded even when the state is not the kernel's (a
         // test double), so only the theme falls back in that case.
-        let theme = app(&mut ctx)
-            .map(|state| state.frontend.theme.clone())
-            .unwrap_or_else(jinn_theme::default_theme);
+        let theme = app(&mut ctx).map_or_else(jinn_theme::default_theme, |state| {
+            state.frontend.theme.clone()
+        });
         owned.update(|picker| session_lifecycle_picker_actions::open(picker, &lifecycles, &theme));
     });
     routes.register_scope_enter_hook(&session_lifecycle_picker_scope(), hook);

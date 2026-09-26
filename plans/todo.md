@@ -75,20 +75,39 @@ requires `H: Clone`; `Arc<dyn Fn...>` satisfies it for free. Verified `key_bytes
 
 ## Phase 4 — Remove the dead `N` row
 
-- [ ] Delete the `session-new-lifecycle` / `N` / "new session (setup)" route row from `crates/slices/jinn-sidebar/src/key_routes.rs`, keeping the `n` row
-- [ ] Remove the `N` row from the General/app table in `res/skills/jinn-usage/references/keybindings.md`
-- [ ] Change the sessions-section `n` / `N` table row in `keybindings.md` to `n` only
-- [ ] Grep `res/skills/jinn-usage/` for any other sessions-context `N` mention and fix if found
-- [ ] Add test in `tests/slices/composition.rs` asserting the sidebar sessions scope binds no `N` key
+- [x] Delete the `session-new-lifecycle` / `N` / "new session (setup)" route row from `crates/slices/jinn-sidebar/src/key_routes.rs`, keeping the `n` row
+- [x] Remove the `N` row from the General/app table in `res/skills/jinn-usage/references/keybindings.md`
+- [x] Change the sessions-section `n` / `N` table row in `keybindings.md` to `n` only
+- [x] Grep `res/skills/jinn-usage/` for any other sessions-context `N` mention and fix if found
+- [x] Add test in `tests/slices/composition.rs` asserting the sidebar sessions scope binds no `N` key
+
+**Notes:**
+- The plan's grep found only **two** `N` mentions; there were **three**. A third lived in
+  `res/skills/jinn-usage/references/sessions-and-subagents.md:13`
+  ("New session, choosing a **lifecycle recipe** first") and is now removed. The plan's
+  "grep found only the two lines above" claim was wrong — always grep the whole skill directory.
+- `all_picker_routes()` in `tests/slices/composition.rs` does **not** include the sidebar, so the
+  new test attaches the sidebar's real rows directly via
+  `jinn_sidebar::key_routes::attach_sidebar_rows`.
 
 ## Phase 5 — Verification
 
-- [ ] **Acceptance:** project picker `<c-enter>` shows every configured lifecycle plus `blank` on a boot where the picker was never opened
-- [ ] **Acceptance:** both entry points open with an empty filter box; a filter typed during a previous visit is gone
-- [ ] **Acceptance:** both entry points open on the same state (blank highlighted, full row list)
-- [ ] **Acceptance:** a picker whose slice registered no scope-enter hook behaves exactly as before
-- [ ] **Acceptance:** `N` in the sidebar sessions section no longer resolves, and the bundled keybindings reference no longer documents it
-- [ ] Run `just check`, `just test`, and `just lint` until all pass (never `cargo test` directly; use `just test-one` to iterate)
-- [ ] **Record Updates:** review the complete implementation; if it matches the planned entry, write into `.agents/RECORD.md`:
+- [x] **Acceptance:** project picker `<c-enter>` shows every configured lifecycle plus `blank` on a boot where the picker was never opened
+- [x] **Acceptance:** both entry points open with an empty filter box; a filter typed during a previous visit is gone
+- [x] **Acceptance:** both entry points open on the same state (blank highlighted, full row list)
+- [x] **Acceptance:** a picker whose slice registered no scope-enter hook behaves exactly as before
+- [x] **Acceptance:** `N` in the sidebar sessions section no longer resolves, and the bundled keybindings reference no longer documents it
+- [x] Run `just check`, `just test`, and `just lint` until all pass (never `cargo test` directly; use `just test-one` to iterate)
+- [x] **Record Updates:** review the complete implementation; if it matches the planned entry, write into `.agents/RECORD.md`:
       `- (pickers) A slice picker resets its per-open state — filter text, highlight, and rows — each time its dynamic scope is entered, so every opener shows the same fresh menu.`
       If the implementation **diverged** from that entry, do **not** write a wrong entry — surface the divergence in the final implementation summary for the user to resolve.
+
+**Notes:**
+- `just test`: **6494 passed, 0 failed**. `just check` and `just lint` clean with zero warnings.
+- Two clippy warnings in the new code were fixed before the final run: `map(..).unwrap_or_else(..)`
+  → `map_or_else` (the enter hook's theme fallback), and the test helper's
+  `enters: Arc<AtomicUsize>` → `&Arc<AtomicUsize>` (`needless_pass_by_value`).
+- Acceptance verified: `session-new-lifecycle` appears 0 times in `*.rs`; `` `N` `` appears 0 times
+  in `res/skills/jinn-usage/`; `jinn-session-lifecycle` is the only slice registering an enter hook,
+  so every other picker keeps its prior behavior.
+- The RECORD entry was written **verbatim as planned** — the implementation did not diverge.

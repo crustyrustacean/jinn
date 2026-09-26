@@ -144,7 +144,11 @@ impl Wired {
     /// only fired the action would exercise a picker that never opened.
     fn open(&self) {
         let result = self.fire(OPEN_ACTION);
-        self.apply_signal(result.scope_signal.expect("the open action requests a push"));
+        self.apply_signal(
+            result
+                .scope_signal
+                .expect("the open action requests a push"),
+        );
     }
 
     /// Applies a scope signal the way the kernel does, so a slice's
@@ -322,7 +326,11 @@ async fn reopening_the_picker_moves_the_highlight_back_to_the_first_row() {
     let wired = Wired::new(vec![plain("dev"), plain("review")]).await;
     wired.open();
     wired.fire("move-lifecycle-picker-down");
-    assert_eq!(wired.highlighted(), 1, "the highlight moved before reopening");
+    assert_eq!(
+        wired.highlighted(),
+        1,
+        "the highlight moved before reopening"
+    );
 
     // When the picker is opened again.
     wired.open();

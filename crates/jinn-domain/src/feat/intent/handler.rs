@@ -73,9 +73,7 @@ fn apply_scope_signal(
     if let Some(signal) = result.scope_signal.take() {
         match signal {
             ScopeSignal::Push(id) => {
-                state
-                    .frontend
-                    .scope_push(FocusScope::Dynamic(id.clone()));
+                state.frontend.scope_push(FocusScope::Dynamic(id.clone()));
                 if let Some(hook) = routes.scope_enter_hook(&id) {
                     hook(jinn_slices::route::ActionCtx {
                         state,
@@ -703,7 +701,7 @@ mod tests {
     fn transitioning_routes(
         scope: jinn_slices::SliceScopeId,
         signal: ScopeSignal,
-        enters: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        enters: &std::sync::Arc<std::sync::atomic::AtomicUsize>,
     ) -> (jinn_slices::route::KeyRoutes, KernelIntent) {
         use jinn_slices::route::{ActionFn, BindSite, RouteId, RouteOutcome, RouteRow};
         use std::sync::atomic::Ordering;
@@ -724,7 +722,7 @@ mod tests {
                 }),
             },
         });
-        let counted = std::sync::Arc::clone(&enters);
+        let counted = std::sync::Arc::clone(enters);
         routes.register_scope_enter_hook(
             &scope,
             std::sync::Arc::new(move |_ctx: jinn_slices::route::ActionCtx<'_>| {
@@ -1484,11 +1482,8 @@ mod tests {
         // Given a route row that pushes a scope owning an enter hook.
         let scope = jinn_slices::SliceScopeId::new("test", "picker");
         let enters = Arc::new(AtomicUsize::new(0));
-        let (routes, intent) = transitioning_routes(
-            scope.clone(),
-            ScopeSignal::Push(scope.clone()),
-            Arc::clone(&enters),
-        );
+        let (routes, intent) =
+            transitioning_routes(scope.clone(), ScopeSignal::Push(scope.clone()), &enters);
         let mut state = AppState::default_with_scope_focus();
 
         // When handling the row's dynamic intent.
@@ -1511,11 +1506,9 @@ mod tests {
 
         // Given a route row that pushes a scope.
         let scope = jinn_slices::SliceScopeId::new("test", "picker");
-        let (routes, intent) = transitioning_routes(
-            scope.clone(),
-            ScopeSignal::Push(scope.clone()),
-            Arc::new(AtomicUsize::new(0)),
-        );
+        let counter = Arc::new(AtomicUsize::new(0));
+        let (routes, intent) =
+            transitioning_routes(scope.clone(), ScopeSignal::Push(scope.clone()), &counter);
         let mut state = AppState::default_with_scope_focus();
 
         // When handling the row's dynamic intent.
@@ -1542,7 +1535,7 @@ mod tests {
         let scope = jinn_slices::SliceScopeId::new("test", "picker");
         let enters = Arc::new(AtomicUsize::new(0));
         let (routes, intent) =
-            transitioning_routes(scope.clone(), ScopeSignal::PopIf(scope), Arc::clone(&enters));
+            transitioning_routes(scope.clone(), ScopeSignal::PopIf(scope), &enters);
         let mut state = AppState::default_with_scope_focus();
 
         // When handling the row's dynamic intent.
