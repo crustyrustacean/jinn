@@ -227,3 +227,5 @@ Entries are added or amended **only with human approval**.
 - (ui) The chat log's initial layout pass runs off the main thread, and the session loading indication stays up until it completes.
 - (ui) The session loading indication is an animated spinner rather than static text.
 - (ui) Activating a sidebar session measures its chat log off the main thread when it has no cached line counts, and otherwise switches immediately.
+- (sessions) Startup hydration reads each unarchived session on a worker pool, so the store actor's mailbox is free while history is still being read.
+- (ui) The sidebar lists each session as its history finishes loading, rather than after all sessions have loaded.

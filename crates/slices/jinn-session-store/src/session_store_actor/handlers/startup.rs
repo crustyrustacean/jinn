@@ -145,10 +145,7 @@ impl SessionStoreActor {
     /// The loop is the dispatch: it sends and returns without awaiting any of
     /// the reads, which is the whole point — the actor's task is never held
     /// across a database read.
-    fn send_hydration_jobs(
-        ctx: &mut MsgCtx<'_>,
-        session_ids: impl Iterator<Item = SessionId>,
-    ) {
+    fn send_hydration_jobs(ctx: &mut MsgCtx<'_>, session_ids: impl Iterator<Item = SessionId>) {
         for session_id in session_ids {
             ctx.send_to_any(HydrateSession {
                 session_id,
