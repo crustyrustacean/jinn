@@ -131,7 +131,11 @@ fn navigate_down_moves_cursor_without_switching() {
         .update_sections(|s| s.sessions.selected_index = Some(0));
 
     // When navigating down.
-    let result = navigate(&SidebarIntent::MoveDown, &mut state);
+    let (result, _) = navigate(
+        &SidebarIntent::MoveDown,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then the result is Moved.
     assert_eq!(result, SectionNavResult::Moved);
@@ -158,7 +162,11 @@ fn navigate_up_moves_cursor_without_switching() {
     let original_active = state.session.active_session_id().clone();
 
     // When navigating up.
-    let result = navigate(&SidebarIntent::MoveUp, &mut state);
+    let (result, _) = navigate(
+        &SidebarIntent::MoveUp,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then the result is Moved.
     assert_eq!(result, SectionNavResult::Moved);
@@ -183,7 +191,11 @@ fn navigate_down_at_bottom_returns_exhausted() {
         .update_sections(|s| s.sessions.selected_index = Some(sessions.len() - 1));
 
     // When navigating down.
-    let result = navigate(&SidebarIntent::MoveDown, &mut state);
+    let (result, _) = navigate(
+        &SidebarIntent::MoveDown,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then the result is Exhausted.
     assert_eq!(result, SectionNavResult::Exhausted);
@@ -198,7 +210,11 @@ fn navigate_up_at_top_returns_exhausted() {
         .update_sections(|s| s.sessions.selected_index = Some(0));
 
     // When navigating up.
-    let result = navigate(&SidebarIntent::MoveUp, &mut state);
+    let (result, _) = navigate(
+        &SidebarIntent::MoveUp,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then the result is Exhausted.
     assert_eq!(result, SectionNavResult::Exhausted);
@@ -207,9 +223,10 @@ fn navigate_up_at_top_returns_exhausted() {
 #[rstest::rstest]
 fn navigate_action_returns_moved() {
     let mut state = AppState::default_with_scope_focus();
-    let result = navigate(
+    let (result, _) = navigate(
         &SidebarIntent::Action(jinn_domain::KernelIntent::Quit),
         &mut state,
+        jinn_slices::empty_config_layer(),
     );
     assert_eq!(result, SectionNavResult::Moved);
 }
@@ -278,7 +295,11 @@ fn document_offset_grows_as_the_cursor_moves_down() {
     // When navigating down past the bottom of a 20-row column.
     let before = document_offset_for(&state, 20);
     for _ in 0..20 {
-        navigate(&SidebarIntent::MoveDown, &mut state);
+        let _ = navigate(
+            &SidebarIntent::MoveDown,
+            &mut state,
+            jinn_slices::empty_config_layer(),
+        );
     }
     let after = document_offset_for(&state, 20);
 
@@ -299,7 +320,13 @@ fn every_session_is_reachable_when_uncapped() {
 
     // When navigating down until the list is exhausted.
     let mut moves = 0usize;
-    while navigate(&SidebarIntent::MoveDown, &mut state) == SectionNavResult::Moved {
+    while navigate(
+        &SidebarIntent::MoveDown,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    )
+    .0 == SectionNavResult::Moved
+    {
         moves += 1;
         assert!(moves <= 200, "navigation should terminate");
     }
@@ -350,7 +377,11 @@ fn receive_cursor_from_top_positions_at_index_zero() {
     let mut state = state_with_sessions(3);
 
     // When receiving cursor from top.
-    receive_cursor(&mut state, EnterFrom::Top);
+    let _ = receive_cursor(
+        &mut state,
+        EnterFrom::Top,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then the selected index is 0.
     assert_eq!(
@@ -368,7 +399,11 @@ fn receive_cursor_from_bottom_positions_at_last_index() {
     let count = sorted_open_sessions(&state).len();
 
     // When receiving cursor from bottom.
-    receive_cursor(&mut state, EnterFrom::Bottom);
+    let _ = receive_cursor(
+        &mut state,
+        EnterFrom::Bottom,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then the selected index is the last one.
     assert_eq!(
@@ -389,7 +424,11 @@ fn receive_cursor_noop_when_empty() {
     }
 
     // When receiving cursor.
-    receive_cursor(&mut state, EnterFrom::Top);
+    let _ = receive_cursor(
+        &mut state,
+        EnterFrom::Top,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then no index is selected.
     assert_eq!(
@@ -1439,7 +1478,11 @@ fn navigate_down_from_root_goes_to_first_child() {
         .update_sections(|s| s.sessions.selected_index = Some(root_a_index));
 
     // When navigating down.
-    navigate(&SidebarIntent::MoveDown, &mut state);
+    let _ = navigate(
+        &SidebarIntent::MoveDown,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then the cursor is on the next entry (root_a's first child in DFS order).
     let new_sessions = sorted_open_sessions(&state);
@@ -1473,7 +1516,11 @@ fn navigate_up_from_child_goes_to_parent() {
         .update_sections(|s| s.sessions.selected_index = Some(child_a1_index));
 
     // When navigating up.
-    navigate(&SidebarIntent::MoveUp, &mut state);
+    let _ = navigate(
+        &SidebarIntent::MoveUp,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then the cursor is on root_a (parent).
     let new_index = state
@@ -3511,4 +3558,115 @@ fn in_flight_indicator_does_not_show_on_a_busy_session() {
             .symbols
             .contains(&span.content.as_ref())
     );
+}
+
+/// Sidebar navigation requests a preview render for the session it lands on.
+///
+/// Navigation is the only path that can ask for a preview — the render pass has
+/// no bus handle — so a request that never leaves `navigate` means the popup
+/// spins forever.
+mod navigation_preview_requests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+
+    use super::*;
+    use crate::sections::section_trait::{EnterFrom, SectionNavResult, SidebarIntent};
+    use crate::sections::sessions::navigate::{navigate, receive_cursor};
+    use jinn_core_types::SessionId;
+    use jinn_domain::common::app_state::AppState;
+    use jinn_session_state::ChatSessionState;
+
+    /// App state with a sessions section holding `count` sessions.
+    fn state_with_sessions(count: usize) -> (AppState, Vec<SessionId>) {
+        let mut state = AppState::default_with_scope_focus();
+        let mut ids = Vec::new();
+        for _ in 0..count {
+            let mut session = ChatSessionState::new();
+            session.push_entry(ChatEntry::user("hello"));
+            ids.push(session.session_id().clone());
+            state.session.insert(session);
+        }
+        state
+            .frontend
+            .update_sections(|s| s.sessions.preview_content_width = 40);
+        (state, ids)
+    }
+
+    #[rstest::rstest]
+    fn moving_onto_a_session_requests_its_preview() {
+        // Given a sessions section with three sessions.
+        let (mut state, _ids) = state_with_sessions(3);
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_index = Some(0));
+        // And the first session's preview already served, so the move is what
+        // triggers the request rather than a cold start.
+        let first = state
+            .frontend
+            .with_sections(|s| s.sessions.selected_index, || None)
+            .expect("index");
+        assert_eq!(first, 0);
+
+        // When the cursor moves down.
+        let config = jinn_slices::empty_config_layer();
+        let (result, emitted) = navigate(&SidebarIntent::MoveDown, &mut state, config);
+
+        // Then the move succeeded.
+        assert_eq!(result, SectionNavResult::Moved);
+        // And a preview render was requested.
+        assert!(
+            emitted.message_names.contains(&"PreviewSessionRequested"),
+            "expected a preview request, got {:?}",
+            emitted.message_names
+        );
+    }
+
+    #[rstest::rstest]
+    fn moving_past_the_last_session_requests_no_preview() {
+        // Given a sessions section with the cursor on its final session.
+        // The count comes from the section's own list rather than the number
+        // inserted: the session map keeps a fresh session alive, so the two do
+        // not necessarily agree.
+        let (mut state, _ids) = state_with_sessions(1);
+        let last = sorted_open_sessions(&state).len().saturating_sub(1);
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_index = Some(last));
+
+        // When the cursor moves down past the end.
+        let config = jinn_slices::empty_config_layer();
+        let (result, emitted) = navigate(&SidebarIntent::MoveDown, &mut state, config);
+
+        // Then the sidebar is told the section is exhausted, with nothing to publish.
+        assert_eq!(result, SectionNavResult::Exhausted);
+        assert!(emitted.message_names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn entering_the_section_from_the_top_requests_a_preview() {
+        // Given a sessions section with two sessions and no cursor.
+        let (mut state, _ids) = state_with_sessions(2);
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_index = None);
+
+        // When the sidebar enters the section from above.
+        let emitted = receive_cursor(
+            &mut state,
+            EnterFrom::Top,
+            jinn_slices::empty_config_layer(),
+        );
+
+        // Then the top session's preview is requested.
+        assert!(
+            emitted.message_names.contains(&"PreviewSessionRequested"),
+            "expected a preview request, got {:?}",
+            emitted.message_names
+        );
+    }
 }

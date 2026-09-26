@@ -2,9 +2,10 @@
 
 use jinn_core_types::{ChatEntryKind, SessionId};
 use jinn_domain::common::app_state::AppState;
+use jinn_domain::feat::ui::chat_log::activate_session;
 use jinn_domain::protocol::IntentResult;
-use jinn_session_store_msg::SessionLoadRequested;
 use jinn_tools_msg::TASK_TOOL_NAME;
+
 use wherror::Error;
 
 /// Why a selected entry cannot be opened as a subagent session.
@@ -49,19 +50,22 @@ pub fn validate_load_subagent_session(state: &AppState) -> Result<SessionId, Loa
         .ok_or(LoadSubagentError::NoChildLink)
 }
 
-/// Activates an in-memory child or requests its standard disk load.
+/// Activates a child session, measuring it if it needs measuring.
+///
+/// One call, whether the child is in memory or not. It used to branch: an
+/// in-memory child was switched to with no measurement at all, which put a
+/// large child's whole history on the render thread for a frame — the exact
+/// freeze the layout workers exist to prevent, reachable by pressing Enter on a
+/// subagent call.
 pub fn handle_load_subagent_session(state: &mut AppState) -> IntentResult {
     let Ok(child_id) = validate_load_subagent_session(state) else {
         return IntentResult::empty();
     };
-    if state.session.get(&child_id).is_some() {
-        state.session.set_active(child_id);
-        return IntentResult::empty();
-    }
-    state.session.begin_load(child_id.clone());
-    IntentResult::new_message(SessionLoadRequested {
-        session_id: child_id,
-    })
+    // A child that is not in memory needs a full load, and the store actor
+    // recognises that on its own: it is the only writer of the session map, so
+    // it is the only place that knows what is loaded. The command says
+    // "activate this" either way.
+    activate_session(state, child_id, IntentResult::empty())
 }
 
 #[cfg(test)]
@@ -156,5 +160,53 @@ mod tests {
         // Then the standard load request is emitted and the map enters loading.
         assert!(result.message_names[0].ends_with("SessionLoadRequested"));
         assert!(state.session.is_loading());
+    }
+
+    #[rstest::rstest]
+    fn handle_measures_an_in_memory_child() {
+        // Given a selected task call whose child is already in memory.
+        //
+        // This used to switch to the child with no measurement at all, which put
+        // its whole history on the render thread for a frame — the freeze the
+        // layout workers exist to prevent, reachable by pressing Enter on a
+        // subagent call.
+        let child_id = SessionId::new();
+        let mut state = state_with_selected([task_call(Some(child_id.clone()))]);
+        let mut child = jinn_session_state::ChatSessionState::new();
+        child.set_session_id(child_id.clone());
+        child.push_entry(jinn_core_types::ChatEntry::user("subagent work"));
+        state.session.insert(child);
+
+        // When opening the subagent.
+        let result = handle_load_subagent_session(&mut state);
+
+        // Then the child is measured off the render thread like any other
+        // activation, rather than laid out inline.
+        assert!(
+            result.message_names[0].ends_with("SessionLoadRequested"),
+            "an in-memory child must still be measured, got {:?}",
+            result.message_names
+        );
+        assert!(
+            state.session.is_loading(),
+            "the load guard must be armed so the next frame sees the indicator"
+        );
+    }
+
+    #[rstest::rstest]
+    fn handle_makes_the_in_memory_child_active() {
+        // Given a selected task call whose child is already in memory.
+        let child_id = SessionId::new();
+        let mut state = state_with_selected([task_call(Some(child_id.clone()))]);
+        let mut child = jinn_session_state::ChatSessionState::new();
+        child.set_session_id(child_id.clone());
+        child.push_entry(jinn_core_types::ChatEntry::user("subagent work"));
+        state.session.insert(child);
+
+        // When opening the subagent.
+        handle_load_subagent_session(&mut state);
+
+        // Then the child is the active session.
+        assert_eq!(state.session.active_session_id(), &child_id);
     }
 }

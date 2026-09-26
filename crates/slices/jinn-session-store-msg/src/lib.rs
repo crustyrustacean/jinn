@@ -7,7 +7,6 @@
 
 pub mod command;
 pub mod event;
-pub mod measure;
 pub mod projections;
 pub mod session_picker_state;
 pub mod session_search;
@@ -19,7 +18,6 @@ pub use command::{
     SessionForkRequested, SessionLoadRequested,
 };
 pub use event::SessionLoadCompleted;
-pub use measure::ChatLogMeasureRequested;
 pub use projections::{FrozenTreeNode, SessionSummary};
 pub use session_search::{
     SearchHit, SearchOutcome, SearchParams, SearchableEntry, SearchableRole, TranscriptEntry,

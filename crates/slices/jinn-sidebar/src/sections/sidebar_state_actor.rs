@@ -1,8 +1,18 @@
-//! Sidebar state actor — keeps sidebar cursor in sync after session removal.
+//! Sidebar state actor — owns the sidebar's own state transitions.
 //!
 //! A trouper [`ServiceActor`] subscribed to the slice's `jinn.sidebar`
 //! topic (fed by the kernel bridge's forward routes). It folds
-//! [`SessionRemoved`] into the sidebar cursor and active session.
+//! [`SessionRemoved`] into the sidebar cursor and active session, and it owns
+//! the session preview's lifecycle: arming a render, completing it, and giving
+//! up on it when the deadline passes.
+//!
+//! The preview lives here rather than in an actor of its own because the
+//! sidebar sections' cell is already reachable from this actor's [`State`], and
+//! a second actor would need its own spawn, its own deps, and its own readiness
+//! point to write the same cell.
+
+use std::sync::Arc;
+use std::time::Duration;
 
 use trouper::actor::ActorPath;
 use trouper::actor::{MsgHandler, ServiceActor};
@@ -11,11 +21,18 @@ use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
 use crate::sections::sessions;
+use jinn_chat_log_view_msg::{ArmPreviewDeadline, PreviewSessionRequested, SessionPreviewRendered};
 use jinn_domain::common::state::State;
 use jinn_session_msg::{SessionArchiveFailed, SessionRemoved, SessionTeardownFinished};
 
 /// The sidebar state actor's static trouper path.
 pub const SIDEBAR_STATE_PATH: &str = "sidebar-state";
+
+/// How long a preview render may run before it is abandoned.
+///
+/// The chat log's own deadline is 30 seconds, which is generous for a five-entry
+/// preview and would leave a spinner up far too long if a worker wedged.
+pub const PREVIEW_DEADLINE: Duration = Duration::from_secs(5);
 
 /// Actor that adjusts sidebar cursor state in response to session close.
 ///
@@ -55,6 +72,8 @@ impl SidebarStateActor {
             .handles::<SessionRemoved>()
             .handles::<SessionArchiveFailed>()
             .handles::<SessionTeardownFinished>()
+            .handles::<PreviewSessionRequested>()
+            .handles::<SessionPreviewRendered>()
             .start()
     }
 
@@ -69,6 +88,22 @@ impl SidebarStateActor {
                 payload.removed_parent.as_ref(),
             );
             sessions::reconcile_split(view.session.map(), view.frontend);
+        });
+    }
+
+    /// Completes a preview render, ignoring a result for a superseded request.
+    fn complete_preview(
+        &self,
+        session_id: jinn_core_types::SessionId,
+        generation: u64,
+        signature: u64,
+        content_width: u16,
+        lines: Arc<Vec<ratatui::text::Line<'static>>>,
+    ) {
+        self.state.read().frontend.update_sections(|s| {
+            s.sessions
+                .preview
+                .complete(session_id, generation, signature, content_width, lines);
         });
     }
 
@@ -108,6 +143,37 @@ impl MsgHandler<SessionArchiveFailed> for SidebarStateActor {
 impl MsgHandler<SessionTeardownFinished> for SidebarStateActor {
     async fn handle(&mut self, msg: &SessionTeardownFinished, _ctx: &mut MsgCtx<'_>) {
         self.handle_session_teardown_finished(msg);
+    }
+}
+
+impl MsgHandler<PreviewSessionRequested> for SidebarStateActor {
+    async fn handle(&mut self, msg: &PreviewSessionRequested, ctx: &mut MsgCtx<'_>) {
+        // The arming already happened on the keyboard path, before this message
+        // was published — the render pass needs the spinner up the instant the
+        // cursor moves, not a bus round trip later. What this handler adds is
+        // the deadline, so a request that never comes back stops spinning. The
+        // timer belongs to the layout supervisor, which already owns one per
+        // job in this pool.
+        ctx.publish(ArmPreviewDeadline {
+            session_id: msg.session_id.clone(),
+            generation: msg.generation,
+            after: PREVIEW_DEADLINE,
+        });
+    }
+}
+
+impl MsgHandler<SessionPreviewRendered> for SidebarStateActor {
+    async fn handle(&mut self, msg: &SessionPreviewRendered, _ctx: &mut MsgCtx<'_>) {
+        // Destructured into fields rather than handed whole: this crate does not
+        // depend on the message crate, and a bus type would leak a dependency
+        // the sidebar's own state has no use for.
+        self.complete_preview(
+            msg.session_id.clone(),
+            msg.generation,
+            msg.signature,
+            msg.content_width,
+            Arc::clone(&msg.lines),
+        );
     }
 }
 

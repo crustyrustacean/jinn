@@ -626,6 +626,9 @@ async fn handle_inbound_message(
                 &data.bridge,
                 SessionLoadRequested {
                     session_id: session_id.clone(),
+                    // Discord has no view of the terminal's layout, so it
+                    // offers no width; the store actor derives one.
+                    content_width: None,
                 },
             );
             msg.reply(ctx, "Session restoring — please resend your message.")

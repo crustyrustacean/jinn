@@ -2096,8 +2096,10 @@ dependencies = [
  "jinn-core-types",
  "jinn-slices",
  "parking_lot",
+ "ratatui",
  "rstest",
  "serde",
+ "serde_json",
  "trouper",
 ]
 
@@ -3289,6 +3291,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "throbber-widgets-tui",
  "tokio",
  "toml",
  "trouper",
@@ -3422,6 +3425,7 @@ name = "jinn-theme-slice"
 version = "0.118.0"
 dependencies = [
  "error-stack",
+ "jinn-chat-log-view",
  "jinn-core-types",
  "jinn-domain",
  "jinn-picker",

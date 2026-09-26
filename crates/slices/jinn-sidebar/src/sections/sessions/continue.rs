@@ -87,7 +87,7 @@ mod tests {
             .frontend
             .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
         // Navigate to select the second entry in the sorted list.
-        navigate_sidebar(
+        let _ = navigate_sidebar(
             &SidebarIntent::MoveDown,
             &mut state,
             jinn_slices::empty_config_layer(),
@@ -151,7 +151,7 @@ mod tests {
         state
             .frontend
             .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-        navigate_sidebar(
+        let _ = navigate_sidebar(
             &SidebarIntent::MoveDown,
             &mut state,
             jinn_slices::empty_config_layer(),

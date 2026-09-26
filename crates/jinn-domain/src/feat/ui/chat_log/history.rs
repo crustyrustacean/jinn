@@ -24,7 +24,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::common::app_state::AppState;
 use crate::common::render_ctx::RenderCtx;
@@ -241,9 +241,6 @@ impl UiElement for ChatLogElement {
 // Loading indicator
 // ---------------------------------------------------------------------------
 
-/// Minimum time between loading-throbber animation frame advances.
-const ANIMATION_INTERVAL: Duration = Duration::from_millis(80);
-
 /// The text shown while a session is loading, with a leading space so it
 /// clears the spinner glyph.
 const LOADING_LABEL: &str = " Loading session...";
@@ -317,7 +314,7 @@ fn render_loading(
     // Advance the animation only once the interval has elapsed, matching the
     // streaming indicator's pacing.
     let now = Instant::now();
-    if last_advance.is_none_or(|last| now.duration_since(last) >= ANIMATION_INTERVAL) {
+    if last_advance.is_none_or(|last| now.duration_since(last) >= jinn_slices::SPINNER_INTERVAL) {
         throbber_state.calc_next();
         *last_advance = Some(now);
     }

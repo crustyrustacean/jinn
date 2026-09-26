@@ -27,7 +27,8 @@ use jinn_chat_log_view::chat_log::{
     ContentIdentity, MeasuredLineCount, RenderContext, entry_to_lines,
 };
 use jinn_chat_log_view_msg::{
-    ChatLogLayoutComputed, LayoutChatSession, MeasuredEntryCount, PROXIMITY_COUNT, VisualItem,
+    ChatLogLayoutComputed, LayoutChatSession, MeasuredEntryCount, PROXIMITY_COUNT,
+    PreviewSessionRequested, SessionPreviewRendered, VisualItem,
 };
 use ratatui::widgets::{Paragraph, Wrap};
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
@@ -104,9 +105,13 @@ impl LayoutWorkerActor {
                 }
             })
             .handles::<LayoutChatSession>()
+            // The sidebar's preview renders ride this pool too, so both
+            // round-robin across the same workers.
+            .handles::<PreviewSessionRequested>()
             // The result leaves through ctx.publish; the flush gate drops any
             // outbound type not declared here.
             .emits::<ChatLogLayoutComputed>()
+            .emits::<SessionPreviewRendered>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
         path
@@ -148,6 +153,109 @@ impl MsgHandler<LayoutChatSession> for LayoutWorkerActor {
                 })
                 .collect(),
         });
+    }
+}
+
+/// Renders the tail of a session's history as preview lines.
+///
+/// The *same* [`entry_to_lines`] arithmetic the chat-log measure pass performs,
+/// at a narrower width and with the per-entry render inputs pinned off — a
+/// preview is a glance at a conversation, not a view of it, so nothing in it is
+/// selected, expanded, or streaming. That pinning is what makes it safe to share
+/// one implementation with the layout worker: the two agree on how a line is
+/// built and differ only in what they do with the result.
+///
+/// Overflow is dropped from the *front*: the last line is the one the user is
+/// looking for, and a preview truncated at the end would show them the oldest
+/// text in the window.
+#[must_use]
+pub fn render_preview(
+    entries: &[jinn_core_types::ChatEntry],
+    ctx: &RenderContext,
+    max_entries: usize,
+    max_lines: usize,
+) -> Vec<ratatui::text::Line<'static>> {
+    let start = entries.len().saturating_sub(max_entries);
+    let mut lines: Vec<ratatui::text::Line<'static>> = entries
+        .get(start..)
+        .unwrap_or_default()
+        .iter()
+        .flat_map(|entry| entry_to_lines(entry, ctx))
+        .collect();
+
+    if lines.len() > max_lines {
+        lines.drain(..lines.len() - max_lines);
+    }
+    lines
+}
+
+/// Renders a session preview's lines and publishes them.
+///
+/// The sidebar popup draws these every frame, and building them inline would put
+/// a wrap of five entries on the render thread — the same cost the measurement
+/// above exists to avoid. A preview rides the *same* pool for the same reason:
+/// it is the same arithmetic with the same inputs, differing only in what it does
+/// with the result. A third pool would have duplicated the spawn, path prefix,
+/// and supervision for a ten-line difference.
+impl MsgHandler<PreviewSessionRequested> for LayoutWorkerActor {
+    async fn handle(&mut self, msg: &PreviewSessionRequested, ctx: &mut MsgCtx<'_>) {
+        // The theme is read here rather than carried: it is a field wide, and a
+        // request outlives the moment it was made (the pool may be busy), so
+        // whatever the user last selected is the one worth rendering with.
+        let theme = self.state.read().frontend.theme.clone();
+        let job = PreviewJob::from(msg);
+
+        let lines = tokio::task::spawn_blocking(move || {
+            let ctx = RenderContext {
+                content_width: job.content_width,
+                is_selected: false,
+                is_expanded: false,
+                tool_entry_max_lines: job.tool_entry_max_lines,
+                theme,
+                paired_status: None,
+                is_streaming: false,
+                is_waiting_on_subagent: false,
+            };
+            render_preview(
+                &job.entries,
+                &ctx,
+                jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT,
+                jinn_chat_log_view_msg::PREVIEW_MAX_LINES,
+            )
+        })
+        .await
+        .unwrap_or_default();
+
+        ctx.publish(SessionPreviewRendered {
+            session_id: msg.session_id.clone(),
+            generation: msg.generation,
+            signature: msg.signature,
+            content_width: msg.content_width,
+            lines: Arc::new(lines),
+        });
+    }
+}
+
+/// Everything one preview render reads, detached from the bus message.
+///
+/// Shaped like [`MeasureJob`] for the same reason: the history moves to a
+/// blocking thread as a shared `Arc`, never a second transcript.
+pub(crate) struct PreviewJob {
+    /// The session's history, shared with the sidebar that requested it.
+    pub entries: Arc<[jinn_core_types::ChatEntry]>,
+    /// Content width to wrap at.
+    pub content_width: u16,
+    /// Lines before a tool call or result is truncated.
+    pub tool_entry_max_lines: u16,
+}
+
+impl From<&PreviewSessionRequested> for PreviewJob {
+    fn from(msg: &PreviewSessionRequested) -> Self {
+        Self {
+            entries: Arc::clone(&msg.entries),
+            content_width: msg.content_width,
+            tool_entry_max_lines: msg.tool_entry_max_lines,
+        }
     }
 }
 

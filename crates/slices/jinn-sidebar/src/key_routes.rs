@@ -124,13 +124,8 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
             "j",
             "navigation",
             "cursor down",
-            sync(|state| {
-                navigate_sidebar(
-                    &SidebarIntent::MoveDown,
-                    state,
-                    jinn_slices::empty_config_layer(),
-                );
-                IntentResult::empty()
+            sync_with_config(|state, config| {
+                navigate_sidebar(&SidebarIntent::MoveDown, state, config)
             }),
         ));
         routes.attach(row(
@@ -139,13 +134,8 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
             "k",
             "navigation",
             "cursor up",
-            sync(|state| {
-                navigate_sidebar(
-                    &SidebarIntent::MoveUp,
-                    state,
-                    jinn_slices::empty_config_layer(),
-                );
-                IntentResult::empty()
+            sync_with_config(|state, config| {
+                navigate_sidebar(&SidebarIntent::MoveUp, state, config)
             }),
         ));
         routes.attach(row(
@@ -154,13 +144,8 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
             "J",
             "navigation",
             "next section",
-            sync(|state| {
-                jump_to_section(
-                    &SidebarIntent::MoveDown,
-                    state,
-                    jinn_slices::empty_config_layer(),
-                );
-                IntentResult::empty()
+            sync_with_config(|state, config| {
+                jump_to_section(&SidebarIntent::MoveDown, state, config)
             }),
         ));
         routes.attach(row(
@@ -169,13 +154,8 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
             "K",
             "navigation",
             "previous section",
-            sync(|state| {
-                jump_to_section(
-                    &SidebarIntent::MoveUp,
-                    state,
-                    jinn_slices::empty_config_layer(),
-                );
-                IntentResult::empty()
+            sync_with_config(|state, config| {
+                jump_to_section(&SidebarIntent::MoveUp, state, config)
             }),
         ));
         routes.attach(row(
@@ -548,7 +528,7 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         outcome: RouteOutcome::Action {
             action: "focus-sessions",
             display: "focus session list",
-            run: sync(sidebar_intent::handle_sidebar_focus_sessions),
+            run: sync_with_config(sidebar_intent::handle_sidebar_focus_sessions),
         },
     });
     routes.attach(RouteRow {

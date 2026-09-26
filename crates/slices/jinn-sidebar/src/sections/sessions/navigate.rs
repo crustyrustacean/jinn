@@ -1,21 +1,54 @@
 //! Navigation within the sessions sidebar section.
 
 use crate::sections::section_trait::{EnterFrom, SectionNavResult, SidebarIntent};
+use crate::sections::sessions::preview_load::update_preview;
 use crate::sections::sessions::state::sorted_open_sessions;
+use jinn_core_types::SessionId;
 use jinn_domain::common::app_state::AppState;
+use jinn_domain::protocol::IntentResult;
+use jinn_slices::ConfigLayer;
 
-/// No-op: session preview removed with node-graph.
-fn update_preview(_state: &mut AppState) {}
+/// The session under the cursor, if there is one.
+fn highlighted_session(
+    state: &AppState,
+    sessions: &[jinn_sidebar_msg::SessionEntry],
+) -> Option<SessionId> {
+    let index = state
+        .frontend
+        .with_sections(|s| s.sessions.selected_index, || None)?;
+    sessions.get(index).map(|entry| entry.id.clone())
+}
+
+/// Asks for the highlighted session's preview, if the cursor is on one.
+///
+/// Best-effort: a missing session, or a preview already current, simply yields
+/// nothing to publish.
+fn request_preview(state: &mut AppState, config: &ConfigLayer) -> IntentResult {
+    let sessions = sorted_open_sessions(state);
+    let Some(session_id) = highlighted_session(state, &sessions) else {
+        return IntentResult::empty();
+    };
+    update_preview(state, &session_id, config)
+        .map_or_else(IntentResult::empty, IntentResult::new_message)
+}
 
 /// Navigate within the sessions section.
 ///
 /// Moves the cursor within the sessions list.
 /// Returns `Exhausted` when at a boundary or when the list is empty.
 /// The cursor lands on all entries (sessions only).
-pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResult {
+///
+/// The second element is the preview request for wherever the cursor came to
+/// rest, so the caller can publish it alongside whatever else the move did.
+#[must_use]
+pub fn navigate(
+    intent: &SidebarIntent,
+    state: &mut AppState,
+    config: &ConfigLayer,
+) -> (SectionNavResult, IntentResult) {
     let sessions = sorted_open_sessions(state);
     if sessions.is_empty() {
-        return SectionNavResult::Exhausted;
+        return (SectionNavResult::Exhausted, IntentResult::empty());
     }
 
     let result = match intent {
@@ -26,7 +59,7 @@ pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResul
                 .unwrap_or(0);
             let new_index = current.saturating_add(1);
             if new_index >= sessions.len() {
-                return SectionNavResult::Exhausted;
+                return (SectionNavResult::Exhausted, IntentResult::empty());
             }
             state
                 .frontend
@@ -39,7 +72,7 @@ pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResul
                 .with_sections(|s| s.sessions.selected_index, || None)
                 .unwrap_or(0);
             if current == 0 {
-                return SectionNavResult::Exhausted;
+                return (SectionNavResult::Exhausted, IntentResult::empty());
             }
             state
                 .frontend
@@ -49,17 +82,22 @@ pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResul
         SidebarIntent::Action(_) => SectionNavResult::Moved,
     };
 
-    update_preview(state);
-    result
+    (result, request_preview(state, config))
 }
 
 /// Place the cursor on this section from a given direction.
 ///
 /// Positions at the edge of the list: index 0 from top, last index from bottom.
-pub fn receive_cursor(state: &mut AppState, enter_from: EnterFrom) {
+/// Returns the preview request for the session the cursor landed on.
+#[must_use]
+pub fn receive_cursor(
+    state: &mut AppState,
+    enter_from: EnterFrom,
+    config: &ConfigLayer,
+) -> IntentResult {
     let sessions = sorted_open_sessions(state);
     if sessions.is_empty() {
-        return;
+        return IntentResult::empty();
     }
     let index = match enter_from {
         EnterFrom::Top => 0,
@@ -69,5 +107,5 @@ pub fn receive_cursor(state: &mut AppState, enter_from: EnterFrom) {
         .frontend
         .update_sections(|s| s.sessions.selected_index = Some(index));
 
-    update_preview(state);
+    request_preview(state, config)
 }

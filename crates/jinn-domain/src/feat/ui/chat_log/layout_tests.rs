@@ -23,7 +23,7 @@ use crate::feat::ui::chat_log::layout_complete::{LayoutApplied, LayoutCompletion
 use crate::feat::ui::chat_log::layout_supervisor::{
     LayoutSupervisorActor, LayoutSupervisorActorDeps,
 };
-use crate::feat::ui::chat_log::layout_worker::{MeasureJob, measure};
+use crate::feat::ui::chat_log::layout_worker::{MeasureJob, measure, render_preview};
 
 /// State with `count` user entries in its active session, measured at
 /// `content_width`.
@@ -518,5 +518,88 @@ fn an_expired_layout_deadline_writes_nothing_into_the_conversation() {
             .history()
             .len(),
         2
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Preview rendering — the shared entry-to-lines arithmetic, narrowed
+// ---------------------------------------------------------------------------
+
+/// A preview render context at `content_width`, with every per-entry render
+/// input pinned off — which is exactly how the sidebar's preview builds it.
+fn preview_ctx(content_width: u16) -> jinn_chat_log_view::chat_log::RenderContext {
+    jinn_chat_log_view::chat_log::RenderContext {
+        content_width,
+        is_selected: false,
+        is_expanded: false,
+        tool_entry_max_lines: 6,
+        theme: jinn_theme::default_theme(),
+        paired_status: None,
+        is_streaming: false,
+        is_waiting_on_subagent: false,
+    }
+}
+
+/// A history of `count` user entries, each one line at a wide width.
+fn preview_entries(count: usize) -> Vec<ChatEntry> {
+    (0..count)
+        .map(|index| ChatEntry::user(format!("entry {index}")))
+        .collect()
+}
+
+/// The plain text of a rendered line, spans concatenated.
+fn line_text(line: &ratatui::text::Line<'_>) -> String {
+    line.spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect()
+}
+
+/// The non-blank text of the rendered lines, in order.
+///
+/// [`entry_to_lines`] pads each entry with blank lines and each span out to the
+/// content width, so both are stripped here: what these tests care about is
+/// *which entries* contributed and in what order.
+fn visible_text(lines: &[ratatui::text::Line<'_>]) -> Vec<String> {
+    lines
+        .iter()
+        .map(line_text)
+        .map(|text| text.trim().to_owned())
+        .filter(|text| !text.is_empty())
+        .collect()
+}
+
+#[rstest::rstest]
+fn render_preview_keeps_only_the_last_max_lines() {
+    // Given a history whose last 5 entries render to more than 20 lines.
+    let entries = preview_entries(50);
+
+    // When rendering a preview that keeps at most 5 lines.
+    let lines = render_preview(&entries, &preview_ctx(120), 5, 5);
+
+    // Then the result is exactly the trailing 5 lines, in order.
+    let rendered: Vec<String> = lines.iter().map(line_text).collect();
+    assert_eq!(rendered.len(), 5, "expected 5 lines, got {rendered:?}");
+    let visible = visible_text(&lines);
+    assert_eq!(
+        visible,
+        vec!["entry 48", "entry 49"],
+        "truncation must drop from the front so the newest text survives"
+    );
+}
+
+#[rstest::rstest]
+fn render_preview_reads_at_most_max_entries() {
+    // Given a history of 50 entries.
+    let entries = preview_entries(50);
+
+    // When rendering a preview that reads at most 5 entries.
+    let lines = render_preview(&entries, &preview_ctx(120), 5, 1000);
+
+    // Then nothing from before the 5th-from-last entry contributed.
+    assert_eq!(
+        visible_text(&lines),
+        vec!["entry 45", "entry 46", "entry 47", "entry 48", "entry 49"],
+        "a preview is bounded to its trailing entries, not the whole history"
     );
 }

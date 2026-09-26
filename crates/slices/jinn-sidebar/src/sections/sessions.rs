@@ -12,6 +12,7 @@ pub mod r#continue;
 pub mod load_subagent;
 pub mod navigate;
 pub mod preview;
+pub mod preview_load;
 pub mod reconcile;
 pub mod render;
 
@@ -21,8 +22,6 @@ pub mod teardown;
 
 #[cfg(test)]
 mod preview_tests;
-
-use std::time::Duration;
 
 // ---------------------------------------------------------------------------
 // Re-exports - preserve the public API for external consumers.
@@ -70,5 +69,3 @@ pub use teardown::handle_session_teardown;
 pub(crate) const ACTIVE_PREFIX: &str = "▸ ";
 /// Inactive session prefix (two spaces to align with `ACTIVE_PREFIX`).
 pub(crate) const INACTIVE_PREFIX: &str = "  ";
-/// Minimum time between animation frame advances.
-pub(crate) const ANIMATION_INTERVAL: Duration = Duration::from_millis(80);
