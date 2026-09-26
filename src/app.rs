@@ -25,7 +25,7 @@ use tokio::runtime::Runtime;
 use wherror::Error;
 
 use crate::actor_wiring;
-use crate::config_path::resolve_config_path;
+use crate::config_path::{config_init_target, resolve_config_path};
 #[cfg(debug_assertions)]
 use crate::headless::HeadlessApp;
 use crate::runner::Runner;
@@ -160,7 +160,11 @@ impl App {
 
             match subcommand {
                 ConfigCommands::Init { force } => {
-                    let path = preferences_path();
+                    // Honor --config here: the user naming a path is asking
+                    // for the file to land there. Deliberately skips the
+                    // existence check the runtime resolver applies, since
+                    // creating the file is what this command is for.
+                    let path = config_init_target(cli.config.as_deref(), &preferences_path());
                     let force = *force;
                     match init_default_config_to(&path, force) {
                         Ok(InitOutcome::Created) => {
@@ -599,7 +603,7 @@ async fn fetch_models_from_url(
 mod tests {
     use jinn_domain::{AppState, State};
     use jinn_tui::{load_compaction_prompt, load_theme};
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     use super::*;
 
@@ -823,21 +827,45 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn config_init_target_is_the_default_location_not_the_override() {
-        // Given an override file, as `--config` would supply.
+    fn config_init_honors_the_config_override() {
+        // Given a --config path that does not exist yet.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let override_path = dir.path().join("nested").join("alt.toml");
+
+        // When `jinn config init` picks its target.
+        let target = config_init_target(Some(&override_path), Path::new("/default/jinn.toml"));
+
+        // Then it targets the override, not the default location.
+        assert_eq!(target, override_path);
+    }
+
+    #[rstest::rstest]
+    fn config_init_without_override_targets_the_default_location() {
+        // Given no --config.
+        let default = PathBuf::from("/default/jinn.toml");
+
+        // When `jinn config init` picks its target.
+        let target = config_init_target(None, &default);
+
+        // Then it targets the default location.
+        assert_eq!(target, default);
+    }
+
+    #[rstest::rstest]
+    fn config_init_override_is_accepted_though_runtime_resolver_rejects_it() {
+        // Given a --config path that does not exist.
         let dir = tempfile::tempdir().expect("temp dir");
         let override_path = dir.path().join("alt.toml");
-        std::fs::write(&override_path, "# alt\n").expect("write");
 
-        // When the runtime config path is resolved for a run that also
-        // has `jinn config init` available.
-        let init_target = jinn_preferences_config::preferences_path();
-        let resolved = resolve_config_path(Some(&override_path), &init_target).expect("resolves");
+        // When the two choosers are consulted.
+        let init_target = config_init_target(Some(&override_path), Path::new("/default/jinn.toml"));
+        let runtime = resolve_config_path(Some(&override_path), Path::new("/default/jinn.toml"));
 
-        // Then the runtime reads the override, while `jinn config init`
-        // keeps writing the default location.
-        assert_eq!(resolved.path, override_path);
-        assert_ne!(resolved.path, init_target);
+        // Then `config init` still targets the override, since creating the
+        // file is its whole job.
+        assert_eq!(init_target, override_path);
+        // But a run that intends to read the file still rejects it.
+        assert!(runtime.is_err());
     }
 
     #[rstest::rstest]

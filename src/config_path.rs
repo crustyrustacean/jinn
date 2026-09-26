@@ -82,6 +82,24 @@ fn resolve_override(path: &Path) -> Result<ConfigPathResolution, Report<ConfigPa
     .attach("create it first, or omit --config to use the default location"))
 }
 
+/// Chooses the target for a `jinn config init` invocation.
+///
+/// An override is honored here even when the file does not exist — writing
+/// the file is the entire point of the command, so requiring it to be
+/// present first would make `jinn --config <path> config init` impossible.
+/// That is also why this cannot reuse [`resolve_config_path`], whose
+/// existence check is correct for a run that intends to *read* the file.
+///
+/// Infallible: there is no override to reject, and the default path is
+/// always a legitimate thing to create.
+#[must_use]
+pub fn config_init_target(override_path: Option<&Path>, default_path: &Path) -> PathBuf {
+    match override_path {
+        Some(path) => path.to_path_buf(),
+        None => default_path.to_path_buf(),
+    }
+}
+
 /// Resolves the platform default, flagging a missing file for seeding.
 fn resolve_default(default_path: &Path) -> ConfigPathResolution {
     ConfigPathResolution {

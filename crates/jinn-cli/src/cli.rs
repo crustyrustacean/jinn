@@ -29,9 +29,9 @@ pub struct Cli {
     /// config directory (e.g. `~/.config/jinn/jinn.toml` on Linux).
     ///
     /// The override applies to both reads and writes for the whole run, so the
-    /// run's config stays a single coherent source of truth. The file must
-    /// already exist: a missing path aborts launch rather than silently
-    /// starting from defaults.
+    /// run's config stays a single coherent source of truth. A run that reads
+    /// the config requires the file to already exist; `jinn config init` is
+    /// the exception, since creating the file is what it is for.
     #[arg(long, global = true, value_hint = clap::ValueHint::FilePath)]
     pub config: Option<PathBuf>,
 
