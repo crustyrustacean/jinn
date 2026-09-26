@@ -115,8 +115,8 @@ pub use jinn_context_curation_msg::TriggerCompaction;
 // msg crate (kernel→msg direction); re-exported here so the long-standing
 // `jinn_domain::X` paths keep resolving.
 pub use jinn_provider_selection_msg::{
-    LoadEndpointPickerEntries, LoadProviderPickerEntries, ModelCacheLoaded, ModelsRefreshed,
-    ProviderSwitch, ProviderSwitched, RefreshEndpointPickerEntries, RefreshModels,
+    LoadProviderPickerEntries, ModelCacheLoaded, ModelsRefreshed, ProviderSwitch, ProviderSwitched,
+    RefreshModels,
 };
 // The prompt-scan contracts are owned by the session-init slice's msg crate
 // (kernel→msg direction, skills precedent); re-exported here so the
