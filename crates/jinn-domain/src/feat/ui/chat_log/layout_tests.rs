@@ -10,6 +10,7 @@
 )]
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use jinn_chat_log_view_msg::{ChatLogLayoutComputed, LayoutChatSession, MeasuredEntryCount};
 use jinn_core_types::{ChatEntry, SessionId};
@@ -22,7 +23,7 @@ use crate::feat::ui::chat_log::layout_complete::{LayoutApplied, LayoutCompletion
 use crate::feat::ui::chat_log::layout_supervisor::{
     LayoutSupervisorActor, LayoutSupervisorActorDeps,
 };
-use crate::feat::ui::chat_log::layout_worker::measure;
+use crate::feat::ui::chat_log::layout_worker::{MeasureJob, measure};
 
 /// State with `count` user entries in its active session, measured at
 /// `content_width`.
@@ -51,7 +52,7 @@ fn job_for(state: &State, session_id: &SessionId, content_width: u16) -> LayoutC
     LayoutChatSession {
         session_id: session_id.clone(),
         content_width,
-        entries: active.history().to_vec(),
+        entries: Arc::from(active.history().to_vec()),
         shown_ignored_blocks: HashSet::new(),
         min_collapse_count: jinn_chat_log_view_msg::DEFAULT_MIN_COLLAPSE_COUNT,
         tool_entry_max_lines: 6,
@@ -64,6 +65,85 @@ fn inputs_for(state: &State, session_id: &SessionId) -> super::history::LayoutIn
 }
 
 #[rstest::rstest]
+fn a_shared_history_measures_the_same_counts_a_copied_one_does() {
+    // Given a job whose history is shared rather than copied per worker.
+    let (state, session_id) = state_with_entries(6, 50);
+    let shared = job_for(&state, &session_id, 50);
+    let inputs = inputs_for(&state, &session_id);
+
+    // When the same history is measured as a plain owned vector.
+    let mut owned = shared.clone();
+    owned.entries = shared.entries.to_vec().into();
+    let from_shared = measure(&MeasureJob::from(&shared), &inputs);
+    let from_owned = measure(&MeasureJob::from(&owned), &inputs);
+
+    // Then both paths agree on every entry's identity and count.
+    let shared_rows: Vec<_> = from_shared
+        .iter()
+        .map(|c| (c.id.clone(), c.wrapped_count))
+        .collect();
+    let owned_rows: Vec<_> = from_owned
+        .iter()
+        .map(|c| (c.id.clone(), c.wrapped_count))
+        .collect();
+    assert_eq!(
+        shared_rows, owned_rows,
+        "sharing the history must not change what is measured"
+    );
+}
+
+#[rstest::rstest]
+fn cloning_a_layout_job_shares_the_history_instead_of_copying_it() {
+    // Given a layout job carrying a shared history.
+    let (state, session_id) = state_with_entries(4, 60);
+    let job = job_for(&state, &session_id, 60);
+
+    // When the job is cloned.
+    let clone = job.clone();
+
+    // Then both jobs point at one entry buffer.
+    assert!(
+        Arc::ptr_eq(&job.entries, &clone.entries),
+        "a cloned job must share the history, not transcribe it"
+    );
+}
+
+#[rstest::rstest]
+fn a_measure_job_shares_the_history_it_was_built_from() {
+    // Given a layout job, and the measure job handed to a blocking thread.
+    let (state, session_id) = state_with_entries(4, 60);
+    let msg = job_for(&state, &session_id, 60);
+
+    // When the job is detached for measurement.
+    let job = MeasureJob::from(&msg);
+
+    // Then the measure job reads the same entry buffer the message carries.
+    assert!(
+        Arc::ptr_eq(&msg.entries, &job.entries),
+        "handing work to a blocking thread must share the history, not copy it"
+    );
+}
+
+#[rstest::rstest]
+fn a_measure_job_carries_the_measurement_settings_the_message_had() {
+    // Given a layout job at a known width and collapse threshold.
+    let (state, session_id) = state_with_entries(4, 47);
+    let mut msg = job_for(&state, &session_id, 47);
+    msg.min_collapse_count = 9;
+    msg.tool_entry_max_lines = 3;
+
+    // When the job is detached for measurement.
+    let job = MeasureJob::from(&msg);
+
+    // Then the settings the measurement depends on survive the hand-off.
+    assert_eq!(job.content_width, 47);
+    // And the collapse threshold is carried across unchanged.
+    assert_eq!(job.min_collapse_count, 9);
+    // And so is the truncation depth.
+    assert_eq!(job.tool_entry_max_lines, 3);
+}
+
+#[rstest::rstest]
 fn a_layout_job_measures_every_entry() {
     // Given a session with several entries.
     let (state, session_id) = state_with_entries(5, 60);
@@ -71,7 +151,7 @@ fn a_layout_job_measures_every_entry() {
     let inputs = inputs_for(&state, &session_id);
 
     // When the job is measured.
-    let measured = measure(&job, &inputs);
+    let measured = measure(&MeasureJob::from(&job), &inputs);
 
     // Then every entry has a line count.
     assert_eq!(measured.len(), 5);
@@ -90,7 +170,7 @@ fn a_layout_job_measures_the_same_counts_the_renderer_would() {
     let inputs = inputs_for(&state, &session_id);
 
     // When the job is measured.
-    let measured = measure(&job, &inputs);
+    let measured = measure(&MeasureJob::from(&job), &inputs);
 
     // Then the counts come back in the session's own entry order.
     let ids: Vec<_> = measured.iter().map(|count| count.id.clone()).collect();
@@ -121,7 +201,7 @@ fn a_layout_job_counts_the_lines_the_markdown_renderer_produced() {
     let inputs = inputs_for(&state, &session_id);
 
     // When the job is measured at width zero, where nothing is re-wrapped.
-    let measured = measure(&job, &inputs);
+    let measured = measure(&MeasureJob::from(&job), &inputs);
 
     // Then the count is the entry's own line count, never a wrapped one —
     // a width of zero would otherwise report a single line for everything.
@@ -143,7 +223,7 @@ fn a_completed_layout_stores_the_counts_and_ends_the_load() {
     }
     let job = job_for(&state, &session_id, 60);
     let inputs = inputs_for(&state, &session_id);
-    let measured = measure(&job, &inputs);
+    let measured = measure(&MeasureJob::from(&job), &inputs);
     let actor = LayoutCompletionActor::spawnless(LayoutCompletionActorDeps {
         state: state.clone(),
     });
@@ -167,7 +247,7 @@ fn a_completed_layout_clears_the_load_even_at_a_stale_width() {
     }
     let job = job_for(&state, &session_id, 60);
     let inputs = inputs_for(&state, &session_id);
-    let measured = measure(&job, &inputs);
+    let measured = measure(&MeasureJob::from(&job), &inputs);
     let actor = LayoutCompletionActor::spawnless(LayoutCompletionActorDeps {
         state: state.clone(),
     });
@@ -192,7 +272,7 @@ fn a_result_for_an_inactive_session_is_discarded() {
     let other = SessionId::new();
     let job = job_for(&state, &session_id, 60);
     let inputs = inputs_for(&state, &session_id);
-    let measured = measure(&job, &inputs);
+    let measured = measure(&MeasureJob::from(&job), &inputs);
     let actor = LayoutCompletionActor::spawnless(LayoutCompletionActorDeps {
         state: state.clone(),
     });
@@ -216,7 +296,7 @@ fn a_stored_layout_survives_the_first_render_without_re_measuring() {
     }
     let job = job_for(&state, &session_id, 40);
     let inputs = inputs_for(&state, &session_id);
-    let measured = measure(&job, &inputs);
+    let measured = measure(&MeasureJob::from(&job), &inputs);
     // Kept so the frame below can probe with the very keys the measurement
     // stored — that is what proves the count is findable.
     let keys: Vec<_> = measured

@@ -19,7 +19,8 @@
 //! result pairing, the streaming and subagent-waiting flags, the wrap counting —
 //! are private to the renderer, and duplicating them would guarantee drift.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use error_stack::Report;
 use jinn_chat_log_view::chat_log::{
@@ -123,11 +124,11 @@ impl MsgHandler<LayoutChatSession> for LayoutWorkerActor {
         // thread so a long job cannot stall the pool's other messages.
         //
         // The handler only lends the message, and a `spawn_blocking` closure
-        // must own everything it touches, so the job is cloned. That is one
-        // deep copy of the history per measurement — small next to the
-        // rendering the measurement itself performs, and far cheaper than
-        // doing that rendering on the frame that first shows the history.
-        let job = msg.clone();
+        // must own everything it touches, so a job is moved across. It is a
+        // handle, not a copy: the entries are already an `Arc` shared with the
+        // load actor, so taking one for the blocking thread is a pointer bump
+        // and only the small id-keyed set is duplicated.
+        let job = MeasureJob::from(msg);
         let measured = tokio::task::spawn_blocking(move || measure(&job, &inputs))
             .await
             .unwrap_or_default();
@@ -156,14 +157,14 @@ impl MsgHandler<LayoutChatSession> for LayoutWorkerActor {
 /// projection, the same tool result pairing, the same wrap counting. The
 /// rendered lines are discarded as soon as they are counted, so a measurement
 /// costs no lasting memory beyond the counts themselves.
-pub(crate) fn measure(msg: &LayoutChatSession, inputs: &LayoutInputs) -> Vec<MeasuredLineCount> {
+pub(crate) fn measure(job: &MeasureJob, inputs: &LayoutInputs) -> Vec<MeasuredLineCount> {
     let visual_items = jinn_chat_log_view_msg::build_visual_items(
-        &msg.entries,
-        &msg.shown_ignored_blocks,
+        &job.entries,
+        &job.shown_ignored_blocks,
         PROXIMITY_COUNT,
-        msg.min_collapse_count,
+        job.min_collapse_count,
     );
-    let tool_result_statuses = pair_tool_results(&msg.entries);
+    let tool_result_statuses = pair_tool_results(&job.entries);
 
     let mut measured = Vec::with_capacity(visual_items.len());
     for item in &visual_items {
@@ -172,12 +173,42 @@ pub(crate) fn measure(msg: &LayoutChatSession, inputs: &LayoutInputs) -> Vec<Mea
             // nothing to measure and nothing to store.
             continue;
         };
-        let Some(entry) = msg.entries.get(*history_index) else {
+        let Some(entry) = job.entries.get(*history_index) else {
             continue;
         };
-        measured.push(measure_entry(entry, &tool_result_statuses, inputs, msg));
+        measured.push(measure_entry(entry, &tool_result_statuses, inputs, job));
     }
     measured
+}
+
+/// Everything one measurement reads, detached from the bus message.
+///
+/// The entries are held as a shared `Arc`, so assembling a job for a blocking
+/// thread is a pointer bump rather than a second transcript. Only the small
+/// id-keyed set is copied.
+pub(crate) struct MeasureJob {
+    /// The session's history, shared with whoever else already holds it.
+    pub entries: Arc<[jinn_core_types::ChatEntry]>,
+    /// Blocks of ignored entries the user has expanded.
+    pub shown_ignored_blocks: HashSet<jinn_core_types::ChatEntryId>,
+    /// Minimum contiguous ignored entries required to collapse a block.
+    pub min_collapse_count: usize,
+    /// Content width to measure at.
+    pub content_width: u16,
+    /// Lines before a tool call or result is truncated.
+    pub tool_entry_max_lines: u16,
+}
+
+impl From<&LayoutChatSession> for MeasureJob {
+    fn from(msg: &LayoutChatSession) -> Self {
+        Self {
+            entries: Arc::clone(&msg.entries),
+            shown_ignored_blocks: msg.shown_ignored_blocks.clone(),
+            min_collapse_count: msg.min_collapse_count,
+            content_width: msg.content_width,
+            tool_entry_max_lines: msg.tool_entry_max_lines,
+        }
+    }
 }
 
 /// Measures a single entry's wrapped line count.
@@ -185,7 +216,7 @@ fn measure_entry(
     entry: &jinn_core_types::ChatEntry,
     tool_result_statuses: &HashMap<String, jinn_core_types::ToolResultStatus>,
     inputs: &LayoutInputs,
-    msg: &LayoutChatSession,
+    job: &MeasureJob,
 ) -> MeasuredLineCount {
     use jinn_core_types::ChatEntryKind;
 
@@ -199,17 +230,17 @@ fn measure_entry(
     let is_waiting_on_subagent = inputs.is_task_waiting(entry, tool_result_statuses);
 
     let ctx = RenderContext {
-        content_width: msg.content_width,
+        content_width: job.content_width,
         is_selected: false,
         is_expanded,
-        tool_entry_max_lines: msg.tool_entry_max_lines,
+        tool_entry_max_lines: job.tool_entry_max_lines,
         theme: inputs.theme().clone(),
         paired_status,
         is_streaming,
         is_waiting_on_subagent,
     };
     let lines = entry_to_lines(entry, &ctx);
-    let wrapped_count = wrapped_line_count(&lines, msg.content_width);
+    let wrapped_count = wrapped_line_count(&lines, job.content_width);
 
     MeasuredLineCount {
         id: entry.id.clone(),

@@ -1,9 +1,10 @@
 //! Session loading, restoration, tree hydration, and forking.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use jinn_chat_log_view_msg::{ArmLayoutDeadline, DEFAULT_MIN_COLLAPSE_COUNT, LayoutChatSession};
-use jinn_core_types::{ChatEntry, SessionId};
+use jinn_core_types::{ChatEntry, ChatEntryId, SessionId};
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::feat::session::SessionStoreService;
 use jinn_domain::feat::ui::chat_log::layout_supervisor::{LAYOUT_DEADLINE, LAYOUT_SUPERVISOR_PATH};
@@ -195,7 +196,24 @@ impl SessionStoreActor {
         // session is hydrated at startup. If it is not, the load guard this
         // measurement was meant to clear would stay up forever, so it is
         // cleared here rather than left for a worker that will never run.
-        let Some(session) = self.state.read().session.get(&session_id).cloned() else {
+        //
+        // Only the two values the measurement needs are read out. Cloning the
+        // session itself would deep-copy its entire history — tens of
+        // thousands of entries on a long session — to reach them, and the
+        // session stays in the map afterwards regardless.
+        // The session's own measurement inputs, read out under a brief lock.
+        // The read guard is released by this block ending, which must happen
+        // before `clear_load` below — that takes a write lock on the same map.
+        let session_inputs = {
+            let state = self.state.read();
+            state.session.get(&session_id).map(|session| {
+                (
+                    Arc::from(session.history().to_vec()),
+                    session.shown_ignored_blocks_snapshot(),
+                )
+            })
+        };
+        let Some((history, shown_ignored_blocks)) = session_inputs else {
             tracing::warn!(
                 session_id = %session_id,
                 "measure requested for a session that is not in memory"
@@ -208,8 +226,12 @@ impl SessionStoreActor {
         // has already switched to this session, so its own width is the
         // never-rendered zero. Measuring there would publish counts no frame
         // can use and have the completion actor discard them as stale.
-        let layout_inputs =
-            self.collect_layout_inputs_at(&session, &session_id, payload.content_width);
+        let layout_inputs = self.collect_layout_inputs_at(
+            history,
+            shown_ignored_blocks,
+            &session_id,
+            payload.content_width,
+        );
         self.state.with_session(|view| {
             view.session.map().set_active(session_id.clone());
         });
@@ -264,7 +286,21 @@ impl SessionStoreActor {
                 .get(state.session.active_session_id())
                 .map_or(0, ChatSessionState::content_width)
         };
-        self.collect_layout_inputs_at(session, session_id, content_width)
+        // The one unavoidable copy of the history: a worker thread cannot hold
+        // a borrow into the session, so the entries are copied out once here
+        // and shared with the worker from then on. This session is genuinely
+        // owned by the caller and about to be moved into the map, so there is
+        // no shorter path.
+        //
+        // The ignored-block set is read from the incoming session rather than
+        // the active one: the session was not active when it was still owned
+        // here, and its own view state is the one that will be measured.
+        self.collect_layout_inputs_at(
+            Arc::from(session.history().to_vec()),
+            session.shown_ignored_blocks_snapshot(),
+            session_id,
+            content_width,
+        )
     }
 
     /// The same inputs, at a width the caller has already resolved.
@@ -274,21 +310,19 @@ impl SessionStoreActor {
     /// have to re-derive it from state that has since moved on.
     fn collect_layout_inputs_at(
         &self,
-        session: &ChatSessionState,
+        entries: Arc<[ChatEntry]>,
+        shown_ignored_blocks: HashSet<ChatEntryId>,
         session_id: &SessionId,
         content_width: u16,
     ) -> LayoutChatSession {
-        // One read guard for both reads: taking a second would deadlock.
+        // One read guard for the preference reads: taking a second would deadlock.
         let state = self.state.read();
         let preferences = &state.frontend.preferences;
         LayoutChatSession {
             session_id: session_id.clone(),
             content_width,
-            entries: session.history().to_vec(),
-            // Read from the incoming session rather than the active one: the
-            // session was not active when it was still owned here, and its own
-            // view state is the one that will be measured.
-            shown_ignored_blocks: session.shown_ignored_blocks_snapshot(),
+            entries,
+            shown_ignored_blocks,
             min_collapse_count: preferences
                 .min_collapse_count
                 .unwrap_or(DEFAULT_MIN_COLLAPSE_COUNT),
