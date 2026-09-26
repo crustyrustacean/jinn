@@ -57,9 +57,10 @@ pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmErro
 
     let has_selection = match kind {
         PickerKind::Project => state.frontend.project_picker().selected_item().is_some(),
-        PickerKind::McpServer => state.frontend.mcp_server_picker().selected_item().is_some(),
-        // Retired: no picker state, so it can never have a selection.
-        PickerKind::CompactionModel => false,
+        // Migrated to a slice-owned picker: its confirm is a slice action.
+        // Retired: the MCP server picker is slice-owned, and the compaction
+        // picker never pushed a scope. Neither holds a kernel selection.
+        PickerKind::McpServer | PickerKind::CompactionModel => false,
     };
 
     if has_selection {

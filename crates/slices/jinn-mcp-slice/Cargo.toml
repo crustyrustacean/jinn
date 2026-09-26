@@ -8,6 +8,11 @@ jinn-mcp-msg = { workspace = true }
 # Kernel dep: the coordinator consumes shared application state and session
 # lifecycle events through the asynchronous actor path.
 jinn-domain = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-theme = { workspace = true }
+ratatui = { workspace = true }
+unicode-segmentation = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-tools-msg = { workspace = true }
 jinn-mcp = { workspace = true }

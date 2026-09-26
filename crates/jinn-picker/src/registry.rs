@@ -30,26 +30,21 @@ use crate::outcome::PickerOutcome;
 use crate::render::RenderOutcome;
 use crate::widget::WidgetKind;
 
-/// The id of the MCP server picker's spec.
-pub const MCP_SERVER_ID: &str = "mcp-server";
-/// The id of the session-lifecycle picker's spec.
-/// The id of the task-list picker's spec.
-/// The id of the session picker's spec.
-/// The id of the provider picker's spec.
-/// The id of the endpoint picker's spec.
-/// The id of the project picker's spec.
+/// The id of the project picker's spec — the last one the registry knows.
 pub const PROJECT_ID: &str = "project";
 
-/// Maps a picker kind onto its spec id. The retired `CompactionModel` kind has
-/// no spec.
+/// Maps a picker kind onto its spec id.
+///
+/// Every kind but `Project` has been migrated to a slice-owned picker, so
+/// there is no spec left to name; the migrated kinds resolve to `None` and
+/// the caller falls through to the slice's own scope.
 #[must_use]
 pub fn spec_id_for_kind(kind: &jinn_slices::picker_kind::PickerKind) -> Option<&'static str> {
     use jinn_slices::picker_kind::PickerKind;
 
     match kind {
-        PickerKind::McpServer => Some(MCP_SERVER_ID),
         PickerKind::Project => Some(PROJECT_ID),
-        PickerKind::CompactionModel => None,
+        PickerKind::CompactionModel | PickerKind::McpServer => None,
     }
 }
 

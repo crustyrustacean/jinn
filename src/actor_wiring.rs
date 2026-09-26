@@ -225,6 +225,7 @@ impl ActorSystemBuilder {
         // The tool picker is registered by the same slice, after the registry
         // cell it seeds its rows from exists.
         jinn_tools_picker_activate(&mut services);
+        jinn_mcp_picker_activate(&mut services);
 
         // Quake bar slice: activation mints the cell, spawns the actor
         // (submit-log writer), attaches rows, and registers the input
@@ -1058,6 +1059,25 @@ fn jinn_tools_picker_activate(services: &mut Services) {
     jinn_tools::activate_picker(&mut host);
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("tools picker finalize failed: {error}");
+    }
+}
+
+/// Registers the MCP server inspector.
+///
+/// Its own activation step because the inspector is a menu while the rest of
+/// this slice is actors: the coordinator spawns long before any host with a
+/// viewport exists to register an overlay against.
+fn jinn_mcp_picker_activate(services: &mut Services) {
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_mcp_slice::activate_picker(&mut host);
+    if let Err(error) = host.finalize(&|_key| None) {
+        panic!("MCP picker finalize failed: {error}");
     }
 }
 

@@ -31,12 +31,20 @@ mod dispatch_roundtrip_tests;
 #[cfg(test)]
 mod header_expansion_tests;
 #[cfg(test)]
+mod mcp_picker_actions_tests;
+#[cfg(test)]
+mod mcp_picker_tests;
+#[cfg(test)]
 mod restart_mcp_tests;
 #[cfg(test)]
 mod transport_routing_tests;
 
 pub mod connection;
 pub mod coordinator;
+pub mod mcp_picker_actions;
+pub mod mcp_picker_render;
+pub mod mcp_picker_routes;
+pub mod mcp_picker_viewport;
 
 use jinn_mcp_msg::{McpCoordinatorHandle, McpRuntimeState, mcp_runtime_slot};
 use jinn_slices::{Slices, SlotTaken, TypedCell};
@@ -122,4 +130,44 @@ pub fn mcp_coordinator_handle(
     }
 
     Arc::new(Impl(system, actor_path))
+}
+
+/// Registers the MCP server inspector: its cell, its overlay, its keys, and
+/// its filter hook.
+///
+/// Split from [`activate_runtime`] because the inspector is a menu, not a
+/// service: it spawns no actor and needs no services. Registering a slot
+/// twice is a wiring error, so this mints the cell itself.
+///
+/// # Panics
+///
+/// Panics if the slot is already registered — double activation is a wiring
+/// bug.
+#[expect(
+    clippy::expect_used,
+    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
+)]
+pub fn activate_picker(host: &mut jinn_slices::SliceHost<'_, jinn_slices::RenderFacts>) {
+    let cell = host
+        .register_cell(
+            jinn_mcp_msg::mcp_picker_slot(),
+            jinn_mcp_msg::McpPickerState::default(),
+        )
+        .expect("MCP picker slot is registered exactly once at wiring");
+
+    let scope = jinn_mcp_msg::mcp_picker_scope();
+    host.register_overlay(
+        scope.clone(),
+        std::sync::Arc::new(mcp_picker_render::mcp_picker_overlay_rect),
+    );
+    host.register_overlay_selectable(&scope);
+    host.register_overlay_slot(scope.clone(), jinn_mcp_msg::mcp_picker_slot());
+    host.register_overlay_view(
+        scope,
+        std::sync::Arc::new(mcp_picker_render::render_mcp_picker),
+    );
+
+    // The inspector's keys, and the filter's input hook, are this slice's own.
+    mcp_picker_routes::attach_mcp_picker_rows(host.key_routes(), &cell);
+    mcp_picker_routes::register_mcp_picker_input_hook(host.key_routes(), &cell);
 }

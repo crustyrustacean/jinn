@@ -36,13 +36,11 @@ pub(crate) fn test_registry() -> PickerRegistry {
 }
 
 /// The `(id, widget, has status row)` table, mirroring the real specs.
-/// `project` declares no status row; the MCP spec does.
-fn specs() -> [(&'static str, PickerWidget, bool); 2] {
+/// The project spec — the last one the central registry still holds — declares
+/// no status row.
+fn specs() -> [(&'static str, PickerWidget, bool); 1] {
     use PickerWidget::List;
-    [
-        (jinn_picker::MCP_SERVER_ID, List, true),
-        (jinn_picker::PROJECT_ID, List, false),
-    ]
+    [(jinn_picker::PROJECT_ID, List, false)]
 }
 
 /// A stand-in entry type: the dispatch tests never render or wrap these, they

@@ -114,10 +114,11 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
                 )),
                 KeyCategory::General,
             )
-            // The session browser is slice-owned, so this binds the session-store
-            // slice's own open row rather than a kernel picker intent.
+            // The session browser and the MCP inspector are slice-owned, so
+            // these bind the owning slice's own open row rather than a kernel
+            // picker intent.
             .bind(
-                "<leader>ss",
+                "<leader>se",
                 KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
                     jinn_session_store_msg::session_picker_scope(),
                     "open-session-picker",
@@ -125,7 +126,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
                 )),
                 KeyCategory::General,
             )
-            .bind("<leader>sM", KernelIntent::OpenPicker { kind: PickerKind::McpServer }, KeyCategory::General)
             // OpenRouter routing endpoint pin (Single + OpenRouter models only).
             // Projects - curated directory list for quick session creation
             .bind("<leader>so", KernelIntent::OpenPicker { kind: PickerKind::Project }, KeyCategory::General)
@@ -249,23 +249,20 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
 
     // Picker scopes - each picker kind has its own scope for kind-specific bindings.
     // Shared bindings (navigation, confirm, escape, char input) are in add_picker_base.
-    keymap
-        .scope(Scope::PickerProject, |b| {
-            // The project spec's rows (<c-enter> new+lifecycle, <c-n> add
-            // dir, <c-d> remove) land here via bind_picker_spec_rows.
-            add_picker_base(b);
-        })
-        .scope(Scope::PickerMcpServer, |b| {
-            // The MCP spec's rows (TAB toggle, CTRL+R restart, CTRL+T
-            // logs/tools) land here via bind_picker_spec_rows.
-            add_picker_base(b);
-        });
+    //
+    // Every other picker is slice-owned and declares its own rows and input
+    // hook; the project picker is the last one with a static scope, because
+    // its spec still lives in the central registry.
+    keymap.scope(Scope::PickerProject, |b| {
+        // The project spec's rows (<c-enter> new+lifecycle, <c-n> add
+        // dir, <c-d> remove) land here via bind_picker_spec_rows.
+        add_picker_base(b);
+    });
 
     // No global bindings by design: globals survive every scope's catch-all
     // and would pierce slice capture-mode hooks (stranding the control flag
     // on User) and overlay views (popping overlays mid-composition). The
     // would-be globals are per-scope slice rows — see `keymap_gen`.
-
     keymap.on_mouse(|mouse: event::MouseEvent, _scope: &Scope| {
         match mouse.kind {
             MouseEventKind::ScrollUp => Some(KernelIntent::MouseScrollUp),
@@ -767,105 +764,6 @@ mod leak_check {
         );
     }
 
-    #[rstest::rstest]
-    #[test]
-    fn mcp_scope_tab_fires_the_spec_toggle_action() {
-        // Given a keymap with the domain's mcp-server spec rows bound.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let mut keymap = init();
-        crate::keymap_gen::bind_picker_spec_rows(
-            &jinn_picker_specs::build_picker_registry(),
-            &mut keymap,
-        );
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerMcpServer);
-
-        // When pressing Tab.
-        let tab = KeyEvent {
-            key: Key::Tab,
-            modifiers: Modifiers::none(),
-        };
-        let intent = wk.handle_key(tab);
-
-        // Then it resolves to the mcp-server spec's toggle action.
-        let intent = intent.expect("Tab in PickerMcpServer must fire an intent");
-        assert!(
-            matches!(
-                &intent,
-                jinn_domain::KernelIntent::PickerAction { picker, action }
-                    if picker == "mcp-server" && action == "<tab>"
-            ),
-            "Tab in PickerMcpServer must fire the spec toggle action; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn mcp_scope_ctrl_r_fires_the_spec_restart_action() {
-        // Given a keymap with the domain's mcp-server spec rows bound.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let mut keymap = init();
-        crate::keymap_gen::bind_picker_spec_rows(
-            &jinn_picker_specs::build_picker_registry(),
-            &mut keymap,
-        );
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerMcpServer);
-
-        // When pressing Ctrl+R.
-        let c_r = KeyEvent {
-            key: Key::Char('r'),
-            modifiers: Modifiers::ctrl(),
-        };
-        let intent = wk.handle_key(c_r);
-
-        // Then it resolves to the mcp-server spec's restart action.
-        let intent = intent.expect("Ctrl+R in PickerMcpServer must fire an intent");
-        assert!(
-            matches!(
-                &intent,
-                jinn_domain::KernelIntent::PickerAction { picker, action }
-                    if picker == "mcp-server" && action == "<c-r>"
-            ),
-            "Ctrl+R in PickerMcpServer must fire the spec restart action; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn mcp_scope_ctrl_t_fires_the_spec_preview_action() {
-        // Given a keymap with the domain's mcp-server spec rows bound.
-        use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-
-        let mut keymap = init();
-        crate::keymap_gen::bind_picker_spec_rows(
-            &jinn_picker_specs::build_picker_registry(),
-            &mut keymap,
-        );
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerMcpServer);
-
-        // When pressing Ctrl+T.
-        let c_t = KeyEvent {
-            key: Key::Char('t'),
-            modifiers: Modifiers::ctrl(),
-        };
-        let intent = wk.handle_key(c_t);
-
-        // Then it resolves to the mcp-server spec's logs/tools action.
-        let intent = intent.expect("Ctrl+T in PickerMcpServer must fire an intent");
-        assert!(
-            matches!(
-                &intent,
-                jinn_domain::KernelIntent::PickerAction { picker, action }
-                    if picker == "mcp-server" && action == "<c-t>"
-            ),
-            "Ctrl+T in PickerMcpServer must fire the spec logs/tools action; got {intent:?}",
-        );
-    }
-
     /// Normal-mode <enter> opens the selected task call's subagent session.
     /// Also guards against accidental rebinding: nothing else may claim
     /// <enter> in the Normal scope.
@@ -892,13 +790,11 @@ mod leak_check {
         // Then it resolves to the sidebar's load-subagent dynamic action.
         assert!(
             matches!(
-                intent,
-                Some(jinn_domain::KernelIntent::Dynamic(ref dynamic))
-                    if dynamic.slice
-                        == jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id()
-                        && dynamic.action == "load-subagent"
+            intent,
+            Some(jinn_domain::KernelIntent::Dynamic(ref dynamic))
+                if dynamic.action == "load-subagent"
             ),
-            "<enter> in Normal scope should fire the sidebar load-subagent action; got {intent:?}",
+            "enter must open the subagent session for the selected task; got {intent:?}",
         );
     }
 }

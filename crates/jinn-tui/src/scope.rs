@@ -32,7 +32,6 @@ pub enum Scope {
     /// Picker - Curated project directory selection.
     PickerProject,
     /// Picker - MCP server toggle selection.
-    PickerMcpServer,
     /// Input mode - typing into the input buffer.
     Input,
     /// A dynamically-registered slice's scope.
@@ -49,7 +48,6 @@ impl std::fmt::Display for Scope {
             Self::Normal => write!(f, "Normal"),
 
             Self::PickerProject => write!(f, "Picker(project)"),
-            Self::PickerMcpServer => write!(f, "Picker(mcp-server)"),
             Self::Input => write!(f, "Input"),
             Self::Dynamic(id) => write!(f, "dynamic:{id}"),
         }
@@ -70,7 +68,6 @@ impl std::str::FromStr for Scope {
             "Normal" => Ok(Self::Normal),
 
             "Picker(project)" => Ok(Self::PickerProject),
-            "Picker(mcp-server)" => Ok(Self::PickerMcpServer),
             "Input" => Ok(Self::Input),
             _ => Err(()),
         }

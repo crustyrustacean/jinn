@@ -83,13 +83,13 @@ fn slice_owned_picker_scopes() -> Vec<jinn_slices::SliceScopeId> {
     vec![
         jinn_session_store_msg::session_picker_scope(),
         jinn_provider_selection_msg::provider_picker_scope(),
+        jinn_mcp_msg::mcp_picker_scope(),
     ]
 }
 
 /// scope-level mapping (a jinn-tui concern).
 fn picker_spec_scope(id: jinn_picker::PickerId) -> Option<Scope> {
     match id.as_str() {
-        "mcp-server" => Some(Scope::PickerMcpServer),
         "project" => Some(Scope::PickerProject),
         _ => None,
     }
@@ -134,14 +134,9 @@ fn scopes_for_row<'a>(
             })
             .collect(),
         BindSite::GlobalToggle => {
-            let mut scopes: Vec<Scope> = [
-                Scope::Normal,
-                Scope::Input,
-                Scope::PickerProject,
-                Scope::PickerMcpServer,
-            ]
-            .into_iter()
-            .collect();
+            let mut scopes: Vec<Scope> = [Scope::Normal, Scope::Input, Scope::PickerProject]
+                .into_iter()
+                .collect();
             // Slice-owned picker scopes host rows but are not key-hook scopes,
             // so without naming them here the global toggles (tab switching,
             // sidebar) would stop working while such a picker is open. Each
@@ -878,7 +873,6 @@ mod tests {
     #[case("Normal")]
     #[case("Input")]
     #[case("Picker(project)")]
-    #[case("Picker(mcp-server)")]
     fn alt_t_resolves_in_every_static_scope(#[case] scope_name: &str) {
         // Given the composed term rows (the GlobalToggle toggle-overlay
         // row) generated into a fresh keymap, queried in a static scope
@@ -1221,8 +1215,8 @@ mod picker_spec_row_tests {
         // navigation bind, under a throwaway id mapped to a static scope.
         let mut registry = jinn_picker::PickerRegistry::new();
         registry.register(
-            jinn_picker::PickerSpec::<jinn_mcp_msg::McpServerEntry>::new(
-                jinn_picker::PickerId::new("mcp-server"),
+            jinn_picker::PickerSpec::<jinn_project_msg::ProjectEntry>::new(
+                jinn_picker::PickerId::new("project"),
             )
             .bind("<tab>", "toggle", |_| jinn_picker::PickerOutcome::empty())
             .bind_navigation("<c-u>", "page up", |_| jinn_picker::PickerOutcome::empty()),
@@ -1231,7 +1225,7 @@ mod picker_spec_row_tests {
         // When binding the spec rows into a keymap.
         let mut keymap = init();
         bind_picker_spec_rows(&registry, &mut keymap);
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerMcpServer);
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerProject);
 
         // Then Tab resolves to the spec's picker action.
         let tab = KeyEvent {
@@ -1243,7 +1237,7 @@ mod picker_spec_row_tests {
             matches!(
                 &intent,
                 Some(jinn_domain::KernelIntent::PickerAction { picker, action })
-                    if picker == "mcp-server" && action == "<tab>"
+                    if picker == "project" && action == "<tab>"
             ),
             "<Tab> must land as the spec's picker action; got {intent:?}",
         );
@@ -1255,8 +1249,8 @@ mod picker_spec_row_tests {
         // Given a registry with a navigation-hinted bind.
         let mut registry = jinn_picker::PickerRegistry::new();
         registry.register(
-            jinn_picker::PickerSpec::<jinn_mcp_msg::McpServerEntry>::new(
-                jinn_picker::PickerId::new("mcp-server"),
+            jinn_picker::PickerSpec::<jinn_project_msg::ProjectEntry>::new(
+                jinn_picker::PickerId::new("project"),
             )
             .bind_navigation("<c-u>", "page up", |_| jinn_picker::PickerOutcome::empty()),
         );
@@ -1264,7 +1258,7 @@ mod picker_spec_row_tests {
         // When binding spec rows over the base keymap.
         let mut keymap = init();
         bind_picker_spec_rows(&registry, &mut keymap);
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerMcpServer);
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerProject);
 
         // Then the <c-u> binding resolves to the spec action.
         let c_u = KeyEvent {
@@ -1276,7 +1270,7 @@ mod picker_spec_row_tests {
             matches!(
                 &intent,
                 Some(jinn_domain::KernelIntent::PickerAction { picker, action })
-                    if picker == "mcp-server" && action == "<c-u>"
+                    if picker == "project" && action == "<c-u>"
             ),
             "<c-u> must land as the spec's navigation action; got {intent:?}",
         );

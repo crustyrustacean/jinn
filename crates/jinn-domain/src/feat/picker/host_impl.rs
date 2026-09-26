@@ -13,7 +13,6 @@ use jinn_picker::PickerId;
 use crate::common::app_state::AppState;
 use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::PickerKind;
-use jinn_picker::MCP_SERVER_ID;
 use jinn_picker::PROJECT_ID;
 
 /// The mutable navigation interface for the active picker, or `None` when no
@@ -30,9 +29,9 @@ pub fn active_picker_ops(
     let kind = state.frontend.picker_kind()?;
     Some(match kind {
         PickerKind::Project => state.frontend.project_picker_mut(),
-        PickerKind::McpServer => state.frontend.mcp_server_picker_mut(),
-        // Retired: no picker state, never pushed as a scope.
-        PickerKind::CompactionModel => return None,
+        // Retired: the MCP server picker is slice-owned, and the compaction
+        // picker never pushed a scope. Neither lends kernel state.
+        PickerKind::McpServer | PickerKind::CompactionModel => return None,
     })
 }
 
@@ -43,9 +42,10 @@ pub fn active_picker_ops_ref(state: &AppState) -> Option<&dyn jinn_selection_wid
     let kind = state.frontend.picker_kind()?;
     Some(match kind {
         PickerKind::Project => state.frontend.project_picker(),
-        PickerKind::McpServer => state.frontend.mcp_server_picker(),
-        // Retired: no picker state, never pushed as a scope.
-        PickerKind::CompactionModel => return None,
+        // Migrated to a slice-owned picker: no kernel state to lend.
+        // Retired: the MCP server picker is slice-owned, and the compaction
+        // picker never pushed a scope. Neither lends kernel state.
+        PickerKind::McpServer | PickerKind::CompactionModel => return None,
     })
 }
 
@@ -60,7 +60,6 @@ pub fn active_picker_ops_ref(state: &AppState) -> Option<&dyn jinn_selection_wid
 #[must_use]
 pub fn selection_state_ref(state: &AppState, id: PickerId) -> Option<&dyn std::any::Any> {
     match id.as_str() {
-        MCP_SERVER_ID => Some(state.frontend.mcp_server_picker() as &dyn std::any::Any),
         PROJECT_ID => Some(state.frontend.project_picker() as &dyn std::any::Any),
         _ => None,
     }
@@ -83,9 +82,6 @@ impl<'a> AppStatePickerHost<'a> {
 impl PickerHost for AppStatePickerHost<'_> {
     fn selection_state(&mut self, id: PickerId) -> Option<&mut dyn std::any::Any> {
         match id.as_str() {
-            MCP_SERVER_ID => {
-                Some(self.state.frontend.mcp_server_picker_mut() as &mut dyn std::any::Any)
-            }
             PROJECT_ID => Some(self.state.frontend.project_picker_mut() as &mut dyn std::any::Any),
             _ => None,
         }
@@ -239,9 +235,10 @@ impl PickerHost for AppStateRenderHost<'_> {
         let kind = self.state.frontend.picker_kind()?;
         Some(match kind {
             PickerKind::Project => self.state.frontend.project_picker(),
-            PickerKind::McpServer => self.state.frontend.mcp_server_picker(),
-            // Retired: no picker state, never pushed as a scope.
-            PickerKind::CompactionModel => return None,
+            // Migrated to a slice-owned picker: no kernel state to lend.
+            // Retired: the MCP server picker is slice-owned, and the
+            // compaction picker never pushed a scope.
+            PickerKind::McpServer | PickerKind::CompactionModel => return None,
         })
     }
 }
@@ -254,14 +251,11 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use jinn_mcp_msg::McpServerEntry;
 
     /// A minimal entry the lens tests only need a concrete type for.
-    fn test_server(name: &str) -> McpServerEntry {
-        McpServerEntry::new(
-            name.to_owned(),
-            String::new(),
-            true,
+    fn entry() -> jinn_project_msg::ProjectEntry {
+        jinn_project_msg::ProjectEntry::new(
+            std::path::PathBuf::from("/tmp/demo"),
             jinn_theme::default_theme(),
         )
     }
@@ -269,33 +263,31 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn selection_state_lends_typed_storage_by_id() {
-        // Given a host state whose mcp-server picker holds items.
+        // Given a host state whose project picker holds items.
         let mut state = AppState::default_with_scope_focus();
         let items = jinn_picker::make_items_with_hooks(
-            vec![test_server("a")],
+            vec![entry()],
             jinn_picker::PickerItemHooks::new()
-                .row(|entry: &McpServerEntry, _ctx: &jinn_picker::RowCtx<'_>| {
-                    ratatui::text::Line::raw(entry.name.clone())
+                .row(|entry: &jinn_project_msg::ProjectEntry, _ctx| {
+                    ratatui::text::Line::raw(entry.display.clone())
                 })
-                .search(|entry: &McpServerEntry| entry.name.clone()),
+                .search(|entry: &jinn_project_msg::ProjectEntry| entry.display.clone()),
         );
-        state.frontend.mcp_server_picker_mut().set_items(items);
+        state.frontend.project_picker_mut().set_items(items);
 
-        // When lending the selection state for the mcp-server id.
-        let mapped = {
-            let mut host = AppStatePickerHost::new(&mut state);
-            host.selection_state(PickerId::new(MCP_SERVER_ID))
-                .expect("mcp-server is mapped")
-                .downcast_ref::<jinn_selection_widget::SelectionState<
-                    jinn_picker::PickerEntry<McpServerEntry>,
-                >>()
-                .is_some()
-        };
+        // When lending the selection state for the project id.
+        let mapped = AppStatePickerHost::new(&mut state)
+            .selection_state(PickerId::new(PROJECT_ID))
+            .expect("project is mapped")
+            .downcast_ref::<jinn_selection_widget::SelectionState<
+                jinn_picker::PickerEntry<jinn_project_msg::ProjectEntry>,
+            >>()
+            .is_some();
 
         // Then the lend downcasts back to the wrapped selection storage.
         assert!(
             mapped,
-            "the mcp-server lend should downcast to its wrapped SelectionState"
+            "the project lend should downcast to its wrapped SelectionState"
         );
     }
 
@@ -314,7 +306,7 @@ mod tests {
         // is the cycle this whole migration exists to remove), and listing
         // them keeps this guard a real compile-time-complete check of the
         // table above.
-        let ids = [jinn_picker::MCP_SERVER_ID, jinn_picker::PROJECT_ID];
+        let ids = [PROJECT_ID];
         let mut state = AppState::default_with_scope_focus();
 
         // When lending each id through the read lens and the mutable lens.
@@ -368,7 +360,7 @@ mod tests {
     fn preview_scrolls_are_stored_per_picker_id() {
         // Given a host state.
         let mut state = AppState::default_with_scope_focus();
-        let first = PickerId::new(MCP_SERVER_ID);
+        let first = PickerId::new(PROJECT_ID);
         let other = PickerId::new("other");
 
         // When setting preview scrolls for one picker id and another id.

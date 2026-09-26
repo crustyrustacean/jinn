@@ -54,16 +54,17 @@ fn state_with_picker(kind: PickerKind) -> AppState {
 
 #[rstest::rstest]
 #[test]
-fn measure_mcp_server_picker_reserves_two_bottom_rows() {
-    // Given an MCP-server picker active (status + keybind footer via its spec).
-    let state = state_with_picker(PickerKind::McpServer);
+fn measure_project_picker_reserves_one_bottom_row() {
+    // Given the project picker active (its spec declares no status row, so
+    // only the keybind footer occupies a bottom row).
+    let state = state_with_picker(PickerKind::Project);
 
     // When measuring at LARGE_FRAME.
     let height = measure_active_picker_results_height(&state, LARGE_FRAME, &registry());
 
-    // Then the height is inner minus chrome (2) minus the spec's two bottom
-    // rows. At LARGE_FRAME the popup inner is 39 rows; 39 - 2 - 2 = 35.
-    assert_eq!(height, 35);
+    // Then the height is inner minus chrome (2) minus the one bottom row.
+    // At LARGE_FRAME the popup inner is 39 rows; 39 - 2 - 1 = 36.
+    assert_eq!(height, 36);
 }
 
 #[rstest::rstest]

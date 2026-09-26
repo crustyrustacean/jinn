@@ -308,13 +308,13 @@ pub fn scope_for_focus(focus: &jinn_slices::FocusScope) -> Scope {
     match focus {
         FocusScope::Picker { kind } => match kind {
             PickerKind::Project => Scope::PickerProject,
-            PickerKind::McpServer => Scope::PickerMcpServer,
-            // CompactionModel is data-only: it survives because persisted
-            // session files deserialize it, but nothing opens it as a menu, so
-            // it is never pushed as a scope. Normal is the honest fallback —
-            // a scope it cannot reach, rather than a picker scope borrowed
-            // from a picker that no longer exists.
-            PickerKind::CompactionModel => Scope::Normal,
+            // Both survive only so persisted session files deserialize. The
+            // MCP server picker is slice-owned and pushes a dynamic scope;
+            // CompactionModel is data-only and opens no menu. Neither ever
+            // pushes this enum, so a legacy save naming one lands here, and
+            // Normal is the honest fallback — a scope it cannot reach, rather
+            // than a picker scope borrowed from a picker that no longer exists.
+            PickerKind::McpServer | PickerKind::CompactionModel => Scope::Normal,
         },
         FocusScope::Input => Scope::Input,
         // Dynamic slice scopes pass their identity through unchanged.

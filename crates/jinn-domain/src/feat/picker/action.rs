@@ -171,7 +171,6 @@ mod tests {
     )]
     use super::*;
     use crate::protocol::ChatEntryKind;
-    use jinn_picker::MCP_SERVER_ID;
     use jinn_slices::FocusScope;
     use jinn_slices::ScopeSignal;
     use jinn_slices::SliceScopeId;
@@ -179,19 +178,19 @@ mod tests {
     fn state_with_picker() -> AppState {
         let state = AppState::default_with_scope_focus();
         state.frontend.scope_push(FocusScope::Picker {
-            kind: crate::PickerKind::McpServer,
+            kind: crate::PickerKind::Project,
         });
         state
     }
 
-    /// A test spec under the mcp-server id with one `<tab>` bind that pushes a
+    /// A test spec under the project id with one `<tab>` bind that pushes a
     /// transient entry, and one `<esc>` bind that closes the picker.
     ///
     /// Built here rather than imported from `jinn_picker_specs`: these tests
     /// exercise dispatch, and the kernel cannot depend on the specs crate.
     fn registry_with_test_spec() -> jinn_picker::PickerRegistry {
         let spec = jinn_picker::PickerSpec::<super::super::test_registry::Entry>::new(
-            jinn_picker::PickerId::new(MCP_SERVER_ID),
+            jinn_picker::PickerId::new(jinn_picker::PROJECT_ID),
         )
         .bind("<tab>", "test", |ctx: &mut ActionCtx<'_>| {
             let state = ctx
@@ -214,7 +213,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn picker_action_unknown_id_is_a_no_op() {
-        // Given an open mcp-server picker and the domain registry.
+        // Given an open project picker and the domain registry.
         let mut state = state_with_picker();
         let registry = crate::feat::picker::test_registry::test_registry();
 
@@ -229,7 +228,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn picker_action_with_wrong_active_picker_is_ignored() {
-        // Given an open mcp-server picker.
+        // Given an open project picker.
         let mut state = state_with_picker();
         let registry = crate::feat::picker::test_registry::test_registry();
 
@@ -243,13 +242,13 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn picker_action_resolves_the_row_and_runs_it() {
-        // Given an open mcp-server picker whose test spec declares a `<tab>` row
+        // Given an open project picker whose test spec declares a `<tab>` row
         // that pushes a transient entry.
         let mut state = state_with_picker();
         let registry = registry_with_test_spec();
 
         // When running the `<tab>` action.
-        let _ = run_action(&mut state, &registry, MCP_SERVER_ID, "<tab>");
+        let _ = run_action(&mut state, &registry, jinn_picker::PROJECT_ID, "<tab>");
 
         // Then the action ran (transient entry pushed).
         let history = state.active_session().history();
@@ -265,12 +264,12 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn picker_action_close_outcome_pops_the_scope() {
-        // Given an open mcp-server picker.
+        // Given an open project picker.
         let mut state = state_with_picker();
         let registry = registry_with_test_spec();
 
         // When running an action whose outcome closes the picker.
-        let _ = run_action(&mut state, &registry, MCP_SERVER_ID, "<esc>");
+        let _ = run_action(&mut state, &registry, jinn_picker::PROJECT_ID, "<esc>");
 
         // Then the picker scope is popped.
         assert!(

@@ -5,7 +5,6 @@
 //! on [`FrontendState`](super::FrontendState) so consumers are decoupled from the
 //! internal storage layout.
 
-use jinn_mcp_msg::McpServerEntry;
 use jinn_project_msg::ProjectEntry;
 
 /// All picker state - grouped so the picker subsystem can evolve independently.
@@ -32,15 +31,6 @@ pub struct PickerStates {
     /// OWNER: TUI render pre-pass (writes) / IntentHandler (reads via
     /// `active_viewport`).
     pub picker_results_viewport: u16,
-
-    /// MCP server picker state - shows configured servers with toggle state.
-    /// OWNER: IntentHandler (populated on MCP picker open).
-    pub mcp_server_picker:
-        jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<McpServerEntry>>,
-
-    /// Snapshot of enabled MCP servers before picker opens - restored on ESC.
-    /// OWNER: IntentHandler (set on MCP picker open, consumed on confirm/cancel).
-    pub mcp_server_picker_snapshot: Option<std::collections::BTreeSet<String>>,
 }
 
 /// Extension trait providing typed access to picker state on [`FrontendState`](super::FrontendState).
@@ -49,10 +39,7 @@ pub struct PickerStates {
 /// This decouples consumers from the internal storage layout of `FrontendState`.
 pub trait PickerExt {
     /// Read-only access to the enabled MCP servers snapshot.
-    fn mcp_server_picker_snapshot(&self) -> &Option<std::collections::BTreeSet<String>>;
     /// Mutable access to the enabled MCP servers snapshot.
-    fn mcp_server_picker_snapshot_mut(&mut self)
-    -> &mut Option<std::collections::BTreeSet<String>>;
     /// Read-only access to the project picker state.
     fn project_picker(
         &self,
@@ -61,15 +48,8 @@ pub trait PickerExt {
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ProjectEntry>>;
 
-    /// Read-only access to the MCP server picker state.
-    fn mcp_server_picker(
-        &self,
-    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<McpServerEntry>>;
-    /// Mutable access to the MCP server picker state.
-    fn mcp_server_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<McpServerEntry>>;
-
+    /// The measured results-area row count, written once per frame by the
+    /// render pre-pass and read by the page-up/page-down binds.
     fn picker_results_viewport(&self) -> u16;
 
     /// Updates the measured results-area row count. Called once per frame
@@ -78,16 +58,6 @@ pub trait PickerExt {
 }
 
 impl PickerExt for super::frontend_state::FrontendState {
-    fn mcp_server_picker_snapshot(&self) -> &Option<std::collections::BTreeSet<String>> {
-        &self.pickers.mcp_server_picker_snapshot
-    }
-
-    fn mcp_server_picker_snapshot_mut(
-        &mut self,
-    ) -> &mut Option<std::collections::BTreeSet<String>> {
-        &mut self.pickers.mcp_server_picker_snapshot
-    }
-
     fn project_picker(
         &self,
     ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ProjectEntry>> {
@@ -98,18 +68,6 @@ impl PickerExt for super::frontend_state::FrontendState {
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ProjectEntry>> {
         &mut self.pickers.project_picker
-    }
-
-    fn mcp_server_picker(
-        &self,
-    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<McpServerEntry>> {
-        &self.pickers.mcp_server_picker
-    }
-
-    fn mcp_server_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<McpServerEntry>> {
-        &mut self.pickers.mcp_server_picker
     }
 
     fn picker_results_viewport(&self) -> u16 {
