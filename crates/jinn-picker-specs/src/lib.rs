@@ -28,7 +28,6 @@
 pub mod mcp_server_spec;
 pub mod project_spec;
 pub mod provider_spec;
-pub mod session_spec;
 
 mod registry;
 

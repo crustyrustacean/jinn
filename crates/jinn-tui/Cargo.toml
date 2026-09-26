@@ -24,6 +24,7 @@ jinn-picker = { workspace = true }
 jinn-picker-specs = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-tools-msg = { workspace = true }
+jinn-session-store-msg = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-session-history-msg = { workspace = true }
 jinn-session-lifecycle-msg = { workspace = true }

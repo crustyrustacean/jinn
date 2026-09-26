@@ -18,7 +18,6 @@ use jinn_picker::PickerRegistry;
 pub fn build_picker_registry() -> PickerRegistry {
     let mut registry = PickerRegistry::new();
     registry.register(crate::mcp_server_spec::mcp_server_spec());
-    registry.register(crate::session_spec::session_spec());
     registry.register(crate::provider_spec::provider_spec());
     registry.register(crate::project_spec::project_spec());
     registry
@@ -96,9 +95,10 @@ mod tests {
     fn migrated_kinds_map_onto_registered_specs_and_vice_versa() {
         // Given the picker registry and the kind→id adapter.
         let registry = build_picker_registry();
+        // Shrinks as each picker migrates: a kind here is one the kernel
+        // still owns a `PickerKind` for, i.e. one not yet slice-owned.
         let migrated = [
             PickerKind::McpServer,
-            PickerKind::Session,
             PickerKind::Provider,
             PickerKind::Project,
         ];

@@ -104,7 +104,17 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             .bind("?", KernelIntent::ToggleWhichkey, KeyCategory::General)
             .describe_group_with_category("<leader>s", "search", KeyCategory::General)
             .bind("<leader>sm", KernelIntent::OpenPicker { kind: PickerKind::Provider }, KeyCategory::General)
-            .bind("<leader>ss", KernelIntent::OpenPicker { kind: PickerKind::Session }, KeyCategory::General)
+            // The session browser is slice-owned, so this binds the session-store
+            // slice's own open row rather than a kernel picker intent.
+            .bind(
+                "<leader>ss",
+                KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
+                    jinn_session_store_msg::session_picker_scope(),
+                    "open-session-picker",
+                    "browse sessions",
+                )),
+                KeyCategory::General,
+            )
             .bind("<leader>sM", KernelIntent::OpenPicker { kind: PickerKind::McpServer }, KeyCategory::General)
             // OpenRouter routing endpoint pin (Single + OpenRouter models only).
             // Projects - curated directory list for quick session creation
@@ -235,9 +245,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             // bind_picker_spec_rows.
             add_picker_base(b);
         })
-        .scope(Scope::PickerSession, |b| {
-            add_picker_base(b);
-        })
         .scope(Scope::PickerProject, |b| {
             // The project spec's rows (<c-enter> new+lifecycle, <c-n> add
             // dir, <c-d> remove) land here via bind_picker_spec_rows.
@@ -275,12 +282,7 @@ mod tests {
     /// moment a variant is added or a scope is dropped.
     #[rstest::rstest]
     fn every_picker_kind_maps_to_a_scope_with_bindings(
-        #[values(
-            PickerKind::Provider,
-            PickerKind::Session,
-            PickerKind::Project,
-            PickerKind::McpServer
-        )]
+        #[values(PickerKind::Provider, PickerKind::Project, PickerKind::McpServer)]
         kind: PickerKind,
     ) {
         use crate::app::scope_for_focus;
@@ -665,7 +667,7 @@ mod leak_check {
         use jinn_domain::{Key, KeyEvent, Modifiers};
 
         let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerSession);
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerProject);
 
         // When pressing PageUp.
         let pgup = KeyEvent {
@@ -694,7 +696,7 @@ mod leak_check {
         use jinn_domain::{Key, KeyEvent, Modifiers};
 
         let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerSession);
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerProject);
 
         // When pressing PageDown.
         let pgdn = KeyEvent {

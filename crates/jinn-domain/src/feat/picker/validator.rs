@@ -62,10 +62,6 @@ pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmErro
             .provider_picker
             .selected_item()
             .is_some(),
-        PickerKind::Session => state.frontend.session_picker().selected_item().is_some(),
-        // TaskList is read-only; Enter is a no-op. Skip the selection
-        // gate so the confirm handler (which itself returns empty) is
-        // always reached.
         PickerKind::Project => state.frontend.project_picker().selected_item().is_some(),
         PickerKind::McpServer => state.frontend.mcp_server_picker().selected_item().is_some(),
         // Retired: no picker state, so it can never have a selection.
@@ -135,7 +131,7 @@ mod tests {
             kind: PickerKind::Provider,
         });
 
-        let result = validate_open_picker(&state, &PickerKind::Session);
+        let result = validate_open_picker(&state, &PickerKind::Project);
 
         assert!(result.is_err(), "should reject opening a second picker");
     }

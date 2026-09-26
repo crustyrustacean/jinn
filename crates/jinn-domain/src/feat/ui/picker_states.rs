@@ -8,7 +8,6 @@
 use jinn_mcp_msg::McpServerEntry;
 use jinn_project_msg::ProjectEntry;
 use jinn_provider_selection_msg::ProviderPickerEntry;
-use jinn_session_store_msg::SessionTreeEntry;
 
 /// All picker state - grouped so the picker subsystem can evolve independently.
 ///
@@ -17,9 +16,6 @@ use jinn_session_store_msg::SessionTreeEntry;
 #[derive(Debug, Default)]
 pub struct PickerStates {
     /// Session picker state (items, filter text, selection index).
-    /// OWNER: IntentHandler (session picker navigation).
-    pub session_picker:
-        jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<SessionTreeEntry>>,
 
     /// Preview pane scroll offsets for spec-driven pickers, keyed by
     /// picker id.
@@ -62,15 +58,6 @@ pub struct PickerStates {
 /// Import this trait to access picker fields through methods instead of direct field access.
 /// This decouples consumers from the internal storage layout of `FrontendState`.
 pub trait PickerExt {
-    /// Read-only access to the session picker state.
-    fn session_picker(
-        &self,
-    ) -> &jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<SessionTreeEntry>>;
-    /// Mutable access to the session picker state.
-    fn session_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<SessionTreeEntry>>;
-
     /// Read-only access to the enabled MCP servers snapshot.
     fn mcp_server_picker_snapshot(&self) -> &Option<std::collections::BTreeSet<String>>;
     /// Mutable access to the enabled MCP servers snapshot.
@@ -101,19 +88,6 @@ pub trait PickerExt {
 }
 
 impl PickerExt for super::frontend_state::FrontendState {
-    fn session_picker(
-        &self,
-    ) -> &jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<SessionTreeEntry>> {
-        &self.pickers.session_picker
-    }
-
-    fn session_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<SessionTreeEntry>>
-    {
-        &mut self.pickers.session_picker
-    }
-
     fn mcp_server_picker_snapshot(&self) -> &Option<std::collections::BTreeSet<String>> {
         &self.pickers.mcp_server_picker_snapshot
     }

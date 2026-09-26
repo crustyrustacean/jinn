@@ -73,11 +73,20 @@ pub fn bind_picker_spec_rows(
 /// The static scope hosting `id`'s spec-derived bindings.
 ///
 /// The adapter lives in the domain crate; jinn-tui keeps only this
+/// The dynamic scopes of every slice-owned picker.
+///
+/// A picker that a slice owns has no `Scope` variant, so the GlobalToggle
+/// pass cannot discover it by enumerating static scopes. A slice whose scope
+/// is missing here silently loses every global toggle while its picker is
+/// open, and nothing else notices.
+fn slice_owned_picker_scopes() -> Vec<jinn_slices::SliceScopeId> {
+    vec![jinn_session_store_msg::session_picker_scope()]
+}
+
 /// scope-level mapping (a jinn-tui concern).
 fn picker_spec_scope(id: jinn_picker::PickerId) -> Option<Scope> {
     match id.as_str() {
         "mcp-server" => Some(Scope::PickerMcpServer),
-        "session" => Some(Scope::PickerSession),
         "provider" => Some(Scope::PickerProvider),
         "project" => Some(Scope::PickerProject),
         _ => None,
@@ -127,12 +136,19 @@ fn scopes_for_row<'a>(
                 Scope::Normal,
                 Scope::Input,
                 Scope::PickerProvider,
-                Scope::PickerSession,
                 Scope::PickerProject,
                 Scope::PickerMcpServer,
             ]
             .into_iter()
             .collect();
+            // Slice-owned picker scopes host rows but are not key-hook scopes,
+            // so without naming them here the global toggles (tab switching,
+            // sidebar) would stop working while such a picker is open. Each
+            // owning slice contributes its own scope; a new picker adds one
+            // line here and nothing else.
+            for scope in slice_owned_picker_scopes() {
+                scopes.push(Scope::Dynamic(scope));
+            }
             for scope in tabs {
                 scopes.push(Scope::Dynamic(scope.clone()));
             }
@@ -822,7 +838,6 @@ mod tests {
     #[case("Normal")]
     #[case("Input")]
     #[case("Picker(provider)")]
-    #[case("Picker(session)")]
     #[case("Picker(project)")]
     #[case("Picker(mcp-server)")]
     fn alt_t_resolves_in_every_static_scope(#[case] scope_name: &str) {
@@ -859,6 +874,47 @@ mod tests {
                         && d.action == "toggle-overlay"
             ),
             "{scope_name}: <M-t> must resolve to the term toggle-overlay intent, got {intent:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn alt_t_resolves_in_a_slice_owned_picker_scope() {
+        // Given the same GlobalToggle row generated into a fresh keymap,
+        // queried in a *dynamic* slice scope.
+        //
+        // The static-scope test above cannot cover this: a slice-owned picker
+        // has no `Scope` variant to name, so the only way the global toggles
+        // can reach it is through the dynamic scopes the GlobalToggle pass
+        // collects. A picker scope that never joins that list silently loses
+        // <M-t> (and every other toggle) while it is open, and nothing else
+        // notices.
+        let routes = KeyRoutes::new();
+        routes.attach(term_toggle_row());
+        let mut keymap = Keymap::new();
+        bind_route_rows(&routes, &mut keymap);
+        let scope = Scope::Dynamic(jinn_session_store_msg::session_picker_scope());
+
+        // When pressing <M-t>.
+        let mut wk = WhichKeyInstance::new(keymap, scope);
+        let intent = wk.handle_key(KeyEvent {
+            key: jinn_domain::Key::Char('t'),
+            modifiers: jinn_domain::Modifiers {
+                ctrl: false,
+                alt: true,
+                shift: false,
+            },
+        });
+
+        // Then the overlay toggle resolves inside the picker.
+        assert!(
+            matches!(
+                &intent,
+                Some(KernelIntent::Dynamic(d))
+                    if d.slice == SliceScopeId::new("term", "view")
+                        && d.action == "toggle-overlay"
+            ),
+            "the global toggle must resolve inside a slice-owned picker; got {intent:?}"
         );
     }
 

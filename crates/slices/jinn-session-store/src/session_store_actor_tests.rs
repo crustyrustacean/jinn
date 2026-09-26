@@ -291,12 +291,22 @@ async fn actor_fixture() -> ActorFixture {
     let harness = TestHarness::new().await;
     let mut services = harness.services().await;
     services.session_store = SessionStoreService::new(store.clone());
+    // The picker cell production's `activate` mints before the spawn; a
+    // fixture that skipped it would fail at construction, not at use.
+    let session_picker_cell = services
+        .slices
+        .register(
+            jinn_session_store_msg::session_picker_slot(),
+            jinn_session_store_msg::SessionPickerState::default(),
+        )
+        .expect("session picker slot is free in a fresh harness");
     let state = State::new(AppState::default());
     let _actor = SessionStoreActor::spawn(
         harness.system(),
         SessionStoreActorDeps {
             services,
             state: state.clone(),
+            session_picker_cell,
         },
     );
     ActorFixture {
@@ -325,12 +335,20 @@ async fn controlled_actor_fixture(store: Arc<ControlledStartupStore>) -> (TestHa
     let harness = TestHarness::new().await;
     let mut services = harness.services().await;
     services.session_store = SessionStoreService::new(store);
+    let session_picker_cell = services
+        .slices
+        .register(
+            jinn_session_store_msg::session_picker_slot(),
+            jinn_session_store_msg::SessionPickerState::default(),
+        )
+        .expect("session picker slot is free in a fresh harness");
     let state = State::new(AppState::default());
     let _actor = SessionStoreActor::spawn(
         harness.system(),
         SessionStoreActorDeps {
             services,
             state: state.clone(),
+            session_picker_cell,
         },
     );
     (harness, state)

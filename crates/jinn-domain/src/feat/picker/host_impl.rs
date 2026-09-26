@@ -16,7 +16,6 @@ use crate::protocol::PickerKind;
 use jinn_picker::MCP_SERVER_ID;
 use jinn_picker::PROJECT_ID;
 use jinn_picker::PROVIDER_ID;
-use jinn_picker::SESSION_ID;
 
 /// The mutable navigation interface for the active picker, or `None` when no
 /// picker is on the focus stack.
@@ -32,7 +31,6 @@ pub fn active_picker_ops(
     let kind = state.frontend.picker_kind()?;
     Some(match kind {
         PickerKind::Provider => &mut state.frontend.pickers.provider_picker,
-        PickerKind::Session => state.frontend.session_picker_mut(),
         PickerKind::Project => state.frontend.project_picker_mut(),
         PickerKind::McpServer => state.frontend.mcp_server_picker_mut(),
         // Retired: no picker state, never pushed as a scope.
@@ -47,7 +45,6 @@ pub fn active_picker_ops_ref(state: &AppState) -> Option<&dyn jinn_selection_wid
     let kind = state.frontend.picker_kind()?;
     Some(match kind {
         PickerKind::Provider => &state.frontend.pickers.provider_picker,
-        PickerKind::Session => state.frontend.session_picker(),
         PickerKind::Project => state.frontend.project_picker(),
         PickerKind::McpServer => state.frontend.mcp_server_picker(),
         // Retired: no picker state, never pushed as a scope.
@@ -67,7 +64,6 @@ pub fn active_picker_ops_ref(state: &AppState) -> Option<&dyn jinn_selection_wid
 pub fn selection_state_ref(state: &AppState, id: PickerId) -> Option<&dyn std::any::Any> {
     match id.as_str() {
         MCP_SERVER_ID => Some(state.frontend.mcp_server_picker() as &dyn std::any::Any),
-        SESSION_ID => Some(state.frontend.session_picker() as &dyn std::any::Any),
         PROVIDER_ID => Some(&state.frontend.pickers.provider_picker as &dyn std::any::Any),
         PROJECT_ID => Some(state.frontend.project_picker() as &dyn std::any::Any),
         _ => None,
@@ -94,7 +90,6 @@ impl PickerHost for AppStatePickerHost<'_> {
             MCP_SERVER_ID => {
                 Some(self.state.frontend.mcp_server_picker_mut() as &mut dyn std::any::Any)
             }
-            SESSION_ID => Some(self.state.frontend.session_picker_mut() as &mut dyn std::any::Any),
             PROVIDER_ID => {
                 Some(&mut self.state.frontend.pickers.provider_picker as &mut dyn std::any::Any)
             }
@@ -251,7 +246,6 @@ impl PickerHost for AppStateRenderHost<'_> {
         let kind = self.state.frontend.picker_kind()?;
         Some(match kind {
             PickerKind::Provider => &self.state.frontend.pickers.provider_picker,
-            PickerKind::Session => self.state.frontend.session_picker(),
             PickerKind::Project => self.state.frontend.project_picker(),
             PickerKind::McpServer => self.state.frontend.mcp_server_picker(),
             // Retired: no picker state, never pushed as a scope.
@@ -330,7 +324,6 @@ mod tests {
         // table above.
         let ids = [
             jinn_picker::MCP_SERVER_ID,
-            jinn_picker::SESSION_ID,
             jinn_picker::PROVIDER_ID,
             jinn_picker::PROJECT_ID,
         ];

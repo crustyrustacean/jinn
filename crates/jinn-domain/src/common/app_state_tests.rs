@@ -108,7 +108,7 @@ fn is_picker_returns_true_when_picker_active() {
     // Given a ScopeStack with Picker on top.
     let mut stack = ScopeStack::default();
     stack.push(FocusScope::Picker {
-        kind: PickerKind::Session,
+        kind: PickerKind::Provider,
     });
 
     // Then is_picker is true.

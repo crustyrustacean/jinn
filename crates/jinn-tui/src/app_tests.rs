@@ -231,7 +231,6 @@ fn key<'a>(notation: &'a str) -> jinn_domain::KeyEvent {
 #[case::sidebar_sessions(Scope::Dynamic(jinn_slices::SliceScopeId::navigation(
     "sidebar", "sessions"
 )))]
-#[case::picker_session(Scope::PickerSession)]
 fn s_outside_sidebar_task_list_does_not_open_task_list_picker(#[case] scope: Scope) {
     // Given the keymap rooted at a non-sidebar-task-list scope.
     let mut wk = keymap_at(scope);

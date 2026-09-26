@@ -1,6 +1,5 @@
 //! Session picker hydration from the store.
 
-use jinn_domain::feat::ui::picker_states::PickerExt;
 use jinn_session_store_msg::LoadSessionPickerEntries;
 
 use crate::session_store_actor::SessionStoreActor;
@@ -21,14 +20,10 @@ impl SessionStoreActor {
         let entries =
             jinn_domain::feat::session::entries::load_session_entries_from_store(&store, &theme)
                 .await;
-        let wrapped = jinn_picker::make_items_with_hooks(
-            entries,
-            jinn_picker::PickerItemHooks::new()
-                .row(jinn_session_store_msg::session_row)
-                .search(|entry: &jinn_session_store_msg::SessionTreeEntry| entry.title.clone()),
-        );
-        self.state.with_preferences(|ops| {
-            ops.frontend().session_picker_mut().set_items(wrapped);
+        // Into the picker's own cell, not the kernel's frontend state: the
+        // picker is this slice's, and its rows are its state.
+        self.session_picker_cell.update(|picker| {
+            crate::session_picker_actions::load(picker, entries);
         });
     }
 }

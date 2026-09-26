@@ -322,10 +322,15 @@ impl ActorSystemBuilder {
         // keeps turn progression and context folds; the store actor owns load,
         // fork, archive, and persist; the lifecycle actor owns setup, teardown,
         // close, and working-directory changes. Each contract has exactly one owner.
-        jinn_session_store::activate(&services, state.clone());
+        // The session picker's overlay and keys are attached later, where the
+        // composition `SliceHost` exists; `activate` only mints the cell the
+        // store actor publishes into, which the lifecycle activation threads
+        // through to that later pass.
+        let session_store_handles = jinn_session_store::activate(&services, state.clone());
         jinn_session_lifecycle_activate(
             &mut services,
             state.clone(),
+            &session_store_handles,
             jinn_session_lifecycle_msg::BuiltinRegistry::new(),
             std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
         );
@@ -628,6 +633,7 @@ fn jinn_sidebar_activate(services: &mut Services, state: jinn_domain::common::st
 fn jinn_session_lifecycle_activate(
     services: &mut Services,
     state: jinn_domain::common::state::State,
+    session_store_handles: &jinn_session_store::SessionStoreHandles,
     builtin_registry: jinn_session_lifecycle_msg::BuiltinRegistry,
     shell: String,
 ) {
@@ -647,6 +653,13 @@ fn jinn_session_lifecycle_activate(
         shell,
     );
     jinn_session_lifecycle::activate_picker(&mut host);
+    // The session picker: its cell was minted by the store slice's `activate`
+    // (the store actor publishes loaded rows into it), so only the overlay,
+    // keys, and filter hook are attached here.
+    jinn_session_store::activate_session_picker(
+        &mut host,
+        &session_store_handles.session_picker_cell,
+    );
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("session-lifecycle slice finalize failed: {error}");
     }

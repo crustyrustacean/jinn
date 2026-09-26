@@ -35,7 +35,6 @@ pub const MCP_SERVER_ID: &str = "mcp-server";
 /// The id of the session-lifecycle picker's spec.
 /// The id of the task-list picker's spec.
 /// The id of the session picker's spec.
-pub const SESSION_ID: &str = "session";
 /// The id of the provider picker's spec.
 pub const PROVIDER_ID: &str = "provider";
 /// The id of the endpoint picker's spec.
@@ -50,7 +49,6 @@ pub fn spec_id_for_kind(kind: &jinn_slices::picker_kind::PickerKind) -> Option<&
 
     match kind {
         PickerKind::McpServer => Some(MCP_SERVER_ID),
-        PickerKind::Session => Some(SESSION_ID),
         PickerKind::Provider => Some(PROVIDER_ID),
         PickerKind::Project => Some(PROJECT_ID),
         PickerKind::CompactionModel => None,
