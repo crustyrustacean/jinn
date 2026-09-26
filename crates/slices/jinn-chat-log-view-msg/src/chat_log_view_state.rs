@@ -57,6 +57,10 @@ pub struct SavedHistoryPosition {
 ///
 /// Defaults match the historical `SessionUi` defaults exactly: auto-scroll
 /// (`scroll_offset: None`), no selection, empty caches and sets.
+#[expect(
+    clippy::partial_pub_fields,
+    reason = "the view state stays public for the renderer while its write counters stay private to the compare-then-swap"
+)]
 #[derive(Debug, Default)]
 pub struct ChatLogViewUi {
     /// Number of lines to skip from the top when rendering (ratatui scroll
@@ -95,6 +99,22 @@ pub struct ChatLogViewUi {
     pub viewport_height: AtomicU32,
     /// Number of blank lines prepended by the renderer for bottom-alignment.
     pub blank_count: AtomicU32,
+    /// The content width the last render measured at.
+    ///
+    /// The chat log's area width minus its gutter. The session load needs
+    /// this to measure a newly loaded history at the width the next frame
+    /// will actually use, so a load-time measurement is not thrown away as
+    /// stale. Written by the renderer each frame; `0` before the first one,
+    /// which the renderer also treats as "do not wrap".
+    pub content_width: AtomicU32,
+    /// How many consecutive tool entries the last render collapsed into one.
+    ///
+    /// Published alongside `content_width` for the same reason: a coverage
+    /// probe run off the render thread must build its visual items with the
+    /// same collapse threshold the frame it predicts will use, or the two
+    /// disagree about how many items a history has. `0` before the first
+    /// render, which the probe reads as the built-in default.
+    pub min_collapse_count: AtomicU32,
     /// The set of chat entry IDs whose tool result content is expanded.
     ///
     /// When a tool result entry is expanded, its full content is shown
@@ -128,6 +148,18 @@ pub struct ChatLogViewUi {
     ///
     /// Cleared by: >100ms gap, or any non-`ChatEntryIgnoreSelected` intent.
     pub ignore_sweep: Option<(std::time::Instant, ContextOverride)>,
+    /// How many times `visual_items` was actually replaced.
+    ///
+    /// The renderer recomputes the visual item list every frame but only
+    /// replaces the stored one when it differs, so this counts real writes
+    /// rather than frames. Read through [`Self::visual_items_writes`].
+    visual_items_writes: u64,
+    /// How many times `entry_line_ranges` was actually replaced.
+    ///
+    /// Counts real writes rather than frames, for the same reason as
+    /// `visual_items_writes`. Read through
+    /// [`Self::entry_line_ranges_writes`].
+    entry_line_ranges_writes: u64,
 }
 
 impl Clone for ChatLogViewUi {
@@ -142,11 +174,15 @@ impl Clone for ChatLogViewUi {
             entry_line_ranges: RwLock::new(self.entry_line_ranges.read().clone()),
             viewport_height: AtomicU32::new(self.viewport_height.load(Ordering::Relaxed)),
             blank_count: AtomicU32::new(self.blank_count.load(Ordering::Relaxed)),
+            content_width: AtomicU32::new(self.content_width.load(Ordering::Relaxed)),
+            min_collapse_count: AtomicU32::new(self.min_collapse_count.load(Ordering::Relaxed)),
             expanded_entries: self.expanded_entries.clone(),
             saved_history_position: self.saved_history_position.clone(),
             shown_ignored_blocks: self.shown_ignored_blocks.clone(),
             visual_items: RwLock::new(self.visual_items.read().clone()),
             ignore_sweep: self.ignore_sweep,
+            visual_items_writes: self.visual_items_writes,
+            entry_line_ranges_writes: self.entry_line_ranges_writes,
         }
     }
 }
@@ -164,4 +200,50 @@ pub type ChatLogViews = HashMap<SessionId, ChatLogViewUi>;
 #[must_use]
 pub fn chat_log_views_slot() -> SlotKey {
     SlotKey::builtin("chat-log-view", "state")
+}
+
+impl ChatLogViewUi {
+    /// Publish the visual items list the renderer just computed, replacing
+    /// the stored list only when it actually differs.
+    ///
+    /// The renderer recomputes this list every frame but the list changes
+    /// rarely, so an unconditional write would mean an allocation and a
+    /// full copy on every frame. Returns `true` when the stored list was
+    /// replaced.
+    pub fn set_visual_items_if_changed(&mut self, items: &[VisualItem]) -> bool {
+        let mut slot = self.visual_items.write();
+        if *slot == items {
+            return false;
+        }
+        *slot = items.to_vec();
+        self.visual_items_writes += 1;
+        true
+    }
+
+    /// Publish the per-entry wrapped line ranges the renderer just computed,
+    /// replacing the stored ranges only when they actually differ.
+    ///
+    /// One range pair per visual item, so this is as long as the visual item
+    /// list. Returns `true` when the stored ranges were replaced.
+    pub fn set_entry_line_ranges_if_changed(&mut self, ranges: &[(u32, u32)]) -> bool {
+        let mut slot = self.entry_line_ranges.write();
+        if *slot == ranges {
+            return false;
+        }
+        *slot = ranges.to_vec();
+        self.entry_line_ranges_writes += 1;
+        true
+    }
+
+    /// How many times the visual items list was actually replaced.
+    #[must_use]
+    pub fn visual_items_writes(&self) -> u64 {
+        self.visual_items_writes
+    }
+
+    /// How many times the per-entry line ranges were actually replaced.
+    #[must_use]
+    pub fn entry_line_ranges_writes(&self) -> u64 {
+        self.entry_line_ranges_writes
+    }
 }

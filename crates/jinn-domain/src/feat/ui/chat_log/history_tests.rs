@@ -15,6 +15,7 @@ use crate::protocol::{ChatEntry, PinPosition};
 use jinn_chat_log_view::chat_log::GUTTER_WIDTH;
 use jinn_slices::FocusScope;
 use jinn_testutil::setup_term;
+use ratatui::layout::Rect;
 use ratatui::style::Color;
 
 const G: u16 = GUTTER_WIDTH; // = 2
@@ -2296,5 +2297,579 @@ fn a_large_session_frame_avoids_rehashing_its_content() {
     assert!(
         ratio > 1.0,
         "the signature path should beat full fingerprinting, got {ratio:.1}x"
+    );
+}
+
+#[rstest::rstest]
+fn unchanged_frame_rewrites_no_visual_items() {
+    // Given a chat log that has rendered one frame.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = normal_state();
+        s.active_session_mut().push_entry(ChatEntry::user("hello"));
+        s.active_session_mut().push_entry(ChatEntry::user("world"));
+        s
+    };
+    let (mut terminal, area) = setup_term(40, 10);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(
+                &state,
+                &slices,
+                &overlay_views,
+                jinn_config::empty_config_layer(),
+            );
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let after_first = state.active_session().visual_items_writes();
+    assert_eq!(after_first, 1, "the first frame must publish the list");
+
+    // When several more frames render with nothing changed.
+    for _ in 0..5 {
+        terminal
+            .draw(|frame| {
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
+                let ctx = RenderCtx::new(
+                    &state,
+                    &slices,
+                    &overlay_views,
+                    jinn_config::empty_config_layer(),
+                );
+                element.render(frame, area, &ctx);
+            })
+            .unwrap();
+    }
+
+    // Then the visual items list was not written back again.
+    assert_eq!(
+        state.active_session().visual_items_writes(),
+        after_first,
+        "an unchanged frame must reuse the stored visual items"
+    );
+}
+
+#[rstest::rstest]
+fn unchanged_frame_rewrites_no_line_ranges() {
+    // Given a chat log that has rendered one frame.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = normal_state();
+        s.active_session_mut().push_entry(ChatEntry::user("hello"));
+        s.active_session_mut().push_entry(ChatEntry::user("world"));
+        s
+    };
+    let (mut terminal, area) = setup_term(40, 10);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(
+                &state,
+                &slices,
+                &overlay_views,
+                jinn_config::empty_config_layer(),
+            );
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let after_first = state.active_session().entry_line_ranges_writes();
+    assert_eq!(after_first, 1, "the first frame must publish the ranges");
+
+    // When several more frames render with nothing changed.
+    for _ in 0..5 {
+        terminal
+            .draw(|frame| {
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
+                let ctx = RenderCtx::new(
+                    &state,
+                    &slices,
+                    &overlay_views,
+                    jinn_config::empty_config_layer(),
+                );
+                element.render(frame, area, &ctx);
+            })
+            .unwrap();
+    }
+
+    // Then the per-entry line ranges were not written back again.
+    assert_eq!(
+        state.active_session().entry_line_ranges_writes(),
+        after_first,
+        "an unchanged frame must reuse the stored line ranges"
+    );
+}
+
+#[rstest::rstest]
+fn a_loading_session_shows_the_loading_indication() {
+    // Given a chat log whose session is still loading.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = normal_state();
+        s.active_session_mut().push_entry(ChatEntry::user("hello"));
+        s.session
+            .begin_load(s.active_session().session_id().clone());
+        s
+    };
+    let (mut terminal, area) = setup_term(40, 10);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(
+                &state,
+                &slices,
+                &overlay_views,
+                jinn_config::empty_config_layer(),
+            );
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the conversation's own text is not drawn — the indication replaces it.
+    let drawn = row_text(terminal.backend().buffer(), area);
+    assert!(
+        !drawn.contains("hello"),
+        "a loading session must not show its history"
+    );
+}
+
+#[rstest::rstest]
+fn a_loading_indication_animates_over_time() {
+    // Given a chat log whose session is still loading.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = normal_state();
+        s.session
+            .begin_load(s.active_session().session_id().clone());
+        s
+    };
+    let (mut terminal, area) = setup_term(40, 10);
+
+    // When frames are drawn over time.
+    let mut seen = Vec::new();
+    for _ in 0..4 {
+        seen.push(draw_loading_frame(
+            &mut element,
+            &state,
+            &mut terminal,
+            area,
+        ));
+        std::thread::sleep(std::time::Duration::from_millis(120));
+    }
+
+    // Then the drawn glyphs are not all the same.
+    //
+    // The assertion is over the whole window rather than a single pair of
+    // frames: the animation advances after each frame is painted, so the first
+    // two frames legitimately paint the same glyph. What matters is that the
+    // indication keeps moving instead of sitting still for the whole load.
+    let first = &seen[0];
+    assert!(
+        seen.iter().any(|frame| frame != first),
+        "a long load must animate, not sit on one static glyph, saw {seen:?}"
+    );
+    // And the label itself is always there, so the movement is around a
+    // meaningful message rather than an empty widget.
+    assert!(
+        seen.iter().all(|frame| frame.contains("Loading session")),
+        "every loading frame must say what it is doing, saw {seen:?}"
+    );
+}
+
+#[rstest::rstest]
+fn a_loading_indication_sits_on_the_bottom_row() {
+    // Given a chat log whose session is still loading, in a tall pane.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = normal_state();
+        s.session
+            .begin_load(s.active_session().session_id().clone());
+        s
+    };
+    let (mut terminal, area) = setup_term(40, 11);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(
+                &state,
+                &slices,
+                &overlay_views,
+                jinn_config::empty_config_layer(),
+            );
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the indication sits on the pane's last row — the row directly above
+    // the chat bar — rather than floating in the middle of the conversation.
+    let rows: Vec<String> = (area.y..area.y + area.height)
+        .map(|row| jinn_testutil::buffer_row(terminal.backend().buffer(), row, area.width))
+        .collect();
+    let painted = rows
+        .iter()
+        .position(|row| row.contains("Loading session"))
+        .expect("the indication must be drawn");
+    assert_eq!(
+        painted, 10,
+        "an 11-row pane must show the indication on its last row, got rows {rows:?}"
+    );
+}
+
+#[rstest::rstest]
+fn a_loading_indication_is_centered_horizontally() {
+    // Given a chat log whose session is still loading, in a wide pane.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = normal_state();
+        s.session
+            .begin_load(s.active_session().session_id().clone());
+        s
+    };
+    let (mut terminal, area) = setup_term(60, 11);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(
+                &state,
+                &slices,
+                &overlay_views,
+                jinn_config::empty_config_layer(),
+            );
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the label starts near the pane's horizontal centre, not at its edge.
+    let row = jinn_testutil::buffer_row(terminal.backend().buffer(), area.y + 10, area.width);
+    let start = row
+        .find("Loading session")
+        .expect("the label must be drawn");
+    assert!(
+        start > 10,
+        "a 60-column pane must not start the label at column {start}: {row:?}"
+    );
+    // And it stays clear of the right edge rather than being clipped.
+    assert!(
+        row.contains("Loading session..."),
+        "the whole label must fit, got {row:?}"
+    );
+}
+
+#[rstest::rstest]
+fn a_loading_indication_tolerates_a_zero_height_pane() {
+    // Given a chat log in a pane with no height, mid-resize.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = normal_state();
+        s.session
+            .begin_load(s.active_session().session_id().clone());
+        s
+    };
+    let (mut terminal, area) = setup_term(40, 3);
+    let collapsed = Rect::new(area.x, area.y, area.width, 0);
+
+    // When rendering into it.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(
+                &state,
+                &slices,
+                &overlay_views,
+                jinn_config::empty_config_layer(),
+            );
+            element.render(frame, collapsed, &ctx);
+        })
+        .unwrap();
+
+    // Then nothing is drawn and no panic escapes.
+    assert!(
+        !row_text(terminal.backend().buffer(), area).contains("Loading session"),
+        "a pane with no rows has nowhere to draw the indication"
+    );
+}
+
+#[rstest::rstest]
+fn a_loading_indication_tolerates_a_zero_width_pane() {
+    // Given a chat log in a pane with no width, mid-resize.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = normal_state();
+        s.session
+            .begin_load(s.active_session().session_id().clone());
+        s
+    };
+    let (mut terminal, area) = setup_term(40, 3);
+    let collapsed = Rect::new(area.x, area.y, 0, area.height);
+
+    // When rendering into it.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(
+                &state,
+                &slices,
+                &overlay_views,
+                jinn_config::empty_config_layer(),
+            );
+            element.render(frame, collapsed, &ctx);
+        })
+        .unwrap();
+
+    // Then nothing is drawn and no panic escapes.
+    assert!(
+        !row_text(terminal.backend().buffer(), area).contains("Loading session"),
+        "a pane with no columns has nowhere to draw the indication"
+    );
+}
+
+/// Draws one frame of a loading chat log and returns the text it painted.
+fn draw_loading_frame(
+    element: &mut ChatLogElement,
+    state: &AppState,
+    terminal: &mut ratatui::Terminal<ratatui::backend::TestBackend>,
+    area: ratatui::layout::Rect,
+) -> String {
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(
+                state,
+                &slices,
+                &overlay_views,
+                jinn_config::empty_config_layer(),
+            );
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    row_text(terminal.backend().buffer(), area)
+}
+
+/// The text of the buffer's rows, joined.
+fn row_text(buffer: &ratatui::buffer::Buffer, area: ratatui::layout::Rect) -> String {
+    (area.y..area.y + area.height)
+        .map(|row| {
+            (area.x..area.x + area.width)
+                .map(|col| buffer.cell((col, row)).map_or("", |c| c.symbol()))
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+// ---------------------------------------------------------------------------
+// Measurement coverage
+// ---------------------------------------------------------------------------
+
+/// The width a chat log rendered into `width` columns lays its entries out at.
+fn content_width_for(width: u16) -> u16 {
+    width - GUTTER_WIDTH
+}
+
+/// State with `count` user entries in its active session, at `content_width`.
+fn measured_state(count: usize, content_width: u16) -> AppState {
+    let mut state = normal_state();
+    for index in 0..count {
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user(format!("message {index}")));
+    }
+    state.active_session_mut().set_content_width(content_width);
+    state
+}
+
+/// Whether a frame of the given width would find the session fully measured.
+fn coverage_at(state: &AppState, content_width: u16) -> bool {
+    let mut cache = state.frontend.caches.entry_line_cache.write();
+    crate::feat::ui::chat_log::is_session_measured(
+        &mut cache,
+        state,
+        &state.active_session().session_id().clone(),
+        content_width,
+    )
+}
+
+/// Renders one frame, filling the cache the way a real frame would.
+fn measure_by_rendering(state: &AppState, width: u16, height: u16) {
+    let mut element = ChatLogElement::new();
+    let (mut terminal, area) = setup_term(width, height);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(
+                state,
+                &slices,
+                &overlay_views,
+                jinn_config::empty_config_layer(),
+            );
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+}
+
+#[rstest::rstest]
+fn an_unmeasured_session_reports_not_covered() {
+    // Given a session that has never been rendered.
+    let state = measured_state(4, 60);
+
+    // When coverage is checked at the width it would render at.
+    let covered = coverage_at(&state, 60);
+
+    // Then it is not covered.
+    assert!(!covered, "a session with no counts needs a measurement");
+}
+
+#[rstest::rstest]
+fn a_session_measured_at_a_width_reports_covered() {
+    // Given a session a real frame has already measured.
+    let state = measured_state(4, 60);
+    measure_by_rendering(&state, 62, 10);
+
+    // When coverage is checked at that same width.
+    let covered = coverage_at(&state, content_width_for(62));
+
+    // Then it is covered.
+    assert!(
+        covered,
+        "a measured session needs no further measurement, cache holds {}",
+        state.frontend.caches.entry_line_cache.read().len()
+    );
+}
+
+#[rstest::rstest]
+fn a_session_measured_at_one_width_is_not_covered_at_another() {
+    // Given a session measured by a frame of one width.
+    let state = measured_state(4, 60);
+    measure_by_rendering(&state, 62, 10);
+
+    // When coverage is checked at a different width.
+    let covered = coverage_at(&state, content_width_for(62) + 1);
+
+    // Then it is not covered, because those counts are wrong at this width.
+    assert!(
+        !covered,
+        "counts measured at one width cannot serve another"
+    );
+}
+
+#[rstest::rstest]
+fn a_session_with_a_collapsed_ignored_block_reports_covered() {
+    // Given a long session that renders as a collapsed block plus visible
+    // entries, and that has been measured.
+    let mut state = measured_state(0, 60);
+    for index in 0..12 {
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::system(format!("noise {index}")));
+    }
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::user("the visible question"));
+    measure_by_rendering(&state, 62, 20);
+
+    // When coverage is checked.
+    let visual_items = state.active_session().visual_items_snapshot().len();
+    let covered = coverage_at(&state, content_width_for(62));
+
+    // Then it is covered.
+    //
+    // A collapsed block is one line and is never cached, so a coverage check
+    // that probed it would report a miss no measurement could ever fix.
+    assert!(
+        visual_items > 0,
+        "the session must render as visual items for this to mean anything"
+    );
+    assert!(
+        covered,
+        "a collapsed ignored block must not read as an unmeasured entry"
+    );
+}
+
+#[rstest::rstest]
+fn coverage_agrees_with_what_the_render_pass_does() {
+    // Given a session holding a tool call and its result, which are what the
+    // render variant keys on.
+    let mut state = measured_state(0, 60);
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::tool_call("id-1", "grep", "{}"));
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::tool_result(
+            "id-1",
+            "grep",
+            "found it",
+            ToolResultStatus::Success,
+        ));
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::user("thanks"));
+
+    // When a frame measures it and coverage is then checked.
+    measure_by_rendering(&state, 62, 20);
+    let covered = coverage_at(&state, content_width_for(62));
+
+    // Then coverage says the next frame is a full cache hit.
+    assert!(
+        covered,
+        "coverage must agree with the render pass, or every switch re-measures"
+    );
+}
+
+/// Given a session that has rendered a frame, when the coverage probe reads
+/// the session back, then it sees the collapse count that frame used.
+#[rstest::rstest]
+fn a_render_publishes_the_collapse_count_the_coverage_probe_reads_back() {
+    // Given a session with a history.
+    let mut state = normal_state();
+    let session_id = state.session.active_session_id().clone();
+    for text in ["first", "second"] {
+        state
+            .session
+            .get_mut(&session_id)
+            .unwrap()
+            .push_entry(ChatEntry::user(text));
+    }
+
+    // When one frame is drawn.
+    let mut element = ChatLogElement::new();
+    let (mut terminal, area) = setup_term(100, 20);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new(
+                &state,
+                &slices,
+                &overlay_views,
+                jinn_config::empty_config_layer(),
+            );
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the session records the count that frame used, so the off-thread
+    // probe builds the same visual items.
+    assert_eq!(
+        state.session.get(&session_id).unwrap().min_collapse_count(),
+        Some(jinn_chat_log_view_msg::DEFAULT_MIN_COLLAPSE_COUNT),
+        "the coverage probe reads this back; if the frame did not publish it, the probe builds different visual items than the frame did"
     );
 }

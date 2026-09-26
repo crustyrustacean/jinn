@@ -275,6 +275,16 @@ impl ChatSessionState {
         taken.into_inner()
     }
 
+    /// A snapshot copy of the expanded entry ids.
+    ///
+    /// The off-thread chat log layout reads the set once per job rather than
+    /// testing membership per entry, matching
+    /// [`Self::streaming_tool_call_ids`]'s single-snapshot approach.
+    #[must_use]
+    pub fn expanded_entry_ids(&self) -> std::collections::HashSet<ChatEntryId> {
+        self.with_view(|v| v.expanded_entries.clone(), Default::default)
+    }
+
     /// A snapshot copy of the shown-ignored-blocks set. Builders that read
     /// the set alongside history (`build_visual_items`, sweep propagation)
     /// work on the copy so the view lock is never held across computation.
@@ -2602,6 +2612,96 @@ impl ChatSessionState {
     /// Store the visual items list computed during render.
     pub fn set_visual_items(&self, items: Vec<VisualItem>) {
         self.update_view(|v| *v.visual_items.write() = items);
+    }
+
+    /// Publish the visual items list computed during render, replacing the
+    /// stored list only when it differs.
+    ///
+    /// The renderer recomputes the list every frame, but it changes only when
+    /// the history, the ignore sets, or the collapse threshold change. An
+    /// unconditional write would allocate and copy a list that is one entry
+    /// per history entry on every frame. Returns `true` when the stored list
+    /// was replaced.
+    pub fn set_visual_items_if_changed(&self, items: &[VisualItem]) -> bool {
+        self.update_view_taking(|v| Some(v.set_visual_items_if_changed(items)))
+            .unwrap_or(false)
+    }
+
+    /// Publish the per-entry wrapped line ranges computed during render,
+    /// replacing the stored ranges only when they differ.
+    ///
+    /// The ranges are one pair per visual item and are recomputed every
+    /// frame, but the values only change when the wrapped layout does.
+    /// Returns `true` when the stored ranges were replaced.
+    pub fn set_entry_line_ranges_if_changed(&self, ranges: &[(u32, u32)]) -> bool {
+        self.update_view_taking(|v| Some(v.set_entry_line_ranges_if_changed(ranges)))
+            .unwrap_or(false)
+    }
+
+    /// How many times the visual items list was actually replaced.
+    ///
+    /// Counts replacements rather than frames, so a caller can tell that a
+    /// frame over unchanged history reused the stored list.
+    #[must_use]
+    pub fn visual_items_writes(&self) -> u64 {
+        self.with_view(
+            jinn_chat_log_view_msg::ChatLogViewUi::visual_items_writes,
+            || 0,
+        )
+    }
+
+    /// How many times the per-entry line ranges were actually replaced.
+    ///
+    /// Counts replacements rather than frames, so a caller can tell that a
+    /// frame over unchanged history reused the stored ranges.
+    #[must_use]
+    pub fn entry_line_ranges_writes(&self) -> u64 {
+        self.with_view(
+            jinn_chat_log_view_msg::ChatLogViewUi::entry_line_ranges_writes,
+            || 0,
+        )
+    }
+
+    /// Store the content width the renderer just measured at.
+    ///
+    /// The session load reads this back to measure a freshly loaded history
+    /// at the width the next frame will use, so the measurement is not
+    /// discarded as stale.
+    pub fn set_content_width(&self, width: u16) {
+        self.update_view(|v| v.content_width.store(u32::from(width), Ordering::Relaxed));
+    }
+
+    /// The content width the last render measured at.
+    ///
+    /// `0` before the first render, which the renderer also treats as "do
+    /// not wrap".
+    #[must_use]
+    pub fn content_width(&self) -> u16 {
+        self.with_view(
+            |v| u16::try_from(v.content_width.load(Ordering::Relaxed)).unwrap_or(u16::MAX),
+            || 0,
+        )
+    }
+
+    /// Store how many consecutive tool entries the renderer just collapsed.
+    ///
+    /// A coverage probe reads this back so the visual items it builds match
+    /// the ones the next frame will build; see
+    /// [`set_content_width`] for the same arrangement.
+    pub fn set_min_collapse_count(&self, count: usize) {
+        self.update_view(|v| v.min_collapse_count.store(count as u32, Ordering::Relaxed));
+    }
+
+    /// The collapse threshold the last render used, or `0` before the first.
+    #[must_use]
+    pub fn min_collapse_count(&self) -> Option<usize> {
+        self.with_view(
+            |v| match v.min_collapse_count.load(Ordering::Relaxed) {
+                0 => None,
+                n => Some(n as usize),
+            },
+            || None,
+        )
     }
 
     /// A snapshot copy of the visual items list computed by the last render.

@@ -34,7 +34,9 @@ use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 use jinn_chat_log_view_msg::{
     DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
 };
+use jinn_core_types::SessionId;
 use jinn_session_msg::PhaseKind;
+use jinn_session_state::ChatSessionState;
 use jinn_theme::Theme;
 use jinn_tools_msg::TASK_TOOL_NAME;
 use ratatui::Frame;
@@ -54,6 +56,7 @@ use jinn_preferences_config::schemas::ChatLogConfig;
 
 /// Default number of lines to show for tool entries (calls and results) before truncating.
 const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
+
 // alternatives: |❚┃╏⣿𜺏░▒▓
 const GUTTER_STR: &str = "𜺏 ";
 
@@ -62,7 +65,10 @@ const GUTTER_STR: &str = "𜺏 ";
 /// background tint, streaming flag, subagent-waiting line). Used as the
 /// render-variant component of the entry line cache key so the cache
 /// invalidates when any of them flips.
-fn render_variant(
+///
+/// Shared with the off-thread layout worker, which must produce byte-identical
+/// variants or every count it publishes would miss.
+pub(crate) fn render_variant(
     paired_status: Option<ToolResultStatus>,
     is_streaming: bool,
     is_waiting_on_subagent: bool,
@@ -71,6 +77,88 @@ fn render_variant(
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     (paired_status, is_streaming, is_waiting_on_subagent).hash(&mut hasher);
     hasher.finish()
+}
+
+/// The per-entry render inputs that live in application state rather than in
+/// the history itself.
+///
+/// Snapshotted once per layout job so the off-thread measurement sees a stable
+/// set: the render pass gathers the same three things every frame, and a
+/// measurement taken across a state change would produce counts that no frame
+/// could ever hit.
+pub(crate) struct LayoutInputs {
+    /// Theme colors, cloned once per job rather than once per entry.
+    theme: Theme,
+    /// Entries whose tool result content is expanded.
+    expanded: HashSet<ChatEntryId>,
+    /// Tool call entries still streaming their arguments.
+    streaming: HashSet<ChatEntryId>,
+    /// Child sessions loaded and actively running, by session id.
+    running_children: HashSet<SessionId>,
+}
+
+impl LayoutInputs {
+    /// Snapshots the layout inputs for one session.
+    pub(crate) fn snapshot(state: &AppState, session_id: &SessionId) -> Self {
+        use jinn_session_msg::PhaseKind;
+
+        let running_children = state
+            .session
+            .iter()
+            .filter(|(_, child)| matches!(child.phase(), PhaseKind::Sending | PhaseKind::Streaming))
+            .map(|(id, _)| id.clone())
+            .collect();
+
+        let session = state.session.get(session_id);
+        Self {
+            theme: state.frontend.theme.clone(),
+            expanded: session.map_or_else(HashSet::new, ChatSessionState::expanded_entry_ids),
+            streaming: session.map_or_else(HashSet::new, ChatSessionState::streaming_tool_call_ids),
+            running_children,
+        }
+    }
+
+    /// Whether this entry's tool result content is expanded.
+    pub(crate) fn is_expanded(&self, id: &ChatEntryId) -> bool {
+        self.expanded.contains(id)
+    }
+
+    /// The theme to render this job's entries with.
+    pub(crate) fn theme(&self) -> &Theme {
+        &self.theme
+    }
+
+    /// Whether this tool call is still streaming its arguments.
+    pub(crate) fn is_streaming(&self, id: &ChatEntryId) -> bool {
+        self.streaming.contains(id)
+    }
+
+    /// Whether this `task` call is waiting on a loaded, running child session.
+    pub(crate) fn is_task_waiting(
+        &self,
+        entry: &ChatEntry,
+        tool_result_statuses: &HashMap<String, ToolResultStatus>,
+    ) -> bool {
+        let ChatEntryKind::ToolCall {
+            id,
+            name,
+            child_session,
+            ..
+        } = &entry.kind
+        else {
+            return false;
+        };
+        if name != TASK_TOOL_NAME {
+            return false;
+        }
+        // A paired result means the tool already finished.
+        if tool_result_statuses.contains_key(id) {
+            return false;
+        }
+        child_session
+            .as_ref()
+            .is_some_and(|child| self.running_children.contains(child))
+    }
 }
 
 /// Display element for the full conversation history.
@@ -127,10 +215,18 @@ impl UiElement for ChatLogElement {
             {
                 let session = state.active_session();
                 session.set_last_max_offset(render.scroll.max_offset);
-                session.set_entry_line_ranges(render.entry_line_ranges.clone());
+                session.set_entry_line_ranges_if_changed(&render.entry_line_ranges);
                 session.set_viewport_height(area.height);
                 session.set_blank_count(render.scroll.blank_count as u32);
                 session.set_rendered_scroll_offset(render.scroll.clamped);
+                // Published so a session loaded later measures at the width
+                // this frame used, instead of being measured at a guessed
+                // width and thrown away as stale.
+                session.set_content_width(render.content_width);
+                // The same arrangement for the collapse threshold: the
+                // coverage probe runs off the render thread and must build
+                // the same visual items this frame built.
+                session.set_min_collapse_count(render.min_collapse_count);
             }
 
             render.find_visible_indices();
@@ -228,6 +324,187 @@ fn render_loading(
 }
 
 // ---------------------------------------------------------------------------
+// Measurement coverage
+// ---------------------------------------------------------------------------
+
+/// Whether every line the chat log would draw for `session_id` is already
+/// measured at `content_width`.
+///
+/// The frontend calls this before switching to a session, to decide whether the
+/// switch needs a measurement dispatched or can happen outright. A `true`
+/// answer means the next frame's layout pass hits the cache for every item and
+/// costs a hash lookup per entry; a `false` answer means it would re-render
+/// the whole history inline, which is what freezes the UI on a large session.
+///
+/// Lives beside [`render_variant`] rather than in the `jinn-chat-log-view`
+/// slice deliberately: a coverage answer is only meaningful if it computes the
+/// same cache key the render pass computes, and the slice cannot see the
+/// domain-side render variant. The two loops are therefore kept adjacent and
+/// pinned together by tests.
+pub fn is_session_measured(
+    cache: &mut EntryLineCache,
+    state: &AppState,
+    session_id: &SessionId,
+    content_width: u16,
+) -> bool {
+    // Probed as a side effect: a width the cache has not seen clears it, and
+    // the first probe then misses. Skipping the probe would make a resize look
+    // like a warm cache, and the next frame would then do the full inline pass
+    // this function exists to avoid.
+    let Some(session) = state.session.get(session_id) else {
+        return false;
+    };
+    let probe = CoverageProbe::new(state, session, content_width);
+    probe.all_cached(cache)
+}
+
+/// The per-session inputs a coverage check resolves, gathered once so the walk
+/// below reads as a single pass over the visual items.
+struct CoverageProbe<'a> {
+    history: &'a [ChatEntry],
+    tool_result_statuses: HashMap<String, ToolResultStatus>,
+    streaming_tool_call_ids: HashSet<ChatEntryId>,
+    running_children: HashSet<SessionId>,
+    expanded: HashSet<ChatEntryId>,
+    shown_ignored_blocks: HashSet<ChatEntryId>,
+    content_width: u16,
+    min_collapse_count: usize,
+}
+
+impl<'a> CoverageProbe<'a> {
+    /// Resolves the same inputs [`HistoryRender::compute_line_ranges`] resolves.
+    ///
+    fn new(state: &'a AppState, session: &'a ChatSessionState, content_width: u16) -> Self {
+        Self {
+            history: session.history(),
+            tool_result_statuses: tool_result_statuses_of(session.history()),
+            streaming_tool_call_ids: session.streaming_tool_call_ids(),
+            running_children: running_session_ids(state),
+            expanded: session.expanded_entry_ids(),
+            shown_ignored_blocks: session.shown_ignored_blocks_snapshot(),
+            content_width,
+            // Read back from the last render rather than from the
+            // configuration layer: this runs off the render thread, where no
+            // config handle is in scope, and a threshold that disagreed with
+            // the frame's would make the probe count items that frame will
+            // never build. `None` before the first render, which is also the
+            // built-in default.
+            min_collapse_count: session
+                .min_collapse_count()
+                .unwrap_or(DEFAULT_MIN_COLLAPSE_COUNT),
+        }
+    }
+
+    /// Whether every visual item resolves to a cache hit at the probed width.
+    ///
+    /// One `for` loop: the walk is the whole check.
+    fn all_cached(&self, cache: &mut EntryLineCache) -> bool {
+        let visual_items = build_visual_items(
+            self.history,
+            &self.shown_ignored_blocks,
+            PROXIMITY_COUNT,
+            self.min_collapse_count,
+        );
+        visual_items.iter().all(|item| match item {
+            // A collapsed block is always exactly one line and is never stored
+            // in the cache, so probing it would report a miss that no
+            // measurement could ever fix.
+            VisualItem::CollapsedIgnoredBlock { .. } => true,
+            VisualItem::Entry(history_index) => {
+                let Some(entry) = self.history.get(*history_index) else {
+                    return false;
+                };
+                cache
+                    .probe(
+                        entry,
+                        self.expanded.contains(&entry.id),
+                        self.variant_of(entry),
+                        self.content_width,
+                    )
+                    .hit
+                    .is_some()
+            }
+        })
+    }
+
+    /// The render-variant key this entry would be probed under, computed
+    /// exactly as the render pass and the layout worker compute it.
+    fn variant_of(&self, entry: &ChatEntry) -> u64 {
+        render_variant(
+            paired_status_for(entry, &self.tool_result_statuses),
+            is_streaming_tool_call(entry, &self.streaming_tool_call_ids),
+            is_task_waiting(entry, &self.tool_result_statuses, &self.running_children),
+        )
+    }
+}
+
+/// Pairs tool call IDs with their result status for background coloring.
+fn tool_result_statuses_of(history: &[ChatEntry]) -> HashMap<String, ToolResultStatus> {
+    history
+        .iter()
+        .filter_map(|entry| match &entry.kind {
+            ChatEntryKind::ToolResult { id, status, .. } => Some((id.clone(), *status)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The ids of every session that is loaded and actively running.
+fn running_session_ids(state: &AppState) -> HashSet<SessionId> {
+    state
+        .session
+        .iter()
+        .filter(|(_, child)| matches!(child.phase(), PhaseKind::Sending | PhaseKind::Streaming))
+        .map(|(id, _)| id.clone())
+        .collect()
+}
+
+/// The paired tool result status for an entry, if it has one.
+fn paired_status_for(
+    entry: &ChatEntry,
+    tool_result_statuses: &HashMap<String, ToolResultStatus>,
+) -> Option<ToolResultStatus> {
+    match &entry.kind {
+        ChatEntryKind::ToolCall { id, .. } => tool_result_statuses.get(id).copied(),
+        ChatEntryKind::ToolResult { status, .. } => Some(*status),
+        _ => None,
+    }
+}
+
+/// Whether `entry` is a `ToolCall` still streaming its arguments.
+fn is_streaming_tool_call(entry: &ChatEntry, streaming: &HashSet<ChatEntryId>) -> bool {
+    matches!(&entry.kind, ChatEntryKind::ToolCall { .. }) && streaming.contains(&entry.id)
+}
+
+/// Whether this `task` call is still awaiting its result while its linked child
+/// session is loaded and actively running.
+fn is_task_waiting(
+    entry: &ChatEntry,
+    tool_result_statuses: &HashMap<String, ToolResultStatus>,
+    running_children: &HashSet<SessionId>,
+) -> bool {
+    let ChatEntryKind::ToolCall {
+        id,
+        name,
+        child_session,
+        ..
+    } = &entry.kind
+    else {
+        return false;
+    };
+    if name != TASK_TOOL_NAME {
+        return false;
+    }
+    // A paired result means the tool already finished.
+    if tool_result_statuses.contains_key(id) {
+        return false;
+    }
+    child_session
+        .as_ref()
+        .is_some_and(|child| running_children.contains(child))
+}
+
+// ---------------------------------------------------------------------------
 // History render pipeline
 // ---------------------------------------------------------------------------
 
@@ -259,18 +536,27 @@ struct HistoryRender<'a> {
     content_area: Rect,
 
     // Built by pipeline steps
+    /// The collapse threshold `compute_visual_items` resolved, published to
+    /// the session so the off-thread coverage probe can match it.
+    min_collapse_count: usize,
     tool_result_statuses: HashMap<String, ToolResultStatus>,
     /// Ids of the `ToolCall` entries streaming arguments right now.
     ///
     /// Snapshotted once per frame so layout can test membership per entry instead of
     /// scanning the whole history for each tool call.
     streaming_tool_call_ids: HashSet<ChatEntryId>,
+    /// Child sessions loaded and actively running, by session id.
+    ///
+    /// Snapshotted for the same reason as the streaming set: the render pass
+    /// tests membership per tool call, and scanning the session map inside that
+    /// test would be O(entries x sessions) on every frame.
+    running_children: HashSet<SessionId>,
     /// Per-visual-item wrapped line ranges: `entry_line_ranges[vi_idx] = (start, end)`.
     entry_line_ranges: Vec<(u32, u32)>,
     miss_lines: HashMap<usize, Vec<Line<'static>>>,
     #[expect(
         clippy::rc_buffer,
-        reason = "Vec<Line> not Send, Arc used for cheap clone within same thread"
+        reason = "Arc keeps cloning a rendered entry's line buffer O(1) where a plain Vec would deep-copy every line on each cache hit"
     )]
     cached_lines: HashMap<usize, Arc<Vec<Line<'static>>>>,
     total_wrapped: u32,
@@ -296,18 +582,21 @@ impl<'a> HistoryRender<'a> {
             height: area.height,
         };
         let streaming_tool_call_ids = state.active_session().streaming_tool_call_ids();
+        let running_children = running_session_ids(state);
         Self {
             history: state.active_session().history(),
             selected_idx: state.active_session().selected_entry_index(),
             state,
             config: config.read::<ChatLogConfig>(),
             content_width: content_area.width,
+            min_collapse_count: DEFAULT_MIN_COLLAPSE_COUNT,
             theme: state.frontend.theme.clone(),
             area,
             gutter_area,
             content_area,
             tool_result_statuses: HashMap::new(),
             streaming_tool_call_ids,
+            running_children,
             entry_line_ranges: Vec::new(),
             miss_lines: HashMap::new(),
             cached_lines: HashMap::new(),
@@ -327,14 +616,20 @@ impl<'a> HistoryRender<'a> {
 
     /// Compute visual items from flat history and store on session state.
     ///
-    /// Must be called before `compute_line_ranges`.
+    /// Must be called before `compute_line_ranges`. The computed list is
+    /// published to the session's view state only when it differs from the
+    /// stored one, so a frame over unchanged history does not copy the list
+    /// back.
     fn compute_visual_items(&mut self) {
-        let session = self.state.active_session();
-        let shown_ignored_blocks = session.shown_ignored_blocks_snapshot();
+        let shown_ignored_blocks = {
+            let session = self.state.active_session();
+            session.shown_ignored_blocks_snapshot()
+        };
         let min_collapse = self
             .config
             .min_collapse_count
             .unwrap_or(DEFAULT_MIN_COLLAPSE_COUNT);
+        self.min_collapse_count = min_collapse;
         let visual_items = build_visual_items(
             self.history,
             &shown_ignored_blocks,
@@ -343,7 +638,7 @@ impl<'a> HistoryRender<'a> {
         );
         self.state
             .active_session()
-            .set_visual_items(visual_items.clone());
+            .set_visual_items_if_changed(&visual_items);
         self.visual_items = visual_items;
     }
 
@@ -353,20 +648,12 @@ impl<'a> HistoryRender<'a> {
 
     /// Whether `entry` is a `ToolCall` still streaming arguments.
     fn is_streaming_tool_call(&self, entry: &ChatEntry) -> bool {
-        matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
-            && self.streaming_tool_call_ids.contains(&entry.id)
+        is_streaming_tool_call(entry, &self.streaming_tool_call_ids)
     }
 
     /// Pair tool call IDs with their result status for background coloring.
     fn build_tool_result_map(&mut self) {
-        self.tool_result_statuses = self
-            .history
-            .iter()
-            .filter_map(|entry| match &entry.kind {
-                ChatEntryKind::ToolResult { id, status, .. } => Some((id.clone(), *status)),
-                _ => None,
-            })
-            .collect();
+        self.tool_result_statuses = tool_result_statuses_of(self.history);
     }
 
     // -----------------------------------------------------------------------
@@ -472,11 +759,7 @@ impl<'a> HistoryRender<'a> {
 
     /// Look up the paired tool result status for an entry (if applicable).
     fn paired_status_for_entry(&self, entry: &ChatEntry) -> Option<ToolResultStatus> {
-        match &entry.kind {
-            ChatEntryKind::ToolCall { id, .. } => self.tool_result_statuses.get(id).copied(),
-            ChatEntryKind::ToolResult { status, .. } => Some(*status),
-            _ => None,
-        }
+        paired_status_for(entry, &self.tool_result_statuses)
     }
 
     /// Whether this entry is a `task` tool call still awaiting its result
@@ -485,30 +768,7 @@ impl<'a> HistoryRender<'a> {
     ///
     /// Drives the "Waiting for subagent session to complete" render line.
     fn is_task_waiting(&self, entry: &ChatEntry) -> bool {
-        let ChatEntryKind::ToolCall {
-            id,
-            name,
-            child_session,
-            ..
-        } = &entry.kind
-        else {
-            return false;
-        };
-        if name != TASK_TOOL_NAME {
-            return false;
-        }
-        // No paired result yet: a pending entry exists only before the tool
-        // starts executing, so any status here means the result has landed.
-        if self.tool_result_statuses.contains_key(id) {
-            return false;
-        }
-        let Some(child_id) = child_session else {
-            return false;
-        };
-        let Some(child) = self.state.session.get(child_id) else {
-            return false;
-        };
-        matches!(child.phase(), PhaseKind::Sending | PhaseKind::Streaming)
+        is_task_waiting(entry, &self.tool_result_statuses, &self.running_children)
     }
 
     // -----------------------------------------------------------------------

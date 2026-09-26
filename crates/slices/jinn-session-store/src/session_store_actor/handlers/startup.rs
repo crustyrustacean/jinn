@@ -1,17 +1,21 @@
 //! Startup session hydration and persisted-default seeding.
 
+use jinn_core_types::SessionId;
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_preferences_config::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
 use jinn_session_msg::SessionSeed;
-use jinn_session_store_msg::{SessionLoadCompleted, SessionSummary};
+use jinn_session_store_msg::SessionSummary;
+use trouper::context::MsgCtx;
 
+use crate::hydrate::HydrateSession;
 use crate::session_store_actor::SessionStoreActor;
 
 impl SessionStoreActor {
     /// Applies persisted defaults and hydrates unarchived sessions.
     pub(crate) async fn on_environment_loaded(
-        &self,
+        &mut self,
         _config: &jinn_provider_config::ProvidersConfig,
+        ctx: &mut MsgCtx<'_>,
     ) {
         let app_state = self.services.app_state_storage.read();
         let welcome_mcp_enablement = self.seed_welcome_session(&app_state);
@@ -22,7 +26,7 @@ impl SessionStoreActor {
             self.publish(enablement).await;
         }
 
-        if !self.load_unarchived_sessions().await {
+        if !self.load_unarchived_sessions(ctx).await {
             return;
         }
         self.publish(UpdateAppState {
@@ -70,9 +74,14 @@ impl SessionStoreActor {
     ///
     /// Returns `false` when the store's summary read fails, preserving the
     /// existing startup path's early exit before `UpdateAppState`.
-    async fn load_unarchived_sessions(&self) -> bool {
-        self.state
-            .with_session(|view| view.session.map().begin_startup_hydration());
+    ///
+    /// The reads themselves are dispatched, not awaited: this handler reads the
+    /// summaries to learn *what* to load, then hands each session to a worker
+    /// and returns, so the store actor's mailbox is free while the history is
+    /// still being pulled off disk. The sidebar fills in as each completion
+    /// lands, under the existing hydration indicator.
+    async fn load_unarchived_sessions(&mut self, ctx: &mut MsgCtx<'_>) -> bool {
+        self.begin_startup_hydration();
         let summaries = match self
             .services
             .session_store
@@ -94,15 +103,17 @@ impl SessionStoreActor {
             return true;
         }
 
-        let loaded_any = self.hydrate_unarchived_summaries(summaries).await;
-        self.finish_startup_hydration();
-        if !loaded_any {
-            return true;
-        }
-
-        self.hydrate_all_tree_frozen_nodes(&self.services.session_store)
-            .await;
+        self.dispatch_unarchived_hydration(ctx, summaries);
         true
+    }
+
+    /// Marks startup hydration as begun.
+    ///
+    /// Set before any job is dispatched, so a completion cannot arrive before
+    /// hydration is marked started and clear the flag immediately.
+    fn begin_startup_hydration(&mut self) {
+        self.state
+            .with_session(|view| view.session.map().begin_startup_hydration());
     }
 
     fn finish_startup_hydration(&self) {
@@ -110,41 +121,55 @@ impl SessionStoreActor {
             .with_session(|view| view.session.map().finish_startup_hydration());
     }
 
-    async fn hydrate_unarchived_summaries(&self, mut summaries: Vec<SessionSummary>) -> bool {
+    /// Sends one load job per unarchived session, newest first.
+    ///
+    /// The counter is incremented by the full batch *before* the first send, so
+    /// a completion that arrives while the loop is still running cannot drive it
+    /// to zero early and clear the hydration flag while jobs are still out.
+    fn dispatch_unarchived_hydration(
+        &mut self,
+        ctx: &mut MsgCtx<'_>,
+        mut summaries: Vec<SessionSummary>,
+    ) {
         summaries.sort_by_key(|summary| std::cmp::Reverse(summary.updated_at));
-        let mut loaded_any = false;
-        for summary in &summaries {
-            let snapshot = match self
-                .services
-                .session_store
-                .load_session(&summary.session_id)
-                .await
-            {
-                Ok(Some(snapshot)) => snapshot,
-                Ok(None) => {
-                    tracing::warn!(
-                        session_id = ?summary.session_id,
-                        "session snapshot missing during startup hydration"
-                    );
-                    continue;
-                }
-                Err(error) => {
-                    tracing::warn!(
-                        ?error,
-                        session_id = ?summary.session_id,
-                        "failed to load session snapshot during startup hydration"
-                    );
-                    continue;
-                }
-            };
-            loaded_any = true;
-            let session_id = self.insert_loaded_session({
-                let mut session = snapshot.restore_live();
-                session.mark_interacted();
-                session
+        let pending = summaries.len();
+        self.pending_hydrations = pending;
+        tracing::info!(pending, "dispatching startup hydration to the worker pool");
+        Self::send_hydration_jobs(ctx, summaries.into_iter().map(|summary| summary.session_id));
+    }
+
+    /// Sends one `HydrateSession` per session id to whichever worker is free.
+    ///
+    /// The loop is the dispatch: it sends and returns without awaiting any of
+    /// the reads, which is the whole point — the actor's task is never held
+    /// across a database read.
+    fn send_hydration_jobs(ctx: &mut MsgCtx<'_>, session_ids: impl Iterator<Item = SessionId>) {
+        for session_id in session_ids {
+            ctx.send_to_any(HydrateSession {
+                session_id,
+                frozen: false,
             });
-            self.publish(SessionLoadCompleted { session_id }).await;
         }
-        loaded_any
+    }
+
+    /// Records one finished load, clearing the hydration flag on the last one.
+    ///
+    /// Returns whether this completion was the last one, so the caller can
+    /// start work that depends on the session map being fully populated.
+    ///
+    /// Saturating and zero-guarded on purpose. The summary-read failure and
+    /// empty-summaries paths clear the flag without ever incrementing, and a
+    /// completion belonging to some other dispatch must not clear a flag that
+    /// belongs to a hydration still in flight.
+    pub(crate) fn note_hydration_completion(&mut self) -> bool {
+        if self.pending_hydrations == 0 {
+            return false;
+        }
+        self.pending_hydrations = self.pending_hydrations.saturating_sub(1);
+        if self.pending_hydrations > 0 {
+            return false;
+        }
+        self.finish_startup_hydration();
+        true
     }
 }

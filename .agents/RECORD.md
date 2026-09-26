@@ -287,3 +287,12 @@ Entries are added or amended **only with human approval**.
 - (session) Durable session persistence uses a complete `SessionSnapshot` containing session metadata, history, task state, and token accounting.
 - (session) The session turn reducer is owned by `jinn-session-turn` and coordinates history, phase, streaming, tools, retries, and persistence.
 - (session) SQLite session persistence commits metadata, history, attachments, and token-ledger changes in one transaction.
+- (ui) The chat log's initial layout pass runs off the main thread, and the session loading indication stays up until it completes.
+- (ui) The session loading indication is an animated spinner rather than static text.
+- (ui) Activating a sidebar session measures its chat log off the main thread when it has no cached line counts, and otherwise switches immediately.
+- (sessions) Startup hydration reads each unarchived session on a worker pool, so the store actor's mailbox is free while history is still being read.
+- (ui) The sidebar lists each session as its history finishes loading, rather than after all sessions have loaded.
+- (sessions) A session's chat log is shared with the layout workers as a single `Arc` snapshot, so activating a session copies its history once rather than per worker.
+- (chat-log) A session that has not yet rendered a frame records no content width, and a measurement of such a session is applied rather than treated as stale.
+- (chat-log) The chat log's line counts are keyed to the width each entry was measured at, so a resize invalidates only the counts taken at the old width.
+- (chat-log) The session loading guard is released only by the session that holds it, so a deadline armed for a session the user has left cannot end another session's load.

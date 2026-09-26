@@ -73,31 +73,12 @@ impl TuiApp {
     /// Processes a single message.
     pub fn handle_msg(&mut self, msg: Msg) {
         match msg {
-            Msg::Tick => {
-                let load_started = {
-                    let state = self.core.state.read();
-                    state.session.session_load_guard().map(|g| g.started_at)
-                };
-                if let Some(started) = load_started
-                    && started.elapsed() >= std::time::Duration::from_secs(10)
-                {
-                    let session_id = {
-                        let state = self.core.state.read();
-                        state.session.active_session_id().clone()
-                    };
-                    let mut state = self.core.state.write();
-                    state.session.clear_load();
-                    let closure = jinn_domain::common::bridge::Bridge::publish_closure(
-                        jinn_session_history_msg::PushChatEntry {
-                            session_id,
-                            entry: jinn_domain::ChatEntry::system(
-                                "Failed to load session: timed out",
-                            ),
-                        },
-                    );
-                    let _ = self.core.bridge.send(closure);
-                }
-            }
+            // The tick no longer times out a session load. A large load is
+            // now bounded by the chat log layout supervisor's own deadline,
+            // which releases the loading indication and — unlike the watchdog
+            // this replaces — writes nothing into the conversation, because a
+            // measurement that could not be taken is not a conversation event.
+            Msg::Tick => {}
             Msg::Input(event) => {
                 // Sync scope from state before processing key.
                 // This ensures the which-key scope matches the actual scope stack,
