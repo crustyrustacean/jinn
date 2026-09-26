@@ -42,16 +42,26 @@ requires `H: Clone`; `Arc<dyn Fn...>` satisfies it for free. Verified `key_bytes
 
 ## Phase 3 — Lifecycle picker: seed on enter
 
-- [ ] Add `register_session_lifecycle_picker_enter_hook` in `session_lifecycle_picker_routes.rs`, reading the config before downcasting app state for the theme
-- [ ] Use `jinn_theme::default_theme()` as the theme fallback when the `app(ctx)` downcast fails (`Theme` has no `Default` impl)
-- [ ] Reduce `open_session_lifecycle_picker` to a bare `ScopeSignal::Push` with unused ctx/cell params; verify the `SessionLifecycle` import is still needed by `confirm_session_lifecycle_picker`
-- [ ] Call the new registration from `activate_picker` in `crates/slices/jinn-session-lifecycle/src/lib.rs`
-- [ ] Update the doc on `session_lifecycle_picker_actions::open` to name the enter hook as its caller
-- [ ] Fix `Wired::open()` in `session_lifecycle_picker_tests.rs` to apply the scope signal (push + invoke the enter hook), mirroring production — **highest-risk edit**
-- [ ] Add test: reopening the picker after typing a filter leaves the filter empty
-- [ ] Verify the existing test `opening_the_picker_lists_every_configured_lifecycle_after_blank` still passes unmodified in intent
+- [x] Add `register_session_lifecycle_picker_enter_hook` in `session_lifecycle_picker_routes.rs`, reading the config before downcasting app state for the theme
+- [x] Use `jinn_theme::default_theme()` as the theme fallback when the `app(ctx)` downcast fails (`Theme` has no `Default` impl — re-confirmed at `crates/jinn-theme/src/theme.rs`, only `default_theme()` exists)
+- [x] Reduce `open_session_lifecycle_picker` to a bare `ScopeSignal::Push` with unused ctx/cell params; `SessionLifecycle` import still needed by the enter hook and `confirm_session_lifecycle_picker`
+- [x] Call the new registration from `activate_picker` in `crates/slices/jinn-session-lifecycle/src/lib.rs`
+- [x] Update the doc on `session_lifecycle_picker_actions::open` to name the enter hook as its caller
+- [x] Fix `Wired::open()` in `session_lifecycle_picker_tests.rs` to apply the scope signal (push + invoke the enter hook), mirroring production — **highest-risk edit**
+- [x] Add test: reopening the picker after typing a filter leaves the filter empty
+- [x] Add test: reopening moves the highlight back to the first row
+- [x] Verify the existing test `opening_the_picker_lists_every_configured_lifecycle_after_blank` still passes unmodified in intent
 - [ ] Add cross-slice regression test in `tests/slices/session_lifecycle.rs`: project `<c-enter>` populates the lifecycle picker with blank + configured lifecycles, exercising the scope-push path
 - [ ] Add cross-slice test in `tests/slices/session_lifecycle.rs`: project `<c-enter>` clears a stale filter typed during a previous visit
+
+**Notes:**
+- `Wired::open()` was **split into two helpers** rather than one, because several existing tests
+  (`opening_the_picker_pushes_its_own_scope` and the confirm/cancel cases) read
+  `result.scope_signal` off `open()`'s return value. Applying the signal inside `open()` would
+  `take()` that field and break them. Now: `fire()` dispatches and leaves the signal intact;
+  `apply_signal()` consumes one; `open()` = fire + apply.
+- All 28 pre-existing picker tests pass unmodified; the two new reset tests pass and each asserts
+  its "Given" precondition first so neither can pass vacuously.
 
 ## Phase 4 — Remove the dead `N` row
 
