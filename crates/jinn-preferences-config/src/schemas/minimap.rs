@@ -31,3 +31,7 @@ impl Default for MinimapConfig {
         }
     }
 }
+
+impl jinn_config::Configurable for MinimapConfig {
+    const KEY: &'static str = "ui.minimap";
+}

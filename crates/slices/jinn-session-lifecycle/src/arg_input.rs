@@ -138,6 +138,7 @@ fn confirm_arg_input(ctx: &mut ActionCtx<'_>, cell: &ArgInputCell) -> IntentResu
         &lifecycle_name,
         &args,
         None,
+        ctx.config,
     )
 }
 
@@ -215,10 +216,15 @@ mod tests {
         }
     }
 
-    fn action_ctx<'a>(state: &'a mut FakeState, slices: &'a jinn_slices::Slices) -> ActionCtx<'a> {
+    fn action_ctx<'a>(
+        state: &'a mut FakeState,
+        slices: &'a jinn_slices::Slices,
+        config: &'a jinn_config::ConfigLayer,
+    ) -> ActionCtx<'a> {
         ActionCtx {
             state,
             slices,
+            config,
             key_bytes: Vec::new(),
         }
     }
@@ -242,7 +248,8 @@ mod tests {
         // Given a popup with insufficient arguments and mutable kernel state.
         let (slices, cell) = cell_with("echo $1 $2", "only-one");
         let mut state = FakeState::default();
-        let mut ctx = action_ctx(&mut state, &slices);
+        let config = jinn_config::testutil::config_layer("");
+        let mut ctx = action_ctx(&mut state, &slices, &config);
 
         // When confirmation runs.
         let result = confirm_arg_input(&mut ctx, &cell);
@@ -257,18 +264,11 @@ mod tests {
         // Given a popup with enough quote-aware arguments and a scripted lifecycle preference.
         let (slices, cell) = cell_with("echo $1 $2", "\"two words\" tail");
         let mut state = FakeState::default();
-        state.kernel.frontend.preferences.session_lifecycles.push(
-            jinn_preferences_config::schemas::SessionLifecycle {
-                name: "research".to_owned(),
-                description: None,
-                setup: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                    "echo $1 $2".to_owned(),
-                )),
-                teardown: None,
-            },
+        let config = jinn_config::testutil::config_layer(
+            "[[session_lifecycle.script]]\nname = \"research\"\nsetup_command = \"echo $1 $2\"\n",
         );
         let original_session_count = state.kernel.session.session_count();
-        let mut ctx = action_ctx(&mut state, &slices);
+        let mut ctx = action_ctx(&mut state, &slices, &config);
 
         // When confirmation runs.
         let result = confirm_arg_input(&mut ctx, &cell);

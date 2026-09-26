@@ -48,8 +48,11 @@ fn sidebar_persona_edit_opens_picker_when_persona_focused() {
         .scope_set_sidebar_section(jinn_sidebar_msg::SidebarSectionId::Persona);
 
     // When handling sidebar persona edit.
-    let result =
-        handle_sidebar_persona_edit(&mut state, &jinn_picker_specs::build_picker_registry());
+    let result = handle_sidebar_persona_edit(
+        &mut state,
+        &jinn_picker_specs::build_picker_registry(),
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then the persona picker is active.
     assert_eq!(
@@ -77,8 +80,11 @@ fn sidebar_persona_edit_noop_when_pins_focused() {
         .scope_set_sidebar_section(jinn_sidebar_msg::SidebarSectionId::Pins);
 
     // When handling sidebar persona edit.
-    let result =
-        handle_sidebar_persona_edit(&mut state, &jinn_picker_specs::build_picker_registry());
+    let result = handle_sidebar_persona_edit(
+        &mut state,
+        &jinn_picker_specs::build_picker_registry(),
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then nothing changed.
     assert!(!state.frontend.is_picker());
@@ -242,7 +248,11 @@ fn content_height_is_zero_when_empty() {
     // When asking for content height.
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let height = section.content_height(&RenderCtx::new(&state, &slices, &overlay_views));
+    let height = section.content_height(&RenderCtx::new_with_default_config(
+        &state,
+        &slices,
+        &overlay_views,
+    ));
 
     // Then it returns 0 (section is hidden when empty).
     assert_eq!(height, 0);
@@ -257,7 +267,11 @@ fn content_height_matches_entry_count() {
     // When asking for content height.
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let height = section.content_height(&RenderCtx::new(&state, &slices, &overlay_views));
+    let height = section.content_height(&RenderCtx::new_with_default_config(
+        &state,
+        &slices,
+        &overlay_views,
+    ));
 
     // Then it returns header(1) + header-gap(1) + entries(3) + trailing gap(1) = 6.
     assert_eq!(height, 6);
@@ -274,7 +288,7 @@ fn render_rows(
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
             section.render(frame, area, 0, &ctx);
         })
         .unwrap();
@@ -350,7 +364,7 @@ fn render_selected_entry_has_yellow_marker_when_sidebar_focused() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             section.render(frame, area, 0, &ctx);
         })
         .unwrap();
@@ -374,7 +388,7 @@ fn render_selected_entry_has_darkgray_marker_when_not_focused() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             section.render(frame, area, 0, &ctx);
         })
         .unwrap();
@@ -459,6 +473,7 @@ fn session_new_works_when_sidebar_sessions_focused() {
         &empty_slices(),
         &empty_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then a new session is created.
@@ -491,6 +506,7 @@ fn session_new_works_when_not_in_sidebar() {
         &empty_slices(),
         &empty_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then a new session is created (no section restriction outside sidebar).

@@ -188,12 +188,11 @@ impl SessionStoreActor {
     ) {
         let (fresh_session, enablement) = {
             let app_state = self.services.app_state_storage.read();
-            let preferences = self.services.user_preferences_storage.read();
             let mut profile = SessionProfile::from_model_selection(
                 app_state.last_model.clone().unwrap_or_default(),
             );
             profile.reasoning_effort = app_state.reasoning_effort;
-            let seed = SessionSeed::from_preferences(&preferences);
+            let seed = SessionSeed::from_config(&self.services.config);
             profile.disabled_tools.clone_from(&seed.disabled_tools);
             profile.disabled_skills.clone_from(&seed.disabled_skills);
 

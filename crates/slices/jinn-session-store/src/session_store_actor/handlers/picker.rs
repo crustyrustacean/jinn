@@ -27,7 +27,7 @@ impl SessionStoreActor {
                 .row(jinn_session_store_msg::session_row)
                 .search(|entry: &jinn_session_store_msg::SessionTreeEntry| entry.title.clone()),
         );
-        self.state.with_preferences(|ops| {
+        self.state.with_frontend_state(|ops| {
             ops.frontend().session_picker_mut().set_items(wrapped);
         });
     }

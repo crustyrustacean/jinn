@@ -50,6 +50,7 @@ use jinn_chat_log_view::chat_log::{
     build_collapsed_block_gutter_line, build_entry_gutter_lines, compute_scroll, entry_to_lines,
     find_visible_indices, render_scroll_indicator,
 };
+use jinn_preferences_config::schemas::ChatLogConfig;
 
 /// Default number of lines to show for tool entries (calls and results) before truncating.
 const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
@@ -115,7 +116,7 @@ impl UiElement for ChatLogElement {
             return;
         }
 
-        let mut render = HistoryRender::new(state, area);
+        let mut render = HistoryRender::new(state, area, ctx.config);
         render.compute_visual_items();
         render.build_tool_result_map();
         {
@@ -246,6 +247,11 @@ struct HistoryRender<'a> {
     visual_items: Vec<VisualItem>,
     selected_idx: Option<usize>,
     state: &'a AppState,
+    /// This frame's chat-log settings, read once from the configuration
+    /// layer. Resolving once per frame rather than per entry keeps the
+    /// three call sites below consistent with each other even if a
+    /// `reload` lands mid-frame.
+    config: ChatLogConfig,
     content_width: u16,
     theme: Theme,
     area: Rect,
@@ -276,7 +282,7 @@ struct HistoryRender<'a> {
 }
 
 impl<'a> HistoryRender<'a> {
-    fn new(state: &'a AppState, area: Rect) -> Self {
+    fn new(state: &'a AppState, area: Rect, config: &jinn_config::ConfigLayer) -> Self {
         let gutter_area = Rect {
             x: area.x,
             y: area.y,
@@ -294,6 +300,7 @@ impl<'a> HistoryRender<'a> {
             history: state.active_session().history(),
             selected_idx: state.active_session().selected_entry_index(),
             state,
+            config: config.read::<ChatLogConfig>(),
             content_width: content_area.width,
             theme: state.frontend.theme.clone(),
             area,
@@ -325,9 +332,7 @@ impl<'a> HistoryRender<'a> {
         let session = self.state.active_session();
         let shown_ignored_blocks = session.shown_ignored_blocks_snapshot();
         let min_collapse = self
-            .state
-            .frontend
-            .preferences
+            .config
             .min_collapse_count
             .unwrap_or(DEFAULT_MIN_COLLAPSE_COUNT);
         let visual_items = build_visual_items(
@@ -407,9 +412,7 @@ impl<'a> HistoryRender<'a> {
                     } else {
                         let is_selected = self.selected_idx == Some(vi_idx);
                         let max_lines = self
-                            .state
-                            .frontend
-                            .preferences
+                            .config
                             .tool_entry_max_lines
                             .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
                         let paired_status = self.paired_status_for_entry(entry);
@@ -618,9 +621,7 @@ impl<'a> HistoryRender<'a> {
                     let is_selected = self.selected_idx == Some(vi_idx);
                     let is_expanded = self.state.active_session().is_entry_expanded(&entry.id);
                     let max_lines = self
-                        .state
-                        .frontend
-                        .preferences
+                        .config
                         .tool_entry_max_lines
                         .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
                     let variant = render_variant(
@@ -766,7 +767,7 @@ mod tests {
         {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
             terminal
                 .draw(|frame| element.render(frame, area, &ctx))
                 .expect("draw");

@@ -125,7 +125,12 @@ mod tests {
 
         // When opening the session picker through the real open path.
         let registry = crate::build_picker_registry();
-        let result = handle_open_picker(&mut state, PickerKind::Session, &registry);
+        let result = handle_open_picker(
+            &mut state,
+            PickerKind::Session,
+            &registry,
+            jinn_slices::empty_config_layer(),
+        );
 
         // Then the load request is dispatched to the actor.
         assert!(result.message_names.contains(&"LoadSessionPickerEntries"));
@@ -168,8 +173,11 @@ mod tests {
 
         // When confirming through the real confirm path.
         let registry = crate::build_picker_registry();
-        let (result, _redispatch) =
-            jinn_domain::feat::picker::intent::handle_picker_confirm(&mut state, &registry);
+        let (result, _redispatch) = jinn_domain::feat::picker::intent::handle_picker_confirm(
+            &mut state,
+            &registry,
+            crate::empty_config_layer(),
+        );
 
         // Then the switch command is dispatched and the picker closes.
         assert!(

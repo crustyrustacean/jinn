@@ -352,7 +352,7 @@ mod tests {
         state: &mut AppState,
         f: impl FnOnce(&mut ActionCtx<'_>) -> PickerOutcome,
     ) -> PickerOutcome {
-        let mut host = AppStatePickerHost::new(state);
+        let mut host = AppStatePickerHost::new(state, crate::empty_config_layer());
         let mut ctx = ActionCtx::new(PickerId::new(jinn_picker::ENDPOINT_ID), &mut host);
         f(&mut ctx)
     }
@@ -550,7 +550,10 @@ mod tests {
 
     /// Renders the status hook against a read-only host over `state`.
     fn status_line_of(state: &AppState) -> Line<'static> {
-        let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(state);
+        let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(
+            state,
+            crate::empty_config_layer(),
+        );
         let ctx = StatusCtx::new(PickerId::new(jinn_picker::ENDPOINT_ID), &host);
         endpoint_status(&ctx).expect("status line always renders")
     }

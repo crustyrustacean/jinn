@@ -29,17 +29,23 @@ use jinn_picker::TOOL_ID;
 /// dispatch/render with `&mut AppState` — it never outlives the guard.
 pub struct AppStatePickerHost<'a> {
     state: &'a mut AppState,
+    config: &'a jinn_config::ConfigLayer,
 }
 
 impl<'a> AppStatePickerHost<'a> {
-    /// Wraps the kernel state.
+    /// Wraps the kernel state and the configuration layer a spec
+    /// reads and writes.
     #[must_use]
-    pub fn new(state: &'a mut AppState) -> Self {
-        Self { state }
+    pub fn new(state: &'a mut AppState, config: &'a jinn_config::ConfigLayer) -> Self {
+        Self { state, config }
     }
 }
 
 impl PickerHost for AppStatePickerHost<'_> {
+    fn config(&self) -> &jinn_config::ConfigLayer {
+        self.config
+    }
+
     fn selection_state(&mut self, id: PickerId) -> Option<&mut dyn std::any::Any> {
         match id.as_str() {
             PERSONA_ID => Some(self.state.frontend.persona_picker_mut() as &mut dyn std::any::Any),
@@ -147,17 +153,24 @@ impl PickerHost for AppStatePickerHost<'_> {
 /// operations are answered; mutable lends are not.
 pub struct AppStateRenderHost<'a> {
     state: &'a AppState,
+    config: &'a jinn_config::ConfigLayer,
 }
 
 impl<'a> AppStateRenderHost<'a> {
-    /// Wraps the render pass's state snapshot.
+    /// Wraps the render pass's state snapshot and the configuration
+    /// layer, so a render-side spec reads the same live values a
+    /// dispatch-side one does.
     #[must_use]
-    pub fn new(state: &'a AppState) -> Self {
-        Self { state }
+    pub fn new(state: &'a AppState, config: &'a jinn_config::ConfigLayer) -> Self {
+        Self { state, config }
     }
 }
 
 impl PickerHost for AppStateRenderHost<'_> {
+    fn config(&self) -> &jinn_config::ConfigLayer {
+        self.config
+    }
+
     fn selection_state(&mut self, _id: PickerId) -> Option<&mut dyn std::any::Any> {
         None // render never mutates through this lens
     }
@@ -275,7 +288,7 @@ mod tests {
 
         // When lending the selection state for the persona id.
         let mapped = {
-            let mut host = AppStatePickerHost::new(&mut state);
+            let mut host = AppStatePickerHost::new(&mut state, jinn_slices::empty_config_layer());
             host.selection_state(PickerId::new(PERSONA_ID))
                 .expect("persona is mapped")
                 .downcast_ref::<jinn_selection_widget::SelectionState<
@@ -296,7 +309,7 @@ mod tests {
     fn unmapped_ids_lend_nothing() {
         // Given a default host state.
         let mut state = AppState::default_with_scope_focus();
-        let mut host = AppStatePickerHost::new(&mut state);
+        let mut host = AppStatePickerHost::new(&mut state, jinn_slices::empty_config_layer());
 
         // When lending an id no picker claims.
         // Then nothing is returned.
@@ -313,7 +326,7 @@ mod tests {
 
         // When setting preview scrolls for the skill id and another id.
         let (skill_scroll, other_scroll, stored) = {
-            let mut host = AppStatePickerHost::new(&mut state);
+            let mut host = AppStatePickerHost::new(&mut state, jinn_slices::empty_config_layer());
             host.set_preview_scroll(skill, 7);
             host.set_preview_scroll(other, 3);
             (

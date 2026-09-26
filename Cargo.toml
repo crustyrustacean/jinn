@@ -87,6 +87,7 @@ jinn-cwd = { workspace = true }
 jinn-tui = { workspace = true }
 jinn-domain = { workspace = true }
 jinn-preferences-config = { workspace = true }
+jinn-config = { workspace = true }
 jinn-preferences = { workspace = true }
 jinn-project = { workspace = true }
 jinn-dashboard = { workspace = true }
@@ -173,6 +174,7 @@ jinn-domain = { path = "crates/jinn-domain" }
 jinn-discord = { path = "crates/slices/jinn-discord" }
 jinn-discord-msg = { path = "crates/slices/jinn-discord-msg" }
 jinn-common = { path = "crates/jinn-common" }
+jinn-config = { path = "crates/jinn-config" }
 jinn-context = { path = "crates/jinn-context" }
 jinn-core-types = { path = "crates/jinn-core-types" }
 jinn-llm-support = { path = "crates/jinn-llm-support" }

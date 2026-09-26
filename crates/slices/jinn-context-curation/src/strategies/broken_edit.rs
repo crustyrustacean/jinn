@@ -47,6 +47,11 @@ use jinn_core_types::{ChangeSource, ChatEntry, ChatEntryKind, ContextOverride};
 /// both the call and its result are excluded from context.
 #[derive(Clone)]
 pub struct BrokenEditAutoPruneWorker {
+    /// The configuration layer. The worker holds a cheap
+    /// cloneable handle and re-reads its own subsection inside
+    /// `evaluate`, so enablement and tuning are observed per pass
+    /// rather than frozen at wiring time.
+    pub layer: jinn_config::ConfigLayer,
     /// Configuration for the broken-edit auto-prune strategy.
     pub config: BrokenEditAutoPruneConfig,
 }
@@ -89,6 +94,18 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
         _session_id: &SessionId,
         history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
+        // Live read: this strategy has no tuning of its own beyond its
+        // enablement switch, so the whole point of the read is to honour
+        // that switch. Off or unreadable means a no-op pass, not an
+        // absent worker.
+        let Some(config) = super::super::worker::strategy_section(&self.layer, |auto| {
+            let section = &auto.broken_edit;
+            section.enabled.then(|| section.clone())
+        }) else {
+            return Vec::new();
+        };
+        let config = &config;
+
         let mut mutations = Vec::new();
 
         for i in 0..history.len() {
@@ -134,7 +151,7 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
 
             // Skip if the failed-edit call is within the protection floor.
             // A `min_age` of 0 disables protection entirely.
-            if is_within_min_age(history.len(), i, self.config.min_age) {
+            if is_within_min_age(history.len(), i, config.min_age) {
                 continue;
             }
 
@@ -204,10 +221,11 @@ mod tests {
     /// Build a worker with the given `min_age`.
     fn worker_with_min_age(min_age: usize) -> BrokenEditAutoPruneWorker {
         BrokenEditAutoPruneWorker {
-            config: BrokenEditAutoPruneConfig {
-                enabled: true,
-                min_age,
-            },
+            layer: crate::worker::layer_with_strategy(
+                "broken_edit",
+                format!("min_age = {min_age}\n"),
+            ),
+            config: BrokenEditAutoPruneConfig::default(),
         }
     }
 

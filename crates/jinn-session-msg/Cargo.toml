@@ -12,8 +12,10 @@ serde = { workspace = true }
 trouper = { workspace = true }
 wherror = { workspace = true }
 
-[dev-dependencies]
+jinn-config = { workspace = true }
 jinn-mcp-msg = { workspace = true }
+
+[dev-dependencies]
 rstest = { workspace = true }
 serde_json = { workspace = true }
 

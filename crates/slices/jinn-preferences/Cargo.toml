@@ -5,6 +5,7 @@ edition.workspace = true
 description = "The preferences slice: persists jinn.toml and state.toml (PreferencesActor + AppStateActor)."
 
 [dependencies]
+jinn-config = { workspace = true }
 # Kernel dep is deliberate: both actors write AppState inline through
 # `State` projections — `frontend.preferences` / `frontend.app_state`, the
 # theme cell resolution in the app-state sync, and the project-picker

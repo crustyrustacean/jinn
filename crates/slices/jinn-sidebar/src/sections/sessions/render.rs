@@ -283,7 +283,8 @@ pub fn render_close_session_prompt_for_state(
     }
 
     // Shared cursor-row math: see `render_sessions_cursor_y`.
-    let prompt_y = render_sessions_cursor_y(sidebar_rect, state).saturating_sub(BANNER_GAP);
+    let prompt_y =
+        render_sessions_cursor_y(sidebar_rect, state, ctx.config).saturating_sub(BANNER_GAP);
     let text = " Press x again to teardown and archive 1 session ";
     render_right_aligned_banner(frame, frame_area, prompt_y, text, Color::Yellow);
 }
@@ -320,7 +321,8 @@ pub fn render_archive_tree_prompt_for_state(
     }
 
     // Shared cursor-row math: see `render_sessions_cursor_y`.
-    let prompt_y = render_sessions_cursor_y(sidebar_rect, state).saturating_sub(BANNER_GAP);
+    let prompt_y =
+        render_sessions_cursor_y(sidebar_rect, state, ctx.config).saturating_sub(BANNER_GAP);
 
     let (text, bg) = match prompt {
         ArchiveTreePrompt::Confirm { count, action } => {
@@ -349,8 +351,12 @@ pub fn render_archive_tree_prompt_for_state(
 ///
 /// Runs the same document layout the `Sidebar` container uses, so the banner
 /// stays attached to the cursor even when the sidebar is scrolled.
-fn render_sessions_cursor_y(sidebar_rect: Rect, state: &AppState) -> u16 {
-    let document = crate::sections::layout::document_with_cursor(state);
+fn render_sessions_cursor_y(
+    sidebar_rect: Rect,
+    state: &AppState,
+    config: &jinn_slices::ConfigLayer,
+) -> u16 {
+    let document = crate::sections::layout::document_with_cursor(state, config);
     let offset = document.offset(sidebar_rect.height);
     // `Sidebar::render` pushes a document shorter than the column down by the
     // slack, so the anchor must apply the same shift or the banner detaches.

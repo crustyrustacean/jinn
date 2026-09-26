@@ -71,6 +71,11 @@ struct CallInfo {
 /// threshold.
 #[derive(Clone)]
 pub struct TodoAutoPruneWorker {
+    /// The configuration layer. The worker holds a cheap
+    /// cloneable handle and re-reads its own subsection inside
+    /// `evaluate`, so enablement and tuning are observed per pass
+    /// rather than frozen at wiring time.
+    pub layer: jinn_config::ConfigLayer,
     /// Configuration for the todo auto-prune strategy.
     pub config: TodoAutoPruneConfig,
 }
@@ -321,6 +326,16 @@ fn exclude_mutation(entry_id: jinn_core_types::ChatEntryId, worker_name: &str) -
     }
 }
 
+impl TodoAutoPruneWorker {
+    /// This worker's live subsection, or `None` when it is switched off.
+    pub fn section(&self) -> Option<TodoAutoPruneConfig> {
+        super::super::worker::strategy_section(&self.layer, |auto| {
+            let section = &auto.todo;
+            section.enabled.then(|| section.clone())
+        })
+    }
+}
+
 #[async_trait::async_trait]
 impl HistoryWorker for TodoAutoPruneWorker {
     #[expect(
@@ -336,14 +351,21 @@ impl HistoryWorker for TodoAutoPruneWorker {
         _session_id: &SessionId,
         history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
+        // Live read: this strategy's own subsection, switched off or
+        // unreadable means a no-op pass rather than an absent worker.
+        let Some(config) = self.section() else {
+            return Vec::new();
+        };
+        let config = &config;
+
         let (calls, result_map) = collect_all_todo_pairs(&history);
         build_prune_mutations(
             &history,
             &calls,
             &result_map,
-            self.config.min_age,
+            config.min_age,
             self.name(),
-            self.config.protect_latest,
+            config.protect_latest,
         )
     }
 }
@@ -421,11 +443,11 @@ mod tests {
     /// Build a worker with `min_age = 0` and the given `protect_latest` flag.
     fn worker_with_protect_latest(protect_latest: bool) -> TodoAutoPruneWorker {
         TodoAutoPruneWorker {
-            config: TodoAutoPruneConfig {
-                enabled: true,
-                min_age: 0,
-                protect_latest,
-            },
+            layer: crate::worker::layer_with_strategy(
+                "todo",
+                format!("protect_latest = {protect_latest}\nmin_age = 0\n"),
+            ),
+            config: TodoAutoPruneConfig::default(),
         }
     }
 
@@ -847,11 +869,8 @@ mod tests {
     /// Evaluate with explicit min_age (protect_latest on, the default).
     fn evaluate_with_min_age(history: Vec<ChatEntry>, min_age: usize) -> Vec<HistoryMutation> {
         let w = TodoAutoPruneWorker {
-            config: TodoAutoPruneConfig {
-                enabled: true,
-                min_age,
-                protect_latest: true,
-            },
+            layer: crate::worker::layer_with_strategy("todo", format!("min_age = {min_age}\n")),
+            config: TodoAutoPruneConfig::default(),
         };
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         rt.block_on(async { w.evaluate(&SessionId::new(), Arc::from(history)).await })

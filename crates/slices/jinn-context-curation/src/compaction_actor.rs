@@ -22,6 +22,7 @@ use jinn_domain::common::state::State;
 use jinn_session_history_msg::{PushChatEntry, SubmitHistoryMutations};
 
 use crate::compaction_worker::{CompactionTrigger, CompactionWorker};
+use jinn_preferences_config::schemas::CompactionConfig;
 
 /// The compaction actor's static path.
 pub const COMPACTION_PATH: &str = "context-curation-compaction";
@@ -42,6 +43,10 @@ pub struct CompactionActorDeps {
 /// Runs the compaction worker on `TriggerCompaction` commands.
 pub struct CompactionActor {
     services: Services,
+    #[expect(
+        dead_code,
+        reason = "the compaction path reads config, not the state snapshot"
+    )]
     state: State,
     worker: CompactionWorker,
 }
@@ -139,11 +144,10 @@ impl CompactionActor {
             Ok(_) => {
                 // Empty mutations - nothing to compact.
                 let reserve = self
-                    .state
-                    .read()
-                    .frontend
-                    .preferences
-                    .compaction
+                    .services
+                    .config
+                    .get::<CompactionConfig>()
+                    .unwrap_or_default()
                     .reserve_tokens;
                 let msg = format!(
                     "⚠ Compaction skipped: recent conversation fits within reserve ({reserve} tokens)."

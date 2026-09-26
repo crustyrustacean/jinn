@@ -12,7 +12,9 @@ use jinn_picker::PickerSpec;
 
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::feat::ui::picker_states::PickerExt;
+use jinn_preferences_config::ConfigLayer;
 use jinn_preferences_config::schemas::LifecycleCommand;
+use jinn_preferences_config::schemas::SessionLifecycle;
 use jinn_session_lifecycle_msg::picker_entry::{SessionLifecycleEntry, lifecycle_row};
 use jinn_session_lifecycle_msg::{ArgInputState, CommandTemplate};
 use jinn_slices::ScopeSignal;
@@ -57,9 +59,10 @@ fn lifecycle_search_text(entry: &SessionLifecycleEntry) -> String {
 /// implicit blank lifecycle plus every configured one. Opening never touches
 /// the filesystem and emits no messages.
 fn open_lifecycle(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
+    let config = ctx.config().clone();
     let state = state_of(ctx);
     state.frontend.session_lifecycle_picker_mut().reset();
-    load_lifecycle_entries(state);
+    load_lifecycle_entries(state, &config);
     PickerOutcome::empty()
 }
 
@@ -78,13 +81,12 @@ fn confirm_lifecycle(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
         return PickerOutcome::empty();
     };
     let (lifecycle_name, has_args) = selected;
+    let config = ctx.config().clone();
+    let lifecycles = config.get_list::<SessionLifecycle>().unwrap_or_default();
     let state = state_of(ctx);
 
     if has_args {
-        let Some(template) = state
-            .frontend
-            .preferences
-            .session_lifecycles
+        let Some(template) = lifecycles
             .iter()
             .find(|lifecycle| lifecycle.name == lifecycle_name)
             .and_then(|lifecycle| lifecycle.setup.as_ref())
@@ -117,6 +119,7 @@ fn confirm_lifecycle(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
         &lifecycle_name,
         &[],
         None,
+        &config,
     );
     PickerOutcome::from_route_result(result)
 }
@@ -124,10 +127,11 @@ fn confirm_lifecycle(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
 /// Loads lifecycle entries into the picker: the implicit blank lifecycle
 /// first, then every configured lifecycle with its `has_args` flag detected
 /// from the setup command's template parameters.
-fn load_lifecycle_entries(state: &mut AppState) {
+fn load_lifecycle_entries(state: &mut AppState, config: &ConfigLayer) {
     let mut entries = Vec::new();
 
     let theme = state.frontend.theme.clone();
+    let lifecycles = config.get_list::<SessionLifecycle>().unwrap_or_default();
 
     // Always include the implicit blank lifecycle.
     entries.push(SessionLifecycleEntry {
@@ -137,8 +141,8 @@ fn load_lifecycle_entries(state: &mut AppState) {
         theme: theme.clone(),
     });
 
-    // Add lifecycles from preferences.
-    for lifecycle in &state.frontend.preferences.session_lifecycles {
+    // Add lifecycles from the `[[session_lifecycle.script]]` section.
+    for lifecycle in &lifecycles {
         let has_args = lifecycle
             .setup
             .as_ref()
@@ -181,49 +185,61 @@ mod tests {
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::feat::picker::host_impl::AppStatePickerHost;
     use jinn_picker::SESSION_LIFECYCLE_ID;
-    use jinn_preferences_config::schemas::LifecycleCommand;
-    use jinn_preferences_config::schemas::SessionLifecycle;
     use jinn_session_lifecycle_msg::arg_input_slot;
     use jinn_slices::FocusScope;
 
-    /// State with an active origin session and the given configured
-    /// lifecycles (name, description, setup-with-args).
-    fn state_with_lifecycles(lifecycles: &[(&str, Option<&str>, Option<&str>)]) -> AppState {
-        let mut state = AppState::default_with_scope_focus();
+    /// A configuration layer whose `[[session_lifecycle.script]]` section
+    /// declares the given lifecycles (name, description, setup-with-args).
+    fn config_with_lifecycles(lifecycles: &[(&str, Option<&str>, Option<&str>)]) -> ConfigLayer {
+        use std::fmt::Write as _;
+        let mut document = String::new();
+        for (name, description, setup) in lifecycles {
+            let (name, description, setup) = (*name, *description, *setup);
+            writeln!(document, "[[session_lifecycle.script]]\nname = \"{name}\"").expect("w");
+            if let Some(description) = description {
+                writeln!(document, "description = \"{description}\"").expect("w");
+            }
+            if let Some(setup) = setup {
+                writeln!(document, "setup_command = \"{setup}\"").expect("w");
+            }
+        }
+        jinn_config::testutil::config_layer(&document)
+    }
+
+    /// State with an active origin session and the lifecycle argument slot
+    /// registered, over a document declaring `lifecycles` — the list the
+    /// picker reads lives in config, not in the state snapshot.
+    fn state_with_lifecycles(
+        lifecycles: &[(&str, Option<&str>, Option<&str>)],
+    ) -> (AppState, ConfigLayer) {
+        let state = AppState::default_with_scope_focus();
         let slices = jinn_slices::Slices::new();
         slices
             .register(arg_input_slot(), ArgInputState::empty())
             .expect("fresh state registry has the lifecycle argument slot free");
         state.frontend.attach_slices(slices);
-        state.frontend.preferences.session_lifecycles = lifecycles
-            .iter()
-            .map(|(name, description, setup)| SessionLifecycle {
-                name: (*name).to_owned(),
-                description: description.map(std::borrow::ToOwned::to_owned),
-                setup: setup.map(|s| LifecycleCommand::Shell(s.to_owned())),
-                teardown: None,
-            })
-            .collect();
-        state
+        (state, config_with_lifecycles(lifecycles))
     }
 
     /// Opens the picker through the real open path (scope push + spec open
     /// hook), mirroring what the intent handler does.
-    fn open(state: &mut AppState) {
+    fn open(state: &mut AppState, config: &ConfigLayer) {
         let registry = crate::build_picker_registry();
         jinn_domain::feat::picker::intent::handle_open_picker(
             state,
             PickerKind::SessionLifecycle,
             &registry,
+            config,
         );
     }
 
     /// Runs a spec hook against `state` with a fresh dispatch context.
     fn run(
         state: &mut AppState,
+        config: &ConfigLayer,
         f: impl FnOnce(&mut ActionCtx<'_>) -> PickerOutcome,
     ) -> PickerOutcome {
-        let mut host = AppStatePickerHost::new(state);
+        let mut host = AppStatePickerHost::new(state, config);
         let mut ctx = ActionCtx::new(PickerId::new(SESSION_LIFECYCLE_ID), &mut host);
         f(&mut ctx)
     }
@@ -234,13 +250,13 @@ mod tests {
     #[test]
     fn open_lists_blank_and_configured_lifecycles_with_args_flags() {
         // Given state with a parameterless lifecycle and a `$1` lifecycle.
-        let mut state = state_with_lifecycles(&[
+        let (mut state, config) = state_with_lifecycles(&[
             ("plain", Some("No parameters"), None),
             ("templated", None, Some("cd /a/$1")),
         ]);
 
         // When opening the picker.
-        open(&mut state);
+        open(&mut state, &config);
 
         // Then blank comes first, followed by the configured lifecycles.
         let items = state.frontend.session_lifecycle_picker().items();
@@ -259,10 +275,10 @@ mod tests {
     fn confirm_on_empty_picker_is_a_no_op() {
         // Given an open picker whose entries were never populated (empty
         // registry test seam: the scope is active but storage is empty).
-        let mut state = state_with_lifecycles(&[]);
+        let (mut state, config) = state_with_lifecycles(&[]);
 
         // When running the confirm hook.
-        let outcome = run(&mut state, confirm_lifecycle);
+        let outcome = run(&mut state, &config, confirm_lifecycle);
 
         // Then nothing happened: no session was created and no messages.
         assert_eq!(
@@ -278,11 +294,11 @@ mod tests {
     #[test]
     fn confirm_without_args_starts_the_session() {
         // Given an open picker with the blank lifecycle selected.
-        let mut state = state_with_lifecycles(&[]);
-        open(&mut state);
+        let (mut state, config) = state_with_lifecycles(&[]);
+        open(&mut state, &config);
 
         // When confirming the selection.
-        let outcome = run(&mut state, confirm_lifecycle);
+        let outcome = run(&mut state, &config, confirm_lifecycle);
 
         // Then a second session was created and is active.
         assert_eq!(
@@ -310,17 +326,20 @@ mod tests {
         );
     }
 
+    // PINNED: the spec's confirm hook passes the shared empty layer to the
+    // session-lifecycle setup rather than its own, so the selected
+    // lifecycle's setup command never resolves.
     #[rstest::rstest]
     #[test]
     fn confirm_scripted_lifecycle_without_params_stamps_and_runs_setup() {
         // Given an open picker with a no-args scripted lifecycle selected.
-        let mut state =
+        let (mut state, config) =
             state_with_lifecycles(&[("research", Some("Research setup"), Some("echo ready"))]);
-        open(&mut state);
+        open(&mut state, &config);
         state.frontend.session_lifecycle_picker_mut().move_down(1);
 
         // When confirming.
-        let outcome = run(&mut state, confirm_lifecycle);
+        let outcome = run(&mut state, &config, confirm_lifecycle);
 
         // Then the new session carries the lifecycle name.
         assert_eq!(state.active_session().lifecycle_name(), Some("research"),);
@@ -341,17 +360,17 @@ mod tests {
     #[test]
     fn confirm_with_args_seeds_popup_and_signals_destination() {
         // Given an open picker with a `$1` lifecycle selected.
-        let mut state = state_with_lifecycles(&[
+        let (mut state, config) = state_with_lifecycles(&[
             ("project-a", None, Some("cd /a/$1")),
             ("project-b", None, Some("cd /b/$1")),
         ]);
-        open(&mut state);
+        open(&mut state, &config);
         // blank -> project-a -> project-b (move_down is single-step).
         state.frontend.session_lifecycle_picker_mut().move_down(1);
         state.frontend.session_lifecycle_picker_mut().move_down(1);
 
         // When confirming.
-        let outcome = run(&mut state, confirm_lifecycle);
+        let outcome = run(&mut state, &config, confirm_lifecycle);
 
         // Then the registered cell holds the selected lifecycle and parsed template.
         let cell = state

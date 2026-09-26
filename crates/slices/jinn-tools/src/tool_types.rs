@@ -28,6 +28,9 @@ pub struct ToolContext {
     pub timeout: Option<Duration>,
     /// Shared application state (only available for tools that need it).
     pub state: Option<State>,
+    /// The live configuration layer, so a tool reads `jinn.toml` at the
+    /// point of use rather than through a value baked at registration.
+    pub config: jinn_config::ConfigLayer,
     /// Session ID (only available for tools that need it).
     pub session_id: Option<SessionId>,
     /// Application filesystem paths (for tools that need filesystem access).
@@ -105,6 +108,7 @@ mod tests {
             command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
             timeout: Some(std::time::Duration::from_secs(30)),
             state: None,
+            config: jinn_config::testutil::config_layer(""),
             session_id: Some(jinn_core_types::SessionId::new()),
             app_paths: jinn_common::app_paths::AppPaths::default(),
             bus: None,

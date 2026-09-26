@@ -20,8 +20,8 @@ use jinn_domain::PickerKind;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::feat::ui::frontend_state::PendingSessionCreation;
 use jinn_domain::feat::ui::picker_states::PickerExt;
-use jinn_preferences_config::protocol::command::PreferenceUpdate;
-use jinn_preferences_config::protocol::command::UpdatePreferences;
+use jinn_preferences_config::ConfigLayer;
+use jinn_preferences_config::schemas::ProjectConfig;
 use jinn_project_msg::ProjectEntry;
 use jinn_project_msg::render_project_row;
 use jinn_slices::FocusScope;
@@ -52,14 +52,43 @@ where
 
 /// Loads project entries into the picker: one row per curated directory,
 /// display strings precomputed (tilde-compressed) and sorted by display.
-pub fn load_project_entries(frontend: &mut jinn_domain::feat::ui::frontend_state::FrontendState) {
+pub fn load_project_entries(
+    frontend: &mut jinn_domain::feat::ui::frontend_state::FrontendState,
+    config: &ConfigLayer,
+) {
+    let projects = config.get_list::<ProjectConfig>().unwrap_or_default();
+    set_project_entries(frontend, &projects);
+}
+
+/// Rebuilds the project picker's items from an already-read project list.
+///
+/// Split from [`load_project_entries`] because a spec action cannot hold
+/// the state lend and the configuration read at the same time: it reads
+/// the list, ends the lend, then rebuilds.
+fn set_project_entries(
+    frontend: &mut jinn_domain::feat::ui::frontend_state::FrontendState,
+    projects: &[ProjectConfig],
+) {
     let theme = frontend.theme.clone();
-    let entries: Vec<ProjectEntry> =
-        jinn_project_msg::project_entries(&frontend.preferences.projects, &theme);
+    let entries: Vec<ProjectEntry> = jinn_project_msg::project_entries(projects, &theme);
     let wrapped = crate::build_picker_registry()
         .make_items(jinn_picker::PROJECT_ID, entries)
         .unwrap_or_default();
     frontend.project_picker_mut().set_items(wrapped);
+}
+
+/// The path of the project the picker currently highlights.
+fn path_of_selected(ctx: &mut ActionCtx<'_>) -> std::path::PathBuf {
+    ctx.state_any()
+        .downcast_mut::<AppState>()
+        .and_then(|state| {
+            state
+                .frontend
+                .project_picker()
+                .selected_item()
+                .map(|entry| entry.entry().path.clone())
+        })
+        .unwrap_or_default()
 }
 
 /// Builds the project picker's spec.
@@ -77,8 +106,16 @@ pub fn project_spec() -> PickerSpec<ProjectEntry> {
             {
                 picker.reset();
             }
+            // The state lend and the config read cannot overlap, so the
+            // entries are rebuilt in two steps: read the projects out of
+            // the layer, then hand them to the picker.
+            let projects = ctx
+                .config()
+                .clone()
+                .get_list::<ProjectConfig>()
+                .unwrap_or_default();
             let state = state_of(ctx);
-            load_project_entries(&mut state.frontend);
+            set_project_entries(&mut state.frontend, &projects);
             PickerOutcome::empty()
         })
         .bind("<c-enter>", "new+lifecycle", |ctx| {
@@ -107,26 +144,22 @@ pub fn project_spec() -> PickerSpec<ProjectEntry> {
                 state,
                 &registry,
                 jinn_domain::feat::picker::action::Hook::Open,
+                crate::empty_config_layer(),
             );
             PickerOutcome::from_route_result(result)
         })
         .bind("<c-d>", "remove", |ctx| {
             // Remove the highlighted project from the curated list and
             // refresh in place — the picker stays open.
+            // Cloning the handle detaches the read from `ctx`, so the
+            // state lend below is not fighting an outstanding borrow.
+            let config = ctx.config().clone();
+            let path = path_of_selected(ctx);
+            remove_project(&config, &path);
+            let projects = config.get_list::<ProjectConfig>().unwrap_or_default();
             let state = state_of(ctx);
-            let Some(entry) = state.frontend.project_picker().selected_item().cloned() else {
-                return PickerOutcome::empty();
-            };
-            let path = entry.entry().path.clone();
-            state
-                .frontend
-                .preferences
-                .projects
-                .retain(|p| p.path != path);
-            load_project_entries(&mut state.frontend);
-            PickerOutcome::new_message(UpdatePreferences {
-                updates: vec![PreferenceUpdate::RemoveProject(path)],
-            })
+            set_project_entries(&mut state.frontend, &projects);
+            PickerOutcome::empty()
         })
         .on_confirm(|ctx| {
             // Stash the chosen dir, pop, and run the blank lifecycle setup.
@@ -148,10 +181,26 @@ pub fn project_spec() -> PickerSpec<ProjectEntry> {
                     "",
                     &[],
                     None,
+                    jinn_domain::common::render_ctx::empty_config_layer(),
                 );
             PickerOutcome::from_route_result(result)
         })
 }
+/// Removes a project from the `[[project.entry]]` section.
+///
+/// A failed write is silently dropped: the entry has already left the
+/// picker, and surfacing an error there would strand the user in a list
+/// that no longer matches the file. A later write repairs the file.
+pub(crate) fn remove_project(config: &ConfigLayer, path: &std::path::Path) {
+    let remaining = config
+        .get_list::<ProjectConfig>()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|project| project.path != path)
+        .collect::<Vec<_>>();
+    drop(config.put_list::<ProjectConfig>(&remaining));
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -171,9 +220,21 @@ mod tests {
     use jinn_session_state::ChatSessionState;
     use jinn_slices::FocusScope;
 
+    /// A configuration layer whose `[[project.entry]]` section holds
+    /// exactly `paths` — the curated list the picker reads and writes.
+    fn config_with_projects(paths: &[&str]) -> ConfigLayer {
+        use std::fmt::Write as _;
+        let mut document = String::new();
+        for path in paths {
+            writeln!(document, "[[project.entry]]\npath = \"{path}\"").expect("write to String");
+        }
+        jinn_config::testutil::config_layer(&document)
+    }
+
     /// State with an active origin session (cwd distinct from the project
-    /// dirs), the project picker open, and the given curated projects.
-    fn state_with_projects(paths: &[&str]) -> AppState {
+    /// dirs), the project picker open, and its entries loaded from `config`
+    /// — the curated list lives in the document, not in the state.
+    fn state_with_projects(config: &ConfigLayer) -> AppState {
         let mut state = AppState::default_with_scope_focus();
         let origin = ChatSessionState::new();
         state.session.insert(origin);
@@ -186,14 +247,7 @@ mod tests {
         state.frontend.scope_push(FocusScope::Picker {
             kind: PickerKind::Project,
         });
-        state.frontend.preferences.projects = paths
-            .iter()
-            .map(|p| ProjectConfig {
-                path: std::path::PathBuf::from(p),
-                command_policy: Vec::new(),
-            })
-            .collect();
-        load_project_entries(&mut state.frontend);
+        load_project_entries(&mut state.frontend, config);
         // index 0 is selected by default after set_items + reset.
         state
     }
@@ -201,7 +255,8 @@ mod tests {
     #[rstest::rstest]
     fn open_loads_curated_entries_with_tilde_displays() {
         // Given an app with two curated projects and the project picker open.
-        let mut state = state_with_projects(&["/tmp/project-a", "/tmp/project-b"]);
+        let config = config_with_projects(&["/tmp/project-a", "/tmp/project-b"]);
+        let mut state = state_with_projects(&config);
         let registry = build_picker_registry();
 
         // When opening the picker through the real open path.
@@ -209,6 +264,7 @@ mod tests {
             &mut state,
             PickerKind::Project,
             &registry,
+            &config,
         );
 
         // Then the open hook ran clean (synchronous load, no messages).
@@ -224,12 +280,14 @@ mod tests {
     #[rstest::rstest]
     fn confirm_creates_new_session_at_chosen_dir() {
         // Given a project picker whose highlighted entry is /tmp/project-a.
-        let mut state = state_with_projects(&["/tmp/project-a", "/tmp/project-b"]);
+        let config = config_with_projects(&["/tmp/project-a", "/tmp/project-b"]);
+        let mut state = state_with_projects(&config);
         let registry = build_picker_registry();
 
         // When confirming the highlighted project (Enter).
-        let result =
-            jinn_domain::feat::picker::intent::handle_picker_confirm(&mut state, &registry);
+        let result = jinn_domain::feat::picker::intent::handle_picker_confirm(
+            &mut state, &registry, &config,
+        );
 
         // Then a new session was created (a message was emitted to drive it).
         assert!(!result.0.message_names.is_empty());
@@ -246,13 +304,15 @@ mod tests {
     #[rstest::rstest]
     fn confirm_leaves_previous_session_cwd_unchanged() {
         // Given a project picker with an existing active session.
-        let mut state = state_with_projects(&["/tmp/project-a"]);
+        let config = config_with_projects(&["/tmp/project-a"]);
+        let mut state = state_with_projects(&config);
         let prev_id = state.session.active_session_id().clone();
         let registry = build_picker_registry();
 
         // When confirming the highlighted project.
-        let _result =
-            jinn_domain::feat::picker::intent::handle_picker_confirm(&mut state, &registry);
+        let _result = jinn_domain::feat::picker::intent::handle_picker_confirm(
+            &mut state, &registry, &config,
+        );
 
         // Then the previous session (now backgrounded) keeps its original CWD.
         let prev = state
@@ -265,7 +325,8 @@ mod tests {
     #[rstest::rstest]
     fn ctrl_enter_chains_into_lifecycle_picker_with_entries() {
         // Given a project picker whose highlighted entry is /tmp/project-a.
-        let mut state = state_with_projects(&["/tmp/project-a"]);
+        let config = config_with_projects(&["/tmp/project-a"]);
+        let mut state = state_with_projects(&config);
         let _registry = build_picker_registry();
 
         // When pressing <c-enter> (new + lifecycle).
@@ -274,6 +335,7 @@ mod tests {
             &build_picker_registry(),
             PROJECT_ID,
             "<c-enter>",
+            &config,
         );
 
         // Then the project scope was popped and the lifecycle picker opened.
@@ -303,7 +365,8 @@ mod tests {
     #[rstest::rstest]
     fn ctrl_d_removes_highlighted_and_stays_open() {
         // Given a project picker with two entries and the first highlighted.
-        let mut state = state_with_projects(&["/tmp/project-a", "/tmp/project-b"]);
+        let config = config_with_projects(&["/tmp/project-a", "/tmp/project-b"]);
+        let mut state = state_with_projects(&config);
 
         // When removing the highlighted entry (<c-d>).
         let result = jinn_domain::feat::picker::action::run_action(
@@ -311,24 +374,19 @@ mod tests {
             &build_picker_registry(),
             PROJECT_ID,
             "<c-d>",
+            &config,
         );
 
-        // Then the highlighted entry is removed from preferences.projects.
-        let paths: Vec<_> = state
-            .frontend
-            .preferences
-            .projects
+        // Then the highlighted entry is removed from the section.
+        let paths: Vec<_> = config
+            .get_list::<ProjectConfig>()
+            .expect("section reads")
             .iter()
             .map(|p| p.path.clone())
             .collect();
         assert_eq!(paths, vec![std::path::PathBuf::from("/tmp/project-b")]);
-        // And an UpdatePreferences(RemoveProject) message was emitted.
-        assert!(
-            result
-                .message_names
-                .iter()
-                .any(|n| n.contains("UpdatePreferences"))
-        );
+        // And no message is published — the write is the effect.
+        assert!(result.message_names.is_empty());
         // And the picker stayed open, now showing one entry.
         assert!(matches!(
             state.frontend.scope(),
@@ -342,7 +400,8 @@ mod tests {
     #[rstest::rstest]
     fn ctrl_d_on_an_empty_picker_is_a_noop() {
         // Given a project picker with no curated projects.
-        let mut state = state_with_projects(&[]);
+        let config = config_with_projects(&[]);
+        let mut state = state_with_projects(&config);
 
         // When removing the highlighted entry (<c-d>) — there is none.
         let result = jinn_domain::feat::picker::action::run_action(
@@ -350,10 +409,16 @@ mod tests {
             &build_picker_registry(),
             PROJECT_ID,
             "<c-d>",
+            &config,
         );
 
-        // Then nothing happened: no messages, prefs untouched.
+        // Then nothing happened: no messages, and the curated list is untouched.
         assert!(result.message_names.is_empty());
-        assert!(state.frontend.preferences.projects.is_empty());
+        assert!(
+            config
+                .get_list::<ProjectConfig>()
+                .expect("section reads")
+                .is_empty()
+        );
     }
 }

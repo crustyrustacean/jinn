@@ -59,7 +59,7 @@ fn render_clears_area_with_sidebar_background() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, 30, 10), &ctx);
         })
         .unwrap();
@@ -90,7 +90,11 @@ fn move_down_from_persona_with_pins_enters_pins_at_first_entry() {
         .update_sections(|s| s.persona.cursor = Some(0));
 
     // When navigating down.
-    navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
+    navigate_sidebar(
+        &SidebarIntent::MoveDown,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then focus moves to Pins and the first pinned entry is selected.
     assert_eq!(
@@ -121,7 +125,11 @@ fn move_down_from_persona_skips_empty_pins_to_sessions() {
         .update_sections(|s| s.persona.cursor = Some(0));
 
     // When navigating down.
-    navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
+    navigate_sidebar(
+        &SidebarIntent::MoveDown,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then focus skips empty Pins and lands on Sessions.
     assert_eq!(
@@ -146,7 +154,11 @@ fn move_up_from_first_pin_enters_persona() {
         .update_sections(|s| s.pins.select_by_id(first_id));
 
     // When navigating up from the first pin.
-    navigate_sidebar(&SidebarIntent::MoveUp, &mut state);
+    navigate_sidebar(
+        &SidebarIntent::MoveUp,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then focus moves to Persona, pins selection is cleared, and persona has cursor.
     assert_eq!(
@@ -180,7 +192,11 @@ fn move_down_at_last_pin_enters_sessions() {
         .update_sections(|s| s.pins.select_by_id(last_id));
 
     // When navigating down.
-    navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
+    navigate_sidebar(
+        &SidebarIntent::MoveDown,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then focus moves to Sessions (which always has content).
     assert_eq!(
@@ -204,7 +220,11 @@ fn move_up_at_persona_sticks() {
         .update_sections(|s| s.persona.cursor = Some(0));
 
     // When navigating up.
-    navigate_sidebar(&SidebarIntent::MoveUp, &mut state);
+    navigate_sidebar(
+        &SidebarIntent::MoveUp,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then focus stays on Persona.
     assert_eq!(
@@ -228,7 +248,11 @@ fn move_up_from_sessions_skips_empty_pins_to_persona() {
         .update_sections(|s| s.sessions.selected_index = Some(0));
 
     // When navigating up.
-    navigate_sidebar(&SidebarIntent::MoveUp, &mut state);
+    navigate_sidebar(
+        &SidebarIntent::MoveUp,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then focus skips empty Pins and lands on Persona.
     assert_eq!(
@@ -267,7 +291,11 @@ fn jump_next_from_persona_to_pins_retains_persona_cursor() {
         .update_sections(|s| s.persona.cursor = Some(0));
 
     // When jumping to next section.
-    jump_to_section(&SidebarIntent::MoveDown, &mut state);
+    jump_to_section(
+        &SidebarIntent::MoveDown,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then focus moves to Pins.
     assert_eq!(
@@ -297,7 +325,11 @@ fn jump_prev_from_pins_to_persona_retains_pins_cursor() {
         .update_sections(|s| s.pins.select_by_id(second_id.clone()));
 
     // When jumping to prev section.
-    jump_to_section(&SidebarIntent::MoveUp, &mut state);
+    jump_to_section(
+        &SidebarIntent::MoveUp,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then focus moves to Persona.
     assert_eq!(
@@ -328,7 +360,11 @@ fn jump_next_from_persona_skips_empty_pins_to_sessions() {
         .update_sections(|s| s.persona.cursor = Some(0));
 
     // When jumping to next section.
-    jump_to_section(&SidebarIntent::MoveDown, &mut state);
+    jump_to_section(
+        &SidebarIntent::MoveDown,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then focus skips empty Pins and lands on Sessions.
     assert_eq!(
@@ -358,7 +394,11 @@ fn jump_next_fallback_receive_cursor_on_never_visited_section() {
     );
 
     // When jumping to next section.
-    jump_to_section(&SidebarIntent::MoveDown, &mut state);
+    jump_to_section(
+        &SidebarIntent::MoveDown,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then focus moves to Pins and receive_cursor was called (first pin selected).
     assert_eq!(
@@ -389,7 +429,11 @@ fn jump_next_from_sessions_at_boundary_does_nothing() {
         .update_sections(|s| s.sessions.selected_index = Some(0));
 
     // When jumping to next section (no section after Sessions).
-    jump_to_section(&SidebarIntent::MoveDown, &mut state);
+    jump_to_section(
+        &SidebarIntent::MoveDown,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then focus stays on Sessions.
     assert_eq!(
@@ -413,7 +457,11 @@ fn jump_prev_from_persona_at_boundary_does_nothing() {
         .update_sections(|s| s.persona.cursor = Some(0));
 
     // When jumping to prev section (no section before Persona).
-    jump_to_section(&SidebarIntent::MoveUp, &mut state);
+    jump_to_section(
+        &SidebarIntent::MoveUp,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then focus stays on Persona.
     assert_eq!(
@@ -453,7 +501,11 @@ fn jump_to_sessions_retains_cursor_and_adjusts_scroll() {
         .update_sections(|s| s.sessions.selected_index = Some(18));
 
     // When jumping to sessions (skipping empty pins if any, or through pins).
-    jump_to_section(&SidebarIntent::MoveDown, &mut state);
+    jump_to_section(
+        &SidebarIntent::MoveDown,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Sessions may or may not be the target depending on pins.
     // If pins is empty (default state has no pins), we land on sessions.
@@ -516,7 +568,7 @@ fn sessions_header_anchored_to_bottom() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
@@ -556,7 +608,7 @@ fn leading_sections_stay_at_the_top_when_the_document_is_short() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
@@ -585,7 +637,7 @@ fn a_blank_gap_separates_the_sessions_block_from_the_sections_above_it() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
@@ -634,7 +686,7 @@ fn sessions_header_below_persona_when_sidebar_is_short() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
@@ -672,7 +724,7 @@ fn sessions_footer_highlights_s_in_accent_action() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
@@ -730,7 +782,7 @@ fn sessions_title_shows_spinner_during_startup_hydration() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
@@ -762,7 +814,7 @@ fn sessions_title_spinner_uses_streaming_color() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
@@ -796,7 +848,7 @@ fn sessions_title_hides_spinner_after_startup_hydration() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
@@ -828,7 +880,7 @@ fn sessions_title_spinner_precedes_the_label() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
@@ -873,7 +925,7 @@ fn sessions_hydration_spinner_animates_without_session_rows() {
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
                 let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+                let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
                 sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
             })
             .unwrap();
@@ -926,7 +978,7 @@ fn sessions_hydration_spinner_preserves_footer_position() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
@@ -956,7 +1008,11 @@ fn entering_pins_saves_history_position() {
     state.active_session_mut().set_selected_entry_index(0);
 
     // When navigating down into Pins.
-    navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
+    navigate_sidebar(
+        &SidebarIntent::MoveDown,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then the history position was saved before sync_chat_log_cursor changed it.
     let saved = state
@@ -986,7 +1042,11 @@ fn leaving_pins_to_persona_restores_history_position() {
     state.active_session_mut().save_history_position();
 
     // When navigating up to Persona.
-    navigate_sidebar(&SidebarIntent::MoveUp, &mut state);
+    navigate_sidebar(
+        &SidebarIntent::MoveUp,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then the history position is restored.
     assert_eq!(state.active_session().scroll_offset(), Some(42));
@@ -1011,7 +1071,11 @@ fn jump_from_pins_to_persona_restores_history_position() {
     state.active_session_mut().save_history_position();
 
     // When jumping to previous section (Persona).
-    jump_to_section(&SidebarIntent::MoveUp, &mut state);
+    jump_to_section(
+        &SidebarIntent::MoveUp,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then the history position is restored.
     assert_eq!(state.active_session().scroll_offset(), Some(42));
@@ -1061,22 +1125,38 @@ fn full_cycle_saves_and_restores() {
     state.active_session_mut().set_selected_entry_index(0);
 
     // When navigating to Pins.
-    navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
+    navigate_sidebar(
+        &SidebarIntent::MoveDown,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
     // Then position is saved.
     assert!(state.active_session().has_saved_history_position());
     // sync_chat_log_cursor changes selected_entry_index to the pin's history index
     // (which may be 0 if the pin is the first entry).
 
     // When navigating within pins (second pin) - does NOT restore.
-    navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
+    navigate_sidebar(
+        &SidebarIntent::MoveDown,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
     assert!(state.active_session().has_saved_history_position());
 
     // When navigating within pins (third pin, last) - does NOT restore.
-    navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
+    navigate_sidebar(
+        &SidebarIntent::MoveDown,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
     assert!(state.active_session().has_saved_history_position());
 
     // When navigating to Sessions (exhausting pins).
-    navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
+    navigate_sidebar(
+        &SidebarIntent::MoveDown,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
     // Then position is restored.
     assert_eq!(state.active_session().scroll_offset(), Some(42));
     assert_eq!(state.active_session().selected_entry_index(), Some(0));
@@ -1096,12 +1176,20 @@ fn jump_roundtrip_saves_and_restores() {
     state.active_session_mut().set_selected_entry_index(0);
 
     // When jumping to Pins.
-    jump_to_section(&SidebarIntent::MoveDown, &mut state);
+    jump_to_section(
+        &SidebarIntent::MoveDown,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
     // Then position is saved (via receive_cursor fallback).
     assert!(state.active_session().has_saved_history_position());
 
     // When jumping back to Persona.
-    jump_to_section(&SidebarIntent::MoveUp, &mut state);
+    jump_to_section(
+        &SidebarIntent::MoveUp,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
     // Then position is restored.
     assert_eq!(state.active_session().scroll_offset(), Some(42));
     assert_eq!(state.active_session().selected_entry_index(), Some(0));
@@ -1138,7 +1226,11 @@ fn jump_to_pins_with_retained_cursor_syncs_chat_log_cursor() {
     );
 
     // Jump to Persona (away from pins) - restores cursor to "c".
-    jump_to_section(&SidebarIntent::MoveUp, &mut state);
+    jump_to_section(
+        &SidebarIntent::MoveUp,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
     assert_ne!(
         state.active_session().selected_cursor_id(),
         Some(pinned_id.clone()),
@@ -1146,7 +1238,11 @@ fn jump_to_pins_with_retained_cursor_syncs_chat_log_cursor() {
     );
 
     // Jump back to Pins (retained cursor on pinned entry).
-    jump_to_section(&SidebarIntent::MoveDown, &mut state);
+    jump_to_section(
+        &SidebarIntent::MoveDown,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then chat log cursor is synced to the pinned entry.
     assert_eq!(
@@ -1173,7 +1269,7 @@ fn render_sidebar_rows(
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
@@ -1216,7 +1312,7 @@ fn render_sidebar_terminal(
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
             sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();

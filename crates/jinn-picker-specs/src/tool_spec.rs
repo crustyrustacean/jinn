@@ -282,6 +282,7 @@ mod tests {
             state,
             jinn_domain::PickerKind::Tool,
             &registry,
+            crate::empty_config_layer(),
         );
     }
 
@@ -349,8 +350,13 @@ mod tests {
         let registry = crate::build_picker_registry();
 
         // When pressing TAB.
-        let _ =
-            jinn_domain::feat::picker::action::run_action(&mut state, &registry, TOOL_ID, "<tab>");
+        let _ = jinn_domain::feat::picker::action::run_action(
+            &mut state,
+            &registry,
+            TOOL_ID,
+            "<tab>",
+            jinn_slices::empty_config_layer(),
+        );
 
         // Then the selected entry flipped and the cursor advanced.
         assert!(
@@ -369,8 +375,13 @@ mod tests {
         let registry = crate::build_picker_registry();
 
         // When pressing TAB.
-        let _ =
-            jinn_domain::feat::picker::action::run_action(&mut state, &registry, TOOL_ID, "<tab>");
+        let _ = jinn_domain::feat::picker::action::run_action(
+            &mut state,
+            &registry,
+            TOOL_ID,
+            "<tab>",
+            jinn_slices::empty_config_layer(),
+        );
 
         // Then nothing panicked and nothing is selected.
         assert!(state.frontend.tool_picker().selected_item().is_none());
@@ -383,16 +394,23 @@ mod tests {
         let mut state = tool_state();
         open(&mut state);
         let registry = crate::build_picker_registry();
-        let _ =
-            jinn_domain::feat::picker::action::run_action(&mut state, &registry, TOOL_ID, "<tab>");
+        let _ = jinn_domain::feat::picker::action::run_action(
+            &mut state,
+            &registry,
+            TOOL_ID,
+            "<tab>",
+            jinn_slices::empty_config_layer(),
+        );
 
         // When confirming (the spec-driven confirm path, folded like the
         // dispatch layer does).
         {
             let picker_id = PickerId::new(TOOL_ID);
             let outcome = {
-                let mut host =
-                    jinn_domain::feat::picker::host_impl::AppStatePickerHost::new(&mut state);
+                let mut host = jinn_domain::feat::picker::host_impl::AppStatePickerHost::new(
+                    &mut state,
+                    jinn_slices::empty_config_layer(),
+                );
                 let mut ctx = ActionCtx::new(picker_id, &mut host);
                 let spec = registry.get(TOOL_ID).expect("tool spec registered");
                 spec.run_confirm(&mut ctx)
@@ -430,11 +448,20 @@ mod tests {
             .set_disabled_tools(["read"].iter().map(|s| (*s).to_owned()).collect());
         open(&mut state);
         let registry = crate::build_picker_registry();
-        let _ =
-            jinn_domain::feat::picker::action::run_action(&mut state, &registry, TOOL_ID, "<tab>");
+        let _ = jinn_domain::feat::picker::action::run_action(
+            &mut state,
+            &registry,
+            TOOL_ID,
+            "<tab>",
+            jinn_slices::empty_config_layer(),
+        );
 
         // When ESC closes the picker.
-        let result = jinn_domain::feat::picker::action::try_close_active(&mut state, &registry);
+        let result = jinn_domain::feat::picker::action::try_close_active(
+            &mut state,
+            &registry,
+            jinn_slices::empty_config_layer(),
+        );
 
         // Then the hook ran and the pre-open disabled set is restored.
         assert!(result.is_some());
@@ -588,7 +615,10 @@ mod tests {
 
         // When rendering the status line.
         let rendered = {
-            let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(&state);
+            let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(
+                &state,
+                jinn_slices::empty_config_layer(),
+            );
             let ctx = StatusCtx::new(PickerId::new(TOOL_ID), &host);
             tool_status(&ctx)
         };

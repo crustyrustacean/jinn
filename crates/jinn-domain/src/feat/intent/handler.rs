@@ -178,6 +178,7 @@ impl IntentHandler {
         slices: &jinn_slices::Slices,
         routes: &jinn_slices::route::KeyRoutes,
         pickers: &jinn_picker::PickerRegistry,
+        config: &jinn_config::ConfigLayer,
     ) -> IntentResult {
         state
             .frontend
@@ -201,7 +202,7 @@ impl IntentHandler {
         );
 
         // Process the intent and get the result.
-        let mut result = Self::handle_inner(intent, state, slices, routes, pickers);
+        let mut result = Self::handle_inner(intent, state, slices, routes, pickers, config);
 
         if state.session.active_session_id() != &prev_active {
             if terminal_overlay_open {
@@ -234,6 +235,7 @@ impl IntentHandler {
         slices: &jinn_slices::Slices,
         routes: &jinn_slices::route::KeyRoutes,
         pickers: &jinn_picker::PickerRegistry,
+        config: &jinn_config::ConfigLayer,
     ) -> IntentResult {
         // Session prompts live in the sidebar slice, which owns the route
         // actions that arm and confirm them. Before dispatch, dismiss an armed
@@ -255,6 +257,7 @@ impl IntentHandler {
                 jinn_slices::route::ActionCtx {
                     state,
                     slices,
+                    config,
                     key_bytes: dynamic.bytes.clone(),
                 },
             )
@@ -295,7 +298,9 @@ impl IntentHandler {
             KernelIntent::DeleteGraphemeForward => {
                 feat::chat_input::intent::handle_delete_grapheme_forward(state)
             }
-            KernelIntent::SubmitMessage => feat::chat_input::intent::handle_submit_message(state),
+            KernelIntent::SubmitMessage => {
+                feat::chat_input::intent::handle_submit_message(state, config)
+            }
             KernelIntent::ToggleInputMode => {
                 feat::chat_input::intent::handle_toggle_input_mode(state)
             }
@@ -355,7 +360,9 @@ impl IntentHandler {
                 feat::chat_input::intent::handle_enter_insert_mode(state)
             }
             KernelIntent::EnterNormalMode => {
-                feat::chat_input::intent::handle_enter_normal_mode_with_pickers(state, pickers)
+                feat::chat_input::intent::handle_enter_normal_mode_with_pickers(
+                    state, pickers, config,
+                )
             }
             KernelIntent::ToggleWhichkey => feat::global::intent::handle_toggle_whichkey(state),
             KernelIntent::ToggleAuditPopup => {
@@ -365,10 +372,10 @@ impl IntentHandler {
             KernelIntent::NoOp => IntentResult::empty(),
 
             KernelIntent::OpenPicker { kind } => {
-                crate::feat::picker::intent::handle_open_picker(state, *kind, pickers)
+                crate::feat::picker::intent::handle_open_picker(state, *kind, pickers, config)
             }
             KernelIntent::PickerAction { picker, action } => {
-                crate::feat::picker::action::run_action(state, pickers, picker, action)
+                crate::feat::picker::action::run_action(state, pickers, picker, action, config)
             }
             KernelIntent::PickerInsertChar { ch } => {
                 crate::feat::picker::intent::handle_insert_char(state, *ch)
@@ -376,9 +383,10 @@ impl IntentHandler {
             KernelIntent::PickerBackspace => crate::feat::picker::intent::handle_backspace(state),
             KernelIntent::PickerConfirm => {
                 let (result, maybe_intent) =
-                    crate::feat::picker::intent::handle_picker_confirm(state, pickers);
+                    crate::feat::picker::intent::handle_picker_confirm(state, pickers, config);
                 if let Some(intent) = maybe_intent {
-                    let redispatch = IntentHandler::handle(&intent, state, slices, routes, pickers);
+                    let redispatch =
+                        IntentHandler::handle(&intent, state, slices, routes, pickers, config);
                     result.merge(redispatch)
                 } else {
                     result
@@ -387,23 +395,24 @@ impl IntentHandler {
             KernelIntent::CtrlClear => {
                 let (result, maybe_intent) = feat::global::intent::handle_ctrl_clear(state);
                 if let Some(intent) = maybe_intent {
-                    let redispatch = IntentHandler::handle(&intent, state, slices, routes, pickers);
+                    let redispatch =
+                        IntentHandler::handle(&intent, state, slices, routes, pickers, config);
                     result.merge(redispatch)
                 } else {
                     result
                 }
             }
             KernelIntent::PickerMoveUp => {
-                crate::feat::picker::intent::handle_move_up(state, pickers)
+                crate::feat::picker::intent::handle_move_up(state, pickers, config)
             }
             KernelIntent::PickerMoveDown => {
-                crate::feat::picker::intent::handle_move_down(state, pickers)
+                crate::feat::picker::intent::handle_move_down(state, pickers, config)
             }
             KernelIntent::PickerPageUp => {
-                crate::feat::picker::intent::handle_page_up(state, pickers)
+                crate::feat::picker::intent::handle_page_up(state, pickers, config)
             }
             KernelIntent::PickerPageDown => {
-                crate::feat::picker::intent::handle_page_down(state, pickers)
+                crate::feat::picker::intent::handle_page_down(state, pickers, config)
             }
             KernelIntent::PickerMoveCursorLeft => {
                 crate::feat::picker::intent::handle_move_cursor_left(state)
@@ -411,7 +420,7 @@ impl IntentHandler {
             KernelIntent::PickerMoveCursorRight => {
                 crate::feat::picker::intent::handle_move_cursor_right(state)
             }
-            KernelIntent::SessionNew => feat::session::intent::handle_session_new(state),
+            KernelIntent::SessionNew => feat::session::intent::handle_session_new(state, config),
             KernelIntent::RefreshModels => feat::session::intent::handle_refresh_models(state),
             KernelIntent::RescanPromptTemplates => {
                 feat::session::intent::handle_rescan_prompt_templates(state)
@@ -422,6 +431,7 @@ impl IntentHandler {
                     state,
                     PickerKind::SessionLifecycle,
                     pickers,
+                    config,
                 )
             }
 
@@ -484,7 +494,7 @@ impl IntentHandler {
                 feat::chat_entry_selection::intent::handle_fork_from_entry(state)
             }
             KernelIntent::NewSessionFromEntry => {
-                feat::chat_entry_selection::intent::handle_new_session_from_entry(state)
+                feat::chat_entry_selection::intent::handle_new_session_from_entry(state, config)
             }
             KernelIntent::YankSelectedEntry => {
                 feat::chat_entry_selection::intent::handle_yank_selected(state)
@@ -507,6 +517,7 @@ impl IntentHandler {
                 lifecycle_name,
                 args,
                 None,
+                config,
             ),
             KernelIntent::SessionClose => {
                 feat::session_lifecycle::intent::handle_session_close(state)
@@ -739,6 +750,7 @@ mod tests {
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then the buffer is empty and no commands are emitted.
@@ -765,6 +777,7 @@ mod tests {
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then the buffer has the pasted text.
@@ -790,6 +803,7 @@ mod tests {
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then the buffer has the inserted char.
@@ -815,6 +829,7 @@ mod tests {
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then the chat input received the char.
@@ -844,6 +859,7 @@ mod tests {
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then it doesn't panic and completes (paste is handled by picker).
@@ -864,6 +880,7 @@ mod tests {
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then the prompt is dismissed and a CancelStream command is emitted.
@@ -892,6 +909,7 @@ mod tests {
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then the prompt is dismissed but no CancelStream command.
@@ -912,6 +930,7 @@ mod tests {
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then no cancel command is emitted (falls through to normal escape handling).
@@ -933,6 +952,7 @@ mod tests {
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then the prompt is dismissed.
@@ -953,6 +973,7 @@ mod tests {
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then the prompt is dismissed and no CancelStream command is emitted.
@@ -981,6 +1002,7 @@ mod tests {
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then the prompt is dismissed.
@@ -1000,6 +1022,7 @@ mod tests {
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then result is empty.
@@ -1033,6 +1056,7 @@ mod tests {
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then no ActiveSessionChanged event (same session).
@@ -1062,6 +1086,7 @@ mod tests {
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then the scope stays on term:control — handback is the only exit.
@@ -1127,6 +1152,7 @@ mod tests {
             &slices,
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then the hint is cleared.
@@ -1145,6 +1171,7 @@ mod tests {
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then the base is Normal (chat is the only tab).
@@ -1169,6 +1196,7 @@ mod tests {
             &slices,
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
         // Then the base is the registered tab.
         assert_eq!(
@@ -1183,6 +1211,7 @@ mod tests {
             &slices,
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
         // Then the cycle wraps to Normal.
         assert_eq!(state.frontend.scope_base(), FocusScope::Normal);
@@ -1209,6 +1238,7 @@ mod tests {
             &empty_slices(),
             &empty_routes(),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then the overlay closed (back to base, not a tab flip).
@@ -1257,6 +1287,7 @@ mod tests {
             &slices,
             &activate_child_route(child_id.clone()),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then the active session changed to the child.
@@ -1325,6 +1356,7 @@ mod tests {
             &empty_slices(),
             &activate_child_route(child_id.clone()),
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then the switched-from session's control is released back to the
@@ -1419,6 +1451,7 @@ mod tests {
             &empty_slices(),
             &routes,
             &empty_pickers(),
+            jinn_slices::empty_config_layer(),
         );
 
         // Then the overlay is open on the newly-activated session's terminal

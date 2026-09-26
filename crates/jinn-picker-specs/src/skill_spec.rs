@@ -383,7 +383,7 @@ mod tests {
         state: &mut AppState,
         f: impl FnOnce(&mut ActionCtx<'_>) -> PickerOutcome,
     ) -> PickerOutcome {
-        let mut host = AppStatePickerHost::new(state);
+        let mut host = AppStatePickerHost::new(state, crate::empty_config_layer());
         let mut ctx = ActionCtx::new(PickerId::new(SKILL_ID), &mut host);
         f(&mut ctx)
     }
@@ -544,7 +544,10 @@ mod tests {
 
         // When reading the status line.
         let _registry = crate::build_picker_registry();
-        let handle = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(&state);
+        let handle = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(
+            &state,
+            jinn_slices::empty_config_layer(),
+        );
         let ctx = StatusCtx::new(PickerId::new(SKILL_ID), &handle);
         let line = spec()
             .status_line(&ctx)
@@ -920,6 +923,7 @@ mod tests {
             &Slices::new(),
             &KeyRoutes::new(),
             &pickers,
+            jinn_slices::empty_config_layer(),
         );
 
         // Then the picker scope is gone — ESC actually leaves the picker.
@@ -942,7 +946,7 @@ mod tests {
 
         // When lending the storage for the skill id.
         let lend = {
-            let mut host = AppStatePickerHost::new(&mut state);
+            let mut host = AppStatePickerHost::new(&mut state, jinn_slices::empty_config_layer());
             jinn_picker::PickerHost::selection_state(&mut host, PickerId::new(SKILL_ID))
                 .expect("skill is mapped")
                 .downcast_ref::<SelectionState<PickerEntry<SkillEntry>>>()
@@ -982,7 +986,10 @@ mod render_cache_tests {
     /// Renders the skill picker through its registered spec (the same path
     /// the tui render pass takes).
     fn render_skill_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
-        let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(ctx.state);
+        let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(
+            ctx.state,
+            jinn_slices::empty_config_layer(),
+        );
         let id = jinn_picker::spec_id_for_kind(&PickerKind::Skill).expect("skill is spec-mapped");
         let spec = ctx
             .pickers
@@ -1032,7 +1039,7 @@ mod render_cache_tests {
                 .draw(|frame| {
                     let slices = jinn_slices::Slices::new();
                     let overlay_views = jinn_slices::OverlayViews::new();
-                    let ctx = RenderCtx::new(state, &slices, &overlay_views)
+                    let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views)
                         .with_pickers(&crate::build_picker_registry());
                     render_skill_picker(frame, area, &ctx);
                 })
@@ -1093,7 +1100,7 @@ mod render_cache_tests {
                 .draw(|frame| {
                     let slices = jinn_slices::Slices::new();
                     let overlay_views = jinn_slices::OverlayViews::new();
-                    let ctx = RenderCtx::new(&state, &slices, &overlay_views)
+                    let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views)
                         .with_pickers(&crate::build_picker_registry());
                     render_skill_picker(frame, area, &ctx);
                 })
@@ -1151,7 +1158,7 @@ mod render_cache_tests {
                 .draw(|frame| {
                     let slices = jinn_slices::Slices::new();
                     let overlay_views = jinn_slices::OverlayViews::new();
-                    let ctx = RenderCtx::new(state, &slices, &overlay_views)
+                    let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views)
                         .with_pickers(&crate::build_picker_registry());
                     render_skill_picker(frame, area, &ctx);
                 })
@@ -1217,7 +1224,7 @@ mod render_cache_tests {
                 .draw(|frame| {
                     let slices = jinn_slices::Slices::new();
                     let overlay_views = jinn_slices::OverlayViews::new();
-                    let ctx = RenderCtx::new(state, &slices, &overlay_views)
+                    let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views)
                         .with_pickers(&crate::build_picker_registry());
                     render_skill_picker(frame, area, &ctx);
                 })
@@ -1278,7 +1285,7 @@ mod render_cache_tests {
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
                 let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new(&state, &slices, &overlay_views)
+                let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views)
                     .with_pickers(&crate::build_picker_registry());
                 let area = Rect::new(0, 0, 100, 30);
                 render_skill_picker(frame, area, &ctx);

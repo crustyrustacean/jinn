@@ -1,8 +1,9 @@
-//! Session-creation seed derived from user preferences.
+//! Session-creation seed derived from the user's configuration.
 
 use std::collections::{BTreeSet, HashSet};
 
-/// Per-session defaults derived from user preferences at session creation.
+/// Per-session defaults derived from the user's configuration at session
+/// creation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionSeed {
     /// Tool names to start the session with disabled.
@@ -14,16 +15,23 @@ pub struct SessionSeed {
 }
 
 impl SessionSeed {
-    /// Derives a new-session seed from user preferences.
+    /// Derives a new-session seed by reading three sections from the
+    /// configuration layer.
+    ///
+    /// Three reads rather than one aggregate read: the seed's inputs are
+    /// owned by three different slices, and a kernel-side struct
+    /// collecting them is what this work is removing.
     #[must_use]
-    pub fn from_preferences(prefs: &jinn_preferences_config::UserPreferences) -> Self {
+    pub fn from_config(config: &jinn_config::ConfigLayer) -> Self {
+        let tools = config.read::<jinn_preferences_config::schemas::ToolsConfig>();
+        let skills = config.read::<jinn_preferences_config::schemas::SkillsConfig>();
+        let mcp = config.read::<jinn_mcp_msg::config::McpServersConfig>();
         Self {
-            disabled_tools: prefs.disabled_tools.iter().cloned().collect(),
-            disabled_skills: prefs.disabled_skills.iter().cloned().collect(),
-            enabled_mcp: prefs
-                .mcp_server
+            disabled_tools: tools.disabled.iter().cloned().collect(),
+            disabled_skills: skills.disabled.iter().cloned().collect(),
+            enabled_mcp: mcp
                 .iter()
-                .filter(|(_, config)| config.auto_enable)
+                .filter(|(_, server)| server.auto_enable)
                 .map(|(name, _)| name.clone())
                 .collect(),
         }
@@ -41,91 +49,124 @@ mod tests {
     #![allow(clippy::expect_used, reason = "test code")]
 
     use super::*;
-    use jinn_preferences_config::UserPreferences;
+    use std::sync::Arc;
+
+    use jinn_mcp_msg::config::McpServersConfig;
+    use jinn_preferences_config::schemas::{SkillsConfig, ToolsConfig};
+
+    /// A layer over `document`, for exercising the same read path
+    /// production uses.
+    fn layer(document: &str) -> jinn_config::ConfigLayer {
+        let parsed = document.parse().expect("test TOML parses");
+        jinn_config::ConfigLayer::load(Arc::new(jinn_config::InMemoryConfigStorage::new(parsed)))
+            .expect("layer loads")
+    }
+
+    fn empty_layer() -> jinn_config::ConfigLayer {
+        layer("")
+    }
 
     #[rstest::rstest]
-    fn session_seed_from_default_preferences_is_all_enabled() {
-        // Given default (empty) user preferences.
-        let prefs = UserPreferences::default();
+    fn an_unconfigured_document_leaves_everything_enabled() {
+        // Given a layer with no configured sections.
+        let config = empty_layer();
 
         // When deriving the seed.
-        let seed = SessionSeed::from_preferences(&prefs);
+        let seed = SessionSeed::from_config(&config);
 
-        // Then nothing is disabled and nothing auto-enabled.
+        // Then nothing is disabled and nothing is auto-enabled.
         assert!(seed.disabled_tools.is_empty());
         assert!(seed.disabled_skills.is_empty());
-        assert!(!seed.has_auto_enabled_mcp());
+        assert!(seed.enabled_mcp.is_empty());
     }
 
     #[rstest::rstest]
-    fn session_seed_copies_preferences_and_auto_enabled_mcp() {
-        // Given preferences with disabled names and one auto-enabled server.
-        let prefs = UserPreferences {
-            disabled_tools: ["bash", "mcp__excalimate__draw"]
-                .into_iter()
-                .map(str::to_owned)
-                .collect(),
-            disabled_skills: ["phased-task-loop"]
-                .into_iter()
-                .map(str::to_owned)
-                .collect(),
-            mcp_server: [(
-                "excalimate".to_owned(),
-                jinn_mcp_msg::McpServerConfig {
-                    command: Some("npx".to_owned()),
-                    auto_enable: true,
-                    ..Default::default()
-                },
-            )]
-            .into_iter()
-            .collect(),
-            ..Default::default()
-        };
+    fn disabled_tools_come_from_the_tools_section() {
+        // Given a layer disabling two tools.
+        let config = layer("[tools]\ndisabled = [\"bash\", \"web-search\"]\n");
 
         // When deriving the seed.
-        let seed = SessionSeed::from_preferences(&prefs);
+        let seed = SessionSeed::from_config(&config);
 
-        // Then all configured defaults are copied.
+        // Then exactly those two are disabled.
+        assert_eq!(seed.disabled_tools.len(), 2);
         assert!(seed.disabled_tools.contains("bash"));
-        assert!(seed.disabled_skills.contains("phased-task-loop"));
-        assert!(seed.has_auto_enabled_mcp());
-        assert_eq!(
-            seed.enabled_mcp.iter().collect::<Vec<_>>(),
-            vec!["excalimate"]
-        );
+        assert!(seed.disabled_tools.contains("web-search"));
     }
 
     #[rstest::rstest]
-    fn session_seed_excludes_servers_without_auto_enable() {
-        // Given preferences with one enabled and one disabled MCP server.
-        let prefs = UserPreferences {
-            mcp_server: [
-                (
-                    "on".to_owned(),
-                    jinn_mcp_msg::McpServerConfig {
-                        command: Some("a".to_owned()),
-                        auto_enable: true,
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "off".to_owned(),
-                    jinn_mcp_msg::McpServerConfig {
-                        command: Some("b".to_owned()),
-                        auto_enable: false,
-                        ..Default::default()
-                    },
-                ),
-            ]
-            .into_iter()
-            .collect(),
-            ..Default::default()
-        };
+    fn disabled_skills_come_from_the_skills_section() {
+        // Given a layer disabling one skill.
+        let config = layer("[skills]\ndisabled = [\"phased-task-loop\"]\n");
 
         // When deriving the seed.
-        let seed = SessionSeed::from_preferences(&prefs);
+        let seed = SessionSeed::from_config(&config);
 
-        // Then only the auto-enabled server is desired.
-        assert_eq!(seed.enabled_mcp.iter().collect::<Vec<_>>(), vec!["on"]);
+        // Then exactly that skill is disabled.
+        assert!(seed.disabled_skills.contains("phased-task-loop"));
+    }
+
+    #[rstest::rstest]
+    fn only_auto_enabling_servers_are_seeded_as_enabled() {
+        // Given two configured servers, one with auto_enable set.
+        let config = layer(
+            "[mcp.alpha]\nauto_enable = true\nurl = \"http://localhost:1\"\n\
+             [mcp.beta]\nauto_enable = false\nurl = \"http://localhost:2\"\n",
+        );
+
+        // When deriving the seed.
+        let seed = SessionSeed::from_config(&config);
+
+        // Then only the auto-enabling one is seeded.
+        assert_eq!(seed.enabled_mcp.iter().collect::<Vec<_>>(), vec!["alpha"]);
+    }
+
+    /// The three sections belong to three different slices; the seed is
+    /// the one place that reads all three, and it must not silently
+    /// collapse into reading one of them.
+    #[rstest::rstest]
+    fn the_seed_reads_all_three_sections_independently() {
+        // Given a layer configuring each section differently.
+        let config = layer(
+            "[tools]\ndisabled = [\"bash\"]\n\
+             [skills]\ndisabled = [\"micro-task-loop\"]\n\
+             [mcp.gamma]\nauto_enable = true\nurl = \"http://localhost:3\"\n",
+        );
+
+        // When deriving the seed.
+        let seed = SessionSeed::from_config(&config);
+
+        // Then each section's value lands in its own field.
+        assert!(seed.disabled_tools.contains("bash"));
+        assert!(seed.disabled_skills.contains("micro-task-loop"));
+        assert!(seed.enabled_mcp.contains("gamma"));
+        assert!(seed.has_auto_enabled_mcp());
+    }
+
+    /// A `put` through the layer must round-trip a server table, since
+    /// the seed is derived from exactly what `put` wrote.
+    #[rstest::rstest]
+    fn a_written_server_section_reads_back_identically() {
+        // Given a server written through the layer.
+        let config = layer("[mcp.delta]\nauto_enable = true\n");
+        let before = config.read::<McpServersConfig>();
+        config
+            .put::<McpServersConfig>(&before)
+            .expect("layer writes the mcp section");
+
+        // When it is read again.
+        let after = config.read::<McpServersConfig>();
+
+        // Then nothing changed.
+        assert_eq!(after, before);
+        assert!(after.contains_key("delta"));
+    }
+
+    #[rstest::rstest]
+    fn the_tools_and_skills_defaults_are_empty() {
+        // Given nothing configured.
+        // Then the code defaults disable nothing.
+        assert!(ToolsConfig::default().disabled.is_empty());
+        assert!(SkillsConfig::default().disabled.is_empty());
     }
 }

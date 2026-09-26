@@ -191,6 +191,7 @@ pub fn pins_section_content_height(state: &AppState) -> u16 {
 pub fn handle_sidebar_persona_edit(
     state: &mut AppState,
     pickers: &jinn_picker::PickerRegistry,
+    config: &jinn_slices::ConfigLayer,
 ) -> IntentResult {
     if !matches!(
         state.frontend.sidebar_section(),
@@ -198,7 +199,12 @@ pub fn handle_sidebar_persona_edit(
     ) {
         return IntentResult::empty();
     }
-    jinn_domain::feat::picker::intent::handle_open_picker(state, PickerKind::Persona, pickers)
+    jinn_domain::feat::picker::intent::handle_open_picker(
+        state,
+        PickerKind::Persona,
+        pickers,
+        config,
+    )
 }
 
 /// Handles `PinsUnpin`.

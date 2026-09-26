@@ -20,13 +20,15 @@ pub mod query_responder;
 pub mod route_rows;
 pub mod screen_task;
 
+use jinn_term_msg::prefs::InteractiveTermPrefs;
+
 /// Activates the term slice over the kernel's services: registers the
 /// `term/tabs` cell (idempotent), attaches the keybind rows and the
 /// capture key hook, and registers the overlay geometry + renderer for
 /// both overlay scopes.
 ///
-/// The configured control-toggle key is read from the snapshot's
-/// `[interactive_term]` preferences, normalized (falling back to the
+/// The configured control-toggle key is read from the `[term]` section
+/// of the configuration layer, normalized (falling back to the
 /// default, loudly), and interned once — row keys are `&'static str`,
 /// and this runs exactly once per launch over a bounded set of config
 /// values, so the leaked allocation is deliberate and bounded.
@@ -37,7 +39,7 @@ pub mod screen_task;
 /// coordinator actor it spawns afterwards.
 pub fn activate(
     services: &mut jinn_domain::common::services::Services,
-    state: &jinn_domain::common::state::State,
+    _state: &jinn_domain::common::state::State,
 ) {
     // The cell is registered by composition today (actor_wiring) so the
     // spawn order matches the tools-registry cell; re-registering is a
@@ -49,15 +51,12 @@ pub fn activate(
 
     // The configured control-toggle binding, validated by the same parser
     // the keymap binds through (falls back to the default, loudly).
-    let configured = {
-        let snapshot = state.read();
-        snapshot
-            .frontend
-            .preferences
-            .interactive_term
-            .control_toggle_key
-            .clone()
-    };
+    let configured = services
+        .config
+        .get::<InteractiveTermPrefs>()
+        .unwrap_or_default()
+        .control_toggle_key
+        .clone();
     let toggle_key = jinn_term_msg::prefs::normalize_control_toggle_key(&configured)
         .unwrap_or_else(|| {
             tracing::warn!(

@@ -46,6 +46,10 @@ impl Default for ToolCallWatchdogConfig {
     }
 }
 
+impl jinn_config::Configurable for ToolCallWatchdogConfig {
+    const KEY: &'static str = "watchdog.tool_call";
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, reason = "test code")]

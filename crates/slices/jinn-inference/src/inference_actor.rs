@@ -567,8 +567,13 @@ impl InferenceActor {
             self.cancelled_sessions.remove(&payload.session_id);
         }
 
-        let prefs = self.services.user_preferences_storage.read();
-        let retry_config = prefs.request_retry.clone();
+        // Read the retry policy from the configuration layer at the point
+        // of use, so a reload is observed by the next turn without a restart.
+        let retry_config = self
+            .services
+            .config
+            .get::<RequestRetryConfig>()
+            .unwrap_or_default();
 
         let tools = payload.tool_definitions.clone();
         let system_prompt = payload.system_prompt.clone();

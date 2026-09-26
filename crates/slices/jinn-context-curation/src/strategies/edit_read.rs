@@ -92,6 +92,11 @@ pub(super) fn find_matching_result(
 /// edits/writes stale.
 #[derive(Clone)]
 pub struct EditReadAutoPruneWorker {
+    /// The configuration layer. The worker holds a cheap
+    /// cloneable handle and re-reads its own subsection inside
+    /// `evaluate`, so enablement and tuning are observed per pass
+    /// rather than frozen at wiring time.
+    pub layer: jinn_config::ConfigLayer,
     /// Configuration for the edit-read auto-prune strategy.
     pub config: EditReadAutoPruneConfig,
 }
@@ -111,6 +116,16 @@ impl HistoryWorker for EditReadAutoPruneWorker {
         _session_id: &SessionId,
         history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
+        // Live read: this strategy's own subsection, switched off or
+        // unreadable means a no-op pass rather than an absent worker.
+        let Some(config) = super::super::worker::strategy_section(&self.layer, |auto| {
+            let section = &auto.edit_read;
+            section.enabled.then(|| section.clone())
+        }) else {
+            return Vec::new();
+        };
+        let config = &config;
+
         let mut mutations = Vec::new();
         let history_len = history.len();
 
@@ -137,7 +152,7 @@ impl HistoryWorker for EditReadAutoPruneWorker {
                 &history,
                 i,
                 &read_path,
-                self.config.min_age,
+                config.min_age,
                 &mut mutations,
                 self.name(),
             );
@@ -278,10 +293,11 @@ mod tests {
     /// Build a worker with a specific `min_age` floor.
     fn worker_with_min_age(min_age: usize) -> EditReadAutoPruneWorker {
         EditReadAutoPruneWorker {
-            config: EditReadAutoPruneConfig {
-                enabled: true,
-                min_age,
-            },
+            layer: crate::worker::layer_with_strategy(
+                "edit_read",
+                format!("min_age = {min_age}\n"),
+            ),
+            config: EditReadAutoPruneConfig::default(),
         }
     }
 

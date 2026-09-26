@@ -8,6 +8,7 @@
 //! A footer at the bottom shows keybinds across two lines and the session's
 //! active cwd and provider/model on the same line.
 
+use jinn_preferences_config::schemas::ChatLogConfig;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Modifier, Style};
@@ -70,13 +71,14 @@ pub fn render_session_preview_for_state(
         return;
     };
     let theme = &state.frontend.theme;
-    let tool_max = state.frontend.preferences.tool_entry_max_lines;
+    let tool_max = ctx.config.read::<ChatLogConfig>().tool_entry_max_lines;
 
     // Anchor the popup to the cursor through the same document layout the
     // sidebar renders with, so it stays attached while the column scrolls.
     let cursor_y = crate::sections::layout::frame_row_of(
         sidebar_rect,
         state,
+        ctx.config,
         jinn_sidebar_msg::SidebarSectionId::Sessions,
         u16::try_from(idx).unwrap_or(u16::MAX),
     );

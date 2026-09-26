@@ -32,7 +32,7 @@ use jinn_domain::common::bus::test_harness::TestHarness;
 use jinn_domain::common::state::State;
 use jinn_mcp_msg::McpServerConfig;
 use jinn_mcp_msg::RestartError;
-use jinn_preferences_config::user_preferences::UserPreferences;
+use jinn_mcp_msg::config::McpServersConfig;
 use jinn_tools::restart_mcp::execute;
 use jinn_tools::tool_types::ToolContext;
 
@@ -56,16 +56,16 @@ async fn spawn_coordinator(
     jinn_domain::common::state::State,
 ) {
     let services = harness.services().await;
+    // Seeded through the layer the coordinator reads from.
     services
-        .user_preferences_storage
-        .save(&UserPreferences {
-            mcp_server: servers
+        .config
+        .put::<McpServersConfig>(&McpServersConfig(
+            servers
                 .iter()
                 .map(|(name, config)| ((*name).to_owned(), config.clone()))
                 .collect(),
-            ..UserPreferences::default()
-        })
-        .expect("seed prefs");
+        ))
+        .expect("seed the mcp.server section");
     let state = State::new(AppState::default());
     let runtime = crate::activate_runtime(&services.slices)
         .expect("MCP runtime cell is registered exactly once");
@@ -99,21 +99,12 @@ fn ctx_with_coordinator(
     coordinator: std::sync::Arc<dyn jinn_mcp_msg::McpCoordinatorHandle>,
     session_id: SessionId,
 ) -> ToolContext {
-    let config = McpServerConfig {
-        command: Some(String::new()),
-        args: vec![],
-        ..Default::default()
-    };
-    let mut app = AppState::default();
-    app.frontend.preferences = UserPreferences {
-        mcp_server: [("excalimate".to_owned(), config)].into_iter().collect(),
-        ..Default::default()
-    };
-    let state = State::new(app);
+    let state = State::new(AppState::default());
 
     ToolContext {
         cwd: PathBuf::from("/tmp"),
         command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+        config: jinn_config::testutil::config_layer(""),
         timeout: None,
         state: Some(state),
         session_id: Some(session_id),
@@ -189,6 +180,7 @@ async fn execute_fails_when_coordinator_ref_is_none() {
     let ctx = ToolContext {
         cwd: PathBuf::from("/tmp"),
         command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+        config: jinn_config::testutil::config_layer(""),
         timeout: None,
         state: Some(State::new(AppState::default())),
         session_id: Some(session_id),

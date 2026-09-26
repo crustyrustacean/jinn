@@ -33,3 +33,7 @@ impl Default for CwdSelectorConfig {
         }
     }
 }
+
+impl jinn_config::Configurable for CwdSelectorConfig {
+    const KEY: &'static str = "ui.cwd_selector";
+}

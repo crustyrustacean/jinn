@@ -61,3 +61,7 @@ impl Default for CompactionConfig {
         }
     }
 }
+
+impl jinn_config::Configurable for CompactionConfig {
+    const KEY: &'static str = "context_curation.compaction";
+}

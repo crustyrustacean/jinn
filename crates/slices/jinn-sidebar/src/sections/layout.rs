@@ -18,6 +18,7 @@
 //! the offset is 0 and the sections keep their natural top-down placement.
 
 use jinn_domain::common::app_state::AppState;
+use jinn_slices::ConfigLayer;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
@@ -189,13 +190,14 @@ pub fn task_list_rows(state: &AppState) -> u16 {
 }
 
 /// McpServers section content height in rows; zero when no server is enabled.
+///
+/// The configured-server catalog comes from the configuration layer, not
+/// from `AppState`: a slice-owned section is not mirrored into state.
 #[must_use]
-pub fn mcp_servers_rows(state: &AppState) -> u16 {
+pub fn mcp_servers_rows(state: &AppState, config: &ConfigLayer) -> u16 {
     let enabled = state.active_session().enabled_mcp_servers();
-    let count = state
-        .frontend
-        .preferences
-        .mcp_server
+    let count = config
+        .read::<jinn_mcp_msg::config::McpServersConfig>()
         .iter()
         .filter(|(name, _)| enabled.contains(name.as_str()))
         .count();
@@ -235,20 +237,20 @@ pub const REGISTRATION_ORDER: [SidebarSectionId; 5] = [
 
 /// The content height of `id` for the current state.
 #[must_use]
-pub fn content_height_of(state: &AppState, id: SidebarSectionId) -> u16 {
+pub fn content_height_of(state: &AppState, config: &ConfigLayer, id: SidebarSectionId) -> u16 {
     match id {
         SidebarSectionId::Persona => persona_rows(state),
         SidebarSectionId::Pins => pins_rows(state),
         SidebarSectionId::TaskList => task_list_rows(state),
-        SidebarSectionId::McpServers => mcp_servers_rows(state),
+        SidebarSectionId::McpServers => mcp_servers_rows(state, config),
         SidebarSectionId::Sessions => sessions_rows(state),
     }
 }
 
 /// Builds the document placement table for the current state.
 #[must_use]
-pub fn document(state: &AppState) -> DocumentLayout {
-    document_for(state, &REGISTRATION_ORDER)
+pub fn document(state: &AppState, config: &ConfigLayer) -> DocumentLayout {
+    document_for(state, config, &REGISTRATION_ORDER)
 }
 
 /// Builds the document placement table for an explicit set of sections.
@@ -258,8 +260,12 @@ pub fn document(state: &AppState) -> DocumentLayout {
 /// a fixed order — keeps the total height in agreement with what gets rendered,
 /// so a partially registered sidebar lays out correctly.
 #[must_use]
-pub fn document_for(state: &AppState, ids: &[SidebarSectionId]) -> DocumentLayout {
-    let spans = build_spans(state, ids);
+pub fn document_for(
+    state: &AppState,
+    config: &ConfigLayer,
+    ids: &[SidebarSectionId],
+) -> DocumentLayout {
+    let spans = build_spans(state, config, ids);
     let total_rows = spans
         .iter()
         .fold(0u16, |total, span| total.saturating_add(span.rows));
@@ -271,11 +277,15 @@ pub fn document_for(state: &AppState, ids: &[SidebarSectionId]) -> DocumentLayou
 }
 
 /// Accumulates each section's height into a contiguous prefix-sum table.
-fn build_spans(state: &AppState, ids: &[SidebarSectionId]) -> Vec<SectionSpan> {
+fn build_spans(
+    state: &AppState,
+    config: &ConfigLayer,
+    ids: &[SidebarSectionId],
+) -> Vec<SectionSpan> {
     let mut spans = Vec::with_capacity(ids.len());
     let mut first_row = 0u16;
     for id in ids {
-        let rows = content_height_of(state, *id);
+        let rows = content_height_of(state, config, *id);
         spans.push(SectionSpan {
             id: *id,
             first_row,
@@ -288,8 +298,8 @@ fn build_spans(state: &AppState, ids: &[SidebarSectionId]) -> Vec<SectionSpan> {
 
 /// Builds the document table including the focused section's cursor row.
 #[must_use]
-pub fn document_with_cursor(state: &AppState) -> DocumentLayout {
-    with_cursor(document(state), state)
+pub fn document_with_cursor(state: &AppState, config: &ConfigLayer) -> DocumentLayout {
+    with_cursor(document(state, config), state)
 }
 
 /// The document's scroll offset, honouring the last offset that was derived
@@ -298,11 +308,11 @@ pub fn document_with_cursor(state: &AppState) -> DocumentLayout {
 /// Resolves the same way `Sidebar::render` does, so an overlay anchored to a
 /// row stays attached to it across a focus change.
 #[must_use]
-pub fn scroll_offset(state: &AppState, viewport_rows: u16) -> u16 {
+pub fn scroll_offset(state: &AppState, config: &ConfigLayer, viewport_rows: u16) -> u16 {
     let remembered = state
         .frontend
         .with_sections(|sections| sections.scroll_offset, || 0);
-    document_with_cursor(state).offset_from(viewport_rows, remembered)
+    document_with_cursor(state, config).offset_from(viewport_rows, remembered)
 }
 
 /// Records the sidebar's scroll offset for the frame that is about to render.
@@ -311,8 +321,8 @@ pub fn scroll_offset(state: &AppState, viewport_rows: u16) -> u16 {
 /// recompute here — this only remembers it, which is what lets the column hold
 /// its position across a focus change to the chat pane (where no cursor can be
 /// derived at all). Called from the pre-render pass so `render` stays read-only.
-pub fn write_scroll_offset(state: &mut AppState, viewport_rows: u16) {
-    let offset = scroll_offset(state, viewport_rows);
+pub fn write_scroll_offset(state: &mut AppState, config: &ConfigLayer, viewport_rows: u16) {
+    let offset = scroll_offset(state, config, viewport_rows);
     state
         .frontend
         .update_sections(|sections| sections.scroll_offset = offset);
@@ -460,9 +470,15 @@ pub fn visible_rect(
 /// renders with, so overlays anchored to a row stay attached to it while the
 /// column scrolls. The result is clamped inside the column.
 #[must_use]
-pub fn frame_row_of(sidebar_rect: Rect, state: &AppState, id: SidebarSectionId, row: u16) -> u16 {
-    let document = document_with_cursor(state);
-    let offset = scroll_offset(state, sidebar_rect.height);
+pub fn frame_row_of(
+    sidebar_rect: Rect,
+    state: &AppState,
+    config: &ConfigLayer,
+    id: SidebarSectionId,
+    row: u16,
+) -> u16 {
+    let document = document_with_cursor(state, config);
+    let offset = scroll_offset(state, config, sidebar_rect.height);
     let slack = document.bottom_slack(sidebar_rect.height);
     let top = document.span_or_empty(id).top_in_view(offset);
     // Only the trailing section is pushed down by the slack; the leading
@@ -589,13 +605,14 @@ mod tests {
         };
 
         // When building the document table.
-        let document = document(&state);
+        let config = jinn_domain::common::render_ctx::empty_config_layer();
+        let document = document(&state, config);
 
         // Then the total is the sum of the individual section heights.
         let sum: u16 = document
             .spans
             .iter()
-            .map(|span| content_height_of(&state, span.id))
+            .map(|span| content_height_of(&state, config, span.id))
             .sum();
         assert_eq!(document.total_rows, sum);
     }
@@ -606,7 +623,10 @@ mod tests {
         let state = state_with(4, 3);
 
         // When building the document table.
-        let document = document(&state);
+        let document = document(
+            &state,
+            jinn_domain::common::render_ctx::empty_config_layer(),
+        );
 
         // Then each span starts where the previous one ended.
         let mut expected_first_row = 0u16;

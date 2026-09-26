@@ -49,6 +49,7 @@ use jinn_term_msg::command::{
     SendTermOutcome, SpawnTerm, SpawnTermOutcome, TermScreen,
 };
 use jinn_term_msg::event::TermScreenUpdated;
+use jinn_term_msg::prefs::InteractiveTermPrefs;
 use jinn_term_msg::settle::{encode_input, should_settle};
 use jinn_term_msg::takeover::TermControls;
 
@@ -104,8 +105,10 @@ pub struct InteractiveTermActor {
     /// Live sessions keyed by their owning chat session.
     sessions: HashMap<jinn_core_types::SessionId, TermSession>,
     state: jinn_domain::common::state::State,
-    settle_quiet: Duration,
-    settle_cap: Duration,
+    /// The configuration layer. The two settle durations are read from it
+    /// on every settle rather than baked at spawn, so tuning the wait does
+    /// not need a restart.
+    config: jinn_config::ConfigLayer,
 }
 
 /// Dependencies for [`InteractiveTermActor`].
@@ -118,10 +121,25 @@ pub struct InteractiveTermActorDeps {
     /// Shared application state — the actor owns `frontend.terminal` and
     /// mirrors published screen events into it.
     pub state: jinn_domain::common::state::State,
-    /// Quiet window for the settle wait.
-    pub settle_quiet: Duration,
-    /// Hard cap for the settle wait.
-    pub settle_cap: Duration,
+    /// The configuration layer, from which the two settle durations are
+    /// read per settle.
+    pub config: jinn_config::ConfigLayer,
+}
+
+impl InteractiveTermActor {
+    /// The quiet window for a settle wait, read live.
+    fn settle_quiet(&self) -> Duration {
+        Duration::from_millis(self.config.read::<InteractiveTermPrefs>().settle_quiet_ms)
+    }
+
+    /// The hard cap for a settle wait, read live.
+    fn settle_cap(&self) -> Duration {
+        Duration::from_millis(
+            self.config
+                .read::<InteractiveTermPrefs>()
+                .settle_max_wait_ms,
+        )
+    }
 }
 
 impl ServiceActor for InteractiveTermActor {
@@ -159,8 +177,7 @@ impl InteractiveTermActor {
                             controls: deps.controls,
                             sessions: HashMap::new(),
                             state: deps.state,
-                            settle_quiet: deps.settle_quiet,
-                            settle_cap: deps.settle_cap,
+                            config: deps.config,
                         })
                     })
                 }
@@ -300,8 +317,8 @@ impl InteractiveTermActor {
             &pty.screen(),
             &self.controls,
             &msg.chat_session_id,
-            self.settle_quiet,
-            self.settle_cap.min(msg.max_wait),
+            self.settle_quiet(),
+            self.settle_cap().min(msg.max_wait),
         )
         .await;
 
@@ -426,8 +443,8 @@ impl InteractiveTermActor {
             &session.pty.screen(),
             &self.controls,
             &chat,
-            self.settle_quiet,
-            self.settle_cap.min(msg.max_wait),
+            self.settle_quiet(),
+            self.settle_cap().min(msg.max_wait),
         )
         .await;
 
@@ -658,6 +675,22 @@ mod tests {
     const QUIET: Duration = Duration::from_millis(150);
     const CAP: Duration = Duration::from_secs(2);
 
+    /// A layer carrying the given settle windows, so the timing these
+    /// tests assert on is read from configuration the same way production
+    /// reads it.
+    fn term_layer(quiet: Duration, cap: Duration) -> jinn_config::ConfigLayer {
+        let document = format!(
+            "[term]\nsettle_quiet_ms = {}\nsettle_max_wait_ms = {}\n",
+            quiet.as_millis(),
+            cap.as_millis(),
+        );
+        let parsed = document.parse().expect("test TOML parses");
+        jinn_config::ConfigLayer::load(std::sync::Arc::new(
+            jinn_config::InMemoryConfigStorage::new(parsed),
+        ))
+        .expect("layer loads")
+    }
+
     fn deps(
         bus: BusService,
         controls: TermControls,
@@ -669,8 +702,10 @@ mod tests {
             bus,
             controls,
             state: state.clone(),
-            settle_quiet: QUIET,
-            settle_cap: CAP,
+            // A layer carrying the settle windows the tests assert on, so
+            // the same values a production user configures drive the
+            // timing these tests check.
+            config: term_layer(QUIET, CAP),
         };
         (deps, state)
     }

@@ -319,12 +319,7 @@ pub fn install_defaults_to(
     destinations: &Destinations,
     overwrite: bool,
     prefs_path: &Path,
-    storage: &dyn jinn_preferences_config::user_preferences_storage::UserPreferencesStorage,
 ) -> Result<InstallReport, Report<InstallError>> {
-    // The existence gate MUST run before any storage call:
-    // `FilesystemUserPreferencesStorage::reload()` auto-creates `jinn.toml`
-    // when missing, which would silently turn a fresh install into an
-    // "existing file" install.
     let prefs_existed = prefs_path.exists();
 
     let outcomes: Vec<InstallOutcome> = BUNDLED
@@ -335,10 +330,11 @@ pub fn install_defaults_to(
     let jinn_toml = if prefs_existed {
         JinnTomlOutcome::Untouched(prefs_path.to_path_buf())
     } else {
-        // Fresh-create path: the reload auto-creates the comment-rich
-        // default template — the file's single write.
-        storage
-            .reload()
+        // Fresh-create path: write the comment-rich default template as
+        // bytes. Deliberately NOT a round-trip through a config struct —
+        // the template is documentation, and serializing a struct would
+        // strip every comment it ships with.
+        jinn_preferences_config::create_default_preferences_to(prefs_path)
             .change_context(InstallError)
             .attach("failed to create jinn.toml with the default template")?;
         JinnTomlOutcome::Created(prefs_path.to_path_buf())
@@ -403,7 +399,6 @@ mod tests {
     )]
 
     use super::*;
-    use jinn_preferences_config::user_preferences_storage::InMemoryUserPreferencesStorage;
     use tempfile::TempDir;
 
     /// Builds a [`Destinations`] rooted at four distinct temp dirs. The
@@ -430,8 +425,6 @@ mod tests {
     struct TestEnv {
         destinations: Destinations,
         prefs_path: std::path::PathBuf,
-        storage:
-            jinn_preferences_config::user_preferences_storage::FilesystemUserPreferencesStorage,
         _temps: Vec<TempDir>,
     }
 
@@ -443,21 +436,13 @@ mod tests {
             temps.push(prefs_dir);
             Self {
                 destinations,
-                storage: jinn_preferences_config::user_preferences_storage::
-                    FilesystemUserPreferencesStorage::new(prefs_path.clone()),
                 prefs_path,
                 _temps: temps,
             }
         }
 
         fn run(&self, overwrite: bool) -> InstallReport {
-            install_defaults_to(
-                &self.destinations,
-                overwrite,
-                &self.prefs_path,
-                &self.storage,
-            )
-            .expect("install")
+            install_defaults_to(&self.destinations, overwrite, &self.prefs_path).expect("install")
         }
     }
 
@@ -531,12 +516,7 @@ mod tests {
         let prefs_path = prefs_dir.path().join("nested").join("jinn.toml");
 
         // When installing defaults.
-        let result = install_defaults_to(
-            &destinations,
-            false,
-            &prefs_path,
-            &InMemoryUserPreferencesStorage::new(),
-        );
+        let result = install_defaults_to(&destinations, false, &prefs_path);
 
         // Then it succeeds (parents created) rather than erroring.
         assert!(result.is_ok(), "install should create missing parents");
