@@ -85,7 +85,7 @@ Prompts are only expanded when they get sent to the model and will always show u
 
 You can use any number of `<foo>` tokens in the scripts and their values will be prompted for interactively on session creation, saved to the session, and then re-used during teardown.
 
-The [default config](./crates/jinn-domain/src/feat/preferences_actor/default_jinn.toml) has both `git` and `fossil` preconfigured. You'll need to make sure your directory structure matches below, otherwise you'll need to write your own scripts.
+The [default config](./crates/jinn-preferences-config/src/default_jinn.toml) has both `git` and `fossil` preconfigured. You'll need to make sure your directory structure matches below, otherwise you'll need to write your own scripts.
 
 ```toml
 # Git
@@ -142,7 +142,7 @@ To create a new feature or project:
 
 jinn is configured via the files in the `~/.config/jinn` directory:
 
-- [`jinn.toml`](./crates/jinn-domain/src/feat/preferences_actor/default_jinn.toml) - user preferences (create new one with `jinn config init`)
+- [`jinn.toml`](./crates/jinn-preferences-config/src/default_jinn.toml) - user preferences (create new one with `jinn config init`)
 - [`providers.toml`](./crates/jinn-provider-config/src/default_providers.toml) - LLM provider configuration. Create a new one with `jinn config providers`.
 - `themes/` - color themes
 - `personas/` - personas

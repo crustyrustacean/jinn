@@ -264,3 +264,88 @@ struct DiscordSectionStandIn {
 impl jinn_config::Configurable for DiscordSectionStandIn {
     const KEY: &'static str = "discord";
 }
+
+/// The user-facing migration guide must point only at sections jinn
+/// actually reads, or a migrating user lands on a key that silently does
+/// nothing.
+///
+/// Checked against the registered sections rather than the template: the
+/// guide is a list of keys, and a key only does something if it lands
+/// under a section. Only the old-to-new table is checked — the guide's
+/// hand-edit table has prose columns ("Put it under"), not keys.
+#[rstest::rstest]
+fn the_migration_guide_points_only_at_live_sections() {
+    // Given the guide's old-to-new key table.
+    let guide = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../doc/jinn-toml-umbrella-migration.md",
+    ))
+    .expect("the migration guide ships in the repo");
+    let destinations = guide_new_spelling(&guide);
+    assert!(
+        destinations.len() > 10,
+        "the guide's key table is missing or unparseable: {destinations:?}"
+    );
+
+    // When each destination is resolved to the section that serves it.
+    let stale: Vec<&str> = destinations
+        .iter()
+        .filter(|key| {
+            // A key is served when it, or a prefix of it, is a registered
+            // section: `tools.disabled` by `[tools]`, and
+            // `context_curation.auto_prune.regex.rules` by the
+            // `[context_curation.auto_prune]` section that owns the list.
+            // An opt-in section with nothing to preconfigure is exempt.
+            section_prefixes(key).is_none()
+        })
+        .map(String::as_str)
+        .collect();
+
+    // Then every destination is a key jinn reads.
+    assert!(
+        stale.is_empty(),
+        "migration guide points at keys jinn does not read: {stale:?}"
+    );
+}
+
+/// The registered section that serves `key`, if any.
+///
+/// Walks up the dotted path, so a nested key resolves to the registered
+/// section on its path that owns it. `None` means no prefix is
+/// registered, which is how an opt-in section like `[mcp]` — nothing to
+/// preconfigure, so absent from the template — stays exempt.
+fn section_prefixes(key: &str) -> Option<&str> {
+    let sections = section_keys();
+    // Each dot-delimited prefix, longest first: the full key, then
+    // `context_curation.auto_prune.regex`, then `context_curation.auto_prune`.
+    let mut prefixes = std::iter::successors(Some(key), |shorter| {
+        shorter.rsplit_once('.').map(|(head, _)| head)
+    });
+    prefixes.find(|candidate| sections.contains(candidate))
+}
+
+/// The new spelling of every row in the guide's old-to-new key table.
+///
+/// A row reads `| `[old]`, `[[old.sub]]` | `[new]`, `[[new.sub]]` |`, so a
+/// cell may name more than one key. Bracket and angle characters are
+/// stripped: `[mcp.<name>]` and `[[session_lifecycle.lifecycle]]` reduce
+/// to the bare dotted paths a section is matched on.
+fn guide_new_spelling(guide: &str) -> Vec<String> {
+    guide
+        .lines()
+        .filter_map(|row| {
+            let rest = row.trim().strip_prefix("| `[")?;
+            // The old column ends at the first cell-closing backtick.
+            let (_, new_cell) = rest.split_once("` | ")?;
+            Some(new_cell.split("` |").next().unwrap_or(new_cell))
+        })
+        .flat_map(|cell| {
+            cell.split(',')
+                .map(|key| key.trim_matches(['`', ' ', '[', ']', '<', '>']))
+                .filter(|key| !key.is_empty())
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .filter(|key| key != "New")
+        .collect()
+}
