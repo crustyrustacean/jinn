@@ -114,7 +114,7 @@ impl PreferencesActor {
             let projects = self.state.read().frontend.preferences.projects.clone();
             let theme = self.state.read().frontend.theme.clone();
             cell.update(|picker| {
-                jinn_project::project_picker_actions::open(picker, &projects, &theme)
+                jinn_project::project_picker_actions::open(picker, &projects, &theme);
             });
         }
     }

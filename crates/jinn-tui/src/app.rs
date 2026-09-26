@@ -308,6 +308,12 @@ pub fn scope_for_focus(focus: &jinn_slices::FocusScope) -> Scope {
         // A `Picker` focus scope is a legacy name that no longer resolves:
         // every picker pushes a dynamic slice scope instead. Normal is the
         // honest fallback for a saved scope that predates the migration.
+        // A saved scope predating the picker migration. Kept as an explicit
+        // fallback rather than deleted: persisted sessions still name it.
+        #[allow(
+            clippy::match_same_arms,
+            reason = "the Input arm below has the same body by design; see the comment"
+        )]
         FocusScope::Picker { .. } => Scope::Normal,
         FocusScope::Input => Scope::Input,
         // Dynamic slice scopes pass their identity through unchanged.

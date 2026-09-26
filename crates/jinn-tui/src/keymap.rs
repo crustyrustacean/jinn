@@ -38,7 +38,6 @@ pub enum KeyCategory {
 /// Builds and returns the full keymap with all scope bindings.
 #[must_use]
 #[rustfmt::skip]
-#[expect(clippy::too_many_lines, reason = "declarative keymap table; splitting it would obscure the binding overview")]
 pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
     let mut keymap = Keymap::new();
 

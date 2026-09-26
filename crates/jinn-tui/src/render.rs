@@ -232,6 +232,11 @@ fn render_active_overlay(
     match scope {
         // A `Picker` focus scope is a legacy name that no longer resolves —
         // every picker pushes a dynamic slice scope rendered below.
+        // A saved scope predating the picker migration; no picker pushes it.
+        #[allow(
+            clippy::match_same_arms,
+            reason = "the Input arm below has the same body by design; see the comment"
+        )]
         FocusScope::Picker { .. } => None,
         FocusScope::Dynamic(id) => {
             // Slice overlays: consult the geometry fn + renderer the

@@ -74,6 +74,8 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_domain::Services)
         activate_inference(&mut services).await;
         activate_watchdog(&mut services, &core.state).await;
         activate_citations(&mut services).await;
+        // Every slice-owned picker, in the same order as `actor_wiring`.
+        activate_every_picker(&mut services);
         jinn_tools::activate(&mut services, &core.state);
         core.state
             .write()
@@ -208,7 +210,14 @@ fn activate_provider_selection(services: &mut jinn_domain::Services, state: &jin
         &services.key_routes,
         &services.trouper_system,
     );
-    jinn_provider_selection::activate(&mut host, &services_snapshot, state.clone());
+    let handles = jinn_provider_selection::activate(&mut host, &services_snapshot, state.clone());
+    // The three pickers this slice owns, registered in the same order as
+    // `actor_wiring`. The reasoning picker mints its own cell; the other two
+    // reuse the cells `activate` already registered (the provider actor
+    // publishes fetches into them).
+    jinn_provider_selection::activate_picker(&mut host);
+    jinn_provider_selection::activate_provider_picker(&mut host, &handles.provider_picker_cell);
+    jinn_provider_selection::activate_endpoint_picker(&mut host, &handles.endpoint_picker_cell);
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("provider-selection slice finalize failed: {error}");
     }
@@ -501,6 +510,7 @@ pub fn activate_theme(services: &mut jinn_domain::Services) {
         &services.paths.themes_dir(),
         &services.paths.system_themes_dir(),
     );
+    jinn_theme_slice::activate_picker(&mut host);
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("theme slice finalize failed: {error}");
     }
@@ -559,6 +569,90 @@ pub fn activate_preferences(services: &mut jinn_domain::Services) {
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("preferences slice finalize failed: {error}");
     }
+}
+
+/// Activates the remaining slice-owned pickers over the harness services.
+///
+/// The provider-selection pickers are activated by
+/// [`activate_provider_selection`], which owns the cells they share.
+///
+/// Several pickers here register their own cell, and more than one activation
+/// path calls in (persona's pre-seeded-cell branch calls this too). Registering
+/// a slot twice is a wiring error, so each registration is attempted once and
+/// the picker activated only when the registration succeeded.
+pub fn activate_every_picker(services: &mut jinn_domain::Services) {
+    use jinn_slices::cell::TypedCell;
+
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+
+    if slot_is_free::<jinn_persona_msg::PersonaPickerState>(
+        &services.slices,
+        &jinn_persona_msg::persona_picker_slot(),
+    ) {
+        jinn_persona::activate_picker(&mut host);
+    }
+
+    let session_cell: Option<TypedCell<jinn_session_store_msg::SessionPickerState>> = services
+        .slices
+        .register(
+            jinn_session_store_msg::session_picker_slot(),
+            jinn_session_store_msg::SessionPickerState::default(),
+        )
+        .ok();
+    if let Some(session_cell) = session_cell {
+        jinn_session_store::activate_session_picker(&mut host, &session_cell);
+    }
+
+    // These three mint their own cells inside `activate`, so they are
+    // attempted only when the slot is still free.
+    if slot_is_free::<jinn_tools_msg::ToolPickerState>(
+        &services.slices,
+        &jinn_tools_msg::tool_picker_slot(),
+    ) {
+        // Also activates the task-list picker this slice owns.
+        jinn_tools::activate_picker(&mut host);
+    }
+
+    if slot_is_free::<jinn_skills_msg::SkillPickerState>(
+        &services.slices,
+        &jinn_skills_msg::skill_picker_slot(),
+    ) {
+        jinn_skills::activate(&mut host);
+    }
+    if slot_is_free::<jinn_mcp_msg::McpPickerState>(
+        &services.slices,
+        &jinn_mcp_msg::mcp_picker_slot(),
+    ) {
+        jinn_mcp_slice::activate_picker(&mut host);
+    }
+    if slot_is_free::<jinn_session_lifecycle_msg::SessionLifecyclePickerState>(
+        &services.slices,
+        &jinn_session_lifecycle_msg::session_lifecycle_picker_slot(),
+    ) {
+        jinn_session_lifecycle::activate_picker(&mut host);
+    }
+
+    if let Err(error) = host.finalize(&|_key| None) {
+        panic!("picker activation finalize failed: {error}");
+    }
+}
+
+/// Whether `slot` holds no cell of type `T` yet.
+///
+/// Several pickers mint their cell inside `activate`, and more than one
+/// activation path calls in. Registering a taken slot is a wiring error, so
+/// each such picker is activated only when its slot is still free.
+fn slot_is_free<T>(slices: &jinn_slices::Slices, slot: &jinn_slices::SlotKey) -> bool
+where
+    T: Send + Sync + 'static,
+{
+    slices.reader::<T>(slot).is_none()
 }
 
 #[cfg(test)]

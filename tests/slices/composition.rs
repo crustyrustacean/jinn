@@ -8,7 +8,7 @@
 
 #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
-use crate::common::{composed_keymap, composition_routes};
+use crate::common::{composition_routes, test_app};
 use jinn_dashboard::dashboard_scope;
 use jinn_quake_bar::quake_scope;
 
@@ -76,9 +76,8 @@ fn every_picker_is_a_slice_registered_overlay() {
         ("mcp", jinn_mcp_msg::mcp_picker_scope()),
         ("project", jinn_project_msg::project_picker_scope()),
     ] {
-        assert_eq!(
+        assert!(
             picker_scope.captures_input(),
-            true,
             "{label} picker scope must capture input so its filter receives keys"
         );
     }
@@ -154,6 +153,64 @@ fn the_central_crates_name_no_picker() {
         assert!(
             hits.is_empty(),
             "{label} still names a picker ({hits:?}); pickers must be slice-owned"
+        );
+    }
+}
+
+/// Every picker scope owns at least one row in the production-composed table.
+///
+/// The reasoning-effort picker shipped broken for exactly this reason: its
+/// `activate_picker` existed, was tested, and was never called. The row was
+/// absent and the key did nothing.
+///
+/// This guards the *test harness* composition. It cannot guard
+/// `actor_wiring`, which is why the wiring file must be read against this
+/// list by eye (or by the sibling source test below).
+#[rstest::rstest]
+#[tokio::test]
+async fn every_picker_scope_owns_rows_in_the_test_composition() {
+    // Given the production route table.
+    let app = test_app().await;
+    let routes = app.services.key_routes.clone();
+
+    // When each slice-owned picker scope is looked up.
+    for (label, scope) in [
+        ("skills", jinn_skills_msg::skill_picker_scope()),
+        ("persona", jinn_persona_msg::persona_picker_scope()),
+        ("theme", jinn_theme_msg::theme_picker_scope()),
+        (
+            "reasoning",
+            jinn_provider_selection_msg::reasoning_picker_scope(),
+        ),
+        ("tool", jinn_tools_msg::tool_picker_scope()),
+        (
+            "session lifecycle",
+            jinn_session_lifecycle_msg::session_lifecycle_picker_scope(),
+        ),
+        (
+            "endpoint",
+            jinn_provider_selection_msg::endpoint_picker_scope(),
+        ),
+        ("task list", jinn_tools_msg::task_list_picker_scope()),
+        ("session", jinn_session_store_msg::session_picker_scope()),
+        (
+            "provider",
+            jinn_provider_selection_msg::provider_picker_scope(),
+        ),
+        ("mcp", jinn_mcp_msg::mcp_picker_scope()),
+        ("project", jinn_project_msg::project_picker_scope()),
+    ] {
+        let owned = routes
+            .rows()
+            .iter()
+            .filter(|row| row.scope == scope)
+            .count();
+
+        // Then it owns rows — a picker whose activation attaches nothing owns
+        // none, and every one of its keys does nothing.
+        assert!(
+            owned > 0,
+            "{label} picker scope owns no rows: its activation attached nothing"
         );
     }
 }
@@ -251,4 +308,53 @@ fn all_picker_routes() -> jinn_slices::KeyRoutes {
     jinn_theme_slice::activate_picker(&mut host);
     drop(host);
     routes
+}
+
+/// Every picker activation in `actor_wiring` is actually called.
+///
+/// The reasoning-effort picker shipped broken because `activate_picker` was
+/// written, tested through the harness, and never wired. The harness test
+/// above cannot catch that — it composes the harness, not the production
+/// wiring file. This reads the wiring source and asserts each activation
+/// function's name appears as a call.
+///
+/// Source-level, deliberately: a behavioural test would need a full app boot,
+/// and the thing that broke was a missing line in a file no test executes.
+#[test]
+fn production_wiring_calls_every_picker_activation() {
+    // Given the production composition root.
+    let wiring = std::fs::read_to_string("src/actor_wiring.rs")
+        .expect("src/actor_wiring.rs is present in every checkout");
+
+    // When each slice-owned picker's activation function is looked for.
+    for (label, needle) in [
+        ("skills", "jinn_skills::activate("),
+        ("persona", "jinn_persona::activate_picker("),
+        ("theme", "jinn_theme_slice::activate_picker("),
+        ("reasoning", "jinn_provider_selection::activate_picker("),
+        ("tool + task list", "jinn_tools::activate_picker("),
+        (
+            "session lifecycle",
+            "jinn_session_lifecycle::activate_picker(",
+        ),
+        (
+            "endpoint",
+            "jinn_provider_selection::activate_endpoint_picker(",
+        ),
+        ("session", "jinn_session_store::activate_session_picker("),
+        (
+            "provider",
+            "jinn_provider_selection::activate_provider_picker(",
+        ),
+        ("mcp", "jinn_mcp_slice::activate_picker("),
+        // The project picker registers its rows inside `activate` itself, so
+        // that is the call to require.
+        ("project", "jinn_project::activate("),
+    ] {
+        // Then it is called in production.
+        assert!(
+            wiring.contains(needle),
+            "{label} picker is never activated in src/actor_wiring.rs: its keys do nothing"
+        );
+    }
 }

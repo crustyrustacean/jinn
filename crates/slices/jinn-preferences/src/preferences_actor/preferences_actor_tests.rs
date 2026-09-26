@@ -121,7 +121,7 @@ async fn persist_writes_frontend_preferences() {
 #[tokio::test]
 async fn persist_refreshes_the_open_project_picker() {
     use jinn_project::project_picker_actions;
-    use jinn_project_msg::{ProjectPickerState, project_picker_scope, project_picker_slot};
+    use jinn_project_msg::{ProjectPickerState, project_picker_slot};
     use jinn_slices::Slices;
     use jinn_slices::cell::TypedCell;
 
@@ -138,7 +138,7 @@ async fn persist_refreshes_the_open_project_picker() {
             picker,
             &state.read().frontend.preferences.projects,
             &state.read().frontend.theme,
-        )
+        );
     });
     assert_eq!(
         cell.read().selection.items().len(),

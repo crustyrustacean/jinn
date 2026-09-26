@@ -327,9 +327,8 @@ impl IntentHandler {
                 jinn_slices::FocusScope::Input => {
                     feat::chat_input::intent::handle_paste_text(text, state)
                 }
-                jinn_slices::FocusScope::Picker { .. } => {
-                    return IntentResult::empty();
-                }
+                // Both a saved pre-migration `Picker` scope and any other
+                // scope are no-ops: a paste targets only the input scope.
                 _ => IntentResult::empty(),
             },
             KernelIntent::ScrollUp => feat::navigation::intent::handle_scroll_up(state),
@@ -603,10 +602,6 @@ mod tests {
     /// exercise slices or route rows.
     fn empty_slices() -> jinn_slices::Slices {
         jinn_slices::Slices::new()
-    }
-
-    fn empty_pickers() -> jinn_picker::PickerRegistry {
-        jinn_picker::PickerRegistry::new()
     }
 
     /// `Slices` with the status-bar cell registered (as the slice's

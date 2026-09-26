@@ -19,10 +19,6 @@ fn empty_slices() -> jinn_slices::Slices {
     jinn_slices::Slices::new()
 }
 
-fn empty_pickers() -> jinn_picker::PickerRegistry {
-    jinn_picker::PickerRegistry::new()
-}
-
 fn empty_routes() -> jinn_slices::route::KeyRoutes {
     jinn_slices::route::KeyRoutes::new()
 }

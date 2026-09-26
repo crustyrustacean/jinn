@@ -14,15 +14,17 @@ use ratatui::layout::Rect;
 /// The project picker's result-row count for a frame of the given size.
 ///
 /// The project picker is a single-pane list, so this is the popup's inner
-/// height less its borders and the filter/separator chrome, and the keybind
-/// footer. At least 1, so paging never windows against zero on a tiny
+// Filter row + separator, and the one keybind footer row the spec draws.
+const CHROME_ROWS: u16 = 3;
+
+/// The number of result rows the project picker can show in `frame_area`:
+/// its popup height less its borders and the filter/separator chrome, and the
+/// keybind footer. At least 1, so paging never windows against zero on a tiny
 /// terminal.
 #[must_use]
 pub fn results_viewport(frame_area: Rect) -> usize {
     let popup = jinn_selection_widget::compute_popup_rect(frame_area);
     let inner = popup.height.saturating_sub(2); // both borders
-    // Filter row + separator, and the one keybind footer row the spec draws.
-    const CHROME_ROWS: u16 = 3;
     inner.saturating_sub(CHROME_ROWS).max(1) as usize
 }
 
