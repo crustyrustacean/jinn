@@ -16,23 +16,59 @@ use super::truncate::truncate_str;
 
 /// Builds the animated throbber indicator span for a session entry.
 ///
-/// Returns a blank space when the session is idle, or an animated braille
-/// character when the session is working.
-#[expect(clippy::expect_used, reason = "idx modulo len is always in bounds")]
-pub(crate) fn indicator_span(is_idle: bool, throbber_state: &ThrobberState) -> Span<'static> {
+/// Returns a blank space when the session is idle, an animated braille
+/// character when the session is working, and an animated left-eighth block
+/// while the session's archive or teardown is in flight.
+///
+/// A session being disposed is always idle — the archive and close validators
+/// both reject a busy session — so the two animations never share a row.
+pub(crate) fn indicator_span(
+    is_idle: bool,
+    is_in_flight: bool,
+    throbber_state: &ThrobberState,
+) -> Span<'static> {
     if is_idle {
-        Span::raw(" ")
+        in_flight_span(is_in_flight, throbber_state)
     } else {
-        let set = throbber_widgets_tui::symbols::throbber::BRAILLE_EIGHT;
-        let mut idx = throbber_state.index();
-        let len = set.symbols.len() as i8;
-        idx %= len;
-        if idx < 0 {
-            idx += len;
-        }
-        let ch = set.symbols.get(idx as usize).expect("idx modulo len");
-        Span::styled(ch.to_string(), Style::default().fg(Color::Cyan))
+        busy_span(throbber_state)
     }
+}
+
+/// The braille spinner shown while a session is streaming or running tools.
+fn busy_span(throbber_state: &ThrobberState) -> Span<'static> {
+    let set = throbber_widgets_tui::symbols::throbber::BRAILLE_EIGHT;
+    let ch = throbber_symbol(&set, throbber_state);
+    Span::styled(ch.to_owned(), Style::default().fg(Color::Cyan))
+}
+
+/// The growing block shown while a session's disposal is in flight.
+fn in_flight_span(is_in_flight: bool, throbber_state: &ThrobberState) -> Span<'static> {
+    if !is_in_flight {
+        return Span::raw(" ");
+    }
+    let set = throbber_widgets_tui::symbols::throbber::HORIZONTAL_BLOCK;
+    let ch = throbber_symbol(&set, throbber_state);
+    Span::styled(ch.to_owned(), Style::default().fg(Color::Cyan))
+}
+
+/// Resolves a throbber symbol from an unbounded, possibly negative index.
+///
+/// [`ThrobberState::index`] counts upward without wrapping, so the modulo and
+/// the negative correction are both required to stay in bounds.
+#[expect(clippy::expect_used, reason = "idx modulo len is always in bounds")]
+fn throbber_symbol(
+    set: &throbber_widgets_tui::symbols::throbber::Set,
+    throbber_state: &ThrobberState,
+) -> &'static str {
+    let len = set.symbols.len() as i8;
+    let mut idx = throbber_state.index() % len;
+    if idx < 0 {
+        idx += len;
+    }
+    set.symbols
+        .get(idx as usize)
+        .copied()
+        .expect("idx modulo len")
 }
 
 /// Builds the arrow prefix span indicating whether a session is active.
@@ -153,7 +189,7 @@ fn assemble_session_line(
     throbber_state: &ThrobberState,
     theme: &Theme,
 ) -> Line<'static> {
-    let indicator = indicator_span(entry.is_idle, throbber_state);
+    let indicator = indicator_span(entry.is_idle, entry.is_in_flight, throbber_state);
     let arrow = arrow_span(entry.is_active, theme);
     let tree = tree_prefix(entry);
     let tree_len = tree.graphemes(true).count();

@@ -1176,7 +1176,7 @@ fn indicator_span_returns_blank_space_when_idle() {
     let throbber = ThrobberState::default();
 
     // When computing indicator span.
-    let span = indicator_span(true, &throbber);
+    let span = indicator_span(true, false, &throbber);
 
     // Then it is a blank space.
     assert_eq!(span.content, " ");
@@ -1188,7 +1188,7 @@ fn indicator_span_returns_throbber_character_when_working() {
     let throbber = ThrobberState::default();
 
     // When computing indicator span.
-    let span = indicator_span(false, &throbber);
+    let span = indicator_span(false, false, &throbber);
 
     // Then it is a non-space character with Cyan fg.
     assert_ne!(span.content, " ");
@@ -3413,5 +3413,77 @@ fn session_list_key_changes_when_a_session_becomes_in_flight() {
     assert_ne!(
         before, after,
         "the memo key must change or the cached tree is never rebuilt"
+    );
+}
+
+#[rstest::rstest]
+fn indicator_span_returns_blank_space_when_idle_and_not_in_flight() {
+    // Given an idle entry with no disposal in flight.
+    let throbber = ThrobberState::default();
+
+    // When computing indicator span.
+    let span = indicator_span(true, false, &throbber);
+
+    // Then it is a blank space.
+    assert_eq!(span.content, " ");
+}
+
+#[rstest::rstest]
+fn indicator_span_returns_block_character_when_in_flight() {
+    // Given an idle entry whose disposal is in flight.
+    let throbber = ThrobberState::default();
+
+    // When computing indicator span.
+    let span = indicator_span(true, true, &throbber);
+
+    // Then it is a non-space block character.
+    assert_ne!(span.content, " ");
+    assert!(!span.content.is_empty());
+}
+
+#[rstest::rstest]
+fn indicator_span_uses_cyan_when_in_flight() {
+    // Given an idle entry whose disposal is in flight.
+    let throbber = ThrobberState::default();
+
+    // When computing indicator span.
+    let span = indicator_span(true, true, &throbber);
+
+    // Then it wears the same cyan as the busy spinner.
+    assert_eq!(span.style.fg, Some(Color::Cyan));
+}
+
+#[rstest::rstest]
+fn in_flight_indicator_animates_across_block_symbols() {
+    // Given an in-flight entry stepped through the whole cycle.
+    let symbols = throbber_widgets_tui::symbols::throbber::HORIZONTAL_BLOCK.symbols;
+    let seen = (0..symbols.len())
+        .map(|step| {
+            let mut throbber = ThrobberState::default();
+            for _ in 0..step {
+                throbber.calc_next();
+            }
+            indicator_span(true, true, &throbber).content.to_string()
+        })
+        .collect::<Vec<_>>();
+
+    // Then every step renders a block from the HORIZONTAL_BLOCK set.
+    let expected = symbols.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+    assert_eq!(seen, expected);
+}
+
+#[rstest::rstest]
+fn in_flight_indicator_does_not_show_on_a_busy_session() {
+    // Given a session that is somehow both busy and in flight.
+    let throbber = ThrobberState::default();
+
+    // When computing indicator span.
+    let span = indicator_span(false, true, &throbber);
+
+    // Then the busy braille spinner wins, keeping the column single-valued.
+    assert!(
+        !throbber_widgets_tui::symbols::throbber::HORIZONTAL_BLOCK
+            .symbols
+            .contains(&span.content.as_ref())
     );
 }
