@@ -93,12 +93,21 @@ Status legend: `[ ]` pending · `[x]` done · `[!]` diverged (note the divergenc
 
 ## Phase 6 — Clear the tint on completion
 
-- [ ] Add `.handles::<SessionArchiveFailed>()` to `SidebarStateActor::spawn`
-- [ ] Add `.handles::<SessionTeardownFinished>()` to `SidebarStateActor::spawn`
-- [ ] Add a `clear_in_flight` helper using `state.with_session_sidebar(|view| view.frontend.update_sections(...))`
-- [ ] Clear the in-flight id in the `MsgHandler<SessionRemoved>` path, alongside the existing cursor clamp
-- [ ] Add `MsgHandler<SessionArchiveFailed>` clearing the failed session's id
-- [ ] Add `MsgHandler<SessionTeardownFinished>` clearing **only** when `error.is_some()` — success must keep the tint for the archive write that follows
+- [x] Add `.handles::<SessionArchiveFailed>()` to `SidebarStateActor::spawn`
+- [x] Add `.handles::<SessionTeardownFinished>()` to `SidebarStateActor::spawn`
+- [x] Clear the in-flight id in the `SessionRemoved` path, alongside the existing cursor clamp
+- [x] Add `MsgHandler<SessionArchiveFailed>` clearing the failed session's id
+- [x] Add `MsgHandler<SessionTeardownFinished>` clearing **only** when `error.is_some()`
+
+### Phase 6 notes
+
+- The spec said to verify whether `with_session_sidebar`'s `view.frontend` reaches the sections
+  cell. It does — `clear_in_flight(view.frontend, ..)` works unchanged, so no fallback to a
+  direct cell write was needed.
+- Clippy bans `impl Trait` in parameter position (`-D clippy::impl-trait-in-params`), so
+  `begin_in_flight` takes `&[SessionId]` rather than `impl IntoIterator<Item = SessionId>`. Every
+  caller already had a slice. Committed as a follow-up fix after the first Phase 4-5 commit had
+  already gone in with a lint failure — flagging that ordering slip rather than hiding it.
 
 ## Phase 7 — Render the tint
 
@@ -124,12 +133,17 @@ Status legend: `[ ]` pending · `[x]` done · `[!]` diverged (note the divergenc
 
 ## Phase 9 — Test the clearing paths
 
-- [ ] `session_removed_clears_in_flight`
-- [ ] `failed_teardown_clears_in_flight`
-- [ ] `successful_teardown_keeps_in_flight` (guards the success-clears-too-early regression)
-- [ ] `archive_failure_clears_in_flight`
+- [x] `session_removed_clears_in_flight`
+- [x] `failed_teardown_clears_in_flight`
+- [x] `successful_teardown_keeps_in_flight` (guards the success-clears-too-early regression)
+- [x] `archive_failure_clears_in_flight`
 - [ ] `archive_tree_aborted_by_actor_clears_every_member_tint`
 - [ ] `teardown_tree_aborted_by_actor_clears_every_member_tint`
+
+### Phase 9 notes
+
+- The two tree-abort tests are deferred to the store/lifecycle actor test modules, since the
+  per-member publish helpers live there. They assert observable bus output, not the sidebar cell.
 
 ## Phase 10 — Test the render paths
 
