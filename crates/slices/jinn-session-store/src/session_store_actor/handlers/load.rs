@@ -58,28 +58,13 @@ impl SessionStoreActor {
             self.note_frozen_hydration_completion();
             return;
         }
-        let arrived = std::time::Instant::now();
         if let Some(snapshot) = msg.snapshot.clone() {
-            let cloned = std::time::Instant::now();
             let session_id = self.insert_loaded_session({
                 let mut session = snapshot.restore_live();
                 session.mark_interacted();
                 session
             });
-            let inserted = std::time::Instant::now();
             self.publish(SessionLoadCompleted { session_id }).await;
-            let emitted = std::time::Instant::now();
-            tracing::warn!(
-                session_id = %msg.session_id,
-                entries = msg
-                    .snapshot
-                    .as_ref()
-                    .map_or(0, |s| s.history().len()),
-                clone_ms = cloned.duration_since(arrived).as_millis(),
-                insert_ms = inserted.duration_since(cloned).as_millis(),
-                emit_ms = emitted.duration_since(inserted).as_millis(),
-                "hydration probe: store-actor side"
-            );
         }
         if self.note_hydration_completion() {
             // Tree membership is resolved from the live session map, so the
@@ -219,18 +204,13 @@ impl SessionStoreActor {
         // The session's own measurement inputs, read out under a brief lock.
         // The read guard is released by this block ending, which must happen
         // before `clear_load` below — that takes a write lock on the same map.
-        let arc_start = std::time::Instant::now();
         let session_inputs = {
             let state = self.state.read();
             state.session.get(&session_id).map(|session| {
-                let history = session.history().to_vec();
-                tracing::warn!(
-                    session_id = %session_id,
-                    entries = history.len(),
-                    to_vec_ms = arc_start.elapsed().as_millis(),
-                    "hydration probe: history->Arc copy under the read guard"
-                );
-                (Arc::from(history), session.shown_ignored_blocks_snapshot())
+                (
+                    Arc::from(session.history().to_vec()),
+                    session.shown_ignored_blocks_snapshot(),
+                )
             })
         };
         let Some((history, shown_ignored_blocks)) = session_inputs else {
