@@ -25,6 +25,7 @@ use tokio::runtime::Runtime;
 use wherror::Error;
 
 use crate::actor_wiring;
+use crate::config_path::{config_init_target, resolve_config_path};
 #[cfg(debug_assertions)]
 use crate::headless::HeadlessApp;
 use crate::runner::Runner;
@@ -159,7 +160,11 @@ impl App {
 
             match subcommand {
                 ConfigCommands::Init { force } => {
-                    let path = preferences_path();
+                    // Honor --config here: the user naming a path is asking
+                    // for the file to land there. Deliberately skips the
+                    // existence check the runtime resolver applies, since
+                    // creating the file is what this command is for.
+                    let path = config_init_target(cli.config.as_deref(), &preferences_path());
                     let force = *force;
                     match init_default_config_to(&path, force) {
                         Ok(InitOutcome::Created) => {
@@ -255,6 +260,30 @@ impl App {
             }
         }
 
+        // Resolve which jinn.toml this run reads and writes, and seed the
+        // template when the default location is still missing.
+        //
+        // This runs AFTER the `config`/`install` early returns so neither
+        // recovery tool gets pre-seeded ahead of itself, and BEFORE the
+        // ConfigLayer load so the seeded file is what the layer reads.
+        let resolved_config = resolve_config_path(
+            cli.config.as_deref(),
+            &jinn_preferences_config::preferences_path(),
+        );
+        let config_path = match resolved_config {
+            Ok(resolved) => {
+                if resolved.seed_template {
+                    seed_config_template(&resolved.path);
+                }
+                resolved.path
+            }
+            Err(report) => {
+                eprintln!("error: failed to resolve the configuration path:");
+                eprintln!("  {report:?}");
+                std::process::exit(1);
+            }
+        };
+
         // Create the session store - uses --db-path if provided, otherwise
         // the platform default. Deferred until after the `config`/`install`
         // early-returns so neither pays for DB open or migrations.
@@ -275,17 +304,17 @@ impl App {
         // reader of that document now; there is no separate aggregate
         // struct to parse alongside it. Config subcommands have already
         // dispatched above, so `jinn config` remains the recovery tool.
+        //
+        // The storage is built over the RESOLVED path, so `--config`
+        // redirects reads and writes alike — the layer stays a single
+        // coherent source of truth for the run.
         let config = {
-            let backend = jinn_config::FilesystemConfigStorage::new(
-                jinn_config::FilesystemConfigStorage::default_path()
-                    .path()
-                    .to_path_buf(),
-            );
+            let backend = jinn_config::FilesystemConfigStorage::new(config_path.clone());
             match jinn_config::ConfigLayer::load(Arc::new(backend)) {
                 Ok(layer) => layer,
                 Err(report) => {
-                    tracing::error!("failed to load the jinn.toml configuration layer");
-                    eprintln!("error: failed to parse jinn.toml:");
+                    tracing::error!(path = %config_path.display(), "failed to load the jinn.toml configuration layer");
+                    eprintln!("error: failed to parse {}:", config_path.display());
                     eprintln!("  {report:?}");
                     std::process::exit(1);
                 }
@@ -447,6 +476,30 @@ impl Default for App {
     }
 }
 
+/// Writes the embedded `jinn.toml` template to `path`, creating parents.
+///
+/// Writes raw bytes rather than serializing a struct: the template is
+/// documentation, and a round-trip would strip every comment it ships
+/// with. Aborts the process on failure — a config file that cannot be
+/// written leaves the run with no coherent source of truth, which is not
+/// a state worth launching into.
+fn seed_config_template(path: &std::path::Path) {
+    use jinn_preferences_config::create_default_preferences_to;
+
+    if let Err(report) = create_default_preferences_to(path) {
+        tracing::error!(
+            path = %path.display(),
+            "failed to seed jinn.toml from the template"
+        );
+        eprintln!(
+            "error: failed to create {} from the default template:",
+            path.display()
+        );
+        eprintln!("  {report:?}");
+        std::process::exit(1);
+    }
+}
+
 /// Checks that `providers.toml` loads and parses, producing a fail-fast report.
 ///
 /// A missing file is not an error here — the loader auto-creates the default
@@ -550,7 +603,7 @@ async fn fetch_models_from_url(
 mod tests {
     use jinn_domain::{AppState, State};
     use jinn_tui::{load_compaction_prompt, load_theme};
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     use super::*;
 
@@ -750,6 +803,90 @@ mod tests {
         // output in the test log shows the actual counts, making a human-readable check).
         assert!(result.is_ok(), "expected success, got: {:?}", result.err());
         mock.assert_async().await;
+    }
+
+    #[rstest::rstest]
+    fn seed_config_template_preserves_template_comments() {
+        // Given a config path inside a directory that does not exist yet.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("nested").join("jinn.toml");
+
+        // When seeding the template.
+        seed_config_template(&path);
+
+        // Then the file was created and contains the embedded template verbatim.
+        let written = std::fs::read_to_string(&path).expect("read seeded config");
+        assert_eq!(written, jinn_preferences_config::DEFAULT_CONFIG);
+        // And the template's comments survived (a struct round-trip would strip them).
+        assert!(
+            written
+                .lines()
+                .any(|line| line.trim_start().starts_with('#')),
+            "seeded config should retain the template's comments"
+        );
+    }
+
+    #[rstest::rstest]
+    fn config_init_honors_the_config_override() {
+        // Given a --config path that does not exist yet.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let override_path = dir.path().join("nested").join("alt.toml");
+
+        // When `jinn config init` picks its target.
+        let target = config_init_target(Some(&override_path), Path::new("/default/jinn.toml"));
+
+        // Then it targets the override, not the default location.
+        assert_eq!(target, override_path);
+    }
+
+    #[rstest::rstest]
+    fn config_init_without_override_targets_the_default_location() {
+        // Given no --config.
+        let default = PathBuf::from("/default/jinn.toml");
+
+        // When `jinn config init` picks its target.
+        let target = config_init_target(None, &default);
+
+        // Then it targets the default location.
+        assert_eq!(target, default);
+    }
+
+    #[rstest::rstest]
+    fn config_init_override_is_accepted_though_runtime_resolver_rejects_it() {
+        // Given a --config path that does not exist.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let override_path = dir.path().join("alt.toml");
+
+        // When the two choosers are consulted.
+        let init_target = config_init_target(Some(&override_path), Path::new("/default/jinn.toml"));
+        let runtime = resolve_config_path(Some(&override_path), Path::new("/default/jinn.toml"));
+
+        // Then `config init` still targets the override, since creating the
+        // file is its whole job.
+        assert_eq!(init_target, override_path);
+        // But a run that intends to read the file still rejects it.
+        assert!(runtime.is_err());
+    }
+
+    #[rstest::rstest]
+    fn malformed_config_under_an_override_fails_naming_the_override() {
+        // Given an override path holding invalid TOML.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let override_path = dir.path().join("alt.toml");
+        std::fs::write(&override_path, "[section\nkey = ").expect("write");
+
+        // When the config layer is loaded over the resolved path, exactly
+        // as dispatch does.
+        let backend = jinn_config::FilesystemConfigStorage::new(override_path.clone());
+        let result = jinn_config::ConfigLayer::load(Arc::new(backend));
+
+        // Then the load fails, and the report names the override file.
+        let report = result.expect_err("malformed override must fail");
+        let rendered = format!("{report:?}");
+        assert!(
+            rendered.contains(&override_path.display().to_string()),
+            "fail-fast report should name the override path: {rendered}"
+        );
     }
 
     #[rstest::rstest]

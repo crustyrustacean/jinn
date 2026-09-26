@@ -2,12 +2,14 @@
 
 pub mod actor_wiring;
 pub mod app;
+pub mod config_path;
 #[cfg(debug_assertions)]
 pub mod headless;
 pub mod runner;
 pub mod tracing;
 
 pub use app::{App, AppError};
+pub use config_path::{ConfigPathResolution, resolve_config_path};
 #[cfg(debug_assertions)]
 pub use headless::HeadlessApp;
 pub use runner::Runner;

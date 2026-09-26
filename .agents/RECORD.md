@@ -150,6 +150,8 @@ Entries are added or amended **only with human approval**.
 - (storage) Sessions and chat history persist to a SQLite database (`sessions.db` under the data dir).
 - (storage) User-editable TOML files (`providers.toml`, `jinn.toml`) are written through a comment-preserving `DocumentPatcher`, never via plain serialization.
 - (storage) `jinn.toml` holds slice-owned config sections and is auto-created if missing from a comment-rich embedded template, written as bytes so its comments survive.
+- (config) The `jinn.toml` path is selectable per run via the `--config` flag, which redirects both reads and writes for that run.
+- (config) The config path resolves to the user's default location unless `--config` names one, and a `--config` path that does not exist aborts launch. `jinn config init` is the exception: it honors the override and creates the file there, since creating it is the command's purpose.
 - (storage) Startup fail-fast: whole-file providers.toml/jinn.toml syntax errors abort launch before actor wiring; slice-owned config sections validate at slice activation, which is the fail-fast gate for section-shaped config; recovery via jinn config subcommands stays unguarded.
 - (storage) `state.toml` holds machine-managed runtime state (e.g. last-selected model) and is NOT auto-created.
 - (storage) Schema migrations run atomically in a single transaction; a crash or interrupt mid-migration rolls back to the last-applied version, leaving no partial schema.

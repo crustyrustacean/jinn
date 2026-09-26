@@ -25,6 +25,16 @@ pub struct Cli {
     #[arg(long, value_hint = clap::ValueHint::FilePath)]
     pub log_file: Option<PathBuf>,
 
+    /// Path to the `jinn.toml` configuration file. Defaults to the platform's
+    /// config directory (e.g. `~/.config/jinn/jinn.toml` on Linux).
+    ///
+    /// The override applies to both reads and writes for the whole run, so the
+    /// run's config stays a single coherent source of truth. A run that reads
+    /// the config requires the file to already exist; `jinn config init` is
+    /// the exception, since creating the file is what it is for.
+    #[arg(long, global = true, value_hint = clap::ValueHint::FilePath)]
+    pub config: Option<PathBuf>,
+
     /// Session database file. Defaults to the platform data directory.
     ///
     /// In debug builds this flag is **required** to prevent accidental use
@@ -232,6 +242,58 @@ mod tests {
         assert_eq!(
             cli.log_file.as_deref(),
             Some(std::path::Path::new("/tmp/x.log"))
+        );
+    }
+
+    // Given no --config argument.
+    // When parsing.
+    // Then Cli.config is None (the default location is used).
+    #[rstest::rstest]
+    #[test]
+    fn config_flag_defaults_to_none() {
+        let cli = Cli::parse_from(["jinn", "--db-path", "/tmp/test.db"]);
+        assert!(cli.config.is_none());
+    }
+
+    // Given a --config argument before a subcommand.
+    // When parsing.
+    // Then Cli.config captures the override and the subcommand still parses.
+    #[rstest::rstest]
+    #[test]
+    fn config_flag_before_subcommand_captures_override() {
+        let cli = Cli::parse_from([
+            "jinn",
+            "--db-path",
+            "/tmp/test.db",
+            "--config",
+            "/tmp/alt.toml",
+            "tui",
+        ]);
+        assert_eq!(
+            cli.config.as_deref(),
+            Some(std::path::Path::new("/tmp/alt.toml"))
+        );
+        // And the subcommand was still recognized.
+        assert!(matches!(cli.command, Some(Commands::Tui)));
+    }
+
+    // Given a --config argument after a subcommand.
+    // When parsing.
+    // Then Cli.config captures the override (the flag is global).
+    #[rstest::rstest]
+    #[test]
+    fn config_flag_after_subcommand_captures_override() {
+        let cli = Cli::parse_from([
+            "jinn",
+            "--db-path",
+            "/tmp/test.db",
+            "tui",
+            "--config",
+            "/tmp/alt.toml",
+        ]);
+        assert_eq!(
+            cli.config.as_deref(),
+            Some(std::path::Path::new("/tmp/alt.toml"))
         );
     }
 
