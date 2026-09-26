@@ -164,6 +164,12 @@ impl SessionStoreActor {
         // Dispatched only now that the session is active, so the completion
         // actor's active-session check sees it and the workers measure the
         // session that is actually on screen.
+        tracing::warn!(
+            session_id = %session_id,
+            entries = layout_inputs.entries.len(),
+            width = layout_inputs.content_width,
+            "SPAM 3:restore_loaded_session -> dispatched layout measurement"
+        );
         Self::dispatch_layout(ctx, &session_id, layout_inputs);
 
         let cwd_exists = tokio::fs::try_exists(&original_cwd).await.unwrap_or(false);
@@ -235,7 +241,14 @@ impl SessionStoreActor {
         self.state.with_session(|view| {
             view.session.map().set_active(session_id.clone());
         });
+        let spam_entries = layout_inputs.entries.len();
         Self::dispatch_layout(ctx, &session_id, layout_inputs);
+        tracing::warn!(
+            session_id = %session_id,
+            entries = spam_entries,
+            width = payload.content_width,
+            "SPAM 1:store_actor on_measure_requested -> dispatched layout measurement"
+        );
     }
 
     /// Hands a session's chat log to the layout workers and arms its deadline.

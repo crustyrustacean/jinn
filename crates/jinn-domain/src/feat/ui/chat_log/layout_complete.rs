@@ -137,6 +137,13 @@ impl LayoutCompletionActor {
         // Released by id: the guard is one shared slot, and a measurement that
         // finishes after the user moved on must not free the session that is
         // loading now.
+        tracing::warn!(
+            session_id = %computed.session_id,
+            ?outcome,
+            width = computed.content_width,
+            active_width = self.state.read().active_session().content_width(),
+            "SPAM 6:layout_complete outcome"
+        );
         if matches!(outcome, Outcome::Current | Outcome::Stale) {
             self.state.with_session(|view| {
                 view.session.map().clear_load_for(&computed.session_id);
@@ -169,12 +176,20 @@ impl LayoutCompletionActor {
                 wrapped_count: count.wrapped_count,
             })
             .collect();
+        let t_store = std::time::Instant::now();
         state
             .frontend
             .caches
             .entry_line_cache
             .write()
             .insert_counts(&measured, computed.content_width);
+        tracing::warn!(
+            session_id = %computed.session_id,
+            counts = measured.len(),
+            width = computed.content_width,
+            store_us = t_store.elapsed().as_micros(),
+            "SPAM 5:layout_complete stored counts into the cache"
+        );
     }
 }
 
