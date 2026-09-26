@@ -13,7 +13,6 @@ use jinn_picker::PickerId;
 use crate::common::app_state::AppState;
 use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::PickerKind;
-use jinn_picker::ENDPOINT_ID;
 use jinn_picker::MCP_SERVER_ID;
 use jinn_picker::PROJECT_ID;
 use jinn_picker::PROVIDER_ID;
@@ -38,7 +37,6 @@ pub fn active_picker_ops(
         PickerKind::TaskList => state.frontend.task_list_picker_mut(),
         PickerKind::Project => state.frontend.project_picker_mut(),
         PickerKind::McpServer => state.frontend.mcp_server_picker_mut(),
-        PickerKind::Endpoint => state.frontend.endpoint_picker_mut(),
         // Retired: no picker state, never pushed as a scope.
         PickerKind::CompactionModel => return None,
     })
@@ -55,7 +53,6 @@ pub fn active_picker_ops_ref(state: &AppState) -> Option<&dyn jinn_selection_wid
         PickerKind::TaskList => state.frontend.task_list_picker(),
         PickerKind::Project => state.frontend.project_picker(),
         PickerKind::McpServer => state.frontend.mcp_server_picker(),
-        PickerKind::Endpoint => state.frontend.endpoint_picker(),
         // Retired: no picker state, never pushed as a scope.
         PickerKind::CompactionModel => return None,
     })
@@ -76,7 +73,6 @@ pub fn selection_state_ref(state: &AppState, id: PickerId) -> Option<&dyn std::a
         TASK_LIST_ID => Some(state.frontend.task_list_picker() as &dyn std::any::Any),
         SESSION_ID => Some(state.frontend.session_picker() as &dyn std::any::Any),
         PROVIDER_ID => Some(&state.frontend.pickers.provider_picker as &dyn std::any::Any),
-        ENDPOINT_ID => Some(state.frontend.endpoint_picker() as &dyn std::any::Any),
         PROJECT_ID => Some(state.frontend.project_picker() as &dyn std::any::Any),
         _ => None,
     }
@@ -108,9 +104,6 @@ impl PickerHost for AppStatePickerHost<'_> {
             SESSION_ID => Some(self.state.frontend.session_picker_mut() as &mut dyn std::any::Any),
             PROVIDER_ID => {
                 Some(&mut self.state.frontend.pickers.provider_picker as &mut dyn std::any::Any)
-            }
-            ENDPOINT_ID => {
-                Some(self.state.frontend.endpoint_picker_mut() as &mut dyn std::any::Any)
             }
             PROJECT_ID => Some(self.state.frontend.project_picker_mut() as &mut dyn std::any::Any),
             _ => None,
@@ -269,7 +262,6 @@ impl PickerHost for AppStateRenderHost<'_> {
             PickerKind::TaskList => self.state.frontend.task_list_picker(),
             PickerKind::Project => self.state.frontend.project_picker(),
             PickerKind::McpServer => self.state.frontend.mcp_server_picker(),
-            PickerKind::Endpoint => self.state.frontend.endpoint_picker(),
             // Retired: no picker state, never pushed as a scope.
             PickerKind::CompactionModel => return None,
         })
@@ -349,7 +341,6 @@ mod tests {
             jinn_picker::TASK_LIST_ID,
             jinn_picker::SESSION_ID,
             jinn_picker::PROVIDER_ID,
-            jinn_picker::ENDPOINT_ID,
             jinn_picker::PROJECT_ID,
         ];
         let mut state = AppState::default_with_scope_focus();

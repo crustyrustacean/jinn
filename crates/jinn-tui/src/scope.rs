@@ -33,7 +33,6 @@ pub enum Scope {
     PickerSession,
     /// Picker - Session lifecycle recipe selection.
     /// Picker - OpenRouter routing endpoint selection.
-    PickerEndpoint,
     /// Picker - Read-only task list browser.
     PickerTaskList,
     /// Picker - Curated project directory selection.
@@ -57,7 +56,6 @@ impl std::fmt::Display for Scope {
             Self::PickerProvider => write!(f, "Picker(provider)"),
             Self::PickerSession => write!(f, "Picker(session)"),
 
-            Self::PickerEndpoint => write!(f, "Picker(endpoint)"),
             Self::PickerTaskList => write!(f, "Picker(task-list)"),
             Self::PickerProject => write!(f, "Picker(project)"),
             Self::PickerMcpServer => write!(f, "Picker(mcp-server)"),
@@ -82,7 +80,6 @@ impl std::str::FromStr for Scope {
             "Picker(provider)" => Ok(Self::PickerProvider),
             "Picker(session)" => Ok(Self::PickerSession),
 
-            "Picker(endpoint)" => Ok(Self::PickerEndpoint),
             "Picker(task-list)" => Ok(Self::PickerTaskList),
             "Picker(project)" => Ok(Self::PickerProject),
             "Picker(mcp-server)" => Ok(Self::PickerMcpServer),

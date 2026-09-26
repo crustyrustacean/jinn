@@ -1155,6 +1155,10 @@ fn jinn_provider_selection_activate(
     // actors: it spawns nothing, and its rows are built from the session's
     // own effort when it opens.
     jinn_provider_selection::activate_picker(&mut host);
+    // The endpoint picker continues the same activation: its cell was minted
+    // by `activate` (the provider actor needs a handle to publish fetches
+    // into), so only the overlay, keys, and filter hook are attached here.
+    jinn_provider_selection::activate_endpoint_picker(&mut host, &handles.endpoint_picker_cell);
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("provider-selection slice finalize failed: {error}");
     }

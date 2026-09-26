@@ -25,6 +25,7 @@ pub mod reasoning;
 pub use cell::ProviderCell;
 pub use cell::provider_state_slot;
 pub use endpoint::EndpointEntry;
+pub use endpoint::{EndpointPickerState, endpoint_picker_scope, endpoint_picker_slot};
 pub use entries::ProviderPickerEntry;
 pub use entries::pre_check_active_models;
 pub use jinn_core_types::{Endpoint, ReasoningEffort};

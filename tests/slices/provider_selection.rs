@@ -42,6 +42,16 @@ async fn composed_app() -> TuiApp {
     launch_for_test(core, services).await
 }
 
+/// The endpoint picker's cell handle from the composed app's services.
+fn endpoint_picker_of(
+    app: &TuiApp,
+) -> jinn_slices::cell::TypedCell<jinn_provider_selection_msg::endpoint::EndpointPickerState> {
+    app.services
+        .slices
+        .reader(&jinn_provider_selection_msg::endpoint::endpoint_picker_slot())
+        .expect("provider-selection activation mints the endpoint picker cell")
+}
+
 /// The provider cell handle from the composed app's services.
 fn cell_of(app: &TuiApp) -> jinn_slices::TypedCell<ProviderCell> {
     app.services
@@ -311,8 +321,7 @@ async fn endpoint_load_for_non_openrouter_model_clears_loading_and_shows_one_row
         "the non-OpenRouter branch never stamps a fetch time"
     );
     // And the picker shows exactly the auto-route sentinel row.
-    let state = app.core.state.read();
-    let rows = state.frontend.pickers.endpoint_picker.items().len();
+    let rows = endpoint_picker_of(&app).read().selection.items().len();
     assert_eq!(
         rows, 1,
         "a non-OpenRouter model shows the single explanatory row"

@@ -25,7 +25,6 @@
 //! registry. Composition (the TUI and the slice crates) imports this crate to
 //! obtain the registered specs.
 
-pub mod endpoint_spec;
 pub mod mcp_server_spec;
 pub mod project_spec;
 pub mod provider_spec;

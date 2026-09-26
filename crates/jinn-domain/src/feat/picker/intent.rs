@@ -6,7 +6,6 @@
 //! follow-up intent.
 
 use crate::common::app_state::AppState;
-use jinn_core_types::model_selection::ModelSelection;
 use jinn_slices::FocusScope;
 
 use crate::protocol::{IntentResult, PickerKind};
@@ -22,20 +21,6 @@ pub fn handle_open_picker(
     pickers: &jinn_picker::PickerRegistry,
 ) -> IntentResult {
     if validator::validate_open_picker(state, &kind).is_err() {
-        return IntentResult::empty();
-    }
-
-    // Endpoint picker is only reachable for a Single (non-alloy) model. This
-    // gate must run BEFORE the scope push, so it cannot live in the spec's
-    // open hook (hooks run after the push). The backend gate (OpenRouter vs
-    // direct) runs later in the discovery actor, which owns `Services`; here
-    // we only reject the model-shape mismatch.
-    if matches!(kind, PickerKind::Endpoint)
-        && matches!(
-            state.active_session().profile().model,
-            ModelSelection::Alloy { .. }
-        )
-    {
         return IntentResult::empty();
     }
 

@@ -84,7 +84,6 @@ mod tests {
     #[rstest::rstest]
     #[case::provider(PickerKind::Provider)]
     #[case::session(PickerKind::Session)]
-    #[case::endpoint(PickerKind::Endpoint)]
     #[case::task_list(PickerKind::TaskList)]
     #[case::project(PickerKind::Project)]
     #[case::mcp_server(PickerKind::McpServer)]

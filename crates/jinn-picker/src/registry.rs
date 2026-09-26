@@ -40,7 +40,6 @@ pub const SESSION_ID: &str = "session";
 /// The id of the provider picker's spec.
 pub const PROVIDER_ID: &str = "provider";
 /// The id of the endpoint picker's spec.
-pub const ENDPOINT_ID: &str = "endpoint";
 /// The id of the project picker's spec.
 pub const PROJECT_ID: &str = "project";
 
@@ -55,7 +54,6 @@ pub fn spec_id_for_kind(kind: &jinn_slices::picker_kind::PickerKind) -> Option<&
         PickerKind::TaskList => Some(TASK_LIST_ID),
         PickerKind::Session => Some(SESSION_ID),
         PickerKind::Provider => Some(PROVIDER_ID),
-        PickerKind::Endpoint => Some(ENDPOINT_ID),
         PickerKind::Project => Some(PROJECT_ID),
         PickerKind::CompactionModel => None,
     }

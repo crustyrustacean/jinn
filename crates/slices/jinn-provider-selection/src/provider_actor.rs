@@ -24,7 +24,6 @@
 use error_stack::Report;
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::state::State;
-use jinn_picker_specs::endpoint_spec::endpoint_spec;
 use jinn_provider_config::ModelCache;
 use jinn_provider_config::ProviderRegistry;
 use jinn_provider_config::{InputModalities, Modality, ModelInfo, ProvidersConfig};
@@ -54,6 +53,11 @@ pub struct ProviderActor {
     deps: ActorDeps,
     /// The provider cell — the shared model-cache + endpoint-fetch payload.
     provider_cell: jinn_slices::TypedCell<ProviderCell>,
+    /// The endpoint picker's cell — where a completed fetch publishes its
+    /// rows. The picker is slice-owned, so this is the only place the entry
+    /// list lives; there is no kernel-side mirror to keep in step.
+    endpoint_picker_cell:
+        jinn_slices::cell::TypedCell<jinn_provider_selection_msg::endpoint::EndpointPickerState>,
     /// In-memory, per-model cache of OpenRouter routing endpoints for the
     /// application's lifetime (not persisted to disk). Keyed by resolved model
     /// id; value is the parsed upstream list plus the fetch timestamp. The
@@ -71,6 +75,9 @@ pub struct ProviderActorDeps {
     pub deps: ActorDeps,
     /// The provider cell handle.
     pub provider_cell: jinn_slices::TypedCell<ProviderCell>,
+    /// The endpoint picker's cell handle.
+    pub endpoint_picker_cell:
+        jinn_slices::cell::TypedCell<jinn_provider_selection_msg::endpoint::EndpointPickerState>,
 }
 
 impl ServiceActor for ProviderActor {
@@ -148,6 +155,7 @@ impl ProviderActor {
                             state: deps.state,
                             deps: deps.deps,
                             provider_cell: deps.provider_cell,
+                            endpoint_picker_cell: deps.endpoint_picker_cell,
                             endpoints_cache: std::collections::HashMap::new(),
                         })
                     })
@@ -396,13 +404,15 @@ impl ProviderActor {
         });
     }
 
-    /// Wraps `entries` through the endpoint spec's hooks and writes them
-    /// into the endpoint picker (the render/navigation surface).
+    /// Wraps `entries` through the picker's own hooks and publishes them into
+    /// its cell (the render/navigation surface).
+    ///
+    /// The rows are built by the picker's own actions rather than a kernel
+    /// spec, so the cell is the single home: the actor that fetched them and
+    /// the renderer that draws them cannot end up on different stores.
     fn write_endpoint_items(&self, entries: Vec<EndpointEntry>) {
-        let wrapped = endpoint_spec().make_items(entries);
-        self.state.with_pickers(|p| {
-            p.endpoint_picker.set_items(wrapped);
-        });
+        self.endpoint_picker_cell
+            .update(|picker| crate::endpoint_picker_actions::reload(picker, entries));
     }
 }
 
@@ -574,7 +584,6 @@ mod tests {
     use jinn_domain::AppState;
     use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
     use jinn_domain::common::state::State;
-    use jinn_domain::feat::ui::picker_states::PickerExt;
     use jinn_provider_config::{
         InputModalities, Modality, ModelCache, ModelInfo, ProviderEntry, ProviderRegistry,
         ProvidersConfig,
@@ -609,6 +618,18 @@ mod tests {
                 .expect("provider cell registered")
         }
 
+        /// The endpoint picker's cell, for the actor to publish fetches into.
+        fn endpoint_picker_cell(
+            &self,
+        ) -> jinn_slices::cell::TypedCell<jinn_provider_selection_msg::endpoint::EndpointPickerState>
+        {
+            self.deps
+                .services
+                .slices
+                .reader(&jinn_provider_selection_msg::endpoint::endpoint_picker_slot())
+                .expect("endpoint picker cell registered")
+        }
+
         fn spawn_provider_actor(&self) {
             ProviderActor::spawn(
                 &self.deps.services.trouper_system,
@@ -616,6 +637,7 @@ mod tests {
                     deps: self.deps.clone(),
                     state: self.state.clone(),
                     provider_cell: self.cell(),
+                    endpoint_picker_cell: self.endpoint_picker_cell(),
                 },
             );
         }
@@ -628,11 +650,23 @@ mod tests {
     async fn create_ctx() -> Ctx {
         let harness = TestHarness::new().await;
         let deps = harness.actor_deps().await;
-        let _ = deps
-            .services
-            .slices
-            .register(provider_state_slot(), ProviderCell::default());
-        let state = State::new(AppState::default());
+        let slices = deps.services.slices.clone();
+        // Seed every cell the endpoint path reads, then attach *this* registry
+        // to the state: `attach_slices` writes a `OnceLock`, so a state built
+        // without it would keep a different registry and the actor could never
+        // publish a fetch.
+        let _ = slices.register(
+            jinn_slices::scope_focus_slot(),
+            jinn_slices::ScopeFocusState::default(),
+        );
+        let _ = slices.register(provider_state_slot(), ProviderCell::default());
+        let _ = slices.register(
+            jinn_provider_selection_msg::endpoint::endpoint_picker_slot(),
+            jinn_provider_selection_msg::endpoint::EndpointPickerState::default(),
+        );
+        let app = AppState::default();
+        app.frontend.attach_slices(slices);
+        let state = State::new(app);
         Ctx {
             harness,
             state,
@@ -1551,9 +1585,9 @@ mod tests {
             !cell.read().endpoint_loading,
             "non-OpenRouter load must clear the loading flag"
         );
-        let s = ctx.state.read();
+        let picker = ctx.endpoint_picker_cell();
         assert!(
-            !s.frontend.endpoint_picker().items().is_empty(),
+            !picker.read().selection.items().is_empty(),
             "non-OpenRouter load must still show the placeholder row"
         );
     }

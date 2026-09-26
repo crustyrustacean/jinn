@@ -21,7 +21,6 @@ pub fn build_picker_registry() -> PickerRegistry {
     registry.register(crate::task_list_spec::task_list_spec());
     registry.register(crate::session_spec::session_spec());
     registry.register(crate::provider_spec::provider_spec());
-    registry.register(crate::endpoint_spec::endpoint_spec());
     registry.register(crate::project_spec::project_spec());
     registry
 }
@@ -103,7 +102,6 @@ mod tests {
             PickerKind::TaskList,
             PickerKind::Session,
             PickerKind::Provider,
-            PickerKind::Endpoint,
             PickerKind::Project,
         ];
 

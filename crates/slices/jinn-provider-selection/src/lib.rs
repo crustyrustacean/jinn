@@ -18,6 +18,12 @@
 pub mod attachment_gate;
 pub mod discover_actor;
 pub mod endpoint_loader;
+mod endpoint_picker_actions;
+pub mod endpoint_picker_render;
+mod endpoint_picker_routes;
+#[cfg(test)]
+mod endpoint_picker_tests;
+mod endpoint_picker_viewport;
 pub mod entries;
 pub mod loader;
 pub mod provider_actor;
@@ -34,6 +40,7 @@ use jinn_provider_selection_msg::ProviderCell;
 use jinn_slices::SliceHost;
 use trouper::actor::ActorPath;
 
+pub use jinn_provider_selection_msg::endpoint::endpoint_picker_scope;
 pub use jinn_provider_selection_msg::reasoning_picker_scope;
 pub use reasoning_picker_routes::open_from_scope as open_reasoning_picker_from_scope;
 
@@ -43,6 +50,11 @@ pub struct ProviderSelectionHandles {
     /// boot slice (its provider-init actor writes the disk-loaded
     /// model cache through the same cell).
     pub provider_cell: jinn_slices::TypedCell<ProviderCell>,
+    /// The endpoint picker's cell. `activate` mints it before the provider
+    /// actor spawns (that actor publishes fetches into it) and composition
+    /// hands it back to `activate_endpoint_picker` to finish wiring.
+    pub endpoint_picker_cell:
+        jinn_slices::cell::TypedCell<jinn_provider_selection_msg::endpoint::EndpointPickerState>,
     /// The discover actor's path.
     pub discover: ActorPath,
     /// The provider actor's path.
@@ -74,6 +86,18 @@ pub fn activate(
         )
         .unwrap_or_else(|e| panic!("provider-selection activate: provider cell slot taken: {e:?}"));
 
+    // Registered here, before the provider actor spawns, because that actor
+    // publishes each completed fetch into this cell. Registration order is
+    // load-bearing: a cell must exist before a handle to it is handed out.
+    let endpoint_picker_cell = host
+        .register_cell(
+            jinn_provider_selection_msg::endpoint::endpoint_picker_slot(),
+            jinn_provider_selection_msg::endpoint::EndpointPickerState::default(),
+        )
+        .unwrap_or_else(|e| {
+            panic!("provider-selection activate: endpoint picker cell slot taken: {e:?}")
+        });
+
     let deps = jinn_domain::common::actor_deps::ActorDeps {
         services: services.clone(),
     };
@@ -90,11 +114,13 @@ pub fn activate(
             deps,
             state,
             provider_cell: provider_cell.clone(),
+            endpoint_picker_cell: endpoint_picker_cell.clone(),
         },
     );
 
     ProviderSelectionHandles {
         provider_cell,
+        endpoint_picker_cell,
         discover,
         provider,
     }
@@ -142,4 +168,38 @@ pub fn activate_picker(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
     // The picker's keys, and the filter's input hook, are this slice's own.
     reasoning_picker_routes::attach_reasoning_picker_rows(host.key_routes(), &cell);
     reasoning_picker_routes::register_reasoning_picker_input_hook(host.key_routes(), &cell);
+}
+
+/// Registers the OpenRouter endpoint picker: its overlay, its keys, and its
+/// filter hook.
+///
+/// The cell itself was registered by [`activate`], which had to mint it
+/// earlier so the provider actor could hold a handle and publish each
+/// completed fetch into it. Registering a slot twice is a wiring error, so
+/// this function takes the cell it is given rather than minting its own.
+///
+/// Each picker owns a distinct scope, cell, and key set, and none of them
+/// knows another exists.
+pub fn activate_endpoint_picker(
+    host: &mut SliceHost<'_, jinn_slices::RenderFacts>,
+    cell: &jinn_slices::cell::TypedCell<jinn_provider_selection_msg::endpoint::EndpointPickerState>,
+) {
+    let cell = cell.clone();
+    let scope = endpoint_picker_scope();
+    host.register_overlay(
+        scope.clone(),
+        std::sync::Arc::new(endpoint_picker_render::endpoint_picker_overlay_rect),
+    );
+    host.register_overlay_selectable(&scope);
+    host.register_overlay_slot(
+        scope.clone(),
+        jinn_provider_selection_msg::endpoint::endpoint_picker_slot(),
+    );
+    host.register_overlay_view(
+        scope,
+        std::sync::Arc::new(endpoint_picker_render::render_endpoint_picker),
+    );
+
+    endpoint_picker_routes::attach_endpoint_picker_rows(host.key_routes(), &cell);
+    endpoint_picker_routes::register_endpoint_picker_input_hook(host.key_routes(), &cell);
 }

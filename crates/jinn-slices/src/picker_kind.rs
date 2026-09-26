@@ -22,9 +22,6 @@ pub enum PickerKind {
     Project,
     /// MCP server picker - toggle which MCP servers are enabled for the session.
     McpServer,
-    /// OpenRouter endpoint picker - pin a specific routing upstream for
-    /// prefix-cache affinity on an OpenRouter-served Single model.
-    Endpoint,
 }
 
 impl std::fmt::Display for PickerKind {
@@ -38,8 +35,6 @@ impl std::fmt::Display for PickerKind {
             Self::TaskList => write!(f, "task list"),
             Self::Project => write!(f, "projects"),
             Self::McpServer => write!(f, "mcp servers"),
-
-            Self::Endpoint => write!(f, "endpoints"),
         }
     }
 }

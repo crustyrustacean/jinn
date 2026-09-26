@@ -107,7 +107,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             .bind("<leader>ss", KernelIntent::OpenPicker { kind: PickerKind::Session }, KeyCategory::General)
             .bind("<leader>sM", KernelIntent::OpenPicker { kind: PickerKind::McpServer }, KeyCategory::General)
             // OpenRouter routing endpoint pin (Single + OpenRouter models only).
-            .bind("<leader>sE", KernelIntent::OpenPicker { kind: PickerKind::Endpoint }, KeyCategory::General)
             // Projects - curated directory list for quick session creation
             .bind("<leader>so", KernelIntent::OpenPicker { kind: PickerKind::Project }, KeyCategory::General)
             // Input - enter input mode
@@ -239,11 +238,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
         .scope(Scope::PickerSession, |b| {
             add_picker_base(b);
         })
-        .scope(Scope::PickerEndpoint, |b| {
-            // The endpoint spec's CTRL+R row lands here via
-            // bind_picker_spec_rows.
-            add_picker_base(b);
-        })
         .scope(Scope::PickerTaskList, |b| {
             add_picker_base(b);
         })
@@ -289,8 +283,7 @@ mod tests {
             PickerKind::Session,
             PickerKind::TaskList,
             PickerKind::Project,
-            PickerKind::McpServer,
-            PickerKind::Endpoint
+            PickerKind::McpServer
         )]
         kind: PickerKind,
     ) {
@@ -432,49 +425,6 @@ mod tests {
             "Picker(reasoning-effort)".parse::<Scope>().is_err(),
             "the kernel must not define a static scope for the slice-owned \
              reasoning picker"
-        );
-    }
-    #[rstest::rstest]
-    fn endpoint_picker_scope_binds_base_intents() {
-        // Given the default keymap.
-        use jinn_domain::{Key, KeyEvent, Modifiers};
-        use ratatui_which_key::NodeResult;
-        let keymap = init();
-        let esc = KeyEvent {
-            key: Key::Esc,
-            modifiers: Modifiers::none(),
-        };
-        let enter = KeyEvent {
-            key: Key::Enter,
-            modifiers: Modifiers::none(),
-        };
-
-        // When navigating the two explicit base keys within the Endpoint picker scope.
-        let esc_res = keymap
-            .navigate(&[esc], &Scope::PickerEndpoint)
-            .expect("esc bound");
-        let enter_res = keymap
-            .navigate(&[enter], &Scope::PickerEndpoint)
-            .expect("enter bound");
-
-        // Then each resolves to a real picker base intent (regression: scope once had no bindings, freezing the popup).
-        let NodeResult::Leaf { action: esc_action } = esc_res else {
-            panic!("esc must be a leaf");
-        };
-        assert!(
-            matches!(esc_action, KernelIntent::EnterNormalMode),
-            "esc must resolve to EnterNormalMode, got {esc_action:?}"
-        );
-
-        let NodeResult::Leaf {
-            action: enter_action,
-        } = enter_res
-        else {
-            panic!("enter must be a leaf");
-        };
-        assert!(
-            matches!(enter_action, KernelIntent::PickerConfirm),
-            "enter must resolve to PickerConfirm, got {enter_action:?}"
         );
     }
 
@@ -788,10 +738,10 @@ mod leak_check {
 
         // When navigating the base keys within a surviving picker scope.
         let esc_res = keymap
-            .navigate(&[esc], &Scope::PickerEndpoint)
+            .navigate(&[esc], &Scope::PickerProvider)
             .expect("esc bound");
         let enter_res = keymap
-            .navigate(&[enter], &Scope::PickerEndpoint)
+            .navigate(&[enter], &Scope::PickerProvider)
             .expect("enter bound");
 
         // Then each resolves to a real picker base intent (the confirm

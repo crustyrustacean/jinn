@@ -8,7 +8,6 @@
 use jinn_mcp_msg::McpServerEntry;
 use jinn_project_msg::ProjectEntry;
 use jinn_provider_selection_msg::ProviderPickerEntry;
-use jinn_provider_selection_msg::endpoint::EndpointEntry;
 use jinn_session_store_msg::SessionTreeEntry;
 use jinn_tools_msg::TaskListTreeEntry;
 
@@ -62,14 +61,6 @@ pub struct PickerStates {
     /// render/navigation surface the picker host lends from `&AppState`.
     pub provider_picker:
         jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ProviderPickerEntry>>,
-
-    /// OpenRouter endpoint picker state - one row per routing upstream.
-    /// OWNER: IntentHandler (navigation) / provider-selection slice's
-    /// `ProviderActor` (fills items at load time through the
-    /// `State::with_pickers` projection). Endpoint loading/fetched-at flags live on the
-    /// provider cell.
-    pub endpoint_picker:
-        jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<EndpointEntry>>,
 }
 
 /// Extension trait providing typed access to picker state on [`FrontendState`](super::FrontendState).
@@ -116,15 +107,6 @@ pub trait PickerExt {
     fn mcp_server_picker_mut(
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<McpServerEntry>>;
-
-    /// Read-only access to the OpenRouter endpoint picker state.
-    fn endpoint_picker(
-        &self,
-    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<EndpointEntry>>;
-    /// Mutable access to the OpenRouter endpoint picker state.
-    fn endpoint_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<EndpointEntry>>;
 
     fn picker_results_viewport(&self) -> u16;
 
@@ -191,18 +173,6 @@ impl PickerExt for super::frontend_state::FrontendState {
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<McpServerEntry>> {
         &mut self.pickers.mcp_server_picker
-    }
-
-    fn endpoint_picker(
-        &self,
-    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<EndpointEntry>> {
-        &self.pickers.endpoint_picker
-    }
-
-    fn endpoint_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<EndpointEntry>> {
-        &mut self.pickers.endpoint_picker
     }
 
     fn picker_results_viewport(&self) -> u16 {

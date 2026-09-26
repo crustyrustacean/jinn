@@ -80,7 +80,6 @@ fn picker_spec_scope(id: jinn_picker::PickerId) -> Option<Scope> {
         "task-list" => Some(Scope::PickerTaskList),
         "session" => Some(Scope::PickerSession),
         "provider" => Some(Scope::PickerProvider),
-        "endpoint" => Some(Scope::PickerEndpoint),
         "project" => Some(Scope::PickerProject),
         _ => None,
     }
@@ -130,7 +129,6 @@ fn scopes_for_row<'a>(
                 Scope::Input,
                 Scope::PickerProvider,
                 Scope::PickerSession,
-                Scope::PickerEndpoint,
                 Scope::PickerTaskList,
                 Scope::PickerProject,
                 Scope::PickerMcpServer,
@@ -827,7 +825,6 @@ mod tests {
     #[case("Input")]
     #[case("Picker(provider)")]
     #[case("Picker(session)")]
-    #[case("Picker(endpoint)")]
     #[case("Picker(task-list)")]
     #[case("Picker(project)")]
     #[case("Picker(mcp-server)")]
@@ -1245,35 +1242,6 @@ mod real_registry_spec_rows {
         }
     }
 
-    #[rstest::rstest]
-    #[test]
-    fn endpoint_spec_refresh_row_resolves_in_its_scope() {
-        // Given the real domain registry (whose endpoint spec declares a <c-r>
-        // refresh row) bound into a fresh keymap.
-        let registry = jinn_picker_specs::build_picker_registry();
-        let mut keymap = init();
-        bind_picker_spec_rows(&registry, &mut keymap);
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerEndpoint);
-
-        // When pressing Ctrl+R.
-        let c_r = KeyEvent {
-            key: Key::Char('r'),
-            modifiers: Modifiers::ctrl(),
-        };
-        let intent = wk.handle_key(c_r);
-
-        // Then it resolves to the endpoint spec's refresh picker action.
-        assert!(
-            matches!(
-                &intent,
-                Some(jinn_domain::KernelIntent::PickerAction { picker, action })
-                    if picker == "endpoint" && action == "<c-r>"
-            ),
-            "<c-r> must land as the endpoint spec's refresh action; got {intent:?}",
-        );
-    }
-
-    #[rstest::rstest]
     #[rstest::rstest]
     #[test]
     fn provider_spec_rows_resolve_in_their_scope() {
