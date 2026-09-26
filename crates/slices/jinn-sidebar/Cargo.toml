@@ -19,6 +19,7 @@ jinn-session-lifecycle-msg = { workspace = true }
 jinn-session-state = { workspace = true }
 jinn-session-msg = { workspace = true }
 jinn-session-store-msg = { workspace = true }
+jinn-term = { workspace = true }
 jinn-term-msg = { workspace = true }
 jinn-theme = { workspace = true }
 # The trouper runtime: ServiceActors, topics, schemas.

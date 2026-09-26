@@ -802,12 +802,12 @@ mod term_keybinds_spot_check {
 
     #[rstest::rstest]
     #[test]
-    fn session_terminal_row_publishes_the_term_toggle_for_selected_intent() {
+    fn session_terminal_row_publishes_nothing() {
         // Given the sidebar's session-terminal row dispatching in its scope.
         let routes = jinn_slices::route::KeyRoutes::new();
         jinn_sidebar::key_routes::attach_sidebar_rows(&routes);
         let sessions = jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id();
-        let mut state = jinn_domain::AppState::default();
+        let mut state = jinn_domain::AppState::default_with_scope_focus();
 
         // When firing the row.
         let result = routes
@@ -821,11 +821,17 @@ mod term_keybinds_spot_check {
             )
             .expect("session-terminal row must dispatch");
 
-        // Then it publishes the term slice's toggle-for-selected dynamic
-        // intent (targets the term view scope, not a kernel intent variant).
+        // Then it publishes nothing. This row used to publish a
+        // `KernelIntent::Dynamic` naming the term slice's action, on the
+        // assumption the message would be routed back into dispatch. It is
+        // not: a published message goes to the bus, and no actor subscribes
+        // to `KernelIntent`, so `T` did nothing. A `RouteResult` carries no
+        // local-dispatch channel, so the row now calls the term slice's
+        // handler directly -- which is why the overlay opens, and why there
+        // is no message here.
         assert!(
-            result.message_names.iter().any(|n| n.contains("Intent")),
-            "session-terminal row must publish an Intent, got {:?}",
+            result.messages.is_empty(),
+            "session-terminal must not publish, got {:?}",
             result.message_names
         );
     }

@@ -3166,6 +3166,7 @@ dependencies = [
  "jinn-sidebar-msg",
  "jinn-skills",
  "jinn-slices",
+ "jinn-term",
  "jinn-term-msg",
  "jinn-testutil",
  "jinn-theme",
