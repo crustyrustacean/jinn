@@ -202,6 +202,24 @@ Tint kept; a `HORIZONTAL_BLOCK` spinner added alongside it in the existing indic
 - [x] Add `in_flight_indicator_does_not_show_on_a_busy_session`
 - [x] `just lint` zero warnings, `just test` **6513 passed / 0 failed**
 
+## Phase 13 — Theme both spinners
+
+- [x] `indicator_span` / `busy_span` / `in_flight_span` take `&Theme` and use `theme.streaming`
+- [x] Update the two pre-existing `indicator_span_*` tests for the new arity
+- [x] Assert `theme.streaming` rather than the hardcoded `Color::Cyan` in the busy-spinner test
+- [x] Rename `indicator_span_uses_cyan_when_in_flight` → `indicator_span_uses_theme_busy_color_when_in_flight`
+- [x] Add `both_spinners_share_the_theme_busy_color` — uses a non-cyan theme so a regression cannot pass
+- [x] Verified the new test FAILS against the hardcoded implementation (`Cyan` vs `Magenta`)
+- [x] `just lint` zero warnings, `just test` **6552 passed / 0 failed**
+
+### Phase 13 notes
+
+- The default theme's `streaming` happens to be cyan, so the two color assertions passed both
+  before and after the change — they were not actually testing anything. The added
+  `both_spinners_share_the_theme_busy_color` sets `streaming = Magenta` specifically so the
+  hardcoded version fails; confirmed by temporarily reverting the implementation.
+- `Color` is still imported in `entry_line.rs` for the error-red path, so the import stays.
+
 ### Phase 12 notes
 
 - **Color decision is a one-line change if you want it the other way.** The existing session-row

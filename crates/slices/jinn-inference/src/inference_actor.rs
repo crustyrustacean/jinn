@@ -12,8 +12,8 @@ use jinn_domain::common::services::Services;
 use jinn_domain::common::services::bus_service::BusService;
 use jinn_domain::protocol::ChatEntry;
 use jinn_inference_msg::{
-    CancelStream, SendToLlmProvider, StreamCompleted, StreamCompletedReason, StreamOrigin,
-    StreamToken,
+    CancelStream, SendToLlmProvider, StreamActivity, StreamCompleted, StreamCompletedReason,
+    StreamOrigin, StreamToken,
 };
 use jinn_preferences_config::schemas::RequestRetryConfig;
 use jinn_provider::{
@@ -191,12 +191,33 @@ impl MsgHandler<StreamCompleted> for InferenceActor {
     }
 }
 
+/// Declares a stream alive: publishes [`StreamActivity`] for one non-terminal
+/// provider event.
+///
+/// The one contract a stream supervisor needs — "this stream is still
+/// producing" — owned by the producer so every kind of forward progress is
+/// covered by construction. A supervisor that watched only `StreamToken`
+/// would read a tool call being constructed (deltas streaming in for
+/// minutes) as silence.
+async fn publish_activity(bus: &BusService, sid: &SessionId) {
+    bus.publish(StreamActivity {
+        session_id: sid.clone(),
+    })
+    .await;
+}
+
 /// Processes events from an LLM stream, emitting token/tool events via the sink.
 ///
 /// Runs until the stream terminates via a `Done`/`Error` event or stream end,
 /// always publishing `StreamCompleted` itself. Stall detection lives in the
 /// `jinn-watchdog` slice's stall-watchdog actor (which consumes this actor's
-/// stream events by schema broadcast), not here.
+/// [`StreamActivity`] by schema broadcast), not here.
+///
+/// Every non-terminal event publishes [`StreamActivity`] first, before its
+/// own domain message: the liveness signal is declared by the arm that
+/// handles the event, so a future [`StreamEvent`] variant cannot silently
+/// blind the watchdog. The terminal `Done`/`Error` arms publish no activity —
+/// [`StreamCompleted`] governs a stream's end.
 async fn process_stream_events(
     mut stream: jinn_provider::ToolStream,
     bus: &BusService,
@@ -212,12 +233,15 @@ async fn process_stream_events(
         match item {
             Ok(event) => match event {
                 StreamEvent::Text(token) => {
+                    publish_activity(bus, sid).await;
                     handle_text_event(bus, sid, dispatched_at, &mut accum, token).await;
                 }
                 StreamEvent::Reasoning(token) => {
+                    publish_activity(bus, sid).await;
                     handle_reasoning_event(bus, sid, dispatched_at, &mut accum, token).await;
                 }
                 StreamEvent::ToolUseStart { index, id, name } => {
+                    publish_activity(bus, sid).await;
                     bus.publish(ToolUseStarted {
                         session_id: sid.clone(),
                         index,
@@ -231,6 +255,7 @@ async fn process_stream_events(
                     index,
                     partial_json,
                 } => {
+                    publish_activity(bus, sid).await;
                     bus.publish(ToolCallStreaming {
                         session_id: sid.clone(),
                         index,
@@ -239,6 +264,7 @@ async fn process_stream_events(
                     .await;
                 }
                 StreamEvent::ToolUseComplete { tool_call, .. } => {
+                    publish_activity(bus, sid).await;
                     accum.tool_calls.push(tool_call.clone());
                     bus.publish(ToolCallReceived {
                         session_id: sid.clone(),
@@ -248,14 +274,18 @@ async fn process_stream_events(
                     .await;
                 }
                 StreamEvent::Citations(citations) => {
+                    publish_activity(bus, sid).await;
                     accum.citations.extend(citations);
                 }
                 StreamEvent::Done { stop_reason, usage } => {
+                    // Terminal: `StreamCompleted` governs a stream's end, so
+                    // this arm declares no liveness.
                     handle_done_event(bus, sid, &mut accum, stop_reason, usage, dispatched_at)
                         .await;
                     return;
                 }
                 StreamEvent::Error { message, .. } => {
+                    // Terminal: as with `Done`, no liveness is declared.
                     emit_terminal_error(
                         bus,
                         sid,

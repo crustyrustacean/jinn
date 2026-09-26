@@ -727,6 +727,136 @@ async fn process_stream_events_completes_on_done_event() {
     assert!(found, "Done should complete the stream");
 }
 
+/// A stream that constructs one tool call and completes, emitting no text.
+fn tool_only_stream() -> jinn_provider::ToolStream {
+    use jinn_provider::StreamEvent;
+    scripted_stream(vec![
+        StreamEvent::ToolUseStart {
+            index: 0,
+            id: "tc-1".to_owned(),
+            name: "read".to_owned(),
+        },
+        StreamEvent::ToolUseInputDelta {
+            index: 0,
+            partial_json: r#"{"path":"a"#.to_owned(),
+        },
+        StreamEvent::ToolUseInputDelta {
+            index: 0,
+            partial_json: r#".rs"}"#.to_owned(),
+        },
+        StreamEvent::ToolUseComplete {
+            tool_call: ToolCall {
+                id: "tc-1".to_owned(),
+                name: "read".to_owned(),
+                arguments: r#"{"path":"a.rs"}"#.to_owned(),
+            },
+            index: 0,
+        },
+        StreamEvent::Done {
+            stop_reason: StopReason::ToolUse,
+            usage: None,
+        },
+    ])
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn process_stream_events_publishes_activity_for_a_tool_call_with_no_text() {
+    // Given a stream that constructs a tool call and completes — emitting no
+    // text token at all. This is the shape a stream supervisor used to read
+    // as silence.
+    let harness = TestHarness::new().await;
+    let activity_recorder = harness.spawn_recorder::<StreamActivity>().await;
+    let stream = tool_only_stream();
+    let sid = SessionId::new();
+
+    // When processing the stream.
+    process_stream_events(
+        stream,
+        &harness.bus(),
+        &sid,
+        "test-model",
+        jiff::Timestamp::now(),
+    )
+    .await;
+
+    // Then liveness was published for each of the four non-terminal events
+    // (tool start, two argument deltas, tool complete) — and for nothing else.
+    let activity = await_recorded(&activity_recorder, 4, std::time::Duration::from_secs(5)).await;
+    assert_eq!(
+        activity.len(),
+        4,
+        "each non-terminal provider event should declare liveness"
+    );
+    // And every declaration names this session: supervision is per-stream,
+    // with no per-content-block identity to get wrong.
+    assert!(activity.iter().all(|a| a.session_id == sid));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn tool_only_stream_publishes_no_stream_tokens() {
+    // Given a stream that constructs a tool call and completes.
+    let harness = TestHarness::new().await;
+    let token_recorder = harness.spawn_recorder::<StreamToken>().await;
+    let stream = tool_only_stream();
+    let sid = SessionId::new();
+
+    // When processing the stream.
+    process_stream_events(
+        stream,
+        &harness.bus(),
+        &sid,
+        "test-model",
+        jiff::Timestamp::now(),
+    )
+    .await;
+
+    // Then no text token was published at all — so a supervisor watching only
+    // tokens would have seen a completely silent stream.
+    let tokens = await_recorded(&token_recorder, 0, std::time::Duration::from_millis(100)).await;
+    assert!(
+        tokens.is_empty(),
+        "a tool-only stream should publish no StreamToken"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn process_stream_events_publishes_no_activity_for_the_terminal_done_event() {
+    // Given a stream whose only non-terminal event is a single text token.
+    use jinn_provider::{StopReason, StreamEvent};
+    let harness = TestHarness::new().await;
+    let activity_recorder = harness.spawn_recorder::<StreamActivity>().await;
+    let stream = scripted_stream(vec![
+        StreamEvent::Text("hi".to_owned()),
+        StreamEvent::Done {
+            stop_reason: StopReason::EndTurn,
+            usage: None,
+        },
+    ]);
+    let sid = SessionId::new();
+
+    // When processing the stream to completion.
+    process_stream_events(
+        stream,
+        &harness.bus(),
+        &sid,
+        "test-model",
+        jiff::Timestamp::now(),
+    )
+    .await;
+
+    // Then exactly one activity was published — the terminal Done event
+    // declared no liveness, because `StreamCompleted` governs a stream's end.
+    let activity = await_recorded(&activity_recorder, 1, std::time::Duration::from_secs(5)).await;
+    assert_eq!(
+        activity.len(),
+        1,
+        "only the text event should declare liveness"
+    );
+}
+
 #[rstest::rstest]
 #[tokio::test]
 async fn process_stream_events_publishes_citations_on_done_when_accumulated() {

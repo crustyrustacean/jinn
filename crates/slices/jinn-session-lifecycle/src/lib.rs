@@ -130,6 +130,10 @@ pub fn activate_picker(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
         host.key_routes(),
         &cell,
     );
+    session_lifecycle_picker_routes::register_session_lifecycle_picker_enter_hook(
+        host.key_routes(),
+        &cell,
+    );
 }
 
 #[cfg(test)]
