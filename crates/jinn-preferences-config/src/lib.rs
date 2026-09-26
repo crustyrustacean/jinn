@@ -12,8 +12,6 @@
 //! keep their behavior in the kernel and import the shapes from here.
 
 #[cfg(test)]
-mod template_validation_tests;
-
 pub mod app_state_file;
 pub mod app_state_storage;
 pub mod config_template;

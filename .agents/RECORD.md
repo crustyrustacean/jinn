@@ -359,7 +359,7 @@ Entries are added or amended **only with human approval**.
 - (config) Writing a config section patches only that subtree of jinn.toml through the comment-preserving DocumentPatcher and re-snapshots the in-memory document.
 - (config) ConfigLayer::reload re-reads jinn.toml from disk and atomically replaces the in-memory snapshot.
 - (config) The RenderCtx carries a ConfigLayer reference so render-path consumers read config the same way every other consumer does.
-- (config) jinn.toml keys are not migrated between layouts; a pre-umbrella document is not read, and doc/jinn-toml-umbrella-migration.md documents the change.
+- (config) jinn.toml keys are not migrated between layouts; a pre-umbrella document is not read, not translated, and not warned about, so a stale file reads as a fresh install.
 - (slices) The discord slice reads its [discord] section from the configuration layer, and an absent section activates the slice disabled.
 
 - (config) ModelSelection, AlloyStrategy, and ReasoningEffort live in jinn-core-types; they persist across state.toml, SessionCore, and the SQLite legacy schema.

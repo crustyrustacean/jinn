@@ -204,8 +204,12 @@ auto-created `~/.config/jinn/jinn.toml` itself.
 ## Upgrades
 
 Config keys moved under slice-owned umbrellas. An older `jinn.toml` is
-not read — see [`doc/jinn-toml-umbrella-migration.md`](../../../doc/jinn-toml-umbrella-migration.md)
-for the full old-to-new key table before recommending an edit.
+not read: jinn does not translate old keys, does not warn about them,
+and does not migrate them. A file that still uses the pre-umbrella
+spellings parses, and every section falls back to its default — so a
+silent revert to defaults is the symptom to look for, not an error.
+Check the user's file for the umbrellas listed above before
+recommending an edit.
 
 Users should run `jinn install --force` after updating jinn — it refreshes
 bundled themes, personas, prompts, and skills (skipping files only when not
