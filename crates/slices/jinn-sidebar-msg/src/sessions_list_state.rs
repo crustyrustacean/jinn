@@ -183,6 +183,16 @@ impl PreviewLoad {
         generation
     }
 
+    /// Whether a render is running for this session at all, whatever its content.
+    ///
+    /// Used for diagnostics: an identical-content check says nothing when the
+    /// spinner is stuck with nothing in flight, which is the case worth telling
+    /// apart from "still rendering".
+    #[must_use]
+    pub fn is_in_flight_for(&self, session_id: &SessionId) -> bool {
+        self.in_flight.contains_key(session_id)
+    }
+
     /// Whether an identical request is already running.
     ///
     /// The render pass cannot publish, so a duplicate request has to be stopped
@@ -224,16 +234,28 @@ impl PreviewLoad {
         lines: Arc<Vec<ratatui::text::Line<'static>>>,
     ) -> bool {
         if !self.accepts(&session_id, generation) {
+            tracing::warn!(
+                session_id = %session_id, generation, signature, content_width,
+                in_flight = self.in_flight.get(&session_id).map(|e| e.generation),
+                reset_floor = self.reset_floor,
+                next_generation = self.next_generation,
+                "preview COMPLETE REJECTED",
+            );
             return false;
         }
         self.in_flight.remove(&session_id);
         self.insert_cached(
-            session_id,
+            session_id.clone(),
             CachedPreview {
                 signature,
                 content_width,
-                lines,
+                lines: Arc::clone(&lines),
             },
+        );
+        tracing::info!(
+            session_id = %session_id, generation, signature, content_width,
+            lines = lines.len(),
+            "preview COMPLETE cached",
         );
         true
     }
@@ -278,6 +300,10 @@ impl PreviewLoad {
         if matches_request {
             self.in_flight.remove(session_id);
         }
+        tracing::debug!(
+            session_id = %session_id, generation, matches_request,
+            "preview abandon (deadline fired)",
+        );
         matches_request
     }
 
@@ -289,6 +315,13 @@ impl PreviewLoad {
     /// that was already running from writing old-theme lines back into the
     /// cache it just cleared.
     pub fn reset(&mut self) {
+        tracing::warn!(
+            reset_floor = self.reset_floor,
+            next_generation = self.next_generation,
+            cached = self.cache.len(),
+            in_flight = self.in_flight.len(),
+            "preview RESET (all previews dropped)",
+        );
         self.cache.clear();
         self.order.clear();
         self.in_flight.clear();

@@ -3,6 +3,7 @@ name = "jinn-sidebar-msg"
 version.workspace = true
 edition.workspace = true
 [dependencies]
+tracing = { workspace = true }
 ratatui = { workspace = true }
 jiff = { workspace = true }
 jinn-core-types = { workspace = true }

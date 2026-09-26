@@ -630,6 +630,42 @@ mod loading_state {
     }
 
     #[rstest::rstest]
+    fn the_loading_label_uses_the_streaming_color() {
+        // Given a session whose preview has not been rendered.
+        let session = make_session_with_title("busy");
+        let theme = default_theme();
+        let frame_area = Rect::new(0, 0, 100, 40);
+        let popup_area = session_preview_popup_rect(frame_area, 30, LOADING_CONTENT_ROWS);
+
+        // When the loading renderer draws it.
+        let (mut terminal, _) = setup_term(100, 40);
+        terminal
+            .draw(|frame| {
+                render_session_preview_loading(frame, popup_area, &session, &theme);
+            })
+            .expect("draw");
+        let buffer = terminal.backend().buffer().clone();
+
+        // Then the label carries the theme's streaming color, the same one the
+        // chat log's loading indicator uses, so "working" reads the same in both
+        // places. Muted grey read as "nothing here" rather than "wait".
+        // Scanned for the *label's* cells only: the leftmost cell in this row is
+        // the border, which is a different color and would make the assertion
+        // pass or fail for reasons unrelated to the label.
+        let label_row = popup_area.y + 1;
+        let first_label_x = popup_area.x + 1;
+        let fg = (first_label_x..popup_area.x + popup_area.width)
+            .filter_map(|x| buffer.cell((x, label_row)))
+            .map(|cell| cell.fg)
+            .find(|fg| *fg != theme.border_unfocused)
+            .expect("the label row carries text");
+        assert_eq!(
+            fg, theme.streaming,
+            "the loading label must use the streaming color, not muted grey",
+        );
+    }
+
+    #[rstest::rstest]
     fn a_session_with_no_entries_draws_no_content() {
         // Given a session with an empty history, rendered and complete.
         let session = make_session_with_title("empty");

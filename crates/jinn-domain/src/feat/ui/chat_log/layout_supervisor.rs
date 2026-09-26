@@ -187,6 +187,10 @@ impl LayoutSupervisorActor {
         generation: u64,
         reason: &str,
     ) {
+        tracing::warn!(
+            session_id = %session_id, generation, reason,
+            "preview DEADLINE expiring",
+        );
         // Generation-scoped, exactly as the guard release above is
         // session-scoped: a request the cursor has already moved past must not
         // stop the spinner belonging to the one that replaced it.

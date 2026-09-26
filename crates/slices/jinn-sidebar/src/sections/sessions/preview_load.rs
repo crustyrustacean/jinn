@@ -80,6 +80,10 @@ pub fn update_preview(
         state
             .frontend
             .update_sections(|s| s.sessions.preview.touch(session_id));
+        tracing::debug!(
+            session_id = %session_id, signature, width,
+            "preview served from cache/in-flight; no request",
+        );
         return None;
     }
 
@@ -105,6 +109,11 @@ pub fn update_preview(
             .preview
             .request(session_id.clone(), signature, width);
     });
+    tracing::info!(
+        session_id = %session_id, generation, signature, width,
+        entries = entries.len(),
+        "preview REQUEST armed",
+    );
 
     Some(PreviewSessionRequested {
         session_id: session_id.clone(),

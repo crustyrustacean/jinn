@@ -128,6 +128,7 @@ pub fn render_session_preview_for_state(
         // `None` is what distinguishes loading from empty — an empty session
         // renders zero lines but is still a cache hit, so it takes the branch
         // below and shows the empty state rather than spinning forever.
+        log_cache_miss(&entry.id, signature, inner_width, state, session);
         let popup_rect = session_preview_popup_rect(frame_area, cursor_y, LOADING_CONTENT_ROWS);
         render_session_preview_loading(frame, popup_rect, session, theme);
         return;
@@ -143,6 +144,50 @@ pub fn render_session_preview_for_state(
 fn preview_width(frame_area: Rect) -> u16 {
     let w = (f32::from(frame_area.width) * 0.6).ceil() as u16;
     w.max(30).min(frame_area.width)
+}
+
+/// TEMPORARY DIAGNOSTIC — remove once the stuck spinner is explained.
+///
+/// Logs one line per distinct `(session, signature, width)` miss rather than one
+/// per frame. The render pass holds only a *read* guard on the sections, so it
+/// cannot remember what it last logged; a process-global `Mutex<Option<...>>` is
+/// the only place a dedupe can live without adding state the render path
+/// mutates. Torn out with the rest of the tracing.
+fn log_cache_miss(
+    session_id: &jinn_core_types::SessionId,
+    signature: u64,
+    render_width: u16,
+    state: &jinn_domain::common::app_state::AppState,
+    session: &ChatSessionState,
+) {
+    static LAST: std::sync::Mutex<Option<(jinn_core_types::SessionId, u64, u16)>> =
+        std::sync::Mutex::new(None);
+    let key = (session_id.clone(), signature, render_width);
+    {
+        let Ok(mut last) = LAST.lock() else { return };
+        if last.as_ref() == Some(&key) {
+            return;
+        }
+        *last = Some(key);
+    }
+    let (recorded_width, in_flight) = state.frontend.with_sections(
+        |s| {
+            (
+                s.sessions.preview_content_width,
+                s.sessions.preview.is_in_flight_for(session_id),
+            )
+        },
+        || (0, false),
+    );
+    tracing::warn!(
+        session_id = %session_id,
+        signature,
+        render_width,
+        recorded_width,
+        in_flight,
+        history_entries = session.history().len(),
+        "PREVIEW CACHE MISS — spinner shown",
+    );
 }
 
 /// How far through the spin the current frame is.
@@ -182,10 +227,13 @@ pub fn render_session_preview_loading(
     let glyph = jinn_slices::spinner_glyph(spinner_elapsed());
 
     // Content is one line: a glyph followed by a short label, so the popup does
-    // not read as empty while it waits.
+    // not read as empty while it waits. The label takes the theme's `streaming`
+    // color — the same one the chat log's loading indicator uses — so "this is
+    // working" reads identically wherever it appears. Muted grey said "nothing
+    // here" rather than "wait".
     let content = Line::from(Span::styled(
         format!(" {glyph} loading\u{2026}"),
-        Style::default().fg(theme.muted_text),
+        Style::default().fg(theme.streaming),
     ));
 
     render_session_preview_inner(frame, popup_area, session, theme, &[content]);
