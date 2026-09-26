@@ -188,6 +188,37 @@ The planned block was written before implementation and one entry no longer matc
 **Nothing has been written to `.agents/RECORD.md` yet** — per the plan, the understated entry is
 left for the user to resolve rather than committed as-is.
 
+## Phase 12 — In-flight spinner (follow-up)
+
+Tint kept; a `HORIZONTAL_BLOCK` spinner added alongside it in the existing indicator column.
+
+- [x] `indicator_span` takes `is_in_flight` and dispatches idle → in-flight branch, busy → braille
+- [x] Extract `throbber_symbol` to resolve a symbol from the unbounded `ThrobberState::index` (modulo + negative correction retained)
+- [x] `busy_span` / `in_flight_span` split, both `Color::Cyan` to match the existing session-row spinner
+- [x] Update the two existing `indicator_span_*` tests for the new arity
+- [x] Add `indicator_span_returns_block_character_when_in_flight`
+- [x] Add `indicator_span_uses_cyan_when_in_flight`
+- [x] Add `in_flight_indicator_animates_across_block_symbols` — walks the whole cycle
+- [x] Add `in_flight_indicator_does_not_show_on_a_busy_session`
+- [x] `just lint` zero warnings, `just test` **6513 passed / 0 failed**
+
+### Phase 12 notes
+
+- **Color decision is a one-line change if you want it the other way.** The existing session-row
+  spinner is hardcoded `Color::Cyan`, so "same color as the existing spinner" was implemented as
+  `Color::Cyan` literally. The *themed* equivalent is `theme.streaming`, which is cyan in `default`
+  and `sonokai` but a sky blue in `catppuccin`, a green in `gruvbox`, and a frost blue in `nord-light`.
+  Switching to `theme.streaming` would make the in-flight spinner match the rest of the app's
+  "busy" colour and stop being wrong in four of five themes. Not done unilaterally because the
+  request said "cyan", and because it would change the existing busy spinner's colour too if applied
+  there. **Your call.**
+- No column-width change: every `HORIZONTAL_BLOCK` symbol is a single cell, so rows do not shift.
+- The two spinners can never occupy one row: both the archive and close validators reject a busy
+  session, so a session being disposed is always idle. `in_flight_indicator_does_not_show_on_a_busy_session`
+  pins that ordering as a defensive invariant.
+- Dropped three now-unfulfilled `#[expect(clippy::expect_used)]` attributes after extracting
+  `throbber_symbol` (clippy flags unfulfilled expectations as warnings).
+
 ### Post-completion notes
 
 - `handle_session_tree_action_confirm` remains **dead code** (re-exported, never called). Its

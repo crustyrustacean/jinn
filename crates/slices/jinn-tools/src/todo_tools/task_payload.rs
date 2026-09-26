@@ -21,8 +21,94 @@
 //! `description` and an optional declarative `status`. Parsing is pure — a
 //! payload is fully validated here before any task list state is touched, so
 //! the writers can build their replacement atomically.
+//!
+//! Models do not always emit an array where the schema asks for one; they
+//! send a single object, wrap the array in a `{"item": ...}` envelope, or
+//! JSON-encode the whole array into a string. [`normalize_array`] absorbs
+//! those shapes before parsing, so a mis-encoded payload costs the caller a
+//! retried tool call instead of a wiped task list.
 
 use jinn_tools_msg::{PhaseInput, TaskStatus};
+
+/// Keys a model reaches for when it wraps an array payload in a single
+/// envelope object instead of emitting the array directly. `item`/`items` are
+/// generic; the field's own name only counts as a wrapper for itself, because
+/// a phase entry legitimately carries a `tasks` key and would otherwise be
+/// unwrapped as an envelope and lose everything but its tasks.
+const GENERIC_WRAPPER_KEYS: [&str; 2] = ["item", "items"];
+
+/// Returns the wrapper keys valid for `field`: the generic keys plus the
+/// field's own name.
+fn wrapper_keys(field: &str) -> impl Iterator<Item = &str> {
+    GENERIC_WRAPPER_KEYS.into_iter().chain([field])
+}
+
+/// Builds the "this must be an array" error for `field`, naming the
+/// expectation and showing one worked example of the shape.
+fn not_an_array_error(field: &str) -> String {
+    match field {
+        "tasks" => "'tasks' must be an array of task objects, e.g. \
+             {\"tasks\": [{\"description\": \"Read the docs\", \"status\": \"pending\"}]}"
+            .to_owned(),
+        "phases" => "'phases' must be an array of phase objects, e.g. \
+             {\"phases\": [{\"description\": \"Probe\", \"tasks\": []}]}"
+            .to_owned(),
+        other => format!("'{other}' must be an array, e.g. {{\"{other}\": []}}"),
+    }
+}
+
+/// Returns the value hiding under the first recognised wrapper key.
+fn wrapper_value<'a>(
+    object: &'a serde_json::Map<String, serde_json::Value>,
+    field: &str,
+) -> Option<&'a serde_json::Value> {
+    wrapper_keys(field).find_map(|key| object.get(key))
+}
+
+/// Coerces a model-supplied array field into an array, accepting the shapes
+/// models actually emit: a single entry, an envelope object, or a
+/// JSON-encoded array. An empty string, `null`, or `{}` all mean "nothing
+/// here", matching how an absent array is treated.
+///
+/// # Errors
+///
+/// Returns a shape error naming `field` when the value is a number, a
+/// boolean, or otherwise carries no recoverable array.
+pub fn normalize_array(
+    value: &serde_json::Value,
+    field: &str,
+) -> Result<Vec<serde_json::Value>, String> {
+    match value {
+        serde_json::Value::Array(items) => Ok(items.clone()),
+        serde_json::Value::Null => Ok(Vec::new()),
+        serde_json::Value::String(text) => normalize_text(text, field),
+        // The wrapper check comes first: `{"item": "first task"}` must unwrap
+        // to `["first task"]` rather than be read as a single entry named
+        // "item" with the real task silently dropped.
+        serde_json::Value::Object(object) => match wrapper_value(object, field) {
+            Some(inner) => normalize_array(inner, field),
+            None if object.is_empty() => Ok(Vec::new()),
+            None => Ok(vec![value.clone()]),
+        },
+        _ => Err(not_an_array_error(field)),
+    }
+}
+
+/// Normalizes a string field: empty means nothing here, a JSON-encoded
+/// payload is decoded once, anything else is a single entry.
+fn normalize_text(text: &str, field: &str) -> Result<Vec<serde_json::Value>, String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    match serde_json::from_str::<serde_json::Value>(trimmed) {
+        // A decoded string stays a single entry rather than being decoded
+        // again, so a payload can never re-parse itself.
+        Ok(serde_json::Value::String(inner)) => Ok(vec![serde_json::Value::String(inner)]),
+        Ok(decoded) => normalize_array(&decoded, field),
+        Err(_) => Ok(vec![serde_json::Value::String(text.to_owned())]),
+    }
+}
 
 /// Parses the `status` field of one task entry.
 ///
@@ -82,10 +168,14 @@ fn parse_task_entry(
 /// `todo_set_list`, `"phase"` for `todo_set_phase`). An empty-after-trim
 /// description is rejected: it could never be matched by description again.
 ///
+/// An absent, `null`, or empty `tasks` field yields a task-less phase. A
+/// `tasks` value in any other non-array shape is run through
+/// [`normalize_array`] first.
+///
 /// # Errors
 ///
 /// Returns the payload error message when the phase lacks a usable
-/// `description`, has a non-array `tasks`, or any task entry is malformed.
+/// `description`, or when any task entry is malformed.
 pub fn parse_phase_body(value: &serde_json::Value, label: &str) -> Result<PhaseInput, String> {
     let Some(description) = value.get("description").and_then(serde_json::Value::as_str) else {
         return Err(format!("{label} is missing 'description'"));
@@ -95,16 +185,18 @@ pub fn parse_phase_body(value: &serde_json::Value, label: &str) -> Result<PhaseI
         return Err(format!("{label} must have a non-empty description"));
     }
 
-    let mut tasks = Vec::new();
-    if let Some(entries_val) = value.get("tasks").filter(|v| !v.is_null()) {
-        let Some(entries) = entries_val.as_array() else {
-            return Err(format!("{label} has 'tasks' but it must be an array"));
-        };
-        for (i, entry) in entries.iter().enumerate() {
-            let task_label = format!("{label}, task at index {i}");
-            tasks.push(parse_task_entry(entry, &task_label)?);
+    let tasks = match value.get("tasks") {
+        Some(entries_val) => {
+            let entries =
+                normalize_array(entries_val, "tasks").map_err(|msg| format!("{label}: {msg}"))?;
+            entries
+                .iter()
+                .enumerate()
+                .map(|(i, entry)| parse_task_entry(entry, &format!("{label}, task at index {i}")))
+                .collect::<Result<Vec<_>, _>>()?
         }
-    }
+        None => Vec::new(),
+    };
     Ok(PhaseInput { description, tasks })
 }
 
@@ -137,6 +229,137 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[rstest::rstest]
+    #[case::array(json!([{ "description": "A" }]), 1)]
+    #[case::null_value(json!(null), 0)]
+    #[case::empty_object(json!({}), 0)]
+    #[case::empty_string(json!(""), 0)]
+    #[case::blank_string(json!("   "), 0)]
+    #[case::single_object(json!({ "description": "A" }), 1)]
+    #[case::wrapped_array(json!({ "items": [{ "description": "A" }] }), 1)]
+    #[case::wrapped_single_object(json!({ "item": { "description": "A" } }), 1)]
+    #[case::wrapped_string(json!({ "item": "a task" }), 1)]
+    #[case::encoded_array(json!("[{\"description\": \"A\"}]"), 1)]
+    #[test]
+    fn normalize_array_recovers_recoverable_shapes(
+        #[case] value: serde_json::Value,
+        #[case] expected_len: usize,
+    ) {
+        // Given a model-supplied value in a non-array shape.
+        // When normalizing it to an array.
+        let result = normalize_array(&value, "phases");
+        // Then it recovers the entries it can.
+        let entries = result.expect("normalizes");
+        assert_eq!(entries.len(), expected_len, "for value: {value}");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn normalize_array_passes_arrays_through_verbatim() {
+        // Given a well-formed array payload.
+        let value = json!([{ "description": "A" }, { "description": "B" }]);
+
+        // When normalizing it.
+        let entries = normalize_array(&value, "phases").expect("normalizes");
+
+        // Then the entries are unchanged and in order.
+        assert_eq!(entries, vec![value[0].clone(), value[1].clone()]);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn normalize_array_prefers_wrapper_over_single_entry() {
+        // Given an envelope object that also carries other keys.
+        let value = json!({ "item": "first task", "description": "y" });
+
+        // When normalizing it.
+        let entries = normalize_array(&value, "tasks").expect("normalizes");
+
+        // Then the wrapped entry wins, rather than the object being read as
+        // a single entry named "item" with the real task dropped.
+        assert_eq!(entries, vec![json!("first task")]);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn normalize_array_does_not_treat_a_phase_entry_as_an_envelope() {
+        // Given a phase entry, which legitimately carries its own 'tasks' key.
+        let value = json!({ "tasks": "", "description": "Probe" });
+
+        // When normalizing it as a phases array.
+        let entries = normalize_array(&value, "phases").expect("normalizes");
+
+        // Then it is one phase, not an envelope whose body is that phase's tasks.
+        assert_eq!(entries, vec![value.clone()]);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn normalize_array_does_not_reparse_a_decoded_string() {
+        // Given a string that decodes to another string.
+        let value = json!("\"still a string\"");
+
+        // When normalizing it.
+        let entries = normalize_array(&value, "tasks").expect("normalizes");
+
+        // Then it settles as a single entry instead of decoding again.
+        assert_eq!(entries, vec![json!("still a string")]);
+    }
+
+    #[rstest::rstest]
+    #[case::number(json!(42))]
+    #[case::boolean(json!(true))]
+    #[test]
+    fn normalize_array_rejects_unrecoverable_shapes(#[case] value: serde_json::Value) {
+        // Given a value carrying no recoverable array.
+        // When normalizing it.
+        let result = normalize_array(&value, "phases");
+        // Then it is rejected.
+        assert!(result.is_err(), "expected rejection for {value}");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn normalize_array_shape_error_shows_worked_example() {
+        // Given a number where an array was expected.
+        // When normalizing it.
+        let result = normalize_array(&json!(42), "tasks");
+        // Then the error names the expectation and shows an example.
+        let msg = result.expect_err("rejected");
+        assert!(
+            msg.contains("must be an array of task objects"),
+            "got: {msg}"
+        );
+        assert!(msg.contains("\"description\""), "got: {msg}");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn parse_phase_body_null_tasks_yields_no_tasks() {
+        // Given a phase whose tasks are explicitly null.
+        let payload = json!({ "description": "P", "tasks": null });
+
+        // When parsing the phase.
+        let phase = parse_phase_body(&payload, "phase").expect("parses");
+
+        // Then the phase holds no tasks rather than erroring.
+        assert!(phase.tasks.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn parse_phase_body_unrecoverable_tasks_names_the_phase() {
+        // Given a phase whose tasks are a number.
+        let payload = json!({ "description": "P", "tasks": 42 });
+
+        // When parsing it.
+        let result = parse_phase_body(&payload, "phase at index 0");
+
+        // Then the error locates the offending phase.
+        let msg = result.expect_err("rejected");
+        assert!(msg.starts_with("phase at index 0"), "got: {msg}");
+    }
 
     #[rstest::rstest]
     #[test]

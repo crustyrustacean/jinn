@@ -1174,9 +1174,10 @@ fn title_style_stays_red_for_errored_subagent() {
 fn indicator_span_returns_blank_space_when_idle() {
     // Given an idle entry.
     let throbber = ThrobberState::default();
+    let theme = default_theme();
 
     // When computing indicator span.
-    let span = indicator_span(true, false, &throbber);
+    let span = indicator_span(true, false, &throbber, &theme);
 
     // Then it is a blank space.
     assert_eq!(span.content, " ");
@@ -1186,14 +1187,15 @@ fn indicator_span_returns_blank_space_when_idle() {
 fn indicator_span_returns_throbber_character_when_working() {
     // Given a working entry (not idle).
     let throbber = ThrobberState::default();
+    let theme = default_theme();
 
     // When computing indicator span.
-    let span = indicator_span(false, false, &throbber);
+    let span = indicator_span(false, false, &throbber, &theme);
 
-    // Then it is a non-space character with Cyan fg.
+    // Then it is a non-space character in the theme's busy color.
     assert_ne!(span.content, " ");
     assert!(!span.content.is_empty());
-    assert_eq!(span.style.fg, Some(Color::Cyan));
+    assert_eq!(span.style.fg, Some(theme.streaming));
 }
 
 #[rstest::rstest]
@@ -3420,9 +3422,10 @@ fn session_list_key_changes_when_a_session_becomes_in_flight() {
 fn indicator_span_returns_blank_space_when_idle_and_not_in_flight() {
     // Given an idle entry with no disposal in flight.
     let throbber = ThrobberState::default();
+    let theme = default_theme();
 
     // When computing indicator span.
-    let span = indicator_span(true, false, &throbber);
+    let span = indicator_span(true, false, &throbber, &theme);
 
     // Then it is a blank space.
     assert_eq!(span.content, " ");
@@ -3432,9 +3435,10 @@ fn indicator_span_returns_blank_space_when_idle_and_not_in_flight() {
 fn indicator_span_returns_block_character_when_in_flight() {
     // Given an idle entry whose disposal is in flight.
     let throbber = ThrobberState::default();
+    let theme = default_theme();
 
     // When computing indicator span.
-    let span = indicator_span(true, true, &throbber);
+    let span = indicator_span(true, true, &throbber, &theme);
 
     // Then it is a non-space block character.
     assert_ne!(span.content, " ");
@@ -3442,15 +3446,32 @@ fn indicator_span_returns_block_character_when_in_flight() {
 }
 
 #[rstest::rstest]
-fn indicator_span_uses_cyan_when_in_flight() {
+fn indicator_span_uses_theme_busy_color_when_in_flight() {
     // Given an idle entry whose disposal is in flight.
     let throbber = ThrobberState::default();
+    let theme = default_theme();
 
     // When computing indicator span.
-    let span = indicator_span(true, true, &throbber);
+    let span = indicator_span(true, true, &throbber, &theme);
 
-    // Then it wears the same cyan as the busy spinner.
-    assert_eq!(span.style.fg, Some(Color::Cyan));
+    // Then it wears the theme's busy color, matching the busy spinner.
+    assert_eq!(span.style.fg, Some(theme.streaming));
+}
+
+#[rstest::rstest]
+fn both_spinners_share_the_theme_busy_color() {
+    // Given a non-default theme whose busy color is not cyan.
+    let mut theme = default_theme();
+    theme.streaming = Color::Magenta;
+    let throbber = ThrobberState::default();
+
+    // When computing both indicator spans.
+    let busy = indicator_span(false, false, &throbber, &theme);
+    let in_flight = indicator_span(true, true, &throbber, &theme);
+
+    // Then both follow the theme, so neither is left on a hardcoded cyan.
+    assert_eq!(busy.style.fg, Some(Color::Magenta));
+    assert_eq!(in_flight.style.fg, Some(Color::Magenta));
 }
 
 #[rstest::rstest]
@@ -3460,10 +3481,13 @@ fn in_flight_indicator_animates_across_block_symbols() {
     let seen = (0..symbols.len())
         .map(|step| {
             let mut throbber = ThrobberState::default();
+            let theme = default_theme();
             for _ in 0..step {
                 throbber.calc_next();
             }
-            indicator_span(true, true, &throbber).content.to_string()
+            indicator_span(true, true, &throbber, &theme)
+                .content
+                .to_string()
         })
         .collect::<Vec<_>>();
 
@@ -3476,9 +3500,10 @@ fn in_flight_indicator_animates_across_block_symbols() {
 fn in_flight_indicator_does_not_show_on_a_busy_session() {
     // Given a session that is somehow both busy and in flight.
     let throbber = ThrobberState::default();
+    let theme = default_theme();
 
     // When computing indicator span.
-    let span = indicator_span(false, true, &throbber);
+    let span = indicator_span(false, true, &throbber, &theme);
 
     // Then the busy braille spinner wins, keeping the column single-valued.
     assert!(

@@ -22,33 +22,41 @@ use super::truncate::truncate_str;
 ///
 /// A session being disposed is always idle — the archive and close validators
 /// both reject a busy session — so the two animations never share a row.
+///
+/// Both spinners wear [`Theme::streaming`], the theme's busy/active color, so
+/// they read the same in a green gruvbox as in a sky-blue catppuccin.
 pub(crate) fn indicator_span(
     is_idle: bool,
     is_in_flight: bool,
     throbber_state: &ThrobberState,
+    theme: &Theme,
 ) -> Span<'static> {
     if is_idle {
-        in_flight_span(is_in_flight, throbber_state)
+        in_flight_span(is_in_flight, throbber_state, theme)
     } else {
-        busy_span(throbber_state)
+        busy_span(throbber_state, theme)
     }
 }
 
 /// The braille spinner shown while a session is streaming or running tools.
-fn busy_span(throbber_state: &ThrobberState) -> Span<'static> {
+fn busy_span(throbber_state: &ThrobberState, theme: &Theme) -> Span<'static> {
     let set = throbber_widgets_tui::symbols::throbber::BRAILLE_EIGHT;
     let ch = throbber_symbol(&set, throbber_state);
-    Span::styled(ch.to_owned(), Style::default().fg(Color::Cyan))
+    Span::styled(ch.to_owned(), Style::default().fg(theme.streaming))
 }
 
 /// The growing block shown while a session's disposal is in flight.
-fn in_flight_span(is_in_flight: bool, throbber_state: &ThrobberState) -> Span<'static> {
+fn in_flight_span(
+    is_in_flight: bool,
+    throbber_state: &ThrobberState,
+    theme: &Theme,
+) -> Span<'static> {
     if !is_in_flight {
         return Span::raw(" ");
     }
     let set = throbber_widgets_tui::symbols::throbber::HORIZONTAL_BLOCK;
     let ch = throbber_symbol(&set, throbber_state);
-    Span::styled(ch.to_owned(), Style::default().fg(Color::Cyan))
+    Span::styled(ch.to_owned(), Style::default().fg(theme.streaming))
 }
 
 /// Resolves a throbber symbol from an unbounded, possibly negative index.
@@ -189,7 +197,7 @@ fn assemble_session_line(
     throbber_state: &ThrobberState,
     theme: &Theme,
 ) -> Line<'static> {
-    let indicator = indicator_span(entry.is_idle, entry.is_in_flight, throbber_state);
+    let indicator = indicator_span(entry.is_idle, entry.is_in_flight, throbber_state, theme);
     let arrow = arrow_span(entry.is_active, theme);
     let tree = tree_prefix(entry);
     let tree_len = tree.graphemes(true).count();
