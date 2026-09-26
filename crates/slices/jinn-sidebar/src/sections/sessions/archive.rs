@@ -1,7 +1,7 @@
 //! Archive session handler.
 
 use crate::sections::sessions::close::validate_session_close;
-use crate::sections::sessions::state::sorted_open_sessions;
+use crate::sections::sessions::state::{mark_in_flight, sorted_open_sessions};
 use jinn_domain::common::app_state::AppState;
 
 /// Handles `SidebarSessionArchive` - archives the selected session without teardown.
@@ -28,6 +28,9 @@ pub fn handle_session_archive(state: &mut AppState) -> jinn_domain::protocol::In
         return jinn_domain::protocol::IntentResult::empty();
     };
     let target_id = target.id.clone();
+
+    // Mark in flight - the row stays tinted until the archive concludes.
+    mark_in_flight(state, std::slice::from_ref(&target_id));
 
     // Emit ArchiveSession - the actor handles archival without teardown.
     jinn_domain::protocol::IntentResult::new_message(ArchiveSession {

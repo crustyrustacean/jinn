@@ -41,6 +41,10 @@ tab_inactive_fg = "#636575"    # comment
 selection_fg = "#e2e2e3"       # foreground
 selection_bg = [85, 87, 96]       # slightly lighter than gutter
 
+# In-flight session tint (archive/teardown dispatched, not yet finished)
+in_flight_bg = [58, 60, 68]       # between gutter and selection
+in_flight_fg = "#e2e2e3"       # foreground
+
 # Provider picker
 accent_action = "#f5a56e"      # orange
 age_fresh = "#a9d89d"          # green

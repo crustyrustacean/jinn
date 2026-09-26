@@ -40,6 +40,10 @@ tab_inactive_fg = "#7f849c"    # Overlay1
 selection_fg = "#cdd6f4"       # Text
 selection_bg = [79, 80, 98]       # Surface0
 
+# In-flight session tint (archive/teardown dispatched, not yet finished)
+in_flight_bg = "#45475a"       # Surface1
+in_flight_fg = "#cdd6f4"       # Text
+
 # Provider picker
 accent_action = "#fab387"      # Peach
 age_fresh = "#a6e3a1"          # Green

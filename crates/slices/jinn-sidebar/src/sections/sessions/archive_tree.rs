@@ -9,7 +9,7 @@ use jinn_session_lifecycle_msg::TeardownSessionTree;
 use jinn_session_store_msg::ArchiveSessionTree;
 pub use jinn_sidebar_msg::{ArchiveTreePrompt, TreePromptAction};
 
-use super::state::{SessionEntry, SessionEntryKind, sorted_open_sessions};
+use super::state::{SessionEntry, SessionEntryKind, mark_in_flight, sorted_open_sessions};
 
 /// Why an archive-tree request can be rejected.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,7 +68,7 @@ pub fn handle_session_tree_action_arm(
         Some(ArchiveTreePrompt::Confirm { action: armed, .. }) if *armed == action => {
             state.frontend.archive_tree_prompt = None;
             match archive_tree_members(state) {
-                Ok(members) => command_for(action, members[0].clone()),
+                Ok(members) => emit_tree_command(state, action, &members),
                 Err(ArchiveTreeError::SubtreeBusy) => {
                     state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
                     IntentResult::empty()
@@ -96,7 +96,7 @@ pub fn handle_session_tree_action_arm(
         Some(ArchiveTreePrompt::Busy) => {
             state.frontend.archive_tree_prompt = None;
             match archive_tree_members(state) {
-                Ok(members) => command_for(action, members[0].clone()),
+                Ok(members) => emit_tree_command(state, action, &members),
                 Err(ArchiveTreeError::SubtreeBusy) => {
                     state.frontend.archive_tree_prompt = Some(ArchiveTreePrompt::Busy);
                     IntentResult::empty()
@@ -122,13 +122,29 @@ pub fn handle_session_tree_action_arm(
 }
 
 /// Emits a previously validated tree command.
+///
+/// `members` is the closure the prompt was confirmed against, so the tint
+/// covers every member and not just the root.
 pub fn handle_session_tree_action_confirm(
     state: &mut AppState,
     action: TreePromptAction,
-    root: SessionId,
+    members: &[SessionId],
 ) -> IntentResult {
     state.frontend.archive_tree_prompt = None;
-    command_for(action, root)
+    emit_tree_command(state, action, members)
+}
+
+/// Marks every member in flight, then builds the tree command for `action`.
+///
+/// Taking the members here means no dispatch path can emit a command without
+/// also tinting the sessions it disposes of.
+fn emit_tree_command(
+    state: &AppState,
+    action: TreePromptAction,
+    members: &[SessionId],
+) -> IntentResult {
+    mark_in_flight(state, members);
+    command_for(action, members[0].clone())
 }
 
 fn command_for(action: TreePromptAction, root: SessionId) -> IntentResult {

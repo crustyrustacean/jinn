@@ -33,6 +33,7 @@ rstest = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 jinn-domain = { workspace = true, features = ["test-harness"] }
+jinn-session-state = { workspace = true }
 jinn-testutil = { workspace = true }
 
 [lints]

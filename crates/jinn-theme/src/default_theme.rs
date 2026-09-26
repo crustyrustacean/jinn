@@ -71,6 +71,8 @@ mod tests {
             ("tab_inactive_fg", theme.tab_inactive_fg),
             ("selection_fg", theme.selection_fg),
             ("selection_bg", theme.selection_bg),
+            ("in_flight_bg", theme.in_flight_bg),
+            ("in_flight_fg", theme.in_flight_fg),
             ("accent_action", theme.accent_action),
             ("age_fresh", theme.age_fresh),
             ("age_stale", theme.age_stale),

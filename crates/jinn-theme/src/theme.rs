@@ -96,6 +96,12 @@ pub struct Theme {
     /// Selection highlight background (fallback for identical fg/bg).
     pub selection_bg: Color,
 
+    // In-flight session tint
+    /// Background wash for a row whose session has a disposal operation in flight.
+    pub in_flight_bg: Color,
+    /// Text color for a row whose session has a disposal operation in flight.
+    pub in_flight_fg: Color,
+
     // Provider picker
     /// Accent color used for hotkeys.
     pub accent_action: Color,
@@ -201,6 +207,8 @@ impl Theme {
         m.insert("tab_inactive_fg", Style::default().fg(self.tab_inactive_fg));
         m.insert("selection_fg", Style::default().fg(self.selection_fg));
         m.insert("selection_bg", Style::default().fg(self.selection_bg));
+        m.insert("in_flight_bg", Style::default().fg(self.in_flight_bg));
+        m.insert("in_flight_fg", Style::default().fg(self.in_flight_fg));
         m.insert("accent_action", Style::default().fg(self.accent_action));
         m.insert("age_fresh", Style::default().fg(self.age_fresh));
         m.insert("age_stale", Style::default().fg(self.age_stale));
@@ -308,6 +316,13 @@ pub struct ThemeFile {
     pub selection_fg: Option<ThemeColor>,
     #[serde(default)]
     pub selection_bg: Option<ThemeColor>,
+
+    /// Background wash for a row whose session has a disposal operation in flight.
+    #[serde(default)]
+    pub in_flight_bg: Option<ThemeColor>,
+    /// Text color for a row whose session has a disposal operation in flight.
+    #[serde(default)]
+    pub in_flight_fg: Option<ThemeColor>,
 
     /// Accent color used for hotkeys.
     #[serde(default)]
@@ -460,6 +475,12 @@ impl ThemeFile {
             selection_bg: self
                 .selection_bg
                 .map_or(fallback.selection_bg, crate::color::ThemeColor::inner),
+            in_flight_bg: self
+                .in_flight_bg
+                .map_or(fallback.in_flight_bg, crate::color::ThemeColor::inner),
+            in_flight_fg: self
+                .in_flight_fg
+                .map_or(fallback.in_flight_fg, crate::color::ThemeColor::inner),
             accent_action: self
                 .accent_action
                 .map_or(fallback.accent_action, crate::color::ThemeColor::inner),
@@ -548,6 +569,8 @@ impl ThemeFile {
             tab_inactive_fg: Self::resolve_field(self.tab_inactive_fg),
             selection_fg: Self::resolve_field(self.selection_fg),
             selection_bg: Self::resolve_field(self.selection_bg),
+            in_flight_bg: Self::resolve_field(self.in_flight_bg),
+            in_flight_fg: Self::resolve_field(self.in_flight_fg),
             accent_action: Self::resolve_field(self.accent_action),
             age_fresh: Self::resolve_field(self.age_fresh),
             age_stale: Self::resolve_field(self.age_stale),
@@ -610,6 +633,8 @@ mod tests {
             tab_inactive_fg: None,
             selection_fg: None,
             selection_bg: None,
+            in_flight_bg: None,
+            in_flight_fg: None,
             accent_action: None,
             age_fresh: None,
             age_stale: None,
@@ -677,6 +702,8 @@ mod tests {
             tab_inactive_fg: None,
             selection_fg: None,
             selection_bg: None,
+            in_flight_bg: None,
+            in_flight_fg: None,
             accent_action: None,
             age_fresh: None,
             age_stale: None,
@@ -752,6 +779,8 @@ mod tests {
             tab_inactive_fg: Some(ThemeColor(Color::Gray)),
             selection_fg: Some(ThemeColor(Color::Black)),
             selection_bg: Some(ThemeColor(Color::White)),
+            in_flight_bg: None,
+            in_flight_fg: None,
             accent_action: Some(ThemeColor(Color::Rgb(255, 165, 0))),
             age_fresh: Some(ThemeColor(Color::LightGreen)),
             age_stale: Some(ThemeColor(Color::Red)),
@@ -834,6 +863,8 @@ mod tests {
             tab_inactive_fg: None,
             selection_fg: None,
             selection_bg: None,
+            in_flight_bg: None,
+            in_flight_fg: None,
             accent_action: None,
             age_fresh: None,
             age_stale: None,

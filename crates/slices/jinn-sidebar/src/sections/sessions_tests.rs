@@ -1064,6 +1064,7 @@ fn style_entry(
         is_last_child: false,
         is_subagent,
         has_live_term: false,
+        is_in_flight: false,
     }
 }
 
@@ -1173,9 +1174,10 @@ fn title_style_stays_red_for_errored_subagent() {
 fn indicator_span_returns_blank_space_when_idle() {
     // Given an idle entry.
     let throbber = ThrobberState::default();
+    let theme = default_theme();
 
     // When computing indicator span.
-    let span = indicator_span(true, &throbber);
+    let span = indicator_span(true, false, &throbber, &theme);
 
     // Then it is a blank space.
     assert_eq!(span.content, " ");
@@ -1185,14 +1187,15 @@ fn indicator_span_returns_blank_space_when_idle() {
 fn indicator_span_returns_throbber_character_when_working() {
     // Given a working entry (not idle).
     let throbber = ThrobberState::default();
+    let theme = default_theme();
 
     // When computing indicator span.
-    let span = indicator_span(false, &throbber);
+    let span = indicator_span(false, false, &throbber, &theme);
 
-    // Then it is a non-space character with Cyan fg.
+    // Then it is a non-space character in the theme's busy color.
     assert_ne!(span.content, " ");
     assert!(!span.content.is_empty());
-    assert_eq!(span.style.fg, Some(Color::Cyan));
+    assert_eq!(span.style.fg, Some(theme.streaming));
 }
 
 #[rstest::rstest]
@@ -3241,4 +3244,271 @@ fn session_reloaded_from_the_archive_is_listed() {
             "a reloaded session must be listed; got {listed:?}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// in-flight tint - dispatch marking
+// ---------------------------------------------------------------------------
+
+/// A state with one loaded, idle session that is selected in the sessions section.
+fn state_with_one_selected_idle_session() -> (AppState, jinn_core_types::SessionId) {
+    let mut state = AppState::default_with_scope_focus();
+    let id = state.session.active_session_id().clone();
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+    state
+        .frontend
+        .update_sections(|s| s.sessions.selected_index = Some(0));
+    (state, id)
+}
+
+/// Whether the given session is currently marked in flight in the sidebar cell.
+fn marked_in_flight(state: &AppState, id: &jinn_core_types::SessionId) -> bool {
+    crate::sections::sessions::state::is_in_flight(&state.frontend, id)
+}
+
+#[rstest::rstest]
+fn archive_marks_session_in_flight() {
+    // Given one loaded, idle session with the cursor on it.
+    let (mut state, id) = state_with_one_selected_idle_session();
+
+    // When handling Intent::SidebarSessionArchive.
+    crate::sections::sessions::handle_session_archive(&mut state);
+
+    // Then the session is marked in flight.
+    assert!(marked_in_flight(&state, &id));
+}
+
+#[rstest::rstest]
+fn close_marks_session_in_flight_on_confirm() {
+    // Given one loaded, idle session, with the close prompt already armed.
+    let (mut state, id) = state_with_one_selected_idle_session();
+    state.frontend.close_session_prompt = true;
+
+    // When handling the confirm path.
+    crate::sections::sessions::handle_session_close_arm(&mut state);
+
+    // Then the session is marked in flight.
+    assert!(marked_in_flight(&state, &id));
+}
+
+#[rstest::rstest]
+fn first_close_press_marks_nothing() {
+    // Given one loaded, idle session.
+    let (mut state, id) = state_with_one_selected_idle_session();
+
+    // When handling the first close press, which only arms the prompt.
+    crate::sections::sessions::handle_session_close_arm(&mut state);
+
+    // Then nothing is marked in flight.
+    assert!(!marked_in_flight(&state, &id));
+}
+
+#[rstest::rstest]
+fn archive_tree_marks_every_member_of_an_idle_subtree() {
+    // Given a parent session with one idle child, cursor on the parent.
+    let mut state = AppState::default_with_scope_focus();
+    let parent_id = state.session.active_session_id().clone();
+    let mut child = ChatSessionState::new();
+    child.set_parent_session(parent_id.clone());
+    let child_id = child.session_id().clone();
+    state.session.insert(child);
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+    state
+        .frontend
+        .update_sections(|s| s.sessions.selected_index = Some(0));
+
+    // When confirming the archive-tree prompt twice.
+    let _ = crate::sections::sessions::handle_session_tree_action_arm(
+        &mut state,
+        crate::sections::sessions::TreePromptAction::Archive,
+    );
+    let _ = crate::sections::sessions::handle_session_tree_action_arm(
+        &mut state,
+        crate::sections::sessions::TreePromptAction::Archive,
+    );
+
+    // Then both the parent and the child are marked in flight.
+    assert!(marked_in_flight(&state, &parent_id));
+    assert!(marked_in_flight(&state, &child_id));
+}
+
+#[rstest::rstest]
+fn archive_tree_with_busy_member_marks_nothing() {
+    // Given a parent session with one busy child, cursor on the parent.
+    let mut state = AppState::default_with_scope_focus();
+    let parent_id = state.session.active_session_id().clone();
+    let mut child = ChatSessionState::new();
+    child.set_parent_session(parent_id.clone());
+    let child_id = child.session_id().clone();
+    child.begin_busy();
+    state.session.insert(child);
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+    state
+        .frontend
+        .update_sections(|s| s.sessions.selected_index = Some(0));
+
+    // When confirming the archive-tree prompt twice.
+    let _ = crate::sections::sessions::handle_session_tree_action_arm(
+        &mut state,
+        crate::sections::sessions::TreePromptAction::Archive,
+    );
+    let _ = crate::sections::sessions::handle_session_tree_action_arm(
+        &mut state,
+        crate::sections::sessions::TreePromptAction::Archive,
+    );
+
+    // Then no member is marked in flight.
+    assert!(!marked_in_flight(&state, &parent_id));
+    assert!(!marked_in_flight(&state, &child_id));
+}
+
+#[rstest::rstest]
+fn teardown_tree_marks_every_member_of_an_idle_subtree() {
+    // Given a parent session with one idle child, cursor on the parent.
+    let mut state = AppState::default_with_scope_focus();
+    let parent_id = state.session.active_session_id().clone();
+    let mut child = ChatSessionState::new();
+    child.set_parent_session(parent_id.clone());
+    let child_id = child.session_id().clone();
+    state.session.insert(child);
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+    state
+        .frontend
+        .update_sections(|s| s.sessions.selected_index = Some(0));
+
+    // When confirming the teardown-tree prompt twice.
+    let _ = crate::sections::sessions::handle_session_tree_action_arm(
+        &mut state,
+        crate::sections::sessions::TreePromptAction::TeardownAndArchive,
+    );
+    let _ = crate::sections::sessions::handle_session_tree_action_arm(
+        &mut state,
+        crate::sections::sessions::TreePromptAction::TeardownAndArchive,
+    );
+
+    // Then both the parent and the child are marked in flight.
+    assert!(marked_in_flight(&state, &parent_id));
+    assert!(marked_in_flight(&state, &child_id));
+}
+
+#[rstest::rstest]
+fn session_list_key_changes_when_a_session_becomes_in_flight() {
+    // Given one loaded session with the cursor on it.
+    let (state, id) = state_with_one_selected_idle_session();
+
+    // When marking it in flight and re-reading the memo key.
+    let before = crate::sections::sessions::state::session_list_key(&state);
+    state
+        .frontend
+        .update_sections(|s| s.sessions.begin_in_flight(std::slice::from_ref(&id)));
+    let after = crate::sections::sessions::state::session_list_key(&state);
+
+    // Then the key changed, so the cached tree is rebuilt and the tint appears.
+    assert_ne!(
+        before, after,
+        "the memo key must change or the cached tree is never rebuilt"
+    );
+}
+
+#[rstest::rstest]
+fn indicator_span_returns_blank_space_when_idle_and_not_in_flight() {
+    // Given an idle entry with no disposal in flight.
+    let throbber = ThrobberState::default();
+    let theme = default_theme();
+
+    // When computing indicator span.
+    let span = indicator_span(true, false, &throbber, &theme);
+
+    // Then it is a blank space.
+    assert_eq!(span.content, " ");
+}
+
+#[rstest::rstest]
+fn indicator_span_returns_block_character_when_in_flight() {
+    // Given an idle entry whose disposal is in flight.
+    let throbber = ThrobberState::default();
+    let theme = default_theme();
+
+    // When computing indicator span.
+    let span = indicator_span(true, true, &throbber, &theme);
+
+    // Then it is a non-space block character.
+    assert_ne!(span.content, " ");
+    assert!(!span.content.is_empty());
+}
+
+#[rstest::rstest]
+fn indicator_span_uses_theme_busy_color_when_in_flight() {
+    // Given an idle entry whose disposal is in flight.
+    let throbber = ThrobberState::default();
+    let theme = default_theme();
+
+    // When computing indicator span.
+    let span = indicator_span(true, true, &throbber, &theme);
+
+    // Then it wears the theme's busy color, matching the busy spinner.
+    assert_eq!(span.style.fg, Some(theme.streaming));
+}
+
+#[rstest::rstest]
+fn both_spinners_share_the_theme_busy_color() {
+    // Given a non-default theme whose busy color is not cyan.
+    let mut theme = default_theme();
+    theme.streaming = Color::Magenta;
+    let throbber = ThrobberState::default();
+
+    // When computing both indicator spans.
+    let busy = indicator_span(false, false, &throbber, &theme);
+    let in_flight = indicator_span(true, true, &throbber, &theme);
+
+    // Then both follow the theme, so neither is left on a hardcoded cyan.
+    assert_eq!(busy.style.fg, Some(Color::Magenta));
+    assert_eq!(in_flight.style.fg, Some(Color::Magenta));
+}
+
+#[rstest::rstest]
+fn in_flight_indicator_animates_across_block_symbols() {
+    // Given an in-flight entry stepped through the whole cycle.
+    let symbols = throbber_widgets_tui::symbols::throbber::HORIZONTAL_BLOCK.symbols;
+    let seen = (0..symbols.len())
+        .map(|step| {
+            let mut throbber = ThrobberState::default();
+            let theme = default_theme();
+            for _ in 0..step {
+                throbber.calc_next();
+            }
+            indicator_span(true, true, &throbber, &theme)
+                .content
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+
+    // Then every step renders a block from the HORIZONTAL_BLOCK set.
+    let expected = symbols.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+    assert_eq!(seen, expected);
+}
+
+#[rstest::rstest]
+fn in_flight_indicator_does_not_show_on_a_busy_session() {
+    // Given a session that is somehow both busy and in flight.
+    let throbber = ThrobberState::default();
+    let theme = default_theme();
+
+    // When computing indicator span.
+    let span = indicator_span(false, true, &throbber, &theme);
+
+    // Then the busy braille spinner wins, keeping the column single-valued.
+    assert!(
+        !throbber_widgets_tui::symbols::throbber::HORIZONTAL_BLOCK
+            .symbols
+            .contains(&span.content.as_ref())
+    );
 }

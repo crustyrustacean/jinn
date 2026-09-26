@@ -42,6 +42,11 @@ tab_inactive_fg = "#7b88a1"
 selection_fg = "#2e3440"
 selection_bg = "#d8dee9"
 
+# In-flight session tint (archive/teardown dispatched, not yet finished)
+# Light theme: the wash is dark so it reads against the pale gutter.
+in_flight_bg = "#4c566a"          # Polar night (Nord3)
+in_flight_fg = "#eceff4"          # Snow storm (Nord6)
+
 # Provider picker
 accent_action = "#d08770"      # Aurora orange (Nord12)
 age_fresh = "#a3be8c"
