@@ -88,11 +88,26 @@ impl DocumentLayout {
     /// offset stays at 0.
     #[must_use]
     pub fn offset(&self, viewport_rows: u16) -> u16 {
+        self.offset_from(viewport_rows, 0)
+    }
+
+    /// The first document row rendered at the top of the column, falling back
+    /// to `remembered` when there is no cursor to derive one from.
+    ///
+    /// The sidebar loses its scope the moment the chat pane takes focus, so
+    /// most frames rendered while the user is elsewhere have no focused
+    /// cursor. Passing the last derived offset keeps the column where the user
+    /// left it instead of snapping to the top. The remembered value is still
+    /// clamped to the document so a shrunken document cannot leave a gap.
+    #[must_use]
+    pub fn offset_from(&self, viewport_rows: u16, remembered: u16) -> u16 {
         let max_offset = self.total_rows.saturating_sub(viewport_rows);
         let Some(cursor_row) = self.cursor_row else {
-            return 0;
+            return remembered.min(max_offset);
         };
-        cursor_row.saturating_sub(viewport_rows / 2).min(max_offset)
+        cursor_row
+            .saturating_sub(viewport_rows / 2)
+            .clamp(0, max_offset)
     }
 
     /// The slack between the document and the column when the document fits.
@@ -277,6 +292,32 @@ pub fn document_with_cursor(state: &AppState) -> DocumentLayout {
     with_cursor(document(state), state)
 }
 
+/// The document's scroll offset, honouring the last offset that was derived
+/// while the sidebar had focus.
+///
+/// Resolves the same way `Sidebar::render` does, so an overlay anchored to a
+/// row stays attached to it across a focus change.
+#[must_use]
+pub fn scroll_offset(state: &AppState, viewport_rows: u16) -> u16 {
+    let remembered = state
+        .frontend
+        .with_sections(|sections| sections.scroll_offset, || 0);
+    document_with_cursor(state).offset_from(viewport_rows, remembered)
+}
+
+/// Records the sidebar's scroll offset for the frame that is about to render.
+///
+/// The offset is a pure function of the cursor, so there is nothing to
+/// recompute here — this only remembers it, which is what lets the column hold
+/// its position across a focus change to the chat pane (where no cursor can be
+/// derived at all). Called from the pre-render pass so `render` stays read-only.
+pub fn write_scroll_offset(state: &mut AppState, viewport_rows: u16) {
+    let offset = scroll_offset(state, viewport_rows);
+    state
+        .frontend
+        .update_sections(|sections| sections.scroll_offset = offset);
+}
+
 /// The full registration order as a slice, for callers that render a sidebar
 /// with every built-in section.
 #[must_use]
@@ -290,7 +331,6 @@ pub fn with_cursor(mut document: DocumentLayout, state: &AppState) -> DocumentLa
     document.cursor_row = focused_cursor_row(state, &document);
     document
 }
-
 // ---------------------------------------------------------------------------
 // Cursor rows
 // ---------------------------------------------------------------------------
@@ -422,7 +462,7 @@ pub fn visible_rect(
 #[must_use]
 pub fn frame_row_of(sidebar_rect: Rect, state: &AppState, id: SidebarSectionId, row: u16) -> u16 {
     let document = document_with_cursor(state);
-    let offset = document.offset(sidebar_rect.height);
+    let offset = scroll_offset(state, sidebar_rect.height);
     let slack = document.bottom_slack(sidebar_rect.height);
     let top = document.span_or_empty(id).top_in_view(offset);
     // Only the trailing section is pushed down by the slack; the leading
@@ -596,6 +636,55 @@ mod tests {
 
         // Then there is nothing to scroll.
         assert_eq!(offset, 0);
+    }
+
+    #[rstest::rstest]
+    fn offset_is_remembered_when_there_is_no_cursor() {
+        // Given a tall document with no focused cursor, as when the chat pane
+        // holds focus and the scope stack reports no sidebar section.
+        let document = DocumentLayout {
+            spans: Vec::new(),
+            total_rows: 100,
+            cursor_row: None,
+        };
+
+        // When resolving the offset with a remembered value of 30.
+        let offset = document.offset_from(20, 30);
+
+        // Then the column holds its position instead of jumping to the top.
+        assert_eq!(offset, 30);
+    }
+
+    #[rstest::rstest]
+    fn remembered_offset_is_clamped_to_the_document() {
+        // Given a document that has since shrunk to 25 rows in a 20-row column.
+        let document = DocumentLayout {
+            spans: Vec::new(),
+            total_rows: 25,
+            cursor_row: None,
+        };
+
+        // When resolving the offset with a stale remembered value of 80.
+        let offset = document.offset_from(20, 80);
+
+        // Then it clamps to the document's maximum, leaving no blank rows.
+        assert_eq!(offset, 5);
+    }
+
+    #[rstest::rstest]
+    fn a_cursor_overrides_the_remembered_offset() {
+        // Given a tall document with a cursor, but a stale remembered offset.
+        let document = DocumentLayout {
+            spans: Vec::new(),
+            total_rows: 100,
+            cursor_row: Some(50),
+        };
+
+        // When resolving the offset.
+        let offset = document.offset_from(20, 5);
+
+        // Then the cursor wins, so moving it still scrolls the column.
+        assert_eq!(offset, 40);
     }
 
     #[rstest::rstest]

@@ -61,7 +61,13 @@ impl Sidebar {
             let ids: Vec<_> = self.sections.iter().map(|section| section.id()).collect();
             layout::with_cursor(layout::document_for(ctx.state, &ids), ctx.state)
         };
-        let offset = document.offset(area.height);
+        // The offset normally follows the focused section's cursor. While the
+        // chat pane holds focus there is no sidebar section, so the document
+        // has no cursor to centre on — fall back to the offset last derived
+        // while the sidebar was focused, so the column does not jump when
+        // focus comes and goes. The write-back happens in the pre-render
+        // pass (`write_scroll_offset`), keeping `render` read-only.
+        let offset = layout::scroll_offset(ctx.state, area.height);
         // When the document is shorter than the column, leave the unused rows
         // *between* the last two sections rather than pushing the whole
         // document down: the leading sections stay at the top of the column,

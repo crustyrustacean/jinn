@@ -149,6 +149,7 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
                 area,
                 chat.sidebar,
             );
+            jinn_sidebar::sections::layout::write_scroll_offset(&mut wstate, chat.sidebar.height);
         }
     }
 
