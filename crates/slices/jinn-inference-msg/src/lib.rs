@@ -15,6 +15,14 @@
 //! The stream-phase tool events (`ToolUseStarted`/`ToolCallReceived`/
 //! `ToolCallStreaming`) are *also* published by the inference actor but
 //! live in `jinn-tools-msg`, so the tools crate does not depend on this one.
+//!
+//! [`StreamActivity`] is the crate's liveness contract: one event, published
+//! on every non-terminal provider event, with no payload beyond the session
+//! (no `index`, no `dispatched_at`, no content). Consumers that supervise a
+//! stream subscribe to it *instead of* enumerating the content-bearing
+//! events, so a new provider event variant is covered by construction rather
+//! than by remembering to add a subscription. It is a *separate* event from
+//! [`StreamToken`], not a replacement: rendering still consumes tokens.
 
 use jinn_core_types::SessionId;
 use jinn_core_types::llm_message::LlmMessage;
@@ -174,6 +182,30 @@ pub struct StreamCompleted {
 
 impl jinn_slices::BusMessage for StreamCompleted {}
 
+/// A non-terminal provider stream event arrived, so the stream is alive.
+///
+/// Published by the inference actor on every non-terminal event from an
+/// in-flight provider stream — text, reasoning, tool-call construction, and
+/// citations alike. Carries no payload beyond the session: a supervisor needs
+/// only the fact of liveness, and supervision is per-stream, never per
+/// content block.
+///
+/// This is deliberately a *separate* event from [`StreamToken`], which
+/// carries the token for rendering. Tokens are one of several kinds of
+/// forward progress a stream makes; a supervisor that watched only tokens
+/// would read a tool call being constructed — deltas streaming in for
+/// minutes — as silence. The inference actor owns this contract so that a
+/// new provider event variant is covered by construction rather than by
+/// remembering to add a subscription.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A non-terminal provider stream event arrived; the stream is alive.")]
+pub struct StreamActivity {
+    /// The session whose stream is producing events.
+    pub session_id: SessionId,
+}
+
+impl jinn_slices::BusMessage for StreamActivity {}
+
 /// A single token from a streaming LLM response.
 ///
 /// Emitted by the inference actor during streaming. Handlers append
@@ -276,6 +308,7 @@ mod tests {
         // Then each has a schema (compile-time proof of the impls).
         let _ = <CancelStream as trouper::schema::Schema>::schema_id();
         let _ = <SendToLlmProvider as trouper::schema::Schema>::schema_id();
+        let _ = <StreamActivity as trouper::schema::Schema>::schema_id();
         let _ = <StreamCompleted as trouper::schema::Schema>::schema_id();
         let _ = <StreamToken as trouper::schema::Schema>::schema_id();
     }

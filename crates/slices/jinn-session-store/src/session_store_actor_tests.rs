@@ -15,11 +15,11 @@ use jinn_domain::common::bus::test_harness::{Recorder, TestHarness, await_record
 use jinn_domain::common::state::State;
 use jinn_domain::feat::session::{SessionStore, SessionStoreService};
 use jinn_provider_config::ProvidersConfig;
-use jinn_session_msg::{SessionArchived, SessionClosed};
+use jinn_session_msg::{SessionArchiveFailed, SessionArchived, SessionClosed};
 use jinn_session_state::ChatSessionState;
 use jinn_session_store_msg::{
-    ArchiveSession, LoadSessionPickerEntries, PersistSession, SessionLoadCompleted,
-    SessionLoadRequested, SessionState,
+    ArchiveSession, ArchiveSessionTree, LoadSessionPickerEntries, PersistSession,
+    SessionLoadCompleted, SessionLoadRequested, SessionState,
 };
 
 use crate::session_store_actor::{SessionStoreActor, SessionStoreActorDeps};
@@ -1139,6 +1139,48 @@ async fn measuring_after_the_frontend_switched_measures_at_a_usable_width() {
     // Then the job is measured at the width the chat log is rendering at.
     let jobs = await_recorded(&jobs, 1, Duration::from_secs(2)).await;
     assert_eq!(jobs[0].content_width, 72);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn archive_tree_aborted_by_busy_member_reports_failure_for_every_member() {
+    // Given a parent session with one busy child, both live in the session map.
+    let fixture = actor_fixture().await;
+    let mut parent = ChatSessionState::new();
+    let parent_session_id = parent.session_id().clone();
+    let mut child = ChatSessionState::new();
+    let child_id = child.session_id().clone();
+    child.set_parent_session(parent_session_id.clone());
+    child.begin_busy();
+    parent.set_parent_session(SessionId::new());
+    {
+        let mut state = fixture.state.write();
+        state.session.insert(parent);
+        state.session.insert(child);
+    }
+    let failures = fixture
+        .harness
+        .spawn_recorder::<SessionArchiveFailed>()
+        .await;
+
+    // When archiving the tree, whose own guard rejects the busy member.
+    fixture
+        .harness
+        .publish(ArchiveSessionTree {
+            root: parent_session_id.clone(),
+        })
+        .await;
+    let reported = await_recorded(&failures, 2, Duration::from_secs(2)).await;
+
+    // Then both members are reported, so both tinted rows are cleared.
+    let mut ids = reported
+        .iter()
+        .map(|msg| msg.session_id.clone())
+        .collect::<Vec<_>>();
+    ids.sort();
+    let mut expected = vec![parent_session_id, child_id];
+    expected.sort();
+    assert_eq!(ids, expected, "every tinted member must be cleared");
 }
 
 /// Activation is one command, and the store actor decides what it means.

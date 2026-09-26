@@ -44,7 +44,8 @@ use jinn_slices::RouteId;
 use jinn_slices::RouteResult as IntentResult;
 use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{
-    ActionCtx, ActionFn, BindSite, EditIntent, InputHook, RouteOutcome, RouteRow, ScopeSignal,
+    ActionCtx, ActionFn, BindSite, EditIntent, InputHook, RouteOutcome, RouteRow, ScopeEnterHook,
+    ScopeSignal,
 };
 
 use crate::session_lifecycle_picker_actions;
@@ -241,27 +242,49 @@ pub fn register_session_lifecycle_picker_input_hook(
     routes.register_input_hook(&session_lifecycle_picker_scope(), hook);
 }
 
+/// Registers the picker's scope-enter hook: the one place its per-open
+/// state is built.
+///
+/// Every opener — this slice's `<leader>sl` row and the project picker's
+/// `<c-enter>` — does nothing but request the transition, so both land on the
+/// same fresh menu: filter cleared, highlight back at the top, rows rebuilt
+/// from configuration. The rows come from the configuration layer and the
+/// theme from app state, both reachable through the context the kernel lends
+/// at the push.
+pub fn register_session_lifecycle_picker_enter_hook(
+    routes: &KeyRoutes,
+    cell: &LifecyclePickerCell,
+) {
+    // The hook outlives this call, so it owns the cell rather than borrowing it.
+    let owned = cell.clone();
+    let hook: ScopeEnterHook = Arc::new(move |mut ctx: ActionCtx<'_>| {
+        // Read the config into an owned list before borrowing state: `ctx` lends
+        // app state mutably, and holding both borrows at once overlaps.
+        let lifecycles = ctx
+            .config
+            .get_list::<SessionLifecycle>()
+            .unwrap_or_default();
+        // The rows must be seeded even when the state is not the kernel's (a
+        // test double), so only the theme falls back in that case.
+        let theme = app(&mut ctx).map_or_else(jinn_theme::default_theme, |state| {
+            state.frontend.theme.clone()
+        });
+        owned.update(|picker| session_lifecycle_picker_actions::open(picker, &lifecycles, &theme));
+    });
+    routes.register_scope_enter_hook(&session_lifecycle_picker_scope(), hook);
+}
+
 // ── Actions ─────────────────────────────────────────────────────────────
 
 /// Opens the picker from anywhere in the app.
 ///
-/// Pushing the scope is all a caller needs: the render pass fills the rows
-/// from preferences, so a caller needs no picker registry and no knowledge of
-/// the picker's contents.
+/// Requesting the transition is all a caller does: the picker's scope-enter
+/// hook builds the rows and clears the filter, so every opener shows the same
+/// fresh menu.
 fn open_session_lifecycle_picker(
-    ctx: &mut ActionCtx<'_>,
-    cell: &LifecyclePickerCell,
+    _ctx: &mut ActionCtx<'_>,
+    _cell: &LifecyclePickerCell,
 ) -> IntentResult {
-    let Some(state) = app(ctx) else {
-        return IntentResult::empty()
-            .with_scope_signal(ScopeSignal::Push(session_lifecycle_picker_scope()));
-    };
-    let theme = state.frontend.theme.clone();
-    let lifecycles = ctx
-        .config
-        .get_list::<SessionLifecycle>()
-        .unwrap_or_default();
-    cell.update(|picker| session_lifecycle_picker_actions::open(picker, &lifecycles, &theme));
     IntentResult::empty().with_scope_signal(ScopeSignal::Push(session_lifecycle_picker_scope()))
 }
 

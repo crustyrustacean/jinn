@@ -10,6 +10,7 @@ target
 .fslckout
 instructions.md
 .plans/*
+plans/*
 debt.json
 flamegraph*.svg
 perf.*

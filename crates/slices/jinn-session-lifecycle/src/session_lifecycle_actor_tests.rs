@@ -17,6 +17,8 @@ use jinn_session_lifecycle_msg::{
     CancelLifecycleCommand, RunSessionSetup, SessionCwdChanged, SessionSetupCompleted,
     SetSessionCwd,
 };
+use jinn_session_msg::SessionTeardownFinished;
+use jinn_session_state::ChatSessionState;
 use jinn_session_store_msg::ArchiveSession;
 use jinn_session_store_msg::ArchiveSessionTree;
 
@@ -285,4 +287,48 @@ async fn teardown_tree_without_pending_teardown_publishes_archive_session_tree()
     let archives = await_recorded(&archive, 1, Duration::from_secs(1)).await;
     assert_eq!(archives.len(), 1);
     assert_eq!(archives[0].root, root);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn teardown_tree_aborted_by_busy_member_reports_failure_for_every_member() {
+    // Given a running actor and a parent with one busy child, both live.
+    let fixture = plain_fixture().await;
+    let parent = ChatSessionState::new();
+    let root = parent.session_id().clone();
+    let mut child = ChatSessionState::new();
+    let child_id = child.session_id().clone();
+    child.set_parent_session(root.clone());
+    child.begin_busy();
+    {
+        let mut state = fixture.state.write();
+        state.session.insert(parent);
+        state.session.insert(child);
+    }
+    let teardowns = fixture
+        .harness
+        .spawn_recorder::<SessionTeardownFinished>()
+        .await;
+
+    // When tearing down the tree, whose own guard rejects the busy member.
+    fixture
+        .harness
+        .publish(TeardownSessionTree { root: root.clone() })
+        .await;
+    let reported = await_recorded(&teardowns, 2, Duration::from_secs(1)).await;
+
+    // Then every member reports a teardown failure, so both tints clear.
+    let mut ids = reported
+        .iter()
+        .map(|msg| msg.session_id.clone())
+        .collect::<Vec<_>>();
+    ids.sort();
+    let mut expected = vec![root, child_id];
+    expected.sort();
+    assert_eq!(ids, expected, "every tinted member must be cleared");
+    // And each failure is reported as an error, not a success.
+    assert!(
+        reported.iter().all(|msg| msg.error.is_some()),
+        "an aborted tree must not report a successful teardown"
+    );
 }

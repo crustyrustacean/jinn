@@ -164,6 +164,16 @@ pub struct SessionRemoved {
     pub removed_parent: Option<SessionId>,
 }
 
+/// Emitted when archiving a session did not complete, leaving it live.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A session's archive did not complete and the session remains live.")]
+pub struct SessionArchiveFailed {
+    /// The session whose archive did not complete.
+    pub session_id: SessionId,
+    /// Why the archive did not complete.
+    pub error: String,
+}
+
 // ── wire contracts ──────────────────────────────────────────────────
 
 impl jinn_slices::BusMessage for PhaseKind {}
@@ -175,6 +185,7 @@ impl jinn_slices::BusMessage for SessionPhaseChanged {}
 impl jinn_slices::BusMessage for SessionSetupCompleted {}
 impl jinn_slices::BusMessage for SessionTeardownFinished {}
 impl jinn_slices::BusMessage for SessionArchived {}
+impl jinn_slices::BusMessage for SessionArchiveFailed {}
 impl jinn_slices::BusMessage for UserInteracted {}
 
 #[cfg(test)]
@@ -184,6 +195,7 @@ mod tests {
     use super::MarkSessionInteracted;
     use super::PhaseKind;
     use super::RetryStalledSession;
+    use super::SessionArchiveFailed;
     use super::SessionArchived;
     use super::SessionClosed;
     use super::SessionPhaseChanged;
@@ -237,7 +249,13 @@ mod tests {
                 session_id: id.clone(),
                 error: None,
             },
-            SessionArchived { session_id: id },
+            SessionArchived {
+                session_id: id.clone(),
+            },
+            SessionArchiveFailed {
+                session_id: id.clone(),
+                error: "write failed".to_owned(),
+            },
         );
 
         // When serializing and deserializing the tuple.
@@ -247,6 +265,7 @@ mod tests {
             SessionSetupCompleted,
             SessionTeardownFinished,
             SessionArchived,
+            SessionArchiveFailed,
         ) = serde_json::from_str(&json).unwrap();
 
         // Then every event survives with its fields intact.
@@ -255,6 +274,8 @@ mod tests {
         assert_eq!(round.1.error.as_deref(), Some("boom"));
         assert_eq!(round.2.error, None);
         assert_eq!(round.3.session_id, round.0.session_id);
+        assert_eq!(round.4.session_id, round.0.session_id);
+        assert_eq!(round.4.error, "write failed");
     }
 
     #[rstest::rstest]

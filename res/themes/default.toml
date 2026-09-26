@@ -50,6 +50,10 @@ tab_inactive_fg = "gray"
 selection_fg = [220, 220, 220]
 selection_bg = [80, 82, 88]
 
+# In-flight session tint (archive/teardown dispatched, not yet finished)
+in_flight_bg = [50, 52, 58]
+in_flight_fg = [200, 200, 200]
+
 # Provider picker
 accent_action = [255, 165, 0]
 age_fresh = "lightgreen"

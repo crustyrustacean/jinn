@@ -9,7 +9,9 @@ use jinn_session_state::{ChatSessionState, SessionSnapshot, snapshot_frozen_node
 use jinn_session_store_msg::SessionState;
 use jinn_session_store_msg::{ArchiveSession, ArchiveSessionTree};
 
-use jinn_session_msg::{SessionArchived, SessionClosed, SessionRemoved, SessionSeed};
+use jinn_session_msg::{
+    SessionArchiveFailed, SessionArchived, SessionClosed, SessionRemoved, SessionSeed,
+};
 
 use crate::session_store_actor::SessionStoreActor;
 
@@ -31,18 +33,36 @@ impl SessionStoreActor {
     /// Resolves the tree and aborts before any side effect when a member is busy.
     async fn guarded_tree_closure(&self, root: &SessionId) -> Option<Vec<SessionId>> {
         let members = self.resolve_tree_closure(root).await;
-        let state = self.state.read();
-        let busy = members.iter().any(|id| {
-            state.session.get(id).is_some_and(|session| {
-                session.is_busy() || !matches!(session.phase(), jinn_session_msg::PhaseKind::Idle)
+        let busy = {
+            let state = self.state.read();
+            members.iter().any(|id| {
+                state.session.get(id).is_some_and(|session| {
+                    session.is_busy()
+                        || !matches!(session.phase(), jinn_session_msg::PhaseKind::Idle)
+                })
             })
-        });
-        drop(state);
+        };
         if busy {
             tracing::warn!(root = %root, "tree action aborted: a member session is busy");
+            self.publish_archive_failed(&members, "a member session is busy")
+                .await;
             return None;
         }
         Some(members)
+    }
+
+    /// Announces that archiving each member did not complete and it stays live.
+    ///
+    /// One event per member, so a listener tracking several tinted sessions
+    /// clears every one of them rather than only the tree root.
+    async fn publish_archive_failed(&self, members: &[SessionId], error: &str) {
+        for session_id in members {
+            self.publish(SessionArchiveFailed {
+                session_id: session_id.clone(),
+                error: error.to_owned(),
+            })
+            .await;
+        }
     }
 
     /// Resolves a root's subtree across loaded sessions and store summaries.
@@ -80,6 +100,8 @@ impl SessionStoreActor {
     /// Archives all requested members durably before changing live state.
     async fn archive_members(&self, members: &[SessionId]) {
         let Some(snapshots) = self.archive_snapshots(members).await else {
+            self.publish_archive_failed(members, "could not capture every member snapshot")
+                .await;
             return;
         };
         if let Err(error) = self
@@ -93,6 +115,8 @@ impl SessionStoreActor {
                 member_count = members.len(),
                 "archive write failed; live sessions remain intact"
             );
+            self.publish_archive_failed(members, "archiving the session write failed")
+                .await;
             return;
         }
 

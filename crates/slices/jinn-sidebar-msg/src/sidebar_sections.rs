@@ -6,7 +6,7 @@
 //! kernel's `FrontendState` exposes them through its facade, and the sidebar
 //! slice's modules read and write them.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::sessions_list_state::PreviewLoad;
 use crate::sidebar_section_id::SidebarSectionId;
@@ -422,6 +422,31 @@ pub struct SessionsSectionState {
     /// A zero means "not rendered yet", which is distinct from a real width and
     /// deliberately forces a request rather than a lookup.
     pub preview_content_width: u16,
+    /// Sessions whose archive or teardown has been dispatched and has not yet
+    /// finished. Each entry is marked when the disposal command is dispatched
+    /// and cleared by the event announcing that session's outcome, so an
+    /// in-flight row is always a session that is genuinely still live.
+    pub in_flight: HashSet<SessionId>,
+}
+
+impl SessionsSectionState {
+    /// Marks sessions as having a disposal operation dispatched and unfinished.
+    pub fn begin_in_flight(&mut self, ids: &[SessionId]) {
+        self.in_flight.extend(ids.iter().cloned());
+    }
+
+    /// Clears the in-flight mark for a session that finished or failed.
+    ///
+    /// Does nothing when the session was never marked, so a disposal initiated
+    /// outside the sidebar is harmless.
+    pub fn end_in_flight(&mut self, id: &SessionId) {
+        self.in_flight.remove(id);
+    }
+
+    /// Whether the given session has a disposal operation in flight.
+    pub fn is_in_flight(&self, id: &SessionId) -> bool {
+        self.in_flight.contains(id)
+    }
 }
 
 /// Persona section cursor state - stored on `FrontendState`.

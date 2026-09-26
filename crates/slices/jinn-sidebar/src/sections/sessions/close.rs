@@ -4,7 +4,7 @@ use jinn_domain::common::app_state::AppState;
 use jinn_domain::protocol::IntentResult;
 use jinn_session_msg::PhaseKind;
 
-use super::state::sorted_open_sessions;
+use super::state::{mark_in_flight, sorted_open_sessions};
 
 /// Why a session close can be rejected.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,6 +74,11 @@ pub fn handle_session_close_with_lifecycle(state: &mut AppState) -> IntentResult
         .expect("validated session close has a selected entry")
         .id
         .clone();
+
+    // Mark in flight - the row stays tinted until the teardown and its
+    // following archive both conclude.
+    mark_in_flight(state, std::slice::from_ref(&selected));
+
     IntentResult::new_message(CloseSession {
         session_id: selected,
     })

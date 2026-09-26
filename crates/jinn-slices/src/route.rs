@@ -28,6 +28,17 @@
 //! richer intent enum down to it, keeping this crate free of the
 //! kernel's intent types.
 //!
+//! A slice may also register one *scope-enter hook* per scope
+//! ([`ScopeEnterHook`]): fired once when its scope is *entered* — a
+//! scope transition that lands on it — rather than on every keystroke.
+//! This is the sanctioned place for a slice to initialize per-open
+//! state (a picker's rows, filter, and highlight), so that every way
+//! of opening the slice produces the same fresh surface instead of
+//! each caller having to remember to seed it. The hook receives the
+//! same [`ActionCtx`] a row action does and returns nothing: it writes
+//! the slice's own cells synchronously and neither publishes nor
+//! transitions.
+//!
 //! Actions return a [`RouteResult`]: erased publish closures plus an
 //! optional scope transition. The closures carry real bus publications
 //! (this crate stays publish-agnostic); only the
@@ -512,6 +523,25 @@ pub type InputHook = Arc<dyn Fn(&EditIntent) -> Option<RouteResult> + Send + Syn
 /// returning `None` drops the key.
 pub type KeyHook = Arc<dyn Fn(&KeyEvent) -> Option<DynamicIntent> + Send + Sync>;
 
+/// A synchronous per-scope initializer.
+///
+/// Fired once when its scope is *entered* — a scope transition that
+/// lands on the scope — not on every keystroke. This is the sanctioned
+/// place for a slice to initialize per-open state (a picker's rows,
+/// filter, and highlight) so that every opener shows the same fresh
+/// menu, including openers that only request the transition and know
+/// nothing of the slice's contents.
+///
+/// Re-pressing a key that re-pushes the scope fires the hook again,
+/// which is correct: each entry is a fresh open, and a full reset is
+/// what a fresh open should produce.
+///
+/// The hook receives the same [`ActionCtx`] a row action does — the
+/// slice registry, the configuration layer, and the state surface — and
+/// returns nothing. It performs a synchronous write to the slice's own
+/// cells; it does not publish and does not transition.
+pub type ScopeEnterHook = Arc<dyn Fn(ActionCtx<'_>) + Send + Sync>;
+
 /// Registry of slice keybind routes and hooks.
 ///
 /// Rows attach at slice activation (startup wiring), so the table is
@@ -523,6 +553,7 @@ pub struct KeyRoutes {
     rows: row_store::Rows,
     input_hooks: row_store::HookStore<InputHook>,
     key_hooks: row_store::HookStore<KeyHook>,
+    scope_enter_hooks: row_store::HookStore<ScopeEnterHook>,
     modals: ModalScopes,
 }
 
@@ -558,6 +589,20 @@ impl KeyRoutes {
     #[must_use]
     pub fn key_hook(&self, scope: &SliceScopeId) -> Option<KeyHook> {
         self.key_hooks.get(scope)
+    }
+
+    /// Registers the scope-enter hook for a slice's scope.
+    ///
+    /// The hook fires when a scope transition lands on `scope`, which
+    /// makes it the one place a slice seeds per-open state.
+    pub fn register_scope_enter_hook(&self, scope: &SliceScopeId, hook: ScopeEnterHook) {
+        self.scope_enter_hooks.insert(scope.clone(), hook);
+    }
+
+    /// Returns the scope-enter hook registered for `scope`, if any.
+    #[must_use]
+    pub fn scope_enter_hook(&self, scope: &SliceScopeId) -> Option<ScopeEnterHook> {
+        self.scope_enter_hooks.get(scope)
     }
 
     /// Dispatches a dynamic intent through its registered row.
@@ -596,6 +641,12 @@ impl KeyRoutes {
     #[must_use]
     pub fn key_hook_scopes(&self) -> Vec<SliceScopeId> {
         self.key_hooks.keys()
+    }
+
+    /// Returns the scope ids of all registered scope-enter hooks.
+    #[must_use]
+    pub fn scope_enter_hook_scopes(&self) -> Vec<SliceScopeId> {
+        self.scope_enter_hooks.keys()
     }
 
     /// Declares `scope` as modal: while it is on top, other slices'
@@ -917,6 +968,48 @@ mod tests {
 
         // When enumerating input hook scopes.
         let scopes = routes.input_hook_scopes();
+
+        // Then the registered scope is listed.
+        assert_eq!(scopes, vec![scope()]);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn scope_enter_hook_resolves_for_its_registered_scope() {
+        // Given a table with a scope-enter hook registered for the scope.
+        let routes = KeyRoutes::new();
+        routes.register_scope_enter_hook(&scope(), std::sync::Arc::new(|_: ActionCtx<'_>| {}));
+
+        // When looking up the hook for the registered scope.
+        let hook = routes.scope_enter_hook(&scope());
+
+        // Then it resolves.
+        assert!(hook.is_some());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn scope_enter_hook_is_absent_for_an_unregistered_scope() {
+        // Given a table with a scope-enter hook registered for one scope.
+        let routes = KeyRoutes::new();
+        routes.register_scope_enter_hook(&scope(), std::sync::Arc::new(|_: ActionCtx<'_>| {}));
+
+        // When looking up the hook for a different scope.
+        let hook = routes.scope_enter_hook(&SliceScopeId::new("test-slice", "other"));
+
+        // Then nothing resolves — the scope seeds itself no other way.
+        assert!(hook.is_none());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn scope_enter_hook_scopes_enumerates_registered_scopes() {
+        // Given a table with one scope-enter hook registered.
+        let routes = KeyRoutes::new();
+        routes.register_scope_enter_hook(&scope(), std::sync::Arc::new(|_: ActionCtx<'_>| {}));
+
+        // When enumerating scope-enter hook scopes.
+        let scopes = routes.scope_enter_hook_scopes();
 
         // Then the registered scope is listed.
         assert_eq!(scopes, vec![scope()]);

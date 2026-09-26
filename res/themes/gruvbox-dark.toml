@@ -40,6 +40,10 @@ tab_inactive_fg = "#928374"
 selection_fg = "#ebdbb2"       # light cream
 selection_bg = [90, 86, 80]
 
+# In-flight session tint (archive/teardown dispatched, not yet finished)
+in_flight_bg = [60, 56, 50]
+in_flight_fg = "#ebdbb2"       # light cream
+
 # Provider picker
 accent_action = "#fe8019"
 age_fresh = "#b8bb26"

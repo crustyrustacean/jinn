@@ -73,6 +73,7 @@ Entries are added or amended **only with human approval**.
 - (pickers) Each picker is owned by the slice that owns its domain; the picker's state lives in a slice cell, not in AppState.
 - (pickers) Picker scopes are dynamic slice scopes, so the kernel holds no per-picker scope variant, picker kind, spec, or registry.
 - (pickers) A picker measures its own results viewport in its render pass and publishes it into its cell; the kernel measures nothing.
+- (pickers) A slice picker resets its per-open state — filter text, highlight, and rows — each time its dynamic scope is entered, so every opener shows the same fresh menu.
 - (keybinds) Picker keybinds are route rows owned by the slice that owns the picker.
 - (keybinds) Feature keybinds are route rows carrying scope and key; keymap bindings are generated from registered rows at launch; dynamic intents and scope ids are data-carried, so an unregistered slice leaves no keymap, scope, or intent residue.
 - (keybinds) The terminal overlay's keybinds are term-slice route rows binding the dynamic scopes term:view and term:control; no static terminal scope or terminal intent variants exist in the kernel.
