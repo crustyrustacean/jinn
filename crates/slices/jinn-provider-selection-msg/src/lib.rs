@@ -29,7 +29,10 @@ pub use entries::ProviderPickerEntry;
 pub use entries::pre_check_active_models;
 pub use jinn_core_types::{Endpoint, ReasoningEffort};
 pub use reasoning::ReasoningEffortEntry;
-pub use reasoning::resolve_effort;
+pub use reasoning::reasoning_row;
+pub use reasoning::{
+    ReasoningPickerState, reasoning_picker_scope, reasoning_picker_slot, resolve_effort,
+};
 
 mod command;
 mod event;

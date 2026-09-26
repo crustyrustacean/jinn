@@ -5,16 +5,13 @@
 //! on [`FrontendState`](super::FrontendState) so consumers are decoupled from the
 //! internal storage layout.
 
-use std::collections::HashSet;
-
 use jinn_mcp_msg::McpServerEntry;
 use jinn_project_msg::ProjectEntry;
 use jinn_provider_selection_msg::ProviderPickerEntry;
 use jinn_provider_selection_msg::endpoint::EndpointEntry;
-use jinn_provider_selection_msg::reasoning::ReasoningEffortEntry;
 use jinn_session_lifecycle_msg::SessionLifecycleEntry;
 use jinn_session_store_msg::SessionTreeEntry;
-use jinn_tools_msg::{TaskListTreeEntry, ToolEntry};
+use jinn_tools_msg::TaskListTreeEntry;
 
 /// All picker state - grouped so the picker subsystem can evolve independently.
 ///
@@ -27,14 +24,6 @@ pub struct PickerStates {
     pub session_picker:
         jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<SessionTreeEntry>>,
 
-    /// Tool picker state - shows all registered tools with toggle state.
-    /// OWNER: IntentHandler (populated on tool picker open).
-    pub tool_picker: jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ToolEntry>>,
-
-    /// Snapshot of disabled tools before picker opens - restored on ESC.
-    /// OWNER: IntentHandler (set on tool picker open, consumed on confirm/cancel).
-    pub tool_picker_snapshot: Option<HashSet<String>>,
-
     /// Preview pane scroll offsets for spec-driven pickers, keyed by
     /// picker id.
     pub pickers_scrolls: jinn_picker::PickerScrolls,
@@ -43,11 +32,6 @@ pub struct PickerStates {
     /// OWNER: IntentHandler (lifecycle picker navigation).
     pub session_lifecycle_picker:
         jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<SessionLifecycleEntry>>,
-
-    /// Reasoning effort picker state (items, filter text, selection index).
-    /// OWNER: IntentHandler (reasoning effort picker navigation).
-    pub reasoning_effort_picker:
-        jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ReasoningEffortEntry>>,
 
     /// Task list picker state - read-only zoom view of the active session's task list.
     /// OWNER: IntentHandler (populated on task list picker open).
@@ -108,19 +92,6 @@ pub trait PickerExt {
         &mut self,
     ) -> &mut jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<SessionTreeEntry>>;
 
-    /// Read-only access to the tool picker state.
-    fn tool_picker(
-        &self,
-    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ToolEntry>>;
-    /// Mutable access to the tool picker state.
-    fn tool_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ToolEntry>>;
-    /// Read-only access to the disabled tools snapshot.
-    fn tool_picker_snapshot(&self) -> &Option<HashSet<String>>;
-    /// Mutable access to the disabled tools snapshot.
-    fn tool_picker_snapshot_mut(&mut self) -> &mut Option<HashSet<String>>;
-
     /// Read-only access to the enabled MCP servers snapshot.
     fn mcp_server_picker_snapshot(&self) -> &Option<std::collections::BTreeSet<String>>;
     /// Mutable access to the enabled MCP servers snapshot.
@@ -134,15 +105,6 @@ pub trait PickerExt {
     fn session_lifecycle_picker_mut(
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<SessionLifecycleEntry>>;
-
-    /// Read-only access to the reasoning effort picker state.
-    fn reasoning_effort_picker(
-        &self,
-    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ReasoningEffortEntry>>;
-    /// Mutable access to the reasoning effort picker state.
-    fn reasoning_effort_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ReasoningEffortEntry>>;
 
     /// Read-only access to the task list picker state.
     fn task_list_picker(
@@ -200,26 +162,6 @@ impl PickerExt for super::frontend_state::FrontendState {
         &mut self.pickers.session_picker
     }
 
-    fn tool_picker(
-        &self,
-    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ToolEntry>> {
-        &self.pickers.tool_picker
-    }
-
-    fn tool_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ToolEntry>> {
-        &mut self.pickers.tool_picker
-    }
-
-    fn tool_picker_snapshot(&self) -> &Option<HashSet<String>> {
-        &self.pickers.tool_picker_snapshot
-    }
-
-    fn tool_picker_snapshot_mut(&mut self) -> &mut Option<HashSet<String>> {
-        &mut self.pickers.tool_picker_snapshot
-    }
-
     fn mcp_server_picker_snapshot(&self) -> &Option<std::collections::BTreeSet<String>> {
         &self.pickers.mcp_server_picker_snapshot
     }
@@ -243,20 +185,6 @@ impl PickerExt for super::frontend_state::FrontendState {
     {
         &mut self.pickers.session_lifecycle_picker
     }
-    fn reasoning_effort_picker(
-        &self,
-    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ReasoningEffortEntry>>
-    {
-        &self.pickers.reasoning_effort_picker
-    }
-
-    fn reasoning_effort_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ReasoningEffortEntry>>
-    {
-        &mut self.pickers.reasoning_effort_picker
-    }
-
     fn task_list_picker(
         &self,
     ) -> &jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<TaskListTreeEntry>> {

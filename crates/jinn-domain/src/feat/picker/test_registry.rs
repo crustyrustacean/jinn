@@ -37,16 +37,14 @@ pub(crate) fn test_registry() -> PickerRegistry {
 
 /// The `(id, widget, has status row)` table, mirroring the real specs.
 /// `project` and `session-lifecycle` declare no status; every other spec does.
-fn specs() -> [(&'static str, PickerWidget, bool); 9] {
+fn specs() -> [(&'static str, PickerWidget, bool); 7] {
     use PickerWidget::{List, Tree};
     [
-        (jinn_picker::TOOL_ID, List, true),
         (jinn_picker::MCP_SERVER_ID, List, true),
         (jinn_picker::SESSION_LIFECYCLE_ID, Tree, false),
         (jinn_picker::TASK_LIST_ID, Tree, true),
         (jinn_picker::SESSION_ID, Tree, true),
         (jinn_picker::PROVIDER_ID, List, true),
-        (jinn_picker::REASONING_EFFORT_ID, List, true),
         (jinn_picker::ENDPOINT_ID, List, true),
         (jinn_picker::PROJECT_ID, List, false),
     ]

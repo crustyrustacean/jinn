@@ -68,12 +68,6 @@ pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmErro
             .session_lifecycle_picker()
             .selected_item()
             .is_some(),
-        PickerKind::ReasoningEffort => state
-            .frontend
-            .reasoning_effort_picker()
-            .selected_item()
-            .is_some(),
-        PickerKind::Tool => state.frontend.tool_picker().selected_item().is_some(),
         // TaskList is read-only; Enter is a no-op. Skip the selection
         // gate so the confirm handler (which itself returns empty) is
         // always reached.
@@ -167,57 +161,53 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn validate_picker_confirm_accepts_reasoning_with_selection() {
+    fn validate_picker_confirm_accepts_project_with_selection() {
         // If the selection gate were broken, confirming with a selection would
         // be rejected.
-        use jinn_core_types::reasoning::ReasoningEffort;
-        use jinn_provider_selection_msg::reasoning::ReasoningEffortEntry;
-
         let mut state = AppState::default_with_scope_focus();
-        let entry = ReasoningEffortEntry {
-            effort: ReasoningEffort::High,
-            name: "high".to_owned(),
-            description: "High effort".to_owned(),
-            is_active: false,
-            theme: jinn_theme::default_theme(),
-        };
-        let wrapped = jinn_picker::make_items_with_hooks(
-            vec![entry],
-            jinn_picker::PickerItemHooks::new()
-                .search(|entry: &ReasoningEffortEntry| entry.name.clone()),
-        );
         state
             .frontend
-            .reasoning_effort_picker_mut()
-            .set_items(wrapped);
-        state.frontend.reasoning_effort_picker_mut().move_down(1);
+            .project_picker_mut()
+            .set_items(jinn_picker::make_items_with_hooks(
+                vec![test_project("/workspace/demo")],
+                jinn_picker::PickerItemHooks::new()
+                    .search(|entry: &jinn_project_msg::ProjectEntry| entry.display.clone()),
+            ));
         state.frontend.scope_push(FocusScope::Picker {
-            kind: PickerKind::ReasoningEffort,
+            kind: PickerKind::Project,
         });
 
         let result = validate_picker_confirm(&state);
 
         assert!(
             result.is_ok(),
-            "should accept confirm when a reasoning entry is selected"
+            "should accept confirm when a project entry is selected"
         );
     }
 
     #[rstest::rstest]
-    fn validate_picker_confirm_rejects_reasoning_without_selection() {
+    fn validate_picker_confirm_rejects_project_without_selection() {
         // If the selection gate were broken, confirming with no selection
         // would be allowed.
         let state = AppState::default_with_scope_focus();
         // No entries set, so no selection.
         state.frontend.scope_push(FocusScope::Picker {
-            kind: PickerKind::ReasoningEffort,
+            kind: PickerKind::Project,
         });
 
         let result = validate_picker_confirm(&state);
 
         assert!(
             result.is_err(),
-            "should reject confirm when no reasoning entry is selected"
+            "should reject confirm when no project entry is selected"
         );
+    }
+
+    /// A project entry for the selection-gate tests above.
+    fn test_project(path: &str) -> jinn_project_msg::ProjectEntry {
+        jinn_project_msg::ProjectEntry::new(
+            std::path::PathBuf::from(path),
+            jinn_theme::default_theme(),
+        )
     }
 }

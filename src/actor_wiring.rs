@@ -222,6 +222,9 @@ impl ActorSystemBuilder {
         // the orchestrator actor is spawned below (explicit ordering vs.
         // the MCP coordinator — B1).
         jinn_tools::activate(&mut services, &state);
+        // The tool picker is registered by the same slice, after the registry
+        // cell it seeds its rows from exists.
+        jinn_tools_picker_activate(&mut services);
 
         // Quake bar slice: activation mints the cell, spawns the actor
         // (submit-log writer), attaches rows, and registers the input
@@ -1023,6 +1026,27 @@ fn jinn_theme_activate(services: &mut Services) {
     }
 }
 
+/// Registers the tools slice's tool picker: its cell, overlay, keys, and
+/// filter hook.
+///
+/// Split from `jinn_tools::activate` because the registry cell registers
+/// straight onto `Services` (it is idempotent and owns no overlay) while the
+/// picker needs a [`SliceHost`]. Ordered after `activate` so the registry cell
+/// it reads its rows from already exists.
+fn jinn_tools_picker_activate(services: &mut Services) {
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_tools::activate_picker(&mut host);
+    if let Err(error) = host.finalize(&|_key| None) {
+        panic!("tools picker finalize failed: {error}");
+    }
+}
+
 fn jinn_status_bar_activate(services: &mut Services) {
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
@@ -1126,6 +1150,10 @@ fn jinn_provider_selection_activate(
         &services.trouper_system,
     );
     let handles = jinn_provider_selection::activate(&mut host, &services_snapshot, state);
+    // The reasoning-effort picker is registered by the same slice, after the
+    // actors: it spawns nothing, and its rows are built from the session's
+    // own effort when it opens.
+    jinn_provider_selection::activate_picker(&mut host);
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("provider-selection slice finalize failed: {error}");
     }

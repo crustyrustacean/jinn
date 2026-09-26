@@ -16,10 +16,6 @@ pub enum PickerKind {
     /// in `jinn.toml`. Retained so persisted state still deserializes; it is
     /// never pushed as a scope and has no picker state.
     CompactionModel,
-    /// Reasoning effort picker - select reasoning effort for reasoning-capable models.
-    ReasoningEffort,
-    /// Tool picker - toggle which tools are enabled for the session.
-    Tool,
     /// Task list browser - read-only zoom view of the active session's task list.
     TaskList,
     /// Project picker - curated project directories; create a new session rooted
@@ -41,9 +37,6 @@ impl std::fmt::Display for PickerKind {
 
             Self::CompactionModel => write!(f, "compaction model"),
 
-            Self::ReasoningEffort => write!(f, "reasoning effort"),
-
-            Self::Tool => write!(f, "tools"),
             Self::TaskList => write!(f, "task list"),
             Self::Project => write!(f, "projects"),
             Self::McpServer => write!(f, "mcp servers"),

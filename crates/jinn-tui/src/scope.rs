@@ -33,12 +33,8 @@ pub enum Scope {
     PickerSession,
     /// Picker - Session lifecycle recipe selection.
     PickerLifecycle,
-    /// Picker - Reasoning effort selection.
-    PickerReasoningEffort,
     /// Picker - OpenRouter routing endpoint selection.
     PickerEndpoint,
-    /// Picker - Tool toggle selection.
-    PickerTool,
     /// Picker - Read-only task list browser.
     PickerTaskList,
     /// Picker - Curated project directory selection.
@@ -63,9 +59,7 @@ impl std::fmt::Display for Scope {
             Self::PickerSession => write!(f, "Picker(session)"),
             Self::PickerLifecycle => write!(f, "Picker(lifecycle)"),
 
-            Self::PickerReasoningEffort => write!(f, "Picker(reasoning-effort)"),
             Self::PickerEndpoint => write!(f, "Picker(endpoint)"),
-            Self::PickerTool => write!(f, "Picker(tool)"),
             Self::PickerTaskList => write!(f, "Picker(task-list)"),
             Self::PickerProject => write!(f, "Picker(project)"),
             Self::PickerMcpServer => write!(f, "Picker(mcp-server)"),
@@ -91,9 +85,7 @@ impl std::str::FromStr for Scope {
             "Picker(session)" => Ok(Self::PickerSession),
             "Picker(lifecycle)" => Ok(Self::PickerLifecycle),
 
-            "Picker(reasoning-effort)" => Ok(Self::PickerReasoningEffort),
             "Picker(endpoint)" => Ok(Self::PickerEndpoint),
-            "Picker(tool)" => Ok(Self::PickerTool),
             "Picker(task-list)" => Ok(Self::PickerTaskList),
             "Picker(project)" => Ok(Self::PickerProject),
             "Picker(mcp-server)" => Ok(Self::PickerMcpServer),
@@ -111,15 +103,15 @@ mod tests {
     use std::str::FromStr;
 
     #[rstest::rstest]
-    fn picker_reasoning_effort_scope_round_trips() {
-        // Given the PickerReasoningEffort scope variant.
+    fn picker_task_list_scope_round_trips() {
+        // Given the PickerTaskList scope variant.
         // When formatting then parsing back.
         // Then the round-trip preserves the variant.
-        let s = Scope::PickerReasoningEffort.to_string();
-        assert_eq!(s, "Picker(reasoning-effort)");
+        let s = Scope::PickerTaskList.to_string();
+        assert_eq!(s, "Picker(task-list)");
         assert_eq!(
             Scope::from_str(&s),
-            Ok(Scope::PickerReasoningEffort),
+            Ok(Scope::PickerTaskList),
             "Display/FromStr should round-trip"
         );
     }

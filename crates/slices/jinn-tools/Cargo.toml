@@ -17,9 +17,14 @@ jinn-inference-msg = { workspace = true }
 jinn-tools-msg = { workspace = true }
 jinn-common = { workspace = true }
 jinn-mcp-msg = { workspace = true }
+jinn-picker = { workspace = true }
 jinn-preferences-config = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-slices = { workspace = true }
 jinn-term-msg = { workspace = true }
+jinn-theme = { workspace = true }
 jiff = { workspace = true }
+ratatui = { workspace = true }
 trouper = { workspace = true }
 regex = { workspace = true }
 rand = { workspace = true }
@@ -45,7 +50,7 @@ jinn-session-init-msg = { workspace = true }
 
 [dev-dependencies]
 jinn-token-count-msg = { workspace = true }
-jinn-slices = { workspace = true }
 async-trait = { workspace = true }
 tempfile = { workspace = true }
 rstest = { workspace = true }
+tokio = { workspace = true }

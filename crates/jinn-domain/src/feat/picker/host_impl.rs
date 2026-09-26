@@ -17,11 +17,9 @@ use jinn_picker::ENDPOINT_ID;
 use jinn_picker::MCP_SERVER_ID;
 use jinn_picker::PROJECT_ID;
 use jinn_picker::PROVIDER_ID;
-use jinn_picker::REASONING_EFFORT_ID;
 use jinn_picker::SESSION_ID;
 use jinn_picker::SESSION_LIFECYCLE_ID;
 use jinn_picker::TASK_LIST_ID;
-use jinn_picker::TOOL_ID;
 
 /// The mutable navigation interface for the active picker, or `None` when no
 /// picker is on the focus stack.
@@ -39,8 +37,6 @@ pub fn active_picker_ops(
         PickerKind::Provider => &mut state.frontend.pickers.provider_picker,
         PickerKind::Session => state.frontend.session_picker_mut(),
         PickerKind::SessionLifecycle => state.frontend.session_lifecycle_picker_mut(),
-        PickerKind::ReasoningEffort => state.frontend.reasoning_effort_picker_mut(),
-        PickerKind::Tool => state.frontend.tool_picker_mut(),
         PickerKind::TaskList => state.frontend.task_list_picker_mut(),
         PickerKind::Project => state.frontend.project_picker_mut(),
         PickerKind::McpServer => state.frontend.mcp_server_picker_mut(),
@@ -59,8 +55,6 @@ pub fn active_picker_ops_ref(state: &AppState) -> Option<&dyn jinn_selection_wid
         PickerKind::Provider => &state.frontend.pickers.provider_picker,
         PickerKind::Session => state.frontend.session_picker(),
         PickerKind::SessionLifecycle => state.frontend.session_lifecycle_picker(),
-        PickerKind::ReasoningEffort => state.frontend.reasoning_effort_picker(),
-        PickerKind::Tool => state.frontend.tool_picker(),
         PickerKind::TaskList => state.frontend.task_list_picker(),
         PickerKind::Project => state.frontend.project_picker(),
         PickerKind::McpServer => state.frontend.mcp_server_picker(),
@@ -81,12 +75,10 @@ pub fn active_picker_ops_ref(state: &AppState) -> Option<&dyn jinn_selection_wid
 #[must_use]
 pub fn selection_state_ref(state: &AppState, id: PickerId) -> Option<&dyn std::any::Any> {
     match id.as_str() {
-        TOOL_ID => Some(state.frontend.tool_picker() as &dyn std::any::Any),
         MCP_SERVER_ID => Some(state.frontend.mcp_server_picker() as &dyn std::any::Any),
         SESSION_LIFECYCLE_ID => {
             Some(state.frontend.session_lifecycle_picker() as &dyn std::any::Any)
         }
-        REASONING_EFFORT_ID => Some(state.frontend.reasoning_effort_picker() as &dyn std::any::Any),
         TASK_LIST_ID => Some(state.frontend.task_list_picker() as &dyn std::any::Any),
         SESSION_ID => Some(state.frontend.session_picker() as &dyn std::any::Any),
         PROVIDER_ID => Some(&state.frontend.pickers.provider_picker as &dyn std::any::Any),
@@ -113,15 +105,11 @@ impl<'a> AppStatePickerHost<'a> {
 impl PickerHost for AppStatePickerHost<'_> {
     fn selection_state(&mut self, id: PickerId) -> Option<&mut dyn std::any::Any> {
         match id.as_str() {
-            TOOL_ID => Some(self.state.frontend.tool_picker_mut() as &mut dyn std::any::Any),
             MCP_SERVER_ID => {
                 Some(self.state.frontend.mcp_server_picker_mut() as &mut dyn std::any::Any)
             }
             SESSION_LIFECYCLE_ID => {
                 Some(self.state.frontend.session_lifecycle_picker_mut() as &mut dyn std::any::Any)
-            }
-            REASONING_EFFORT_ID => {
-                Some(self.state.frontend.reasoning_effort_picker_mut() as &mut dyn std::any::Any)
             }
             TASK_LIST_ID => {
                 Some(self.state.frontend.task_list_picker_mut() as &mut dyn std::any::Any)
@@ -288,8 +276,6 @@ impl PickerHost for AppStateRenderHost<'_> {
             PickerKind::Provider => &self.state.frontend.pickers.provider_picker,
             PickerKind::Session => self.state.frontend.session_picker(),
             PickerKind::SessionLifecycle => self.state.frontend.session_lifecycle_picker(),
-            PickerKind::ReasoningEffort => self.state.frontend.reasoning_effort_picker(),
-            PickerKind::Tool => self.state.frontend.tool_picker(),
             PickerKind::TaskList => self.state.frontend.task_list_picker(),
             PickerKind::Project => self.state.frontend.project_picker(),
             PickerKind::McpServer => self.state.frontend.mcp_server_picker(),
@@ -308,39 +294,40 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use jinn_tools_msg::ToolEntry;
+    use jinn_mcp_msg::McpServerEntry;
 
-    fn test_tool(name: &str) -> ToolEntry {
-        ToolEntry {
-            name: name.to_owned(),
-            description: String::new(),
-            enabled: true,
-            theme: jinn_theme::default_theme(),
-        }
+    /// A minimal entry the lens tests only need a concrete type for.
+    fn test_server(name: &str) -> McpServerEntry {
+        McpServerEntry::new(
+            name.to_owned(),
+            String::new(),
+            true,
+            jinn_theme::default_theme(),
+        )
     }
 
     #[rstest::rstest]
     #[test]
     fn selection_state_lends_typed_storage_by_id() {
-        // Given a host state whose tool picker holds items.
+        // Given a host state whose mcp-server picker holds items.
         let mut state = AppState::default_with_scope_focus();
         let items = jinn_picker::make_items_with_hooks(
-            vec![test_tool("a")],
+            vec![test_server("a")],
             jinn_picker::PickerItemHooks::new()
-                .row(|entry: &ToolEntry, _ctx: &jinn_picker::RowCtx<'_>| {
+                .row(|entry: &McpServerEntry, _ctx: &jinn_picker::RowCtx<'_>| {
                     ratatui::text::Line::raw(entry.name.clone())
                 })
-                .search(|entry: &ToolEntry| entry.name.clone()),
+                .search(|entry: &McpServerEntry| entry.name.clone()),
         );
-        state.frontend.tool_picker_mut().set_items(items);
+        state.frontend.mcp_server_picker_mut().set_items(items);
 
-        // When lending the selection state for the tool id.
+        // When lending the selection state for the mcp-server id.
         let mapped = {
             let mut host = AppStatePickerHost::new(&mut state);
-            host.selection_state(PickerId::new(TOOL_ID))
-                .expect("tool is mapped")
+            host.selection_state(PickerId::new(MCP_SERVER_ID))
+                .expect("mcp-server is mapped")
                 .downcast_ref::<jinn_selection_widget::SelectionState<
-                    jinn_picker::PickerEntry<ToolEntry>,
+                    jinn_picker::PickerEntry<McpServerEntry>,
                 >>()
                 .is_some()
         };
@@ -348,7 +335,7 @@ mod tests {
         // Then the lend downcasts back to the wrapped selection storage.
         assert!(
             mapped,
-            "the tool lend should downcast to its wrapped SelectionState"
+            "the mcp-server lend should downcast to its wrapped SelectionState"
         );
     }
 
@@ -368,10 +355,8 @@ mod tests {
         // them keeps this guard a real compile-time-complete check of the
         // table above.
         let ids = [
-            jinn_picker::TOOL_ID,
             jinn_picker::MCP_SERVER_ID,
             jinn_picker::SESSION_LIFECYCLE_ID,
-            jinn_picker::REASONING_EFFORT_ID,
             jinn_picker::TASK_LIST_ID,
             jinn_picker::SESSION_ID,
             jinn_picker::PROVIDER_ID,
@@ -431,7 +416,7 @@ mod tests {
     fn preview_scrolls_are_stored_per_picker_id() {
         // Given a host state.
         let mut state = AppState::default_with_scope_focus();
-        let first = PickerId::new(TOOL_ID);
+        let first = PickerId::new(MCP_SERVER_ID);
         let other = PickerId::new("other");
 
         // When setting preview scrolls for one picker id and another id.

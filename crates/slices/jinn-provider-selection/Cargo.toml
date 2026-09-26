@@ -27,6 +27,10 @@ jinn-theme = { workspace = true }
 jinn-selection-widget = { workspace = true }
 jinn-picker = { workspace = true }
 jinn-picker-specs = { workspace = true }
+# The reasoning picker's confirm writes the session's effort and seeds the
+# global default through these two crossing contracts.
+jinn-preferences-config = { workspace = true }
+jinn-session-msg = { workspace = true }
 jiff = { workspace = true }
 ratatui = { workspace = true }
 unicode-segmentation = { workspace = true }
@@ -41,6 +45,7 @@ tokio = { workspace = true }
 serde_json = { workspace = true }
 rstest = { workspace = true }
 jinn-domain = { workspace = true, features = ["test-harness"] }
+jinn-session-state = { workspace = true }
 tempfile = { workspace = true }
 
 [lints]

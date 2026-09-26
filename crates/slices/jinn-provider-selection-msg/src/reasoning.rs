@@ -20,8 +20,12 @@
 use jinn_core_types::ReasoningEffort;
 
 mod picker_entry;
+mod picker_scope;
+mod picker_state;
 
-pub use picker_entry::ReasoningEffortEntry;
+pub use picker_entry::{ReasoningEffortEntry, reasoning_row};
+pub use picker_scope::reasoning_picker_scope;
+pub use picker_state::{RESULTS_VIEWPORT_FALLBACK, ReasoningPickerState, reasoning_picker_slot};
 
 /// Returns the session's own reasoning effort.
 ///

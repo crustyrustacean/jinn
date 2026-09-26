@@ -76,10 +76,8 @@ pub fn bind_picker_spec_rows(
 /// scope-level mapping (a jinn-tui concern).
 fn picker_spec_scope(id: jinn_picker::PickerId) -> Option<Scope> {
     match id.as_str() {
-        "tool" => Some(Scope::PickerTool),
         "mcp-server" => Some(Scope::PickerMcpServer),
         "session-lifecycle" => Some(Scope::PickerLifecycle),
-        "reasoning-effort" => Some(Scope::PickerReasoningEffort),
         "task-list" => Some(Scope::PickerTaskList),
         "session" => Some(Scope::PickerSession),
         "provider" => Some(Scope::PickerProvider),
@@ -134,9 +132,7 @@ fn scopes_for_row<'a>(
                 Scope::PickerProvider,
                 Scope::PickerSession,
                 Scope::PickerLifecycle,
-                Scope::PickerReasoningEffort,
                 Scope::PickerEndpoint,
-                Scope::PickerTool,
                 Scope::PickerTaskList,
                 Scope::PickerProject,
                 Scope::PickerMcpServer,
@@ -834,9 +830,7 @@ mod tests {
     #[case("Picker(provider)")]
     #[case("Picker(session)")]
     #[case("Picker(lifecycle)")]
-    #[case("Picker(reasoning-effort)")]
     #[case("Picker(endpoint)")]
-    #[case("Picker(tool)")]
     #[case("Picker(task-list)")]
     #[case("Picker(project)")]
     #[case("Picker(mcp-server)")]
@@ -1141,9 +1135,9 @@ mod picker_spec_row_tests {
         // navigation bind, under a throwaway id mapped to a static scope.
         let mut registry = jinn_picker::PickerRegistry::new();
         registry.register(
-            jinn_picker::PickerSpec::<jinn_tools_msg::ToolEntry>::new(jinn_picker::PickerId::new(
-                "tool",
-            ))
+            jinn_picker::PickerSpec::<jinn_mcp_msg::McpServerEntry>::new(
+                jinn_picker::PickerId::new("mcp-server"),
+            )
             .bind("<tab>", "toggle", |_| jinn_picker::PickerOutcome::empty())
             .bind_navigation("<c-u>", "page up", |_| jinn_picker::PickerOutcome::empty()),
         );
@@ -1151,7 +1145,7 @@ mod picker_spec_row_tests {
         // When binding the spec rows into a keymap.
         let mut keymap = init();
         bind_picker_spec_rows(&registry, &mut keymap);
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerTool);
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerMcpServer);
 
         // Then Tab resolves to the spec's picker action.
         let tab = KeyEvent {
@@ -1163,7 +1157,7 @@ mod picker_spec_row_tests {
             matches!(
                 &intent,
                 Some(jinn_domain::KernelIntent::PickerAction { picker, action })
-                    if picker == "tool" && action == "<tab>"
+                    if picker == "mcp-server" && action == "<tab>"
             ),
             "<Tab> must land as the spec's picker action; got {intent:?}",
         );
@@ -1175,16 +1169,16 @@ mod picker_spec_row_tests {
         // Given a registry with a navigation-hinted bind.
         let mut registry = jinn_picker::PickerRegistry::new();
         registry.register(
-            jinn_picker::PickerSpec::<jinn_tools_msg::ToolEntry>::new(jinn_picker::PickerId::new(
-                "tool",
-            ))
+            jinn_picker::PickerSpec::<jinn_mcp_msg::McpServerEntry>::new(
+                jinn_picker::PickerId::new("mcp-server"),
+            )
             .bind_navigation("<c-u>", "page up", |_| jinn_picker::PickerOutcome::empty()),
         );
 
         // When binding spec rows over the base keymap.
         let mut keymap = init();
         bind_picker_spec_rows(&registry, &mut keymap);
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerTool);
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerMcpServer);
 
         // Then the <c-u> binding resolves to the spec action.
         let c_u = KeyEvent {
@@ -1196,7 +1190,7 @@ mod picker_spec_row_tests {
             matches!(
                 &intent,
                 Some(jinn_domain::KernelIntent::PickerAction { picker, action })
-                    if picker == "tool" && action == "<c-u>"
+                    if picker == "mcp-server" && action == "<c-u>"
             ),
             "<c-u> must land as the spec's navigation action; got {intent:?}",
         );

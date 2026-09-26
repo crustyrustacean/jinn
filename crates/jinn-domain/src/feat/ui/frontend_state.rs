@@ -415,12 +415,12 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn default_includes_empty_reasoning_effort_picker() {
+    fn default_includes_empty_project_picker() {
         // Given a default FrontendState.
         let state = FrontendState::default();
 
-        // When accessing the reasoning effort picker.
+        // When accessing the project picker.
         // Then it exists and is empty (no items).
-        assert_eq!(state.pickers.reasoning_effort_picker.items().len(), 0);
+        assert_eq!(state.pickers.project_picker.items().len(), 0);
     }
 }

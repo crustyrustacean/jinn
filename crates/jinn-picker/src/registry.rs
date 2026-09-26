@@ -30,8 +30,6 @@ use crate::outcome::PickerOutcome;
 use crate::render::RenderOutcome;
 use crate::widget::WidgetKind;
 
-/// The id of the tool picker's spec.
-pub const TOOL_ID: &str = "tool";
 /// The id of the MCP server picker's spec.
 pub const MCP_SERVER_ID: &str = "mcp-server";
 /// The id of the session-lifecycle picker's spec.
@@ -40,8 +38,6 @@ pub const SESSION_LIFECYCLE_ID: &str = "session-lifecycle";
 pub const TASK_LIST_ID: &str = "task-list";
 /// The id of the session picker's spec.
 pub const SESSION_ID: &str = "session";
-/// The id of the reasoning-effort picker's spec.
-pub const REASONING_EFFORT_ID: &str = "reasoning-effort";
 /// The id of the provider picker's spec.
 pub const PROVIDER_ID: &str = "provider";
 /// The id of the endpoint picker's spec.
@@ -56,10 +52,8 @@ pub fn spec_id_for_kind(kind: &jinn_slices::picker_kind::PickerKind) -> Option<&
     use jinn_slices::picker_kind::PickerKind;
 
     match kind {
-        PickerKind::Tool => Some(TOOL_ID),
         PickerKind::McpServer => Some(MCP_SERVER_ID),
         PickerKind::SessionLifecycle => Some(SESSION_LIFECYCLE_ID),
-        PickerKind::ReasoningEffort => Some(REASONING_EFFORT_ID),
         PickerKind::TaskList => Some(TASK_LIST_ID),
         PickerKind::Session => Some(SESSION_ID),
         PickerKind::Provider => Some(PROVIDER_ID),
