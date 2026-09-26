@@ -72,3 +72,182 @@ fn registered_argument_hook_dispatches_through_dynamic_intent() {
     assert!(result.is_some());
     assert_eq!(cell.read().text.cursor_pos, 0);
 }
+
+// ── The project picker's `<c-enter>` opens this picker ───────────────────
+
+/// The configuration both cross-slice tests run against: one project to
+/// create a session at, and one lifecycle to create it with.
+const CROSS_SLICE_DOCUMENT: &str = "\
+[[project.entry]]
+path = \"/tmp/jinn-cross-slice\"
+
+[[session_lifecycle.script]]
+name = \"dev\"
+setup_command = \"/bin/true\"
+";
+
+/// The project picker open, both pickers activated, and a scoped app state.
+///
+/// Both slices activate over the *same* registries — the two openers only meet
+/// in production because they share one route table and one cell registry.
+struct CrossSlice {
+    slices: jinn_slices::Slices,
+    routes: jinn_slices::KeyRoutes,
+    config: jinn_config::ConfigLayer,
+    state: jinn_domain::AppState,
+}
+
+impl CrossSlice {
+    /// Activates the project and lifecycle pickers side by side, with the
+    /// project picker already open and a row highlighted.
+    async fn new() -> Self {
+        let slices = jinn_slices::Slices::new();
+        let mut viewport = jinn_slices::view::Viewport::new();
+        let overlay_views = jinn_slices::OverlayViews::new();
+        let routes = jinn_slices::KeyRoutes::new();
+        let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
+        let config = jinn_config::testutil::config_layer(CROSS_SLICE_DOCUMENT);
+        // `default_with_scope_focus`, not `default`: a scope push is a no-op
+        // without the shared scope cell, and `<c-enter>` only acts on a
+        // highlighted row.
+        let state = jinn_domain::AppState::default_with_scope_focus();
+        state.frontend.attach_slices(slices.clone());
+        {
+            let mut host = jinn_slices::SliceHost::new(
+                &slices,
+                &mut viewport,
+                &overlay_views,
+                &routes,
+                &system,
+            );
+            jinn_project::activate(&mut host);
+            jinn_session_lifecycle::activate_picker(&mut host);
+        }
+        let mut this = Self {
+            slices,
+            routes,
+            config,
+            state,
+        };
+        this.open_project_picker();
+        this
+    }
+
+    /// Opens the project picker through the kernel, so its rows are seeded.
+    fn open_project_picker(&mut self) {
+        let result = self.dispatch(
+            "open-project-picker",
+            jinn_project_msg::project_picker_scope(),
+        );
+        if let Some(jinn_slices::ScopeSignal::Push(id)) = result.scope_signal {
+            self.state
+                .frontend
+                .scope_push(jinn_slices::FocusScope::Dynamic(id));
+        }
+    }
+
+    /// Runs one dynamic intent through the kernel.
+    ///
+    /// The kernel is the only place a scope signal is applied and a
+    /// scope-enter hook fires, so a test that dispatched the route action
+    /// directly would never observe the picker seeding itself.
+    fn dispatch(
+        &mut self,
+        action: &str,
+        scope: jinn_slices::SliceScopeId,
+    ) -> jinn_domain::IntentResult {
+        jinn_domain::IntentHandler::handle(
+            &jinn_domain::KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
+                scope, action, action,
+            )),
+            &mut self.state,
+            &self.slices,
+            &self.routes,
+            &self.config,
+        )
+    }
+
+    /// The project picker's `<c-enter>`: chain into the lifecycle picker.
+    fn press_control_enter(&mut self) -> jinn_domain::IntentResult {
+        self.dispatch(
+            "new-session-with-lifecycle",
+            jinn_project_msg::project_picker_scope(),
+        )
+    }
+
+    /// The lifecycle picker's cell.
+    fn lifecycle_cell(
+        &self,
+    ) -> jinn_slices::cell::TypedCell<jinn_session_lifecycle_msg::SessionLifecyclePickerState>
+    {
+        self.slices
+            .reader(&jinn_session_lifecycle_msg::session_lifecycle_picker_slot())
+            .expect("the lifecycle picker registers its cell at activation")
+    }
+
+    /// The lifecycle names the filter currently shows, in display order.
+    fn visible_lifecycles(&self) -> Vec<String> {
+        let cell = self.lifecycle_cell();
+        let guard = cell.read();
+        (0..guard.selection.filtered_count())
+            .filter_map(|i| guard.selection.filtered_item(i))
+            .map(|item| item.entry().name.clone())
+            .collect()
+    }
+
+    /// The lifecycle picker's filter text.
+    fn lifecycle_filter(&self) -> String {
+        self.lifecycle_cell().read().selection.filter().to_owned()
+    }
+
+    /// Types into the lifecycle picker's filter through its input hook.
+    fn type_into_lifecycle_filter(&self, ch: char) {
+        let hook = self
+            .routes
+            .input_hook(&jinn_session_lifecycle_msg::session_lifecycle_picker_scope())
+            .expect("the lifecycle picker registers a filter hook");
+        hook(&EditIntent::InsertChar(ch))
+            .expect("the filter hook always consumes the edit");
+    }
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn project_control_enter_populates_the_lifecycle_picker() {
+    // Given both pickers activated on a boot where the lifecycle picker has
+    // never been opened.
+    let mut cross = CrossSlice::new().await;
+    assert!(
+        cross.visible_lifecycles().is_empty(),
+        "the lifecycle picker starts unpopulated — that is the bug this guards"
+    );
+
+    // When the project picker's `<c-enter>` runs.
+    cross.press_control_enter();
+
+    // Then the lifecycle picker lists blank plus the configured lifecycle.
+    assert_eq!(
+        cross.visible_lifecycles(),
+        vec!["blank".to_owned(), "dev".to_owned()]
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn project_control_enter_clears_a_stale_filter() {
+    // Given a lifecycle picker already visited and filtered.
+    let mut cross = CrossSlice::new().await;
+    cross.press_control_enter();
+    cross.type_into_lifecycle_filter('z');
+    assert_eq!(
+        cross.lifecycle_filter(),
+        "z",
+        "the filter is stale before the reopen"
+    );
+
+    // When the project picker's `<c-enter>` runs again.
+    cross.press_control_enter();
+
+    // Then the filter is empty.
+    assert_eq!(cross.lifecycle_filter(), "");
+}

@@ -51,8 +51,8 @@ requires `H: Clone`; `Arc<dyn Fn...>` satisfies it for free. Verified `key_bytes
 - [x] Add test: reopening the picker after typing a filter leaves the filter empty
 - [x] Add test: reopening moves the highlight back to the first row
 - [x] Verify the existing test `opening_the_picker_lists_every_configured_lifecycle_after_blank` still passes unmodified in intent
-- [ ] Add cross-slice regression test in `tests/slices/session_lifecycle.rs`: project `<c-enter>` populates the lifecycle picker with blank + configured lifecycles, exercising the scope-push path
-- [ ] Add cross-slice test in `tests/slices/session_lifecycle.rs`: project `<c-enter>` clears a stale filter typed during a previous visit
+- [x] Add cross-slice regression test in `tests/slices/session_lifecycle.rs`: project `<c-enter>` populates the lifecycle picker with blank + configured lifecycles, exercising the scope-push path
+- [x] Add cross-slice test in `tests/slices/session_lifecycle.rs`: project `<c-enter>` clears a stale filter typed during a previous visit
 
 **Notes:**
 - `Wired::open()` was **split into two helpers** rather than one, because several existing tests
@@ -61,7 +61,17 @@ requires `H: Clone`; `Arc<dyn Fn...>` satisfies it for free. Verified `key_bytes
   `take()` that field and break them. Now: `fire()` dispatches and leaves the signal intact;
   `apply_signal()` consumes one; `open()` = fire + apply.
 - All 28 pre-existing picker tests pass unmodified; the two new reset tests pass and each asserts
-  its "Given" precondition first so neither can pass vacuously.
+  its "Given" precondition first so neither can pass vacuous.
+- The cross-slice tests drive **`IntentHandler::handle`**, not `routes.action_for`, because the
+  kernel is the only place a scope signal is applied and an enter hook fires. Dispatching the
+  action directly would skip the very mechanism under test.
+- The config key is `[[project.entry]]`, not `[[project]]` (confirmed at
+  `crates/jinn-preferences-config/src/schemas/project.rs:17`).
+- **Both cross-slice tests were verified to fail without the hook** — temporarily disabling
+  `register_session_lifecycle_picker_enter_hook` reproduces the reported symptoms exactly
+  (`left: []` vs `right: ["blank","dev"]`, and a stale filter of `"z"`). They are not vacuous.
+- Config, state, and route tables are shared across both slices in one `CrossSlice` harness, since
+  the two openers only meet in production through one route table and one cell registry.
 
 ## Phase 4 — Remove the dead `N` row
 
