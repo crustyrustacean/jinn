@@ -296,7 +296,6 @@ pub fn handle_fork_from_entry(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     };
 
-    tracing::warn!(session_id = %source_session_id, "SPAM 10:chat_entry_selection begin_load");
     state.session.begin_load(source_session_id.clone());
 
     IntentResult::new_message(SessionForkRequested {

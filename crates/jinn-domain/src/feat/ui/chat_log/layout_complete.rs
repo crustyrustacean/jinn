@@ -117,7 +117,17 @@ impl LayoutCompletionActor {
                 return LayoutApplied::DiscardedInactive;
             }
             let session = state.session.get(&computed.session_id);
-            if session.is_some_and(|s| s.content_width() != computed.content_width) {
+            if session.is_some_and(|s| {
+                let rendered_at = s.content_width();
+                // Zero means the session has not rendered a single frame yet,
+                // so there is no width for these counts to be stale against.
+                // Only the render pass records a width, and a session that was
+                // just loaded has not reached it — treating that as a mismatch
+                // discarded every measurement for a freshly loaded session and
+                // sent the next frame back to measuring the same entries
+                // inline, on the thread that has to paint them.
+                rendered_at != 0 && rendered_at != computed.content_width
+            }) {
                 // The chat log was resized while the measurement ran. These
                 // counts describe a width nothing is rendering at, so the
                 // next frame must measure again.
@@ -137,13 +147,6 @@ impl LayoutCompletionActor {
         // Released by id: the guard is one shared slot, and a measurement that
         // finishes after the user moved on must not free the session that is
         // loading now.
-        tracing::warn!(
-            session_id = %computed.session_id,
-            ?outcome,
-            width = computed.content_width,
-            active_width = self.state.read().active_session().content_width(),
-            "SPAM 6:layout_complete outcome"
-        );
         if matches!(outcome, Outcome::Current | Outcome::Stale) {
             self.state.with_session(|view| {
                 view.session.map().clear_load_for(&computed.session_id);
@@ -176,20 +179,12 @@ impl LayoutCompletionActor {
                 wrapped_count: count.wrapped_count,
             })
             .collect();
-        let t_store = std::time::Instant::now();
         state
             .frontend
             .caches
             .entry_line_cache
             .write()
             .insert_counts(&measured, computed.content_width);
-        tracing::warn!(
-            session_id = %computed.session_id,
-            counts = measured.len(),
-            width = computed.content_width,
-            store_us = t_store.elapsed().as_micros(),
-            "SPAM 5:layout_complete stored counts into the cache"
-        );
     }
 }
 

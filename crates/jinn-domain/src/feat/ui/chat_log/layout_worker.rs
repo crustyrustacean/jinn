@@ -118,9 +118,7 @@ impl MsgHandler<LayoutChatSession> for LayoutWorkerActor {
         // The per-entry render inputs (expanded set, streaming tool calls,
         // subagent phases) live in application state, so they are snapshotted
         // once here rather than threaded through the message.
-        let t_recv = std::time::Instant::now();
         let inputs = LayoutInputs::snapshot(&self.state.read(), &msg.session_id);
-        let t_snap = std::time::Instant::now();
 
         // Measuring a large history is seconds of pure CPU. Off the actor's
         // thread so a long job cannot stall the pool's other messages.
@@ -130,13 +128,10 @@ impl MsgHandler<LayoutChatSession> for LayoutWorkerActor {
         // handle, not a copy: the entries are already an `Arc` shared with the
         // load actor, so taking one for the blocking thread is a pointer bump
         // and only the small id-keyed set is duplicated.
-        let entries_len = msg.entries.len();
         let job = MeasureJob::from(msg);
         let measured = tokio::task::spawn_blocking(move || measure(&job, &inputs))
             .await
             .unwrap_or_default();
-        let t_done = std::time::Instant::now();
-        let measured_count = measured.len();
 
         ctx.publish(ChatLogLayoutComputed {
             session_id: msg.session_id.clone(),
@@ -153,15 +148,6 @@ impl MsgHandler<LayoutChatSession> for LayoutWorkerActor {
                 })
                 .collect(),
         });
-        tracing::warn!(
-            session_id = %msg.session_id,
-            entries = entries_len,
-            measured = measured_count,
-            width = msg.content_width,
-            snapshot_ms = t_snap.duration_since(t_recv).as_millis(),
-            measure_ms = t_done.duration_since(t_snap).as_millis(),
-            "SPAM 4:layout_worker measured and published"
-        );
     }
 }
 

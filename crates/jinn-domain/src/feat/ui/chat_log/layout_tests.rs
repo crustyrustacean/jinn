@@ -262,6 +262,56 @@ fn a_completed_layout_clears_the_load_even_at_a_stale_width() {
 }
 
 #[rstest::rstest]
+fn a_result_for_a_session_that_has_never_rendered_is_used() {
+    // Given a session that has just been loaded and has therefore never
+    // painted a frame, so it records no width of its own.
+    let (state, session_id) = state_with_entries(2, 60);
+    {
+        // Forget the width, as a session that has not painted a frame would be.
+        state
+            .write()
+            .session
+            .get_mut(&session_id)
+            .expect("active session")
+            .set_content_width(0);
+    }
+    assert_eq!(
+        state
+            .read()
+            .session
+            .get(&session_id)
+            .unwrap()
+            .content_width(),
+        0,
+        "fixture must start with a never-rendered session"
+    );
+    let job = job_for(&state, &session_id, 60);
+    let inputs = inputs_for(&state, &session_id);
+    let measured = measure(&MeasureJob::from(&job), &inputs);
+    let actor = LayoutCompletionActor::spawnless(LayoutCompletionActorDeps {
+        state: state.clone(),
+    });
+
+    // When a result measured at the width the chat log is about to render at
+    // is applied.
+    let applied = actor.apply(&computed(&session_id, 60, measured));
+
+    // Then the counts are used rather than discarded as stale.
+    assert_eq!(applied, LayoutApplied::Applied);
+    // And the session's own width is still unset, so the next frame is the
+    // one that records it.
+    assert_eq!(
+        state
+            .read()
+            .session
+            .get(&session_id)
+            .unwrap()
+            .content_width(),
+        0
+    );
+}
+
+#[rstest::rstest]
 fn a_result_for_an_inactive_session_is_discarded() {
     // Given a loading session and a result for some other session.
     let (state, session_id) = state_with_entries(2, 60);

@@ -200,23 +200,15 @@ impl UiElement for ChatLogElement {
                 &mut self.throbber_state,
                 &mut self.last_advance,
             );
-            tracing::warn!("RPROBE0 frame=loading_spinner");
             return;
         }
 
-        let t0 = std::time::Instant::now();
         let mut render = HistoryRender::new(state, area);
-        let t_new = std::time::Instant::now();
         render.compute_visual_items();
-        let t_vi = std::time::Instant::now();
         render.build_tool_result_map();
-        let t_tool = std::time::Instant::now();
         {
-            let t_lock = std::time::Instant::now();
             let mut cache = state.frontend.caches.entry_line_cache.write();
-            let t_got_lock = std::time::Instant::now();
             render.compute_line_ranges(&mut cache);
-            let t_ranges = std::time::Instant::now();
             render.compute_scroll();
 
             {
@@ -232,30 +224,9 @@ impl UiElement for ChatLogElement {
                 session.set_content_width(render.content_width);
             }
 
-            let t_scroll = std::time::Instant::now();
             render.find_visible_indices();
-            let t_vis = std::time::Instant::now();
             render.build_blank_lines();
             render.render_visible_entries(&mut cache);
-            let t_drew = std::time::Instant::now();
-            tracing::warn!(
-                session_id = %render.session_id,
-                entries = render.history.len(),
-                visual_items = render.visual_items.len(),
-                visible = render.visible_indices.len(),
-                width = render.content_width,
-                "RPROBE new_ms={} visual_items_ms={} tool_map_ms={} lock_wait_ms={}                  line_ranges_ms={} scroll_ms={} find_visible_ms={} draw_ms={} TOTAL_MS={}",
-                t_new.duration_since(t0).as_millis(),
-                t_vi.duration_since(t_new).as_millis(),
-                t_tool.duration_since(t_vi).as_millis(),
-                t_got_lock.duration_since(t_lock).as_millis(),
-                t_ranges.duration_since(t_got_lock).as_millis(),
-                t_scroll.duration_since(t_ranges).as_millis(),
-                t_vis.duration_since(t_scroll).as_millis(),
-                t_drew.duration_since(t_vis).as_millis(),
-                t_drew.duration_since(t0).as_millis(),
-            );
-            let _ = t_got_lock;
         }
         render.paint(frame);
     }
@@ -378,20 +349,8 @@ pub fn is_session_measured(
     let Some(session) = state.session.get(session_id) else {
         return false;
     };
-    let t_cov = std::time::Instant::now();
     let probe = CoverageProbe::new(state, session, content_width);
-    let t_setup = std::time::Instant::now();
-    let covered = probe.all_cached(cache);
-    tracing::warn!(
-        session_id = %session_id,
-        entries = session.history().len(),
-        content_width,
-        covered,
-        "RPROBE3 is_session_measured setup_ms={} walk_ms={}",
-        t_setup.duration_since(t_cov).as_millis(),
-        t_cov.elapsed().as_millis(),
-    );
-    covered
+    probe.all_cached(cache)
 }
 
 /// The per-session inputs a coverage check resolves, gathered once so the walk
@@ -429,15 +388,13 @@ impl<'a> CoverageProbe<'a> {
     ///
     /// One `for` loop: the walk is the whole check.
     fn all_cached(&self, cache: &mut EntryLineCache) -> bool {
-        let t_ac = std::time::Instant::now();
         let visual_items = build_visual_items(
             self.history,
             &self.shown_ignored_blocks,
             PROXIMITY_COUNT,
             self.min_collapse_count,
         );
-        let t_bvi = std::time::Instant::now();
-        let covered = visual_items.iter().all(|item| match item {
+        visual_items.iter().all(|item| match item {
             // A collapsed block is always exactly one line and is never stored
             // in the cache, so probing it would report a miss that no
             // measurement could ever fix.
@@ -456,15 +413,7 @@ impl<'a> CoverageProbe<'a> {
                     .hit
                     .is_some()
             }
-        });
-        tracing::warn!(
-            items = visual_items.len(),
-            covered,
-            "RPROBE4 all_cached build_visual_items_ms={} walk_ms={}",
-            t_bvi.duration_since(t_ac).as_millis(),
-            t_bvi.elapsed().as_millis(),
-        );
-        covered
+        })
     }
 
     /// The render-variant key this entry would be probed under, computed
@@ -597,8 +546,6 @@ struct HistoryRender<'a> {
     content_lines: Vec<Line<'static>>,
     gutter_lines: Vec<Line<'static>>,
     lines_before_viewport: u32,
-    /// RPROBE: which session this frame is rendering.
-    session_id: SessionId,
 }
 
 impl<'a> HistoryRender<'a> {
@@ -619,7 +566,6 @@ impl<'a> HistoryRender<'a> {
         let running_children = running_session_ids(state);
         Self {
             history: state.active_session().history(),
-            session_id: state.active_session().session_id().clone(),
             selected_idx: state.active_session().selected_entry_index(),
             state,
             content_width: content_area.width,
@@ -701,23 +647,8 @@ impl<'a> HistoryRender<'a> {
     /// for reuse in Pass 2. On a miss, lines are rendered, stored in both the cache
     /// (via `insert_with_lines`) and `miss_lines`.
     #[expect(clippy::expect_used, reason = "infallible")]
-    #[expect(
-        clippy::too_many_lines,
-        reason = "probe instrumentation inflates the loop; removed with it"
-    )]
     fn compute_line_ranges(&mut self, cache: &mut EntryLineCache) {
-        let t_loop = std::time::Instant::now();
         let mut wrapped_cursor: u32 = 0;
-        let mut rprobe_hits: u64 = 0;
-        let mut rprobe_misses: u64 = 0;
-        let mut rprobe_probes: u64 = 0;
-        let mut rprobe_probe_ns: u128 = 0;
-        let mut rprobe_etl_ns: u128 = 0;
-        let mut rprobe_wrap_ns: u128 = 0;
-        let mut rprobe_arc_ns: u128 = 0;
-        let mut rprobe_insert_ns: u128 = 0;
-        let mut rprobe_state_ns: u128 = 0;
-        let mut rprobe_variant_ns: u128 = 0;
 
         for (vi_idx, item) in self.visual_items.iter().enumerate() {
             match item {
@@ -726,29 +657,17 @@ impl<'a> HistoryRender<'a> {
                         .history
                         .get(*hist_idx)
                         .expect("hist_idx from visual_items");
-                    let t_state = std::time::Instant::now();
                     let is_expanded = self.state.active_session().is_entry_expanded(&entry.id);
-                    rprobe_state_ns += t_state.elapsed().as_nanos();
 
                     // Variant hash covers status-derived look inputs; a
                     // changed variant forces a re-render even when the
                     // entry's content fingerprint is unchanged.
-                    let t_variant = std::time::Instant::now();
                     let variant = render_variant(
                         self.paired_status_for_entry(entry),
                         self.is_streaming_tool_call(entry),
                         self.is_task_waiting(entry),
                     );
-                    rprobe_variant_ns += t_variant.elapsed().as_nanos();
-                    let t_probe = std::time::Instant::now();
                     let probe = cache.probe(entry, is_expanded, variant, self.content_width);
-                    rprobe_probe_ns += t_probe.elapsed().as_nanos();
-                    rprobe_probes += 1;
-                    if probe.hit.is_some() {
-                        rprobe_hits += 1;
-                    } else {
-                        rprobe_misses += 1;
-                    }
                     if let Some(hit) = probe.hit {
                         let start = wrapped_cursor;
                         let end = wrapped_cursor + hit.wrapped_count;
@@ -780,10 +699,7 @@ impl<'a> HistoryRender<'a> {
                             is_streaming,
                             is_waiting_on_subagent,
                         };
-                        let t_etl = std::time::Instant::now();
                         let lines = entry_to_lines(entry, &ctx);
-                        rprobe_etl_ns += t_etl.elapsed().as_nanos();
-                        let t_wrap = std::time::Instant::now();
                         let wrapped_count: u32 = if self.content_width == 0 {
                             lines.len() as u32
                         } else {
@@ -791,11 +707,6 @@ impl<'a> HistoryRender<'a> {
                                 .wrap(Wrap { trim: false })
                                 .line_count(self.content_width) as u32
                         };
-                        rprobe_wrap_ns += t_wrap.elapsed().as_nanos();
-                        let t_arc = std::time::Instant::now();
-                        let rendered = Arc::new(lines.clone());
-                        rprobe_arc_ns += t_arc.elapsed().as_nanos();
-                        let t_ins = std::time::Instant::now();
                         cache.insert_with_lines(
                             entry,
                             probe.content,
@@ -803,9 +714,8 @@ impl<'a> HistoryRender<'a> {
                             variant,
                             self.content_width,
                             wrapped_count,
-                            rendered,
+                            Arc::new(lines.clone()),
                         );
-                        rprobe_insert_ns += t_ins.elapsed().as_nanos();
 
                         let start = wrapped_cursor;
                         let end = wrapped_cursor + wrapped_count;
@@ -826,26 +736,7 @@ impl<'a> HistoryRender<'a> {
         }
 
         self.total_wrapped = wrapped_cursor;
-        let t_evict = std::time::Instant::now();
         cache.evict_if_needed();
-        tracing::warn!(
-            "RPROBE2 probes={} hits={} misses={} miss_pct={} state_ns={} variant_ns={}              probe_ns={} ETL_NS={} wrap_ns={} arc_ns={} insert_ns={} loop_ms={} evict_us={}",
-            rprobe_probes,
-            rprobe_hits,
-            rprobe_misses,
-            (rprobe_misses * 100)
-                .checked_div(rprobe_probes)
-                .unwrap_or(0),
-            rprobe_state_ns,
-            rprobe_variant_ns,
-            rprobe_probe_ns,
-            rprobe_etl_ns,
-            rprobe_wrap_ns,
-            rprobe_arc_ns,
-            rprobe_insert_ns,
-            t_loop.elapsed().as_millis(),
-            t_evict.elapsed().as_micros(),
-        );
     }
 
     /// Look up the paired tool result status for an entry (if applicable).
