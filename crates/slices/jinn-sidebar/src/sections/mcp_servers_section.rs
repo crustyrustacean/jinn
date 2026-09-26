@@ -20,6 +20,8 @@ use crate::sections::section_trait::{
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::render_ctx::RenderCtx;
 use jinn_mcp_msg::McpConnectionStatus;
+use jinn_mcp_msg::config::McpServersConfig;
+use jinn_slices::ConfigLayer;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -80,12 +82,11 @@ impl ServerRowState {
 ///
 /// Only enabled servers are surfaced in the sidebar; disabled ones are omitted
 /// entirely (they are toggled on via the picker).
-pub(crate) fn enabled_server_names(state: &AppState) -> Vec<String> {
+pub(crate) fn enabled_server_names(state: &AppState, config: &ConfigLayer) -> Vec<String> {
     let enabled = state.active_session().enabled_mcp_servers();
-    state
-        .frontend
-        .preferences
-        .mcp_server
+    config
+        .get::<McpServersConfig>()
+        .unwrap_or_default()
         .iter()
         .filter(|(name, _)| enabled.contains(name.as_str()))
         .map(|(name, _)| name.clone())
@@ -97,8 +98,12 @@ pub(crate) fn enabled_server_names(state: &AppState) -> Vec<String> {
 /// Moves the cursor up/down through the enabled-servers list. Exhausts at
 /// the list boundaries so the sidebar can move focus to the neighbor section.
 /// The section does NOT modify its cursor on exhaustion.
-pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResult {
-    let count = enabled_server_names(state).len();
+pub fn navigate(
+    intent: &SidebarIntent,
+    state: &mut AppState,
+    config: &ConfigLayer,
+) -> SectionNavResult {
+    let count = enabled_server_names(state, config).len();
     if count == 0 {
         return SectionNavResult::Exhausted;
     }
@@ -135,8 +140,8 @@ pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResul
 /// Place the cursor on this section from a given direction.
 ///
 /// Positions at the edge of the list: index 0 from top, last index from bottom.
-pub fn receive_cursor(state: &mut AppState, enter_from: EnterFrom) {
-    let count = enabled_server_names(state).len();
+pub fn receive_cursor(state: &mut AppState, enter_from: EnterFrom, config: &ConfigLayer) {
+    let count = enabled_server_names(state, config).len();
     if count == 0 {
         return;
     }
@@ -189,10 +194,8 @@ impl SidebarSection for McpServersSection {
                 .map(|runtime| runtime.read().statuses(state.active_session().session_id()))
                 .unwrap_or_default();
             // Only enabled servers are surfaced; disabled ones are omitted entirely.
-            let servers: Vec<_> = state
-                .frontend
-                .preferences
-                .mcp_server
+            let configured = ctx.config.get::<McpServersConfig>().unwrap_or_default();
+            let servers: Vec<_> = configured
                 .iter()
                 .filter(|(name, _)| enabled.contains(name.as_str()))
                 .collect();
@@ -243,10 +246,9 @@ impl SidebarSection for McpServersSection {
         // matching the Pins/TaskList pattern so disabled servers waste no space.
         let enabled = ctx.state.active_session().enabled_mcp_servers();
         let count = ctx
-            .state
-            .frontend
-            .preferences
-            .mcp_server
+            .config
+            .get::<McpServersConfig>()
+            .unwrap_or_default()
             .iter()
             .filter(|(name, _)| enabled.contains(name.as_str()))
             .count();
@@ -273,6 +275,7 @@ mod tests {
     use crate::sections::section_trait::{
         EnterFrom, SectionNavResult, SidebarIntent, SidebarSection,
     };
+    use jinn_config::ConfigLayer;
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::render_ctx::RenderCtx;
     use jinn_mcp_msg::McpConnectionStatus;
@@ -290,13 +293,24 @@ mod tests {
         )
     }
 
-    fn render_rows(state: &AppState, width: u16, height: u16) -> Vec<String> {
+    /// A layer whose `[mcp]` section configures the given servers — the
+    /// section the section reads enabled names from.
+    fn config_with_servers(servers: &[(String, McpServerConfig)]) -> ConfigLayer {
+        let document: String = servers
+            .iter()
+            .map(|(name, _)| format!("[mcp.{name}]\ncommand = \"echo\"\n"))
+            .collect();
+        jinn_config::testutil::config_layer(&document)
+    }
+
+    fn render_rows(state: &AppState, config: &ConfigLayer, width: u16, height: u16) -> Vec<String> {
         let slices = jinn_slices::Slices::new();
-        render_rows_with_slices(state, width, height, &slices)
+        render_rows_with_slices(state, config, width, height, &slices)
     }
 
     fn render_rows_with_slices(
         state: &AppState,
+        config: &ConfigLayer,
         width: u16,
         height: u16,
         slices: &jinn_slices::Slices,
@@ -306,7 +320,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new_with_default_config(state, slices, &overlay_views);
+                let ctx = RenderCtx::new(state, slices, &overlay_views, config);
                 section.render(frame, area, &ctx);
             })
             .unwrap();
@@ -324,10 +338,13 @@ mod tests {
             .collect()
     }
 
-    fn state_with_servers(servers: &[(String, McpServerConfig)]) -> AppState {
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.preferences.mcp_server = servers.iter().cloned().collect();
-        state
+    /// State over a document configuring `servers`, plus that document's
+    /// layer — the servers live in config, not in the state snapshot.
+    fn state_with_servers(servers: &[(String, McpServerConfig)]) -> (AppState, ConfigLayer) {
+        (
+            AppState::default_with_scope_focus(),
+            config_with_servers(servers),
+        )
     }
 
     #[rstest::rstest]
@@ -343,10 +360,10 @@ mod tests {
     #[rstest::rstest]
     fn render_shows_header() {
         // Given state with no configured servers.
-        let state = state_with_servers(&[]);
+        let (state, config) = state_with_servers(&[]);
 
         // When rendering.
-        let rows = render_rows(&state, 30, 5);
+        let rows = render_rows(&state, &config, 30, 5);
 
         // Then the first row contains the MCP servers header.
         assert!(rows[0].contains("MCP servers"));
@@ -355,10 +372,10 @@ mod tests {
     #[rstest::rstest]
     fn render_disabled_server_is_hidden() {
         // Given a configured server not enabled for the active session.
-        let state = state_with_servers(&[server("excalimate")]);
+        let (state, config) = state_with_servers(&[server("excalimate")]);
 
         // When rendering.
-        let rows = render_rows(&state, 40, 5);
+        let rows = render_rows(&state, &config, 40, 5);
 
         // Then the disabled server does not appear at all.
         let combined = rows.join("\n");
@@ -371,11 +388,11 @@ mod tests {
     #[rstest::rstest]
     fn render_enabled_no_status_shows_starting() {
         // Given an enabled server with no status event yet.
-        let mut state = state_with_servers(&[server("excalimate")]);
+        let (mut state, config) = state_with_servers(&[server("excalimate")]);
         state.active_session_mut().enable_mcp_server("excalimate");
 
         // When rendering.
-        let rows = render_rows(&state, 40, 5);
+        let rows = render_rows(&state, &config, 40, 5);
 
         // Then the row shows the starting label.
         let combined = rows.join("\n");
@@ -388,7 +405,7 @@ mod tests {
     #[rstest::rstest]
     fn render_running_status_shows_running() {
         // Given an enabled server reporting Running.
-        let mut state = state_with_servers(&[server("excalimate")]);
+        let (mut state, config) = state_with_servers(&[server("excalimate")]);
         state.active_session_mut().enable_mcp_server("excalimate");
         let slices = jinn_slices::Slices::new();
         let session_id = state.active_session().session_id().clone();
@@ -403,7 +420,7 @@ mod tests {
         });
 
         // When rendering.
-        let rows = render_rows_with_slices(&state, 40, 5, &slices);
+        let rows = render_rows_with_slices(&state, &config, 40, 5, &slices);
 
         // Then the row shows the running label.
         let combined = rows.join("\n");
@@ -413,7 +430,7 @@ mod tests {
     #[rstest::rstest]
     fn render_dead_status_shows_dead() {
         // Given an enabled server reporting Dead.
-        let mut state = state_with_servers(&[server("excalimate")]);
+        let (mut state, config) = state_with_servers(&[server("excalimate")]);
         state.active_session_mut().enable_mcp_server("excalimate");
         let slices = jinn_slices::Slices::new();
         let session_id = state.active_session().session_id().clone();
@@ -428,7 +445,7 @@ mod tests {
         });
 
         // When rendering.
-        let rows = render_rows_with_slices(&state, 40, 5, &slices);
+        let rows = render_rows_with_slices(&state, &config, 40, 5, &slices);
 
         // Then the row shows the dead label.
         let combined = rows.join("\n");
@@ -440,7 +457,7 @@ mod tests {
         // Given two configured servers: alpha enabled for the active session (A),
         // beta enabled only for a different session (B).
         use jinn_core_types::SessionId;
-        let mut state = state_with_servers(&[server("alpha"), server("beta")]);
+        let (mut state, config) = state_with_servers(&[server("alpha"), server("beta")]);
         let session_b = SessionId::new();
         state
             .session
@@ -449,7 +466,7 @@ mod tests {
         state.active_session_mut().enable_mcp_server("alpha");
 
         // When rendering the active session (A).
-        let rows = render_rows(&state, 40, 6);
+        let rows = render_rows(&state, &config, 40, 6);
 
         // Then alpha (enabled for A) renders, and beta (enabled only for B)
         // does not leak into the active session's render.
@@ -466,17 +483,14 @@ mod tests {
     #[test]
     fn content_height_is_zero_when_none_enabled() {
         // Given configured servers, none enabled for the active session.
-        let state = state_with_servers(&[server("alpha"), server("beta")]);
+        let (state, config) = state_with_servers(&[server("alpha"), server("beta")]);
         let section = McpServersSection;
 
         // When computing the content height.
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
-        let height = section.content_height(&RenderCtx::new_with_default_config(
-            &state,
-            &slices,
-            &overlay_views,
-        ));
+        let height =
+            section.content_height(&RenderCtx::new(&state, &slices, &overlay_views, &config));
 
         // Then the section collapses to zero height (hidden).
         assert_eq!(
@@ -489,7 +503,8 @@ mod tests {
     #[test]
     fn content_height_counts_only_enabled_servers() {
         // Given three configured servers, two enabled for the active session.
-        let mut state = state_with_servers(&[server("alpha"), server("beta"), server("gamma")]);
+        let (mut state, config) =
+            state_with_servers(&[server("alpha"), server("beta"), server("gamma")]);
         state.active_session_mut().enable_mcp_server("alpha");
         state.active_session_mut().enable_mcp_server("gamma");
         let section = McpServersSection;
@@ -497,11 +512,8 @@ mod tests {
         // When computing the content height.
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
-        let height = section.content_height(&RenderCtx::new_with_default_config(
-            &state,
-            &slices,
-            &overlay_views,
-        ));
+        let height =
+            section.content_height(&RenderCtx::new(&state, &slices, &overlay_views, &config));
 
         // Then it counts only the enabled servers:
         // header(1) + blank(1) + 2 rows + trailing gap(1) = 5.
@@ -512,7 +524,8 @@ mod tests {
     #[test]
     fn navigate_exhausts_at_enabled_subset_boundary() {
         // Given two enabled servers with the cursor on the last one.
-        let mut state = state_with_servers(&[server("alpha"), server("beta"), server("gamma")]);
+        let (mut state, config) =
+            state_with_servers(&[server("alpha"), server("beta"), server("gamma")]);
         state.active_session_mut().enable_mcp_server("alpha");
         state.active_session_mut().enable_mcp_server("gamma");
         state
@@ -520,7 +533,7 @@ mod tests {
             .update_sections(|s| s.mcp_servers.selected_index = Some(1)); // last enabled
 
         // When moving down past the last enabled server.
-        let result = navigate(&SidebarIntent::MoveDown, &mut state);
+        let result = navigate(&SidebarIntent::MoveDown, &mut state, &config);
 
         // Then navigation exhausts (only 2 enabled servers, indices 0 and 1).
         assert_eq!(result, SectionNavResult::Exhausted);
@@ -530,12 +543,13 @@ mod tests {
     #[test]
     fn receive_cursor_enters_enabled_subset_from_top() {
         // Given enabled servers (alpha, gamma) with no cursor.
-        let mut state = state_with_servers(&[server("alpha"), server("beta"), server("gamma")]);
+        let (mut state, config) =
+            state_with_servers(&[server("alpha"), server("beta"), server("gamma")]);
         state.active_session_mut().enable_mcp_server("alpha");
         state.active_session_mut().enable_mcp_server("gamma");
 
         // When entering the section from the top.
-        receive_cursor(&mut state, EnterFrom::Top);
+        receive_cursor(&mut state, EnterFrom::Top, &config);
 
         // Then the cursor lands on the first enabled server (index 0).
         assert_eq!(

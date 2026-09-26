@@ -776,7 +776,10 @@ fn enter_normal_mode_returns_to_normal_scope() {
     state.frontend.scope_push(FocusScope::Input);
 
     // When handling EnterNormalMode.
-    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then the scope is back to Normal.
     assert_eq!(state.frontend.scope(), FocusScope::Normal);
@@ -793,7 +796,10 @@ fn enter_normal_mode_clears_pending_creation() {
         });
 
     // When handling EnterNormalMode (ESC from the project/lifecycle chain).
-    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then the stash is cleared so it never leaks into a future session
     // creation.
@@ -809,7 +815,10 @@ fn enter_normal_mode_from_input_emits_no_commands() {
     state.frontend.scope_push(FocusScope::Input);
 
     // When handling EnterNormalMode.
-    let result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let result = crate::feat::chat_input::intent::handle_enter_normal_mode(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then no commands are emitted.
     assert!(result.message_names.is_empty());
@@ -827,7 +836,10 @@ fn enter_normal_mode_clears_picker_kind_when_leaving_picker() {
     });
 
     // When handling EnterNormalMode.
-    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then the scope is back to Normal (no picker).
     assert!(!state.frontend.is_picker());
@@ -846,7 +858,10 @@ fn enter_normal_mode_from_picker_emits_no_commands() {
     });
 
     // When handling EnterNormalMode.
-    let result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let result = crate::feat::chat_input::intent::handle_enter_normal_mode(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then no commands are emitted.
     assert!(result.message_names.is_empty());
@@ -864,7 +879,10 @@ fn enter_normal_mode_from_input_with_sidebar_returns_to_normal() {
     state.frontend.scope_push(FocusScope::Input);
 
     // When handling EnterNormalMode.
-    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then the scope is back to Normal (not the sidebar persona section).
     assert_eq!(state.frontend.scope(), FocusScope::Normal);
@@ -883,7 +901,10 @@ fn enter_normal_mode_from_sidebar_input_emits_no_commands() {
     state.frontend.scope_push(FocusScope::Input);
 
     // When handling EnterNormalMode.
-    let result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let result = crate::feat::chat_input::intent::handle_enter_normal_mode(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then no commands are emitted.
     assert!(result.message_names.is_empty());
@@ -899,7 +920,10 @@ fn enter_normal_mode_does_not_cancel_stream() {
     state.active_session_mut().begin_streaming();
 
     // When handling EnterNormalMode.
-    let result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let result = crate::feat::chat_input::intent::handle_enter_normal_mode(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then no CancelStream command is emitted.
     assert!(
@@ -920,7 +944,10 @@ fn enter_normal_mode_preserves_streaming_phase() {
     state.active_session_mut().begin_streaming();
 
     // When handling EnterNormalMode.
-    let _result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let _result = crate::feat::chat_input::intent::handle_enter_normal_mode(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then the session is still streaming (not cancelled).
     assert!(matches!(
@@ -949,7 +976,10 @@ fn enter_normal_mode_does_not_drain_queue() {
         )));
 
     // When handling EnterNormalMode.
-    let _result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let _result = crate::feat::chat_input::intent::handle_enter_normal_mode(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then the queued messages are NOT drained.
     assert_eq!(state.active_session().queue_len(), 2);
@@ -981,7 +1011,10 @@ fn enter_normal_mode_with_queue_emits_no_cancel_stream() {
         )));
 
     // When handling EnterNormalMode.
-    let result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let result = crate::feat::chat_input::intent::handle_enter_normal_mode(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then no CancelStream command is emitted.
     assert!(
@@ -1834,7 +1867,10 @@ fn enter_normal_mode_deactivates_hash_autocomplete() {
     state.update_active_input(|i| i.activate_autocomplete(0, AutocompleteTrigger::Hash, vec![]));
 
     // When handling EnterNormalMode.
-    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then autocomplete is deactivated.
     assert!(
@@ -1856,7 +1892,10 @@ fn enter_normal_mode_with_hash_autocomplete_stays_in_input_scope() {
     state.update_active_input(|i| i.activate_autocomplete(0, AutocompleteTrigger::Hash, vec![]));
 
     // When handling EnterNormalMode.
-    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then scope is still Input (not Normal).
     assert_eq!(
@@ -1876,7 +1915,10 @@ fn enter_normal_mode_deactivates_slash_autocomplete() {
     state.update_active_input(|i| i.activate_autocomplete(0, AutocompleteTrigger::Slash, vec![]));
 
     // When handling EnterNormalMode.
-    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then autocomplete is deactivated.
     assert!(
@@ -1898,7 +1940,10 @@ fn enter_normal_mode_with_slash_autocomplete_stays_in_input_scope() {
     state.update_active_input(|i| i.activate_autocomplete(0, AutocompleteTrigger::Slash, vec![]));
 
     // When handling EnterNormalMode.
-    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then scope is still Input (not Normal).
     assert_eq!(
@@ -1917,7 +1962,10 @@ fn enter_normal_mode_without_autocomplete_switches_to_normal() {
     state.frontend.scope_push(FocusScope::Input);
 
     // When handling EnterNormalMode.
-    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then scope switches to Normal.
     assert_eq!(
@@ -1937,7 +1985,10 @@ fn enter_normal_mode_dismissing_autocomplete_emits_no_commands() {
     state.update_active_input(|i| i.activate_autocomplete(0, AutocompleteTrigger::Hash, vec![]));
 
     // When handling EnterNormalMode.
-    let result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let result = crate::feat::chat_input::intent::handle_enter_normal_mode(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then no commands are emitted.
     assert!(result.message_names.is_empty());

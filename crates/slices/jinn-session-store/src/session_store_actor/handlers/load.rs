@@ -42,7 +42,7 @@ impl SessionStoreActor {
         session.mark_interacted();
         let original_cwd = session.cwd().to_path_buf();
 
-        self.state.with_preferences(|ops| {
+        self.state.with_frontend_state(|ops| {
             ops.frontend().update_sections(|sections| {
                 sections
                     .sessions

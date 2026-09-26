@@ -87,7 +87,11 @@ mod tests {
             .frontend
             .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
         // Navigate to select the second entry in the sorted list.
-        navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
+        navigate_sidebar(
+            &SidebarIntent::MoveDown,
+            &mut state,
+            jinn_slices::empty_config_layer(),
+        );
 
         // Determine which session is at index 1 (the selected one).
         let sessions = sorted_open_sessions(&state);
@@ -147,7 +151,11 @@ mod tests {
         state
             .frontend
             .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-        navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
+        navigate_sidebar(
+            &SidebarIntent::MoveDown,
+            &mut state,
+            jinn_slices::empty_config_layer(),
+        );
         let scope_before = state.frontend.scope().clone();
 
         // When handling session continue.

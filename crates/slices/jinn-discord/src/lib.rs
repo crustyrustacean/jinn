@@ -89,14 +89,12 @@ pub async fn activate(
     host: &mut jinn_slices::AppSliceHost<'_>,
     services: &jinn_domain::Services,
     state: jinn_domain::common::state::State,
-    resolve: &dyn Fn(&str) -> Option<toml::Table>,
-) -> Result<ActivatedDiscord, jinn_slices::ConfigSectionError> {
-    // Config section: typed read through the host, resolved eagerly —
-    // the value must exist before `take()` below. Staged as optional:
-    // a stock `jinn.toml` carries no `[discord]` table, and requiring
-    // one aborted the launch on exactly those installs.
-    let config_handle = host.config_section_optional::<DiscordConfig>("discord");
-    host.apply_sections(resolve)?;
+) -> Result<ActivatedDiscord, jinn_config::ConfigSectionError> {
+    // Config: read through the layer at the point of use. A stock
+    // `jinn.toml` carries no `[discord]` table, so absence must be a
+    // normal configuration (the disabled default) rather than a launch
+    // abort; a present-but-malformed one still aborts here.
+    let config = services.config.get::<DiscordConfig>()?;
 
     let system = host.system().clone();
 
@@ -127,7 +125,6 @@ pub async fn activate(
         system,
     });
 
-    let config = config_handle.take();
     host.set_flag("discord", config.enabled);
 
     // Conditionally spawn the bridge subscriber: trouper `jinn.session`
@@ -163,18 +160,20 @@ mod activate_tests {
     use jinn_slices::host::SliceHost;
     use jinn_slices::view::Viewport;
 
-    /// A stub document sink carrying a `[discord]` section body.
-    fn stub_doc(body: &'static str) -> impl Fn(&str) -> Option<toml::Table> {
-        let table: toml::Table = toml::from_str(body).expect("stub TOML parses");
-        let sections = std::collections::HashMap::from([("discord".to_owned(), table)]);
-        move |key| sections.get(key).cloned()
+    /// Fake services whose configuration layer carries a `[discord]`
+    /// section with `body` as its contents.
+    async fn services_with_discord(body: &str) -> jinn_domain::Services {
+        let mut services = jinn_domain::Services::new_fake().await;
+        services.config = jinn_config::testutil::config_layer(&format!("[discord]\n{body}"));
+        services
     }
 
-    /// A stub document sink over a document that carries no sections.
-    fn empty_doc() -> impl Fn(&str) -> Option<toml::Table> {
-        let sections: std::collections::HashMap<String, toml::Table> =
-            std::collections::HashMap::new();
-        move |key| sections.get(key).cloned()
+    /// Fake services over a document that carries no `[discord]` section —
+    /// a stock install.
+    async fn services_without_discord() -> jinn_domain::Services {
+        let mut services = jinn_domain::Services::new_fake().await;
+        services.config = jinn_config::testutil::config_layer("");
+        services
     }
 
     #[rstest::rstest]
@@ -186,7 +185,7 @@ mod activate_tests {
         let key_routes = KeyRoutes::new();
         let mut viewport = Viewport::new();
         let overlay_views = OverlayViews::<jinn_slices::RenderFacts>::new();
-        let services = jinn_domain::Services::new_fake().await;
+        let services = services_with_discord("enabled = true").await;
         let state = jinn_domain::common::state::State::new(
             jinn_domain::common::app_state::AppState::default(),
         );
@@ -197,10 +196,9 @@ mod activate_tests {
             &key_routes,
             &services.trouper_system,
         );
-        let resolve = stub_doc("enabled = true");
 
         // When activating the slice through the real path.
-        let activated = activate(&mut host, &services, state, &resolve)
+        let activated = activate(&mut host, &services, state)
             .await
             .expect("activation resolves the section");
 
@@ -218,7 +216,7 @@ mod activate_tests {
         let key_routes = KeyRoutes::new();
         let mut viewport = Viewport::new();
         let overlay_views = OverlayViews::<jinn_slices::RenderFacts>::new();
-        let services = jinn_domain::Services::new_fake().await;
+        let services = services_without_discord().await;
         let state = jinn_domain::common::state::State::new(
             jinn_domain::common::app_state::AppState::default(),
         );
@@ -229,10 +227,9 @@ mod activate_tests {
             &key_routes,
             &services.trouper_system,
         );
-        let resolve = empty_doc();
 
         // When activating the slice through the real path.
-        let activated = activate(&mut host, &services, state, &resolve)
+        let activated = activate(&mut host, &services, state)
             .await
             .expect("an absent section is a normal configuration");
 
@@ -250,7 +247,7 @@ mod activate_tests {
         let key_routes = KeyRoutes::new();
         let mut viewport = Viewport::new();
         let overlay_views = OverlayViews::<jinn_slices::RenderFacts>::new();
-        let services = jinn_domain::Services::new_fake().await;
+        let services = services_with_discord("enabled = \"maybe\"").await;
         let state = jinn_domain::common::state::State::new(
             jinn_domain::common::app_state::AppState::default(),
         );
@@ -261,10 +258,9 @@ mod activate_tests {
             &key_routes,
             &services.trouper_system,
         );
-        let resolve = stub_doc("enabled = \"maybe\"");
 
         // When activating.
-        let result = activate(&mut host, &services, state, &resolve).await;
+        let result = activate(&mut host, &services, state).await;
 
         // Then activation is the fail-fast gate: a section that is
         // present but malformed errors instead of proceeding on

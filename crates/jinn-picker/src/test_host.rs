@@ -75,6 +75,10 @@ impl FakeHost {
 }
 
 impl PickerHost for FakeHost {
+    fn config(&self) -> &jinn_config::ConfigLayer {
+        jinn_config::empty_config_layer()
+    }
+
     fn selection_state(&mut self, id: PickerId) -> Option<&mut dyn Any> {
         Some(self.states.get_mut(&id)?.as_mut())
     }

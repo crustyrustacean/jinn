@@ -142,6 +142,14 @@ pub struct FilesystemConfigStorage {
 }
 
 impl FilesystemConfigStorage {
+    /// A backend over the user's `jinn.toml` in the platform config dir.
+    #[must_use]
+    pub fn default_path() -> Self {
+        Self {
+            path: jinn_common::app_paths::AppPaths::default().preferences_path(),
+        }
+    }
+
     /// Points a backend at the document's path.
     #[must_use]
     pub fn new(path: PathBuf) -> Self {
@@ -393,24 +401,29 @@ impl ConfigLayer {
         };
 
         let mut doc = self.inner.doc.read().clone();
-        let mut patcher = DocumentPatcher::new();
-        patcher.register_array_key(T::KEY.split('.').collect::<Vec<_>>(), T::ENTRY_KEY);
 
         // Resolve the list's parent table, then hand the patcher a table
-        // carrying the entries under the list's own leaf key. That is the
-        // same shape `put` uses, so the array-key registry sees the
-        // registered path and matches entries by `ENTRY_KEY`.
+        // carrying the entries under the list's own leaf key.
+        //
+        // The array-key registry is consulted with paths relative to
+        // whatever table `apply` is handed, so a nested list registers
+        // the LEAF alone. Registering the root-relative path here would
+        // never match, and the patcher would then coerce the array into
+        // inline form — mangling the document.
         let (leaf, parent_path): (String, Vec<&str>) = match T::KEY.rsplit_once('.') {
             Some((head, leaf)) => (leaf.to_owned(), head.split('.').collect()),
             None => (T::KEY.to_owned(), Vec::new()),
         };
+        let mut patcher = DocumentPatcher::new();
+        patcher.register_array_key([static_leaf::<T>()], T::ENTRY_KEY);
+
         let parent = ensure_table(&mut doc, &parent_path)
             .change_context(PatchError::Generic)
             .change_context(ConfigError::Patch {
                 detail: format!("section [{}] did not apply", T::KEY),
             })?;
         let mut list_value = toml::value::Table::new();
-        list_value.insert(leaf, toml::Value::Array(entries));
+        list_value.insert(leaf.clone(), toml::Value::Array(entries));
         patcher
             .apply(&list_value, parent)
             .change_context(PatchError::Generic)
@@ -866,6 +879,18 @@ mod tests {
         const ENTRY_KEY: Option<EntryKey> = Some(EntryKey::new("regex.rules", "pattern"));
     }
 
+    /// One entry of the project list, the layer's list-of-tables section.
+    #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+    struct ProjectEntry {
+        #[serde(default)]
+        name: String,
+    }
+
+    impl ConfigList for ProjectEntry {
+        const KEY: &'static str = "project.projects";
+        const ENTRY_KEY: &'static str = "name";
+    }
+
     fn doc(body: &str) -> DocumentMut {
         body.parse::<DocumentMut>().expect("test document parses")
     }
@@ -1177,6 +1202,34 @@ mod tests {
         );
     }
 
+    // PINNED: the umbrella parent is not resolved as a table, so the list
+    // is rewritten inline and the user's comment above the umbrella goes
+    // with it. The capability is real; the layer does not deliver it yet.
+    #[rstest::rstest]
+    #[test]
+    fn put_list_under_an_umbrella_preserves_surrounding_document() {
+        // Given a document whose list lives under an umbrella, beside a
+        // sibling entry carrying a user comment.
+        let (layer, storage) = layer(
+            "# existing\n[[project.projects]]\nname = \"alpha\"\n\n[[project.global_command_policy]]\npattern = \"rm -rf\"\n",
+        );
+
+        // When the list under the umbrella is written back.
+        layer
+            .put_list::<ProjectEntry>(&[ProjectEntry {
+                name: "alpha".to_owned(),
+            }])
+            .expect("list writes");
+
+        // Then the sibling array-of-tables and its comment are untouched.
+        let text = storage.text();
+        assert!(text.contains("# existing"), "comment lost:\n{text}");
+        assert!(
+            text.contains("pattern = \"rm -rf\""),
+            "sibling list lost:\n{text}"
+        );
+    }
+
     #[rstest::rstest]
     #[test]
     fn reload_picks_up_external_edit() {
@@ -1358,4 +1411,12 @@ mod read_tests {
         // Then the default comes back rather than an error.
         assert_eq!(read, Watchdog::default());
     }
+}
+
+/// The leaf segment of a [`ConfigList`]'s dotted key, as a `&'static str`.
+///
+/// The patcher's array-key registry takes `&'static str` path segments.
+/// `T::KEY` is an associated const, so its segments are already `'static`.
+fn static_leaf<T: ConfigList>() -> &'static str {
+    T::KEY.rsplit('.').next().unwrap_or(T::KEY)
 }

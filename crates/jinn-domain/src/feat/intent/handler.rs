@@ -360,7 +360,9 @@ impl IntentHandler {
                 feat::chat_input::intent::handle_enter_insert_mode(state)
             }
             KernelIntent::EnterNormalMode => {
-                feat::chat_input::intent::handle_enter_normal_mode_with_pickers(state, pickers)
+                feat::chat_input::intent::handle_enter_normal_mode_with_pickers(
+                    state, pickers, config,
+                )
             }
             KernelIntent::ToggleWhichkey => feat::global::intent::handle_toggle_whichkey(state),
             KernelIntent::ToggleAuditPopup => {
@@ -370,10 +372,10 @@ impl IntentHandler {
             KernelIntent::NoOp => IntentResult::empty(),
 
             KernelIntent::OpenPicker { kind } => {
-                crate::feat::picker::intent::handle_open_picker(state, *kind, pickers)
+                crate::feat::picker::intent::handle_open_picker(state, *kind, pickers, config)
             }
             KernelIntent::PickerAction { picker, action } => {
-                crate::feat::picker::action::run_action(state, pickers, picker, action)
+                crate::feat::picker::action::run_action(state, pickers, picker, action, config)
             }
             KernelIntent::PickerInsertChar { ch } => {
                 crate::feat::picker::intent::handle_insert_char(state, *ch)
@@ -381,7 +383,7 @@ impl IntentHandler {
             KernelIntent::PickerBackspace => crate::feat::picker::intent::handle_backspace(state),
             KernelIntent::PickerConfirm => {
                 let (result, maybe_intent) =
-                    crate::feat::picker::intent::handle_picker_confirm(state, pickers);
+                    crate::feat::picker::intent::handle_picker_confirm(state, pickers, config);
                 if let Some(intent) = maybe_intent {
                     let redispatch =
                         IntentHandler::handle(&intent, state, slices, routes, pickers, config);
@@ -401,16 +403,16 @@ impl IntentHandler {
                 }
             }
             KernelIntent::PickerMoveUp => {
-                crate::feat::picker::intent::handle_move_up(state, pickers)
+                crate::feat::picker::intent::handle_move_up(state, pickers, config)
             }
             KernelIntent::PickerMoveDown => {
-                crate::feat::picker::intent::handle_move_down(state, pickers)
+                crate::feat::picker::intent::handle_move_down(state, pickers, config)
             }
             KernelIntent::PickerPageUp => {
-                crate::feat::picker::intent::handle_page_up(state, pickers)
+                crate::feat::picker::intent::handle_page_up(state, pickers, config)
             }
             KernelIntent::PickerPageDown => {
-                crate::feat::picker::intent::handle_page_down(state, pickers)
+                crate::feat::picker::intent::handle_page_down(state, pickers, config)
             }
             KernelIntent::PickerMoveCursorLeft => {
                 crate::feat::picker::intent::handle_move_cursor_left(state)
@@ -429,6 +431,7 @@ impl IntentHandler {
                     state,
                     PickerKind::SessionLifecycle,
                     pickers,
+                    config,
                 )
             }
 

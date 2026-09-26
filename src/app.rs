@@ -19,10 +19,8 @@ use jinn_domain::ProviderRegistryService;
 use jinn_domain::SessionStoreService;
 use jinn_preferences_config::AppStateStorageService;
 use jinn_preferences_config::FilesystemAppStateStorage;
-use jinn_preferences_config::FilesystemUserPreferencesStorage;
 use jinn_session_store::sqlite::SqliteSessionStore;
 
-use jinn_preferences_config::UserPreferencesStorageService;
 use tokio::runtime::Runtime;
 use wherror::Error;
 
@@ -209,17 +207,18 @@ impl App {
                 AppPaths, Destinations, InstallOutcome, InstallReport, JinnTomlOutcome,
                 install_defaults_to,
             };
-            use jinn_preferences_config::FilesystemUserPreferencesStorage;
 
             let app_paths = AppPaths::default();
-            let storage = FilesystemUserPreferencesStorage::default_path();
+            let config_path = jinn_config::FilesystemConfigStorage::default_path()
+                .path()
+                .to_path_buf();
             let destinations = Destinations::new(
                 app_paths.themes_dir(),
                 app_paths.personas_dir(),
                 app_paths.prompts_dir(),
                 app_paths.skills_dir(),
             );
-            match install_defaults_to(&destinations, *force, storage.path()) {
+            match install_defaults_to(&destinations, *force, &config_path) {
                 Ok(report) => {
                     let InstallReport {
                         outcomes,
@@ -271,31 +270,14 @@ impl App {
             (SessionStoreService::new(Arc::new(store)), pool)
         };
 
-        // Parse user preferences early — fail-fast on a bad config BEFORE
-        // any actor wiring runs. The shared service is cloned into each
-        // command arm below. Config subcommands have already dispatched above.
-        let user_preferences_storage = {
-            let backend = FilesystemUserPreferencesStorage::default_path();
-            let path = backend.path().to_path_buf();
-            let svc = UserPreferencesStorageService::new(Arc::new(backend));
-            if let Err(report) = svc.reload() {
-                tracing::error!(path = %path.display(), "failed to parse user preferences");
-                eprintln!(
-                    "error: failed to parse user preferences at {}:",
-                    path.display()
-                );
-                eprintln!("  {report:?}");
-                std::process::exit(1);
-            }
-            svc
-        };
-
-        // The configuration layer over the same document. Loaded here so
-        // a malformed file aborts before any actor wiring runs, exactly
-        // as the storage service's reload does.
+        // Load the configuration layer early — fail-fast on a malformed
+        // jinn.toml BEFORE any actor wiring runs. The layer is the only
+        // reader of that document now; there is no separate aggregate
+        // struct to parse alongside it. Config subcommands have already
+        // dispatched above, so `jinn config` remains the recovery tool.
         let config = {
             let backend = jinn_config::FilesystemConfigStorage::new(
-                FilesystemUserPreferencesStorage::default_path()
+                jinn_config::FilesystemConfigStorage::default_path()
                     .path()
                     .to_path_buf(),
             );
@@ -367,7 +349,6 @@ impl App {
                         api_keys: resolved_api_keys.clone(),
                         config_storage: config_storage.clone(),
                         session_store: session_store.clone(),
-                        user_preferences_storage: user_preferences_storage.clone(),
                         config: config.clone(),
                         app_state_storage: app_state_storage.clone(),
                         paths: jinn_domain::AppPaths::default(),
@@ -408,7 +389,6 @@ impl App {
                         api_keys: resolved_api_keys,
                         config_storage,
                         session_store,
-                        user_preferences_storage: user_preferences_storage.clone(),
                         config: config.clone(),
                         app_state_storage,
                         paths: jinn_domain::AppPaths::default(),

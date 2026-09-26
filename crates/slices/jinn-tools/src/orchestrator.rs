@@ -653,6 +653,7 @@ impl ToolOrchestratorActor {
             command_policy,
             timeout: Some(timeout),
             state: Some(self.state.clone()),
+            config: self.services.config.clone(),
             session_id: Some(session_id.clone()),
             app_paths: self.services.paths.clone(),
             bus: Some(self.bus().clone()),
@@ -1031,7 +1032,7 @@ mod timeout_tests {
     use super::{BoxedToolFuture, ToolContext, run_builtin_with_timeout};
     use jinn_core_types::tool_types::{ToolCall, ToolResult};
     use jinn_domain::common::app_paths::AppPaths;
-    use jinn_preferences_config::user_preferences::UserPreferences;
+    use jinn_preferences_config::schemas::ToolsConfig;
 
     fn make_call() -> ToolCall {
         ToolCall {
@@ -1045,6 +1046,7 @@ mod timeout_tests {
         ToolContext {
             cwd: PathBuf::from("/tmp"),
             command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+            config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state: None,
             session_id: None,
@@ -1146,17 +1148,17 @@ mod timeout_tests {
 
     #[rstest::rstest]
     #[test]
-    fn tool_timeout_value_sourced_from_preferences() {
-        // Given preferences with a custom tool timeout.
-        let prefs = UserPreferences {
-            tool_default_timeout_secs: 7,
-            ..UserPreferences::default()
-        };
+    fn tool_timeout_value_sourced_from_tools_config() {
+        // Given a config document setting a custom tool timeout.
+        let config = jinn_config::testutil::config_layer("[tools]\ndefault_timeout_secs = 7\n");
 
-        // Then the timeout value reflects the preference.
-        assert_eq!(prefs.tool_default_timeout_secs, 7);
+        // When reading the tools section.
+        let tools = config.get::<ToolsConfig>().expect("section reads");
+
+        // Then the timeout value reflects the config.
+        assert_eq!(tools.default_timeout_secs, 7);
         assert_eq!(
-            Duration::from_secs(prefs.tool_default_timeout_secs),
+            Duration::from_secs(tools.default_timeout_secs),
             Duration::from_secs(7)
         );
     }
@@ -1299,6 +1301,7 @@ mod panic_safety_tests {
             super::ToolContext {
                 cwd: std::path::PathBuf::from("/tmp"),
                 command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+                config: jinn_config::testutil::config_layer(""),
                 timeout: None,
                 state: None,
                 session_id: None,

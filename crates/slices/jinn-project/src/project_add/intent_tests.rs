@@ -72,10 +72,20 @@ impl SliceActionState for FakeState {
 }
 
 fn ctx<'a>(state: &'a mut FakeState, slices: &'a jinn_slices::Slices) -> ActionCtx<'a> {
+    ctx_with_config(state, slices, jinn_slices::empty_config_layer())
+}
+
+/// An `ActionCtx` over a caller-supplied configuration layer, so a test
+/// can observe what a write actually persisted.
+fn ctx_with_config<'a>(
+    state: &'a mut FakeState,
+    slices: &'a jinn_slices::Slices,
+    config: &'a jinn_slices::ConfigLayer,
+) -> ActionCtx<'a> {
     ActionCtx {
         state,
         slices,
-        config: jinn_slices::empty_config_layer(),
+        config,
         key_bytes: Vec::new(),
     }
 }
@@ -156,18 +166,25 @@ fn confirm_valid_dir_appends_project_optimistically_and_emits_update() {
                 .to_string(),
         );
     });
-    let mut cx = ctx(&mut state, &slices);
+    let config = jinn_config::testutil::config_layer("");
+    let mut cx = ctx_with_config(&mut state, &slices, &config);
 
     // When confirming.
     let result = confirm_project_add(&mut cx, &cell);
 
-    // Then one UpdatePreferences is published and the scope pops.
-    assert_eq!(result.message_names, vec!["UpdatePreferences"]);
-    assert_eq!(result.messages.len(), 1);
+    // Then the project lands in the `[[project.projects]]` section.
+    let projects = config
+        .get_list::<jinn_preferences_config::schemas::ProjectConfig>()
+        .expect("section reads");
+    assert_eq!(projects.len(), 1);
+    assert_eq!(
+        projects.first().expect("one project").path,
+        target.to_path_buf()
+    );
+    // And no message is published — the write is the effect.
+    assert!(result.messages.is_empty());
+    // And the scope pops.
     assert!(matches!(result.scope_signal, Some(ScopeSignal::PopIf(_))));
-    // And the optimistic write appended the project to kernel state.
-    let kernel = state.kernel.as_ref().expect("kernel state present");
-    assert_eq!(kernel.frontend.preferences.projects.len(), 1);
     // And the cell is cleared.
     assert_eq!(cell.read().text.input, "");
 }
@@ -190,9 +207,17 @@ fn confirm_invalid_dir_stays_open_without_publishing() {
     assert!(result.scope_signal.is_none());
     // And the input is preserved for correction.
     assert_eq!(cell.read().text.input, "no-such-dir");
-    // And kernel state gained no project.
-    let kernel = state.kernel.as_ref().expect("kernel state present");
-    assert!(kernel.frontend.preferences.projects.is_empty());
+    // And the section gained no project.
+    let config = jinn_config::testutil::config_layer("");
+    let mut cx = ctx_with_config(&mut state, &slices, &config);
+    let result = confirm_project_add(&mut cx, &cell);
+    assert!(result.messages.is_empty());
+    assert!(
+        config
+            .get_list::<jinn_preferences_config::schemas::ProjectConfig>()
+            .expect("section reads")
+            .is_empty()
+    );
 }
 
 #[rstest::rstest]

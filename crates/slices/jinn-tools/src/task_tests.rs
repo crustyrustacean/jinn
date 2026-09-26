@@ -53,6 +53,7 @@ async fn task_ctx(harness: &TestHarness, state: &State, session_id: SessionId) -
     ToolContext {
         cwd: std::path::PathBuf::from("/tmp"),
         command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+        config: jinn_config::testutil::config_layer(""),
         timeout: None,
         state: Some(state.clone()),
         session_id: Some(session_id),

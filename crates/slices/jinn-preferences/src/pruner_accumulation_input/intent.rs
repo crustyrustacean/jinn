@@ -1,6 +1,5 @@
 //! Route actions and input hook for the pruner accumulation threshold popup.
 
-use jinn_preferences_config::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use jinn_slices::LineInput;
 use jinn_slices::RouteResult;
 use jinn_slices::SliceScopeId;
@@ -12,6 +11,8 @@ use jinn_slices::route::{
 };
 
 use super::state::PrunerAccumulationInputState;
+use jinn_preferences_config::ConfigLayer;
+use jinn_preferences_config::schemas::AutoPruneConfig;
 
 /// The popup's dynamic input-capturing scope.
 #[must_use]
@@ -134,25 +135,20 @@ pub fn register_pruner_accumulation_input_hook(routes: &jinn_slices::KeyRoutes, 
 
 /// Seeds the popup from the current threshold and requests its dynamic scope.
 fn open_pruner_accumulation(ctx: &mut ActionCtx<'_>, cell: &PrunerCell) -> RouteResult {
-    let Some(threshold) = ctx.state.as_any_mut().and_then(|state| {
-        state.downcast_mut::<jinn_domain::AppState>().map(|state| {
-            state
-                .frontend
-                .preferences
-                .auto_prune
-                .accumulation_threshold_tokens
-        })
-    }) else {
-        return RouteResult::empty();
-    };
+    let threshold = ctx
+        .config
+        .get::<AutoPruneConfig>()
+        .unwrap_or_default()
+        .accumulation_threshold_tokens;
     let mut text = LineInput::new();
     text.set(threshold.to_string());
     cell.update(|state| state.text = text);
     RouteResult::empty().with_scope_signal(ScopeSignal::Push(pruner_accumulation_scope()))
 }
 
-/// Confirms a valid decimal threshold and emits the authoritative preference update.
-fn confirm_pruner_accumulation(_ctx: &mut ActionCtx<'_>, cell: &PrunerCell) -> RouteResult {
+/// Confirms a valid decimal threshold and writes it to the
+/// `[[context_curation.auto_prune]]` section.
+fn confirm_pruner_accumulation(ctx: &mut ActionCtx<'_>, cell: &PrunerCell) -> RouteResult {
     let raw = cell.read().text.input.trim().to_owned();
     if raw.is_empty() || !raw.bytes().all(|byte| byte.is_ascii_digit()) {
         return RouteResult::empty();
@@ -160,11 +156,9 @@ fn confirm_pruner_accumulation(_ctx: &mut ActionCtx<'_>, cell: &PrunerCell) -> R
     let Ok(threshold) = raw.parse::<u32>() else {
         return RouteResult::empty();
     };
+    set_accumulation_threshold(ctx.config, threshold);
     leave_pruner_accumulation(cell);
-    RouteResult::new_message(UpdatePreferences {
-        updates: vec![PreferenceUpdate::SetAccumulationThreshold(threshold)],
-    })
-    .with_scope_signal(ScopeSignal::PopIf(pruner_accumulation_scope()))
+    RouteResult::empty().with_scope_signal(ScopeSignal::PopIf(pruner_accumulation_scope()))
 }
 
 /// Clears the popup state before any close transition.
@@ -180,6 +174,19 @@ fn clear_or_leave_pruner_accumulation(cell: &PrunerCell) -> RouteResult {
         RouteResult::empty()
     } else {
         RouteResult::empty().with_scope_signal(ScopeSignal::PopIf(pruner_accumulation_scope()))
+    }
+}
+
+/// Writes the accumulation threshold into the
+/// `[[context_curation.auto_prune]]` section.
+///
+/// A failed write is logged, not surfaced: the popup closes either way,
+/// and the threshold is a tuning value the user can re-enter.
+fn set_accumulation_threshold(config: &ConfigLayer, threshold: u32) {
+    let mut auto_prune = config.get::<AutoPruneConfig>().unwrap_or_default();
+    auto_prune.accumulation_threshold_tokens = threshold;
+    if let Err(error) = config.put::<AutoPruneConfig>(&auto_prune) {
+        tracing::warn!(err = ?error, "failed to persist the accumulation threshold to jinn.toml");
     }
 }
 
@@ -212,15 +219,13 @@ mod tests {
         // Given a popup cell and state carrying a threshold.
         let (slices, cell) = cell();
         let mut state = state();
-        state
-            .frontend
-            .preferences
-            .auto_prune
-            .accumulation_threshold_tokens = 7_500;
+        let config = jinn_config::testutil::config_layer(
+            "[context_curation.auto_prune]\naccumulation_threshold_tokens = 7500\n",
+        );
         let mut ctx = ActionCtx {
             state: &mut state,
             slices: &slices,
-            config: jinn_slices::empty_config_layer(),
+            config: &config,
             key_bytes: Vec::new(),
         };
 
@@ -256,23 +261,29 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn valid_confirm_publishes_update_and_pops() {
+    fn valid_confirm_writes_the_threshold_and_pops() {
         // Given a valid threshold in the popup cell.
         let (slices, cell) = cell();
         cell.update(|state| state.text.set("25000".to_owned()));
         let mut state = state();
+        let config = jinn_config::testutil::config_layer("");
         let mut ctx = ActionCtx {
             state: &mut state,
             slices: &slices,
-            config: jinn_slices::empty_config_layer(),
+            config: &config,
             key_bytes: Vec::new(),
         };
 
         // When confirmation runs.
         let result = confirm_pruner_accumulation(&mut ctx, &cell);
 
-        // Then it publishes one update and requests the popup to close.
-        assert_eq!(result.message_names, ["UpdatePreferences"]);
+        // Then the threshold lands in the `[[context_curation.auto_prune]]`
+        // section.
+        let auto_prune = config.get::<AutoPruneConfig>().expect("section reads");
+        assert_eq!(auto_prune.accumulation_threshold_tokens, 25_000);
+        // And no message is published — the write is the effect.
+        assert!(result.message_names.is_empty());
+        // And the popup closes.
         assert_eq!(
             result.scope_signal,
             Some(ScopeSignal::PopIf(pruner_accumulation_scope()))

@@ -44,5 +44,6 @@ unicode-width = { workspace = true }
 rstest = { workspace = true }
 
 [dev-dependencies]
+jinn-config = { workspace = true }
 jinn-testutil = { workspace = true }
 tokio = { workspace = true }

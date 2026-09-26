@@ -10,7 +10,6 @@
 //! hook — the same pattern as the cwd popup.
 
 use jinn_cwd_msg::{CwdResolution, resolve_cwd_input};
-use jinn_preferences_config::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use jinn_preferences_config::schemas::ProjectConfig;
 use jinn_project_msg::ProjectAddInputState;
 use jinn_slices::RouteResult as IntentResult;
@@ -165,10 +164,8 @@ pub(super) fn open_project_add(
 }
 
 /// Confirms the popup: resolves the typed path against the active session
-/// cwd; on success appends the path to `frontend.preferences.projects`
-/// optimistically (the actor re-applies the canonical result on its
-/// broadcast and dedupes via `AddProject::apply`) and emits
-/// `UpdatePreferences { AddProject }`, then pops the scope and clears the
+/// cwd; on success appends the path to the `[[project.projects]]` section
+/// through the configuration layer, then pops the scope and clears the
 /// cell. On failure stays open (the render footer shows the inline error)
 /// and consumes the key.
 pub(super) fn confirm_project_add(ctx: &mut ActionCtx<'_>, cell: &ProjectAddCell) -> IntentResult {
@@ -176,32 +173,31 @@ pub(super) fn confirm_project_add(ctx: &mut ActionCtx<'_>, cell: &ProjectAddCell
     let current_cwd = ctx.state.active_session_cwd();
     match resolve_cwd_input(&raw, &current_cwd) {
         CwdResolution::Ok(path) => {
-            // Optimistic write into the app state: the sidebar
-            // established the `as_any_mut` downcast as the sanctioned
-            // pattern for slices that must drive concrete behavior.
-            // `frontend.preferences` is authoritative-written by the
-            // preferences actor; this write mirrors the actor's own apply so an
-            // open picker reflects the add immediately.
-            let optimistic = ctx.state.as_any_mut().and_then(|any| {
-                any.downcast_mut::<jinn_domain::AppState>().map(|state| {
-                    state.frontend.preferences.projects.push(ProjectConfig {
-                        path: path.clone(),
-                        command_policy: Vec::new(),
-                    });
-                })
-            });
-            if optimistic.is_none() {
-                tracing::debug!("project-add confirm ran without kernel state; persist-only");
-            }
-
+            add_project(ctx.config, path);
             leave_project_add(cell);
-            IntentResult::empty()
-                .with_message(UpdatePreferences {
-                    updates: vec![PreferenceUpdate::AddProject(path)],
-                })
-                .with_scope_signal(ScopeSignal::PopIf(project_add_scope()))
+            IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(project_add_scope()))
         }
         CwdResolution::Empty | CwdResolution::NotADir(_) => IntentResult::empty(),
+    }
+}
+
+/// Appends a project to the `[[project.projects]]` section, deduping by
+/// path so a repeated add is a no-op rather than a duplicate entry.
+///
+/// A failed write is logged, not surfaced: the popup has already
+/// confirmed, and refusing to close over a disk error would strand the
+/// user in an input they can no longer act on.
+fn add_project(config: &jinn_preferences_config::ConfigLayer, path: std::path::PathBuf) {
+    let mut projects = config.get_list::<ProjectConfig>().unwrap_or_default();
+    if projects.iter().any(|project| project.path == path) {
+        return;
+    }
+    projects.push(ProjectConfig {
+        path,
+        command_policy: Vec::new(),
+    });
+    if let Err(error) = config.put_list::<ProjectConfig>(&projects) {
+        tracing::warn!(err = ?error, "failed to persist the added project to jinn.toml");
     }
 }
 

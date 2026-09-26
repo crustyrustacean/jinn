@@ -2579,6 +2579,7 @@ dependencies = [
  "ctor",
  "error-stack",
  "jiff",
+ "jinn-config",
  "jinn-core-types",
  "jinn-domain",
  "jinn-mcp",
@@ -2636,6 +2637,7 @@ dependencies = [
 name = "jinn-picker"
 version = "0.118.0"
 dependencies = [
+ "jinn-config",
  "jinn-core-types",
  "jinn-selection-widget",
  "jinn-slices",
@@ -2687,6 +2689,7 @@ version = "0.118.0"
 dependencies = [
  "dirs",
  "error-stack",
+ "jinn-config",
  "jinn-core-types",
  "jinn-domain",
  "jinn-persona-msg",
@@ -2733,6 +2736,7 @@ dependencies = [
 name = "jinn-project"
 version = "0.118.0"
 dependencies = [
+ "jinn-config",
  "jinn-core-types",
  "jinn-cwd-msg",
  "jinn-domain",
@@ -2964,6 +2968,7 @@ dependencies = [
  "error-stack",
  "jinn-chat-input-msg",
  "jinn-common",
+ "jinn-config",
  "jinn-core-types",
  "jinn-domain",
  "jinn-preferences-config",
@@ -3153,6 +3158,7 @@ dependencies = [
  "jinn-inference-msg",
  "jinn-llm-support",
  "jinn-persona-msg",
+ "jinn-preferences-config",
  "jinn-provider",
  "jinn-provider-selection",
  "jinn-session-history-msg",
@@ -3182,6 +3188,7 @@ dependencies = [
  "jinn-chat-input-msg",
  "jinn-chat-log-view",
  "jinn-chat-log-view-msg",
+ "jinn-config",
  "jinn-core-types",
  "jinn-domain",
  "jinn-mcp-msg",

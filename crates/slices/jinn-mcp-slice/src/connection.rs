@@ -46,6 +46,7 @@ use jinn_tools_msg::{ExecuteTool, RegisterTools};
 use jinn_tools_msg::{ToolExecutionCompleted, ToolsUnregistered};
 
 use jinn_domain::Services;
+use jinn_preferences_config::schemas::ToolsConfig;
 
 /// Debounce interval for live stderr republishing while the actor is Running.
 const STDERR_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(250);
@@ -736,9 +737,10 @@ impl MsgHandler<ExecuteTool> for McpActor {
         let timeout_secs = self
             .deps
             .services
-            .user_preferences_storage
-            .read()
-            .tool_default_timeout_secs;
+            .config
+            .get::<ToolsConfig>()
+            .unwrap_or_default()
+            .default_timeout_secs;
         let call = client.call_tool(&tool_name, arguments);
         let result = if timeout_secs == 0 {
             let call_result = call.await;

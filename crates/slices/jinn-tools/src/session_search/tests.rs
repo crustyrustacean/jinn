@@ -205,6 +205,7 @@ fn tool_ctx(store: SessionStoreService, session_id: Option<SessionId>) -> ToolCo
     ToolContext {
         cwd: std::path::PathBuf::from("/tmp"),
         command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+        config: jinn_config::testutil::config_layer(""),
         timeout: None,
         state: None,
         session_id,
@@ -598,6 +599,7 @@ async fn missing_session_store_fails_gracefully() {
         None,
     );
     let ctx = ToolContext {
+        config: jinn_config::testutil::config_layer(""),
         session_store: None,
         trouper_system: None,
         ..ctx

@@ -193,6 +193,12 @@ pub enum ConfigSectionError {
     },
 }
 
+impl From<ConfigSectionError> for std::io::Error {
+    fn from(error: ConfigSectionError) -> Self {
+        Self::new(std::io::ErrorKind::InvalidData, error.to_string())
+    }
+}
+
 impl ConfigSectionError {
     /// Builds a malformed-section error naming the section.
     #[must_use]

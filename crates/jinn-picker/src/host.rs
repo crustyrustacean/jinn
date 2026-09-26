@@ -85,6 +85,11 @@ pub trait PickerHost {
     /// cached previews. `None` (or a per-entry key being absent) means the
     /// preview renders live.
     fn preview_cache(&self, id: PickerId) -> Option<SharedPreviewCache>;
+
+    /// The live configuration layer, so a picker spec reads and writes
+    /// `jinn.toml` the same way every other consumer does — at the
+    /// point of use, through a live handle.
+    fn config(&self) -> &jinn_config::ConfigLayer;
 }
 
 impl Palette {

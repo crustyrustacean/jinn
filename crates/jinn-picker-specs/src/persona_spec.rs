@@ -203,7 +203,7 @@ mod tests {
         };
 
         // When running the open hook.
-        let mut host = AppStatePickerHost::new(&mut state);
+        let mut host = AppStatePickerHost::new(&mut state, jinn_slices::empty_config_layer());
         let mut ctx = ActionCtx::new(jinn_picker::PickerId::new(PERSONA_ID), &mut host);
         let outcome = spec.run_open(&mut ctx);
         #[expect(
@@ -239,7 +239,7 @@ mod tests {
         let registry = crate::build_picker_registry();
         let spec = registry.get(PERSONA_ID).expect("persona spec registered");
         let outcome = {
-            let mut host = AppStatePickerHost::new(&mut state);
+            let mut host = AppStatePickerHost::new(&mut state, jinn_slices::empty_config_layer());
             let mut ctx = ActionCtx::new(jinn_picker::PickerId::new(PERSONA_ID), &mut host);
             spec.run_confirm(&mut ctx)
         };
@@ -278,7 +278,7 @@ mod tests {
 
         // When running the confirm hook.
         let outcome = {
-            let mut host = AppStatePickerHost::new(&mut state);
+            let mut host = AppStatePickerHost::new(&mut state, jinn_slices::empty_config_layer());
             let mut ctx = ActionCtx::new(jinn_picker::PickerId::new(PERSONA_ID), &mut host);
             spec.run_confirm(&mut ctx)
         };
@@ -300,7 +300,10 @@ mod tests {
         };
         let registry = crate::build_picker_registry();
         let spec = registry.get(PERSONA_ID).expect("persona spec registered");
-        let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(&state);
+        let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(
+            &state,
+            jinn_slices::empty_config_layer(),
+        );
         let ctx = jinn_picker::StatusCtx::new(jinn_picker::PickerId::new(PERSONA_ID), &host);
 
         // When reading the status line.
@@ -318,7 +321,10 @@ mod tests {
         let state = AppState::default_with_scope_focus();
         let registry = crate::build_picker_registry();
         let spec = registry.get(PERSONA_ID).expect("persona spec registered");
-        let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(&state);
+        let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(
+            &state,
+            jinn_slices::empty_config_layer(),
+        );
         let ctx = jinn_picker::StatusCtx::new(jinn_picker::PickerId::new(PERSONA_ID), &host);
 
         // When reading the status line.

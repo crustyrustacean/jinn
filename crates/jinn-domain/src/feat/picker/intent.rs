@@ -21,6 +21,7 @@ pub fn handle_open_picker(
     state: &mut AppState,
     kind: PickerKind,
     pickers: &jinn_picker::PickerRegistry,
+    config: &jinn_config::ConfigLayer,
 ) -> IntentResult {
     if validator::validate_open_picker(state, &kind).is_err() {
         return IntentResult::empty();
@@ -49,6 +50,7 @@ pub fn handle_open_picker(
             state,
             pickers,
             crate::feat::picker::action::Hook::Open,
+            config,
         );
     }
     IntentResult::empty()
@@ -108,6 +110,7 @@ pub fn handle_backspace(state: &mut AppState) -> IntentResult {
 pub fn handle_picker_confirm(
     state: &mut AppState,
     pickers: &jinn_picker::PickerRegistry,
+    config: &jinn_config::ConfigLayer,
 ) -> (IntentResult, Option<KernelIntent>) {
     if validator::validate_picker_confirm(state).is_err() {
         return (IntentResult::empty(), None);
@@ -127,6 +130,7 @@ pub fn handle_picker_confirm(
                 state,
                 pickers,
                 crate::feat::picker::action::Hook::Confirm,
+                config,
             ),
             None,
         );
@@ -135,14 +139,18 @@ pub fn handle_picker_confirm(
 }
 
 /// Moves the selection up in the active picker.
-pub fn handle_move_up(state: &mut AppState, pickers: &jinn_picker::PickerRegistry) -> IntentResult {
+pub fn handle_move_up(
+    state: &mut AppState,
+    pickers: &jinn_picker::PickerRegistry,
+    config: &jinn_config::ConfigLayer,
+) -> IntentResult {
     validator::validate_picker_move_up(state);
     let viewport = active_viewport(state);
     if let Some(picker) = state.active_picker_ops() {
         picker.move_up(viewport);
     }
     reset_preview_scroll(state, pickers);
-    crate::feat::picker::action::run_selection_change(state, pickers);
+    crate::feat::picker::action::run_selection_change(state, pickers, config);
     IntentResult::empty()
 }
 
@@ -150,6 +158,7 @@ pub fn handle_move_up(state: &mut AppState, pickers: &jinn_picker::PickerRegistr
 pub fn handle_move_down(
     state: &mut AppState,
     pickers: &jinn_picker::PickerRegistry,
+    config: &jinn_config::ConfigLayer,
 ) -> IntentResult {
     validator::validate_picker_move_down(state);
     let viewport = active_viewport(state);
@@ -157,19 +166,23 @@ pub fn handle_move_down(
         picker.move_down(viewport);
     }
     reset_preview_scroll(state, pickers);
-    crate::feat::picker::action::run_selection_change(state, pickers);
+    crate::feat::picker::action::run_selection_change(state, pickers, config);
     IntentResult::empty()
 }
 
 /// Pages the selection up by half the visible window in the active picker.
-pub fn handle_page_up(state: &mut AppState, pickers: &jinn_picker::PickerRegistry) -> IntentResult {
+pub fn handle_page_up(
+    state: &mut AppState,
+    pickers: &jinn_picker::PickerRegistry,
+    config: &jinn_config::ConfigLayer,
+) -> IntentResult {
     validator::validate_picker_page_up(state);
     let viewport = active_viewport(state);
     if let Some(picker) = state.active_picker_ops() {
         picker.page_up(viewport);
     }
     reset_preview_scroll(state, pickers);
-    crate::feat::picker::action::run_selection_change(state, pickers);
+    crate::feat::picker::action::run_selection_change(state, pickers, config);
     IntentResult::empty()
 }
 
@@ -177,6 +190,7 @@ pub fn handle_page_up(state: &mut AppState, pickers: &jinn_picker::PickerRegistr
 pub fn handle_page_down(
     state: &mut AppState,
     pickers: &jinn_picker::PickerRegistry,
+    config: &jinn_config::ConfigLayer,
 ) -> IntentResult {
     validator::validate_picker_page_down(state);
     let viewport = active_viewport(state);
@@ -184,7 +198,7 @@ pub fn handle_page_down(
         picker.page_down(viewport);
     }
     reset_preview_scroll(state, pickers);
-    crate::feat::picker::action::run_selection_change(state, pickers);
+    crate::feat::picker::action::run_selection_change(state, pickers, config);
     IntentResult::empty()
 }
 
@@ -281,7 +295,11 @@ mod tests {
         let len_before = state.frontend.scope_len();
 
         // When confirming.
-        let (result, follow_up) = handle_picker_confirm(&mut state, &empty_pickers());
+        let (result, follow_up) = handle_picker_confirm(
+            &mut state,
+            &empty_pickers(),
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then no commands, no follow-up, and the scope stack is unchanged.
         assert!(result.message_names.is_empty(), "no commands");
@@ -311,7 +329,10 @@ mod tests {
         });
 
         // When Esc is pressed.
-        let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+        let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(
+            &mut state,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then we should return to the task-list section, not Normal.
         assert_eq!(
@@ -381,7 +402,11 @@ mod tests {
         assert_eq!(state.frontend.pickers.provider_picker.scroll_offset(), 0);
 
         // When moving down once more.
-        handle_move_down(&mut state, &empty_pickers());
+        handle_move_down(
+            &mut state,
+            &empty_pickers(),
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then selection advances to 5 and scroll_offset advances by one
         // (measured viewport of 5, not the old hardcoded 100).
@@ -397,7 +422,11 @@ mod tests {
         state.frontend.pickers.provider_picker.move_up(5); // selection back to 0
 
         // When handling PickerPageDown (half of 10 = 5).
-        handle_page_down(&mut state, &empty_pickers());
+        handle_page_down(
+            &mut state,
+            &empty_pickers(),
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then selection advances by 5.
         assert_eq!(state.frontend.pickers.provider_picker.selection(), 5);
@@ -414,7 +443,11 @@ mod tests {
         }
 
         // When handling PickerPageUp (half of 10 = 5).
-        handle_page_up(&mut state, &empty_pickers());
+        handle_page_up(
+            &mut state,
+            &empty_pickers(),
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then selection decrements by 5.
         assert_eq!(state.frontend.pickers.provider_picker.selection(), 5);

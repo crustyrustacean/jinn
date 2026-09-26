@@ -55,6 +55,13 @@ impl<'a> ActionCtx<'a> {
     pub fn state_any(&mut self) -> &mut dyn std::any::Any {
         self.host.state_any()
     }
+
+    /// The live configuration layer, so a spec reads and writes
+    /// `jinn.toml` directly rather than reaching through the host.
+    #[must_use]
+    pub fn config(&self) -> &jinn_config::ConfigLayer {
+        self.host.config()
+    }
 }
 
 impl std::fmt::Debug for ActionCtx<'_> {

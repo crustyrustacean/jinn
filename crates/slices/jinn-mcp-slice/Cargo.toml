@@ -29,6 +29,7 @@ parking_lot = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
+jinn-config = { workspace = true }
 jinn-tools = { workspace = true }
 rstest = { workspace = true }
 ctor = "0.8"

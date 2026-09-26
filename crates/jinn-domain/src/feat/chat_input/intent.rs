@@ -655,8 +655,11 @@ pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
 /// unmigrated pickers (the session-lifecycle chain); spec-driven
 /// close hooks need the app's registry via
 /// [`handle_enter_normal_mode_with_pickers`].
-pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
-    handle_enter_normal_mode_with_pickers(state, &jinn_picker::PickerRegistry::new())
+pub fn handle_enter_normal_mode(
+    state: &mut AppState,
+    config: &jinn_config::ConfigLayer,
+) -> IntentResult {
+    handle_enter_normal_mode_with_pickers(state, &jinn_picker::PickerRegistry::new(), config)
 }
 
 /// Handles `EnterNormalMode` with the picker registry: spec-driven
@@ -666,6 +669,7 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
 pub fn handle_enter_normal_mode_with_pickers(
     state: &mut AppState,
     pickers: &jinn_picker::PickerRegistry,
+    config: &jinn_config::ConfigLayer,
 ) -> IntentResult {
     // If autocomplete is active, dismiss it and stay in the current scope.
     // Two-level ESC: first press closes popup, second press exits mode.
@@ -675,7 +679,7 @@ pub fn handle_enter_normal_mode_with_pickers(
     }
 
     // Spec-driven pickers own their close behavior (snapshot revert).
-    if let Some(result) = crate::feat::picker::action::try_close_active(state, pickers) {
+    if let Some(result) = crate::feat::picker::action::try_close_active(state, pickers, config) {
         return result;
     }
 

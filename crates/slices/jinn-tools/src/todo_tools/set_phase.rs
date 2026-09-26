@@ -211,6 +211,7 @@ mod tests {
             session_store: None,
             trouper_system: None,
             command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+            config: jinn_config::testutil::config_layer(""),
         }
     }
 

@@ -20,6 +20,7 @@ use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_mcp_msg::RestartError;
 
 use super::BoxedToolFuture;
+use jinn_mcp_msg::config::McpServersConfig;
 
 /// Defensive outer bound on the `ask`. The coordinator's own `restart_one`
 /// already bounds at 60s; this catches a coordinator that never replies
@@ -73,14 +74,14 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         ))
         .boxed();
     };
-    let Some(state) = ctx.state else {
+    if ctx.state.is_none() {
         return failure_future(&tool_call_id, &tool_name, "no application state available");
-    };
+    }
     let Some(session_id) = ctx.session_id else {
         return failure_future(&tool_call_id, &tool_name, "no active session");
     };
 
-    let server = match parse_args(&args_str, &state) {
+    let server = match parse_args(&args_str, &ctx.config) {
         Ok(server) => server,
         Err(msg) => return failure_future(&tool_call_id, &tool_name, &msg),
     };
@@ -145,7 +146,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 /// Accepts either a bare server name (`excalimate`) or a full
 /// `mcp__<server>__<tool>` tool name (the namespace is stripped silently).
 /// Returns `Err(message)` on missing/invalid args or an unknown server.
-fn parse_args(args_str: &str, state: &jinn_domain::common::state::State) -> Result<String, String> {
+fn parse_args(args_str: &str, config: &jinn_config::ConfigLayer) -> Result<String, String> {
     let value: serde_json::Value = if args_str.trim().is_empty() {
         return Err("missing `server` argument".to_owned());
     } else {
@@ -154,17 +155,15 @@ fn parse_args(args_str: &str, state: &jinn_domain::common::state::State) -> Resu
     let Some(input) = value.get("server").and_then(serde_json::Value::as_str) else {
         return Err("`server` argument must be a string".to_owned());
     };
-    let configured = configured_server_names(state);
+    let configured = configured_server_names(config);
     resolve_server(input, &configured).ok_or_else(|| format!("unknown MCP server `{input}`"))
 }
 
 /// Reads the configured server names from application state.
-fn configured_server_names(state: &jinn_domain::common::state::State) -> Vec<String> {
-    state
-        .read()
-        .frontend
-        .preferences
-        .mcp_server
+fn configured_server_names(config: &jinn_config::ConfigLayer) -> Vec<String> {
+    config
+        .get::<McpServersConfig>()
+        .unwrap_or_default()
         .keys()
         .cloned()
         .collect()
@@ -241,10 +240,18 @@ fn domain_failure_result(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use jinn_domain::common::state::State;
 
     fn configured() -> Vec<String> {
         vec!["excalimate".to_owned(), "context7".to_owned()]
+    }
+
+    /// A layer whose `[mcp]` section declares the servers these tests
+    /// resolve and parse against — the document `parse_args` now reads
+    /// instead of a state snapshot.
+    fn configured_layer() -> jinn_config::ConfigLayer {
+        jinn_config::testutil::config_layer(
+            "[mcp.excalimate]\ncommand = \"npx\"\n[mcp.context7]\ncommand = \"npx\"\n",
+        )
     }
 
     #[rstest::rstest]
@@ -294,11 +301,9 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn parse_args_rejects_missing_server_argument() {
-        // Given a state with configured servers but no server arg.
-        let state = State::new(jinn_domain::common::app_state::AppState::default());
-
+        // Given a document with configured servers but no server arg.
         // When parsing empty args.
-        let result = parse_args("", &state);
+        let result = parse_args("", &configured_layer());
 
         // Then it errors with a clear message.
         assert!(result.is_err());
@@ -311,11 +316,9 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn parse_args_rejects_non_string_server() {
-        // Given a state and a numeric server arg.
-        let state = State::new(jinn_domain::common::app_state::AppState::default());
-
+        // Given a document with configured servers and a numeric server arg.
         // When parsing args with a non-string server.
-        let result = parse_args(r#"{"server": 42}"#, &state);
+        let result = parse_args(r#"{"server": 42}"#, &configured_layer());
 
         // Then it errors.
         assert!(result.is_err());
@@ -324,11 +327,9 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn parse_args_rejects_unknown_server() {
-        // Given a state and an unconfigured server name.
-        let state = State::new(jinn_domain::common::app_state::AppState::default());
-
+        // Given a document whose configured names exclude the argument.
         // When parsing args with an unknown server.
-        let result = parse_args(r#"{"server": "ghost"}"#, &state);
+        let result = parse_args(r#"{"server": "ghost"}"#, &configured_layer());
 
         // Then it errors with the server name in the message.
         assert!(result.is_err());

@@ -1240,7 +1240,6 @@ fn gate_passes_but_nothing_to_compact_with_empty_history() {
             .update(|cell| {
                 cell.model_cache = Some(model_cache_with("provider", "model-200k", 200_000));
             });
-        app.frontend.preferences.compaction = threshold_config(0.7, 150_000);
     }
 
     let services = TestServices::builder()
@@ -1248,12 +1247,11 @@ fn gate_passes_but_nothing_to_compact_with_empty_history() {
             FakeLlmServiceFactory::new(vec![FAKE_SUMMARY.to_owned()]),
         )))
         .build();
-    // Sync test preferences to the in-memory storage.
-    let prefs = state.read().frontend.preferences.clone();
+    // The compaction policy the worker reads comes from the config layer.
     services
-        .user_preferences_storage
-        .save(&prefs)
-        .expect("save test prefs");
+        .config
+        .put::<CompactionConfig>(&threshold_config(0.7, 150_000))
+        .expect("write the compaction section");
     let handle = services.handle.clone();
     let worker = CompactionWorker::new(services, handle, state, String::new());
 
@@ -1550,18 +1548,13 @@ fn error_clears_flag_and_allows_retry() {
     }
 
     // Set up threshold so evaluation proceeds past the gate.
-    {
-        let mut app = state.write();
-        app.frontend.preferences.compaction = CompactionConfig {
+    services
+        .config
+        .put::<CompactionConfig>(&CompactionConfig {
             threshold: 0.5,
             ..CompactionConfig::default()
-        };
-        let prefs = app.frontend.preferences.clone();
-        services
-            .user_preferences_storage
-            .save(&prefs)
-            .expect("save");
-    }
+        })
+        .expect("write the compaction section");
     {
         let mut app = state.write();
         if let Some(session) = app.session.get_mut(&session_id) {

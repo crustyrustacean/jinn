@@ -1107,17 +1107,9 @@ fn session_new_with_lifecycle_opens_picker_from_sidebar_sessions() {
 fn teardown_only_emits_run_session_teardown() {
     // Given a session with a lifecycle that has a teardown command.
     let mut state = AppState::default_with_scope_focus();
-    state.frontend.preferences.session_lifecycles.push(
-        jinn_preferences_config::schemas::SessionLifecycle {
-            name: "fossil branch".to_owned(),
-            description: None,
-            setup: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                "echo setup".to_owned(),
-            )),
-            teardown: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                "cleanup.sh $1".to_owned(),
-            )),
-        },
+    let config = jinn_config::testutil::config_layer(
+        "[[session_lifecycle.lifecycle]]\nname = \"fossil branch\"\n\
+         setup_command = \"echo setup\"\nteardown_command = \"cleanup.sh $1\"\n",
     );
     state
         .active_session_mut()
@@ -1133,7 +1125,7 @@ fn teardown_only_emits_run_session_teardown() {
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
 
     // When handling session teardown (the route row's action).
-    let result = super::sessions::handle_session_teardown(&mut state);
+    let result = super::sessions::handle_session_teardown(&mut state, &config);
 
     // Then a RunSessionTeardown command is emitted with the rendered teardown command.
     assert_eq!(result.message_names.len(), 1);
@@ -1144,15 +1136,8 @@ fn teardown_only_emits_run_session_teardown() {
 fn teardown_only_is_noop_without_lifecycle_teardown() {
     // Given a session with a lifecycle that has NO teardown command.
     let mut state = AppState::default_with_scope_focus();
-    state.frontend.preferences.session_lifecycles.push(
-        jinn_preferences_config::schemas::SessionLifecycle {
-            name: "plain".to_owned(),
-            description: None,
-            setup: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                "echo setup".to_owned(),
-            )),
-            teardown: None,
-        },
+    let config = jinn_config::testutil::config_layer(
+        "[[session_lifecycle.lifecycle]]\nname = \"plain\"\nsetup_command = \"echo setup\"\n",
     );
     state
         .active_session_mut()
@@ -1165,7 +1150,7 @@ fn teardown_only_is_noop_without_lifecycle_teardown() {
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
 
     // When handling session teardown (the route row's action).
-    let result = super::sessions::handle_session_teardown(&mut state);
+    let result = super::sessions::handle_session_teardown(&mut state, &config);
 
     // Then no commands are emitted (no teardown command to run).
     assert!(result.message_names.is_empty());
@@ -1175,17 +1160,9 @@ fn teardown_only_is_noop_without_lifecycle_teardown() {
 fn teardown_only_is_noop_when_session_busy() {
     // Given a session with a teardown command that is currently busy.
     let mut state = AppState::default_with_scope_focus();
-    state.frontend.preferences.session_lifecycles.push(
-        jinn_preferences_config::schemas::SessionLifecycle {
-            name: "fossil branch".to_owned(),
-            description: None,
-            setup: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                "echo setup".to_owned(),
-            )),
-            teardown: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                "cleanup.sh $1".to_owned(),
-            )),
-        },
+    let config = jinn_config::testutil::config_layer(
+        "[[session_lifecycle.lifecycle]]\nname = \"fossil branch\"\n\
+         setup_command = \"echo setup\"\nteardown_command = \"cleanup.sh $1\"\n",
     );
     state
         .active_session_mut()
@@ -1203,7 +1180,7 @@ fn teardown_only_is_noop_when_session_busy() {
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
 
     // When handling session teardown (the route row's action).
-    let result = super::sessions::handle_session_teardown(&mut state);
+    let result = super::sessions::handle_session_teardown(&mut state, &config);
 
     // Then no commands are emitted (validation gates on busy state).
     assert!(result.message_names.is_empty());

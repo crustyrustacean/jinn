@@ -1,5 +1,5 @@
-//! Smoke test: verify `[[auto_prune.regex.rules]]` round-trips through
-//! `RegexAutoPruneConfig`.
+//! Smoke test: verify the regex auto-prune rules round-trip through the
+//! configuration layer as an array of tables.
 //!
 //! Pairs with the `toml_edit` round-trip smoke test that now lives in the
 //! `jinn-provider-config` crate (the comment-preserving fixture moved there
@@ -12,37 +12,30 @@
     reason = "test code"
 )]
 
+use jinn_preferences_config::schemas::AutoPruneConfig;
 use jinn_preferences_config::schemas::auto_prune::RegexAutoPruneConfig;
-use serde::Deserialize;
 
 #[rstest::rstest]
 #[test]
 fn auto_prune_regex_rules_round_trips_as_array_of_tables() {
-    // Given a TOML snippet using the [[auto_prune.regex.rules]] form
-    // (which is what the codebase documents).
+    // Given a TOML snippet using the [[context_curation.auto_prune.regex.rules]]
+    // form (which is what the codebase documents).
     let toml_str = r#"
-        [auto_prune.regex]
+        [context_curation.auto_prune.regex]
         enabled = true
 
-        [[auto_prune.regex.rules]]
+        [[context_curation.auto_prune.regex.rules]]
         pattern = "foo"
         tool_name = "bash"
         keep_last = 3
 
-        [[auto_prune.regex.rules]]
+        [[context_curation.auto_prune.regex.rules]]
         pattern = "bar"
     "#;
-    // When deserializing through a wrapper that mirrors UserPreferences' shape.
-    #[derive(Deserialize)]
-    struct Wrapper {
-        auto_prune: AutoPruneWrapper,
-    }
-    #[derive(Deserialize)]
-    struct AutoPruneWrapper {
-        regex: RegexAutoPruneConfig,
-    }
-    let parsed: Wrapper = toml::from_str(toml_str).expect("parse");
-    let cfg = parsed.auto_prune.regex;
+
+    // When reading the auto-prune section through the layer.
+    let layer = jinn_config::testutil::config_layer(toml_str);
+    let cfg = layer.get::<AutoPruneConfig>().expect("section reads").regex;
 
     // Then both rules are present and key fields preserved.
     assert_eq!(cfg.rules.len(), 2);

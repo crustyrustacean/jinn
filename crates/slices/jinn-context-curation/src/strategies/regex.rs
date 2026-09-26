@@ -932,13 +932,10 @@ mod tests {
         );
     }
 
-    use jinn_domain::common::app_info::PREFS_FILE_NAME;
-    use jinn_preferences_config::load_preferences_from;
+    use jinn_preferences_config::schemas::AutoPruneConfig;
     use jinn_preferences_config::schemas::auto_prune::{
         default_regex_keep_last, default_regex_min_age, default_regex_tool_name,
     };
-    use jinn_preferences_config::user_preferences::{AutoPruneConfig, UserPreferences};
-    use tempfile::TempDir;
 
     #[rstest::rstest]
     fn default_regex_config_rules_are_valid_patterns() {
@@ -969,97 +966,100 @@ mod tests {
 
     #[rstest::rstest]
     fn load_parses_multiple_regex_rules() {
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(
-            &path,
-            r#"[[auto_prune.regex.rules]]
+        // Given a config document with two regex rules.
+        let config = jinn_config::testutil::config_layer(
+            r#"[[context_curation.auto_prune.regex.rules]]
 pattern = "cargo check"
 tool_name = "bash"
 keep_last = 1
 
-[[auto_prune.regex.rules]]
+[[context_curation.auto_prune.regex.rules]]
 pattern = "cargo test"
 tool_name = "bash"
 keep_last = 2
 "#,
-        )
-        .expect("write");
+        );
 
-        let prefs = load_preferences_from(&path).expect("load");
-        assert_eq!(prefs.auto_prune.regex.rules.len(), 2);
-        assert_eq!(prefs.auto_prune.regex.rules[0].pattern, "cargo check");
-        assert_eq!(prefs.auto_prune.regex.rules[1].pattern, "cargo test");
+        // When reading the auto-prune section.
+        let auto_prune = config.get::<AutoPruneConfig>().expect("section reads");
+
+        // Then both rules came through in order.
+        assert_eq!(auto_prune.regex.rules.len(), 2);
+        assert_eq!(auto_prune.regex.rules[0].pattern, "cargo check");
+        assert_eq!(auto_prune.regex.rules[1].pattern, "cargo test");
     }
 
     #[rstest::rstest]
     fn load_parses_regex_rules_with_defaults() {
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(
-            &path,
-            r#"[[auto_prune.regex.rules]]
+        // Given a config document naming one rule and nothing else.
+        let config = jinn_config::testutil::config_layer(
+            r#"[[context_curation.auto_prune.regex.rules]]
 pattern = "cargo check"
 "#,
-        )
-        .expect("write");
+        );
 
-        let prefs = load_preferences_from(&path).expect("load");
-        assert_eq!(prefs.auto_prune.regex.rules.len(), 1);
-        assert_eq!(prefs.auto_prune.regex.rules[0].pattern, "cargo check");
-        assert_eq!(prefs.auto_prune.regex.rules[0].tool_name, "bash");
-        assert_eq!(prefs.auto_prune.regex.rules[0].keep_last, 1);
+        // When reading the auto-prune section.
+        let auto_prune = config.get::<AutoPruneConfig>().expect("section reads");
+
+        // Then the omitted rule fields carry their defaults.
+        assert_eq!(auto_prune.regex.rules.len(), 1);
+        assert_eq!(auto_prune.regex.rules[0].pattern, "cargo check");
+        assert_eq!(auto_prune.regex.rules[0].tool_name, "bash");
+        assert_eq!(auto_prune.regex.rules[0].keep_last, 1);
     }
 
     #[rstest::rstest]
     fn load_without_auto_prune_regex_section_uses_defaults() {
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(
-            &path,
-            r#"last_model = "ollama/llama3"
+        // Given a config document with no auto-prune section at all.
+        let config = jinn_config::testutil::config_layer(
+            r#"[context_curation.compaction]
+threshold = 0.7
 "#,
-        )
-        .expect("write");
+        );
 
-        let prefs = load_preferences_from(&path).expect("load");
-        assert_eq!(prefs.auto_prune.regex, RegexAutoPruneConfig::default());
+        // When reading the auto-prune section.
+        let auto_prune = config.get::<AutoPruneConfig>().expect("section reads");
+
+        // Then the absent section reads as its default.
+        assert_eq!(auto_prune.regex, RegexAutoPruneConfig::default());
     }
 
     #[rstest::rstest]
     fn load_parses_regex_rules_with_header_section() {
-        // Mirrors the real user config: [auto_prune.regex] header + [[auto_prune.regex.rules]] entries.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(
-            &path,
-            r#"[auto_prune.regex]
+        // Mirrors the real user config: the [context_curation.auto_prune.regex]
+        // header + [[context_curation.auto_prune.regex.rules]] entries.
+        let config = jinn_config::testutil::config_layer(
+            r#"[context_curation.auto_prune.regex]
 enabled = true
 
-[[auto_prune.regex.rules]]
+[[context_curation.auto_prune.regex.rules]]
 pattern = "ls"
 tool_name = "bash"
 keep_last = 1
 
-[[auto_prune.regex.rules]]
+[[context_curation.auto_prune.regex.rules]]
 pattern = "cargo check"
 tool_name = "bash"
 keep_last = 1
 "#,
-        )
-        .expect("write");
+        );
 
-        let prefs = load_preferences_from(&path).expect("load");
-        assert!(prefs.auto_prune.regex.enabled);
-        assert_eq!(prefs.auto_prune.regex.rules.len(), 2);
-        assert_eq!(prefs.auto_prune.regex.rules[0].pattern, "ls");
-        assert_eq!(prefs.auto_prune.regex.rules[1].pattern, "cargo check");
+        // When reading the auto-prune section.
+        let auto_prune = config.get::<AutoPruneConfig>().expect("section reads");
+
+        // Then the header flag and both entries came through.
+        assert!(auto_prune.regex.enabled);
+        assert_eq!(auto_prune.regex.rules.len(), 2);
+        assert_eq!(auto_prune.regex.rules[0].pattern, "ls");
+        assert_eq!(auto_prune.regex.rules[1].pattern, "cargo check");
     }
 
     #[rstest::rstest]
     fn serialize_regex_rules_produces_correct_toml() {
-        let prefs = UserPreferences {
-            auto_prune: AutoPruneConfig {
+        // Given a layer the auto-prune section was written to.
+        let config = jinn_config::testutil::config_layer("");
+        config
+            .put::<AutoPruneConfig>(&AutoPruneConfig {
                 regex: RegexAutoPruneConfig {
                     enabled: true,
                     rules: vec![
@@ -1078,16 +1078,15 @@ keep_last = 1
                     ],
                 },
                 ..AutoPruneConfig::default()
-            },
-            ..UserPreferences::default()
-        };
+            })
+            .expect("layer writes the auto-prune section");
 
-        let toml_str = toml::to_string_pretty(&prefs).expect("serialize");
+        // When reading the section back off the written document.
+        let reloaded = config.get::<AutoPruneConfig>().expect("section reads");
 
-        // Round-trip back
-        let reloaded: UserPreferences = toml::from_str(&toml_str).expect("deserialize");
-        assert_eq!(reloaded.auto_prune.regex.rules.len(), 2);
-        assert_eq!(reloaded.auto_prune.regex.rules[0].pattern, "ls");
-        assert_eq!(reloaded.auto_prune.regex.rules[1].pattern, "cargo check");
+        // Then both rules survived the write.
+        assert_eq!(reloaded.regex.rules.len(), 2);
+        assert_eq!(reloaded.regex.rules[0].pattern, "ls");
+        assert_eq!(reloaded.regex.rules[1].pattern, "cargo check");
     }
 }
