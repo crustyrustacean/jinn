@@ -3293,7 +3293,6 @@ dependencies = [
  "tempfile",
  "throbber-widgets-tui",
  "tokio",
- "toml",
  "trouper",
  "unicode-segmentation",
  "unicode-width 0.2.2",
