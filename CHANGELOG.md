@@ -34,15 +34,10 @@
 - Overall performance improvement on Markdown rendering.
   - Chat log, session previews, and skill picker rendering is faster and uses significantly less memory.
   - There is no longer UI stuttering on gigantic sessions.
+- There are now spinners while a session is being loaded.
 - The sidebar is now presented as one large scrollable area that keeps the cursor bounded.
   - Removed the scrolling capability of the sessions since now the entire sidebar scrolls.
-- Add new `global_command_policy` TOML config to block commands across all projects. Recommend adding the below to your `jinn.toml` (it ships by default with a fresh config):
-
-```toml
-[[global_command_policy]]
-pattern = 'rg -rn'
-message = 'ripgrep is already recursive and `-r` takes a replacement value, so `rg -rn` rewrites every match to `n` and still exit s 0 — use `-n` alone for line numbers.'
-```
+- The `jinn.toml` file was restructured. Recommend moving your existing `jinn.toml` to `jinn.toml.bak` and then running `jinn install` to get a new version.
 
 - These plugins were move into the core in preparation for 1.0 release. They are now unused and will remain on-disk unless you manually delete them. Please see the next section on plugin-related TOML configuration changes.
   - Deleted `persona-loader`
