@@ -31,10 +31,10 @@ pub fn definition() -> ToolDefinition {
         description: "Write one entire phase of the task list, matched by its description. \
             If a phase with this description exists, it is replaced (first match wins); \
             otherwise the phase is appended to the end of the list. Tasks declare their \
-            status inline: each task is a bare string (created as pending) or an object \
-            with 'description' and an optional 'status' (pending, completed, or \
-            cancelled). Use this for day-to-day updates - write the entire phase \
-            including unchanged tasks; use todo_set_list to restructure the whole list."
+            status inline: each task is an object with 'description' and 'status' \
+            (pending, completed, or cancelled). Use this for day-to-day updates - write \
+            the entire phase including unchanged tasks; use todo_set_list to restructure \
+            the whole list."
             .to_owned(),
         prompt_snippet: Some("Write one task-list phase".to_owned()),
         prompt_guidelines: vec![
@@ -46,8 +46,8 @@ pub fn definition() -> ToolDefinition {
              check for typos when that wasn't intended."
                 .to_owned(),
             "Record progress by resending the phase with statuses flipped: \
-             {\"description\": \"...\", \"status\": \"completed\"}. Statuses: \
-             pending, completed, cancelled. Bare strings stay pending."
+             {\"description\": \"...\", \"status\": \"completed\"}. Every task needs \
+             both a 'description' and a 'status' (pending, completed, cancelled)."
                 .to_owned(),
             "'postponed' is not a valid status - move the task to a later phase \
              or cancel it instead."
@@ -65,24 +65,22 @@ pub fn definition() -> ToolDefinition {
                 },
                 "tasks": {
                     "type": "array",
-                    "description": "The complete ordered task list for this phase. Each task is a string (created as pending) or an object {description, status} with status one of: pending, completed, cancelled.",
+                    "description": "The complete ordered task list for this phase. An empty or omitted list is valid.",
                     "items": {
-                        "oneOf": [
-                            { "type": "string" },
-                            {
-                                "type": "object",
-                                "properties": {
-                                    "description": { "type": "string" },
-                                    "status": {
-                                        "type": "string",
-                                        "enum": ["pending", "completed", "cancelled"],
-                                        "description": "Declared status of this task. Omit for pending."
-                                    }
-                                },
-                                "required": ["description"],
-                                "additionalProperties": false
+                        "type": "object",
+                        "properties": {
+                            "description": {
+                                "type": "string",
+                                "description": "What the task is."
+                            },
+                            "status": {
+                                "type": "string",
+                                "enum": ["pending", "completed", "cancelled"],
+                                "description": "Declared status of this task. 'pending' if the work has not been done yet."
                             }
-                        ]
+                        },
+                        "required": ["description", "status"],
+                        "additionalProperties": false
                     }
                 }
             },
@@ -249,6 +247,146 @@ mod tests {
             arguments: serde_json::json!({ "description": description, "tasks": tasks })
                 .to_string(),
         }
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_phase_accepts_single_task_wrapped_in_item_envelope() {
+        // Given the exact payload shape a model emitted: a single task
+        // wrapped in an `item` envelope instead of an array.
+        let (state, session_id) = setup_with_two_phases();
+
+        // When writing the phase.
+        let call = set_phase_call(
+            "Theme vocabulary",
+            serde_json::json!({ "item": "first task" }),
+        );
+        let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the write succeeds with the single intended task.
+        assert!(result.success, "expected success: {:?}", result.content);
+        let snapshot = state.read();
+        let session = snapshot.session.get(&session_id).expect("session present");
+        let phase = session
+            .task_list()
+            .phases()
+            .iter()
+            .find(|p| p.description() == "Theme vocabulary")
+            .expect("phase written");
+        assert_eq!(phase.tasks().len(), 1);
+        assert_eq!(phase.tasks()[0].description, "first task");
+        assert_eq!(phase.tasks()[0].status, TaskStatus::Pending);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_phase_unrecoverable_tasks_shape_reports_worked_example() {
+        // Given a tasks value with no recoverable array.
+        let (state, session_id) = setup_with_two_phases();
+
+        // When writing the phase.
+        let call = set_phase_call("Build", serde_json::json!(42));
+        let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the failure names the expectation and shows an example.
+        assert!(!result.success);
+        assert!(
+            result.content.contains("must be an array of task objects"),
+            "got: {:?}",
+            result.content
+        );
+        assert!(
+            result.content.contains("\"description\""),
+            "got: {:?}",
+            result.content
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_phase_unrecoverable_tasks_shape_keeps_phase_intact() {
+        // Given a tasks value with no recoverable array.
+        let (state, session_id) = setup_with_two_phases();
+
+        // When writing the phase.
+        let call = set_phase_call("Build", serde_json::json!(42));
+        let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the phase keeps its original tasks.
+        assert!(!result.success);
+        let snapshot = state.read();
+        let session = snapshot.session.get(&session_id).expect("session present");
+        assert_eq!(session.task_list().phases()[0].tasks().len(), 2);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_phase_task_items_schema_advertises_no_union() {
+        // Given the published set_phase schema.
+        let schema = serde_json::to_value(&definition().parameters).expect("serializes");
+
+        // When inspecting the task item schema.
+        let items = schema
+            .pointer("/properties/tasks/items")
+            .expect("task items schema present");
+
+        // Then it is a single object type, not a string-or-object union.
+        assert_eq!(
+            items.get("type").and_then(serde_json::Value::as_str),
+            Some("object")
+        );
+        assert!(items.get("oneOf").is_none(), "no union expected: {items}");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_phase_task_items_require_description_and_status() {
+        // Given the published set_phase schema.
+        let schema = serde_json::to_value(&definition().parameters).expect("serializes");
+
+        // When inspecting the task item's required keys.
+        let items = schema
+            .pointer("/properties/tasks/items")
+            .expect("task items schema present");
+        let required = items
+            .get("required")
+            .and_then(serde_json::Value::as_array)
+            .expect("required present");
+
+        // Then both fields are required.
+        let required: Vec<&str> = required
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .collect();
+        assert_eq!(required, vec!["description", "status"]);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_phase_task_items_reject_unknown_keys() {
+        // Given the published set_phase schema.
+        let schema = serde_json::to_value(&definition().parameters).expect("serializes");
+
+        // When inspecting the task item's closed-ness and status enum.
+        let items = schema
+            .pointer("/properties/tasks/items")
+            .expect("task items schema present");
+
+        // Then unknown keys are rejected and the enum is unchanged.
+        assert_eq!(
+            items
+                .get("additionalProperties")
+                .and_then(serde_json::Value::as_bool),
+            Some(false)
+        );
+        let statuses = items
+            .pointer("/properties/status/enum")
+            .and_then(serde_json::Value::as_array)
+            .expect("status enum present");
+        assert_eq!(statuses.len(), 3);
     }
 
     #[rstest::rstest]
