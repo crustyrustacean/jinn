@@ -113,7 +113,7 @@ where
 
     if existed && !force {
         return Err(Report::new(InitDefaultConfigError))
-            .attach("jinn.toml already exists; pass --force to overwrite")
+            .attach("path already exists; pass --force to overwrite")
             .attach(format!("path: {}", path.display()));
     }
 
