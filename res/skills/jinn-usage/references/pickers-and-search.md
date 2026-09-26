@@ -7,34 +7,34 @@ in the which-key popup (`?`).
 
 ## The picker family
 
-| Key | Picker | What it changes |
-| --- | --- | --- |
-| `<leader>sm` | Model/provider | Active model (and provider) for the session |
-| `<leader>ss` | Session | Switch / resume any session (incl. archived) |
-| `<leader>se` | Persona | Session persona |
-| `<leader>st` | Tool | Enable/disable tools for this session |
-| `<leader>sk` | Skill | Enable/disable skills; load skill bodies into context |
-| `<leader>sM` | MCP server | Enable/disable/restart MCP servers (inspector) |
-| `<leader>sh` | Theme | UI theme |
-| `<leader>sr` | Reasoning effort | Model reasoning-effort level |
-| `<leader>sE` | Endpoint | OpenRouter routing endpoint pin |
-| `<leader>so` | Project | Curated project dirs for quick session creation |
-| `<leader>sc` | Compaction model | Model used for compaction summaries |
-| `<leader>sl` | Lifecycle | Lifecycle recipes for new sessions |
+| Key          | Picker           | What it changes                                       |
+| ------------ | ---------------- | ----------------------------------------------------- |
+| `<leader>sm` | Model/provider   | Active model (and provider) for the session           |
+| `<leader>ss` | Session          | Switch / resume any session (incl. archived)          |
+| `<leader>se` | Persona          | Session persona                                       |
+| `<leader>st` | Tool             | Enable/disable tools for this session                 |
+| `<leader>sk` | Skill            | Enable/disable skills; load skill bodies into context |
+| `<leader>sM` | MCP server       | Enable/disable/restart MCP servers (inspector)        |
+| `<leader>sh` | Theme            | UI theme                                              |
+| `<leader>sr` | Reasoning effort | Model reasoning-effort level                          |
+| `<leader>sE` | Endpoint         | OpenRouter routing endpoint pin                       |
+| `<leader>sp` | Project          | Curated project dirs for quick session creation       |
+| `<leader>sc` | Compaction model | Model used for compaction summaries                   |
+| `<leader>sl` | Lifecycle        | Lifecycle recipes for new sessions                    |
 
 ## Inside a picker
 
 Shared controls:
 
-| Key | Action |
-| --- | --- |
-| type letters | Filter the list (bare letters go to the filter, not actions) |
-| `<up>` / `<down>` | Move selection |
-| `<pgup>` / `<pgdn>` | Page the list |
-| `<left>` / `<right>` / `<backspace>` | Edit the filter |
-| `<enter>` | Confirm |
-| `<esc>` | Close |
-| `<c-n>` | New session from here |
+| Key                                  | Action                                                       |
+| ------------------------------------ | ------------------------------------------------------------ |
+| type letters                         | Filter the list (bare letters go to the filter, not actions) |
+| `<up>` / `<down>`                    | Move selection                                               |
+| `<pgup>` / `<pgdn>`                  | Page the list                                                |
+| `<left>` / `<right>` / `<backspace>` | Edit the filter                                              |
+| `<enter>`                            | Confirm                                                      |
+| `<esc>`                              | Close                                                        |
+| `<c-n>`                              | New session from here                                        |
 
 Picker-specific keys are shown in the picker's own which-key overlay — the
 highlights:

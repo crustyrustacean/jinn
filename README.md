@@ -47,7 +47,7 @@ There are multiple ways to create new sessions:
 - `/new` in the chat input
 - `n` while in normal mode
 - `<M-s>n` (alt+s)n: switch to session panel then create new
-- `<leader>so` (space)so: search -> projects then create a session for a project
+- `<leader>sp` (space)sp: search -> projects then create a session for a project
 
 ### Message Queueing
 
@@ -81,7 +81,7 @@ Prompts are only expanded when they get sent to the model and will always show u
 
 ### Lifecycle Scripts
 
-`jinn` can associate "lifecycle" scripts with sessions. These scripts run when a new session is created (via `<leader>so` or `<leader>sl`) and when it's closed (via `xx` on the sidebar). They are used to checkout branches and set up an environment on a new session, and also merge + cleanup when closing the session.
+`jinn` can associate "lifecycle" scripts with sessions. These scripts run when a new session is created (via `<leader>sp` or `<leader>sl`) and when it's closed (via `xx` on the sidebar). They are used to checkout branches and set up an environment on a new session, and also merge + cleanup when closing the session.
 
 You can use any number of `<foo>` tokens in the scripts and their values will be prompted for interactively on session creation, saved to the session, and then re-used during teardown.
 
@@ -237,7 +237,7 @@ Requirements to use:
 
 - Discord bot set up on your server
 - A forum channel to create sessions
-- Projects pre-configured in `jinn` (`<leader>so` to open the projects finder)
+- Projects pre-configured in `jinn` (`<leader>sp` to open the projects finder)
 
 Available Discord bot commands:
 

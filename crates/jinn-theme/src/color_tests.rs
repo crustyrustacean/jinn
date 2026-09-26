@@ -191,11 +191,8 @@ mod in_flight_tint_tests {
     }
 
     #[rstest::rstest]
-    #[case(include_str!("../../../res/themes/nord-light.toml"), "nord-light")]
-    fn light_theme_tint_is_legible_against_its_pale_gutter(
-        #[case] contents: &str,
-        #[case] _name: &str,
-    ) {
+    #[case(include_str!("../../../res/themes/nord-light.toml"))]
+    fn light_theme_tint_is_legible_against_its_pale_gutter(#[case] contents: &str) {
         // Given a bundled light theme.
         let file: ThemeFile = toml::from_str(contents).expect("parse");
 

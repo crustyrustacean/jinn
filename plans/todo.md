@@ -35,18 +35,30 @@ Status legend: `[ ]` pending · `[x]` done · `[!]` diverged (note the divergenc
 
 ## Phase 2 — Failure event
 
-- [ ] Add `SessionArchiveFailed { session_id, error }` to `crates/jinn-session-msg/src/lib.rs` with serde + `trouper::schema::Event` derives
-- [ ] Add `impl jinn_slices::BusMessage for SessionArchiveFailed`
-- [ ] Extend the existing wire-contract roundtrip test in `jinn-session-msg` to include it
+- [x] Add `SessionArchiveFailed { session_id, error }` to `crates/jinn-session-msg/src/lib.rs` with serde + `trouper::schema::Event` derives
+- [x] Add `impl jinn_slices::BusMessage for SessionArchiveFailed`
+- [x] Extend the existing wire-contract roundtrip test in `jinn-session-msg` to include it
+- [x] Verified: `session_events_roundtrip_through_json` passes
 
 ## Phase 3 — Publish the failure
 
-- [ ] Add a `publish_archive_failed` helper on `SessionStoreActor` publishing one `SessionArchiveFailed` per member
-- [ ] Publish at abort: `archive_snapshots` returns `None` (empty snapshot set)
-- [ ] Publish at abort: `archive_snapshots` write failure in `archive_members`
-- [ ] Publish at abort: a member fails to load in `archive_snapshots`
-- [ ] Publish at abort: `guarded_tree_closure` busy re-validation in `SessionStoreActor` — clear **every** member, not just the root
-- [ ] Publish at abort: `SessionLifecycleActor::guarded_tree_closure` busy re-validation via `SessionTeardownFinished { error: Some(..) }` for every member
+- [x] Add a `publish_archive_failed` helper on `SessionStoreActor` publishing one `SessionArchiveFailed` per member
+- [x] Publish when `archive_members` gets no snapshots (covers the member-load-failure abort inside `archive_snapshots`, which propagates as `None`)
+- [x] Publish when the `archive_snapshots` store write fails in `archive_members`
+- [x] Publish in `guarded_tree_closure` on the busy re-validation — clears **every** member, not just the root
+- [x] Publish in `SessionLifecycleActor::guarded_tree_closure` on the busy re-validation via `SessionTeardownFinished { error: Some(..) }` for every member
+- [x] `just check` clean
+
+### Phase 3 notes
+
+- Simplification: the spec listed five abort sites (1–5). `archive_snapshots` has three internal
+  abort paths, but the member-load failure `return None`s to `archive_members`, and the empty-snapshot
+  `then_some(None)` does too. Publishing once at the caller covers all three, so no publish was added
+  inside the helper.
+- Compile error hit and fixed: adding an `await` to `guarded_tree_closure` made the
+  `StateReadGuard` cross the await point, failing `Send` for the `MsgHandler` future. The explicit
+  `drop(state)` was not provable to the compiler. Replaced with a block-scoped `let busy = { ... }`,
+  which is also what the style guide's block-scoping rule asks for. Applied to both actors.
 
 ## Phase 4 — In-flight state in the sidebar cell
 

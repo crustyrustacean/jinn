@@ -248,18 +248,35 @@ impl SessionLifecycleActor {
 
     async fn guarded_tree_closure(&self, root: &SessionId) -> Option<Vec<SessionId>> {
         let members = self.resolve_tree_closure(root).await;
-        let state = self.state.read();
-        let busy = members.iter().any(|id| {
-            state.session.get(id).is_some_and(|session| {
-                session.is_busy() || !matches!(session.phase(), PhaseKind::Idle)
+        let busy = {
+            let state = self.state.read();
+            members.iter().any(|id| {
+                state.session.get(id).is_some_and(|session| {
+                    session.is_busy() || !matches!(session.phase(), PhaseKind::Idle)
+                })
             })
-        });
-        drop(state);
+        };
         if busy {
             tracing::warn!(root = %root, "tree action aborted: a member session is busy");
+            self.publish_tree_teardown_failed(&members, "a member session is busy")
+                .await;
             return None;
         }
         Some(members)
+    }
+
+    /// Announces a per-member teardown failure for an aborted tree action.
+    ///
+    /// One event per member, so a listener tracking several in-flight sessions
+    /// clears every one of them rather than only the tree root.
+    async fn publish_tree_teardown_failed(&self, members: &[SessionId], error: &str) {
+        for session_id in members {
+            self.publish(SessionTeardownFinished {
+                session_id: session_id.clone(),
+                error: Some(error.to_owned()),
+            })
+            .await;
+        }
     }
 
     async fn resolve_tree_closure(&self, root: &SessionId) -> Vec<SessionId> {
