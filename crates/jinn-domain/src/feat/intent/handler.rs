@@ -33,7 +33,7 @@ use crate::AppState;
 use jinn_status_bar_msg::{StatusBarState, status_bar_slot};
 use jinn_term_msg::command::ControlHolder;
 
-use crate::protocol::{PickerKind, ScopeSignal};
+use crate::protocol::ScopeSignal;
 
 use crate::KernelIntent;
 use crate::feat;
@@ -408,14 +408,6 @@ impl IntentHandler {
             KernelIntent::RefreshModels => feat::session::intent::handle_refresh_models(state),
             KernelIntent::RescanPromptTemplates => {
                 feat::session::intent::handle_rescan_prompt_templates(state)
-            }
-
-            KernelIntent::SessionNewWithLifecycle => {
-                crate::feat::picker::intent::handle_open_picker(
-                    state,
-                    PickerKind::SessionLifecycle,
-                    pickers,
-                )
             }
 
             KernelIntent::ChatEntrySelectNext => {

@@ -128,7 +128,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             .describe_group_with_category("g", "general", KeyCategory::General)
             .describe_group_with_category("gm", "model", KeyCategory::Model)
             .describe_group_with_category("gc", "context", KeyCategory::Context)
-            .bind("<leader>sl", KernelIntent::OpenPicker { kind: PickerKind::SessionLifecycle }, KeyCategory::General)
             .describe_group_with_category("<leader>c", "change", KeyCategory::General)
             .bind("gg", KernelIntent::ScrollToTop, KeyCategory::Navigation)
             .bind("G", KernelIntent::ScrollToBottom, KeyCategory::Navigation)
@@ -168,7 +167,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             .bind("[s", KernelIntent::ChatEntryJumpPrevSources, KeyCategory::ChatHistory)
             // Session creation
             .bind("n", KernelIntent::SessionNew, KeyCategory::General)
-            .bind("N", KernelIntent::SessionNewWithLifecycle, KeyCategory::General)
             // Escape: cancel selection
             .bind("<esc>", KernelIntent::NormalEscape, KeyCategory::General)
             // Unmapped character keys produce NoOp to dismiss confirmation prompts
@@ -241,9 +239,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
         .scope(Scope::PickerSession, |b| {
             add_picker_base(b);
         })
-        .scope(Scope::PickerLifecycle, |b| {
-            add_picker_base(b);
-        })
         .scope(Scope::PickerEndpoint, |b| {
             // The endpoint spec's CTRL+R row lands here via
             // bind_picker_spec_rows.
@@ -292,7 +287,6 @@ mod tests {
         #[values(
             PickerKind::Provider,
             PickerKind::Session,
-            PickerKind::SessionLifecycle,
             PickerKind::TaskList,
             PickerKind::Project,
             PickerKind::McpServer,
@@ -792,12 +786,12 @@ mod leak_check {
             modifiers: Modifiers::none(),
         };
 
-        // When navigating the base keys within the lifecycle picker scope.
+        // When navigating the base keys within a surviving picker scope.
         let esc_res = keymap
-            .navigate(&[esc], &Scope::PickerLifecycle)
+            .navigate(&[esc], &Scope::PickerEndpoint)
             .expect("esc bound");
         let enter_res = keymap
-            .navigate(&[enter], &Scope::PickerLifecycle)
+            .navigate(&[enter], &Scope::PickerEndpoint)
             .expect("enter bound");
 
         // Then each resolves to a real picker base intent (the confirm

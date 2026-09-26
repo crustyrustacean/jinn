@@ -33,7 +33,6 @@ use crate::widget::WidgetKind;
 /// The id of the MCP server picker's spec.
 pub const MCP_SERVER_ID: &str = "mcp-server";
 /// The id of the session-lifecycle picker's spec.
-pub const SESSION_LIFECYCLE_ID: &str = "session-lifecycle";
 /// The id of the task-list picker's spec.
 pub const TASK_LIST_ID: &str = "task-list";
 /// The id of the session picker's spec.
@@ -53,7 +52,6 @@ pub fn spec_id_for_kind(kind: &jinn_slices::picker_kind::PickerKind) -> Option<&
 
     match kind {
         PickerKind::McpServer => Some(MCP_SERVER_ID),
-        PickerKind::SessionLifecycle => Some(SESSION_LIFECYCLE_ID),
         PickerKind::TaskList => Some(TASK_LIST_ID),
         PickerKind::Session => Some(SESSION_ID),
         PickerKind::Provider => Some(PROVIDER_ID),

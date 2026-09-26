@@ -77,7 +77,6 @@ pub fn bind_picker_spec_rows(
 fn picker_spec_scope(id: jinn_picker::PickerId) -> Option<Scope> {
     match id.as_str() {
         "mcp-server" => Some(Scope::PickerMcpServer),
-        "session-lifecycle" => Some(Scope::PickerLifecycle),
         "task-list" => Some(Scope::PickerTaskList),
         "session" => Some(Scope::PickerSession),
         "provider" => Some(Scope::PickerProvider),
@@ -131,7 +130,6 @@ fn scopes_for_row<'a>(
                 Scope::Input,
                 Scope::PickerProvider,
                 Scope::PickerSession,
-                Scope::PickerLifecycle,
                 Scope::PickerEndpoint,
                 Scope::PickerTaskList,
                 Scope::PickerProject,
@@ -829,7 +827,6 @@ mod tests {
     #[case("Input")]
     #[case("Picker(provider)")]
     #[case("Picker(session)")]
-    #[case("Picker(lifecycle)")]
     #[case("Picker(endpoint)")]
     #[case("Picker(task-list)")]
     #[case("Picker(project)")]

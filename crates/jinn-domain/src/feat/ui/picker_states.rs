@@ -9,7 +9,6 @@ use jinn_mcp_msg::McpServerEntry;
 use jinn_project_msg::ProjectEntry;
 use jinn_provider_selection_msg::ProviderPickerEntry;
 use jinn_provider_selection_msg::endpoint::EndpointEntry;
-use jinn_session_lifecycle_msg::SessionLifecycleEntry;
 use jinn_session_store_msg::SessionTreeEntry;
 use jinn_tools_msg::TaskListTreeEntry;
 
@@ -27,11 +26,6 @@ pub struct PickerStates {
     /// Preview pane scroll offsets for spec-driven pickers, keyed by
     /// picker id.
     pub pickers_scrolls: jinn_picker::PickerScrolls,
-
-    /// Session lifecycle picker state (items, filter text, selection index).
-    /// OWNER: IntentHandler (lifecycle picker navigation).
-    pub session_lifecycle_picker:
-        jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<SessionLifecycleEntry>>,
 
     /// Task list picker state - read-only zoom view of the active session's task list.
     /// OWNER: IntentHandler (populated on task list picker open).
@@ -97,15 +91,6 @@ pub trait PickerExt {
     /// Mutable access to the enabled MCP servers snapshot.
     fn mcp_server_picker_snapshot_mut(&mut self)
     -> &mut Option<std::collections::BTreeSet<String>>;
-    /// Read-only access to the session lifecycle picker state.
-    fn session_lifecycle_picker(
-        &self,
-    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<SessionLifecycleEntry>>;
-    /// Mutable access to the session lifecycle picker state.
-    fn session_lifecycle_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<SessionLifecycleEntry>>;
-
     /// Read-only access to the task list picker state.
     fn task_list_picker(
         &self,
@@ -172,19 +157,6 @@ impl PickerExt for super::frontend_state::FrontendState {
         &mut self.pickers.mcp_server_picker_snapshot
     }
 
-    fn session_lifecycle_picker(
-        &self,
-    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<SessionLifecycleEntry>>
-    {
-        &self.pickers.session_lifecycle_picker
-    }
-
-    fn session_lifecycle_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<SessionLifecycleEntry>>
-    {
-        &mut self.pickers.session_lifecycle_picker
-    }
     fn task_list_picker(
         &self,
     ) -> &jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<TaskListTreeEntry>> {

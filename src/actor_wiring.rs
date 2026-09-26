@@ -646,6 +646,7 @@ fn jinn_session_lifecycle_activate(
         builtin_registry,
         shell,
     );
+    jinn_session_lifecycle::activate_picker(&mut host);
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("session-lifecycle slice finalize failed: {error}");
     }

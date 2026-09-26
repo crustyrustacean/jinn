@@ -1039,57 +1039,6 @@ fn activate_is_noop_when_not_sessions_section() {
 }
 
 #[rstest::rstest]
-fn session_new_with_lifecycle_opens_picker_from_normal_mode() {
-    // Given default app state (Normal mode).
-    let mut state = AppState::default_with_scope_focus();
-
-    // When handling the intent via IntentHandler.
-    let result = jinn_domain::feat::intent::IntentHandler::handle(
-        &jinn_domain::KernelIntent::SessionNewWithLifecycle,
-        &mut state,
-        &empty_slices(),
-        &empty_routes(),
-        &empty_pickers(),
-    );
-
-    // Then the picker scope is pushed with SessionLifecycle kind.
-    assert!(state.frontend.is_picker());
-    assert_eq!(
-        state.frontend.picker_kind(),
-        Some(jinn_domain::protocol::PickerKind::SessionLifecycle)
-    );
-    // And no commands emitted (lifecycle entries are loaded synchronously).
-    assert!(result.message_names.is_empty());
-}
-
-#[rstest::rstest]
-fn session_new_with_lifecycle_opens_picker_from_sidebar_sessions() {
-    // Given sidebar focused on sessions section.
-    let mut state = AppState::default_with_scope_focus();
-    state
-        .frontend
-        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-
-    // When handling the intent via IntentHandler.
-    let result = jinn_domain::feat::intent::IntentHandler::handle(
-        &jinn_domain::KernelIntent::SessionNewWithLifecycle,
-        &mut state,
-        &empty_slices(),
-        &empty_routes(),
-        &empty_pickers(),
-    );
-
-    // Then the picker scope is pushed with SessionLifecycle kind.
-    assert!(state.frontend.is_picker());
-    assert_eq!(
-        state.frontend.picker_kind(),
-        Some(jinn_domain::protocol::PickerKind::SessionLifecycle)
-    );
-    // And no commands emitted (lifecycle entries are loaded synchronously).
-    assert!(result.message_names.is_empty());
-}
-
-#[rstest::rstest]
 fn teardown_only_emits_run_session_teardown() {
     // Given a session with a lifecycle that has a teardown command.
     let mut state = AppState::default_with_scope_focus();
@@ -2878,10 +2827,6 @@ fn empty_slices() -> jinn_slices::Slices {
 
 fn empty_pickers() -> jinn_picker::PickerRegistry {
     jinn_picker::PickerRegistry::new()
-}
-
-fn empty_routes() -> jinn_slices::route::KeyRoutes {
-    jinn_slices::route::KeyRoutes::new()
 }
 
 /// The sidebar's real route table (the rows the `A`/`X` keys bind to).

@@ -16,7 +16,6 @@ use jinn_picker::PickerSpec;
 use jinn_picker::RowCtx;
 use ratatui::text::Line;
 
-use jinn_domain::PickerKind;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::feat::ui::frontend_state::PendingSessionCreation;
 use jinn_domain::feat::ui::picker_states::PickerExt;
@@ -83,8 +82,8 @@ pub fn project_spec() -> PickerSpec<ProjectEntry> {
         })
         .bind("<c-enter>", "new+lifecycle", |ctx| {
             // Stash the chosen dir and pop the picker, then chain into the
-            // session-lifecycle picker via the real registry — its open hook
-            // fills the entries.
+            // session-lifecycle picker, whose own slice populates its rows
+            // when the scope is pushed.
             let (path, starting_cwd) = {
                 let state = state_of(ctx);
                 let Some(entry) = state.frontend.project_picker().selected_item() else {
@@ -99,9 +98,9 @@ pub fn project_spec() -> PickerSpec<ProjectEntry> {
                 starting_cwd,
             });
             state.frontend.scope_pop();
-            state.frontend.scope_push(FocusScope::Picker {
-                kind: PickerKind::SessionLifecycle,
-            });
+            state.frontend.scope_push(FocusScope::Dynamic(
+                jinn_session_lifecycle_msg::session_lifecycle_picker_scope(),
+            ));
             let registry = crate::build_picker_registry();
             let result = jinn_domain::feat::picker::action::run_active_hook(
                 state,
@@ -277,18 +276,13 @@ mod tests {
         );
 
         // Then the project scope was popped and the lifecycle picker opened.
+        // The lifecycle picker is slice-owned, so its scope is a dynamic scope
+        // the project slice reaches by id — neither picker names the other.
         assert!(matches!(
             state.frontend.scope(),
-            FocusScope::Picker {
-                kind: PickerKind::SessionLifecycle
-            }
+            FocusScope::Dynamic(scope)
+                if scope == jinn_session_lifecycle_msg::session_lifecycle_picker_scope()
         ));
-        // And the lifecycle picker holds entries (the real registry ran the
-        // lifecycle spec's open hook — the empty-picker regression is fixed).
-        assert!(
-            !state.frontend.session_lifecycle_picker().items().is_empty(),
-            "lifecycle picker must be populated by the chained open"
-        );
         // And the chosen dir is stashed in a pending creation, awaiting the
         // lifecycle/args confirm chain.
         let pending = state

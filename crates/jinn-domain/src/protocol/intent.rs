@@ -136,7 +136,6 @@ pub enum KernelIntent {
     /// Rescan the prompt templates directory.
     RescanPromptTemplates,
     /// Open the session lifecycle picker from the sidebar sessions section.
-    SessionNewWithLifecycle,
 
     /// Select the next chat entry.
     ChatEntrySelectNext,
@@ -299,7 +298,6 @@ impl std::fmt::Display for KernelIntent {
             KernelIntent::SessionNew => write!(f, "new session"),
             KernelIntent::RefreshModels => write!(f, "refresh models"),
             KernelIntent::RescanPromptTemplates => write!(f, "rescan prompt templates"),
-            KernelIntent::SessionNewWithLifecycle => write!(f, "new session with lifecycle"),
 
             KernelIntent::ChatEntrySelectNext => write!(f, "select next entry"),
             KernelIntent::ChatEntrySelectPrev => write!(f, "select prev entry"),

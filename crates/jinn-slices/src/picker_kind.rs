@@ -11,7 +11,6 @@ pub enum PickerKind {
     /// Session browser picker.
     Session,
     /// Session lifecycle picker - select a lifecycle recipe for new session creation.
-    SessionLifecycle,
     /// Retired: the compaction model is configured only by `[compaction] model`
     /// in `jinn.toml`. Retained so persisted state still deserializes; it is
     /// never pushed as a scope and has no picker state.
@@ -33,7 +32,6 @@ impl std::fmt::Display for PickerKind {
         match self {
             Self::Provider => write!(f, "models"),
             Self::Session => write!(f, "sessions"),
-            Self::SessionLifecycle => write!(f, "session-lifecycle"),
 
             Self::CompactionModel => write!(f, "compaction model"),
 

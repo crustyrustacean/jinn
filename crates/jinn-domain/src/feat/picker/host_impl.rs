@@ -18,7 +18,6 @@ use jinn_picker::MCP_SERVER_ID;
 use jinn_picker::PROJECT_ID;
 use jinn_picker::PROVIDER_ID;
 use jinn_picker::SESSION_ID;
-use jinn_picker::SESSION_LIFECYCLE_ID;
 use jinn_picker::TASK_LIST_ID;
 
 /// The mutable navigation interface for the active picker, or `None` when no
@@ -36,7 +35,6 @@ pub fn active_picker_ops(
     Some(match kind {
         PickerKind::Provider => &mut state.frontend.pickers.provider_picker,
         PickerKind::Session => state.frontend.session_picker_mut(),
-        PickerKind::SessionLifecycle => state.frontend.session_lifecycle_picker_mut(),
         PickerKind::TaskList => state.frontend.task_list_picker_mut(),
         PickerKind::Project => state.frontend.project_picker_mut(),
         PickerKind::McpServer => state.frontend.mcp_server_picker_mut(),
@@ -54,7 +52,6 @@ pub fn active_picker_ops_ref(state: &AppState) -> Option<&dyn jinn_selection_wid
     Some(match kind {
         PickerKind::Provider => &state.frontend.pickers.provider_picker,
         PickerKind::Session => state.frontend.session_picker(),
-        PickerKind::SessionLifecycle => state.frontend.session_lifecycle_picker(),
         PickerKind::TaskList => state.frontend.task_list_picker(),
         PickerKind::Project => state.frontend.project_picker(),
         PickerKind::McpServer => state.frontend.mcp_server_picker(),
@@ -76,9 +73,6 @@ pub fn active_picker_ops_ref(state: &AppState) -> Option<&dyn jinn_selection_wid
 pub fn selection_state_ref(state: &AppState, id: PickerId) -> Option<&dyn std::any::Any> {
     match id.as_str() {
         MCP_SERVER_ID => Some(state.frontend.mcp_server_picker() as &dyn std::any::Any),
-        SESSION_LIFECYCLE_ID => {
-            Some(state.frontend.session_lifecycle_picker() as &dyn std::any::Any)
-        }
         TASK_LIST_ID => Some(state.frontend.task_list_picker() as &dyn std::any::Any),
         SESSION_ID => Some(state.frontend.session_picker() as &dyn std::any::Any),
         PROVIDER_ID => Some(&state.frontend.pickers.provider_picker as &dyn std::any::Any),
@@ -107,9 +101,6 @@ impl PickerHost for AppStatePickerHost<'_> {
         match id.as_str() {
             MCP_SERVER_ID => {
                 Some(self.state.frontend.mcp_server_picker_mut() as &mut dyn std::any::Any)
-            }
-            SESSION_LIFECYCLE_ID => {
-                Some(self.state.frontend.session_lifecycle_picker_mut() as &mut dyn std::any::Any)
             }
             TASK_LIST_ID => {
                 Some(self.state.frontend.task_list_picker_mut() as &mut dyn std::any::Any)
@@ -275,7 +266,6 @@ impl PickerHost for AppStateRenderHost<'_> {
         Some(match kind {
             PickerKind::Provider => &self.state.frontend.pickers.provider_picker,
             PickerKind::Session => self.state.frontend.session_picker(),
-            PickerKind::SessionLifecycle => self.state.frontend.session_lifecycle_picker(),
             PickerKind::TaskList => self.state.frontend.task_list_picker(),
             PickerKind::Project => self.state.frontend.project_picker(),
             PickerKind::McpServer => self.state.frontend.mcp_server_picker(),
@@ -356,7 +346,6 @@ mod tests {
         // table above.
         let ids = [
             jinn_picker::MCP_SERVER_ID,
-            jinn_picker::SESSION_LIFECYCLE_ID,
             jinn_picker::TASK_LIST_ID,
             jinn_picker::SESSION_ID,
             jinn_picker::PROVIDER_ID,

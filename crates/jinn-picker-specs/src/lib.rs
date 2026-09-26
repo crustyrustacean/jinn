@@ -29,7 +29,6 @@ pub mod endpoint_spec;
 pub mod mcp_server_spec;
 pub mod project_spec;
 pub mod provider_spec;
-pub mod session_lifecycle_spec;
 pub mod session_spec;
 pub mod task_list_spec;
 
