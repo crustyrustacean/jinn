@@ -213,6 +213,89 @@ fn accent_theme(accent: &str) -> jinn_theme::Theme {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn opening_the_picker_puts_the_cursor_on_the_theme_in_force() {
+    // Given a slice whose theme-entries cell holds four themes.
+    let wired = Wired::new(vec![
+        ("default", "blue"),
+        ("alpha", "red"),
+        ("beta", "green"),
+        ("gamma", "cyan"),
+    ])
+    .await;
+    // And a session already using "beta".
+    wired.state.borrow_mut().frontend.app_state.theme_name = Some("beta".to_owned());
+
+    // When the picker is opened.
+    wired.open();
+
+    // Then the cursor sits on "beta", not on the top of the list.
+    let cell = wired.cell();
+    let highlighted = cell
+        .read()
+        .selection
+        .selected_item()
+        .map(|item| item.entry().name.clone());
+    assert_eq!(highlighted.as_deref(), Some("beta"));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn opening_the_picker_puts_the_cursor_on_the_first_row_when_nothing_is_persisted() {
+    // Given a slice with three themes and no persisted theme name.
+    let wired = Wired::new(vec![
+        ("default", "blue"),
+        ("alpha", "red"),
+        ("beta", "green"),
+    ])
+    .await;
+
+    // When the picker is opened.
+    wired.open();
+
+    // Then the cursor sits on the first row.
+    assert_eq!(wired.highlighted(), 0);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn opening_the_picker_still_selects_a_row_when_the_persisted_theme_is_missing() {
+    // Given a slice whose themes do not include the persisted name — the
+    // file was removed, or the config names a theme that is not installed.
+    let wired = Wired::new(vec![("default", "blue"), ("alpha", "red")]).await;
+    wired.state.borrow_mut().frontend.app_state.theme_name = Some("deleted-theme".to_owned());
+
+    // When the picker is opened.
+    wired.open();
+
+    // Then the cursor falls back to the first row rather than nowhere.
+    assert_eq!(wired.highlighted(), 0);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn confirming_immediately_applies_the_persisted_theme_rather_than_the_top_row() {
+    // Given a slice where "gamma" is in force, three rows below "default".
+    let wired = Wired::new(vec![
+        ("default", "blue"),
+        ("alpha", "red"),
+        ("beta", "green"),
+        ("gamma", "cyan"),
+    ])
+    .await;
+    wired.state.borrow_mut().frontend.app_state.theme_name = Some("gamma".to_owned());
+    wired.open();
+
+    // When enter is pressed without moving the cursor.
+    wired.fire("confirm-theme-picker");
+
+    // Then the applied theme is the one that was in force, whose accent the
+    // fixture colors distinctly — not "default"'s.
+    let applied = wired.state.borrow().frontend.theme.focus_accent;
+    assert_eq!(applied, accent_theme("cyan").focus_accent);
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn opening_the_picker_shows_the_scanned_themes() {
     // Given a slice whose theme-entries cell holds two themes.
     let wired = Wired::new(vec![("gruvbox", "red"), ("nord", "blue")]).await;

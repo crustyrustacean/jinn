@@ -287,14 +287,27 @@ fn open_theme_picker(ctx: &mut ActionCtx<'_>, cell: &ThemePickerCell) -> IntentR
 /// Enter: the highlighted theme is already applied (live preview); persist its
 /// name and close.
 fn confirm_theme_picker(ctx: &mut ActionCtx<'_>, cell: &ThemePickerCell) -> IntentResult {
-    let Some(_state) = app(ctx) else {
+    let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    let mut theme_name = None;
-    cell.update(|picker| theme_name = theme_picker_actions::confirm(picker));
-    let Some(theme_name) = theme_name else {
+    let mut outcome = None;
+    cell.update(|picker| {
+        outcome = theme_picker_actions::confirm(picker).map(|name| {
+            let theme = theme_picker_actions::highlighted_theme(picker).cloned();
+            (name, theme)
+        });
+    });
+    let Some((theme_name, theme)) = outcome else {
         return IntentResult::empty();
     };
+
+    // Apply the confirmed theme rather than trusting the preview. Movement
+    // previews live, but a confirm that never moved the cursor would otherwise
+    // persist a name for a theme that was never put into force.
+    if let Some(theme) = theme {
+        state.frontend.theme = theme;
+        state.invalidate_theme_caches();
+    }
 
     IntentResult::new_message(UpdateAppState {
         updates: vec![AppStateUpdate::SetTheme(Some(theme_name))],

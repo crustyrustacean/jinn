@@ -102,6 +102,34 @@ pub fn open(
     state
         .selection
         .set_items(wrap_entries(build_theme_entries(scanned)));
+    // Put the cursor on the theme already in force, so the menu opens showing
+    // where you are rather than at the top of an arbitrary list.
+    //
+    // This also makes the preview self-consistent: the highlighted theme is
+    // what is applied, and confirm persists the highlighted theme, so opening
+    // on the current theme means Enter-on-open is a no-op instead of silently
+    // persisting row 0's name without ever applying it.
+    highlight_current(state);
+}
+
+/// Moves the highlight onto the row naming the theme in force.
+///
+/// Falls back to the first row when no row matches — a theme in force that is
+/// not in the list (a removed file, or an unlisted name) must not leave the
+/// picker with no selection at all.
+fn highlight_current(state: &mut ThemePickerState) {
+    let Some(current) = state.persisted_name.clone() else {
+        return;
+    };
+    let Some(index) = state
+        .selection
+        .items()
+        .iter()
+        .position(|item| item.entry().name == current)
+    else {
+        return;
+    };
+    state.selection.set_selection(index);
 }
 
 /// The status line: the persisted theme name — what escape restores to and
