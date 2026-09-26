@@ -1015,6 +1015,9 @@ fn jinn_theme_activate(services: &mut Services) {
         &services.trouper_system,
     );
     jinn_theme_slice::activate(&mut host, &themes_dir, &system_themes_dir);
+    // The theme picker is registered by the same slice, after discovery: its
+    // rows are seeded from the theme-entries cell activate just minted.
+    jinn_theme_slice::activate_picker(&mut host);
     if let Err(error) = host.finalize(&|_key| None) {
         panic!("theme slice finalize failed: {error}");
     }

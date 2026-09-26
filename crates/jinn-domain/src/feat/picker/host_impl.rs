@@ -21,7 +21,6 @@ use jinn_picker::REASONING_EFFORT_ID;
 use jinn_picker::SESSION_ID;
 use jinn_picker::SESSION_LIFECYCLE_ID;
 use jinn_picker::TASK_LIST_ID;
-use jinn_picker::THEME_ID;
 use jinn_picker::TOOL_ID;
 
 /// The mutable navigation interface for the active picker, or `None` when no
@@ -39,7 +38,6 @@ pub fn active_picker_ops(
     Some(match kind {
         PickerKind::Provider => &mut state.frontend.pickers.provider_picker,
         PickerKind::Session => state.frontend.session_picker_mut(),
-        PickerKind::Theme => state.frontend.theme_picker_mut(),
         PickerKind::SessionLifecycle => state.frontend.session_lifecycle_picker_mut(),
         PickerKind::ReasoningEffort => state.frontend.reasoning_effort_picker_mut(),
         PickerKind::Tool => state.frontend.tool_picker_mut(),
@@ -60,7 +58,6 @@ pub fn active_picker_ops_ref(state: &AppState) -> Option<&dyn jinn_selection_wid
     Some(match kind {
         PickerKind::Provider => &state.frontend.pickers.provider_picker,
         PickerKind::Session => state.frontend.session_picker(),
-        PickerKind::Theme => state.frontend.theme_picker(),
         PickerKind::SessionLifecycle => state.frontend.session_lifecycle_picker(),
         PickerKind::ReasoningEffort => state.frontend.reasoning_effort_picker(),
         PickerKind::Tool => state.frontend.tool_picker(),
@@ -84,7 +81,6 @@ pub fn active_picker_ops_ref(state: &AppState) -> Option<&dyn jinn_selection_wid
 #[must_use]
 pub fn selection_state_ref(state: &AppState, id: PickerId) -> Option<&dyn std::any::Any> {
     match id.as_str() {
-        THEME_ID => Some(state.frontend.theme_picker() as &dyn std::any::Any),
         TOOL_ID => Some(state.frontend.tool_picker() as &dyn std::any::Any),
         MCP_SERVER_ID => Some(state.frontend.mcp_server_picker() as &dyn std::any::Any),
         SESSION_LIFECYCLE_ID => {
@@ -117,7 +113,6 @@ impl<'a> AppStatePickerHost<'a> {
 impl PickerHost for AppStatePickerHost<'_> {
     fn selection_state(&mut self, id: PickerId) -> Option<&mut dyn std::any::Any> {
         match id.as_str() {
-            THEME_ID => Some(self.state.frontend.theme_picker_mut() as &mut dyn std::any::Any),
             TOOL_ID => Some(self.state.frontend.tool_picker_mut() as &mut dyn std::any::Any),
             MCP_SERVER_ID => {
                 Some(self.state.frontend.mcp_server_picker_mut() as &mut dyn std::any::Any)
@@ -292,7 +287,6 @@ impl PickerHost for AppStateRenderHost<'_> {
         Some(match kind {
             PickerKind::Provider => &self.state.frontend.pickers.provider_picker,
             PickerKind::Session => self.state.frontend.session_picker(),
-            PickerKind::Theme => self.state.frontend.theme_picker(),
             PickerKind::SessionLifecycle => self.state.frontend.session_lifecycle_picker(),
             PickerKind::ReasoningEffort => self.state.frontend.reasoning_effort_picker(),
             PickerKind::Tool => self.state.frontend.tool_picker(),
@@ -314,11 +308,13 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
-    use jinn_theme::ThemeEntry;
+    use jinn_tools_msg::ToolEntry;
 
-    fn test_theme(name: &str) -> ThemeEntry {
-        ThemeEntry {
+    fn test_tool(name: &str) -> ToolEntry {
+        ToolEntry {
             name: name.to_owned(),
+            description: String::new(),
+            enabled: true,
             theme: jinn_theme::default_theme(),
         }
     }
@@ -326,25 +322,25 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn selection_state_lends_typed_storage_by_id() {
-        // Given a host state whose persona picker holds items.
+        // Given a host state whose tool picker holds items.
         let mut state = AppState::default_with_scope_focus();
         let items = jinn_picker::make_items_with_hooks(
-            vec![test_theme("a")],
+            vec![test_tool("a")],
             jinn_picker::PickerItemHooks::new()
-                .row(|entry: &ThemeEntry, _ctx: &jinn_picker::RowCtx<'_>| {
+                .row(|entry: &ToolEntry, _ctx: &jinn_picker::RowCtx<'_>| {
                     ratatui::text::Line::raw(entry.name.clone())
                 })
-                .search(|entry: &ThemeEntry| entry.name.clone()),
+                .search(|entry: &ToolEntry| entry.name.clone()),
         );
-        state.frontend.theme_picker_mut().set_items(items);
+        state.frontend.tool_picker_mut().set_items(items);
 
-        // When lending the selection state for the persona id.
+        // When lending the selection state for the tool id.
         let mapped = {
             let mut host = AppStatePickerHost::new(&mut state);
-            host.selection_state(PickerId::new(THEME_ID))
-                .expect("theme is mapped")
+            host.selection_state(PickerId::new(TOOL_ID))
+                .expect("tool is mapped")
                 .downcast_ref::<jinn_selection_widget::SelectionState<
-                    jinn_picker::PickerEntry<ThemeEntry>,
+                    jinn_picker::PickerEntry<ToolEntry>,
                 >>()
                 .is_some()
         };
@@ -352,7 +348,7 @@ mod tests {
         // Then the lend downcasts back to the wrapped selection storage.
         assert!(
             mapped,
-            "persona lend should downcast to its wrapped SelectionState"
+            "the tool lend should downcast to its wrapped SelectionState"
         );
     }
 
@@ -372,7 +368,6 @@ mod tests {
         // them keeps this guard a real compile-time-complete check of the
         // table above.
         let ids = [
-            jinn_picker::THEME_ID,
             jinn_picker::TOOL_ID,
             jinn_picker::MCP_SERVER_ID,
             jinn_picker::SESSION_LIFECYCLE_ID,
@@ -436,7 +431,7 @@ mod tests {
     fn preview_scrolls_are_stored_per_picker_id() {
         // Given a host state.
         let mut state = AppState::default_with_scope_focus();
-        let first = PickerId::new(THEME_ID);
+        let first = PickerId::new(TOOL_ID);
         let other = PickerId::new("other");
 
         // When setting preview scrolls for one picker id and another id.

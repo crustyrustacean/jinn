@@ -31,9 +31,6 @@ pub enum Scope {
     PickerProvider,
     /// Picker - Session browser.
     PickerSession,
-    /// Picker - Persona selection.
-    /// Picker - Theme selection.
-    PickerTheme,
     /// Picker - Session lifecycle recipe selection.
     PickerLifecycle,
     /// Picker - Reasoning effort selection.
@@ -64,7 +61,6 @@ impl std::fmt::Display for Scope {
             Self::Normal => write!(f, "Normal"),
             Self::PickerProvider => write!(f, "Picker(provider)"),
             Self::PickerSession => write!(f, "Picker(session)"),
-            Self::PickerTheme => write!(f, "Picker(theme)"),
             Self::PickerLifecycle => write!(f, "Picker(lifecycle)"),
 
             Self::PickerReasoningEffort => write!(f, "Picker(reasoning-effort)"),
@@ -93,7 +89,6 @@ impl std::str::FromStr for Scope {
             "Normal" => Ok(Self::Normal),
             "Picker(provider)" => Ok(Self::PickerProvider),
             "Picker(session)" => Ok(Self::PickerSession),
-            "Picker(theme)" => Ok(Self::PickerTheme),
             "Picker(lifecycle)" => Ok(Self::PickerLifecycle),
 
             "Picker(reasoning-effort)" => Ok(Self::PickerReasoningEffort),

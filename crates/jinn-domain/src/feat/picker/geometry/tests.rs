@@ -68,9 +68,9 @@ fn measure_provider_picker_reserves_two_footer_rows() {
 
 #[rstest::rstest]
 #[test]
-fn measure_theme_picker_reserves_two_bottom_rows() {
-    // Given a Persona picker active (status + keybind footer via its spec).
-    let state = state_with_picker(PickerKind::Theme);
+fn measure_tool_picker_reserves_two_bottom_rows() {
+    // Given a Tool picker active (status + keybind footer via its spec).
+    let state = state_with_picker(PickerKind::Tool);
 
     // When measuring at LARGE_FRAME.
     let height = measure_active_picker_results_height(&state, LARGE_FRAME, &registry());
@@ -83,8 +83,8 @@ fn measure_theme_picker_reserves_two_bottom_rows() {
 #[rstest::rstest]
 #[test]
 fn measure_tiny_frame_never_returns_zero() {
-    // Given a Persona picker active on a tiny frame.
-    let state = state_with_picker(PickerKind::Theme);
+    // Given a Tool picker active on a tiny frame.
+    let state = state_with_picker(PickerKind::Tool);
 
     // When measuring at a 1x1 frame.
     let tiny = Rect::new(0, 0, 1, 1);

@@ -15,7 +15,16 @@ use jinn_theme::loader::{discover_themes, load_theme_from_file};
 use jinn_theme_msg::NamedTheme;
 use jinn_theme_msg::ThemeEntries;
 
+pub(crate) mod theme_picker_actions;
+pub mod theme_picker_render;
+pub mod theme_picker_routes;
+#[cfg(test)]
+mod theme_picker_tests;
+mod theme_picker_viewport;
+
 pub use jinn_theme_msg::theme_entries_slot;
+pub use jinn_theme_msg::theme_picker_scope;
+pub use theme_picker_routes::open_from_scope as open_theme_picker_from_scope;
 
 /// Activates the slice: scans both theme directories and mints the
 /// theme-entries cell with the ordered results.
@@ -42,6 +51,47 @@ pub fn activate(
     let _cell = host
         .register_cell(theme_entries_slot(), entries)
         .expect("theme-entries slot is registered exactly once at wiring");
+}
+
+/// Registers the theme picker: its cell, its overlay, its keys, and its
+/// filter hook.
+///
+/// Split from [`activate`] because the picker needs the same host but is not
+/// part of theme discovery. Called from composition right after `activate`,
+/// so the picker's rows are seeded from the entries cell `activate` just
+/// minted.
+///
+/// # Panics
+///
+/// Panics if the picker slot is already registered — double activation is a
+/// wiring bug.
+#[expect(
+    clippy::expect_used,
+    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
+)]
+pub fn activate_picker(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
+    let cell = host
+        .register_cell(
+            jinn_theme_msg::theme_picker_slot(),
+            jinn_theme_msg::ThemePickerState::default(),
+        )
+        .expect("theme picker slot is registered exactly once at wiring");
+
+    let scope = theme_picker_scope();
+    host.register_overlay(
+        scope.clone(),
+        std::sync::Arc::new(theme_picker_render::theme_picker_overlay_rect),
+    );
+    host.register_overlay_selectable(&scope);
+    host.register_overlay_slot(scope.clone(), jinn_theme_msg::theme_picker_slot());
+    host.register_overlay_view(
+        scope,
+        std::sync::Arc::new(theme_picker_render::render_theme_picker),
+    );
+
+    // The picker's keys, and the filter's input hook, are this slice's own.
+    theme_picker_routes::attach_theme_picker_rows(host.key_routes(), &cell);
+    theme_picker_routes::register_theme_picker_input_hook(host.key_routes(), &cell);
 }
 
 /// Scans both directories into the ordered selection.

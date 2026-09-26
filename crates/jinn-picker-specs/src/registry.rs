@@ -17,7 +17,6 @@ use jinn_picker::PickerRegistry;
 #[must_use]
 pub fn build_picker_registry() -> PickerRegistry {
     let mut registry = PickerRegistry::new();
-    registry.register(crate::theme_spec::theme_spec());
     registry.register(crate::tool_spec::tool_spec());
     registry.register(crate::mcp_server_spec::mcp_server_spec());
     registry.register(crate::session_lifecycle_spec::session_lifecycle_spec());
@@ -54,15 +53,15 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn single_spec_registry_resolves_only_the_named_spec() {
-        // Given a registry holding just the theme spec.
-        let registry = single_spec_registry(crate::theme_spec::theme_spec());
+        // Given a registry holding just the tool spec.
+        let registry = single_spec_registry(crate::tool_spec::tool_spec());
 
         // When looking specs up by id.
-        let theme = registry.get(jinn_picker::THEME_ID);
+        let tool = registry.get(jinn_picker::TOOL_ID);
         let other = registry.get(jinn_picker::PROJECT_ID);
 
         // Then only the named spec resolves — the caller links to no other picker.
-        assert!(theme.is_some());
+        assert!(tool.is_some());
         assert!(other.is_none());
     }
 
@@ -70,18 +69,20 @@ mod tests {
     #[test]
     fn single_spec_registry_make_items_matches_the_full_registry() {
         // Given a one-spec registry and the full fan-out registry.
-        let one = single_spec_registry(crate::theme_spec::theme_spec());
+        let one = single_spec_registry(crate::tool_spec::tool_spec());
         let all = build_picker_registry();
         let entries = || {
-            vec![jinn_theme::ThemeEntry {
+            vec![jinn_tools_msg::ToolEntry {
                 name: "dracula".to_owned(),
+                description: String::new(),
+                enabled: true,
                 theme: jinn_theme::default_theme(),
             }]
         };
 
         // When wrapping identical entries through each.
-        let via_one = one.make_items::<jinn_theme::ThemeEntry>(jinn_picker::THEME_ID, entries());
-        let via_all = all.make_items::<jinn_theme::ThemeEntry>(jinn_picker::THEME_ID, entries());
+        let via_one = one.make_items::<jinn_tools_msg::ToolEntry>(jinn_picker::TOOL_ID, entries());
+        let via_all = all.make_items::<jinn_tools_msg::ToolEntry>(jinn_picker::TOOL_ID, entries());
 
         // Then the wrapped items are identical — the seam loses nothing.
         assert_eq!(via_one.is_some(), via_all.is_some());
@@ -101,7 +102,6 @@ mod tests {
         // Given the picker registry and the kind→id adapter.
         let registry = build_picker_registry();
         let migrated = [
-            PickerKind::Theme,
             PickerKind::Tool,
             PickerKind::McpServer,
             PickerKind::SessionLifecycle,

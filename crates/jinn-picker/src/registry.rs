@@ -30,9 +30,6 @@ use crate::outcome::PickerOutcome;
 use crate::render::RenderOutcome;
 use crate::widget::WidgetKind;
 
-/// The id of the persona picker's spec.
-/// The id of the theme picker's spec.
-pub const THEME_ID: &str = "theme";
 /// The id of the tool picker's spec.
 pub const TOOL_ID: &str = "tool";
 /// The id of the MCP server picker's spec.
@@ -59,7 +56,6 @@ pub fn spec_id_for_kind(kind: &jinn_slices::picker_kind::PickerKind) -> Option<&
     use jinn_slices::picker_kind::PickerKind;
 
     match kind {
-        PickerKind::Theme => Some(THEME_ID),
         PickerKind::Tool => Some(TOOL_ID),
         PickerKind::McpServer => Some(MCP_SERVER_ID),
         PickerKind::SessionLifecycle => Some(SESSION_LIFECYCLE_ID),

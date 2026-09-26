@@ -14,8 +14,6 @@ use jinn_provider_selection_msg::endpoint::EndpointEntry;
 use jinn_provider_selection_msg::reasoning::ReasoningEffortEntry;
 use jinn_session_lifecycle_msg::SessionLifecycleEntry;
 use jinn_session_store_msg::SessionTreeEntry;
-use jinn_theme::Theme;
-use jinn_theme::ThemeEntry;
 use jinn_tools_msg::{TaskListTreeEntry, ToolEntry};
 
 /// All picker state - grouped so the picker subsystem can evolve independently.
@@ -28,14 +26,6 @@ pub struct PickerStates {
     /// OWNER: IntentHandler (session picker navigation).
     pub session_picker:
         jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<SessionTreeEntry>>,
-
-    /// Theme picker state (items, filter text, selection index).
-    /// OWNER: IntentHandler (theme picker navigation).
-    pub theme_picker: jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ThemeEntry>>,
-
-    /// Saved theme before preview - restored on ESC.
-    /// OWNER: IntentHandler (set on theme picker open, consumed on confirm/cancel).
-    pub theme_preview_original: Option<Theme>,
 
     /// Tool picker state - shows all registered tools with toggle state.
     /// OWNER: IntentHandler (populated on tool picker open).
@@ -117,19 +107,6 @@ pub trait PickerExt {
     fn session_picker_mut(
         &mut self,
     ) -> &mut jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<SessionTreeEntry>>;
-
-    /// Read-only access to the theme picker state.
-    fn theme_picker(
-        &self,
-    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ThemeEntry>>;
-    /// Mutable access to the theme picker state.
-    fn theme_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ThemeEntry>>;
-    /// Read-only access to the saved theme before preview.
-    fn theme_preview_original(&self) -> &Option<Theme>;
-    /// Mutable access to the saved theme before preview.
-    fn theme_preview_original_mut(&mut self) -> &mut Option<Theme>;
 
     /// Read-only access to the tool picker state.
     fn tool_picker(
@@ -221,26 +198,6 @@ impl PickerExt for super::frontend_state::FrontendState {
     ) -> &mut jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<SessionTreeEntry>>
     {
         &mut self.pickers.session_picker
-    }
-
-    fn theme_picker(
-        &self,
-    ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ThemeEntry>> {
-        &self.pickers.theme_picker
-    }
-
-    fn theme_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ThemeEntry>> {
-        &mut self.pickers.theme_picker
-    }
-
-    fn theme_preview_original(&self) -> &Option<Theme> {
-        &self.pickers.theme_preview_original
-    }
-
-    fn theme_preview_original_mut(&mut self) -> &mut Option<Theme> {
-        &mut self.pickers.theme_preview_original
     }
 
     fn tool_picker(

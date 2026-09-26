@@ -10,8 +10,6 @@ pub enum PickerKind {
     Provider,
     /// Session browser picker.
     Session,
-    /// Theme picker.
-    Theme,
     /// Session lifecycle picker - select a lifecycle recipe for new session creation.
     SessionLifecycle,
     /// Retired: the compaction model is configured only by `[compaction] model`
@@ -39,8 +37,6 @@ impl std::fmt::Display for PickerKind {
         match self {
             Self::Provider => write!(f, "models"),
             Self::Session => write!(f, "sessions"),
-            Self::Theme => write!(f, "themes"),
-
             Self::SessionLifecycle => write!(f, "session-lifecycle"),
 
             Self::CompactionModel => write!(f, "compaction model"),

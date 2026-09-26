@@ -51,7 +51,7 @@ pub use registry::SpecHandle;
 pub use registry::Tail;
 pub use registry::{
     ENDPOINT_ID, MCP_SERVER_ID, PROJECT_ID, PROVIDER_ID, REASONING_EFFORT_ID, SESSION_ID,
-    SESSION_LIFECYCLE_ID, TASK_LIST_ID, THEME_ID, TOOL_ID, spec_id_for_kind,
+    SESSION_LIFECYCLE_ID, TASK_LIST_ID, TOOL_ID, spec_id_for_kind,
 };
 pub use render::KeybindLine;
 pub use render::RenderOutcome;

@@ -18,7 +18,6 @@ jinn-theme = { workspace = true }
 
 # Message crates whose payload types the specs construct or read.
 jinn-mcp-msg = { workspace = true }
-jinn-theme-msg = { workspace = true }
 jinn-session-msg = { workspace = true }
 jinn-session-state = { workspace = true }
 jinn-session-init-msg = { workspace = true }

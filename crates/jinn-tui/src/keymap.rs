@@ -107,7 +107,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             .bind("<leader>ss", KernelIntent::OpenPicker { kind: PickerKind::Session }, KeyCategory::General)
             .bind("<leader>st", KernelIntent::OpenPicker { kind: PickerKind::Tool }, KeyCategory::General)
             .bind("<leader>sM", KernelIntent::OpenPicker { kind: PickerKind::McpServer }, KeyCategory::General)
-            .bind("<leader>sh", KernelIntent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
             .bind("<leader>sr", KernelIntent::OpenPicker { kind: PickerKind::ReasoningEffort }, KeyCategory::General)
             // OpenRouter routing endpoint pin (Single + OpenRouter models only).
             .bind("<leader>sE", KernelIntent::OpenPicker { kind: PickerKind::Endpoint }, KeyCategory::General)
@@ -244,9 +243,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
         .scope(Scope::PickerSession, |b| {
             add_picker_base(b);
         })
-        .scope(Scope::PickerTheme, |b| {
-            add_picker_base(b);
-        })
         .scope(Scope::PickerLifecycle, |b| {
             add_picker_base(b);
         })
@@ -307,7 +303,6 @@ mod tests {
         #[values(
             PickerKind::Provider,
             PickerKind::Session,
-            PickerKind::Theme,
             PickerKind::SessionLifecycle,
             PickerKind::ReasoningEffort,
             PickerKind::Tool,
@@ -814,7 +809,7 @@ mod leak_check {
         use jinn_domain::{Key, KeyEvent, Modifiers};
 
         let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerTheme);
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerTool);
 
         // When pressing PageUp.
         let pgup = KeyEvent {
@@ -828,7 +823,7 @@ mod leak_check {
         let intent = wk.handle_key(pgup);
 
         // Then it resolves to PickerPageUp.
-        let intent = intent.expect("PageUp in PickerTheme must fire an intent");
+        let intent = intent.expect("PageUp in PickerTool must fire an intent");
         assert!(
             matches!(intent, jinn_domain::KernelIntent::PickerPageUp),
             "PageUp must resolve to PickerPageUp; got {intent:?}",
@@ -843,7 +838,7 @@ mod leak_check {
         use jinn_domain::{Key, KeyEvent, Modifiers};
 
         let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerTheme);
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerTool);
 
         // When pressing PageDown.
         let pgdn = KeyEvent {
@@ -857,7 +852,7 @@ mod leak_check {
         let intent = wk.handle_key(pgdn);
 
         // Then it resolves to PickerPageDown.
-        let intent = intent.expect("PageDown in PickerTheme must fire an intent");
+        let intent = intent.expect("PageDown in PickerTool must fire an intent");
         assert!(
             matches!(intent, jinn_domain::KernelIntent::PickerPageDown),
             "PageDown must resolve to PickerPageDown; got {intent:?}",

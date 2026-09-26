@@ -38,7 +38,6 @@ mod tests {
     )]
     use jinn_domain::AppState;
     use jinn_domain::PickerKind;
-    use jinn_domain::feat::ui::picker_states::PickerExt as _;
     use jinn_selection_widget::compute_popup_rect;
     use jinn_slices::FocusScope;
     use ratatui::Terminal;
@@ -85,7 +84,6 @@ mod tests {
     #[rstest::rstest]
     #[case::provider(PickerKind::Provider)]
     #[case::session(PickerKind::Session)]
-    #[case::theme(PickerKind::Theme)]
     #[case::session_lifecycle(PickerKind::SessionLifecycle)]
     #[case::reasoning_effort(PickerKind::ReasoningEffort)]
     #[case::endpoint(PickerKind::Endpoint)]
@@ -198,51 +196,6 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn theme_picker_draws_status_and_keybind_rows_via_spec() {
-        // Given a theme picker open, rendered through its spec.
-        let state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Picker {
-            kind: PickerKind::Theme,
-        });
-        let pickers = jinn_picker_specs::build_picker_registry();
-
-        // When rendering.
-        let area = Rect::new(0, 0, 100, 30);
-        let mut terminal =
-            Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let views = jinn_slices::OverlayViews::new();
-                let ctx =
-                    jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
-                super::render_picker(frame, area, &ctx);
-            })
-            .expect("draw");
-
-        // Then the popup draws the spec's two bottom rows: the "Current:"
-        // status line above the standard keybind line.
-        let popup = compute_popup_rect(area);
-        let inner_bottom = popup.y + popup.height.saturating_sub(2);
-        let buffer = terminal.backend().buffer();
-        let keybind_row: String = ((popup.x + 1)..(popup.x + popup.width - 1))
-            .map(|x| buffer[(x, inner_bottom)].symbol())
-            .collect();
-        let status_row: String = ((popup.x + 1)..(popup.x + popup.width - 1))
-            .map(|x| buffer[(x, inner_bottom - 1)].symbol())
-            .collect();
-        assert!(
-            keybind_row.contains("Enter confirm"),
-            "bottom row must be the keybind line; got {keybind_row:?}"
-        );
-        assert!(
-            status_row.contains("Current: default"),
-            "row above must be the status line; got {status_row:?}"
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
     fn mcp_picker_draws_status_and_keybind_rows_via_spec() {
         // Given an MCP server picker open, rendered through its spec.
         let state = AppState::default_with_scope_focus();
@@ -291,56 +244,6 @@ mod tests {
                 && keybind_row.contains("<c-r> restart")
                 && keybind_row.contains("<c-t> logs/tools"),
             "keybind line must list the spec's binds; got {keybind_row:?}"
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn theme_picker_draws_swatch_rows_via_the_spec_row_hook() {
-        // Given an open theme picker whose storage holds wrapped entries
-        // (the same shape the spec's open hook produces).
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Picker {
-            kind: PickerKind::Theme,
-        });
-        let pickers = jinn_picker_specs::build_picker_registry();
-        let wrapped = pickers
-            .make_items(
-                jinn_picker::THEME_ID,
-                vec![jinn_theme::ThemeEntry {
-                    name: "gruvbox".to_owned(),
-                    theme: state.frontend.theme.clone(),
-                }],
-            )
-            .expect("theme spec registered");
-        state.frontend.theme_picker_mut().set_items(wrapped);
-
-        // When rendering the picker.
-        let area = Rect::new(0, 0, 100, 30);
-        let mut terminal =
-            Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let views = jinn_slices::OverlayViews::new();
-                let ctx =
-                    jinn_domain::RenderCtx::new(&state, &slices, &views).with_pickers(&pickers);
-                super::render_picker(frame, area, &ctx);
-            })
-            .expect("draw");
-
-        // Then the entry's swatch and name appear — rows are not blank and
-        // the name is drawn.
-        let rendered: String = terminal
-            .backend()
-            .buffer()
-            .content
-            .iter()
-            .map(ratatui::buffer::Cell::symbol)
-            .collect();
-        assert!(
-            rendered.contains('\u{2588}') && rendered.contains("gruvbox"),
-            "theme picker must draw its swatch + name rows; got {rendered:?}"
         );
     }
 }

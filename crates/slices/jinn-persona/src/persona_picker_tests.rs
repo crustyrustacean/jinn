@@ -156,6 +156,21 @@ impl Wired {
     }
 }
 
+/// Draws one frame through the picker's own render pass, which is what
+/// publishes the measured row count the pager pages by.
+fn draw_frame(wired: &Wired, area: ratatui::layout::Rect) {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
+    let facts = jinn_slices::RenderFacts::new(jinn_theme::default_theme(), &wired.slices);
+    terminal
+        .draw(|frame| {
+            crate::persona_picker_render::render_persona_picker(frame, area, &facts);
+        })
+        .expect("draw");
+}
+
 // ── 1. Opens with entries ───────────────────────────────────────────────
 
 #[rstest::rstest]
@@ -275,24 +290,33 @@ async fn up_arrow_stops_at_the_first_row() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn page_down_moves_the_highlight_past_the_first_row() {
-    // Given an open picker with more rows than fit on one page.
-    let many: Vec<(String, String)> = (0..60)
-        .map(|i| (format!("p{i:02}"), "x".to_owned()))
+async fn page_down_steps_by_the_rows_the_last_frame_actually_laid_out() {
+    // Given an open picker with far more rows than a frame can show, and a
+    // frame drawn so the cell learns how many rows are on screen.
+    let many: Vec<(String, String)> = (0..200)
+        .map(|i| (format!("p{i:03}"), "x".to_owned()))
         .collect();
     let owned: Vec<(&str, &str)> = many.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
     let wired = Wired::new(owned).await;
     wired.open();
+    // A narrow-ish frame: the stacked layout's list pane holds far fewer rows
+    // than the pre-render fallback, so a picker paging by the fallback would
+    // move a visibly different distance.
+    let frame = ratatui::layout::Rect::new(0, 0, 100, 30);
+    draw_frame(&wired, frame);
+    let on_screen = crate::persona_picker_viewport::results_viewport(frame);
 
     // When page down is pressed.
     wired.fire("page-persona-picker-down");
 
-    // Then the highlight left the first row.
-    assert!(
-        wired.highlighted() > 1,
-        "page down must advance past the first row, got {}",
-        wired.highlighted()
+    // Then the highlight advanced by half a screen of rows — a page of what
+    // the user can see, not of a fixed guess about how much that is.
+    assert_ne!(
+        on_screen,
+        jinn_persona_msg::RESULTS_VIEWPORT_FALLBACK,
+        "the frame must measure fewer rows than the pre-render fallback, or this test cannot detect a broken measurement"
     );
+    assert_eq!(wired.highlighted(), (on_screen / 2).max(1));
 }
 
 // ── 4. Confirm ──────────────────────────────────────────────────────────

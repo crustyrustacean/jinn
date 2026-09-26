@@ -2656,7 +2656,6 @@ dependencies = [
  "jinn-slices",
  "jinn-testutil",
  "jinn-theme",
- "jinn-theme-msg",
  "jinn-tools-msg",
  "ratatui",
  "rstest",
@@ -3387,6 +3386,8 @@ name = "jinn-theme-msg"
 version = "0.118.0"
 dependencies = [
  "jinn-core-types",
+ "jinn-picker",
+ "jinn-selection-widget",
  "jinn-slices",
  "jinn-theme",
  "serde",
@@ -3397,11 +3398,18 @@ name = "jinn-theme-slice"
 version = "0.118.0"
 dependencies = [
  "error-stack",
+ "jinn-core-types",
+ "jinn-domain",
+ "jinn-picker",
+ "jinn-preferences-config",
+ "jinn-selection-widget",
  "jinn-slices",
  "jinn-theme",
  "jinn-theme-msg",
+ "ratatui",
  "rstest",
  "tempfile",
+ "tokio",
  "wherror",
 ]
 
