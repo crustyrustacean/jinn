@@ -14,8 +14,7 @@
 //!
 //! Because requests come from the keyboard, they are also where duplicates are
 //! stopped: a second request for content already cached or already rendering
-//! would queue a job on a pool shared with chat-log measurement, for lines
-//! nothing would read.
+//! would queue a job for lines nothing would read.
 
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -348,6 +347,51 @@ mod preview_load_tests {
         assert!(
             armed,
             "the preview must be armed before the request publishes"
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_completed_empty_preview_is_served_as_empty_not_loading() {
+        // Given a session with no entries at all — a brand-new session, whose
+        // chat view is already showing because there is nothing to load.
+        let mut state = AppState::default_with_scope_focus();
+        let session = ChatSessionState::new();
+        let id = session.session_id().clone();
+        state.session.insert(session);
+        state.session.set_active(id.clone());
+        state
+            .frontend
+            .update_sections(|s| s.sessions.preview_content_width = 46);
+
+        // When a preview is requested and its (empty) result comes back.
+        let request = update_preview(&mut state, &id, jinn_slices::empty_config_layer())
+            .expect("an empty session still needs rendering to establish it is empty");
+        let signature = request.signature;
+        let generation = request.generation;
+        let width = request.content_width;
+        state.frontend.update_sections(|s| {
+            s.sessions.preview.complete(
+                id.clone(),
+                generation,
+                signature,
+                width,
+                Arc::new(Vec::new()),
+            );
+        });
+
+        // When the render pass looks it up.
+        let found = state.frontend.with_sections(
+            |s| s.sessions.preview.cached(&id, signature, width).is_some(),
+            || false,
+        );
+
+        // Then it is found. An empty session is a *completed* preview holding
+        // zero lines, not a missing one: the popup tells loading from empty by
+        // whether the lookup hit, so reporting a miss here is what puts a
+        // spinner on a session that has nothing to wait for.
+        assert!(
+            found,
+            "an empty session's preview was reported as missing, so the popup spins forever"
         );
     }
 

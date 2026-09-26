@@ -149,3 +149,70 @@ async fn a_preview_request_reaches_the_layout_supervisor_as_a_deadline() {
         ),
     );
 }
+
+/// A published preview request must reach a worker and be cached.
+///
+/// `PreviewSessionRequested` is a command, so trouper routes it to exactly one
+/// handler by round-robin over the actors that declare it. A second handler
+/// that only wanted a side effect — arming a timer, say — competes with the
+/// workers and eats its share of requests without rendering anything, so those
+/// popups spin on work that was thrown away. The fix is that only the preview
+/// workers declare the command; this test pins the behaviour that the command
+/// renders when it is published.
+///
+/// Scope, honestly stated: the composed harness does not reproduce the
+/// interception (the workers win every draw there), so this test guards the
+/// request-to-cache crossing rather than the routing choice itself. The routing
+/// guard is structural — a handler for `PreviewSessionRequested` on any actor
+/// that does not render is a compile-time mistake to make deliberately, and the
+/// reasoning is recorded at the declaration site in `sidebar_state_actor.rs`.
+#[rstest::rstest]
+#[tokio::test]
+#[timeout(Duration::from_secs(20))]
+async fn a_published_preview_request_is_rendered_and_cached() {
+    // Given a composed app with a session carrying text worth previewing.
+    let app = test_app().await;
+    let session_id = {
+        let mut state = app.core.state.write();
+        let mut session = ChatSessionState::new();
+        session.push_entry(ChatEntry::user("a line the preview must wrap"));
+        let id = session.session_id().clone();
+        state.session.insert(session);
+        id
+    };
+
+    // And an armed in-flight entry, as the keyboard path does.
+    let generation = {
+        let state = app.core.state.read();
+        state
+            .frontend
+            .update_sections(|s| s.sessions.preview.request(session_id.clone(), 7, 103))
+            .expect("the sections cell is attached")
+    };
+
+    // When the request crosses the bus, the way the keyboard path sends it.
+    let _ = app
+        .core
+        .bridge
+        .send(Bridge::publish_closure(PreviewSessionRequested {
+            session_id: session_id.clone(),
+            content_width: 103,
+            generation,
+            entries: Arc::from(vec![ChatEntry::user("a line the preview must wrap")]),
+            tool_entry_max_lines: 6,
+            signature: 7,
+        }));
+
+    // Then the rendered lines arrive and are cached for that session.
+    await_condition(Duration::from_secs(15), || {
+        let state = app.core.state.read();
+        state
+            .frontend
+            .with_sections(
+                |s| s.sessions.preview.cached(&session_id, 7, 103).is_some(),
+                || false,
+            )
+            .then_some(true)
+    })
+    .await;
+}

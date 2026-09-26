@@ -8,6 +8,9 @@ use jinn_domain::common::app_state::AppState;
 use jinn_domain::protocol::IntentResult;
 use jinn_slices::ConfigLayer;
 
+use crate::sections::sidebar_state_actor::PREVIEW_DEADLINE;
+use jinn_chat_log_view_msg::ArmPreviewDeadline;
+
 /// The session under the cursor, if there is one.
 fn highlighted_session(
     state: &AppState,
@@ -23,13 +26,25 @@ fn highlighted_session(
 ///
 /// Best-effort: a missing session, or a preview already current, simply yields
 /// nothing to publish.
+///
+/// The deadline rides along with the request rather than being armed by an actor
+/// subscribed to it. `PreviewSessionRequested` is a *command*, so trouper routes
+/// it to exactly one handler; an actor that merely wanted to arm a timer would
+/// be a second handler competing with the preview workers, and every request it
+/// won would be consumed without ever being rendered.
 fn request_preview(state: &mut AppState, config: &ConfigLayer) -> IntentResult {
     let sessions = sorted_open_sessions(state);
     let Some(session_id) = highlighted_session(state, &sessions) else {
         return IntentResult::empty();
     };
-    update_preview(state, &session_id, config)
-        .map_or_else(IntentResult::empty, IntentResult::new_message)
+    update_preview(state, &session_id, config).map_or_else(IntentResult::empty, |request| {
+        let deadline = ArmPreviewDeadline {
+            session_id: request.session_id.clone(),
+            generation: request.generation,
+            after: PREVIEW_DEADLINE,
+        };
+        IntentResult::new_message(request).with_message(deadline)
+    })
 }
 
 /// Navigate within the sessions section.

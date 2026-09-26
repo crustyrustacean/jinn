@@ -21,7 +21,7 @@ use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
 use crate::sections::sessions;
-use jinn_chat_log_view_msg::{ArmPreviewDeadline, PreviewSessionRequested, SessionPreviewRendered};
+use jinn_chat_log_view_msg::{ArmPreviewDeadline, SessionPreviewRendered};
 use jinn_domain::common::state::State;
 use jinn_session_msg::{SessionArchiveFailed, SessionRemoved, SessionTeardownFinished};
 
@@ -72,7 +72,14 @@ impl SidebarStateActor {
             .handles::<SessionRemoved>()
             .handles::<SessionArchiveFailed>()
             .handles::<SessionTeardownFinished>()
-            .handles::<PreviewSessionRequested>()
+            // NOT `handles::<PreviewSessionRequested>`: that message is a
+            // *command*, so trouper routes it to exactly one handler, and a
+            // command declared here joins the round-robin with the preview
+            // workers. Requests this actor picked were consumed by a handler
+            // that only arms a deadline and never renders, so they vanished
+            // silently and their popups spun forever. The deadline is armed on
+            // the keyboard path instead, where the request is built and no
+            // competing handler can intercept it.
             .handles::<SessionPreviewRendered>()
             // The deadline this actor arms for every preview it handles. The
             // layout supervisor subscribes to it; without this declaration the
@@ -148,24 +155,6 @@ impl MsgHandler<SessionArchiveFailed> for SidebarStateActor {
 impl MsgHandler<SessionTeardownFinished> for SidebarStateActor {
     async fn handle(&mut self, msg: &SessionTeardownFinished, _ctx: &mut MsgCtx<'_>) {
         self.handle_session_teardown_finished(msg);
-    }
-}
-
-impl MsgHandler<PreviewSessionRequested> for SidebarStateActor {
-    async fn handle(&mut self, msg: &PreviewSessionRequested, ctx: &mut MsgCtx<'_>) {
-        tracing::info!(session_id=%msg.session_id, generation=msg.generation,
-            width=msg.content_width, "ACTOR arming deadline");
-        // The arming already happened on the keyboard path, before this message
-        // was published — the render pass needs the spinner up the instant the
-        // cursor moves, not a bus round trip later. What this handler adds is
-        // the deadline, so a request that never comes back stops spinning. The
-        // timer belongs to the layout supervisor, which already owns one per
-        // job in this pool.
-        ctx.publish(ArmPreviewDeadline {
-            session_id: msg.session_id.clone(),
-            generation: msg.generation,
-            after: PREVIEW_DEADLINE,
-        });
     }
 }
 

@@ -41,13 +41,33 @@ use crate::feat::ui::chat_log::history::LayoutInputs;
 /// Static path the layout worker pool spawns at (one pool per process).
 pub const LAYOUT_WORKER_POOL_SIZE: usize = 3;
 
-/// The pool's path prefix; worker `n` spawns at `jinn.chat_log.layout.worker.{n}`.
+/// Workers in the preview pool.
+///
+/// Preview renders are a handful of lines off a five-entry tail, where a
+/// measurement walks a whole transcript. Sharing one pool meant a burst of
+/// cursor moves queued previews behind measurements that take seconds, and a
+/// preview could sit in a full mailbox behind work that would never finish in
+/// time to matter — the popup spun while its job was not merely slow but
+/// effectively not scheduled. A separate pool costs one more actor and makes
+/// the preview's latency independent of the chat log's.
+pub const PREVIEW_WORKER_POOL_SIZE: usize = 2;
+
+/// The measurement pool's path prefix; worker `n` spawns at `jinn.chat_log.layout.worker.{n}`.
 pub const LAYOUT_WORKER_PATH_PREFIX: &str = "jinn.chat_log.layout.worker.";
+
+/// The preview pool's path prefix; worker `n` spawns at `jinn.chat_log.layout.preview.{n}`.
+pub const PREVIEW_WORKER_PATH_PREFIX: &str = "jinn.chat_log.layout.preview.";
 
 /// The path the layout worker at `index` spawns at.
 #[must_use]
 pub fn layout_worker_path(index: usize) -> ActorPath {
     ActorPath::new(format!("{LAYOUT_WORKER_PATH_PREFIX}{index}"))
+}
+
+/// The path the preview worker at `index` spawns at.
+#[must_use]
+pub fn preview_worker_path(index: usize) -> ActorPath {
+    ActorPath::new(format!("{PREVIEW_WORKER_PATH_PREFIX}{index}"))
 }
 
 /// Dependencies for [`LayoutWorkerActor`].
@@ -105,12 +125,44 @@ impl LayoutWorkerActor {
                 }
             })
             .handles::<LayoutChatSession>()
-            // The sidebar's preview renders ride this pool too, so both
-            // round-robin across the same workers.
-            .handles::<PreviewSessionRequested>()
             // The result leaves through ctx.publish; the flush gate drops any
             // outbound type not declared here.
             .emits::<ChatLogLayoutComputed>()
+            .mailbox(64, trouper::inbox::OverloadPolicy::Block)
+            .start();
+        path
+    }
+
+    /// Spawns one worker of the preview pool at `index`.
+    ///
+    /// Separate from [`Self::spawn`] because the two kinds of work have wildly
+    /// different costs: a preview wraps five entries, a measurement walks a
+    /// whole transcript. Sharing a pool let the expensive work starve the cheap
+    /// one, which is the wrong way round for a UI that must feel instant.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the actor's path is already taken — a wiring bug.
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "port convention: spawn takes owned deps and clones into start_with"
+    )]
+    pub fn spawn_preview(
+        system: &trouper::system::ActorSystem,
+        index: usize,
+        deps: LayoutWorkerActorDeps,
+    ) -> ActorPath {
+        let path = preview_worker_path(index);
+        trouper::builder::spawn_service_builder::<Self>(system)
+            .at(path.clone())
+            .start_with({
+                let deps = deps.clone();
+                move || {
+                    let deps = deps.clone();
+                    Box::pin(async move { Ok(Self { state: deps.state }) })
+                }
+            })
+            .handles::<PreviewSessionRequested>()
             .emits::<SessionPreviewRendered>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();

@@ -26,7 +26,8 @@ use trouper::supervision::{ActorSpec, Backoff, RestartBudget, RestartPolicy};
 
 use crate::common::state::State;
 use crate::feat::ui::chat_log::layout_worker::{
-    LAYOUT_WORKER_POOL_SIZE, LayoutWorkerActor, LayoutWorkerActorDeps, layout_worker_path,
+    LAYOUT_WORKER_POOL_SIZE, LayoutWorkerActor, LayoutWorkerActorDeps, PREVIEW_WORKER_POOL_SIZE,
+    layout_worker_path, preview_worker_path,
 };
 
 /// Static path the layout supervisor spawns at (one per process).
@@ -106,6 +107,7 @@ impl LayoutSupervisorActor {
                     Box::pin(async move {
                         let state = deps.state.clone();
                         spawn_worker_pool(&worker_system, &state, &path);
+                        spawn_preview_pool(&worker_system, &state, &path);
                         Ok(Self {
                             state,
                             system: deps.system.clone(),
@@ -219,6 +221,42 @@ fn spawn_worker_pool(system: &trouper::system::ActorSystem, state: &State, super
             args: trouper::json!({ "index": index }),
             spawn: Arc::new(move |system: &trouper::system::ActorSystem, _path, _args| {
                 LayoutWorkerActor::spawn(
+                    system,
+                    index,
+                    LayoutWorkerActorDeps {
+                        state: state.clone(),
+                    },
+                );
+            }),
+        });
+    }
+}
+
+/// Spawns the preview worker pool, separate from the measurement pool.
+///
+/// A preview is a five-entry tail and a measurement is a whole transcript, so
+/// sharing a pool meant rapid cursor moves queued previews behind work taking
+/// seconds — long enough that the preview's deadline expired before its job was
+/// even picked up, and the popup spun on a request that was never going to be
+/// served. Splitting the pools is what makes "the preview arrives in
+/// milliseconds" true rather than true when the chat log happens to be idle.
+fn spawn_preview_pool(
+    system: &trouper::system::ActorSystem,
+    state: &State,
+    supervisor: &ActorPath,
+) {
+    for index in 0..PREVIEW_WORKER_POOL_SIZE {
+        let path = preview_worker_path(index);
+        let state = state.clone();
+        system.spawn(ActorSpec {
+            path,
+            parent: Some(supervisor.clone()),
+            restart: RestartPolicy::Permanent,
+            budget: RestartBudget::per(WORKER_RESTART_BUDGET, WORKER_RESTART_WINDOW),
+            backoff: Backoff::default(),
+            args: trouper::json!({ "index": index }),
+            spawn: Arc::new(move |system: &trouper::system::ActorSystem, _path, _args| {
+                LayoutWorkerActor::spawn_preview(
                     system,
                     index,
                     LayoutWorkerActorDeps {
