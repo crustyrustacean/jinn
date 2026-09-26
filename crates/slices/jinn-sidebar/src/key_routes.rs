@@ -427,15 +427,18 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "s",
         "general",
         "browse task list",
-        sync(move |state| {
-            let pickers = jinn_picker_specs::single_spec_registry(
-                jinn_picker_specs::task_list_spec::task_list_spec(),
-            );
-            jinn_domain::feat::picker::intent::handle_open_picker(
-                state,
-                jinn_slices::picker_kind::PickerKind::TaskList,
-                &pickers,
-            )
+        // Route to the task-list picker by asking the tools slice to open
+        // itself. The sidebar names the picker only as "open the task list
+        // browser" — it does not know where that browser's state lives, which
+        // is the point: the picker is a detail of the tools slice.
+        sync(|_state| {
+            IntentResult::new_message(jinn_domain::protocol::intent::KernelIntent::Dynamic(
+                jinn_slices::DynamicIntent::new(
+                    jinn_tools_msg::task_list_picker_scope(),
+                    "open-task-list-picker",
+                    "browse task list",
+                ),
+            ))
         }),
     ));
     routes.attach(row(

@@ -15,8 +15,6 @@ pub enum PickerKind {
     /// in `jinn.toml`. Retained so persisted state still deserializes; it is
     /// never pushed as a scope and has no picker state.
     CompactionModel,
-    /// Task list browser - read-only zoom view of the active session's task list.
-    TaskList,
     /// Project picker - curated project directories; create a new session rooted
     /// at the highlighted dir with `<enter>` (or `<c-enter>` to also pick a lifecycle).
     Project,
@@ -32,7 +30,6 @@ impl std::fmt::Display for PickerKind {
 
             Self::CompactionModel => write!(f, "compaction model"),
 
-            Self::TaskList => write!(f, "task list"),
             Self::Project => write!(f, "projects"),
             Self::McpServer => write!(f, "mcp servers"),
         }

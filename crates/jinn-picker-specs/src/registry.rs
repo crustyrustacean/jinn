@@ -18,7 +18,6 @@ use jinn_picker::PickerRegistry;
 pub fn build_picker_registry() -> PickerRegistry {
     let mut registry = PickerRegistry::new();
     registry.register(crate::mcp_server_spec::mcp_server_spec());
-    registry.register(crate::task_list_spec::task_list_spec());
     registry.register(crate::session_spec::session_spec());
     registry.register(crate::provider_spec::provider_spec());
     registry.register(crate::project_spec::project_spec());
@@ -99,7 +98,6 @@ mod tests {
         let registry = build_picker_registry();
         let migrated = [
             PickerKind::McpServer,
-            PickerKind::TaskList,
             PickerKind::Session,
             PickerKind::Provider,
             PickerKind::Project,

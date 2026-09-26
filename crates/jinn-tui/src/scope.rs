@@ -34,7 +34,6 @@ pub enum Scope {
     /// Picker - Session lifecycle recipe selection.
     /// Picker - OpenRouter routing endpoint selection.
     /// Picker - Read-only task list browser.
-    PickerTaskList,
     /// Picker - Curated project directory selection.
     PickerProject,
     /// Picker - MCP server toggle selection.
@@ -56,7 +55,6 @@ impl std::fmt::Display for Scope {
             Self::PickerProvider => write!(f, "Picker(provider)"),
             Self::PickerSession => write!(f, "Picker(session)"),
 
-            Self::PickerTaskList => write!(f, "Picker(task-list)"),
             Self::PickerProject => write!(f, "Picker(project)"),
             Self::PickerMcpServer => write!(f, "Picker(mcp-server)"),
             Self::Input => write!(f, "Input"),
@@ -80,7 +78,6 @@ impl std::str::FromStr for Scope {
             "Picker(provider)" => Ok(Self::PickerProvider),
             "Picker(session)" => Ok(Self::PickerSession),
 
-            "Picker(task-list)" => Ok(Self::PickerTaskList),
             "Picker(project)" => Ok(Self::PickerProject),
             "Picker(mcp-server)" => Ok(Self::PickerMcpServer),
             "Input" => Ok(Self::Input),
@@ -95,20 +92,6 @@ mod tests {
 
     use super::Scope;
     use std::str::FromStr;
-
-    #[rstest::rstest]
-    fn picker_task_list_scope_round_trips() {
-        // Given the PickerTaskList scope variant.
-        // When formatting then parsing back.
-        // Then the round-trip preserves the variant.
-        let s = Scope::PickerTaskList.to_string();
-        assert_eq!(s, "Picker(task-list)");
-        assert_eq!(
-            Scope::from_str(&s),
-            Ok(Scope::PickerTaskList),
-            "Display/FromStr should round-trip"
-        );
-    }
 
     #[rstest::rstest]
     #[test]

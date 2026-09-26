@@ -25,7 +25,6 @@ async fn test_app() -> TuiApp {
 #[case::sidebar(jinn_sidebar_msg::SidebarSectionId::Persona.focus_scope(), Scope::Dynamic(jinn_slices::SliceScopeId::navigation("sidebar", "persona")))]
 #[case::input(jinn_slices::FocusScope::Input, Scope::Input)]
 #[case::picker_provider(jinn_slices::FocusScope::Picker { kind: jinn_domain::PickerKind::Provider }, Scope::PickerProvider)]
-#[case::picker_task_list(jinn_slices::FocusScope::Picker { kind: jinn_domain::PickerKind::TaskList }, Scope::PickerTaskList)]
 fn scope_for_focus_maps_correctly(#[case] focus: jinn_slices::FocusScope, #[case] expected: Scope) {
     // Given a focus scope.
     // When mapping to a keymap scope.
@@ -243,25 +242,17 @@ fn s_outside_sidebar_task_list_does_not_open_task_list_picker(#[case] scope: Sco
     // Then it does NOT resolve to the TaskList open intent. It may resolve to
     // some other intent (e.g. Input's catch-all `InsertChar('s')`) or None,
     // but never to "search task list".
-    assert_ne!(
-        intent.map(|i| i.to_string()).as_deref(),
-        Some("search task list")
+    // The browser is opened only from the sidebar's task-list section. Since
+    // the picker is slice-owned it has no kernel intent name, so the check is
+    // that `s` did not become a dynamic route into the task-list scope.
+    let opened_the_task_list = matches!(
+        intent,
+        Some(jinn_domain::KernelIntent::Dynamic(dynamic))
+            if dynamic.slice == jinn_tools_msg::task_list_picker_scope()
     );
-}
-
-#[rstest::rstest]
-fn esc_in_picker_task_list_returns_to_normal_mode() {
-    // Given the keymap rooted at PickerTaskList.
-    let mut wk = keymap_at(Scope::PickerTaskList);
-
-    // When pressing `<esc>`.
-    let intent = wk.handle_key(key("escape"));
-
-    // Then it resolves to EnterNormalMode (the existing handler closes the picker
-    // and restores the prior sidebar task-list scope).
-    assert_eq!(
-        intent.map(|i| i.to_string()).as_deref(),
-        Some("enter normal mode")
+    assert!(
+        !opened_the_task_list,
+        "`s` outside the sidebar's task-list section must not open the browser"
     );
 }
 

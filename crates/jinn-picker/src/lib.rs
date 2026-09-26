@@ -49,9 +49,7 @@ pub use registry::ErasedPickerSpec;
 pub use registry::PickerRegistry;
 pub use registry::SpecHandle;
 pub use registry::Tail;
-pub use registry::{
-    MCP_SERVER_ID, PROJECT_ID, PROVIDER_ID, SESSION_ID, TASK_LIST_ID, spec_id_for_kind,
-};
+pub use registry::{MCP_SERVER_ID, PROJECT_ID, PROVIDER_ID, SESSION_ID, spec_id_for_kind};
 pub use render::KeybindLine;
 pub use render::RenderOutcome;
 pub use render::keybind_line;

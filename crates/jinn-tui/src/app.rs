@@ -311,7 +311,6 @@ pub fn scope_for_focus(focus: &jinn_slices::FocusScope) -> Scope {
             // shares the provider scope so the match stays total.
             PickerKind::Provider | PickerKind::CompactionModel => Scope::PickerProvider,
             PickerKind::Session => Scope::PickerSession,
-            PickerKind::TaskList => Scope::PickerTaskList,
             PickerKind::Project => Scope::PickerProject,
             PickerKind::McpServer => Scope::PickerMcpServer,
         },

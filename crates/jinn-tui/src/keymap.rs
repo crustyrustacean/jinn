@@ -238,9 +238,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
         .scope(Scope::PickerSession, |b| {
             add_picker_base(b);
         })
-        .scope(Scope::PickerTaskList, |b| {
-            add_picker_base(b);
-        })
         .scope(Scope::PickerProject, |b| {
             // The project spec's rows (<c-enter> new+lifecycle, <c-n> add
             // dir, <c-d> remove) land here via bind_picker_spec_rows.
@@ -281,7 +278,6 @@ mod tests {
         #[values(
             PickerKind::Provider,
             PickerKind::Session,
-            PickerKind::TaskList,
             PickerKind::Project,
             PickerKind::McpServer
         )]
@@ -669,7 +665,7 @@ mod leak_check {
         use jinn_domain::{Key, KeyEvent, Modifiers};
 
         let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerTaskList);
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerSession);
 
         // When pressing PageUp.
         let pgup = KeyEvent {
@@ -698,7 +694,7 @@ mod leak_check {
         use jinn_domain::{Key, KeyEvent, Modifiers};
 
         let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerTaskList);
+        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerSession);
 
         // When pressing PageDown.
         let pgdn = KeyEvent {

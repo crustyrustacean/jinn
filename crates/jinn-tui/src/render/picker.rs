@@ -84,7 +84,6 @@ mod tests {
     #[rstest::rstest]
     #[case::provider(PickerKind::Provider)]
     #[case::session(PickerKind::Session)]
-    #[case::task_list(PickerKind::TaskList)]
     #[case::project(PickerKind::Project)]
     #[case::mcp_server(PickerKind::McpServer)]
     fn picker_draws_footer_rows_matching_kind_declaration(#[case] kind: PickerKind) {

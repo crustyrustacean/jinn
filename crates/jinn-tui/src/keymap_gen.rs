@@ -77,7 +77,6 @@ pub fn bind_picker_spec_rows(
 fn picker_spec_scope(id: jinn_picker::PickerId) -> Option<Scope> {
     match id.as_str() {
         "mcp-server" => Some(Scope::PickerMcpServer),
-        "task-list" => Some(Scope::PickerTaskList),
         "session" => Some(Scope::PickerSession),
         "provider" => Some(Scope::PickerProvider),
         "project" => Some(Scope::PickerProject),
@@ -129,7 +128,6 @@ fn scopes_for_row<'a>(
                 Scope::Input,
                 Scope::PickerProvider,
                 Scope::PickerSession,
-                Scope::PickerTaskList,
                 Scope::PickerProject,
                 Scope::PickerMcpServer,
             ]
@@ -825,7 +823,6 @@ mod tests {
     #[case("Input")]
     #[case("Picker(provider)")]
     #[case("Picker(session)")]
-    #[case("Picker(task-list)")]
     #[case("Picker(project)")]
     #[case("Picker(mcp-server)")]
     fn alt_t_resolves_in_every_static_scope(#[case] scope_name: &str) {

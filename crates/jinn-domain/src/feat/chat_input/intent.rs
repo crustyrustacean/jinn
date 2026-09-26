@@ -672,16 +672,6 @@ pub fn handle_enter_normal_mode_with_pickers(
         return result;
     }
 
-    // TaskList picker is read-only and always opened from the sidebar task-list section.
-    // Pop only the picker to preserve the sidebar scope (rather than clearing all
-    // overlays, which would drop the task-list section and strand the user in Normal).
-    if state.frontend.picker_kind() == Some(crate::protocol::PickerKind::TaskList)
-        && state.frontend.is_picker()
-    {
-        state.frontend.scope_pop();
-        return IntentResult::empty();
-    }
-
     // A pending session creation stash only matters between opening the
     // project picker and confirming session creation. Returning to Normal
     // means that chain was abandoned, so clear any stale stash so it never

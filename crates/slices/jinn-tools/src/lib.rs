@@ -32,6 +32,10 @@ pub mod session_fetch;
 pub mod session_search;
 pub mod skill;
 pub mod task;
+pub mod task_list_picker_actions;
+pub mod task_list_picker_render;
+pub mod task_list_picker_routes;
+pub mod task_list_picker_viewport;
 pub mod task_phase_listener_actor;
 pub mod task_settle_listener_actor;
 pub mod todo_tools;
@@ -47,6 +51,8 @@ mod orchestrator;
 
 #[cfg(test)]
 mod interactive_term_tests;
+#[cfg(test)]
+mod task_list_picker_tests;
 #[cfg(test)]
 mod task_tests;
 #[cfg(test)]
@@ -116,4 +122,44 @@ pub fn activate_picker(host: &mut jinn_slices::SliceHost<'_, jinn_slices::Render
     // The picker's keys, and the filter's input hook, are this slice's own.
     tool_picker_routes::attach_tool_picker_rows(host.key_routes(), &cell);
     tool_picker_routes::register_tool_picker_input_hook(host.key_routes(), &cell);
+
+    activate_task_list_picker(host);
+}
+
+/// Registers the task-list browser: its cell, its overlay, its keys, and its
+/// filter hook.
+///
+/// A tree menu, and the second picker this slice hosts. Neither picker knows
+/// the other exists — separate scopes, separate cells, separate key sets.
+///
+/// # Panics
+///
+/// Panics if the task-list slot is already registered — double activation is
+/// a wiring bug.
+#[expect(
+    clippy::expect_used,
+    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
+)]
+pub fn activate_task_list_picker(host: &mut jinn_slices::SliceHost<'_, jinn_slices::RenderFacts>) {
+    let cell = host
+        .register_cell(
+            jinn_tools_msg::task_list_picker_slot(),
+            jinn_tools_msg::TaskListPickerState::default(),
+        )
+        .expect("task-list picker slot is registered exactly once at wiring");
+
+    let scope = jinn_tools_msg::task_list_picker_scope();
+    host.register_overlay(
+        scope.clone(),
+        std::sync::Arc::new(task_list_picker_render::task_list_picker_overlay_rect),
+    );
+    host.register_overlay_selectable(&scope);
+    host.register_overlay_slot(scope.clone(), jinn_tools_msg::task_list_picker_slot());
+    host.register_overlay_view(
+        scope,
+        std::sync::Arc::new(task_list_picker_render::render_task_list_picker),
+    );
+
+    task_list_picker_routes::attach_task_list_picker_rows(host.key_routes(), &cell);
+    task_list_picker_routes::register_task_list_picker_input_hook(host.key_routes(), &cell);
 }

@@ -9,7 +9,6 @@ use jinn_mcp_msg::McpServerEntry;
 use jinn_project_msg::ProjectEntry;
 use jinn_provider_selection_msg::ProviderPickerEntry;
 use jinn_session_store_msg::SessionTreeEntry;
-use jinn_tools_msg::TaskListTreeEntry;
 
 /// All picker state - grouped so the picker subsystem can evolve independently.
 ///
@@ -25,11 +24,6 @@ pub struct PickerStates {
     /// Preview pane scroll offsets for spec-driven pickers, keyed by
     /// picker id.
     pub pickers_scrolls: jinn_picker::PickerScrolls,
-
-    /// Task list picker state - read-only zoom view of the active session's task list.
-    /// OWNER: IntentHandler (populated on task list picker open).
-    pub task_list_picker:
-        jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<TaskListTreeEntry>>,
 
     pub project_picker:
         jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ProjectEntry>>,
@@ -82,15 +76,6 @@ pub trait PickerExt {
     /// Mutable access to the enabled MCP servers snapshot.
     fn mcp_server_picker_snapshot_mut(&mut self)
     -> &mut Option<std::collections::BTreeSet<String>>;
-    /// Read-only access to the task list picker state.
-    fn task_list_picker(
-        &self,
-    ) -> &jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<TaskListTreeEntry>>;
-    /// Mutable access to the task list picker state.
-    fn task_list_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<TaskListTreeEntry>>;
-
     /// Read-only access to the project picker state.
     fn project_picker(
         &self,
@@ -139,18 +124,6 @@ impl PickerExt for super::frontend_state::FrontendState {
         &mut self.pickers.mcp_server_picker_snapshot
     }
 
-    fn task_list_picker(
-        &self,
-    ) -> &jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<TaskListTreeEntry>> {
-        &self.pickers.task_list_picker
-    }
-
-    fn task_list_picker_mut(
-        &mut self,
-    ) -> &mut jinn_selection_widget::TreePickerState<jinn_picker::PickerEntry<TaskListTreeEntry>>
-    {
-        &mut self.pickers.task_list_picker
-    }
     fn project_picker(
         &self,
     ) -> &jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ProjectEntry>> {
