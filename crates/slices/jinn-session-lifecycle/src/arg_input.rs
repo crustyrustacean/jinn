@@ -265,7 +265,7 @@ mod tests {
         let (slices, cell) = cell_with("echo $1 $2", "\"two words\" tail");
         let mut state = FakeState::default();
         let config = jinn_config::testutil::config_layer(
-            "[[session_lifecycle.lifecycle]]\nname = \"research\"\nsetup_command = \"echo $1 $2\"\n",
+            "[[session_lifecycle.script]]\nname = \"research\"\nsetup_command = \"echo $1 $2\"\n",
         );
         let original_session_count = state.kernel.session.session_count();
         let mut ctx = action_ctx(&mut state, &slices, &config);

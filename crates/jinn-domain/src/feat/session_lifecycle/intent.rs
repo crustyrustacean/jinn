@@ -228,7 +228,7 @@ pub fn build_run_session_teardown(
 }
 
 /// The teardown command of the named lifecycle, read from the
-/// `[[session_lifecycle.lifecycle]]` section.
+/// `[[session_lifecycle.script]]` section.
 #[must_use]
 pub fn lifecycle_teardown(
     config: &ConfigLayer,
@@ -237,7 +237,7 @@ pub fn lifecycle_teardown(
     find_lifecycle(config, name)?.teardown
 }
 
-/// Looks up a lifecycle by name in the `[[session_lifecycle.lifecycle]]`
+/// Looks up a lifecycle by name in the `[[session_lifecycle.script]]`
 /// section.
 fn find_lifecycle(config: &ConfigLayer, name: &str) -> Option<SessionLifecycle> {
     config
@@ -271,13 +271,13 @@ mod tests {
     use crate::protocol::ChatEntry;
 
     /// A layer carrying a single lifecycle, as a user's `jinn.toml` holds
-    /// one under `[[session_lifecycle.lifecycle]]`.
+    /// one under `[[session_lifecycle.script]]`.
     fn lifecycle_config(name: &str, setup: Option<&str>, teardown: Option<&str>) -> ConfigLayer {
         let setup = setup.map_or_else(String::new, |s| format!("setup_command = \"{s}\"\n"));
         let teardown =
             teardown.map_or_else(String::new, |t| format!("teardown_command = \"{t}\"\n"));
         let document =
-            format!("[[session_lifecycle.lifecycle]]\nname = \"{name}\"\n{setup}{teardown}");
+            format!("[[session_lifecycle.script]]\nname = \"{name}\"\n{setup}{teardown}");
 
         jinn_config::testutil::config_layer(&document)
     }
@@ -803,7 +803,7 @@ mod tests {
         // Given a scripted lifecycle and one auto-enabled server.
         let mut state = AppState::default_with_scope_focus();
         let config = jinn_config::testutil::config_layer(
-            "[[session_lifecycle.lifecycle]]\nname = \"fossil branch\"\n\
+            "[[session_lifecycle.script]]\nname = \"fossil branch\"\n\
              setup_command = \"echo /tmp/workdir\"\n\
              [mcp.excalimate]\nauto_enable = true\ncommand = \"npx\"\n",
         );

@@ -141,7 +141,7 @@ fn load_lifecycle_entries(state: &mut AppState, config: &ConfigLayer) {
         theme: theme.clone(),
     });
 
-    // Add lifecycles from the `[[session_lifecycle.lifecycle]]` section.
+    // Add lifecycles from the `[[session_lifecycle.script]]` section.
     for lifecycle in &lifecycles {
         let has_args = lifecycle
             .setup
@@ -188,18 +188,14 @@ mod tests {
     use jinn_session_lifecycle_msg::arg_input_slot;
     use jinn_slices::FocusScope;
 
-    /// A configuration layer whose `[[session_lifecycle.lifecycle]]` section
+    /// A configuration layer whose `[[session_lifecycle.script]]` section
     /// declares the given lifecycles (name, description, setup-with-args).
     fn config_with_lifecycles(lifecycles: &[(&str, Option<&str>, Option<&str>)]) -> ConfigLayer {
         use std::fmt::Write as _;
         let mut document = String::new();
         for (name, description, setup) in lifecycles {
             let (name, description, setup) = (*name, *description, *setup);
-            writeln!(
-                document,
-                "[[session_lifecycle.lifecycle]]\nname = \"{name}\""
-            )
-            .expect("w");
+            writeln!(document, "[[session_lifecycle.script]]\nname = \"{name}\"").expect("w");
             if let Some(description) = description {
                 writeln!(document, "description = \"{description}\"").expect("w");
             }

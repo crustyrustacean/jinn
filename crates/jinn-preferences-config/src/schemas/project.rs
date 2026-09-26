@@ -1,10 +1,12 @@
-//! The `[project]` umbrella — the curated project list and the global
-//! command policy.
+//! The `[project]` umbrella — the curated project list.
 //!
-//! Both are lists of tables at the top level of their umbrella, so each
-//! element type declares itself with `ConfigList`: `[[project.projects]]`
-//! and `[[project.global_command_policy]]` stay lists, and the layer
-//! matches entries by their identity field.
+//! A list of tables at the top level of its umbrella, so the element type
+//! declares itself with `ConfigList`: `[[project.entry]]` stays a list
+//! and the layer matches entries by their identity field.
+//!
+//! The global command policy used to live here as
+//! `[[project.global_command_policy]]`. It now lives under the umbrella
+//! that owns it, `[[tools.bash_command_policy]]`.
 
 use std::path::PathBuf;
 
@@ -12,13 +14,13 @@ use jinn_tools_msg::CommandPolicyRule;
 use serde::{Deserialize, Serialize};
 
 impl jinn_config::ConfigList for ProjectConfig {
-    const KEY: &'static str = "project.projects";
+    const KEY: &'static str = "project.entry";
     const ENTRY_KEY: &'static str = "path";
 }
 
 /// A curated project directory shown in the project picker.
 ///
-/// Defined in `jinn.toml` under `[[project.projects]]`. The `path` field
+/// Defined in `jinn.toml` under `[[project.entry]]`. The `path` field
 /// is the array key the patcher matches entries by, so add/remove
 /// operations target a single table without disturbing siblings.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -45,10 +47,10 @@ mod tests {
     fn project_entries_read_from_the_umbrella_key() {
         // Given a document listing two projects under the umbrella.
         let doc = r#"
-            [[project.projects]]
+            [[project.entry]]
             path = "/tmp/a"
 
-            [[project.projects]]
+            [[project.entry]]
             path = "/tmp/b"
         "#
         .parse()

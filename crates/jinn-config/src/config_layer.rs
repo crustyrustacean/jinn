@@ -837,16 +837,9 @@ mod tests {
         setup: String,
     }
 
-    /// A section whose value is a list-of-tables identified by `name`.
-    #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
-    struct LifecycleList {
-        #[serde(default)]
-        lifecycle: Vec<LifecycleEntry>,
-    }
-
-    impl Configurable for LifecycleList {
-        const KEY: &'static str = "session_lifecycle";
-        const ENTRY_KEY: Option<EntryKey> = Some(EntryKey::new("lifecycle", "name"));
+    impl ConfigList for LifecycleEntry {
+        const KEY: &'static str = "session_lifecycle.script";
+        const ENTRY_KEY: &'static str = "name";
     }
 
     /// A section whose list is nested below its own key.
@@ -887,7 +880,7 @@ mod tests {
     }
 
     impl ConfigList for ProjectEntry {
-        const KEY: &'static str = "project.projects";
+        const KEY: &'static str = "project.entry";
         const ENTRY_KEY: &'static str = "name";
     }
 
@@ -1116,23 +1109,21 @@ mod tests {
     fn put_matches_list_entries_by_key_field() {
         // Given a list with two commented entries.
         let (layer, storage) = layer(
-            "[[session_lifecycle.lifecycle]]\n# the first\nname = \"alpha\"\nsetup = \"one\"\n\n[[session_lifecycle.lifecycle]]\n# the second\nname = \"beta\"\nsetup = \"two\"\n",
+            "[[session_lifecycle.script]]\n# the first\nname = \"alpha\"\nsetup = \"one\"\n\n[[session_lifecycle.script]]\n# the second\nname = \"beta\"\nsetup = \"two\"\n",
         );
 
         // When writing the list back with only the first entry's field changed.
         layer
-            .put(&LifecycleList {
-                lifecycle: vec![
-                    LifecycleEntry {
-                        name: "alpha".to_owned(),
-                        setup: "one-changed".to_owned(),
-                    },
-                    LifecycleEntry {
-                        name: "beta".to_owned(),
-                        setup: "two".to_owned(),
-                    },
-                ],
-            })
+            .put_list::<LifecycleEntry>(&[
+                LifecycleEntry {
+                    name: "alpha".to_owned(),
+                    setup: "one-changed".to_owned(),
+                },
+                LifecycleEntry {
+                    name: "beta".to_owned(),
+                    setup: "two".to_owned(),
+                },
+            ])
             .expect("list writes");
 
         // Then both entries' comments and the untouched value survive.
@@ -1179,27 +1170,21 @@ mod tests {
     fn put_replaces_a_nested_inline_list_whole() {
         // Given a document whose entry holds an inline list of policy rules.
         let (layer, storage) = layer(
-            "[[session_lifecycle.lifecycle]]\nname = \"alpha\"\n# the policy\nsetup = \"one\"\n",
+            "[[session_lifecycle.script]]\nname = \"alpha\"\n# the policy\nsetup = \"one\"\n",
         );
 
         // When writing the section.
         layer
-            .put(&LifecycleList {
-                lifecycle: vec![LifecycleEntry {
-                    name: "alpha".to_owned(),
-                    setup: "one".to_owned(),
-                }],
-            })
+            .put_list::<LifecycleEntry>(&[LifecycleEntry {
+                name: "alpha".to_owned(),
+                setup: "one".to_owned(),
+            }])
             .expect("section writes");
 
         // Then the document still parses and reads back.
         let text = storage.text();
-        let read = layer.get::<LifecycleList>().expect("section reads");
-        assert_eq!(
-            read.lifecycle.len(),
-            1,
-            "the entry survived the rewrite:\n{text}"
-        );
+        let read = layer.get_list::<LifecycleEntry>().expect("section reads");
+        assert_eq!(read.len(), 1, "the entry survived the rewrite:\n{text}");
     }
 
     // PINNED: the umbrella parent is not resolved as a table, so the list
@@ -1211,7 +1196,7 @@ mod tests {
         // Given a document whose list lives under an umbrella, beside a
         // sibling entry carrying a user comment.
         let (layer, storage) = layer(
-            "# existing\n[[project.projects]]\nname = \"alpha\"\n\n[[project.global_command_policy]]\npattern = \"rm -rf\"\n",
+            "# existing\n[[project.entry]]\nname = \"alpha\"\n\n[[tools.bash_command_policy]]\npattern = \"rm -rf\"\n",
         );
 
         // When the list under the umbrella is written back.

@@ -75,7 +75,7 @@ tool_entry_max_lines = 12        # how much of a tool call renders in the TUI
 **Session lifecycles** (branch/worktree bootstrap; see
 `sessions-and-subagents.md`)
 ```toml
-[[session_lifecycle.lifecycle]]
+[[session_lifecycle.script]]
 name = "git worktree"
 description = "Open a git worktree + branch"
 setup_command = "cd <repo> && git worktree add -b <branch> ../<branch> && echo $(pwd)/<branch>"
@@ -85,7 +85,7 @@ teardown_command = "..."
 **Curated projects** (appear in the `<leader>so` picker) — optionally with a
 command policy that blocks bash commands by regex inside that project:
 ```toml
-[[project.projects]]
+[[project.entry]]
 path = "~/code/myapp"
 command_policy = [{ pattern = 'rm\s+-rf\s+/', message = "Never rm -rf from root here." }]
 ```
@@ -187,7 +187,7 @@ authorized_users = []              # deny-by-default; empty authorizes nobody
 
 **Request retries:**
 ```toml
-[context_curation.request_retry]
+[provider.request_retry]
 max_retries = 5
 base_delay_secs = 2
 max_delay_secs = 60

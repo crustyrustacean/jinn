@@ -164,7 +164,7 @@ pub(super) fn open_project_add(
 }
 
 /// Confirms the popup: resolves the typed path against the active session
-/// cwd; on success appends the path to the `[[project.projects]]` section
+/// cwd; on success appends the path to the `[[project.entry]]` section
 /// through the configuration layer, then pops the scope and clears the
 /// cell. On failure stays open (the render footer shows the inline error)
 /// and consumes the key.
@@ -181,7 +181,7 @@ pub(super) fn confirm_project_add(ctx: &mut ActionCtx<'_>, cell: &ProjectAddCell
     }
 }
 
-/// Appends a project to the `[[project.projects]]` section, deduping by
+/// Appends a project to the `[[project.entry]]` section, deduping by
 /// path so a repeated add is a no-op rather than a duplicate entry.
 ///
 /// A failed write is logged, not surfaced: the popup has already

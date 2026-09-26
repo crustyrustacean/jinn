@@ -268,7 +268,7 @@ Entries are added or amended **only with human approval**.
 - (testing) default_providers.toml is independent of code defaults: tests guarantee it parses, documents every config key, contains no dead keys, and its marked examples uncomment into a valid config. default_jinn.toml is documentation rather than authority, checked in one direction only: every key it documents resolves to a section jinn reads.
 - (prompts) Shipped prompts live in `res/prompts`, are embedded at compile time via the `BUNDLED` install catalogue, and `jinn install` seeds them to the user prompts dir, skipping files that already exist unless `--force`.
 - (ui) The quake bar's session section shows both the currently-applied auto-prune token total and the pending accumulation total; the applied total derives from entry context-history at render time, excluding compaction and user-sourced excludes.
-- (preferences) Curated projects live in `jinn.toml` under `[[project.projects]]`, keyed by `path`; the pre-umbrella `projects` and `[[project]]` spellings are not read and are not migrated.
+- (preferences) Curated projects live in `jinn.toml` under `[[project.entry]]`, keyed by `path`; the pre-umbrella `projects` and `[[project]]` spellings are not read and are not migrated.
 - (history) The anchored-assistant auto-prune worker sources its prune radius from its own `[auto_prune.anchored_assistant]` config.
 - (preferences) Unknown tables in a user `jinn.toml` are inert: the layer reads only registered sections, so an unrecognised key is simply never consulted.
 - (tokens) Per-entry token counts are a persisted, content-derived field on chat entries (entries.token_count column), computed once by the token count actor for entries lacking a count and saved by the regular session-snapshot persist path; no separate frontend token cache exists.
@@ -300,10 +300,10 @@ Entries are added or amended **only with human approval**.
 - (pickers) The session-lifecycle picker starts sessions with a scripted lifecycle from jinn.toml; entries whose setup command has $-parameters hand off to the arg-input popup before setup runs.
 - (pickers) The reasoning-effort picker builds its seven effort entries inline at open and on confirm sets the session's reasoning override, emits MarkSessionInteracted, and seeds the global default via UpdateAppState.
 - (config) The compaction model is configured only by the `model` key of `[context_curation.compaction]` in jinn.toml; the compaction-model picker was removed.
-- (preferences) A `[[project.projects]]` entry in `jinn.toml` may carry a command policy
+- (preferences) A `[[project.entry]]` entry in `jinn.toml` may carry a command policy
 - (tools) The bash tool evaluates commands against the global and resolved project command policies before spawn; a match returns a failed tool result carrying the rule's message and the command never runs.
 - (tools) Project command policy is resolved by cwd prefix match at tool-call time with the longest configured project path winning.
-- (preferences) jinn.toml carries `[[project.global_command_policy]]` entries of user-authored regex patterns with corrective messages, applied ahead of the per-project policy.
+- (preferences) jinn.toml carries `[[tools.bash_command_policy]]` entries of user-authored regex patterns with corrective messages, applied ahead of the per-project policy.
 - (tools) Global command policy rules are evaluated before project command policy rules, so a global rule preempts a project rule for the same command.
 - (tools) Command policy guards only the bash tool; interactive terminals and MCP-provided tools are unguarded.
 - (slices) The status-bar slice is a crate owning the status bar element and the status-hint cell; the IntentHandler writes the hint and the element renders it.

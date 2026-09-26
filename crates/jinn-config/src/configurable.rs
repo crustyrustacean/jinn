@@ -119,13 +119,13 @@ impl EntryKey {
 }
 
 /// A section of `jinn.toml` that is a bare array of tables at its key,
-/// e.g. `[[project.projects]]`.
+/// e.g. `[[project.entry]]`.
 ///
 /// This is the companion to [`Configurable`] for the one shape a plain
 /// table cannot express. A wrapper struct holding `Vec<T>` would read
 /// and write correctly, but it would move the list *inside* a table:
 /// `[[project]]` with a nested `projects = [...]` array instead of
-/// `[[project.projects]]`, which is not the shape a user expects and
+/// `[[project.entry]]`, which is not the shape a user expects and
 /// loses the per-entry comment the entry key exists to preserve.
 ///
 /// # At most one list-of-tables

@@ -186,7 +186,7 @@ pub fn project_spec() -> PickerSpec<ProjectEntry> {
             PickerOutcome::from_route_result(result)
         })
 }
-/// Removes a project from the `[[project.projects]]` section.
+/// Removes a project from the `[[project.entry]]` section.
 ///
 /// A failed write is silently dropped: the entry has already left the
 /// picker, and surfacing an error there would strand the user in a list
@@ -220,13 +220,13 @@ mod tests {
     use jinn_session_state::ChatSessionState;
     use jinn_slices::FocusScope;
 
-    /// A configuration layer whose `[[project.projects]]` section holds
+    /// A configuration layer whose `[[project.entry]]` section holds
     /// exactly `paths` — the curated list the picker reads and writes.
     fn config_with_projects(paths: &[&str]) -> ConfigLayer {
         use std::fmt::Write as _;
         let mut document = String::new();
         for path in paths {
-            writeln!(document, "[[project.projects]]\npath = \"{path}\"").expect("write to String");
+            writeln!(document, "[[project.entry]]\npath = \"{path}\"").expect("write to String");
         }
         jinn_config::testutil::config_layer(&document)
     }

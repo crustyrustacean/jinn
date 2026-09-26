@@ -172,7 +172,7 @@ fn confirm_valid_dir_appends_project_optimistically_and_emits_update() {
     // When confirming.
     let result = confirm_project_add(&mut cx, &cell);
 
-    // Then the project lands in the `[[project.projects]]` section.
+    // Then the project lands in the `[[project.entry]]` section.
     let projects = config
         .get_list::<jinn_preferences_config::schemas::ProjectConfig>()
         .expect("section reads");

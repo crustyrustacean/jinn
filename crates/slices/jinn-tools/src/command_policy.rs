@@ -1,7 +1,7 @@
 //! Command policy - resolution and matching for the bash tool.
 //!
 //! Resolves the blocked-command rules that apply to a session's cwd: the
-//! global rules from `jinn.toml`'s `[[global_command_policy]]`, chained ahead
+//! global rules from `jinn.toml`'s `[[tools.bash_command_policy]]`, chained ahead
 //! of the rules of the configured project containing that cwd
 //! (`~`-expanded lexical longest-prefix match). The result is compiled into a
 //! matcher consulted by the bash tool before any child process spawns.
@@ -162,14 +162,14 @@ mod tests {
         let mut doc = String::new();
         if !global.is_empty() {
             for body in serialize_all(global) {
-                doc.push_str("[[project.global_command_policy]]\n");
+                doc.push_str("[[tools.bash_command_policy]]\n");
                 doc.push_str(&body);
                 doc.push('\n');
             }
         }
         if !projects.is_empty() {
             for body in serialize_all(projects) {
-                doc.push_str("[[project.projects]]\n");
+                doc.push_str("[[project.entry]]\n");
                 doc.push_str(&body);
                 doc.push('\n');
             }

@@ -33,7 +33,7 @@
 //! fixture and the template example. [`normalize`] masks those segments
 //! with `*` on both sides so comparison is structural.
 //!
-//! Array-of-tables (`[[session_lifecycle.lifecycle]]`,
+//! Array-of-tables (`[[session_lifecycle.script]]`,
 //! `[[context_curation.auto_prune.regex.rules]]`,
 //! `[[providers.<name>.model_info]]`) contribute *no* name segment: their
 //! entry names are field values, not path segments, so they need no masking.

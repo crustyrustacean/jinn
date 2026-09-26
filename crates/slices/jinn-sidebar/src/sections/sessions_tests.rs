@@ -1108,7 +1108,7 @@ fn teardown_only_emits_run_session_teardown() {
     // Given a session with a lifecycle that has a teardown command.
     let mut state = AppState::default_with_scope_focus();
     let config = jinn_config::testutil::config_layer(
-        "[[session_lifecycle.lifecycle]]\nname = \"fossil branch\"\n\
+        "[[session_lifecycle.script]]\nname = \"fossil branch\"\n\
          setup_command = \"echo setup\"\nteardown_command = \"cleanup.sh $1\"\n",
     );
     state
@@ -1137,7 +1137,7 @@ fn teardown_only_is_noop_without_lifecycle_teardown() {
     // Given a session with a lifecycle that has NO teardown command.
     let mut state = AppState::default_with_scope_focus();
     let config = jinn_config::testutil::config_layer(
-        "[[session_lifecycle.lifecycle]]\nname = \"plain\"\nsetup_command = \"echo setup\"\n",
+        "[[session_lifecycle.script]]\nname = \"plain\"\nsetup_command = \"echo setup\"\n",
     );
     state
         .active_session_mut()
@@ -1161,7 +1161,7 @@ fn teardown_only_is_noop_when_session_busy() {
     // Given a session with a teardown command that is currently busy.
     let mut state = AppState::default_with_scope_focus();
     let config = jinn_config::testutil::config_layer(
-        "[[session_lifecycle.lifecycle]]\nname = \"fossil branch\"\n\
+        "[[session_lifecycle.script]]\nname = \"fossil branch\"\n\
          setup_command = \"echo setup\"\nteardown_command = \"cleanup.sh $1\"\n",
     );
     state

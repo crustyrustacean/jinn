@@ -121,7 +121,7 @@ mod tests {
         // Given a selected session with a configured setup command.
         let mut state = state_with_selected_session();
         let config = jinn_config::testutil::config_layer(
-            "[[session_lifecycle.lifecycle]]\nname = \"release\"\nsetup_command = \"deploy\"\n",
+            "[[session_lifecycle.script]]\nname = \"release\"\nsetup_command = \"deploy\"\n",
         );
         state
             .active_session_mut()

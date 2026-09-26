@@ -1,5 +1,5 @@
 //! Session lifecycle configuration schema — the `jinn.toml`
-//! `[[session_lifecycle.lifecycle]]` entries plus the
+//! `[[session_lifecycle.script]]` entries plus the
 //! [`LifecycleCommand`] serde shell-or-builtin encoding.
 //!
 //! Pure serde data: the *handler registry* ([`BuiltinRegistry`] in the
@@ -181,7 +181,7 @@ pub struct SessionLifecycle {
 }
 
 impl jinn_config::ConfigList for SessionLifecycle {
-    const KEY: &'static str = "session_lifecycle.lifecycle";
+    const KEY: &'static str = "session_lifecycle.script";
     const ENTRY_KEY: &'static str = "name";
 }
 

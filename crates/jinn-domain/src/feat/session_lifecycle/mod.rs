@@ -30,7 +30,7 @@ mod tests {
 
     #[rstest::rstest]
     fn load_parses_table_array_session_lifecycle() {
-        // Given a jinn.toml using the [[session_lifecycle.lifecycle]]
+        // Given a jinn.toml using the [[session_lifecycle.script]]
         // table array syntax.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
@@ -38,7 +38,7 @@ mod tests {
             &path,
             r#"last_model = "ollama/llama3"
 
-[[session_lifecycle.lifecycle]]
+[[session_lifecycle.script]]
 name = "fossil branch"
 description = "Open a fossil branch in a new workdir"
 setup_command = "~/.config/jinn/scripts/fossil-branch.sh $1"
@@ -68,7 +68,7 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
     // tests describe is real; the layer does not deliver it yet.
     fn put_lifecycle_list_preserves_session_lifecycle_block_and_comments() {
         // Given a jinn.toml with a session_lifecycle block.
-        let original = "# my custom lifecycle\n[[session_lifecycle.lifecycle]]\nname = \"fossil-branch\"\ndescription = \"open a branch\"\n";
+        let original = "# my custom lifecycle\n[[session_lifecycle.script]]\nname = \"fossil-branch\"\ndescription = \"open a branch\"\n";
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(&path, original).expect("write");
@@ -94,7 +94,7 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
     // tests describe is real; the layer does not deliver it yet.
     fn put_lifecycle_list_deletes_session_lifecycle_block_on_entry_removal() {
         // Given a jinn.toml with two lifecycle blocks.
-        let original = "# keep\n[[session_lifecycle.lifecycle]]\nname = \"alpha\"\n\n# delete\n[[session_lifecycle.lifecycle]]\nname = \"beta\"\n";
+        let original = "# keep\n[[session_lifecycle.script]]\nname = \"alpha\"\n\n# delete\n[[session_lifecycle.script]]\nname = \"beta\"\n";
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(&path, original).expect("write");
@@ -123,7 +123,7 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
     // tests describe is real; the layer does not deliver it yet.
     fn put_lifecycle_list_appends_new_session_lifecycle_at_end() {
         // Given a jinn.toml with one lifecycle block.
-        let original = "# existing\n[[session_lifecycle.lifecycle]]\nname = \"alpha\"\n";
+        let original = "# existing\n[[session_lifecycle.script]]\nname = \"alpha\"\n";
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(&path, original).expect("write");

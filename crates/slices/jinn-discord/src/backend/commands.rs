@@ -62,7 +62,7 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
     }
     let data = ctx.data();
 
-    // 1. Gather projects from the `[[project.projects]]` section.
+    // 1. Gather projects from the `[[project.entry]]` section.
     let projects = data
         .services
         .config
