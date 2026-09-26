@@ -180,7 +180,6 @@ Entries are added or amended **only with human approval**.
 - (subagents) A `task` tool-call entry carries an optional persisted link to the child session it spawned.
 - (subagents) Enter on a selected `task` tool call activates its linked child session, loading it from the store if needed; archived children unarchive via the standard load path.
 - (tools) The built-in `interactive_term`, `interactive_term_send`, and `interactive_term_kill` tools are the PTY interactive-terminal interface; each call blocks until screen output settles and returns the rendered screen.
-- (tools) The `todo_set_list` tool accepts an empty `phases` array to clear the session's task list entirely.
 - (tools) `interactive_term` PTY sessions persist across tool calls in a coordinator actor; the spawned program's lifetime is decoupled from tool calls.
 - (tools) Agent input to an `interactive_term` session fails the tool call with only the wait notice while the user holds control — no screen is returned; that notice appears nowhere else — leaving control never messages the model.
 - (tools) A tool call in flight when the user takes terminal control resolves with the wait notice instead of writing input; the user's keys reach the program through the same actor and the next agent call sees the user-driven screen.
@@ -227,7 +226,6 @@ Entries are added or amended **only with human approval**.
 - (workflow) `just test` runs the workspace suite once with --no-fail-fast, tees the full cargo output to `target/test-output.log`, and prints a passed/failed summary including failing test names.
 - (workflow) `just test-failures` extracts failing test names from `target/test-output.log` without re-running the suite.
 - (workflow) `just test-one <filter>` runs workspace tests matching a name filter as the sanctioned iterate-on-failure path.
-- (todo) The todo tool surface is `todo_set_list`, `todo_add_phase`, `todo_add_task`, `todo_get_phase`, `todo_get_task_list`, `todo_complete_task`, `todo_cancel_task`, `todo_postpone_task`, and `todo_postpone_to_phase`.
 - (todo) The next-task indicator remains derived from list state and renders after every write and in `todo_get_task_list`.
 - (slices) The sidebar, token-count, context-assembly, and preferences actors are trouper ServiceActors spawned at slice activation.
 - (slices) The chat input box cannot be remotely locked or disabled.

@@ -26,9 +26,8 @@ pub fn definition() -> ToolDefinition {
         description: "Replace the entire task list with a new one. \
             Accepts an ordered list of phases, each containing an ordered list of tasks. \
             The list you send IS the list - anything omitted is deleted, and task \
-            statuses are declared inline, not remembered. Each task is either a bare \
-            string (created as pending) or an object with 'description' and an \
-            optional 'status' (pending, completed, or cancelled). Pass an empty \
+            statuses are declared inline, not remembered. Each task is an object with \
+            'description' and 'status' (pending, completed, or cancelled). Pass an empty \
             phases array to clear the task list entirely. Use this when you have a \
             complete plan ready to materialize; use todo_set_phase for day-to-day \
             updates."
@@ -42,9 +41,9 @@ pub fn definition() -> ToolDefinition {
             "Read the current list first (todo_get_list) and include everything \
              you want to keep - anything omitted is deleted."
                 .to_owned(),
-            "A bare string task is created as pending. To record progress, pass \
-             the task as an object: {\"description\": \"...\", \"status\": \
-             \"completed\"} (statuses: pending, completed, cancelled)."
+            "Send every task as an object with both fields: \
+             {\"description\": \"...\", \"status\": \"pending\"} \
+             (statuses: pending, completed, cancelled)."
                 .to_owned(),
             "'postponed' is not a valid status - move the task to a later phase \
              or cancel it instead."
@@ -67,24 +66,22 @@ pub fn definition() -> ToolDefinition {
                             },
                             "tasks": {
                                 "type": "array",
-                                "description": "Ordered list of tasks for this phase. Each task is a string (created as pending) or an object {description, status} with status one of: pending, completed, cancelled.",
+                                "description": "Ordered list of tasks for this phase. An empty or omitted list is valid.",
                                 "items": {
-                                    "oneOf": [
-                                        { "type": "string" },
-                                        {
-                                            "type": "object",
-                                            "properties": {
-                                                "description": { "type": "string" },
-                                                "status": {
-                                                    "type": "string",
-                                                    "enum": ["pending", "completed", "cancelled"],
-                                                    "description": "Declared status of this task. Omit for pending."
-                                                }
-                                            },
-                                            "required": ["description"],
-                                            "additionalProperties": false
+                                    "type": "object",
+                                    "properties": {
+                                        "description": {
+                                            "type": "string",
+                                            "description": "What the task is."
+                                        },
+                                        "status": {
+                                            "type": "string",
+                                            "enum": ["pending", "completed", "cancelled"],
+                                            "description": "Declared status of this task. 'pending' if the work has not been done yet."
                                         }
-                                    ]
+                                    },
+                                    "required": ["description", "status"],
+                                    "additionalProperties": false
                                 }
                             }
                         },
@@ -114,15 +111,23 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             return tool_error(call, "no session ID available");
         };
 
-        let args: serde_json::Value =
-            serde_json::from_str(&call.arguments).unwrap_or(serde_json::Value::Null);
-
-        let Some(phases_val) = args.get("phases") else {
-            return tool_error(call, "missing 'phases' argument");
+        let args: serde_json::Value = match serde_json::from_str(&call.arguments) {
+            Ok(args) => args,
+            Err(_) => return tool_error(call, "arguments are not valid JSON"),
+        };
+        let Some(object) = args.as_object() else {
+            return tool_error(call, "arguments must be a JSON object");
         };
 
-        let Some(phases_arr) = phases_val.as_array() else {
-            return tool_error(call, "'phases' must be an array");
+        // The presence check comes first: an absent 'phases' key is a caller
+        // mistake worth reporting, and must never be normalised into an
+        // empty list that wipes the plan.
+        let Some(phases_val) = object.get("phases") else {
+            return tool_error(call, "missing 'phases' argument");
+        };
+        let phases_arr = match super::task_payload::normalize_array(phases_val, "phases") {
+            Ok(entries) => entries,
+            Err(msg) => return tool_error(call, &msg),
         };
 
         // Parse into declarative phase inputs (bare strings → Pending; objects
@@ -130,7 +135,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         // here, before task list state is touched. An empty array is valid —
         // it means "clear the task list entirely".
         let phase_inputs = {
-            let parsed = super::task_payload::parse_phases_array(phases_arr);
+            let parsed = super::task_payload::parse_phases_array(&phases_arr);
             match parsed {
                 Ok(inputs) => inputs,
                 Err(msg) => return tool_error(call, &msg),
@@ -251,6 +256,303 @@ mod tests {
             }]);
         };
         (state, session_id)
+    }
+
+    /// Builds a `todo_set_list` call carrying a raw `phases` value.
+    fn set_list_call(phases: serde_json::Value) -> ToolCall {
+        ToolCall {
+            id: "call-1".to_owned(),
+            name: "todo_set_list".to_owned(),
+            arguments: serde_json::json!({ "phases": phases }).to_string(),
+        }
+    }
+
+    /// Reads back the session's task list.
+    fn read_list(state: &State, session_id: &SessionId) -> jinn_tools_msg::TaskList {
+        let snapshot = state.read();
+        let session = snapshot.session.get(session_id).expect("session present");
+        session.task_list().clone()
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_list_accepts_single_object_wrapped_in_item_envelope() {
+        // Given the exact payload shape a model emitted: a single phase
+        // object wrapped in an `item` envelope with an empty tasks field.
+        let (state, session_id) = setup_with_existing_list();
+        let call = set_list_call(serde_json::json!({
+            "item": { "tasks": "", "description": "Probe" }
+        }));
+
+        // When executing the tool.
+        let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the write succeeds with the single intended phase.
+        assert!(result.success, "expected success: {:?}", result.content);
+        let list = read_list(&state, &session_id);
+        assert_eq!(list.phases().len(), 1);
+        assert_eq!(list.phases()[0].description(), "Probe");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_list_accepts_items_envelope_around_array() {
+        // Given a payload wrapping the array in an `items` envelope.
+        let (state, session_id) = setup_with_existing_list();
+        let call = set_list_call(serde_json::json!({
+            "items": [
+                { "description": "Research" },
+                { "description": "Build" }
+            ]
+        }));
+
+        // When executing the tool.
+        let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then both phases land in the sent order.
+        assert!(result.success, "expected success: {:?}", result.content);
+        let list = read_list(&state, &session_id);
+        assert_eq!(list.phases().len(), 2);
+        assert_eq!(list.phases()[0].description(), "Research");
+        assert_eq!(list.phases()[1].description(), "Build");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_list_accepts_json_encoded_array() {
+        // Given a payload that JSON-encodes the whole array into a string.
+        let (state, session_id) = setup_with_existing_list();
+        let call = set_list_call(serde_json::json!("[{\"description\": \"A\"}]"));
+
+        // When executing the tool.
+        let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the encoded array is decoded and written.
+        assert!(result.success, "expected success: {:?}", result.content);
+        let list = read_list(&state, &session_id);
+        assert_eq!(list.phases().len(), 1);
+        assert_eq!(list.phases()[0].description(), "A");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_list_empty_string_clears_list() {
+        // Given a session with an existing list and an empty-string payload.
+        let (state, session_id) = setup_with_existing_list();
+        let call = set_list_call(serde_json::json!(""));
+
+        // When executing the tool.
+        let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the list is cleared, matching the empty-array behaviour.
+        assert!(result.success, "expected success: {:?}", result.content);
+        assert!(read_list(&state, &session_id).is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_list_empty_string_tasks_renders_no_tasks() {
+        // Given a phase whose tasks field is an empty string.
+        let (state, session_id) = setup_with_existing_list();
+        let call = set_list_call(serde_json::json!([
+            { "description": "Planning", "tasks": "" }
+        ]));
+
+        // When executing the tool.
+        let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the phase is written task-less rather than erroring.
+        assert!(result.success, "expected success: {:?}", result.content);
+        assert!(result.content.contains("(no tasks)"));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_list_unrecoverable_phases_shape_reports_worked_example() {
+        // Given a phases value with no recoverable array.
+        let (state, session_id) = setup_with_existing_list();
+        let call = set_list_call(serde_json::json!(42));
+
+        // When executing the tool.
+        let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the failure names the expectation and shows an example.
+        assert!(!result.success);
+        assert!(
+            result.content.contains("must be an array of phase objects"),
+            "got: {:?}",
+            result.content
+        );
+        assert!(
+            result.content.contains("\"description\""),
+            "got: {:?}",
+            result.content
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_list_missing_phases_key_fails_and_keeps_list() {
+        // Given a payload with no 'phases' key at all.
+        let (state, session_id) = setup_with_existing_list();
+        let call = ToolCall {
+            id: "call-1".to_owned(),
+            name: "todo_set_list".to_owned(),
+            arguments: serde_json::json!({}).to_string(),
+        };
+
+        // When executing the tool.
+        let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then it reports the missing argument instead of clearing the list.
+        assert!(!result.success);
+        assert!(
+            result.content.contains("missing 'phases'"),
+            "got: {:?}",
+            result.content
+        );
+        let list = read_list(&state, &session_id);
+        assert_eq!(list.phases()[0].description(), "Old Phase");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_list_unparseable_arguments_fail_and_keep_list() {
+        // Given arguments that are not valid JSON.
+        let (state, session_id) = setup_with_existing_list();
+        let call = ToolCall {
+            id: "call-1".to_owned(),
+            name: "todo_set_list".to_owned(),
+            arguments: "not json".to_owned(),
+        };
+
+        // When executing the tool.
+        let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then it fails rather than degrading into a list clear.
+        assert!(!result.success);
+        assert!(
+            result.content.contains("not valid JSON"),
+            "got: {:?}",
+            result.content
+        );
+        let list = read_list(&state, &session_id);
+        assert_eq!(list.phases()[0].description(), "Old Phase");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_list_malformed_phase_leaves_list_intact() {
+        // Given a payload whose first phases are valid but whose last is not.
+        let (state, session_id) = setup_with_existing_list();
+        let call = set_list_call(serde_json::json!([
+            { "description": "Research" },
+            { "tasks": ["no description here"] }
+        ]));
+
+        // When executing the tool.
+        let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then nothing is written - the earlier phases are not committed.
+        assert!(!result.success);
+        let list = read_list(&state, &session_id);
+        assert_eq!(list.phases().len(), 1);
+        assert_eq!(list.phases()[0].description(), "Old Phase");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_list_object_task_without_status_defaults_to_pending() {
+        // Given an object task that omits 'status'.
+        let (state, session_id) = setup_with_existing_list();
+        let call = set_list_call(serde_json::json!([
+            { "description": "Build", "tasks": [{ "description": "x" }] }
+        ]));
+
+        // When executing the tool.
+        let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the task is created as Pending despite the schema requiring it.
+        assert!(result.success, "expected success: {:?}", result.content);
+        let list = read_list(&state, &session_id);
+        assert_eq!(list.phases()[0].tasks()[0].status, TaskStatus::Pending);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_list_task_items_schema_advertises_no_union() {
+        // Given the published set_list schema.
+        let schema = serde_json::to_value(&definition().parameters).expect("serializes");
+
+        // When inspecting the phase item's task item schema.
+        let items = schema
+            .pointer("/properties/phases/items/properties/tasks/items")
+            .expect("task items schema present");
+
+        // Then it is a single object type, not a string-or-object union.
+        assert_eq!(
+            items.get("type").and_then(serde_json::Value::as_str),
+            Some("object")
+        );
+        assert!(items.get("oneOf").is_none(), "no union expected: {items}");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_list_task_items_require_description_and_status() {
+        // Given the published set_list schema.
+        let schema = serde_json::to_value(&definition().parameters).expect("serializes");
+
+        // When inspecting the task item's required keys.
+        let items = schema
+            .pointer("/properties/phases/items/properties/tasks/items")
+            .expect("task items schema present");
+        let required = items
+            .get("required")
+            .and_then(serde_json::Value::as_array)
+            .expect("required present");
+
+        // Then both fields are required.
+        let required: Vec<&str> = required
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .collect();
+        assert_eq!(required, vec!["description", "status"]);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_list_task_items_reject_unknown_keys() {
+        // Given the published set_list schema.
+        let schema = serde_json::to_value(&definition().parameters).expect("serializes");
+
+        // When inspecting the task item's closed-ness and status enum.
+        let items = schema
+            .pointer("/properties/phases/items/properties/tasks/items")
+            .expect("task items schema present");
+
+        // Then unknown keys are rejected and the enum is unchanged.
+        assert_eq!(
+            items
+                .get("additionalProperties")
+                .and_then(serde_json::Value::as_bool),
+            Some(false)
+        );
+        let statuses = items
+            .pointer("/properties/status/enum")
+            .and_then(serde_json::Value::as_array)
+            .expect("status enum present");
+        assert_eq!(statuses.len(), 3);
     }
 
     #[rstest::rstest]
