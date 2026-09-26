@@ -37,7 +37,7 @@ Entries are added or amended **only with human approval**.
 - (arch) Slices may import jinn-domain and foundation vocabulary; kernel code may consume kernel-adjacent vocabulary and lib-only slice behavior only where the dependency graph remains acyclic.
 - (slices) Slice integration uses each slice's activation function from composition, with activation owning the slice's actors, cells, routes, and views.
 - (slices) Slice activation crates and their paired `-msg` contract crates live under `crates/slices/`; shared and kernel-adjacent crates live under `crates/`.
-- (slices) Slices read their `jinn.toml` section through read-only typed or dynamic config-section views; defaults are supplied by the slice.
+- (slices) A slice reads its `jinn.toml` section through the configuration layer via its own Configurable impl; defaults are supplied by the slice type, and an absent section reads as its Default.
 - (arch) The `IntentHandler` mutates `AppState` directly and returns commands; it never touches external services or emits events.
 - (arch) Test fixtures and integration tests that span crates live in the root crate's `tests/` directory so `just check` and IDE analysis never compile them; unit tests inside a crate may only use that crate's dependencies.
 - (arch) User input flows through a `Keymap` that produces an `Intent`; the `IntentHandler` handles intents synchronously as a single match block.
@@ -104,8 +104,8 @@ Entries are added or amended **only with human approval**.
 - (mcp) jinn is an MCP client: one `McpActor` per (session × enabled server) owns a connection to an MCP server over stdio, local_http (jinn-managed child process), or remote_http (externally-managed, no process management).
 - (mcp) MCP tools are namespaced `mcp__<server>__<tool>` and registered per-session via `RegisterTools { session_id: Some(_) }`.
 - (mcp) MCP server enablement is per-session, persisted in `SessionCore`, off by default; enabling spawns the actor+process, disabling kills both.
-- (mcp) Each `[mcp_server.<name>]` block in `jinn.toml` accepts `auto_enable = true` to start that server already enabled in newly created sessions; the MCP coordinator reconciles `SessionCreated` against the session's actual enabled set.
-- (mcp) MCP servers are configured in `jinn.toml` under `[[mcp_server]]`.
+- (mcp) Each `[mcp.<name>]` block in `jinn.toml` accepts
+- (mcp) MCP servers are configured in `jinn.toml` under `[mcp.<name>]`.
 - (mcp) MCP server child processes have piped stderr captured to a bounded ring buffer owned by each `McpActor`; stderr never reaches jinn's terminal.
 - (mcp) Per-session MCP server status is owned by `McpCoordinatorActor`, driven by `McpServerStatus` events; it is surfaced in the sidebar, not the dashboard.
 - (mcp) `McpActor` republishes its captured stderr tail via `McpServerLog` on a debounce while Running; `McpCoordinatorActor` owns the per-session tails alongside status.
@@ -163,7 +163,7 @@ Entries are added or amended **only with human approval**.
 - (skills) The skill preview cache is cleared only on theme change (via FrontendCaches::invalidate_all); its memory usage is unbounded by design.
 - (storage) Sessions and chat history persist to a SQLite database (`sessions.db` under the data dir).
 - (storage) User-editable TOML files (`providers.toml`, `jinn.toml`) are written through a comment-preserving `DocumentPatcher`, never via plain serialization.
-- (storage) `jinn.toml` holds user preferences and is auto-created if missing.
+- (storage) `jinn.toml` holds slice-owned config sections and is auto-created if missing from a comment-rich embedded template, written as bytes so its comments survive.
 - (storage) Startup fail-fast: whole-file providers.toml/jinn.toml syntax errors abort launch before actor wiring; slice-owned config sections validate at slice activation, which is the fail-fast gate for section-shaped config; recovery via jinn config subcommands stays unguarded.
 - (storage) `state.toml` holds machine-managed runtime state (e.g. last-selected model) and is NOT auto-created.
 - (storage) Schema migrations run atomically in a single transaction; a crash or interrupt mid-migration rolls back to the last-applied version, leaving no partial schema.
@@ -265,12 +265,12 @@ Entries are added or amended **only with human approval**.
 - (ui) The session picker renders tree connectors within the session-name column, not as a row prefix; connectors are excluded from filter matching and never stored in session titles.
 - (ui) Annotation (Sources) entries render collapsed by default — header in theme-tunable sources_header colors plus a muted expand hint — and toggle via the shared `e` expand keybind, like tool entries and compaction blocks.
 - (keybinds) `[` / `]` + `s` jumps the selection to the previous/next Sources (annotation) entry in chat history, clamping at the ends without wrapping.
-- (testing) Default config templates (default_jinn.toml, default_providers.toml) are independent of code defaults: tests guarantee they parse, document every config key, contain no dead keys, and their marked examples uncomment into a valid config.
+- (testing) default_providers.toml is independent of code defaults: tests guarantee it parses, documents every config key, contains no dead keys, and its marked examples uncomment into a valid config. default_jinn.toml is documentation rather than authority, checked in one direction only: every key it documents resolves to a section jinn reads.
 - (prompts) Shipped prompts live in `res/prompts`, are embedded at compile time via the `BUNDLED` install catalogue, and `jinn install` seeds them to the user prompts dir, skipping files that already exist unless `--force`.
 - (ui) The quake bar's session section shows both the currently-applied auto-prune token total and the pending accumulation total; the applied total derives from entry context-history at render time, excluding compaction and user-sourced excludes.
-- (preferences) The canonical projects key in `jinn.toml` is `projects` (keyed by `path`); the legacy `[[project]]` spelling is stripped from user files on load (poisoned files) and before every save, is never written by any code path, and is not a serde alias — legacy entries are ignored, not migrated.
+- (preferences) Curated projects live in `jinn.toml` under `[[project.projects]]`, keyed by `path`; the pre-umbrella `projects` and `[[project]]` spellings are not read and are not migrated.
 - (history) The anchored-assistant auto-prune worker sources its prune radius from its own `[auto_prune.anchored_assistant]` config.
-- (preferences) Legacy `[auto_prune.anchor_shield]` sections in user `jinn.toml` files are inert: unknown keys are ignored on load.
+- (preferences) Unknown tables in a user `jinn.toml` are inert: the layer reads only registered sections, so an unrecognised key is simply never consulted.
 - (tokens) Per-entry token counts are a persisted, content-derived field on chat entries (entries.token_count column), computed once by the token count actor for entries lacking a count and saved by the regular session-snapshot persist path; no separate frontend token cache exists.
 - (search) Sessions are searchable via an FTS5 index over persisted entry prose (user, assistant, tool_call, tool_result, system, error, compaction — never actor/thinking), keyed by (session_id, entry_id).
 - (search) Index freshness is asynchronous: triggers on `sessions` mark sessions dirty; `search_index_actor` keeps an in-memory queue of dirty sessions, refreshes it from the durable marker table on each 5s heartbeat when idle, and reindexes at most 10 sessions per heartbeat — publishing the remaining count after every session — so results can trail the newest saves by roughly one heartbeat.
@@ -299,11 +299,11 @@ Entries are added or amended **only with human approval**.
 - (pickers) The MCP server picker toggles servers with TAB, restarts the selected server with CTRL+R (staying open), flips its logs/tools preview pane with CTRL+T, searches name and description, and commits the enabled set on confirm by emitting McpEnablementChanged; ESC reverts to the snapshotted set.
 - (pickers) The session-lifecycle picker starts sessions with a scripted lifecycle from jinn.toml; entries whose setup command has $-parameters hand off to the arg-input popup before setup runs.
 - (pickers) The reasoning-effort picker builds its seven effort entries inline at open and on confirm sets the session's reasoning override, emits MarkSessionInteracted, and seeds the global default via UpdateAppState.
-- (config) The compaction model is configured only by [compaction] model in jinn.toml; the compaction-model picker was removed.
-- (preferences) A `[[projects]]` entry in `jinn.toml` may carry a command policy of user-authored regex patterns with corrective messages, applied to tool commands whose cwd falls inside the project path.
+- (config) The compaction model is configured only by the `model` key of `[context_curation.compaction]` in jinn.toml; the compaction-model picker was removed.
+- (preferences) A `[[project.projects]]` entry in `jinn.toml` may carry a command policy
 - (tools) The bash tool evaluates commands against the global and resolved project command policies before spawn; a match returns a failed tool result carrying the rule's message and the command never runs.
 - (tools) Project command policy is resolved by cwd prefix match at tool-call time with the longest configured project path winning.
-- (preferences) jinn.toml carries a top-level `global_command_policy` of user-authored regex patterns with corrective messages.
+- (preferences) jinn.toml carries `[[project.global_command_policy]]` entries of user-authored regex patterns with corrective messages, applied ahead of the per-project policy.
 - (tools) Global command policy rules are evaluated before project command policy rules, so a global rule preempts a project rule for the same command.
 - (tools) Command policy guards only the bash tool; interactive terminals and MCP-provided tools are unguarded.
 - (slices) The status-bar slice is a crate owning the status bar element and the status-hint cell; the IntentHandler writes the hint and the element renders it.
@@ -349,7 +349,19 @@ Entries are added or amended **only with human approval**.
 - (slices) The token-count slice is a crate owning the per-session entry token cache cell and both token actors (count fill, cache eviction); the session actor and the prune workers share the cache from the cell.
 - (slices) The preferences slice owns the PreferencesActor for jinn.toml persistence, the AppStateActor for state.toml persistence, and the pruner accumulation threshold popup.
 - (slices) The project slice owns the project-add popup cell, dynamic scope, route rows, input hook, and overlay rendering.
-- (config) The jinn.toml and state.toml schemas, both storage traits with their filesystem and in-memory backends, and the preferences bus protocol live in the kernel-free jinn-preferences-config crate; the jinn.toml patcher preserves user comments and key order.
+- (config) The Configurable trait and the ConfigLayer live in the kernel-free jinn-config crate; jinn.toml section types live with their owning slice and are declared by that slice, and the jinn.toml patcher preserves user comments and key order. The state.toml schema and its storage trait live in jinn-preferences-config.
+- (config) The configuration layer is a ConfigLayer service in Services holding an in-memory snapshot of jinn.toml; every jinn.toml value is read through it and none through AppState.
+- (config) A ConfigLayer is a cheap cloneable handle; consumers read through it at the point of use and never cache a config value.
+- (config) Each jinn.toml section lives under its owning slice's umbrella, named for the slice, and is declared by that slice's Configurable impl.
+- (config) A config section declares its dotted key and its list-of-tables entry key field through the Configurable trait; the layer patches it generically and names no section.
+- (config) A section holding a list-of-tables at the top level (projects, lifecycles, command policies) uses the ConfigList trait so it is written as an array-of-tables rather than a wrapper table.
+- (config) Reading a config section yields a typed value layering the section's present keys over its Default, so a partial section keeps the defaults it omits.
+- (config) Writing a config section patches only that subtree of jinn.toml through the comment-preserving DocumentPatcher and re-snapshots the in-memory document.
+- (config) ConfigLayer::reload re-reads jinn.toml from disk and atomically replaces the in-memory snapshot.
+- (config) The RenderCtx carries a ConfigLayer reference so render-path consumers read config the same way every other consumer does.
+- (config) jinn.toml keys are not migrated between layouts; a pre-umbrella document is not read, and doc/jinn-toml-umbrella-migration.md documents the change.
+- (slices) The discord slice reads its [discord] section from the configuration layer, and an absent section activates the slice disabled.
+
 - (config) ModelSelection, AlloyStrategy, and ReasoningEffort live in jinn-core-types; they persist across state.toml, SessionCore, and the SQLite legacy schema.
 - (mcp) MCP server config nouns (McpServerConfig, TransportKind, and header-value expansion) live in jinn-mcp-msg; the MCP slice and the preferences config crate consume them from there.
 - (slices) The entry token cache was pruned-family vocabulary misfiled under auto_prune_worker; it lives in jinn-slices and the prune family consumes it from the token-count slice's cell.
@@ -384,7 +396,7 @@ Entries are added or amended **only with human approval**.
 - (input) In the rename popup, ctrl+c clears the buffer and closes the popup when the buffer is already empty; escape always closes.
 - (session) Pinning or unpinning a chat entry marks the session interacted, so the pin change persists even on a session that was never sent to.
 - (turn) At turn end the queue actor dispatches the steering buffer before the turn queue; a queued item waits for the next idle slot, and queued or resumed turns no longer absorb steering fragments — every user-visible message gets its own turn.
-- (preferences) The preferences and app-state actors handle UpdatePreferences and UpdateAppState through their trouper .handles declarations.
+- (preferences) The app-state actor handles UpdateAppState through its trouper .handles declaration; jinn.toml has no bus command because the configuration layer writes it directly.
 - (watchdog) Silent in-flight LLM streams are detected by the stall watchdog actor in the jinn-watchdog slice, which republishes the turn via RetryStalledSession up to the configured consecutive-restart budget, then surrenders with a system entry and CancelStream.
 - (watchdog) Tool-failure spirals are detected by the tool-call watchdog actor in the jinn-watchdog slice, which cancels the turn with a system entry at the configured failure count and resets on a genuinely completed turn.
 - (watchdog) Watchdog knobs live in jinn.toml under [stall_watchdog] (timeout_secs, max_restarts) and [tool_call_watchdog] (max_failures); absent sections take defaults and the watchdogs are always on.
