@@ -320,7 +320,7 @@ fn all_picker_routes() -> jinn_slices::KeyRoutes {
 ///
 /// Source-level, deliberately: a behavioural test would need a full app boot,
 /// and the thing that broke was a missing line in a file no test executes.
-#[test]
+#[rstest::rstest]
 fn production_wiring_calls_every_picker_activation() {
     // Given the production composition root.
     let wiring = std::fs::read_to_string("src/actor_wiring.rs")
@@ -407,6 +407,7 @@ async fn sidebar_task_list_section_opens_the_task_list_picker() {
             ActionCtx {
                 state: &mut *state,
                 slices: &app.services.slices,
+                config: jinn_slices::empty_config_layer(),
                 key_bytes: Vec::new(),
             },
         )

@@ -8,8 +8,12 @@ use crate::feat::ui::frontend_state::FrontendState;
 use jinn_chat_input_msg::FilePickerState;
 use jinn_preferences_config::app_state_file::AppStateFile;
 
-/// Narrow write handle to frontend preferences.
-pub struct PreferencesOps<'a>(&'a mut FrontendState);
+/// Narrow write handle to the frontend's persisted view state.
+///
+/// Named for what it carries, not for a field: `state.toml` lands here
+/// alongside theme, sidebar width, and the picker caches. Config does
+/// not — it is read through the configuration layer, never cached here.
+pub struct FrontendStateOps<'a>(&'a mut FrontendState);
 
 /// Narrow write handle to the file-picker state.
 pub struct FilePickerOps<'a>(&'a mut FilePickerState);
@@ -17,7 +21,7 @@ pub struct FilePickerOps<'a>(&'a mut FilePickerState);
 /// Narrow write handle to persisted application state.
 pub struct AppStateOps<'a>(&'a mut AppStateFile);
 
-impl PreferencesOps<'_> {
+impl FrontendStateOps<'_> {
     /// Mutably access the whole frontend state.
     pub fn frontend(&mut self) -> &mut FrontendState {
         self.0
@@ -39,14 +43,15 @@ impl AppStateOps<'_> {
 }
 
 impl State {
-    /// Mutate frontend preferences through [`PreferencesOps`].
-    pub fn with_preferences<R, F>(&self, f: F) -> R
+    /// Mutate the frontend's persisted view state through
+    /// [`FrontendStateOps`].
+    pub fn with_frontend_state<R, F>(&self, f: F) -> R
     where
-        F: FnOnce(&mut PreferencesOps<'_>) -> R,
+        F: FnOnce(&mut FrontendStateOps<'_>) -> R,
     {
         let mut guard = self.write_lock();
         let app = &mut *guard;
-        f(&mut PreferencesOps(&mut app.frontend))
+        f(&mut FrontendStateOps(&mut app.frontend))
     }
 
     /// Mutate persisted application state through [`AppStateOps`].

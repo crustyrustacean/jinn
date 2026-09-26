@@ -33,11 +33,31 @@ use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{EditIntent, ScopeSignal};
 use jinn_slices::{KeyRoutes, SliceHost, Slices};
 
+/// Renders `lifecycles` as the `[[session_lifecycle.script]]` document the
+/// configuration layer parses. The picker reads its rows through the layer
+/// rather than through kernel frontend state, so the test seeds the layer.
+fn lifecycle_document(lifecycles: &[SessionLifecycle]) -> String {
+    use std::fmt::Write as _;
+
+    let mut document = String::new();
+    for lifecycle in lifecycles {
+        document.push_str("[[session_lifecycle.script]]\n");
+        let _ = writeln!(document, "name = \"{}\"", lifecycle.name);
+        if let Some(LifecycleCommand::Shell(shell)) = &lifecycle.setup {
+            let _ = writeln!(document, "setup_command = \"{shell}\"");
+        }
+    }
+    document
+}
+
 /// The slice wired exactly as composition wires it.
 struct Wired {
     slices: Slices,
     routes: KeyRoutes,
     state: std::cell::RefCell<jinn_domain::AppState>,
+    /// Kept alive for the test's lifetime: the route actions read lifecycles
+    /// through the configuration layer, which borrows the document.
+    config: jinn_config::ConfigLayer,
 }
 
 impl Wired {
@@ -67,13 +87,14 @@ impl Wired {
         }
         // `default_with_scope_focus`, not `default`: a scope push is a no-op
         // without the shared scope cell, and this test asserts on the stack.
-        let mut state = jinn_domain::AppState::default_with_scope_focus();
+        let state = jinn_domain::AppState::default_with_scope_focus();
         state.frontend.attach_slices(slices.clone());
-        state.frontend.preferences.session_lifecycles = lifecycles;
+        let config = jinn_config::testutil::config_layer(&lifecycle_document(&lifecycles));
         Self {
             slices,
             routes,
             state: std::cell::RefCell::new(state),
+            config,
         }
     }
 
@@ -126,6 +147,7 @@ impl Wired {
                 jinn_slices::ActionCtx {
                     state: &mut *state,
                     slices: &self.slices,
+                    config: &self.config,
                     key_bytes: Vec::new(),
                 },
             )
@@ -630,6 +652,7 @@ async fn every_base_key_resolves_through_a_slice_action() {
                     jinn_slices::ActionCtx {
                         state: &mut *wired.state.borrow_mut(),
                         slices: &wired.slices,
+                        config: jinn_slices::empty_config_layer(),
                         key_bytes: Vec::new(),
                     },
                 )

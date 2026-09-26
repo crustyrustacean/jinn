@@ -75,6 +75,10 @@ impl FakeHost {
 }
 
 impl PickerHost for FakeHost {
+    fn config(&self) -> &jinn_config::ConfigLayer {
+        jinn_config::empty_config_layer()
+    }
+
     fn selection_state(&mut self, id: PickerId) -> Option<&mut dyn Any> {
         Some(self.states.get_mut(&id)?.as_mut())
     }
@@ -123,14 +127,5 @@ impl PickerHost for FakeHost {
 
     fn preview_cache(&self, _id: PickerId) -> Option<crate::host::SharedPreviewCache> {
         None // the fake never serves a cache; entries render live
-    }
-
-    fn active_ops(&mut self) -> Option<&mut dyn jinn_selection_widget::PickerOps> {
-        // The fake tracks no focus stack, so no picker is ever "active".
-        None
-    }
-
-    fn active_ops_ref(&self) -> Option<&dyn jinn_selection_widget::PickerOps> {
-        None
     }
 }

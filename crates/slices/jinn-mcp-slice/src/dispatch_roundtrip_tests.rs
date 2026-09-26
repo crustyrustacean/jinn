@@ -29,6 +29,7 @@ use jinn_domain::common::actor_deps::ActorDeps;
 use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
 use jinn_mcp_msg::McpServerConfig;
 use jinn_mcp_msg::{McpConnectionStatus, McpServerStatus};
+use jinn_preferences_config::schemas::ToolsConfig;
 use jinn_tools_msg::ExecuteTool;
 use jinn_tools_msg::ToolExecutionCompleted;
 use jinn_tools_msg::ToolsUnregistered;
@@ -708,14 +709,13 @@ async fn execute_tool_exceeding_timeout_yields_failed_result() {
     )
     .await;
     {
-        let prefs = jinn_preferences_config::user_preferences::UserPreferences {
-            tool_default_timeout_secs: 1,
-            ..Default::default()
-        };
         services
-            .user_preferences_storage
-            .save(&prefs)
-            .expect("save prefs");
+            .config
+            .put::<ToolsConfig>(&ToolsConfig {
+                default_timeout_secs: 1,
+                ..ToolsConfig::default()
+            })
+            .expect("write the tool timeout ceiling");
     }
 
     // When calling slow_echo with a 5-second delay.
@@ -783,14 +783,13 @@ async fn execute_tool_with_disabled_timeout_completes() {
     )
     .await;
     {
-        let prefs = jinn_preferences_config::user_preferences::UserPreferences {
-            tool_default_timeout_secs: 0,
-            ..Default::default()
-        };
         services
-            .user_preferences_storage
-            .save(&prefs)
-            .expect("save prefs");
+            .config
+            .put::<ToolsConfig>(&ToolsConfig {
+                default_timeout_secs: 0,
+                ..ToolsConfig::default()
+            })
+            .expect("write the disabled tool timeout ceiling");
     }
 
     // When calling slow_echo with a 1.5-second delay.

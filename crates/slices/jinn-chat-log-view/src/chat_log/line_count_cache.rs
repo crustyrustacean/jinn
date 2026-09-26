@@ -44,13 +44,19 @@ pub struct CachedEntryCount {
     pub variant: u64,
     /// The wrapped line count for this entry.
     pub wrapped_count: u32,
+    /// The content width this count was computed at.
+    ///
+    /// Per entry rather than per cache: two sessions can be measured at
+    /// different widths, and a single cache-wide width would let one session's
+    /// render discard every count the other had already paid for.
+    pub content_width: u16,
     /// Pre-rendered lines for this entry, if available.
     ///
     /// `None` when inserted via [`EntryLineCache::insert`] (count-only).
     /// `Some` when inserted via [`EntryLineCache::insert_with_lines`].
     #[expect(
         clippy::rc_buffer,
-        reason = "Vec<Line> not Send, Arc used for cheap clone within same thread"
+        reason = "Arc keeps cloning a rendered entry's line buffer O(1) where a plain Vec would deep-copy every line on each cache hit"
     )]
     pub lines: Option<Arc<Vec<Line<'static>>>>,
     /// The `touch_counter` value when this entry's lines were last used.
@@ -67,7 +73,7 @@ pub struct CacheHit {
     /// Pre-rendered lines for this entry, if they were cached.
     #[expect(
         clippy::rc_buffer,
-        reason = "Vec<Line> not Send, Arc used for cheap clone within same thread"
+        reason = "Arc keeps cloning a rendered entry's line buffer O(1) where a plain Vec would deep-copy every line on each cache hit"
     )]
     pub lines: Option<Arc<Vec<Line<'static>>>>,
 }
@@ -93,6 +99,25 @@ pub struct CacheProbe {
     pub content: ContentIdentity,
 }
 
+/// One entry's measured wrapped line count, ready to be stored.
+///
+/// Carries everything the cache keys on except the rendered lines, which the
+/// measurement discards. Produced by the off-thread layout worker and applied
+/// in one batch by [`EntryLineCache::insert_counts`].
+#[derive(Debug, Clone)]
+pub struct MeasuredLineCount {
+    /// The entry this count describes.
+    pub id: ChatEntryId,
+    /// The entry's content identity as the worker observed it.
+    pub content: ContentIdentity,
+    /// Whether the entry was expanded when the count was computed.
+    pub is_expanded: bool,
+    /// Hash of the status-derived render inputs at compute time.
+    pub variant: u64,
+    /// The measured wrapped line count.
+    pub wrapped_count: u32,
+}
+
 /// Cache mapping entry IDs to their cached wrapped line counts and rendered lines.
 ///
 /// Owned by [`FrontendCaches`] - populated during the render pass, used
@@ -108,9 +133,6 @@ pub struct CacheProbe {
 /// - **New entry:** no cache entry exists → automatic miss.
 #[derive(Debug, Default)]
 pub struct EntryLineCache {
-    /// The content width used when cache entries were computed.
-    /// If the current width differs, the entire cache is invalid.
-    content_width: Option<u16>,
     /// Per-entry cached counts.
     entries: HashMap<ChatEntryId, CachedEntryCount>,
     /// How many times a full content fingerprint has been computed.
@@ -129,7 +151,6 @@ pub struct EntryLineCache {
 impl Clone for EntryLineCache {
     fn clone(&self) -> Self {
         Self {
-            content_width: self.content_width,
             entries: self.entries.clone(),
             // A clone starts its own tally rather than inheriting a count
             // that says nothing about the entries it now owns.
@@ -175,16 +196,6 @@ impl EntryLineCache {
         variant: u64,
         content_width: u16,
     ) -> CacheProbe {
-        // If content width changed, clear everything.
-        if self.content_width != Some(content_width) {
-            self.reset_entries();
-            self.content_width = Some(content_width);
-            return CacheProbe {
-                hit: None,
-                content: self.fresh_content(entry),
-            };
-        }
-
         let signature = entry.content_signature();
         let Some(cached) = self.entries.get(&entry.id) else {
             return CacheProbe {
@@ -192,6 +203,17 @@ impl EntryLineCache {
                 content: self.fresh_content(entry),
             };
         };
+
+        // Measured at another width, so the count describes a layout nothing is
+        // rendering at. Scoped to this entry: a resize only invalidates the
+        // counts that were taken at the old width, and only once the width
+        // actually differs from the one this entry was measured at.
+        if cached.content_width != content_width {
+            return CacheProbe {
+                hit: None,
+                content: self.fresh_content(entry),
+            };
+        }
 
         // The signature is O(1) and covers every field the fingerprint reads.
         // When it matches, the content is almost certainly unchanged, so the
@@ -301,10 +323,10 @@ impl EntryLineCache {
         content_width: u16,
         wrapped_count: u32,
     ) {
-        self.sync_invalidation(content_width);
         self.entries.insert(
             entry.id.clone(),
             CachedEntryCount {
+                content_width,
                 fingerprint: content.fingerprint,
                 signature: content.signature,
                 is_expanded,
@@ -327,10 +349,10 @@ impl EntryLineCache {
         wrapped_count: u32,
         lines: Arc<Vec<Line<'static>>>,
     ) {
-        self.sync_invalidation(content_width);
         self.entries.insert(
             entry.id.clone(),
             CachedEntryCount {
+                content_width,
                 fingerprint: content.fingerprint,
                 signature: content.signature,
                 is_expanded,
@@ -342,19 +364,37 @@ impl EntryLineCache {
         );
     }
 
-    /// Synchronize invalidation state: clear cache if content width has changed.
-    fn sync_invalidation(&mut self, content_width: u16) {
-        if self.content_width != Some(content_width) {
-            self.reset_entries();
-            self.content_width = Some(content_width);
+    /// Store a batch of measured wrapped line counts, one per entry.
+    ///
+    /// Used by the off-thread layout worker, which measures a whole session
+    /// at once and hands back only the counts. The per-entry invalidation
+    /// check is hoisted out of the loop: the batch is computed at a single
+    /// width, so checking once and then storing all of them avoids clearing
+    /// the cache on the first item and re-checking the width for every
+    /// subsequent one.
+    ///
+    /// Each `MeasuredLineCount` carries the entry's content identity as the
+    /// worker observed it, so storing a count never re-hashes the entry.
+    pub fn insert_counts(&mut self, measured: &[MeasuredLineCount], content_width: u16) {
+        let touch_counter = self.touch_counter;
+        for count in measured {
+            self.entries.insert(
+                count.id.clone(),
+                CachedEntryCount {
+                    content_width,
+                    fingerprint: count.content.fingerprint,
+                    signature: count.content.signature,
+                    is_expanded: count.is_expanded,
+                    variant: count.variant,
+                    wrapped_count: count.wrapped_count,
+                    // Counts only: the rendered lines are what the worker's
+                    // measurement deliberately threw away, and a later
+                    // render miss repopulates them for the visible entries.
+                    lines: None,
+                    last_touched: touch_counter,
+                },
+            );
         }
-    }
-
-    /// Drop every entry and the LRU bookkeeping that described them.
-    fn reset_entries(&mut self) {
-        self.entries.clear();
-        self.touch_counter = 0;
-        self.evictions = 0;
     }
 
     /// Remove a specific entry from the cache.
@@ -365,7 +405,6 @@ impl EntryLineCache {
     /// Clear the entire cache.
     pub fn clear(&mut self) {
         self.entries.clear();
-        self.content_width = None;
         self.touch_counter = 0;
         self.evictions = 0;
     }
@@ -412,7 +451,7 @@ mod tests {
     /// Store rendered lines the way the render pass does, via a probe.
     #[expect(
         clippy::rc_buffer,
-        reason = "Vec<Line> not Send, Arc used for cheap clone within same thread"
+        reason = "Arc keeps cloning a rendered entry's line buffer O(1) where a plain Vec would deep-copy every line on each cache hit"
     )]
     fn insert_with_lines(
         entry: &ChatEntry,
@@ -494,8 +533,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn cache_cleared_on_content_width_change() {
-        // Given a cache with entries at width 80.
+    fn cache_misses_on_content_width_change() {
+        // Given a cache with an entry measured at width 80.
         let mut cache = EntryLineCache::new();
         let entry = ChatEntry::assistant("hello");
         insert(&entry, &mut cache, false, 0, 80, 5);
@@ -503,9 +542,30 @@ mod tests {
         // When looking up at width 100.
         let result = cache.get(&entry, false, 0, 100);
 
-        // Then the cache misses (and is cleared).
+        // Then the count measured at 80 is not served at 100.
         assert!(result.is_none());
-        assert!(cache.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn a_width_change_spares_entries_measured_at_the_new_width() {
+        // Given a cache holding two sessions' entries, measured at 80 and 100.
+        let mut cache = EntryLineCache::new();
+        let at_eighty = ChatEntry::assistant("measured at eighty");
+        let at_hundred = ChatEntry::assistant("measured at a hundred");
+        insert(&at_eighty, &mut cache, false, 0, 80, 5);
+        insert(&at_hundred, &mut cache, false, 0, 100, 9);
+
+        // When the cache is used at width 100.
+        let hit = cache.get(&at_hundred, false, 0, 100);
+
+        // Then the entry measured at that width is still served.
+        assert_eq!(hit.map(|h| h.wrapped_count), Some(9));
+        // And the entry measured at the other width is still cached, not
+        // discarded by the width it was measured at.
+        assert!(
+            !cache.is_empty(),
+            "a width difference must not discard counts taken at another width"
+        );
     }
 
     #[rstest::rstest]
@@ -865,23 +925,25 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn width_change_clears_entries_and_lru_counters() {
+    fn a_width_change_does_not_reset_the_eviction_tally() {
         // Given a cache holding entries and having evicted at least once.
         let mut cache = EntryLineCache::new();
         fill_with_lines(&mut cache, MAX_CACHED_RENDERED_ENTRIES + 1);
         cache.evict_if_needed();
+        let evictions = cache.evictions();
+        assert!(evictions > 0, "the fixture must have evicted at least once");
 
-        // When the content width changes.
+        // When the content width changes and an entry is looked up.
         let entry = ChatEntry::assistant("hello");
         let result = cache.get(&entry, false, 0, 100);
 
-        // Then the cache is empty and its counters are reset.
+        // Then that entry misses, but the cache keeps the counts it holds.
         assert!(result.is_none());
-        assert!(cache.is_empty());
+        // And the eviction history is a running tally, not a per-width one.
         assert_eq!(
             cache.evictions(),
-            0,
-            "evictions should reset with the cache"
+            evictions,
+            "a width difference must not erase the eviction tally"
         );
     }
 

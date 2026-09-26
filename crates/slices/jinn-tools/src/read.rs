@@ -335,6 +335,7 @@ mod tests {
     fn test_ctx() -> crate::tool_types::ToolContext {
         crate::tool_types::ToolContext {
             command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+            config: jinn_config::testutil::config_layer(""),
             cwd: PathBuf::from("/tmp"),
             timeout: None,
             state: None,
@@ -435,6 +436,7 @@ mod tests {
         let ctx = crate::tool_types::ToolContext {
             cwd: dir.path().to_owned(),
             command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+            config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state: None,
             session_id: None,
@@ -520,6 +522,7 @@ mod tests {
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
             command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+            config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state: None,
             session_id: None,
@@ -568,6 +571,7 @@ mod tests {
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
             command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+            config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state: None,
             session_id: None,

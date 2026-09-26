@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+jinn-config = { workspace = true }
 jinn-chat-input-msg = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-skills-msg = { workspace = true }
@@ -49,6 +50,7 @@ jinn-session-turn = { workspace = true }
 jinn-session-init-msg = { workspace = true }
 
 [dev-dependencies]
+toml = { workspace = true }
 jinn-token-count-msg = { workspace = true }
 async-trait = { workspace = true }
 tempfile = { workspace = true }

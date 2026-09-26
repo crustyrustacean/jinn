@@ -5,6 +5,7 @@ edition.workspace = true
 description = "The context-curation slice: auto-prune strategies and history compaction as two trouper ServiceActors."
 
 [dependencies]
+jinn-config = { workspace = true }
 jinn-context-curation-msg = { workspace = true }
 jinn-session-msg = { workspace = true }
 jinn-session-state = { workspace = true }

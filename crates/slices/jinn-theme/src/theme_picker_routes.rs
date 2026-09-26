@@ -334,10 +334,11 @@ fn cancel_theme_picker(ctx: &mut ActionCtx<'_>, cell: &ThemePickerCell) -> Inten
 
 /// Starts a new session, as the key does from any picker.
 fn new_session(ctx: &mut ActionCtx<'_>, _cell: &ThemePickerCell) -> IntentResult {
+    let config = ctx.config;
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    jinn_domain::feat::session::intent::handle_session_new(state)
+    jinn_domain::feat::session::intent::handle_session_new(state, config)
 }
 
 /// Clears a non-empty filter, or closes the picker when the filter is empty.

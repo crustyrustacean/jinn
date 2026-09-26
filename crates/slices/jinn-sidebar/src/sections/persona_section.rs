@@ -51,7 +51,7 @@ impl SidebarSection for PersonaSection {
         jinn_sidebar_msg::SidebarSectionId::Persona
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, skip_rows: u16, ctx: &RenderCtx) {
         let state = ctx.state;
         let sidebar_focused = state.frontend.is_sidebar();
         let section_focused = sidebar_focused
@@ -106,7 +106,9 @@ impl SidebarSection for PersonaSection {
             lines
         };
 
-        let widget = Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
+        let widget = Paragraph::new(lines)
+            .block(Block::default().borders(Borders::NONE))
+            .scroll((skip_rows, 0));
         frame.render_widget(widget, area);
     }
 
@@ -177,7 +179,11 @@ mod tests {
         // When asking for content height.
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
-        let height = section.content_height(&RenderCtx::new(&state, &slices, &overlay_views));
+        let height = section.content_height(&RenderCtx::new_with_default_config(
+            &state,
+            &slices,
+            &overlay_views,
+        ));
 
         // Then it returns 4 (header + blank + entry + trailing gap).
         assert_eq!(height, 4);
@@ -192,7 +198,11 @@ mod tests {
         // When asking for content height.
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
-        let height = section.content_height(&RenderCtx::new(&state, &slices, &overlay_views));
+        let height = section.content_height(&RenderCtx::new_with_default_config(
+            &state,
+            &slices,
+            &overlay_views,
+        ));
 
         // Then it returns 4 (consistent layout).
         assert_eq!(height, 4);
@@ -262,8 +272,8 @@ mod tests {
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
                 let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new(state, &slices, &overlay_views);
-                section.render(frame, area, &ctx);
+                let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
+                section.render(frame, area, 0, &ctx);
             })
             .unwrap();
         let buffer = terminal.backend().buffer();

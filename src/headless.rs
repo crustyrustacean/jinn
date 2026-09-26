@@ -109,6 +109,7 @@ impl HeadlessApp {
                         &mut state,
                         &self.services.slices,
                         &self.services.key_routes,
+                        &self.services.config,
                     );
                     drop(state);
 

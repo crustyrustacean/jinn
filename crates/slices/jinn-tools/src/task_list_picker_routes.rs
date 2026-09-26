@@ -254,10 +254,11 @@ fn confirm_task_list_picker(_ctx: &mut ActionCtx<'_>, _cell: &TaskListPickerCell
 
 /// Starts a new session, as the key does from any picker.
 fn new_session(ctx: &mut ActionCtx<'_>, _cell: &TaskListPickerCell) -> IntentResult {
+    let config = ctx.config;
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    jinn_domain::feat::session::intent::handle_session_new(state)
+    jinn_domain::feat::session::intent::handle_session_new(state, config)
 }
 
 /// Ctrl-C: clear the filter, or close when it is already empty.

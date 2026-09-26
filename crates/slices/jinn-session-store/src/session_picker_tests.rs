@@ -112,6 +112,7 @@ impl Harness {
                 ActionCtx {
                     state: &mut *state,
                     slices: &self.slices,
+                    config: jinn_slices::empty_config_layer(),
                     key_bytes: Vec::new(),
                 },
             )
@@ -221,6 +222,7 @@ async fn the_picker_owns_every_key_it_advertises() {
                     ActionCtx {
                         state: &mut *h.state.borrow_mut(),
                         slices: &h.slices,
+                        config: jinn_slices::empty_config_layer(),
                         key_bytes: Vec::new(),
                     },
                 )

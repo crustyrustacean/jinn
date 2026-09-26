@@ -14,6 +14,7 @@
 use std::sync::Arc;
 
 use jinn_domain::feat::ui::frontend_state::PendingSessionCreation;
+use jinn_preferences_config::schemas::ProjectConfig;
 use jinn_project_msg::ProjectPickerState;
 use jinn_slices::KeyRoutes;
 use jinn_slices::RouteId;
@@ -142,10 +143,11 @@ pub fn attach_project_picker_rows(routes: &KeyRoutes, cell: &ProjectPickerCell) 
         "general",
         "start a new session",
         action(cell, |ctx, _cell| {
+            let config = ctx.config;
             let Some(state) = app(ctx) else {
                 return IntentResult::empty();
             };
-            jinn_domain::feat::session::intent::handle_session_new(state)
+            jinn_domain::feat::session::intent::handle_session_new(state, config)
         }),
     ));
     routes.attach(row(
@@ -237,8 +239,8 @@ fn open_project_picker(ctx: &mut ActionCtx<'_>, cell: &ProjectPickerCell) -> Int
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    let projects = state.frontend.preferences.projects.clone();
     let theme = state.frontend.theme.clone();
+    let projects = ctx.config.get_list::<ProjectConfig>().unwrap_or_default();
     cell.update(|picker| project_picker_actions::open(picker, &projects, &theme));
     IntentResult::empty().with_scope_signal(ScopeSignal::Push(project_picker_scope()))
 }
@@ -271,21 +273,25 @@ fn remove_highlighted_project(ctx: &mut ActionCtx<'_>, cell: &ProjectPickerCell)
     let Some(path) = removed else {
         return IntentResult::empty();
     };
-    let Some(state) = app(ctx) else {
-        return IntentResult::empty();
-    };
-    state
-        .frontend
-        .preferences
-        .projects
-        .retain(|p| p.path != path);
-    IntentResult::new_message(
-        jinn_preferences_config::protocol::command::UpdatePreferences {
-            updates: vec![
-                jinn_preferences_config::protocol::command::PreferenceUpdate::RemoveProject(path),
-            ],
-        },
-    )
+    remove_project(ctx.config, &path);
+    IntentResult::empty()
+}
+
+/// Drops `path` from the curated list and writes the document back.
+///
+/// A failed write is logged, not surfaced, for the reason the project-add
+/// input gives: the row is already gone from the open picker, and refusing
+/// to act would strand the user.
+fn remove_project(config: &jinn_preferences_config::ConfigLayer, path: &std::path::PathBuf) {
+    let mut projects = config.get_list::<ProjectConfig>().unwrap_or_default();
+    let before = projects.len();
+    projects.retain(|project| project.path != *path);
+    if projects.len() == before {
+        return;
+    }
+    if let Err(error) = config.put_list::<ProjectConfig>(&projects) {
+        tracing::warn!(err = ?error, "failed to persist the removed project to jinn.toml");
+    }
 }
 
 /// `<enter>`: stash the chosen directory and run the blank lifecycle setup,
@@ -294,6 +300,8 @@ fn confirm_project_picker(ctx: &mut ActionCtx<'_>, cell: &ProjectPickerCell) -> 
     let Some(path) = selected_path(cell) else {
         return IntentResult::empty();
     };
+    // Read the layer before the state borrow: `app` takes `ctx` mutably.
+    let config = ctx.config;
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
@@ -307,6 +315,7 @@ fn confirm_project_picker(ctx: &mut ActionCtx<'_>, cell: &ProjectPickerCell) -> 
         "",
         &[],
         None,
+        config,
     );
     jinn_domain::common::slices::key_routes::into_route_result(result)
 }

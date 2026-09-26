@@ -238,10 +238,11 @@ fn confirm_session_picker(ctx: &mut ActionCtx<'_>, cell: &SessionPickerCell) -> 
 
 /// Ctrl-N: start a new session.
 fn new_session(ctx: &mut ActionCtx<'_>, _cell: &SessionPickerCell) -> IntentResult {
+    let config = ctx.config;
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    jinn_domain::feat::session::intent::handle_session_new(state)
+    jinn_domain::feat::session::intent::handle_session_new(state, config)
 }
 
 /// Ctrl-C: clear the filter, or close when it is already empty.

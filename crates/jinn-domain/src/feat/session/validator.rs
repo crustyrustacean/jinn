@@ -66,7 +66,6 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::protocol::PickerKind;
     use jinn_core_types::model_selection::ModelSelection;
 
     #[rstest::rstest]
@@ -111,9 +110,9 @@ mod tests {
     fn session_new_succeeds_when_picker_active() {
         // Given a state with an active picker.
         let state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(jinn_slices::FocusScope::Picker {
-            kind: PickerKind::Project,
-        });
+        state.frontend.scope_push(jinn_slices::FocusScope::Dynamic(
+            jinn_project_msg::project_picker_scope(),
+        ));
 
         // When validating session new.
         validate_session_new(&state);

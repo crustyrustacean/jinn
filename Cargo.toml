@@ -89,6 +89,7 @@ jinn-skills = { workspace = true }
 jinn-tui = { workspace = true }
 jinn-domain = { workspace = true }
 jinn-preferences-config = { workspace = true }
+jinn-config = { workspace = true }
 jinn-preferences = { workspace = true }
 jinn-project = { workspace = true }
 jinn-dashboard = { workspace = true }
@@ -174,6 +175,7 @@ jinn-domain = { path = "crates/jinn-domain" }
 jinn-discord = { path = "crates/slices/jinn-discord" }
 jinn-discord-msg = { path = "crates/slices/jinn-discord-msg" }
 jinn-common = { path = "crates/jinn-common" }
+jinn-config = { path = "crates/jinn-config" }
 jinn-context = { path = "crates/jinn-context" }
 jinn-core-types = { path = "crates/jinn-core-types" }
 jinn-llm-support = { path = "crates/jinn-llm-support" }
@@ -290,7 +292,7 @@ futures = "0.3"
 
 # The trouper actor runtime (published to crates.io; the SDK workspace
 # remains the development home — see .plans/actor-canvas/plan.md)
-trouper = "0.9.0"
+trouper = "0.11.0"
 
 
 # PTY + terminal emulation (interactive_term tool)

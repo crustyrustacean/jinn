@@ -7,10 +7,7 @@ pub mod vertical_minimap;
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
-    use tempfile::TempDir;
 
-    use crate::common::app_info::PREFS_FILE_NAME;
-    use jinn_preferences_config::load_preferences_from;
     use jinn_preferences_config::schemas::MinimapConfig;
 
     #[rstest::rstest]
@@ -24,30 +21,25 @@ mod tests {
 
     #[rstest::rstest]
     fn load_parses_minimap_config() {
-        // Given a TOML file with a minimap section.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(&path, "[minimap]\nmax_tokens = 5000\n").expect("write");
-        // When loading.
-        let prefs = load_preferences_from(&path).expect("load");
+        // Given a jinn.toml with a minimap section.
+        let config = jinn_config::testutil::config_layer("[ui.minimap]\nmax_tokens = 5000\n");
+
+        // When reading the section.
+        let minimap = config.get::<MinimapConfig>().expect("minimap reads");
+
         // Then minimap config is parsed.
-        assert_eq!(prefs.minimap.max_tokens, 5000);
+        assert_eq!(minimap.max_tokens, 5000);
     }
 
     #[rstest::rstest]
     fn load_without_minimap_section_uses_defaults() {
-        // Given a TOML file without a minimap section.
-        let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(
-            &path,
-            r#"last_model = "ollama/llama3"
-"#,
-        )
-        .expect("write");
-        // When loading.
-        let prefs = load_preferences_from(&path).expect("load");
+        // Given a jinn.toml without a minimap section.
+        let config = jinn_config::testutil::config_layer("last_model = \"ollama/llama3\"\n");
+
+        // When reading the section.
+        let minimap = config.get::<MinimapConfig>().expect("minimap reads");
+
         // Then minimap uses defaults.
-        assert_eq!(prefs.minimap, MinimapConfig::default());
+        assert_eq!(minimap, MinimapConfig::default());
     }
 }

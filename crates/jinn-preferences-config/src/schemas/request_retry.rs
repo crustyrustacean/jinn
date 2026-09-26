@@ -1,5 +1,5 @@
 //! LLM request-retry configuration schema — the `jinn.toml`
-//! `[request_retry]` section.
+//! `[provider.request_retry]` section.
 //!
 //! Pure serde data; the LLM actor (which converts it to the provider's
 //! `RetryConfig` at stream time) stays in the kernel and imports the shape
@@ -48,4 +48,8 @@ impl Default for RequestRetryConfig {
             max_delay_secs: DEFAULT_RETRY_MAX_DELAY_SECS,
         }
     }
+}
+
+impl jinn_config::Configurable for RequestRetryConfig {
+    const KEY: &'static str = "provider.request_retry";
 }

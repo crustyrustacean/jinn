@@ -48,6 +48,10 @@ pub struct DiscordConfig {
     pub authorized_users: Vec<String>,
 }
 
+impl jinn_config::Configurable for DiscordConfig {
+    const KEY: &'static str = "discord";
+}
+
 #[cfg(test)]
 mod tests {
     use super::DiscordConfig;

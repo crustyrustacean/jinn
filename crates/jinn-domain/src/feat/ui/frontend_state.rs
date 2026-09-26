@@ -4,7 +4,6 @@ use jinn_chat_input_msg::FilePickerState;
 use jinn_sidebar_msg::SidebarScopeExt;
 use parking_lot::RwLock;
 
-use jinn_preferences_config::UserPreferences;
 use jinn_preferences_config::app_state_file::AppStateFile;
 use jinn_sidebar_msg::SidebarSectionId;
 use jinn_slices::FocusScope;
@@ -69,11 +68,6 @@ pub struct PendingSessionCreation {
 /// anti-pattern.
 #[derive(Debug)]
 pub struct FrontendState {
-    /// Cached copy of user preferences from `jinn.toml`.
-    /// Updated by `PreferencesActor` inline after persisting to `jinn.toml` (authoritative),
-    /// and by the `IntentHandler` for immediate UI feedback (exempt).
-    pub preferences: UserPreferences,
-
     /// Cached copy of app state from `state.toml`.
     /// Updated by `AppStateActor` inline after persisting to `state.toml` (authoritative),
     /// and by the `IntentHandler` for immediate UI feedback (exempt).
@@ -139,7 +133,6 @@ impl Default for FrontendState {
     fn default() -> Self {
         Self {
             scope_focus: std::sync::OnceLock::new(),
-            preferences: UserPreferences::default(),
             app_state: AppStateFile::default(),
             theme: jinn_theme::default_theme(),
             caches: FrontendCaches::default(),

@@ -11,9 +11,13 @@ use jinn_session_lifecycle_msg::{
 
 use super::close::validate_session_close;
 use super::state::sorted_open_sessions;
+use jinn_preferences_config::schemas::SessionLifecycle;
 
 /// Re-runs setup for the selected session when its lifecycle is still unrun.
-pub fn handle_session_rerun_setup(state: &mut AppState) -> IntentResult {
+pub fn handle_session_rerun_setup(
+    state: &mut AppState,
+    config: &jinn_slices::ConfigLayer,
+) -> IntentResult {
     let Some(target_id) = selected_idle_session(state) else {
         return IntentResult::empty();
     };
@@ -27,13 +31,12 @@ pub fn handle_session_rerun_setup(state: &mut AppState) -> IntentResult {
         let lifecycle_name = session.lifecycle_name().map(String::from);
         let args = session.lifecycle_args().to_vec();
         let setup = lifecycle_name.as_deref().and_then(|name| {
-            state
-                .frontend
-                .preferences
-                .session_lifecycles
-                .iter()
+            config
+                .get_list::<SessionLifecycle>()
+                .unwrap_or_default()
+                .into_iter()
                 .find(|lifecycle| lifecycle.name == name)
-                .and_then(|lifecycle| lifecycle.setup.clone())
+                .and_then(|lifecycle| lifecycle.setup)
         });
         (setup, args)
     };
@@ -76,7 +79,6 @@ fn render_setup(setup: &LifecycleCommand, args: &[String]) -> String {
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
     use super::*;
-    use jinn_preferences_config::schemas::SessionLifecycle;
 
     fn state_with_selected_session() -> AppState {
         let state = AppState::default_with_scope_focus();
@@ -95,7 +97,7 @@ mod tests {
         let mut state = state_with_selected_session();
 
         // When rerunning setup.
-        let result = handle_session_rerun_setup(&mut state);
+        let result = handle_session_rerun_setup(&mut state, jinn_slices::empty_config_layer());
 
         // Then no messages are emitted.
         assert!(result.messages.is_empty());
@@ -108,7 +110,7 @@ mod tests {
         state.active_session_mut().advance_lifecycle_after_setup();
 
         // When rerunning setup.
-        let result = handle_session_rerun_setup(&mut state);
+        let result = handle_session_rerun_setup(&mut state, jinn_slices::empty_config_layer());
 
         // Then no messages are emitted.
         assert!(result.messages.is_empty());
@@ -118,22 +120,15 @@ mod tests {
     fn rerun_setup_emits_status_entry_and_lifecycle_command() {
         // Given a selected session with a configured setup command.
         let mut state = state_with_selected_session();
-        state
-            .frontend
-            .preferences
-            .session_lifecycles
-            .push(SessionLifecycle {
-                name: "release".to_owned(),
-                description: None,
-                setup: Some(LifecycleCommand::Shell("deploy".to_owned())),
-                teardown: None,
-            });
+        let config = jinn_config::testutil::config_layer(
+            "[[session_lifecycle.script]]\nname = \"release\"\nsetup_command = \"deploy\"\n",
+        );
         state
             .active_session_mut()
             .set_lifecycle_name(Some("release".to_owned()));
 
         // When rerunning setup.
-        let result = handle_session_rerun_setup(&mut state);
+        let result = handle_session_rerun_setup(&mut state, &config);
 
         // Then the status entry precedes the lifecycle command.
         assert_eq!(result.message_names.len(), 2);

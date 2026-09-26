@@ -16,7 +16,10 @@ use jinn_domain::feat::session_lifecycle::intent::build_run_session_teardown;
 /// # Panics
 ///
 /// Panics if `sessions_section.selected_index` is `None`.
-pub fn handle_session_teardown(state: &mut AppState) -> IntentResult {
+pub fn handle_session_teardown(
+    state: &mut AppState,
+    config: &jinn_slices::ConfigLayer,
+) -> IntentResult {
     // Validate - same preconditions as session close.
     if validate_session_close(state).is_err() {
         return IntentResult::empty();
@@ -32,7 +35,7 @@ pub fn handle_session_teardown(state: &mut AppState) -> IntentResult {
     };
     let target_id = target.id.clone();
 
-    let Some(msg) = build_run_session_teardown(state, &target_id) else {
+    let Some(msg) = build_run_session_teardown(state, &target_id, config) else {
         return IntentResult::empty();
     };
     IntentResult::new_message(msg)

@@ -10,7 +10,7 @@
 use crate::sections::section_trait::{EnterFrom, SectionNavResult, SidebarIntent, SidebarSection};
 use crate::sections::sessions::{
     SessionCloseError, SessionsSection, handle_session_activate, handle_session_close_arm,
-    navigate, receive_cursor, scroll_to_cursor, sorted_open_sessions, validate_session_close,
+    navigate, receive_cursor, sorted_open_sessions, validate_session_close,
 };
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::render_ctx::RenderCtx;
@@ -93,7 +93,11 @@ fn content_height_with_one_session() {
         {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            section.content_height(&RenderCtx::new(&state, &slices, &overlay_views))
+            section.content_height(&RenderCtx::new_with_default_config(
+                &state,
+                &slices,
+                &overlay_views,
+            ))
         },
         2
     ); // 1 session + footer
@@ -107,26 +111,16 @@ fn content_height_with_three_sessions() {
         {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            section.content_height(&RenderCtx::new(&state, &slices, &overlay_views))
+            section.content_height(&RenderCtx::new_with_default_config(
+                &state,
+                &slices,
+                &overlay_views,
+            ))
         },
         4
     ); // 3 sessions + footer
 }
 
-#[rstest::rstest]
-fn content_height_capped_at_max_visible() {
-    // Given state with 20 sessions (more than MAX_VISIBLE_SESSIONS = 15).
-    let mut section = SessionsSection::new();
-    let state = state_with_sessions(20);
-
-    // When computing content height.
-    let slices = jinn_slices::Slices::new();
-    let overlay_views = jinn_slices::OverlayViews::new();
-    let height = section.content_height(&RenderCtx::new(&state, &slices, &overlay_views));
-
-    // Then it is capped at 15 + 1 = 16, not 20 + 1 = 21.
-    assert_eq!(height, 16);
-}
 #[rstest::rstest]
 fn navigate_down_moves_cursor_without_switching() {
     // Given state with 3 sessions, cursor at index 0.
@@ -220,189 +214,136 @@ fn navigate_action_returns_moved() {
     assert_eq!(result, SectionNavResult::Moved);
 }
 
-#[rstest::rstest]
-fn scroll_to_cursor_adjusts_offset_when_cursor_above_window() {
-    // Given 20 sessions with scroll_offset at 5, cursor at index 3.
-    let mut state = state_with_sessions(20);
-    state
-        .frontend
-        .update_sections(|s| s.sessions.scroll_offset = 5);
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(3));
-
-    // When scrolling to cursor.
-    scroll_to_cursor(&mut state);
-
-    // Then scroll_offset moves to 3.
-    assert_eq!(
-        state
-            .frontend
-            .with_sections(|s| s.sessions.scroll_offset, || 0),
-        3
+/// The document offset the sidebar would use for `viewport_rows` with the
+/// sessions section focused and the cursor at `cursor_index`.
+fn document_offset_for(state: &AppState, viewport_rows: u16) -> u16 {
+    let document = crate::sections::layout::document_with_cursor(
+        state,
+        jinn_domain::common::render_ctx::empty_config_layer(),
     );
+    document.offset(viewport_rows)
 }
 
 #[rstest::rstest]
-fn scroll_to_cursor_adjusts_offset_when_cursor_below_window() {
-    // Given 20 sessions with scroll_offset at 0, cursor at index 18.
-    let mut state = state_with_sessions(20);
+fn document_offset_is_zero_when_cursor_is_near_the_top() {
+    // Given 40 sessions with the cursor on the first one.
+    let mut state = state_with_sessions(40);
     state
         .frontend
-        .update_sections(|s| s.sessions.scroll_offset = 0);
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
     state
         .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(18));
+        .update_sections(|s| s.sessions.selected_index = Some(0));
 
-    // When scrolling to cursor.
-    scroll_to_cursor(&mut state);
+    // When resolving the document offset for a 20-row column.
+    let offset = document_offset_for(&state, 20);
 
-    // Then scroll_offset moves to 18 - 15 + 1 = 4.
-    assert_eq!(
-        state
-            .frontend
-            .with_sections(|s| s.sessions.scroll_offset, || 0),
-        4
-    );
+    // Then the window starts at the top of the document.
+    assert_eq!(offset, 0);
 }
 
 #[rstest::rstest]
-fn scroll_to_cursor_noop_when_cursor_visible() {
-    // Given 20 sessions with scroll_offset at 5, cursor at index 10.
-    let mut state = state_with_sessions(20);
+fn document_offset_clamps_at_the_end_for_the_last_session() {
+    // Given 40 sessions with the cursor on the last one.
+    let mut state = state_with_sessions(40);
     state
         .frontend
-        .update_sections(|s| s.sessions.scroll_offset = 5);
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
     state
         .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(10));
+        .update_sections(|s| s.sessions.selected_index = Some(39));
 
-    // When scrolling to cursor.
-    scroll_to_cursor(&mut state);
+    // When resolving the document offset for a 20-row column.
+    let offset = document_offset_for(&state, 20);
 
-    // Then scroll_offset stays at 5 (10 is within 5..20).
-    assert_eq!(
-        state
-            .frontend
-            .with_sections(|s| s.sessions.scroll_offset, || 0),
-        5
+    // Then the window shows the document's end, so the last row is the last line.
+    let document = crate::sections::layout::document_with_cursor(
+        &state,
+        jinn_domain::common::render_ctx::empty_config_layer(),
     );
+    assert_eq!(offset + 20, document.total_rows);
 }
 
 #[rstest::rstest]
-fn scroll_to_cursor_noop_when_no_selection() {
-    // Given 20 sessions with no selection.
-    let mut state = state_with_sessions(20);
+fn document_offset_grows_as_the_cursor_moves_down() {
+    // Given 40 sessions with the cursor on the first one.
+    let mut state = state_with_sessions(40);
     state
         .frontend
-        .update_sections(|s| s.sessions.scroll_offset = 5);
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
     state
         .frontend
-        .update_sections(|s| s.sessions.selected_index = None);
+        .update_sections(|s| s.sessions.selected_index = Some(0));
 
-    // When scrolling to cursor.
-    scroll_to_cursor(&mut state);
-
-    // Then scroll_offset stays at 5.
-    assert_eq!(
-        state
-            .frontend
-            .with_sections(|s| s.sessions.scroll_offset, || 0),
-        5
-    );
-}
-
-#[rstest::rstest]
-fn scroll_to_cursor_clamps_offset_when_list_shrinks() {
-    // Given 20 sessions with scroll_offset at 5, cursor at index 10.
-    let mut state = state_with_sessions(20);
-    state
-        .frontend
-        .update_sections(|s| s.sessions.scroll_offset = 5);
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(10));
-
-    // Remove 15 sessions, leaving only 5.
-    let sorted = sorted_open_sessions(&state);
-    for entry in &sorted[5..] {
-        state.session.remove_without_replacement(&entry.id);
+    // When navigating down past the bottom of a 20-row column.
+    let before = document_offset_for(&state, 20);
+    for _ in 0..20 {
+        navigate(&SidebarIntent::MoveDown, &mut state);
     }
-    // Cursor is now clamped to index 4 by the caller (reconcile).
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(4));
+    let after = document_offset_for(&state, 20);
 
-    // When scrolling to cursor.
-    scroll_to_cursor(&mut state);
-
-    // Then scroll_offset is clamped to 0 (5 sessions fit in MAX_VISIBLE_SESSIONS).
-    assert_eq!(
-        state
-            .frontend
-            .with_sections(|s| s.sessions.scroll_offset, || 0),
-        0
+    // Then the window followed the cursor.
+    assert!(
+        after > before,
+        "offset should grow from {before} as the cursor moves down, got {after}"
     );
 }
 
 #[rstest::rstest]
-fn navigate_down_scrolls_viewport_at_bottom() {
-    // Given 20 sessions, scroll_offset at 0, cursor at index 14 (last visible).
-    let mut state = state_with_sessions(20);
+fn every_session_is_reachable_when_uncapped() {
+    // Given 100 sessions with the cursor on the first one.
+    let mut state = state_with_sessions(100);
     state
         .frontend
-        .update_sections(|s| s.sessions.scroll_offset = 0);
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(14));
+        .update_sections(|s| s.sessions.selected_index = Some(0));
 
-    // When navigating down to index 15.
-    navigate(&SidebarIntent::MoveDown, &mut state);
+    // When navigating down until the list is exhausted.
+    let mut moves = 0usize;
+    while navigate(&SidebarIntent::MoveDown, &mut state) == SectionNavResult::Moved {
+        moves += 1;
+        assert!(moves <= 200, "navigation should terminate");
+    }
 
-    // Then cursor is at 15 and scroll_offset moved to 1.
+    // Then the cursor reached the last session, so none is unreachable.
     assert_eq!(
         state
             .frontend
             .with_sections(|s| s.sessions.selected_index, || None),
-        Some(15)
-    );
-    assert_eq!(
-        state
-            .frontend
-            .with_sections(|s| s.sessions.scroll_offset, || 0),
-        1
+        Some(99)
     );
 }
 
 #[rstest::rstest]
-fn navigate_up_scrolls_viewport_at_top() {
-    // Given 20 sessions, scroll_offset at 5, cursor at index 5.
-    let mut state = state_with_sessions(20);
-    state
-        .frontend
-        .update_sections(|s| s.sessions.scroll_offset = 5);
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(5));
+fn sessions_content_height_is_entry_count_plus_footer() {
+    // Given 40 sessions.
+    let state = state_with_sessions(40);
 
-    // When navigating up to index 4.
-    navigate(&SidebarIntent::MoveUp, &mut state);
+    // When computing the document height for the sessions section.
+    let rows = crate::sections::layout::sessions_rows(&state);
 
-    // Then cursor is at 4 and scroll_offset moved to 4.
-    assert_eq!(
-        state
-            .frontend
-            .with_sections(|s| s.sessions.selected_index, || None),
-        Some(4)
-    );
-    assert_eq!(
-        state
-            .frontend
-            .with_sections(|s| s.sessions.scroll_offset, || 0),
-        4
-    );
+    // Then every entry is counted, with one row for the footer.
+    assert_eq!(rows, 41);
 }
 
+#[rstest::rstest]
+fn content_height_is_uncapped() {
+    // Given state with 20 sessions.
+    let mut section = SessionsSection::new();
+    let state = state_with_sessions(20);
+
+    // When computing content height.
+    let slices = jinn_slices::Slices::new();
+    let overlay_views = jinn_slices::OverlayViews::new();
+    let height = section.content_height(&RenderCtx::new(
+        &state,
+        &slices,
+        &overlay_views,
+        jinn_domain::common::render_ctx::empty_config_layer(),
+    ));
+
+    // Then it counts every session, not a fixed window.
+    assert_eq!(height, 21);
+}
 #[rstest::rstest]
 fn receive_cursor_from_top_positions_at_index_zero() {
     // Given state with 3 sessions.
@@ -547,13 +488,25 @@ fn render_rows(
     width: u16,
     height: u16,
 ) -> Vec<String> {
+    render_rows_skipping(section, state, width, height, 0)
+}
+
+/// Renders the section into a `width` x `height` terminal, drawing the
+/// window that starts `skip_rows` entries into the list.
+fn render_rows_skipping(
+    section: &mut SessionsSection,
+    state: &AppState,
+    width: u16,
+    height: u16,
+    skip_rows: u16,
+) -> Vec<String> {
     let (mut terminal, area) = setup_term(width, height);
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(state, &slices, &overlay_views);
-            section.render(frame, area, &ctx);
+            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
+            section.render(frame, area, skip_rows, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer();
@@ -612,111 +565,38 @@ fn render_shows_untitled_for_session_without_title() {
 }
 
 #[rstest::rstest]
-fn render_shows_down_arrow_when_entries_hidden_below() {
-    // Given 20 sessions with scroll_offset at 0 (15 visible, 5 hidden below).
+fn render_draws_only_the_rows_the_window_covers() {
+    // Given 20 sessions, a 5-row window, and a skip of 3.
     let mut section = SessionsSection::new();
-    let state = {
-        let mut s = state_with_sessions(20);
-        s.frontend.update_sections(|s| s.sessions.scroll_offset = 0);
-        s
-    };
-    // content_height = 3 + 15 = 18, but we'll render in a taller area to be safe.
-    let rows = render_rows(&mut section, &state, 30, 20);
+    let state = state_with_sessions(20);
 
-    // Then the ↓ indicator appears on the last visible entry row.
-    // Row layout: 0..14=entries (15), 15=footer.
-    // Last entry row is row 14 (index 14 in visible window).
-    let last_entry_row = &rows[14];
+    // When rendering.
+    let rows = render_rows_skipping(&mut section, &state, 30, 5, 3);
+
+    // Then every row of the window is drawn and no more. Entries 4..9 of the
+    // list are in view, so the window is full and the footer is not among
+    // them.
+    assert_eq!(rows.len(), 5, "window should fill its height: {rows:?}");
     assert!(
-        last_entry_row.contains("\u{2193}"),
-        "last entry row should contain ↓, got: {last_entry_row}"
+        !rows.join("").contains('\u{2570}'),
+        "footer belongs to the list's last row, which is out of window: {rows:?}"
     );
 }
 
 #[rstest::rstest]
-fn render_shows_up_arrow_when_entries_hidden_above() {
-    // Given 20 sessions with scroll_offset at 5 (15 visible, 5 hidden above).
+fn render_draws_the_footer_when_the_window_reaches_the_last_entry() {
+    // Given 20 sessions and a window whose final row is entry 20.
     let mut section = SessionsSection::new();
-    let state = {
-        let mut s = state_with_sessions(20);
-        s.frontend.update_sections(|s| s.sessions.scroll_offset = 5);
-        s
-    };
-    let rows = render_rows(&mut section, &state, 30, 20);
+    let state = state_with_sessions(20);
 
-    // Then the ↑ indicator appears on the first visible entry row (row 0).
-    let first_entry_row = &rows[0];
+    // When rendering a 5-row window starting at entry 16.
+    let rows = render_rows_skipping(&mut section, &state, 30, 5, 16);
+
+    // Then the footer is drawn on the last row of the window.
     assert!(
-        first_entry_row.contains("\u{2191}"),
-        "first entry row should contain ↑, got: {first_entry_row}"
+        rows[4].contains('\u{2570}'),
+        "footer should render when the window reaches the last entry: {rows:?}"
     );
-}
-
-#[rstest::rstest]
-fn render_shows_both_arrows_when_viewport_in_middle() {
-    // Given 20 sessions with scroll_offset at 3 (3 hidden above, 2 hidden below).
-    let mut section = SessionsSection::new();
-    let state = {
-        let mut s = state_with_sessions(20);
-        s.frontend.update_sections(|s| s.sessions.scroll_offset = 3);
-        s
-    };
-    let rows = render_rows(&mut section, &state, 30, 20);
-
-    // Then both indicators appear.
-    let first_entry_row = &rows[0];
-    let last_entry_row = &rows[14];
-    assert!(
-        first_entry_row.contains("\u{2191}"),
-        "first entry row should contain ↑, got: {first_entry_row}"
-    );
-    assert!(
-        last_entry_row.contains("\u{2193}"),
-        "last entry row should contain ↓, got: {last_entry_row}"
-    );
-}
-
-#[rstest::rstest]
-fn render_no_arrows_when_all_entries_visible() {
-    // Given 5 sessions (fewer than MAX_VISIBLE_SESSIONS).
-    let mut section = SessionsSection::new();
-    let state = state_with_sessions(5);
-    let rows = render_rows(&mut section, &state, 30, 10);
-
-    // Then no arrow indicators appear on entry rows.
-    let combined = rows.join("");
-    assert!(
-        !combined.contains("\u{2191}") && !combined.contains("\u{2193}"),
-        "should not contain scroll indicators, got: {combined}"
-    );
-}
-
-#[rstest::rstest]
-fn render_arrow_has_inverted_colors() {
-    // Given 20 sessions with scroll_offset at 0 (↓ indicator visible).
-    let mut section = SessionsSection::new();
-    let state = {
-        let mut s = state_with_sessions(20);
-        s.frontend.update_sections(|s| s.sessions.scroll_offset = 0);
-        s
-    };
-    let (mut terminal, area) = setup_term(30, 20);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
-            section.render(frame, area, &ctx);
-        })
-        .unwrap();
-
-    // Then the ↓ indicator on row 14 has fg=Black, bg=LightGreen.
-    // Row layout: 0..14=entries (15), 15=footer.
-    let buffer = terminal.backend().buffer();
-    let arrow_cell = buffer.cell((29, 14)).expect("cell should exist");
-    assert_eq!(arrow_cell.symbol(), "\u{2193}");
-    assert_eq!(arrow_cell.style().fg, Some(Color::Black));
-    assert_eq!(arrow_cell.style().bg, Some(Color::LightGreen));
 }
 
 #[rstest::rstest]
@@ -736,8 +616,8 @@ fn render_footer_uses_focus_accent_when_sidebar_focused() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
-            section.render(frame, area, &ctx);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            section.render(frame, area, 0, &ctx);
         })
         .unwrap();
 
@@ -763,8 +643,8 @@ fn render_footer_uses_border_unfocused_when_sidebar_not_focused() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
-            section.render(frame, area, &ctx);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            section.render(frame, area, 0, &ctx);
         })
         .unwrap();
 
@@ -795,8 +675,8 @@ fn render_footer_uses_border_unfocused_when_other_sidebar_section_focused() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
-            section.render(frame, area, &ctx);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            section.render(frame, area, 0, &ctx);
         })
         .unwrap();
 
@@ -920,8 +800,8 @@ fn render_session_title_is_red_when_last_entry_is_error() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
-            section.render(frame, area, &ctx);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            section.render(frame, area, 0, &ctx);
         })
         .unwrap();
 
@@ -949,8 +829,8 @@ fn render_session_title_is_normal_when_last_entry_is_not_error() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
-            section.render(frame, area, &ctx);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            section.render(frame, area, 0, &ctx);
         })
         .unwrap();
 
@@ -1038,21 +918,41 @@ fn activate_is_noop_when_not_sessions_section() {
     assert_eq!(*state.session.active_session_id(), original_active);
 }
 
+/// The sidebar no longer routes session creation through a kernel intent.
+///
+/// `SessionNewWithLifecycle` existed only to push a picker kind the kernel
+/// owned. The lifecycle picker is slice-owned now, so the sidebar asks the
+/// slice to open it; there is no kernel picker kind to assert on. What
+/// matters is that the scope on the stack is the lifecycle picker's own.
+#[rstest::rstest]
+fn sidebar_sessions_section_opens_the_lifecycle_picker() {
+    // Given the sidebar focused on its sessions section.
+    let mut state = AppState::default_with_scope_focus();
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+
+    // When the lifecycle picker is opened, the way the sidebar's own row
+    // does it: by pushing the slice-owned scope.
+    let scope = jinn_session_lifecycle_msg::session_lifecycle_picker_scope();
+    state
+        .frontend
+        .scope_push(jinn_slices::FocusScope::Dynamic(scope.clone()));
+
+    // Then the lifecycle picker scope is the focused one.
+    assert_eq!(
+        state.frontend.scope(),
+        jinn_slices::FocusScope::Dynamic(scope),
+    );
+}
+
 #[rstest::rstest]
 fn teardown_only_emits_run_session_teardown() {
     // Given a session with a lifecycle that has a teardown command.
     let mut state = AppState::default_with_scope_focus();
-    state.frontend.preferences.session_lifecycles.push(
-        jinn_preferences_config::schemas::SessionLifecycle {
-            name: "fossil branch".to_owned(),
-            description: None,
-            setup: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                "echo setup".to_owned(),
-            )),
-            teardown: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                "cleanup.sh $1".to_owned(),
-            )),
-        },
+    let config = jinn_config::testutil::config_layer(
+        "[[session_lifecycle.script]]\nname = \"fossil branch\"\n\
+         setup_command = \"echo setup\"\nteardown_command = \"cleanup.sh $1\"\n",
     );
     state
         .active_session_mut()
@@ -1068,7 +968,7 @@ fn teardown_only_emits_run_session_teardown() {
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
 
     // When handling session teardown (the route row's action).
-    let result = super::sessions::handle_session_teardown(&mut state);
+    let result = super::sessions::handle_session_teardown(&mut state, &config);
 
     // Then a RunSessionTeardown command is emitted with the rendered teardown command.
     assert_eq!(result.message_names.len(), 1);
@@ -1079,15 +979,8 @@ fn teardown_only_emits_run_session_teardown() {
 fn teardown_only_is_noop_without_lifecycle_teardown() {
     // Given a session with a lifecycle that has NO teardown command.
     let mut state = AppState::default_with_scope_focus();
-    state.frontend.preferences.session_lifecycles.push(
-        jinn_preferences_config::schemas::SessionLifecycle {
-            name: "plain".to_owned(),
-            description: None,
-            setup: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                "echo setup".to_owned(),
-            )),
-            teardown: None,
-        },
+    let config = jinn_config::testutil::config_layer(
+        "[[session_lifecycle.script]]\nname = \"plain\"\nsetup_command = \"echo setup\"\n",
     );
     state
         .active_session_mut()
@@ -1100,7 +993,7 @@ fn teardown_only_is_noop_without_lifecycle_teardown() {
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
 
     // When handling session teardown (the route row's action).
-    let result = super::sessions::handle_session_teardown(&mut state);
+    let result = super::sessions::handle_session_teardown(&mut state, &config);
 
     // Then no commands are emitted (no teardown command to run).
     assert!(result.message_names.is_empty());
@@ -1110,17 +1003,9 @@ fn teardown_only_is_noop_without_lifecycle_teardown() {
 fn teardown_only_is_noop_when_session_busy() {
     // Given a session with a teardown command that is currently busy.
     let mut state = AppState::default_with_scope_focus();
-    state.frontend.preferences.session_lifecycles.push(
-        jinn_preferences_config::schemas::SessionLifecycle {
-            name: "fossil branch".to_owned(),
-            description: None,
-            setup: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                "echo setup".to_owned(),
-            )),
-            teardown: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                "cleanup.sh $1".to_owned(),
-            )),
-        },
+    let config = jinn_config::testutil::config_layer(
+        "[[session_lifecycle.script]]\nname = \"fossil branch\"\n\
+         setup_command = \"echo setup\"\nteardown_command = \"cleanup.sh $1\"\n",
     );
     state
         .active_session_mut()
@@ -1138,7 +1023,7 @@ fn teardown_only_is_noop_when_session_busy() {
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
 
     // When handling session teardown (the route row's action).
-    let result = super::sessions::handle_session_teardown(&mut state);
+    let result = super::sessions::handle_session_teardown(&mut state, &config);
 
     // Then no commands are emitted (validation gates on busy state).
     assert!(result.message_names.is_empty());
@@ -1719,8 +1604,8 @@ fn render_tree_shows_tree_characters() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
-            section.render(frame, area, &ctx);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            section.render(frame, area, 0, &ctx);
         })
         .unwrap();
 
@@ -2406,6 +2291,7 @@ fn archive_tree_arm_sets_confirm_prompt_with_subtree_count() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the confirm prompt is armed with the subtree size.
@@ -2437,6 +2323,7 @@ fn archive_tree_arm_sets_busy_prompt_when_subtree_busy() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the busy prompt is armed.
@@ -2458,6 +2345,7 @@ fn archive_tree_second_press_emits_archive_command() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // When handling a second archive-tree press (confirm).
@@ -2466,6 +2354,7 @@ fn archive_tree_second_press_emits_archive_command() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the ArchiveSessionTree command is emitted.
@@ -2491,6 +2380,7 @@ fn archive_tree_confirm_after_member_became_busy_switches_to_busy_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
     state
         .session
@@ -2504,6 +2394,7 @@ fn archive_tree_confirm_after_member_became_busy_switches_to_busy_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the prompt flipped to Busy instead of archiving.
@@ -2532,6 +2423,7 @@ fn archive_tree_other_intent_dismisses_prompt_and_processes_normally() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // When handling a different intent.
@@ -2540,6 +2432,7 @@ fn archive_tree_other_intent_dismisses_prompt_and_processes_normally() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the prompt is dismissed.
@@ -2557,6 +2450,7 @@ fn archive_tree_invalid_context_leaves_no_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then no prompt is armed and no commands are emitted.
@@ -2576,6 +2470,7 @@ fn teardown_tree_arm_sets_confirm_prompt_with_action() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the confirm prompt is armed for teardown-and-archive.
@@ -2607,6 +2502,7 @@ fn teardown_tree_arm_sets_busy_prompt_when_subtree_busy() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the busy prompt is armed.
@@ -2628,6 +2524,7 @@ fn teardown_tree_second_press_emits_teardown_tree_command() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // When handling a second teardown-tree press (confirm).
@@ -2636,6 +2533,7 @@ fn teardown_tree_second_press_emits_teardown_tree_command() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the TeardownSessionTree command is emitted.
@@ -2670,6 +2568,7 @@ fn teardown_tree_other_intent_dismisses_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // When handling a different intent.
@@ -2678,6 +2577,7 @@ fn teardown_tree_other_intent_dismisses_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the prompt is dismissed.
@@ -2697,6 +2597,7 @@ fn busy_tree_prompt_dismisses_on_other_intent() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the busy notice is dismissed.
@@ -2716,6 +2617,7 @@ fn busy_tree_prompt_still_confirms_on_tree_key() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the re-validation passes and the teardown-tree command is emitted.
@@ -2741,6 +2643,7 @@ fn a_key_over_teardown_prompt_dismisses_then_arms_archive_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // When handling the archive-tree press (the sibling tree action).
@@ -2749,6 +2652,7 @@ fn a_key_over_teardown_prompt_dismisses_then_arms_archive_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the teardown prompt was replaced by a fresh archive prompt.
@@ -2771,6 +2675,7 @@ fn x_key_over_archive_prompt_dismisses_then_arms_teardown_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // When handling the teardown-tree press (the sibling tree action).
@@ -2779,6 +2684,7 @@ fn x_key_over_archive_prompt_dismisses_then_arms_teardown_prompt() {
         &mut state,
         &empty_slices(),
         &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the archive prompt was replaced by a fresh teardown prompt.
@@ -2867,15 +2773,15 @@ fn close_session_prompt_right_aligns_inside_the_frame() {
     // And its right edge touches the frame's right edge.
     let right = row.trim_end().len();
     assert_eq!(right, 59, "banner right edge at frame column 59: {row}");
-    // And it sits one row above the cursor row.
+    // And it sits two rows above the cursor row, leaving a one-row gap.
     let cursor_row = rows
         .iter()
         .position(|r| r.contains("tree root"))
         .expect("cursor session row is visible");
     assert_eq!(
         banner_row,
-        cursor_row.saturating_sub(1),
-        "banner must sit 1 row above the cursor row"
+        cursor_row.saturating_sub(2),
+        "banner must sit 2 rows above the cursor row"
     );
 }
 
@@ -2924,8 +2830,8 @@ fn archive_tree_prompt_anchors_above_the_cursor_row_at_top_of_list() {
         .expect("banner is rendered");
     assert_eq!(
         banner_row,
-        cursor_row.saturating_sub(1),
-        "banner must sit 1 row above the cursor row"
+        cursor_row.saturating_sub(2),
+        "banner must sit 2 rows above the cursor row"
     );
 }
 
@@ -2986,7 +2892,7 @@ fn render_archive_tree_prompt_rows(state: &AppState, sidebar_width: u16) -> Vec<
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new(state, &slices, &overlay_views);
+    let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
     terminal
         .draw(|frame| {
             crate::sections::sessions::render_archive_tree_prompt_for_state(
@@ -3021,7 +2927,7 @@ fn render_sessions_with_archive_tree_prompt(state: &AppState, sidebar_width: u16
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new(state, &slices, &overlay_views);
+    let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
     let mut sidebar = crate::sections::Sidebar::default();
     sidebar.register(Box::new(SessionsSection::new()));
     terminal
@@ -3075,7 +2981,7 @@ fn render_sessions_with_close_prompt(state: &AppState, sidebar_width: u16) -> Ve
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new(state, &slices, &overlay_views);
+    let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
     let mut sidebar = crate::sections::Sidebar::default();
     sidebar.register(Box::new(SessionsSection::new()));
     terminal
@@ -3151,7 +3057,12 @@ fn an_unchanged_frame_rebuilds_the_tree_only_once() {
     {
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
-        let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+        let ctx = RenderCtx::new(
+            &state,
+            &slices,
+            &overlay_views,
+            jinn_domain::common::render_ctx::empty_config_layer(),
+        );
         section.content_height(&ctx);
     }
     let after_first = section.rebuilds();
@@ -3161,7 +3072,12 @@ fn an_unchanged_frame_rebuilds_the_tree_only_once() {
     for _ in 0..5 {
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
-        let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+        let ctx = RenderCtx::new(
+            &state,
+            &slices,
+            &overlay_views,
+            jinn_domain::common::render_ctx::empty_config_layer(),
+        );
         section.content_height(&ctx);
     }
 
@@ -3182,7 +3098,12 @@ fn height_and_render_agree_on_the_session_count() {
     // When the height is computed and then rendered.
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+    let ctx = RenderCtx::new(
+        &state,
+        &slices,
+        &overlay_views,
+        jinn_domain::common::render_ctx::empty_config_layer(),
+    );
     let height = section.content_height(&ctx);
     let tree_len = section.cached_session_count();
 
@@ -3198,7 +3119,12 @@ fn adding_a_session_rebuilds_the_tree() {
     let before = {
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
-        let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+        let ctx = RenderCtx::new(
+            &state,
+            &slices,
+            &overlay_views,
+            jinn_domain::common::render_ctx::empty_config_layer(),
+        );
         section.content_height(&ctx);
         section.rebuilds()
     };
@@ -3213,7 +3139,12 @@ fn adding_a_session_rebuilds_the_tree() {
     // Then the tree is rebuilt.
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+    let ctx = RenderCtx::new(
+        &state,
+        &slices,
+        &overlay_views,
+        jinn_domain::common::render_ctx::empty_config_layer(),
+    );
     section.content_height(&ctx);
     assert_eq!(section.rebuilds(), before + 1);
 }
@@ -3226,7 +3157,12 @@ fn a_renamed_session_rebuilds_the_tree() {
     let before = {
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
-        let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+        let ctx = RenderCtx::new(
+            &state,
+            &slices,
+            &overlay_views,
+            jinn_domain::common::render_ctx::empty_config_layer(),
+        );
         section.content_height(&ctx);
         section.rebuilds()
     };
@@ -3234,7 +3170,12 @@ fn a_renamed_session_rebuilds_the_tree() {
     // When an untouched frame renders first (proving the memo is warm).
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+    let ctx = RenderCtx::new(
+        &state,
+        &slices,
+        &overlay_views,
+        jinn_domain::common::render_ctx::empty_config_layer(),
+    );
     section.content_height(&ctx);
     assert_eq!(section.rebuilds(), before, "no change, no rebuild");
 
@@ -3259,11 +3200,45 @@ fn a_renamed_session_rebuilds_the_tree() {
     // Then exactly one more rebuild happens.
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+    let ctx = RenderCtx::new(
+        &state,
+        &slices,
+        &overlay_views,
+        jinn_domain::common::render_ctx::empty_config_layer(),
+    );
     section.content_height(&ctx);
     assert_eq!(
         section.rebuilds(),
         before + 1,
         "a same-length rename must still invalidate the memo"
     );
+}
+
+#[rstest::rstest]
+fn session_reloaded_from_the_archive_is_listed() {
+    // Given a session that was archived and has just been loaded back, which
+    // is what the session picker does when the user picks an archived entry.
+    let mut state = AppState::default_with_scope_focus();
+    let session_id = state.session.active_session_id().clone();
+    state
+        .session
+        .get_mut(&session_id)
+        .expect("active session")
+        .set_session_state(jinn_session_store_msg::SessionState::Archived);
+    {
+        // Given the load completes and marks it live again.
+        let mut state = state;
+        state
+            .session
+            .get_mut(&session_id)
+            .expect("active session")
+            .set_session_state(jinn_session_store_msg::SessionState::Loaded);
+
+        // Then the sidebar's session list includes it.
+        let listed = sorted_open_sessions(&state);
+        assert!(
+            listed.iter().any(|entry| entry.id == session_id),
+            "a reloaded session must be listed; got {listed:?}"
+        );
+    }
 }

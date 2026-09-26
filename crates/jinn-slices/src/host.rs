@@ -11,16 +11,13 @@
 //! arrives as a consumer of this surface, not a parallel system.
 //!
 //! The host borrows the kernel's registries for the duration of
-//! activation and adds two of its own: the input-hook registry
-//! ([`HookRegistry`]) and the config-section set ([`SectionSet`]). Both
-//! stage during activation and are drained by composition afterwards:
+//! activation and adds one of its own: the input-hook registry
+//! ([`HookRegistry`]). Hooks stage during activation and install into the
+//! kernel's [`KeyRoutes`] once every slice has activated.
 //!
-//! - hooks install into the kernel's [`KeyRoutes`] once every slice has
-//!   activated;
-//! - sections convert against the kernel's user-preferences document at
-//!   `finalize` time, where a missing section or malformed TOML aborts
-//!   launch — activation-time fail-fast, concentrated in one checked
-//!   step.
+//! A slice's `jinn.toml` section is not staged here. It reads the
+//! configuration layer directly, at the point of use, so a reload is
+//! visible without re-wiring.
 //!
 //! The host is constructed per activation and never stored on
 //! `Services`.
@@ -43,14 +40,9 @@ use crate::slices::SlotKey;
 use crate::slices::SlotTaken;
 use crate::view::Viewport;
 
-pub mod host_config;
 pub mod host_input;
 pub mod host_view;
 
-pub use host_config::ConfigSection;
-pub use host_config::ConfigSectionError;
-pub use host_config::DynamicConfigSection;
-pub use host_config::SectionError;
 pub use host_view::HostView;
 
 /// The kernel registries a [`SliceHost`] borrows for one activation.
@@ -61,7 +53,6 @@ pub struct SliceHost<'a, C: 'static> {
     key_routes: &'a KeyRoutes,
     system: &'a ActorSystem,
     hooks: host_input::HookRegistry,
-    sections: host_config::SectionSet,
 }
 
 impl<'a, C: 'static> SliceHost<'a, C> {
@@ -81,7 +72,6 @@ impl<'a, C: 'static> SliceHost<'a, C> {
             key_routes,
             system,
             hooks: host_input::HookRegistry::default(),
-            sections: host_config::SectionSet::default(),
         }
     }
 
@@ -209,28 +199,6 @@ impl<'a, C: 'static> SliceHost<'a, C> {
         self.slices.set_flag(slice, enabled);
     }
 
-    /// Reads the slice's config section as a typed value. The section
-    /// table is snapshotted now; conversion to `T` happens when the
-    /// sections are applied — during activation via
-    /// [`Self::apply_sections`] (a slice that needs its config value
-    /// before returning calls this itself) or at composition's
-    /// `finalize`. A missing table or malformed TOML aborts launch
-    /// there.
-    #[must_use]
-    pub fn config_section<T>(&mut self, key: &str) -> ConfigSection<T>
-    where
-        T: serde::de::DeserializeOwned + Default + Send + 'static,
-    {
-        self.sections.add_typed::<T>(key)
-    }
-
-    /// Reads the slice's config section as a raw TOML table — the
-    /// WASM-shaped dynamic face, snapshotted under the same gate.
-    #[must_use]
-    pub fn config_section_value(&mut self, key: &str) -> DynamicConfigSection {
-        self.sections.add_dynamic(key)
-    }
-
     /// Drains staged input hooks into the kernel's route table via
     /// `install`. Called by composition after all slices activate.
     pub fn install_hooks<I>(self, install: I)
@@ -240,34 +208,16 @@ impl<'a, C: 'static> SliceHost<'a, C> {
         self.hooks.install(install);
     }
 
-    /// Resolves the staged config sections through `resolve` (the
-    /// kernel's document lookup) so the slice's [`ConfigSection`]
-    /// handles hold values immediately. Sections applied here are
-    /// resolved again — harmlessly, overwriting the slot — at
-    /// composition's `finalize`.
+    /// Ends activation, installing the staged input hooks via `install`.
     ///
-    /// # Errors
-    ///
-    /// Returns [`SectionError`] for a missing required section or a
-    /// malformed table — the activation-time fail-fast gate, raised
-    /// before the slice reads its value.
-    pub fn apply_sections(
-        &mut self,
-        resolve: &dyn Fn(&str) -> Option<toml::Table>,
-    ) -> Result<(), SectionError> {
-        self.sections.apply(resolve)
-    }
-
-    /// Applies staged config sections through `sink` (composition
-    /// provides the lookup into the user-preferences document).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SectionError`] for a missing required section or a
-    /// malformed table — the activation-time fail-fast gate.
-    pub fn finalize(self, sink: &dyn Fn(&str) -> Option<toml::Table>) -> Result<(), SectionError> {
-        let sections = self.sections;
-        sections.apply(sink)
+    /// A slice's `jinn.toml` section needs no staging: it reads the
+    /// configuration layer at the point of use, so there is no
+    /// fail-fast gate left to run here.
+    pub fn finalize<I>(self, install: I)
+    where
+        I: FnMut(SliceScopeId, crate::route::InputHook),
+    {
+        self.hooks.install(install);
     }
 }
 

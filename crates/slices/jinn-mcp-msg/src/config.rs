@@ -46,9 +46,43 @@ pub enum TransportKind {
     RemoteHttp,
 }
 
+/// The `[mcp]` umbrella — the configured MCP servers.
+///
+/// The configured servers, keyed by name.
+///
+/// The section IS the map: it is keyed at `mcp`, so `[mcp.<name>]` in the
+/// document is one table whose keys are the server names. There is no
+/// wrapping `server = {...}` field — an earlier shape had both `KEY =
+/// "mcp.server"` *and* a `server` field, which meant the layer handed the
+/// map's own entries to a struct expecting a `server` key and silently
+/// deserialized nothing.
+///
+/// The map key *is* the server's identity (there is no `name` field to
+/// drift out of sync with the key), which is also why this section
+/// declares no entry key: a map's key already matches entries by
+/// identity.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct McpServersConfig(
+    /// The configured servers, keyed by name.
+    pub std::collections::BTreeMap<String, McpServerConfig>,
+);
+
+impl jinn_config::Configurable for McpServersConfig {
+    const KEY: &'static str = "mcp";
+}
+
+impl std::ops::Deref for McpServersConfig {
+    type Target = std::collections::BTreeMap<String, McpServerConfig>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 /// One configured MCP server.
 ///
-/// Declared in `jinn.toml` under `[mcp_server.<name>]` — the table name IS
+/// Declared in `jinn.toml` under `[mcp.server.<name>]` — the table name IS
 /// the server's identity (the per-session enablement identifier stored in
 /// `SessionCore::enabled_mcp_servers` and the tool-namespace segment
 /// `mcp__<name>__<tool>`); there is no `name` field to drift out of sync

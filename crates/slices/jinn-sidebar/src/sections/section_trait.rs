@@ -57,13 +57,20 @@ pub trait SidebarSection: std::fmt::Debug + 'static {
     fn id(&self) -> SidebarSectionId;
 
     /// Render the section into the given frame area.
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx);
+    ///
+    /// `skip_rows` is how many of the section's own leading rows are scrolled
+    /// above the column. The section must drop that many lines before drawing,
+    /// because a widget has no notion of a document offset — it only knows the
+    /// `Rect` it was handed. Sections that render a `Paragraph` should apply
+    /// `skip_rows` to its own `.scroll()`.
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, skip_rows: u16, ctx: &RenderCtx);
 
     /// Returns the total content height in rows for the current state.
     ///
-    /// Used by the sidebar for scrolling calculations. Takes `&mut self` so a
-    /// section may memoize expensive layout work shared with `render` — the
-    /// sidebar calls this once per section per frame, immediately before
-    /// rendering that same section.
+    /// The sidebar sums these into a single document and windows it, so a
+    /// section reports its full height regardless of how tall the column is.
+    /// Takes `&mut self` so a section may memoize expensive layout work shared
+    /// with `render` — the sidebar calls this once per section per frame,
+    /// immediately before rendering that same section.
     fn content_height(&mut self, ctx: &RenderCtx) -> u16;
 }

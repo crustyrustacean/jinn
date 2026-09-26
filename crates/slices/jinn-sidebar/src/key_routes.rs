@@ -53,6 +53,25 @@ where
     ActionFn::new(move |mut ctx| f(app(&mut ctx)))
 }
 
+/// Wraps a synchronous sidebar function that reads `jinn.toml` into an
+/// [`ActionFn`].
+///
+/// Same as [`sync`], but the function also receives the configuration
+/// layer. A route action that resolves a lifecycle's teardown or setup
+/// command needs the live document; a `sync` closure would see only the
+/// state and silently find nothing.
+fn sync_with_config<F>(f: F) -> ActionFn
+where
+    F: Fn(&mut AppState, &jinn_slices::ConfigLayer) -> IntentResult + Send + Sync + 'static,
+{
+    ActionFn::new(move |mut ctx| {
+        // Clone the handle, not the borrow: `ActionCtx` lends `&mut`
+        // state, so the state lend and a config borrow cannot overlap.
+        let config = ctx.config.clone();
+        f(app(&mut ctx), &config)
+    })
+}
+
 /// Builds one `Action` row binding `key` in `scope`. `action`/`display`
 /// must be `'static` (they are the route-table key and which-key label).
 fn row(
@@ -106,7 +125,11 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
             "navigation",
             "cursor down",
             sync(|state| {
-                navigate_sidebar(&SidebarIntent::MoveDown, state);
+                navigate_sidebar(
+                    &SidebarIntent::MoveDown,
+                    state,
+                    jinn_slices::empty_config_layer(),
+                );
                 IntentResult::empty()
             }),
         ));
@@ -117,7 +140,11 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
             "navigation",
             "cursor up",
             sync(|state| {
-                navigate_sidebar(&SidebarIntent::MoveUp, state);
+                navigate_sidebar(
+                    &SidebarIntent::MoveUp,
+                    state,
+                    jinn_slices::empty_config_layer(),
+                );
                 IntentResult::empty()
             }),
         ));
@@ -128,7 +155,11 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
             "navigation",
             "next section",
             sync(|state| {
-                jump_to_section(&SidebarIntent::MoveDown, state);
+                jump_to_section(
+                    &SidebarIntent::MoveDown,
+                    state,
+                    jinn_slices::empty_config_layer(),
+                );
                 IntentResult::empty()
             }),
         ));
@@ -139,7 +170,11 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
             "navigation",
             "previous section",
             sync(|state| {
-                jump_to_section(&SidebarIntent::MoveUp, state);
+                jump_to_section(
+                    &SidebarIntent::MoveUp,
+                    state,
+                    jinn_slices::empty_config_layer(),
+                );
                 IntentResult::empty()
             }),
         ));
@@ -207,7 +242,10 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "c",
         "general",
         "change persona",
-        sync(pins::handle_sidebar_persona_edit),
+        ActionFn::new(|mut ctx| {
+            let config = ctx.config;
+            pins::handle_sidebar_persona_edit(app(&mut ctx), config)
+        }),
     ));
 
     // ---- Pins section ----
@@ -301,7 +339,7 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "t",
         "general",
         "run teardown",
-        sync(sessions::handle_session_teardown),
+        sync_with_config(sessions::handle_session_teardown),
     ));
     routes.attach(row(
         "session-confirm",
@@ -393,7 +431,9 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "s",
         "general",
         "rerun setup",
-        sync(sessions::handle_session_rerun_setup),
+        sync(|state| {
+            sessions::handle_session_rerun_setup(state, jinn_slices::empty_config_layer())
+        }),
     ));
     routes.attach(row(
         "session-terminal",
@@ -429,14 +469,11 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "s",
         "general",
         "browse task list",
-        // Run the tools slice's own open action rather than publishing a
-        // message naming it. A `DynamicIntent` published here would go to the
-        // bus, not back through route dispatch, so the picker's open action
-        // would never run and the menu would never appear.
-        //
-        // This still keeps the sidebar ignorant of the picker: it names the
-        // tools slice's public entry point, not the picker's scope, state, or
-        // any of its internals.
+        // Opens the task-list browser through the tools slice's own opener
+        // action. A published `DynamicIntent` would go to the bus and never
+        // return through route dispatch, so the action would never run; the
+        // action is called directly instead. The sidebar still holds no
+        // handle to the picker's cell.
         jinn_tools::task_list_picker_opener(),
     ));
     routes.attach(row(
@@ -733,6 +770,7 @@ fn session_terminal_row_toggles_the_overlay() {
             ActionCtx {
                 state: &mut state,
                 slices: &slices,
+                config: jinn_slices::empty_config_layer(),
                 key_bytes: Vec::new(),
             },
         )

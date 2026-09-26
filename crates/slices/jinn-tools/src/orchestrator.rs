@@ -12,7 +12,8 @@
 //! (for resolving relative paths) and an optional timeout. The orchestrator
 //! reads CWD from shared [`State`] at dispatch time.
 
-use jinn_preferences_config::user_preferences::OpenrouterWebSearchConfig;
+use jinn_preferences_config::schemas::ToolsConfig;
+use jinn_preferences_config::schemas::WebSearchConfig;
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -50,6 +51,15 @@ pub(crate) enum ToolRegistration {
     Builtin {
         /// The tool's JSON-schema definition.
         definition: ToolDefinition,
+        /// A re-resolver for a definition whose schema embeds a config
+        /// value. Present only where the schema actually varies with
+        /// config; `None` means the baked `definition` is authoritative.
+        ///
+        /// This exists because the definition is not merely stored — it is
+        /// published to the context layer and becomes part of the schema
+        /// the model sees. A baked copy would freeze the schema for the
+        /// life of the process even after a `reload`.
+        live_definition: Option<fn(&jinn_config::ConfigLayer) -> ToolDefinition>,
         /// The function that executes the tool call.
         execute: fn(ToolCall, ToolContext) -> BoxedToolFuture,
         /// When `true`, the dispatcher's timeout wrapper is bypassed: the
@@ -153,7 +163,7 @@ pub struct ToolOrchestratorActorDeps {
 ///
 /// The `parameters` field contains actual config values (not a JSON Schema)
 /// because server tools send config directly, not a function parameter schema.
-fn build_openrouter_web_search_definition(config: &OpenrouterWebSearchConfig) -> ToolDefinition {
+fn build_openrouter_web_search_definition(config: &WebSearchConfig) -> ToolDefinition {
     let mut params = serde_json::Map::new();
     if let Some(ref engine) = config.engine {
         params.insert(
@@ -235,22 +245,11 @@ impl ToolOrchestratorActor {
     /// body, minus bus subscriptions — trouper handles deliver the
     /// subscribed messages).
     fn initialize(deps: ToolOrchestratorActorDeps) -> Self {
-        // Read web search config from preferences storage.
-        let web_search_config = deps
-            .deps
-            .services
-            .user_preferences_storage
-            .read()
-            .openrouter_web_search
-            .clone();
-
-        let default_timeout_secs = deps
-            .deps
-            .services
-            .user_preferences_storage
-            .read()
-            .tool_default_timeout_secs;
-
+        // The web-search definition and the builtin timeout are both read
+        // from the configuration layer at DISPATCH time, not here: baking
+        // them in at construction meant a reload could not change the
+        // schema the model sees, nor the ceiling a tool runs under. See
+        // `ToolRegistration::definition`.
         let mut actor = Self {
             deps: deps.deps,
             tools: HashMap::new(),
@@ -259,7 +258,14 @@ impl ToolOrchestratorActor {
             state: deps.state,
             services: deps.services,
         };
-        let all_builtins = crate::registry::builtin_tools(default_timeout_secs);
+        let all_builtins = crate::registry::builtin_tools(
+            actor
+                .services
+                .config
+                .get::<ToolsConfig>()
+                .unwrap_or_default()
+                .default_timeout_secs,
+        );
         let builtins: Vec<_> = if let Some(ref filter) = deps.builtin_filter {
             all_builtins
                 .into_iter()
@@ -268,27 +274,40 @@ impl ToolOrchestratorActor {
         } else {
             all_builtins
         };
-        let mut builtin_definitions: Vec<ToolDefinition> =
-            builtins.iter().map(|(d, _, _)| d.clone()).collect();
-
         for (def, execute_fn, self_managed_timeout) in builtins {
             let name = def.name.clone();
+            // `bash` is the one builtin whose schema names a config value
+            // (the default timeout), so it is the one that re-resolves.
+            let live_definition = (name == "bash").then_some(
+                (|config: &jinn_config::ConfigLayer| {
+                    let tools = config.get::<ToolsConfig>().unwrap_or_default();
+                    crate::bash::definition(tools.default_timeout_secs)
+                }) as fn(&jinn_config::ConfigLayer) -> ToolDefinition,
+            );
             actor.tools.insert(
                 name,
                 ToolRegistration::Builtin {
                     definition: def,
+                    live_definition,
                     execute: execute_fn,
                     self_managed_timeout,
                 },
             );
         }
 
-        // Register openrouter:web_search server tool.
-        let web_search_def = build_openrouter_web_search_definition(&web_search_config);
+        // Register openrouter:web_search server tool. Its schema embeds the
+        // user's web-search config, so the definition resolves from the
+        // layer on every publish rather than being frozen here.
+        let web_search_def = build_openrouter_web_search_definition(&WebSearchConfig::default());
         actor.tools.insert(
             web_search_def.name.clone(),
             ToolRegistration::Builtin {
                 definition: web_search_def.clone(),
+                live_definition: Some(|config| {
+                    build_openrouter_web_search_definition(
+                        &config.get::<WebSearchConfig>().unwrap_or_default(),
+                    )
+                }),
                 // Server tool; never dispatched locally so the flag is moot.
                 self_managed_timeout: false,
                 execute: |_call, _ctx| {
@@ -305,21 +324,12 @@ impl ToolOrchestratorActor {
                 },
             },
         );
-        builtin_definitions.push(web_search_def);
+        let web_search_name = web_search_def.name.clone();
 
         // Announce built-in tools so dispatch and context assembly share the
         // same definitions. The shared registry is updated directly here;
         // the event remains the crossing notification for other consumers.
-        actor.cache_registered_tools(&builtin_definitions, None);
-        let bus = actor.deps.services.bus.clone();
-        tokio::spawn(async move {
-            bus.publish(ToolsRegistered {
-                provider: "builtin".to_owned(),
-                definitions: builtin_definitions,
-                session_id: None,
-            })
-            .await;
-        });
+        actor.announce_builtin_tools(Some(&web_search_name));
 
         actor
     }
@@ -398,6 +408,46 @@ impl BusPublish for ToolOrchestratorActor {
 }
 
 impl ToolOrchestratorActor {
+    /// Publishes the builtin definitions to the context layer and the bus.
+    ///
+    /// Every definition that embeds a config value is re-resolved here
+    /// rather than served from its baked copy, so the schema the model sees
+    /// reflects the current configuration. `extra_live` names the tools
+    /// whose schema varies; everything else contributes its stored
+    /// definition unchanged.
+    fn announce_builtin_tools(&self, extra_live: Option<&str>) {
+        let definitions: Vec<ToolDefinition> = self
+            .tools
+            .iter()
+            .filter_map(|(name, registration)| match registration {
+                ToolRegistration::Builtin {
+                    definition,
+                    live_definition,
+                    ..
+                } => Some(
+                    live_definition
+                        .filter(|_| Some(name.as_str()) == extra_live)
+                        .map_or_else(
+                            || definition.clone(),
+                            |resolve| resolve(&self.services.config),
+                        ),
+                ),
+                ToolRegistration::Actor { .. } => None,
+            })
+            .collect();
+        self.cache_registered_tools(&definitions, None);
+        let bus = self.deps.services.bus.clone();
+        let definitions_for_bus = definitions.clone();
+        tokio::spawn(async move {
+            bus.publish(ToolsRegistered {
+                provider: "builtin".to_owned(),
+                definitions: definitions_for_bus,
+                session_id: None,
+            })
+            .await;
+        });
+    }
+
     /// Mirrors registered definitions into the context-facing registry cell.
     fn cache_registered_tools(
         &self,
@@ -566,11 +616,14 @@ impl ToolOrchestratorActor {
 
     /// Builds a [`ToolContext`] for the given session by reading its CWD from shared state.
     ///
-    /// The outer `timeout` (from `tool_default_timeout_secs`) is a safety ceiling for
-    /// all builtin tools. `bash` additionally applies its own inner
-    /// `bash.default_timeout_secs`; the shorter of the two fires first.
+    /// Every config value is read from the configuration layer here, at the
+    /// point of use, so a reload is observed by the very next tool call
+    /// rather than by the next process start.
+    ///
+    /// The outer `timeout` (from `tools.default_timeout_secs`) is a safety
+    /// ceiling for all builtin tools. `bash` additionally applies its own
+    /// inner `bash.default_timeout_secs`; the shorter of the two fires first.
     fn build_tool_context(&self, session_id: &SessionId, dispatched_at: Timestamp) -> ToolContext {
-        let prefs = self.services.user_preferences_storage.read();
         let cwd = {
             let guard = self.state.read();
             guard.session.get(session_id).map_or_else(
@@ -578,14 +631,18 @@ impl ToolOrchestratorActor {
                 |session| session.cwd().to_owned(),
             )
         };
-        let max_output_lines = prefs.max_tool_output_lines;
-        let max_output_bytes = prefs.max_tool_output_bytes;
-        let timeout = std::time::Duration::from_secs(prefs.tool_default_timeout_secs);
+        let tools = self
+            .services
+            .config
+            .get::<ToolsConfig>()
+            .unwrap_or_default();
+        let max_output_lines = tools.max_output_lines;
+        let max_output_bytes = tools.max_output_bytes;
+        let timeout = std::time::Duration::from_secs(tools.default_timeout_secs);
         let command_policy = {
             use jinn_tools_msg::CompiledCommandPolicy;
             let rules = crate::command_policy::resolve_rules(
-                &prefs.global_command_policy,
-                &prefs.projects,
+                &self.services.config,
                 &cwd,
                 self.services.paths.home_dir(),
             );
@@ -596,6 +653,7 @@ impl ToolOrchestratorActor {
             command_policy,
             timeout: Some(timeout),
             state: Some(self.state.clone()),
+            config: self.services.config.clone(),
             session_id: Some(session_id.clone()),
             app_paths: self.services.paths.clone(),
             bus: Some(self.bus().clone()),
@@ -731,13 +789,17 @@ impl ToolOrchestratorActor {
                 // Read the same truncation limits builtins use so MCP results
                 // are bounded identically. `build_tool_context` does the same
                 // read for the builtin path.
-                let prefs = self.services.user_preferences_storage.read();
+                let tools = self
+                    .services
+                    .config
+                    .get::<ToolsConfig>()
+                    .unwrap_or_default();
                 self.publish(ExecuteTool {
                     session_id,
                     tool_call,
                     dispatched_at,
-                    max_output_lines: prefs.max_tool_output_lines,
-                    max_output_bytes: prefs.max_tool_output_bytes,
+                    max_output_lines: tools.max_output_lines,
+                    max_output_bytes: tools.max_output_bytes,
                 })
                 .await;
             }
@@ -970,7 +1032,7 @@ mod timeout_tests {
     use super::{BoxedToolFuture, ToolContext, run_builtin_with_timeout};
     use jinn_core_types::tool_types::{ToolCall, ToolResult};
     use jinn_domain::common::app_paths::AppPaths;
-    use jinn_preferences_config::user_preferences::UserPreferences;
+    use jinn_preferences_config::schemas::ToolsConfig;
 
     fn make_call() -> ToolCall {
         ToolCall {
@@ -984,6 +1046,7 @@ mod timeout_tests {
         ToolContext {
             cwd: PathBuf::from("/tmp"),
             command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+            config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state: None,
             session_id: None,
@@ -1085,17 +1148,17 @@ mod timeout_tests {
 
     #[rstest::rstest]
     #[test]
-    fn tool_timeout_value_sourced_from_preferences() {
-        // Given preferences with a custom tool timeout.
-        let prefs = UserPreferences {
-            tool_default_timeout_secs: 7,
-            ..UserPreferences::default()
-        };
+    fn tool_timeout_value_sourced_from_tools_config() {
+        // Given a config document setting a custom tool timeout.
+        let config = jinn_config::testutil::config_layer("[tools]\ndefault_timeout_secs = 7\n");
 
-        // Then the timeout value reflects the preference.
-        assert_eq!(prefs.tool_default_timeout_secs, 7);
+        // When reading the tools section.
+        let tools = config.get::<ToolsConfig>().expect("section reads");
+
+        // Then the timeout value reflects the config.
+        assert_eq!(tools.default_timeout_secs, 7);
         assert_eq!(
-            Duration::from_secs(prefs.tool_default_timeout_secs),
+            Duration::from_secs(tools.default_timeout_secs),
             Duration::from_secs(7)
         );
     }
@@ -1238,6 +1301,7 @@ mod panic_safety_tests {
             super::ToolContext {
                 cwd: std::path::PathBuf::from("/tmp"),
                 command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+                config: jinn_config::testutil::config_layer(""),
                 timeout: None,
                 state: None,
                 session_id: None,

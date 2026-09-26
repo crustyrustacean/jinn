@@ -1,7 +1,7 @@
 //! Command policy - resolution and matching for the bash tool.
 //!
 //! Resolves the blocked-command rules that apply to a session's cwd: the
-//! global rules from `jinn.toml`'s `[[global_command_policy]]`, chained ahead
+//! global rules from `jinn.toml`'s `[[tools.bash_command_policy]]`, chained ahead
 //! of the rules of the configured project containing that cwd
 //! (`~`-expanded lexical longest-prefix match). The result is compiled into a
 //! matcher consulted by the bash tool before any child process spawns.
@@ -76,13 +76,14 @@ impl CompiledCommandPolicy {
 /// wins) — a project policy can add blocks but never lift a global one.
 #[must_use]
 pub fn resolve_rules(
-    global: &[CommandPolicyRule],
-    projects: &[ProjectConfig],
+    config: &jinn_config::ConfigLayer,
     cwd: &Path,
     home: &Path,
 ) -> Vec<CommandPolicyRule> {
+    let global = config.get_list::<CommandPolicyRule>().unwrap_or_default();
+    let projects = config.get_list::<ProjectConfig>().unwrap_or_default();
     let project_rules =
-        matching_project(projects, cwd, home).map_or_else(Vec::new, |p| p.command_policy.clone());
+        matching_project(&projects, cwd, home).map_or_else(Vec::new, |p| p.command_policy.clone());
     global.iter().chain(project_rules.iter()).cloned().collect()
 }
 
@@ -131,6 +132,8 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+    use std::sync::Arc;
+
     use super::*;
 
     fn rule(pattern: &str, message: &str) -> CommandPolicyRule {
@@ -147,6 +150,76 @@ mod tests {
         }
     }
 
+    /// A layer holding `global` and `projects` under their umbrellas, so
+    /// tests exercise resolution through the same read path production uses.
+    fn layer_with(
+        global: &[CommandPolicyRule],
+        projects: &[ProjectConfig],
+    ) -> jinn_config::ConfigLayer {
+        // Both are `ConfigList` sections: real top-level arrays of tables,
+        // not a wrapper table holding a sequence. That shape is what keeps
+        // each entry's own comment attached to it across a save.
+        let mut doc = String::new();
+        if !global.is_empty() {
+            for body in serialize_all(global) {
+                doc.push_str("[[tools.bash_command_policy]]\n");
+                doc.push_str(&body);
+                doc.push('\n');
+            }
+        }
+        if !projects.is_empty() {
+            for body in serialize_all(projects) {
+                doc.push_str("[[project.entry]]\n");
+                doc.push_str(&body);
+                doc.push('\n');
+            }
+        }
+        let parsed = doc.parse().expect("test TOML parses");
+        jinn_config::ConfigLayer::load(Arc::new(jinn_config::InMemoryConfigStorage::new(parsed)))
+            .expect("layer loads")
+    }
+
+    /// Each value as the `key = value` lines of its own TOML table, so a
+    /// hand-built document reads the way a user's file does rather than as
+    /// one inline `{...}` per array-of-tables entry.
+    fn serialize_all<T>(values: &[T]) -> Vec<String>
+    where
+        T: serde::Serialize,
+    {
+        values
+            .iter()
+            .map(|value| {
+                let table = toml::Value::try_from(value)
+                    .expect("value serializes")
+                    .as_table()
+                    .expect("value is a table")
+                    .clone();
+                table
+                    .iter()
+                    .map(|(k, v)| format!("{k} = {v}\n"))
+                    .collect::<String>()
+            })
+            .collect()
+    }
+
+    fn resolve_for(
+        global: &[CommandPolicyRule],
+        projects: &[ProjectConfig],
+        cwd: &str,
+        home: &Path,
+    ) -> Vec<CommandPolicyRule> {
+        resolve_rules(&layer_with(global, projects), Path::new(cwd), home)
+    }
+
+    fn resolve_in(
+        global: &[CommandPolicyRule],
+        projects: &[ProjectConfig],
+        cwd: &Path,
+        home: &Path,
+    ) -> Vec<CommandPolicyRule> {
+        resolve_rules(&layer_with(global, projects), cwd, home)
+    }
+
     #[rstest::rstest]
     #[case("/home/me/w/repo", true)]
     #[case("/home/me/w/repo/sub/dir", true)]
@@ -159,7 +232,7 @@ mod tests {
         let home = Path::new("/home/me");
 
         // When resolving rules for a cwd.
-        let rules = resolve_rules(&[], &projects, Path::new(cwd), home);
+        let rules = resolve_for(&[], &projects, cwd, home);
 
         // Then membership follows the lexical prefix (component-wise).
         assert_eq!(rules.is_empty(), !expected);
@@ -174,7 +247,7 @@ mod tests {
         let home = Path::new("/home/me");
 
         // When resolving rules for a cwd directly inside home.
-        let rules = resolve_rules(&[], &projects, Path::new("/home/me/notes"), home);
+        let rules = resolve_for(&[], &projects, "/home/me/notes", home);
 
         // Then the tilde expanded to home and the rules apply.
         assert_eq!(rules.len(), 1);
@@ -191,7 +264,7 @@ mod tests {
         let cwd = Path::new("/w/repo/src");
 
         // When resolving rules for a cwd inside the inner project.
-        let rules = resolve_rules(&[], &projects, cwd, Path::new("/"));
+        let rules = resolve_in(&[], &projects, cwd, Path::new("/"));
 
         // Then the inner (longest prefix) project's rules win.
         assert_eq!(rules.len(), 1);
@@ -210,7 +283,7 @@ mod tests {
         let cwd = Path::new("/elsewhere");
 
         // When resolving rules for a cwd outside every configured project.
-        let rules = resolve_rules(&global, &projects, cwd, Path::new("/"));
+        let rules = resolve_in(&global, &projects, cwd, Path::new("/"));
 
         // Then the global rule still applies.
         assert_eq!(rules.len(), 1);
@@ -226,7 +299,7 @@ mod tests {
         let cwd = Path::new("/w/repo/src");
 
         // When resolving rules for a cwd inside the project.
-        let rules = resolve_rules(&global, &projects, cwd, Path::new("/"));
+        let rules = resolve_in(&global, &projects, cwd, Path::new("/"));
 
         // Then first-match-wins picks the global rule's message.
         let policy = CompiledCommandPolicy::compile(&rules);
@@ -247,7 +320,7 @@ mod tests {
         let cwd = Path::new("/w/repo/src");
 
         // When resolving rules for a cwd inside the project.
-        let rules = resolve_rules(&[], &projects, cwd, Path::new("/"));
+        let rules = resolve_in(&[], &projects, cwd, Path::new("/"));
 
         // Then the project rules are returned unchanged.
         assert_eq!(rules.len(), 1);
@@ -264,10 +337,10 @@ mod tests {
         ];
 
         // When compiling the resolved global rules.
-        let policy = CompiledCommandPolicy::compile(&resolve_rules(
+        let policy = CompiledCommandPolicy::compile(&resolve_for(
             &global,
             &[],
-            Path::new("/elsewhere"),
+            "/elsewhere",
             Path::new("/"),
         ));
 

@@ -22,7 +22,7 @@ async fn activation_registers_pruner_popup_and_normal_mode_opener() {
     let mut host = SliceHost::new(&slices, &mut viewport, &overlay_views, &routes, &system);
 
     // When preferences activation registers the popup surfaces.
-    jinn_preferences::activate(&mut host, &system, services, state, None);
+    jinn_preferences::activate(&mut host, &system, services, state);
     let mut keymap = jinn_tui::keymap::init();
     jinn_tui::keymap_gen::bind_route_rows(&routes, &mut keymap);
 

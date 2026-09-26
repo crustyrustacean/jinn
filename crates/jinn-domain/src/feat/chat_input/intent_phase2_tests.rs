@@ -408,7 +408,10 @@ fn enter_normal_mode_dismisses_active_autocomplete_without_scope_change() {
     );
 
     // When handling EnterNormalMode.
-    let result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let result = crate::feat::chat_input::intent::handle_enter_normal_mode(
+        &mut state,
+        crate::common::render_ctx::empty_config_layer(),
+    );
 
     // Then autocomplete is dismissed but scope stays Input (not Normal).
     assert!(

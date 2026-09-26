@@ -102,7 +102,7 @@ impl SidebarSection for PinsSection {
         jinn_sidebar_msg::SidebarSectionId::Pins
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, skip_rows: u16, ctx: &RenderCtx) {
         let state = ctx.state;
         let sorted_ids = state.sorted_pinned_ids();
         let mut pinned = state.active_session().pinned_entries();
@@ -143,13 +143,11 @@ impl SidebarSection for PinsSection {
             )
         };
 
-        let total_lines = lines.len() as u16;
-        let max_offset = total_lines.saturating_sub(area.height);
-        let scroll_offset = max_offset;
-
+        // The sidebar document decides which window of these lines is visible,
+        // so the section only has to skip the rows scrolled above the column.
         let widget = Paragraph::new(lines)
             .block(Block::default().borders(Borders::NONE))
-            .scroll((scroll_offset, 0));
+            .scroll((skip_rows, 0));
         frame.render_widget(widget, area);
     }
 
@@ -190,7 +188,10 @@ pub fn pins_section_content_height(state: &AppState) -> u16 {
 /// Handles the persona edit key - opens the persona picker when the persona section is focused.
 ///
 /// No-op if the pins section is focused.
-pub fn handle_sidebar_persona_edit(state: &mut AppState) -> IntentResult {
+pub fn handle_sidebar_persona_edit(
+    state: &mut AppState,
+    config: &jinn_slices::ConfigLayer,
+) -> IntentResult {
     if !matches!(
         state.frontend.sidebar_section(),
         Some(jinn_sidebar_msg::SidebarSectionId::Persona)
@@ -199,6 +200,7 @@ pub fn handle_sidebar_persona_edit(state: &mut AppState) -> IntentResult {
     }
     // The persona picker is slice-owned: push its scope and let the render
     // pass fill the rows. The sidebar names the picker only by its scope id.
+    let _ = config;
     jinn_persona::open_persona_picker_from_scope(state)
 }
 

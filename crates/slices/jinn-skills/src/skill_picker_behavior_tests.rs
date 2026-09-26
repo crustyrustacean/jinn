@@ -60,10 +60,6 @@ fn wired() -> (TypedCell<SkillPickerState>, KeyRoutes) {
 /// Tests that assert *wiring* must use this, not a hand-built stand-in: a
 /// stand-in that re-implements the same calls passes even when `activate` stops
 /// making them, which is exactly the regression these tests exist to catch.
-#[expect(
-    clippy::expect_used,
-    reason = "test helper: a broken host is a test-setup failure, not a behavior under test"
-)]
 async fn activated() -> (
     jinn_slices::Slices,
     KeyRoutes,
@@ -83,8 +79,7 @@ async fn activated() -> (
     );
 
     crate::activate(&mut host);
-    host.finalize(&|_key| None)
-        .expect("skills slice finalizes cleanly");
+    host.finalize(&|_scope, _hook| ());
 
     let system: &'static jinn_domain::Services = Box::leak(Box::new(services));
     (slices, key_routes, system)

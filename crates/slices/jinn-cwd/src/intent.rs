@@ -259,6 +259,7 @@ mod tests {
         ActionCtx {
             state,
             slices,
+            config: jinn_slices::empty_config_layer(),
             key_bytes: Vec::new(),
         }
     }

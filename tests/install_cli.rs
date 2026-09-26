@@ -110,7 +110,10 @@ fn install_force_preserves_edited_jinn_toml() {
     let original = std::fs::read_to_string(&toml_path).expect("read jinn.toml");
     let edited = format!(
         "# user was here\n{}",
-        original.replace("[compaction]", "[compaction]\nthreshold = 0.4",)
+        original.replace(
+            "[context_curation.compaction]",
+            "[context_curation.compaction]\nthreshold = 0.4",
+        )
     );
     std::fs::write(&toml_path, &edited).expect("write edited jinn.toml");
 

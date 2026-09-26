@@ -7,18 +7,21 @@
 mod handlers;
 
 use jinn_boot_msg::EnvironmentLoaded;
+use jinn_chat_log_view_msg::{ArmLayoutDeadline, LayoutChatSession};
 use jinn_domain::Services;
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::common::services::BusService;
 use jinn_domain::common::state::State;
 use jinn_session_store_msg::PersistSession;
 use jinn_session_store_msg::SessionLoadRequested;
-use jinn_session_store_msg::{ArchiveSession, ArchiveSessionTree};
+use jinn_session_store_msg::{ArchiveSession, ArchiveSessionTree, ChatLogMeasureRequested};
 use jinn_session_store_msg::{LoadSessionPickerEntries, SessionForkRequested};
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
+
+use crate::hydrate::{HydrateCompleted, HydrateSession};
 
 /// The session-store actor's static trouper path.
 pub const SESSION_STORE_PATH: &str = "session-store";
@@ -47,10 +50,21 @@ pub struct SessionStoreActorDeps {
 pub struct SessionStoreActor {
     services: Services,
     state: State,
-    /// The session picker's cell. Held as a write handle, not a lookup: the
-    /// history read finishes inside this actor and must not borrow across the
-    /// `.await` that produces it.
+    /// The session picker's cell, so the history read can install rows into
+    /// the menu that shows them instead of the kernel's frontend state.
     session_picker_cell: jinn_slices::cell::TypedCell<jinn_session_store_msg::SessionPickerState>,
+    /// Loads dispatched to the hydration pool that have not reported back.
+    ///
+    /// The startup handler no longer knows when hydration ends — it dispatches
+    /// and returns — so the flag that drives the sidebar's hydration indicator
+    /// is cleared by the last completion instead.
+    pending_hydrations: usize,
+    /// Frozen tree node reads dispatched by the startup sweep, still in flight.
+    ///
+    /// Counted separately from the unarchived pass: the two waves overlap in
+    /// time, and one shared counter would reach zero twice — clearing the
+    /// hydration flag during the frozen wave and re-firing the sweep.
+    pending_frozen_hydrations: usize,
 }
 
 impl BusPublish for SessionStoreActor {
@@ -82,6 +96,7 @@ impl SessionStoreActor {
     )]
     pub fn spawn(system: &ActorSystem, deps: SessionStoreActorDeps) -> ActorPath {
         let path = ActorPath::new(SESSION_STORE_PATH);
+        Self::spawn_hydration_pool(system, &deps.services);
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())
             .start_with({
@@ -93,17 +108,30 @@ impl SessionStoreActor {
                             services: deps.services,
                             state: deps.state,
                             session_picker_cell: deps.session_picker_cell,
+                            pending_hydrations: 0,
+                            pending_frozen_hydrations: 0,
                         })
                     })
                 }
             })
             .handles::<SessionLoadRequested>()
+            .handles::<ChatLogMeasureRequested>()
             .handles::<LoadSessionPickerEntries>()
             .handles::<SessionForkRequested>()
             .handles::<PersistSession>()
             .handles::<ArchiveSession>()
             .handles::<ArchiveSessionTree>()
             .handles::<EnvironmentLoaded>()
+            .handles::<HydrateCompleted>()
+            // A successful load hands the chat log to the layout workers
+            // instead of clearing the load guard, so the chat log's loading
+            // indication stays up until it has been measured. The flush gate
+            // drops any outbound type not declared here.
+            .emits::<LayoutChatSession>()
+            .emits::<ArmLayoutDeadline>()
+            // Hydration jobs leave this actor; without this the flush gate
+            // drops them and the sidebar never fills in.
+            .emits::<HydrateSession>()
             .mailbox(
                 SESSION_STORE_MAILBOX_CAPACITY,
                 trouper::inbox::OverloadPolicy::Block,
@@ -111,11 +139,34 @@ impl SessionStoreActor {
             .start();
         path
     }
+
+    /// Spawns the hydration worker pool the startup path dispatches to.
+    ///
+    /// Spawned from here rather than by the caller so the pool exists wherever
+    /// the store actor does: a `send_to_any` with no worker to receive it would
+    /// drop every hydration job, and the sidebar would never finish filling in.
+    fn spawn_hydration_pool(system: &ActorSystem, services: &Services) {
+        for index in 0..crate::hydrate_worker::HYDRATE_WORKER_POOL_SIZE {
+            crate::hydrate_worker::HydrateWorkerActor::spawn(
+                system,
+                index,
+                crate::hydrate_worker::HydrateWorkerActorDeps {
+                    session_store: services.session_store.clone(),
+                },
+            );
+        }
+    }
 }
 
 impl MsgHandler<SessionLoadRequested> for SessionStoreActor {
-    async fn handle(&mut self, msg: &SessionLoadRequested, _ctx: &mut MsgCtx<'_>) {
-        self.on_load_requested(msg).await;
+    async fn handle(&mut self, msg: &SessionLoadRequested, ctx: &mut MsgCtx<'_>) {
+        self.on_load_requested(ctx, msg).await;
+    }
+}
+
+impl MsgHandler<ChatLogMeasureRequested> for SessionStoreActor {
+    async fn handle(&mut self, msg: &ChatLogMeasureRequested, ctx: &mut MsgCtx<'_>) {
+        self.on_measure_requested(ctx, msg);
     }
 }
 
@@ -126,8 +177,8 @@ impl MsgHandler<LoadSessionPickerEntries> for SessionStoreActor {
 }
 
 impl MsgHandler<SessionForkRequested> for SessionStoreActor {
-    async fn handle(&mut self, msg: &SessionForkRequested, _ctx: &mut MsgCtx<'_>) {
-        self.on_session_fork_requested(msg).await;
+    async fn handle(&mut self, msg: &SessionForkRequested, ctx: &mut MsgCtx<'_>) {
+        self.on_session_fork_requested(ctx, msg).await;
     }
 }
 
@@ -150,7 +201,7 @@ impl MsgHandler<ArchiveSessionTree> for SessionStoreActor {
 }
 
 impl MsgHandler<EnvironmentLoaded> for SessionStoreActor {
-    async fn handle(&mut self, msg: &EnvironmentLoaded, _ctx: &mut MsgCtx<'_>) {
-        self.on_environment_loaded(&msg.config).await;
+    async fn handle(&mut self, msg: &EnvironmentLoaded, ctx: &mut MsgCtx<'_>) {
+        self.on_environment_loaded(&msg.config, ctx).await;
     }
 }

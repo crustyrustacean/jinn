@@ -8,8 +8,14 @@ use crate::protocol::{ChatEntry, IntentResult};
 use super::validator;
 
 /// Creates a new chat session, delegating to the blank lifecycle setup.
-pub fn handle_session_new(state: &mut AppState) -> IntentResult {
-    crate::feat::session_lifecycle::intent::handle_session_lifecycle_setup(state, "", &[], None)
+pub fn handle_session_new(state: &mut AppState, config: &jinn_config::ConfigLayer) -> IntentResult {
+    crate::feat::session_lifecycle::intent::handle_session_lifecycle_setup(
+        state,
+        "",
+        &[],
+        None,
+        config,
+    )
 }
 
 /// Refreshes the model list from the active provider.
@@ -49,7 +55,7 @@ mod tests {
         reason = "test code"
     )]
     use crate::common::app_state::AppState;
-    use crate::protocol::{ChatEntry, ChatEntryKind, PickerKind};
+    use crate::protocol::{ChatEntry, ChatEntryKind};
 
     use jinn_core_types::model_selection::ModelSelection;
 
@@ -65,7 +71,8 @@ mod tests {
             .push_entry(ChatEntry::user("old"));
 
         // When handling SessionNew.
-        let _result = handle_session_new(&mut state);
+        let _result =
+            handle_session_new(&mut state, crate::common::render_ctx::empty_config_layer());
 
         // Then a new session is created.
         assert_ne!(*state.session.active_session_id(), old_id);
@@ -79,13 +86,14 @@ mod tests {
     fn session_new_closes_picker_and_creates_session() {
         // Given a state with an active picker.
         let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(jinn_slices::FocusScope::Picker {
-            kind: PickerKind::Project,
-        });
+        state.frontend.scope_push(jinn_slices::FocusScope::Dynamic(
+            jinn_project_msg::project_picker_scope(),
+        ));
         let old_id = state.session.active_session_id().clone();
 
         // When handling SessionNew.
-        let _result = handle_session_new(&mut state);
+        let _result =
+            handle_session_new(&mut state, crate::common::render_ctx::empty_config_layer());
 
         // Then a new session is created.
         assert_ne!(*state.session.active_session_id(), old_id);
@@ -177,7 +185,8 @@ mod tests {
         assert_ne!(state.active_session().cwd(), state.session.default_cwd());
 
         // When handling SessionNew.
-        let _result = handle_session_new(&mut state);
+        let _result =
+            handle_session_new(&mut state, crate::common::render_ctx::empty_config_layer());
 
         // Then the new session inherited the active session's CWD.
         assert_eq!(state.active_session().cwd(), inherited_cwd);

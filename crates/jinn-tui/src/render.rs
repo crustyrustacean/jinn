@@ -29,7 +29,12 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     apply_pre_render_mutation(app, area);
 
     let state = app.core.state.read();
-    let ctx = RenderCtx::new(&state, &app.services.slices, &app.services.overlay_views);
+    let ctx = RenderCtx::new(
+        &state,
+        &app.services.slices,
+        &app.services.overlay_views,
+        &app.services.config,
+    );
 
     // Layout kind comes from the base scope's registration: a dynamic
     // tab scope renders full-width (no chat chrome); everything else is
@@ -136,8 +141,14 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
             }
             jinn_sidebar::sections::task_list_section::preview::write_preview_geometry(
                 &mut wstate,
+                &app.services.config,
                 area,
                 chat.sidebar,
+            );
+            jinn_sidebar::sections::layout::write_scroll_offset(
+                &mut wstate,
+                &app.services.config,
+                chat.sidebar.height,
             );
         }
     }
@@ -233,7 +244,7 @@ fn render_active_overlay(
         // A `Picker` focus scope is a legacy name that no longer resolves —
         // every picker pushes a dynamic slice scope rendered below.
         // A saved scope predating the picker migration; no picker pushes it.
-        #[allow(
+        #[expect(
             clippy::match_same_arms,
             reason = "the Input arm below has the same body by design; see the comment"
         )]

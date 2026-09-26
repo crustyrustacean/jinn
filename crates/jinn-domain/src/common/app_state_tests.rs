@@ -189,7 +189,10 @@ fn focus_scope_mode_mapping(#[case] scope: FocusScope, #[case] expected: Mode) {
 #[case(FocusScope::Normal, "Normal")]
 #[case(FocusScope::Input, "Input")]
 #[case(jinn_sidebar_msg::SidebarSectionId::Persona.focus_scope(), "Dynamic(sidebar:persona)")]
-#[case(FocusScope::Picker { kind: PickerKind::McpServer }, "Picker(mcp servers)")]
+#[case(
+    FocusScope::Dynamic(jinn_project_msg::project_picker_scope()),
+    "Dynamic(project:picker)"
+)]
 #[case(FocusScope::Picker { kind: PickerKind::CompactionModel }, "Picker(compaction model)")]
 fn focus_scope_display(#[case] scope: FocusScope, #[case] expected: &str) {
     // Given a FocusScope variant.

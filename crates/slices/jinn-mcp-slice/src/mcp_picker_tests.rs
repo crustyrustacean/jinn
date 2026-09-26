@@ -36,6 +36,8 @@ struct Wired {
     slices: Slices,
     routes: KeyRoutes,
     state: std::cell::RefCell<jinn_domain::AppState>,
+    /// Replaced by `with_servers` so a test can configure the MCP catalog.
+    config: std::cell::RefCell<jinn_config::ConfigLayer>,
 }
 
 impl Wired {
@@ -68,6 +70,7 @@ impl Wired {
             slices,
             routes,
             state: std::cell::RefCell::new(state),
+            config: std::cell::RefCell::new(jinn_config::testutil::config_layer("")),
         }
     }
 
@@ -83,18 +86,20 @@ impl Wired {
     /// source of truth the rows mirror, so a test that wants an enabled row
     /// has to say so here.
     fn with_servers(&self, servers: &[(&str, bool)]) -> &Self {
+        // The catalog lives in the configuration layer's `[mcp]` section, so a
+        // test that wants rows there has to seed the layer.
+        let document: String = servers
+            .iter()
+            .map(|(name, _)| {
+                format!("[mcp.{name}]\ncommand = \"npx\"\nargs = [\"@scope/{name}\"]\n")
+            })
+            .collect();
+        self.config
+            .replace(jinn_config::testutil::config_layer(&document));
         {
             let mut state = self.state.borrow_mut();
             let mut enabled = BTreeSet::new();
             for (name, on) in servers {
-                state.frontend.preferences.mcp_server.insert(
-                    (*name).to_owned(),
-                    jinn_mcp_msg::McpServerConfig {
-                        command: Some("npx".to_owned()),
-                        args: vec![format!("@scope/{name}")],
-                        ..jinn_mcp_msg::McpServerConfig::default()
-                    },
-                );
                 if *on {
                     enabled.insert((*name).to_owned());
                 }
@@ -119,6 +124,7 @@ impl Wired {
                 jinn_slices::ActionCtx {
                     state: &mut *state,
                     slices: &self.slices,
+                    config: &self.config.borrow(),
                     key_bytes: Vec::new(),
                 },
             )

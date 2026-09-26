@@ -107,6 +107,7 @@ impl Harness {
         crate::task_list_picker_routes::task_list_opener_action().run(ActionCtx {
             state: &mut *self.state.borrow_mut(),
             slices: &self.slices,
+            config: jinn_slices::empty_config_layer(),
             key_bytes: Vec::new(),
         })
     }
@@ -121,6 +122,7 @@ impl Harness {
                 ActionCtx {
                     state: &mut *state,
                     slices: &self.slices,
+                    config: jinn_slices::empty_config_layer(),
                     key_bytes: Vec::new(),
                 },
             )

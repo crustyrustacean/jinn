@@ -6,6 +6,7 @@ version.workspace = true
 [dependencies]
 async-trait = { workspace = true }
 daow = { workspace = true }
+jinn-config = { workspace = true }
 jinn-chat-input-msg = { workspace = true }
 jinn-context = { workspace = true }
 jinn-core-types = { workspace = true }

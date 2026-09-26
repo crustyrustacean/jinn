@@ -181,10 +181,11 @@ pub fn attach_skill_picker_rows(routes: &KeyRoutes, cell: &SkillPickerCell) {
         "general",
         "start a new session",
         action(cell, |ctx, _cell| {
+            let config = ctx.config;
             let Some(state) = app(ctx) else {
                 return IntentResult::empty();
             };
-            jinn_domain::feat::session::intent::handle_session_new(state)
+            jinn_domain::feat::session::intent::handle_session_new(state, config)
         }),
     ));
     routes.attach(row(

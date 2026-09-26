@@ -126,7 +126,7 @@ mod tests {
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
                 let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+                let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
                 element.render(frame, area, &ctx);
             })
             .unwrap();
@@ -152,7 +152,7 @@ mod tests {
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
                 let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+                let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
                 element.render(frame, area, &ctx);
             })
             .unwrap();
@@ -181,7 +181,7 @@ mod tests {
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
                 let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+                let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
                 element.render(frame, area, &ctx);
             })
             .unwrap();

@@ -14,6 +14,7 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use error_stack::{Report, ResultExt as _};
+use jinn_preferences_config::schemas::CwdSelectorConfig;
 use ratatui::{Terminal, backend::CrosstermBackend};
 use wherror::Error;
 
@@ -223,12 +224,9 @@ fn handle_suspend_action(
         }
         crate::suspend::SuspendAction::ChangeCwd { search_root } => {
             let command_template = app
-                .core
-                .state
-                .read()
-                .frontend
-                .preferences
-                .cwd_selector
+                .services
+                .config
+                .read::<CwdSelectorConfig>()
                 .command
                 .clone();
 

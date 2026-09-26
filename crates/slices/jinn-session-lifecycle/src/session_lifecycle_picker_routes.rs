@@ -33,6 +33,7 @@
 
 use std::sync::Arc;
 
+use jinn_preferences_config::schemas::SessionLifecycle;
 use jinn_session_lifecycle_msg::picker_state::SessionLifecyclePickerState;
 use jinn_session_lifecycle_msg::{
     ArgInputState, arg_input_scope, arg_input_slot, session_lifecycle_picker_scope,
@@ -256,7 +257,10 @@ fn open_session_lifecycle_picker(
             .with_scope_signal(ScopeSignal::Push(session_lifecycle_picker_scope()));
     };
     let theme = state.frontend.theme.clone();
-    let lifecycles = state.frontend.preferences.session_lifecycles.clone();
+    let lifecycles = ctx
+        .config
+        .get_list::<SessionLifecycle>()
+        .unwrap_or_default();
     cell.update(|picker| session_lifecycle_picker_actions::open(picker, &lifecycles, &theme));
     IntentResult::empty().with_scope_signal(ScopeSignal::Push(session_lifecycle_picker_scope()))
 }
@@ -283,14 +287,15 @@ fn confirm_session_lifecycle_picker(
         // Scope the state borrow so it ends before the cell registry is read:
         // `ctx` lends app state mutably and the slice registry immutably, and
         // holding both at once is an overlapping borrow.
+        let config = ctx.config;
+        let lifecycles = config.get_list::<SessionLifecycle>().unwrap_or_default();
+        let Some(state) = app(ctx) else {
+            return IntentResult::empty();
+        };
         let template = {
-            let Some(state) = app(ctx) else {
-                return IntentResult::empty();
-            };
-            let Some(template) = session_lifecycle_picker_actions::setup_template(
-                &state.frontend.preferences.session_lifecycles,
-                &name,
-            ) else {
+            let Some(template) =
+                session_lifecycle_picker_actions::setup_template(&lifecycles, &name)
+            else {
                 return IntentResult::empty();
             };
             // A result carries at most one scope signal, but the popup must
@@ -311,6 +316,7 @@ fn confirm_session_lifecycle_picker(
         return IntentResult::empty();
     }
 
+    let config = ctx.config;
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
@@ -323,6 +329,7 @@ fn confirm_session_lifecycle_picker(
         &name,
         &[],
         None,
+        config,
     )
 }
 
@@ -336,10 +343,11 @@ fn cancel_session_lifecycle_picker(
 
 /// Starts a new session, as the key does from any picker.
 fn new_session(ctx: &mut ActionCtx<'_>, _cell: &LifecyclePickerCell) -> IntentResult {
+    let config = ctx.config;
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    jinn_domain::feat::session::intent::handle_session_new(state)
+    jinn_domain::feat::session::intent::handle_session_new(state, config)
 }
 
 /// Ctrl-C: clear the filter, or close when it is already empty.

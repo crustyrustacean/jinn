@@ -8,6 +8,7 @@ use jinn_session_msg::PhaseKind;
 use jinn_skills_msg::{Skill, SkillsLoaded};
 
 use jinn_domain::protocol::ChatEntry;
+use jinn_preferences_config::schemas::AutoPruneConfig;
 
 impl SessionPersistenceActor {
     /// Pushes a transient entry listing discovered skills.
@@ -65,14 +66,12 @@ impl SessionPersistenceActor {
         // single read-guard pass, before taking the write lock. The cost map is
         // then consumed by the accumulator inside the write lock without any
         // self-borrow (which would deadlock against the held write guard).
-        let threshold = {
-            let state = self.state.read();
-            state
-                .frontend
-                .preferences
-                .auto_prune
-                .accumulation_threshold_tokens
-        };
+        let threshold = self
+            .services
+            .config
+            .get::<AutoPruneConfig>()
+            .unwrap_or_default()
+            .accumulation_threshold_tokens;
         let token_costs: std::collections::HashMap<jinn_core_types::ChatEntryId, u32> = {
             use jinn_llm_support::token_estimator::TokenCounter;
             let state = self.state.read();

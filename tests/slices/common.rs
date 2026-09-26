@@ -118,10 +118,6 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_domain::Services)
 ///
 /// The slice crate is kernel-free, so composition assembles the
 /// `SliceHost` borrows and hands them over.
-#[expect(
-    clippy::panic,
-    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
-)]
 fn activate_quake_bar(services: &mut jinn_domain::Services) {
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
@@ -131,16 +127,9 @@ fn activate_quake_bar(services: &mut jinn_domain::Services) {
         &services.trouper_system,
     );
     jinn_quake_bar::activate(&mut host);
-    let staged = host.finalize(&|_key| None);
-    if let Err(error) = staged {
-        panic!("quake-bar slice finalize failed: {error}");
-    }
+    host.finalize(&|_scope, _hook| {});
 }
 
-#[expect(
-    clippy::panic,
-    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
-)]
 fn activate_scope_focus(services: &mut jinn_domain::Services) {
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
@@ -150,10 +139,7 @@ fn activate_scope_focus(services: &mut jinn_domain::Services) {
         &services.trouper_system,
     );
     jinn_scope_focus::activate(&mut host);
-    let staged = host.finalize(&|_key| None);
-    if let Err(error) = staged {
-        panic!("scope-focus slice finalize failed: {error}");
-    }
+    host.finalize(&|_scope, _hook| {});
 }
 
 fn activate_chat_input(services: &mut jinn_domain::Services) {
@@ -165,10 +151,7 @@ fn activate_chat_input(services: &mut jinn_domain::Services) {
         &services.trouper_system,
     );
     jinn_chat_input::activate(&mut host);
-    let staged = host.finalize(&|_key| None);
-    if let Err(error) = staged {
-        panic!("chat-input slice finalize failed: {error}");
-    }
+    host.finalize(&|_scope, _hook| {});
 }
 
 fn activate_status_bar(services: &mut jinn_domain::Services) {
@@ -180,10 +163,7 @@ fn activate_status_bar(services: &mut jinn_domain::Services) {
         &services.trouper_system,
     );
     jinn_status_bar::activate(&mut host);
-    let staged = host.finalize(&|_key| None);
-    if let Err(error) = staged {
-        panic!("status-bar slice finalize failed: {error}");
-    }
+    host.finalize(&|_scope, _hook| {});
 }
 
 /// Activates the session-init slice over the kernel's registries and
@@ -194,10 +174,6 @@ fn activate_status_bar(services: &mut jinn_domain::Services) {
 /// drain. The drain must complete before the first trigger publishes —
 /// `launch_for_test` composes before any session exists, so ordering
 /// holds by construction here.
-#[expect(
-    clippy::panic,
-    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
-)]
 /// Activates the provider-selection slice: mints the provider cell and
 /// spawns the provider + discover actors over the same `State` and
 /// trouper system the harness wires.
@@ -218,9 +194,7 @@ fn activate_provider_selection(services: &mut jinn_domain::Services, state: &jin
     jinn_provider_selection::activate_picker(&mut host);
     jinn_provider_selection::activate_provider_picker(&mut host, &handles.provider_picker_cell);
     jinn_provider_selection::activate_endpoint_picker(&mut host, &handles.endpoint_picker_cell);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("provider-selection slice finalize failed: {error}");
-    }
+    host.finalize(&|_scope, _hook| {});
 }
 
 async fn activate_session_init(services: &mut jinn_domain::Services, core: &jinn_domain::AppCore) {
@@ -365,9 +339,7 @@ pub async fn activate_sidebar(services: &mut jinn_domain::Services, state: jinn_
         &services.trouper_system,
     );
     jinn_sidebar::activate(&mut host, state);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("sidebar slice finalize failed: {error}");
-    }
+    host.finalize(&|_scope, _hook| {});
 }
 
 /// Activates the token-count slice on the harness services. Async because
@@ -381,9 +353,7 @@ pub async fn activate_token_count(services: &mut jinn_domain::Services, state: j
         &services.trouper_system,
     );
     let _cache = jinn_token_count::activate(&mut host, state);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("token-count slice finalize failed: {error}");
-    }
+    host.finalize(&|_scope, _hook| {});
 }
 
 /// Activates the turn-dispatch slice on the harness services (the queue
@@ -406,9 +376,7 @@ pub async fn activate_turn_dispatch(
         &services.trouper_system,
     );
     jinn_turn_dispatch::activate(&mut host, state, services_snapshot);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("turn-dispatch slice finalize failed: {error}");
-    }
+    host.finalize(&|_scope, _hook| {});
 }
 
 /// Activates the inference slice: spawns the inference actor (trouper
@@ -425,9 +393,7 @@ pub async fn activate_inference(services: &mut jinn_domain::Services) {
         &services.trouper_system,
     );
     jinn_inference::activate(&mut host, services_snapshot);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("inference slice finalize failed: {error}");
-    }
+    host.finalize(&|_scope, _hook| {});
 }
 
 /// Activates the watchdog slice: spawns the stall + tool-call watchdog
@@ -449,9 +415,7 @@ pub async fn activate_watchdog(services: &mut jinn_domain::Services, state: &jin
         &services.trouper_system,
     );
     jinn_watchdog::activate(&mut host, state, services_snapshot);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("watchdog slice finalize failed: {error}");
-    }
+    host.finalize(&|_scope, _hook| {});
     eprintln!("DIAG16 watchdog activation ran");
 }
 
@@ -469,9 +433,7 @@ pub async fn activate_citations(services: &mut jinn_domain::Services) {
         &services.trouper_system,
     );
     jinn_citations::activate(&mut host, services_snapshot);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("citations slice finalize failed: {error}");
-    }
+    host.finalize(&|_scope, _hook| {});
 }
 
 pub fn activate_persona(services: &mut jinn_domain::Services) {
@@ -492,9 +454,7 @@ pub fn activate_persona(services: &mut jinn_domain::Services) {
         &services.trouper_system,
     );
     let _scanned = jinn_persona::activate(&mut host, &services.paths.personas_dir());
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("persona slice finalize failed: {error}");
-    }
+    host.finalize(&|_scope, _hook| {});
 }
 
 pub fn activate_theme(services: &mut jinn_domain::Services) {
@@ -511,9 +471,7 @@ pub fn activate_theme(services: &mut jinn_domain::Services) {
         &services.paths.system_themes_dir(),
     );
     jinn_theme_slice::activate_picker(&mut host);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("theme slice finalize failed: {error}");
-    }
+    host.finalize(&|_scope, _hook| ());
 }
 
 /// Activates the cwd slice on the harness services.
@@ -526,9 +484,7 @@ pub fn activate_cwd(services: &mut jinn_domain::Services) {
         &services.trouper_system,
     );
     jinn_cwd::activate(&mut host);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("cwd slice finalize failed: {error}");
-    }
+    host.finalize(&|_scope, _hook| {});
 }
 
 /// Activates the project slice on the harness services.
@@ -541,9 +497,7 @@ pub fn activate_project(services: &mut jinn_domain::Services) {
         &services.trouper_system,
     );
     jinn_project::activate(&mut host);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("project slice finalize failed: {error}");
-    }
+    host.finalize(&|_scope, _hook| {});
 }
 
 /// Activates the preferences slice on the harness services.
@@ -564,11 +518,8 @@ pub fn activate_preferences(services: &mut jinn_domain::Services) {
         jinn_domain::common::state::State::new(
             jinn_domain::common::app_state::AppState::default_with_scope_focus(),
         ),
-        None,
     );
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("preferences slice finalize failed: {error}");
-    }
+    host.finalize(&|_scope, _hook| {});
 }
 
 /// Activates the remaining slice-owned pickers over the harness services.
@@ -638,9 +589,7 @@ pub fn activate_every_picker(services: &mut jinn_domain::Services) {
         jinn_session_lifecycle::activate_picker(&mut host);
     }
 
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("picker activation finalize failed: {error}");
-    }
+    host.finalize(&|_scope, _hook| ());
 }
 
 /// Whether `slot` holds no cell of type `T` yet.
@@ -816,6 +765,7 @@ mod term_keybinds_spot_check {
                 jinn_slices::route::ActionCtx {
                     state: &mut state,
                     slices: &jinn_slices::Slices::new(),
+                    config: jinn_slices::empty_config_layer(),
                     key_bytes: Vec::new(),
                 },
             )

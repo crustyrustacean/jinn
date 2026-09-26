@@ -23,25 +23,28 @@ pub mod tool_call_watchdog_actor;
 
 use jinn_domain::Services;
 use jinn_domain::common::state::State;
+use jinn_preferences_config::schemas::StallWatchdogConfig;
+use jinn_preferences_config::schemas::ToolCallWatchdogConfig;
 use jinn_slices::RenderFacts;
 use jinn_slices::SliceHost;
 
 /// Activates the slice: spawns both watchdog actors on trouper (their
 /// `.subscribe` declarations are the readiness point).
 ///
-/// The `[stall_watchdog]` / `[tool_call_watchdog]` config values are read
-/// once from the `State` snapshot at activation (the term-slice
-/// precedent) and injected into the actors. Nonsensical values (zero
-/// window / zero budget / zero maximum) are floored by the config
-/// accessors — the plugin-era parse-clamp semantics.
-pub fn activate(host: &mut SliceHost<'_, RenderFacts>, state: &State, services: Services) {
-    let (stall_cfg, tool_cfg) = {
-        let snapshot = state.read();
-        (
-            snapshot.frontend.preferences.stall_watchdog.clone(),
-            snapshot.frontend.preferences.tool_call_watchdog.clone(),
-        )
-    };
+/// The `[watchdog.stall]` / `[watchdog.tool_call]` config values are read
+/// from the configuration layer at activation (the term-slice precedent)
+/// and injected into the actors. Nonsensical values (zero window / zero
+/// budget / zero maximum) are floored by the config accessors — the
+/// plugin-era parse-clamp semantics.
+pub fn activate(host: &mut SliceHost<'_, RenderFacts>, _state: &State, services: Services) {
+    let stall_cfg = services
+        .config
+        .get::<StallWatchdogConfig>()
+        .unwrap_or_default();
+    let tool_cfg = services
+        .config
+        .get::<ToolCallWatchdogConfig>()
+        .unwrap_or_default();
 
     // The stall watchdog needs the system for its self-addressed tick;
     // the config floors make a zero window or budget behave like the

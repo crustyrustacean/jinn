@@ -145,7 +145,7 @@ impl SidebarSection for TaskListSection {
         jinn_sidebar_msg::SidebarSectionId::TaskList
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, skip_rows: u16, ctx: &RenderCtx) {
         let state = ctx.state;
         let list = state.active_session().task_list();
         if list.is_empty() {
@@ -153,17 +153,12 @@ impl SidebarSection for TaskListSection {
         }
 
         let lines = build_render_lines(list, state);
-        let widget = Paragraph::new(lines);
+        let widget = Paragraph::new(lines).scroll((skip_rows, 0));
         frame.render_widget(widget, area);
     }
 
     fn content_height(&mut self, ctx: &RenderCtx) -> u16 {
-        let state = ctx.state;
-        let list = state.active_session().task_list();
-        if list.is_empty() {
-            return 0;
-        }
-        compute_height(list, state)
+        task_list_content_height(ctx.state)
     }
 }
 
@@ -367,6 +362,34 @@ fn compute_height(list: &TaskList, state: &AppState) -> u16 {
     height as u16
 }
 
+#[must_use]
+pub(crate) fn task_list_content_height(state: &AppState) -> u16 {
+    let list = state.active_session().task_list();
+    if list.is_empty() {
+        return 0;
+    }
+    compute_height(list, state)
+}
+
+/// The number of inline rows each phase header occupies, in phase order.
+///
+/// Phase headers wrap against the sidebar width, so a phase can take more than
+/// one row. Callers placing a cursor row use this prefix sum to find where a
+/// phase starts. Shares [`TaskListView`] with the render path so the two cannot
+/// disagree about how many rows a phase takes.
+#[must_use]
+pub(crate) fn phase_row_heights(state: &AppState) -> Vec<u16> {
+    let view = TaskListView::from_state(state);
+    state
+        .active_session()
+        .task_list()
+        .phases()
+        .iter()
+        .enumerate()
+        .map(|(index, phase)| u16::try_from(view.phase_height(phase, index)).unwrap_or(u16::MAX))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -428,7 +451,11 @@ mod tests {
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         assert_eq!(
-            section.content_height(&RenderCtx::new(&app, &slices, &overlay_views)),
+            section.content_height(&RenderCtx::new_with_default_config(
+                &app,
+                &slices,
+                &overlay_views
+            )),
             0
         );
     }
@@ -440,7 +467,11 @@ mod tests {
         let mut section = TaskListSection;
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
-        let height = section.content_height(&RenderCtx::new(&app, &slices, &overlay_views));
+        let height = section.content_height(&RenderCtx::new_with_default_config(
+            &app,
+            &slices,
+            &overlay_views,
+        ));
         assert!(height > 0, "expected non-zero height, got {height}");
     }
 
@@ -478,7 +509,11 @@ mod tests {
         // When computing the height and the render line count.
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
-        let height = section.content_height(&RenderCtx::new(&app, &slices, &overlay_views));
+        let height = section.content_height(&RenderCtx::new_with_default_config(
+            &app,
+            &slices,
+            &overlay_views,
+        ));
         let line_count = build_render_lines(&list, &app).len() as u16;
 
         // Then they agree (render/height lockstep).

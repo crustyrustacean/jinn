@@ -72,6 +72,10 @@ impl Default for StallWatchdogConfig {
     }
 }
 
+impl jinn_config::Configurable for StallWatchdogConfig {
+    const KEY: &'static str = "watchdog.stall";
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, reason = "test code")]

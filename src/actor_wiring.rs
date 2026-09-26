@@ -20,7 +20,6 @@ use jinn_domain::LlmServiceFactoryService;
 use jinn_domain::ProviderRegistryService;
 use jinn_domain::Services;
 use jinn_domain::SessionStoreService;
-use jinn_preferences_config::UserPreferencesStorageService;
 use jinn_provider_selection;
 use jinn_quake_bar;
 use jinn_slices;
@@ -46,7 +45,8 @@ pub struct ActorSystemBuilderArgs {
     /// Session store service. Caller-built (e.g. `SqliteSessionStore`).
     pub session_store: SessionStoreService,
     /// User preferences storage service.
-    pub user_preferences_storage: UserPreferencesStorageService,
+    /// The configuration layer: the live `jinn.toml` every consumer reads.
+    pub config: jinn_config::ConfigLayer,
     /// App state storage service.
     pub app_state_storage: jinn_preferences_config::AppStateStorageService,
     /// Application paths.
@@ -81,7 +81,7 @@ impl ActorSystemBuilder {
             api_keys,
             config_storage,
             session_store,
-            user_preferences_storage,
+            config,
             app_state_storage,
             paths,
             dump_requests,
@@ -90,12 +90,6 @@ impl ActorSystemBuilder {
 
         // Create shared State FIRST — injected into multiple actors.
         let state = State::new(AppState::default());
-
-        // Set preferences
-        {
-            let mut guard = state.write();
-            guard.frontend.preferences = user_preferences_storage.read();
-        }
 
         // Set app state (last_model, theme_name, persona_name, sidebar_width)
         {
@@ -136,7 +130,7 @@ impl ActorSystemBuilder {
             api_keys: api_keys.clone(),
             config_storage: config_storage.clone(),
             session_store: session_store.clone(),
-            user_preferences_storage: user_preferences_storage.clone(),
+            config,
             app_state_storage: app_state_storage.clone(),
             tempdir: None,
             bus,
@@ -397,22 +391,7 @@ impl ActorSystemBuilder {
                     bus: services.bus.clone(),
                     controls: term_controls.clone(),
                     state: state.clone(),
-                    settle_quiet: std::time::Duration::from_millis(
-                        state
-                            .read()
-                            .frontend
-                            .preferences
-                            .interactive_term
-                            .settle_quiet_ms,
-                    ),
-                    settle_cap: std::time::Duration::from_millis(
-                        state
-                            .read()
-                            .frontend
-                            .preferences
-                            .interactive_term
-                            .settle_max_wait_ms,
-                    ),
+                    config: services.config.clone(),
                 },
             )
             .await;
@@ -477,7 +456,6 @@ impl ActorSystemBuilder {
         jinn_context_curation_activate(
             &mut services,
             state.clone(),
-            &user_preferences_storage,
             handle.clone(),
             compaction_prompt,
         );
@@ -565,17 +543,6 @@ impl ActorSystemBuilder {
     }
 }
 
-/// Activates the quake-bar slice over the kernel's registries.
-///
-/// The slice crate is kernel-free, so composition assembles the
-/// `SliceHost` borrows and hands them over.
-#[expect(
-    clippy::panic,
-    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
-)]
-/// Activates the status-bar slice: its state cell only (the element
-/// itself is display chrome registered into the UI registry by the
-/// TUI composition). No routes, no actors.
 /// Activates the scope-focus slice: its state cell only. No routes,
 /// no actors, no view.
 fn jinn_scope_focus_activate(services: &mut Services) {
@@ -587,9 +554,6 @@ fn jinn_scope_focus_activate(services: &mut Services) {
         &services.trouper_system,
     );
     jinn_scope_focus::activate(&mut host);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("scope-focus slice finalize failed: {error}");
-    }
 }
 
 /// Activates the chat-log-view slice: its state cell only. No routes,
@@ -604,10 +568,11 @@ fn jinn_chat_log_view_activate(services: &mut Services, state: &jinn_domain::Sta
         &services.trouper_system,
     );
     jinn_chat_log_view::activate(&mut host);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("chat-log-view slice finalize failed: {error}");
-    }
     state.read().session.attach_slices(services.slices.clone());
+    // The layout worker pool and the actor that ends a session load once the
+    // chat log has been measured. Spawned here so their subscriptions are
+    // live before the first session can be loaded.
+    jinn_domain::feat::ui::chat_log::install_layout_actors(&services.trouper_system, state.clone());
 }
 
 /// Activates the chat-input slice: its state cell only. No routes, no
@@ -622,15 +587,8 @@ fn jinn_sidebar_activate(services: &mut Services, state: jinn_domain::common::st
         &services.trouper_system,
     );
     jinn_sidebar::activate(&mut host, state);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("sidebar slice finalize failed: {error}");
-    }
 }
 
-#[expect(
-    clippy::panic,
-    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
-)]
 fn jinn_session_lifecycle_activate(
     services: &mut Services,
     state: jinn_domain::common::state::State,
@@ -661,9 +619,6 @@ fn jinn_session_lifecycle_activate(
         &mut host,
         &session_store_handles.session_picker_cell,
     );
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("session-lifecycle slice finalize failed: {error}");
-    }
 }
 
 fn jinn_cwd_activate(services: &mut Services) {
@@ -675,9 +630,6 @@ fn jinn_cwd_activate(services: &mut Services) {
         &services.trouper_system,
     );
     jinn_cwd::activate(&mut host);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("cwd slice finalize failed: {error}");
-    }
 }
 
 /// Activates the skills slice: mints the skill picker's cell and overlay.
@@ -694,9 +646,6 @@ fn jinn_skills_activate(services: &mut Services) {
         &services.trouper_system,
     );
     jinn_skills::activate(&mut host);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("skills slice finalize failed: {error}");
-    }
 }
 
 /// Activates the project slice's project-add popup over the kernel registries.
@@ -709,9 +658,6 @@ fn jinn_project_activate(services: &mut Services) {
         &services.trouper_system,
     );
     services.project_picker = Some(jinn_project::activate(&mut host).project_picker);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("project slice finalize failed: {error}");
-    }
 }
 
 async fn jinn_preferences_activate(
@@ -721,10 +667,9 @@ async fn jinn_preferences_activate(
     // The two persistence actors spawn here with shared state and services,
     // then subscribe synchronously — this must complete before the env-init
     // tail publishes `EnvironmentLoaded`, which triggers publishes of
-    // `UpdateAppState`/`UpdatePreferences` on first boot.
+    // `UpdateAppState` on first boot.
     let system = services.trouper_system.clone();
     let services_handle = services.clone();
-    let project_picker = services.project_picker.clone();
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
         &mut services.viewport,
@@ -732,10 +677,7 @@ async fn jinn_preferences_activate(
         &services.key_routes,
         &services.trouper_system,
     );
-    jinn_preferences::activate(&mut host, &system, services_handle, state, project_picker);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("preferences slice finalize failed: {error}");
-    }
+    jinn_preferences::activate(&mut host, &system, services_handle, state);
 }
 
 fn jinn_chat_input_activate(services: &mut Services) {
@@ -747,9 +689,6 @@ fn jinn_chat_input_activate(services: &mut Services) {
         &services.trouper_system,
     );
     jinn_chat_input::activate(&mut host);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("chat-input slice finalize failed: {error}");
-    }
 }
 
 /// Activates the theme slice: scans the theme directories once and mints
@@ -766,11 +705,7 @@ fn jinn_token_count_activate(
         &services.key_routes,
         &services.trouper_system,
     );
-    let cache = jinn_token_count::activate(&mut host, state);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("token-count slice finalize failed: {error}");
-    }
-    cache
+    jinn_token_count::activate(&mut host, state)
 }
 
 /// Activates the context-curation slice: builds the config-gated prune
@@ -781,14 +716,9 @@ fn jinn_token_count_activate(
 /// strategy never reaches the prune actor. The regex strategy additionally skips when its rule list is
 /// empty or any rule fails to compile (warn-and-skip, never a launch
 /// failure).
-#[expect(
-    clippy::panic,
-    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
-)]
 fn jinn_context_curation_activate(
     services: &mut Services,
     state: jinn_domain::common::state::State,
-    user_preferences_storage: &UserPreferencesStorageService,
     handle: tokio::runtime::Handle,
     compaction_prompt: String,
 ) {
@@ -801,96 +731,60 @@ fn jinn_context_curation_activate(
     use jinn_context_curation::worker::HistoryWorker;
     use jinn_token_count_msg::HistoryWorkerChatEntryTokenCache;
 
-    let prefs = user_preferences_storage.read();
-    let auto_prune = prefs.auto_prune.clone();
+    let config = services.config.clone();
     let entry_token_cache = HistoryWorkerChatEntryTokenCache::default();
     let counter = jinn_llm_support::token_estimator::TiktokenCounter::o200k_base();
 
-    let mut workers: Vec<Box<dyn HistoryWorker>> = Vec::new();
-
-    // Auto-prune worker: read→edit context pruning.
-    let config = auto_prune.read_edit.clone();
-    if config.enabled {
-        workers.push(Box::new(ReadEditAutoPruneWorker { config }));
-    }
-
-    // Auto-prune worker: edit→read context pruning.
-    let config = auto_prune.edit_read.clone();
-    if config.enabled {
-        workers.push(Box::new(EditReadAutoPruneWorker { config }));
-    }
-
-    // Auto-prune worker: regex-based tool call pruning.
-    let regex_config = auto_prune.regex.clone();
-    if regex_config.enabled && !regex_config.rules.is_empty() {
-        match RegexAutoPruneWorker::from_config(&regex_config) {
-            Ok(worker) => workers.push(Box::new(worker)),
-            Err(e) => {
-                tracing::warn!(err=?e, "invalid regex in auto_prune config, skipping");
-            }
-        }
-    } else {
-        tracing::debug!(
-            enabled = regex_config.enabled,
-            rules = regex_config.rules.len(),
-            "regex auto-prune skipped",
-        );
-    }
-
-    // Auto-prune worker: todo tool call pruning.
-    let config = auto_prune.todo.clone();
-    if config.enabled {
-        workers.push(Box::new(TodoAutoPruneWorker { config }));
-    }
-
-    // Auto-prune worker: broken-edit context pruning.
-    let config = auto_prune.broken_edit.clone();
-    if config.enabled {
-        workers.push(Box::new(BrokenEditAutoPruneWorker { config }));
-    }
-
-    // Auto-prune worker: double-edit context pruning.
-    let config = auto_prune.double_edit.clone();
-    if config.enabled {
-        workers.push(Box::new(DoubleEditAutoPruneWorker { config }));
-    }
-
-    // Auto-prune worker: consecutive-reads per-file pruning.
-    let config = auto_prune.consecutive_reads.clone();
-    if config.enabled {
-        workers.push(Box::new(ConsecutiveReadsAutoPruneWorker { config }));
-    }
-
-    // Auto-prune worker: tool-age-window context pruning.
-    let config = auto_prune.tool_age_window.clone();
-    if config.enabled {
-        workers.push(Box::new(ToolAgeWindowAutoPruneWorker { config }));
-    }
-
-    // Auto-prune worker: trivial-assistant context pruning.
-    let trivial_config = auto_prune.trivial_assistant.clone();
-    if trivial_config.enabled {
-        workers.push(Box::new(TrivialAssistantAutoPruneWorker {
-            config: trivial_config,
+    // Every strategy is constructed unconditionally and reads its own
+    // subsection inside `evaluate`. Gating here instead would make a
+    // disabled strategy an ABSENT worker, and then a `reload` could only
+    // ever turn a strategy ON -- there would be no worker left to turn
+    // off. Reading live makes enablement symmetric in both directions.
+    let workers: Vec<Box<dyn HistoryWorker>> = vec![
+        Box::new(ReadEditAutoPruneWorker {
+            layer: config.clone(),
+            config: Default::default(),
+        }),
+        Box::new(EditReadAutoPruneWorker {
+            layer: config.clone(),
+            config: Default::default(),
+        }),
+        Box::new(BrokenEditAutoPruneWorker {
+            layer: config.clone(),
+            config: Default::default(),
+        }),
+        Box::new(DoubleEditAutoPruneWorker {
+            layer: config.clone(),
+            config: Default::default(),
+        }),
+        Box::new(ConsecutiveReadsAutoPruneWorker {
+            layer: config.clone(),
+            config: Default::default(),
+        }),
+        Box::new(ToolAgeWindowAutoPruneWorker {
+            layer: config.clone(),
+            config: Default::default(),
+        }),
+        Box::new(TodoAutoPruneWorker {
+            layer: config.clone(),
+            config: Default::default(),
+        }),
+        Box::new(TrivialAssistantAutoPruneWorker {
+            layer: config.clone(),
+            config: Default::default(),
             token_cache: entry_token_cache.clone(),
             counter,
-        }));
-    }
-
-    // Auto-prune worker: anchored-assistant context pruning (its
-    // candidate floor derives from the trivial-assistant max-tokens).
-    let anchored_config = auto_prune.anchored_assistant.clone();
-    let trivial_max_tokens = auto_prune.trivial_assistant.max_tokens as u32;
-    if anchored_config.enabled {
-        workers.push(Box::new(AnchoredAssistantAutoPruneWorker {
-            radius: anchored_config.radius,
-            config: anchored_config,
-            min_candidate_tokens: trivial_max_tokens + 1,
-            token_cache: entry_token_cache.clone(),
+        }),
+        Box::new(AnchoredAssistantAutoPruneWorker {
+            // The anchor radius and the trivial-assistant floor are both
+            // read live; this seed only describes the shape.
+            layer: config.clone(),
+            config: Default::default(),
+            token_cache: entry_token_cache,
             counter,
-        }));
-    }
-    drop(prefs);
+        }),
+        Box::new(RegexAutoPruneWorker::new(config.clone())),
+    ];
 
     let compaction_deps = jinn_context_curation::compaction_actor::CompactionActorDeps {
         services: services.clone(),
@@ -907,9 +801,6 @@ fn jinn_context_curation_activate(
         &services.trouper_system,
     );
     jinn_context_curation::activate(&mut host, workers, compaction_deps);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("context-curation slice finalize failed: {error}");
-    }
 }
 
 fn jinn_persona_activate(services: &mut Services) -> jinn_persona_msg::Personas {
@@ -920,23 +811,16 @@ fn jinn_persona_activate(services: &mut Services) -> jinn_persona_msg::Personas 
         &services.key_routes,
         &services.trouper_system,
     );
-    let scanned = jinn_persona::activate(&mut host, &services.paths.personas_dir());
+    let personas = jinn_persona::activate(&mut host, &services.paths.personas_dir());
     // The persona picker is registered by the same slice, after discovery: its
-    // rows are seeded from the personas cell that activate just minted.
+    // rows are seeded from the personas cell activate just minted.
     jinn_persona::activate_picker(&mut host);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("persona slice finalize failed: {error}");
-    }
-    scanned
+    personas
 }
 
 /// Activates the turn-dispatch slice: spawns the queue actor (trouper
 /// ServiceActor) and stages its crossing routes. The queue actor holds a
 /// `Services` clone for its bus publishes and the assembly ask.
-#[expect(
-    clippy::panic,
-    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
-)]
 fn jinn_turn_dispatch_activate(services: &mut Services, state: jinn_domain::common::state::State) {
     // `Services` is cheap to clone (Arc fields); the clone side-steps
     // the host's mutable viewport borrow for the activation call.
@@ -949,18 +833,11 @@ fn jinn_turn_dispatch_activate(services: &mut Services, state: jinn_domain::comm
         &services.trouper_system,
     );
     jinn_turn_dispatch::activate(&mut host, state, services_snapshot);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("turn-dispatch slice finalize failed: {error}");
-    }
 }
 
 /// Activates the inference slice: spawns the inference actor (trouper
 /// ServiceActor) and stages its crossing routes. The actor holds a
 /// `Services` clone for its bus publishes and factory resolution.
-#[expect(
-    clippy::panic,
-    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
-)]
 fn jinn_inference_activate(services: &mut Services) {
     // `Services` is cheap to clone (Arc fields); the clone side-steps
     // the host's mutable viewport borrow for the activation call.
@@ -973,9 +850,6 @@ fn jinn_inference_activate(services: &mut Services) {
         &services.trouper_system,
     );
     jinn_inference::activate(&mut host, services_snapshot);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("inference slice finalize failed: {error}");
-    }
 }
 
 /// Activates the watchdog slice: spawns the stall + tool-call watchdog
@@ -994,9 +868,6 @@ fn jinn_watchdog_activate(services: &mut Services, state: jinn_domain::State) {
         &services.trouper_system,
     );
     jinn_watchdog::activate(&mut host, &state, services_snapshot);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("watchdog slice finalize failed: {error}");
-    }
 }
 
 /// Activates the citations slice: spawns the citations actor (trouper
@@ -1014,9 +885,6 @@ fn jinn_citations_activate(services: &mut Services) {
         &services.trouper_system,
     );
     jinn_citations::activate(&mut host, services_snapshot);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("citations slice finalize failed: {error}");
-    }
 }
 
 fn jinn_theme_activate(services: &mut Services) {
@@ -1037,138 +905,8 @@ fn jinn_theme_activate(services: &mut Services) {
     // The theme picker is registered by the same slice, after discovery: its
     // rows are seeded from the theme-entries cell activate just minted.
     jinn_theme_slice::activate_picker(&mut host);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("theme slice finalize failed: {error}");
-    }
 }
 
-/// Registers the tools slice's tool picker: its cell, overlay, keys, and
-/// filter hook.
-///
-/// Split from `jinn_tools::activate` because the registry cell registers
-/// straight onto `Services` (it is idempotent and owns no overlay) while the
-/// picker needs a [`SliceHost`]. Ordered after `activate` so the registry cell
-/// it reads its rows from already exists.
-fn jinn_tools_picker_activate(services: &mut Services) {
-    let mut host = jinn_slices::SliceHost::new(
-        &services.slices,
-        &mut services.viewport,
-        &services.overlay_views,
-        &services.key_routes,
-        &services.trouper_system,
-    );
-    jinn_tools::activate_picker(&mut host);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("tools picker finalize failed: {error}");
-    }
-}
-
-/// Registers the MCP server inspector.
-///
-/// Its own activation step because the inspector is a menu while the rest of
-/// this slice is actors: the coordinator spawns long before any host with a
-/// viewport exists to register an overlay against.
-fn jinn_mcp_picker_activate(services: &mut Services) {
-    let mut host = jinn_slices::SliceHost::new(
-        &services.slices,
-        &mut services.viewport,
-        &services.overlay_views,
-        &services.key_routes,
-        &services.trouper_system,
-    );
-    jinn_mcp_slice::activate_picker(&mut host);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("MCP picker finalize failed: {error}");
-    }
-}
-
-fn jinn_status_bar_activate(services: &mut Services) {
-    let mut host = jinn_slices::SliceHost::new(
-        &services.slices,
-        &mut services.viewport,
-        &services.overlay_views,
-        &services.key_routes,
-        &services.trouper_system,
-    );
-    jinn_status_bar::activate(&mut host);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("status-bar slice finalize failed: {error}");
-    }
-}
-
-fn jinn_quake_bar_activate(services: &mut Services) {
-    let mut host = jinn_slices::SliceHost::new(
-        &services.slices,
-        &mut services.viewport,
-        &services.overlay_views,
-        &services.key_routes,
-        &services.trouper_system,
-    );
-    jinn_quake_bar::activate(&mut host);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("quake-bar slice finalize failed: {error}");
-    }
-}
-
-/// Activates the discord slice over the kernel's registries.
-///
-/// Composition assembles the `SliceHost` borrows plus the services the
-/// slice's gateway task needs; the slice returns the parked
-/// gateway channels and its validated config for the frontend spawn.
-#[expect(
-    clippy::panic,
-    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
-)]
-async fn jinn_discord_activate(
-    services: &mut Services,
-    state: jinn_domain::common::state::State,
-) -> jinn_discord::ActivatedDiscord {
-    // `Services` is cheap to clone (Arc fields); the clone side-steps
-    // the host's mutable viewport borrow for the activation call.
-    let services_snapshot = services.clone();
-    // Config-section resolution sink: reads the user-preferences
-    // document's raw tables (slice-owned sections survive there). Built
-    // before activation — the slice applies its sections during
-    // `activate`, before reading its `[discord]` value.
-    let prefs = services.user_preferences_storage.clone();
-    let sink = move |key: &str| prefs.raw_section(key);
-    let mut host = jinn_slices::SliceHost::new(
-        &services.slices,
-        &mut services.viewport,
-        &services.overlay_views,
-        &services.key_routes,
-        &services.trouper_system,
-    );
-    let activated = jinn_discord::activate(&mut host, &services_snapshot, state, &sink)
-        .await
-        .unwrap_or_else(|error| panic!("discord slice activation failed: {error}"));
-    if let Err(error) = host.finalize(&sink) {
-        panic!("discord slice finalize failed: {error}");
-    }
-    activated
-}
-
-/// Activates the session-init slice over the kernel's registries.
-///
-/// The slice installs the discovery partition set, spawns its trouper
-/// actors, and stages the crossing routes; `finalize` collects the
-/// staged set so the drain's relays match. Slice integration is
-/// exactly this call plus `bridge::drain_routes`.
-#[expect(
-    clippy::panic,
-    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
-)]
-fn jinn_session_init_activate(services: &mut Services, state: jinn_domain::common::state::State) {
-    if let Err(error) = jinn_session_init::activate(services, state) {
-        panic!("session-init slice activation failed: {error}");
-    }
-}
-
-/// Activates the provider-selection slice: mints the provider cell,
-/// spawns the provider + discover actors (trouper), attaches the
-/// keybind rows. Returns the cell handle so wiring can hand it to the
-/// boot slice (its provider-init actor writes the disk-loaded cache
-/// through the same cell).
 fn jinn_provider_selection_activate(
     services: &mut Services,
     state: jinn_domain::common::state::State,
@@ -1189,17 +927,97 @@ fn jinn_provider_selection_activate(
     // actors: it spawns nothing, and its rows are built from the session's
     // own effort when it opens.
     jinn_provider_selection::activate_picker(&mut host);
-    // The provider picker mints its own cell here — nothing earlier needs a
-    // handle to it — so the activation is self-contained.
+    // The provider picker mints its own cell here - nothing earlier needs a
+    // handle to it - so the activation is self-contained.
     jinn_provider_selection::activate_provider_picker(&mut host, &handles.provider_picker_cell);
     // The endpoint picker continues the same activation: its cell was minted
     // by `activate` (the provider actor needs a handle to publish fetches
     // into), so only the overlay, keys, and filter hook are attached here.
     jinn_provider_selection::activate_endpoint_picker(&mut host, &handles.endpoint_picker_cell);
-    if let Err(error) = host.finalize(&|_key| None) {
-        panic!("provider-selection slice finalize failed: {error}");
-    }
     handles
+}
+
+/// Registers the tool picker: its cell, overlay, keys, and filter hook.
+///
+/// Separate from `jinn_tools::activate` because that one mints the
+/// registry cell the picker's rows are seeded from, so it must run first.
+fn jinn_tools_picker_activate(services: &mut Services) {
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_tools::activate_picker(&mut host);
+}
+
+/// Registers the MCP server inspector: its cell, overlay, keys, and hook.
+///
+/// Separate from `activate_runtime`, which registers only the status and
+/// stderr projection cells the coordinator writes to.
+fn jinn_mcp_picker_activate(services: &mut Services) {
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_mcp_slice::activate_picker(&mut host);
+}
+
+fn jinn_status_bar_activate(services: &mut Services) {
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_status_bar::activate(&mut host);
+}
+
+fn jinn_quake_bar_activate(services: &mut Services) {
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_quake_bar::activate(&mut host);
+}
+
+/// Activates the discord slice over the kernel's registries.
+///
+/// Composition assembles the `SliceHost` borrows plus the services the
+/// slice's gateway task needs; the slice returns the parked gateway
+/// channels and its validated config for the frontend spawn.
+async fn jinn_discord_activate(
+    services: &mut Services,
+    state: jinn_domain::common::state::State,
+) -> jinn_discord::ActivatedDiscord {
+    // `Services` is cheap to clone (Arc fields); the clone side-steps
+    // the host's mutable viewport borrow for the activation call.
+    let services_snapshot = services.clone();
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_discord::activate(&mut host, &services_snapshot, state)
+        .await
+        .unwrap_or_else(|error| panic!("discord slice activation failed: {error}"))
+}
+
+/// Activates the session-init slice over the kernel's registries.
+fn jinn_session_init_activate(services: &mut Services, state: jinn_domain::common::state::State) {
+    if let Err(error) = jinn_session_init::activate(services, state) {
+        panic!("session-init slice activation failed: {error}");
+    }
 }
 
 /// The `TermHandle` implementation over the coordinator's trouper path.

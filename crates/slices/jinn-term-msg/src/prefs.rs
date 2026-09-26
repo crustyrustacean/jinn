@@ -30,7 +30,7 @@ fn default_settle_max_wait_ms() -> u64 {
     DEFAULT_SETTLE_MAX_WAIT_MS
 }
 
-/// `[interactive_term]` preferences.
+/// `[term]` preferences.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InteractiveTermPrefs {
     /// Key that toggles terminal control mode in both directions: enters
@@ -45,6 +45,12 @@ pub struct InteractiveTermPrefs {
     /// stop repainting (htop, btop).
     #[serde(default = "default_settle_max_wait_ms")]
     pub settle_max_wait_ms: u64,
+}
+
+impl jinn_config::Configurable for InteractiveTermPrefs {
+    // The section absorbs its own name: `[term]`, not
+    // `[term.interactive_term]`, so the umbrella does not stutter.
+    const KEY: &'static str = "term";
 }
 
 impl Default for InteractiveTermPrefs {

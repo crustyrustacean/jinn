@@ -52,7 +52,6 @@ pub use cwd_root::CwdRoot;
 pub use fabric::ActorStarted;
 pub use fabric::ActorStarting;
 pub use focus::{FocusScope, ScopeStack};
-pub use host::ConfigSectionError;
 pub use host::SliceHost;
 pub use key::{Key, KeyEvent, Modifiers};
 pub use line_input::LineInput;
@@ -70,6 +69,8 @@ pub use tui_signals::TuiSignals;
 /// slices use in their `activate` signatures instead of naming the
 /// generic parameter everywhere.
 pub type AppSliceHost<'a> = SliceHost<'a, RenderFacts>;
+pub use jinn_config::ConfigLayer;
+pub use jinn_config::empty_config_layer;
 pub use route::ActionCtx;
 pub use route::ActionFn;
 pub use route::BindSite;

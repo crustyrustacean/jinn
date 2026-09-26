@@ -142,6 +142,7 @@ impl Wired {
                 jinn_slices::ActionCtx {
                     state: &mut *state,
                     slices: &self.slices,
+                    config: jinn_slices::empty_config_layer(),
                     key_bytes: Vec::new(),
                 },
             )

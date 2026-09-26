@@ -21,6 +21,7 @@
 //! catch-all variant — registering the hook makes composition synthesize the
 //! printable-character catch-all and the editing keys.
 
+use jinn_mcp_msg::config::McpServersConfig;
 use jinn_mcp_msg::mcp_picker_scope;
 use jinn_slices::KeyRoutes;
 use jinn_slices::RouteId;
@@ -236,19 +237,21 @@ pub fn register_mcp_picker_input_hook(routes: &KeyRoutes, cell: &McpPickerCell) 
 /// Opens the inspector: reset, park the session id, snapshot the enabled
 /// set for `ESC`, and load the configured servers.
 fn open_mcp_picker(ctx: &mut ActionCtx<'_>, cell: &McpPickerCell) -> IntentResult {
-    let (servers, enabled, theme, session_id) = {
+    // The catalog lives in the configuration layer's `[mcp]` section, not in
+    // kernel frontend state: the slice reads it the same way the sidebar's
+    // MCP section does.
+    let servers: Vec<(String, String)> = ctx
+        .config
+        .get::<McpServersConfig>()
+        .unwrap_or_default()
+        .iter()
+        .map(|(name, server)| (name.clone(), server.description_for_picker()))
+        .collect();
+    let (enabled, theme, session_id) = {
         let Some(state) = app(ctx) else {
             return IntentResult::empty();
         };
-        let servers: Vec<(String, String)> = state
-            .frontend
-            .preferences
-            .mcp_server
-            .iter()
-            .map(|(name, server)| (name.clone(), server.description_for_picker()))
-            .collect();
         (
-            servers,
             state.active_session().enabled_mcp_servers().clone(),
             state.frontend.theme.clone(),
             state.active_session().session_id().clone(),

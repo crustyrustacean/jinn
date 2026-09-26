@@ -17,19 +17,28 @@ mod tests {
     use tempfile::TempDir;
 
     use crate::common::app_info::PREFS_FILE_NAME;
+    use jinn_config::{ConfigLayer, FilesystemConfigStorage};
     use jinn_preferences_config::schemas::SessionLifecycle;
-    use jinn_preferences_config::user_preferences::{load_preferences_from, save_preferences_to};
+
+    /// A layer over the temp `jinn.toml` the test just wrote.
+    fn layer_for(path: &std::path::Path) -> ConfigLayer {
+        ConfigLayer::load(std::sync::Arc::new(FilesystemConfigStorage::new(
+            path.to_path_buf(),
+        )))
+        .expect("layer loads")
+    }
 
     #[rstest::rstest]
     fn load_parses_table_array_session_lifecycle() {
-        // Given a TOML file using [[session_lifecycle]] table array syntax.
+        // Given a jinn.toml using the [[session_lifecycle.script]]
+        // table array syntax.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
             &path,
             r#"last_model = "ollama/llama3"
 
-[[session_lifecycle]]
+[[session_lifecycle.script]]
 name = "fossil branch"
 description = "Open a fossil branch in a new workdir"
 setup_command = "~/.config/jinn/scripts/fossil-branch.sh $1"
@@ -37,30 +46,41 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
 "#,
         )
         .expect("write");
+        let config = layer_for(&path);
 
-        // When loading.
-        let prefs = load_preferences_from(&path).expect("load");
+        // When reading the lifecycle list.
+        let lifecycles = config
+            .get_list::<SessionLifecycle>()
+            .expect("lifecycle list reads");
 
         // Then session_lifecycles is populated.
-        assert_eq!(prefs.session_lifecycles.len(), 1);
-        assert_eq!(prefs.session_lifecycles[0].name, "fossil branch");
+        assert_eq!(lifecycles.len(), 1);
+        assert_eq!(lifecycles[0].name, "fossil branch");
         assert!(matches!(
-            prefs.session_lifecycles[0].setup,
+            lifecycles[0].setup,
             Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(ref s)) if s == "~/.config/jinn/scripts/fossil-branch.sh $1"
         ));
     }
 
     #[rstest::rstest]
-    fn save_preferences_preserves_session_lifecycle_block_and_comments() {
+    // PINNED: `put_list` on a section nested under an umbrella rewrites the
+    // umbrella inline and drops the user's comments. The capability these
+    // tests describe is real; the layer does not deliver it yet.
+    fn put_lifecycle_list_preserves_session_lifecycle_block_and_comments() {
         // Given a jinn.toml with a session_lifecycle block.
-        let original = "# my custom lifecycle\n[[session_lifecycle]]\nname = \"fossil-branch\"\ndescription = \"open a branch\"\n";
+        let original = "# my custom lifecycle\n[[session_lifecycle.script]]\nname = \"fossil-branch\"\ndescription = \"open a branch\"\n";
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(&path, original).expect("write");
+        let config = layer_for(&path);
 
-        // When loading and re-saving without changes.
-        let prefs = load_preferences_from(&path).expect("load");
-        save_preferences_to(&prefs, &path).expect("save");
+        // When re-saving the same list through the layer.
+        let lifecycles = config
+            .get_list::<SessionLifecycle>()
+            .expect("lifecycle list reads");
+        config
+            .put_list::<SessionLifecycle>(&lifecycles)
+            .expect("lifecycle list writes");
 
         // Then the comment and entry are preserved.
         let written = std::fs::read_to_string(&path).expect("read");
@@ -69,17 +89,25 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
     }
 
     #[rstest::rstest]
-    fn save_preferences_deletes_session_lifecycle_block_on_struct_removal() {
+    // PINNED: `put_list` on a section nested under an umbrella rewrites the
+    // umbrella inline and drops the user's comments. The capability these
+    // tests describe is real; the layer does not deliver it yet.
+    fn put_lifecycle_list_deletes_session_lifecycle_block_on_entry_removal() {
         // Given a jinn.toml with two lifecycle blocks.
-        let original = "# keep\n[[session_lifecycle]]\nname = \"alpha\"\n\n# delete\n[[session_lifecycle]]\nname = \"beta\"\n";
+        let original = "# keep\n[[session_lifecycle.script]]\nname = \"alpha\"\n\n# delete\n[[session_lifecycle.script]]\nname = \"beta\"\n";
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(&path, original).expect("write");
+        let config = layer_for(&path);
 
-        // When loading and saving with only alpha kept.
-        let mut prefs = load_preferences_from(&path).expect("load");
-        prefs.session_lifecycles.retain(|l| l.name == "alpha");
-        save_preferences_to(&prefs, &path).expect("save");
+        // When saving with only alpha kept.
+        let mut lifecycles = config
+            .get_list::<SessionLifecycle>()
+            .expect("lifecycle list reads");
+        lifecycles.retain(|l| l.name == "alpha");
+        config
+            .put_list::<SessionLifecycle>(&lifecycles)
+            .expect("lifecycle list writes");
 
         // Then beta's block (and its comment) is removed.
         let written = std::fs::read_to_string(&path).expect("read");
@@ -90,20 +118,28 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
     }
 
     #[rstest::rstest]
-    fn save_preferences_appends_new_session_lifecycle_at_end() {
+    // PINNED: `put_list` on a section nested under an umbrella rewrites the
+    // umbrella inline and drops the user's comments. The capability these
+    // tests describe is real; the layer does not deliver it yet.
+    fn put_lifecycle_list_appends_new_session_lifecycle_at_end() {
         // Given a jinn.toml with one lifecycle block.
-        let original = "# existing\n[[session_lifecycle]]\nname = \"alpha\"\n";
+        let original = "# existing\n[[session_lifecycle.script]]\nname = \"alpha\"\n";
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(&path, original).expect("write");
+        let config = layer_for(&path);
 
-        // When loading and adding a new lifecycle.
-        let mut prefs = load_preferences_from(&path).expect("load");
-        prefs.session_lifecycles.push(SessionLifecycle {
+        // When adding a new lifecycle and saving the list.
+        let mut lifecycles = config
+            .get_list::<SessionLifecycle>()
+            .expect("lifecycle list reads");
+        lifecycles.push(SessionLifecycle {
             name: "beta".to_owned(),
             ..Default::default()
         });
-        save_preferences_to(&prefs, &path).expect("save");
+        config
+            .put_list::<SessionLifecycle>(&lifecycles)
+            .expect("lifecycle list writes");
 
         // Then beta appears after alpha.
         let written = std::fs::read_to_string(&path).expect("read");
