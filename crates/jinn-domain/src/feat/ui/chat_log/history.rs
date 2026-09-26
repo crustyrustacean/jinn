@@ -712,6 +712,10 @@ impl<'a> HistoryRender<'a> {
         let mut rprobe_misses: u64 = 0;
         let mut rprobe_probes: u64 = 0;
         let mut rprobe_probe_ns: u128 = 0;
+        let mut rprobe_etl_ns: u128 = 0;
+        let mut rprobe_wrap_ns: u128 = 0;
+        let mut rprobe_arc_ns: u128 = 0;
+        let mut rprobe_insert_ns: u128 = 0;
         let mut rprobe_state_ns: u128 = 0;
         let mut rprobe_variant_ns: u128 = 0;
 
@@ -776,7 +780,10 @@ impl<'a> HistoryRender<'a> {
                             is_streaming,
                             is_waiting_on_subagent,
                         };
+                        let t_etl = std::time::Instant::now();
                         let lines = entry_to_lines(entry, &ctx);
+                        rprobe_etl_ns += t_etl.elapsed().as_nanos();
+                        let t_wrap = std::time::Instant::now();
                         let wrapped_count: u32 = if self.content_width == 0 {
                             lines.len() as u32
                         } else {
@@ -784,6 +791,11 @@ impl<'a> HistoryRender<'a> {
                                 .wrap(Wrap { trim: false })
                                 .line_count(self.content_width) as u32
                         };
+                        rprobe_wrap_ns += t_wrap.elapsed().as_nanos();
+                        let t_arc = std::time::Instant::now();
+                        let rendered = Arc::new(lines.clone());
+                        rprobe_arc_ns += t_arc.elapsed().as_nanos();
+                        let t_ins = std::time::Instant::now();
                         cache.insert_with_lines(
                             entry,
                             probe.content,
@@ -791,8 +803,9 @@ impl<'a> HistoryRender<'a> {
                             variant,
                             self.content_width,
                             wrapped_count,
-                            Arc::new(lines.clone()),
+                            rendered,
                         );
+                        rprobe_insert_ns += t_ins.elapsed().as_nanos();
 
                         let start = wrapped_cursor;
                         let end = wrapped_cursor + wrapped_count;
@@ -816,7 +829,7 @@ impl<'a> HistoryRender<'a> {
         let t_evict = std::time::Instant::now();
         cache.evict_if_needed();
         tracing::warn!(
-            "RPROBE2 probes={} hits={} misses={} miss_pct={} state_ns={} variant_ns={}              probe_ns={} loop_ms={} evict_us={}",
+            "RPROBE2 probes={} hits={} misses={} miss_pct={} state_ns={} variant_ns={}              probe_ns={} ETL_NS={} wrap_ns={} arc_ns={} insert_ns={} loop_ms={} evict_us={}",
             rprobe_probes,
             rprobe_hits,
             rprobe_misses,
@@ -826,6 +839,10 @@ impl<'a> HistoryRender<'a> {
             rprobe_state_ns,
             rprobe_variant_ns,
             rprobe_probe_ns,
+            rprobe_etl_ns,
+            rprobe_wrap_ns,
+            rprobe_arc_ns,
+            rprobe_insert_ns,
             t_loop.elapsed().as_millis(),
             t_evict.elapsed().as_micros(),
         );
