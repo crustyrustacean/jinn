@@ -54,20 +54,6 @@ fn state_with_picker(kind: PickerKind) -> AppState {
 
 #[rstest::rstest]
 #[test]
-fn measure_provider_picker_reserves_two_footer_rows() {
-    // Given a Provider picker active (renders refresh + mode footers).
-    let state = state_with_picker(PickerKind::Provider);
-
-    // When measuring at LARGE_FRAME.
-    let height = measure_active_picker_results_height(&state, LARGE_FRAME, &registry());
-
-    // Then the height is inner minus chrome (2) minus two footers.
-    // At LARGE_FRAME the popup inner is 39 rows; 39 - 2 - 2 = 35.
-    assert_eq!(height, 35);
-}
-
-#[rstest::rstest]
-#[test]
 fn measure_mcp_server_picker_reserves_two_bottom_rows() {
     // Given an MCP-server picker active (status + keybind footer via its spec).
     let state = state_with_picker(PickerKind::McpServer);

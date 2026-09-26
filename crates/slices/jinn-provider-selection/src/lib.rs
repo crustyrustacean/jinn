@@ -27,6 +27,12 @@ mod endpoint_picker_viewport;
 pub mod entries;
 pub mod loader;
 pub mod provider_actor;
+pub mod provider_picker_actions;
+pub mod provider_picker_render;
+pub mod provider_picker_routes;
+#[cfg(test)]
+mod provider_picker_tests;
+pub mod provider_picker_viewport;
 mod reasoning_picker_actions;
 pub mod reasoning_picker_render;
 mod reasoning_picker_routes;
@@ -53,6 +59,10 @@ pub struct ProviderSelectionHandles {
     /// The endpoint picker's cell. `activate` mints it before the provider
     /// actor spawns (that actor publishes fetches into it) and composition
     /// hands it back to `activate_endpoint_picker` to finish wiring.
+    /// The model picker's cell, so the provider actor's loads land in the menu
+    /// that shows them.
+    pub provider_picker_cell:
+        jinn_slices::cell::TypedCell<jinn_provider_selection_msg::ProviderPickerState>,
     pub endpoint_picker_cell:
         jinn_slices::cell::TypedCell<jinn_provider_selection_msg::endpoint::EndpointPickerState>,
     /// The discover actor's path.
@@ -98,6 +108,18 @@ pub fn activate(
             panic!("provider-selection activate: endpoint picker cell slot taken: {e:?}")
         });
 
+    // The model picker's cell, registered for the same reason as the endpoint
+    // picker's: the provider actor publishes each load into it, so the cell
+    // must exist before the actor is handed a handle.
+    let provider_picker_cell = host
+        .register_cell(
+            jinn_provider_selection_msg::provider_picker_slot(),
+            jinn_provider_selection_msg::ProviderPickerState::default(),
+        )
+        .unwrap_or_else(|e| {
+            panic!("provider-selection activate: provider picker cell slot taken: {e:?}")
+        });
+
     let deps = jinn_domain::common::actor_deps::ActorDeps {
         services: services.clone(),
     };
@@ -115,15 +137,49 @@ pub fn activate(
             state,
             provider_cell: provider_cell.clone(),
             endpoint_picker_cell: endpoint_picker_cell.clone(),
+            provider_picker_cell: provider_picker_cell.clone(),
         },
     );
 
     ProviderSelectionHandles {
         provider_cell,
+        provider_picker_cell,
         endpoint_picker_cell,
         discover,
         provider,
     }
+}
+
+/// Registers the model picker: its overlay, its keys, and its filter hook.
+///
+/// The cell itself was registered by [`activate`], which had to mint it
+/// earlier so the provider actor could hold a handle and publish each load
+/// into it. Registering a slot twice is a wiring error, so this takes the
+/// handle rather than minting one.
+///
+/// No services, no actor: the menu is pure slice state plus a bus message.
+pub fn activate_provider_picker(
+    host: &mut SliceHost<'_, jinn_slices::RenderFacts>,
+    cell: &jinn_slices::cell::TypedCell<jinn_provider_selection_msg::ProviderPickerState>,
+) {
+    let cell = cell.clone();
+    let scope = jinn_provider_selection_msg::provider_picker_scope();
+    host.register_overlay(
+        scope.clone(),
+        std::sync::Arc::new(provider_picker_render::provider_picker_overlay_rect),
+    );
+    host.register_overlay_selectable(&scope);
+    host.register_overlay_slot(
+        scope.clone(),
+        jinn_provider_selection_msg::provider_picker_slot(),
+    );
+    host.register_overlay_view(
+        scope,
+        std::sync::Arc::new(provider_picker_render::render_provider_picker),
+    );
+
+    provider_picker_routes::attach_provider_picker_rows(host.key_routes(), &cell);
+    provider_picker_routes::register_provider_picker_input_hook(host.key_routes(), &cell);
 }
 
 /// Registers the reasoning-effort picker: its cell, its overlay, its keys,

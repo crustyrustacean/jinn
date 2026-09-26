@@ -40,7 +40,6 @@ use crate::endpoint_loader::{
     build_endpoint_entries, fetch_endpoints, resolve_openrouter_target,
     unavailable_endpoint_entries,
 };
-use crate::loader::load_provider_picker_items;
 
 /// The provider actor.
 ///
@@ -58,6 +57,10 @@ pub struct ProviderActor {
     /// list lives; there is no kernel-side mirror to keep in step.
     endpoint_picker_cell:
         jinn_slices::cell::TypedCell<jinn_provider_selection_msg::endpoint::EndpointPickerState>,
+    /// The model picker's cell — where each load publishes its rows. Slice-owned
+    /// like the endpoint picker's, so there is no kernel-side mirror.
+    provider_picker_cell:
+        jinn_slices::cell::TypedCell<jinn_provider_selection_msg::ProviderPickerState>,
     /// In-memory, per-model cache of OpenRouter routing endpoints for the
     /// application's lifetime (not persisted to disk). Keyed by resolved model
     /// id; value is the parsed upstream list plus the fetch timestamp. The
@@ -78,6 +81,9 @@ pub struct ProviderActorDeps {
     /// The endpoint picker's cell handle.
     pub endpoint_picker_cell:
         jinn_slices::cell::TypedCell<jinn_provider_selection_msg::endpoint::EndpointPickerState>,
+    /// The model picker's cell handle.
+    pub provider_picker_cell:
+        jinn_slices::cell::TypedCell<jinn_provider_selection_msg::ProviderPickerState>,
 }
 
 impl ServiceActor for ProviderActor {
@@ -156,6 +162,7 @@ impl ProviderActor {
                             deps: deps.deps,
                             provider_cell: deps.provider_cell,
                             endpoint_picker_cell: deps.endpoint_picker_cell,
+                            provider_picker_cell: deps.provider_picker_cell,
                             endpoints_cache: std::collections::HashMap::new(),
                         })
                     })
@@ -241,15 +248,18 @@ impl ProviderActor {
             (None, theme, model_selection, self.alloy_mode())
         };
         let model_cache = model_cache.or_else(|| self.model_cache());
-        let picker = build_provider_picker(
-            &self.deps.services,
-            model_cache.as_ref(),
-            &theme,
-            &model_selection,
-            alloy_mode,
-        );
-        self.state.with_pickers(|p| {
-            p.provider_picker = picker;
+        // Into the picker's own cell, not the kernel's frontend state: the
+        // menu is this slice's, so the actor that fetched the rows and the
+        // renderer that draws them cannot end up on different stores.
+        self.provider_picker_cell.update(|picker| {
+            crate::loader::load_provider_picker_items(
+                &self.deps.services,
+                &mut picker.selection,
+                model_cache.as_ref(),
+                &theme,
+                &model_selection,
+                alloy_mode,
+            );
         });
     }
 
@@ -414,29 +424,6 @@ impl ProviderActor {
         self.endpoint_picker_cell
             .update(|picker| crate::endpoint_picker_actions::reload(picker, entries));
     }
-}
-
-/// Builds the provider picker items from the registry/cache/theme/model
-/// snapshot and returns them wrapped through the spec's hooks.
-fn build_provider_picker(
-    services: &jinn_domain::Services,
-    model_cache: Option<&ModelCache>,
-    theme: &jinn_theme::Theme,
-    model_selection: &jinn_core_types::ModelSelection,
-    alloy_mode: bool,
-) -> jinn_selection_widget::SelectionState<
-    jinn_picker::PickerEntry<jinn_provider_selection_msg::ProviderPickerEntry>,
-> {
-    let mut picker = jinn_selection_widget::SelectionState::new();
-    load_provider_picker_items(
-        services,
-        &mut picker,
-        model_cache,
-        theme,
-        model_selection,
-        alloy_mode,
-    );
-    picker
 }
 
 /// Merge `context_length` from the registry's resolved providers into the
@@ -630,6 +617,18 @@ mod tests {
                 .expect("endpoint picker cell registered")
         }
 
+        /// The model picker's cell, the way `activate` mints it.
+        fn provider_picker_cell(
+            &self,
+        ) -> jinn_slices::cell::TypedCell<jinn_provider_selection_msg::ProviderPickerState>
+        {
+            self.deps
+                .services
+                .slices
+                .reader(&jinn_provider_selection_msg::provider_picker_slot())
+                .expect("provider picker cell registered")
+        }
+
         fn spawn_provider_actor(&self) {
             ProviderActor::spawn(
                 &self.deps.services.trouper_system,
@@ -638,6 +637,7 @@ mod tests {
                     state: self.state.clone(),
                     provider_cell: self.cell(),
                     endpoint_picker_cell: self.endpoint_picker_cell(),
+                    provider_picker_cell: self.provider_picker_cell(),
                 },
             );
         }
@@ -663,6 +663,10 @@ mod tests {
         let _ = slices.register(
             jinn_provider_selection_msg::endpoint::endpoint_picker_slot(),
             jinn_provider_selection_msg::endpoint::EndpointPickerState::default(),
+        );
+        let _ = slices.register(
+            jinn_provider_selection_msg::provider_picker_slot(),
+            jinn_provider_selection_msg::ProviderPickerState::default(),
         );
         let app = AppState::default();
         app.frontend.attach_slices(slices);
@@ -1542,11 +1546,11 @@ mod tests {
         // Give the actor time to process.
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-        // Then the provider picker has entries.
-        let s = ctx.state.read();
-        let items = s.frontend.pickers.provider_picker.items();
+        // Then the model picker has entries — in its own cell, since the
+        // menu is slice-owned and there is no kernel-side mirror to check.
+        let cell = ctx.provider_picker_cell();
         assert!(
-            !items.is_empty(),
+            !cell.read().selection.items().is_empty(),
             "picker should have entries after loading"
         );
     }

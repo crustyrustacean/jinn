@@ -92,7 +92,7 @@ fn clear_overlays_returns_to_base() {
     let mut stack = ScopeStack::default();
     stack.push(FocusScope::Input);
     stack.push(FocusScope::Picker {
-        kind: PickerKind::Provider,
+        kind: PickerKind::Project,
     });
 
     // When clearing overlays.
@@ -108,7 +108,7 @@ fn is_picker_returns_true_when_picker_active() {
     // Given a ScopeStack with Picker on top.
     let mut stack = ScopeStack::default();
     stack.push(FocusScope::Picker {
-        kind: PickerKind::Provider,
+        kind: PickerKind::Project,
     });
 
     // Then is_picker is true.
@@ -130,11 +130,11 @@ fn picker_kind_returns_kind_when_picker_active() {
     // Given a ScopeStack with Picker(Provider) on top.
     let mut stack = ScopeStack::default();
     stack.push(FocusScope::Picker {
-        kind: PickerKind::Provider,
+        kind: PickerKind::Project,
     });
 
     // Then picker_kind returns Provider.
-    assert_eq!(stack.picker_kind(), Some(&PickerKind::Provider));
+    assert_eq!(stack.picker_kind(), Some(&PickerKind::Project));
 }
 
 #[rstest::rstest]
@@ -178,7 +178,7 @@ fn is_sidebar_returns_false_when_normal() {
 // Capture mode routes keystrokes to the pty, so it must not count as
 // input mode (which would light up the chat input as focused).
 #[case(FocusScope::Dynamic(jinn_term_msg::control_scope()), Mode::Normal)]
-#[case(FocusScope::Picker { kind: PickerKind::Provider }, Mode::Picker)]
+#[case(FocusScope::Picker { kind: PickerKind::Project }, Mode::Picker)]
 fn focus_scope_mode_mapping(#[case] scope: FocusScope, #[case] expected: Mode) {
     // Given a FocusScope variant.
     // When calling mode().
@@ -190,7 +190,9 @@ fn focus_scope_mode_mapping(#[case] scope: FocusScope, #[case] expected: Mode) {
 #[case(FocusScope::Normal, "Normal")]
 #[case(FocusScope::Input, "Input")]
 #[case(jinn_sidebar_msg::SidebarSectionId::Persona.focus_scope(), "Dynamic(sidebar:persona)")]
-#[case(FocusScope::Picker { kind: PickerKind::Provider }, "Picker(models)")]
+#[case(FocusScope::Picker { kind: PickerKind::Project }, "Picker(projects)")]
+#[case(FocusScope::Picker { kind: PickerKind::McpServer }, "Picker(mcp servers)")]
+#[case(FocusScope::Picker { kind: PickerKind::CompactionModel }, "Picker(compaction model)")]
 fn focus_scope_display(#[case] scope: FocusScope, #[case] expected: &str) {
     // Given a FocusScope variant.
     // When formatting as Display.
@@ -251,7 +253,7 @@ fn active_picker_ops_returns_some_when_picker_active() {
     // Given an AppState with a Picker scope pushed.
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Picker {
-        kind: PickerKind::Provider,
+        kind: PickerKind::Project,
     });
 
     // When getting active picker ops.

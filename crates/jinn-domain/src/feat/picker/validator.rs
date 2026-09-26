@@ -56,12 +56,6 @@ pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmErro
         .ok_or(PickerConfirmError::NoActivePicker)?;
 
     let has_selection = match kind {
-        PickerKind::Provider => state
-            .frontend
-            .pickers
-            .provider_picker
-            .selected_item()
-            .is_some(),
         PickerKind::Project => state.frontend.project_picker().selected_item().is_some(),
         PickerKind::McpServer => state.frontend.mcp_server_picker().selected_item().is_some(),
         // Retired: no picker state, so it can never have a selection.
@@ -128,7 +122,7 @@ mod tests {
         // If the validator always returned Ok, nested pickers would be allowed.
         let state = AppState::default_with_scope_focus();
         state.frontend.scope_push(FocusScope::Picker {
-            kind: PickerKind::Provider,
+            kind: PickerKind::Project,
         });
 
         let result = validate_open_picker(&state, &PickerKind::Project);
@@ -141,7 +135,7 @@ mod tests {
         // Verifies the positive case - opening a picker when none is active.
         let state = AppState::default_with_scope_focus();
 
-        let result = validate_open_picker(&state, &PickerKind::Provider);
+        let result = validate_open_picker(&state, &PickerKind::Project);
 
         assert!(
             result.is_ok(),

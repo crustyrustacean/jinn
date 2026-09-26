@@ -1167,7 +1167,7 @@ fn jinn_provider_selection_activate(
     // The reasoning-effort picker is registered by the same slice, after the
     // actors: it spawns nothing, and its rows are built from the session's
     // own effort when it opens.
-    jinn_provider_selection::activate_picker(&mut host);
+    jinn_provider_selection::activate_provider_picker(&mut host, &handles.provider_picker_cell);
     // The endpoint picker continues the same activation: its cell was minted
     // by `activate` (the provider actor needs a handle to publish fetches
     // into), so only the overlay, keys, and filter hook are attached here.

@@ -82,7 +82,7 @@ mod tests {
     /// non-blank rows at the bottom of the popup's inner area equal the footer
     /// count actually drawn.
     #[rstest::rstest]
-    #[case::provider(PickerKind::Provider)]
+    #[case::project(PickerKind::Project)]
     #[case::project(PickerKind::Project)]
     #[case::mcp_server(PickerKind::McpServer)]
     fn picker_draws_footer_rows_matching_kind_declaration(#[case] kind: PickerKind) {

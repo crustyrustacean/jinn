@@ -246,18 +246,23 @@ async fn load_provider_picker_entries_fills_the_picker_from_the_registry() {
         .expect("load command delivers");
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    // Then the provider picker is populated with the configured model.
-    let state = app.core.state.read();
-    let models: Vec<&str> = state
-        .frontend
-        .pickers
-        .provider_picker
-        .items()
-        .iter()
-        .map(|i| i.entry().model.as_str())
-        .collect();
+    // Then the model picker is populated with the configured model — in its
+    // own cell, since the menu is slice-owned and has no kernel-side mirror.
+    let models: Vec<String> = {
+        let cell: jinn_slices::cell::TypedCell<jinn_provider_selection_msg::ProviderPickerState> =
+            app.services
+                .slices
+                .reader(&jinn_provider_selection_msg::provider_picker_slot())
+                .expect("the provider slice registers the model picker cell at activation");
+        cell.read()
+            .selection
+            .items()
+            .iter()
+            .map(|i| i.entry().model.clone())
+            .collect()
+    };
     assert!(
-        models.contains(&"llama3"),
+        models.iter().any(|m| m == "llama3"),
         "picker should carry the configured model, got: {models:?}"
     );
 }

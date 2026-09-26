@@ -103,7 +103,17 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             .bind("<c-c>", KernelIntent::Quit, KeyCategory::General)
             .bind("?", KernelIntent::ToggleWhichkey, KeyCategory::General)
             .describe_group_with_category("<leader>s", "search", KeyCategory::General)
-            .bind("<leader>sm", KernelIntent::OpenPicker { kind: PickerKind::Provider }, KeyCategory::General)
+            // The model browser is slice-owned, so this binds the
+            // provider-selection slice's own open row.
+            .bind(
+                "<leader>sm",
+                KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
+                    jinn_provider_selection_msg::provider_picker_scope(),
+                    "open-provider-picker",
+                    "choose a model",
+                )),
+                KeyCategory::General,
+            )
             // The session browser is slice-owned, so this binds the session-store
             // slice's own open row rather than a kernel picker intent.
             .bind(
@@ -240,11 +250,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
     // Picker scopes - each picker kind has its own scope for kind-specific bindings.
     // Shared bindings (navigation, confirm, escape, char input) are in add_picker_base.
     keymap
-        .scope(Scope::PickerProvider, |b| {
-            // The provider spec's TAB/CTRL+A/CTRL+R rows land here via
-            // bind_picker_spec_rows.
-            add_picker_base(b);
-        })
         .scope(Scope::PickerProject, |b| {
             // The project spec's rows (<c-enter> new+lifecycle, <c-n> add
             // dir, <c-d> remove) land here via bind_picker_spec_rows.
@@ -282,8 +287,7 @@ mod tests {
     /// moment a variant is added or a scope is dropped.
     #[rstest::rstest]
     fn every_picker_kind_maps_to_a_scope_with_bindings(
-        #[values(PickerKind::Provider, PickerKind::Project, PickerKind::McpServer)]
-        kind: PickerKind,
+        #[values(PickerKind::Project, PickerKind::McpServer)] kind: PickerKind,
     ) {
         use crate::app::scope_for_focus;
 
@@ -736,10 +740,10 @@ mod leak_check {
 
         // When navigating the base keys within a surviving picker scope.
         let esc_res = keymap
-            .navigate(&[esc], &Scope::PickerProvider)
+            .navigate(&[esc], &Scope::PickerProject)
             .expect("esc bound");
         let enter_res = keymap
-            .navigate(&[enter], &Scope::PickerProvider)
+            .navigate(&[enter], &Scope::PickerProject)
             .expect("enter bound");
 
         // Then each resolves to a real picker base intent (the confirm

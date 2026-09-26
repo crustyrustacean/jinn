@@ -80,14 +80,16 @@ pub fn bind_picker_spec_rows(
 /// is missing here silently loses every global toggle while its picker is
 /// open, and nothing else notices.
 fn slice_owned_picker_scopes() -> Vec<jinn_slices::SliceScopeId> {
-    vec![jinn_session_store_msg::session_picker_scope()]
+    vec![
+        jinn_session_store_msg::session_picker_scope(),
+        jinn_provider_selection_msg::provider_picker_scope(),
+    ]
 }
 
 /// scope-level mapping (a jinn-tui concern).
 fn picker_spec_scope(id: jinn_picker::PickerId) -> Option<Scope> {
     match id.as_str() {
         "mcp-server" => Some(Scope::PickerMcpServer),
-        "provider" => Some(Scope::PickerProvider),
         "project" => Some(Scope::PickerProject),
         _ => None,
     }
@@ -135,7 +137,6 @@ fn scopes_for_row<'a>(
             let mut scopes: Vec<Scope> = [
                 Scope::Normal,
                 Scope::Input,
-                Scope::PickerProvider,
                 Scope::PickerProject,
                 Scope::PickerMcpServer,
             ]
@@ -834,10 +835,48 @@ mod tests {
         );
     }
 
+    /// The dynamic counterpart of `alt_t_resolves_in_every_static_scope`.
+    ///
+    /// A slice-owned picker has no `Scope` variant, so the table above cannot
+    /// cover it — a slice whose scope joins neither the `GlobalToggle` list
+    /// nor this case would silently lose global toggles.
+    #[rstest::rstest]
+    #[case::session_store(jinn_session_store_msg::session_picker_scope())]
+    #[case::provider(jinn_provider_selection_msg::provider_picker_scope())]
+    fn alt_t_resolves_in_every_slice_owned_picker_scope(#[case] scope: SliceScopeId) {
+        // Given the composed term rows bound into a fresh keymap.
+        let routes = KeyRoutes::new();
+        routes.attach(term_toggle_row());
+        let mut keymap = Keymap::new();
+        bind_route_rows(&routes, &mut keymap);
+
+        // When pressing <M-t> inside the slice-owned scope.
+        let mut wk = WhichKeyInstance::new(keymap, Scope::Dynamic(scope.clone()));
+        let intent = wk.handle_key(KeyEvent {
+            key: jinn_domain::Key::Char('t'),
+            modifiers: jinn_domain::Modifiers {
+                ctrl: false,
+                alt: true,
+                shift: false,
+            },
+        });
+
+        // Then the overlay toggle resolves, so global toggles work inside a
+        // slice-owned picker.
+        assert!(
+            matches!(
+                &intent,
+                Some(KernelIntent::Dynamic(d))
+                    if d.slice == SliceScopeId::new("term", "view")
+                        && d.action == "toggle-overlay"
+            ),
+            "the global toggle should resolve inside {scope}, got: {intent:?}"
+        );
+    }
+
     #[rstest::rstest]
     #[case("Normal")]
     #[case("Input")]
-    #[case("Picker(provider)")]
     #[case("Picker(project)")]
     #[case("Picker(mcp-server)")]
     fn alt_t_resolves_in_every_static_scope(#[case] scope_name: &str) {
@@ -1293,46 +1332,5 @@ mod real_registry_spec_rows {
                 "{notation} must land as the project spec's action; got {intent:?}",
             );
         }
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn provider_spec_rows_resolve_in_their_scope() {
-        // Given the real domain registry (whose provider spec declares
-        // <tab>/<c-a>/<c-r> rows) bound into a fresh keymap.
-        let registry = jinn_picker_specs::build_picker_registry();
-        let mut keymap = init();
-        bind_picker_spec_rows(&registry, &mut keymap);
-        let mut wk = WhichKeyInstance::new(keymap, Scope::PickerProvider);
-
-        // When pressing each of the spec's keys.
-        let tab = KeyEvent {
-            key: Key::Tab,
-            modifiers: Modifiers::none(),
-        };
-        let c_a = KeyEvent {
-            key: Key::Char('a'),
-            modifiers: Modifiers::ctrl(),
-        };
-        let tab_intent = wk.handle_key(tab);
-        let a_intent = wk.handle_key(c_a);
-
-        // Then both resolve to the provider spec's picker actions.
-        assert!(
-            matches!(
-                &tab_intent,
-                Some(jinn_domain::KernelIntent::PickerAction { picker, action })
-                    if picker == "provider" && action == "<tab>"
-            ),
-            "<Tab> must land as the provider spec's toggle; got {tab_intent:?}",
-        );
-        assert!(
-            matches!(
-                &a_intent,
-                Some(jinn_domain::KernelIntent::PickerAction { picker, action })
-                    if picker == "provider" && action == "<c-a>"
-            ),
-            "<c-a> must land as the provider spec's alloy toggle; got {a_intent:?}",
-        );
     }
 }

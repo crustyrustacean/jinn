@@ -18,7 +18,6 @@ use jinn_picker::PickerRegistry;
 pub fn build_picker_registry() -> PickerRegistry {
     let mut registry = PickerRegistry::new();
     registry.register(crate::mcp_server_spec::mcp_server_spec());
-    registry.register(crate::provider_spec::provider_spec());
     registry.register(crate::project_spec::project_spec());
     registry
 }
@@ -52,7 +51,7 @@ mod tests {
 
         // When looking specs up by id.
         let project = registry.get(jinn_picker::PROJECT_ID);
-        let other = registry.get(jinn_picker::PROVIDER_ID);
+        let other = registry.get(jinn_picker::MCP_SERVER_ID);
 
         // Then only the named spec resolves — the caller links to no other picker.
         assert!(project.is_some());
@@ -97,11 +96,7 @@ mod tests {
         let registry = build_picker_registry();
         // Shrinks as each picker migrates: a kind here is one the kernel
         // still owns a `PickerKind` for, i.e. one not yet slice-owned.
-        let migrated = [
-            PickerKind::McpServer,
-            PickerKind::Provider,
-            PickerKind::Project,
-        ];
+        let migrated = [PickerKind::McpServer, PickerKind::Project];
 
         // When mapping each migrated kind and listing registered ids.
         let mapped_ids: Vec<&str> = migrated

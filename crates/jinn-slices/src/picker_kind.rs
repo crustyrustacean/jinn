@@ -6,8 +6,6 @@ use serde::{Deserialize, Serialize};
 /// Which picker is currently active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PickerKind {
-    /// Provider/model picker.
-    Provider,
     /// Session lifecycle picker - select a lifecycle recipe for new session creation.
     /// Retired: the compaction model is configured only by `[compaction] model`
     /// in `jinn.toml`. Retained so persisted state still deserializes; it is
@@ -23,8 +21,6 @@ pub enum PickerKind {
 impl std::fmt::Display for PickerKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Provider => write!(f, "models"),
-
             Self::CompactionModel => write!(f, "compaction model"),
 
             Self::Project => write!(f, "projects"),

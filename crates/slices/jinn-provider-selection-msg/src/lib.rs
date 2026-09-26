@@ -20,6 +20,7 @@
 pub mod cell;
 pub mod endpoint;
 pub mod entries;
+pub mod provider_picker_state;
 pub mod reasoning;
 
 pub use cell::ProviderCell;
@@ -29,6 +30,9 @@ pub use endpoint::{EndpointPickerState, endpoint_picker_scope, endpoint_picker_s
 pub use entries::ProviderPickerEntry;
 pub use entries::pre_check_active_models;
 pub use jinn_core_types::{Endpoint, ReasoningEffort};
+pub use provider_picker_state::ProviderPickerState;
+pub use provider_picker_state::provider_picker_scope;
+pub use provider_picker_state::provider_picker_slot;
 pub use reasoning::ReasoningEffortEntry;
 pub use reasoning::reasoning_row;
 pub use reasoning::{

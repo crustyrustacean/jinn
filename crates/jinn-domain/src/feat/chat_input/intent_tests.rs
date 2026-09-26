@@ -796,7 +796,7 @@ fn enter_normal_mode_clears_picker_kind_when_leaving_picker() {
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Picker {
-        kind: PickerKind::Provider,
+        kind: PickerKind::Project,
     });
 
     // When handling EnterNormalMode.
@@ -815,7 +815,7 @@ fn enter_normal_mode_from_picker_emits_no_commands() {
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Picker {
-        kind: PickerKind::Provider,
+        kind: PickerKind::Project,
     });
 
     // When handling EnterNormalMode.

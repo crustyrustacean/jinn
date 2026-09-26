@@ -355,7 +355,7 @@ mod tests {
         use crate::protocol::PickerKind;
         let mut state = AppState::default_with_scope_focus();
         state.frontend.scope_push(FocusScope::Picker {
-            kind: PickerKind::Provider,
+            kind: PickerKind::Project,
         });
         {
             let picker = crate::feat::picker::host_impl::active_picker_ops(&mut state)
@@ -384,7 +384,7 @@ mod tests {
         use crate::protocol::PickerKind;
         let mut state = AppState::default_with_scope_focus();
         state.frontend.scope_push(FocusScope::Picker {
-            kind: PickerKind::Provider,
+            kind: PickerKind::Project,
         });
 
         // When handling CtrlClear via the IntentHandler (exercises redispatch).
@@ -411,7 +411,7 @@ mod tests {
         use crate::protocol::PickerKind;
         let mut state = AppState::default_with_scope_focus();
         state.frontend.scope_push(FocusScope::Picker {
-            kind: PickerKind::Provider,
+            kind: PickerKind::Project,
         });
         {
             let picker = crate::feat::picker::host_impl::active_picker_ops(&mut state)

@@ -14,7 +14,6 @@ use jinn_selection_widget::SelectionState;
 
 use crate::entries::load_provider_entries;
 use jinn_domain::Services;
-use jinn_picker_specs::provider_spec::provider_spec;
 
 /// Loads provider entries into the picker state, ready for display.
 ///
@@ -44,9 +43,9 @@ pub(crate) fn load_provider_picker_items(
         promote_selected_to_top(&mut entries);
     }
 
-    // Wrap through the provider spec's own hooks: this crate depends on the
-    // spec directly, so it need not build a registry naming every picker.
-    let wrapped = provider_spec().make_items(entries);
+    // Wrap through the picker's own hooks — the same wrap point the row hook
+    // and the filter text live in, so a second definition could not drift.
+    let wrapped = crate::provider_picker_actions::wrap_entries(entries);
     picker.set_items(wrapped);
 }
 

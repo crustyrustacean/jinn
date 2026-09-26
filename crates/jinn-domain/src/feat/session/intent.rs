@@ -80,7 +80,7 @@ mod tests {
         // Given a state with an active picker.
         let mut state = AppState::default_with_scope_focus();
         state.frontend.scope_push(jinn_slices::FocusScope::Picker {
-            kind: PickerKind::Provider,
+            kind: PickerKind::Project,
         });
         let old_id = state.session.active_session_id().clone();
 

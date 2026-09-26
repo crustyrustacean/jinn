@@ -307,11 +307,14 @@ impl TuiApp {
 pub fn scope_for_focus(focus: &jinn_slices::FocusScope) -> Scope {
     match focus {
         FocusScope::Picker { kind } => match kind {
-            // CompactionModel is retired and never pushed as a scope; it
-            // shares the provider scope so the match stays total.
-            PickerKind::Provider | PickerKind::CompactionModel => Scope::PickerProvider,
             PickerKind::Project => Scope::PickerProject,
             PickerKind::McpServer => Scope::PickerMcpServer,
+            // CompactionModel is data-only: it survives because persisted
+            // session files deserialize it, but nothing opens it as a menu, so
+            // it is never pushed as a scope. Normal is the honest fallback —
+            // a scope it cannot reach, rather than a picker scope borrowed
+            // from a picker that no longer exists.
+            PickerKind::CompactionModel => Scope::Normal,
         },
         FocusScope::Input => Scope::Input,
         // Dynamic slice scopes pass their identity through unchanged.

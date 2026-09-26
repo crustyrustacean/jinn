@@ -24,7 +24,6 @@ async fn test_app() -> TuiApp {
 #[case::normal_chat(jinn_slices::FocusScope::Normal, Scope::Normal)]
 #[case::sidebar(jinn_sidebar_msg::SidebarSectionId::Persona.focus_scope(), Scope::Dynamic(jinn_slices::SliceScopeId::navigation("sidebar", "persona")))]
 #[case::input(jinn_slices::FocusScope::Input, Scope::Input)]
-#[case::picker_provider(jinn_slices::FocusScope::Picker { kind: jinn_domain::PickerKind::Provider }, Scope::PickerProvider)]
 fn scope_for_focus_maps_correctly(#[case] focus: jinn_slices::FocusScope, #[case] expected: Scope) {
     // Given a focus scope.
     // When mapping to a keymap scope.
