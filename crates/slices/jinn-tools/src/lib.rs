@@ -95,6 +95,26 @@ pub fn activate(services: &mut Services, _state: &State) {
 ///
 /// Panics if the slot is already registered — double activation is a wiring
 /// bug.
+/// The task-list picker's opener, as a dispatchable action.
+///
+/// The sidebar's `s` key needs to open a picker that belongs to this slice.
+/// It could publish a `DynamicIntent` naming this slice's action, but a
+/// published message goes to the bus and never comes back through route
+/// dispatch — the action would never run and the menu would never appear.
+///
+/// Handing the sidebar this closure keeps the dependency honest in both
+/// directions: the sidebar names the task list *browser*, not the picker's
+/// scope, cell, or state.
+#[must_use]
+pub fn task_list_picker_opener() -> jinn_slices::route::ActionFn {
+    task_list_picker_routes::task_list_opener_action()
+}
+
+///
+/// # Panics
+///
+/// Panics if a picker slot is already registered - double activation is a
+/// wiring bug.
 #[expect(
     clippy::expect_used,
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"

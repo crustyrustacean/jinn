@@ -42,6 +42,9 @@ pub struct EndpointPickerState {
     /// The theme the rows were built with, so a repaint recolors them
     /// consistently instead of stranding them on a stale palette.
     pub theme: Theme,
+    /// How far the detail pane is scrolled. Separate from the list scroll:
+    /// `PageUp`/`PageDown` page the list, `Ctrl+U`/`Ctrl+D` scroll the pane.
+    pub preview_scroll: usize,
 }
 
 impl Default for EndpointPickerState {
@@ -52,6 +55,7 @@ impl Default for EndpointPickerState {
             // first keypress before any render behaves as it always has.
             results_viewport: RESULTS_VIEWPORT_FALLBACK,
             theme: jinn_theme::default_theme(),
+            preview_scroll: 0,
         }
     }
 }

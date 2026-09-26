@@ -90,32 +90,9 @@ fn row(
 
 /// Attaches every row the task-list picker owns.
 pub fn attach_task_list_picker_rows(routes: &KeyRoutes, cell: &TaskListPickerCell) {
-    // Sidebar-only, matching trunk: this menu is read-only and is opened by
-    // selecting the sidebar's task-list section, not by a leader chord. It
-    // deliberately claims no `Normal` key — `<leader>sl` belongs to the
-    // session-lifecycle picker, and dispatch is first-match-wins, so a second
-    // claim would silently shadow it.
-    routes.attach(RouteRow {
-        route_id: RouteId::new("task-list:open"),
-        scope: jinn_tools_msg::task_list_picker_scope(),
-        key: "<leader>el",
-        category: "general",
-        site: BindSite::StaticScopes(&["Sidebar"]),
-        feature: "tools",
-        outcome: RouteOutcome::Action {
-            action: "open-task-list-picker",
-            display: "search task list",
-            run: action(cell, open_task_list_picker),
-        },
-    });
-
-    routes.attach(row(
-        "close-task-list-picker",
-        "<esc>",
-        "general",
-        "close the browser, leaving the sidebar in place",
-        action(cell, close_task_list_picker),
-    ));
+    // The opener is deliberately absent: this menu is opened by the
+    // sidebar's own `s` key, which calls `task_list_picker_opener` in
+    // this slice. It claims no leader chord, matching trunk.
     routes.attach(row(
         "confirm-task-list-picker",
         "<enter>",
@@ -125,7 +102,7 @@ pub fn attach_task_list_picker_rows(routes: &KeyRoutes, cell: &TaskListPickerCel
     ));
     routes.attach(row(
         "quit-task-list-picker",
-        "q",
+        "<esc>",
         "general",
         "close the browser",
         action(cell, close_task_list_picker),
@@ -228,6 +205,23 @@ pub fn register_task_list_picker_input_hook(routes: &KeyRoutes, cell: &TaskListP
 // ── Actions ─────────────────────────────────────────────────────────────
 
 /// Opens the browser over the active session's current task list.
+/// The task-list picker's opener, resolved against the cell at dispatch time.
+///
+/// The sidebar's `s` key needs this without holding a `TypedCell` handle: it
+/// is a separate slice, and handing out the picker cell would leak the
+/// picker's internals across the boundary. Looking the cell up in the shared
+/// registry by its public slot keeps the sidebar ignorant of everything but
+/// the fact that the tools slice owns a task list browser.
+#[must_use]
+pub fn task_list_opener_action() -> jinn_slices::route::ActionFn {
+    jinn_slices::route::ActionFn::new(|mut ctx| {
+        let Some(cell) = ctx.slices.reader(&jinn_tools_msg::task_list_picker_slot()) else {
+            return IntentResult::empty();
+        };
+        open_task_list_picker(&mut ctx, &cell)
+    })
+}
+
 fn open_task_list_picker(ctx: &mut ActionCtx<'_>, cell: &TaskListPickerCell) -> IntentResult {
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
@@ -239,7 +233,7 @@ fn open_task_list_picker(ctx: &mut ActionCtx<'_>, cell: &TaskListPickerCell) -> 
         .with_scope_signal(ScopeSignal::Push(jinn_tools_msg::task_list_picker_scope()))
 }
 
-/// Escape (and `q`): pop **only** the picker.
+/// Escape: pop **only** the picker.
 ///
 /// A plain `Pop` would be the normal picker behavior, but this browser is
 /// reached from the sidebar: dropping the whole overlay stack would take the

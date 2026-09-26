@@ -158,7 +158,38 @@ pub fn attach_endpoint_picker_rows(routes: &KeyRoutes, cell: &EndpointPickerCell
         action(cell, clear_filter_or_leave),
     ));
 
+    // The detail pane scrolls independently of the list: PageUp/PageDown page
+    // the rows, so the pane needs its own keys. Trunk drove both from one
+    // ScrollUp/ScrollDown intent; here the list has dedicated paging, so the
+    // pane takes Ctrl+U/Ctrl+D.
+    routes.attach(row(
+        "endpoint-preview-up",
+        "<c-u>",
+        "navigation",
+        "scroll detail up",
+        action(cell, scroll_detail_up),
+    ));
+    routes.attach(row(
+        "endpoint-preview-down",
+        "<c-d>",
+        "navigation",
+        "scroll detail down",
+        action(cell, scroll_detail_down),
+    ));
+
     attach_navigation_rows(routes, cell);
+}
+
+/// Scrolls the detail pane up one line, stopping at the top.
+fn scroll_detail_up(_ctx: &mut ActionCtx<'_>, cell: &EndpointPickerCell) -> IntentResult {
+    cell.update(|p| p.preview_scroll = p.preview_scroll.saturating_sub(1));
+    IntentResult::empty()
+}
+
+/// Scrolls the detail pane down one line.
+fn scroll_detail_down(_ctx: &mut ActionCtx<'_>, cell: &EndpointPickerCell) -> IntentResult {
+    cell.update(|p| p.preview_scroll = p.preview_scroll.saturating_add(1));
+    IntentResult::empty()
 }
 
 /// Attaches the four list-navigation rows.

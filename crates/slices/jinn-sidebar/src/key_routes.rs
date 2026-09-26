@@ -427,19 +427,15 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "s",
         "general",
         "browse task list",
-        // Route to the task-list picker by asking the tools slice to open
-        // itself. The sidebar names the picker only as "open the task list
-        // browser" — it does not know where that browser's state lives, which
-        // is the point: the picker is a detail of the tools slice.
-        sync(|_state| {
-            IntentResult::new_message(jinn_domain::protocol::intent::KernelIntent::Dynamic(
-                jinn_slices::DynamicIntent::new(
-                    jinn_tools_msg::task_list_picker_scope(),
-                    "open-task-list-picker",
-                    "browse task list",
-                ),
-            ))
-        }),
+        // Run the tools slice's own open action rather than publishing a
+        // message naming it. A `DynamicIntent` published here would go to the
+        // bus, not back through route dispatch, so the picker's open action
+        // would never run and the menu would never appear.
+        //
+        // This still keeps the sidebar ignorant of the picker: it names the
+        // tools slice's public entry point, not the picker's scope, state, or
+        // any of its internals.
+        jinn_tools::task_list_picker_opener(),
     ));
     routes.attach(row(
         "task-preview-up",

@@ -8,7 +8,7 @@
 
 #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
-use crate::common::{composition_routes, test_app};
+use crate::common::{composed_keymap, composition_routes, test_app};
 use jinn_dashboard::dashboard_scope;
 use jinn_quake_bar::quake_scope;
 
@@ -356,5 +356,69 @@ fn production_wiring_calls_every_picker_activation() {
             wiring.contains(needle),
             "{label} picker is never activated in src/actor_wiring.rs: its keys do nothing"
         );
+    }
+}
+
+/// `s` in the sidebar's task-list section opens the task-list browser.
+///
+/// The row used to publish a `DynamicIntent` naming the tools slice's open
+/// action. A published message goes to the bus and never returns through route
+/// dispatch, so the action never ran and the menu never appeared — while every
+/// test that only asked "does this scope own rows?" kept passing. This asserts
+/// the press produces the picker's scope on the stack.
+#[rstest::rstest]
+#[tokio::test]
+async fn sidebar_task_list_section_opens_the_task_list_picker() {
+    use jinn_domain::{KernelIntent, Key, KeyEvent, Modifiers};
+    use jinn_slices::focus::FocusScope;
+    use jinn_slices::route::{ActionCtx, ScopeSignal};
+    use jinn_tui::Scope;
+    use jinn_tui::app::WhichKeyInstance;
+
+    // Given the task-list sidebar section focused, as the UI does.
+    let section_id = jinn_sidebar_msg::SidebarSectionId::TaskList.scope_id();
+    let app = test_app().await;
+    let mut state = app.core.state.write();
+    state
+        .frontend
+        .scope_push(FocusScope::Dynamic(section_id.clone()));
+
+    // When `s` is pressed there.
+    let mut wk = WhichKeyInstance::new(composed_keymap(), Scope::Dynamic(section_id));
+    let intent = wk.handle_key(KeyEvent {
+        key: Key::Char('s'),
+        modifiers: Modifiers::none(),
+    });
+    let Some(KernelIntent::Dynamic(dynamic)) = intent else {
+        panic!("s in the task-list section must fire an action, got {intent:?}");
+    };
+
+    // Then route dispatch resolves it, and the action pushes the picker scope.
+    //
+    // The row used to publish a `DynamicIntent` naming the tools slice's open
+    // action. A published message goes to the bus and never returns through
+    // route dispatch, so the action never ran and the menu never appeared —
+    // while every test asking only "does this scope own rows?" kept passing.
+    let result = app
+        .services
+        .key_routes
+        .action_for(
+            &dynamic,
+            ActionCtx {
+                state: &mut *state,
+                slices: &app.services.slices,
+                key_bytes: Vec::new(),
+            },
+        )
+        .unwrap_or_else(|| panic!("s produced no route action: {dynamic:?}"));
+    match result.scope_signal {
+        Some(ScopeSignal::Push(pushed)) => {
+            assert_eq!(
+                pushed,
+                jinn_tools_msg::task_list_picker_scope(),
+                "the opener must push the task-list picker scope"
+            );
+        }
+        other => panic!("the opener must push the picker scope, got {other:?}"),
     }
 }

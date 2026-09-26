@@ -844,3 +844,51 @@ async fn the_status_line_reports_a_fetch_in_flight() {
         "the status line must show the fetch is in flight; frame: {frame:?}"
     );
 }
+
+/// The endpoint menu draws its cost/detail pane.
+///
+/// The renderer used the plain `SelectionWidget`, which has no pane to draw in,
+/// so every row rendered bare and the routing tag, uptime, quantization, and
+/// pricing were never shown — even though `endpoint_preview` existed and was
+/// correct. Nothing asserted the pane's content, only the rows.
+#[rstest::rstest]
+#[tokio::test]
+async fn endpoint_picker_draws_the_detail_pane() {
+    // Given an open picker with a highlighted endpoint carrying metadata.
+    let wired = Wired::new().await;
+    wired.with_entries(vec![entry("anthropic/claude-sonnet-4", "Anthropic", true)]);
+
+    // When the popup is drawn.
+    let rows = wired.draw();
+    let text = rows.join("\n");
+
+    // Then the pane shows the endpoint's details, not just its name.
+    assert!(
+        text.contains("Anthropic"),
+        "the detail pane must show the provider: {text}"
+    );
+    for field in ["Uptime", "Quantization", "Prompt price", "Completion price"] {
+        assert!(
+            text.contains(field),
+            "the detail pane must show {field}: {text}"
+        );
+    }
+}
+
+/// The detail pane scrolls on its own keys, separate from list paging.
+#[rstest::rstest]
+#[tokio::test]
+async fn endpoint_picker_scrolls_the_detail_pane() {
+    // Given an open picker.
+    let wired = Wired::new().await;
+    wired.with_entries(vec![entry("anthropic/claude-sonnet-4", "Anthropic", true)]);
+
+    // When the pane is scrolled down then back up past the top.
+    wired.fire("endpoint-preview-down");
+    assert_eq!(wired.cell().read().preview_scroll, 1);
+    wired.fire("endpoint-preview-up");
+    wired.fire("endpoint-preview-up");
+
+    // Then it stops at the top rather than wrapping or underflowing.
+    assert_eq!(wired.cell().read().preview_scroll, 0);
+}

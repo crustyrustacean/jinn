@@ -31,6 +31,7 @@ jinn-core-types = { workspace = true }
 jinn-skills = { workspace = true }
 jinn-domain = { workspace = true }
 jinn-preferences-config = { workspace = true }
+jinn-tools = { workspace = true }
 jinn-tools-msg = { workspace = true }
 jinn-picker = { workspace = true }
 error-stack = { workspace = true }

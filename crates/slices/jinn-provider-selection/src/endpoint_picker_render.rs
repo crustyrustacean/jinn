@@ -256,11 +256,15 @@ pub fn render_endpoint_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderF
         Line::from(keybind.0),
     ];
 
-    let widget = jinn_selection_widget::SelectionWidget::new(&state.selection)
+    // `PreviewSelectionWidget`, not `SelectionWidget`: the endpoint menu has a
+    // detail pane (routing tag, uptime, quantization, pricing). The plain
+    // widget has no pane to draw it in, so the rows rendered bare.
+    let widget = jinn_selection_widget::PreviewSelectionWidget::new(&state.selection)
         .title(Line::from(" OpenRouter Endpoint "))
         .title_style(Style::default().fg(theme.popup_title))
         .footers(footers)
-        .colors(palette.selection_colors());
+        .colors(palette.selection_colors())
+        .preview_scroll(state.preview_scroll);
 
     widget.render(frame, area);
 }

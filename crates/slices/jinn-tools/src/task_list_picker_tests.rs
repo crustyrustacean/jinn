@@ -102,6 +102,15 @@ impl Harness {
         }
     }
 
+    /// Opens the browser through the same action the sidebar's `s` key runs.
+    fn open(&self) -> IntentResult {
+        crate::task_list_picker_routes::task_list_opener_action().run(ActionCtx {
+            state: &mut *self.state.borrow_mut(),
+            slices: &self.slices,
+            key_bytes: Vec::new(),
+        })
+    }
+
     /// Dispatches a slice action by name, the way the kernel would.
     fn dispatch(&self, action: &str) -> IntentResult {
         let mut state = self.state.borrow_mut();
@@ -217,7 +226,7 @@ async fn open_shows_phase_as_a_root_row() {
     });
 
     // When opening the browser.
-    h.dispatch("open-task-list-picker");
+    h.open();
 
     // Then the phase appears as a row.
     assert_eq!(h.labels(), vec!["Build".to_owned()]);
@@ -241,7 +250,7 @@ async fn open_shows_tasks_indented_under_their_phase() {
     });
 
     // When opening the browser.
-    h.dispatch("open-task-list-picker");
+    h.open();
 
     // Then the phase is followed by its two tasks.
     assert_eq!(
@@ -261,7 +270,7 @@ async fn open_pushes_the_picker_scope() {
     let h = Harness::new().await;
 
     // When opening the browser.
-    let result = h.dispatch("open-task-list-picker");
+    let result = h.open();
 
     // Then the picker's own scope is pushed.
     assert!(matches!(
@@ -277,7 +286,7 @@ async fn open_over_an_empty_task_list_still_opens() {
     let h = Harness::new().await;
 
     // When opening the browser.
-    h.dispatch("open-task-list-picker");
+    h.open();
 
     // Then it opens, showing no rows — "nothing to do" is a thing to look at.
     assert!(h.labels().is_empty());
@@ -291,7 +300,7 @@ async fn postponed_tasks_are_hidden_from_the_browser() {
     h.set_task_list(sample_list_with_postponed());
 
     // When opening the browser.
-    h.dispatch("open-task-list-picker");
+    h.open();
 
     // Then the postponed task is not shown, but its phase is.
     assert_eq!(h.labels(), vec!["Later".to_owned()]);
@@ -303,12 +312,12 @@ async fn opening_twice_starts_from_a_clean_filter() {
     // Given a harness whose filter has text in it.
     let h = Harness::new().await;
     h.set_task_list(sample_list());
-    h.dispatch("open-task-list-picker");
+    h.open();
     h.edit(&jinn_slices::EditIntent::InsertChar('B'));
     assert_eq!(h.read().filter, "B", "the filter took the typed character");
 
     // When opening the browser again.
-    h.dispatch("open-task-list-picker");
+    h.open();
 
     // Then the filter is empty and every row is back.
     assert_eq!(h.read().filter, "");
@@ -503,10 +512,10 @@ async fn escape_pops_only_the_picker_scope() {
         .scope_push(jinn_slices::FocusScope::Dynamic(
             jinn_slices::SliceScopeId::navigation("sidebar", "task-list"),
         ));
-    h.dispatch("open-task-list-picker");
+    h.open();
 
     // When pressing escape.
-    let result = h.dispatch("close-task-list-picker");
+    let result = h.dispatch("quit-task-list-picker");
 
     // Then exactly one scope pops, and it is this picker's.
     // Popping the whole stack would take the sidebar section with it and
@@ -519,12 +528,12 @@ async fn escape_pops_only_the_picker_scope() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn q_also_closes_the_browser() {
+async fn escape_closes_the_browser() {
     // Given an open browser.
     let h = open_with(sample_list()).await;
 
-    // When pressing `q`.
-    let result = h.dispatch("close-task-list-picker");
+    // When pressing escape.
+    let result = h.dispatch("quit-task-list-picker");
 
     // Then the picker scope pops.
     assert!(matches!(result.scope_signal, Some(ScopeSignal::PopIf(_))));
@@ -667,7 +676,7 @@ async fn render_measures_the_result_viewport_into_the_cell() {
 async fn open_with(list: TaskList) -> Harness {
     let h = Harness::new().await;
     h.set_task_list(list);
-    h.dispatch("open-task-list-picker");
+    h.open();
     h
 }
 
