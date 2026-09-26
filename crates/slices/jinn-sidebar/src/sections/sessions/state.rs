@@ -31,6 +31,7 @@ pub struct SessionListKey {
     parent_id: Option<SessionId>,
     is_subagent: bool,
     has_live_term: bool,
+    is_in_flight: bool,
 }
 
 impl SessionListKey {
@@ -49,6 +50,7 @@ impl SessionListKey {
         session: &jinn_session_state::ChatSessionState,
         active_id: &SessionId,
         has_live_term: bool,
+        is_in_flight: bool,
     ) -> Self {
         let title = session.title().unwrap_or("Untitled Session");
         let (title_len, title_head, title_tail) = Self::title_digest(title);
@@ -66,6 +68,7 @@ impl SessionListKey {
             parent_id: session.parent_session().clone(),
             is_subagent: session.origin() == SessionOrigin::Subagent,
             has_live_term,
+            is_in_flight,
         }
     }
 }
@@ -102,7 +105,8 @@ pub fn session_list_key(state: &AppState) -> Vec<SessionListKey> {
                         .reader::<jinn_term_msg::TerminalTabState>(&jinn_term_msg::term_tabs_slot())
                 })
                 .is_some_and(|cell| cell.read().live_terms.contains(id));
-            SessionListKey::of_session(id, session, active_id, has_live_term)
+            let in_flight = is_in_flight(&state.frontend, id);
+            SessionListKey::of_session(id, session, active_id, has_live_term, in_flight)
         })
         .collect()
 }
@@ -140,6 +144,7 @@ pub fn sorted_open_sessions_split(
                         .reader::<jinn_term_msg::TerminalTabState>(&jinn_term_msg::term_tabs_slot())
                 })
                 .is_some_and(|cell| cell.read().live_terms.contains(id)),
+            is_in_flight: is_in_flight(frontend, id),
         })
         .collect();
     let visual_parents = frontend.with_sections(

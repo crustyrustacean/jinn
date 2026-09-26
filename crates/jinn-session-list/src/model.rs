@@ -38,4 +38,8 @@ pub struct SessionEntry {
     pub is_subagent: bool,
     /// Whether the session currently owns a live interactive terminal.
     pub has_live_term: bool,
+    /// Whether a disposal operation for this session has been dispatched and
+    /// has not yet finished. Rendered as a background wash so a row whose
+    /// archive or teardown is still running is distinguishable at a glance.
+    pub is_in_flight: bool,
 }

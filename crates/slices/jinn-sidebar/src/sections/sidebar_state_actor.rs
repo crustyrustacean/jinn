@@ -134,7 +134,7 @@ mod tests {
             .state
             .write()
             .frontend
-            .update_sections(|s| s.sessions.begin_in_flight(&[id.clone()]));
+            .update_sections(|s| s.sessions.begin_in_flight(std::slice::from_ref(&id)));
         (actor, id)
     }
 

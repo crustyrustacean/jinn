@@ -56,6 +56,13 @@ pub(crate) fn arrow_span(is_active: bool, theme: &Theme) -> Span<'static> {
 /// sessions use [`Theme::subagent_fg`] wherever a regular session would use
 /// muted text, so machine-spawned sessions read as a different kind.
 pub(crate) fn entry_title_style(entry: &SessionEntry, is_selected: bool, theme: &Theme) -> Style {
+    // An in-flight row takes the tint in place of every other choice, and
+    // deliberately without `Modifier::REVERSED`: selection inverts fg/bg at
+    // the terminal, which would flip the tint into a light wash. A tinted row
+    // stays legible whether or not it also holds the cursor.
+    if entry.is_in_flight {
+        return in_flight_style(theme);
+    }
     let base = if entry.is_subagent {
         theme.subagent_fg
     } else {
@@ -81,6 +88,13 @@ pub(crate) fn entry_title_style(entry: &SessionEntry, is_selected: bool, theme: 
     } else {
         Style::default().fg(base)
     }
+}
+
+/// The wash drawn behind a row whose session has a disposal in flight.
+fn in_flight_style(theme: &Theme) -> Style {
+    Style::default()
+        .fg(theme.in_flight_fg)
+        .bg(theme.in_flight_bg)
 }
 
 /// Builds the tree connector prefix for a session entry.
@@ -180,5 +194,14 @@ fn assemble_session_line(
         ));
     }
     spans.push(Span::styled(display_title, style));
+    // Re-style every span so the wash runs the full width of the row rather
+    // than only behind the title, and so the indicator, arrow, tree connector
+    // and status glyphs read as part of the same tinted row.
+    if entry.is_in_flight {
+        spans = spans
+            .into_iter()
+            .map(|span| span.style(in_flight_style(theme)))
+            .collect();
+    }
     Line::from(spans)
 }

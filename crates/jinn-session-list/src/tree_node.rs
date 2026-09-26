@@ -38,6 +38,7 @@ pub fn visible_session_at(
             is_last_child: false,
             is_subagent: false,
             has_live_term: false,
+            is_in_flight: false,
         })
         .collect();
     crate::visible_session_tree(entries, visual_parents)

@@ -1064,6 +1064,7 @@ fn style_entry(
         is_last_child: false,
         is_subagent,
         has_live_term: false,
+        is_in_flight: false,
     }
 }
 
@@ -3241,4 +3242,176 @@ fn session_reloaded_from_the_archive_is_listed() {
             "a reloaded session must be listed; got {listed:?}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// in-flight tint - dispatch marking
+// ---------------------------------------------------------------------------
+
+/// A state with one loaded, idle session that is selected in the sessions section.
+fn state_with_one_selected_idle_session() -> (AppState, jinn_core_types::SessionId) {
+    let mut state = AppState::default_with_scope_focus();
+    let id = state.session.active_session_id().clone();
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+    state
+        .frontend
+        .update_sections(|s| s.sessions.selected_index = Some(0));
+    (state, id)
+}
+
+/// Whether the given session is currently marked in flight in the sidebar cell.
+fn marked_in_flight(state: &AppState, id: &jinn_core_types::SessionId) -> bool {
+    crate::sections::sessions::state::is_in_flight(&state.frontend, id)
+}
+
+#[rstest::rstest]
+fn archive_marks_session_in_flight() {
+    // Given one loaded, idle session with the cursor on it.
+    let (mut state, id) = state_with_one_selected_idle_session();
+
+    // When handling Intent::SidebarSessionArchive.
+    crate::sections::sessions::handle_session_archive(&mut state);
+
+    // Then the session is marked in flight.
+    assert!(marked_in_flight(&state, &id));
+}
+
+#[rstest::rstest]
+fn close_marks_session_in_flight_on_confirm() {
+    // Given one loaded, idle session, with the close prompt already armed.
+    let (mut state, id) = state_with_one_selected_idle_session();
+    state.frontend.close_session_prompt = true;
+
+    // When handling the confirm path.
+    crate::sections::sessions::handle_session_close_arm(&mut state);
+
+    // Then the session is marked in flight.
+    assert!(marked_in_flight(&state, &id));
+}
+
+#[rstest::rstest]
+fn first_close_press_marks_nothing() {
+    // Given one loaded, idle session.
+    let (mut state, id) = state_with_one_selected_idle_session();
+
+    // When handling the first close press, which only arms the prompt.
+    crate::sections::sessions::handle_session_close_arm(&mut state);
+
+    // Then nothing is marked in flight.
+    assert!(!marked_in_flight(&state, &id));
+}
+
+#[rstest::rstest]
+fn archive_tree_marks_every_member_of_an_idle_subtree() {
+    // Given a parent session with one idle child, cursor on the parent.
+    let mut state = AppState::default_with_scope_focus();
+    let parent_id = state.session.active_session_id().clone();
+    let mut child = ChatSessionState::new();
+    child.set_parent_session(parent_id.clone());
+    let child_id = child.session_id().clone();
+    state.session.insert(child);
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+    state
+        .frontend
+        .update_sections(|s| s.sessions.selected_index = Some(0));
+
+    // When confirming the archive-tree prompt twice.
+    let _ = crate::sections::sessions::handle_session_tree_action_arm(
+        &mut state,
+        crate::sections::sessions::TreePromptAction::Archive,
+    );
+    let _ = crate::sections::sessions::handle_session_tree_action_arm(
+        &mut state,
+        crate::sections::sessions::TreePromptAction::Archive,
+    );
+
+    // Then both the parent and the child are marked in flight.
+    assert!(marked_in_flight(&state, &parent_id));
+    assert!(marked_in_flight(&state, &child_id));
+}
+
+#[rstest::rstest]
+fn archive_tree_with_busy_member_marks_nothing() {
+    // Given a parent session with one busy child, cursor on the parent.
+    let mut state = AppState::default_with_scope_focus();
+    let parent_id = state.session.active_session_id().clone();
+    let mut child = ChatSessionState::new();
+    child.set_parent_session(parent_id.clone());
+    let child_id = child.session_id().clone();
+    child.begin_busy();
+    state.session.insert(child);
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+    state
+        .frontend
+        .update_sections(|s| s.sessions.selected_index = Some(0));
+
+    // When confirming the archive-tree prompt twice.
+    let _ = crate::sections::sessions::handle_session_tree_action_arm(
+        &mut state,
+        crate::sections::sessions::TreePromptAction::Archive,
+    );
+    let _ = crate::sections::sessions::handle_session_tree_action_arm(
+        &mut state,
+        crate::sections::sessions::TreePromptAction::Archive,
+    );
+
+    // Then no member is marked in flight.
+    assert!(!marked_in_flight(&state, &parent_id));
+    assert!(!marked_in_flight(&state, &child_id));
+}
+
+#[rstest::rstest]
+fn teardown_tree_marks_every_member_of_an_idle_subtree() {
+    // Given a parent session with one idle child, cursor on the parent.
+    let mut state = AppState::default_with_scope_focus();
+    let parent_id = state.session.active_session_id().clone();
+    let mut child = ChatSessionState::new();
+    child.set_parent_session(parent_id.clone());
+    let child_id = child.session_id().clone();
+    state.session.insert(child);
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+    state
+        .frontend
+        .update_sections(|s| s.sessions.selected_index = Some(0));
+
+    // When confirming the teardown-tree prompt twice.
+    let _ = crate::sections::sessions::handle_session_tree_action_arm(
+        &mut state,
+        crate::sections::sessions::TreePromptAction::TeardownAndArchive,
+    );
+    let _ = crate::sections::sessions::handle_session_tree_action_arm(
+        &mut state,
+        crate::sections::sessions::TreePromptAction::TeardownAndArchive,
+    );
+
+    // Then both the parent and the child are marked in flight.
+    assert!(marked_in_flight(&state, &parent_id));
+    assert!(marked_in_flight(&state, &child_id));
+}
+
+#[rstest::rstest]
+fn session_list_key_changes_when_a_session_becomes_in_flight() {
+    // Given one loaded session with the cursor on it.
+    let (state, id) = state_with_one_selected_idle_session();
+
+    // When marking it in flight and re-reading the memo key.
+    let before = crate::sections::sessions::state::session_list_key(&state);
+    state
+        .frontend
+        .update_sections(|s| s.sessions.begin_in_flight(std::slice::from_ref(&id)));
+    let after = crate::sections::sessions::state::session_list_key(&state);
+
+    // Then the key changed, so the cached tree is rebuilt and the tint appears.
+    assert_ne!(
+        before, after,
+        "the memo key must change or the cached tree is never rebuilt"
+    );
 }

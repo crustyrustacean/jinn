@@ -44,6 +44,15 @@ fn tree_entry(
         is_last_child,
         is_subagent,
         has_live_term: false,
+        is_in_flight: false,
+    }
+}
+
+/// A root-level entry carrying the given in-flight flag.
+fn entry_with_in_flight(is_in_flight: bool) -> SessionEntry {
+    SessionEntry {
+        is_in_flight,
+        ..tree_entry(0, vec![], true, false)
     }
 }
 
@@ -188,6 +197,7 @@ fn assembled_line_includes_tree_prefix_for_non_root() {
         is_last_child: true,
         is_subagent: false,
         has_live_term: false,
+        is_in_flight: false,
     };
     let theme = default_theme();
 
@@ -219,6 +229,7 @@ fn assembled_line_has_no_tree_prefix_for_root() {
         is_last_child: true,
         is_subagent: false,
         has_live_term: false,
+        is_in_flight: false,
     };
     let theme = default_theme();
 
@@ -251,6 +262,7 @@ fn assembled_line_has_tree_prefix_span_for_child() {
         is_last_child: false,
         is_subagent: false,
         has_live_term: false,
+        is_in_flight: false,
     };
     let theme = default_theme();
 
@@ -287,6 +299,7 @@ fn title_is_truncated_more_at_higher_depth() {
         is_last_child: true,
         is_subagent: false,
         has_live_term: false,
+        is_in_flight: false,
     };
     let child = SessionEntry {
         kind: SessionEntryKind::Session,
@@ -302,6 +315,7 @@ fn title_is_truncated_more_at_higher_depth() {
         is_last_child: true,
         is_subagent: false,
         has_live_term: false,
+        is_in_flight: false,
     };
     let theme = default_theme();
     let max_len = 20;
@@ -342,6 +356,7 @@ fn active_arrow_shows_at_depth_greater_than_zero() {
         is_last_child: true,
         is_subagent: false,
         has_live_term: false,
+        is_in_flight: false,
     };
     let theme = default_theme();
 
@@ -378,6 +393,7 @@ fn tree_prefix_uses_muted_text_color() {
         is_last_child: true,
         is_subagent: false,
         has_live_term: false,
+        is_in_flight: false,
     };
     let theme = default_theme();
 
@@ -444,6 +460,7 @@ fn sidebar_marks_child_with_symbol() {
         is_last_child: true,
         is_subagent: true,
         has_live_term: false,
+        is_in_flight: false,
     };
     let theme = default_theme();
 
@@ -489,6 +506,7 @@ fn sidebar_omits_symbol_for_regular_session() {
         is_last_child: true,
         is_subagent: false,
         has_live_term: false,
+        is_in_flight: false,
     };
     let theme = default_theme();
 
@@ -520,6 +538,7 @@ fn sidebar_shows_live_term_symbol_for_session_with_terminal() {
         is_last_child: true,
         is_subagent: false,
         has_live_term: true,
+        is_in_flight: false,
     };
     let theme = default_theme();
 
@@ -552,6 +571,7 @@ fn sidebar_omits_live_term_symbol_for_session_without_terminal() {
         is_last_child: true,
         is_subagent: false,
         has_live_term: false,
+        is_in_flight: false,
     };
     let theme = default_theme();
 
@@ -583,6 +603,7 @@ fn sidebar_live_term_symbol_consumes_truncation_budget() {
         is_last_child: true,
         is_subagent,
         has_live_term: true,
+        is_in_flight: false,
     };
     let plain = make(false);
     let sub = make(true);
@@ -633,6 +654,7 @@ fn sidebar_symbol_consumes_truncation_budget() {
         is_last_child: true,
         is_subagent,
         has_live_term: false,
+        is_in_flight: false,
     };
     let plain = make(false);
     let subagent = make(true);
@@ -660,4 +682,117 @@ fn sidebar_symbol_consumes_truncation_budget() {
         plain_title - symbol_len,
         "the symbol must reduce the title budget by its own width"
     );
+}
+
+// ---------------------------------------------------------------------------
+// in-flight tint
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
+fn in_flight_row_uses_theme_background() {
+    // Given a session with a disposal in flight.
+    let entry = entry_with_in_flight(true);
+    let theme = default_theme();
+
+    // When assembling its line.
+    let line = assemble_entry_line(&entry, false, 40, &idle_throbber(), &theme);
+
+    // Then the title span carries the theme's in-flight background.
+    let title = line.spans.last().expect("spans");
+    assert_eq!(title.style.bg, Some(theme.in_flight_bg));
+}
+
+#[rstest::rstest]
+fn in_flight_row_uses_theme_foreground() {
+    // Given a session with a disposal in flight.
+    let entry = entry_with_in_flight(true);
+    let theme = default_theme();
+
+    // When assembling its line.
+    let line = assemble_entry_line(&entry, false, 40, &idle_throbber(), &theme);
+
+    // Then the title span carries the theme's in-flight foreground.
+    let title = line.spans.last().expect("spans");
+    assert_eq!(title.style.fg, Some(theme.in_flight_fg));
+}
+
+#[rstest::rstest]
+fn idle_row_is_not_tinted() {
+    // Given a session with no disposal in flight.
+    let entry = entry_with_in_flight(false);
+    let theme = default_theme();
+
+    // When assembling its line.
+    let line = assemble_entry_line(&entry, false, 40, &idle_throbber(), &theme);
+
+    // Then no span carries the in-flight background.
+    let tinted = line
+        .spans
+        .iter()
+        .any(|span| span.style.bg == Some(theme.in_flight_bg));
+    assert!(!tinted, "an untinted row must not wear the in-flight wash");
+}
+
+#[rstest::rstest]
+fn selected_and_in_flight_row_is_not_reversed() {
+    // Given a session that is both cursor-selected and in flight.
+    let entry = entry_with_in_flight(true);
+    let theme = default_theme();
+
+    // When assembling its line.
+    let line = assemble_entry_line(&entry, true, 40, &idle_throbber(), &theme);
+
+    // Then no span is reversed, which would invert the wash into a light one.
+    let reversed = line.spans.iter().any(|span| {
+        span.style
+            .add_modifier
+            .contains(ratatui::style::Modifier::REVERSED)
+    });
+    assert!(
+        !reversed,
+        "REVERSED would invert the in-flight wash instead of showing it"
+    );
+}
+
+#[rstest::rstest]
+fn error_and_in_flight_row_is_tinted() {
+    // Given a session whose last entry errored and which is in flight.
+    let entry = SessionEntry {
+        last_entry_is_error: true,
+        ..entry_with_in_flight(true)
+    };
+    let theme = default_theme();
+
+    // When assembling its line.
+    let line = assemble_entry_line(&entry, false, 40, &idle_throbber(), &theme);
+
+    // Then the wash still wins over the error foreground.
+    let title = line.spans.last().expect("spans");
+    assert_eq!(title.style.bg, Some(theme.in_flight_bg));
+    assert_eq!(title.style.fg, Some(theme.in_flight_fg));
+}
+
+#[rstest::rstest]
+fn in_flight_tint_covers_every_span() {
+    // Given an in-flight session with a tree prefix.
+    let entry = SessionEntry {
+        depth: 1,
+        ancestor_continuations: vec![true, true],
+        is_last_child: true,
+        has_live_term: true,
+        is_subagent: true,
+        ..entry_with_in_flight(true)
+    };
+    let theme = default_theme();
+
+    // When assembling its line.
+    let line = assemble_entry_line(&entry, false, 40, &idle_throbber(), &theme);
+
+    // Then every span carries the wash, so it spans the full row width.
+    let untinted = line
+        .spans
+        .iter()
+        .filter(|span| span.style.bg != Some(theme.in_flight_bg))
+        .count();
+    assert_eq!(untinted, 0, "the wash must cover the whole row");
 }
