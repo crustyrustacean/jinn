@@ -38,11 +38,11 @@ where
 
 pub struct ControlledStartupStore {
     pub summaries: Vec<SessionSummary>,
-    snapshots: HashMap<SessionId, SessionSnapshot>,
-    session_gates: Mutex<HashMap<SessionId, Arc<tokio::sync::Semaphore>>>,
-    tree_summary_gate: Mutex<Option<Arc<tokio::sync::Semaphore>>>,
-    failed_summaries: AtomicBool,
-    failed_session_ids: Mutex<HashSet<SessionId>>,
+    pub snapshots: HashMap<SessionId, SessionSnapshot>,
+    pub session_gates: Mutex<HashMap<SessionId, Arc<tokio::sync::Semaphore>>>,
+    pub tree_summary_gate: Mutex<Option<Arc<tokio::sync::Semaphore>>>,
+    pub failed_summaries: AtomicBool,
+    pub failed_session_ids: Mutex<HashSet<SessionId>>,
     pub requested_session_ids: Mutex<Vec<SessionId>>,
     pub load_calls: AtomicUsize,
     pub save_calls: AtomicUsize,

@@ -2459,7 +2459,7 @@ fn a_loading_indication_animates_over_time() {
 }
 
 #[rstest::rstest]
-fn a_loading_indication_is_centered_vertically() {
+fn a_loading_indication_sits_on_the_bottom_row() {
     // Given a chat log whose session is still loading, in a tall pane.
     let mut element = ChatLogElement::new();
     let state = {
@@ -2480,7 +2480,8 @@ fn a_loading_indication_is_centered_vertically() {
         })
         .unwrap();
 
-    // Then the indication sits on the pane's middle row, not the top one.
+    // Then the indication sits on the pane's last row — the row directly above
+    // the chat bar — rather than floating in the middle of the conversation.
     let rows: Vec<String> = (area.y..area.y + area.height)
         .map(|row| jinn_testutil::buffer_row(terminal.backend().buffer(), row, area.width))
         .collect();
@@ -2489,8 +2490,8 @@ fn a_loading_indication_is_centered_vertically() {
         .position(|row| row.contains("Loading session"))
         .expect("the indication must be drawn");
     assert_eq!(
-        painted, 5,
-        "an 11-row pane must show the indication on row 5, got rows {rows:?}"
+        painted, 10,
+        "an 11-row pane must show the indication on its last row, got rows {rows:?}"
     );
 }
 
@@ -2517,7 +2518,7 @@ fn a_loading_indication_is_centered_horizontally() {
         .unwrap();
 
     // Then the label starts near the pane's horizontal centre, not at its edge.
-    let row = jinn_testutil::buffer_row(terminal.backend().buffer(), area.y + 5, area.width);
+    let row = jinn_testutil::buffer_row(terminal.backend().buffer(), area.y + 10, area.width);
     let start = row
         .find("Loading session")
         .expect("the label must be drawn");

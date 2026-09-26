@@ -10,7 +10,9 @@ use jinn_domain::feat::ui::chat_log::layout_supervisor::{LAYOUT_DEADLINE, LAYOUT
 use jinn_domain::protocol::system::ActiveSessionChanged;
 use jinn_session_state::{ChatSessionState, SessionSnapshot, snapshot_frozen_node_from_snapshot};
 use jinn_session_store_msg::SessionForkRequested;
-use jinn_session_store_msg::{ChatLogMeasureRequested, SessionLoadCompleted, SessionLoadRequested};
+use jinn_session_store_msg::{
+    ChatLogMeasureRequested, SessionLoadCompleted, SessionLoadRequested, SessionState,
+};
 use trouper::actor::ActorPath;
 use trouper::context::MsgCtx;
 use trouper::envelope::Address;
@@ -60,6 +62,9 @@ impl SessionStoreActor {
         let mut session = snapshot.restore_live();
         session.set_model(model);
         session.mark_interacted();
+        // The snapshot may have been taken while the session was archived. Loading it
+        // makes it live again, and the sidebar lists only `Loaded` sessions.
+        session.set_session_state(SessionState::Loaded);
         let original_cwd = session.cwd().to_path_buf();
 
         // Everything the measurement needs, taken while the session is still

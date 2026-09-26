@@ -161,7 +161,7 @@ impl SidebarSection for McpServersSection {
         jinn_sidebar_msg::SidebarSectionId::McpServers
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, skip_rows: u16, ctx: &RenderCtx) {
         let state = ctx.state;
         let sidebar_focused = state.frontend.is_sidebar();
         let section_focused = sidebar_focused
@@ -234,7 +234,9 @@ impl SidebarSection for McpServersSection {
             lines
         };
 
-        let widget = Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
+        let widget = Paragraph::new(lines)
+            .block(Block::default().borders(Borders::NONE))
+            .scroll((skip_rows, 0));
         frame.render_widget(widget, area);
     }
 
@@ -307,7 +309,7 @@ mod tests {
             .draw(|frame| {
                 let overlay_views = jinn_slices::OverlayViews::new();
                 let ctx = RenderCtx::new(state, slices, &overlay_views);
-                section.render(frame, area, &ctx);
+                section.render(frame, area, 0, &ctx);
             })
             .unwrap();
         let buffer = terminal.backend().buffer();
