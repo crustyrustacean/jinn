@@ -3,12 +3,29 @@
 use jinn_core_types::SessionId;
 use serde::{Deserialize, Serialize};
 
-/// Request to load a full session from storage by session ID.
+/// Request to activate a session, reading it from storage only if absent.
+///
+/// One command for every activation, because the decision between "read it from
+/// disk" and "it is already in memory" belongs to the actor that owns the
+/// session map. A caller cannot make it: only it can see what is loaded, and a
+/// caller that guessed wrong pays for a redundant read of a session it already
+/// had.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
-#[schema(description = "Load a session from the store by id.")]
+#[schema(description = "Activate a session, loading it from the store if absent.")]
 pub struct SessionLoadRequested {
-    /// The session to load.
+    /// The session to activate.
     pub session_id: SessionId,
+    /// The content width the next frame will render at, when the caller knows it.
+    ///
+    /// Carried rather than derived on arrival: a caller that switches sessions
+    /// has already switched by the time the store actor sees this, so the
+    /// target's own width is the never-rendered zero, and measuring there
+    /// produces counts no frame can use.
+    ///
+    /// `None` means the caller has no width to offer — Discord publishing this
+    /// for a session it has never seen, for instance — and the store actor
+    /// derives one from the layout it would render at anyway.
+    pub content_width: Option<u16>,
 }
 
 impl jinn_slices::BusMessage for SessionLoadRequested {}
@@ -81,6 +98,7 @@ mod tests {
         let commands = (
             SessionLoadRequested {
                 session_id: id.clone(),
+                content_width: Some(72),
             },
             SessionForkRequested {
                 source_session_id: id.clone(),
@@ -110,6 +128,7 @@ mod tests {
 
         // Then every command payload survives unchanged.
         assert_eq!(round.0.session_id, id);
+        assert_eq!(round.0.content_width, Some(72));
         assert_eq!(round.1.source_session_id, id);
         assert_eq!(round.1.at_ordinal, 7);
         assert_eq!(round.3.session_id, id);

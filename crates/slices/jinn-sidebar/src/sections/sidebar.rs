@@ -13,6 +13,7 @@ use super::section_trait::{
 use super::{mcp_servers_section, persona_section, pins, sessions, task_list_section};
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::render_ctx::RenderCtx;
+use jinn_domain::protocol::IntentResult;
 use jinn_mcp_msg::config::McpServersConfig;
 /// The sidebar container.
 ///
@@ -118,22 +119,26 @@ impl Default for Sidebar {
 /// This is the single navigation entry point called by the IntentHandler.
 /// Sections report `Exhausted` when they run out of entries; this function
 /// decides whether to switch to an adjacent section or keep the cursor where it is.
+///
+/// Returns the messages the move asked for — currently a session preview render
+/// when the cursor comes to rest on a session.
+#[must_use]
 pub fn navigate_sidebar(
     direction: &SidebarIntent,
     state: &mut AppState,
     config: &jinn_slices::ConfigLayer,
-) {
+) -> IntentResult {
     let focused = state
         .frontend
         .sidebar_section()
         .unwrap_or(jinn_sidebar_msg::SidebarSectionId::Persona);
-    let result = dispatch_navigate(focused, direction, state, config);
+    let (result, mut emitted) = dispatch_navigate(focused, direction, state, config);
 
     if result == SectionNavResult::Exhausted {
         let neighbor = match direction {
             SidebarIntent::MoveDown => next_section(focused),
             SidebarIntent::MoveUp => prev_section(focused),
-            SidebarIntent::Action(_) => return,
+            SidebarIntent::Action(_) => return emitted,
         };
 
         // Scan past consecutive empty sections.
@@ -149,18 +154,19 @@ pub fn navigate_sidebar(
                 let enter_from = match direction {
                     SidebarIntent::MoveDown => EnterFrom::Top,
                     SidebarIntent::MoveUp => EnterFrom::Bottom,
-                    SidebarIntent::Action(_) => return,
+                    SidebarIntent::Action(_) => return emitted,
                 };
-                receive_cursor(target, enter_from, state, config);
-                return;
+                emitted = receive_cursor(target, enter_from, state, config);
+                return emitted;
             }
             candidate = match direction {
                 SidebarIntent::MoveDown => next_section(target),
                 SidebarIntent::MoveUp => prev_section(target),
-                SidebarIntent::Action(_) => return,
+                SidebarIntent::Action(_) => return emitted,
             };
         }
     }
+    emitted
 }
 
 fn dispatch_navigate(
@@ -168,15 +174,24 @@ fn dispatch_navigate(
     intent: &SidebarIntent,
     state: &mut AppState,
     config: &jinn_slices::ConfigLayer,
-) -> SectionNavResult {
+) -> (SectionNavResult, IntentResult) {
     match section {
-        jinn_sidebar_msg::SidebarSectionId::Persona => persona_section::navigate(intent, state),
-        jinn_sidebar_msg::SidebarSectionId::Pins => pins::navigate(intent, state),
-        jinn_sidebar_msg::SidebarSectionId::TaskList => task_list_section::navigate(intent, state),
-        jinn_sidebar_msg::SidebarSectionId::McpServers => {
-            mcp_servers_section::navigate(intent, state, config)
+        jinn_sidebar_msg::SidebarSectionId::Persona => (
+            persona_section::navigate(intent, state),
+            IntentResult::empty(),
+        ),
+        jinn_sidebar_msg::SidebarSectionId::Pins => {
+            (pins::navigate(intent, state), IntentResult::empty())
         }
-        jinn_sidebar_msg::SidebarSectionId::Sessions => sessions::navigate(intent, state),
+        jinn_sidebar_msg::SidebarSectionId::TaskList => (
+            task_list_section::navigate(intent, state),
+            IntentResult::empty(),
+        ),
+        jinn_sidebar_msg::SidebarSectionId::McpServers => (
+            mcp_servers_section::navigate(intent, state, config),
+            IntentResult::empty(),
+        ),
+        jinn_sidebar_msg::SidebarSectionId::Sessions => sessions::navigate(intent, state, config),
     }
 }
 
@@ -251,24 +266,35 @@ pub(crate) fn clear_cursor(id: SidebarSectionId, state: &mut AppState) {
     });
 }
 
+/// Places the cursor on a section and returns the messages that placement asked
+/// for — a session preview render, when the section is Sessions and it has a
+/// session under the cursor.
 fn receive_cursor(
     id: SidebarSectionId,
     enter_from: EnterFrom,
     state: &mut AppState,
     config: &jinn_slices::ConfigLayer,
-) {
+) -> IntentResult {
     match id {
         jinn_sidebar_msg::SidebarSectionId::Persona => {
-            persona_section::receive_cursor(state, enter_from)
+            persona_section::receive_cursor(state, enter_from);
+            IntentResult::empty()
         }
-        jinn_sidebar_msg::SidebarSectionId::Pins => pins::receive_cursor(state, enter_from),
+        jinn_sidebar_msg::SidebarSectionId::Pins => {
+            pins::receive_cursor(state, enter_from);
+            IntentResult::empty()
+        }
         jinn_sidebar_msg::SidebarSectionId::TaskList => {
-            task_list_section::receive_cursor(state, enter_from)
+            task_list_section::receive_cursor(state, enter_from);
+            IntentResult::empty()
         }
         jinn_sidebar_msg::SidebarSectionId::McpServers => {
-            mcp_servers_section::receive_cursor(state, enter_from, config)
+            mcp_servers_section::receive_cursor(state, enter_from, config);
+            IntentResult::empty()
         }
-        jinn_sidebar_msg::SidebarSectionId::Sessions => sessions::receive_cursor(state, enter_from),
+        jinn_sidebar_msg::SidebarSectionId::Sessions => {
+            sessions::receive_cursor(state, enter_from, config)
+        }
     }
 }
 
@@ -300,11 +326,16 @@ fn section_has_cursor(id: SidebarSectionId, state: &AppState) -> bool {
     clippy::else_if_without_else,
     reason = "no-op on fallthrough is intentional"
 )]
+/// Jumps the cursor to the adjacent non-empty section.
+///
+/// Returns the messages the jump asked for — a session preview render, when the
+/// section landed on is Sessions and the cursor had to be placed.
+#[must_use]
 pub fn jump_to_section(
     direction: &SidebarIntent,
     state: &mut AppState,
     config: &jinn_slices::ConfigLayer,
-) {
+) -> IntentResult {
     let focused = state
         .frontend
         .sidebar_section()
@@ -312,7 +343,7 @@ pub fn jump_to_section(
     let neighbor_fn: fn(SidebarSectionId) -> Option<SidebarSectionId> = match direction {
         SidebarIntent::MoveDown => next_section,
         SidebarIntent::MoveUp => prev_section,
-        SidebarIntent::Action(_) => return,
+        SidebarIntent::Action(_) => return IntentResult::empty(),
     };
 
     // Find the next non-empty section.
@@ -340,15 +371,16 @@ pub fn jump_to_section(
                 let enter_from = match direction {
                     SidebarIntent::MoveDown => EnterFrom::Top,
                     SidebarIntent::MoveUp => EnterFrom::Bottom,
-                    SidebarIntent::Action(_) => return,
+                    SidebarIntent::Action(_) => return IntentResult::empty(),
                 };
-                receive_cursor(target, enter_from, state, config);
+                return receive_cursor(target, enter_from, state, config);
             } else if target == jinn_sidebar_msg::SidebarSectionId::Pins {
                 // Pins has a retained cursor - sync chat log to show it.
                 pins::pins_section::sync_chat_log_cursor(state);
             }
-            return;
+            return IntentResult::empty();
         }
         candidate = neighbor_fn(target);
     }
+    IntentResult::empty()
 }

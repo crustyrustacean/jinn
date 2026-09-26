@@ -143,6 +143,18 @@ impl AppStateActor {
         {
             cell.update(|picker| picker.preview_cache.clear());
         }
+
+        // The session preview holds rendered lines, not just counts, so the same
+        // reasoning applies: they carry the old theme's colors. It lives in the
+        // sidebar's cell, outside `invalidate_all`'s reach, and is cleared here.
+        //
+        // Reset to `Idle` rather than to `Ready`-with-nothing: the next cursor
+        // move then requests a re-render in the new theme, and until one arrives
+        // the popup shows its spinner rather than the old colors.
+        self.state.with_frontend_state(|ops| {
+            ops.frontend()
+                .update_sections(|s| s.sessions.preview.reset());
+        });
     }
 }
 

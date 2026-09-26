@@ -52,12 +52,13 @@ where
     ///
     /// This is the only mutation path. The closure runs to completion
     /// before the lock is released, so each `update` is atomic to readers.
-    pub fn update<F>(&self, f: F)
+    pub fn update<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(&mut T),
+        R: Sized,
+        F: FnOnce(&mut T) -> R,
     {
         let mut guard = self.inner.write();
-        f(&mut guard);
+        f(&mut guard)
     }
 
     /// Snapshots the payload for reading.

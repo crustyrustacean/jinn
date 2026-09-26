@@ -90,7 +90,7 @@ fn move_down_from_persona_with_pins_enters_pins_at_first_entry() {
         .update_sections(|s| s.persona.cursor = Some(0));
 
     // When navigating down.
-    navigate_sidebar(
+    let _ = navigate_sidebar(
         &SidebarIntent::MoveDown,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -125,7 +125,7 @@ fn move_down_from_persona_skips_empty_pins_to_sessions() {
         .update_sections(|s| s.persona.cursor = Some(0));
 
     // When navigating down.
-    navigate_sidebar(
+    let _ = navigate_sidebar(
         &SidebarIntent::MoveDown,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -154,7 +154,7 @@ fn move_up_from_first_pin_enters_persona() {
         .update_sections(|s| s.pins.select_by_id(first_id));
 
     // When navigating up from the first pin.
-    navigate_sidebar(
+    let _ = navigate_sidebar(
         &SidebarIntent::MoveUp,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -192,7 +192,7 @@ fn move_down_at_last_pin_enters_sessions() {
         .update_sections(|s| s.pins.select_by_id(last_id));
 
     // When navigating down.
-    navigate_sidebar(
+    let _ = navigate_sidebar(
         &SidebarIntent::MoveDown,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -220,7 +220,7 @@ fn move_up_at_persona_sticks() {
         .update_sections(|s| s.persona.cursor = Some(0));
 
     // When navigating up.
-    navigate_sidebar(
+    let _ = navigate_sidebar(
         &SidebarIntent::MoveUp,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -248,7 +248,7 @@ fn move_up_from_sessions_skips_empty_pins_to_persona() {
         .update_sections(|s| s.sessions.selected_index = Some(0));
 
     // When navigating up.
-    navigate_sidebar(
+    let _ = navigate_sidebar(
         &SidebarIntent::MoveUp,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -291,7 +291,7 @@ fn jump_next_from_persona_to_pins_retains_persona_cursor() {
         .update_sections(|s| s.persona.cursor = Some(0));
 
     // When jumping to next section.
-    jump_to_section(
+    let _ = jump_to_section(
         &SidebarIntent::MoveDown,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -325,7 +325,7 @@ fn jump_prev_from_pins_to_persona_retains_pins_cursor() {
         .update_sections(|s| s.pins.select_by_id(second_id.clone()));
 
     // When jumping to prev section.
-    jump_to_section(
+    let _ = jump_to_section(
         &SidebarIntent::MoveUp,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -360,7 +360,7 @@ fn jump_next_from_persona_skips_empty_pins_to_sessions() {
         .update_sections(|s| s.persona.cursor = Some(0));
 
     // When jumping to next section.
-    jump_to_section(
+    let _ = jump_to_section(
         &SidebarIntent::MoveDown,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -394,7 +394,7 @@ fn jump_next_fallback_receive_cursor_on_never_visited_section() {
     );
 
     // When jumping to next section.
-    jump_to_section(
+    let _ = jump_to_section(
         &SidebarIntent::MoveDown,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -429,7 +429,7 @@ fn jump_next_from_sessions_at_boundary_does_nothing() {
         .update_sections(|s| s.sessions.selected_index = Some(0));
 
     // When jumping to next section (no section after Sessions).
-    jump_to_section(
+    let _ = jump_to_section(
         &SidebarIntent::MoveDown,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -457,7 +457,7 @@ fn jump_prev_from_persona_at_boundary_does_nothing() {
         .update_sections(|s| s.persona.cursor = Some(0));
 
     // When jumping to prev section (no section before Persona).
-    jump_to_section(
+    let _ = jump_to_section(
         &SidebarIntent::MoveUp,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -501,7 +501,7 @@ fn jump_to_sessions_retains_cursor_and_adjusts_scroll() {
         .update_sections(|s| s.sessions.selected_index = Some(18));
 
     // When jumping to sessions (skipping empty pins if any, or through pins).
-    jump_to_section(
+    let _ = jump_to_section(
         &SidebarIntent::MoveDown,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -1008,7 +1008,7 @@ fn entering_pins_saves_history_position() {
     state.active_session_mut().set_selected_entry_index(0);
 
     // When navigating down into Pins.
-    navigate_sidebar(
+    let _ = navigate_sidebar(
         &SidebarIntent::MoveDown,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -1042,7 +1042,7 @@ fn leaving_pins_to_persona_restores_history_position() {
     state.active_session_mut().save_history_position();
 
     // When navigating up to Persona.
-    navigate_sidebar(
+    let _ = navigate_sidebar(
         &SidebarIntent::MoveUp,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -1071,7 +1071,7 @@ fn jump_from_pins_to_persona_restores_history_position() {
     state.active_session_mut().save_history_position();
 
     // When jumping to previous section (Persona).
-    jump_to_section(
+    let _ = jump_to_section(
         &SidebarIntent::MoveUp,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -1125,7 +1125,7 @@ fn full_cycle_saves_and_restores() {
     state.active_session_mut().set_selected_entry_index(0);
 
     // When navigating to Pins.
-    navigate_sidebar(
+    let _ = navigate_sidebar(
         &SidebarIntent::MoveDown,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -1136,7 +1136,7 @@ fn full_cycle_saves_and_restores() {
     // (which may be 0 if the pin is the first entry).
 
     // When navigating within pins (second pin) - does NOT restore.
-    navigate_sidebar(
+    let _ = navigate_sidebar(
         &SidebarIntent::MoveDown,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -1144,7 +1144,7 @@ fn full_cycle_saves_and_restores() {
     assert!(state.active_session().has_saved_history_position());
 
     // When navigating within pins (third pin, last) - does NOT restore.
-    navigate_sidebar(
+    let _ = navigate_sidebar(
         &SidebarIntent::MoveDown,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -1152,7 +1152,7 @@ fn full_cycle_saves_and_restores() {
     assert!(state.active_session().has_saved_history_position());
 
     // When navigating to Sessions (exhausting pins).
-    navigate_sidebar(
+    let _ = navigate_sidebar(
         &SidebarIntent::MoveDown,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -1176,7 +1176,7 @@ fn jump_roundtrip_saves_and_restores() {
     state.active_session_mut().set_selected_entry_index(0);
 
     // When jumping to Pins.
-    jump_to_section(
+    let _ = jump_to_section(
         &SidebarIntent::MoveDown,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -1185,7 +1185,7 @@ fn jump_roundtrip_saves_and_restores() {
     assert!(state.active_session().has_saved_history_position());
 
     // When jumping back to Persona.
-    jump_to_section(
+    let _ = jump_to_section(
         &SidebarIntent::MoveUp,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -1226,7 +1226,7 @@ fn jump_to_pins_with_retained_cursor_syncs_chat_log_cursor() {
     );
 
     // Jump to Persona (away from pins) - restores cursor to "c".
-    jump_to_section(
+    let _ = jump_to_section(
         &SidebarIntent::MoveUp,
         &mut state,
         jinn_slices::empty_config_layer(),
@@ -1238,7 +1238,7 @@ fn jump_to_pins_with_retained_cursor_syncs_chat_log_cursor() {
     );
 
     // Jump back to Pins (retained cursor on pinned entry).
-    jump_to_section(
+    let _ = jump_to_section(
         &SidebarIntent::MoveDown,
         &mut state,
         jinn_slices::empty_config_layer(),

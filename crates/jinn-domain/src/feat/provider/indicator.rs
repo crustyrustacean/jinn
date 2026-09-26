@@ -5,7 +5,7 @@
 //! when idle. Queue count is shown when messages are waiting (not during
 //! compaction).
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
@@ -14,9 +14,6 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use throbber_widgets_tui::{Throbber, ThrobberState, WhichUse};
-
-/// Minimum time between animation frame advances.
-const ANIMATION_INTERVAL: Duration = Duration::from_millis(80);
 
 /// Displays an animated streaming indicator when the active session is sending, streaming, or compacting.
 #[derive(Debug)]
@@ -38,7 +35,7 @@ impl StreamingIndicatorElement {
 
     /// Advances the animation frame if enough time has elapsed.
     fn maybe_advance_animation(&mut self) {
-        if self.last_animation_step.elapsed() >= ANIMATION_INTERVAL {
+        if self.last_animation_step.elapsed() >= jinn_slices::SPINNER_INTERVAL {
             self.throbber_state.calc_next();
             self.last_animation_step = Instant::now();
         }

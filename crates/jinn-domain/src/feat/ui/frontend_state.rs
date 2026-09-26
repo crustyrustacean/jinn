@@ -26,19 +26,22 @@ use jinn_theme::Theme;
 /// holding shared references to the rest of `AppState`) or an `Arc` of an
 /// interior-mutable cache that is also lent to spec-driven pickers through
 /// the [`jinn_picker::PickerHost`](jinn_picker::PickerHost) seam.
+///
+/// The session preview's rendered lines are deliberately *not* cached here.
+/// They live in the sidebar slice's own cell as `PreviewLoad::Ready`, which the
+/// render pass reads and a theme change resets through the slice's actor — the
+/// same arrangement the skills preview uses. A cache here would be a second copy
+/// of the same lines under a second invalidation rule.
 #[derive(Debug, Default)]
 pub struct FrontendCaches {
     /// Cached wrapped line counts and rendered lines per chat entry.
     pub entry_line_cache: RwLock<jinn_chat_log_view::chat_log::EntryLineCache>,
-    /// Cached rendered lines for session preview popups.
-    pub session_preview_cache: RwLock<jinn_sidebar_msg::SessionPreviewCache>,
 }
 
 impl FrontendCaches {
     /// Invalidate all caches. Called when the active theme changes.
     pub fn invalidate_all(&self) {
         self.entry_line_cache.write().clear();
-        self.session_preview_cache.write().clear();
     }
 }
 
@@ -181,16 +184,19 @@ impl FrontendState {
             .reader::<jinn_sidebar_msg::SidebarSections>(&jinn_sidebar_msg::sidebar_sections_slot())
     }
 
-    /// Runs `f` against the five sidebar sections' state. A no-op when the
-    /// cell is absent (slice not activated) — writes are silently dropped,
-    /// matching the no-slice configuration.
-    pub fn update_sections<F>(&self, f: F)
+    /// Runs `f` against the five sidebar sections' state, returning its result.
+    ///
+    /// A no-op when the cell is absent (slice not activated) — writes are
+    /// silently dropped and `None` is returned, matching the no-slice
+    /// configuration. The value comes back because a transition's *outcome* is
+    /// often the point: an abandon reports whether it had anything to abandon.
+    pub fn update_sections<F, R>(&self, f: F) -> Option<R>
     where
-        F: FnOnce(&mut jinn_sidebar_msg::SidebarSections),
+        R: Sized,
+        F: FnOnce(&mut jinn_sidebar_msg::SidebarSections) -> R,
     {
-        if let Some(cell) = self.sections_cell() {
-            cell.update(f);
-        }
+        let cell = self.sections_cell()?;
+        Some(cell.update(f))
     }
 
     /// Reads the sidebar sections' state through `f`, falling back to

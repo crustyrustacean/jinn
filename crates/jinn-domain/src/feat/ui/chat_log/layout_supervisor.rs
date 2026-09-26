@@ -16,7 +16,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use error_stack::Report;
-use jinn_chat_log_view_msg::{ArmLayoutDeadline, Escalated, LayoutDeadlineExpired};
+use jinn_chat_log_view_msg::{
+    ArmLayoutDeadline, ArmPreviewDeadline, Escalated, LayoutDeadlineExpired, PreviewDeadlineExpired,
+};
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
@@ -113,6 +115,10 @@ impl LayoutSupervisorActor {
             })
             .handles::<ArmLayoutDeadline>()
             .handles::<LayoutDeadlineExpired>()
+            // The sidebar's preview renders share this pool, so they share its
+            // deadline: one watchdog, not two.
+            .handles::<ArmPreviewDeadline>()
+            .handles::<PreviewDeadlineExpired>()
             .handles::<Escalated>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
@@ -169,6 +175,30 @@ impl LayoutSupervisorActor {
             "chat log layout abandoned; clearing the load guard"
         );
     }
+
+    /// Stops the sidebar's preview spinner, leaving a warning behind.
+    ///
+    /// Id-scoped like the guard above: a preview that timed out belongs to the
+    /// session it was requested for, and abandoning a preview the cursor has
+    /// since left would strand nothing but the log line.
+    fn do_abandon_preview(
+        &self,
+        session_id: &jinn_core_types::SessionId,
+        generation: u64,
+        reason: &str,
+    ) {
+        // Generation-scoped, exactly as the guard release above is
+        // session-scoped: a request the cursor has already moved past must not
+        // stop the spinner belonging to the one that replaced it.
+        let abandoned = self
+            .state
+            .read()
+            .frontend
+            .update_sections(|s| s.sessions.preview.abandon(session_id, generation));
+        if abandoned.unwrap_or(false) {
+            tracing::warn!(session_id = %session_id, reason, "session preview abandoned");
+        }
+    }
 }
 
 /// Spawns the layout worker pool, each worker supervised by `supervisor`.
@@ -222,6 +252,39 @@ impl MsgHandler<ArmLayoutDeadline> for LayoutSupervisorActor {
 impl MsgHandler<LayoutDeadlineExpired> for LayoutSupervisorActor {
     async fn handle(&mut self, msg: &LayoutDeadlineExpired, _ctx: &mut MsgCtx<'_>) {
         self.do_release_guard(&msg.session_id, "layout deadline expired");
+    }
+}
+
+impl MsgHandler<ArmPreviewDeadline> for LayoutSupervisorActor {
+    async fn handle(&mut self, msg: &ArmPreviewDeadline, _ctx: &mut MsgCtx<'_>) {
+        // Owned copies, because the timer outlives this handler's borrow of
+        // the message and of `self`.
+        let system = self.system.clone();
+        let session_id = msg.session_id.clone();
+        let generation = msg.generation;
+        let after = msg.after;
+        tokio::spawn(async move {
+            tokio::time::sleep(after).await;
+            if let Err(_envelope) = system
+                .send_to_any(PreviewDeadlineExpired {
+                    session_id,
+                    generation,
+                })
+                .await
+            {
+                tracing::warn!("no layout supervisor to receive the preview deadline expiry");
+            }
+        });
+    }
+}
+
+impl MsgHandler<PreviewDeadlineExpired> for LayoutSupervisorActor {
+    async fn handle(&mut self, msg: &PreviewDeadlineExpired, _ctx: &mut MsgCtx<'_>) {
+        // A preview has no inline fallback the way a chat log measurement does:
+        // there is nothing to render if the wrap never came back. Abandoning just
+        // stops the spinner, so the popup shows nothing until the next cursor
+        // move asks again.
+        self.do_abandon_preview(&msg.session_id, msg.generation, "preview deadline expired");
     }
 }
 
