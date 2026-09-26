@@ -229,11 +229,16 @@ fn confirm_session_picker(ctx: &mut ActionCtx<'_>, cell: &SessionPickerCell) -> 
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    state.session.begin_load(session_id.clone());
-    IntentResult::new_message(jinn_session_store_msg::SessionLoadRequested { session_id })
-        .with_scope_signal(ScopeSignal::PopIf(
+    // The same activation the sidebar and subagent entry use: the store actor
+    // then decides whether the highlighted session needs reading from disk or
+    // only measuring, which a caller cannot know.
+    jinn_domain::feat::ui::chat_log::activate_session(
+        state,
+        session_id,
+        IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(
             jinn_session_store_msg::session_picker_scope(),
-        ))
+        )),
+    )
 }
 
 /// Ctrl-N: start a new session.

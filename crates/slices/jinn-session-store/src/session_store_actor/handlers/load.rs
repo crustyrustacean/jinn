@@ -11,9 +11,7 @@ use jinn_domain::feat::ui::chat_log::layout_supervisor::{LAYOUT_DEADLINE, LAYOUT
 use jinn_domain::protocol::system::ActiveSessionChanged;
 use jinn_session_state::{ChatSessionState, SessionSnapshot, snapshot_frozen_node_from_snapshot};
 use jinn_session_store_msg::SessionForkRequested;
-use jinn_session_store_msg::{
-    ChatLogMeasureRequested, SessionLoadCompleted, SessionLoadRequested, SessionState,
-};
+use jinn_session_store_msg::{SessionLoadCompleted, SessionLoadRequested, SessionState};
 use trouper::actor::{ActorPath, MsgHandler};
 use trouper::context::MsgCtx;
 use trouper::envelope::Address;
@@ -187,17 +185,17 @@ impl SessionStoreActor {
     /// only the measurement — not the disk read a [`SessionLoadRequested`]
     /// would perform. The layout hand-off is otherwise identical to a freshly
     /// loaded session's, so it goes through the same dispatch.
-    pub(crate) fn on_measure_requested(
+    pub(crate) fn on_activate_in_memory(
         &self,
         ctx: &mut MsgCtx<'_>,
-        payload: &ChatLogMeasureRequested,
+        payload: &SessionLoadRequested,
     ) {
         let session_id = payload.session_id.clone();
-        // The session is expected to be in the map: the frontend only asks for
-        // a measurement of a session it is about to show, and every live
-        // session is hydrated at startup. If it is not, the load guard this
-        // measurement was meant to clear would stay up forever, so it is
-        // cleared here rather than left for a worker that will never run.
+        // The session is expected to be in the map: the caller asked to activate
+        // something it believes is loaded. If it is not — a race with an
+        // eviction, say — the load guard this measurement was meant to clear
+        // would stay up forever, so it is cleared here rather than left for a
+        // worker that will never run.
         //
         // Only the two values the measurement needs are read out. Cloning the
         // session itself would deep-copy its entire history — tens of
@@ -224,15 +222,21 @@ impl SessionStoreActor {
             return;
         };
 
-        // The requester's width, not one re-derived from state: the frontend
-        // has already switched to this session, so its own width is the
+        // The caller's width, not one re-derived from state: the frontend has
+        // already switched to this session, so its own width is the
         // never-rendered zero. Measuring there would publish counts no frame
         // can use and have the completion actor discard them as stale.
+        //
+        // A caller with no width to offer (Discord, loading a session it has
+        // never seen) falls back to the width the chat log would render at.
+        let content_width = payload
+            .content_width
+            .unwrap_or_else(|| self.active_content_width());
         let layout_inputs = self.collect_layout_inputs_at(
             history,
             shown_ignored_blocks,
             &session_id,
-            payload.content_width,
+            content_width,
         );
         self.state.with_session(|view| {
             view.session.map().set_active(session_id.clone());
@@ -279,15 +283,7 @@ impl SessionStoreActor {
         session: &ChatSessionState,
         session_id: &SessionId,
     ) -> LayoutChatSession {
-        // From the session that was on screen before this load, which is the
-        // frame that will render the new one.
-        let content_width = {
-            let state = self.state.read();
-            state
-                .session
-                .get(state.session.active_session_id())
-                .map_or(0, ChatSessionState::content_width)
-        };
+        let content_width = self.active_content_width();
         // The one unavoidable copy of the history: a worker thread cannot hold
         // a borrow into the session, so the entries are copied out once here
         // and shared with the worker from then on. This session is genuinely
@@ -303,6 +299,19 @@ impl SessionStoreActor {
             session_id,
             content_width,
         )
+    }
+
+    /// The content width a session would render at, derived from state.
+    ///
+    /// The fallback for a caller that has no width of its own to offer. It is
+    /// read from whichever session is on screen, which is the frame that will
+    /// render whatever comes next.
+    fn active_content_width(&self) -> u16 {
+        let state = self.state.read();
+        state
+            .session
+            .get(state.session.active_session_id())
+            .map_or(0, ChatSessionState::content_width)
     }
 
     /// The same inputs, at a width the caller has already resolved.
@@ -357,6 +366,17 @@ impl SessionStoreActor {
         ctx: &mut MsgCtx<'_>,
         payload: &SessionLoadRequested,
     ) {
+        // Already in memory: no disk read. It still needs its chat log measured,
+        // which is the same hand-off a freshly-loaded session gets — and
+        // without it the next frame lays the whole history out inline.
+        //
+        // Only the store actor can make this call: it is the single writer of
+        // the session map, so it is the only place that knows what is loaded.
+        if self.state.read().session.get(&payload.session_id).is_some() {
+            self.on_activate_in_memory(ctx, payload);
+            return;
+        }
+
         let store = self.services.session_store.clone();
         match store.load_session(&payload.session_id).await {
             Ok(Some(session)) => {

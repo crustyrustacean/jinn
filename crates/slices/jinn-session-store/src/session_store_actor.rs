@@ -14,7 +14,7 @@ use jinn_domain::common::services::BusService;
 use jinn_domain::common::state::State;
 use jinn_session_store_msg::PersistSession;
 use jinn_session_store_msg::SessionLoadRequested;
-use jinn_session_store_msg::{ArchiveSession, ArchiveSessionTree, ChatLogMeasureRequested};
+use jinn_session_store_msg::{ArchiveSession, ArchiveSessionTree};
 use jinn_session_store_msg::{LoadSessionPickerEntries, SessionForkRequested};
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
@@ -115,7 +115,6 @@ impl SessionStoreActor {
                 }
             })
             .handles::<SessionLoadRequested>()
-            .handles::<ChatLogMeasureRequested>()
             .handles::<LoadSessionPickerEntries>()
             .handles::<SessionForkRequested>()
             .handles::<PersistSession>()
@@ -161,12 +160,6 @@ impl SessionStoreActor {
 impl MsgHandler<SessionLoadRequested> for SessionStoreActor {
     async fn handle(&mut self, msg: &SessionLoadRequested, ctx: &mut MsgCtx<'_>) {
         self.on_load_requested(ctx, msg).await;
-    }
-}
-
-impl MsgHandler<ChatLogMeasureRequested> for SessionStoreActor {
-    async fn handle(&mut self, msg: &ChatLogMeasureRequested, ctx: &mut MsgCtx<'_>) {
-        self.on_measure_requested(ctx, msg);
     }
 }
 

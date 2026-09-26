@@ -1,9 +1,9 @@
 //! Activates the session under the cursor.
 
 use jinn_domain::common::app_state::AppState;
-use jinn_session_store_msg::ChatLogMeasureRequested;
 
 use crate::sections::sessions::state::sorted_open_sessions;
+use jinn_domain::feat::ui::chat_log::activate_session;
 use jinn_domain::protocol::IntentResult;
 
 /// Activates the session under the cursor.
@@ -64,42 +64,11 @@ fn activate_selected(state: &mut AppState, enter_input: bool) -> IntentResult {
     };
     let target_id = entry.id.clone();
 
-    // Read before the switch: the width the next frame will render at is the
-    // one the session on screen last used. The incoming session's own width is
-    // stale — it has never rendered — so asking it would check the wrong
-    // thing and dispatch a measurement the next frame could not use.
-    let content_width = state.session.active_session().content_width();
-    let needs_measurement = {
-        let mut cache = state.frontend.caches.entry_line_cache.write();
-        !jinn_domain::feat::ui::chat_log::is_session_measured(
-            &mut cache,
-            state,
-            &target_id,
-            content_width,
-        )
-    };
-
-    // Armed before the switch, so the very next frame sees the guard.
-    if needs_measurement {
-        state.session.begin_load(target_id.clone());
-    }
-    state.session.set_active(target_id.clone());
     state.frontend.scope_swap_base(FocusScope::Normal);
     if enter_input {
         state.frontend.scope_push(FocusScope::Input);
     }
-
-    if needs_measurement {
-        IntentResult::new_message(ChatLogMeasureRequested {
-            session_id: target_id,
-            // Carried, not re-read by the actor: the switch above already
-            // happened, so by the time the message is handled the width it
-            // needs is no longer derivable from state.
-            content_width,
-        })
-    } else {
-        IntentResult::empty()
-    }
+    activate_session(state, target_id, IntentResult::empty())
 }
 
 #[cfg(test)]
@@ -113,6 +82,7 @@ mod tests {
     )]
     use super::*;
     use jinn_domain::common::app_state::AppState;
+    use jinn_session_store_msg::SessionLoadRequested;
     use jinn_slices::FocusScope;
 
     use jinn_core_types::SessionId;
@@ -274,7 +244,7 @@ mod tests {
         // Then a measurement is requested for it.
         assert_eq!(
             result.message_names,
-            vec!["ChatLogMeasureRequested".to_owned()],
+            vec!["SessionLoadRequested".to_owned()],
             "the session must be measured off the render thread"
         );
     }
@@ -326,7 +296,7 @@ mod tests {
         // width the next frame will use.
         assert_eq!(
             result.message_names,
-            vec!["ChatLogMeasureRequested".to_owned()]
+            vec!["SessionLoadRequested".to_owned()]
         );
     }
 
@@ -421,8 +391,9 @@ mod tests {
         }
     }
 
-    /// The measure request a result publishes, as the actor will decode it.
-    fn measure_request(result: IntentResult) -> Option<ChatLogMeasureRequested> {
+    /// The activation request a result publishes, as the store actor will
+    /// decode it.
+    fn load_request(result: IntentResult) -> Option<SessionLoadRequested> {
         let sink = RecordingSink::default();
         for closure in result.messages {
             closure(&sink);
@@ -430,14 +401,14 @@ mod tests {
         let published = sink.published.lock().expect("sink lock");
         let (_, payload) = published
             .iter()
-            .find(|(id, _)| id.ends_with("ChatLogMeasureRequested"))
-            .expect("a measure request is published");
+            .find(|(id, _)| id.ends_with("SessionLoadRequested"))
+            .expect("an activation request is published");
         Some(serde_json::from_value(payload.clone()).expect("decodes"))
     }
 
     #[rstest::rstest]
     #[test]
-    fn the_measure_request_carries_the_width_the_chat_log_is_using() {
+    fn the_activation_request_carries_the_width_the_chat_log_is_using() {
         // Given two sessions, the second unmeasured, the first having last
         // rendered at 72 columns.
         let (mut state, second) = state_with_two_sessions_cursor_on_second();
@@ -451,9 +422,9 @@ mod tests {
         // The activation has already switched sessions by this point, so an
         // actor that re-read the width would find the target's never-rendered
         // zero and measure the whole history at a width nothing renders at.
-        let request = measure_request(result);
+        let request = load_request(result);
         assert_eq!(
-            request.as_ref().map(|r| r.content_width),
+            request.as_ref().and_then(|r| r.content_width),
             Some(72),
             "the request must carry the width read before the switch"
         );

@@ -18,8 +18,8 @@ use jinn_provider_config::ProvidersConfig;
 use jinn_session_msg::{SessionArchived, SessionClosed};
 use jinn_session_state::ChatSessionState;
 use jinn_session_store_msg::{
-    ArchiveSession, ChatLogMeasureRequested, LoadSessionPickerEntries, PersistSession,
-    SessionLoadCompleted, SessionLoadRequested, SessionState,
+    ArchiveSession, LoadSessionPickerEntries, PersistSession, SessionLoadCompleted,
+    SessionLoadRequested, SessionState,
 };
 
 use crate::session_store_actor::{SessionStoreActor, SessionStoreActorDeps};
@@ -589,6 +589,7 @@ async fn load_completed_is_published_after_session_is_fully_initialized() {
         .harness
         .publish(SessionLoadRequested {
             session_id: session_id.clone(),
+            content_width: Some(60),
         })
         .await;
 
@@ -629,6 +630,7 @@ async fn a_loaded_session_holds_the_load_guard_for_the_chat_log_measurement() {
         .harness
         .publish(SessionLoadRequested {
             session_id: session_id.clone(),
+            content_width: Some(60),
         })
         .await;
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -670,6 +672,7 @@ async fn restored_session_is_marked_loaded() {
         .harness
         .publish(SessionLoadRequested {
             session_id: session_id.clone(),
+            content_width: Some(60),
         })
         .await;
     let restored = poll_until(|| async {
@@ -712,19 +715,23 @@ async fn loaded_from_archive_appears_in_the_session_list() {
         .set_archived(&session_id, true)
         .await
         .expect("archive session");
-    // Given the archived session is still present in the live map, as it is
-    // when a previous startup restore brought it back before archiving.
-    {
-        let mut state = fixture.state.write();
-        let restored = stored.clone();
-        state.session.insert(restored);
-    }
+    // Given the session is archived and out of the live map, which is the
+    // state an archived session is actually in. A session still sitting in the
+    // map is no longer re-read: the store actor recognises it as in memory and
+    // only measures it, which would leave it Archived.
+    assert!(
+        fixture.state.read().session.get(&session_id).is_none(),
+        "the archived session starts out of the map"
+    );
 
     // When the session is loaded back.
     fixture
         .harness
         .publish(SessionLoadRequested {
             session_id: session_id.clone(),
+            // No width on offer: the caller is not a view switching sessions,
+            // so the store actor derives the one it would render at.
+            content_width: None,
         })
         .await;
     // When the session carries the state the sidebar lists.
@@ -928,9 +935,9 @@ async fn measuring_an_in_memory_session_dispatches_a_layout_job() {
     // When the measurement is requested.
     fixture
         .harness
-        .publish(ChatLogMeasureRequested {
+        .publish(SessionLoadRequested {
             session_id: target_id.clone(),
-            content_width: 72,
+            content_width: Some(72),
         })
         .await;
 
@@ -953,9 +960,9 @@ async fn a_layout_job_from_a_measurement_measures_at_the_width_on_screen() {
     // When the measurement is requested.
     fixture
         .harness
-        .publish(ChatLogMeasureRequested {
+        .publish(SessionLoadRequested {
             session_id: target_id.clone(),
-            content_width: 72,
+            content_width: Some(72),
         })
         .await;
 
@@ -977,9 +984,9 @@ async fn a_layout_job_from_a_measurement_makes_the_session_active() {
     // When the measurement is requested.
     fixture
         .harness
-        .publish(ChatLogMeasureRequested {
+        .publish(SessionLoadRequested {
             session_id: target_id.clone(),
-            content_width: 72,
+            content_width: Some(72),
         })
         .await;
     await_recorded(&jobs, 1, Duration::from_secs(2)).await;
@@ -1008,9 +1015,9 @@ async fn measuring_an_absent_session_clears_the_load_guard() {
     // When the measurement is requested for it.
     fixture
         .harness
-        .publish(ChatLogMeasureRequested {
+        .publish(SessionLoadRequested {
             session_id: missing_id.clone(),
-            content_width: 72,
+            content_width: Some(72),
         })
         .await;
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -1036,9 +1043,9 @@ async fn measuring_an_in_memory_session_never_reads_it_from_the_store() {
     // When the measurement is requested.
     fixture
         .harness
-        .publish(ChatLogMeasureRequested {
+        .publish(SessionLoadRequested {
             session_id: target_id.clone(),
-            content_width: 72,
+            content_width: Some(72),
         })
         .await;
     await_recorded(&jobs, 1, Duration::from_secs(2)).await;
@@ -1079,9 +1086,9 @@ async fn a_measured_request_clears_the_load_guard_end_to_end() {
     // When the measurement is requested.
     fixture
         .harness
-        .publish(ChatLogMeasureRequested {
+        .publish(SessionLoadRequested {
             session_id: target_id.clone(),
-            content_width: 72,
+            content_width: Some(72),
         })
         .await;
 
@@ -1123,13 +1130,174 @@ async fn measuring_after_the_frontend_switched_measures_at_a_usable_width() {
     fixture.state.write().session.set_active(target_id.clone());
     fixture
         .harness
-        .publish(ChatLogMeasureRequested {
+        .publish(SessionLoadRequested {
             session_id: target_id.clone(),
-            content_width: 72,
+            content_width: Some(72),
         })
         .await;
 
     // Then the job is measured at the width the chat log is rendering at.
     let jobs = await_recorded(&jobs, 1, Duration::from_secs(2)).await;
     assert_eq!(jobs[0].content_width, 72);
+}
+
+/// Activation is one command, and the store actor decides what it means.
+///
+/// A caller cannot: only the actor that owns the session map knows what is
+/// loaded, and a caller that guesses pays for a redundant disk read of a
+/// session it already had — which is what the picker's Enter did before the two
+/// commands were merged.
+mod activation_tests {
+    #![allow(
+        unused_mut,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+    use super::*;
+
+    /// A persisted session, out of the live map.
+    async fn persisted_but_absent(fixture: &ActorFixture) -> jinn_core_types::SessionId {
+        let session_id = jinn_core_types::SessionId::new();
+        let mut stored = ChatSessionState::new();
+        stored.set_session_id(session_id.clone());
+        stored.set_model(jinn_core_types::ModelSelection::Single(
+            "ollama/llama3".to_owned(),
+        ));
+        stored.push_entry(jinn_core_types::ChatEntry::user("work"));
+        fixture
+            .store
+            .save(&stored.capture_snapshot())
+            .await
+            .expect("save session");
+        fixture.state.write().session.remove(&session_id);
+        session_id
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn activating_an_absent_session_reads_storage() {
+        // Given a session persisted but not in memory.
+        let fixture = actor_fixture().await;
+        let session_id = persisted_but_absent(&fixture).await;
+
+        // When it is activated.
+        fixture
+            .harness
+            .publish(SessionLoadRequested {
+                session_id: session_id.clone(),
+                content_width: Some(60),
+            })
+            .await;
+        let loaded = poll_until(|| async {
+            fixture
+                .state
+                .read()
+                .session
+                .get(&session_id)
+                .is_some_and(|s| s.session_state() == SessionState::Loaded)
+        })
+        .await;
+
+        // Then it was read from disk and is now in memory.
+        assert!(loaded, "an absent session must be read from storage");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn activating_a_session_already_in_memory_skips_storage() {
+        // Given a session sitting in the live map, and a store that counts the
+        // reads it is asked for.
+        let store = Arc::new(ControlledStartupStore::new(&[]));
+        let (harness, state, _picker) = controlled_actor_fixture(store.clone()).await;
+        let session_id = jinn_core_types::SessionId::new();
+        {
+            let mut guard = state.write();
+            let mut session = ChatSessionState::new();
+            session.set_session_id(session_id.clone());
+            session.push_entry(jinn_core_types::ChatEntry::user("already here"));
+            guard.session.insert(session);
+            guard.session.begin_load(session_id.clone());
+        }
+        let before = store.load_calls.load(std::sync::atomic::Ordering::SeqCst);
+
+        // When it is activated with no width on offer, the way Discord asks.
+        harness
+            .publish(SessionLoadRequested {
+                session_id: session_id.clone(),
+                content_width: None,
+            })
+            .await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Then the store was never asked for it.
+        let after = store.load_calls.load(std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(
+            after, before,
+            "a session already in memory must not be re-read from storage"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn activating_a_session_in_memory_arms_the_measurement() {
+        // Given a session in memory with the load guard armed, as a caller does.
+        let fixture = actor_fixture().await;
+        let session_id = persisted_but_absent(&fixture).await;
+        {
+            let mut state = fixture.state.write();
+            state.session.begin_load(session_id.clone());
+        }
+
+        // When it is activated.
+        fixture
+            .harness
+            .publish(SessionLoadRequested {
+                session_id: session_id.clone(),
+                content_width: Some(60),
+            })
+            .await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Then the guard is still held: the in-memory path measures, and this
+        // fixture has no layout workers, so the measurement never completes.
+        // That it got that far is the assertion — the guard was not cleared on
+        // arrival, which is what an unmeasured activation looks like.
+        assert!(
+            fixture.state.read().session.is_loading(),
+            "an in-memory activation must measure rather than clear the guard"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn activating_a_session_that_vanished_clears_the_guard() {
+        // Given a load guard armed for a session that is not in memory, as it
+        // would be after an eviction raced the activation.
+        let fixture = actor_fixture().await;
+        let session_id = jinn_core_types::SessionId::new();
+        {
+            let mut state = fixture.state.write();
+            state.session.begin_load(session_id.clone());
+        }
+
+        // When it is activated.
+        fixture
+            .harness
+            .publish(SessionLoadRequested {
+                session_id: session_id.clone(),
+                content_width: Some(60),
+            })
+            .await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Then the guard is released rather than left spinning on a measurement
+        // that will never run.
+        assert!(
+            !fixture.state.read().session.is_loading(),
+            "an activation that found nothing must release the guard"
+        );
+    }
 }
