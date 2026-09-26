@@ -123,6 +123,11 @@ impl PreviewLoad {
     ///
     /// `false` means the result belongs to a request the cursor has already
     /// moved past, and nothing was written.
+    ///
+    /// Both the session and the generation are checked. The generation alone is
+    /// not enough: it counts every request the sidebar has ever made, so a
+    /// result for one session can carry the same number as another session's
+    /// live request and would otherwise overwrite it.
     pub fn complete(
         &mut self,
         session_id: SessionId,
@@ -131,7 +136,7 @@ impl PreviewLoad {
         content_width: u16,
         lines: Arc<Vec<ratatui::text::Line<'static>>>,
     ) -> bool {
-        if self.generation() != generation {
+        if self.generation() != generation || !self.belongs_to(&session_id) {
             return false;
         }
         *self = Self::Ready {
@@ -142,6 +147,22 @@ impl PreviewLoad {
             lines,
         };
         true
+    }
+
+    /// Whether the held request is for `session_id`.
+    ///
+    /// False when nothing is in flight, so a result arriving with no request
+    /// outstanding can never be written.
+    fn belongs_to(&self, session_id: &SessionId) -> bool {
+        match self {
+            Self::Idle => false,
+            Self::Loading {
+                session_id: held, ..
+            }
+            | Self::Ready {
+                session_id: held, ..
+            } => held == session_id,
+        }
     }
 
     /// The generation of the request currently held, or `0` when idle.
@@ -161,13 +182,16 @@ impl PreviewLoad {
     /// `None` means the caller must show the loading state — which is what
     /// distinguishes loading from a session that genuinely has nothing to
     /// preview, since that renders as `Ready` with zero lines.
+    ///
+    /// Borrowed rather than cloned so the render pass can draw straight out of
+    /// the shared buffer: a hit costs a refcount, not a copy of the lines.
     #[must_use]
     pub fn cached(
         &self,
         session_id: &SessionId,
         signature: u64,
         content_width: u16,
-    ) -> Option<&[ratatui::text::Line<'static>]> {
+    ) -> Option<&Arc<Vec<ratatui::text::Line<'static>>>> {
         match self {
             Self::Ready {
                 session_id: ready_id,
@@ -179,7 +203,7 @@ impl PreviewLoad {
                 && *ready_signature == signature
                 && *ready_width == content_width =>
             {
-                Some(lines.as_slice())
+                Some(lines)
             }
             _ => None,
         }
@@ -189,10 +213,32 @@ impl PreviewLoad {
     ///
     /// Id-scoped, like the session map's `clear_load_for`: a preview abandoned
     /// for one session must not strand another session's spinner.
-    pub fn abandon(&mut self, session_id: &SessionId) {
-        if matches!(self, Self::Loading { session_id: loading, .. } if loading == session_id) {
+    ///
+    /// Drops any held result, returning to `Idle`.
+    ///
+    /// Used when the rendered lines stop being valid for a reason no request
+    /// key can express — a theme change repaints them, and the next request
+    /// arrives from the keyboard on the next cursor move.
+    pub fn reset(&mut self) {
+        *self = Self::Idle;
+    }
+
+    /// Generation-scoped as well as session-scoped: a deadline that fires for a
+    /// request the cursor has already moved past must not stop the spinner
+    /// belonging to the request that replaced it. Returns whether it abandoned
+    /// anything.
+    pub fn abandon(&mut self, session_id: &SessionId, generation: u64) -> bool {
+        let matches_request = matches!(
+            self,
+            Self::Loading {
+                session_id: loading,
+                generation: loading_generation,
+            } if loading == session_id && *loading_generation == generation
+        );
+        if matches_request {
             *self = Self::Idle;
         }
+        matches_request
     }
 }
 
@@ -371,10 +417,10 @@ mod preview_load_tests {
         let in_flight = SessionId::new();
         let other = SessionId::new();
         let mut load = PreviewLoad::default();
-        load.request(in_flight.clone());
+        let generation = load.request(in_flight.clone());
 
         // When another session's request is abandoned.
-        load.abandon(&other);
+        load.abandon(&other, generation);
 
         // Then the in-flight request is untouched.
         assert!(
@@ -388,10 +434,10 @@ mod preview_load_tests {
         // Given a request in flight.
         let in_flight = SessionId::new();
         let mut load = PreviewLoad::default();
-        load.request(in_flight.clone());
+        let generation = load.request(in_flight.clone());
 
         // When that request is abandoned.
-        load.abandon(&in_flight);
+        load.abandon(&in_flight, generation);
 
         // Then nothing is in flight.
         assert_eq!(load, PreviewLoad::Idle, "a stuck spinner must be clearable");

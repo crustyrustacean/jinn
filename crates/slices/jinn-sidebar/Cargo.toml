@@ -48,5 +48,6 @@ rstest = { workspace = true }
 
 [dev-dependencies]
 jinn-config = { workspace = true }
+jinn-domain = { workspace = true, features = ["test-harness"] }
 jinn-testutil = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }

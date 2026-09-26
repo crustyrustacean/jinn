@@ -276,9 +276,23 @@ pub struct ArmPreviewDeadline {
     pub after: Duration,
 }
 
+/// A preview render outlived its deadline and is abandoned.
+///
+/// Carries the generation so an expiry for a superseded request cannot stop the
+/// spinner belonging to the one that replaced it.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A session preview render was abandoned.")]
+pub struct PreviewDeadlineExpired {
+    /// The session whose preview was abandoned.
+    pub session_id: SessionId,
+    /// The request that ran out of time.
+    pub generation: u64,
+}
+
 impl BusMessage for PreviewSessionRequested {}
 impl BusMessage for SessionPreviewRendered {}
 impl BusMessage for ArmPreviewDeadline {}
+impl BusMessage for PreviewDeadlineExpired {}
 
 #[cfg(test)]
 mod preview_serde_tests {

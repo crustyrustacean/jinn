@@ -7,8 +7,15 @@
 //! the same entry pipeline as the real chat log, truncated to the last 20 lines.
 //! A footer at the bottom shows keybinds across two lines and the session's
 //! active cwd and provider/model on the same line.
+//!
+//! The lines themselves are *not* built here. They arrive already rendered from
+//! the layout worker, keyed by content rather than by history length, so a frame
+//! costs a refcount bump and a draw. When nothing is cached for the exact
+//! session, width, and content the popup draws a spinner instead — see
+//! [`render_session_preview_loading`].
 
-use jinn_preferences_config::schemas::ChatLogConfig;
+use std::sync::Arc;
+
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Modifier, Style};
@@ -16,13 +23,17 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use unicode_segmentation::UnicodeSegmentation;
 
+use crate::sections::sessions::preview_load::preview_signature;
 use crate::sections::sessions::state::sorted_open_sessions;
+#[cfg(test)]
 use jinn_chat_log_view::chat_log::RenderContext;
-use jinn_chat_log_view_msg::{PREVIEW_ENTRY_COUNT, PREVIEW_MAX_LINES};
+use jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT;
+#[cfg(test)]
+use jinn_chat_log_view_msg::PREVIEW_MAX_LINES;
 use jinn_domain::common::render_ctx::RenderCtx;
-use jinn_domain::feat::ui::chat_log::render_preview;
+#[cfg(test)]
+use jinn_domain::feat::ui::chat_log::render_preview as render_preview_lines;
 use jinn_session_state::ChatSessionState;
-use jinn_sidebar_msg::SessionPreviewCache;
 use jinn_theme::Theme;
 
 /// Default max lines for tool entries when no preference is set.
@@ -68,7 +79,6 @@ pub fn render_session_preview_for_state(
         return;
     };
     let theme = &state.frontend.theme;
-    let tool_max = ctx.config.read::<ChatLogConfig>().tool_entry_max_lines;
 
     // Anchor the popup to the cursor through the same document layout the
     // sidebar renders with, so it stays attached while the column scrolls.
@@ -80,25 +90,94 @@ pub fn render_session_preview_for_state(
         u16::try_from(idx).unwrap_or(u16::MAX),
     );
 
-    // Compute content line count for height estimation.
-    let mut cache = state.frontend.caches.session_preview_cache.write();
-    let inner_width = {
-        let popup_width = preview_width(frame_area);
-        popup_width.saturating_sub(2)
-    };
-    let content_lines =
-        build_preview_lines(session, inner_width.max(1), theme, tool_max, &mut cache);
-    let line_count = content_lines.len();
+    let inner_width = preview_width(frame_area).saturating_sub(2).max(1);
 
+    // The cached lines are found by the same identity the keyboard path
+    // requested with — session, content, width — so a hit means the worker has
+    // already wrapped exactly this text at exactly this width. The `cloned` is
+    // an `Arc` refcount bump, not a copy of the rendered lines.
+    let signature = preview_signature(session.history(), PREVIEW_ENTRY_COUNT);
+    let cached = state.frontend.with_sections(
+        |s| {
+            s.sessions
+                .preview
+                .cached(&entry.id, signature, inner_width)
+                .map(Arc::clone)
+        },
+        || None,
+    );
+
+    // The width the next frame will draw at is recorded so the keyboard path can
+    // request at the same one. Recorded only on the way to a draw: a frame that
+    // returned early above has not committed to a width.
+    state
+        .frontend
+        .update_sections(|s| s.sessions.preview_content_width = inner_width);
+
+    let Some(lines) = cached else {
+        // Nothing for this exact session, width, and content. `cached` returning
+        // `None` is what distinguishes loading from empty — an empty session
+        // renders zero lines but is still `Ready`, so it takes the branch below
+        // and shows the empty state rather than spinning forever.
+        let popup_rect = session_preview_popup_rect(frame_area, cursor_y, 0);
+        render_session_preview_loading(frame, popup_rect, session, theme);
+        return;
+    };
+
+    let line_count = lines.len();
     let popup_rect = session_preview_popup_rect(frame_area, cursor_y, line_count);
 
-    render_session_preview(frame, popup_rect, session, theme, tool_max, &mut cache);
+    render_session_preview(frame, popup_rect, session, theme, &lines);
 }
 
 /// Computes the popup width: 60% of frame area, min 30, max frame width.
 fn preview_width(frame_area: Rect) -> u16 {
     let w = (f32::from(frame_area.width) * 0.6).ceil() as u16;
     w.max(30).min(frame_area.width)
+}
+
+/// How far through the spin the current frame is.
+///
+/// Read from the wall clock rather than a stored step so the popup keeps no
+/// animation state of its own. Wrapping at a whole number of frames keeps the
+/// glyph cycling without letting the index grow without bound.
+fn spinner_elapsed() -> std::time::Duration {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or(std::time::Duration::ZERO);
+    std::time::Duration::from_millis(u64::try_from(now.as_millis() % 1000).unwrap_or(0))
+}
+
+/// Renders the popup's chrome with a spinner where the content will go.
+///
+/// Drawn at the popup's minimum height rather than a content-derived one: there
+/// are no lines yet to measure, and sizing from a count that arrives a frame
+/// later would make the box jump as the cursor moves between sessions. The
+/// chrome, title, badge, and footer are identical to the ready state so only
+/// the content area changes when the render lands.
+pub fn render_session_preview_loading(
+    frame: &mut Frame<'_>,
+    popup_area: Rect,
+    session: &ChatSessionState,
+    theme: &Theme,
+) {
+    let inner_width = popup_area.width.saturating_sub(2);
+    if inner_width == 0 || popup_area.height == 0 {
+        return;
+    }
+
+    // Elapsed time drives the glyph rather than a stored animation step, so the
+    // popup holds no clock of its own. See `jinn_slices::spinner`.
+    let glyph = jinn_slices::spinner_glyph(spinner_elapsed());
+
+    // Content is one line: a glyph followed by a short label, so the popup does
+    // not read as empty while it waits.
+    let content = Line::from(Span::styled(
+        format!(" {glyph} loading\u{2026}"),
+        Style::default().fg(theme.muted_text),
+    ));
+
+    render_session_preview_inner(frame, popup_area, session, theme, &[content]);
 }
 
 /// Renders the session preview popup into the given frame area.
@@ -112,19 +191,30 @@ pub fn render_session_preview(
     popup_area: Rect,
     session: &ChatSessionState,
     theme: &Theme,
-    tool_entry_max_lines: Option<u16>,
-    cache: &mut SessionPreviewCache,
+    lines: &[Line<'static>],
+) {
+    render_session_preview_inner(frame, popup_area, session, theme, lines);
+}
+
+/// Draws the popup's chrome and content.
+///
+/// One function for both states, because the chrome is the whole point: a popup
+/// whose borders, title, badge, and footer appeared and disappeared with the
+/// spinner would read as two different surfaces rather than one that is waiting.
+/// The only difference between the callers is what they pass as `lines`.
+fn render_session_preview_inner(
+    frame: &mut Frame<'_>,
+    popup_area: Rect,
+    session: &ChatSessionState,
+    theme: &Theme,
+    lines: &[Line<'static>],
 ) {
     let inner_width = popup_area.width.saturating_sub(2);
-    if inner_width == 0 {
+    if inner_width == 0 || popup_area.height == 0 {
         return;
     }
 
     let title = session.title().unwrap_or("Untitled Session");
-
-    // Collect the last 5 entries and render them.
-    let content_lines =
-        build_preview_lines(session, inner_width, theme, tool_entry_max_lines, cache);
 
     // Footer: 2 keybinds lines + 1 model line.
     let footer_height = 3u16;
@@ -176,8 +266,8 @@ pub fn render_session_preview(
     }
 
     // Content paragraph.
-    if content_area_height > 0 && !content_lines.is_empty() {
-        let content_para = Paragraph::new(content_lines).wrap(Wrap { trim: false });
+    if content_area_height > 0 && !lines.is_empty() {
+        let content_para = Paragraph::new(lines.to_vec()).wrap(Wrap { trim: false });
         let content_area = Rect {
             x: inner_area.x,
             y: inner_area.y,
@@ -321,57 +411,6 @@ fn render_model_line(
     frame.render_widget(Paragraph::new(Line::from(spans)), line_area);
 }
 
-/// Builds the preview content lines for a session, hitting the cache first.
-///
-/// The rendering itself is not this module's business — it is the chat log's
-/// `entry_to_lines` arithmetic, shared with the layout worker so the two cannot
-/// drift. What lives here is the cache lookup and the popup's own idea of how
-/// wide a preview renders.
-fn build_preview_lines(
-    session: &ChatSessionState,
-    content_width: u16,
-    theme: &Theme,
-    tool_entry_max_lines: Option<u16>,
-    cache: &mut SessionPreviewCache,
-) -> Vec<Line<'static>> {
-    let history = session.history();
-    if history.is_empty() {
-        return Vec::new();
-    }
-
-    let history_len = history.len();
-
-    // Check cache: hit if session + history length + width all match.
-    if let Some(lines) = cache.get(session.session_id(), history_len, content_width) {
-        return lines.clone();
-    }
-
-    // Cache miss - render.
-    let lines = {
-        let render_ctx = RenderContext {
-            content_width,
-            is_selected: false,
-            is_expanded: false,
-            tool_entry_max_lines: tool_entry_max_lines.unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES),
-            theme: theme.clone(),
-            paired_status: None,
-            is_streaming: false,
-            is_waiting_on_subagent: false,
-        };
-        render_preview(history, &render_ctx, PREVIEW_ENTRY_COUNT, PREVIEW_MAX_LINES)
-    };
-
-    // Store in cache.
-    cache.insert(
-        session.session_id().clone(),
-        history_len,
-        content_width,
-        lines.clone(),
-    );
-
-    lines
-}
-
 /// Computes the popup rectangle for the session preview overlay.
 ///
 /// The popup is anchored to the right edge of the frame and sits just above
@@ -401,4 +440,129 @@ pub fn session_preview_popup_rect(
         .saturating_sub(POPUP_GAP);
 
     Rect::new(popup_x, popup_y, popup_width, popup_height)
+}
+
+#[cfg(test)]
+mod worker_tests {
+    //! The worker's half of the preview: a request arrives, lines come back.
+    //!
+    //! Asserts the worker's own arithmetic — the truncation to the trailing
+    //! entries and to the line budget — which the bus test in the sidebar
+    //! cannot isolate from delivery.
+
+    use super::*;
+    use jinn_domain::protocol::ChatEntry;
+    use jinn_session_state::ChatSessionState;
+
+    /// The theme the worker's render context carries.
+    fn default_theme() -> jinn_theme::Theme {
+        jinn_domain::common::app_state::AppState::default_with_scope_focus()
+            .frontend
+            .theme
+    }
+
+    /// A session with `count` one-line user entries.
+    fn session_with(count: usize) -> ChatSessionState {
+        let mut session = ChatSessionState::new();
+        for i in 0..count {
+            session.push_entry(ChatEntry::user(format!("message {i}")));
+        }
+        session
+    }
+
+    /// The preview of `session`, rendered the way the worker renders it.
+    fn preview(session: &ChatSessionState) -> Vec<Line<'static>> {
+        let ctx = RenderContext {
+            content_width: 40,
+            is_selected: false,
+            is_expanded: false,
+            tool_entry_max_lines: DEFAULT_TOOL_ENTRY_MAX_LINES,
+            theme: default_theme(),
+            paired_status: None,
+            is_streaming: false,
+            is_waiting_on_subagent: false,
+        };
+        render_preview_lines(
+            session.history(),
+            &ctx,
+            PREVIEW_ENTRY_COUNT,
+            PREVIEW_MAX_LINES,
+        )
+    }
+
+    /// The whole preview as one string, for a substring assertion.
+    fn preview_text(session: &ChatSessionState) -> String {
+        preview(session)
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .map(|s| s.content.as_ref())
+            .collect()
+    }
+
+    #[rstest::rstest]
+    fn the_worker_previews_only_the_trailing_entries() {
+        // Given a session with far more entries than the preview shows.
+        let session = session_with(50);
+
+        // When the worker renders its preview.
+        let text = preview_text(&session);
+
+        // Then the oldest entries are left out.
+        assert!(
+            !text.contains("message 0"),
+            "the preview must not include the oldest entry"
+        );
+        assert!(
+            text.contains(&format!("message {}", 50 - PREVIEW_ENTRY_COUNT)),
+            "the preview must start at the first of the trailing entries"
+        );
+    }
+
+    #[rstest::rstest]
+    fn the_worker_previews_the_newest_entry() {
+        // Given a session with more entries than the preview shows.
+        let session = session_with(50);
+
+        // When the worker renders its preview.
+        let text = preview_text(&session);
+
+        // Then the newest entry is the one at the bottom.
+        assert!(
+            text.contains("message 49"),
+            "the preview must end at the newest entry"
+        );
+    }
+
+    #[rstest::rstest]
+    fn the_worker_returns_no_lines_for_an_empty_session() {
+        // Given a session with no entries.
+        let session = session_with(0);
+
+        // When the worker renders its preview.
+        let lines = preview(&session);
+
+        // Then there is nothing to show, which is complete rather than loading.
+        assert!(lines.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn the_worker_respects_the_line_budget() {
+        // Given a session whose trailing entries would overflow the line budget
+        // if rendered in full.
+        let mut session = ChatSessionState::new();
+        for i in 0..PREVIEW_ENTRY_COUNT {
+            let text = (0..40).map(|_| "x".to_owned()).collect::<String>();
+            session.push_entry(ChatEntry::user(format!("{i} {text}")));
+        }
+
+        // When the worker renders its preview.
+        let lines = preview(&session);
+
+        // Then the result fits the budget, so the popup has a bounded height.
+        assert!(
+            lines.len() <= PREVIEW_MAX_LINES,
+            "preview returned {} lines, over the {PREVIEW_MAX_LINES} budget",
+            lines.len()
+        );
+    }
 }

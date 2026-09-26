@@ -181,16 +181,19 @@ impl FrontendState {
             .reader::<jinn_sidebar_msg::SidebarSections>(&jinn_sidebar_msg::sidebar_sections_slot())
     }
 
-    /// Runs `f` against the five sidebar sections' state. A no-op when the
-    /// cell is absent (slice not activated) — writes are silently dropped,
-    /// matching the no-slice configuration.
-    pub fn update_sections<F>(&self, f: F)
+    /// Runs `f` against the five sidebar sections' state, returning its result.
+    ///
+    /// A no-op when the cell is absent (slice not activated) — writes are
+    /// silently dropped and `None` is returned, matching the no-slice
+    /// configuration. The value comes back because a transition's *outcome* is
+    /// often the point: an abandon reports whether it had anything to abandon.
+    pub fn update_sections<F, R>(&self, f: F) -> Option<R>
     where
-        F: FnOnce(&mut jinn_sidebar_msg::SidebarSections),
+        R: Sized,
+        F: FnOnce(&mut jinn_sidebar_msg::SidebarSections) -> R,
     {
-        if let Some(cell) = self.sections_cell() {
-            cell.update(f);
-        }
+        let cell = self.sections_cell()?;
+        Some(cell.update(f))
     }
 
     /// Reads the sidebar sections' state through `f`, falling back to

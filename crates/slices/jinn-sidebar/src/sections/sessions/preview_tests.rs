@@ -8,11 +8,16 @@
     reason = "test code"
 )]
 
-use crate::sections::sessions::preview::{render_session_preview, session_preview_popup_rect};
+use crate::sections::sessions::preview::{
+    DEFAULT_TOOL_ENTRY_MAX_LINES, render_session_preview, render_session_preview_loading,
+    session_preview_popup_rect,
+};
+use jinn_chat_log_view::chat_log::RenderContext;
+use jinn_chat_log_view_msg::{PREVIEW_ENTRY_COUNT, PREVIEW_MAX_LINES};
 use jinn_core_types::model_selection::ModelSelection;
+use jinn_domain::feat::ui::chat_log::render_preview as render_preview_lines;
 use jinn_domain::protocol::ChatEntry;
 use jinn_session_state::ChatSessionState;
-use jinn_sidebar_msg::SessionPreviewCache;
 use jinn_testutil::{buffer_row, setup_term};
 use jinn_theme::default_theme;
 use jinn_tools_msg::{PhaseInput, TaskStatus};
@@ -43,11 +48,31 @@ fn render_preview(
     let cursor_y = 30u16;
     let popup_area = session_preview_popup_rect(frame_area, cursor_y, 20);
 
+    // The lines a worker would have published for this session, rendered the
+    // same way the chat log renders them.
+    let lines = {
+        let ctx = RenderContext {
+            content_width: popup_area.width.saturating_sub(2),
+            is_selected: false,
+            is_expanded: false,
+            tool_entry_max_lines: DEFAULT_TOOL_ENTRY_MAX_LINES,
+            theme: theme.clone(),
+            paired_status: None,
+            is_streaming: false,
+            is_waiting_on_subagent: false,
+        };
+        render_preview_lines(
+            session.history(),
+            &ctx,
+            PREVIEW_ENTRY_COUNT,
+            PREVIEW_MAX_LINES,
+        )
+    };
+
     let (mut terminal, _) = setup_term(term_width, term_height);
-    let mut cache = SessionPreviewCache::new();
     terminal
         .draw(|frame| {
-            render_session_preview(frame, popup_area, session, &theme, None, &mut cache);
+            render_session_preview(frame, popup_area, session, &theme, &lines);
         })
         .unwrap();
 
@@ -472,4 +497,137 @@ fn popup_height_capped_when_cursor_near_top() {
         popup_rect.y + popup_rect.height < cursor_y,
         "popup should not encroach on the gap above cursor"
     );
+}
+
+/// The popup's content area when the render has not come back.
+///
+/// A frame that renders nothing while it waits is indistinguishable from a
+/// frame that is stuck, so the loading state has to be visible.
+mod loading_state {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+
+    use super::*;
+    use jinn_slices::spinner_glyph;
+
+    /// The popup drawn by the loading renderer, at the same geometry the ready
+    /// renderer would use for a one-line preview.
+    fn draw_loading(
+        session: &ChatSessionState,
+        term_width: u16,
+        term_height: u16,
+    ) -> ratatui::buffer::Buffer {
+        let theme = default_theme();
+        let frame_area = Rect::new(0, 0, term_width, term_height);
+        let popup_area = session_preview_popup_rect(frame_area, 30, 1);
+
+        let (mut terminal, _) = setup_term(term_width, term_height);
+        terminal
+            .draw(|frame| {
+                render_session_preview_loading(frame, popup_area, session, &theme);
+            })
+            .expect("draw");
+        terminal.backend().buffer().clone()
+    }
+
+    /// The buffer as one string, for a whole-popup assertion.
+    fn buffer_to_string(buffer: &ratatui::buffer::Buffer) -> String {
+        let area = buffer.area();
+        (area.y..area.y + area.height)
+            .map(|y| buffer_row(buffer, y, area.x + area.width))
+            .collect()
+    }
+
+    /// Every glyph `spinner_glyph` can return, so the assertion is not tied to
+    /// which frame the test happens to catch.
+    fn any_spinner_glyph() -> Vec<String> {
+        (0..8)
+            .map(|step| {
+                spinner_glyph(std::time::Duration::from_millis(
+                    u64::try_from(step).unwrap_or(0)
+                        * u64::try_from(jinn_slices::SPINNER_INTERVAL.as_millis()).unwrap_or(1),
+                ))
+                .to_owned()
+            })
+            .collect()
+    }
+
+    #[rstest::rstest]
+    fn the_loading_state_shows_a_spinner() {
+        // Given a session whose preview has not been rendered.
+        let session = make_session_with_title("busy");
+        let buffer = draw_loading(&session, 100, 40);
+
+        // Then the content area carries a spinner glyph.
+        let screen = buffer_to_string(&buffer);
+        assert!(
+            any_spinner_glyph().iter().any(|g| screen.contains(g)),
+            "expected a spinner glyph on screen"
+        );
+    }
+
+    #[rstest::rstest]
+    fn the_loading_state_does_not_show_entry_text() {
+        // Given a session whose entries carry distinctive text.
+        let mut session = make_session_with_title("busy");
+        session.push_entry(ChatEntry::user("SECRETENTRYTEXT"));
+        let buffer = draw_loading(&session, 100, 40);
+
+        // Then none of it is drawn, because the render has not come back.
+        let screen = buffer_to_string(&buffer);
+        assert!(
+            !screen.contains("SECRETENTRYTEXT"),
+            "a loading popup must not draw text it has not been given"
+        );
+    }
+
+    #[rstest::rstest]
+    fn the_loading_state_shows_the_session_title() {
+        // Given a titled session whose preview has not been rendered.
+        let session = make_session_with_title("busy");
+        let buffer = draw_loading(&session, 100, 40);
+
+        // Then the chrome is already drawn, so only the content waits.
+        assert!(buffer_to_string(&buffer).contains("busy"));
+    }
+
+    #[rstest::rstest]
+    fn the_loading_state_shows_the_keybinds() {
+        // Given a session whose preview has not been rendered.
+        let session = make_session_with_title("busy");
+        let buffer = draw_loading(&session, 100, 40);
+
+        // Then the footer is present, matching the ready state.
+        assert!(buffer_to_string(&buffer).contains("archive"));
+    }
+
+    #[rstest::rstest]
+    fn a_session_with_no_entries_draws_no_content() {
+        // Given a session with an empty history, rendered and complete.
+        let session = make_session_with_title("empty");
+        let lines: Vec<ratatui::text::Line<'static>> = Vec::new();
+
+        // When the ready renderer draws it.
+        let theme = default_theme();
+        let frame_area = Rect::new(0, 0, 100, 40);
+        let popup_area = session_preview_popup_rect(frame_area, 30, 0);
+        let (mut terminal, _) = setup_term(100, 40);
+        terminal
+            .draw(|frame| {
+                render_session_preview(frame, popup_area, &session, &theme, &lines);
+            })
+            .expect("draw");
+
+        // Then the popup is chrome-only — no spinner, because it is not waiting.
+        let screen = buffer_to_string(terminal.backend().buffer());
+        assert!(
+            !any_spinner_glyph().iter().any(|g| screen.contains(g)),
+            "an empty preview is complete, not loading"
+        );
+    }
 }
