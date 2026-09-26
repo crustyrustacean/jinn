@@ -86,6 +86,7 @@ pub use route::RouteId;
 pub use route::RouteOutcome;
 pub use route::RouteResult;
 pub use route::RouteRow;
+pub use route::ScopeEnterHook;
 pub use route::ScopeSignal;
 pub use route::SliceActionState;
 pub use route_publish::PublishSink;

@@ -56,11 +56,35 @@ pub struct IntentHandler;
 /// request transitions as data ([`ScopeSignal`]) and this is where they
 /// land. Runs before the result's messages publish (see
 /// [`IntentResult::scope_signal`]).
-fn apply_scope_signal(result: &mut IntentResult, state: &mut AppState) {
+///
+/// A push that lands on a scope with a registered
+/// [`ScopeEnterHook`](jinn_slices::ScopeEnterHook) also fires that hook, so
+/// the entering slice initializes its per-open state here rather than in
+/// whichever caller happened to request the transition. The hook runs after
+/// the push, so the scope is already the active one.
+fn apply_scope_signal(
+    result: &mut IntentResult,
+    state: &mut AppState,
+    slices: &jinn_slices::Slices,
+    routes: &jinn_slices::route::KeyRoutes,
+    config: &jinn_config::ConfigLayer,
+) {
     use jinn_slices::FocusScope;
     if let Some(signal) = result.scope_signal.take() {
         match signal {
-            ScopeSignal::Push(id) => state.frontend.scope_push(FocusScope::Dynamic(id)),
+            ScopeSignal::Push(id) => {
+                state
+                    .frontend
+                    .scope_push(FocusScope::Dynamic(id.clone()));
+                if let Some(hook) = routes.scope_enter_hook(&id) {
+                    hook(jinn_slices::route::ActionCtx {
+                        state,
+                        slices,
+                        config,
+                        key_bytes: Vec::new(),
+                    });
+                }
+            }
             ScopeSignal::PopIf(id) => {
                 if matches!(&state.frontend.scope(), FocusScope::Dynamic(cur) if *cur == id) {
                     state.frontend.scope_pop();
@@ -263,7 +287,7 @@ impl IntentHandler {
             // Scope transitions apply before the messages publish so a
             // slice that opens itself is on the stack before any bus
             // subscriber could observe a message.
-            apply_scope_signal(&mut result, state);
+            apply_scope_signal(&mut result, state, slices, routes, config);
             return result;
         }
 
@@ -673,9 +697,51 @@ mod tests {
             "activate child",
         ))
     }
+
+    /// Route table whose single row requests `signal` for `scope`, plus a
+    /// scope-enter hook for that same scope that bumps `enters`.
+    fn transitioning_routes(
+        scope: jinn_slices::SliceScopeId,
+        signal: ScopeSignal,
+        enters: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    ) -> (jinn_slices::route::KeyRoutes, KernelIntent) {
+        use jinn_slices::route::{ActionFn, BindSite, RouteId, RouteOutcome, RouteRow};
+        use std::sync::atomic::Ordering;
+
+        let routes = empty_routes();
+        routes.attach(RouteRow {
+            route_id: RouteId::new("test:transition"),
+            scope: scope.clone(),
+            key: "<enter>",
+            category: "general",
+            site: BindSite::OwnScope,
+            feature: "test",
+            outcome: RouteOutcome::Action {
+                action: "transition",
+                display: "request a scope transition",
+                run: ActionFn::new(move |_ctx| {
+                    IntentResult::empty().with_scope_signal(signal.clone())
+                }),
+            },
+        });
+        let counted = std::sync::Arc::clone(&enters);
+        routes.register_scope_enter_hook(
+            &scope,
+            std::sync::Arc::new(move |_ctx: jinn_slices::route::ActionCtx<'_>| {
+                counted.fetch_add(1, Ordering::SeqCst);
+            }),
+        );
+        let intent = KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
+            scope,
+            "transition",
+            "request a scope transition",
+        ));
+        (routes, intent)
+    }
     use crate::common::app_state::AppState;
     use crate::feat::intent::IntentHandler;
     use crate::protocol::IntentResult;
+    use crate::protocol::ScopeSignal;
     use crate::protocol::{ChatEntry, KernelIntent};
     use jinn_slices::FocusScope;
 
@@ -1407,5 +1473,88 @@ mod tests {
             entry.kind,
             crate::protocol::ChatEntryKind::User { .. }
         ));
+    }
+
+    #[rstest::rstest]
+    fn push_transition_fires_the_target_scope_enter_hook() {
+        use std::sync::Arc;
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::atomic::Ordering;
+
+        // Given a route row that pushes a scope owning an enter hook.
+        let scope = jinn_slices::SliceScopeId::new("test", "picker");
+        let enters = Arc::new(AtomicUsize::new(0));
+        let (routes, intent) = transitioning_routes(
+            scope.clone(),
+            ScopeSignal::Push(scope.clone()),
+            Arc::clone(&enters),
+        );
+        let mut state = AppState::default_with_scope_focus();
+
+        // When handling the row's dynamic intent.
+        IntentHandler::handle(
+            &intent,
+            &mut state,
+            &empty_slices(),
+            &routes,
+            jinn_slices::empty_config_layer(),
+        );
+
+        // Then the hook ran exactly once.
+        assert_eq!(enters.load(Ordering::SeqCst), 1);
+    }
+
+    #[rstest::rstest]
+    fn push_transition_leaves_the_scope_on_the_stack() {
+        use std::sync::Arc;
+        use std::sync::atomic::AtomicUsize;
+
+        // Given a route row that pushes a scope.
+        let scope = jinn_slices::SliceScopeId::new("test", "picker");
+        let (routes, intent) = transitioning_routes(
+            scope.clone(),
+            ScopeSignal::Push(scope.clone()),
+            Arc::new(AtomicUsize::new(0)),
+        );
+        let mut state = AppState::default_with_scope_focus();
+
+        // When handling the row's dynamic intent.
+        IntentHandler::handle(
+            &intent,
+            &mut state,
+            &empty_slices(),
+            &routes,
+            jinn_slices::empty_config_layer(),
+        );
+
+        // Then the scope is the active focus.
+        assert_eq!(state.frontend.scope(), FocusScope::Dynamic(scope));
+    }
+
+    #[rstest::rstest]
+    fn pop_if_transition_does_not_fire_the_scope_enter_hook() {
+        use std::sync::Arc;
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::atomic::Ordering;
+
+        // Given a route row that requests a pop-if for a scope owning an
+        // enter hook.
+        let scope = jinn_slices::SliceScopeId::new("test", "picker");
+        let enters = Arc::new(AtomicUsize::new(0));
+        let (routes, intent) =
+            transitioning_routes(scope.clone(), ScopeSignal::PopIf(scope), Arc::clone(&enters));
+        let mut state = AppState::default_with_scope_focus();
+
+        // When handling the row's dynamic intent.
+        IntentHandler::handle(
+            &intent,
+            &mut state,
+            &empty_slices(),
+            &routes,
+            jinn_slices::empty_config_layer(),
+        );
+
+        // Then the hook never ran — a pop is not an entry.
+        assert_eq!(enters.load(Ordering::SeqCst), 0);
     }
 }
