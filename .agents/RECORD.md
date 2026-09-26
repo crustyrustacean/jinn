@@ -229,3 +229,4 @@ Entries are added or amended **only with human approval**.
 - (ui) Activating a sidebar session measures its chat log off the main thread when it has no cached line counts, and otherwise switches immediately.
 - (sessions) Startup hydration reads each unarchived session on a worker pool, so the store actor's mailbox is free while history is still being read.
 - (ui) The sidebar lists each session as its history finishes loading, rather than after all sessions have loaded.
+- (sessions) A session's chat log is shared with the layout workers as a single `Arc` snapshot, so activating a session copies its history once rather than per worker.
