@@ -3,12 +3,27 @@
 //! Verbatim trouper port of the dormant `stall-watchdog` plugin's state
 //! machine (`plugins/stall-watchdog/src/watchdog.rs`): one timer per
 //! session, armed by [`SendToLlmProvider`] and reset by every
-//! [`StreamToken`]. When the actor's own [`StallTick`] reveals a session
+//! [`StreamActivity`]. When the actor's own [`StallTick`] reveals a session
 //! has been silent past the configured timeout, the watchdog pushes the
 //! visible retry marker ([`PushChatEntry`]) and re-dispatches the turn
 //! ([`RetryStalledSession`]) — up to `max_restarts` consecutive times.
 //! Beyond the budget it gives up instead: a surrender entry followed by
 //! [`CancelStream`].
+//!
+//! **Liveness is one contract, not a list.** The inference actor publishes
+//! [`StreamActivity`] on *every* non-terminal provider event — text,
+//! reasoning, tool-call construction, citations — and this actor subscribes
+//! to that alone. An earlier port watched only [`StreamToken`], which made a
+//! tool call being constructed (arguments streaming in for minutes, no text
+//! at all) indistinguishable from a dead stream: the watchdog read minutes
+//! of real progress as silence, tripped, and discarded the partial turn.
+//! Owning the definition in the producer means a new provider event is
+//! covered by construction rather than by remembering to add a
+//! subscription.
+//!
+//! Supervision covers stream *construction*, never tool *execution*: the
+//! stream ends in `ToolUse` before the tools run, and the watchdog disarms
+//! there. A `bash` or a subagent may take as long as it needs.
 //!
 //! Budget semantics (unchanged from the plugin): a stream ending in
 //! `Finished` clears the session entirely (genuine completion — fresh
@@ -23,17 +38,26 @@
 //! `SearchIndexActor` heartbeat pattern). It cannot live inside the
 //! session actor: that actor's mailbox is the single sink for token
 //! bursts, so an in-actor timer would queue behind the very activity it
-//! is measuring. Token deliveries only touch recency here, so this
+//! is measuring. Liveness deliveries only touch recency here, so this
 //! actor's own mailbox runs `DropNew` — backpressuring the inference
 //! actor over *this* actor's slack would be the one failure mode a
-//! watchdog must never cause; the newest token is the only fact that
-//! matters and older ones carry no information.
+//! watchdog must never cause; the newest delivery is the only fact that
+//! matters and older ones carry no information. A dropped delivery merely
+//! delays a trip by one more activity, never causes a false one, which is
+//! why this is a documented property rather than a tested invariant.
+//!
+//! Elapsed time is measured from a monotonic [`std::time::Instant`]
+//! captured at spawn, never against the wall clock: an NTP step or a
+//! machine suspend would otherwise move the silence window in a direction
+//! the watchdog cannot compensate for. The pure `on_*` seam takes the
+//! timestamp as a parameter, so tests drive the state machine directly.
 //!
 //! Kernel dependency (see Cargo.toml): publishes through `Services`'
 //! bus, granted at slice activation.
 
 use std::collections::HashMap;
 use std::time::Duration;
+use std::time::Instant;
 
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
@@ -44,9 +68,9 @@ use jinn_core_types::SessionId;
 use jinn_domain::Services;
 use jinn_inference_msg::CancelStream;
 use jinn_inference_msg::SendToLlmProvider;
+use jinn_inference_msg::StreamActivity;
 use jinn_inference_msg::StreamCompleted;
 use jinn_inference_msg::StreamCompletedReason;
-use jinn_inference_msg::StreamToken;
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_msg::RetryStalledSession;
 
@@ -62,8 +86,8 @@ pub const STALL_WATCHDOG_PATH: &str = "stall-watchdog";
 struct SessionStall {
     /// Whether an LLM stream is believed to be in flight.
     armed: bool,
-    /// Monotonic-ish wall-clock timestamp of the last stream activity
-    /// (or arm time), in milliseconds.
+    /// Elapsed-time timestamp of the last stream activity (or arm time),
+    /// in milliseconds since spawn, from the monotonic clock.
     last_event_ms: u64,
     /// Consecutive stall restarts since the last observed stream output.
     restarts: u32,
@@ -83,13 +107,6 @@ pub struct StallWatchdogActorDeps {
     pub tick_interval: Duration,
 }
 
-/// Milliseconds since the Unix epoch, from the system clock.
-fn now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis() as u64)
-}
-
 /// The stall watchdog actor.
 ///
 /// Event-driven: one timer per session, self-tick driven.
@@ -99,6 +116,10 @@ pub struct StallWatchdogActor {
     /// self-address. (The services container may carry a different system
     /// in tests, where the harness spawns on its own.)
     system: ActorSystem,
+    /// Monotonic base for [`Self::now_ms`], captured at spawn. Measuring
+    /// elapsed time against a wall clock would mis-fire on an NTP step or a
+    /// machine suspend; `Instant` counts real elapsed time through both.
+    started_at: Instant,
     timeout_ms: u64,
     max_restarts: u32,
     tick_interval: Duration,
@@ -124,6 +145,17 @@ impl ServiceActor for StallWatchdogActor {
 }
 
 impl StallWatchdogActor {
+    /// Milliseconds elapsed since spawn, from the monotonic system clock.
+    ///
+    /// Elapsed time measured against the wall clock would mis-fire in both
+    /// directions: an NTP step forward reads as a stall, a step backward (or
+    /// a machine suspend, on some clocks) reads as silence that never expires.
+    /// `Instant` counts real elapsed time through both, and only differences
+    /// are ever compared.
+    fn now_ms(&self) -> u64 {
+        self.started_at.elapsed().as_millis() as u64
+    }
+
     /// Spawns the actor at its static trouper path and returns the path.
     ///
     /// Subscriptions: the three stream contracts plus the self-addressed
@@ -152,6 +184,7 @@ impl StallWatchdogActor {
                         Ok(Self {
                             services: deps.services,
                             system,
+                            started_at: Instant::now(),
                             timeout_ms: deps.timeout_ms,
                             max_restarts: deps.max_restarts,
                             tick_interval: deps.tick_interval,
@@ -161,7 +194,7 @@ impl StallWatchdogActor {
                 }
             })
             .handles::<SendToLlmProvider>()
-            .handles::<StreamToken>()
+            .handles::<StreamActivity>()
             .handles::<StreamCompleted>()
             .handles::<StallTick>()
             .mailbox(64, trouper::inbox::OverloadPolicy::DropNew)
@@ -239,7 +272,7 @@ pub struct StallTick;
 
 impl MsgHandler<StallTick> for StallWatchdogActor {
     async fn handle(&mut self, _msg: &StallTick, _ctx: &mut MsgCtx<'_>) {
-        let actions = self.on_tick(now_ms());
+        let actions = self.on_tick(self.now_ms());
         self.publish_actions(actions).await;
         self.reschedule();
     }
@@ -247,13 +280,13 @@ impl MsgHandler<StallTick> for StallWatchdogActor {
 
 impl MsgHandler<SendToLlmProvider> for StallWatchdogActor {
     async fn handle(&mut self, msg: &SendToLlmProvider, _ctx: &mut MsgCtx<'_>) {
-        self.on_stream_start(&msg.session_id, now_ms());
+        self.on_stream_start(&msg.session_id, self.now_ms());
     }
 }
 
-impl MsgHandler<StreamToken> for StallWatchdogActor {
-    async fn handle(&mut self, msg: &StreamToken, _ctx: &mut MsgCtx<'_>) {
-        self.on_stream_event(&msg.session_id, now_ms());
+impl MsgHandler<StreamActivity> for StallWatchdogActor {
+    async fn handle(&mut self, msg: &StreamActivity, _ctx: &mut MsgCtx<'_>) {
+        self.on_stream_event(&msg.session_id, self.now_ms());
     }
 }
 
@@ -280,8 +313,10 @@ impl StallWatchdogActor {
     /// Records stream output — the timer resets, and a recovered stall
     /// clears the restart budget.
     ///
-    /// Tokens for sessions with no timer are harmless (the session may
-    /// have been disarmed between publication and this event arriving).
+    /// Reached from [`StreamActivity`], so *any* non-terminal provider event
+    /// counts, not only text. Activity for a session with no timer is
+    /// harmless (the session may have been disarmed between publication and
+    /// this delivery arriving).
     pub fn on_stream_event(&mut self, session_id: &SessionId, now_ms: u64) {
         if let Some(stall) = self.sessions.get_mut(session_id) {
             stall.last_event_ms = now_ms;
@@ -393,6 +428,7 @@ mod tests {
         StallWatchdogActor {
             services,
             system,
+            started_at: Instant::now(),
             timeout_ms: timeout_secs * 1_000,
             max_restarts,
             tick_interval: STALL_TICK_INTERVAL,
@@ -656,6 +692,170 @@ mod tests {
         // Then nothing is produced — an errored turn re-dispatches through
         // the request-retry path, not the stall watchdog.
         assert!(actions.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn tool_argument_delta_resets_the_silence_window() {
+        // Given an armed session whose only stream activity is tool-call
+        // argument deltas — no text token ever arrives.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 1_000);
+        // And deltas stream in right up to the end of what would be a
+        // several-minute argument payload.
+        for delta_at in [30_000, 58_000, 90_000, 150_000, 200_000] {
+            actor.on_stream_event(&session, delta_at);
+        }
+
+        // When a tick arrives 59 seconds after the last delta.
+        let actions = actor.on_tick(259_000);
+
+        // Then nothing was produced — minutes of tool-call construction are
+        // forward progress, not silence.
+        assert!(actions.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn stall_midway_through_a_tool_call_trips() {
+        // Given an armed session that stalled after streaming some tool-call
+        // argument deltas.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 1_000);
+        actor.on_stream_event(&session, 30_000);
+        actor.on_stream_event(&session, 58_000);
+
+        // When the payload stops mid-stream and the window elapses.
+        let actions = actor.on_tick(118_000);
+
+        // Then the session restarts — treating deltas as liveness must not
+        // blunt detection of a stream that genuinely stopped.
+        assert_restart(&actions, &session, 1);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn tool_use_start_resets_the_silence_window() {
+        // Given an armed session whose first and only stream event is a tool
+        // use starting.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 1_000);
+        actor.on_stream_event(&session, 59_000);
+
+        // When a tick arrives 60 seconds after the original dispatch.
+        let actions = actor.on_tick(61_000);
+
+        // Then nothing was produced — the tool use starting is liveness.
+        assert!(actions.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn tool_use_complete_resets_the_silence_window() {
+        // Given an armed session whose final construction event is a tool
+        // call completing.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 1_000);
+        actor.on_stream_event(&session, 59_500);
+
+        // When a tick arrives 60 seconds after the original dispatch.
+        let actions = actor.on_tick(61_000);
+
+        // Then nothing was produced — the completion is liveness.
+        assert!(actions.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn citation_only_stream_does_not_trip() {
+        // Given an armed session whose only stream activity is citations —
+        // a stream that emits no text at all.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 1_000);
+        actor.on_stream_event(&session, 59_000);
+
+        // When a tick arrives 60 seconds after the original dispatch.
+        let actions = actor.on_tick(61_000);
+
+        // Then nothing was produced.
+        assert!(actions.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn tool_use_completion_disarms_before_the_tool_runs() {
+        // Given a stream that ended in tool use, disarming the watchdog
+        // before the tool batch executes.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 1_000);
+        actor.on_stream_event(&session, 1_500);
+        actor.on_stream_end(&session, StreamCompletedReason::ToolUse);
+
+        // When ticks arrive hours later — a subagent or a long `bash` that
+        // produces no stream events whatsoever.
+        let after_an_hour = actor.on_tick(3_601_500);
+        let after_four_hours = actor.on_tick(14_401_500);
+
+        // Then nothing is produced at an hour: tool *execution* is not the
+        // stream watchdog's concern.
+        assert!(after_an_hour.is_empty());
+        // And nothing is produced after four hours either — the watchdog must
+        // not restart a turn whose subagent is legitimately still running.
+        assert!(after_four_hours.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn unmonitored_session_still_trips_after_full_budget() {
+        // Given a session that never produced any stream event at all.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 2).await;
+        actor.on_stream_start(&session, 0);
+
+        // When each window elapses with no activity, re-arming as a retry
+        // would between them.
+        let first = actor.on_tick(60_000);
+        actor.on_stream_start(&session, 61_000);
+        let second = actor.on_tick(121_000);
+        actor.on_stream_start(&session, 122_000);
+        let third = actor.on_tick(182_000);
+
+        // Then the first two windows restart.
+        assert_restart(&first, &session, 1);
+        // And the third, having exhausted the budget, surrenders — the new
+        // liveness source did not weaken detection or extend the budget.
+        assert_restart(&second, &session, 2);
+        assert_give_up(&third, &session);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn batched_tool_calls_stay_monitored_until_the_last_one_completes() {
+        // Given a turn streaming two tool calls back to back under one
+        // dispatch — parallel tool calls arrive as a single stream, with
+        // `index` distinguishing the content blocks.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 0);
+
+        // And the first call completes.
+        actor.on_stream_event(&session, 5_000);
+        // But the second call's deltas then stop mid-payload.
+        actor.on_stream_event(&session, 10_000);
+
+        // When the window elapses.
+        let actions = actor.on_tick(70_000);
+
+        // Then the session restarts — the watchdog has one timer per session
+        // and is not disarmed by the first call's completion, so a second
+        // call that stalls is still caught.
+        assert_restart(&actions, &session, 1);
     }
 
     #[rstest::rstest]
