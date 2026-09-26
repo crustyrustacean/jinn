@@ -20,6 +20,20 @@ use jinn_core_types::{ChatEntry, ChatEntryId, SessionId};
 use jinn_slices::BusMessage;
 use serde::{Deserialize, Serialize};
 
+/// Number of trailing history entries a session preview shows.
+///
+/// A preview is a *glance*, not a transcript: enough tail to recognize where
+/// the conversation left off, few enough entries that the wrap work stays
+/// bounded no matter how large the session behind it is.
+pub const PREVIEW_ENTRY_COUNT: usize = 5;
+
+/// Maximum rendered lines a session preview shows.
+///
+/// The last entry is what the user is reading, so overflow is dropped from the
+/// front — the popup is sized from the surviving lines, which keeps its height
+/// honest about what is actually on screen.
+pub const PREVIEW_MAX_LINES: usize = 20;
+
 /// Measure one session's chat log off the render thread.
 ///
 /// Carries the history itself rather than a session id, because the chat log's

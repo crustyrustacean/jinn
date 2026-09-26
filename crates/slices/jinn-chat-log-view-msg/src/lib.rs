@@ -5,7 +5,7 @@ pub mod visual_item;
 pub use chat_log_view_state::*;
 pub use layout::{
     ArmLayoutDeadline, ChatLogLayoutComputed, Escalated, LayoutChatSession, LayoutDeadlineExpired,
-    MeasuredEntryCount,
+    MeasuredEntryCount, PREVIEW_ENTRY_COUNT, PREVIEW_MAX_LINES,
 };
 pub use visual_item::{
     DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,

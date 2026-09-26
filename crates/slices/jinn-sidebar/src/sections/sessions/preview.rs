@@ -18,16 +18,13 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::sections::sessions::state::sorted_open_sessions;
 use jinn_chat_log_view::chat_log::RenderContext;
-use jinn_chat_log_view::chat_log::entry_to_lines;
+use jinn_chat_log_view_msg::{PREVIEW_ENTRY_COUNT, PREVIEW_MAX_LINES};
 use jinn_domain::common::render_ctx::RenderCtx;
+use jinn_domain::feat::ui::chat_log::render_preview;
 use jinn_session_state::ChatSessionState;
 use jinn_sidebar_msg::SessionPreviewCache;
 use jinn_theme::Theme;
 
-/// Number of history entries to show in the preview.
-const PREVIEW_ENTRY_COUNT: usize = 5;
-/// Maximum number of rendered lines to display.
-const PREVIEW_MAX_LINES: usize = 20;
 /// Default max lines for tool entries when no preference is set.
 const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
 /// Rows between the popup and the cursor row it describes.
@@ -324,10 +321,12 @@ fn render_model_line(
     frame.render_widget(Paragraph::new(Line::from(spans)), line_area);
 }
 
-/// Builds the preview content lines from the session's last entries.
+/// Builds the preview content lines for a session, hitting the cache first.
 ///
-/// Takes the last `PREVIEW_ENTRY_COUNT` entries, renders each via
-/// [`entry_to_lines`], flattens, and truncates to `PREVIEW_MAX_LINES`.
+/// The rendering itself is not this module's business — it is the chat log's
+/// `entry_to_lines` arithmetic, shared with the layout worker so the two cannot
+/// drift. What lives here is the cache lookup and the popup's own idea of how
+/// wide a preview renders.
 fn build_preview_lines(
     session: &ChatSessionState,
     content_width: u16,
@@ -348,31 +347,23 @@ fn build_preview_lines(
     }
 
     // Cache miss - render.
-    let start = history_len.saturating_sub(PREVIEW_ENTRY_COUNT);
-    let entries = history.get(start..).unwrap_or(&[]);
-
-    let ctx = RenderContext {
-        content_width,
-        is_selected: false,
-        is_expanded: false,
-        tool_entry_max_lines: tool_entry_max_lines.unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES),
-        theme: theme.clone(),
-        paired_status: None,
-        is_streaming: false,
-        is_waiting_on_subagent: false,
-    };
-
-    let mut all_lines = Vec::new();
-    for entry in entries {
-        all_lines.extend(entry_to_lines(entry, &ctx));
-    }
-
-    // Take the last PREVIEW_MAX_LINES lines.
-    let all_lines = if all_lines.len() <= PREVIEW_MAX_LINES {
-        all_lines
-    } else {
-        let skip = all_lines.len() - PREVIEW_MAX_LINES;
-        all_lines.into_iter().skip(skip).collect()
+    let lines = {
+        let render_ctx = RenderContext {
+            content_width,
+            is_selected: false,
+            is_expanded: false,
+            tool_entry_max_lines: tool_entry_max_lines.unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES),
+            theme: theme.clone(),
+            paired_status: None,
+            is_streaming: false,
+            is_waiting_on_subagent: false,
+        };
+        render_preview(
+            history,
+            &render_ctx,
+            PREVIEW_ENTRY_COUNT,
+            PREVIEW_MAX_LINES,
+        )
     };
 
     // Store in cache.
@@ -380,10 +371,10 @@ fn build_preview_lines(
         session.session_id().clone(),
         history_len,
         content_width,
-        all_lines.clone(),
+        lines.clone(),
     );
 
-    all_lines
+    lines
 }
 
 /// Computes the popup rectangle for the session preview overlay.

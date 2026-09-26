@@ -151,6 +151,39 @@ impl MsgHandler<LayoutChatSession> for LayoutWorkerActor {
     }
 }
 
+/// Renders the tail of a session's history as preview lines.
+///
+/// The *same* [`entry_to_lines`] arithmetic the chat-log measure pass performs,
+/// at a narrower width and with the per-entry render inputs pinned off — a
+/// preview is a glance at a conversation, not a view of it, so nothing in it is
+/// selected, expanded, or streaming. That pinning is what makes it safe to share
+/// one implementation with the layout worker: the two agree on how a line is
+/// built and differ only in what they do with the result.
+///
+/// Overflow is dropped from the *front*: the last line is the one the user is
+/// looking for, and a preview truncated at the end would show them the oldest
+/// text in the window.
+#[must_use]
+pub fn render_preview(
+    entries: &[jinn_core_types::ChatEntry],
+    ctx: &RenderContext,
+    max_entries: usize,
+    max_lines: usize,
+) -> Vec<ratatui::text::Line<'static>> {
+    let start = entries.len().saturating_sub(max_entries);
+    let mut lines: Vec<ratatui::text::Line<'static>> = entries
+        .get(start..)
+        .unwrap_or_default()
+        .iter()
+        .flat_map(|entry| entry_to_lines(entry, ctx))
+        .collect();
+
+    if lines.len() > max_lines {
+        lines.drain(..lines.len() - max_lines);
+    }
+    lines
+}
+
 /// Measures every entry's wrapped line count for one session.
 ///
 /// Reproduces the render pass's arithmetic exactly: the same visual item
