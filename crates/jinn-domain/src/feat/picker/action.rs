@@ -47,6 +47,7 @@ pub fn run_active_hook(
     state: &mut AppState,
     registry: &PickerRegistry,
     hook: Hook,
+    config: &jinn_config::ConfigLayer,
 ) -> IntentResult {
     let Some(kind) = state.frontend.picker_kind() else {
         return IntentResult::empty();
@@ -67,7 +68,7 @@ pub fn run_active_hook(
     }
     let picker_id = jinn_picker::PickerId::new(spec.id().as_str());
     let outcome = {
-        let mut host = AppStatePickerHost::new(state);
+        let mut host = AppStatePickerHost::new(state, config);
         let mut ctx = ActionCtx::new(picker_id, &mut host);
         match hook {
             Hook::Open => spec.run_open(&mut ctx),
@@ -82,7 +83,11 @@ pub fn run_active_hook(
 /// one — the live preview fired after the cursor moved or the page turned.
 /// A no-op when no spec is active or the spec has no selection-change
 /// behavior.
-pub fn run_selection_change(state: &mut AppState, registry: &PickerRegistry) {
+pub fn run_selection_change(
+    state: &mut AppState,
+    registry: &PickerRegistry,
+    config: &jinn_config::ConfigLayer,
+) {
     let Some(kind) = state.frontend.picker_kind() else {
         return;
     };
@@ -100,10 +105,10 @@ pub fn run_selection_change(state: &mut AppState, registry: &PickerRegistry) {
     // erased seam, then run the hook.
     let picker_id = jinn_picker::PickerId::new(spec.id().as_str());
     let index = {
-        let host = crate::feat::picker::host_impl::AppStateRenderHost::new(state);
+        let host = crate::feat::picker::host_impl::AppStateRenderHost::new(state, config);
         spec.selected_index(&host)
     };
-    let mut host = AppStatePickerHost::new(state);
+    let mut host = AppStatePickerHost::new(state, config);
     let mut ctx = ActionCtx::new(picker_id, &mut host);
     spec.run_selection_change(index, &mut ctx);
 }
@@ -122,14 +127,18 @@ pub enum Hook {
 /// Runs the active picker's close hook when it has a spec. Returns
 /// `Some(result)` when the hook ran (the caller stops — a per-kind restore
 /// must not double-apply), `None` when no spec is active.
-pub fn try_close_active(state: &mut AppState, registry: &PickerRegistry) -> Option<IntentResult> {
+pub fn try_close_active(
+    state: &mut AppState,
+    registry: &PickerRegistry,
+    config: &jinn_config::ConfigLayer,
+) -> Option<IntentResult> {
     let kind = state.frontend.picker_kind()?;
     let id = jinn_picker::spec_id_for_kind(&kind)?;
     let spec = registry.get(id)?;
     if !spec.has_close() {
         return None;
     }
-    Some(run_active_hook(state, registry, Hook::Close))
+    Some(run_active_hook(state, registry, Hook::Close, config))
 }
 
 /// Runs the `picker` spec's `action`-named bind.
@@ -138,6 +147,7 @@ pub fn run_action(
     registry: &PickerRegistry,
     picker: &str,
     action: &str,
+    config: &jinn_config::ConfigLayer,
 ) -> IntentResult {
     // Guard: the intent's picker must be the one actually open — a stale
     // keypress from a previous scope is ignored.
@@ -155,7 +165,7 @@ pub fn run_action(
     };
     let picker_id = jinn_picker::PickerId::new(spec.id().as_str());
     let outcome = {
-        let mut host = AppStatePickerHost::new(state);
+        let mut host = AppStatePickerHost::new(state, config);
         let mut ctx = ActionCtx::new(picker_id, &mut host);
         spec.run_action(action, &mut ctx)
     };
@@ -218,7 +228,13 @@ mod tests {
         let registry = crate::feat::picker::test_registry::test_registry();
 
         // When running an action naming a picker id that doesn't exist.
-        let result = run_action(&mut state, &registry, "nope", "<tab>");
+        let result = run_action(
+            &mut state,
+            &registry,
+            "nope",
+            "<tab>",
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then nothing is emitted.
         assert!(result.messages.is_empty());
@@ -233,7 +249,13 @@ mod tests {
         let registry = crate::feat::picker::test_registry::test_registry();
 
         // When running an action addressed to a different picker.
-        let result = run_action(&mut state, &registry, "persona", "<tab>");
+        let result = run_action(
+            &mut state,
+            &registry,
+            "persona",
+            "<tab>",
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then nothing is emitted (stale intents are dropped).
         assert!(result.messages.is_empty());
@@ -248,7 +270,13 @@ mod tests {
         let registry = registry_with_test_skill_spec();
 
         // When running the `<tab>` action.
-        let _ = run_action(&mut state, &registry, SKILL_ID, "<tab>");
+        let _ = run_action(
+            &mut state,
+            &registry,
+            SKILL_ID,
+            "<tab>",
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the action ran (transient entry pushed).
         let history = state.active_session().history();
@@ -269,7 +297,13 @@ mod tests {
         let registry = registry_with_test_skill_spec();
 
         // When running an action whose outcome closes the picker.
-        let _ = run_action(&mut state, &registry, SKILL_ID, "<esc>");
+        let _ = run_action(
+            &mut state,
+            &registry,
+            SKILL_ID,
+            "<esc>",
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the picker scope is popped.
         assert!(

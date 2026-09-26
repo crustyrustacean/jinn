@@ -7,10 +7,7 @@ use tokio::runtime::{Handle, Runtime};
 
 use crate::feat::session::{SessionStore, SessionStoreError, SessionStoreService};
 use jinn_core_types::SessionId;
-use jinn_preferences_config::{
-    AppStateStorageService, InMemoryAppStateStorage, InMemoryUserPreferencesStorage,
-    UserPreferencesStorageService,
-};
+use jinn_preferences_config::{AppStateStorageService, InMemoryAppStateStorage};
 use jinn_provider_config::{
     ApiKeys, ApiKeysService, ConfigStorageService, FakeLlmServiceFactory, InMemoryConfigStorage,
     LlmServiceFactoryService, ProviderRegistry, ProviderRegistryService, ProvidersConfig,
@@ -295,15 +292,10 @@ impl TestServices {
             session_store: self
                 .session_store
                 .unwrap_or_else(|| SessionStoreService::new(Arc::new(FakeSessionStore))),
-            user_preferences_storage: {
-                let svc = UserPreferencesStorageService::new(Arc::new(
-                    InMemoryUserPreferencesStorage::new(),
-                ));
-                // Populate the cache so test code that calls .read() works.
-                // InMemoryUserPreferencesStorage returns Ok(default) when empty.
-                svc.reload().expect("test prefs storage initial reload");
-                svc
-            },
+            config: jinn_config::ConfigLayer::load(Arc::new(
+                jinn_config::InMemoryConfigStorage::default(),
+            ))
+            .expect("test config layer initial load"),
             app_state_storage: {
                 let svc = AppStateStorageService::new(Arc::new(InMemoryAppStateStorage::new()));
                 svc.reload().expect("test app state storage initial reload");

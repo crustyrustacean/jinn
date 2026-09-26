@@ -278,9 +278,12 @@ pub fn handle_toggle_input_mode(state: &mut AppState) -> IntentResult {
 
 /// Handles `SubmitMessage` - confirms autocomplete if active, executes slash commands,
 /// or submits the message as chat input.
-pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
+pub fn handle_submit_message(
+    state: &mut AppState,
+    config: &jinn_config::ConfigLayer,
+) -> IntentResult {
     if state.with_active_input(|i| i.autocomplete().is_some(), || false) {
-        return handle_submit_message_with_autocomplete(state);
+        return handle_submit_message_with_autocomplete(state, config);
     }
 
     if validator::validate_submit_message(state).is_err() {
@@ -298,7 +301,7 @@ pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
             state.update_active_input(ChatInputBoxState::reset);
             return with_mark_interacted(
                 session_id,
-                execute_slash_command(cmd, &input_text, state),
+                execute_slash_command(cmd, &input_text, state, config),
             );
         }
         // Unknown /command - fall through to normal message.
@@ -316,7 +319,10 @@ pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
 /// normal chat message (the completed name is just text in the message).
 /// For `Slash` trigger: completes the command name, then re-checks for slash
 /// command execution.
-fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult {
+fn handle_submit_message_with_autocomplete(
+    state: &mut AppState,
+    config: &jinn_config::ConfigLayer,
+) -> IntentResult {
     let trigger = state.with_active_input(
         |i| i.autocomplete().as_ref().map(AutocompleteState::trigger),
         || None,
@@ -348,7 +354,7 @@ fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult
                     state.update_active_input(ChatInputBoxState::reset);
                     return with_mark_interacted(
                         session_id,
-                        execute_slash_command(cmd, &display, state),
+                        execute_slash_command(cmd, &display, state, config),
                     );
                 }
             }
@@ -425,6 +431,7 @@ fn execute_slash_command(
     command: SlashCommand,
     _display: &str,
     state: &mut AppState,
+    config: &jinn_config::ConfigLayer,
 ) -> IntentResult {
     match command {
         SlashCommand::Compact | SlashCommand::CompactAll => {
@@ -435,7 +442,7 @@ fn execute_slash_command(
                 compact_all,
             })
         }
-        SlashCommand::New => crate::feat::session::intent::handle_session_new(state),
+        SlashCommand::New => crate::feat::session::intent::handle_session_new(state, config),
     }
 }
 
@@ -648,8 +655,11 @@ pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
 /// (the session-lifecycle chain); spec-driven
 /// close hooks need the app's registry via
 /// [`handle_enter_normal_mode_with_pickers`].
-pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
-    handle_enter_normal_mode_with_pickers(state, &jinn_picker::PickerRegistry::new())
+pub fn handle_enter_normal_mode(
+    state: &mut AppState,
+    config: &jinn_config::ConfigLayer,
+) -> IntentResult {
+    handle_enter_normal_mode_with_pickers(state, &jinn_picker::PickerRegistry::new(), config)
 }
 
 /// Handles `EnterNormalMode` with the picker registry: spec-driven
@@ -659,6 +669,7 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
 pub fn handle_enter_normal_mode_with_pickers(
     state: &mut AppState,
     pickers: &jinn_picker::PickerRegistry,
+    config: &jinn_config::ConfigLayer,
 ) -> IntentResult {
     // If autocomplete is active, dismiss it and stay in the current scope.
     // Two-level ESC: first press closes popup, second press exits mode.
@@ -668,7 +679,7 @@ pub fn handle_enter_normal_mode_with_pickers(
     }
 
     // Spec-driven pickers own their close behavior (snapshot revert).
-    if let Some(result) = crate::feat::picker::action::try_close_active(state, pickers) {
+    if let Some(result) = crate::feat::picker::action::try_close_active(state, pickers, config) {
         return result;
     }
 

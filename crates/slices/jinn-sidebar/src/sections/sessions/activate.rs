@@ -180,7 +180,12 @@ mod tests {
                     let slices = jinn_slices::Slices::new();
                     let overlay_views = jinn_slices::OverlayViews::new();
                     let mut element = ChatLogElement::new();
-                    let ctx = RenderCtx::new(state, &slices, &overlay_views);
+                    let ctx = RenderCtx::new(
+                        state,
+                        &slices,
+                        &overlay_views,
+                        jinn_config::empty_config_layer(),
+                    );
                     element.render(frame, area, &ctx);
                 })
                 .expect("measure a session");

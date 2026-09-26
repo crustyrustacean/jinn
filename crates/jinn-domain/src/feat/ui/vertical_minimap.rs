@@ -7,6 +7,7 @@
 //! The viewport scrolls to keep the selected entry visible. A `>` arrow overlay
 //! on the chat log area points at the selected entry's row.
 
+use jinn_preferences_config::schemas::MinimapConfig;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
@@ -165,6 +166,7 @@ pub fn render_vertical_minimap(
     area: Rect,
     state: &AppState,
     muted_text_color: Color,
+    config: &jinn_config::ConfigLayer,
 ) -> Option<MinimapArrow> {
     if state.session.is_loading() {
         return None;
@@ -195,7 +197,7 @@ pub fn render_vertical_minimap(
                     FULL_BLOCK.to_owned(),
                     Style::default().fg(token_threshold_color(
                         count,
-                        state.frontend.preferences.minimap.max_tokens,
+                        config.read::<MinimapConfig>().max_tokens,
                     )),
                 ),
                 None => Span::raw(" "),
@@ -556,6 +558,15 @@ mod tests {
         assert_eq!(compute_minimap_scroll(5, 50, 10), 0);
     }
 
+    /// A layer holding no config, for tests that do not exercise the
+    /// token-threshold colour.
+    fn empty_layer() -> jinn_config::ConfigLayer {
+        jinn_config::ConfigLayer::load(std::sync::Arc::new(
+            jinn_config::InMemoryConfigStorage::default(),
+        ))
+        .expect("layer loads")
+    }
+
     fn render_to_buffer(
         state: &AppState,
         width: u16,
@@ -564,10 +575,12 @@ mod tests {
         setup_visual_items(state);
         let (mut terminal, area) = jinn_testutil::setup_term(width, height);
         let theme = default_theme();
+        let config = empty_layer();
         let mut arrow_result = None;
         terminal
             .draw(|frame| {
-                arrow_result = render_vertical_minimap(frame, area, state, theme.muted_text);
+                arrow_result =
+                    render_vertical_minimap(frame, area, state, theme.muted_text, &config);
             })
             .unwrap();
         let buffer = terminal.backend().buffer();

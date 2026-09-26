@@ -6,6 +6,7 @@
 
 use crate::common::app_state::AppState;
 use crate::protocol::IntentResult;
+use jinn_config::ConfigLayer;
 use jinn_core_types::{DEFAULT_PERSONA_NAME, SessionId, SessionProfile};
 use jinn_preferences_config::schemas::SessionLifecycle;
 use jinn_session_history_msg::PushChatEntry;
@@ -27,9 +28,10 @@ pub fn handle_session_lifecycle_setup(
     lifecycle_name: &str,
     args: &[String],
     cwd: Option<&std::path::Path>,
+    config: &jinn_config::ConfigLayer,
 ) -> IntentResult {
     // Extract setup command before mutating state (borrow checker).
-    let setup_command = find_lifecycle(state, lifecycle_name).and_then(|l| l.setup.clone());
+    let setup_command = find_lifecycle(config, lifecycle_name).and_then(|l| l.setup.clone());
 
     let model = state
         .frontend
@@ -47,7 +49,7 @@ pub fn handle_session_lifecycle_setup(
 
     // Seed per-session defaults from jinn.toml (disablement sets +
     // auto-enabled MCP servers), matching every other session-creation path.
-    let seed = SessionSeed::from_preferences(&state.frontend.preferences);
+    let seed = SessionSeed::from_config(config);
 
     let mut new_session = ChatSessionState::new_with_profile(SessionProfile::new(
         model,
@@ -181,7 +183,7 @@ pub fn handle_session_close(state: &mut AppState) -> IntentResult {
 /// Resolve and render the teardown command for a session by ID.
 ///
 /// Reads the session's `lifecycle_name` + `lifecycle_args`, looks up the named
-/// lifecycle in `frontend.preferences`, takes its `teardown` command, and renders
+/// lifecycle in the configuration layer, takes its `teardown` command, and renders
 /// it (replaying the stored args). Returns `None` when the session doesn't exist,
 /// has no lifecycle name, or the named lifecycle has no teardown command.
 ///
@@ -190,6 +192,7 @@ pub fn handle_session_close(state: &mut AppState) -> IntentResult {
 pub fn build_run_session_teardown(
     state: &AppState,
     session_id: &SessionId,
+    config: &jinn_config::ConfigLayer,
 ) -> Option<RunSessionTeardown> {
     use jinn_preferences_config::schemas::LifecycleCommand;
 
@@ -197,15 +200,10 @@ pub fn build_run_session_teardown(
         let session = state.session.get(session_id)?;
         let lifecycle_name = session.lifecycle_name().map(String::from);
         let args = session.lifecycle_args().to_vec();
-        let teardown = lifecycle_name.as_deref().and_then(|name| {
-            state
-                .frontend
-                .preferences
-                .session_lifecycles
-                .iter()
-                .find(|l| l.name == name)
-                .and_then(|l| l.teardown.clone())
-        });
+        let teardown = lifecycle_name
+            .as_deref()
+            .and_then(|name| find_lifecycle(config, name))
+            .and_then(|lifecycle| lifecycle.teardown);
         (teardown, args)
     };
 
@@ -229,14 +227,24 @@ pub fn build_run_session_teardown(
     })
 }
 
-/// Look up a lifecycle by name in the user preferences.
-fn find_lifecycle<'a>(state: &'a AppState, name: &str) -> Option<&'a SessionLifecycle> {
-    state
-        .frontend
-        .preferences
-        .session_lifecycles
-        .iter()
-        .find(|l| l.name == name)
+/// The teardown command of the named lifecycle, read from the
+/// `[[session_lifecycle.script]]` section.
+#[must_use]
+pub fn lifecycle_teardown(
+    config: &ConfigLayer,
+    name: &str,
+) -> Option<jinn_preferences_config::schemas::LifecycleCommand> {
+    find_lifecycle(config, name)?.teardown
+}
+
+/// Looks up a lifecycle by name in the `[[session_lifecycle.script]]`
+/// section.
+fn find_lifecycle(config: &ConfigLayer, name: &str) -> Option<SessionLifecycle> {
+    config
+        .get_list::<SessionLifecycle>()
+        .unwrap_or_default()
+        .into_iter()
+        .find(|lifecycle| lifecycle.name == name)
 }
 
 /// Emit a `CloseSession` command to the actor system.
@@ -261,7 +269,18 @@ mod tests {
     use super::*;
     use crate::common::app_state::AppState;
     use crate::protocol::ChatEntry;
-    use jinn_preferences_config::schemas::SessionLifecycle;
+
+    /// A layer carrying a single lifecycle, as a user's `jinn.toml` holds
+    /// one under `[[session_lifecycle.script]]`.
+    fn lifecycle_config(name: &str, setup: Option<&str>, teardown: Option<&str>) -> ConfigLayer {
+        let setup = setup.map_or_else(String::new, |s| format!("setup_command = \"{s}\"\n"));
+        let teardown =
+            teardown.map_or_else(String::new, |t| format!("teardown_command = \"{t}\"\n"));
+        let document =
+            format!("[[session_lifecycle.script]]\nname = \"{name}\"\n{setup}{teardown}");
+
+        jinn_config::testutil::config_layer(&document)
+    }
 
     #[rstest::rstest]
     fn session_lifecycle_setup_with_blank_creates_session() {
@@ -274,7 +293,13 @@ mod tests {
         let old_id = state.session.active_session_id().clone();
 
         // When handling SessionLifecycleSetup with blank lifecycle.
-        let result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then a new session is created.
         assert_ne!(*state.session.active_session_id(), old_id);
@@ -312,6 +337,7 @@ mod tests {
             "",
             &[],
             Some(std::path::Path::new("/tmp/explicit-dir")),
+            crate::common::render_ctx::empty_config_layer(),
         );
 
         // Then the new session's CWD is the explicit override, not the active
@@ -339,7 +365,13 @@ mod tests {
             });
 
         // When handling SessionLifecycleSetup with no explicit cwd.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the new session's CWD is the stashed starting CWD, not the
         // active session's CWD.
@@ -362,7 +394,13 @@ mod tests {
             });
 
         // When handling SessionLifecycleSetup.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the new active session is stamped with the stashed project.
         assert_eq!(
@@ -377,7 +415,13 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
 
         // When handling SessionLifecycleSetup.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the new active session has no project association.
         assert_eq!(state.active_session().project(), None);
@@ -392,10 +436,22 @@ mod tests {
                 project_dir: std::path::PathBuf::from("/tmp/first-project"),
                 starting_cwd: std::path::PathBuf::from("/tmp/first-project"),
             });
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // When creating a second session (the stash is now None).
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the second session has no project association (no leak from
         // the first creation).
@@ -411,21 +467,11 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         let inherited_cwd = std::path::PathBuf::from("/tmp/inherited-project");
         state.active_session_mut().set_cwd(inherited_cwd.clone());
-        state
-            .frontend
-            .preferences
-            .session_lifecycles
-            .push(SessionLifecycle {
-                name: "fossil branch".to_owned(),
-                description: None,
-                setup: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                    "echo /tmp/workdir".to_owned(),
-                )),
-                teardown: None,
-            });
+        let config = lifecycle_config("fossil branch", Some("echo /tmp/workdir"), None);
 
         // When handling SessionLifecycleSetup with the scripted lifecycle.
-        let _result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None);
+        let _result =
+            handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None, &config);
 
         // Then the new session's in-memory CWD is the inherited value
         // (pre-seeded before the actor runs the script). The actor may
@@ -439,21 +485,11 @@ mod tests {
         // Given a state with a lifecycle that has a setup_command.
         let mut state = AppState::default_with_scope_focus();
         let old_id = state.session.active_session_id().clone();
-        state
-            .frontend
-            .preferences
-            .session_lifecycles
-            .push(SessionLifecycle {
-                name: "fossil branch".to_owned(),
-                description: None,
-                setup: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                    "echo /tmp/workdir".to_owned(),
-                )),
-                teardown: None,
-            });
+        let config = lifecycle_config("fossil branch", Some("echo /tmp/workdir"), None);
 
         // When handling SessionLifecycleSetup.
-        let result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None);
+        let result =
+            handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None, &config);
 
         // Then a new session is created.
         assert_ne!(*state.session.active_session_id(), old_id);
@@ -474,18 +510,7 @@ mod tests {
     fn session_lifecycle_setup_with_args_renders_command() {
         // Given a lifecycle with $1 in the setup_command.
         let mut state = AppState::default_with_scope_focus();
-        state
-            .frontend
-            .preferences
-            .session_lifecycles
-            .push(SessionLifecycle {
-                name: "fossil branch".to_owned(),
-                description: None,
-                setup: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                    "script.sh $1".to_owned(),
-                )),
-                teardown: None,
-            });
+        let config = lifecycle_config("fossil branch", Some("script.sh $1"), None);
 
         // When handling SessionLifecycleSetup with args.
         let result = handle_session_lifecycle_setup(
@@ -493,6 +518,7 @@ mod tests {
             "fossil branch",
             &["my-branch".to_owned()],
             None,
+            &config,
         );
 
         // Then PersistSession is emitted first.
@@ -515,7 +541,13 @@ mod tests {
         });
 
         // When handling SessionLifecycleSetup.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then overlays are cleared and Input scope is pushed.
         assert!(matches!(
@@ -545,20 +577,11 @@ mod tests {
     fn session_close_with_teardown_emits_close_session() {
         // Given a session with a lifecycle that has a teardown_command.
         let mut state = AppState::default_with_scope_focus();
-        state
-            .frontend
-            .preferences
-            .session_lifecycles
-            .push(SessionLifecycle {
-                name: "fossil branch".to_owned(),
-                description: None,
-                setup: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                    "echo /tmp/workdir".to_owned(),
-                )),
-                teardown: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                    "cleanup.sh $1".to_owned(),
-                )),
-            });
+        let _config = lifecycle_config(
+            "fossil branch",
+            Some("echo /tmp/workdir"),
+            Some("cleanup.sh $1"),
+        );
         let session_id = state.session.active_session_id().clone();
         state
             .active_session_mut()
@@ -601,7 +624,10 @@ mod tests {
             .push_entry(ChatEntry::user("old"));
 
         // When handling SessionNew (delegates to blank lifecycle setup).
-        let result = crate::feat::session::intent::handle_session_new(&mut state);
+        let result = crate::feat::session::intent::handle_session_new(
+            &mut state,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then a new session is created (same behavior as before).
         assert_ne!(*state.session.active_session_id(), old_id);
@@ -618,7 +644,13 @@ mod tests {
         assert!(state.active_session().is_empty());
 
         // When creating a new session via lifecycle setup.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the old empty session is preserved (no auto-close).
         assert!(state.session.contains(&old_id));
@@ -636,7 +668,13 @@ mod tests {
             .push_entry(ChatEntry::user("hello"));
 
         // When creating a new session.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the old session is preserved.
         assert!(state.session.contains(&old_id));
@@ -653,7 +691,13 @@ mod tests {
         state.frontend.app_state.reasoning_effort = Some(crate::ReasoningEffort::High);
 
         // When creating a new session via lifecycle setup.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the new session owns the seeded effort (a copy, not a live reference).
         assert_eq!(
@@ -670,7 +714,13 @@ mod tests {
         state.frontend.app_state.reasoning_effort = None;
 
         // When creating a new session via lifecycle setup.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the new session's effort is None (provider decides).
         assert_eq!(
@@ -681,18 +731,16 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn lifecycle_setup_seeds_disabled_tools_and_skills_from_preferences() {
-        // Given preferences disabling a tool and a skill.
+    fn lifecycle_setup_seeds_disabled_tools_and_skills_from_config() {
+        // Given configuration disabling a tool and a skill.
         let mut state = AppState::default_with_scope_focus();
-        state.frontend.preferences.disabled_tools =
-            ["bash"].iter().map(|s| (*s).to_owned()).collect();
-        state.frontend.preferences.disabled_skills = ["phased-task-loop"]
-            .iter()
-            .map(|s| (*s).to_owned())
-            .collect();
+        let config = jinn_config::testutil::config_layer(
+            "[tools]\ndisabled = [\"bash\"]\n\
+             [skills]\ndisabled = [\"phased-task-loop\"]\n",
+        );
 
         // When creating a new session via lifecycle setup.
-        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None, &config);
 
         // Then the new session carries both disablement sets.
         assert!(state.active_session().disabled_tools().contains("bash"));
@@ -707,21 +755,14 @@ mod tests {
 
     #[rstest::rstest]
     fn lifecycle_setup_with_auto_enabled_mcp_returns_enablement_message() {
-        // Given preferences with one auto-enabled MCP server.
+        // Given configuration with one auto-enabled MCP server.
         let mut state = AppState::default_with_scope_focus();
-        state.frontend.preferences.mcp_server = [(
-            "excalimate".to_owned(),
-            jinn_mcp_msg::McpServerConfig {
-                command: Some("npx".to_owned()),
-                auto_enable: true,
-                ..Default::default()
-            },
-        )]
-        .into_iter()
-        .collect();
+        let config = jinn_config::testutil::config_layer(
+            "[mcp.excalimate]\nauto_enable = true\ncommand = \"npx\"\n",
+        );
 
         // When creating a new session (blank lifecycle).
-        let result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let result = handle_session_lifecycle_setup(&mut state, "", &[], None, &config);
 
         // Then the new session has the server enabled.
         assert!(state.active_session().is_mcp_server_enabled("excalimate"));
@@ -737,21 +778,14 @@ mod tests {
 
     #[rstest::rstest]
     fn lifecycle_setup_without_auto_enable_emits_no_enablement_message() {
-        // Given preferences with a server that is NOT auto-enabled.
+        // Given configuration with a server that is NOT auto-enabled.
         let mut state = AppState::default_with_scope_focus();
-        state.frontend.preferences.mcp_server = [(
-            "manual".to_owned(),
-            jinn_mcp_msg::McpServerConfig {
-                command: Some("npx".to_owned()),
-                auto_enable: false,
-                ..Default::default()
-            },
-        )]
-        .into_iter()
-        .collect();
+        let config = jinn_config::testutil::config_layer(
+            "[mcp.manual]\nauto_enable = false\ncommand = \"npx\"\n",
+        );
 
         // When creating a new session.
-        let result = handle_session_lifecycle_setup(&mut state, "", &[], None);
+        let result = handle_session_lifecycle_setup(&mut state, "", &[], None, &config);
 
         // Then the server is not enabled on the new session.
         assert!(!state.active_session().is_mcp_server_enabled("manual"));
@@ -768,31 +802,15 @@ mod tests {
     fn scripted_lifecycle_setup_with_auto_enable_attaches_enablement_message() {
         // Given a scripted lifecycle and one auto-enabled server.
         let mut state = AppState::default_with_scope_focus();
-        state
-            .frontend
-            .preferences
-            .session_lifecycles
-            .push(SessionLifecycle {
-                name: "fossil branch".to_owned(),
-                description: None,
-                setup: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                    "echo /tmp/workdir".to_owned(),
-                )),
-                teardown: None,
-            });
-        state.frontend.preferences.mcp_server = [(
-            "excalimate".to_owned(),
-            jinn_mcp_msg::McpServerConfig {
-                command: Some("npx".to_owned()),
-                auto_enable: true,
-                ..Default::default()
-            },
-        )]
-        .into_iter()
-        .collect();
+        let config = jinn_config::testutil::config_layer(
+            "[[session_lifecycle.script]]\nname = \"fossil branch\"\n\
+             setup_command = \"echo /tmp/workdir\"\n\
+             [mcp.excalimate]\nauto_enable = true\ncommand = \"npx\"\n",
+        );
 
         // When creating a session with the scripted lifecycle.
-        let result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None);
+        let result =
+            handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None, &config);
 
         // Then the enablement message follows SessionCreated in the chain.
         let created_idx = result
@@ -818,19 +836,9 @@ mod tests {
         assert_eq!(state.session.session_count(), 1);
 
         // When creating a new session with a lifecycle.
-        state
-            .frontend
-            .preferences
-            .session_lifecycles
-            .push(SessionLifecycle {
-                name: "fossil branch".to_owned(),
-                description: None,
-                setup: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                    "echo /tmp/workdir".to_owned(),
-                )),
-                teardown: None,
-            });
-        let result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None);
+        let config = lifecycle_config("fossil branch", Some("echo /tmp/workdir"), None);
+        let result =
+            handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None, &config);
 
         // Then both sessions exist (old empty one is preserved).
         assert_eq!(state.session.session_count(), 2);
@@ -859,7 +867,10 @@ mod tests {
             });
 
         // When abandoning the chain via ESC (EnterNormalMode).
-        let _result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+        let _result = crate::feat::chat_input::intent::handle_enter_normal_mode(
+            &mut state,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the stash is cleared so it never leaks into a future
         // `n`/`N`.
@@ -872,18 +883,7 @@ mod tests {
     fn build_run_session_teardown_renders_command_with_args() {
         // Given a session with a lifecycle that has a teardown command.
         let mut state = AppState::default_with_scope_focus();
-        state
-            .frontend
-            .preferences
-            .session_lifecycles
-            .push(SessionLifecycle {
-                name: "fossil branch".to_owned(),
-                description: None,
-                setup: None,
-                teardown: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                    "cleanup.sh $1".to_owned(),
-                )),
-            });
+        let config = lifecycle_config("fossil branch", None, Some("cleanup.sh $1"));
         let session_id = state.session.active_session_id().clone();
         state
             .active_session_mut()
@@ -893,7 +893,7 @@ mod tests {
             .set_lifecycle_args(vec!["my-branch".to_owned()]);
 
         // When building the teardown command.
-        let msg = build_run_session_teardown(&state, &session_id);
+        let msg = build_run_session_teardown(&state, &session_id, &config);
 
         // Then a rendered RunSessionTeardown is returned.
         let msg = msg.expect("teardown command should be built");
@@ -906,23 +906,14 @@ mod tests {
     fn build_run_session_teardown_returns_none_without_teardown_command() {
         // Given a session whose lifecycle has no teardown command.
         let mut state = AppState::default_with_scope_focus();
-        state
-            .frontend
-            .preferences
-            .session_lifecycles
-            .push(SessionLifecycle {
-                name: "blank".to_owned(),
-                description: None,
-                setup: None,
-                teardown: None,
-            });
+        let config = lifecycle_config("blank", None, None);
         let session_id = state.session.active_session_id().clone();
         state
             .active_session_mut()
             .set_lifecycle_name(Some("blank".to_owned()));
 
         // When building the teardown command.
-        let msg = build_run_session_teardown(&state, &session_id);
+        let msg = build_run_session_teardown(&state, &session_id, &config);
 
         // Then None is returned.
         assert!(msg.is_none());
@@ -935,7 +926,11 @@ mod tests {
         let session_id = state.session.active_session_id().clone();
 
         // When building the teardown command.
-        let msg = build_run_session_teardown(&state, &session_id);
+        let msg = build_run_session_teardown(
+            &state,
+            &session_id,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then None is returned.
         assert!(msg.is_none());
@@ -945,18 +940,7 @@ mod tests {
     fn build_run_session_teardown_renders_positional_arg_from_stored_args() {
         // Given a lifecycle teardown with $1 and a session storing the arg.
         let mut state = AppState::default_with_scope_focus();
-        state
-            .frontend
-            .preferences
-            .session_lifecycles
-            .push(SessionLifecycle {
-                name: "fossil branch".to_owned(),
-                description: None,
-                setup: None,
-                teardown: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                    "cleanup.sh $1".to_owned(),
-                )),
-            });
+        let config = lifecycle_config("fossil branch", None, Some("cleanup.sh $1"));
         let session_id = state.session.active_session_id().clone();
         state
             .active_session_mut()
@@ -966,7 +950,7 @@ mod tests {
             .set_lifecycle_args(vec!["feature-x".to_owned()]);
 
         // When building the teardown command.
-        let msg = build_run_session_teardown(&state, &session_id);
+        let msg = build_run_session_teardown(&state, &session_id, &config);
 
         // Then the $1 positional is rendered with the stored arg.
         let msg = msg.expect("teardown command should be built");

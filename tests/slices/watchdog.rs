@@ -32,10 +32,11 @@ use jinn_tui::TuiApp;
 
 use crate::common::launch_for_test;
 
-/// A composed app whose `[stall_watchdog]` window is one second, so a
-/// silent stream trips within the test timeout. The config is written
-/// into the state snapshot **before** `launch_for_test` activates the
-/// slices — activation reads the knobs from the snapshot once.
+/// A composed app whose `[watchdog.stall]` window is one second, so a
+/// silent stream trips within the test timeout. The section is written
+/// into the services' configuration layer **before** `launch_for_test`
+/// activates the slices — activation reads the knobs from the layer
+/// once.
 ///
 /// Also spawns the kernel session actor over the SAME `State` and the
 /// SAME trouper system the harness wires, so the watchdog's marker entry
@@ -48,12 +49,16 @@ async fn composed_app_with_fast_stall_watchdog() -> (TuiApp, SessionId) {
     let hung_factory = jinn_provider::HungStreamFactory::new();
     services.llm_service.swap(std::sync::Arc::new(hung_factory));
 
-    let mut state = jinn_domain::AppState::default();
-    state.frontend.preferences.stall_watchdog = StallWatchdogConfig {
-        timeout_secs: 1,
-        max_restarts: 3,
-    };
-    let state = jinn_domain::State::new(state);
+    let state = jinn_domain::State::new(jinn_domain::AppState::default());
+    // The watchdog reads its knobs from the layer at activation, so the
+    // section is seeded before the slices come up.
+    services
+        .config
+        .put::<StallWatchdogConfig>(&StallWatchdogConfig {
+            timeout_secs: 1,
+            max_restarts: 3,
+        })
+        .expect("write the stall watchdog section");
     let core = AppCore {
         state: state.clone(),
         bridge: services.bridge.clone(),

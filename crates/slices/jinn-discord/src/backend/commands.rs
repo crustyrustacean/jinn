@@ -15,11 +15,13 @@ use jinn_context::PromptTemplateStore;
 use jinn_core_types::SessionId;
 use jinn_domain::Bridge;
 use jinn_domain::protocol::KernelIntent;
-use jinn_preferences_config::schemas::SessionLifecycle;
 use jinn_session_store_msg::ArchiveSession;
 use poise::serenity_prelude as serenity;
 
 use crate::backend::gateway::{BotContext, BotData, BotError};
+
+use jinn_preferences_config::schemas::ProjectConfig;
+use jinn_preferences_config::schemas::SessionLifecycle;
 
 /// Deny-by-default gate shared by every slash command.
 ///
@@ -60,11 +62,12 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
     }
     let data = ctx.data();
 
-    // 1. Gather projects from preferences.
-    let projects = {
-        let state = data.state.read();
-        state.frontend.preferences.projects.clone()
-    };
+    // 1. Gather projects from the `[[project.entry]]` section.
+    let projects = data
+        .services
+        .config
+        .get_list::<ProjectConfig>()
+        .unwrap_or_default();
     if projects.is_empty() {
         ctx.say("No projects configured. Add `[[project]]` entries to jinn.toml first.")
             .await?;
@@ -126,6 +129,7 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
             &data.services.slices,
             &data.services.key_routes,
             &data.services.picker_registry,
+            &data.services.config,
         );
         for closure in result.messages {
             let _ = data.bridge.send(closure);
@@ -194,7 +198,9 @@ pub async fn teardown(ctx: BotContext<'_>) -> Result<(), BotError> {
     let session_id = SessionId::from(session_id_str);
 
     // Resolve + render under a short-lived read guard so it never spans an await.
-    let Some(publish) = build_teardown_publish(&data.state.read(), &session_id) else {
+    let Some(publish) =
+        build_teardown_publish(&data.state.read(), &session_id, &data.services.config)
+    else {
         ctx.say("This session has no teardown command configured.")
             .await?;
         return Ok(());
@@ -211,9 +217,10 @@ pub async fn teardown(ctx: BotContext<'_>) -> Result<(), BotError> {
 fn build_teardown_publish(
     state: &jinn_domain::StateReadGuard<'_>,
     session_id: &SessionId,
+    config: &jinn_config::ConfigLayer,
 ) -> Option<jinn_domain::BridgeClosure> {
     let msg = jinn_domain::feat::session_lifecycle::intent::build_run_session_teardown(
-        state, session_id,
+        state, session_id, config,
     )?;
     Some(Bridge::publish_closure(msg))
 }
@@ -376,14 +383,11 @@ async fn pick_lifecycle(
     author: serenity::UserId,
     data: &BotData,
 ) -> Result<Option<(String, Vec<String>)>, BotError> {
-    let lifecycles = {
-        data.state
-            .read()
-            .frontend
-            .preferences
-            .session_lifecycles
-            .clone()
-    };
+    let lifecycles = data
+        .services
+        .config
+        .get_list::<SessionLifecycle>()
+        .unwrap_or_default();
 
     ctx.say(format_lifecycle_list(&lifecycles)).await?;
 
@@ -441,12 +445,10 @@ async fn collect_lifecycle_args(
     // never spans an await.
     let spec = {
         let lifecycles = data
-            .state
-            .read()
-            .frontend
-            .preferences
-            .session_lifecycles
-            .clone();
+            .services
+            .config
+            .get_list::<SessionLifecycle>()
+            .unwrap_or_default();
         match resolve_lifecycle_inputs(&lifecycles, &lifecycle) {
             Some(s) => s,
             None => {

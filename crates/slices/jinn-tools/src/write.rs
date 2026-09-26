@@ -166,6 +166,7 @@ mod tests {
         ToolContext {
             cwd: PathBuf::from("/tmp"),
             command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+            config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state: None,
             session_id: None,
@@ -317,6 +318,7 @@ mod tests {
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
             command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+            config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state: None,
             session_id: None,
@@ -866,6 +868,7 @@ mod tests {
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
             command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+            config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state: None,
             session_id: None,
@@ -912,6 +915,7 @@ mod tests {
         let ctx = ToolContext {
             cwd: PathBuf::from("/completely/different/cwd"),
             command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+            config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state: None,
             session_id: None,

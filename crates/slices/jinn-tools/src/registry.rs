@@ -29,8 +29,11 @@ pub type BuiltinToolEntry = (
 
 /// Returns the built-in tool definitions and their execute functions.
 ///
-/// `default_timeout_secs` flows into `bash::definition` so the resolved global timeout
-/// is surfaced in the schema the model sees.
+/// `default_timeout_secs` is a *seed* only, for the shape of the registry
+/// at construction. `bash`'s schema advertises the timeout, and that
+/// advertised value is re-resolved from the configuration layer on every
+/// publish — see [`BuiltinToolEntry`]'s live definition slot — so a reload
+/// changes the schema the model actually sees.
 pub fn builtin_tools(default_timeout_secs: u64) -> Vec<BuiltinToolEntry> {
     let mut entries = vec![
         (

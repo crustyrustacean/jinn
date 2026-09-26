@@ -136,13 +136,10 @@ impl SessionLifecycleActor {
             return None;
         }
         let name = session.lifecycle_name()?;
-        state
-            .frontend
-            .preferences
-            .session_lifecycles
-            .iter()
-            .find(|lifecycle| lifecycle.name == name)
-            .and_then(|lifecycle| lifecycle.teardown.clone())
+        jinn_domain::feat::session_lifecycle::intent::lifecycle_teardown(
+            &self.services.config,
+            name,
+        )
     }
 
     async fn advance_after_teardown(&self, session_id: &SessionId) {

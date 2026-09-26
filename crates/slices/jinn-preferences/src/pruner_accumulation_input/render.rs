@@ -29,16 +29,17 @@ pub fn pruner_accumulation_popup_rect(area: Rect) -> Rect {
 
 /// Returns the registered geometry for the popup scope.
 #[must_use]
-#[expect(
-    clippy::trivially_copy_pass_by_ref,
-    clippy::unnecessary_wraps,
-    reason = "the signature is fixed by the shared overlay registry"
-)]
 pub fn pruner_accumulation_overlay_rect(area: &Rect) -> Option<Rect> {
     Some(pruner_accumulation_popup_rect(*area))
 }
 
 /// Renders the title, editable threshold, and cursor.
+///
+/// # Panics
+///
+/// Panics if the scope has not registered its cell. The overlay is only
+/// mounted for that scope, so a missing cell is a wiring bug rather than
+/// a state a user can reach.
 #[expect(
     clippy::expect_used,
     reason = "the overlay only renders when the scope registered its cell"

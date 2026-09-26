@@ -163,7 +163,12 @@ mod tests {
 
         // When opening the task-list picker through the real open path.
         let registry = crate::build_picker_registry();
-        handle_open_picker(&mut state, PickerKind::TaskList, &registry);
+        handle_open_picker(
+            &mut state,
+            PickerKind::TaskList,
+            &registry,
+            jinn_slices::empty_config_layer(),
+        );
 
         // Then the tree holds phase roots and visible (non-postponed) tasks.
         let entries = state.frontend.task_list_picker().items();
@@ -192,7 +197,12 @@ mod tests {
 
         // When opening the task-list picker through the real open path.
         let registry = crate::build_picker_registry();
-        handle_open_picker(&mut state, PickerKind::TaskList, &registry);
+        handle_open_picker(
+            &mut state,
+            PickerKind::TaskList,
+            &registry,
+            jinn_slices::empty_config_layer(),
+        );
 
         // Then the picker holds zero entries.
         assert!(state.frontend.task_list_picker().items().is_empty());

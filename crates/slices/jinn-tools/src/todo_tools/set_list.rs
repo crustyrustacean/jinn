@@ -217,6 +217,7 @@ mod tests {
         ToolContext {
             cwd: std::path::PathBuf::from("."),
             command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+            config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state,
             session_id,

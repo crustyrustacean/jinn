@@ -52,6 +52,7 @@ use jinn_chat_log_view::chat_log::{
     build_collapsed_block_gutter_line, build_entry_gutter_lines, compute_scroll, entry_to_lines,
     find_visible_indices, render_scroll_indicator,
 };
+use jinn_preferences_config::schemas::ChatLogConfig;
 
 /// Default number of lines to show for tool entries (calls and results) before truncating.
 const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
@@ -203,7 +204,7 @@ impl UiElement for ChatLogElement {
             return;
         }
 
-        let mut render = HistoryRender::new(state, area);
+        let mut render = HistoryRender::new(state, area, ctx.config);
         render.compute_visual_items();
         render.build_tool_result_map();
         {
@@ -222,6 +223,10 @@ impl UiElement for ChatLogElement {
                 // this frame used, instead of being measured at a guessed
                 // width and thrown away as stale.
                 session.set_content_width(render.content_width);
+                // The same arrangement for the collapse threshold: the
+                // coverage probe runs off the render thread and must build
+                // the same visual items this frame built.
+                session.set_min_collapse_count(render.min_collapse_count);
             }
 
             render.find_visible_indices();
@@ -368,8 +373,8 @@ struct CoverageProbe<'a> {
 
 impl<'a> CoverageProbe<'a> {
     /// Resolves the same inputs [`HistoryRender::compute_line_ranges`] resolves.
+    ///
     fn new(state: &'a AppState, session: &'a ChatSessionState, content_width: u16) -> Self {
-        let preferences = &state.frontend.preferences;
         Self {
             history: session.history(),
             tool_result_statuses: tool_result_statuses_of(session.history()),
@@ -378,8 +383,14 @@ impl<'a> CoverageProbe<'a> {
             expanded: session.expanded_entry_ids(),
             shown_ignored_blocks: session.shown_ignored_blocks_snapshot(),
             content_width,
-            min_collapse_count: preferences
-                .min_collapse_count
+            // Read back from the last render rather than from the
+            // configuration layer: this runs off the render thread, where no
+            // config handle is in scope, and a threshold that disagreed with
+            // the frame's would make the probe count items that frame will
+            // never build. `None` before the first render, which is also the
+            // built-in default.
+            min_collapse_count: session
+                .min_collapse_count()
                 .unwrap_or(DEFAULT_MIN_COLLAPSE_COUNT),
         }
     }
@@ -513,6 +524,11 @@ struct HistoryRender<'a> {
     visual_items: Vec<VisualItem>,
     selected_idx: Option<usize>,
     state: &'a AppState,
+    /// This frame's chat-log settings, read once from the configuration
+    /// layer. Resolving once per frame rather than per entry keeps the
+    /// three call sites below consistent with each other even if a
+    /// `reload` lands mid-frame.
+    config: ChatLogConfig,
     content_width: u16,
     theme: Theme,
     area: Rect,
@@ -520,6 +536,9 @@ struct HistoryRender<'a> {
     content_area: Rect,
 
     // Built by pipeline steps
+    /// The collapse threshold `compute_visual_items` resolved, published to
+    /// the session so the off-thread coverage probe can match it.
+    min_collapse_count: usize,
     tool_result_statuses: HashMap<String, ToolResultStatus>,
     /// Ids of the `ToolCall` entries streaming arguments right now.
     ///
@@ -549,7 +568,7 @@ struct HistoryRender<'a> {
 }
 
 impl<'a> HistoryRender<'a> {
-    fn new(state: &'a AppState, area: Rect) -> Self {
+    fn new(state: &'a AppState, area: Rect, config: &jinn_config::ConfigLayer) -> Self {
         let gutter_area = Rect {
             x: area.x,
             y: area.y,
@@ -568,7 +587,9 @@ impl<'a> HistoryRender<'a> {
             history: state.active_session().history(),
             selected_idx: state.active_session().selected_entry_index(),
             state,
+            config: config.read::<ChatLogConfig>(),
             content_width: content_area.width,
+            min_collapse_count: DEFAULT_MIN_COLLAPSE_COUNT,
             theme: state.frontend.theme.clone(),
             area,
             gutter_area,
@@ -605,11 +626,10 @@ impl<'a> HistoryRender<'a> {
             session.shown_ignored_blocks_snapshot()
         };
         let min_collapse = self
-            .state
-            .frontend
-            .preferences
+            .config
             .min_collapse_count
             .unwrap_or(DEFAULT_MIN_COLLAPSE_COUNT);
+        self.min_collapse_count = min_collapse;
         let visual_items = build_visual_items(
             self.history,
             &shown_ignored_blocks,
@@ -679,9 +699,7 @@ impl<'a> HistoryRender<'a> {
                     } else {
                         let is_selected = self.selected_idx == Some(vi_idx);
                         let max_lines = self
-                            .state
-                            .frontend
-                            .preferences
+                            .config
                             .tool_entry_max_lines
                             .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
                         let paired_status = self.paired_status_for_entry(entry);
@@ -863,9 +881,7 @@ impl<'a> HistoryRender<'a> {
                     let is_selected = self.selected_idx == Some(vi_idx);
                     let is_expanded = self.state.active_session().is_entry_expanded(&entry.id);
                     let max_lines = self
-                        .state
-                        .frontend
-                        .preferences
+                        .config
                         .tool_entry_max_lines
                         .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
                     let variant = render_variant(
@@ -1011,7 +1027,7 @@ mod tests {
         {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
             terminal
                 .draw(|frame| element.render(frame, area, &ctx))
                 .expect("draw");

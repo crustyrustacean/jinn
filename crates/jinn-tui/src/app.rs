@@ -207,6 +207,7 @@ impl TuiApp {
                 &self.services.slices,
                 &self.services.key_routes,
                 &self.services.picker_registry,
+                &self.services.config,
             );
 
             // Cancel selection when mode changes away from Picker.

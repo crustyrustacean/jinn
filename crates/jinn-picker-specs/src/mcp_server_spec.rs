@@ -37,8 +37,10 @@ use jinn_mcp_msg::McpEnablementChanged;
 use jinn_mcp_msg::McpPreviewMode;
 use jinn_mcp_msg::McpServerEntry;
 use jinn_mcp_msg::RestartMcpServer;
+use jinn_mcp_msg::config::McpServersConfig;
 use jinn_picker::picker_style::dim_style;
 use jinn_picker::picker_style::split_match_indices;
+use jinn_preferences_config::ConfigLayer;
 
 /// Builds the MCP server picker's spec.
 #[must_use]
@@ -312,12 +314,13 @@ fn mcp_toggle_preview(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
 /// session's enabled set for the ESC revert, and load the configured
 /// servers.
 fn open_mcp(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
+    let config = ctx.config().clone();
     let state = state_of(ctx);
     state.frontend.mcp_server_picker_mut().reset();
     // Snapshot current enabled set so ESC can restore it.
     *state.frontend.mcp_server_picker_snapshot_mut() =
         Some(state.active_session().enabled_mcp_servers().clone());
-    load_mcp_server_entries(state);
+    load_mcp_server_entries(state, &config);
     PickerOutcome::empty()
 }
 
@@ -371,17 +374,15 @@ fn restore_mcp(ctx: &mut ActionCtx<'_>) -> PickerOutcome {
 /// status/stderr/tools start empty; the TUI's per-frame refresh pre-pass
 /// fills them for the selected entry. Opening the picker never touches the
 /// filesystem.
-fn load_mcp_server_entries(state: &mut AppState) {
+fn load_mcp_server_entries(state: &mut AppState, config: &ConfigLayer) {
     let (enabled, theme) = {
         let active_session = state.active_session();
         let enabled = active_session.enabled_mcp_servers().clone();
         let theme = state.frontend.theme.clone();
         (enabled, theme)
     };
-    let mut entries: Vec<McpServerEntry> = state
-        .frontend
-        .preferences
-        .mcp_server
+    let servers = config.get::<McpServersConfig>().unwrap_or_default();
+    let mut entries: Vec<McpServerEntry> = servers
         .iter()
         .map(|(name, server)| {
             McpServerEntry::new(
@@ -422,21 +423,25 @@ mod tests {
     use jinn_slices::FocusScope;
     use jinn_theme::default_theme;
 
-    /// A configured MCP server: command + args become the picker description.
-    fn server_config(command: &str, args: &[&str]) -> jinn_mcp_msg::McpServerConfig {
-        jinn_mcp_msg::McpServerConfig {
-            command: Some(command.to_owned()),
-            args: args.iter().map(|s| (*s).to_owned()).collect(),
-            transport: jinn_mcp_msg::TransportKind::Stdio,
-            url: None,
-            headers: std::collections::BTreeMap::new(),
-            auto_enable: false,
+    /// A configuration layer whose `[mcp]` section declares the given
+    /// servers — the document the inspector lists and reads.
+    fn config_with_servers(servers: &[(&str, bool)]) -> ConfigLayer {
+        use std::fmt::Write as _;
+        let mut document = String::new();
+        for (name, _) in servers {
+            write!(
+                document,
+                "[mcp.{name}]\ncommand = \"npx\"\nargs = [\"{name}\"]\n"
+            )
+            .expect("writing to a String cannot fail");
         }
+        jinn_config::testutil::config_layer(&document)
     }
 
-    /// State with an active session, the given servers configured in
-    /// preferences, and an empty picker scope pushed (entries not loaded).
-    fn state_with_servers(servers: &[(&str, bool)]) -> AppState {
+    /// State with an active session, the given servers enabled for it, and
+    /// an empty picker scope pushed (entries not loaded) — plus the layer
+    /// declaring those servers, which is where the inspector reads them.
+    fn state_with_servers(servers: &[(&str, bool)]) -> (AppState, ConfigLayer) {
         let mut state = AppState::default_with_scope_focus();
         state.session.insert(ChatSessionState::new());
         state
@@ -447,34 +452,29 @@ mod tests {
             .filter(|(_, enabled)| *enabled)
             .map(|(name, _)| (*name).to_owned())
             .collect();
-        for (name, _) in servers {
-            state
-                .frontend
-                .preferences
-                .mcp_server
-                .insert((*name).to_owned(), server_config("npx", &[name]));
-        }
         state.active_session_mut().set_enabled_mcp_servers(enabled);
-        state
+        (state, config_with_servers(servers))
     }
 
     /// Opens the picker through the real open path (handles scope push +
     /// spec open hook), mirroring what the intent handler does.
-    fn open(state: &mut AppState) {
+    fn open(state: &mut AppState, config: &ConfigLayer) {
         let registry = crate::build_picker_registry();
         jinn_domain::feat::picker::intent::handle_open_picker(
             state,
             PickerKind::McpServer,
             &registry,
+            config,
         );
     }
 
     /// Runs a spec hook against `state` with a fresh dispatch context.
     fn run(
         state: &mut AppState,
+        config: &ConfigLayer,
         f: impl FnOnce(&mut ActionCtx<'_>) -> PickerOutcome,
     ) -> PickerOutcome {
-        let mut host = AppStatePickerHost::new(state);
+        let mut host = AppStatePickerHost::new(state, config);
         let mut ctx = ActionCtx::new(PickerId::new(MCP_SERVER_ID), &mut host);
         f(&mut ctx)
     }
@@ -493,10 +493,10 @@ mod tests {
     fn open_loads_sorted_entries_and_snapshots_enabled_set() {
         // Given state with two configured servers and one pre-enabled,
         // inserted in non-sorted order.
-        let mut state = state_with_servers(&[("zeta", false), ("alpha", true)]);
+        let (mut state, config) = state_with_servers(&[("zeta", false), ("alpha", true)]);
 
         // When opening the picker.
-        open(&mut state);
+        open(&mut state, &config);
 
         // Then entries load case-insensitively sorted by name.
         let names: Vec<&str> = state
@@ -529,8 +529,8 @@ mod tests {
     #[test]
     fn tab_toggle_flips_enabled_and_advances_the_cursor() {
         // Given an open picker with the first entry selected and enabled.
-        let mut state = state_with_servers(&[("alpha", true), ("zeta", true)]);
-        open(&mut state);
+        let (mut state, config) = state_with_servers(&[("alpha", true), ("zeta", true)]);
+        open(&mut state, &config);
         assert_eq!(state.frontend.mcp_server_picker().selection(), 0);
         let registry = crate::build_picker_registry();
 
@@ -540,6 +540,7 @@ mod tests {
             &registry,
             MCP_SERVER_ID,
             "<tab>",
+            &config,
         );
 
         // Then the selected entry flipped and the cursor advanced.
@@ -556,8 +557,8 @@ mod tests {
     #[test]
     fn toggle_on_empty_picker_is_a_no_op() {
         // Given an open picker with no configured servers.
-        let mut state = state_with_servers(&[]);
-        open(&mut state);
+        let (mut state, config) = state_with_servers(&[]);
+        open(&mut state, &config);
         let registry = crate::build_picker_registry();
 
         // When pressing TAB.
@@ -566,6 +567,7 @@ mod tests {
             &registry,
             MCP_SERVER_ID,
             "<tab>",
+            &config,
         );
 
         // Then nothing panicked and nothing is selected.
@@ -576,11 +578,11 @@ mod tests {
     #[test]
     fn restart_selected_emits_restart_command_for_selected_server() {
         // Given an open picker with "alpha" selected.
-        let mut state = state_with_servers(&[("alpha", true)]);
-        open(&mut state);
+        let (mut state, config) = state_with_servers(&[("alpha", true)]);
+        open(&mut state, &config);
 
         // When restarting the selected server.
-        let outcome = run(&mut state, mcp_restart);
+        let outcome = run(&mut state, &config, mcp_restart);
 
         // Then a RestartMcpServer message is emitted for the active session.
         assert!(
@@ -597,11 +599,11 @@ mod tests {
     #[test]
     fn restart_also_pushes_a_transient_chat_entry() {
         // Given an open picker with a selection.
-        let mut state = state_with_servers(&[("alpha", true)]);
-        open(&mut state);
+        let (mut state, config) = state_with_servers(&[("alpha", true)]);
+        open(&mut state, &config);
 
         // When restarting.
-        let outcome = run(&mut state, mcp_restart);
+        let outcome = run(&mut state, &config, mcp_restart);
 
         // Then a PushChatEntry message accompanies the restart signal.
         assert!(
@@ -618,11 +620,11 @@ mod tests {
     #[test]
     fn restart_with_no_selection_emits_nothing() {
         // Given an open picker with no entries.
-        let mut state = state_with_servers(&[]);
-        open(&mut state);
+        let (mut state, config) = state_with_servers(&[]);
+        open(&mut state, &config);
 
         // When restarting.
-        let outcome = run(&mut state, mcp_restart);
+        let outcome = run(&mut state, &config, mcp_restart);
 
         // Then nothing is emitted.
         assert!(outcome.message_names.is_empty());
@@ -632,11 +634,11 @@ mod tests {
     #[test]
     fn restart_keeps_picker_open() {
         // Given an open MCP inspector.
-        let mut state = state_with_servers(&[("alpha", true)]);
-        open(&mut state);
+        let (mut state, config) = state_with_servers(&[("alpha", true)]);
+        open(&mut state, &config);
 
         // When restarting.
-        let outcome = run(&mut state, mcp_restart);
+        let outcome = run(&mut state, &config, mcp_restart);
 
         // Then the picker scope is still on the stack.
         assert!(!outcome.close, "restart must not close the inspector");
@@ -652,8 +654,8 @@ mod tests {
     #[test]
     fn toggle_preview_flips_logs_to_tools() {
         // Given an open picker whose selected entry defaults to Logs mode.
-        let mut state = state_with_servers(&[("alpha", true)]);
-        open(&mut state);
+        let (mut state, config) = state_with_servers(&[("alpha", true)]);
+        open(&mut state, &config);
         assert_eq!(
             state.frontend.mcp_server_picker().items()[0]
                 .entry()
@@ -662,7 +664,7 @@ mod tests {
         );
 
         // When toggling preview.
-        let _ = run(&mut state, mcp_toggle_preview);
+        let _ = run(&mut state, &config, mcp_toggle_preview);
 
         // Then the selected entry is now in Tools mode.
         assert_eq!(
@@ -677,15 +679,15 @@ mod tests {
     #[test]
     fn toggle_preview_flips_tools_back_to_logs() {
         // Given an open picker whose selected entry is already in Tools mode.
-        let mut state = state_with_servers(&[("alpha", true)]);
-        open(&mut state);
+        let (mut state, config) = state_with_servers(&[("alpha", true)]);
+        open(&mut state, &config);
         state
             .frontend
             .mcp_server_picker_mut()
             .with_selected_mut(|item| item.entry_mut().preview_mode = McpPreviewMode::Tools);
 
         // When toggling preview.
-        let _ = run(&mut state, mcp_toggle_preview);
+        let _ = run(&mut state, &config, mcp_toggle_preview);
 
         // Then the selected entry is back in Logs mode.
         assert_eq!(
@@ -700,11 +702,11 @@ mod tests {
     #[test]
     fn toggle_preview_emits_no_messages() {
         // Given an open picker.
-        let mut state = state_with_servers(&[("alpha", true)]);
-        open(&mut state);
+        let (mut state, config) = state_with_servers(&[("alpha", true)]);
+        open(&mut state, &config);
 
         // When toggling preview.
-        let outcome = run(&mut state, mcp_toggle_preview);
+        let outcome = run(&mut state, &config, mcp_toggle_preview);
 
         // Then no messages are emitted (pure state flip).
         assert!(outcome.message_names.is_empty());
@@ -714,12 +716,12 @@ mod tests {
     #[test]
     fn confirm_writes_enabled_set_emits_and_closes() {
         // Given an open picker with the first entry toggled off.
-        let mut state = state_with_servers(&[("alpha", true), ("zeta", true)]);
-        open(&mut state);
-        let _ = run(&mut state, mcp_toggle);
+        let (mut state, config) = state_with_servers(&[("alpha", true), ("zeta", true)]);
+        open(&mut state, &config);
+        let _ = run(&mut state, &config, mcp_toggle);
 
         // When confirming.
-        let outcome = run(&mut state, confirm_mcp);
+        let outcome = run(&mut state, &config, confirm_mcp);
 
         // Then the session's enabled set holds exactly the remaining servers.
         assert_eq!(
@@ -745,9 +747,9 @@ mod tests {
     fn escape_restores_the_snapshotted_enabled_set() {
         // Given an open picker with one toggle applied on top of the
         // pre-open snapshot.
-        let mut state = state_with_servers(&[("alpha", true)]);
-        open(&mut state);
-        let _ = run(&mut state, mcp_toggle);
+        let (mut state, config) = state_with_servers(&[("alpha", true)]);
+        open(&mut state, &config);
+        let _ = run(&mut state, &config, mcp_toggle);
         assert!(
             !state.frontend.mcp_server_picker().items()[0]
                 .entry()
@@ -756,7 +758,8 @@ mod tests {
 
         // When ESC closes the picker through the dispatch path.
         let registry = crate::build_picker_registry();
-        let result = jinn_domain::feat::picker::action::try_close_active(&mut state, &registry);
+        let result =
+            jinn_domain::feat::picker::action::try_close_active(&mut state, &registry, &config);
 
         // Then the hook ran and the pre-open enabled set is restored.
         assert!(result.is_some());
@@ -791,12 +794,13 @@ mod tests {
     #[test]
     fn status_renders_the_live_enabled_count() {
         // Given an open picker with one of two servers enabled.
-        let mut state = state_with_servers(&[("alpha", true), ("zeta", false)]);
-        open(&mut state);
+        let (mut state, config) = state_with_servers(&[("alpha", true), ("zeta", false)]);
+        open(&mut state, &config);
 
         // When rendering the status line.
         let line = {
-            let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(&state);
+            let host =
+                jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(&state, &config);
             let ctx = StatusCtx::new(PickerId::new(MCP_SERVER_ID), &host);
             spec()
                 .status_line(&ctx)
@@ -1023,12 +1027,12 @@ mod tests {
     #[test]
     fn host_lends_the_wrapped_mcp_storage() {
         // Given state whose MCP picker holds wrapped items.
-        let mut state = state_with_servers(&[("alpha", true)]);
-        open(&mut state);
+        let (mut state, config) = state_with_servers(&[("alpha", true)]);
+        open(&mut state, &config);
 
         // When lending the storage for the mcp-server id.
         let lend = {
-            let mut host = AppStatePickerHost::new(&mut state);
+            let mut host = AppStatePickerHost::new(&mut state, &config);
             jinn_picker::PickerHost::selection_state(&mut host, PickerId::new(MCP_SERVER_ID))
                 .expect("mcp-server is mapped")
                 .downcast_ref::<jinn_selection_widget::SelectionState<

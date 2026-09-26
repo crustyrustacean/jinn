@@ -2683,6 +2683,27 @@ impl ChatSessionState {
         )
     }
 
+    /// Store how many consecutive tool entries the renderer just collapsed.
+    ///
+    /// A coverage probe reads this back so the visual items it builds match
+    /// the ones the next frame will build; see
+    /// [`set_content_width`] for the same arrangement.
+    pub fn set_min_collapse_count(&self, count: usize) {
+        self.update_view(|v| v.min_collapse_count.store(count as u32, Ordering::Relaxed));
+    }
+
+    /// The collapse threshold the last render used, or `0` before the first.
+    #[must_use]
+    pub fn min_collapse_count(&self) -> Option<usize> {
+        self.with_view(
+            |v| match v.min_collapse_count.load(Ordering::Relaxed) {
+                0 => None,
+                n => Some(n as usize),
+            },
+            || None,
+        )
+    }
+
     /// A snapshot copy of the visual items list computed by the last render.
     ///
     /// Returns an empty vec before the first render. Copying keeps the view

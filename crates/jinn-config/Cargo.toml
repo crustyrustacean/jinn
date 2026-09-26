@@ -1,0 +1,24 @@
+[package]
+name = "jinn-config"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Internal deps (kernel-free: no jinn-domain, no jinn-slices, no slice crates)
+jinn-common = { workspace = true }
+
+# External deps
+serde = { workspace = true }
+toml = { workspace = true }
+toml_edit = { workspace = true }
+parking_lot = { workspace = true }
+tracing = { workspace = true }
+error-stack = { workspace = true }
+wherror = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

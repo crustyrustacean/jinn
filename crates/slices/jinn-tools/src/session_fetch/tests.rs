@@ -174,6 +174,7 @@ fn ctx_with(store: StubStore) -> (ToolContext, std::sync::Arc<StubStore>) {
     let ctx = ToolContext {
         cwd: std::path::PathBuf::from("/tmp"),
         command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+        config: jinn_config::testutil::config_layer(""),
         timeout: None,
         state: None,
         session_id: Some(SessionId::from(
@@ -378,6 +379,7 @@ async fn no_session_and_no_current_is_an_error() {
     let ctx = ToolContext {
         cwd: std::path::PathBuf::from("/tmp"),
         command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+        config: jinn_config::testutil::config_layer(""),
         timeout: None,
         state: None,
         session_id: None,
@@ -430,6 +432,7 @@ async fn outer_truncated_result_carries_full_content() {
         let ctx = ToolContext {
             cwd: std::path::PathBuf::from("/tmp"),
             command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+            config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state: None,
             session_id: Some(SessionId::from(

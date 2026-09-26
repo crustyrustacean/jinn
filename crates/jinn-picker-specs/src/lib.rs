@@ -41,3 +41,13 @@ pub mod tool_spec;
 mod registry;
 
 pub use registry::build_picker_registry;
+
+/// A process-lifetime configuration layer with nothing in it.
+///
+/// The picker specs are driven from route actions, which have no services
+/// to hand; a spec that only reads config reaches the shared empty layer
+/// rather than growing a parameter for a value a test never sets.
+#[must_use]
+pub fn empty_config_layer() -> &'static jinn_config::ConfigLayer {
+    jinn_domain::common::render_ctx::empty_config_layer()
+}

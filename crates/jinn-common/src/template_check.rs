@@ -28,12 +28,13 @@
 //! # Key-path normalization
 //!
 //! Maps keyed by a user-chosen name (`[providers.<name>]`,
-//! `[mcp_server.<name>.headers]`) and free-form value containers
+//! `[mcp.<name>.headers]`) and free-form value containers
 //! (`extra_body`) produce different concrete key paths in the schema
 //! fixture and the template example. [`normalize`] masks those segments
 //! with `*` on both sides so comparison is structural.
 //!
-//! Array-of-tables (`[[session_lifecycle]]`, `[[auto_prune.regex.rules]]`,
+//! Array-of-tables (`[[session_lifecycle.script]]`,
+//! `[[context_curation.auto_prune.regex.rules]]`,
 //! `[[providers.<name>.model_info]]`) contribute *no* name segment: their
 //! entry names are field values, not path segments, so they need no masking.
 //!
@@ -273,8 +274,8 @@ fn collection_patterns() -> &'static Vec<Vec<String>> {
     PATTERNS.get_or_init(|| {
         [
             "providers",
-            "mcp_server",
-            "mcp_server.*.headers",
+            "mcp",
+            "mcp.*.headers",
             "providers.*.extra_body",
             "providers.*.model_info.extra_body",
         ]
@@ -552,12 +553,12 @@ mod tests {
         // Given a template path with a user-chosen server name and a schema
         // path with a different one.
         let template_paths = BTreeSet::from([vec![
-            "mcp_server".to_owned(),
+            "mcp".to_owned(),
             "example".to_owned(),
             "command".to_owned(),
         ]]);
         let schema_paths = BTreeSet::from([vec![
-            "mcp_server".to_owned(),
+            "mcp".to_owned(),
             "fixture".to_owned(),
             "command".to_owned(),
         ]]);
@@ -567,11 +568,8 @@ mod tests {
         let schema_norm = normalize(&schema_paths);
 
         // Then both collapse to the same wildcarded path.
-        let expected = BTreeSet::from([vec![
-            "mcp_server".to_owned(),
-            "*".to_owned(),
-            "command".to_owned(),
-        ]]);
+        let expected =
+            BTreeSet::from([vec!["mcp".to_owned(), "*".to_owned(), "command".to_owned()]]);
         assert_eq!(template_norm, expected);
         assert_eq!(schema_norm, expected);
     }
@@ -580,7 +578,7 @@ mod tests {
     fn normalize_masks_recursively_under_wildcarded_collections() {
         // Given a headers path under a user-named server.
         let paths = BTreeSet::from([vec![
-            "mcp_server".to_owned(),
+            "mcp".to_owned(),
             "remote".to_owned(),
             "headers".to_owned(),
             "Authorization".to_owned(),
@@ -591,7 +589,7 @@ mod tests {
 
         // Then both the server name and the header name are masked.
         let expected = BTreeSet::from([vec![
-            "mcp_server".to_owned(),
+            "mcp".to_owned(),
             "*".to_owned(),
             "headers".to_owned(),
             "*".to_owned(),

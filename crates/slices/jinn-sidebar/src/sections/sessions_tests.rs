@@ -93,7 +93,11 @@ fn content_height_with_one_session() {
         {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            section.content_height(&RenderCtx::new(&state, &slices, &overlay_views))
+            section.content_height(&RenderCtx::new_with_default_config(
+                &state,
+                &slices,
+                &overlay_views,
+            ))
         },
         2
     ); // 1 session + footer
@@ -107,7 +111,11 @@ fn content_height_with_three_sessions() {
         {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            section.content_height(&RenderCtx::new(&state, &slices, &overlay_views))
+            section.content_height(&RenderCtx::new_with_default_config(
+                &state,
+                &slices,
+                &overlay_views,
+            ))
         },
         4
     ); // 3 sessions + footer
@@ -209,7 +217,10 @@ fn navigate_action_returns_moved() {
 /// The document offset the sidebar would use for `viewport_rows` with the
 /// sessions section focused and the cursor at `cursor_index`.
 fn document_offset_for(state: &AppState, viewport_rows: u16) -> u16 {
-    let document = crate::sections::layout::document_with_cursor(state);
+    let document = crate::sections::layout::document_with_cursor(
+        state,
+        jinn_domain::common::render_ctx::empty_config_layer(),
+    );
     document.offset(viewport_rows)
 }
 
@@ -246,7 +257,10 @@ fn document_offset_clamps_at_the_end_for_the_last_session() {
     let offset = document_offset_for(&state, 20);
 
     // Then the window shows the document's end, so the last row is the last line.
-    let document = crate::sections::layout::document_with_cursor(&state);
+    let document = crate::sections::layout::document_with_cursor(
+        &state,
+        jinn_domain::common::render_ctx::empty_config_layer(),
+    );
     assert_eq!(offset + 20, document.total_rows);
 }
 
@@ -320,7 +334,12 @@ fn content_height_is_uncapped() {
     // When computing content height.
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let height = section.content_height(&RenderCtx::new(&state, &slices, &overlay_views));
+    let height = section.content_height(&RenderCtx::new(
+        &state,
+        &slices,
+        &overlay_views,
+        jinn_domain::common::render_ctx::empty_config_layer(),
+    ));
 
     // Then it counts every session, not a fixed window.
     assert_eq!(height, 21);
@@ -469,13 +488,25 @@ fn render_rows(
     width: u16,
     height: u16,
 ) -> Vec<String> {
+    render_rows_skipping(section, state, width, height, 0)
+}
+
+/// Renders the section into a `width` x `height` terminal, drawing the
+/// window that starts `skip_rows` entries into the list.
+fn render_rows_skipping(
+    section: &mut SessionsSection,
+    state: &AppState,
+    width: u16,
+    height: u16,
+    skip_rows: u16,
+) -> Vec<String> {
     let (mut terminal, area) = setup_term(width, height);
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(state, &slices, &overlay_views);
-            section.render(frame, area, 0, &ctx);
+            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
+            section.render(frame, area, skip_rows, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer();
@@ -534,6 +565,41 @@ fn render_shows_untitled_for_session_without_title() {
 }
 
 #[rstest::rstest]
+fn render_draws_only_the_rows_the_window_covers() {
+    // Given 20 sessions, a 5-row window, and a skip of 3.
+    let mut section = SessionsSection::new();
+    let state = state_with_sessions(20);
+
+    // When rendering.
+    let rows = render_rows_skipping(&mut section, &state, 30, 5, 3);
+
+    // Then every row of the window is drawn and no more. Entries 4..9 of the
+    // list are in view, so the window is full and the footer is not among
+    // them.
+    assert_eq!(rows.len(), 5, "window should fill its height: {rows:?}");
+    assert!(
+        !rows.join("").contains('\u{2570}'),
+        "footer belongs to the list's last row, which is out of window: {rows:?}"
+    );
+}
+
+#[rstest::rstest]
+fn render_draws_the_footer_when_the_window_reaches_the_last_entry() {
+    // Given 20 sessions and a window whose final row is entry 20.
+    let mut section = SessionsSection::new();
+    let state = state_with_sessions(20);
+
+    // When rendering a 5-row window starting at entry 16.
+    let rows = render_rows_skipping(&mut section, &state, 30, 5, 16);
+
+    // Then the footer is drawn on the last row of the window.
+    assert!(
+        rows[4].contains('\u{2570}'),
+        "footer should render when the window reaches the last entry: {rows:?}"
+    );
+}
+
+#[rstest::rstest]
 fn render_footer_uses_focus_accent_when_sidebar_focused() {
     // Given a sessions section with sidebar focused.
     let mut section = SessionsSection::new();
@@ -550,7 +616,7 @@ fn render_footer_uses_focus_accent_when_sidebar_focused() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             section.render(frame, area, 0, &ctx);
         })
         .unwrap();
@@ -577,7 +643,7 @@ fn render_footer_uses_border_unfocused_when_sidebar_not_focused() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             section.render(frame, area, 0, &ctx);
         })
         .unwrap();
@@ -609,7 +675,7 @@ fn render_footer_uses_border_unfocused_when_other_sidebar_section_focused() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             section.render(frame, area, 0, &ctx);
         })
         .unwrap();
@@ -734,7 +800,7 @@ fn render_session_title_is_red_when_last_entry_is_error() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             section.render(frame, area, 0, &ctx);
         })
         .unwrap();
@@ -763,7 +829,7 @@ fn render_session_title_is_normal_when_last_entry_is_not_error() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             section.render(frame, area, 0, &ctx);
         })
         .unwrap();
@@ -864,6 +930,7 @@ fn session_new_with_lifecycle_opens_picker_from_normal_mode() {
         &empty_slices(),
         &empty_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the picker scope is pushed with SessionLifecycle kind.
@@ -891,6 +958,7 @@ fn session_new_with_lifecycle_opens_picker_from_sidebar_sessions() {
         &empty_slices(),
         &empty_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the picker scope is pushed with SessionLifecycle kind.
@@ -907,17 +975,9 @@ fn session_new_with_lifecycle_opens_picker_from_sidebar_sessions() {
 fn teardown_only_emits_run_session_teardown() {
     // Given a session with a lifecycle that has a teardown command.
     let mut state = AppState::default_with_scope_focus();
-    state.frontend.preferences.session_lifecycles.push(
-        jinn_preferences_config::schemas::SessionLifecycle {
-            name: "fossil branch".to_owned(),
-            description: None,
-            setup: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                "echo setup".to_owned(),
-            )),
-            teardown: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                "cleanup.sh $1".to_owned(),
-            )),
-        },
+    let config = jinn_config::testutil::config_layer(
+        "[[session_lifecycle.script]]\nname = \"fossil branch\"\n\
+         setup_command = \"echo setup\"\nteardown_command = \"cleanup.sh $1\"\n",
     );
     state
         .active_session_mut()
@@ -933,7 +993,7 @@ fn teardown_only_emits_run_session_teardown() {
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
 
     // When handling session teardown (the route row's action).
-    let result = super::sessions::handle_session_teardown(&mut state);
+    let result = super::sessions::handle_session_teardown(&mut state, &config);
 
     // Then a RunSessionTeardown command is emitted with the rendered teardown command.
     assert_eq!(result.message_names.len(), 1);
@@ -944,15 +1004,8 @@ fn teardown_only_emits_run_session_teardown() {
 fn teardown_only_is_noop_without_lifecycle_teardown() {
     // Given a session with a lifecycle that has NO teardown command.
     let mut state = AppState::default_with_scope_focus();
-    state.frontend.preferences.session_lifecycles.push(
-        jinn_preferences_config::schemas::SessionLifecycle {
-            name: "plain".to_owned(),
-            description: None,
-            setup: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                "echo setup".to_owned(),
-            )),
-            teardown: None,
-        },
+    let config = jinn_config::testutil::config_layer(
+        "[[session_lifecycle.script]]\nname = \"plain\"\nsetup_command = \"echo setup\"\n",
     );
     state
         .active_session_mut()
@@ -965,7 +1018,7 @@ fn teardown_only_is_noop_without_lifecycle_teardown() {
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
 
     // When handling session teardown (the route row's action).
-    let result = super::sessions::handle_session_teardown(&mut state);
+    let result = super::sessions::handle_session_teardown(&mut state, &config);
 
     // Then no commands are emitted (no teardown command to run).
     assert!(result.message_names.is_empty());
@@ -975,17 +1028,9 @@ fn teardown_only_is_noop_without_lifecycle_teardown() {
 fn teardown_only_is_noop_when_session_busy() {
     // Given a session with a teardown command that is currently busy.
     let mut state = AppState::default_with_scope_focus();
-    state.frontend.preferences.session_lifecycles.push(
-        jinn_preferences_config::schemas::SessionLifecycle {
-            name: "fossil branch".to_owned(),
-            description: None,
-            setup: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                "echo setup".to_owned(),
-            )),
-            teardown: Some(jinn_preferences_config::schemas::LifecycleCommand::Shell(
-                "cleanup.sh $1".to_owned(),
-            )),
-        },
+    let config = jinn_config::testutil::config_layer(
+        "[[session_lifecycle.script]]\nname = \"fossil branch\"\n\
+         setup_command = \"echo setup\"\nteardown_command = \"cleanup.sh $1\"\n",
     );
     state
         .active_session_mut()
@@ -1003,7 +1048,7 @@ fn teardown_only_is_noop_when_session_busy() {
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
 
     // When handling session teardown (the route row's action).
-    let result = super::sessions::handle_session_teardown(&mut state);
+    let result = super::sessions::handle_session_teardown(&mut state, &config);
 
     // Then no commands are emitted (validation gates on busy state).
     assert!(result.message_names.is_empty());
@@ -1584,7 +1629,7 @@ fn render_tree_shows_tree_characters() {
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
             let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
             section.render(frame, area, 0, &ctx);
         })
         .unwrap();
@@ -2272,6 +2317,7 @@ fn archive_tree_arm_sets_confirm_prompt_with_subtree_count() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the confirm prompt is armed with the subtree size.
@@ -2304,6 +2350,7 @@ fn archive_tree_arm_sets_busy_prompt_when_subtree_busy() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the busy prompt is armed.
@@ -2326,6 +2373,7 @@ fn archive_tree_second_press_emits_archive_command() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // When handling a second archive-tree press (confirm).
@@ -2335,6 +2383,7 @@ fn archive_tree_second_press_emits_archive_command() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the ArchiveSessionTree command is emitted.
@@ -2361,6 +2410,7 @@ fn archive_tree_confirm_after_member_became_busy_switches_to_busy_prompt() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
     state
         .session
@@ -2375,6 +2425,7 @@ fn archive_tree_confirm_after_member_became_busy_switches_to_busy_prompt() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the prompt flipped to Busy instead of archiving.
@@ -2404,6 +2455,7 @@ fn archive_tree_other_intent_dismisses_prompt_and_processes_normally() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // When handling a different intent.
@@ -2413,6 +2465,7 @@ fn archive_tree_other_intent_dismisses_prompt_and_processes_normally() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the prompt is dismissed.
@@ -2431,6 +2484,7 @@ fn archive_tree_invalid_context_leaves_no_prompt() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then no prompt is armed and no commands are emitted.
@@ -2451,6 +2505,7 @@ fn teardown_tree_arm_sets_confirm_prompt_with_action() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the confirm prompt is armed for teardown-and-archive.
@@ -2483,6 +2538,7 @@ fn teardown_tree_arm_sets_busy_prompt_when_subtree_busy() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the busy prompt is armed.
@@ -2505,6 +2561,7 @@ fn teardown_tree_second_press_emits_teardown_tree_command() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // When handling a second teardown-tree press (confirm).
@@ -2514,6 +2571,7 @@ fn teardown_tree_second_press_emits_teardown_tree_command() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the TeardownSessionTree command is emitted.
@@ -2549,6 +2607,7 @@ fn teardown_tree_other_intent_dismisses_prompt() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // When handling a different intent.
@@ -2558,6 +2617,7 @@ fn teardown_tree_other_intent_dismisses_prompt() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the prompt is dismissed.
@@ -2578,6 +2638,7 @@ fn busy_tree_prompt_dismisses_on_other_intent() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the busy notice is dismissed.
@@ -2598,6 +2659,7 @@ fn busy_tree_prompt_still_confirms_on_tree_key() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the re-validation passes and the teardown-tree command is emitted.
@@ -2624,6 +2686,7 @@ fn a_key_over_teardown_prompt_dismisses_then_arms_archive_prompt() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // When handling the archive-tree press (the sibling tree action).
@@ -2633,6 +2696,7 @@ fn a_key_over_teardown_prompt_dismisses_then_arms_archive_prompt() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the teardown prompt was replaced by a fresh archive prompt.
@@ -2656,6 +2720,7 @@ fn x_key_over_archive_prompt_dismisses_then_arms_teardown_prompt() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // When handling the teardown-tree press (the sibling tree action).
@@ -2665,6 +2730,7 @@ fn x_key_over_archive_prompt_dismisses_then_arms_teardown_prompt() {
         &empty_slices(),
         &sidebar_routes(),
         &empty_pickers(),
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the archive prompt was replaced by a fresh teardown prompt.
@@ -2880,7 +2946,7 @@ fn render_archive_tree_prompt_rows(state: &AppState, sidebar_width: u16) -> Vec<
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new(state, &slices, &overlay_views);
+    let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
     terminal
         .draw(|frame| {
             crate::sections::sessions::render_archive_tree_prompt_for_state(
@@ -2915,7 +2981,7 @@ fn render_sessions_with_archive_tree_prompt(state: &AppState, sidebar_width: u16
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new(state, &slices, &overlay_views);
+    let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
     let mut sidebar = crate::sections::Sidebar::default();
     sidebar.register(Box::new(SessionsSection::new()));
     terminal
@@ -2969,7 +3035,7 @@ fn render_sessions_with_close_prompt(state: &AppState, sidebar_width: u16) -> Ve
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new(state, &slices, &overlay_views);
+    let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
     let mut sidebar = crate::sections::Sidebar::default();
     sidebar.register(Box::new(SessionsSection::new()));
     terminal
@@ -3045,7 +3111,12 @@ fn an_unchanged_frame_rebuilds_the_tree_only_once() {
     {
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
-        let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+        let ctx = RenderCtx::new(
+            &state,
+            &slices,
+            &overlay_views,
+            jinn_domain::common::render_ctx::empty_config_layer(),
+        );
         section.content_height(&ctx);
     }
     let after_first = section.rebuilds();
@@ -3055,7 +3126,12 @@ fn an_unchanged_frame_rebuilds_the_tree_only_once() {
     for _ in 0..5 {
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
-        let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+        let ctx = RenderCtx::new(
+            &state,
+            &slices,
+            &overlay_views,
+            jinn_domain::common::render_ctx::empty_config_layer(),
+        );
         section.content_height(&ctx);
     }
 
@@ -3076,7 +3152,12 @@ fn height_and_render_agree_on_the_session_count() {
     // When the height is computed and then rendered.
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+    let ctx = RenderCtx::new(
+        &state,
+        &slices,
+        &overlay_views,
+        jinn_domain::common::render_ctx::empty_config_layer(),
+    );
     let height = section.content_height(&ctx);
     let tree_len = section.cached_session_count();
 
@@ -3092,7 +3173,12 @@ fn adding_a_session_rebuilds_the_tree() {
     let before = {
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
-        let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+        let ctx = RenderCtx::new(
+            &state,
+            &slices,
+            &overlay_views,
+            jinn_domain::common::render_ctx::empty_config_layer(),
+        );
         section.content_height(&ctx);
         section.rebuilds()
     };
@@ -3107,7 +3193,12 @@ fn adding_a_session_rebuilds_the_tree() {
     // Then the tree is rebuilt.
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+    let ctx = RenderCtx::new(
+        &state,
+        &slices,
+        &overlay_views,
+        jinn_domain::common::render_ctx::empty_config_layer(),
+    );
     section.content_height(&ctx);
     assert_eq!(section.rebuilds(), before + 1);
 }
@@ -3120,7 +3211,12 @@ fn a_renamed_session_rebuilds_the_tree() {
     let before = {
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
-        let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+        let ctx = RenderCtx::new(
+            &state,
+            &slices,
+            &overlay_views,
+            jinn_domain::common::render_ctx::empty_config_layer(),
+        );
         section.content_height(&ctx);
         section.rebuilds()
     };
@@ -3128,7 +3224,12 @@ fn a_renamed_session_rebuilds_the_tree() {
     // When an untouched frame renders first (proving the memo is warm).
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+    let ctx = RenderCtx::new(
+        &state,
+        &slices,
+        &overlay_views,
+        jinn_domain::common::render_ctx::empty_config_layer(),
+    );
     section.content_height(&ctx);
     assert_eq!(section.rebuilds(), before, "no change, no rebuild");
 
@@ -3153,7 +3254,12 @@ fn a_renamed_session_rebuilds_the_tree() {
     // Then exactly one more rebuild happens.
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new(&state, &slices, &overlay_views);
+    let ctx = RenderCtx::new(
+        &state,
+        &slices,
+        &overlay_views,
+        jinn_domain::common::render_ctx::empty_config_layer(),
+    );
     section.content_height(&ctx);
     assert_eq!(
         section.rebuilds(),

@@ -8,6 +8,7 @@ description = "Picker specs and the AppState host lens: the kernel's picker adap
 # The kernel's picker adapter. This crate reads and writes `AppState` through
 # the specs' `state_any` bridge, so it depends on the kernel one way only:
 # `jinn-domain` must never depend on this crate, or the cycle is immediate.
+jinn-config = { workspace = true }
 jinn-domain = { workspace = true }
 # The kernel-free picker framework: specs, registry, ids, entry hooks, styles.
 jinn-picker = { workspace = true }

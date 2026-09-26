@@ -191,7 +191,7 @@ mod tests {
                 let guard = app.core.state.read();
                 let slices = jinn_slices::Slices::new();
                 let views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new(&guard, &slices, &views);
+                let ctx = RenderCtx::new_with_default_config(&guard, &slices, &views);
                 render_audit_popup(frame, chat_log_area, &ctx, &mut rects);
             })
             .unwrap();
@@ -295,7 +295,7 @@ mod tests {
                 let guard = app.core.state.read();
                 let slices = jinn_slices::Slices::new();
                 let views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new(&guard, &slices, &views);
+                let ctx = RenderCtx::new_with_default_config(&guard, &slices, &views);
                 render_audit_popup(frame, chat_log_area, &ctx, &mut rects);
             })
             .unwrap();

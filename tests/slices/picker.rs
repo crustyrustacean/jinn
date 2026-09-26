@@ -65,6 +65,7 @@ fn open_session_picker_enters_picker_scope() {
         &mut state,
         PickerKind::Session,
         &registry,
+        jinn_slices::empty_config_layer(),
     );
 
     // Then the picker scope is on top of the scope stack.
@@ -93,8 +94,11 @@ fn confirm_session_picker_begins_loading_the_selected_session() {
     });
 
     // When confirming through the kernel's dispatch.
-    let (result, _) =
-        jinn_domain::feat::picker::intent::handle_picker_confirm(&mut state, &registry);
+    let (result, _) = jinn_domain::feat::picker::intent::handle_picker_confirm(
+        &mut state,
+        &registry,
+        jinn_slices::empty_config_layer(),
+    );
 
     // Then the load began for the selected (second) session.
     let guard = state

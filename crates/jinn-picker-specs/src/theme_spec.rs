@@ -240,7 +240,10 @@ mod tests {
     fn open(state: &mut AppState) {
         let registry = crate::build_picker_registry();
         let picker_id = PickerId::new(jinn_picker::THEME_ID);
-        let mut host = jinn_domain::feat::picker::host_impl::AppStatePickerHost::new(state);
+        let mut host = jinn_domain::feat::picker::host_impl::AppStatePickerHost::new(
+            state,
+            crate::empty_config_layer(),
+        );
         let mut ctx = ActionCtx::new(picker_id, &mut host);
         let spec = registry
             .get(jinn_picker::THEME_ID)
@@ -340,8 +343,10 @@ mod tests {
         // When the selection moves to the second entry.
         state.frontend.theme_picker_mut().move_down(10);
         {
-            let mut host =
-                jinn_domain::feat::picker::host_impl::AppStatePickerHost::new(&mut state);
+            let mut host = jinn_domain::feat::picker::host_impl::AppStatePickerHost::new(
+                &mut state,
+                jinn_slices::empty_config_layer(),
+            );
             let mut ctx = ActionCtx::new(picker_id, &mut host);
             spec.run_selection_change(1, &mut ctx);
         }
@@ -370,8 +375,10 @@ mod tests {
 
         // When confirming the selected theme.
         let outcome = {
-            let mut host =
-                jinn_domain::feat::picker::host_impl::AppStatePickerHost::new(&mut state);
+            let mut host = jinn_domain::feat::picker::host_impl::AppStatePickerHost::new(
+                &mut state,
+                jinn_slices::empty_config_layer(),
+            );
             let mut ctx = ActionCtx::new(picker_id, &mut host);
             let spec = registry
                 .get(jinn_picker::THEME_ID)
@@ -406,8 +413,10 @@ mod tests {
 
         // When confirming.
         let outcome = {
-            let mut host =
-                jinn_domain::feat::picker::host_impl::AppStatePickerHost::new(&mut state);
+            let mut host = jinn_domain::feat::picker::host_impl::AppStatePickerHost::new(
+                &mut state,
+                jinn_slices::empty_config_layer(),
+            );
             let mut ctx = ActionCtx::new(picker_id, &mut host);
             let spec = registry
                 .get(jinn_picker::THEME_ID)
@@ -435,8 +444,10 @@ mod tests {
 
         // When closing via the spec's close hook.
         let outcome = {
-            let mut host =
-                jinn_domain::feat::picker::host_impl::AppStatePickerHost::new(&mut state);
+            let mut host = jinn_domain::feat::picker::host_impl::AppStatePickerHost::new(
+                &mut state,
+                jinn_slices::empty_config_layer(),
+            );
             let mut ctx = ActionCtx::new(picker_id, &mut host);
             let spec = registry
                 .get(jinn_picker::THEME_ID)
@@ -465,7 +476,10 @@ mod tests {
         // When rendering the status line (with no persisted theme, the
         // built-in default is in force).
         let rendered = {
-            let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(&state);
+            let host = jinn_domain::feat::picker::host_impl::AppStateRenderHost::new(
+                &state,
+                jinn_slices::empty_config_layer(),
+            );
             let ctx = jinn_picker::StatusCtx::new(PickerId::new(jinn_picker::THEME_ID), &host);
             spec.status_line(&ctx)
         };

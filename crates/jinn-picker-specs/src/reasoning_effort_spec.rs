@@ -261,6 +261,7 @@ mod tests {
             state,
             PickerKind::ReasoningEffort,
             &registry,
+            crate::empty_config_layer(),
         );
     }
 
@@ -269,7 +270,7 @@ mod tests {
         state: &mut AppState,
         f: impl FnOnce(&mut ActionCtx<'_>) -> PickerOutcome,
     ) -> PickerOutcome {
-        let mut host = AppStatePickerHost::new(state);
+        let mut host = AppStatePickerHost::new(state, crate::empty_config_layer());
         let mut ctx = ActionCtx::new(PickerId::new(REASONING_EFFORT_ID), &mut host);
         f(&mut ctx)
     }
@@ -460,6 +461,7 @@ mod tests {
         let _ = jinn_domain::feat::picker::intent::handle_picker_confirm(
             &mut state,
             &crate::build_picker_registry(),
+            crate::empty_config_layer(),
         );
 
         // Then the scope stack has no ReasoningEffort picker left (fold
@@ -482,7 +484,7 @@ mod tests {
         open(&mut state);
 
         // When rendering the status hook.
-        let host = AppStatePickerHost::new(&mut state);
+        let host = AppStatePickerHost::new(&mut state, jinn_slices::empty_config_layer());
         let ctx = StatusCtx::new(PickerId::new(REASONING_EFFORT_ID), &host);
         let line = reasoning_status(&ctx).expect("status is Some");
 
@@ -498,7 +500,7 @@ mod tests {
         open(&mut state);
 
         // When rendering the status hook.
-        let host = AppStatePickerHost::new(&mut state);
+        let host = AppStatePickerHost::new(&mut state, jinn_slices::empty_config_layer());
         let ctx = StatusCtx::new(PickerId::new(REASONING_EFFORT_ID), &host);
         let line = reasoning_status(&ctx).expect("status is Some");
 

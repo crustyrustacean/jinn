@@ -167,6 +167,10 @@ pub struct ActionCtx<'a> {
     pub state: &'a mut dyn SliceActionState,
     /// The slice registry, borrowed from the intent handler.
     pub slices: &'a crate::slices::Slices,
+    /// The configuration layer, borrowed from the intent handler. A route
+    /// action that seeds a session or reads a setting resolves through
+    /// this rather than through a state cache.
+    pub config: &'a jinn_config::ConfigLayer,
     /// The dispatching dynamic intent's byte payload, if any.
     pub key_bytes: Vec<u8>,
 }
@@ -756,6 +760,7 @@ mod tests {
         ActionCtx {
             state,
             slices,
+            config: jinn_config::empty_config_layer(),
             key_bytes: Vec::new(),
         }
     }

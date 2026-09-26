@@ -468,7 +468,12 @@ mod tests {
     /// Opens the picker through the real open path.
     fn open(state: &mut AppState) {
         let registry = crate::build_picker_registry();
-        handle_open_picker(state, PickerKind::Provider, &registry);
+        handle_open_picker(
+            state,
+            PickerKind::Provider,
+            &registry,
+            jinn_slices::empty_config_layer(),
+        );
     }
 
     /// Runs a spec hook against `state` with a fresh dispatch context.
@@ -476,7 +481,7 @@ mod tests {
         state: &mut AppState,
         f: impl FnOnce(&mut ActionCtx<'_>) -> PickerOutcome,
     ) -> PickerOutcome {
-        let mut host = AppStatePickerHost::new(state);
+        let mut host = AppStatePickerHost::new(state, crate::empty_config_layer());
         let mut ctx = ActionCtx::new(PickerId::new(jinn_picker::PROVIDER_ID), &mut host);
         f(&mut ctx)
     }
@@ -496,7 +501,12 @@ mod tests {
         // When opening the provider picker.
         let result: IntentResult = {
             let registry = crate::build_picker_registry();
-            handle_open_picker(&mut state, PickerKind::Provider, &registry)
+            handle_open_picker(
+                &mut state,
+                PickerKind::Provider,
+                &registry,
+                jinn_slices::empty_config_layer(),
+            )
         };
 
         // Then the open emits the actor load message.

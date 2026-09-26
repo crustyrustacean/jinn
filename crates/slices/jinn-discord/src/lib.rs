@@ -65,8 +65,8 @@ pub struct ActivatedDiscord {
 ///
 /// Mint the connection cell, spawn the status actor on trouper (always
 /// — it is the connection authority regardless of bridge enablement),
-/// read + validate the `[discord]` section (fail-fast), set the
-/// slice's feature flag from it, create all three gateway kanal
+/// read + validate the `[discord]` section (fail-fast when present),
+/// set the slice's feature flag from it, create all three gateway kanal
 /// channels unconditionally, spawn the bridge subscriber only when
 /// enabled, and attach the route rows. Returns the gateway-facing
 /// halves + the config for the frontend spawn.
@@ -77,20 +77,24 @@ pub struct ActivatedDiscord {
 /// resolve only at composition's `finalize` used to hand the slice
 /// `T::default()` and read as a silently disabled bridge.
 ///
+/// The section is optional: a document without `[discord]` activates
+/// the slice disabled, which is what a fresh install looks like. A
+/// section that is present but malformed still aborts.
+///
 /// # Errors
 ///
 /// Returns [`SliceConfigError`] when the `[discord]` section is
-/// malformed — activation is the fail-fast gate.
+/// present but malformed — activation is the fail-fast gate.
 pub async fn activate(
     host: &mut jinn_slices::AppSliceHost<'_>,
     services: &jinn_domain::Services,
     state: jinn_domain::common::state::State,
-    resolve: &dyn Fn(&str) -> Option<toml::Table>,
-) -> Result<ActivatedDiscord, jinn_slices::ConfigSectionError> {
-    // Config section: typed read through the host, resolved eagerly —
-    // the value must exist before `take()` below.
-    let config_handle = host.config_section::<DiscordConfig>("discord");
-    host.apply_sections(resolve)?;
+) -> Result<ActivatedDiscord, jinn_config::ConfigSectionError> {
+    // Config: read through the layer at the point of use. A stock
+    // `jinn.toml` carries no `[discord]` table, so absence must be a
+    // normal configuration (the disabled default) rather than a launch
+    // abort; a present-but-malformed one still aborts here.
+    let config = services.config.get::<DiscordConfig>()?;
 
     let system = host.system().clone();
 
@@ -121,7 +125,6 @@ pub async fn activate(
         system,
     });
 
-    let config = config_handle.take();
     host.set_flag("discord", config.enabled);
 
     // Conditionally spawn the bridge subscriber: trouper `jinn.session`
@@ -157,11 +160,20 @@ mod activate_tests {
     use jinn_slices::host::SliceHost;
     use jinn_slices::view::Viewport;
 
-    /// A stub document sink carrying a `[discord]` section body.
-    fn stub_doc(body: &'static str) -> impl Fn(&str) -> Option<toml::Table> {
-        let table: toml::Table = toml::from_str(body).expect("stub TOML parses");
-        let sections = std::collections::HashMap::from([("discord".to_owned(), table)]);
-        move |key| sections.get(key).cloned()
+    /// Fake services whose configuration layer carries a `[discord]`
+    /// section with `body` as its contents.
+    async fn services_with_discord(body: &str) -> jinn_domain::Services {
+        let mut services = jinn_domain::Services::new_fake().await;
+        services.config = jinn_config::testutil::config_layer(&format!("[discord]\n{body}"));
+        services
+    }
+
+    /// Fake services over a document that carries no `[discord]` section —
+    /// a stock install.
+    async fn services_without_discord() -> jinn_domain::Services {
+        let mut services = jinn_domain::Services::new_fake().await;
+        services.config = jinn_config::testutil::config_layer("");
+        services
     }
 
     #[rstest::rstest]
@@ -173,7 +185,7 @@ mod activate_tests {
         let key_routes = KeyRoutes::new();
         let mut viewport = Viewport::new();
         let overlay_views = OverlayViews::<jinn_slices::RenderFacts>::new();
-        let services = jinn_domain::Services::new_fake().await;
+        let services = services_with_discord("enabled = true").await;
         let state = jinn_domain::common::state::State::new(
             jinn_domain::common::app_state::AppState::default(),
         );
@@ -184,10 +196,9 @@ mod activate_tests {
             &key_routes,
             &services.trouper_system,
         );
-        let resolve = stub_doc("enabled = true");
 
         // When activating the slice through the real path.
-        let activated = activate(&mut host, &services, state, &resolve)
+        let activated = activate(&mut host, &services, state)
             .await
             .expect("activation resolves the section");
 
@@ -199,13 +210,13 @@ mod activate_tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn activation_fails_fast_on_a_malformed_section() {
-        // Given a document sink whose [discord] table is malformed.
+    async fn absent_discord_section_activates_disabled() {
+        // Given a document with no [discord] section — a stock install.
         let slices = Slices::new();
         let key_routes = KeyRoutes::new();
         let mut viewport = Viewport::new();
         let overlay_views = OverlayViews::<jinn_slices::RenderFacts>::new();
-        let services = jinn_domain::Services::new_fake().await;
+        let services = services_without_discord().await;
         let state = jinn_domain::common::state::State::new(
             jinn_domain::common::app_state::AppState::default(),
         );
@@ -216,13 +227,45 @@ mod activate_tests {
             &key_routes,
             &services.trouper_system,
         );
-        let resolve = stub_doc("enabled = \"maybe\"");
+
+        // When activating the slice through the real path.
+        let activated = activate(&mut host, &services, state)
+            .await
+            .expect("an absent section is a normal configuration");
+
+        // Then the slice activates disabled rather than aborting the launch.
+        assert!(!activated.config.enabled, "absence reads the default");
+        // And the feature flag mirrors it.
+        assert!(!slices.flag("discord"), "flag mirrors the default");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn activation_fails_fast_on_a_malformed_section() {
+        // Given a document sink whose [discord] table is malformed.
+        let slices = Slices::new();
+        let key_routes = KeyRoutes::new();
+        let mut viewport = Viewport::new();
+        let overlay_views = OverlayViews::<jinn_slices::RenderFacts>::new();
+        let services = services_with_discord("enabled = \"maybe\"").await;
+        let state = jinn_domain::common::state::State::new(
+            jinn_domain::common::app_state::AppState::default(),
+        );
+        let mut host = SliceHost::new(
+            &slices,
+            &mut viewport,
+            &overlay_views,
+            &key_routes,
+            &services.trouper_system,
+        );
 
         // When activating.
-        let result = activate(&mut host, &services, state, &resolve).await;
+        let result = activate(&mut host, &services, state).await;
 
-        // Then activation is the fail-fast gate: it errors instead of
-        // proceeding on defaults.
+        // Then activation is the fail-fast gate: a section that is
+        // present but malformed errors instead of proceeding on
+        // defaults. Optional means absence is legal, not that a typo
+        // silently disables the bridge.
         assert!(result.is_err(), "malformed section aborts activation");
     }
 }

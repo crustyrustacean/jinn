@@ -22,6 +22,8 @@ use trouper::envelope::Address;
 /// chat log renderer's own fallback.
 const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
 
+use jinn_preferences_config::schemas::ChatLogConfig;
+
 use crate::hydrate::{HydrateCompleted, HydrateSession};
 use crate::session_store_actor::SessionStoreActor;
 
@@ -146,7 +148,7 @@ impl SessionStoreActor {
         // deep clone has to happen now, or not at all.
         let layout_inputs = self.collect_layout_inputs(&session, &session_id);
 
-        self.state.with_preferences(|ops| {
+        self.state.with_frontend_state(|ops| {
             ops.frontend().update_sections(|sections| {
                 sections
                     .sessions
@@ -315,9 +317,10 @@ impl SessionStoreActor {
         session_id: &SessionId,
         content_width: u16,
     ) -> LayoutChatSession {
-        // One read guard for the preference reads: taking a second would deadlock.
-        let state = self.state.read();
-        let preferences = &state.frontend.preferences;
+        // Resolved through the configuration layer, the same handle every
+        // other consumer reads: a frame that straddles a `reload` sees the new
+        // value rather than a stale copy.
+        let preferences = self.services.config.read::<ChatLogConfig>();
         LayoutChatSession {
             session_id: session_id.clone(),
             content_width,

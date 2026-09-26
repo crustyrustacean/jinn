@@ -107,6 +107,14 @@ pub struct ChatLogViewUi {
     /// stale. Written by the renderer each frame; `0` before the first one,
     /// which the renderer also treats as "do not wrap".
     pub content_width: AtomicU32,
+    /// How many consecutive tool entries the last render collapsed into one.
+    ///
+    /// Published alongside `content_width` for the same reason: a coverage
+    /// probe run off the render thread must build its visual items with the
+    /// same collapse threshold the frame it predicts will use, or the two
+    /// disagree about how many items a history has. `0` before the first
+    /// render, which the probe reads as the built-in default.
+    pub min_collapse_count: AtomicU32,
     /// The set of chat entry IDs whose tool result content is expanded.
     ///
     /// When a tool result entry is expanded, its full content is shown
@@ -167,6 +175,7 @@ impl Clone for ChatLogViewUi {
             viewport_height: AtomicU32::new(self.viewport_height.load(Ordering::Relaxed)),
             blank_count: AtomicU32::new(self.blank_count.load(Ordering::Relaxed)),
             content_width: AtomicU32::new(self.content_width.load(Ordering::Relaxed)),
+            min_collapse_count: AtomicU32::new(self.min_collapse_count.load(Ordering::Relaxed)),
             expanded_entries: self.expanded_entries.clone(),
             saved_history_position: self.saved_history_position.clone(),
             shown_ignored_blocks: self.shown_ignored_blocks.clone(),
