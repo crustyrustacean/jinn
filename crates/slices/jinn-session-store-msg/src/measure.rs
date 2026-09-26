@@ -18,6 +18,15 @@ use serde::{Deserialize, Serialize};
 pub struct ChatLogMeasureRequested {
     /// The session whose chat log should be measured.
     pub session_id: SessionId,
+    /// The content width to measure at.
+    ///
+    /// Carried by the requester rather than re-derived on arrival. The width
+    /// belongs to the session that was on screen when the decision was made,
+    /// and by the time the actor sees this the frontend has already switched
+    /// to the target session — so re-deriving it would measure against the
+    /// target's never-rendered width of zero, produce counts no frame can use,
+    /// and have the completion actor reject them as stale.
+    pub content_width: u16,
 }
 
 impl jinn_slices::BusMessage for ChatLogMeasureRequested {}
@@ -32,17 +41,19 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn measure_requested_roundtrips_through_json() {
-        // Given a measure request for a session.
+        // Given a measure request for a session at a width.
         let session_id = SessionId::new();
         let request = ChatLogMeasureRequested {
             session_id: session_id.clone(),
+            content_width: 72,
         };
 
         // When serializing and deserializing it.
         let json = serde_json::to_string(&request).unwrap();
         let round: ChatLogMeasureRequested = serde_json::from_str(&json).unwrap();
 
-        // Then the session id survives.
+        // Then both the session and the width survive.
         assert_eq!(round.session_id, session_id);
+        assert_eq!(round.content_width, 72);
     }
 }

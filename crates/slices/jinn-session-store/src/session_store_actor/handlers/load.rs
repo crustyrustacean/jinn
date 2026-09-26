@@ -127,7 +127,12 @@ impl SessionStoreActor {
             return;
         };
 
-        let layout_inputs = self.collect_layout_inputs(&session, &session_id);
+        // The requester's width, not one re-derived from state: the frontend
+        // has already switched to this session, so its own width is the
+        // never-rendered zero. Measuring there would publish counts no frame
+        // can use and have the completion actor discard them as stale.
+        let layout_inputs =
+            self.collect_layout_inputs_at(&session, &session_id, payload.content_width);
         self.state.with_session(|view| {
             view.session.map().set_active(session_id.clone());
         });
@@ -173,17 +178,35 @@ impl SessionStoreActor {
         session: &ChatSessionState,
         session_id: &SessionId,
     ) -> LayoutChatSession {
+        // From the session that was on screen before this load, which is the
+        // frame that will render the new one.
+        let content_width = {
+            let state = self.state.read();
+            state
+                .session
+                .get(state.session.active_session_id())
+                .map_or(0, ChatSessionState::content_width)
+        };
+        self.collect_layout_inputs_at(session, session_id, content_width)
+    }
+
+    /// The same inputs, at a width the caller has already resolved.
+    ///
+    /// Split out so a caller that knows the width — because it read it before
+    /// changing the active session, and can no longer read it after — does not
+    /// have to re-derive it from state that has since moved on.
+    fn collect_layout_inputs_at(
+        &self,
+        session: &ChatSessionState,
+        session_id: &SessionId,
+        content_width: u16,
+    ) -> LayoutChatSession {
         // One read guard for both reads: taking a second would deadlock.
         let state = self.state.read();
         let preferences = &state.frontend.preferences;
         LayoutChatSession {
             session_id: session_id.clone(),
-            // From the session that was on screen before this load, which is
-            // the frame that will render the new one.
-            content_width: state
-                .session
-                .get(state.session.active_session_id())
-                .map_or(0, ChatSessionState::content_width),
+            content_width,
             entries: session.history().to_vec(),
             // Read from the incoming session rather than the active one: the
             // session was not active when it was still owned here, and its own

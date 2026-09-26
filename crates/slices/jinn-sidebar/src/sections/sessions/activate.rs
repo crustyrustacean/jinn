@@ -92,6 +92,10 @@ fn activate_selected(state: &mut AppState, enter_input: bool) -> IntentResult {
     if needs_measurement {
         IntentResult::new_message(ChatLogMeasureRequested {
             session_id: target_id,
+            // Carried, not re-read by the actor: the switch above already
+            // happened, so by the time the message is handled the width it
+            // needs is no longer derivable from state.
+            content_width,
         })
     } else {
         IntentResult::empty()
@@ -386,5 +390,91 @@ mod tests {
 
         // Then the scope is unchanged.
         assert_eq!(state.frontend.scope(), initial_scope);
+    }
+
+    use jinn_slices::route_publish::PublishSink;
+    use std::sync::Mutex;
+
+    /// A publish sink that keeps every payload published through it.
+    #[derive(Default)]
+    struct RecordingSink {
+        published: Mutex<Vec<(String, serde_json::Value)>>,
+    }
+
+    impl PublishSink for RecordingSink {
+        fn publish_schema(
+            &self,
+            schema_id: trouper::schema::SchemaId,
+            payload: serde_json::Value,
+            name: &'static str,
+        ) {
+            self.published
+                .lock()
+                .expect("sink lock")
+                .push((format!("{schema_id}"), payload));
+            let _ = name;
+        }
+    }
+
+    /// The measure request a result publishes, as the actor will decode it.
+    fn measure_request(result: IntentResult) -> Option<ChatLogMeasureRequested> {
+        let sink = RecordingSink::default();
+        for closure in result.messages {
+            closure(&sink);
+        }
+        let published = sink.published.lock().expect("sink lock");
+        let (_, payload) = published
+            .iter()
+            .find(|(id, _)| id.ends_with("ChatLogMeasureRequested"))
+            .expect("a measure request is published");
+        Some(serde_json::from_value(payload.clone()).expect("decodes"))
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn the_measure_request_carries_the_width_the_chat_log_is_using() {
+        // Given two sessions, the second unmeasured, the first having last
+        // rendered at 72 columns.
+        let (mut state, second) = state_with_two_sessions_cursor_on_second();
+        state.active_session_mut().set_content_width(72);
+
+        // When the sidebar activates the unmeasured session.
+        let result = handle_session_activate(&mut state);
+
+        // Then the request travels with that width.
+        //
+        // The activation has already switched sessions by this point, so an
+        // actor that re-read the width would find the target's never-rendered
+        // zero and measure the whole history at a width nothing renders at.
+        let request = measure_request(result);
+        assert_eq!(
+            request.as_ref().map(|r| r.content_width),
+            Some(72),
+            "the request must carry the width read before the switch"
+        );
+        assert_eq!(request.map(|r| r.session_id), Some(second));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_measured_session_asks_for_nothing_at_all() {
+        // Given two sessions with the second already measured at this width.
+        let (mut state, second) = state_with_two_sessions_cursor_on_second();
+        state.active_session_mut().set_content_width(72);
+        with_measured_active_session(&mut state, 72);
+
+        // When the sidebar activates it.
+        let result = handle_session_activate(&mut state);
+
+        // Then nothing is published, so no spinner can appear.
+        let sink = RecordingSink::default();
+        for closure in result.messages {
+            closure(&sink);
+        }
+        assert!(
+            sink.published.lock().expect("sink lock").is_empty(),
+            "a measured session must not be re-measured"
+        );
+        assert_eq!(state.session.active_session_id(), &second);
     }
 }

@@ -900,6 +900,7 @@ async fn measuring_an_in_memory_session_dispatches_a_layout_job() {
         .harness
         .publish(ChatLogMeasureRequested {
             session_id: target_id.clone(),
+            content_width: 72,
         })
         .await;
 
@@ -924,6 +925,7 @@ async fn a_layout_job_from_a_measurement_measures_at_the_width_on_screen() {
         .harness
         .publish(ChatLogMeasureRequested {
             session_id: target_id.clone(),
+            content_width: 72,
         })
         .await;
 
@@ -947,6 +949,7 @@ async fn a_layout_job_from_a_measurement_makes_the_session_active() {
         .harness
         .publish(ChatLogMeasureRequested {
             session_id: target_id.clone(),
+            content_width: 72,
         })
         .await;
     await_recorded(&jobs, 1, Duration::from_secs(2)).await;
@@ -977,6 +980,7 @@ async fn measuring_an_absent_session_clears_the_load_guard() {
         .harness
         .publish(ChatLogMeasureRequested {
             session_id: missing_id.clone(),
+            content_width: 72,
         })
         .await;
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -1004,6 +1008,7 @@ async fn measuring_an_in_memory_session_never_reads_it_from_the_store() {
         .harness
         .publish(ChatLogMeasureRequested {
             session_id: target_id.clone(),
+            content_width: 72,
         })
         .await;
     await_recorded(&jobs, 1, Duration::from_secs(2)).await;
@@ -1015,4 +1020,86 @@ async fn measuring_an_in_memory_session_never_reads_it_from_the_store() {
         stored.is_none(),
         "the session was never persisted, so no disk read could have served it"
     );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_measured_request_clears_the_load_guard_end_to_end() {
+    // Given the full layout subsystem, and an in-memory session to measure.
+    let fixture = actor_fixture().await;
+    jinn_domain::feat::ui::chat_log::install_layout_actors(
+        fixture.harness.system(),
+        fixture.state.clone(),
+    );
+    let target_id = SessionId::new();
+    {
+        let mut state = fixture.state.write();
+        let mut target = ChatSessionState::new();
+        target.set_session_id(target_id.clone());
+        for index in 0..40 {
+            target.push_entry(jinn_core_types::ChatEntry::user(format!(
+                "a reasonably long message number {index} that will wrap a few times"
+            )));
+        }
+        state.session.insert(target);
+        state.active_session_mut().set_content_width(72);
+        state.session.begin_load(target_id.clone());
+    }
+
+    // When the measurement is requested.
+    fixture
+        .harness
+        .publish(ChatLogMeasureRequested {
+            session_id: target_id.clone(),
+            content_width: 72,
+        })
+        .await;
+
+    // Then the guard is released by the real worker pool and completion actor.
+    let released = poll_until(|| async { !fixture.state.read().session.is_loading() }).await;
+    assert!(
+        released,
+        "the real layout pipeline must clear the guard it was asked to satisfy"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn measuring_after_the_frontend_switched_measures_at_a_usable_width() {
+    // Given the full layout subsystem and an in-memory session.
+    let fixture = actor_fixture().await;
+    jinn_domain::feat::ui::chat_log::install_layout_actors(
+        fixture.harness.system(),
+        fixture.state.clone(),
+    );
+    let target_id = SessionId::new();
+    {
+        let mut state = fixture.state.write();
+        let mut target = ChatSessionState::new();
+        target.set_session_id(target_id.clone());
+        for index in 0..40 {
+            target.push_entry(jinn_core_types::ChatEntry::user(format!(
+                "a reasonably long message number {index} that will wrap a few times"
+            )));
+        }
+        state.session.insert(target);
+        // The session on screen last rendered at 72 columns.
+        state.active_session_mut().set_content_width(72);
+    }
+
+    // When the frontend switches first, then asks for the measurement — which
+    // is the order the sidebar activation uses.
+    let jobs = fixture.harness.spawn_recorder::<LayoutChatSession>().await;
+    fixture.state.write().session.set_active(target_id.clone());
+    fixture
+        .harness
+        .publish(ChatLogMeasureRequested {
+            session_id: target_id.clone(),
+            content_width: 72,
+        })
+        .await;
+
+    // Then the job is measured at the width the chat log is rendering at.
+    let jobs = await_recorded(&jobs, 1, Duration::from_secs(2)).await;
+    assert_eq!(jobs[0].content_width, 72);
 }
