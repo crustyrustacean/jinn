@@ -62,13 +62,17 @@ pub fn update_preview(
 ) -> Option<PreviewSessionRequested> {
     let width = state
         .frontend
-        .with_sections(|s| s.sessions.preview_content_width, || 0)
-        // A zero would request a render wrapped for a zero-width popup, which
-        // can then never match the width the render pass looks the lines up at —
-        // a spinner that never resolves. The render pass records the real width
-        // before its lookup, so a zero here means it has not run yet; anything
-        // wide enough to read is better than rendering at nothing.
-        .max(1);
+        .with_sections(|s| s.sessions.preview_content_width, || 0);
+
+    // A width of zero means the render pass has not yet measured a frame, so
+    // there is nothing to wrap for. Requesting anyway — at a nominal width, or
+    // at whatever stale value a previous frame left behind — produces lines
+    // that can never match the width the render pass looks them up at, and the
+    // preview spins forever. Returning nothing instead leaves the cursor move
+    // that follows the first frame to publish the real request.
+    if width == 0 {
+        return None;
+    }
 
     // The signature is computed over the trailing entries but folded with the
     // *whole* history's length, so it is taken from a borrow of the full
@@ -348,21 +352,91 @@ mod preview_load_tests {
     }
 
     #[rstest::rstest]
-    fn a_request_never_asks_for_a_zero_width() {
-        // Given app state where the render pass has not recorded a width yet —
-        // its first frame, before anything has been drawn.
+    fn a_request_waits_for_a_measured_width() {
+        // Given app state where no frame has been measured yet — the width is
+        // still zero, so there is nothing to wrap for.
         let (mut state, id) = state_with_session(0);
 
         // When the trigger runs.
-        let request = update_preview(&mut state, &id, jinn_slices::empty_config_layer())
-            .expect("a fresh session must request");
+        let request = update_preview(&mut state, &id, jinn_slices::empty_config_layer());
 
-        // Then it asks for a width something can actually be wrapped at. A zero
-        // here produced lines that could never match the width the render pass
-        // looks them up at, so the popup spun forever.
+        // Then it asks for nothing. A request at a width no frame will ever
+        // report produces lines the render pass cannot match, and the popup
+        // spins forever; the pre-render pass measures the width before the
+        // next cursor move republishes.
         assert!(
-            request.content_width > 0,
-            "a preview must never be requested at zero width, got {}",
+            request.is_none(),
+            "no request should be made before a width has been measured"
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_request_names_the_width_the_render_pass_looks_up_at() {
+        // Given app state carrying the width the pre-render pass recorded.
+        let (mut state, id) = state_with_session(3);
+        let measured = 46;
+        state
+            .frontend
+            .update_sections(|s| s.sessions.preview_content_width = measured);
+
+        // When the trigger runs.
+        let request = update_preview(&mut state, &id, jinn_slices::empty_config_layer())
+            .expect("a measured width must request");
+
+        // Then it names exactly that width. A request at any other width can
+        // never match the lookup the render pass performs, which is what left
+        // the popup spinning on a cache entry that had already been filled.
+        assert_eq!(request.content_width, measured);
+    }
+
+    #[rstest::rstest]
+    fn a_completed_preview_is_found_at_the_width_the_render_pass_derives() {
+        // Given a session, and the width the pre-render pass measured for the
+        // frame the render pass will draw.
+        let (mut state, id) = state_with_session(3);
+        let frame_area = ratatui::layout::Rect::new(0, 0, 100, 40);
+        let measured = crate::sections::sessions::preview::preview_content_width(frame_area);
+        state
+            .frontend
+            .update_sections(|s| s.sessions.preview_content_width = measured);
+
+        // When a preview is requested and its result comes back.
+        let request = update_preview(&mut state, &id, jinn_slices::empty_config_layer())
+            .expect("a measured width must request");
+        let signature = request.signature;
+        let generation = request.generation;
+        let width = request.content_width;
+        state.frontend.update_sections(|s| {
+            s.sessions.preview.complete(
+                id.clone(),
+                generation,
+                signature,
+                width,
+                std::sync::Arc::new(Vec::new()),
+            );
+        });
+
+        // When the render pass then looks the preview up, at the width it
+        // derives from the same frame rather than reading back what was stored.
+        let lookup_width = crate::sections::sessions::preview::preview_content_width(frame_area);
+        let found = state.frontend.with_sections(
+            |s| {
+                s.sessions
+                    .preview
+                    .cached(&id, signature, lookup_width)
+                    .is_some()
+            },
+            || false,
+        );
+
+        // Then the preview is found. The two widths are derived from the same
+        // frame by the same function, so a request can never be rendered at
+        // one width and looked up at another — the defect that filled the cache
+        // and still reported a miss on every frame, spinning forever.
+        assert!(
+            found,
+            "a preview rendered at width {} was not found at the width the render pass \
+             looks up at ({lookup_width})",
             request.content_width
         );
     }

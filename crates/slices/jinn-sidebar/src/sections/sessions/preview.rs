@@ -69,6 +69,7 @@ pub fn render_session_preview_for_state(
     ctx: &RenderCtx,
 ) {
     let state = ctx.state;
+
     if state.frontend.sidebar_section() != Some(jinn_sidebar_msg::SidebarSectionId::Sessions) {
         return;
     }
@@ -99,16 +100,11 @@ pub fn render_session_preview_for_state(
         u16::try_from(idx).unwrap_or(u16::MAX),
     );
 
-    let inner_width = preview_width(frame_area).saturating_sub(2).max(1);
-
-    // The width the keyboard path requests at is the one this pass recorded, so
-    // recording happens *before* the lookup: on the very first frame the
-    // recorded width is still `0` (nothing has drawn yet), the request would go
-    // out wrapped for a zero-width popup, and it could never match the width the
-    // lines are looked up at. Seeding it here makes the first request agree.
-    state
-        .frontend
-        .update_sections(|s| s.sessions.preview_content_width = inner_width);
+    // The same derivation the pre-render pass records, with no floor applied:
+    // both sides must produce the identical number, including zero. Flooring
+    // here and not there would put the lookup one column away from the request
+    // that filled it, which is the "loading forever" this whole function guards.
+    let inner_width = preview_content_width(frame_area);
 
     // The cached lines are found by the same identity the keyboard path
     // requested with — session, content, width — so a hit means the worker has
@@ -125,6 +121,19 @@ pub fn render_session_preview_for_state(
         || None,
     );
 
+    // A miss with nothing in flight means the request that should have been
+    // published never arrived — the popup will spin until the next cursor move.
+    // The transient miss that follows a just-published request is normal and
+    // not worth a line; a *stuck* one is the whole bug, so it is reported.
+    if cached.is_none()
+        && !state
+            .frontend
+            .with_sections(|s| s.sessions.preview.is_in_flight_for(&entry.id), || false)
+    {
+        tracing::warn!(session_id=%entry.id, signature, lookup_width=inner_width,
+            recorded_width=state.frontend.with_sections(|s| s.sessions.preview_content_width, || 0),
+            "session preview has nothing cached and nothing in flight");
+    }
     let Some(lines) = cached else {
         // Nothing for this exact session, width, and content. `cached` returning
         // `None` is what distinguishes loading from empty — an empty session
@@ -142,9 +151,24 @@ pub fn render_session_preview_for_state(
 }
 
 /// Computes the popup width: 60% of frame area, min 30, max frame width.
-fn preview_width(frame_area: Rect) -> u16 {
+///
+/// The width a preview's lines are wrapped at, and the width it is cached
+/// under. Public because the keyboard path has to name the same width when it
+/// asks for a render: if the two sides disagreed by even one column, the
+/// rendered lines could never match the lookup and the preview would spin
+/// forever. Both derive it here rather than each measuring for itself.
+#[must_use]
+pub fn preview_width(frame_area: Rect) -> u16 {
     let w = (f32::from(frame_area.width) * 0.6).ceil() as u16;
     w.max(30).min(frame_area.width)
+}
+
+/// The width a preview's lines are wrapped at, inside the popup's borders.
+///
+/// `0` before a frame has been measured: there is no width to wrap for yet.
+#[must_use]
+pub fn preview_content_width(frame_area: Rect) -> u16 {
+    preview_width(frame_area).saturating_sub(2)
 }
 
 /// How far through the spin the current frame is.

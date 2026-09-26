@@ -101,6 +101,18 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
         wstate.frontend.sidebar_width,
         full_width,
     );
+    // The session preview wraps its lines at a width derived from the frame, and
+    // the keyboard path asks for those lines by name. Both sides must name the
+    // same width or the rendered lines can never match the lookup and the
+    // preview spins forever. It is recorded here, in the one place that runs
+    // every frame with the true area and no early return — recording it from
+    // the preview's own render pass would leave the window between a cursor
+    // move and the next frame asking for a stale width.
+    let preview_width = jinn_sidebar::sections::sessions::preview::preview_content_width(area);
+    wstate
+        .frontend
+        .update_sections(|s| s.sessions.preview_content_width = preview_width);
+
     // The terminal overlay's inner rect sizes the pty (WYSIWYG). Computed
     // every frame while open; deduped by the mirror, sent through the bridge.
     if matches!(

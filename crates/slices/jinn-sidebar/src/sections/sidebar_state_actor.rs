@@ -153,6 +153,8 @@ impl MsgHandler<SessionTeardownFinished> for SidebarStateActor {
 
 impl MsgHandler<PreviewSessionRequested> for SidebarStateActor {
     async fn handle(&mut self, msg: &PreviewSessionRequested, ctx: &mut MsgCtx<'_>) {
+        tracing::info!(session_id=%msg.session_id, generation=msg.generation,
+            width=msg.content_width, "ACTOR arming deadline");
         // The arming already happened on the keyboard path, before this message
         // was published — the render pass needs the spinner up the instant the
         // cursor moves, not a bus round trip later. What this handler adds is
