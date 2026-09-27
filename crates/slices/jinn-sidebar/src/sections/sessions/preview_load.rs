@@ -26,8 +26,10 @@
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
+#[cfg(test)]
+use jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT;
 use jinn_chat_log_view_msg::{
-    PREVIEW_ENTRY_COUNT, PREVIEW_REQUEST_ENTRY_COUNT, PreviewSessionRequested, entry_is_settled,
+    PREVIEW_REQUEST_ENTRY_COUNT, PreviewSessionRequested, entry_is_settled,
 };
 use jinn_core_types::{ChatEntry, SessionId};
 use jinn_kernel::common::app_state::AppState;
@@ -49,17 +51,47 @@ use crate::sections::sessions::state::sorted_open_sessions;
 /// turn. The popup then missed its own lookup on every frame it was waiting for
 /// that render and drew a spinner over lines it already had.
 ///
-/// The history's *length* is still folded, so dropping trailing entries stays
+/// `reachable_entries` bounds the fold by *entry count* alone. A preview reaches
+/// back until its line budget is full, so which entries it shows depends on how
+/// tall each one is, and the set shifts as the conversation grows: a new short
+/// entry can push a tall one out of the window without the tall one changing at
+/// all. Folding a fixed count of entries would leave the key blind to that, and
+/// the preview would keep serving lines for a window that no longer exists.
+///
+/// The history's *length* is folded as well, so dropping trailing entries stays
 /// distinguishable from those entries merely changing content: a pruned history
 /// must not serve the longer one's preview.
 #[must_use]
 pub fn preview_signature(entries: &[ChatEntry], max_entries: usize) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    for entry in settled_window(entries, max_entries) {
+    for entry in reachable_entries(entries, max_entries) {
         entry.content_signature().hash(&mut hasher);
     }
     entries.len().hash(&mut hasher);
     hasher.finish()
+}
+
+/// Every entry a preview can reach, oldest first.
+///
+/// The settled entries a preview might render, without a bound on how much it
+/// ends up showing — a preview walks back until its *line* budget is full, so
+/// this is a reachability question, not a display one.
+///
+/// Every entry a preview could reach is folded, not the five it happens to show
+/// most of the time. The window's membership moves as the conversation grows
+/// (see [`preview_signature`]), so a key covering only a fixed count of the
+/// newest entries would stop tracking what is actually on screen.
+#[must_use]
+pub fn reachable_entries(entries: &[ChatEntry], max_entries: usize) -> Vec<&ChatEntry> {
+    entries
+        .iter()
+        .filter(|entry| entry_is_settled(entry))
+        .rev()
+        .take(max_entries)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect()
 }
 
 /// The up-to-`max_entries` most recent *settled* entries, oldest first.
@@ -121,7 +153,7 @@ pub fn update_preview(
     // changing, and a stale preview would be served after a prune.
     let signature = {
         let session = state.session.get(session_id)?;
-        preview_signature(session.history(), PREVIEW_ENTRY_COUNT)
+        preview_signature(session.history(), PREVIEW_REQUEST_ENTRY_COUNT)
     };
 
     if preview_is_current(state, session_id, signature, width) {
@@ -262,7 +294,7 @@ mod preview_load_tests {
     /// The signature the trigger would compute for `id` right now.
     fn signature_of(state: &AppState, id: &SessionId) -> u64 {
         let session = state.session.get(id).expect("session");
-        preview_signature(session.history(), PREVIEW_ENTRY_COUNT)
+        preview_signature(session.history(), PREVIEW_REQUEST_ENTRY_COUNT)
     }
 
     /// Marks the current session's preview as served, so the trigger sees a hit.
@@ -963,7 +995,7 @@ mod preview_load_tests {
         for i in 0..7 {
             session.push_entry(ChatEntry::assistant(format!("entry {i}")));
         }
-        let before = preview_signature(session.history(), PREVIEW_ENTRY_COUNT);
+        let before = preview_signature(session.history(), PREVIEW_REQUEST_ENTRY_COUNT);
 
         // When its earliest entries are pruned, leaving the same trailing window.
         let trimmed = ChatSessionState::new();
@@ -987,7 +1019,7 @@ mod preview_load_tests {
         let signature_of_text = |text: &str| {
             let mut session = ChatSessionState::new();
             session.push_entry(ChatEntry::user(text));
-            preview_signature(session.history(), PREVIEW_ENTRY_COUNT)
+            preview_signature(session.history(), PREVIEW_REQUEST_ENTRY_COUNT)
         };
 
         // When that entry's content changes.
@@ -1010,7 +1042,7 @@ mod preview_load_tests {
             reply.timing =
                 jinn_core_types::entry_timing::EntryTiming::streamed(jiff::Timestamp::now());
             session.push_entry(reply);
-            preview_signature(session.history(), PREVIEW_ENTRY_COUNT)
+            preview_signature(session.history(), PREVIEW_REQUEST_ENTRY_COUNT)
         };
 
         // When that reply grows.
@@ -1034,7 +1066,7 @@ mod preview_load_tests {
         let signature = |text: &str| {
             let mut session = ChatSessionState::new();
             session.push_entry(ChatEntry::assistant(text));
-            preview_signature(session.history(), PREVIEW_ENTRY_COUNT)
+            preview_signature(session.history(), PREVIEW_REQUEST_ENTRY_COUNT)
         };
 
         // When the same content is signed twice.
@@ -1046,6 +1078,32 @@ mod preview_load_tests {
     }
 
     #[rstest::rstest]
+    fn the_signature_moves_when_an_entry_leaves_the_reachable_window() {
+        // Given a helper that signs a history of `count` one-line entries.
+        let signature_of_history = |count: usize| {
+            let mut session = ChatSessionState::new();
+            for i in 0..count {
+                session.push_entry(ChatEntry::user(format!("entry {i}")));
+            }
+            preview_signature(session.history(), PREVIEW_REQUEST_ENTRY_COUNT)
+        };
+        let full = signature_of_history(40);
+
+        // When entries are pruned off the front until one the preview could reach
+        // is gone.
+        let pruned = signature_of_history(30);
+
+        // Then the signature moved. A preview reaches back until its line budget
+        // is full, so pruning shifts which entries are in view; a key blind to
+        // that would keep serving lines for a window that no longer exists, and
+        // the gap would stay on screen for good.
+        assert_ne!(
+            full, pruned,
+            "pruning entries the preview could reach must invalidate it"
+        );
+    }
+
+    #[rstest::rstest]
     fn the_signature_moves_when_the_history_grows() {
         // Given a helper that builds a session holding `count` assistant
         // entries of the same text and signs it.
@@ -1054,7 +1112,7 @@ mod preview_load_tests {
             for _ in 0..count {
                 session.push_entry(ChatEntry::assistant("hi"));
             }
-            preview_signature(session.history(), PREVIEW_ENTRY_COUNT)
+            preview_signature(session.history(), PREVIEW_REQUEST_ENTRY_COUNT)
         };
 
         // When a one-entry and a two-entry history are signed.

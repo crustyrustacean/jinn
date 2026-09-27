@@ -20,30 +20,36 @@ use jinn_core_types::{ChatEntry, ChatEntryId, SessionId};
 use jinn_slices::BusMessage;
 use serde::{Deserialize, Serialize};
 
-/// Number of trailing history entries a session preview shows.
+/// Number of trailing history entries a session preview *reaches*.
 ///
-/// A preview is a *glance*, not a transcript: enough tail to recognize where
-/// the conversation left off, few enough entries that the wrap work stays
-/// bounded no matter how large the session behind it is.
-pub const PREVIEW_ENTRY_COUNT: usize = 5;
+/// How far back a preview will walk to fill itself, not how many messages it
+/// tries to show. A glance wants the recent conversation, but a preview that
+/// stops at a fixed count of messages leaves rows empty whenever those messages
+/// are short: five one-line messages render about fifteen rows against a
+/// twenty-row budget, and the popup is a quarter blank with a gap at the top.
+///
+/// So the reach is set by the budget rather than by taste. A message occupies at
+/// least one rendered row plus its surrounding padding, so this is the number
+/// of messages it takes for the budget to be unreachable in principle — past
+/// this the walk is always full and the count no longer matters.
+pub const PREVIEW_ENTRY_COUNT: usize = 24;
 
 /// Trailing history entries a preview *request* carries.
 ///
-/// More than [`PREVIEW_ENTRY_COUNT`] because a preview skips entries that are
-/// still accumulating tokens, and the requester has to hand the worker enough
-/// history to find the same settled window the requester itself found. Carrying
-/// only the trailing five would let a reply still in production push the
-/// settled entries out of the slice entirely, and the worker would render a
-/// shorter window than the one the key was computed over — the two sides would
-/// disagree by construction.
+/// A little more than [`PREVIEW_ENTRY_COUNT`], for two reasons. A preview skips
+/// entries still accumulating tokens, so a reply in production must not be able
+/// to push the settled entries out of the slice; and the requester folds the
+/// entries it considers reachable into the preview's key, so the slice has to
+/// cover everything the worker might reach for or the two sides would compute
+/// the key over different histories.
 ///
 /// Bounded rather than unbounded: a whole long history copied per keystroke is
-/// the cost the trailing slice exists to avoid, and sixteen entries is far more
-/// than a five-entry window can ever need.
-pub const PREVIEW_REQUEST_ENTRY_COUNT: usize = 16;
+/// the cost a trailing slice exists to avoid, and a preview displays at most its
+/// last twenty rows however much history it was handed.
+pub const PREVIEW_REQUEST_ENTRY_COUNT: usize = 32;
 
-/// Rendered columns of an in-production entry's text a continuation marker
-/// shows.
+/// Rendered columns of an in-production entry's previewed text a continuation
+/// marker shows.
 ///
 /// A marker stands in for a reply that may be thousands of lines long. This is
 /// enough of its tail to recognize what it is saying and to see it is still

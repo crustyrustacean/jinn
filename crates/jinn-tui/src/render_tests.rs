@@ -425,7 +425,7 @@ fn cache_preview_as_answered(app: &crate::TuiApp) {
         .with_sections(|s| s.sessions.preview_content_width, || 0);
     let signature = jinn_sidebar::sections::sessions::preview_load::preview_signature(
         state.active_session().history(),
-        jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT,
+        jinn_chat_log_view_msg::PREVIEW_REQUEST_ENTRY_COUNT,
     );
     let armed = state
         .frontend
@@ -456,7 +456,7 @@ fn fill_preview_cache(app: &crate::TuiApp) {
         .with_sections(|s| s.sessions.preview_content_width, || 0);
     let signature = jinn_sidebar::sections::sessions::preview_load::preview_signature(
         state.active_session().history(),
-        jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT,
+        jinn_chat_log_view_msg::PREVIEW_REQUEST_ENTRY_COUNT,
     );
     let theme = state.frontend.theme.clone();
     let ctx = jinn_chat_log_view::chat_log::RenderContext {
@@ -472,7 +472,7 @@ fn fill_preview_cache(app: &crate::TuiApp) {
     let lines = jinn_chat_log_view::kernel_element::render_preview(
         state.active_session().history(),
         &ctx,
-        jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT,
+        jinn_chat_log_view_msg::PREVIEW_REQUEST_ENTRY_COUNT,
         jinn_chat_log_view_msg::PREVIEW_MAX_LINES,
     );
     let armed = state

@@ -226,6 +226,15 @@ impl MsgHandler<LayoutChatSession> for LayoutWorkerActor {
 /// trailing ones, so an in-production entry at the end does not shrink the
 /// window.
 ///
+/// The window is opened by *lines*, not by entries. `max_entries` is a bound on
+/// how far back the walk may reach, not a claim about how much it can show: a
+/// history whose messages are tall fills on the line budget almost immediately,
+/// and one whose messages are one line each keeps reaching back until the budget
+/// is met. A fixed entry count cannot fill a fixed line budget — one long
+/// message inside five entries overruns `max_lines` on its own, gets drained
+/// from the front, and leaves the preview a few rows short with a gap above them,
+/// and five one-line messages cannot fill twenty rows between them.
+///
 /// Overflow is dropped from the *front*: the last line is the one the user is
 /// looking for, and a preview truncated at the end would show them the oldest
 /// text in the window.
@@ -236,52 +245,40 @@ pub fn render_preview(
     max_entries: usize,
     max_lines: usize,
 ) -> Vec<ratatui::text::Line<'static>> {
-    // Entries in production are lifted out first, so `max_entries` bounds the
-    // *settled* entries rendered — a marker never displaces settled text. Any
-    // entry before the last `max_entries` settled ones is not previewed at all.
-    let settled = jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT.min(max_entries);
-    let window = settled_start(entries, settled);
-    let mut lines: Vec<ratatui::text::Line<'static>> = entries
-        .iter()
-        .skip(window)
-        .flat_map(|entry| {
-            if entry_is_settled(entry) {
-                entry_to_lines(entry, ctx)
-            } else {
-                continuation_marker(entry, ctx, max_lines)
-            }
-        })
-        .collect();
+    let mut lines: Vec<ratatui::text::Line<'static>> = Vec::new();
+    let mut settled_seen = 0usize;
+
+    // Walking backwards, newest first, prepending as we go. Two things stop the
+    // walk: the line budget, and the reach bound. Which binds depends on the
+    // history, and neither is allowed to leave the preview short when the other
+    // could still fill it.
+    for entry in entries.iter().rev() {
+        if settled_seen >= max_entries {
+            break;
+        }
+        if entry_is_settled(entry) {
+            settled_seen += 1;
+        }
+        let rendered: Vec<ratatui::text::Line<'static>> = if entry_is_settled(entry) {
+            entry_to_lines(entry, ctx)
+        } else {
+            continuation_marker(entry, ctx, max_lines)
+        };
+        // Whether the budget was already met *before* this entry, so the last
+        // entry to reach the budget is still rendered and only the rows above it
+        // are dropped. Testing the total alone would drop the whole entry and
+        // lose its newest rows.
+        let was_full = lines.len() >= max_lines;
+        lines.splice(..0, rendered);
+        if was_full || lines.len() >= max_lines {
+            break;
+        }
+    }
 
     if lines.len() > max_lines {
         lines.drain(..lines.len() - max_lines);
     }
     lines
-}
-
-/// Where the preview's window starts: the index of the oldest of the
-/// `max_entries` most recent *settled* entries.
-///
-/// Scanning backwards and skipping in-production entries is what makes an
-/// entry still streaming sit *inside* the window rather than at the end of it.
-/// Taking the trailing `max_entries` and then filtering would let a single
-/// production entry push four settled entries out of the preview.
-///
-/// The window deliberately extends forward to the *end* of the history rather
-/// than stopping at the last settled entry, so an entry in production and
-/// anything queued behind it both get a marker. They are all still being
-/// produced, and the newest is the row the user is reading.
-fn settled_start(entries: &[jinn_core_types::ChatEntry], max_entries: usize) -> usize {
-    let Some((index, _)) = entries
-        .iter()
-        .enumerate()
-        .rev()
-        .filter(|(_, entry)| entry_is_settled(entry))
-        .nth(max_entries)
-    else {
-        return 0;
-    };
-    index + 1
 }
 
 /// The continuation marker standing in for an entry still in production.

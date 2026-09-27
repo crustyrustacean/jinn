@@ -944,3 +944,102 @@ fn a_streaming_tool_call_is_excluded_from_the_settled_set() {
         "the marker must carry the arguments streamed so far"
     );
 }
+
+#[rstest::rstest]
+fn a_short_tail_reaches_back_for_more_entries_to_fill_the_budget() {
+    // Given a history where one entry is large enough to overrun the line budget
+    // on its own, followed by a tail of tiny ones — at a width where the
+    // oversized entry alone exceeds the whole budget.
+    let mut entries = Vec::new();
+    entries.push(ChatEntry::user(
+        std::iter::repeat_n("w", 500).collect::<String>(),
+    ));
+    for i in 0..3 {
+        entries.push(ChatEntry::user(format!("s{i}")));
+    }
+
+    // When the worker renders its preview at the real bounds.
+    let lines = render_preview(
+        &entries,
+        &preview_ctx(40),
+        jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT,
+        jinn_chat_log_view_msg::PREVIEW_MAX_LINES,
+    );
+
+    // Then the budget is *filled*. Bounding the window by a handful of entries
+    // would stop after the four here, drain the oversized entry's rows from the
+    // front, and leave the preview a few rows short with a gap above them.
+    assert_eq!(
+        lines.len(),
+        20,
+        "the preview must fill its budget, got {} rows",
+        lines.len()
+    );
+}
+
+#[rstest::rstest]
+fn a_preview_of_only_short_entries_fills_its_budget() {
+    // Given a history of nothing but one-line messages.
+    let entries = preview_entries(20);
+
+    // When the worker renders its preview at the real reach bound.
+    let lines = render_preview(
+        &entries,
+        &preview_ctx(40),
+        jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT,
+        jinn_chat_log_view_msg::PREVIEW_MAX_LINES,
+    );
+
+    // Then the budget is met, and met from real entries rather than padding. A
+    // handful of one-line messages cannot fill twenty rows; the walk has to keep
+    // going back through the history to get there.
+    assert_eq!(
+        lines.len(),
+        20,
+        "a preview of short messages must still fill its budget, got {} rows",
+        lines.len()
+    );
+}
+
+#[rstest::rstest]
+fn reaching_past_the_entry_bound_does_not_render_unbounded_history() {
+    // Given a very long history of one-line messages.
+    let entries = preview_entries(500);
+
+    // When the worker renders its preview.
+    let lines = render_preview(&entries, &preview_ctx(40), 5, 20);
+
+    // Then it still renders only the reach bound's worth of entries — the walk
+    // is bounded, and the budget is filled from a bounded reach rather than from
+    // however much history the session happens to have.
+    let distinct = visible_text(&lines)
+        .into_iter()
+        .filter(|text| text.starts_with("entry "))
+        .count();
+    assert!(
+        distinct <= jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT,
+        "a preview must not render an unbounded tail of history, saw {distinct} entries"
+    );
+}
+
+#[rstest::rstest]
+fn a_history_shorter_than_the_budget_is_not_padded_out() {
+    // Given a history holding one short message — less content than the budget.
+    let entries = preview_entries(1);
+
+    // When the worker renders its preview at the real bounds.
+    let lines = render_preview(
+        &entries,
+        &preview_ctx(40),
+        jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT,
+        jinn_chat_log_view_msg::PREVIEW_MAX_LINES,
+    );
+
+    // Then it holds what there was, and nothing else. A preview that padded to
+    // the budget would invent content the session does not have.
+    assert_eq!(
+        visible_text(&lines),
+        vec!["entry 0"],
+        "a session with less content than the budget must render exactly that"
+    );
+}

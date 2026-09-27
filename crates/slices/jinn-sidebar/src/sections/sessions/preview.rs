@@ -31,8 +31,10 @@ use crate::sections::sessions::state::sorted_open_sessions;
 use jinn_chat_log_view::chat_log::RenderContext;
 #[cfg(test)]
 use jinn_chat_log_view::kernel_element::render_preview as render_preview_lines;
+#[cfg(test)]
 use jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT;
 use jinn_chat_log_view_msg::PREVIEW_MAX_LINES;
+use jinn_chat_log_view_msg::PREVIEW_REQUEST_ENTRY_COUNT;
 use jinn_kernel::common::app_state::AppState;
 use jinn_session_state::ChatSessionState;
 use jinn_slices::DrawContext;
@@ -110,7 +112,7 @@ pub fn render_session_preview_for_state(
     // requested with — session, content, width — so a hit means the worker has
     // already wrapped exactly this text at exactly this width. The `cloned` is
     // an `Arc` refcount bump, not a copy of the rendered lines.
-    let signature = preview_signature(session.history(), PREVIEW_ENTRY_COUNT);
+    let signature = preview_signature(session.history(), PREVIEW_REQUEST_ENTRY_COUNT);
     let cached = state.frontend.with_sections(
         |s| {
             s.sessions
@@ -696,20 +698,26 @@ mod worker_tests {
 
     #[rstest::rstest]
     fn the_worker_previews_only_the_trailing_entries() {
-        // Given a session with far more entries than the preview shows.
+        // Given a session with far more entries than the preview reaches back
+        // over.
         let session = session_with(50);
 
         // When the worker renders its preview.
         let text = preview_text(&session);
 
-        // Then the oldest entries are left out.
+        // Then the oldest entries are left out. The walk is bounded even though
+        // it is budget-driven: filling twenty rows does not license reading the
+        // whole history.
         assert!(
             !text.contains("message 0"),
             "the preview must not include the oldest entry"
         );
+        // The walk stops at the line budget long before the reach bound on a
+        // history of three-row messages, so the preview starts where twenty rows
+        // of tail ends rather than at the reach bound itself.
         assert!(
-            text.contains(&format!("message {}", 50 - PREVIEW_ENTRY_COUNT)),
-            "the preview must start at the first of the trailing entries"
+            !text.contains(&format!("message {}", 50 - PREVIEW_ENTRY_COUNT - 1)),
+            "the preview must stop once its budget is full, not walk the reach bound"
         );
     }
 
