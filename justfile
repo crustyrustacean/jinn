@@ -900,9 +900,20 @@ build-release-tarball TARGET="x86_64-unknown-linux-gnu":
             # no [target.*] config is checked in, so native Windows builders
             # are unaffected. +crt-static keeps the binary self-contained
             # (no VC runtime needed).
+            #
+            # -A linker_messages silences rustc's `linker_messages` lint, which
+            # is on by default and promotes linker *stderr* to a Rust warning.
+            # The static CRT .lib files reference Microsoft-internal debug-info
+            # PDBs (D:\a\_work\1\s\binaries\...) that are never distributed, so
+            # lld-link emits ~60 LNK4099 "Cannot use debug info" lines per link.
+            # This is not Linux-cross-compile-specific: the lint fires for
+            # every developer on every MSVC link. Only debug info is dropped —
+            # the linked binary is unaffected. The cost is that other linker
+            # warnings (LNK4217, LNK4199, ...) are hidden as well; `release`
+            # validates the artifact structurally instead.
             export XWIN_ARCH=x86_64
             export CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=lld-link
-            export RUSTFLAGS="-Ctarget-feature=+crt-static"
+            export RUSTFLAGS="-Ctarget-feature=+crt-static -A linker_messages"
             cargo xwin build --release --target "${TARGET}"
             ;;
         *)
@@ -1002,16 +1013,12 @@ release TAG:
     TARBALL_LINUX="jinn-x86_64-unknown-linux-gnu-v${VERSION}.tgz"
     TARBALL_WINDOWS="jinn-x86_64-pc-windows-msvc-v${VERSION}.tgz"
 
-    # --- 3. Create the release if it doesn't exist, else upload ---
-    if gh release view "{{TAG}}" --repo "${REPO}" >/dev/null 2>&1; then
-        echo "==> Uploading tarballs to existing release {{TAG}}"
-        gh release upload "{{TAG}}" "${TARBALL_LINUX}" "${TARBALL_WINDOWS}" --repo "${REPO}" --clobber
-    else
-        echo "==> Creating release {{TAG}} and uploading tarballs"
-        gh release create "{{TAG}}" "${TARBALL_LINUX}" "${TARBALL_WINDOWS}" --repo "${REPO}" --generate-notes
-    fi
-
-    # --- 4. Verify the uploaded artifacts locally ---
+    # --- 3. Verify the built artifacts locally, BEFORE publishing anything ---
+    # Every check below must pass before step 4 touches the GitHub release, so
+    # a bad tarball or binary aborts the recipe rather than going live. The
+    # recipe's `set -euo pipefail` makes the first failing check exit 1, which
+    # leaves the release untouched.
+    #
     # The [package.metadata.binstall] templates resolve
     # jinn-<target>-v<version>.tgz -> jinn-<target>-v<version>/<bin><binary-ext>,
     # so the tarball member path IS what binstall looks up. Checking the
@@ -1048,6 +1055,16 @@ release TAG:
         echo "==> Windows binary reports: $(WINEDEBUG=-all wine "${JINN_EXE}" --version 2>/dev/null)"
     else
         echo '==> wine not on PATH; skipping windows binary run'
+    fi
+
+    # --- 4. Create the release if it doesn't exist, else upload ---
+    # Reached only when every check in step 3 passed.
+    if gh release view "{{TAG}}" --repo "${REPO}" >/dev/null 2>&1; then
+        echo "==> Uploading tarballs to existing release {{TAG}}"
+        gh release upload "{{TAG}}" "${TARBALL_LINUX}" "${TARBALL_WINDOWS}" --repo "${REPO}" --clobber
+    else
+        echo "==> Creating release {{TAG}} and uploading tarballs"
+        gh release create "{{TAG}}" "${TARBALL_LINUX}" "${TARBALL_WINDOWS}" --repo "${REPO}" --generate-notes
     fi
 
     echo "==> Done. https://github.com/${REPO}/releases/tag/{{TAG}}"
