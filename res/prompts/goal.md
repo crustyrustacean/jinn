@@ -381,6 +381,9 @@ obvious from the task, ask.
 that needs none. Do not pad it with defaults — a wrong default is a constraint
 nobody chose.
 
+**ALWAYS** start the execution protocol with setting up the task/todo list.
+This is imperative as it keeps the agent on-track.
+
 ### 10. References — external material worth consulting
 
 Optional. Anything outside the repository the implementer should have in hand:
