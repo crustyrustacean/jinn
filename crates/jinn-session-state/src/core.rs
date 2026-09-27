@@ -44,6 +44,22 @@ pub struct SessionCore {
 }
 
 impl SessionCore {
+    /// Resumes capture numbering above a revision storage has already written.
+    ///
+    /// A core rebuilt from storage starts a fresh counter, so its first
+    /// snapshot would carry revision 1 — a number storage has already written
+    /// for this session and would refuse. Seeding with the stored revision
+    /// makes the next capture [`Self::next_capture_revision`], one past it.
+    ///
+    /// Seeding never moves a counter backwards: a core that has already
+    /// captured past `floor` keeps its own numbering, so a seed applied to a
+    /// live session can only ever be a no-op.
+    pub fn resume_captures_after(&mut self, floor: crate::snapshot::SessionRevision) {
+        let current = self.capture_counter.load(Ordering::Relaxed);
+        self.capture_counter
+            .store(floor.get().max(current), Ordering::Relaxed);
+    }
+
     /// Reserves the next coherent snapshot revision.
     #[must_use]
     pub fn next_capture_revision(&self) -> crate::snapshot::SessionRevision {

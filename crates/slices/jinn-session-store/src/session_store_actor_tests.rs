@@ -32,6 +32,13 @@ struct ActorFixture {
     harness: TestHarness,
     state: State,
     store: Arc<SqliteSessionStore>,
+    /// The status bar's cell, taken from the *same* `Slices` the actor holds.
+    ///
+    /// `HarnessServices::services` mints a fresh `Services` — and so a fresh
+    /// registry — on every call, so a test cannot reach the actor's cells
+    /// through the harness. The cell is registered on the actor's own
+    /// `Services` before the spawn and carried out here for reading.
+    status_bar: jinn_slices::cell::TypedCell<jinn_status_bar_msg::StatusBarState>,
 }
 
 async fn actor_fixture() -> ActorFixture {
@@ -53,6 +60,16 @@ async fn actor_fixture() -> ActorFixture {
             jinn_session_store_msg::SessionPickerState::default(),
         )
         .expect("session picker slot is free in a fresh harness");
+    // Production registers this at status-bar activation, which slice
+    // activation in a test harness does not run. Registering it here keeps a
+    // hint assertion from passing vacuously against a missing cell.
+    let status_bar = services
+        .slices
+        .register(
+            jinn_status_bar_msg::status_bar_slot(),
+            jinn_status_bar_msg::StatusBarState::default(),
+        )
+        .expect("status-bar slot is free in a fresh harness");
     let state = State::new(AppState::default());
     let _actor = SessionStoreActor::spawn(
         harness.system(),
@@ -67,6 +84,7 @@ async fn actor_fixture() -> ActorFixture {
         harness,
         state,
         store,
+        status_bar,
     }
 }
 
@@ -752,6 +770,215 @@ async fn loaded_from_archive_appears_in_the_session_list() {
     assert!(
         listed,
         "a session loaded from the archive must be Loaded and listed again"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_session_reloaded_from_storage_can_be_archived_again() {
+    // Given a session saved, archived, and then loaded back — the cycle a
+    // user reaches by picking the same session out of the picker twice.
+    let fixture = actor_fixture().await;
+    let session_id = SessionId::new();
+    let mut live = ChatSessionState::new();
+    live.set_session_id(session_id.clone());
+    live.set_title("lifecycle work".to_owned());
+    live.mark_interacted();
+    live.push_entry(jinn_core_types::ChatEntry::user("first pass"));
+    fixture.state.with_session(|view| {
+        view.session.map().insert(live.clone());
+    });
+    fixture
+        .store
+        .save(&live.capture_snapshot())
+        .await
+        .expect("save session");
+    fixture
+        .harness
+        .publish(ArchiveSession {
+            session_id: session_id.clone(),
+        })
+        .await;
+    let archived =
+        poll_until(|| async { !fixture.state.read().session.contains(&session_id) }).await;
+    assert!(archived, "the first archive should remove the session");
+    fixture
+        .harness
+        .publish(SessionLoadRequested {
+            session_id: session_id.clone(),
+            content_width: Some(60),
+        })
+        .await;
+    let reloaded = poll_until(|| async {
+        fixture
+            .state
+            .read()
+            .session
+            .get(&session_id)
+            .is_some_and(|session| session.session_state() == SessionState::Loaded)
+    })
+    .await;
+    assert!(reloaded, "the session should be live again after a reload");
+
+    // When it is archived a second time.
+    fixture
+        .harness
+        .publish(ArchiveSession {
+            session_id: session_id.clone(),
+        })
+        .await;
+
+    // Then the second archive lands, instead of being refused as a stale write.
+    let removed =
+        poll_until(|| async { !fixture.state.read().session.contains(&session_id) }).await;
+    assert!(removed, "a reloaded session must be archivable again");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn loading_a_session_persists_its_reactivation() {
+    // Given a session saved and left in the store, absent from the live map.
+    let fixture = actor_fixture().await;
+    let session_id = SessionId::new();
+    let mut stored = ChatSessionState::new();
+    stored.set_session_id(session_id.clone());
+    stored.set_title("reactivated".to_owned());
+    stored.mark_interacted();
+    stored.push_entry(jinn_core_types::ChatEntry::user("work"));
+    fixture
+        .store
+        .save(&stored.capture_snapshot())
+        .await
+        .expect("save session");
+    let before = fixture
+        .store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("stored session")
+        .metadata
+        .updated_at;
+
+    // When the session is loaded back. Loading writes to the store on its own:
+    // the reactivated session is stamped as touched, and the sidebar's recency
+    // order is driven by that stamp.
+    fixture
+        .harness
+        .publish(SessionLoadRequested {
+            session_id: session_id.clone(),
+            content_width: Some(60),
+        })
+        .await;
+
+    // Then the reactivation is written, instead of being dropped as stale.
+    let persisted = poll_until(|| async {
+        fixture
+            .store
+            .load_session(&session_id)
+            .await
+            .ok()
+            .flatten()
+            .is_some_and(|snapshot| snapshot.metadata.updated_at > before)
+    })
+    .await;
+
+    assert!(
+        persisted,
+        "a reloaded session's own save must not be silently skipped"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn archiving_a_tree_archives_a_member_that_is_not_live() {
+    // Given a parent with a persisted child, both written to the store more
+    // than once and neither live — the shape a reopened app's sessions have.
+    let fixture = actor_fixture().await;
+    let parent_id = SessionId::new();
+    let child_id = SessionId::new();
+    let mut child = ChatSessionState::new_child(&parent_id, true);
+    child.set_session_id(child_id.clone());
+    child.mark_interacted();
+    child.push_entry(jinn_core_types::ChatEntry::user("child work"));
+    let mut parent = ChatSessionState::new();
+    parent.set_session_id(parent_id.clone());
+    parent.mark_interacted();
+    parent.push_entry(jinn_core_types::ChatEntry::user("parent work"));
+    for session in [&parent, &child] {
+        for _ in 0..3 {
+            fixture
+                .store
+                .save(&session.capture_snapshot())
+                .await
+                .expect("save session");
+        }
+    }
+
+    // When the tree is archived from the parent.
+    fixture
+        .harness
+        .publish(ArchiveSessionTree {
+            root: parent_id.clone(),
+        })
+        .await;
+
+    // Then the not-live child is archived durably, not skipped as a stale write.
+    let archived = poll_until(|| async {
+        let summaries = fixture
+            .store
+            .load_summaries()
+            .await
+            .expect("load summaries");
+        summaries
+            .iter()
+            .all(|summary| summary.session_state == SessionState::Archived)
+    })
+    .await;
+    assert!(
+        archived,
+        "a tree member absent from the live map must still be archived"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_failed_archive_raises_a_hint_naming_the_session() {
+    // Given an active session and a store whose archive transaction will fail,
+    // with the status bar's cell registered by the fixture — the slice is not
+    // activated in this harness, and an unregistered cell would drop the hint
+    // silently and make this assertion vacuous.
+    let fixture = actor_fixture().await;
+    let session_id = {
+        let mut state = fixture.state.write();
+        state.active_session_mut().mark_interacted();
+        state
+            .active_session_mut()
+            .push_entry(jinn_core_types::ChatEntry::user("keep me"));
+        state.session.active_session_id().clone()
+    };
+    fixture
+        .store
+        .pool()
+        .execute("DROP TABLE token_ledger", vec![])
+        .await
+        .expect("drop token ledger");
+
+    // When archiving the session.
+    fixture
+        .harness
+        .publish(ArchiveSession {
+            session_id: session_id.clone(),
+        })
+        .await;
+    let hinted = poll_until(|| async { fixture.status_bar.read().hint.is_some() }).await;
+
+    // Then the failure is on screen, naming the session that would not archive.
+    let hint = fixture.status_bar.read().hint.clone();
+    assert!(hinted, "a failed archive must raise a status hint");
+    assert!(
+        hint.as_deref()
+            .is_some_and(|hint| hint.contains(&session_id.to_string())),
+        "the hint must name the session that failed to archive, got {hint:?}"
     );
 }
 

@@ -53,6 +53,18 @@ impl SessionStoreService {
         self.svc.archive_snapshots(snapshots).await
     }
 
+    /// Returns the highest revision the store has already accepted for a session.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the read fails.
+    pub async fn last_accepted_revision(
+        &self,
+        session_id: &SessionId,
+    ) -> Result<crate::snapshot::SessionRevision, Report<SessionStoreError>> {
+        self.svc.last_accepted_revision(session_id).await
+    }
+
     /// Load lightweight summaries for all sessions.
     ///
     /// # Errors

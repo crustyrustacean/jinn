@@ -261,6 +261,21 @@ impl SessionStore for SqliteSessionStore {
         Ok(())
     }
 
+    async fn last_accepted_revision(
+        &self,
+        session_id: &SessionId,
+    ) -> Result<SessionRevision, Report<SessionStoreError>> {
+        // Read-only: a session this store has never written keeps no entry, so
+        // this must not mint one. Creating it would be harmless today (an
+        // unwritten gate holds revision 0, the floor every fresh session
+        // already starts above) but would make an unwritten session
+        // indistinguishable from one written at revision 0.
+        let Some(gate) = self.save_gates.lock().get(session_id).cloned() else {
+            return Ok(SessionRevision::new(0));
+        };
+        Ok(*gate.lock().await)
+    }
+
     async fn load_summaries(&self) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
         let dao = SessionDao::new(self.pool.clone());
         let rows: Vec<SessionRow> = dao

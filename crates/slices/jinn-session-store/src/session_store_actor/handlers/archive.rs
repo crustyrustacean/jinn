@@ -63,6 +63,40 @@ impl SessionStoreActor {
             })
             .await;
         }
+        self.raise_archive_failed_hint(members, error);
+    }
+
+    /// Tells the user which session failed to archive, and why.
+    ///
+    /// A failed archive used to be a silent no-op: the only listener of
+    /// `SessionArchiveFailed` cleared the row's in-flight tint, so the keypress
+    /// looked like it had done nothing. The hint is the first place the cause
+    /// reaches the screen, and it names the session because a tree archive can
+    /// fail on any one of its members.
+    fn raise_archive_failed_hint(&self, members: &[SessionId], error: &str) {
+        let Some(status) = self
+            .services
+            .slices
+            .reader::<jinn_status_bar_msg::StatusBarState>(&jinn_status_bar_msg::status_bar_slot())
+        else {
+            // The status bar is not activated in every host (a headless test
+            // app, a plugin runtime). A hint with nowhere to land must not be
+            // an error of its own.
+            tracing::debug!(%error, "no status bar to report a failed archive to");
+            return;
+        };
+        let session = members
+            .first()
+            .map_or_else(String::new, ToString::to_string);
+        let message = if members.len() == 1 {
+            format!("could not archive session {session}: {error}")
+        } else {
+            format!(
+                "could not archive {} sessions from {session}: {error}",
+                members.len()
+            )
+        };
+        status.update(|state| state.hint = Some(message));
     }
 
     /// Resolves a root's subtree across loaded sessions and store summaries.
@@ -177,13 +211,50 @@ impl SessionStoreActor {
             let Some(mut snapshot) = snapshot else {
                 continue;
             };
+            // A snapshot read back from the store carries revision 0 — the
+            // store does not persist a revision, because the number is only
+            // meaningful within one process run. A member with no live core has
+            // no counter to draw from, so its revision comes from the store's
+            // record of what it has already accepted, plus one. Writing the
+            // stored value itself would be refused as stale, and writing a
+            // fixed 1 would be refused for any member the store has written
+            // more than once.
             if snapshot.revision.get() == 0 {
-                snapshot.revision = jinn_session_state::SessionRevision::new(1);
+                snapshot.revision = self.next_storable_revision(session_id).await;
             }
             snapshot.metadata.session_state = SessionState::Archived;
             snapshots.push(snapshot);
         }
         (!snapshots.is_empty()).then_some(snapshots)
+    }
+
+    /// Returns a revision the store will accept for a session with no live core.
+    ///
+    /// Falls back to 1 — above the zero an unwritten session holds, and the
+    /// same floor a freshly created session's first capture clears — when the
+    /// store cannot report its own record.
+    async fn next_storable_revision(
+        &self,
+        session_id: &SessionId,
+    ) -> jinn_session_state::SessionRevision {
+        let floor = match self
+            .services
+            .session_store
+            .last_accepted_revision(session_id)
+            .await
+        {
+            Ok(floor) => floor,
+            Err(error) => {
+                tracing::warn!(
+                    ?error,
+                    session_id = %session_id,
+                    "could not read the store's last accepted revision; \
+                     archiving with a minimal revision"
+                );
+                jinn_session_state::SessionRevision::new(0)
+            }
+        };
+        jinn_session_state::SessionRevision::new(floor.get() + 1)
     }
 
     /// Captures immutable tree statistics before dropping the live session.
