@@ -644,89 +644,130 @@ mod term_keybinds_spot_check {
         }
     }
 
+    /// A `KeyEvent` for a printable character with exactly `modifiers` set.
+    fn char_event(c: char, modifiers: Modifiers) -> KeyEvent {
+        KeyEvent {
+            key: Key::Char(c),
+            modifiers,
+        }
+    }
+
+    /// The modifier set of a bare <c-X> chord.
+    fn ctrl_only() -> Modifiers {
+        Modifiers {
+            ctrl: true,
+            alt: false,
+            shift: false,
+        }
+    }
+
+    /// The capture (term:control) and view (term:view) scopes of the
+    /// terminal slice's keymap spot check.
+    ///
+    /// Two scopes, two invariants: capture is hermetic — nothing toggles the
+    /// overlay there, every key forwards to the pty as the bytes a program
+    /// expects — and view binds its own actions while deliberately leaving
+    /// <M-`> and `i` unbound.
+    /// The terminal slice's two keymap scopes, as a spot check over the
+    /// composed keymap.
+    ///
+    /// Two invariants, deliberately exercised through the one keymap the app
+    /// actually composes: capture is hermetic — nothing there toggles the
+    /// overlay, every key forwards to the pty as the bytes a program expects
+    /// — and view binds its own actions while deliberately leaving <M-`> and
+    /// `i` unbound.
     #[rstest::rstest]
     fn capture_hermeticity_and_view_binds_hold_in_composition() {
-        // In capture (term:control): <M-t> stays hermetic — no overlay
-        // intent fires; the key forwards to the pty like any other
-        // (encoded as the ESC-prefix bytes a program expects).
-        let intent = wk(Scope::Dynamic(jinn_term_msg::control_scope())).handle_key(alt_t());
-        assert!(
-            !matches!(&intent, Some(KernelIntent::Dynamic(d)) if d.action == "toggle-overlay"),
-            "<M-t> must not toggle in capture: {intent:?}"
-        );
-        assert!(
-            matches!(&intent, Some(KernelIntent::Dynamic(d)) if d.bytes == vec![0x1b, b't']),
-            "<M-t> in capture must forward as ESC+t: {intent:?}"
-        );
-        // ...printable keys forward with bytes...
-        let intent = wk(Scope::Dynamic(jinn_term_msg::control_scope())).handle_key(KeyEvent {
-            key: Key::Char('a'),
-            modifiers: Modifiers::none(),
-        });
-        let Some(KernelIntent::Dynamic(d)) = &intent else {
-            panic!("capture must forward: {intent:?}");
-        };
-        assert_eq!(d.bytes, b"a".to_vec());
-        // ...<c-c> forwards as ETX...
-        let intent = wk(Scope::Dynamic(jinn_term_msg::control_scope())).handle_key(KeyEvent {
-            key: Key::Char('c'),
-            modifiers: Modifiers::ctrl(),
-        });
-        assert!(matches!(&intent, Some(KernelIntent::Dynamic(d)) if d.bytes == vec![0x03]));
-        // ...f-keys forward...
-        let intent = wk(Scope::Dynamic(jinn_term_msg::control_scope())).handle_key(KeyEvent {
+        // Given the terminal slice's capture scope, queried in the composed
+        // keymap.
+        let capture = || Scope::Dynamic(jinn_term_msg::control_scope());
+
+        // When each of its forwarding keys is pressed there.
+        let alt_t_intent = wk(capture()).handle_key(alt_t());
+        let printable_intent = wk(capture()).handle_key(char_event('a', Modifiers::none()));
+        let ctrl_c_intent = wk(capture()).handle_key(char_event('c', Modifiers::ctrl()));
+        let f4_intent = wk(capture()).handle_key(KeyEvent {
             key: Key::F(4),
             modifiers: Modifiers::none(),
         });
-        assert!(matches!(&intent, Some(KernelIntent::Dynamic(d)) if d.bytes == b"\x1bOS".to_vec()));
-        // ...and the configured toggle beats the catch-all (handback).
-        let intent = wk(Scope::Dynamic(jinn_term_msg::control_scope())).handle_key(KeyEvent {
-            key: Key::Char('g'),
-            modifiers: Modifiers {
-                ctrl: true,
-                alt: false,
-                shift: false,
-            },
-        });
-        let Some(KernelIntent::Dynamic(d)) = &intent else {
-            panic!("toggle must beat catch-all: {intent:?}");
-        };
-        assert_eq!(d.action, "release-control");
+        let ctrl_g_intent = wk(capture()).handle_key(char_event('g', ctrl_only()));
 
-        // In view (term:view): toggle, yank, push, chrome, T resolve.
-        let view = || Scope::Dynamic(jinn_term_msg::view_scope());
-        let intent = wk(view()).handle_key(alt_t());
-        assert!(matches!(&intent, Some(KernelIntent::Dynamic(d)) if d.action == "toggle-overlay"));
-        let intent = wk(view()).handle_key(KeyEvent {
-            key: Key::Char('y'),
-            modifiers: Modifiers::none(),
-        });
-        assert!(matches!(&intent, Some(KernelIntent::Dynamic(d)) if d.action == "yank-screen"));
-        let intent = wk(view()).handle_key(KeyEvent {
-            key: Key::Char('I'),
-            modifiers: Modifiers::none(),
-        });
-        assert!(matches!(&intent, Some(KernelIntent::Dynamic(d)) if d.action == "push-screen"));
-        let intent = wk(view()).handle_key(KeyEvent {
-            key: Key::Char('T'),
-            modifiers: Modifiers::none(),
-        });
+        // Then <M-t> stays hermetic: no overlay intent fires, and the key
+        // forwards to the pty like any other (the ESC-prefix bytes a program
+        // expects).
         assert!(
-            matches!(&intent, Some(KernelIntent::Dynamic(d)) if d.action == "toggle-for-selected")
+            !matches!(&alt_t_intent, Some(KernelIntent::Dynamic(d)) if d.action == "toggle-overlay"),
+            "<M-t> must not toggle in capture: {alt_t_intent:?}"
         );
-        let intent = wk(view()).handle_key(KeyEvent {
-            key: Key::Char('q'),
-            modifiers: Modifiers::none(),
-        });
-        assert!(matches!(intent, Some(KernelIntent::Quit)));
-        let intent = wk(view()).handle_key(KeyEvent {
-            key: Key::Char('?'),
-            modifiers: Modifiers::none(),
-        });
-        assert!(matches!(intent, Some(KernelIntent::ToggleWhichkey)));
+        assert!(
+            matches!(&alt_t_intent, Some(KernelIntent::Dynamic(d)) if d.bytes == vec![0x1b, b't']),
+            "<M-t> in capture must forward as ESC+t: {alt_t_intent:?}"
+        );
+        // And printable keys forward with bytes.
+        let Some(KernelIntent::Dynamic(printable)) = &printable_intent else {
+            panic!("capture must forward: {printable_intent:?}");
+        };
+        assert_eq!(printable.bytes, b"a".to_vec());
+        // And <c-c> forwards as ETX.
+        assert!(matches!(&ctrl_c_intent, Some(KernelIntent::Dynamic(d)) if d.bytes == vec![0x03]));
+        // And f-keys forward.
+        assert!(
+            matches!(&f4_intent, Some(KernelIntent::Dynamic(d)) if d.bytes == b"\x1bOS".to_vec())
+        );
+        // And the configured toggle beats the catch-all (handback).
+        let Some(KernelIntent::Dynamic(handback)) = &ctrl_g_intent else {
+            panic!("toggle must beat catch-all: {ctrl_g_intent:?}");
+        };
+        assert_eq!(handback.action, "release-control");
+    }
 
-        // Deliberately unbound in view: <M-`> and `i`.
-        let intent = wk(view()).handle_key(KeyEvent {
+    /// The same spot check, read from the terminal slice's view scope: its
+    /// own actions resolve, and two keys stay deliberately unbound.
+    #[rstest::rstest]
+    fn view_binds_hold_in_composition() {
+        // Given the terminal slice's view scope, queried in the composed
+        // keymap.
+        let view = || Scope::Dynamic(jinn_term_msg::view_scope());
+
+        // When its bound keys are pressed there.
+        let alt_t_intent = wk(view()).handle_key(alt_t());
+        let yank_intent = wk(view()).handle_key(char_event('y', Modifiers::none()));
+        let push_intent = wk(view()).handle_key(char_event('I', Modifiers::none()));
+        let toggle_for_selected = wk(view()).handle_key(char_event('T', Modifiers::none()));
+        let quit_intent = wk(view()).handle_key(char_event('q', Modifiers::none()));
+        let whichkey_intent = wk(view()).handle_key(char_event('?', Modifiers::none()));
+
+        // Then toggle, yank, push, chrome and T all resolve.
+        assert!(
+            matches!(&alt_t_intent, Some(KernelIntent::Dynamic(d)) if d.action == "toggle-overlay")
+        );
+        assert!(
+            matches!(&yank_intent, Some(KernelIntent::Dynamic(d)) if d.action == "yank-screen")
+        );
+        assert!(
+            matches!(&push_intent, Some(KernelIntent::Dynamic(d)) if d.action == "push-screen")
+        );
+        assert!(
+            matches!(&toggle_for_selected, Some(KernelIntent::Dynamic(d)) if d.action == "toggle-for-selected")
+        );
+        // And `q` quits.
+        assert!(matches!(quit_intent, Some(KernelIntent::Quit)));
+        // And `?` opens which-key.
+        assert!(matches!(
+            whichkey_intent,
+            Some(KernelIntent::ToggleWhichkey)
+        ));
+    }
+
+    /// The view scope's two deliberate gaps: <M-`> and `i` bind nothing.
+    #[rstest::rstest]
+    fn view_leaves_alt_backtick_and_i_unbound() {
+        // Given the terminal slice's view scope, queried in the composed
+        // keymap.
+        let view = || Scope::Dynamic(jinn_term_msg::view_scope());
+
+        // When <M-`> and `i` are pressed there.
+        let alt_backtick = wk(view()).handle_key(KeyEvent {
             key: Key::Char('`'),
             modifiers: Modifiers {
                 ctrl: false,
@@ -734,17 +775,17 @@ mod term_keybinds_spot_check {
                 shift: false,
             },
         });
+        let plain_i = wk(view()).handle_key(char_event('i', Modifiers::none()));
+
+        // Then <M-`> stays unbound.
         assert!(
-            intent.is_none(),
-            "<M-`> must stay unbound in view: {intent:?}"
+            alt_backtick.is_none(),
+            "<M-`> must stay unbound in view: {alt_backtick:?}"
         );
-        let intent = wk(view()).handle_key(KeyEvent {
-            key: Key::Char('i'),
-            modifiers: Modifiers::none(),
-        });
+        // And `i` stays unbound.
         assert!(
-            intent.is_none(),
-            "`i` must stay unbound in view: {intent:?}"
+            plain_i.is_none(),
+            "`i` must stay unbound in view: {plain_i:?}"
         );
     }
 

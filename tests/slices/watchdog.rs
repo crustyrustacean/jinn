@@ -128,14 +128,23 @@ async fn silent_stream_trips_the_stall_watchdog_and_the_marker_lands_in_history(
     // actor's guard accepts → its fold discards the partial entry and
     // pushes the marker via its own `PushChatEntry` handling. Polled
     // against the session's history (the user-visible truth).
+    assert!(
+        wait_for_stall_marker(&app, &session_id).await,
+        "stall retry marker must land in the session history through the real fabric"
+    );
+}
+
+/// Polls the session's history for the stall-retry marker, giving up after
+/// twenty seconds and panicking with the diagnostics that explain why.
+async fn wait_for_stall_marker(app: &TuiApp, session_id: &SessionId) -> bool {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
-    let marker = loop {
+    loop {
         let tripped = app
             .core
             .state
             .read()
             .session
-            .get(&session_id)
+            .get(session_id)
             .is_some_and(|s| {
                 s.history().iter().any(|e| {
                     e.kind_str() == "system"
@@ -144,7 +153,7 @@ async fn silent_stream_trips_the_stall_watchdog_and_the_marker_lands_in_history(
                 })
             });
         if tripped {
-            break true;
+            return true;
         }
         if tokio::time::Instant::now() >= deadline {
             let history_kinds = app
@@ -152,7 +161,7 @@ async fn silent_stream_trips_the_stall_watchdog_and_the_marker_lands_in_history(
                 .state
                 .read()
                 .session
-                .get(&session_id)
+                .get(session_id)
                 .map(|s| {
                     s.history()
                         .iter()
@@ -167,9 +176,5 @@ async fn silent_stream_trips_the_stall_watchdog_and_the_marker_lands_in_history(
             );
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
-    };
-    assert!(
-        marker,
-        "stall retry marker must land in the session history through the real fabric"
-    );
+    }
 }

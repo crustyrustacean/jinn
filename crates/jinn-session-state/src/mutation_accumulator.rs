@@ -142,6 +142,7 @@ mod tests {
         // Given a fresh accumulator.
         let acc = MutationAccumulator::default();
 
+        // When the accumulator is queried for its pending work.
         // Then it is empty with a zero total.
         assert!(acc.is_empty());
         assert_eq!(acc.total_tokens(), 0);
@@ -246,9 +247,11 @@ mod tests {
         b.push(id(1), ContextOverride::ForcedExclude, worker(), 500);
         b.push(id(1), ContextOverride::ForcedInclude, worker(), 300);
 
-        // Then both converge to a ForcedInclude at cost 300.
+        // When both accumulators are drained.
         let da = a.drain();
         let db = b.drain();
+
+        // Then both converge to a ForcedInclude at cost 300.
         assert!(matches!(
             da.first(),
             Some(HistoryMutation::SetContextOverride {

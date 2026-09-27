@@ -2214,6 +2214,8 @@ fn slash_with_content_emits_no_commands() {
 fn slash_autocomplete_shows_new_command() {
     // Given a state where '/' was typed at position 0.
     let mut state = AppState::default_with_scope_focus();
+
+    // When handling InsertChar('/').
     jinn_chat_input::intent::handle_insert_char('/', &mut state);
 
     // Then the autocomplete popup has the /new command.
@@ -2232,6 +2234,8 @@ fn slash_autocomplete_shows_new_command() {
 fn slash_autocomplete_filters_on_typing() {
     // Given a state with '/n' typed.
     let mut state = AppState::default_with_scope_focus();
+
+    // When typing "/n".
     jinn_chat_input::intent::handle_insert_char('/', &mut state);
     jinn_chat_input::intent::handle_insert_char('n', &mut state);
 
@@ -2835,20 +2839,27 @@ fn hash_cursor_reentry_emits_no_commands() {
     assert!(result.message_names.is_empty());
 }
 
-#[rstest::rstest]
-fn cursor_right_past_token_deactivates_autocomplete() {
-    // Given a state with "#code hello" and autocomplete active at token_start=0.
+/// A "#code hello" state with hash autocomplete active at token_start=0 and
+/// the cursor parked at the start of the buffer.
+fn hash_autocomplete_at_cursor_start() -> jinn_kernel::AppState {
     let mut state = AppState::default_with_scope_focus();
     state.update_active_input(|i| i.insert_text("#code hello"));
     state.update_active_input(|i| i.activate_autocomplete(0, AutocompleteTrigger::Hash, vec![]));
-    // Move cursor to start, then right through the token.
-    // token_end = 5 (one past 'e'). Cursor at 5 == token_end, still "in" token.
     state.update_active_input(jinn_chat_input_msg::ChatInputBoxState::move_cursor_to_start);
-    jinn_chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 1 ('c')
-    jinn_chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 2 ('o')
-    jinn_chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 3 ('d')
-    jinn_chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 4 ('e')
-    jinn_chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 5 (space)
+    state
+}
+
+#[rstest::rstest]
+fn cursor_right_to_token_end_keeps_autocomplete_active() {
+    // Given "#code hello" with autocomplete active at token_start=0 and the
+    // cursor at the start of the buffer.
+    let mut state = hash_autocomplete_at_cursor_start();
+
+    // When moving the cursor right through the token to token_end.
+    // token_end = 5 (one past 'e'). Cursor at 5 == token_end, still "in" token.
+    for _ in 0..5 {
+        jinn_chat_input::intent::handle_move_cursor_right(&mut state);
+    }
 
     // Then autocomplete is still active (cursor at token_end).
     assert!(
@@ -2858,9 +2869,18 @@ fn cursor_right_past_token_deactivates_autocomplete() {
             .is_some(),
         "popup should stay open when cursor is at token_end"
     );
+}
 
-    // When moving cursor right one more time to position 6 (past token).
-    jinn_chat_input::intent::handle_move_cursor_right(&mut state);
+#[rstest::rstest]
+fn cursor_right_past_token_deactivates_autocomplete() {
+    // Given "#code hello" with autocomplete active at token_start=0 and the
+    // cursor at the start of the buffer.
+    let mut state = hash_autocomplete_at_cursor_start();
+
+    // When moving the cursor right past the token end to position 6.
+    for _ in 0..6 {
+        jinn_chat_input::intent::handle_move_cursor_right(&mut state);
+    }
 
     // Then autocomplete is deactivated.
     assert!(
@@ -2878,7 +2898,8 @@ fn cursor_right_within_token_keeps_autocomplete_active() {
     let mut state = AppState::default_with_scope_focus();
     state.update_active_input(|i| i.insert_text("#code"));
     state.update_active_input(|i| i.activate_autocomplete(0, AutocompleteTrigger::Hash, vec![]));
-    // Move cursor to start, then right to position 2.
+
+    // When moving the cursor right from the start to position 2.
     state.update_active_input(jinn_chat_input_msg::ChatInputBoxState::move_cursor_to_start);
     jinn_chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 1
     jinn_chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 2
@@ -3587,10 +3608,12 @@ fn cursor_right_within_token_keeps_popup_active() {
     // Given an active @ popup where the cursor is at the start of the filter.
     // Type `@foo`, then move the cursor left twice so it's between `@` and `foo`.
     let mut state = at_popup_with_filter_and_entries("foo", vec![dir_entry("foo")]);
+
+    // When the cursor moves left three times and then right once (back into
+    // the filter).
     for _ in 0..3 {
         let _ = jinn_chat_input::intent::handle_move_cursor_left(&mut state);
     }
-    // Now move right once (into the filter).
     let _ = jinn_chat_input::intent::handle_move_cursor_right(&mut state);
 
     // Then the popup is active again (re-activated on cursor reentry).
@@ -3603,9 +3626,9 @@ fn cursor_right_within_token_keeps_popup_active() {
     );
 }
 
-#[rstest::rstest]
-fn cursor_right_past_token_end_deactivates_popup() {
-    // Given a buffer `@foo bar` with the @ popup active and the cursor after `foo`.
+/// A `@foo bar` buffer with the @ popup deactivated: a space (which closes
+/// the popup) and `bar` typed after `foo`, cursor left back into `foo`.
+fn file_popup_deactivated_by_trailing_bar() -> jinn_kernel::AppState {
     let mut state = AppState::default_with_scope_focus();
     let _ = jinn_chat_input::intent::handle_insert_char('@', &mut state);
     state.frontend.file_picker = FilePickerState::with_entries(vec![dir_entry("foo")]);
@@ -3613,14 +3636,40 @@ fn cursor_right_past_token_end_deactivates_popup() {
     for ch in "foo".chars() {
         let _ = jinn_chat_input::intent::handle_insert_char(ch, &mut state);
     }
-    // Type a space (deactivates the popup), then `bar`, then move the cursor
-    // left back into `foo` to reactivate, then right past the end.
     state.update_active_input(|i| i.insert_text(" bar"));
-    // Reactivate by moving into the token, then move right past it.
     for _ in 0..4 {
         let _ = jinn_chat_input::intent::handle_move_cursor_left(&mut state);
     }
-    // Now move right past the token end (over `foo` and the trailing space).
+    state
+}
+
+#[rstest::rstest]
+fn cursor_left_past_the_token_start_does_not_reactivate_the_popup() {
+    // Given a buffer `@foo bar` whose @ popup was closed by the trailing space.
+    let state = file_popup_deactivated_by_trailing_bar();
+
+    // When reading the input's autocomplete state back.
+    // (The fixture above already walked the cursor left back into `foo`.)
+
+    // Then the popup is still closed — reactivation happens on re-ENTERING
+    // the token from outside it, not on merely moving left inside it.
+    assert!(
+        state
+            .active_session()
+            .with_input(|i| i.autocomplete().clone(), Default::default)
+            .is_none(),
+        "moving left within the token does not reactivate a closed popup"
+    );
+}
+
+#[rstest::rstest]
+fn cursor_right_past_token_end_deactivates_popup() {
+    // Given a buffer `@foo bar` with the @ popup active and the cursor back
+    // inside `foo`.
+    let mut state = file_popup_deactivated_by_trailing_bar();
+
+    // When moving the cursor right past the token end (over `foo` and the
+    // trailing space).
     for _ in 0..4 {
         let _ = jinn_chat_input::intent::handle_move_cursor_right(&mut state);
     }
@@ -3918,17 +3967,27 @@ fn slash_trigger_only_at_position_zero() {
     );
 }
 
-#[rstest::rstest]
-fn delete_grapheme_deactivates_when_cursor_at_token_start_plus_one() {
-    // Given a state with "#test xyz" with autocomplete active, then type a space
-    // to break the token, move cursor left, and delete to hit the boundary.
-    // Actually: use "#test", activate, then insert ' ' (which deactivates),
-    // move cursor left onto the token, delete backward.
-    //
-    // Simpler approach: verify that deleting the last char of "#t" deactivates
-    // and then reactivation occurs. The observable difference is that the
-    // autocomplete filter is empty (not "t") after reactivation.
+/// The chat input's active autocomplete, cloned out of the current session.
+fn active_autocomplete(state: &AppState) -> Option<jinn_chat_input_msg::AutocompleteState> {
+    state
+        .active_session()
+        .with_input(|i| i.autocomplete().clone(), Default::default)
+}
 
+/// The chat input's active autocomplete filter, defaulted to empty.
+fn autocomplete_filter(state: &AppState) -> String {
+    state
+        .active_session()
+        .with_input(
+            jinn_chat_input_msg::ChatInputBoxState::autocomplete_filter,
+            Default::default,
+        )
+        .unwrap_or_default()
+}
+
+/// An Input-scoped state offering one `#test` prompt template, with "#t"
+/// already typed so hash autocomplete is active with filter "t".
+fn state_with_hash_autocomplete_on_test() -> jinn_kernel::AppState {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
@@ -3938,46 +3997,46 @@ fn delete_grapheme_deactivates_when_cursor_at_token_start_plus_one() {
             body: "body".to_owned(),
         }]),
     );
-
     let _ = jinn_chat_input::intent::handle_insert_char('#', &mut state);
     let _ = jinn_chat_input::intent::handle_insert_char('t', &mut state);
+    state
+}
 
-    // Autocomplete should be active with filter "t".
-    assert!(
-        state
-            .active_session()
-            .with_input(|i| i.autocomplete().clone(), Default::default)
-            .is_some()
+#[rstest::rstest]
+fn typing_hash_and_t_activates_autocomplete_with_filter_t() {
+    // Given an Input-scoped state offering a `#test` prompt template.
+    let state = state_with_hash_autocomplete_on_test();
+
+    // When reading the input's autocomplete state back.
+    // (The fixture above already typed "#t" through the input handlers.)
+
+    // Then autocomplete is active.
+    assert!(active_autocomplete(&state).is_some());
+    // And its filter is "t".
+    assert_eq!(
+        autocomplete_filter(&state),
+        "t",
+        "filter should be 't' before deletion"
     );
-    let filter_before = state
-        .active_session()
-        .with_input(
-            jinn_chat_input_msg::ChatInputBoxState::autocomplete_filter,
-            Default::default,
-        )
-        .unwrap_or_default();
-    assert_eq!(filter_before, "t", "filter should be 't' before deletion");
+}
+
+#[rstest::rstest]
+fn delete_grapheme_deactivates_when_cursor_at_token_start_plus_one() {
+    // Given "#t" with hash autocomplete active and filter "t".
+    let mut state = state_with_hash_autocomplete_on_test();
 
     // When deleting back to "#" (cursor moves to position 1 = token_start + 1).
     let _ = jinn_chat_input::intent::handle_delete_grapheme(&mut state);
 
     // Then autocomplete reactivates with empty filter (the 't' was deleted).
     assert!(
-        state
-            .active_session()
-            .with_input(|i| i.autocomplete().clone(), Default::default)
-            .is_some(),
+        active_autocomplete(&state).is_some(),
         "autocomplete should reactivate after deleting back to #"
     );
-    let filter_after = state
-        .active_session()
-        .with_input(
-            jinn_chat_input_msg::ChatInputBoxState::autocomplete_filter,
-            Default::default,
-        )
-        .unwrap_or_default();
+    // And the filter it reactivates with is empty, not "t".
     assert_eq!(
-        filter_after, "",
+        autocomplete_filter(&state),
+        "",
         "filter should be empty after deleting the filter char"
     );
 }
@@ -4016,11 +4075,9 @@ fn delete_forward_deactivates_when_cursor_at_token_start() {
     );
 }
 
-#[rstest::rstest]
-fn cursor_move_left_deactivates_when_cursor_before_token() {
-    // Given "a #test" - cursor at the 'a' position is BEFORE the '#' token.
-    // Moving left from within the token to before it should deactivate permanently.
-
+/// An Input-scoped state with "a #test" typed, offering a `#test` template.
+/// Position 0='a', 1=' ', 2='#', 3='t', 4='e'.
+fn state_with_typed_a_hash_test() -> jinn_kernel::AppState {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
@@ -4030,53 +4087,65 @@ fn cursor_move_left_deactivates_when_cursor_before_token() {
             body: "body".to_owned(),
         }]),
     );
+    for ch in "a #test".chars() {
+        let _ = jinn_chat_input::intent::handle_insert_char(ch, &mut state);
+    }
+    state
+}
 
-    // Type "a #test" - space before '#', 'a' before that.
-    let _ = jinn_chat_input::intent::handle_insert_char('a', &mut state);
-    let _ = jinn_chat_input::intent::handle_insert_char(' ', &mut state);
-    let _ = jinn_chat_input::intent::handle_insert_char('#', &mut state);
-    let _ = jinn_chat_input::intent::handle_insert_char('t', &mut state);
-    let _ = jinn_chat_input::intent::handle_insert_char('e', &mut state);
-    let _ = jinn_chat_input::intent::handle_insert_char('s', &mut state);
-    let _ = jinn_chat_input::intent::handle_insert_char('t', &mut state);
-
-    // Move cursor to start then right to position 4 (within "#te|st").
+/// "a #test" with the cursor moved to start and then right to position 4
+/// (within "#te|st"), where the popup is active — asserted by
+/// [`cursor_inside_hash_token_reactivates_autocomplete`], which drives this
+/// same fixture.
+fn a_hash_test_with_cursor_in_token() -> jinn_kernel::AppState {
+    let mut state = state_with_typed_a_hash_test();
     let _ = jinn_chat_input::intent::handle_move_cursor_to_start(&mut state);
-    // Position 0='a', 1=' ', 2='#', 3='t', 4='e'
     let _ = jinn_chat_input::intent::handle_move_cursor_right(&mut state);
     let _ = jinn_chat_input::intent::handle_move_cursor_right(&mut state);
     let _ = jinn_chat_input::intent::handle_move_cursor_right(&mut state);
     let _ = jinn_chat_input::intent::handle_move_cursor_right(&mut state);
+    state
+}
+
+#[rstest::rstest]
+fn cursor_inside_hash_token_reactivates_autocomplete() {
+    // Given "a #test" with the cursor at the 'a' position, BEFORE the '#'
+    // token.
+    let state = a_hash_test_with_cursor_in_token();
+
+    // When reading the input's autocomplete state back.
+    // (The fixture above already walked the cursor into the token.)
+
+    // Then it is active (cursor at position 4 is within #test).
     assert!(
-        state
-            .active_session()
-            .with_input(|i| i.autocomplete().clone(), Default::default)
-            .is_some(),
+        active_autocomplete(&state).is_some(),
         "cursor at position 4 should reactivate (within #test)"
     );
+}
 
-    // Move left 4 times to position 0 ('a'). This is before the '#' token.
-    let _ = jinn_chat_input::intent::handle_move_cursor_left(&mut state);
-    let _ = jinn_chat_input::intent::handle_move_cursor_left(&mut state);
-    let _ = jinn_chat_input::intent::handle_move_cursor_left(&mut state);
-    let _ = jinn_chat_input::intent::handle_move_cursor_left(&mut state);
+#[rstest::rstest]
+fn cursor_move_left_deactivates_when_cursor_before_token() {
+    // Given "a #test" with autocomplete active and the cursor at position 4,
+    // within the token.
+    let mut state = a_hash_test_with_cursor_in_token();
 
-    // Then autocomplete is deactivated (cursor at position 0, token_start at 2).
-    // cursor 0 <= token_start 2 → true → deactivate.
-    // try_reactivate: cursor at 0, no '#' at 0 (it's 'a'), so no reactivation.
-    let ac = state
-        .active_session()
-        .with_input(|i| i.autocomplete().clone(), Default::default);
+    // When moving the cursor left four times to position 0 ('a'), which is
+    // before the '#' token.
+    for _ in 0..4 {
+        let _ = jinn_chat_input::intent::handle_move_cursor_left(&mut state);
+    }
+
+    // Then autocomplete is deactivated (cursor at position 0, token_start at
+    // 2): cursor 0 <= token_start 2 deactivates, and try_reactivate finds no
+    // '#' at 0 (it's 'a'), so it stays deactivated.
     assert!(
-        ac.is_none(),
+        active_autocomplete(&state).is_none(),
         "cursor before token should deactivate permanently"
     );
 }
 
-#[rstest::rstest]
-fn reactivating_hash_autocomplete_within_token() {
-    // Given "#test" with autocomplete deactivated, cursor within token.
-
+/// An Input-scoped state with "#test" typed, offering a `#test` template.
+fn state_with_typed_hash_test() -> jinn_kernel::AppState {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     state.active_session_mut().set_discovered_prompt_templates(
@@ -4086,92 +4155,122 @@ fn reactivating_hash_autocomplete_within_token() {
             body: "body".to_owned(),
         }]),
     );
+    for ch in "#test".chars() {
+        let _ = jinn_chat_input::intent::handle_insert_char(ch, &mut state);
+    }
+    state
+}
 
-    // Type "#test".
-    let _ = jinn_chat_input::intent::handle_insert_char('#', &mut state);
-    let _ = jinn_chat_input::intent::handle_insert_char('t', &mut state);
-    let _ = jinn_chat_input::intent::handle_insert_char('e', &mut state);
-    let _ = jinn_chat_input::intent::handle_insert_char('s', &mut state);
-    let _ = jinn_chat_input::intent::handle_insert_char('t', &mut state);
-
-    // Move cursor to start (deactivates).
+/// "#test" with the cursor walked to the start of the buffer, which
+/// deactivates the popup.
+fn hash_test_with_cursor_at_start() -> jinn_kernel::AppState {
+    let mut state = state_with_typed_hash_test();
     let _ = jinn_chat_input::intent::handle_move_cursor_to_start(&mut state);
-    assert!(
-        state
-            .active_session()
-            .with_input(|i| i.autocomplete().clone(), Default::default)
-            .is_none()
-    );
+    state
+}
 
-    // Move cursor right to position 2 (within "#te|st").
+#[rstest::rstest]
+fn hash_autocomplete_deactivates_when_cursor_moves_to_start() {
+    // Given "#test" with autocomplete active.
+    let mut state = state_with_typed_hash_test();
+
+    // When moving the cursor to the start of the buffer.
+    let _ = jinn_chat_input::intent::handle_move_cursor_to_start(&mut state);
+
+    // Then autocomplete is deactivated.
+    assert!(active_autocomplete(&state).is_none());
+}
+
+#[rstest::rstest]
+fn reactivating_hash_autocomplete_within_token() {
+    // Given "#test" with autocomplete deactivated and the cursor at the start.
+    let mut state = hash_test_with_cursor_at_start();
+
+    // When moving the cursor right to position 2 (within "#te|st").
     let _ = jinn_chat_input::intent::handle_move_cursor_right(&mut state);
     let _ = jinn_chat_input::intent::handle_move_cursor_right(&mut state);
 
-    // Then autocomplete should reactivate via try_reactivate_autocomplete / find_hash_token_at_cursor.
-    let ac = state
-        .active_session()
-        .with_input(|i| i.autocomplete().clone(), Default::default);
+    // Then autocomplete reactivates via try_reactivate_autocomplete /
+    // find_hash_token_at_cursor.
     assert!(
-        ac.is_some(),
+        active_autocomplete(&state).is_some(),
         "cursor within #token should reactivate autocomplete"
     );
 }
 
-#[rstest::rstest]
-fn reactivating_slash_autocomplete_within_command() {
-    // Given "/help" with autocomplete deactivated, cursor within command.
-
+/// An Input-scoped state with "/help" typed.
+fn state_with_typed_slash_help() -> jinn_kernel::AppState {
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
+    for ch in "/help".chars() {
+        let _ = jinn_chat_input::intent::handle_insert_char(ch, &mut state);
+    }
+    state
+}
 
-    // Type "/help".
-    let _ = jinn_chat_input::intent::handle_insert_char('/', &mut state);
-    let _ = jinn_chat_input::intent::handle_insert_char('h', &mut state);
-    let _ = jinn_chat_input::intent::handle_insert_char('e', &mut state);
-    let _ = jinn_chat_input::intent::handle_insert_char('l', &mut state);
-    let _ = jinn_chat_input::intent::handle_insert_char('p', &mut state);
-
-    assert!(
-        state
-            .active_session()
-            .with_input(|i| i.autocomplete().clone(), Default::default)
-            .is_some()
-    );
-
-    // Move to start (deactivates).
+/// "/help" with the cursor walked to the start of the buffer, which
+/// deactivates the popup.
+fn slash_help_with_cursor_at_start() -> jinn_kernel::AppState {
+    let mut state = state_with_typed_slash_help();
     let _ = jinn_chat_input::intent::handle_move_cursor_to_start(&mut state);
-    assert!(
-        state
-            .active_session()
-            .with_input(|i| i.autocomplete().clone(), Default::default)
-            .is_none()
-    );
+    state
+}
 
-    // Move right to position 2 (within "/he|lp").
+#[rstest::rstest]
+fn slash_autocomplete_is_active_for_a_typed_command() {
+    // Given an Input-scoped state with "/help" typed.
+    let state = state_with_typed_slash_help();
+
+    // When reading the input's autocomplete state back.
+    // (The fixture above already typed "/help" through the input handlers.)
+
+    // Then autocomplete is active.
+    assert!(active_autocomplete(&state).is_some());
+}
+
+#[rstest::rstest]
+fn slash_autocomplete_deactivates_when_cursor_moves_to_start() {
+    // Given "/help" with autocomplete active.
+    let mut state = state_with_typed_slash_help();
+
+    // When moving the cursor to the start of the buffer.
+    let _ = jinn_chat_input::intent::handle_move_cursor_to_start(&mut state);
+
+    // Then autocomplete is deactivated.
+    assert!(active_autocomplete(&state).is_none());
+}
+
+#[rstest::rstest]
+fn reactivating_slash_autocomplete_within_command() {
+    // Given "/help" with autocomplete deactivated and the cursor at the start.
+    let mut state = slash_help_with_cursor_at_start();
+
+    // When moving the cursor right to position 2 (within "/he|lp").
     let _ = jinn_chat_input::intent::handle_move_cursor_right(&mut state);
     let _ = jinn_chat_input::intent::handle_move_cursor_right(&mut state);
 
-    // Then autocomplete should reactivate.
-    let ac = state
-        .active_session()
-        .with_input(|i| i.autocomplete().clone(), Default::default);
+    // Then autocomplete reactivates.
     assert!(
-        ac.is_some(),
+        active_autocomplete(&state).is_some(),
         "cursor within /command should reactivate autocomplete"
     );
 }
 
+/// The element the chat-input slice contributes to the UI registry.
+///
+/// It exercises the chat_input element rendering to kill the `>` → `>=`
+/// scroll-indicator regression: the element has to be registrable at all
+/// before the boundary case can be rendered at the exact viewport fill.
 #[rstest::rstest]
-fn scroll_indicators_show_at_exact_boundary() {
-    // This test exercises the chat_input element rendering to kill the > → >=
-    // the element renders without panic when content exactly fills the viewport.
-    // (Indirect test - the real assertion is that the element doesn't crash
-    // and produces output at the exact boundary.)
-    let state = AppState::default_with_scope_focus();
-    state.frontend.scope_push(FocusScope::Input);
-    // Just verify the element can be registered and doesn't panic.
+fn registering_chat_input_adds_a_ui_element_to_the_registry() {
+    // Given an empty UI registry and an Input-scoped state.
     let mut registry = jinn_kernel::AppUiRegistry::new();
+    let _state = AppState::default_with_scope_focus();
+
+    // When the chat-input slice registers its element.
     jinn_chat_input::register(&mut registry);
+
+    // Then the registry holds at least one element.
     assert!(registry.iter_mut().count() > 0);
 }
 
@@ -4326,10 +4425,10 @@ fn render_autocomplete_popup_highlights_selected() {
     // Default selected_index is last (index 1 = "beta").
     // Move selection up to select index 0 ("alpha").
     state.update_active_input(jinn_chat_input_msg::ChatInputBoxState::autocomplete_move_up);
-
     let (mut terminal, _area) = setup_term(80, 24);
     let input_area = Rect::new(0, 20, 80, 4);
 
+    // When rendering the popup for that input area.
     terminal
         .draw(|frame| {
             render_autocomplete_popup(frame, input_area, &state);
@@ -4364,6 +4463,7 @@ fn render_autocomplete_popup_shows_no_matches_message() {
     let (mut terminal, _area) = setup_term(80, 24);
     let input_area = Rect::new(0, 20, 80, 4);
 
+    // When rendering the popup for that input area.
     terminal
         .draw(|frame| {
             render_autocomplete_popup(frame, input_area, &state);
@@ -4393,6 +4493,7 @@ fn render_autocomplete_popup_positioned_above_input() {
     let (mut terminal, _area) = setup_term(80, 24);
     let input_area = Rect::new(0, 20, 80, 4);
 
+    // When rendering the popup for that input area.
     terminal
         .draw(|frame| {
             render_autocomplete_popup(frame, input_area, &state);
@@ -4425,6 +4526,7 @@ fn render_autocomplete_popup_anchored_at_hash() {
     // Input area starts at x=10 to see horizontal anchoring.
     let input_area = Rect::new(10, 20, 70, 4);
 
+    // When rendering the popup for that input area.
     terminal
         .draw(|frame| {
             render_autocomplete_popup(frame, input_area, &state);
@@ -4464,6 +4566,7 @@ fn render_autocomplete_popup_width_based_on_content() {
     let (mut terminal, _area) = setup_term(80, 24);
     let input_area = Rect::new(0, 20, 80, 4);
 
+    // When rendering the popup for that input area.
     terminal
         .draw(|frame| {
             render_autocomplete_popup(frame, input_area, &state);
@@ -4491,6 +4594,7 @@ fn render_autocomplete_popup_does_not_render_when_inactive() {
     let (mut terminal, _area) = setup_term(80, 24);
     let input_area = Rect::new(0, 20, 80, 4);
 
+    // When rendering the popup for that input area.
     terminal
         .draw(|frame| {
             render_autocomplete_popup(frame, input_area, &state);
@@ -4522,6 +4626,7 @@ fn render_slash_command_popup_shows_commands() {
     let (mut terminal, _area) = setup_term(80, 24);
     let input_area = Rect::new(0, 20, 80, 4);
 
+    // When rendering the popup for that input area.
     terminal
         .draw(|frame| {
             render_autocomplete_popup(frame, input_area, &state);
@@ -4552,6 +4657,7 @@ fn render_slash_command_popup_shows_no_commands_message() {
     let (mut terminal, _area) = setup_term(80, 24);
     let input_area = Rect::new(0, 20, 80, 4);
 
+    // When rendering the popup for that input area.
     terminal
         .draw(|frame| {
             render_autocomplete_popup(frame, input_area, &state);

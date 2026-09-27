@@ -528,8 +528,11 @@ mod tests {
     #[rstest::rstest]
     fn format_output_no_truncation() {
         // Given content well within limits.
+        let content = "hello".to_owned();
+
+        // When formatting the output.
         let result = format_output(
-            "hello",
+            &content,
             true,
             "id".to_owned(),
             "grep".to_owned(),
@@ -552,6 +555,7 @@ mod tests {
             s
         });
 
+        // When formatting the output.
         let result = format_output(
             &content,
             true,

@@ -815,11 +815,21 @@ async fn spawned_settle_wait(
     wait
 }
 
-#[rstest::rstest]
-#[tokio::test]
-async fn task_gates_first_dispatch_on_settlement() {
-    // Given a parent session with an enabled MCP server, an enqueue recorder,
-    // and an in-flight task call whose SessionCreated has arrived.
+/// An in-flight `task` call whose child session has been created, with
+/// recorders for `SessionCreated` and `EnqueueUserMessage`.
+struct InFlightTask {
+    harness: TestHarness,
+    state: State,
+    child_id: SessionId,
+    enqueue_rec: jinn_testutil::bus_harness::Recorder<EnqueueUserMessage>,
+    pending: tokio::task::JoinHandle<jinn_core_types::tool_types::ToolResult>,
+}
+
+/// Starts a `task` call, settles the child's context/skills/prompt discovery,
+/// and waits for the child's `SessionCreated`. Discovery is settled here so
+/// every caller starts from a gate that has been opened at least once; the MCP
+/// leg stays pending, so the gate still holds until a server reports status.
+async fn in_flight_task() -> InFlightTask {
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
     let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
@@ -828,33 +838,59 @@ async fn task_gates_first_dispatch_on_settlement() {
     let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Explore."}"#), ctx));
     let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
     let child_id = created[0].session_id.clone();
+    settle_child_discovery(&harness.bus(), &child_id, &BTreeSet::new()).await;
+    InFlightTask {
+        harness,
+        state,
+        child_id,
+        enqueue_rec,
+        pending,
+    }
+}
 
-    // When only the three scan events arrive (the MCP leg is still pending).
-    let no_servers = BTreeSet::new();
-    settle_child_discovery(&harness.bus(), &child_id, &no_servers).await;
+#[rstest::rstest]
+#[tokio::test]
+async fn task_holds_first_dispatch_while_the_mcp_leg_is_pending() {
+    // Given an in-flight task call whose child session has been created and
+    // whose discovery has settled with no MCP servers reporting a status.
+    let task = in_flight_task().await;
 
+    // When the enqueue is observed without any server reaching a status.
     // Then the enqueue has not been published: the gate holds for "stub".
-    let held = await_recorded(&enqueue_rec, 0, Duration::from_millis(300)).await;
+    let held = await_recorded(&task.enqueue_rec, 0, Duration::from_millis(300)).await;
     assert!(
         held.is_empty(),
         "enqueue must not precede MCP settlement; got {}",
         held.len()
     );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn task_dispatches_the_child_once_the_mcp_leg_settles() {
+    // Given an in-flight task call still gated on its pending MCP leg.
+    let task = in_flight_task().await;
 
     // When the server reaches its terminal status and the child finishes.
-    harness
+    task.harness
         .publish(jinn_mcp_msg::McpServerStatus {
-            session_id: child_id.clone(),
+            session_id: task.child_id.clone(),
             server: "stub".to_owned(),
             status: jinn_mcp_msg::McpConnectionStatus::Running,
         })
         .await;
-    finish_child_like_session_actor(&harness.bus(), &state, &child_id, "Found it.").await;
-    let result = pending.await.expect("task join");
+    finish_child_like_session_actor(
+        &task.harness.bus(),
+        &task.state,
+        &task.child_id,
+        "Found it.",
+    )
+    .await;
+    let result = task.pending.await.expect("task join");
 
     // Then the enqueue was published for the child and the result forwarded.
-    let enqueued = await_recorded(&enqueue_rec, 1, AWAIT_TIMEOUT).await;
-    assert_eq!(enqueued[0].session_id, child_id);
+    let enqueued = await_recorded(&task.enqueue_rec, 1, AWAIT_TIMEOUT).await;
+    assert_eq!(enqueued[0].session_id, task.child_id);
     assert!(result.success, "got: {}", result.content);
 }
 

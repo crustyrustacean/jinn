@@ -948,14 +948,16 @@ mod tests {
         };
 
         // When executing the bash tool and reading the child's reported sid.
-        let result = execute(call, test_ctx()).await;
-        let child_sid: i64 = result
-            .content
-            .trim()
-            .parse()
-            .expect("ps should print a numeric sid");
+        let child_sid: i64 = {
+            let result = execute(call, test_ctx()).await;
+            result
+                .content
+                .trim()
+                .parse()
+                .expect("ps should print a numeric sid")
+        };
 
-        // When reading the test process's session id via the same tool.
+        // Then the bash child runs in a different session from jinn.
         let own_sid: i64 = {
             let out = std::process::Command::new("ps")
                 .args(["-o", "sid=", "-p", &std::process::id().to_string()])
@@ -966,8 +968,6 @@ mod tests {
                 .parse()
                 .expect("ps should print a numeric sid for the test process")
         };
-
-        // Then the bash child runs in a different session from jinn.
         assert_ne!(
             child_sid, own_sid,
             "bash-tool child must not share jinn's session"
@@ -1446,6 +1446,8 @@ mod tests {
     fn definition_schema_exposes_max_duration_secs_not_timeout() {
         // Given the bash tool definition.
         let def = definition(300);
+
+        // When rendering the parameters schema.
         let params = def.parameters.to_string();
 
         // Then the schema contains the max_duration_secs key.
@@ -1466,10 +1468,13 @@ mod tests {
         // Given the bash tool definition.
         let def = definition(300);
 
+        // When reading the tool description.
+        let description = def.description.as_str();
+
         // Then the description names max_duration_secs.
-        assert!(def.description.contains("max_duration_secs"));
+        assert!(description.contains("max_duration_secs"));
         // And contains an inline example call.
-        assert!(def.description.contains("\"max_duration_secs\": 600"));
+        assert!(description.contains("\"max_duration_secs\": 600"));
     }
 
     #[rstest::rstest]
@@ -1478,9 +1483,11 @@ mod tests {
         // Given the bash tool definition.
         let def = definition(300);
 
+        // When reading the prompt guidelines.
+        let guidelines = &def.prompt_guidelines;
+
         // Then guidelines contain a proactive bullet (mentions setting max_duration_secs for slow commands).
-        let proactive = def
-            .prompt_guidelines
+        let proactive = guidelines
             .iter()
             .any(|g| g.contains("Proactively") && g.contains("max_duration_secs"));
         assert!(
@@ -1490,8 +1497,7 @@ mod tests {
         );
 
         // And a reactive bullet (mentions retrying after a kill).
-        let reactive = def
-            .prompt_guidelines
+        let reactive = guidelines
             .iter()
             .any(|g| g.contains("killed") && g.contains("max_duration_secs"));
         assert!(

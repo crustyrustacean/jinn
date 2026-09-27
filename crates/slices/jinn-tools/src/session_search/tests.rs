@@ -728,6 +728,7 @@ fn definition_names_session_search() {
     // Given the tool definition.
     let def = definition();
 
+    // When reading its name and required parameters.
     // Then it is named session_search and requires the query parameter.
     assert_eq!(def.name, "session_search");
     let required = def.parameters["required"].as_array().expect("required");

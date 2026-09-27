@@ -558,6 +558,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn set_list_replaces_entire_list() {
+        // Given a session that already holds an "Old Phase" list.
         let (state, session_id) = setup_with_existing_list();
         let call = ToolCall {
             id: "call-1".to_owned(),
@@ -572,8 +573,11 @@ mod tests {
             .to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
-        let result = execute(call, ctx);
-        let result = futures::executor::block_on(result);
+
+        // When executing the call.
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the result reports the replacement and carries only the new list.
         assert!(result.success, "expected success: {:?}", result.content);
         assert!(result.content.contains("Task list replaced"));
         assert!(result.content.contains("Research"));
@@ -588,6 +592,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn set_list_with_empty_tasks() {
+        // Given a session that already holds an "Old Phase" list.
         let (state, session_id) = setup_with_existing_list();
         let call = ToolCall {
             id: "call-1".to_owned(),
@@ -600,8 +605,11 @@ mod tests {
             .to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
-        let result = execute(call, ctx);
-        let result = futures::executor::block_on(result);
+
+        // When executing the call.
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the taskless phase renders an empty-task marker.
         assert!(result.success, "expected success: {:?}", result.content);
         assert!(result.content.contains("(no tasks)"));
     }
@@ -609,6 +617,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn set_list_with_empty_phases_clears_list() {
+        // Given a session that already holds an "Old Phase" list.
         let (state, session_id) = setup_with_existing_list();
         let call = ToolCall {
             id: "call-1".to_owned(),
@@ -616,16 +625,17 @@ mod tests {
             arguments: serde_json::json!({ "phases": [] }).to_string(),
         };
         let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
-        let result = execute(call, ctx);
-        let result = futures::executor::block_on(result);
+
+        // When executing the call.
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the result reports the clear and the session's task list is empty.
         assert!(result.success, "expected success: {:?}", result.content);
         assert!(
             result.content.contains("Task list cleared"),
             "expected clear message, got: {:?}",
             result.content
         );
-
-        // And the session's task list is empty.
         let snapshot = state.read();
         let session = snapshot.session.get(&session_id).expect("session present");
         assert!(session.task_list().is_empty());
@@ -634,6 +644,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn set_list_clear_on_already_empty_succeeds() {
+        // Given a session whose task list is already empty.
         let app = AppState::default();
         let state = State::new(app);
         let session_id = {
@@ -646,11 +657,12 @@ mod tests {
             arguments: serde_json::json!({ "phases": [] }).to_string(),
         };
         let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
-        let result = execute(call, ctx);
-        let result = futures::executor::block_on(result);
-        assert!(result.success, "expected success: {:?}", result.content);
 
-        // And the list is still empty.
+        // When executing the call.
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the call succeeds and the list is still empty.
+        assert!(result.success, "expected success: {:?}", result.content);
         let snapshot = state.read();
         let session = snapshot.session.get(&session_id).expect("session present");
         assert!(session.task_list().is_empty());
@@ -691,6 +703,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn set_list_errors_on_missing_phase_description() {
+        // Given a session that already holds an "Old Phase" list.
         let (state, session_id) = setup_with_existing_list();
         let call = ToolCall {
             id: "call-1".to_owned(),
@@ -703,8 +716,11 @@ mod tests {
             .to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
-        let result = execute(call, ctx);
-        let result = futures::executor::block_on(result);
+
+        // When executing the call.
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the call fails naming the missing field.
         assert!(!result.success);
         assert!(
             result.content.contains("missing 'description'"),
@@ -716,6 +732,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn set_list_requires_state() {
+        // Given a tool context with no application state.
         let call = ToolCall {
             id: "call-1".to_owned(),
             name: "todo_set_list".to_owned(),
@@ -725,8 +742,11 @@ mod tests {
             .to_string(),
         };
         let ctx = make_context(None, Some(SessionId::new()));
-        let result = execute(call, ctx);
-        let result = futures::executor::block_on(result);
+
+        // When executing the call.
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the call fails naming the missing state.
         assert!(!result.success);
         assert!(result.content.contains("no application state"));
     }
@@ -734,6 +754,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn set_list_return_has_next_block_at_top() {
+        // Given a session that already holds an "Old Phase" list.
         let (state, session_id) = setup_with_existing_list();
         let call = ToolCall {
             id: "call-1".to_owned(),
@@ -747,8 +768,11 @@ mod tests {
             .to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
-        let result = execute(call, ctx);
-        let result = futures::executor::block_on(result);
+
+        // When executing the call.
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the NEXT block leads the result.
         assert!(result.success);
         assert!(
             result.content.starts_with("\u{2192}"),

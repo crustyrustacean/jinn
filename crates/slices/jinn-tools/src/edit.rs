@@ -369,6 +369,7 @@ mod tests {
         // Given the edit tool definition.
         let def = definition();
 
+        // When reading the definition's name and prompt metadata.
         // Then it has the name "edit".
         assert_eq!(def.name, "edit");
         assert!(def.prompt_snippet.is_some());

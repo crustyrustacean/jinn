@@ -511,6 +511,7 @@ fn is_at_bottom_true_when_auto_scroll() {
     // Given a new session (auto-scroll to bottom).
     let session = ChatSessionState::new();
 
+    // When the at-bottom state is queried.
     // Then is_at_bottom is true.
     assert!(session.is_at_bottom());
 }
@@ -521,6 +522,7 @@ fn is_at_bottom_false_when_scrolled_up() {
     let mut session = ChatSessionState::new();
     session.set_scroll_offset(Some(50));
 
+    // When the at-bottom state is queried.
     // Then is_at_bottom is false.
     assert!(!session.is_at_bottom());
 }
@@ -742,7 +744,8 @@ fn is_idle_true_when_not_sending_or_streaming() {
     // Given a fresh session.
     let session = ChatSessionState::new();
 
-    // Then it is idle.
+    // When its phase is inspected.
+    // Then it is Idle.
     assert_eq!(session.phase(), PhaseKind::Idle);
 }
 
@@ -758,11 +761,12 @@ fn is_idle_false_when_sending() {
 
 #[rstest::rstest]
 fn is_idle_false_when_streaming() {
-    // Given a session that is streaming.
+    // Given a session that has begun streaming.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
 
-    // Then it is not idle.
+    // When its phase is inspected.
+    // Then it is not Idle.
     assert_ne!(session.phase(), PhaseKind::Idle);
 }
 
@@ -1210,11 +1214,11 @@ fn pin_entry_propagates_shown_to_forward_sub_block() {
     session.toggle_ignored_block_visibility(&rep_id);
     assert!(session.shown_ignored_blocks_snapshot().contains(&rep_id));
 
-    // Pin ignored-B (entry at idx 2).
+    // When ignored-B (entry at idx 2) is pinned to the top.
     let pin_id = session.history()[2].id.clone();
     session.pin_entry(&pin_id, PinPosition::Top);
 
-    // The forward sub-block representative (ignored-C) should be auto-shown.
+    // Then the forward sub-block representative (ignored-C) is auto-shown.
     let forward_rep = session.history()[3].id.clone();
     assert!(
         session
@@ -1223,35 +1227,39 @@ fn pin_entry_propagates_shown_to_forward_sub_block() {
         "forward sub-block should be auto-shown after pin inside shown block"
     );
 
-    // Original block rep should still be shown.
+    // And the original block representative should still be shown.
     assert!(session.shown_ignored_blocks_snapshot().contains(&rep_id));
 }
 
 #[rstest::rstest]
 fn pin_entry_no_propagation_for_non_ignored() {
-    // Pinning a non-ignored entry should never touch shown_ignored_blocks.
+    // Given a session holding a single non-ignored entry.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("normal"));
     let id = session.history()[0].id.clone();
+
+    // When the entry is pinned to the top.
     session.pin_entry(&id, PinPosition::Top);
+
+    // Then shown_ignored_blocks is never touched.
     assert!(session.shown_ignored_blocks_snapshot().is_empty());
 }
 
 #[rstest::rstest]
 fn pin_entry_no_propagation_for_collapsed_block() {
-    // Pinning an ignored entry inside a collapsed block should NOT auto-show.
+    // Given a collapsed (never expanded) ignored block of three entries.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("before"));
     session.push_entry(ChatEntry::assistant("a").with_ignored(true));
     session.push_entry(ChatEntry::assistant("b").with_ignored(true));
     session.push_entry(ChatEntry::assistant("c").with_ignored(true));
     session.push_entry(ChatEntry::user("after"));
-
-    // Do NOT expand the block - it stays collapsed.
     let pin_id = session.history()[2].id.clone();
+
+    // When the middle ignored entry is pinned to the top.
     session.pin_entry(&pin_id, PinPosition::Top);
 
-    // Forward sub-block should NOT be shown.
+    // Then the forward sub-block is NOT auto-shown.
     let forward_rep = session.history()[3].id.clone();
     assert!(
         !session
@@ -1263,23 +1271,20 @@ fn pin_entry_no_propagation_for_collapsed_block() {
 
 #[rstest::rstest]
 fn pin_entry_at_block_end_no_forward_propagation() {
-    // Pinning the last entry in an ignored block - no forward sub-block exists.
+    // Given an expanded ignored block whose last entry is about to be pinned.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("before"));
     session.push_entry(ChatEntry::assistant("a").with_ignored(true));
     session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // pin this (last in block)
     session.push_entry(ChatEntry::user("after")); // non-ignored, breaks block
-
-    // Expand the block.
     let rep_id = session.history()[1].id.clone();
     session.toggle_ignored_block_visibility(&rep_id);
-
-    // Pin the last ignored entry.
     let pin_id = session.history()[2].id.clone();
+
+    // When the last ignored entry in the block is pinned to the top.
     session.pin_entry(&pin_id, PinPosition::Top);
 
-    // No new shown_ignored_blocks entries - forward entry is non-ignored.
-    // Only the original rep should be shown.
+    // Then no forward sub-block exists, so only the original rep stays shown.
     assert_eq!(session.shown_ignored_blocks_snapshot().len(), 1);
     assert!(session.shown_ignored_blocks_snapshot().contains(&rep_id));
 }
@@ -1340,7 +1345,8 @@ fn regression_pin_in_expanded_block_keeps_all_visible() {
 /// on a forward sub-block entry should toggle only that sub-block.
 #[rstest::rstest]
 fn regression_toggle_h_after_pin_split_toggles_correct_sub_block() {
-    // Layout: [user] [ignored-A] [ignored-B(pinned)] [ignored-C] [ignored-D] [user]
+    // Given: layout [user] [ignored-A] [ignored-B(pinned)] [ignored-C] [ignored-D]
+    // [user] with the block expanded, ignored-B pinned, and both sub-blocks shown.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("before"));
     session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 1
@@ -1348,14 +1354,10 @@ fn regression_toggle_h_after_pin_split_toggles_correct_sub_block() {
     session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3
     session.push_entry(ChatEntry::assistant("d").with_ignored(true)); // idx 4
     session.push_entry(ChatEntry::user("after")); // idx 5
-
-    // Expand, then pin ignored-B.
     let rep_id = session.history()[1].id.clone();
     session.toggle_ignored_block_visibility(&rep_id);
     let pin_id = session.history()[2].id.clone();
     session.pin_entry(&pin_id, PinPosition::Top);
-
-    // Both sub-blocks should be shown.
     let forward_rep = session.history()[3].id.clone();
     assert!(session.shown_ignored_blocks_snapshot().contains(&rep_id));
     assert!(
@@ -1364,16 +1366,16 @@ fn regression_toggle_h_after_pin_split_toggles_correct_sub_block() {
             .contains(&forward_rep)
     );
 
-    // Toggle `h` on the forward sub-block.
+    // When the forward sub-block's visibility is toggled (the `h` key).
     session.toggle_ignored_block_visibility(&forward_rep);
 
-    // Forward sub-block should now be collapsed.
+    // Then only the forward sub-block collapses; the backward one stays shown.
     assert!(
         !session
             .shown_ignored_blocks_snapshot()
             .contains(&forward_rep)
     );
-    // Backward sub-block should still be shown.
+    // And the backward sub-block is still shown.
     assert!(session.shown_ignored_blocks_snapshot().contains(&rep_id));
 }
 
@@ -1385,26 +1387,21 @@ fn regression_unpin_remerges_block_correctly() {
         DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
     };
 
-    // Layout: [user] [ignored-A] [ignored-B] [ignored-C] [user]
+    // Given: layout [user] [ignored-A] [ignored-B] [ignored-C] [user] with the
+    // block expanded, ignored-B pinned, and then unpinned again.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("before"));
     session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 1
     session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // idx 2
     session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3
     session.push_entry(ChatEntry::user("after")); // idx 4
-
-    // Expand the block.
     let rep_id = session.history()[1].id.clone();
     session.toggle_ignored_block_visibility(&rep_id);
-
-    // Pin ignored-B.
     let pin_id = session.history()[2].id.clone();
     session.pin_entry(&pin_id, PinPosition::Top);
-
-    // Unpin ignored-B.
     session.unpin_entry(&pin_id);
 
-    // Build visual items - should re-merge into a single expanded block.
+    // When visual items are built from the re-merged history.
     let items = build_visual_items(
         session.history(),
         &session.shown_ignored_blocks_snapshot(),
@@ -1412,12 +1409,13 @@ fn regression_unpin_remerges_block_correctly() {
         DEFAULT_MIN_COLLAPSE_COUNT,
     );
 
-    // No collapsed block - all 5 entries visible.
+    // Then no block is collapsed and all five entries are visible.
     let collapsed = items
         .iter()
         .any(|item| matches!(item, VisualItem::CollapsedIgnoredBlock { .. }));
     assert!(!collapsed, "no collapsed block after unpin re-merge");
 
+    // And the re-merged block exposes all five history entries.
     let entry_count = items
         .iter()
         .filter(|item| matches!(item, VisualItem::Entry(_)))
@@ -1426,9 +1424,29 @@ fn regression_unpin_remerges_block_correctly() {
         entry_count, 5,
         "all 5 entries should be visible after unpin"
     );
+}
 
-    // Toggle on the original rep should now collapse the re-merged block.
+/// Regression test for: the original representative controls the block that
+/// unpinning re-merges the sub-blocks into.
+#[rstest::rstest]
+fn regression_toggle_after_unpin_collapses_remerged_block() {
+    // Given: a block expanded, split by a pin, then re-merged by unpinning.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("before"));
+    session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 1
+    session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // idx 2
+    session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3
+    session.push_entry(ChatEntry::user("after")); // idx 4
+    let rep_id = session.history()[1].id.clone();
     session.toggle_ignored_block_visibility(&rep_id);
+    let pin_id = session.history()[2].id.clone();
+    session.pin_entry(&pin_id, PinPosition::Top);
+    session.unpin_entry(&pin_id);
+
+    // When the original representative is toggled.
+    session.toggle_ignored_block_visibility(&rep_id);
+
+    // Then the re-merged block collapses.
     assert!(!session.shown_ignored_blocks_snapshot().contains(&rep_id));
 }
 
@@ -2115,9 +2133,9 @@ fn serde_lifecycle_group_remains_flat() {
     assert_eq!(object.get("persist"), Some(&serde_json::json!(false)));
 }
 
-#[rstest::rstest]
-fn session_core_five_group_serialization_remains_flat() {
-    // Given a session core with representative values from every broad group.
+/// A [`SessionCore`] populated with a representative value from every broad
+/// group, used to assert that serialization keeps all groups flat.
+fn composed_five_group_core() -> SessionCore {
     let mut core = SessionCore::default();
     core.identity.title = Some("Composed session".to_owned());
     core.identity.parent_session = Some(SessionId::new());
@@ -2138,6 +2156,13 @@ fn session_core_five_group_serialization_remains_flat() {
         .insert("files".to_owned());
     core.storage.session_state = SessionState::Archived;
     core.storage.persist = false;
+    core
+}
+
+#[rstest::rstest]
+fn session_core_five_group_serialization_remains_flat() {
+    // Given a session core with representative values from every broad group.
+    let core = composed_five_group_core();
 
     // When serializing the composed core.
     let json = serde_json::to_value(&core).expect("serialize");
@@ -2239,6 +2264,7 @@ fn is_empty_true_for_new_session() {
     // Given a newly created session.
     let session = ChatSessionState::new();
 
+    // When its emptiness is queried.
     // Then it is empty.
     assert!(session.is_empty());
 }
@@ -2249,6 +2275,7 @@ fn is_empty_false_after_pushing_entry() {
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
 
+    // When its emptiness is queried.
     // Then it is not empty.
     assert!(!session.is_empty());
 }
@@ -2646,7 +2673,8 @@ fn lifecycle_script_state_defaults_to_nothing_ran() {
     // Given a new session.
     let session = ChatSessionState::new();
 
-    // Then lifecycle script state is NothingRan.
+    // When its lifecycle script state is read.
+    // Then it is NothingRan.
     assert_eq!(
         session.lifecycle_script_state(),
         LifecycleScriptState::NothingRan
@@ -2722,7 +2750,8 @@ fn has_saved_history_position_returns_false_by_default() {
     // Given a new session.
     let session = ChatSessionState::new();
 
-    // Then no saved position exists.
+    // When a saved history position is queried.
+    // Then none exists.
     assert!(!session.has_saved_history_position());
 }
 
@@ -3094,49 +3123,45 @@ fn toggle_ignored_block_visibility_noop_for_unknown_id() {
     assert!(session.shown_ignored_blocks_snapshot().is_empty());
 }
 
-#[rstest::rstest]
-fn toggle_ignored_block_visibility_stops_at_pinned_entry() {
-    // Given: 3 non-ignored, 3 ignored-unpinned, 1 ignored-pinned, 3 ignored-unpinned, 2 non-ignored.
+/// A forced-exclude ("ignored") user entry, optionally pinned to the top.
+fn ignored_user_entry(text: &str, pinned: bool) -> ChatEntry {
+    let mut entry = ChatEntry::user(text);
+    entry.apply_context_override(
+        ContextOverride::ForcedExclude,
+        ChangeSource::Internal {
+            label: "test".into(),
+        },
+    );
+    entry.pin_position = pinned.then_some(PinPosition::Top);
+    entry
+}
+
+/// A session whose history is 3 non-ignored, 3 ignored-unpinned, 1 ignored-pinned,
+/// 3 ignored-unpinned, then 2 non-ignored — an ignored region split in two by
+/// the pinned entry. History indices: 0-2 visible, 3-5 ignored, 6 ignored+pinned,
+/// 7-9 ignored, 10-11 visible.
+fn session_with_pinned_split_ignored_region() -> ChatSessionState {
     let mut session = ChatSessionState::new();
     for _ in 0..3 {
         session.push_entry(ChatEntry::user("visible"));
     }
     for _ in 0..3 {
-        let mut entry = ChatEntry::user("ignored");
-        entry.apply_context_override(
-            ContextOverride::ForcedExclude,
-            ChangeSource::Internal {
-                label: "test".into(),
-            },
-        );
-        session.push_entry(entry);
+        session.push_entry(ignored_user_entry("ignored", false));
     }
-    {
-        let mut entry = ChatEntry::user("ignored-pinned");
-        entry.apply_context_override(
-            ContextOverride::ForcedExclude,
-            ChangeSource::Internal {
-                label: "test".into(),
-            },
-        );
-        entry.pin_position = Some(PinPosition::Top);
-        session.push_entry(entry);
-    }
+    session.push_entry(ignored_user_entry("ignored-pinned", true));
     for _ in 0..3 {
-        let mut entry = ChatEntry::user("ignored");
-        entry.apply_context_override(
-            ContextOverride::ForcedExclude,
-            ChangeSource::Internal {
-                label: "test".into(),
-            },
-        );
-        session.push_entry(entry);
+        session.push_entry(ignored_user_entry("ignored", false));
     }
     for _ in 0..2 {
         session.push_entry(ChatEntry::user("visible"));
     }
+    session
+}
 
-    // history indices: 0-2 visible, 3-5 ignored, 6 ignored+pinned, 7-9 ignored, 10-11 visible
+#[rstest::rstest]
+fn toggle_ignored_block_visibility_stops_at_pinned_entry() {
+    // Given an ignored region split in two by a pinned entry.
+    let mut session = session_with_pinned_split_ignored_region();
     let second_sub_block_id = session.history()[7].id.clone();
     let first_sub_block_start_id = session.history()[3].id.clone();
 
@@ -3161,47 +3186,8 @@ fn toggle_ignored_block_visibility_stops_at_pinned_entry() {
 
 #[rstest::rstest]
 fn toggle_ignored_block_visibility_stops_at_pinned_entry_in_first_sub_block() {
-    // Given: 3 non-ignored, 3 ignored-unpinned, 1 ignored-pinned, 3 ignored-unpinned, 2 non-ignored.
-    let mut session = ChatSessionState::new();
-    for _ in 0..3 {
-        session.push_entry(ChatEntry::user("visible"));
-    }
-    for _ in 0..3 {
-        let mut entry = ChatEntry::user("ignored");
-        entry.apply_context_override(
-            ContextOverride::ForcedExclude,
-            ChangeSource::Internal {
-                label: "test".into(),
-            },
-        );
-        session.push_entry(entry);
-    }
-    {
-        let mut entry = ChatEntry::user("ignored-pinned");
-        entry.apply_context_override(
-            ContextOverride::ForcedExclude,
-            ChangeSource::Internal {
-                label: "test".into(),
-            },
-        );
-        entry.pin_position = Some(PinPosition::Top);
-        session.push_entry(entry);
-    }
-    for _ in 0..3 {
-        let mut entry = ChatEntry::user("ignored");
-        entry.apply_context_override(
-            ContextOverride::ForcedExclude,
-            ChangeSource::Internal {
-                label: "test".into(),
-            },
-        );
-        session.push_entry(entry);
-    }
-    for _ in 0..2 {
-        session.push_entry(ChatEntry::user("visible"));
-    }
-
-    // history indices: 0-2 visible, 3-5 ignored, 6 ignored+pinned, 7-9 ignored, 10-11 visible
+    // Given an ignored region split in two by a pinned entry.
+    let mut session = session_with_pinned_split_ignored_region();
     let first_sub_block_mid_id = session.history()[4].id.clone();
     let first_sub_block_start_id = session.history()[3].id.clone();
     let second_sub_block_start_id = session.history()[7].id.clone();
@@ -3307,7 +3293,7 @@ fn select_prev_walks_visual_items_with_collapsed_block() {
 
 #[rstest::rstest]
 fn selected_entry_returns_none_for_collapsed_block() {
-    // Given a session with visual items where a collapsed block is selected.
+    // Given a session whose visual items contain a collapsed ignored block.
     use jinn_chat_log_view_msg::visual_item::{
         DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
     };
@@ -3315,17 +3301,9 @@ fn selected_entry_returns_none_for_collapsed_block() {
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a"));
     for _ in 0..15 {
-        let mut entry = ChatEntry::user("ignored");
-        entry.apply_context_override(
-            ContextOverride::ForcedExclude,
-            ChangeSource::Internal {
-                label: "test".into(),
-            },
-        );
-        session.push_entry(entry);
+        session.push_entry(ignored_user_entry("ignored", false));
     }
     session.push_entry(ChatEntry::user("b"));
-
     let items = build_visual_items(
         session.history(),
         &session.shown_ignored_blocks_snapshot(),
@@ -3334,7 +3312,7 @@ fn selected_entry_returns_none_for_collapsed_block() {
     );
     session.set_visual_items(items);
 
-    // Select the collapsed block (visual-item index 1).
+    // When the collapsed block (visual-item index 1) is selected.
     session.set_selected_entry_index(1);
 
     // Then selected_entry() returns None.
@@ -3347,9 +3325,9 @@ fn selected_entry_returns_none_for_collapsed_block() {
         session.selected_entry_id().is_none(),
         "collapsed block should not have an entry ID"
     );
-    // But selected_entry_index() returns the visual-item index.
+    // And selected_entry_index() returns the visual-item index.
     assert_eq!(session.selected_entry_index(), Some(1));
-    // And selected_history_index() returns None (no history index for collapsed block).
+    // And selected_history_index() returns None (no history index for the block).
     assert!(
         session.selected_history_index().is_none(),
         "collapsed block has no history index"
@@ -3521,6 +3499,7 @@ fn new_session_is_not_persistable() {
     // Given a new session with no history or interaction.
     let session = ChatSessionState::new();
 
+    // When persistability is checked.
     // Then the session is not persistable.
     assert!(!session.is_persistable());
 }
@@ -3557,8 +3536,10 @@ fn forked_session_is_always_persistable() {
     let mut session = ChatSessionState::new();
     session.core.identity.parent_session = Some(SessionId::new());
 
+    // When persistability is checked.
     // Then the session is persistable even without interaction.
     assert!(session.is_persistable());
+    // And it still reports no interaction.
     assert!(!session.has_interacted());
 }
 
@@ -4305,17 +4286,25 @@ fn phase_kind_from_str_is_case_insensitive(#[case] input: &str) {
 
 #[rstest::rstest]
 fn phase_kind_from_str_rejects_unknown() {
-    // Given an unknown string.
-    let result: Result<PhaseKind, _> = "unknown_phase".parse();
-    // Then it returns an error.
+    // Given an unknown phase string.
+    let phase: &str = "unknown_phase";
+
+    // When it is parsed into a PhaseKind.
+    let result: Result<PhaseKind, _> = phase.parse();
+
+    // Then parsing returns an error.
     assert!(result.is_err());
 }
 
 #[rstest::rstest]
 fn phase_kind_from_str_rejects_empty() {
-    // Given an empty string.
-    let result: Result<PhaseKind, _> = "".parse();
-    // Then it returns an error.
+    // Given an empty phase string.
+    let phase: &str = "";
+
+    // When it is parsed into a PhaseKind.
+    let result: Result<PhaseKind, _> = phase.parse();
+
+    // Then parsing returns an error.
     assert!(result.is_err());
 }
 
@@ -4423,8 +4412,9 @@ fn scroll_to_selected_taller_than_viewport_above() {
     // When scrolling to selected.
     session.scroll_to_selected();
 
-    // Entry is taller than viewport. abs_end(10) <= current_offset(10) → true.
-    // new_offset = abs_end - viewport_height = 10 - 4 = 6.
+    // Then the offset is the entry's end minus the viewport height, because the
+    // entry is taller than the viewport: abs_end(10) <= current_offset(10) →
+    // new_offset = 10 - 4 = 6.
     assert_eq!(session.scroll_offset(), Some(6));
 }
 
@@ -4445,9 +4435,9 @@ fn scroll_to_selected_taller_than_viewport_below() {
     // When scrolling to selected.
     session.scroll_to_selected();
 
-    // Entry is taller than viewport. abs_start(2) >= current_offset(0)+4=4 → false.
-    // abs_end(12) <= current_offset(0) → false. Already overlapping → return (no change).
-    // The entry starts at line 2, viewport shows 0–4 → they overlap.
+    // Then the offset is left untouched: the entry is taller than the viewport
+    // and already overlaps it. abs_start(2) >= current_offset(0)+4 is false, and
+    // abs_end(12) <= current_offset(0) is false, so nothing changes.
     assert_eq!(session.scroll_offset(), None);
 }
 
@@ -4640,9 +4630,9 @@ fn select_next_entry_skips_empty_assistant_at_start() {
     session.push_entry(ChatEntry::assistant("")); // idx 0
     session.push_entry(ChatEntry::user("hello")); // idx 1
     session.push_entry(ChatEntry::user("world")); // idx 2
-
-    // Clear selection and select next (should skip empty assistant at 0).
     session.clear_selection();
+
+    // When selecting the next entry.
     session.select_next_entry();
 
     // Then selection is on the user entry (index 1), not the empty assistant.
@@ -4651,14 +4641,14 @@ fn select_next_entry_skips_empty_assistant_at_start() {
 
 #[rstest::rstest]
 fn select_next_entry_skips_empty_assistant_in_middle() {
-    // Given: [user, empty-assistant, user].
+    // Given: [user, empty-assistant, user] with selection starting at index 0.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a")); // idx 0
     session.push_entry(ChatEntry::assistant("")); // idx 1
     session.push_entry(ChatEntry::user("b")); // idx 2
-
-    // Select from index 0.
     session.set_selected_entry_index(0);
+
+    // When selecting the next entry.
     session.select_next_entry();
 
     // Then selection jumps to index 2, skipping the empty assistant.
@@ -4698,14 +4688,14 @@ fn select_prev_entry_skips_empty_assistant_at_end() {
 
 #[rstest::rstest]
 fn select_prev_entry_skips_empty_assistant_in_middle() {
-    // Given: [user, empty-assistant, user].
+    // Given: [user, empty-assistant, user] with selection starting at index 2.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a")); // idx 0
     session.push_entry(ChatEntry::assistant("")); // idx 1
     session.push_entry(ChatEntry::user("b")); // idx 2
-
-    // Select from index 2.
     session.set_selected_entry_index(2);
+
+    // When selecting the previous entry.
     session.select_prev_entry();
 
     // Then selection jumps to index 0, skipping the empty assistant.
@@ -4729,9 +4719,10 @@ fn select_prev_entry_clamps_when_only_empty_assistants() {
 
 #[rstest::rstest]
 fn pin_entry_scans_backward_to_find_block_start() {
-    // Given a contiguous ignored block: entries at indices 1-4 are ignored.
-    // The pin_entry propagation scans backward from the pinned entry to find
-    // the block start (first ignored entry with no pin and with in-context neighbor).
+    // Given a contiguous ignored block at indices 1-4, expanded, whose entry at
+    // index 3 is about to be pinned. The pin_entry propagation scans backward
+    // from the pinned entry to find the block start (the first ignored entry with
+    // no pin and with an in-context neighbour).
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("before")); // idx 0
     session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 1 - block rep
@@ -4739,17 +4730,15 @@ fn pin_entry_scans_backward_to_find_block_start() {
     session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3 - pin target
     session.push_entry(ChatEntry::assistant("d").with_ignored(true)); // idx 4
     session.push_entry(ChatEntry::user("after")); // idx 5
-
-    // Expand the block.
     let rep_id = session.history()[1].id.clone();
     session.toggle_ignored_block_visibility(&rep_id);
-
-    // Pin entry at idx 3.
     let pin_id = session.history()[3].id.clone();
+
+    // When the entry at idx 3 is pinned to the top.
     session.pin_entry(&pin_id, PinPosition::Top);
 
     // Then the block_start scan found index 1 (the first entry in the contiguous
-    // ignored block). The forward sub-block starts at index 4.
+    // ignored block), so the forward sub-block starting at index 4 is shown.
     let forward_rep = session.history()[4].id.clone();
     assert!(
         session
@@ -4761,43 +4750,40 @@ fn pin_entry_scans_backward_to_find_block_start() {
 
 #[rstest::rstest]
 fn pin_entry_block_start_stops_at_non_ignored_boundary() {
-    // Given two separate ignored blocks with a non-ignored entry between them.
+    // Given two separate expanded ignored blocks with a non-ignored entry
+    // between them, and the entry at idx 4 about to be pinned.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 0
     session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // idx 1
     session.push_entry(ChatEntry::user("boundary")); // idx 2 - in-context
     session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3
     session.push_entry(ChatEntry::assistant("d").with_ignored(true)); // idx 4
-
-    // Expand both blocks separately.
     let rep1 = session.history()[0].id.clone();
     let rep2 = session.history()[3].id.clone();
     session.toggle_ignored_block_visibility(&rep1);
     session.toggle_ignored_block_visibility(&rep2);
-
-    // Pin entry at idx 4 (in the second block).
     let pin_id = session.history()[4].id.clone();
+
+    // When the entry at idx 4 (in the second block) is pinned to the top.
     session.pin_entry(&pin_id, PinPosition::Top);
 
-    // Then the block_start scan stops at idx 3 (doesn't cross the non-ignored boundary).
-    // No forward sub-block (idx 4 is the last in its block).
+    // Then the block_start scan stops at idx 3 (it does not cross the non-ignored
+    // boundary), and idx 4 is last in its block so no forward sub-block appears.
     assert!(session.shown_ignored_blocks_snapshot().contains(&rep2));
     assert!(session.shown_ignored_blocks_snapshot().contains(&rep1));
 }
 
 #[rstest::rstest]
 fn pin_entry_forward_start_at_history_end_is_noop() {
-    // Given an ignored entry at the end of history.
+    // Given an expanded ignored block whose only entry ends the history.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("before")); // idx 0
     session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 1
-
-    // Expand the block.
     let rep_id = session.history()[1].id.clone();
     session.toggle_ignored_block_visibility(&rep_id);
-
-    // Pin the last entry (no forward sub-block possible).
     let pin_id = session.history()[1].id.clone();
+
+    // When the last entry is pinned to the top (no forward sub-block possible).
     session.pin_entry(&pin_id, PinPosition::Top);
 
     // Then no new forward sub-block is added.
@@ -5067,7 +5053,8 @@ fn blobs_returns_data() {
         .blobs_mut()
         .insert("key".to_owned(), serde_json::json!({"v": 42}));
 
-    // Then the immutable accessor returns it.
+    // When the immutable accessor is queried.
+    // Then it returns the blob.
     assert!(session.blobs().contains_key("key"));
 }
 
@@ -5087,11 +5074,12 @@ fn blobs_mut_allows_modification() {
 
 #[rstest::rstest]
 fn viewport_height_value_returns_stored_value() {
-    // Given a session with a set viewport height.
+    // Given a session with viewport height 42 set.
     let session = ChatSessionState::new();
     session.set_viewport_height(42);
 
-    // Then viewport_height_value returns 42.
+    // When viewport_height_value is read.
+    // Then it returns 42.
     assert_eq!(session.viewport_height_value(), 42);
 }
 
@@ -5195,7 +5183,8 @@ fn discovered_skills_default_empty() {
     // Given a freshly constructed session.
     let session = ChatSessionState::new();
 
-    // Then the discovered skill/prompt/context sets are all empty.
+    // When its discovered sets are read.
+    // Then the skill, prompt-template, and context-file sets are all empty.
     assert!(session.discovered_skills().is_empty());
     assert!(session.discovered_prompt_templates().is_empty());
     assert!(session.discovered_context_files().is_empty());
@@ -5223,6 +5212,7 @@ fn discovered_sets_are_independent_between_sessions() {
         source: jinn_skills_msg::SkillSource::Global,
     }]);
 
+    // When each session's discovered skills are read.
     // Then session A sees only its skill, B sees only its own — no clobbering.
     assert_eq!(a.discovered_skills().len(), 1);
     assert_eq!(a.discovered_skills()[0].name, "session-a-only");
@@ -5764,7 +5754,8 @@ fn new_session_has_no_mcp_servers_enabled() {
     // Given a freshly created session.
     let session = ChatSessionState::new();
 
-    // Then no MCP servers are enabled by default.
+    // When its enabled MCP servers are read.
+    // Then none are enabled by default.
     assert!(session.enabled_mcp_servers().is_empty());
 }
 

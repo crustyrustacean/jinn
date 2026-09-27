@@ -183,6 +183,9 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+    use jinn_core_types::SessionId;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::common::state::State;
     use std::path::PathBuf;
 
     fn test_ctx() -> ToolContext {
@@ -207,11 +210,92 @@ mod tests {
         }
     }
 
+    /// Builds a `skill` call for the named skill.
+    fn skill_call(name: &str) -> ToolCall {
+        ToolCall {
+            id: "call_1".to_owned(),
+            name: "skill".to_owned(),
+            arguments: serde_json::json!({ "name": name }).to_string(),
+        }
+    }
+
+    /// A session created in the store, its id, and a context bound to it.
+    fn session_ctx() -> (State, SessionId, ToolContext) {
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+        {
+            let mut guard = state.write();
+            guard.session_mut_or_create(&session_id);
+        }
+        let ctx = ToolContext {
+            state: Some(state.clone()),
+            session_id: Some(session_id.clone()),
+            ..test_ctx()
+        };
+        (state, session_id, ctx)
+    }
+
+    /// A temp dir holding a project-local `<name>/SKILL.md`, the session
+    /// that discovered it, and a context bound to that session. The skill's
+    /// `base_dir`/`file_path` live OUTSIDE any global skills dir.
+    fn project_skill(
+        name: &str,
+        description: &str,
+        body: &str,
+    ) -> (tempfile::TempDir, State, SessionId, ToolContext) {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let skill_dir = tmp.path().join(".agents/skills").join(name);
+        std::fs::create_dir_all(&skill_dir).expect("create skill dir");
+        let skill_file = skill_dir.join("SKILL.md");
+        std::fs::write(
+            &skill_file,
+            format!("---\nname: {name}\ndescription: {description}\n---\n{body}\n"),
+        )
+        .expect("write skill");
+
+        let (state, session_id, ctx) = session_ctx();
+        {
+            let mut guard = state.write();
+            let session = guard.session_mut_or_create(&session_id);
+            session.set_discovered_skills(vec![jinn_skills_msg::Skill {
+                name: name.to_owned(),
+                description: description.to_owned(),
+                body: String::new(),
+                file_path: skill_file,
+                base_dir: skill_dir,
+                source: jinn_skills_msg::SkillSource::Project {
+                    dir: tmp.path().to_path_buf(),
+                },
+            }]);
+        }
+        (tmp, state, session_id, ctx)
+    }
+
+    /// Pushes a pinned successful `skill` ToolResult naming `skill_name`, so
+    /// the session reads as already having that skill loaded.
+    fn seed_loaded_skill(state: &State, session_id: &SessionId, skill_name: &str) {
+        use jinn_kernel::protocol::ToolResultStatus;
+        use jinn_kernel::protocol::{ChatEntry, PinPosition};
+
+        let mut guard = state.write();
+        let session = guard.session_mut_or_create(session_id);
+        let seeded_xml = format!("<skill name=\"{skill_name}\" location=\"/tmp\">\nbody\n</skill>");
+        let mut entry = ChatEntry::tool_result(
+            "seeded_call_id",
+            "skill",
+            seeded_xml,
+            ToolResultStatus::Success,
+        );
+        entry.pin_position = Some(PinPosition::Relative);
+        session.push_entry(entry);
+    }
+
     #[rstest::rstest]
     fn definition_has_correct_name() {
         // Given the skill tool definition.
         let def = definition();
 
+        // When reading the definition's name.
         // Then the name is "skill".
         assert_eq!(def.name, "skill");
     }
@@ -221,6 +305,7 @@ mod tests {
         // Given the skill tool definition.
         let def = definition();
 
+        // When reading the schema's required list.
         // Then the parameters require "name".
         let required = def
             .parameters
@@ -237,45 +322,12 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_returns_error_for_nonexistent_skill() {
-        use jinn_core_types::SessionId;
-        use jinn_kernel::common::app_state::AppState;
-        use jinn_kernel::common::state::State;
-
         // Given a call for a skill that was never discovered for this session.
-        let state = State::new(AppState::default());
-        let session_id = SessionId::new();
-        {
-            let mut guard = state.write();
-            guard.session_mut_or_create(&session_id);
-        }
-        let ctx = ToolContext {
-            cwd: PathBuf::from("/tmp"),
-            command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
-            config: jinn_config::testutil::config_layer(""),
-            timeout: None,
-            state: Some(state),
-            session_id: Some(session_id),
-            app_paths: jinn_kernel::common::app_paths::AppPaths::default(),
-            bus: None,
-            max_output_lines: None,
-            max_output_bytes: None,
+        let (_state, _session_id, ctx) = session_ctx();
+        let call = skill_call("nonexistent-skill-xyz");
 
-            dispatched_at: jiff::Timestamp::now(),
-            mcp_coordinator: None,
-            interactive_term: None,
-            task_spawns: None,
-            session_store: None,
-            trouper_system: None,
-        };
-        let result = execute(
-            ToolCall {
-                id: "call_1".to_owned(),
-                name: "skill".to_owned(),
-                arguments: serde_json::json!({"name": "nonexistent-skill-xyz"}).to_string(),
-            },
-            ctx,
-        )
-        .await;
+        // When executing.
+        let result = execute(call, ctx).await;
 
         // Then the result indicates failure with a clear not-discovered message.
         assert!(!result.success);
@@ -288,66 +340,13 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_loads_project_local_skill_from_discovered_file_path() {
-        use jinn_core_types::SessionId;
-        use jinn_kernel::common::app_state::AppState;
-        use jinn_kernel::common::state::State;
-        use jinn_skills_msg::{Skill, SkillSource};
-
         // Given a project-local skill whose file_path is NOT under the global
         // skills dir. Pre-fix, execute() would re-derive the path from the global
         // dir and fail. Post-fix, it resolves from the session's discovered set.
-        let tmp = tempfile::tempdir().expect("create temp dir");
+        let (tmp, _state, _session_id, ctx) =
+            project_skill("proj-skill", "a project skill", "project body");
         let skill_dir = tmp.path().join(".agents/skills/proj-skill");
-        std::fs::create_dir_all(&skill_dir).expect("create skill dir");
-        let skill_file = skill_dir.join("SKILL.md");
-        std::fs::write(
-            &skill_file,
-            "---\nname: proj-skill\ndescription: a project skill\n---\nproject body\n",
-        )
-        .expect("write skill");
-
-        let state = State::new(AppState::default());
-        let session_id = SessionId::new();
-        {
-            let mut guard = state.write();
-            let session = guard.session_mut_or_create(&session_id);
-            session.set_discovered_skills(vec![Skill {
-                name: "proj-skill".to_owned(),
-                description: "a project skill".to_owned(),
-                body: String::new(),
-                file_path: skill_file.clone(),
-                base_dir: skill_dir.clone(),
-                source: SkillSource::Project {
-                    dir: tmp.path().to_path_buf(),
-                },
-            }]);
-        }
-
-        let call = ToolCall {
-            id: "call_1".to_owned(),
-            name: "skill".to_owned(),
-            arguments: serde_json::json!({"name": "proj-skill"}).to_string(),
-        };
-
-        let ctx = ToolContext {
-            cwd: PathBuf::from("/tmp"),
-            command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
-            config: jinn_config::testutil::config_layer(""),
-            timeout: None,
-            state: Some(state),
-            session_id: Some(session_id),
-            app_paths: jinn_kernel::common::app_paths::AppPaths::default(),
-            bus: None,
-            max_output_lines: None,
-            max_output_bytes: None,
-
-            dispatched_at: jiff::Timestamp::now(),
-            mcp_coordinator: None,
-            interactive_term: None,
-            task_spawns: None,
-            session_store: None,
-            trouper_system: None,
-        };
+        let call = skill_call("proj-skill");
 
         // When executing.
         let result = execute(call, ctx).await;
@@ -376,62 +375,10 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_result_header_carries_base_dir() {
-        use jinn_core_types::SessionId;
-        use jinn_kernel::common::app_state::AppState;
-        use jinn_kernel::common::state::State;
-        use jinn_skills_msg::{Skill, SkillSource};
-
         // Given a project-local skill seeded with a distinct base_dir.
-        let tmp = tempfile::tempdir().expect("create temp dir");
+        let (tmp, _state, _session_id, ctx) = project_skill("header-skill", "d", "body");
         let skill_dir = tmp.path().join(".agents/skills/header-skill");
-        std::fs::create_dir_all(&skill_dir).expect("create skill dir");
-        let skill_file = skill_dir.join("SKILL.md");
-        std::fs::write(
-            &skill_file,
-            "---\nname: header-skill\ndescription: d\n---\nbody\n",
-        )
-        .expect("write skill");
-
-        let state = State::new(AppState::default());
-        let session_id = SessionId::new();
-        {
-            let mut guard = state.write();
-            let session = guard.session_mut_or_create(&session_id);
-            session.set_discovered_skills(vec![Skill {
-                name: "header-skill".to_owned(),
-                description: "d".to_owned(),
-                body: String::new(),
-                file_path: skill_file.clone(),
-                base_dir: skill_dir.clone(),
-                source: SkillSource::Project {
-                    dir: tmp.path().to_path_buf(),
-                },
-            }]);
-        }
-
-        let call = ToolCall {
-            id: "call_1".to_owned(),
-            name: "skill".to_owned(),
-            arguments: serde_json::json!({"name": "header-skill"}).to_string(),
-        };
-        let ctx = ToolContext {
-            cwd: PathBuf::from("/tmp"),
-            command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
-            config: jinn_config::testutil::config_layer(""),
-            timeout: None,
-            state: Some(state),
-            session_id: Some(session_id),
-            app_paths: jinn_kernel::common::app_paths::AppPaths::default(),
-            bus: None,
-            max_output_lines: None,
-            max_output_bytes: None,
-            dispatched_at: jiff::Timestamp::now(),
-            mcp_coordinator: None,
-            interactive_term: None,
-            task_spawns: None,
-            session_store: None,
-            trouper_system: None,
-        };
+        let call = skill_call("header-skill");
 
         // When executing.
         let result = execute(call, ctx).await;
@@ -490,39 +437,9 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_returns_skill_body_in_tool_result() {
-        use jinn_core_types::SessionId;
-        use jinn_kernel::common::app_state::AppState;
-        use jinn_kernel::common::state::State;
-
         // Given a skill file in the real skills dir (best-effort).
-        let state = State::new(AppState::default());
-        let session_id = SessionId::new();
-
-        let call = ToolCall {
-            id: "call_1".to_owned(),
-            name: "skill".to_owned(),
-            arguments: serde_json::json!({"name": "phased-task-loop"}).to_string(),
-        };
-
-        let ctx = ToolContext {
-            cwd: PathBuf::from("/tmp"),
-            command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
-            config: jinn_config::testutil::config_layer(""),
-            timeout: None,
-            state: Some(state),
-            session_id: Some(session_id),
-            app_paths: jinn_kernel::common::app_paths::AppPaths::default(),
-            bus: None,
-            max_output_lines: None,
-            max_output_bytes: None,
-
-            dispatched_at: jiff::Timestamp::now(),
-            mcp_coordinator: None,
-            interactive_term: None,
-            task_spawns: None,
-            session_store: None,
-            trouper_system: None,
-        };
+        let (_state, _session_id, ctx) = session_ctx();
+        let call = skill_call("phased-task-loop");
 
         // When executing.
         let result = execute(call, ctx).await;
@@ -554,55 +471,13 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_returns_already_loaded_for_duplicate_load() {
-        use jinn_core_types::SessionId;
-        use jinn_kernel::common::app_state::AppState;
-        use jinn_kernel::common::state::State;
-        use jinn_kernel::protocol::ToolResultStatus;
-        use jinn_kernel::protocol::{ChatEntry, PinPosition};
-
         // Given a session that already has a pinned ToolResult from the `skill` tool
         // for "phased-task-loop" (matches the body-in-ToolResult shape).
-        let state = State::new(AppState::default());
-        let session_id = SessionId::new();
-        {
-            let mut guard = state.write();
-            let session = guard.session_mut_or_create(&session_id);
-            let seeded_xml = "<skill name=\"phased-task-loop\" location=\"/tmp\">\nbody\n</skill>";
-            let mut entry = ChatEntry::tool_result(
-                "seeded_call_id",
-                "skill",
-                seeded_xml,
-                ToolResultStatus::Success,
-            );
-            entry.pin_position = Some(PinPosition::Relative);
-            session.push_entry(entry);
-        }
+        let (state, session_id, ctx) = session_ctx();
+        seed_loaded_skill(&state, &session_id, "phased-task-loop");
+        let call = skill_call("phased-task-loop");
 
-        // When calling execute again for the same skill name.
-        let call = ToolCall {
-            id: "call_2".to_owned(),
-            name: "skill".to_owned(),
-            arguments: serde_json::json!({"name": "phased-task-loop"}).to_string(),
-        };
-        let ctx = ToolContext {
-            cwd: PathBuf::from("/tmp"),
-            command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
-            config: jinn_config::testutil::config_layer(""),
-            timeout: None,
-            state: Some(state),
-            session_id: Some(session_id),
-            app_paths: jinn_kernel::common::app_paths::AppPaths::default(),
-            bus: None,
-            max_output_lines: None,
-            max_output_bytes: None,
-
-            dispatched_at: jiff::Timestamp::now(),
-            mcp_coordinator: None,
-            interactive_term: None,
-            task_spawns: None,
-            session_store: None,
-            trouper_system: None,
-        };
+        // When executing.
         let result = execute(call, ctx).await;
 
         // Then the result indicates failure with the "already loaded" message,
@@ -625,54 +500,12 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_loads_different_skill_when_other_already_loaded() {
-        use jinn_core_types::SessionId;
-        use jinn_kernel::common::app_state::AppState;
-        use jinn_kernel::common::state::State;
-        use jinn_kernel::protocol::ToolResultStatus;
-        use jinn_kernel::protocol::{ChatEntry, PinPosition};
-
         // Given a session that already has a pinned ToolResult for "rust-programming".
-        let state = State::new(AppState::default());
-        let session_id = SessionId::new();
-        {
-            let mut guard = state.write();
-            let session = guard.session_mut_or_create(&session_id);
-            let seeded_xml = "<skill name=\"rust-programming\" location=\"/tmp\">\nbody\n</skill>";
-            let mut entry = ChatEntry::tool_result(
-                "seeded_call_id",
-                "skill",
-                seeded_xml,
-                ToolResultStatus::Success,
-            );
-            entry.pin_position = Some(PinPosition::Relative);
-            session.push_entry(entry);
-        }
+        let (state, session_id, ctx) = session_ctx();
+        seed_loaded_skill(&state, &session_id, "rust-programming");
+        let call = skill_call("phased-task-loop");
 
-        // When calling execute for a *different* skill ("phased-task-loop").
-        let call = ToolCall {
-            id: "call_2".to_owned(),
-            name: "skill".to_owned(),
-            arguments: serde_json::json!({"name": "phased-task-loop"}).to_string(),
-        };
-        let ctx = ToolContext {
-            cwd: PathBuf::from("/tmp"),
-            command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
-            config: jinn_config::testutil::config_layer(""),
-            timeout: None,
-            state: Some(state),
-            session_id: Some(session_id),
-            app_paths: jinn_kernel::common::app_paths::AppPaths::default(),
-            bus: None,
-            max_output_lines: None,
-            max_output_bytes: None,
-
-            dispatched_at: jiff::Timestamp::now(),
-            mcp_coordinator: None,
-            interactive_term: None,
-            task_spawns: None,
-            session_store: None,
-            trouper_system: None,
-        };
+        // When executing.
         let result = execute(call, ctx).await;
 
         // Then if the requested skill file exists, the load succeeds and returns

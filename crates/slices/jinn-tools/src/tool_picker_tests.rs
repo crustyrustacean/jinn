@@ -979,7 +979,13 @@ fn the_picker_state_lives_only_in_its_slice_cell() {
     // The tool picker's state is reachable from exactly one place: the slice
     // cell. A second copy in the kernel would let the menu show one store while
     // a different one is written.
+
+    // Given the kernel's frontend state source.
     let kernel_source = include_str!("../../../jinn-kernel/src/state/frontend_state.rs");
+
+    // When scanning it for picker state.
+    // Then the kernel must not hold tool picker state; the slice cell is the
+    // only home.
     assert!(
         !kernel_source.contains("tool_picker"),
         "the kernel must not hold tool picker state; the slice cell is the only home"
@@ -991,6 +997,8 @@ fn the_kernel_names_no_tool_picker_at_all() {
     // The central app crate and the TUI layer must not know this picker exists:
     // no scope variant, no picker kind, no spec id. That is what makes adding a
     // picker a folder-local change.
+
+    // Given the kernel and TUI sources that could name the picker.
     for (label, source) in [
         (
             "jinn-kernel frontend state",
@@ -1009,6 +1017,7 @@ fn the_kernel_names_no_tool_picker_at_all() {
             include_str!("../../../jinn-tui/src/scope.rs"),
         ),
     ] {
+        // When scanning each source for picker names.
         let picker_named = [
             "PickerTool",
             "Picker(tool)",
@@ -1021,6 +1030,7 @@ fn the_kernel_names_no_tool_picker_at_all() {
             .filter(|needle| source.contains(*needle))
             .copied()
             .collect();
+        // Then none of them name the tool picker; the slice must own it entirely.
         assert!(
             hits.is_empty(),
             "{label} still names the tool picker ({hits:?}); the slice must own it entirely"
