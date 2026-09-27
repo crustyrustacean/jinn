@@ -17,6 +17,7 @@ pub mod scope;
 pub mod selection;
 pub mod suspend;
 pub mod terminal;
+pub mod ui_elements;
 
 pub use app::TuiApp;
 pub use app::TuiAppBuilder;
@@ -28,6 +29,7 @@ pub use launch::{LaunchError, launch, load_compaction_prompt, load_theme};
 pub use msg::handler::MsgHandler;
 pub use run::{TuiRunError, run};
 pub use scope::Scope;
+pub use ui_elements::build_ui_registry;
 
 #[cfg(test)]
 mod app_tests;

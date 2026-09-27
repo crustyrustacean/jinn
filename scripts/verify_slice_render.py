@@ -191,12 +191,17 @@ def check_e7() -> None:
                     line,
                 ):
                     callers.append(f"{f.relative_to(ROOT)}:{n}")
-    # The single named builder plus its one delegation is two sites; anything
-    # else means a call site open-codes registration.
+    # The registrations live in `build_ui_registry`, and both the
+    # composition root and the test builder call that one function. Any
+    # site outside its body means a caller open-codes registration, which
+    # is the duplication E7 forbids: a slice element that registers in
+    # one path and not the other draws in the app and not in its tests.
+    builder = TUI_SRC / "ui_elements.rs"
+    stray = [c for c in set(callers) if not c.startswith(f"{builder.relative_to(ROOT)}:")]
     check(
         "E7  one slice-register call site in the composition layer",
-        len(set(callers)) <= 2,
-        f"{len(set(callers))} site(s): {sorted(set(callers))}",
+        not stray and len(set(callers)) == 4,
+        f"stray site(s): {sorted(stray)}" if stray else f"{len(set(callers))} call(s), all in build_ui_registry",
     )
 
 

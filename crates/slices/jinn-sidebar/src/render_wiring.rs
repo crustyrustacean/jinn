@@ -46,14 +46,23 @@ pub fn register_hints(hints: &ScopeHints) {
         SidebarSectionId::Pins,
         SidebarSectionId::Persona,
         SidebarSectionId::TaskList,
-        SidebarSectionId::Sessions,
         SidebarSectionId::McpServers,
     ] {
         hints.register(section.scope_id(), ScopeRenderHint::focused());
     }
     hints.register(resize_scope(), ScopeRenderHint::acting());
+    // Two scopes stand a lower overlay down, and they stand it for
+    // different reasons, so each claims it rather than the chrome
+    // listing sidebar scope names.
+    hints.register(
+        SidebarSectionId::Sessions.scope_id(),
+        // The sessions list owns a rename input that paints over the
+        // chat log, so the chat log's audit popup yields to it.
+        ScopeRenderHint::focused().suppressing_lower_overlay(),
+    );
     hints.register(
         rename_scope(),
+        // The rename popup is modal over the sessions list.
         ScopeRenderHint::focused().suppressing_lower_overlay(),
     );
 }
