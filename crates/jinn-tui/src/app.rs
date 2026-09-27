@@ -136,7 +136,17 @@ impl TuiApp {
                         self.route_intent(intent);
                     }
                     crossterm::event::Event::Paste(text) => {
-                        self.route_intent(jinn_domain::KernelIntent::PasteText { text });
+                        // A paste belongs to the chat input box, not the
+                        // kernel: mint the box's dynamic intent and let its
+                        // `paste-text` row insert the text.
+                        self.route_intent(jinn_domain::KernelIntent::Dynamic(
+                            jinn_slices::DynamicIntent::with_bytes(
+                                jinn_chat_input_msg::chat_input_scope(),
+                                jinn_chat_input::routes::PASTE_TEXT_ACTION,
+                                "paste text",
+                                text.into_bytes(),
+                            ),
+                        ));
                     }
                     _ => {}
                 }
@@ -210,10 +220,7 @@ impl TuiApp {
             );
 
             // Cancel selection when mode changes away from Picker.
-            if matches!(
-                intent,
-                KernelIntent::EnterNormalMode | KernelIntent::NormalEscape
-            ) {
+            if matches!(intent, KernelIntent::NormalEscape) {
                 self.selection = mem::take(&mut self.selection).cancel();
             }
 

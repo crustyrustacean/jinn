@@ -1925,6 +1925,7 @@ dependencies = [
  "jinn-citations",
  "jinn-cli",
  "jinn-config",
+ "jinn-context",
  "jinn-context-assembly",
  "jinn-context-curation",
  "jinn-context-curation-msg",
@@ -1983,6 +1984,7 @@ dependencies = [
  "jinn-tools-msg",
  "jinn-tui",
  "jinn-turn-dispatch",
+ "jinn-turn-dispatch-msg",
  "jinn-watchdog",
  "kanal",
  "mockito",
@@ -2001,6 +2003,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "trouper",
+ "uuid",
  "wherror",
 ]
 
@@ -2046,12 +2049,24 @@ dependencies = [
 name = "jinn-chat-input"
 version = "0.118.0"
 dependencies = [
+ "error-stack",
  "jinn-chat-input-msg",
+ "jinn-config",
+ "jinn-context",
+ "jinn-context-curation-msg",
  "jinn-core-types",
  "jinn-domain",
+ "jinn-preferences-config",
+ "jinn-session-msg",
  "jinn-slices",
+ "ratatui",
  "rstest",
  "tokio",
+ "tracing",
+ "trouper",
+ "unicode-segmentation",
+ "unicode-width 0.2.2",
+ "wherror",
 ]
 
 [[package]]
@@ -3291,7 +3306,6 @@ dependencies = [
  "tempfile",
  "throbber-widgets-tui",
  "tokio",
- "toml",
  "trouper",
  "unicode-segmentation",
  "unicode-width 0.2.2",
@@ -3557,6 +3571,7 @@ dependencies = [
  "dirs",
  "error-stack",
  "futures",
+ "jinn-chat-input",
  "jinn-chat-input-msg",
  "jinn-chat-log-view",
  "jinn-chat-log-view-msg",

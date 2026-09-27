@@ -112,8 +112,36 @@ fn try_slice_input_hook(
     // Hooks speak the slice-level editing vocabulary, not the kernel's
     // full intent enum: translate, and skip hooks for non-editing
     // intents entirely.
-    let edit = crate::common::slices::key_routes::as_edit_intent(intent)?;
+    let edit = edit_intent_for(intent)?;
     hook(&edit)
+}
+
+/// Translates an intent into the slice-hook editing vocabulary.
+///
+/// Every editing key arrives as a dynamic intent the keymap minted for the
+/// hook's scope, with a printable character carried in the byte payload.
+/// `None` means the intent is not an editing surface action — hooks are
+/// never consulted for it.
+#[must_use]
+fn edit_intent_for(intent: &KernelIntent) -> Option<jinn_slices::EditIntent> {
+    let KernelIntent::Dynamic(dynamic) = intent else {
+        return None;
+    };
+    Some(match dynamic.action.as_str() {
+        "insert-char" => jinn_slices::EditIntent::InsertChar(
+            std::str::from_utf8(&dynamic.bytes)
+                .ok()
+                .and_then(|text| text.chars().next())
+                .unwrap_or_default(),
+        ),
+        "delete-backward" => jinn_slices::EditIntent::DeleteBackward,
+        "delete-forward" => jinn_slices::EditIntent::DeleteForward,
+        "move-cursor-left" => jinn_slices::EditIntent::CursorLeft,
+        "move-cursor-right" => jinn_slices::EditIntent::CursorRight,
+        "move-cursor-home" => jinn_slices::EditIntent::CursorHome,
+        "move-cursor-end" => jinn_slices::EditIntent::CursorEnd,
+        _ => return None,
+    })
 }
 
 /// Resolves the base scope after a `<Tab>` switch, walking the
@@ -311,53 +339,6 @@ impl IntentHandler {
         }
 
         match intent {
-            KernelIntent::InsertChar { ch } => {
-                feat::chat_input::intent::handle_insert_char(*ch, state)
-            }
-            KernelIntent::DeleteGrapheme => feat::chat_input::intent::handle_delete_grapheme(state),
-            KernelIntent::DeleteGraphemeForward => {
-                feat::chat_input::intent::handle_delete_grapheme_forward(state)
-            }
-            KernelIntent::SubmitMessage => {
-                feat::chat_input::intent::handle_submit_message(state, config)
-            }
-            KernelIntent::ToggleInputMode => {
-                feat::chat_input::intent::handle_toggle_input_mode(state)
-            }
-            KernelIntent::AutocompleteConfirm => {
-                feat::chat_input::intent::handle_autocomplete_confirm(state)
-            }
-            KernelIntent::MoveCursorLeft => {
-                feat::chat_input::intent::handle_move_cursor_left(state)
-            }
-            KernelIntent::MoveCursorRight => {
-                feat::chat_input::intent::handle_move_cursor_right(state)
-            }
-            KernelIntent::MoveCursorToStart => {
-                feat::chat_input::intent::handle_move_cursor_to_start(state)
-            }
-            KernelIntent::MoveCursorToEnd => {
-                feat::chat_input::intent::handle_move_cursor_to_end(state)
-            }
-            KernelIntent::MoveCursorWordLeft => {
-                feat::chat_input::intent::handle_move_cursor_word_left(state)
-            }
-            KernelIntent::MoveCursorWordRight => {
-                feat::chat_input::intent::handle_move_cursor_word_right(state)
-            }
-            KernelIntent::MoveCursorUp => feat::chat_input::intent::handle_move_cursor_up(state),
-            KernelIntent::MoveCursorDown => {
-                feat::chat_input::intent::handle_move_cursor_down(state)
-            }
-
-            KernelIntent::PasteText { text } => match state.frontend.scope() {
-                jinn_slices::FocusScope::Input => {
-                    feat::chat_input::intent::handle_paste_text(text, state)
-                }
-                // Both a saved pre-migration `Picker` scope and any other
-                // scope are no-ops: a paste targets only the input scope.
-                _ => IntentResult::empty(),
-            },
             KernelIntent::ScrollUp => feat::navigation::intent::handle_scroll_up(state),
             KernelIntent::ScrollDown => feat::navigation::intent::handle_scroll_down(state),
             KernelIntent::MouseScrollUp => feat::navigation::intent::handle_mouse_scroll_up(state),
@@ -375,17 +356,25 @@ impl IntentHandler {
             KernelIntent::Interrupt { session_id } => {
                 feat::global::intent::handle_interrupt(state, session_id.as_ref())
             }
-            KernelIntent::EnterInsertMode => {
-                feat::chat_input::intent::handle_enter_insert_mode(state)
-            }
-            KernelIntent::EnterNormalMode => {
-                feat::chat_input::intent::handle_enter_normal_mode(state, config)
-            }
             KernelIntent::ToggleWhichkey => feat::global::intent::handle_toggle_whichkey(state),
             KernelIntent::ToggleAuditPopup => {
                 feat::global::intent::handle_toggle_audit_popup(state)
             }
-            KernelIntent::NormalEscape => feat::chat_input::intent::handle_normal_escape(state),
+            // Escape in Normal mode: raise the cancel-stream confirmation
+            // when a turn is in flight. The box no longer owns this — it is
+            // a session concern, and the intercept above handles the
+            // confirming half.
+            KernelIntent::NormalEscape => {
+                let busy = state.active_session().is_busy()
+                    || !matches!(
+                        state.active_session().phase(),
+                        jinn_session_msg::PhaseKind::Idle
+                    );
+                if busy {
+                    state.frontend.cancel_stream_prompt = true;
+                }
+                IntentResult::empty()
+            }
             KernelIntent::NoOp => IntentResult::empty(),
 
             // <c-c>: every picker that filters binds it in its own scope, so
@@ -746,14 +735,19 @@ mod tests {
     #[rstest::rstest]
     fn paste_text_ignored_in_normal_scope() {
         // Given an AppState in Normal scope.
+        // (The action name is a literal rather than the slice's constant:
+        // the kernel must not depend on the slice crate.)
         let mut state = AppState::default_with_scope_focus();
         state.frontend.scope_clear_overlays();
 
         // When handling PasteText.
         let result = IntentHandler::handle(
-            &KernelIntent::PasteText {
-                text: "hello".into(),
-            },
+            &KernelIntent::Dynamic(jinn_slices::DynamicIntent::with_bytes(
+                jinn_chat_input_msg::chat_input_scope(),
+                "paste-text",
+                "paste text",
+                b"hello".to_vec(),
+            )),
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -770,82 +764,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn paste_text_inserts_in_input_scope() {
-        // Given an AppState in Input scope.
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(jinn_slices::FocusScope::Input);
-
-        // When handling PasteText.
-        let result = IntentHandler::handle(
-            &KernelIntent::PasteText {
-                text: "hello\nworld".into(),
-            },
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then the buffer has the pasted text.
-        assert_eq!(
-            state
-                .active_session()
-                .with_input(|i| i.text().to_owned(), String::new),
-            "hello\nworld"
-        );
-        assert!(result.message_names.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn input_box_accepts_insert_char() {
-        // Given an AppState in Input scope.
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(jinn_slices::FocusScope::Input);
-
-        // When handling InsertChar.
-        let _result = IntentHandler::handle(
-            &KernelIntent::InsertChar { ch: 'x' },
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then the buffer has the inserted char.
-        assert_eq!(
-            state
-                .active_session()
-                .with_input(|i| i.text().to_owned(), String::new),
-            "x"
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn insert_char_routes_to_chat_input_when_scope_is_normal() {
-        // Given Normal scope (default) with Input overlay.
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Input);
-
-        // When handling InsertChar.
-        let _result = IntentHandler::handle(
-            &KernelIntent::InsertChar { ch: 'x' },
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then the chat input received the char.
-        assert_eq!(
-            state
-                .active_session()
-                .with_input(|i| i.text().to_owned(), String::new),
-            "x"
-        );
-    }
-
-    #[rstest::rstest]
     #[test]
     fn paste_text_in_picker_scope_routes_to_picker() {
         // Given Picker scope is active.
@@ -856,9 +774,12 @@ mod tests {
 
         // When handling PasteText.
         let _result = IntentHandler::handle(
-            &KernelIntent::PasteText {
-                text: "hello".into(),
-            },
+            &KernelIntent::Dynamic(jinn_slices::DynamicIntent::with_bytes(
+                jinn_chat_input_msg::chat_input_scope(),
+                "paste-text",
+                "paste text",
+                b"hello".to_vec(),
+            )),
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -904,9 +825,9 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         state.frontend.cancel_stream_prompt = true;
 
-        // When handling a different intent (InsertChar).
+        // When handling a different intent (ScrollUp).
         let _result = IntentHandler::handle(
-            &KernelIntent::InsertChar { ch: 'a' },
+            &KernelIntent::ScrollUp,
             &mut state,
             &empty_slices(),
             &empty_routes(),

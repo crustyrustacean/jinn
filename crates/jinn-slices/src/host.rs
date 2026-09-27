@@ -89,6 +89,16 @@ impl<'a, C: 'static> SliceHost<'a, C> {
         self.key_routes
     }
 
+    /// The kernel's view registry, for slices that register a typed tab
+    /// view alongside their cell. The view/slot pairing is verified by
+    /// [`Viewport::register`] against the slices registry, so a missing
+    /// cell or a wrong payload type fails here, at launch.
+    ///
+    /// [`Viewport::register`]: crate::view::Viewport::register
+    pub fn viewport(&mut self) -> &mut Viewport {
+        self.viewport
+    }
+
     /// Mints the one write handle for a slice cell.
     ///
     /// # Errors
@@ -152,21 +162,6 @@ impl<'a, C: 'static> SliceHost<'a, C> {
         self.hooks.register(scope, Arc::new(serve));
     }
 
-    /// Registers a typed tab view; the view/slot pairing is verified
-    /// immediately against the slices registry.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`crate::view::ViewSlotError`] if the view's slot is
-    /// unregistered or holds a different payload type — a wiring bug
-    /// that must abort launch.
-    pub fn register_view<V>(&mut self, view: V) -> Result<(), crate::view::ViewSlotError>
-    where
-        V: crate::view::SliceView + Send + Sync + 'static,
-    {
-        self.viewport.register(view, self.slices)
-    }
-
     /// Declares a tab scope backed by a slot.
     pub fn register_tab_scope(&self, scope: SliceScopeId, slot: SlotKey) {
         self.slices.register_tab_scope(scope, slot);
@@ -197,15 +192,6 @@ impl<'a, C: 'static> SliceHost<'a, C> {
     /// route-action gates).
     pub fn set_flag(&self, slice: &str, enabled: bool) {
         self.slices.set_flag(slice, enabled);
-    }
-
-    /// Drains staged input hooks into the kernel's route table via
-    /// `install`. Called by composition after all slices activate.
-    pub fn install_hooks<I>(self, install: I)
-    where
-        I: FnMut(SliceScopeId, crate::route::InputHook),
-    {
-        self.hooks.install(install);
     }
 
     /// Ends activation, installing the staged input hooks via `install`.

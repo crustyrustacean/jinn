@@ -71,6 +71,7 @@ pub fn launch(
     // reference slice crates, and jinn-tui's registry assembly is the
     // composition point for display chrome.
     jinn_status_bar::register(&mut ui_registry);
+    jinn_chat_input::register(&mut ui_registry);
 
     // Generated keymap bindings from the slice route rows attached
     // during actor-system bootstrap (single keymap bootstrap site).

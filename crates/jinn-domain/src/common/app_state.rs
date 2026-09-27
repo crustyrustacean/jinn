@@ -14,7 +14,7 @@ pub use crate::feat::ui::frontend_state::{FrontendCaches, FrontendState};
 use crate::protocol::{ChatEntryId, PinPosition};
 use jinn_core_types::SessionId;
 
-pub use crate::feat::chat_input::ChatInputBoxState;
+pub use jinn_chat_input_msg::ChatInputBoxState;
 use jinn_session_state::ChatSessionState;
 use jinn_session_state::SessionMap;
 

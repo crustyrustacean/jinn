@@ -86,6 +86,11 @@ impl TuiAppBuilder {
 
         let mut ui_registry = jinn_domain::AppUiRegistry::new();
         jinn_domain::register_all_ui_elements(&mut ui_registry);
+        // Slice-owned elements the kernel registry cannot reference. The
+        // chat input box is fetched with `if let Some(..)`, so a missing
+        // call here fails silently — the box just never draws.
+        jinn_chat_input::register(&mut ui_registry);
+        jinn_status_bar::register(&mut ui_registry);
 
         let keymap = keymap::init();
         let initial_scope = scope_for_focus(&core.state.read().frontend.scope());

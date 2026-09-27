@@ -211,6 +211,26 @@ fn keymap_at(scope: Scope) -> WhichKeyInstance {
     WhichKeyInstance::new(keymap::init(), scope)
 }
 
+/// A keymap with the chat input box's route rows bound (as launch.rs does).
+fn keymap_with_chat_input_rows_at(scope: Scope) -> WhichKeyInstance {
+    let mut km = keymap::init();
+    let routes = jinn_slices::route::KeyRoutes::new();
+    jinn_chat_input::routes::attach_chat_input_rows(&routes);
+    crate::keymap_gen::bind_route_rows(&routes, &mut km);
+    WhichKeyInstance::new(km, scope)
+}
+
+/// A keymap with the chat input box's rows AND key hook bound, as the real
+/// composition does — rows for the explicit keys, the hook for characters
+/// and cursor motion.
+fn keymap_with_chat_input_at(scope: Scope) -> WhichKeyInstance {
+    let mut km = keymap::init();
+    let routes = jinn_slices::route::KeyRoutes::new();
+    jinn_chat_input::routes::attach_all(&routes);
+    crate::keymap_gen::bind_route_rows(&routes, &mut km);
+    WhichKeyInstance::new(km, scope)
+}
+
 /// A keymap with the sidebar's route rows bound (as launch.rs does).
 fn keymap_with_routes_at(scope: Scope) -> WhichKeyInstance {
     let mut km = keymap::init();
@@ -257,8 +277,8 @@ fn s_outside_sidebar_task_list_does_not_open_task_list_picker(#[case] scope: Sco
 #[rstest::rstest]
 #[test]
 fn alt_q_in_input_scope_toggles_input_mode() {
-    // Given the keymap rooted at Input scope.
-    let mut wk = keymap_at(Scope::Input);
+    // Given the keymap (with the box's route rows) rooted at Input scope.
+    let mut wk = keymap_with_chat_input_rows_at(Scope::Input);
 
     // When pressing Alt+q (notation: `m-q`).
     let intent = wk.handle_key(key("m-q"));
@@ -315,5 +335,96 @@ fn r_in_normal_scope_resets_entry_to_default_context() {
     assert_eq!(
         intent.map(|i| i.to_string()).as_deref(),
         Some("reset entry to default context")
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn enter_in_input_scope_submits_through_the_slice_row() {
+    // Given the keymap with the box's rows and hook bound, at Input scope.
+    let mut wk = keymap_with_chat_input_at(Scope::Input);
+
+    // When pressing Enter.
+    let intent = wk.handle_key(key("enter"));
+
+    // Then it resolves to the box's submit action, not a kernel intent.
+    assert_eq!(
+        intent.map(|i| i.to_string()).as_deref(),
+        Some("send this message")
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn printable_char_in_input_scope_reaches_the_slice_insert_action() {
+    // Given the keymap with the box's rows and hook bound, at Input scope.
+    let mut wk = keymap_with_chat_input_at(Scope::Input);
+
+    // When pressing `a`.
+    let intent = wk.handle_key(key("a"));
+
+    // Then it resolves to the box's character insertion, not a kernel
+    // `insert-char` intent.
+    assert_eq!(
+        intent.map(|i| i.to_string()).as_deref(),
+        Some("type a character")
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn ctrl_c_in_input_scope_still_reaches_its_kernel_bind() {
+    // Given the keymap with the box's hook bound, at Input scope.
+    let mut wk = keymap_with_chat_input_at(Scope::Input);
+
+    // When pressing Ctrl+c.
+    let intent = wk.handle_key(key("c-c"));
+
+    // Then it resolves to a kernel intent, not one of the box's actions —
+    // the box's key hook declines it rather than swallowing it.
+    let resolved = intent.map(|i| i.to_string()).expect("ctrl-c is bound");
+    assert!(
+        !resolved.contains("type a character"),
+        "ctrl-c must not be captured by the box, got {resolved}"
+    );
+}
+
+/// `i` in Normal scope enters the chat input box.
+///
+/// This is the box's only door from chat history into insert mode, so its
+/// absence is invisible until someone tries to type and nothing happens.
+/// Asserting the key directly — not "whatever rows got attached resolve" —
+/// is deliberate: a test that walks the attached rows cannot see a row that
+/// was never attached.
+#[rstest::rstest]
+#[test]
+fn i_in_normal_scope_enters_insert_mode() {
+    // Given the keymap with the box's rows and hook bound, at Normal scope.
+    let mut wk = keymap_with_chat_input_at(Scope::Normal);
+
+    // When pressing `i`.
+    let intent = wk.handle_key(key("i"));
+
+    // Then it resolves to the box's insert-mode action.
+    assert_eq!(
+        intent.map(|i| i.to_string()).as_deref(),
+        Some("type a message")
+    );
+}
+
+/// `<c-j>` in Normal scope enters the box, the alternate door.
+#[rstest::rstest]
+#[test]
+fn ctrl_j_in_normal_scope_enters_insert_mode() {
+    // Given the keymap with the box's rows and hook bound, at Normal scope.
+    let mut wk = keymap_with_chat_input_at(Scope::Normal);
+
+    // When pressing Ctrl+j.
+    let intent = wk.handle_key(key("c-j"));
+
+    // Then it resolves to the box's insert-mode action.
+    assert_eq!(
+        intent.map(|i| i.to_string()).as_deref(),
+        Some("type a message")
     );
 }

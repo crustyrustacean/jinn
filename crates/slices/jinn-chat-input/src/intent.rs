@@ -13,18 +13,18 @@
 //! - **EnterNormalMode** - cancels streams, clears picker, switches to Normal mode.
 //! - **NormalEscape** - clears chat entry selection.
 
-use crate::common::app_state::AppState;
-use crate::feat::chat_input::AutocompleteMatch;
-use crate::feat::chat_input::AutocompleteTrigger;
-use crate::feat::chat_input::ChatInputBoxState;
-use crate::feat::chat_input::InputMode;
-use crate::protocol::{ChatEntry, IntentResult};
+use crate::AutocompleteMatch;
+use crate::AutocompleteTrigger;
+use crate::ChatInputBoxState;
+use crate::InputMode;
 use jinn_chat_input_msg::{
     AutocompleteState, EnqueueUserMessage, ListDirectory, SlashCommand, SubmitSteeringMessage,
     resolve_list_dir,
 };
 use jinn_context::PromptTemplateStore;
 use jinn_core_types::SessionId;
+use jinn_domain::AppState;
+use jinn_domain::protocol::{ChatEntry, IntentResult};
 use jinn_session_msg::MarkSessionInteracted;
 use jinn_session_msg::PhaseKind;
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -418,7 +418,7 @@ fn route_to_enqueue_or_steer(
 fn with_mark_interacted(session_id: SessionId, mut result: IntentResult) -> IntentResult {
     result.messages.insert(
         0,
-        crate::common::bridge::Bridge::publish_closure(MarkSessionInteracted { session_id }),
+        jinn_domain::common::bridge::Bridge::publish_closure(MarkSessionInteracted { session_id }),
     );
     result
         .message_names
@@ -442,7 +442,7 @@ fn execute_slash_command(
                 compact_all,
             })
         }
-        SlashCommand::New => crate::feat::session::intent::handle_session_new(state, config),
+        SlashCommand::New => jinn_domain::feat::session::intent::handle_session_new(state, config),
     }
 }
 

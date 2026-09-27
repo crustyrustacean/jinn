@@ -189,7 +189,7 @@ impl ActorSystemBuilder {
             .attach_slices(services.slices.clone());
         jinn_scope_focus_activate(&mut services);
         jinn_chat_log_view_activate(&mut services, &state);
-        jinn_chat_input_activate(&mut services);
+        jinn_chat_input_activate(&mut services, actor_deps.clone(), state.clone());
         jinn_cwd_activate(&mut services);
         jinn_skills_activate(&mut services);
         jinn_project_activate(&mut services);
@@ -405,15 +405,6 @@ impl ActorSystemBuilder {
         // intents (synchronous flips that in-flight tool calls observe
         // mid-drain).
         let _ = jinn_term_msg::TERM_CONTROLS.set(term_controls);
-
-        // Directory lister actor (`@path` file popup).
-        let _directory_lister = jinn_domain::feat::file_lister::DirectoryListerActor::spawn(
-            &services.trouper_system,
-            jinn_domain::feat::file_lister::DirectoryListerActorDeps {
-                deps: actor_deps.clone(),
-                state: state.clone(),
-            },
-        );
 
         // Search index maintenance: message-driven reindex state machine —
         // refreshes its in-memory dirty-session queue when idle and
@@ -680,7 +671,15 @@ async fn jinn_preferences_activate(
     jinn_preferences::activate(&mut host, &system, services_handle, state);
 }
 
-fn jinn_chat_input_activate(services: &mut Services) {
+/// Activates the chat-input slice: its state cell, the box's route rows,
+/// and the directory-lister actor behind the `@path` popup. The session
+/// map already carries the attached registry handle, so every session's
+/// input facade resolves the cell.
+fn jinn_chat_input_activate(
+    services: &mut Services,
+    deps: jinn_domain::common::actor_deps::ActorDeps,
+    state: jinn_domain::common::state::State,
+) {
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
         &mut services.viewport,
@@ -688,7 +687,7 @@ fn jinn_chat_input_activate(services: &mut Services) {
         &services.key_routes,
         &services.trouper_system,
     );
-    jinn_chat_input::activate(&mut host);
+    jinn_chat_input::activate(&mut host, deps, &state);
 }
 
 /// Activates the theme slice: scans the theme directories once and mints
