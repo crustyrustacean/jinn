@@ -45,7 +45,6 @@ fn activate_sidebar(app: &mut crate::TuiApp) {
         &services.trouper_system,
     );
     jinn_sidebar::activate(&mut host, state);
-    host.finalize(&|_scope, _hook| {});
 }
 
 #[rstest::rstest]
@@ -204,7 +203,6 @@ async fn cwd_input_popup_renders_and_is_selectable() {
             &services.trouper_system,
         );
         jinn_cwd::activate(&mut host);
-        host.finalize(&|_scope, _hook| {});
     }
     app.core
         .state

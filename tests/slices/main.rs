@@ -31,6 +31,7 @@ mod chat_log;
 mod common;
 
 mod boot;
+mod boot_list;
 mod chat_input;
 mod composition;
 mod dashboard;

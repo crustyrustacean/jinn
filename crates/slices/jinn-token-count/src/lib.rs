@@ -35,18 +35,15 @@ pub use jinn_token_count_msg::token_cache_slot;
 pub fn activate(
     host: &mut SliceHost<'_, jinn_slices::RenderFacts>,
     state: jinn_kernel::common::state::State,
-) -> HistoryWorkerChatEntryTokenCache {
+) {
     let cache = HistoryWorkerChatEntryTokenCache::new();
     let _cell = host
         .register_cell(token_cache_slot(), cache.clone())
         .expect("token-count slot is registered exactly once at wiring");
 
     let _count_path = count_actor::TokenCountActor::spawn(host.system(), state);
-    let _eviction_path = eviction_actor::HistoryWorkerChatEntryTokenCacheEvictionActor::spawn(
-        host.system(),
-        cache.clone(),
-    );
-    cache
+    let _eviction_path =
+        eviction_actor::HistoryWorkerChatEntryTokenCacheEvictionActor::spawn(host.system(), cache);
 }
 
 #[cfg(test)]
@@ -56,13 +53,14 @@ mod tests {
     use jinn_core_types::chat_entry_id::ChatEntryId;
     use jinn_core_types::session_id::SessionId;
 
-    /// The cell the activation registers and the cache it returns must be
-    /// one instance: a count inserted through the cell handle is visible
-    /// through the returned clone (the session actor's accumulation gate
-    /// and the prune workers read through their own clones).
+    /// A consumer that resolves the cache by slot key gets the same
+    /// instance the activation registered: an insert through the cell
+    /// handle is visible through an independently-resolved reader (the
+    /// session actor's accumulation gate and the prune workers resolve
+    /// this way rather than receiving the cache from composition).
     #[rstest::rstest]
     #[tokio::test]
-    async fn activate_registers_cell_backed_by_the_returned_cache() {
+    async fn activate_registers_cell_readable_by_slot_key() {
         // Given an activated slice host.
         let mut services = jinn_kernel::Services::new_fake().await;
         let mut host = jinn_slices::SliceHost::new(
@@ -74,21 +72,26 @@ mod tests {
         );
 
         // When activating and inserting through the registered cell.
-        let cache = activate(
+        activate(
             &mut host,
             jinn_kernel::common::state::State::new(
                 jinn_kernel::common::app_state::AppState::default(),
             ),
         );
-        let cell = services
+        let s = SessionId::new();
+        let e = ChatEntryId::new();
+        services
+            .slices
+            .reader::<HistoryWorkerChatEntryTokenCache>(&token_cache_slot())
+            .expect("cell registered")
+            .read()
+            .insert(s.clone(), e.clone(), 33);
+
+        // Then a second, independently-resolved reader observes it.
+        let consumer = services
             .slices
             .reader::<HistoryWorkerChatEntryTokenCache>(&token_cache_slot())
             .expect("cell registered");
-        let s = SessionId::new();
-        let e = ChatEntryId::new();
-        cell.read().insert(s.clone(), e.clone(), 33);
-
-        // Then the returned cache observes the same state.
-        assert_eq!(cache.get(&s, &e), Some(33));
+        assert_eq!(consumer.read().get(&s, &e), Some(33));
     }
 }

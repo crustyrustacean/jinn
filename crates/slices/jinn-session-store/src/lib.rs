@@ -36,12 +36,13 @@ use trouper::actor::ActorPath;
 pub struct SessionStoreHandles {
     /// Path of the store-owned session actor.
     pub session_store: ActorPath,
-    /// The session picker's cell, so the actor's history read can install rows
-    /// without reaching into the kernel.
-    pub session_picker_cell: TypedCell<jinn_session_store_msg::SessionPickerState>,
 }
 
 /// Activates the session-store actor over the shared application state.
+///
+/// Mints the session picker's cell, so the cell is registered on the host
+/// rather than through a raw `Slices` handle — every cell a slice mints
+/// goes through one registration verb.
 ///
 /// The actor's typed subscriptions are installed by the spawn call before it
 /// returns, so messages published after activation cannot race actor startup.
@@ -56,30 +57,30 @@ pub struct SessionStoreHandles {
     clippy::expect_used,
     reason = "bootstrap assertion: a double activation must abort launch, not run degraded"
 )]
-pub fn activate(services: &Services, state: State) -> SessionStoreHandles {
+pub fn activate(
+    host: &mut SliceHost<'_, jinn_slices::RenderFacts>,
+    services: &Services,
+    state: State,
+) -> SessionStoreHandles {
     // The picker's cell is minted before the actor spawn: the actor's history
     // read publishes loaded rows into it, so it needs a handle at construction.
-    let session_picker_cell = services
-        .slices
-        .register(
+    let session_picker_cell = host
+        .register_cell(
             jinn_session_store_msg::session_picker_slot(),
             jinn_session_store_msg::SessionPickerState::default(),
         )
         .expect("session picker slot is registered exactly once at wiring");
 
     let session_store = session_store_actor::SessionStoreActor::spawn(
-        &services.trouper_system,
+        host.system(),
         session_store_actor::SessionStoreActorDeps {
             services: services.clone(),
             state,
-            session_picker_cell: session_picker_cell.clone(),
+            session_picker_cell,
         },
     );
 
-    SessionStoreHandles {
-        session_store,
-        session_picker_cell,
-    }
+    SessionStoreHandles { session_store }
 }
 
 /// Attaches the session picker's overlay, keys, and filter hook.

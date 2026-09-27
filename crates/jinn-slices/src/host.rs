@@ -3,17 +3,17 @@
 //!
 //! A slice's entire kernel integration is a sequence of registration
 //! verbs on this host: mint a cell, spawn a service actor on trouper,
-//! attach route rows, register an input hook, register views, tabs,
-//! overlays, and read its config section. In-tree Rust slices call the
-//! verbs imperatively from `activate(&mut SliceHost, …)`; a future WASM
-//! guest host will perform the same verbs from validated manifest
-//! messages. Naming the verbs once means the guest activation technique
-//! arrives as a consumer of this surface, not a parallel system.
+//! attach route rows, register views, tabs, and overlays, and read its
+//! config section. In-tree Rust slices call the verbs imperatively from
+//! `activate(&mut SliceHost, …)`; a future WASM guest host will perform
+//! the same verbs from validated manifest messages. Naming the verbs
+//! once means the guest activation technique arrives as a consumer of
+//! this surface, not a parallel system.
 //!
 //! The host borrows the kernel's registries for the duration of
-//! activation and adds one of its own: the input-hook registry
-//! ([`HookRegistry`]). Hooks stage during activation and install into the
-//! kernel's [`KeyRoutes`] once every slice has activated.
+//! activation. Nothing is staged for a later install: input hooks
+//! attach straight to [`KeyRoutes`], which is where every slice's rows
+//! and hooks already live.
 //!
 //! A slice's `jinn.toml` section is not staged here. It reads the
 //! configuration layer directly, at the point of use, so a reload is
@@ -22,17 +22,13 @@
 //! The host is constructed per activation and never stored on
 //! `Services`.
 
-use std::sync::Arc;
-
 use trouper::actor::ActorPath;
 use trouper::actor::ServiceActor;
 use trouper::system::ActorSystem;
 
 use crate::overlay::OverlayViewFn;
 use crate::overlay::OverlayViews;
-use crate::route::EditIntent;
 use crate::route::KeyRoutes;
-use crate::route::RouteResult;
 use crate::route::RouteRow;
 use crate::slice_scope::SliceScopeId;
 use crate::slices::Slices;
@@ -40,7 +36,6 @@ use crate::slices::SlotKey;
 use crate::slices::SlotTaken;
 use crate::view::Viewport;
 
-pub mod host_input;
 pub mod host_view;
 
 pub use host_view::HostView;
@@ -52,7 +47,6 @@ pub struct SliceHost<'a, C: 'static> {
     overlay_views: &'a OverlayViews<C>,
     key_routes: &'a KeyRoutes,
     system: &'a ActorSystem,
-    hooks: host_input::HookRegistry,
 }
 
 impl<'a, C: 'static> SliceHost<'a, C> {
@@ -71,7 +65,6 @@ impl<'a, C: 'static> SliceHost<'a, C> {
             overlay_views,
             key_routes,
             system,
-            hooks: host_input::HookRegistry::default(),
         }
     }
 
@@ -80,6 +73,15 @@ impl<'a, C: 'static> SliceHost<'a, C> {
     #[must_use]
     pub fn system(&self) -> &'a ActorSystem {
         self.system
+    }
+
+    /// The kernel's slice registry, for slices that read a cell minted
+    /// by an earlier activation (tab-scope and overlay-slot declarations
+    /// go through the verbs below, but a cell reader is the only way to
+    /// reach a value another slice provided).
+    #[must_use]
+    pub fn slices(&self) -> &'a Slices {
+        self.slices
     }
 
     /// The kernel's key-route table, for slices that attach rows with
@@ -151,17 +153,6 @@ impl<'a, C: 'static> SliceHost<'a, C> {
         }
     }
 
-    /// Registers the synchronous input hook for a slice's scope: an
-    /// editing-intent interceptor served while that scope is focused.
-    /// Staged on the host; composition installs all hooks into
-    /// [`KeyRoutes`] after activation.
-    pub fn register_input_hook<F>(&mut self, scope: SliceScopeId, serve: F)
-    where
-        F: Fn(&EditIntent) -> Option<RouteResult> + Send + Sync + 'static,
-    {
-        self.hooks.register(scope, Arc::new(serve));
-    }
-
     /// Declares a tab scope backed by a slot.
     pub fn register_tab_scope(&self, scope: SliceScopeId, slot: SlotKey) {
         self.slices.register_tab_scope(scope, slot);
@@ -192,18 +183,6 @@ impl<'a, C: 'static> SliceHost<'a, C> {
     /// route-action gates).
     pub fn set_flag(&self, slice: &str, enabled: bool) {
         self.slices.set_flag(slice, enabled);
-    }
-
-    /// Ends activation, installing the staged input hooks via `install`.
-    ///
-    /// A slice's `jinn.toml` section needs no staging: it reads the
-    /// configuration layer at the point of use, so there is no
-    /// fail-fast gate left to run here.
-    pub fn finalize<I>(self, install: I)
-    where
-        I: FnMut(SliceScopeId, crate::route::InputHook),
-    {
-        self.hooks.install(install);
     }
 }
 
