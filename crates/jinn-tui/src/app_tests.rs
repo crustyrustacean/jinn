@@ -231,6 +231,15 @@ fn keymap_with_chat_input_at(scope: Scope) -> WhichKeyInstance {
     WhichKeyInstance::new(km, scope)
 }
 
+/// A keymap with the chat log's route rows bound (as launch.rs does).
+fn keymap_with_chat_log_at(scope: Scope) -> WhichKeyInstance {
+    let mut km = keymap::init();
+    let routes = jinn_slices::route::KeyRoutes::new();
+    jinn_chat_log_view::routes::attach_all(&routes);
+    crate::keymap_gen::bind_route_rows(&routes, &mut km);
+    WhichKeyInstance::new(km, scope)
+}
+
 /// A keymap with the sidebar's route rows bound (as launch.rs does).
 fn keymap_with_routes_at(scope: Scope) -> WhichKeyInstance {
     let mut km = keymap::init();
@@ -325,13 +334,13 @@ fn alt_s_in_normal_scope_focuses_sidebar_sessions() {
 #[rstest::rstest]
 #[test]
 fn r_in_normal_scope_resets_entry_to_default_context() {
-    // Given the keymap rooted at Normal scope.
-    let mut wk = keymap_at(Scope::Normal);
+    // Given a keymap with the chat log's route rows bound, at Normal scope.
+    let mut wk = keymap_with_chat_log_at(Scope::Normal);
 
     // When pressing `r`.
     let intent = wk.handle_key(key("r"));
 
-    // Then it resolves to ChatEntryResetSelected.
+    // Then it resolves to the log's reset action.
     assert_eq!(
         intent.map(|i| i.to_string()).as_deref(),
         Some("reset entry to default context")

@@ -269,6 +269,7 @@ pub fn composition_routes() -> jinn_slices::route::KeyRoutes {
     jinn_term::route_rows::attach_rows(&routes, "<c-g>");
     jinn_term::key_hook::register(&routes);
     jinn_sidebar::key_routes::attach_sidebar_rows(&routes);
+    jinn_chat_log_view::routes::attach_all(&routes);
     routes
 }
 

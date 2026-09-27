@@ -47,6 +47,8 @@ fn category(name: &str) -> KeyCategory {
     match name {
         "navigation" => KeyCategory::Navigation,
         "input" => KeyCategory::Input,
+        "chat-history" => KeyCategory::ChatHistory,
+        "context" => KeyCategory::Context,
         _ => KeyCategory::General,
     }
 }
