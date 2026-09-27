@@ -352,8 +352,6 @@ this document and the codebase, and nothing else.
 cadence is worse than none, because it produces work that stops to satisfy a
 ritual it does not need. Choose each element because this task calls for it:
 
-- **Tracking.** How progress is kept — a task list, a checklist, phases. State
-  the update discipline: at the moment a decision is made, never batched.
 - **Check cadence.** _What_ is verified, _how often_, and _where a dirty state is
   expected._ This is the one most often gotten wrong. A routine change earns a
   check per unit of work. A large refactor whose intermediate states do not compile
@@ -382,6 +380,10 @@ obvious from the task, ask.
 **Omit what does not apply.** An empty protocol section is correct for a task
 that needs none. Do not pad it with defaults — a wrong default is a constraint
 nobody chose.
+
+**Tracking is never a choice.** No matter how the execution protocol looks, it
+needs to specify that the task/todo list is maintain and updated regularly.
+More detail is always better than less detail for the task list.
 
 **ALWAYS** begin the execution protocol with setting up the task/todo list.
 This is imperative as it keeps the agent on-track.
