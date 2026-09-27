@@ -13,6 +13,8 @@ pub mod fields;
 pub mod mutation_accumulator;
 pub mod read_projection;
 mod runtime;
+pub mod session_store;
+pub mod session_store_service;
 pub mod session_map;
 pub mod snapshot;
 pub mod steering_buffer;
@@ -37,6 +39,7 @@ pub use fields::{
 pub use read_projection::SessionReadProjection;
 pub use runtime::{SessionCoreEphemeral, SessionUi};
 pub use session_map::{SessionLoadGuard, SessionMap};
+pub use session_store::{SessionStore, SessionStoreError, SessionStoreService};
 pub use snapshot::{SessionRevision, SessionSnapshot, SessionSnapshotMetadata};
 pub use token_stats::aggregate_session_stats;
 pub use tree_aggregate::{FrozenTreeNode, aggregate_tree_stats, find_tree_root};

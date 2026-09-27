@@ -17,7 +17,7 @@ impl SessionOps<'_> {
     }
 
     /// Store an archived session's immutable tree snapshot.
-    pub fn insert_frozen_node(&mut self, node: crate::feat::session::FrozenTreeNode) {
+    pub fn insert_frozen_node(&mut self, node: jinn_session_state::FrozenTreeNode) {
         self.0.insert_frozen_node(node);
     }
 }

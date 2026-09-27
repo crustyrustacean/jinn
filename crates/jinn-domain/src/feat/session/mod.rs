@@ -1,11 +1,10 @@
 //! Session management - session lifecycle, persistence, and loading.
 //!
-//! Provides persistence types ([`ChatSessionState`], [`SessionStore`], etc.)
-//! used by the session actor, services container, and component crate.
-//! Also contains the session actor, intent handlers, validators, entry loaders,
-//! and picker rendering.
-
-pub mod session_store;
+//! Contains the session intent handlers, validators, entry loaders, and
+//! picker rendering. The persistence seam ([`SessionStore`],
+//! [`SessionStoreService`]) lives in `jinn_session_state` beside
+//! `SessionSnapshot`, so the kernel's service container no longer reaches
+//! into a feature module for its storage type.
 
 pub mod entries;
 #[cfg(test)]
@@ -18,10 +17,10 @@ pub mod validator;
 
 pub use jinn_core_types::SessionProfile;
 pub use jinn_session_state::{
-    FrozenTreeNode, aggregate_session_stats, aggregate_tree_stats, find_tree_root,
-    snapshot_frozen_node, snapshot_frozen_node_from_snapshot,
+    FrozenTreeNode, SessionStore, SessionStoreError, SessionStoreService,
+    aggregate_session_stats, aggregate_tree_stats, find_tree_root, snapshot_frozen_node,
+    snapshot_frozen_node_from_snapshot,
 };
-pub use session_store::{SessionStore, SessionStoreError, SessionStoreService};
 
 /// Returns a guidance message for when no API keys are found.
 ///

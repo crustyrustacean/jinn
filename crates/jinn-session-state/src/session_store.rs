@@ -3,20 +3,23 @@
 //! Defines [`SessionStore`] as the async trait for session persistence.
 //! The SQLite implementation (`SqliteSessionStore`) and the schema
 //! migrator live in the `jinn-session-store` slice crate; this module
-//! owns the seam (`SessionStore` + [`SessionStoreService`]) that the
+//! owns the seam ([`SessionStore`] + [`SessionStoreService`]) that the
 //! `Services` container carries.
+//!
+//! The seam lives beside [`SessionSnapshot`] rather than in the kernel
+//! because both describe the same thing — a session as it is stored —
+//! and splitting them made the kernel's service container depend on a
+//! feature module for its storage type.
 
-mod service;
-
-pub use service::SessionStoreService;
+pub use crate::session_store_service::SessionStoreService;
 
 use async_trait::async_trait;
 use error_stack::Report;
 use wherror::Error;
 
-use crate::protocol::ChatEntryId;
+use jinn_core_types::ChatEntryId;
 use jinn_core_types::SessionId;
-use jinn_session_state::SessionSnapshot;
+use crate::snapshot::SessionSnapshot;
 use jinn_session_store_msg::SessionSummary;
 use jinn_session_store_msg::{SearchOutcome, SearchParams, TranscriptWindow};
 

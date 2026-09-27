@@ -3067,6 +3067,7 @@ dependencies = [
 name = "jinn-session-state"
 version = "0.118.0"
 dependencies = [
+ "async-trait",
  "error-stack",
  "jiff",
  "jinn-chat-input-msg",
