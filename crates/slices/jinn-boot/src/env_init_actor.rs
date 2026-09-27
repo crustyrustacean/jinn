@@ -16,7 +16,7 @@ use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use wherror::Error;
 
 use jinn_boot_msg::{EnvironmentConfigReply, EnvironmentLoaded, GetEnvironmentConfig};
-use jinn_mcp_msg::config::McpServersConfig;
+use jinn_preferences_config::schemas::mcp::McpServersConfig;
 
 /// Error type for environment initialization failures.
 #[derive(Debug, Error)]
@@ -160,7 +160,7 @@ impl EnvInitActor {
             .values()
             .flat_map(|server| server.headers.values().map(String::as_str))
             .collect();
-        for name in jinn_mcp_msg::referenced_header_variables(&values) {
+        for name in jinn_preferences_config::schemas::mcp::referenced_header_variables(&values) {
             if let Ok(value) = std::env::var(&name)
                 && !value.is_empty()
             {
@@ -188,7 +188,7 @@ mod tests {
     use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
     use std::sync::Arc;
 
-    use jinn_mcp_msg::McpServerConfig;
+    use jinn_preferences_config::schemas::mcp::McpServerConfig;
 
     /// Unique env-var names so parallel test runs never collide.
     const SET_VAR: &str = "JINN_TEST_MCP_HEADER_RESOLVED";
@@ -202,7 +202,7 @@ mod tests {
             .map(|v| (format!("X-{v}"), format!("Bearer ${{{v}}}")))
             .collect();
         let server = McpServerConfig {
-            transport: jinn_mcp_msg::TransportKind::RemoteHttp,
+            transport: jinn_preferences_config::schemas::mcp::TransportKind::RemoteHttp,
             url: Some("http://localhost:3001/mcp".to_owned()),
             headers,
             ..McpServerConfig::default()

@@ -96,9 +96,9 @@ mod tests {
         };
         let activated = crate::ActivatedDiscord {
             parked: crate::DiscordGatewayChannels::detached(),
-            config: crate::DiscordConfig {
+            config: jinn_preferences_config::schemas::discord::DiscordConfig {
                 enabled: false,
-                ..crate::DiscordConfig::default()
+                ..jinn_preferences_config::schemas::discord::DiscordConfig::default()
             },
         };
 

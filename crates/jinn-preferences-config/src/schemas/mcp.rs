@@ -1,11 +1,13 @@
-//! MCP server configuration nouns — the `jinn.toml` schema types.
+//! The `[mcp]` section — the configured MCP servers, keyed by name.
 //!
-//! [`McpServerConfig`] (the `[mcp_server.<name>]` entry) and
-//! [`TransportKind`] are the *config* vocabulary shared by the user
-//! preferences schema, the kernel's MCP actor glue, and the
-//! `jinn-mcp-slice` connection/coordinator runtime. Header-value
-//! `${VAR}` expansion and its error type travel with the nouns so the
-//! config crate and the slice resolve headers identically.
+//! Holds the section declaration plus the value vocabulary it
+//! deserializes into: [`McpServersConfig`], [`McpServerConfig`] (the
+//! `[mcp.<name>]` entry) and [`TransportKind`]. Header-value `${VAR}`
+//! expansion and its error type live here too, so the config crate and
+//! the `jinn-mcp-slice` runtime resolve headers identically.
+//!
+//! The connection runtime — spawning children, allocating ports,
+//! handshaking — stays in `jinn-mcp-slice`. This module is data only.
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};

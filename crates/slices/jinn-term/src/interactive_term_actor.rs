@@ -44,12 +44,12 @@ use trouper::registry::RegistryError;
 use crate::pty_session::{PtySession, TermExitInfo};
 use crate::screen_task::{ScreenHandle, ScreenWiring};
 use jinn_domain::common::services::bus_service::BusService;
+use jinn_preferences_config::schemas::term::InteractiveTermPrefs;
 use jinn_term_msg::command::{
     ControlHolder, KillTerm, KillTermOutcome, ResizeTerm, SendTermInput, SendTermKey,
     SendTermOutcome, SpawnTerm, SpawnTermOutcome, TermScreen,
 };
 use jinn_term_msg::event::TermScreenUpdated;
-use jinn_term_msg::prefs::InteractiveTermPrefs;
 use jinn_term_msg::settle::{encode_input, should_settle};
 use jinn_term_msg::takeover::TermControls;
 

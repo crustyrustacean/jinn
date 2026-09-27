@@ -215,7 +215,7 @@ fn render_empty(frame: &mut Frame<'_>, area: Rect, accent: ratatui::style::Color
 fn bottom_border_hints(facts: &RenderFacts, capturing: bool) -> ratatui::text::Line<'static> {
     let theme = &facts.theme;
     let toggle = facts.fact(TOGGLE_KEY_FACT).map_or_else(
-        || jinn_term_msg::prefs::DEFAULT_CONTROL_TOGGLE_KEY.to_owned(),
+        || jinn_preferences_config::schemas::term::DEFAULT_CONTROL_TOGGLE_KEY.to_owned(),
         ToOwned::to_owned,
     );
     let key_style = Style::default()

@@ -40,7 +40,7 @@ use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_mcp_msg::{McpConnectionStatus, McpServerLog, McpServerStatus};
-use jinn_mcp_msg::{McpServerConfig, TransportKind};
+use jinn_preferences_config::schemas::mcp::{McpServerConfig, TransportKind};
 use jinn_tools_msg::truncation::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncate_tail};
 use jinn_tools_msg::{ExecuteTool, RegisterTools};
 use jinn_tools_msg::{ToolExecutionCompleted, ToolsUnregistered};
@@ -225,7 +225,8 @@ fn expand_server_headers(
     server: &McpServerConfig,
 ) -> Result<Vec<(String, String)>, Report<McpClientError>> {
     let resolve = |name: &str| services.api_keys.get(name);
-    jinn_mcp_msg::expand_mcp_headers(&server.headers, &resolve).change_context(McpClientError)
+    jinn_preferences_config::schemas::mcp::expand_mcp_headers(&server.headers, &resolve)
+        .change_context(McpClientError)
 }
 
 /// Acquires a connected [`McpClient`] and the server's tool definitions.
