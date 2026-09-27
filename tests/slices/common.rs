@@ -365,7 +365,7 @@ pub async fn activate_token_count(services: &mut jinn_kernel::Services, state: j
         &services.key_routes,
         &services.trouper_system,
     );
-    let _cache = jinn_token_count::activate(&mut host, state);
+    jinn_token_count::activate(&mut host, state);
 }
 
 /// Activates the turn-dispatch slice on the harness services (the queue
