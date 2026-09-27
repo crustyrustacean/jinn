@@ -109,6 +109,10 @@ impl TuiApp {
 
                         let intent_opt = self.which_key.handle_key(protocol_key);
                         let Some(intent) = intent_opt else {
+                            // The key fed the which-key sequence instead of
+                            // resolving to an intent, so the handler never
+                            // saw it and could not dismiss the prompt itself.
+                            self.dismiss_prompt_for_unresolved_key();
                             return;
                         };
 
@@ -122,12 +126,15 @@ impl TuiApp {
                         }
                         // Fall through to keymap for scroll, etc.
                         let scope = self.which_key.scope().clone();
-                        let Some(intent) = self
+                        let intent_opt = self
                             .which_key
                             .keymap()
                             .mouse_handler()
-                            .and_then(|h| h(mouse, &scope))
-                        else {
+                            .and_then(|h| h(mouse, &scope));
+                        let Some(intent) = intent_opt else {
+                            // The event resolved to no intent — the same gap a
+                            // key that feeds the which-key sequence leaves.
+                            self.dismiss_prompt_for_unresolved_key();
                             return;
                         };
                         self.route_intent(intent);
@@ -189,6 +196,22 @@ impl TuiApp {
             }
             _ => false,
         }
+    }
+
+    /// Dismisses a confirmation prompt that a key consumed before it became
+    /// an intent.
+    ///
+    /// Most keystrokes resolve to an intent, and [`IntentHandler::handle`]
+    /// dismisses every armed prompt on its own. These mint none: opening a
+    /// which-key sequence returns a branch, continuing one matches a nested
+    /// branch, and a key that matches nothing pending closes the popup — all
+    /// of which return `None`. The event loop returns on that `None`, so the
+    /// handler never runs and a prompt armed beforehand would sit on screen
+    /// advertising a confirmation the user has moved on from.
+    ///
+    /// Every one of those is a keypress, so this dismisses unconditionally.
+    pub(super) fn dismiss_prompt_for_unresolved_key(&self) {
+        self.core.state.write().frontend.cancel_stream_prompt = false;
     }
 
     /// Routes an intent through the [`IntentHandler`] and handles TUI signals.

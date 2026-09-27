@@ -1,0 +1,1543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>i want a few more default bash_command_policies added please. they should go into the default_jinn.toml:</title>
+<style>
+:root {
+  --bg: #16181d;
+  --fg: #d7dae0;
+  --muted: #8b919e;
+  --rule: #2b2f38;
+  --user: #7fb3ff;
+  --assistant: #6fd6a8;
+  --actor: #e2c76b;
+  --system: #8b919e;
+  --error: #f08a8a;
+  --thinking: #c9a6f0;
+  --tool: #7fd4d6;
+  --surface: #1d2027;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #ffffff;
+    --fg: #1c1f24;
+    --muted: #5f6672;
+    --rule: #dfe3e8;
+    --user: #1a5fb4;
+    --assistant: #1a7f4b;
+    --actor: #8a6d00;
+    --system: #5f6672;
+    --error: #b3261e;
+    --thinking: #7b3fbf;
+    --tool: #0f6f73;
+    --surface: #f4f6f8;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0 auto;
+  padding: 2rem 1.25rem 6rem;
+  max-width: 52rem;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.65 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+h2 { font-size: 1.15rem; margin: 2rem 0 .5rem; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+pre {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: .7rem .85rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: .85rem;
+}
+a { color: var(--user); }
+hr { border: 0; border-top: 1px solid var(--rule); margin: 2rem 0; }
+.meta { color: var(--muted); font-size: .85rem; }
+.meta dt { display: inline; }
+.meta dd { display: inline; margin: 0 1rem 0 .25rem; }
+.entry { margin: 1.1rem 0; }
+.entry-user { border-left: 3px solid var(--user); padding-left: .8rem; }
+.entry-assistant { border-left: 3px solid var(--assistant); padding-left: .8rem; }
+.entry-actor { border-left: 3px solid var(--actor); padding-left: .8rem; }
+.entry-system, .entry-error { color: var(--muted); border-left: 3px solid var(--rule); padding-left: .8rem; }
+.entry-error { color: var(--error); border-left-color: var(--error); }
+.entry-thinking, .entry-tool_call, .entry-tool_result { border-left: 3px solid var(--tool); padding-left: .8rem; }
+.entry-thinking { border-left-color: var(--thinking); }
+.entry-compaction, .entry-annotation { border-left: 3px solid var(--actor); padding-left: .8rem; }
+.entry > .label { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+details > summary { cursor: pointer; font-size: .9rem; color: var(--tool); }
+details[open] > summary { margin-bottom: .5rem; }
+details > summary .status-failure { color: var(--error); }
+details > summary .status-pending { color: var(--actor); }
+img { max-width: 100%; border: 1px solid var(--rule); border-radius: 6px; margin: .4rem 0; }
+blockquote { margin: .5rem 0; padding-left: .9rem; border-left: 3px solid var(--rule); color: var(--muted); }
+table { border-collapse: collapse; }
+td, th { border: 1px solid var(--rule); padding: .3rem .5rem; }
+ul, ol { padding-left: 1.4rem; }
+</style>
+</head>
+<body>
+<header>
+<h1>i want a few more default bash_command_policies added please. they should go into the default_jinn.toml:</h1>
+<dl class="meta"><dt>model</dt><dd>openrouter/stealth/space-bunny-alpha</dd><dt>working directory</dt><dd>/mnt/zed/repos/jinn/block-stuff</dd><dt>created</dt><dd>2026-09-27T22:21:05.497819735Z</dd><dt>updated</dt><dd>2026-09-27T22:23:43.07497389Z</dd><dt>entries</dt><dd>33</dd></dl>
+</header>
+<main>
+<div class="entry entry-system" id="entry-0"><div class="label">System</div><p>⚙️ Running setup script...</p>
+</div>
+<div class="entry entry-system" id="entry-1"><div class="label">System</div><p>✅ Setup complete - Using /mnt/zed/repos/jinn/block-stuff as cwd</p>
+</div>
+<div class="entry entry-user" id="entry-2"><div class="label">You</div><p>i want a few more default bash_command_policies added please. they should go into the default_jinn.toml:</p>
+<ul>
+<li><code>find /</code></li>
+<li><code>find ~</code></li>
+<li><code>ls -r /</code></li>
+<li><code>ls -r ~</code></li>
+</ul>
+<p>agents like to run these if they cant find something. note that they also provider a bunch of other stuff with the cmomand like this:</p>
+<pre><code>{&quot;command&quot;: &quot;cd /mnt/zed/repos/jinn/esc-cancel &amp;&amp; find / -path /proc -prune -o -type d -name \&quot;ratatui-which-key-*\&quot; -print 2&gt;/dev/null | head -3; echo \&quot;---\&quot;; find /mnt/zed/repos -maxdepth 2 -name \&quot;*which-key*\&quot; -type d 2&gt;/dev/null | head&quot;}
+</code></pre>
+</div>
+<div class="entry entry-assistant" id="entry-3"><div class="label">Assistant</div><p>I'll look at how <code>default_jinn.toml</code> and <code>bash_command_policies</code> are defined.</p>
+</div>
+<div class="entry entry-tool_call" id="entry-4">
+<details><summary><span class="summary-label">bash · {&quot;command&quot;: &quot;cd /mnt/zed/repos/jinn/block-stuff &amp;&amp; ls &amp;&amp; rg -l \&quot;bash_c…</span><span class="kind">tool_call</span></summary><pre><code>{&quot;command&quot;: &quot;cd /mnt/zed/repos/jinn/block-stuff &amp;&amp; ls &amp;&amp; rg -l \&quot;bash_command_policies\&quot; --hidden -g &#39;!target&#39; | head -30&quot;}</code></pre></details>
+</div>
+<div class="entry entry-tool_call" id="entry-5">
+<details><summary><span class="summary-label">bash · {&quot;command&quot;: &quot;cd /mnt/zed/repos/jinn/block-stuff &amp;&amp; find . -name \&quot;defau…</span><span class="kind">tool_call</span></summary><pre><code>{&quot;command&quot;: &quot;cd /mnt/zed/repos/jinn/block-stuff &amp;&amp; find . -name \&quot;default_jinn.toml\&quot; -not -path \&quot;./target/*\&quot;&quot;}</code></pre></details>
+</div>
+<div class="entry entry-tool_result" id="entry-6">
+<details><summary><span class="summary-label">bash · success · 1 lines</span><span class="kind">tool_result</span> <span class="status-success">success</span></summary><pre><code>./crates/jinn-preferences-config/src/default_jinn.toml
+</code></pre></details>
+</div>
+<div class="entry entry-tool_result" id="entry-7">
+<details><summary><span class="summary-label">bash · success · 15 lines</span><span class="kind">tool_result</span> <span class="status-success">success</span></summary><pre><code>AGENTS.md
+Cargo.lock
+Cargo.toml
+CHANGELOG.md
+crates
+doc
+justfile
+LICENSE
+README.md
+res
+scripts
+src
+tests
+THIRD_PARTY_LICENSES
+vendor
+</code></pre></details>
+</div>
+<div class="entry entry-thinking" id="entry-8">
+<details><summary><span class="summary-label">reasoning · ~14 tokens</span><span class="kind">thinking</span></summary><pre><code>No matches for bash_command_policies? Let&#39;s grep.</code></pre></details>
+</div>
+<div class="entry entry-assistant" id="entry-9"><div class="label">Assistant</div></div>
+<div class="entry entry-tool_call" id="entry-10">
+<details><summary><span class="summary-label">bash · {&quot;command&quot;: &quot;cd /mnt/zed/repos/jinn/block-stuff &amp;&amp; cat crates/jinn-pref…</span><span class="kind">tool_call</span></summary><pre><code>{&quot;command&quot;: &quot;cd /mnt/zed/repos/jinn/block-stuff &amp;&amp; cat crates/jinn-preferences-config/src/default_jinn.toml &amp;&amp; echo \&quot;=====\&quot; &amp;&amp; rg -n \&quot;command_polic\&quot; -g &#39;!target&#39; -g &#39;!vendor&#39; . | head -40&quot;}</code></pre></details>
+</div>
+<div class="entry entry-tool_result" id="entry-11">
+<details><summary><span class="summary-label">bash · success · 524 lines</span><span class="kind">tool_result</span> <span class="status-success">success</span></summary><pre><code># jinn default configuration
+
+# ###########################################################################
+# Tools
+# ###########################################################################
+[tools]
+# &gt; Default execution timeout (seconds) for all builtin tool calls. Acts as a
+# &gt; safety ceiling so a hung tool never stalls the turn indefinitely. Bash calls
+# &gt; can override this per-call via the `max_duration_secs` tool argument.
+default_timeout_secs = 300
+
+# &gt; Number of lines in a tool call before truncating.
+max_output_lines = 2000
+
+# &gt; Number of bytes in a tool call before truncating.
+max_output_bytes = 51200
+
+# &gt; Disable these tools
+disabled = [&quot;grep&quot;]
+
+# ---------------------------------------------------------------------------
+# Command policies
+# ---------------------------------------------------------------------------
+#
+# &gt; A `command_policy` that applies to every session, in every directory. Same
+# &gt; shape as a project&#39;s `command_policy`: each rule pairs a regex `pattern`
+# &gt; (matched against the full command string) with the corrective `message`
+# &gt; returned to the agent when it matches. The command never runs.
+#
+# &gt; These rules are evaluated *before* the matching project&#39;s rules and the
+# &gt; first match wins, so a project policy can only add blocks — it cannot lift a
+# &gt; global one. Use this for mistakes that are never correct anywhere; keep
+# &gt; repo-specific habits in the project&#39;s own `command_policy`.
+#
+# &gt; Use single-quoted strings so regex metacharacters survive without escape
+# &gt; processing. A pattern the regex engine cannot compile is inert (logged, no
+# &gt; block) and the engine has no lookaround, so `(?&lt;!...)` and `(?=...)` will
+# &gt; not work.
+#
+# &gt; The rule below guards a real footgun: ripgrep is recursive already, so `-r`
+# &gt; takes a replacement value and `rg -rn` silently rewrites every match to
+# &gt; `n` — and exits 0.
+[[tools.bash_command_policy]]
+pattern = &#39;rg -rn&#39;
+message = &#39;ripgrep is already recursive and `-r` takes a replacement value, so `rg -rn` rewrites every match to `n` and still exits 0 — use `-n` alone for line numbers.&#39;
+
+# ###########################################################################
+# Chat log
+# ###########################################################################
+[chat_log]
+#
+# &gt; Number of lines displayed in a tool result. This is just the visual
+# &gt; representation in the chat log and does not impact what is sent to the model.
+tool_entry_max_lines = 6
+#
+# &gt; Once this many consecutive out-of-context chat entries is reached, they will
+# &gt; be collapsed into a hidden block.
+min_collapse_count = 3
+#
+# ###########################################################################
+# Skills
+# ###########################################################################
+[skills]
+#
+# &gt; Disable these skills
+disabled = [&quot;phased-task-loop&quot;]
+
+# ###########################################################################
+# Session lifecycle commands
+# ###########################################################################
+# &gt; Lifecycle commands run at session startup and teardown. They allow you to
+# &gt; setup and cleanup the environment.
+#
+# &gt; `setup_command` is ran when the session is created. `teardown_command` is ran
+# &gt; when the session is &quot;closed&quot; or the command can be ran manually with the `t`
+# &gt; keyboard shortcut.
+#
+# &gt; The `setup_command` can optionally end by printing the desired CWD and jinn
+# &gt; will configure the session to use that CWD. This is useful when checking out
+# &gt; a new branch in a new workspace and then switching to that workspace.
+#
+
+# &gt; my_project/        &lt;-- configured as the project directory in jinn
+# &gt;    repo.fossil
+# &gt;    checkouts_will_go_here_as_siblings/
+# &gt;       .fslckout
+# &gt;
+[[session_lifecycle.script]]
+name = &quot;fossil branch checkout&quot;
+description = &quot;Open a new checkout + branch&quot;
+setup_command = &quot;mkdir &lt;branch&gt; &amp;&amp; cd &lt;branch&gt; &amp;&amp; fossil open ../&lt;repo&gt;.fossil &amp;&amp; fossil commit -m &#39;Open &lt;branch&gt;&#39; --branch &lt;branch&gt; --allow-empty &amp;&amp; echo ./&lt;branch&gt;&quot;
+teardown_command = &quot;fossil merge trunk --force &amp;&amp; fossil addremove &amp;&amp; fossil commit -m &#39;Bring in latest trunk&#39; &amp;&amp; fossil update trunk &amp;&amp; fossil merge &lt;branch&gt; &amp;&amp; fossil addremove &amp;&amp; fossil commit -m &#39;Merge &lt;branch&gt;&#39; &amp;&amp; fossil branch close &lt;branch&gt; &amp;&amp; cd .. &amp;&amp; rm -rfv &lt;branch&gt;&quot;
+
+# &gt;Git worktrees. Project directory should be a parent folder of the repo:
+#
+# &gt;my_project/        &lt;-- configured as the project directory in jinn
+# &gt;   repo/           &lt;-- your actual repo
+# &gt;      .git/
+# &gt;   worktrees_will_go_here_as_siblings/
+# &gt;      .git/
+# &gt;
+[[session_lifecycle.script]]
+name = &quot;git worktree&quot;
+description = &quot;Open a git worktree + branch&quot;
+setup_command = &quot;cd &lt;repo&gt; &amp;&amp; git worktree add -b &lt;branch&gt; ../&lt;branch&gt; &amp;&amp; cd .. &amp;&amp; echo $(pwd)/&lt;branch&gt;&quot;
+teardown_command = &quot;&quot;&quot;bash -c &#39;git add -A &amp;&amp; (git diff --cached --quiet || git commit -q -m &quot;auto-commit at teardown&quot;) &amp;&amp; git merge main &amp;&amp; cd ../&lt;repo&gt; &amp;&amp; git merge --squash &lt;branch&gt; &amp;&amp; (git diff --cached --quiet || git commit -q -m &quot;Merge &lt;branch&gt;&quot;) &amp;&amp; git worktree remove ../&lt;branch&gt; &amp;&amp; git branch -D &lt;branch&gt;&#39;&quot;&quot;&quot;
+
+# ###########################################################################
+# Projects
+# ###########################################################################
+#
+# &gt; Projects are curated directories you frequently start sessions in. They
+# &gt; appear in the project picker (`&lt;leader&gt;sp`) and let you create a session
+# &gt; directly at one of these paths without first changing the active session&#39;s
+# &gt; directory.
+#
+# &gt; Add one block per directory. Duplicates are ignored.
+#
+# &gt; A project may also carry a `command_policy`: a list of blocked-command
+# &gt; rules enforced by the bash tool for any session whose working directory
+# &gt; falls inside the project. Each rule pairs a regex `pattern` (matched
+# &gt; against the full command string; first match wins) with the corrective
+# &gt; `message` returned to the agent when it matches. The command never runs.
+#
+# [[project.entry]]
+# path = &quot;~/code/jinn&quot;
+# command_policy = [{ pattern = &#39;cargo\s+(test|t)\b.*\s-p\b&#39;, message = &quot;cargo test -p triggers a clean rebuild in this repo — run `just test` for the whole workspace instead.&quot; }]
+
+# ###########################################################################
+# MCP servers (Model Context Protocol)
+# ###########################################################################
+# &gt; jinn acts as an MCP *client*: each entry below declares a server it can
+# &gt; connect to. Servers are OFF by default and must be enabled per-session
+# &gt; (the choice is persisted with the session). When enabled for a session,
+# &gt; jinn spawns/connects the server, advertises its tools to the model under
+# &gt; a namespaced id `mcp__&lt;name&gt;__&lt;tool&gt;`, and forwards calls to it.
+#
+# &gt; Add one block per server. The `name` must be unique across all servers.
+#
+# &gt; Three transport modes are available:
+#
+# &gt;   stdio       (default) — jinn spawns the server and talks over its
+# &gt;                          stdin/stdout. Most MCP servers support this.
+# &gt;                          Omit the `transport` field entirely.
+#
+# &gt;   local_http  — jinn spawns the server (usually with a --port flag) and
+# &gt;                connects over HTTP. jinn allocates a free port for each
+# &gt;                session and expands the `&lt;port&gt;` token in both `args` and
+# &gt;                `url` with that port. The host is parsed from the `url`.
+# &gt;                Use this when the server supports HTTP mode and you want
+# &gt;                stdout logging or HTTP transport.
+#
+# &gt;   remote_http — jinn connects to an already-running server at the
+# &gt;                given `url`. No process is spawned; `command`/`args` are
+# &gt;                not needed. Use this for servers running in Docker, on a
+# &gt;                remote host, or as a system service.
+#
+# &gt; stdio example (transport omitted — it&#39;s the default)
+# [mcp.foo]
+# command = &quot;npx&quot;
+# args = [&quot;@foo/mcp-server&quot;, &quot;--stdio&quot;]
+# auto_enable = false
+#
+# &gt; local_http example
+# [mcp.foo_http]
+# command = &quot;npx&quot;
+# &gt; - &lt;port&gt; is expanded to a jinn-allocated port number
+# &gt; - &lt;ip&gt; is expanded to the IP address listed in the `url` key (below).
+# args = [&quot;@foo/mcp-server&quot;, &quot;--port&quot;, &quot;&lt;port&gt;&quot;, &quot;--host&quot;, &quot;&lt;ip&gt;&quot;]
+# transport = &quot;local_http&quot;
+# url = &quot;http://127.0.0.1:&lt;port&gt;/mcp&quot;
+#
+# &gt; remote_http example (no process spawned, connect to url)
+# [mcp.foo_remote]
+# transport = &quot;remote_http&quot;
+# url = &quot;http://localhost:3001/mcp&quot;
+#
+# &gt; HTTP headers (local_http and remote_http only; ignored on stdio).
+# &gt; Values may embed ${ENV_VAR} tokens — expanded from your environment once
+# &gt; at startup. Changing a variable requires a jinn restart to take effect.
+# &gt; A variable that is unset or empty keeps the server from connecting and
+# &gt; names the variable in the failure; header values are never logged.
+#
+# [mcp.foo_remote.headers]
+# Authorization = &quot;Bearer ${MY_API_KEY}&quot;
+# X-Api-Key = &quot;${OTHER_KEY}&quot;
+
+# &gt; Compaction command + auto compaction.
+[context_curation.compaction]
+# &gt; Provider/model used for compaction summarization. Falls back to the session model
+# &gt; when unset.
+# model = &quot;openrouter/deepseek/deepseek-v4.1-flash&quot;
+#
+# &gt; Automatically compact the conversation when the used context window exceeds
+# &gt; this usage percentage. Recommend no higher than 0.85 to account for drift in
+# &gt; token calculations between models and providers (jinn applies a single token
+# &gt; calculation across the board).
+threshold = 0.7
+
+# &gt; Number of tokens to reserve during compaction. This will keep up to the
+# &gt; `reserve_tokens` worth of recent messages so the model doesn&#39;t lose track of
+# &gt; what it was working on.
+reserve_tokens = 20000
+
+# &gt; Fallback context window size (in tokens) when the provider does not report one.
+# &gt; Note that if the provider doesn&#39;t report the size that you can configure it
+# &gt; manually in `providers.toml` (highly recommended)
+fallback_context_window = 150000
+
+# &gt; Policy for retrying failed provider requests.
+[provider.request_retry]
+# &gt; Retry the request this amount of times before aborting.
+max_retries = 5
+
+# &gt; Retry uses exponential backoff. Start at this number of seconds, doubling each retry.
+base_delay_secs = 2
+
+# &gt; Maximum amount of time to wait before retrying.
+max_delay_secs = 60
+
+# &gt; OpenRouter web search. Only valid when using OpenRouter as the provider.
+[provider.web_search]
+# &gt; Search engine used by the openrouter_web_search tool. One of:
+# &gt; - &quot;exa&quot;,
+# &gt; - &quot;firecrawl&quot;
+# &gt; - &quot;parallel&quot;
+# &gt; - &quot;native&quot;
+# &gt; - &quot;auto&quot;
+engine = &quot;exa&quot;
+
+# &gt; Optional OpenRouter web-search tuning.
+
+# &gt; Maximum number of results to return per individual tool call.
+# max_results = 5
+
+# &gt; Maximum number of results to return per request.
+# max_total_results = 20
+
+# &gt; Controls how much context is used by the OpenRouter results processing
+# &gt; engine when handling the results (ie: extra big pages would need more
+# &gt; context). Leave unset to let OpenRouter decide.
+# &gt; &quot;low&quot;, &quot;medium&quot;, &quot;high&quot; are only acceptable values.
+# search_context_size = &quot;medium&quot;
+
+# &gt; If present, only ever searches these domains.
+# allowed_domains = [&quot;example.com&quot;, &quot;docs.example.com&quot;]
+
+# &gt; If present, blocks these domains from the search result.
+# excluded_domains = [&quot;pinterest.com&quot;]
+
+[ui.cwd_selector]
+# &gt; Shell command template run by the cwd_selector tool. `{path}` is replaced
+# &gt; with the starting directory. Must print a single absolute path on stdout.
+command = &quot;find -L {path} -type d 2&gt;/dev/null | fzf --no-multi&quot;
+
+# &gt; The minimap uses colors (dark to light) to mark the size of a particular
+# &gt; message.
+[ui.minimap]
+# &gt; Messages `max_tokens` or higher will always be the lightest color.
+max_tokens = 2000
+
+# ###########################################################################
+# Watchdogs
+# ###########################################################################
+
+# &gt; Monitors for streams that fail to provide tokens.
+[watchdog.stall]
+# &gt; Seconds of stream silence before a stalled turn is retried. Minimum 1.
+timeout_secs = 60
+# &gt; Consecutive silent-stall restarts allowed before the turn is cancelled.
+max_restarts = 3
+
+# &gt; Monitors tool call problems.
+[watchdog.tool_call]
+# &gt; Tool failures before the turn is cancelled. The calculation uses a simple
+# &gt; accumulator that increments on fail and decrements on success. So the
+# &gt; failures may or may not be consecutive.
+max_failures = 4
+
+# ###########################################################################
+# Interactive terminal panes
+# ###########################################################################
+
+[term]
+# &gt; Keybind to toggle keyboard capture.
+control_toggle_key = &quot;&lt;c-g&gt;&quot;
+
+# &gt; When an agent sends a keystroke, the terminal must remain unchanged for
+# &gt; this long before a terminal screenshot is sent back to the agent.
+settle_quiet_ms = 400
+
+# &gt; After an agent sends a keystroke, the maximum amount of time to wait until
+# &gt; sending a terminal screenshot back to the agent. This covers cases with stuff
+# &gt; like `htop` that may update more frequently than the settle_quiet_ms.
+settle_max_wait_ms = 3000
+
+# ###########################################################################
+# Context curation
+# ###########################################################################
+
+[context_curation.auto_prune]
+# &gt; When auto pruners run, their targeted chat entries are held in a queue
+# &gt; until the sum of the queued chat entries reaches this token threshold. This
+# &gt; queueing is to keep cache hits high in order to take advantage of cache
+# &gt; pricing.
+accumulation_threshold_tokens = 150000
+
+# ---------------------------------------------------------------------------
+# &gt; Prunes `edit` and `write` tool results that precede a `read` of the same file.
+#
+#   X  edit(/foo.rs)        ← pruned
+#   X  edit applied         ← pruned
+#      read(/foo.rs)        ← trigger
+#      &lt;contents&gt;
+[context_curation.auto_prune.edit_read]
+enabled = true
+# &gt; Only apply pruning after there are this many messages ahead of the prune target.
+min_age = 100
+
+# ---------------------------------------------------------------------------
+# &gt; Prunes `read` tool results that precede an `edit` or `write` of the same file.
+#
+#     read(/foo.rs)        ← pruned
+#     &lt;contents&gt;
+#     edit(/foo.rs)
+#     write(/foo.rs)       ← 2nd edit: trigger, threshold = 2
+[context_curation.auto_prune.read_edit]
+enabled = true
+# &gt; Number of edits or writes before the &quot;read&quot; becomes stale.
+threshold = 2
+# &gt; Only apply pruning after there are this many messages ahead of the prune target.
+min_age = 80
+
+# ---------------------------------------------------------------------------
+# &gt; Prunes context based on regex rules.
+[context_curation.auto_prune.regex]
+enabled = true
+
+# &gt; In this example, only 2 `cargo test` are allowed to remain in context. Once
+# &gt; a third `cargo test` is detected, then the oldest detected result will be
+# &gt; pruned.
+[[context_curation.auto_prune.regex.rules]]
+# &gt; Regex pattern to check
+pattern = &quot;cargo test&quot;
+# &gt; Tool name to check
+tool_name = &quot;bash&quot;
+# &gt; Keep this many matching instances.
+keep_last = 2
+# &gt; Only apply pruning after there are this many messages ahead of the prune target.
+min_age = 100
+
+[[context_curation.auto_prune.regex.rules]]
+pattern = &quot;cargo check&quot;
+tool_name = &quot;bash&quot;
+keep_last = 1
+min_age = 100
+
+[[context_curation.auto_prune.regex.rules]]
+pattern = &quot;cargo clippy&quot;
+tool_name = &quot;bash&quot;
+keep_last = 1
+min_age = 50
+
+# ---------------------------------------------------------------------------
+# &gt; Prunes the `edit` tool if it failed.
+[context_curation.auto_prune.broken_edit]
+enabled = true
+# &gt; Only apply pruning after there are this many messages ahead of the prune target.
+min_age = 30
+
+
+# ---------------------------------------------------------------------------
+# &gt; Prunes todo list calls.
+#
+# &gt; With the default settings (min_age=0, protect_latest=true), the latest todo
+# &gt; call will remain in history indefinitely and older todo entries will get
+# &gt; pruned.
+[context_curation.auto_prune.todo]
+enabled = true
+# &gt; Setting to 0 means it can trigger immediately.
+min_age = 0
+# &gt; Force-include the most recent todo call+result pair so other pruners can
+# &gt; never remove the current task list from context.
+protect_latest = true
+
+# ---------------------------------------------------------------------------
+# &gt; Prunes files that have been edited/written multiple times.
+[context_curation.auto_prune.double_edit]
+enabled = true
+# &gt; The number of writes/edits to keep for any particular file
+max_file_edits = 2
+# &gt; Only apply pruning after there are this many messages ahead of the prune target.
+min_age = 40
+
+# ---------------------------------------------------------------------------
+# &gt; Prunes reads of the same file.
+[context_curation.auto_prune.consecutive_reads]
+enabled = true
+# &gt; Keep up to 5 reads per file. Don&#39;t set this too low because agents can read
+# &gt; files in chunks multiple times on purpose.
+keep_last = 5
+# &gt; Only apply pruning after there are this many messages ahead of the prune target.
+min_age = 120
+
+# ---------------------------------------------------------------------------
+# &gt; Catch-all pruner that removes all tool results of a certain age.
+[context_curation.auto_prune.tool_age_window]
+enabled = true
+# &gt; Only apply pruning after there are this many messages ahead of the prune
+# &gt; target. Since this pruner impacts all tool calls, make sure min_age is set
+# &gt; relatively high.
+min_age = 200
+
+# ---------------------------------------------------------------------------
+# &gt; Prunes short assistant entries. These are common during tool loops when then
+# &gt; model is &quot;thinking out loud&quot; or &quot;restating&quot; what it&#39;s doing.
+[context_curation.auto_prune.trivial_assistant]
+enabled = true
+# &gt; Prune entries of this token length or smaller.
+max_tokens = 80
+# &gt; Only apply pruning after there are this many messages ahead of the prune
+# &gt; target. The min_age for this pruner should be set somewhat high because
+# &gt; models use their own short responses to stay on track.
+min_age = 100
+
+# ---------------------------------------------------------------------------
+# &gt; Prunes large assistant entries.
+#
+# &gt; Sometimes the assistant thinks &quot;out loud&quot; with large entries (which we want
+# &gt; to prune). However, large entries are also typically associated with direct
+# &gt; responses to user messages and are of more importance (like plans or
+# &gt; explanations or code samples that we want to keep).
+#
+# &gt; This pruner calculates a `radius` of entries anchored from all user messages
+# &gt; and the first/last message in the entire chat history. If the assistant entry
+# &gt; is outside the radius, it gets pruned. If it&#39;s inside, it stays. The size of
+# &gt; the assistant message is the `trivial_assistant` pruner config `max_tokens`
+# &gt; size + 1.
+#
+# &gt; Here&#39;s a visual to help explain:
+#
+#  u = user message
+#  A = assistant message
+#  t = tool call
+#  . = outside radius
+#  - = inside radius
+#
+#         keep                            keep
+#         v     v                         v  v
+#        uAtttttA.........................AttAttu
+# anchor ^-------|         prune         |------^ user message anchor
+
+[context_curation.auto_prune.anchored_assistant]
+enabled = true
+# &gt; Protect large assistant messages if a user messages is within the radius
+# &gt; (in terms of entries), or this many entries near a session edge.
+radius = 20
+# &gt; Only apply pruning after there are this many messages ahead of the prune target.
+min_age = 50
+
+# ###########################################################################
+# Discord integration
+# ###########################################################################
+#
+# [discord]
+# &gt; Whether the Discord bot is active.
+# enabled = true
+#
+# &gt; Discord secret bot token.
+# &gt; *** SECURITY NOTE ***
+# &gt; You can omit this and set DISCORD_BOT_TOKEN env variable to avoid putting
+# &gt; it in your config.
+# &gt; *********************
+# bot_token = &quot;&lt;token&gt;&quot;
+#
+# &gt; Discord guild (server) ID the bot operates in.
+# guild_id = &quot;&lt;id&gt;&quot;
+#
+# &gt; Forum channel where the bot creates session threads.
+# forum_channel = &quot;&lt;channel id&gt;&quot;
+#
+# &gt; Users that may access the bot
+# authorized_users = [&quot;&lt;user id&gt;&quot;]
+=====
+./res/skills/jinn-usage/references/configuration.md:100:command_policy = [{ pattern = &#39;rm\s+-rf\s+/&#39;, message = &quot;Never rm -rf from root here.&quot; }]
+./res/skills/jinn-usage/references/configuration.md:109:[[tools.bash_command_policy]]
+./res/skills/jinn-usage/references/configuration.md:117:`command_policy` for repo-specific habits. A pattern the regex engine cannot
+./crates/jinn-preferences-config/src/registration.rs:38:/// - `tools.bash_command_policy` — [`crate::schemas::CommandPolicyRule`]
+./crates/jinn-preferences-config/src/default_jinn.toml:25:# &gt; A `command_policy` that applies to every session, in every directory. Same
+./crates/jinn-preferences-config/src/default_jinn.toml:26:# &gt; shape as a project&#39;s `command_policy`: each rule pairs a regex `pattern`
+./crates/jinn-preferences-config/src/default_jinn.toml:33:# &gt; repo-specific habits in the project&#39;s own `command_policy`.
+./crates/jinn-preferences-config/src/default_jinn.toml:43:[[tools.bash_command_policy]]
+./crates/jinn-preferences-config/src/default_jinn.toml:119:# &gt; A project may also carry a `command_policy`: a list of blocked-command
+./crates/jinn-preferences-config/src/default_jinn.toml:127:# command_policy = [{ pattern = &#39;cargo\s+(test|t)\b.*\s-p\b&#39;, message = &quot;cargo test -p triggers a clean rebuild in this repo — run `just test` for the whole workspace instead.&quot; }]
+./crates/jinn-preferences-config/src/schemas/project.rs:8://! `[[project.global_command_policy]]`. It now lives under the umbrella
+./crates/jinn-preferences-config/src/schemas/project.rs:9://! that owns it, `[[tools.bash_command_policy]]`.
+./crates/jinn-preferences-config/src/schemas/project.rs:13:use super::command_policy::CommandPolicyRule;
+./crates/jinn-preferences-config/src/schemas/project.rs:33:    pub command_policy: Vec&lt;CommandPolicyRule&gt;,
+./crates/jinn-preferences-config/src/schemas/project.rs:91:            crate::schemas::command_policy::GLOBAL_COMMAND_POLICY_KEY
+./crates/jinn-preferences-config/src/schemas/command_policy.rs:1://! The `[[tools.bash_command_policy]]` section — the global, non-project
+./crates/jinn-preferences-config/src/schemas/command_policy.rs:13:pub const GLOBAL_COMMAND_POLICY_KEY: &amp;str = &quot;tools.bash_command_policy&quot;;
+./crates/jinn-preferences-config/src/schemas/mod.rs:26:pub mod command_policy;
+./crates/jinn-preferences-config/src/schemas/mod.rs:49:pub use command_policy::{CommandPolicyRule, GLOBAL_COMMAND_POLICY_KEY};
+./CHANGELOG.md:130:command_policy = [{ pattern = &#39;cargo\s+(test|t)\b.*\s-p\b&#39;, message = &quot;Do not run tests on individual packages. Use `just test` or `cargo test --workspace` as indicated in AGENTS.md.&quot; }]
+./crates/slices/jinn-tools/src/interactive_term_tests.rs:43:        command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+./crates/slices/jinn-tools/src/write.rs:168:            command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+./crates/slices/jinn-tools/src/write.rs:320:            command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+./crates/slices/jinn-tools/src/write.rs:870:            command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+./crates/slices/jinn-tools/src/write.rs:917:            command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+./crates/slices/jinn-tools/src/lib.rs:19:pub mod command_policy;
+./crates/slices/jinn-tools/src/todo_tools/set_list.rs:224:            command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+./crates/slices/jinn-tools/src/todo_tools/set_phase.rs:211:            command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+./crates/jinn-config/src/config_layer.rs:1199:            &quot;# existing\n[[project.entry]]\nname = \&quot;alpha\&quot;\n\n[[tools.bash_command_policy]]\npattern = \&quot;rm -rf\&quot;\n&quot;,
+./crates/slices/jinn-tools/src/todo_tools/get_task_list.rs:109:            command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+./crates/slices/jinn-tools/src/command_policy.rs:4://! global rules from `jinn.toml`&#39;s `[[tools.bash_command_policy]]`, chained ahead
+./crates/slices/jinn-tools/src/command_policy.rs:22:use jinn_preferences_config::schemas::command_policy::CommandPolicyRule;
+./crates/slices/jinn-tools/src/command_policy.rs:45:                        &quot;command_policy: skipping rule with invalid regex&quot;
+./crates/slices/jinn-tools/src/command_policy.rs:86:        matching_project(&amp;projects, cwd, home).map_or_else(Vec::new, |p| p.command_policy.clone());
+./crates/slices/jinn-tools/src/command_policy.rs:149:            command_policy: rules,
+./crates/slices/jinn-tools/src/command_policy.rs:165:                doc.push_str(&quot;[[tools.bash_command_policy]]\n&quot;);
+./crates/slices/jinn-tools/src/save_plan.rs:155:            command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+./crates/slices/jinn-tools/src/save_plan.rs:409:            command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+./crates/slices/jinn-tools/src/bash.rs:496:        if let Some((pattern, message)) = ctx.command_policy.matched_message(&amp;command) {
+./crates/slices/jinn-tools/src/bash.rs:587:    use jinn_preferences_config::schemas::command_policy::CommandPolicyRule;
+</code></pre></details>
+</div>
+<div class="entry entry-thinking" id="entry-12">
+<details><summary><span class="summary-label">reasoning · ~684 tokens</span><span class="kind">thinking</span></summary><pre><code>Let me look at the command_policy.rs in jinn-tools to understand matching semantics (regex against full command string, first match wins). Important: the agent&#39;s command is `cd /mnt/... &amp;&amp; find / -path /proc -prune -o -type d -name &quot;...&quot; -print ...`. So a pattern like `find /` needs to match anywhere in the string. But careful: `find /` would also match `find /mnt/zed/repos` — hmm, &quot;find /mnt/zed/repos -maxdepth 2&quot; contains &quot;find /&quot;. That would be a false positive... Actually `find /` is a prefix of `find /mnt/...`. So a naive `find\s+/` pattern would block legitimate scoped finds. Hmm.
+
+That&#39;s a real design concern worth raising. But the user asked for `find /`. Let me check whether the engine supports lookaround (regex crate — it says no lookaround). So we need to approximate &quot;find at root&quot; with a pattern that doesn&#39;t match `find /mnt`.
+
+Options: match `find /` followed by not-a-path... without lookaround hard. But note the given example command contains BOTH: `find / -path /proc -prune -o ...` (a real root find) AND `find /mnt/zed/repos -maxdepth 2 ...` (a legitimate scoped find). So the pattern must match the first, not the second.
+
+Approach: the &quot;bare root find&quot; signature is `find /` immediately followed by end-of-string or whitespace-then-`;`/`|`/`&amp;&amp;`... hmm, in the example, after `find /` comes ` -path /proc -prune` which is still a root find.
+
+Regex without lookaround: we can express &quot;find / not followed by a path character&quot; as: `find\s+/(\s|$)` — that matches `find / ` (with space after) but not `find /mnt`. And bare `find /` at end of string → `find\s+/$`. So pattern: `\bfind\s+/\s` OR `\bfind\s+/$`. Combined: `\bfind\s+/\s*$|\bfind\s+/\s`. Simpler: `find\s+/\s` covers both cases? `find /` at end of string has no trailing space — need `find\s+/$`.
+
+So: `\bfind\s+/\s*\z` no... Let&#39;s just do: `find\s+/\s` (space then) and `find\s+/$`.
+
+Hmm, but wait: does the matcher run the regex against the raw command string, or does it split on `&amp;&amp;`/`;` and check each segment? Let me read command_policy.rs.
+
+Also `ls -r /` — `ls` has no recursive flag; `ls -r` on Linux... `-r` is actually reverse-sort in some, or &quot;recurse&quot; in BSD. Let me check: GNU `ls -r` → &quot;reverse the order of the files&quot;? Actually GNU ls doesn&#39;t have -r... it errors &quot;unrecognized option&quot;. BSD ls has `-r` for recursive. So `ls -r /` is a real footgun.
+
+Let me read the policy code.</code></pre></details>
+</div>
+<div class="entry entry-assistant" id="entry-13"><div class="label">Assistant</div></div>
+<div class="entry entry-tool_call" id="entry-14">
+<details><summary><span class="summary-label">read · {&quot;file_path&quot;: &quot;/mnt/zed/repos/jinn/block-stuff/crates/slices/jinn-tools…</span><span class="kind">tool_call</span></summary><pre><code>{&quot;file_path&quot;: &quot;/mnt/zed/repos/jinn/block-stuff/crates/slices/jinn-tools/src/command_policy.rs&quot;}</code></pre></details>
+</div>
+<div class="entry entry-tool_call" id="entry-15">
+<details><summary><span class="summary-label">read · {&quot;file_path&quot;: &quot;/mnt/zed/repos/jinn/block-stuff/crates/jinn-preferences-…</span><span class="kind">tool_call</span></summary><pre><code>{&quot;file_path&quot;: &quot;/mnt/zed/repos/jinn/block-stuff/crates/jinn-preferences-config/src/schemas/command_policy.rs&quot;}</code></pre></details>
+</div>
+<div class="entry entry-tool_result" id="entry-16">
+<details><summary><span class="summary-label">read · success · 29 lines</span><span class="kind">tool_result</span> <span class="status-success">success</span></summary><pre><code> 1//! The `[[tools.bash_command_policy]]` section — the global, non-project
+ 2//! command rules the bash tool consults.
+ 3//!
+ 4//! Advisory-strength by design: rules exist to stop well-trained habits
+ 5//! (like per-package test invocations in a whole-workspace repo), not to
+ 6//! resist a determined actor.
+ 7//!
+ 8//! This module holds the section&#39;s declaration and its value shape only.
+ 9//! Resolution — merging the global rules with a project&#39;s own — and the
+10//! compiled matcher that runs them live in the `jinn-tools` slice.
+11
+12/// The `jinn.toml` key the global (non-project-specific) rules live at.
+13pub const GLOBAL_COMMAND_POLICY_KEY: &amp;str = &quot;tools.bash_command_policy&quot;;
+14
+15/// A rule pairs a user-authored regex with the corrective message returned
+16/// when the regex matches a command. Rules are advisory-strength by design:
+17/// they exist to stop well-trained habits, not to resist a determined actor.
+18#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+19pub struct CommandPolicyRule {
+20    /// Regex matched against the full command string.
+21    pub pattern: String,
+22    /// Message returned in the failed tool result when [`Self::pattern`] matches.
+23    pub message: String,
+24}
+25
+26impl jinn_config::ConfigList for CommandPolicyRule {
+27    const KEY: &amp;&#39;static str = GLOBAL_COMMAND_POLICY_KEY;
+28    const ENTRY_KEY: &amp;&#39;static str = &quot;pattern&quot;;
+29}
+</code></pre></details>
+</div>
+<div class="entry entry-tool_result" id="entry-17">
+<details><summary><span class="summary-label">read · success · 423 lines</span><span class="kind">tool_result</span> <span class="status-success">success</span></summary><pre><code>  1//! Command policy - resolution and matching for the bash tool.
+  2//!
+  3//! Resolves the blocked-command rules that apply to a session&#39;s cwd: the
+  4//! global rules from `jinn.toml`&#39;s `[[tools.bash_command_policy]]`, chained ahead
+  5//! of the rules of the configured project containing that cwd
+  6//! (`~`-expanded lexical longest-prefix match). The result is compiled into a
+  7//! matcher consulted by the bash tool before any child process spawns.
+  8//!
+  9//! Global-first ordering makes the global list a floor: since first match
+ 10//! wins, a project policy can add blocks but never lift a global one, and the
+ 11//! global rules still apply outside every configured project.
+ 12//!
+ 13//! Advisory-strength by design: rules exist to stop well-trained habits
+ 14//! (like `cargo test -p` in a whole-workspace repo), not to resist a
+ 15//! determined actor.
+ 16
+ 17use std::path::{Path, PathBuf};
+ 18
+ 19use regex::Regex;
+ 20
+ 21use jinn_preferences_config::schemas::ProjectConfig;
+ 22use jinn_preferences_config::schemas::command_policy::CommandPolicyRule;
+ 23
+ 24/// Compiled blocked-command rules for one project. Empty matches nothing.
+ 25#[derive(Debug, Clone, Default)]
+ 26pub struct CompiledCommandPolicy {
+ 27    /// Compiled regexes paired with their messages, in config order.
+ 28    rules: Vec&lt;(Regex, String)&gt;,
+ 29}
+ 30
+ 31impl CompiledCommandPolicy {
+ 32    /// Compiles user-authored rules. An invalid regex is skipped with a
+ 33    /// `tracing::warn!` naming the pattern — one bad rule is inert, never
+ 34    /// fatal for the project or the tool call.
+ 35    #[must_use]
+ 36    pub fn compile(rules: &amp;[CommandPolicyRule]) -&gt; Self {
+ 37        let compiled: Vec&lt;(Regex, String)&gt; = rules
+ 38            .iter()
+ 39            .filter_map(|rule| match Regex::new(&amp;rule.pattern) {
+ 40                Ok(regex) =&gt; Some((regex, rule.message.clone())),
+ 41                Err(err) =&gt; {
+ 42                    tracing::warn!(
+ 43                        pattern = %rule.pattern,
+ 44                        %err,
+ 45                        &quot;command_policy: skipping rule with invalid regex&quot;
+ 46                    );
+ 47                    None
+ 48                }
+ 49            })
+ 50            .collect();
+ 51        Self { rules: compiled }
+ 52    }
+ 53
+ 54    /// Returns `(pattern_as_written, message)` for the first rule matching
+ 55    /// `command`. Config order is precedence: first match wins.
+ 56    #[must_use]
+ 57    pub fn matched_message(&amp;self, command: &amp;str) -&gt; Option&lt;(&amp;str, &amp;str)&gt; {
+ 58        self.rules
+ 59            .iter()
+ 60            .find(|(regex, _)| regex.is_match(command))
+ 61            .map(|(regex, message)| (regex.as_str(), message.as_str()))
+ 62    }
+ 63
+ 64    /// True when no rules are compiled.
+ 65    #[must_use]
+ 66    pub fn is_empty(&amp;self) -&gt; bool {
+ 67        self.rules.is_empty()
+ 68    }
+ 69}
+ 70
+ 71/// Returns the command-policy rules that apply to `cwd`: the global rules
+ 72/// configured in `jinn.toml` chained ahead of the rules of the configured
+ 73/// project containing `cwd` (or an empty project tail when no project matches).
+ 74///
+ 75/// Global rules come first because config order is precedence (first match
+ 76/// wins) — a project policy can add blocks but never lift a global one.
+ 77#[must_use]
+ 78pub fn resolve_rules(
+ 79    config: &amp;jinn_config::ConfigLayer,
+ 80    cwd: &amp;Path,
+ 81    home: &amp;Path,
+ 82) -&gt; Vec&lt;CommandPolicyRule&gt; {
+ 83    let global = config.get_list::&lt;CommandPolicyRule&gt;().unwrap_or_default();
+ 84    let projects = config.get_list::&lt;ProjectConfig&gt;().unwrap_or_default();
+ 85    let project_rules =
+ 86        matching_project(&amp;projects, cwd, home).map_or_else(Vec::new, |p| p.command_policy.clone());
+ 87    global.iter().chain(project_rules.iter()).cloned().collect()
+ 88}
+ 89
+ 90/// Returns the configured project with the longest `~`-expanded path that is
+ 91/// a lexical prefix of (or equal to) `cwd`.
+ 92fn matching_project&lt;&#39;a&gt;(
+ 93    projects: &amp;&#39;a [ProjectConfig],
+ 94    cwd: &amp;Path,
+ 95    home: &amp;Path,
+ 96) -&gt; Option&lt;&amp;&#39;a ProjectConfig&gt; {
+ 97    projects
+ 98        .iter()
+ 99        .filter_map(|project| {
+100            let expanded = expand_tilde(&amp;project.path, home);
+101            cwd.starts_with(&amp;expanded)
+102                .then_some((expanded.as_os_str().len(), project))
+103        })
+104        .max_by_key(|(len, _)| *len)
+105        .map(|(_, project)| project)
+106}
+107
+108/// Expands a leading `~` (and `~/`) in a configured project path against `home`.
+109fn expand_tilde(path: &amp;Path, home: &amp;Path) -&gt; PathBuf {
+110    let Some(first) = path.components().next() else {
+111        return path.to_path_buf();
+112    };
+113    match first {
+114        std::path::Component::Normal(marker) if marker == &quot;~&quot; =&gt; {
+115            let suffix: PathBuf = path.components().skip(1).collect();
+116            if suffix.as_os_str().is_empty() {
+117                home.to_path_buf()
+118            } else {
+119                home.join(suffix)
+120            }
+121        }
+122        _ =&gt; path.to_path_buf(),
+123    }
+124}
+125
+126#[cfg(test)]
+127mod tests {
+128    #![allow(
+129        clippy::expect_used,
+130        clippy::panic,
+131        clippy::unreachable,
+132        clippy::indexing_slicing,
+133        reason = &quot;test code&quot;
+134    )]
+135    use std::sync::Arc;
+136
+137    use super::*;
+138
+139    fn rule(pattern: &amp;str, message: &amp;str) -&gt; CommandPolicyRule {
+140        CommandPolicyRule {
+141            pattern: pattern.to_owned(),
+142            message: message.to_owned(),
+143        }
+144    }
+145
+146    fn project(path: &amp;str, rules: Vec&lt;CommandPolicyRule&gt;) -&gt; ProjectConfig {
+147        ProjectConfig {
+148            path: PathBuf::from(path),
+149            command_policy: rules,
+150        }
+151    }
+152
+153    /// A layer holding `global` and `projects` under their umbrellas, so
+154    /// tests exercise resolution through the same read path production uses.
+155    fn layer_with(
+156        global: &amp;[CommandPolicyRule],
+157        projects: &amp;[ProjectConfig],
+158    ) -&gt; jinn_config::ConfigLayer {
+159        // Both are `ConfigList` sections: real top-level arrays of tables,
+160        // not a wrapper table holding a sequence. That shape is what keeps
+161        // each entry&#39;s own comment attached to it across a save.
+162        let mut doc = String::new();
+163        if !global.is_empty() {
+164            for body in serialize_all(global) {
+165                doc.push_str(&quot;[[tools.bash_command_policy]]\n&quot;);
+166                doc.push_str(&amp;body);
+167                doc.push(&#39;\n&#39;);
+168            }
+169        }
+170        if !projects.is_empty() {
+171            for body in serialize_all(projects) {
+172                doc.push_str(&quot;[[project.entry]]\n&quot;);
+173                doc.push_str(&amp;body);
+174                doc.push(&#39;\n&#39;);
+175            }
+176        }
+177        let parsed = doc.parse().expect(&quot;test TOML parses&quot;);
+178        jinn_config::ConfigLayer::load(Arc::new(jinn_config::InMemoryConfigStorage::new(parsed)))
+179            .expect(&quot;layer loads&quot;)
+180    }
+181
+182    /// Each value as the `key = value` lines of its own TOML table, so a
+183    /// hand-built document reads the way a user&#39;s file does rather than as
+184    /// one inline `{...}` per array-of-tables entry.
+185    fn serialize_all&lt;T&gt;(values: &amp;[T]) -&gt; Vec&lt;String&gt;
+186    where
+187        T: serde::Serialize,
+188    {
+189        values
+190            .iter()
+191            .map(|value| {
+192                let table = toml::Value::try_from(value)
+193                    .expect(&quot;value serializes&quot;)
+194                    .as_table()
+195                    .expect(&quot;value is a table&quot;)
+196                    .clone();
+197                table
+198                    .iter()
+199                    .map(|(k, v)| format!(&quot;{k} = {v}\n&quot;))
+200                    .collect::&lt;String&gt;()
+201            })
+202            .collect()
+203    }
+204
+205    fn resolve_for(
+206        global: &amp;[CommandPolicyRule],
+207        projects: &amp;[ProjectConfig],
+208        cwd: &amp;str,
+209        home: &amp;Path,
+210    ) -&gt; Vec&lt;CommandPolicyRule&gt; {
+211        resolve_rules(&amp;layer_with(global, projects), Path::new(cwd), home)
+212    }
+213
+214    fn resolve_in(
+215        global: &amp;[CommandPolicyRule],
+216        projects: &amp;[ProjectConfig],
+217        cwd: &amp;Path,
+218        home: &amp;Path,
+219    ) -&gt; Vec&lt;CommandPolicyRule&gt; {
+220        resolve_rules(&amp;layer_with(global, projects), cwd, home)
+221    }
+222
+223    #[rstest::rstest]
+224    #[case(&quot;/home/me/w/repo&quot;, true)]
+225    #[case(&quot;/home/me/w/repo/sub/dir&quot;, true)]
+226    #[case(&quot;/home/me/w/repo-sibling&quot;, false)]
+227    #[case(&quot;/home/me/w&quot;, false)]
+228    #[case(&quot;/elsewhere&quot;, false)]
+229    fn cwd_inside_project_matches(#[case] cwd: &amp;str, #[case] expected: bool) {
+230        // Given a project configured with a tilde-prefixed path and a home dir.
+231        let projects = [project(&quot;~/w/repo&quot;, vec![rule(&quot;a&quot;, &quot;m&quot;)])];
+232        let home = Path::new(&quot;/home/me&quot;);
+233
+234        // When resolving rules for a cwd.
+235        let rules = resolve_for(&amp;[], &amp;projects, cwd, home);
+236
+237        // Then membership follows the lexical prefix (component-wise).
+238        assert_eq!(rules.is_empty(), !expected);
+239    }
+240
+241    #[rstest::rstest]
+242    #[test]
+243    #[rstest::rstest]
+244    fn tilde_only_path_expands_to_home_itself() {
+245        // Given a project configured as bare `~`.
+246        let projects = [project(&quot;~&quot;, vec![rule(&quot;a&quot;, &quot;m&quot;)])];
+247        let home = Path::new(&quot;/home/me&quot;);
+248
+249        // When resolving rules for a cwd directly inside home.
+250        let rules = resolve_for(&amp;[], &amp;projects, &quot;/home/me/notes&quot;, home);
+251
+252        // Then the tilde expanded to home and the rules apply.
+253        assert_eq!(rules.len(), 1);
+254    }
+255
+256    #[rstest::rstest]
+257    #[test]
+258    fn longest_prefix_project_wins_over_ancestor() {
+259        // Given a nested pair of configured projects, each with a distinct rule.
+260        let projects = [
+261            project(&quot;/w&quot;, vec![rule(&quot;outer&quot;, &quot;outer msg&quot;)]),
+262            project(&quot;/w/repo&quot;, vec![rule(&quot;inner&quot;, &quot;inner msg&quot;)]),
+263        ];
+264        let cwd = Path::new(&quot;/w/repo/src&quot;);
+265
+266        // When resolving rules for a cwd inside the inner project.
+267        let rules = resolve_in(&amp;[], &amp;projects, cwd, Path::new(&quot;/&quot;));
+268
+269        // Then the inner (longest prefix) project&#39;s rules win.
+270        assert_eq!(rules.len(), 1);
+271        assert_eq!(rules[0].pattern, &quot;inner&quot;);
+272    }
+273
+274    #[rstest::rstest]
+275    #[test]
+276    fn global_rule_applies_outside_every_project() {
+277        // Given a global rule and projects none of which contain the cwd.
+278        let global = [rule(&quot;forbidden&quot;, &quot;global msg&quot;)];
+279        let projects = [project(
+280            &quot;/w/repo&quot;,
+281            vec![rule(&quot;project-only&quot;, &quot;project msg&quot;)],
+282        )];
+283        let cwd = Path::new(&quot;/elsewhere&quot;);
+284
+285        // When resolving rules for a cwd outside every configured project.
+286        let rules = resolve_in(&amp;global, &amp;projects, cwd, Path::new(&quot;/&quot;));
+287
+288        // Then the global rule still applies.
+289        assert_eq!(rules.len(), 1);
+290        assert_eq!(rules[0].pattern, &quot;forbidden&quot;);
+291    }
+292
+293    #[rstest::rstest]
+294    #[test]
+295    fn global_rule_is_matched_before_a_matching_project_rule() {
+296        // Given a global and a project rule that both match the same command.
+297        let global = [rule(&quot;forbidden&quot;, &quot;global msg&quot;)];
+298        let projects = [project(&quot;/w/repo&quot;, vec![rule(&quot;forbidden&quot;, &quot;project msg&quot;)])];
+299        let cwd = Path::new(&quot;/w/repo/src&quot;);
+300
+301        // When resolving rules for a cwd inside the project.
+302        let rules = resolve_in(&amp;global, &amp;projects, cwd, Path::new(&quot;/&quot;));
+303
+304        // Then first-match-wins picks the global rule&#39;s message.
+305        let policy = CompiledCommandPolicy::compile(&amp;rules);
+306        assert_eq!(
+307            policy.matched_message(&quot;run forbidden now&quot;),
+308            Some((&quot;forbidden&quot;, &quot;global msg&quot;))
+309        );
+310    }
+311
+312    #[rstest::rstest]
+313    #[test]
+314    fn project_rule_still_applies_with_no_global_policy() {
+315        // Given a project rule and an empty global policy.
+316        let projects = [project(
+317            &quot;/w/repo&quot;,
+318            vec![rule(&quot;project-only&quot;, &quot;project msg&quot;)],
+319        )];
+320        let cwd = Path::new(&quot;/w/repo/src&quot;);
+321
+322        // When resolving rules for a cwd inside the project.
+323        let rules = resolve_in(&amp;[], &amp;projects, cwd, Path::new(&quot;/&quot;));
+324
+325        // Then the project rules are returned unchanged.
+326        assert_eq!(rules.len(), 1);
+327        assert_eq!(rules[0].pattern, &quot;project-only&quot;);
+328    }
+329
+330    #[rstest::rstest]
+331    #[test]
+332    fn invalid_global_regex_is_inert_while_a_global_sibling_enforces() {
+333        // Given a global policy with one invalid regex followed by a valid rule.
+334        let global = [
+335            rule(&quot;([unclosed&quot;, &quot;never compiles&quot;),
+336            rule(&quot;forbidden&quot;, &quot;global msg&quot;),
+337        ];
+338
+339        // When compiling the resolved global rules.
+340        let policy = CompiledCommandPolicy::compile(&amp;resolve_for(
+341            &amp;global,
+342            &amp;[],
+343            &quot;/elsewhere&quot;,
+344            Path::new(&quot;/&quot;),
+345        ));
+346
+347        // Then the invalid rule is silently inert (warned at compile).
+348        assert!(policy.matched_message(&quot;([unclosed thing&quot;).is_none());
+349        // And the valid global rule still enforces.
+350        assert_eq!(
+351            policy.matched_message(&quot;run forbidden now&quot;),
+352            Some((&quot;forbidden&quot;, &quot;global msg&quot;))
+353        );
+354    }
+355
+356    #[rstest::rstest]
+357    #[case(&quot;cargo test -p jinn-kernel&quot;, true)]
+358    #[case(&quot;cargo t -p foo&quot;, true)]
+359    #[case(&quot;cargo test&quot;, false)]
+360    #[case(&quot;rg \&quot;cargo test\&quot; notes.md&quot;, false)]
+361    fn dash_p_policy_matches_only_dash_p_commands(#[case] command: &amp;str, #[case] expected: bool) {
+362        // Given a policy with the canonical `-p` guard regex.
+363        let policy =
+364            CompiledCommandPolicy::compile(&amp;[rule(r&quot;cargo\s+(test|t)\b.*\s-p\b&quot;, &quot;use just test&quot;)]);
+365
+366        // When matching a command.
+367        let matched = policy.matched_message(command);
+368
+369        // Then matches follow the pattern&#39;s intent: `-p` forms are blocked,
+370        // plain and quoted forms are not.
+371        assert_eq!(matched.is_some(), expected, &quot;command: {command}&quot;);
+372    }
+373
+374    #[rstest::rstest]
+375    #[test]
+376    fn first_matching_rule_wins_in_config_order() {
+377        // Given a policy whose two rules both match the command.
+378        let policy = CompiledCommandPolicy::compile(&amp;[
+379            rule(&quot;first&quot;, &quot;first message&quot;),
+380            rule(&quot;second&quot;, &quot;second message&quot;),
+381        ]);
+382
+383        // When matching a command both rules match.
+384        let matched = policy.matched_message(&quot;first and second&quot;);
+385
+386        // Then the first rule (config order) supplies pattern and message.
+387        assert_eq!(matched, Some((&quot;first&quot;, &quot;first message&quot;)));
+388    }
+389
+390    #[rstest::rstest]
+391    #[test]
+392    fn empty_policy_matches_nothing() {
+393        // Given a policy compiled from no rules.
+394        let policy = CompiledCommandPolicy::default();
+395
+396        // When matching any command.
+397        let matched = policy.matched_message(&quot;rm -rf /&quot;);
+398
+399        // Then nothing matches and the policy is empty.
+400        assert!(matched.is_none());
+401        assert!(policy.is_empty());
+402    }
+403
+404    #[rstest::rstest]
+405    #[test]
+406    fn invalid_regex_rule_is_inert_but_sibling_still_enforces() {
+407        // Given a policy with one invalid regex followed by one valid rule.
+408        let policy = CompiledCommandPolicy::compile(&amp;[
+409            rule(&quot;([unclosed&quot;, &quot;never compiles&quot;),
+410            rule(&quot;forbidden&quot;, &quot;blocked&quot;),
+411        ]);
+412
+413        // When matching a command the invalid rule would have caught.
+414        let invalid_hit = policy.matched_message(&quot;([unclosed thing&quot;);
+415        // And a command the valid rule catches.
+416        let valid_hit = policy.matched_message(&quot;run forbidden now&quot;);
+417
+418        // Then the invalid rule is silently inert (warned at compile).
+419        assert!(invalid_hit.is_none());
+420        // And the valid rule still enforces.
+421        assert_eq!(valid_hit, Some((&quot;forbidden&quot;, &quot;blocked&quot;)));
+422    }
+423}
+</code></pre></details>
+</div>
+<div class="entry entry-thinking" id="entry-18">
+<details><summary><span class="summary-label">reasoning · ~1707 tokens</span><span class="kind">thinking</span></summary><pre><code>The pattern is a regex matched against the full command string (unanchored, `is_match`). So I need patterns for:
+- `find /` — but the compound command `cd /x &amp;&amp; find / -path /proc -prune -o ...` should also be caught.
+- `find ~`
+- `ls -r /`
+- `ls -r ~`
+
+Note `ls -r` on GNU ls: `-r` is reverse... actually `-R` is recursive, `-r` is reverse sort. In a terminal, `-R` would be the intent. The user said `ls -r /` though. Hmm — should I match `-R` too? Let me think about what the agent actually does. The existing default rule is about `rg -rn` where `-r` takes a replacement. Similar class: `ls -r` doesn&#39;t mean recursive, so listing `/` with `ls -r /` just lists / non-recursively — harmless actually. But `ls -R /` is catastrophic. The user asked for `ls -r /` and `ls -r ~`. I should flag this: `ls -r` is reverse-sort, harmless. The real hazard is `ls -R` (uppercase). I should suggest matching both, and mention it.
+
+Actually wait — maybe the agents type `ls -r` intending recursive (common confusion), and it silently does nothing recursive. The intent is a blocked-command advisory. I&#39;ll ask/point out. But the user gave a clear ask. Best: implement as asked plus cover the `cd X &amp;&amp; find /` prefix form and case-insensitive `-R` since that&#39;s the actual footgun, and explain.
+
+Let me check: does the matching happen against the whole command string, including `cd /x &amp;&amp; find / ...`? Yes — `is_match` on the full string. So a pattern like `\bfind\s+~?/` would match. But careful: too broad patterns would block legitimate `find /mnt/zed -name foo`. Need the pattern to be specific: `find` targeting `/` or `~` as the starting path, with more args.
+
+Pattern design:
+- find `/`: `\bfind\b[^|;&amp;]*\s/(\s|$)` — hmm, but `find / -path /proc` → `find` then ` /`. Let&#39;s think: `find\s+(/|~)(?=[\s&#39;&quot;]|$)`. But `find /mnt/zed` would not match because after `/` comes `m` not whitespace. Good. And `find . /`? rare.
+
+However the regex crate has no lookahead. So: `\bfind\s+(?:~|/)(?:\s|$)`. With `find / -path /proc -prune` → `find` `\s+` `/` `\s` ✓. `find ~/foo` → `~` then `/` — not whitespace → no match ✓. `find ~` → `~` end-of-string: `$` — but the command is a full line, `find ~` at end → matches. Good. But careful about `find /` where the pattern also needs to not match `find /usr/bin -name x`... fine.
+
+But what about `cd /x &amp;&amp; find / -path ...`? `find\s+/` matches the substring `find / ` ✓. Good — no need for prefix anchoring. But what about `cd /mnt &amp;&amp; ls -r /`? `ls` pattern: `\bls\s+(-[A-Za-z]*[rR]\w*|--recursive)\s+/(\s|$)`. Hmm let&#39;s keep it simpler.
+
+`ls -r /` and `ls -r ~`. Pattern: `\bls\s+-\w*[rR]\w*\s+(?:~|/)(?:\s|$)`. And also `ls -R ~`. And `ls -r ~/`? `~` then `/` wouldn&#39;t match with `(?:\s|$)`. Hmm. Add `(?=\s|/|$)` — no lookahead. Use alternation: `(?:\s|/?$)` — matches `/` or whitespace or end. But `ls -r ~/foo`? That&#39;d be `~/foo` — `~` + `/` + `foo`. My alternation `/?$` would match the `/` and then require end — no, `/?$` means optional slash then end-of-string. `ls -r ~/foo` — after `~`, `/?` matches `/`, then `$` must hold but we&#39;re at `f`. So no match ✓. But `ls -r ~/` would match — a recursive-ish listing of home... `ls ~/` with -R is catastrophic. Actually fine to block.
+
+Wait, but also things like `ls -la /`? `-la` contains no r. Should I block `ls -l /`? No, that&#39;s harmless. Only -r/-R.
+
+Also `ls -r ~` in the user&#39;s list. Also could be `ls -R /` with flags separated: `ls -l -R /`. My pattern `\bls\s+-\w*[rR]\w*\s+(?:~|/)` requires -R immediately after ls. Consider `ls -l -R /`? Would not match. Maybe use a broader approach: `ls` then any args then `/` — too broad (`ls /usr/bin | grep x` legit). Hmm. Middle ground: allow a couple of flag groups: `\bls(?:\s+-\S+)*\s+-\S*[rR]\S*\s+(?:~|/)`. That handles `ls -l -R /`. Let&#39;s use:
+
+`\bls(?:\s+-[^\s]+)*\s+-[^\s]*[rR][^\s]*\s+(?:~|/|\$)` — hmm the trailing.
+
+Let me define the tail as: `\s+(?:~|/)(?:[/&quot;\s]|$)`. Actually simpler: `(?:\s|/)` after target char covers `/mnt` too? `find /mnt` → after `/` comes `m`, not whitespace or `/` → no match ✓. `/home` ✓ no match. `~/code` → after `~` comes `/` → WOULD match. Hmm, that blocks `find ~/code` which is a legit scoped search. That&#39;s bad. The compound example in the user&#39;s message includes `find /mnt/zed/repos -maxdepth 2` which is fine and should not be blocked.
+
+So for `~`, only match `~` alone (followed by whitespace or end). For `/`, only `/` alone. So tail: `\s|$`. Use `(?:\s|$)`.
+
+`find /` in a compound like `find / -path /proc -prune -o -type d -name x -print` — matches, blocked. Is that desirable? The user explicitly said agents run these when they can&#39;t find something, and asked for `find /`. The prune form is a scoped-ish find but still walks /. I&#39;ll block it (matches the ask) — but the message should tell the agent what to do instead.
+
+Now the message wording. Look at the existing message style: explains the footgun and gives the corrective.
+
+Let me also consider: should these be 4 separate rules or fewer regexes? User said &quot;a few more default bash_command_policies added&quot; with 4 bullets. 4 rules with clear per-command messages is cleanest and self-documenting. But `find /` and `find ~` can share one rule. I&#39;d do 4 rules for explicitness, but that&#39;s 4 near-duplicate messages. Hmm. I think grouping is cleaner: 2 rules (find, ls) each covering both roots. But then a `ls` violation message mentions find? No, separate.
+
+Let me check tests exist for the default config being valid / maybe a test that parses default_jinn.toml.</code></pre></details>
+</div>
+<div class="entry entry-assistant" id="entry-19"><div class="label">Assistant</div></div>
+<div class="entry entry-tool_call" id="entry-20">
+<details><summary><span class="summary-label">bash · {&quot;command&quot;: &quot;cd /mnt/zed/repos/jinn/block-stuff &amp;&amp; rg -rn \&quot;default_jin…</span><span class="kind">tool_call</span></summary><pre><code>{&quot;command&quot;: &quot;cd /mnt/zed/repos/jinn/block-stuff &amp;&amp; rg -rn \&quot;default_jinn\&quot; --files-with-matches -g &#39;!target&#39; -g &#39;!vendor&#39; . | head; echo ---; rg -n \&quot;default_jinn|DEFAULT_JINN\&quot; crates/jinn-preferences-config/src/*.rs crates/jinn-preferences-config/src/**/*.rs | head -30&quot;}</code></pre></details>
+</div>
+<div class="entry entry-tool_call" id="entry-21">
+<details><summary><span class="summary-label">bash · {&quot;command&quot;: &quot;cd /mnt/zed/repos/jinn/block-stuff &amp;&amp; rg -n \&quot;bash_command…</span><span class="kind">tool_call</span></summary><pre><code>{&quot;command&quot;: &quot;cd /mnt/zed/repos/jinn/block-stuff &amp;&amp; rg -n \&quot;bash_command_policy\&quot; -B5 -A20 res/skills/jinn-usage/references/configuration.md | head -60&quot;}</code></pre></details>
+</div>
+<div class="entry entry-tool_result" id="entry-22">
+<details><summary><span class="summary-label">bash · failure · 1 lines</span><span class="kind">tool_result</span> <span class="status-failure">failure</span></summary><pre><code>Blocked by project command policy (pattern: `rg -rn`): ripgrep is already recursive and `-r` takes a replacement value, so `rg -rn` rewrites every match to `n` and still exits 0 — use `-n` alone for line numbers.</code></pre></details>
+</div>
+<div class="entry entry-tool_result" id="entry-23">
+<details><summary><span class="summary-label">bash · success · 26 lines</span><span class="kind">tool_result</span> <span class="status-success">success</span></summary><pre><code>104-every session). Same shape as a project&#39;s policy, and evaluated *before* the
+105-project&#39;s rules with first-match-wins — so a project policy can only add
+106-blocks, never lift a global one:
+107-
+108-```toml
+109:[[tools.bash_command_policy]]
+110-pattern = &#39;git push\s+.*--force&#39;
+111-message = &#39;Force-push main; open a PR instead.&#39;
+112-```
+113-
+114-A match returns the `message` to the agent as a failed tool result and the
+115-command never runs. Use single-quoted patterns so regex metacharacters survive;
+116-use global rules for mistakes that are wrong everywhere, and the project
+117-`command_policy` for repo-specific habits. A pattern the regex engine cannot
+118-compile is inert (logged, no block), and there is no lookaround — `(?&lt;!...)`
+119-and `(?=...)` do not work. Guards apply to the **bash tool only**; interactive
+120-terminals and MCP-provided tools are not policed.
+121-
+122-**MCP servers** — see `mcp-servers.md` for the full transport matrix:
+123-
+124-```toml
+125-[mcp.context7]
+126-command = &quot;npx&quot;
+127-args = [&quot;@context7/mcp-server&quot;, &quot;--stdio&quot;]
+128-auto_enable = true
+129-```
+</code></pre></details>
+</div>
+<div class="entry entry-thinking" id="entry-24">
+<details><summary><span class="summary-label">reasoning · ~51 tokens</span><span class="kind">thinking</span></summary><pre><code>Ha — the `rg -rn` policy literally just blocked my own command. Amusing. Let me redo without that flag.
+
+Now let me check where default_jinn.toml is loaded and whether there are tests validating the default policy.</code></pre></details>
+</div>
+<div class="entry entry-assistant" id="entry-25"><div class="label">Assistant</div><p>Note: my own <code>rg -rn</code> just got blocked by the very policy section we're editing. Retrying.</p>
+</div>
+<div class="entry entry-tool_call" id="entry-26">
+<details><summary><span class="summary-label">bash · {&quot;command&quot;: &quot;cd /mnt/zed/repos/jinn/block-stuff &amp;&amp; grep -rn \&quot;default_j…</span><span class="kind">tool_call</span></summary><pre><code>{&quot;command&quot;: &quot;cd /mnt/zed/repos/jinn/block-stuff &amp;&amp; grep -rn \&quot;default_jinn\&quot; --include=*.rs --include=*.toml --include=*.md . 2&gt;/dev/null | grep -v \&quot;^./target\&quot; | head -20&quot;}</code></pre></details>
+</div>
+<div class="entry entry-tool_call" id="entry-27">
+<details><summary><span class="summary-label">bash · {&quot;command&quot;: &quot;cd /mnt/zed/repos/jinn/block-stuff &amp;&amp; ls crates/jinn-prefe…</span><span class="kind">tool_call</span></summary><pre><code>{&quot;command&quot;: &quot;cd /mnt/zed/repos/jinn/block-stuff &amp;&amp; ls crates/jinn-preferences-config/src/ &amp;&amp; sed -n &#39;1,80p&#39; crates/jinn-preferences-config/src/registration.rs&quot;}</code></pre></details>
+</div>
+<div class="entry entry-tool_result" id="entry-28">
+<details><summary><span class="summary-label">bash · success · 90 lines</span><span class="kind">tool_result</span> <span class="status-success">success</span></summary><pre><code>app_state_file.rs
+app_state_storage.rs
+config_template.rs
+default_jinn.toml
+init.rs
+lib.rs
+protocol
+registration.rs
+schemas
+template_validation_tests.rs
+//! Central section registration — the launch-time fail-fast gate&#39;s roster.
+//!
+//! [`ConfigLayer::validate`] walks the sections registered on it, so a
+//! section that is never registered is silently unvalidated: a
+//! malformed table boots to a running app that quietly reads defaults.
+//! This module is the single exhaustive roster, called from composition
+//! before the validate call.
+//!
+//! Registration order is error order. `validate` fails on the *first*
+//! malformed section in registration order, so sections are listed in the
+//! order they appear in the shipped `default_jinn.toml` and a user is
+//! told about the section nearest the top of their file.
+
+use jinn_config::ConfigLayer;
+
+use crate::schemas::{
+    AutoPruneConfig, ChatLogConfig, CompactionConfig, CwdSelectorConfig, DiscordConfig,
+    InteractiveTermPrefs, McpServersConfig, MinimapConfig, RequestRetryConfig, SkillsConfig,
+    StallWatchdogConfig, ToolCallWatchdogConfig, ToolsConfig, WebSearchConfig,
+};
+
+/// Registers every `jinn.toml` section that can be validated at launch.
+///
+/// A section absent from this roster is never checked, so adding a new
+/// section type without adding it here is a silent hole rather than a
+/// compile error. Keep the list exhaustive.
+///
+/// # Not every section is registered
+///
+/// [`jinn_config::ConfigList`] sections are deliberately absent.
+/// `ConfigLayer::register` is bound to `Configurable`, which supplies
+/// `from_table`; `ConfigList` has no equivalent and an absent list has
+/// no `Default` for a check to layer over. So these three sections are
+/// read on demand and are *not* fail-fast validated:
+///
+/// - `project` — [`crate::schemas::ProjectConfig`]
+/// - `session_lifecycle` — [`crate::schemas::SessionLifecycle`]
+/// - `tools.bash_command_policy` — [`crate::schemas::CommandPolicyRule`]
+///
+/// Closing that gap means changing the `ConfigList` trait in
+/// `jinn-config`, which is out of scope for centralizing the schemas.
+/// Until then a malformed list section surfaces at first read rather
+/// than at launch.
+pub fn register_all_sections(config: &amp;ConfigLayer) {
+    config.register::&lt;ToolsConfig&gt;();
+    config.register::&lt;ChatLogConfig&gt;();
+    config.register::&lt;SkillsConfig&gt;();
+    config.register::&lt;CompactionConfig&gt;();
+    config.register::&lt;RequestRetryConfig&gt;();
+    config.register::&lt;WebSearchConfig&gt;();
+    config.register::&lt;CwdSelectorConfig&gt;();
+    config.register::&lt;MinimapConfig&gt;();
+    config.register::&lt;StallWatchdogConfig&gt;();
+    config.register::&lt;ToolCallWatchdogConfig&gt;();
+    config.register::&lt;AutoPruneConfig&gt;();
+    config.register::&lt;InteractiveTermPrefs&gt;();
+    config.register::&lt;McpServersConfig&gt;();
+    config.register::&lt;DiscordConfig&gt;();
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        reason = &quot;test assertions need expect/panic to state what went wrong&quot;
+    )]
+    use jinn_config::{ConfigSectionError, testutil::config_layer};
+
+    use super::register_all_sections;
+
+    #[rstest::rstest]
+    #[test]
+    fn malformed_registered_section_fails_validation_naming_the_section() {
+        // Given a document whose auto_prune token threshold is given a string.
+        let config =
+            config_layer(&quot;[context_curation.auto_prune]\naccumulation_threshold_tokens = \&quot;x\&quot;&quot;);
+
+        // When the roster is registered and the layer validated.
+        register_all_sections(&amp;config);
+</code></pre></details>
+</div>
+<div class="entry entry-tool_result" id="entry-29">
+<details><summary><span class="summary-label">bash · success · 7 lines</span><span class="kind">tool_result</span> <span class="status-success">success</span></summary><pre><code>./.agents/RECORD.md:200:- (testing) default_providers.toml is independent of code defaults: tests guarantee it parses, documents every config key, contains no dead keys, and its marked examples uncomment into a valid config. default_jinn.toml is documentation rather than authority, checked in one direction only: every key it documents resolves to a section jinn reads.
+./README.md:88:The [default config](./crates/jinn-preferences-config/src/default_jinn.toml) has both `git` and `fossil` preconfigured. You&#39;ll need to make sure your directory structure matches below, otherwise you&#39;ll need to write your own scripts.
+./README.md:164:- [`jinn.toml`](./crates/jinn-preferences-config/src/default_jinn.toml) - user preferences (create new one with `jinn config init`)
+./crates/jinn-common/src/template_check.rs:3://! The default config templates (`default_jinn.toml`, `default_providers.toml`)
+./crates/jinn-preferences-config/src/registration.rs:11://! order they appear in the shipped `default_jinn.toml` and a user is
+./crates/jinn-preferences-config/src/template_validation_tests.rs:1://! Template validation tests for the shipped `default_jinn.toml`.
+./crates/jinn-preferences-config/src/config_template.rs:35:pub const DEFAULT_CONFIG: &amp;str = include_str!(&quot;default_jinn.toml&quot;);
+</code></pre></details>
+</div>
+<div class="entry entry-assistant" id="entry-30"><div class="label">Assistant</div></div>
+<div class="entry entry-tool_call" id="entry-31">
+<details><summary><span class="summary-label">read · {&quot;file_path&quot;: &quot;/mnt/zed/repos/jinn/block-stuff/crates/jinn-preferences-…</span><span class="kind">tool_call</span></summary><pre><code>{&quot;file_path&quot;: &quot;/mnt/zed/repos/jinn/block-stuff/crates/jinn-preferences-config/src/template_validation_tests.rs&quot;}</code></pre></details>
+</div>
+<div class="entry entry-tool_result" id="entry-32">
+<details><summary><span class="summary-label">read · success · 184 lines</span><span class="kind">tool_result</span> <span class="status-success">success</span></summary><pre><code>  1//! Template validation tests for the shipped `default_jinn.toml`.
+  2//!
+  3//! Two properties, using [`jinn_common::template_check`] for the
+  4//! expansion and key-path collection:
+  5//!
+  6//! 1. The template parses, both as shipped and with every marked example
+  7//!    region expanded (what a user gets by uncommenting everything).
+  8//! 2. Every key the template documents belongs to a section that is
+  9//!    actually read — no dead keys.
+ 10//!
+ 11//! **Completeness is deliberately not asserted.** The providers template
+ 12//! can be checked against one aggregate `ProvidersConfig`, so
+ 13//! `check_template_activates_and_documents` has a schema value to
+ 14//! compare. `jinn.toml` is an umbrella document with no aggregate
+ 15//! struct — 17 independent sections, each read on its own — so there is
+ 16//! no single schema to be complete *against*. Asserting it would
+ 17//! require inventing a type the runtime deliberately does not have.
+ 18//!
+ 19//! Nor is it asserted that every section appears in the template. The
+ 20//! template ships active tables for `tools`, `chat_log`, `skills`,
+ 21//! `session_lifecycle.script`, `context_curation.*`, `provider.*`,
+ 22//! `ui.*`, `watchdog.*`, and `term`. There is deliberately no `[mcp]`
+ 23//! block and no `[discord]` block; both sections read as their defaults
+ 24//! when absent, and a stock install looks exactly like that. Adding
+ 25//! either block to the template is a product decision, not something
+ 26//! this test should force.
+ 27
+ 28#![expect(
+ 29    clippy::expect_used,
+ 30    reason = &quot;test code asserts with expect for clear failure messages&quot;
+ 31)]
+ 32
+ 33use jinn_common::template_check::collect_toml_key_paths;
+ 34
+ 35use crate::config_template::DEFAULT_CONFIG;
+ 36use crate::registration::register_all_sections;
+ 37use crate::schemas::{DiscordConfig, McpServersConfig};
+ 38
+ 39/// The template with every `(uncomment below to activate)` region expanded.
+ 40fn expanded_template() -&gt; String {
+ 41    jinn_common::template_check::expand_marked_examples(DEFAULT_CONFIG)
+ 42}
+ 43
+ 44#[rstest::rstest]
+ 45#[test]
+ 46fn jinn_template_parses_as_written() {
+ 47    // Given the shipped template exactly as jinn loads it on first run.
+ 48    // When parsing.
+ 49    let result = DEFAULT_CONFIG.parse::&lt;toml::Value&gt;();
+ 50
+ 51    // Then it succeeds.
+ 52    assert!(
+ 53        result.is_ok(),
+ 54        &quot;template does not parse: {:?}&quot;,
+ 55        result.err()
+ 56    );
+ 57}
+ 58
+ 59#[rstest::rstest]
+ 60#[test]
+ 61fn jinn_template_with_all_examples_activated_parses() {
+ 62    // Given the template with every marked example expanded.
+ 63    let expanded = expanded_template();
+ 64
+ 65    // When parsing.
+ 66    let result = expanded.parse::&lt;toml::Value&gt;();
+ 67
+ 68    // Then it succeeds.
+ 69    assert!(
+ 70        result.is_ok(),
+ 71        &quot;expanded template does not parse: {:?}\n---\n{expanded}&quot;,
+ 72        result.err()
+ 73    );
+ 74}
+ 75
+ 76#[rstest::rstest]
+ 77#[test]
+ 78fn every_documented_section_validates_against_its_schema() {
+ 79    // Given the expanded template and the launch-time section roster.
+ 80    let expanded = expanded_template();
+ 81    let config = jinn_config::testutil::config_layer(&amp;expanded);
+ 82    register_all_sections(&amp;config);
+ 83
+ 84    // When the layer validates the document.
+ 85    let result = config.validate();
+ 86
+ 87    // Then every section the template documents is one a reader can
+ 88    // deserialize — no example ships a field that does not exist.
+ 89    assert!(
+ 90        result.is_ok(),
+ 91        &quot;template section failed validation: {:?}&quot;,
+ 92        result.err().map(|e| e.to_string())
+ 93    );
+ 94}
+ 95
+ 96#[rstest::rstest]
+ 97#[test]
+ 98fn every_documented_top_level_table_belongs_to_a_registered_section() {
+ 99    // Given the expanded template and the top-level tables it activates.
+100    let expanded = expanded_template();
+101    let doc = expanded.parse::&lt;toml::Value&gt;().expect(&quot;expanded parses&quot;);
+102    let roots: std::collections::BTreeSet&lt;String&gt; = collect_toml_key_paths(&amp;doc)
+103        .iter()
+104        .filter_map(|path| path.first().cloned())
+105        .collect();
+106
+107    // And the launch-time roster, registered against the same document.
+108    let config = jinn_config::testutil::config_layer(&amp;expanded);
+109    register_all_sections(&amp;config);
+110
+111    // When each root is tested against a section some reader owns. The
+112    // `ConfigList` sections are included even though the launch roster
+113    // cannot register them: they are read on demand, and a documented
+114    // table still needs an owner.
+115    let is_owned = |root: &amp;str| {
+116        OWNED_KEYS
+117            .iter()
+118            .any(|key| *key == root || key.starts_with(&amp;format!(&quot;{root}.&quot;)))
+119    };
+120    let unowned: Vec&lt;&amp;String&gt; = roots
+121        .iter()
+122        .filter(|root| !is_owned(root.as_str()))
+123        .collect();
+124
+125    // Then every top-level table the template documents is a section some
+126    // reader owns.
+127    assert!(
+128        unowned.is_empty(),
+129        &quot;template documents top-level tables no section reads: {unowned:#?}&quot;
+130    );
+131}
+132
+133/// The dotted keys of every section the template may document.
+134///
+135/// The 14 `Configurable` sections are the launch-validated roster (see
+136/// [`crate::registration`]); the `ConfigList` sections are read on
+137/// demand and cannot be registered, but they are still owned.
+138const OWNED_KEYS: &amp;[&amp;str] = &amp;[
+139    // Launch-validated (`Configurable`).
+140    &quot;tools&quot;,
+141    &quot;chat_log&quot;,
+142    &quot;skills&quot;,
+143    &quot;context_curation.compaction&quot;,
+144    &quot;provider.request_retry&quot;,
+145    &quot;provider.web_search&quot;,
+146    &quot;ui.cwd_selector&quot;,
+147    &quot;ui.minimap&quot;,
+148    &quot;watchdog.stall&quot;,
+149    &quot;watchdog.tool_call&quot;,
+150    &quot;context_curation.auto_prune&quot;,
+151    &quot;term&quot;,
+152    &quot;mcp&quot;,
+153    &quot;discord&quot;,
+154    // Read on demand (`ConfigList`).
+155    &quot;session_lifecycle&quot;,
+156    &quot;project&quot;,
+157];
+158
+159/// `#[case]`-free guard: the two sections the template deliberately does
+160/// not ship a block for still read as their defaults, so a stock
+161/// install is valid rather than incomplete.
+162#[rstest::rstest]
+163#[test]
+164fn sections_absent_from_the_template_read_as_defaults() {
+165    // Given a document with no `[mcp]` and no `[discord]` table.
+166    let config = jinn_config::testutil::config_layer(&quot;[tools]\ndefault_timeout_secs = 300&quot;);
+167    register_all_sections(&amp;config);
+168
+169    // When the layer validates and both absent sections are read.
+170    let valid = config.validate();
+171    let mcp = config.get::&lt;McpServersConfig&gt;();
+172    let discord = config.get::&lt;DiscordConfig&gt;();
+173
+174    // Then validation passes and both read as their disabled defaults.
+175    assert!(valid.is_ok(), &quot;a stock document validates&quot;);
+176    assert!(
+177        mcp.expect(&quot;absent section reads a default&quot;).is_empty(),
+178        &quot;absent [mcp] reads no servers&quot;
+179    );
+180    assert!(
+181        !discord.expect(&quot;absent section reads a default&quot;).enabled,
+182        &quot;absent [discord] reads disabled&quot;
+183    );
+184}
+</code></pre></details>
+</div>
+</main>
+</body>
+</html>

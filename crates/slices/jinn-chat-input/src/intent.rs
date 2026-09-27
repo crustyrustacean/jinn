@@ -1,6 +1,6 @@
 //! Chat input box intent handlers.
 //!
-//! Handles 17 chat-input intents:
+//! Handles 16 chat-input intents:
 //!
 //! - **InsertChar** - inserts a character, manages autocomplete triggering/filtering/expansion.
 //! - **PasteText** - bulk inserts pasted text, deactivates autocomplete.
@@ -10,8 +10,10 @@
 //! - **AutocompleteConfirm** - confirms autocomplete selection or falls back to tab switch.
 //! - **Cursor movement** (8 intents) - move cursor, optionally deactivating autocomplete.
 //! - **EnterInsertMode** - switches to Input mode.
-//! - **EnterNormalMode** - cancels streams, clears picker, switches to Normal mode.
-//! - **NormalEscape** - clears chat entry selection.
+//! - **EnterNormalMode** - clears picker, switches to Normal mode.
+//!
+//! The cancel-stream confirmation is deliberately absent: escape in Normal
+//! mode is a session concern, raised and confirmed by the kernel.
 
 use crate::AutocompleteMatch;
 use crate::AutocompleteTrigger;
@@ -616,23 +618,6 @@ pub fn handle_move_cursor_down(state: &mut AppState) -> IntentResult {
     } else {
         state.update_active_input(ChatInputBoxState::move_cursor_down);
     }
-    IntentResult::empty()
-}
-
-/// Handles `NormalEscape` - no-op for selection (always-selected invariant).
-///
-/// If the session is busy (streaming/sending), activates the cancel stream
-/// confirmation prompt. Otherwise, does nothing.
-pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
-    super::validator::validate_normal_escape(state);
-
-    if state.active_session().is_busy()
-        || !matches!(state.active_session().phase(), PhaseKind::Idle)
-    {
-        // Session is busy - show cancel confirmation prompt.
-        state.frontend.cancel_stream_prompt = true;
-    }
-
     IntentResult::empty()
 }
 

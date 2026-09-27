@@ -20,12 +20,75 @@ use jinn_core_types::{ChatEntry, ChatEntryId, SessionId};
 use jinn_slices::BusMessage;
 use serde::{Deserialize, Serialize};
 
-/// Number of trailing history entries a session preview shows.
+/// Number of trailing history entries a session preview *reaches*.
 ///
-/// A preview is a *glance*, not a transcript: enough tail to recognize where
-/// the conversation left off, few enough entries that the wrap work stays
-/// bounded no matter how large the session behind it is.
-pub const PREVIEW_ENTRY_COUNT: usize = 5;
+/// How far back a preview will walk to fill itself, not how many messages it
+/// tries to show. A glance wants the recent conversation, but a preview that
+/// stops at a fixed count of messages leaves rows empty whenever those messages
+/// are short: five one-line messages render about fifteen rows against a
+/// twenty-row budget, and the popup is a quarter blank with a gap at the top.
+///
+/// So the reach is set by the budget rather than by taste. A message occupies at
+/// least one rendered row plus its surrounding padding, so this is the number
+/// of messages it takes for the budget to be unreachable in principle — past
+/// this the walk is always full and the count no longer matters.
+pub const PREVIEW_ENTRY_COUNT: usize = 24;
+
+/// Trailing history entries a preview *request* carries.
+///
+/// A little more than [`PREVIEW_ENTRY_COUNT`], for two reasons. A preview skips
+/// entries still accumulating tokens, so a reply in production must not be able
+/// to push the settled entries out of the slice; and the requester folds the
+/// entries it considers reachable into the preview's key, so the slice has to
+/// cover everything the worker might reach for or the two sides would compute
+/// the key over different histories.
+///
+/// Bounded rather than unbounded: a whole long history copied per keystroke is
+/// the cost a trailing slice exists to avoid, and a preview displays at most its
+/// last twenty rows however much history it was handed.
+pub const PREVIEW_REQUEST_ENTRY_COUNT: usize = 32;
+
+/// Rendered columns of an in-production entry's previewed text a continuation
+/// marker shows.
+///
+/// A marker stands in for a reply that may be thousands of lines long. This is
+/// enough of its tail to recognize what it is saying and to see it is still
+/// going, in a popup whose whole content area is twenty rows.
+pub const PREVIEW_MARKER_COLUMNS: usize = 256;
+
+/// Rows a continuation marker may occupy.
+///
+/// The marker is a status line, not content. It takes a bounded share of the
+/// preview's rows and never more than the budget, so a long production reply
+/// cannot crowd the settled entries it is standing in for out of the popup.
+pub const PREVIEW_MARKER_MAX_ROWS: usize = 8;
+
+/// Whether an entry has stopped producing and can be previewed as settled.
+///
+/// The one definition of settledness, and it is deliberately a property of the
+/// entry alone: the request path computes the preview's key from it, the worker
+/// reads the same answer off the entries it was handed, and neither can drift
+/// from the other.
+///
+/// An entry is *not* settled while its `Streamed` timing has no `finished_at`.
+/// That covers a `Thinking`, `Assistant`, `Actor`, or `Transient` entry still
+/// receiving tokens, and it also covers a `ToolCall` still streaming its
+/// arguments: one is created with a `Streamed` timing and only has its
+/// `finished_at` set when the call is finalized, so the timing answers for the
+/// tool case without a second source of truth.
+///
+/// `Instant` entries — a user message, a system note, a settled tool result —
+/// are settled by construction, which is why this is not merely
+/// `finished_at().is_some()`.
+#[must_use]
+pub fn entry_is_settled(entry: &ChatEntry) -> bool {
+    match &entry.timing {
+        jinn_core_types::entry_timing::EntryTiming::Instant { .. } => true,
+        jinn_core_types::entry_timing::EntryTiming::Streamed { finished_at, .. } => {
+            finished_at.is_some()
+        }
+    }
+}
 
 /// Maximum rendered lines a session preview shows.
 ///
