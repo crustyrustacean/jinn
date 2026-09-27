@@ -5,11 +5,10 @@
 //! and [`AppState`]'s implementation of [`SliceActionState`].
 
 use jinn_slices::FocusScope;
-use jinn_slices::route::{EditIntent, RouteResult, ScopeSignal, SliceActionState};
+use jinn_slices::route::{RouteResult, ScopeSignal, SliceActionState};
 
 use crate::common::app_state::AppState;
 use crate::protocol::intent::IntentResult;
-use crate::protocol::intent::KernelIntent;
 
 impl SliceActionState for AppState {
     fn active_session_title(&self) -> Option<String> {
@@ -42,22 +41,6 @@ impl SliceActionState for AppState {
 
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
-    }
-}
-
-/// Translates the kernel's editing intents into the slice-hook
-/// vocabulary.
-///
-/// `None` means the intent is not an editing surface action — hooks are
-/// never consulted for it.
-#[must_use]
-pub fn as_edit_intent(intent: &KernelIntent) -> Option<EditIntent> {
-    match intent {
-        // The chat input box is a slice with its own keys, so paste is the
-        // only editing intent the kernel still mints: it has no key, and
-        // arrives from the terminal's bracketed-paste event.
-        KernelIntent::PasteText { text } => Some(EditIntent::Paste(text.clone())),
-        _ => None,
     }
 }
 

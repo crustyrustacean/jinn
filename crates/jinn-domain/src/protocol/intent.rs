@@ -13,12 +13,6 @@ pub use jinn_slices::cwd_root::CwdRoot;
 /// The keymap decides the intent; the `IntentHandler` decides what to do with it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum KernelIntent {
-    /// Paste text from the clipboard (bracketed paste).
-    PasteText {
-        /// The pasted text content.
-        text: String,
-    },
-
     /// Scroll the chat log up.
     ScrollUp,
     /// Scroll the chat log down.
@@ -175,10 +169,6 @@ impl trouper::envelope::PayloadValue for KernelIntent {
 impl std::fmt::Display for KernelIntent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            KernelIntent::PasteText { text } => {
-                let line_count = text.lines().count();
-                write!(f, "paste ({line_count} lines)")
-            }
             KernelIntent::ScrollUp => write!(f, "scroll up"),
             KernelIntent::ScrollDown => write!(f, "scroll down"),
             KernelIntent::MouseScrollUp => write!(f, "mouse scroll up"),

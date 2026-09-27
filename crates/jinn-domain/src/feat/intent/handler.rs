@@ -118,15 +118,14 @@ fn try_slice_input_hook(
 
 /// Translates an intent into the slice-hook editing vocabulary.
 ///
-/// A paste is the kernel's own intent; every other editing key arrives as
-/// a dynamic intent the keymap minted for the hook's scope, with a
-/// printable character carried in the byte payload. `None` means the
-/// intent is not an editing surface action — hooks are never consulted for
-/// it.
+/// Every editing key arrives as a dynamic intent the keymap minted for the
+/// hook's scope, with a printable character carried in the byte payload.
+/// `None` means the intent is not an editing surface action — hooks are
+/// never consulted for it.
 #[must_use]
 fn edit_intent_for(intent: &KernelIntent) -> Option<jinn_slices::EditIntent> {
     let KernelIntent::Dynamic(dynamic) = intent else {
-        return crate::common::slices::key_routes::as_edit_intent(intent);
+        return None;
     };
     Some(match dynamic.action.as_str() {
         "insert-char" => jinn_slices::EditIntent::InsertChar(
@@ -340,31 +339,6 @@ impl IntentHandler {
         }
 
         match intent {
-            // A paste has no key, so it has no route row: it is minted
-            // here from the terminal's bracketed-paste event and handed to
-            // the chat input's own action. A picker with a filter hook
-            // already claimed it above; reaching here means the target is
-            // the chat box, and only in the input scope.
-            KernelIntent::PasteText { text } => {
-                if state.frontend.scope() != jinn_slices::FocusScope::Input {
-                    return IntentResult::empty();
-                }
-                routes
-                    .action_for(
-                        &jinn_slices::DynamicIntent::new(
-                            jinn_chat_input_msg::chat_input_scope(),
-                            "paste-text",
-                            "paste text",
-                        ),
-                        jinn_slices::route::ActionCtx {
-                            state,
-                            slices,
-                            config,
-                            key_bytes: text.clone().into_bytes(),
-                        },
-                    )
-                    .unwrap_or_else(IntentResult::empty)
-            }
             KernelIntent::ScrollUp => feat::navigation::intent::handle_scroll_up(state),
             KernelIntent::ScrollDown => feat::navigation::intent::handle_scroll_down(state),
             KernelIntent::MouseScrollUp => feat::navigation::intent::handle_mouse_scroll_up(state),
@@ -761,14 +735,19 @@ mod tests {
     #[rstest::rstest]
     fn paste_text_ignored_in_normal_scope() {
         // Given an AppState in Normal scope.
+        // (The action name is a literal rather than the slice's constant:
+        // the kernel must not depend on the slice crate.)
         let mut state = AppState::default_with_scope_focus();
         state.frontend.scope_clear_overlays();
 
         // When handling PasteText.
         let result = IntentHandler::handle(
-            &KernelIntent::PasteText {
-                text: "hello".into(),
-            },
+            &KernelIntent::Dynamic(jinn_slices::DynamicIntent::with_bytes(
+                jinn_chat_input_msg::chat_input_scope(),
+                "paste-text",
+                "paste text",
+                b"hello".to_vec(),
+            )),
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -795,9 +774,12 @@ mod tests {
 
         // When handling PasteText.
         let _result = IntentHandler::handle(
-            &KernelIntent::PasteText {
-                text: "hello".into(),
-            },
+            &KernelIntent::Dynamic(jinn_slices::DynamicIntent::with_bytes(
+                jinn_chat_input_msg::chat_input_scope(),
+                "paste-text",
+                "paste text",
+                b"hello".to_vec(),
+            )),
             &mut state,
             &empty_slices(),
             &empty_routes(),
