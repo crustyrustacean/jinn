@@ -267,6 +267,28 @@ async fn load_provider_picker_entries_fills_the_picker_from_the_registry() {
     );
 }
 
+/// A registry offering exactly one non-OpenRouter model, `ollama/llama3`.
+fn ollama_only_registry() -> jinn_provider_config::ProviderRegistry {
+    jinn_provider_config::ProviderRegistry::from_config(jinn_provider_config::ProvidersConfig {
+        providers: std::collections::BTreeMap::from([(
+            "ollama".to_owned(),
+            jinn_provider_config::ProviderEntry {
+                model_info: Vec::new(),
+                backend: "ollama".to_owned(),
+                models: vec!["llama3".to_owned()],
+                base_url: None,
+                api_key_env: None,
+                requires_key: false,
+                extra_body: None,
+                context_length: None,
+            },
+        )]),
+        aliases: vec![],
+        default_provider: None,
+    })
+    .expect("registry builds")
+}
+
 #[rstest::rstest]
 #[tokio::test]
 #[timeout(Duration::from_secs(20))]
@@ -274,28 +296,9 @@ async fn endpoint_load_for_non_openrouter_model_clears_loading_and_shows_one_row
     // Given a composed app with a non-OpenRouter model selected and the
     // loading flag pre-set (what the endpoint-picker open intent does).
     let app = composed_app().await;
-    let services = app.services.clone();
-    let registry = jinn_provider_config::ProviderRegistry::from_config(
-        jinn_provider_config::ProvidersConfig {
-            providers: std::collections::BTreeMap::from([(
-                "ollama".to_owned(),
-                jinn_provider_config::ProviderEntry {
-                    model_info: Vec::new(),
-                    backend: "ollama".to_owned(),
-                    models: vec!["llama3".to_owned()],
-                    base_url: None,
-                    api_key_env: None,
-                    requires_key: false,
-                    extra_body: None,
-                    context_length: None,
-                },
-            )]),
-            aliases: vec![],
-            default_provider: None,
-        },
-    )
-    .expect("registry builds");
-    services.provider_registry.replace(registry);
+    app.services
+        .provider_registry
+        .replace(ollama_only_registry());
     app.core
         .state
         .write()

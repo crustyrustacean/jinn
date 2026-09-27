@@ -69,11 +69,17 @@ mod tests {
 
     #[rstest::rstest]
     fn lookup_compact_returns_compact() {
+        // Given the command name "compact".
+        // When looking it up.
+        // Then it resolves to the Compact command.
         assert_eq!(SlashCommand::lookup("compact"), Some(SlashCommand::Compact));
     }
 
     #[rstest::rstest]
     fn lookup_compact_all_returns_compact_all() {
+        // Given the command name "compact-all".
+        // When looking it up.
+        // Then it resolves to the CompactAll command.
         assert_eq!(
             SlashCommand::lookup("compact-all"),
             Some(SlashCommand::CompactAll)
@@ -82,18 +88,29 @@ mod tests {
 
     #[rstest::rstest]
     fn lookup_new_returns_new() {
+        // Given the command name "new".
+        // When looking it up.
+        // Then it resolves to the New command.
         assert_eq!(SlashCommand::lookup("new"), Some(SlashCommand::New));
     }
 
     #[rstest::rstest]
     fn lookup_unknown_returns_none() {
+        // Given a name that matches no command.
+        // When looking it up.
+        // Then nothing is resolved.
         assert_eq!(SlashCommand::lookup("nonexistent"), None);
     }
 
     #[rstest::rstest]
     fn all_entries_contains_all_commands() {
+        // Given the full command list.
         let entries = SlashCommand::all_entries();
+
+        // When collecting the advertised names.
         let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+
+        // Then every command is advertised.
         assert!(names.contains(&"compact"));
         assert!(names.contains(&"compact-all"));
         assert!(names.contains(&"new"));

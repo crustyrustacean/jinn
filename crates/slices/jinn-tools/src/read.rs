@@ -317,7 +317,10 @@ mod tests {
     #[rstest::rstest]
     fn resolve_path_relative() {
         // Given a relative path and a CWD.
-        let resolved = resolve_path("foo/bar.txt", Path::new("/home/user/project"));
+        let cwd = Path::new("/home/user/project");
+
+        // When resolving the path against that CWD.
+        let resolved = resolve_path("foo/bar.txt", cwd);
 
         // Then it's joined against CWD.
         assert_eq!(resolved, PathBuf::from("/home/user/project/foo/bar.txt"));
@@ -326,7 +329,10 @@ mod tests {
     #[rstest::rstest]
     fn resolve_path_absolute() {
         // Given an absolute path.
-        let resolved = resolve_path("/etc/hosts", Path::new("/home/user/project"));
+        let cwd = Path::new("/home/user/project");
+
+        // When resolving it against that CWD.
+        let resolved = resolve_path("/etc/hosts", cwd);
 
         // Then it's returned as-is.
         assert_eq!(resolved, PathBuf::from("/etc/hosts"));

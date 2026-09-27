@@ -145,12 +145,19 @@ mod tests {
 
     #[rstest::rstest]
     fn the_kernel_defines_no_static_scope_for_the_reasoning_picker() {
+        // Given the scope name a slice-owned picker would use.
         // The reasoning picker is slice-owned: its own scope is a
         // `Dynamic` scope its keys are attached to, not a static one the
         // kernel keymap enumerates. This guard pins the flip side of that
         // migration — the kernel must not have kept a static scope for it.
+        let scope_name = "Picker(reasoning-effort)";
+
+        // When parsing it as a static scope.
+        let parsed = scope_name.parse::<Scope>();
+
+        // Then parsing fails: the kernel defines no such static scope.
         assert!(
-            "Picker(reasoning-effort)".parse::<Scope>().is_err(),
+            parsed.is_err(),
             "the kernel must not define a static scope for the slice-owned \
              reasoning picker"
         );

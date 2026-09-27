@@ -370,126 +370,71 @@ mod tests {
         ToolExecutionStarted, ToolOutputKind, ToolUseStarted,
     };
 
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn on_tool_batch_completed_emits_send_to_llm_provider() {
-        let (actor, audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("list files"));
-            session.push_entry(ChatEntry::assistant("checking"));
-            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
-            session.push_entry(ChatEntry::assistant("here are the files"));
-            session.begin_sending();
-            state.session.active_session_id().clone()
-        };
+    use super::SessionPersistenceActor;
 
-        let event = ToolBatchCompleted {
-            session_id: session_id.clone(),
-            results: vec![ToolResult {
-                tool_call_id: "tc-1".to_owned(),
-                name: "bash".to_owned(),
-                content: "file1.txt".to_owned(),
-                success: true,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-            }],
-        };
-        actor.on_tool_batch_completed(&event).await;
-
-        assert!(
-            audit.contains_name("SendToLlmProvider"),
-            "expected SendToLlmProvider command to be emitted, got: {:?}",
-            audit.names()
-        );
+    /// The actor half of a bus-harness test, driven through the bus.
+    struct BusActor {
+        harness: jinn_testutil::bus_harness::TestHarness,
     }
 
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn tool_batch_completed_via_bus_emits_continuation() {
-        // Given a spawned session actor with a tool-call entry in its history.
-        use crate::session_actor::{SessionPersistenceActor, SessionPersistenceActorDeps};
-        use jinn_inference_msg::SendToLlmProvider;
-        use jinn_kernel::common::app_state::AppState;
-        use jinn_kernel::common::bus::HarnessServices;
-        use jinn_kernel::common::state::State;
-        use jinn_llm_support::token_estimator::TiktokenCounter;
-        use jinn_testutil::bus_harness::{TestHarness, await_recorded};
-        use std::time::Duration;
+    impl BusActor {
+        /// Spawns the session actor onto the bus, wired to the harness.
+        async fn spawn(
+            harness: jinn_testutil::bus_harness::TestHarness,
+            state: jinn_kernel::common::state::State,
+        ) -> Self {
+            use crate::session_actor::SessionPersistenceActorDeps;
+            use jinn_kernel::common::bus::HarnessServices;
+            use jinn_llm_support::token_estimator::TiktokenCounter;
 
-        let harness = TestHarness::new().await;
-        let recorder = harness.spawn_recorder::<SendToLlmProvider>().await;
-        let state = State::new(AppState::default());
-        {
-            let mut s = state.write();
-            let session = s.active_session_mut();
-            session.push_entry(ChatEntry::user("list files"));
-            session.push_entry(ChatEntry::assistant("checking"));
-            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
-            session.push_entry(ChatEntry::assistant("here are the files"));
-            session.begin_sending();
-        }
-        let session_id = state.read().session.active_session_id().clone();
-
-        SessionPersistenceActor::spawn(
-            harness.system(),
-            SessionPersistenceActorDeps {
-                deps: {
-                    let deps = harness.actor_deps().await;
-                    ensure_context_assembly(&deps.services.trouper_system);
-                    deps
+            let deps = {
+                let deps = harness.actor_deps().await;
+                ensure_context_assembly(&deps.services.trouper_system);
+                deps
+            };
+            SessionPersistenceActor::spawn(
+                harness.system(),
+                SessionPersistenceActorDeps {
+                    deps,
+                    state: state.clone(),
+                    counter: TiktokenCounter::o200k_base(),
+                    token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
+                    image_converter:
+                        jinn_llm_support::image_convert::ImageConverterService::unavailable(),
                 },
-                state,
-                counter: TiktokenCounter::o200k_base(),
-                token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
-                image_converter:
-                    jinn_llm_support::image_convert::ImageConverterService::unavailable(),
-            },
-        );
+            );
+            Self { harness }
+        }
 
-        // When ToolBatchCompleted is published to the bus.
-        let event = ToolBatchCompleted {
-            session_id: session_id.clone(),
-            results: vec![ToolResult {
-                tool_call_id: "tc-1".to_owned(),
-                name: "bash".to_owned(),
-                content: "file1.txt".to_owned(),
-                success: true,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-            }],
-        };
-        harness.publish(event).await;
-        let sent = await_recorded::<SendToLlmProvider>(&recorder, 1, Duration::from_secs(2)).await;
-
-        // Then the actor published SendToLlmProvider via the MsgHandler.
-        assert!(
-            sent.iter().any(|m| m.session_id == session_id),
-            "expected SendToLlmProvider to reach the bus via the MsgHandler"
-        );
+        /// Publishes a message onto the bus.
+        async fn publish<M>(&self, message: M)
+        where
+            M: jinn_kernel::common::bus::BusMessage
+                + trouper::schema::Schema
+                + serde::Serialize
+                + Clone
+                + Send
+                + Sync
+                + trouper::envelope::PayloadValue,
+        {
+            self.harness.publish(message).await;
+        }
     }
 
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn canceled_after_tool_use_does_not_redispatch() {
-        // Given a spawned session actor with a streaming session whose tool
-        // batch has already landed (the buffered-batch pre-cancel state: history
-        // holds the tool call, phase is Streaming).
-        use crate::session_actor::{SessionPersistenceActor, SessionPersistenceActorDeps};
-        use jinn_core_types::ChatEntry;
-        use jinn_core_types::tool_types::ToolResult;
+    /// Spawns a session actor onto a Guaranteed bus in the buffered-batch
+    /// pre-cancel state: the tool batch lands while the session is still
+    /// Streaming (the tool-call-watchdog race shape), so the aborted stream
+    /// task's StreamCompleted(ToolUse) dispatches one continuation first.
+    async fn spawn_buffered_batch_actor() -> (
+        BusActor,
+        Vec<jinn_inference_msg::SendToLlmProvider>,
+        jinn_kernel::common::state::State,
+        jinn_core_types::SessionId,
+    ) {
         use jinn_inference_msg::SendToLlmProvider;
-        use jinn_inference_msg::{StreamCompleted, StreamCompletedReason};
         use jinn_kernel::common::app_state::AppState;
-        use jinn_kernel::common::bus::HarnessServices;
         use jinn_kernel::common::state::State;
-        use jinn_llm_support::token_estimator::TiktokenCounter;
-        use jinn_session_msg::PhaseKind;
         use jinn_testutil::bus_harness::{TestHarness, await_recorded};
-        use jinn_tools_msg::ToolBatchCompleted;
         use std::time::Duration;
 
         let harness = TestHarness::new().await;
@@ -507,64 +452,55 @@ mod tests {
             session.begin_streaming();
         }
         let session_id = state.read().session.active_session_id().clone();
-
-        SessionPersistenceActor::spawn(
-            harness.system(),
-            SessionPersistenceActorDeps {
-                deps: {
-                    let deps = harness.actor_deps().await;
-                    ensure_context_assembly(&deps.services.trouper_system);
-                    deps
-                },
-                state: state.clone(),
-                counter: TiktokenCounter::o200k_base(),
-                token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
-                image_converter:
-                    jinn_llm_support::image_convert::ImageConverterService::unavailable(),
-            },
-        );
-
-        // When the tool batch lands while the session is still Streaming — the
-        // tool-call-watchdog race shape: the batch is buffered, then the aborted
-        // stream task's StreamCompleted(ToolUse) arrives just BEFORE the cancel.
-        let batch = ToolBatchCompleted {
-            session_id: session_id.clone(),
-            results: vec![ToolResult {
-                tool_call_id: "tc-1".to_owned(),
-                name: "sample_tool".to_owned(),
-                content: "boom".to_owned(),
-                success: false,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-            }],
-        };
-        harness.publish(batch).await;
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::ToolUse,
-            assistant_content: Some("calling the tool".to_owned()),
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
-        harness.publish(event).await;
+        let actor = BusActor::spawn(harness, state.clone()).await;
+        actor
+            .publish(ToolBatchCompleted {
+                session_id: session_id.clone(),
+                results: vec![tool_result("tc-1", "sample_tool", "boom", false)],
+            })
+            .await;
+        actor
+            .publish(stream_completed(
+                &session_id,
+                StreamCompletedReason::ToolUse,
+            ))
+            .await;
         let sent = await_recorded::<SendToLlmProvider>(&recorder, 1, Duration::from_secs(2)).await;
-        assert!(
-            sent.iter().any(|m| m.session_id == session_id),
-            "precondition: the tool loop dispatched its continuation"
-        );
+        (actor, sent, state, session_id)
+    }
 
-        // And StreamCompleted(Canceled) arrives afterwards.
-        let cancel = StreamCompleted {
+    /// Polls the session's phase until it reaches `Idle` or the deadline passes.
+    async fn await_phase_idle(
+        state: &jinn_kernel::common::state::State,
+        session_id: &jinn_core_types::SessionId,
+    ) {
+        use std::time::Duration;
+
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            {
+                let s = state.read();
+                if s.session.get_unchecked(session_id).phase() == PhaseKind::Idle {
+                    return;
+                }
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "session did not settle to Idle"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    /// Builds the `StreamCompleted` event a provider emits when a turn ends.
+    fn stream_completed(
+        session_id: &jinn_core_types::SessionId,
+        reason: StreamCompletedReason,
+    ) -> StreamCompleted {
+        StreamCompleted {
             model_used: None,
             session_id: session_id.clone(),
-            reason: StreamCompletedReason::Canceled,
+            reason,
             assistant_content: None,
             tool_calls: None,
             cost: None,
@@ -573,8 +509,209 @@ mod tests {
             cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
+        }
+    }
+
+    /// Builds the terminal `StreamCompleted(ToolUse)` a provider emits after
+    /// requesting tool calls, stamped with the dispatch time of its turn.
+    fn terminal_tool_use_event(
+        session_id: &jinn_core_types::SessionId,
+        dispatched_at: jiff::Timestamp,
+    ) -> StreamCompleted {
+        StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::ToolUse,
+            assistant_content: None,
+            tool_calls: Some(vec![]),
+            cost: None,
+            provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
+            thinking_content: None,
+            model_used: None,
+            dispatched_at,
+        }
+    }
+
+    /// Builds the tool result a tool run reports back for one call.
+    fn tool_result(tool_call_id: &str, name: &str, content: &str, success: bool) -> ToolResult {
+        ToolResult {
+            tool_call_id: tool_call_id.to_owned(),
+            name: name.to_owned(),
+            content: content.to_owned(),
+            success,
+            full_content: None,
+            truncation: None,
+            pin_position: None,
+        }
+    }
+
+    /// Puts the active session into sending phase, returning its id.
+    fn begin_sending_session(actor: &SessionPersistenceActor) -> jinn_core_types::SessionId {
+        let mut state = actor.state.write();
+        let session = state.active_session_mut();
+        session.begin_sending();
+        state.session.active_session_id().clone()
+    }
+
+    /// Puts the active session into sending phase with a tool call and one
+    /// streamed assistant entry around it, returning its id.
+    fn begin_sending_session_with_tool_call(
+        actor: &SessionPersistenceActor,
+    ) -> jinn_core_types::SessionId {
+        let mut state = actor.state.write();
+        let session = state.active_session_mut();
+        session.push_entry(ChatEntry::user("list files"));
+        session.push_entry(ChatEntry::assistant("checking"));
+        session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
+        session.push_entry(ChatEntry::assistant("here are the files"));
+        session.begin_streaming();
+        session.finish_streaming(true, jiff::Timestamp::now());
+        session.begin_sending();
+        state.session.active_session_id().clone()
+    }
+
+    /// Puts the active session into sending phase holding a complete tool loop
+    /// and a buffered steering fragment, returning its id.
+    fn seed_sending_session_with_steering_fragment(
+        actor: &SessionPersistenceActor,
+    ) -> jinn_core_types::SessionId {
+        let mut state = actor.state.write();
+        let session = state.active_session_mut();
+        session.push_entry(ChatEntry::user("list files"));
+        session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
+        session.push_entry(ChatEntry::assistant("checking"));
+        session.push_entry(ChatEntry::tool_result(
+            "tc-1",
+            "bash",
+            "file1.txt",
+            ToolResultStatus::Success,
+        ));
+        session.push_entry(ChatEntry::tool_result(
+            "tc-1",
+            "bash",
+            "file2.txt",
+            ToolResultStatus::Success,
+        ));
+        session
+            .steering_buffer_mut()
+            .push_fragment("stay at the foo part");
+        session.finish_streaming(true, jiff::Timestamp::now());
+        session.begin_sending();
+        state.session.active_session_id().clone()
+    }
+
+    /// Puts the active session into sending phase with a streamed assistant
+    /// entry targeted by a queued context-override mutation, returning the
+    /// targeted entry id and the session id.
+    fn seed_sending_session_with_pending_mutation(
+        actor: &SessionPersistenceActor,
+    ) -> (jinn_core_types::ChatEntryId, jinn_core_types::SessionId) {
+        let mut state = actor.state.write();
+        let session = state.active_session_mut();
+        session.push_entry(ChatEntry::user("list files"));
+        let entry = ChatEntry::assistant("checking");
+        let entry_id = entry.id.clone();
+        session.push_entry(entry);
+        session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
+        session.push_entry(ChatEntry::assistant("here are the files"));
+        session.begin_streaming();
+        session.finish_streaming(true, jiff::Timestamp::now());
+        session.begin_sending();
+        session.queue_mutations(vec![jinn_core_types::HistoryMutation::SetContextOverride {
+            entry_id: entry_id.clone(),
+            value: jinn_core_types::ContextOverride::ForcedExclude,
+            source: ChangeSource::Internal {
+                label: "test".into(),
+            },
+        }]);
+        (entry_id, state.session.active_session_id().clone())
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn on_tool_batch_completed_emits_send_to_llm_provider() {
+        // Given a session in sending phase holding a completed tool loop.
+        let (actor, audit) = test_actor_recording().await;
+        let session_id = begin_sending_session_with_tool_call(&actor);
+
+        // When the tool batch completes.
+        let event = ToolBatchCompleted {
+            session_id,
+            results: vec![tool_result("tc-1", "bash", "file1.txt", true)],
         };
-        harness.publish(cancel).await;
+        actor.on_tool_batch_completed(&event).await;
+
+        // Then a SendToLlmProvider command is emitted.
+        assert!(
+            audit.contains_name("SendToLlmProvider"),
+            "expected SendToLlmProvider command to be emitted, got: {:?}",
+            audit.names()
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn tool_batch_completed_via_bus_emits_continuation() {
+        // Given a spawned session actor with a tool-call entry in its history.
+        use jinn_inference_msg::SendToLlmProvider;
+        use jinn_kernel::common::app_state::AppState;
+        use jinn_kernel::common::state::State;
+        use jinn_testutil::bus_harness::{TestHarness, await_recorded};
+        use std::time::Duration;
+
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<SendToLlmProvider>().await;
+        let state = State::new(AppState::default());
+        {
+            let mut s = state.write();
+            let session = s.active_session_mut();
+            session.push_entry(ChatEntry::user("list files"));
+            session.push_entry(ChatEntry::assistant("checking"));
+            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
+            session.push_entry(ChatEntry::assistant("here are the files"));
+            session.begin_sending();
+        }
+        let session_id = state.read().session.active_session_id().clone();
+        let actor = BusActor::spawn(harness, state).await;
+
+        // When ToolBatchCompleted is published to the bus.
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![tool_result("tc-1", "bash", "file1.txt", true)],
+        };
+        actor.publish(event).await;
+        let sent = await_recorded::<SendToLlmProvider>(&recorder, 1, Duration::from_secs(2)).await;
+
+        // Then the actor published SendToLlmProvider via the MsgHandler.
+        assert!(
+            sent.iter().any(|m| m.session_id == session_id),
+            "expected SendToLlmProvider to reach the bus via the MsgHandler"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn canceled_after_tool_use_does_not_redispatch() {
+        // Given a spawned session actor in the buffered-batch pre-cancel state.
+        use jinn_inference_msg::SendToLlmProvider;
+        use jinn_testutil::bus_harness::await_recorded;
+        use std::time::Duration;
+
+        let (actor, sent, _state, session_id) = spawn_buffered_batch_actor().await;
+        assert!(
+            sent.iter().any(|m| m.session_id == session_id),
+            "precondition: the tool loop dispatched its continuation"
+        );
+        let recorder = actor.harness.spawn_recorder::<SendToLlmProvider>().await;
+
+        // When StreamCompleted(Canceled) arrives afterwards.
+        actor
+            .publish(stream_completed(
+                &session_id,
+                StreamCompletedReason::Canceled,
+            ))
+            .await;
 
         // Then no FURTHER SendToLlmProvider is dispatched — the Canceled
         // completion must not re-enter the tool loop. (The recorder drains on
@@ -584,24 +721,27 @@ mod tests {
             extra.iter().all(|m| m.session_id != session_id),
             "cancel after tool-use must not trigger a second dispatch, got {extra:?}"
         );
+    }
 
-        // And the session settles in Idle with a single cancel entry appended.
-        // The cancel completes asynchronously (actor mailbox), so poll until
-        // the terminal phase lands.
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
-        let s = loop {
-            let s = state.read();
-            let phase = s.session.get_unchecked(&session_id).phase();
-            if phase == PhaseKind::Idle {
-                break s;
-            }
-            drop(s);
-            assert!(
-                tokio::time::Instant::now() < deadline,
-                "session did not settle to Idle after the cancel"
-            );
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        };
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn canceled_after_tool_use_appends_single_cancelled_entry() {
+        // Given a spawned session actor in the buffered-batch pre-cancel state.
+        let (actor, _recorder, state, session_id) = spawn_buffered_batch_actor().await;
+
+        // When StreamCompleted(Canceled) arrives afterwards. The cancel is
+        // handled asynchronously on the actor mailbox, so the terminal phase
+        // is polled rather than read straight away.
+        actor
+            .publish(stream_completed(
+                &session_id,
+                StreamCompletedReason::Canceled,
+            ))
+            .await;
+        await_phase_idle(&state, &session_id).await;
+
+        // Then the session settles in Idle with a single cancel entry appended.
+        let s = state.read();
         let session = s.session.get_unchecked(&session_id);
         let cancelled_entries = session
             .history()
@@ -617,29 +757,16 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn stream_completed_survives_token_burst_on_unbounded_mailbox() {
-        // Regression guard for the unbounded-mailbox fix. Production log
-        // evidence showed that a >64-token burst at a `[DONE]` peak could fill the
-        // session actor's bounded(64) mailbox, and the bus's BestEffort delivery
-        // (try_send) silently dropped the terminal `StreamCompleted(ToolUse)` on
-        // MailboxFull — wedging the session in Streaming forever (FIFO violation:
-        // a message published first was dropped while one published 1.7ms later was
-        // delivered). The session actor now spawns with an unbounded mailbox.
-        //
-        // This test locks in the production-shaped path under load: a BestEffort
-        // bus, an unbounded session mailbox, a >64 token burst immediately
-        // followed by the terminal event while a batch is buffered. It asserts the
-        // terminal is delivered (buffer drains → SendToLlmProvider) and that the
-        // Guaranteed→unbounded combination does NOT deadlock (the core argument
-        // against switching the bus itself to Guaranteed). The drop race itself is
-        // timing-dependent and not deterministically reproducible here; this guard
-        // ensures the wiring stays correct and the burst path stays livelock-free.
-        use crate::session_actor::{SessionPersistenceActor, SessionPersistenceActorDeps};
+        // Given a BestEffort bus and a session actor whose deep mailbox already
+        // holds a buffered tool batch that raced ahead of the terminal
+        // StreamCompleted(ToolUse). (Regression guard for the deep-mailbox fix:
+        // production logs showed a >64-token burst at a `[DONE]` peak filling the
+        // old bounded(64) mailbox, where BestEffort try_send silently dropped the
+        // terminal event and wedged the session in Streaming forever.)
         use jinn_inference_msg::SendToLlmProvider;
         use jinn_inference_msg::StreamToken;
         use jinn_kernel::common::app_state::AppState;
-        use jinn_kernel::common::bus::HarnessServices;
         use jinn_kernel::common::state::State;
-        use jinn_llm_support::token_estimator::TiktokenCounter;
         use jinn_testutil::bus_harness::{TestHarness, await_recorded};
         use std::time::Duration;
 
@@ -652,42 +779,15 @@ mod tests {
             let mut s = state.write();
             let session = s.active_session_mut();
             session.begin_streaming();
-            // Simulate an already-finished tool batch racing ahead of
-            // StreamCompleted(ToolUse) — exactly the wedge precondition.
-            session.buffer_tool_results(vec![ToolResult {
-                tool_call_id: "tc-1".to_owned(),
-                name: "bash".to_owned(),
-                content: "ok".to_owned(),
-                success: true,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-            }]);
+            session.buffer_tool_results(vec![tool_result("tc-1", "bash", "ok", true)]);
         }
-
-        // The trouper spawn carries the deep mailbox (65_536, Block) the
-        // production wiring uses — the successor of the unbounded
-        // mailbox this test used to spawn with.
-        SessionPersistenceActor::spawn(
-            harness.system(),
-            SessionPersistenceActorDeps {
-                deps: {
-                    let deps = harness.actor_deps().await;
-                    ensure_context_assembly(&deps.services.trouper_system);
-                    deps
-                },
-                state,
-                counter: TiktokenCounter::o200k_base(),
-                token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
-                image_converter:
-                    jinn_llm_support::image_convert::ImageConverterService::unavailable(),
-            },
-        );
+        let actor = BusActor::spawn(harness, state).await;
+        let terminal = terminal_tool_use_event(&session_id, dispatched_at);
 
         // When a >64-token burst is published, immediately followed by the
         // terminal StreamCompleted(ToolUse).
         for i in 0..200 {
-            harness
+            actor
                 .publish(StreamToken {
                     session_id: session_id.clone(),
                     index: i,
@@ -697,21 +797,7 @@ mod tests {
                 })
                 .await;
         }
-        harness
-            .publish(StreamCompleted {
-                session_id: session_id.clone(),
-                reason: StreamCompletedReason::ToolUse,
-                assistant_content: None,
-                tool_calls: Some(vec![]),
-                cost: None,
-                provider_completion_tokens: None,
-                provider_prompt_tokens: None,
-                cached_tokens: None,
-                thinking_content: None,
-                model_used: None,
-                dispatched_at,
-            })
-            .await;
+        actor.publish(terminal).await;
 
         // Then the terminal was delivered: the buffered batch drained and a
         // continuation (SendToLlmProvider) was dispatched. A dropped terminal
@@ -726,22 +812,18 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_batch_completed_transitions_session_to_sending() {
+        // Given a session in sending phase.
         let (actor, _audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.begin_streaming();
-            session.finish_streaming(true, jiff::Timestamp::now());
-            session.begin_sending();
-            state.session.active_session_id().clone()
-        };
+        let session_id = begin_sending_session(&actor);
 
+        // When an empty tool batch completes.
         let event = ToolBatchCompleted {
             session_id: session_id.clone(),
             results: vec![],
         };
         actor.on_tool_batch_completed(&event).await;
 
+        // Then the session is Streaming again, waiting for the response.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(matches!(session.phase(), PhaseKind::Streaming));
@@ -761,16 +843,10 @@ mod tests {
 
         let event = ToolBatchCompleted {
             session_id: session_id.clone(),
-            results: vec![ToolResult {
-                tool_call_id: "tc-1".to_owned(),
-                name: "read".to_owned(),
-                content: "file".to_owned(),
-                success: true,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-            }],
+            results: vec![tool_result("tc-1", "read", "file", true)],
         };
+
+        // When the tool batch completes.
         actor.on_tool_batch_completed(&event).await;
 
         // Then no continuation is dispatched yet (buffered, not dropped).
@@ -840,6 +916,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_tool_use_counts_tool_call_arguments() {
+        // Given a streaming session with a token record pending finalization.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -857,6 +934,7 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
+        // When the stream completes requesting a tool call with long arguments.
         let event = StreamCompleted {
             model_used: None,
             session_id: session_id.clone(),
@@ -876,6 +954,7 @@ mod tests {
         };
         actor.on_stream_completed(&event).await;
 
+        // Then the tool call arguments are counted alongside the text.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         let ledger = session.token_ledger();
@@ -890,6 +969,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_execution_completed_emits_history_appended() {
+        // Given a sending session holding an unanswered tool call.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -904,20 +984,14 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
+        // When the tool execution completes.
         let event = jinn_tools_msg::ToolExecutionCompleted {
-            session_id: session_id.clone(),
-            result: jinn_core_types::tool_types::ToolResult {
-                tool_call_id: "tc-1".to_owned(),
-                name: "bash".to_owned(),
-                content: "file1.txt".to_owned(),
-                success: true,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-            },
+            session_id,
+            result: tool_result("tc-1", "bash", "file1.txt", true),
         };
         actor.on_tool_execution_completed(&event).await;
 
+        // Then HistoryAppended is emitted.
         assert!(
             audit.contains_name("HistoryAppended"),
             "expected HistoryAppended event after tool execution completed"
@@ -1034,31 +1108,24 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_batch_completed_skips_send_when_tool_loop_disabled() {
+        // Given a sending session whose tool loop is disabled.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
-            session.begin_streaming();
-            session.finish_streaming(true, jiff::Timestamp::now());
             session.begin_sending();
             session.set_tool_loop_disabled();
             state.session.active_session_id().clone()
         };
 
+        // When the tool batch completes.
         let event = ToolBatchCompleted {
             session_id: session_id.clone(),
-            results: vec![ToolResult {
-                tool_call_id: "tc-1".to_owned(),
-                name: "bash".to_owned(),
-                content: "file1.txt".to_owned(),
-                success: true,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-            }],
+            results: vec![tool_result("tc-1", "bash", "file1.txt", true)],
         };
         actor.on_tool_batch_completed(&event).await;
 
+        // Then the turn ends in Idle without dispatching a continuation.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
@@ -1084,34 +1151,18 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_batch_completed_unaffected_without_tool_loop_disabled() {
+        // Given a normal sending session holding a completed tool loop.
         let (actor, audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("list files"));
-            session.push_entry(ChatEntry::assistant("checking"));
-            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
-            session.push_entry(ChatEntry::assistant("here are the files"));
-            session.begin_streaming();
-            session.finish_streaming(true, jiff::Timestamp::now());
-            session.begin_sending();
-            state.session.active_session_id().clone()
-        };
+        let session_id = begin_sending_session_with_tool_call(&actor);
 
+        // When the tool batch completes.
         let event = ToolBatchCompleted {
-            session_id: session_id.clone(),
-            results: vec![ToolResult {
-                tool_call_id: "tc-1".to_owned(),
-                name: "bash".to_owned(),
-                content: "file1.txt".to_owned(),
-                success: true,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-            }],
+            session_id,
+            results: vec![tool_result("tc-1", "bash", "file1.txt", true)],
         };
         actor.on_tool_batch_completed(&event).await;
 
+        // Then the continuation is dispatched as usual.
         assert!(
             audit.contains_name("SendToLlmProvider"),
             "expected SendToLlmProvider for normal session without tool_loop_disabled"
@@ -1121,6 +1172,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_use_started_creates_tool_call_entry() {
+        // Given a session in streaming phase.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -1129,6 +1181,7 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
+        // When a tool use starts.
         actor.on_tool_use_started(&ToolUseStarted {
             session_id: session_id.clone(),
             index: 0,
@@ -1137,6 +1190,7 @@ mod tests {
             dispatched_at: jiff::Timestamp::now(),
         });
 
+        // Then a ToolCall entry with that id is in the history.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session");
         let tc = session
@@ -1187,6 +1241,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_call_received_finalizes_arguments() {
+        // Given a streaming session with a tool call whose arguments are pending.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -1196,6 +1251,7 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
+        // When the fully-formed tool call arrives.
         actor.on_tool_call_received(&ToolCallReceived {
             session_id: session_id.clone(),
             tool_call: ToolCall {
@@ -1208,6 +1264,7 @@ mod tests {
             dispatched_at: jiff::Timestamp::now(),
         });
 
+        // Then the entry's arguments hold the finalized payload.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session");
         let tc = session
@@ -1226,6 +1283,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_call_streaming_appends_delta() {
+        // Given a streaming session with a tool call whose arguments are pending.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -1235,6 +1293,7 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
+        // When two argument deltas stream in for that tool call.
         actor.on_tool_call_streaming(&ToolCallStreaming {
             session_id: session_id.clone(),
             index: 0,
@@ -1246,6 +1305,7 @@ mod tests {
             partial_json: "mmand\":\"ls\"}".to_owned(),
         });
 
+        // Then both deltas concatenate into the entry's arguments.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session");
         let tc = session
@@ -1261,6 +1321,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_execution_started_creates_pending_result() {
+        // Given a session in streaming phase.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -1270,6 +1331,7 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
+        // When a tool execution starts.
         actor.on_tool_execution_started(&ToolExecutionStarted {
             session_id: session_id.clone(),
             tool_call_id: "tc-1".to_owned(),
@@ -1277,6 +1339,7 @@ mod tests {
             dispatched_at: jiff::Timestamp::now(),
         });
 
+        // Then a pending ToolResult entry with that id is in the history.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session");
         let tr = session
@@ -1289,6 +1352,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_execution_output_appends_to_pending_result() {
+        // Given a streaming session with a pending tool result.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -1299,6 +1363,7 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
+        // When two output chunks arrive for that tool result.
         actor.on_tool_execution_output(&ToolExecutionOutput {
             session_id: session_id.clone(),
             tool_call_id: "tc-1".to_owned(),
@@ -1312,6 +1377,7 @@ mod tests {
             kind: ToolOutputKind::default(),
         });
 
+        // Then both chunks concatenate into the entry's content.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session");
         let tr = session
@@ -1327,43 +1393,18 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_batch_completed_applies_pending_mutations() {
+        // Given a sending session with one queued context-override mutation.
         let (actor, audit) = test_actor_recording().await;
-        let (entry_id, session_id) = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("list files"));
-            let entry = ChatEntry::assistant("checking");
-            let entry_id = entry.id.clone();
-            session.push_entry(entry);
-            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
-            session.push_entry(ChatEntry::assistant("here are the files"));
-            session.begin_streaming();
-            session.finish_streaming(true, jiff::Timestamp::now());
-            session.begin_sending();
-            session.queue_mutations(vec![jinn_core_types::HistoryMutation::SetContextOverride {
-                entry_id: entry_id.clone(),
-                value: jinn_core_types::ContextOverride::ForcedExclude,
-                source: ChangeSource::Internal {
-                    label: "test".into(),
-                },
-            }]);
-            (entry_id, state.session.active_session_id().clone())
-        };
+        let (entry_id, session_id) = seed_sending_session_with_pending_mutation(&actor);
 
+        // When the tool batch completes.
         let event = ToolBatchCompleted {
             session_id: session_id.clone(),
-            results: vec![ToolResult {
-                tool_call_id: "tc-1".to_owned(),
-                name: "bash".to_owned(),
-                content: "file1.txt".to_owned(),
-                success: true,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-            }],
+            results: vec![tool_result("tc-1", "bash", "file1.txt", true)],
         };
         actor.on_tool_batch_completed(&event).await;
 
+        // Then the queued mutation is applied to the assistant entry.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         let assistant = session
@@ -1386,34 +1427,18 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_batch_completed_empty_mutation_queue_is_noop() {
+        // Given a sending session with nothing queued for mutation application.
         let (actor, audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("list files"));
-            session.push_entry(ChatEntry::assistant("checking"));
-            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
-            session.push_entry(ChatEntry::assistant("here are the files"));
-            session.begin_streaming();
-            session.finish_streaming(true, jiff::Timestamp::now());
-            session.begin_sending();
-            state.session.active_session_id().clone()
-        };
+        let session_id = begin_sending_session_with_tool_call(&actor);
 
+        // When the tool batch completes.
         let event = ToolBatchCompleted {
-            session_id: session_id.clone(),
-            results: vec![ToolResult {
-                tool_call_id: "tc-1".to_owned(),
-                name: "bash".to_owned(),
-                content: "file1.txt".to_owned(),
-                success: true,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-            }],
+            session_id,
+            results: vec![tool_result("tc-1", "bash", "file1.txt", true)],
         };
         actor.on_tool_batch_completed(&event).await;
 
+        // Then the continuation is still dispatched.
         assert!(
             audit.contains_name("SendToLlmProvider"),
             "expected SendToLlmProvider with empty mutation queue"
@@ -1423,50 +1448,21 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_batch_completed_drained_steering_entry_lands_after_tool_results() {
+        // Given a sending session holding a complete tool loop and a buffered
+        // steering fragment the user typed while the tools ran.
         let (actor, _audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("list files"));
-            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
-            session.push_entry(ChatEntry::assistant("checking"));
-            session.push_entry(ChatEntry::tool_result(
-                "tc-1",
-                "bash",
-                "file1.txt",
-                ToolResultStatus::Success,
-            ));
-            session.push_entry(ChatEntry::tool_result(
-                "tc-1",
-                "bash",
-                "file2.txt",
-                ToolResultStatus::Success,
-            ));
-            session
-                .steering_buffer_mut()
-                .push_fragment("stay at the foo part");
-            session.finish_streaming(true, jiff::Timestamp::now());
-            session.begin_sending();
-            state.session.active_session_id().clone()
-        };
+        let session_id = seed_sending_session_with_steering_fragment(&actor);
 
+        // When the tool batch completes.
         let event = ToolBatchCompleted {
-            session_id: session_id.clone(),
-            results: vec![ToolResult {
-                tool_call_id: "tc-1".to_owned(),
-                name: "bash".to_owned(),
-                content: "file1.txt".to_owned(),
-                success: true,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-            }],
+            session_id,
+            results: vec![tool_result("tc-1", "bash", "file1.txt", true)],
         };
         actor.on_tool_batch_completed(&event).await;
 
+        // Then the drained steering entry lands after every tool result.
         let state = actor.state.read();
-        let session = state.session.active_session();
-        let history = session.history();
+        let history = state.session.active_session().history();
         let tool_result_indices: Vec<usize> = history
             .iter()
             .enumerate()

@@ -127,12 +127,10 @@ fn spawn_stub_server() -> DuplexStream {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn connect_lists_tools_calls_echo_and_shuts_down() {
+async fn connect_lists_tools_advertising_echo() {
     // Given a stub MCP server reachable over an in-memory duplex pipe.
     let client_io = spawn_stub_server();
     let (client_read, client_write) = tokio::io::split(client_io);
-
-    // When connecting the real client.
     let mut client = McpClient::connect_with_transport(AsyncRwTransport::<
         RoleClient,
         tokio::io::ReadHalf<DuplexStream>,
@@ -141,14 +139,34 @@ async fn connect_lists_tools_calls_echo_and_shuts_down() {
     .await
     .expect("client must connect to stub server");
 
-    // Then `tools/list` advertises the `echo` tool.
+    // When listing the server's tools.
     let tools = client.list_tools().await.expect("tools/list must succeed");
+
+    // Then `tools/list` advertises exactly the `echo` tool.
     let tool_name = tools
         .first()
         .map(|t| t.name.as_ref().to_owned())
         .unwrap_or_default();
     assert_eq!(tools.len(), 1, "stub advertises exactly one tool");
     assert_eq!(tool_name, "echo");
+
+    // And the client shuts down without error (no panic, no hang).
+    client.shutdown().await;
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn call_tool_echo_returns_the_message_as_text() {
+    // Given a client connected to the stub MCP server.
+    let client_io = spawn_stub_server();
+    let (client_read, client_write) = tokio::io::split(client_io);
+    let mut client = McpClient::connect_with_transport(AsyncRwTransport::<
+        RoleClient,
+        tokio::io::ReadHalf<DuplexStream>,
+        tokio::io::WriteHalf<DuplexStream>,
+    >::new(client_read, client_write))
+    .await
+    .expect("client must connect to stub server");
 
     // When calling `echo` with a message argument.
     let result = client
@@ -216,7 +234,9 @@ fn server_command_carries_program_and_args() {
         args: vec!["@excalimate/mcp-server".to_owned(), "--stdio".to_owned()],
     };
 
-    // Then the fields round-trip (sanity check for the owned value the actor carries).
+    // When reading the command back (sanity check for the owned value the
+    // actor carries).
+    // Then the fields round-trip.
     assert_eq!(cmd.program, "npx");
     assert_eq!(cmd.args, vec!["@excalimate/mcp-server", "--stdio"]);
 }
@@ -284,6 +304,7 @@ async fn liveness_probe_reflects_transport_state_independently_of_client() {
     .expect("client must connect");
     let probe = client.liveness_probe();
 
+    // When polling the standalone probe.
     // Then the probe reports the connection open while the client is alive.
     assert!(!probe.is_transport_closed());
 
@@ -296,10 +317,8 @@ async fn liveness_probe_reflects_transport_state_independently_of_client() {
 #[rstest::rstest]
 #[tokio::test]
 async fn killer_drops_and_flips_transport_closed() {
-    // Given a connected client with a killer handle.
+    // Given a connected client with a killer handle, transport open.
     let (client, killer) = jinn_mcp::server_testkit::spawn_stub_client_with_killer().await;
-
-    // Then while alive the transport reports open.
     assert!(!client.is_transport_closed());
 
     // When the killer is dropped (server task aborted).
@@ -359,6 +378,7 @@ async fn killer_variant_stays_alive_until_dropped() {
     // Given a connected client from the killer variant.
     let (client, killer) = jinn_mcp::server_testkit::spawn_stub_client_with_killer().await;
 
+    // When holding the killer and polling the client over a short window.
     // Then it stays alive (transport open) for a while without dropping the killer.
     for i in 0..20 {
         tokio::time::sleep(Duration::from_millis(50)).await;

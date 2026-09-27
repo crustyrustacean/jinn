@@ -901,8 +901,7 @@ impl Default for ChatInputBoxState {
 }
 
 #[cfg(test)]
-#[path = "chat_input_box_tests.rs"]
-mod chat_input_tests;
+mod chat_input_box_tests;
 
 #[cfg(test)]
 mod tests {
@@ -983,19 +982,29 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn move_cursor_word_left_at_word_boundary() {
+    fn move_cursor_word_left_lands_at_start_of_trailing_word() {
         // Given "hello   world" with cursor at end.
         let mut state = ChatInputBoxState::new();
         state.insert_text("hello   world");
 
         // When moving word left once.
         state.move_cursor_word_left();
-        // Cursor at start of "world".
+
+        // Then the cursor is at the start of "world".
         assert_eq!(state.cursor_pos(), 8);
+    }
+
+    #[rstest::rstest]
+    fn move_cursor_word_left_from_word_start_lands_at_buffer_start() {
+        // Given "hello   world" with the cursor at the start of "world".
+        let mut state = ChatInputBoxState::new();
+        state.insert_text("hello   world");
+        state.move_cursor_word_left();
 
         // When moving word left again.
         state.move_cursor_word_left();
-        // Cursor at start of "hello".
+
+        // Then the cursor is at the start of "hello", the first word.
         assert_eq!(state.cursor_pos(), 0);
     }
 
@@ -1091,6 +1100,7 @@ mod tests {
         // Given a state without autocomplete.
         let state = ChatInputBoxState::new();
 
+        // When reading the autocomplete token start.
         // Then token_start is None.
         assert!(state.autocomplete_token_start().is_none());
     }
@@ -1345,11 +1355,13 @@ mod tests {
 
     #[rstest::rstest]
     fn grapheme_at_and_count_reflect_buffer_after_edit() {
-        // Given a buffer "abc" with an edit (insert "XY" at pos 1).
+        // Given a buffer "abc" with the cursor moved to position 1.
         let mut state = ChatInputBoxState::new();
         state.insert_text("abc");
         state.move_cursor_left();
         state.move_cursor_left(); // cursor at 1
+
+        // When inserting "XY" at position 1.
         state.insert_text("XY");
 
         // Then grapheme_count reflects the new length.
@@ -1363,10 +1375,12 @@ mod tests {
 
     #[rstest::rstest]
     fn edit_then_cursor_moves_match_known_good() {
-        // Given "hello" with a sequence of edits and cursor moves.
+        // Given a buffer containing "hello".
         let mut state = ChatInputBoxState::new();
         state.insert_text("hello");
-        // Known-good sequence: move left twice, insert X, move to end, delete back.
+
+        // When running the known-good edit sequence: move left twice, insert X,
+        // move to end, delete back.
         state.move_cursor_left();
         state.move_cursor_left(); // cursor at 3 ("lo" after cursor)
         state.insert_text("X"); // "helXlo", cursor at 4

@@ -205,6 +205,7 @@ mod tests {
         // When handling a mouse-wheel scroll up.
         let result = handle_mouse_scroll_up(&mut state);
 
+        // Then no message is emitted.
         assert!(result.message_names.is_empty());
     }
 
@@ -221,6 +222,7 @@ mod tests {
         // When handling MouseScrollDown.
         let result = handle_mouse_scroll_down(&mut state);
 
+        // Then no message is emitted.
         assert!(result.message_names.is_empty());
     }
 

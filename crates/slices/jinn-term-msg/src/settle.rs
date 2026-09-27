@@ -557,29 +557,33 @@ mod key_event_tests {
         Some(out)
     }
 
+    /// Reads the compiled terminfo entry for the advertised terminal, or
+    /// `None` when this machine has no terminfo database to compare against.
+    fn read_advertised_terminfo_entry() -> Option<Vec<u8>> {
+        let path = terminfo_entry_path(advertised_term())?;
+        Some(std::fs::read(&path).unwrap_or_else(|e| panic!("read {path:?}: {e}")))
+    }
+
     /// The encoder table must match the terminfo entry jinn advertises.
     ///
     /// This is the build-time guard that lets the encoder skip a runtime
-    /// terminfo lookup: if the advertised `TERM` ever changes, this test goes
+    /// terminfo lookup: if the advertised `TERM` ever changes, these tests go
     /// red instead of the key encoder silently drifting from it. Only
     /// capabilities the database actually defines are asserted — ctrl- and
     /// alt-modified arrow capabilities exist in no entry, so their values are
     /// pinned by the unit tests above rather than claimed to be verified.
     #[rstest::rstest]
-    fn encoder_matches_the_advertised_terminfo_entry() {
-        // Given the terminal identity jinn advertises to child ptys.
+    fn unmodified_keys_match_the_advertised_terminfo_entry() {
+        // Given the terminal identity jinn advertises to child ptys, the real
+        // compiled entry for it, and the unmodified key/capability pairs both
+        // encoder paths are checked against.
         let term = advertised_term();
-
-        // And the real compiled entry for it, when this machine has one.
-        let Some(path) = terminfo_entry_path(term) else {
-            // Then the check is skipped rather than failed: a missing
-            // terminfo database must never break the build.
+        let Some(terminfo) = read_advertised_terminfo_entry() else {
+            // A missing terminfo database must never break the build, so
+            // the parity check is skipped rather than failed.
             eprintln!("skipping terminfo parity check: no compiled entry for {term}");
             return;
         };
-        let terminfo = std::fs::read(&path).unwrap_or_else(|e| panic!("read {path:?}: {e}"));
-
-        // Then every key the encoder handles matches its capability.
         let cases: &[(Key, &str, &str)] = &[
             (Key::Up, "up", "kcuu1"),
             (Key::Down, "down", "kcud1"),
@@ -603,15 +607,20 @@ mod key_event_tests {
             (Key::F(11), "f11", "kf11"),
             (Key::F(12), "f12", "kf12"),
         ];
+
         for (key, name, cap) in cases {
             let Some(expected) = cap_bytes(&terminfo, cap) else {
                 // A capability this entry omits cannot be asserted against.
                 continue;
             };
+
+            // When encoding the key through both encoder paths.
             let event = KeyEvent {
                 key: key.clone(),
                 modifiers: Modifiers::none(),
             };
+
+            // Then both paths emit exactly the capability's bytes.
             assert_eq!(
                 encode_key_event(&event),
                 expected,
@@ -619,9 +628,21 @@ mod key_event_tests {
             );
             assert_eq!(encode_key(name), expected, "{name} via the name path");
         }
+    }
 
-        // And the shift-modified forms the entry does define are honoured.
-        let shift_cases: &[(Key, &str, &str)] = &[
+    #[rstest::rstest]
+    fn shift_modified_keys_match_the_advertised_terminfo_entry() {
+        // Given the terminal identity jinn advertises to child ptys, the real
+        // compiled entry for it, and the shift-modified key/capability pairs
+        // both encoder paths are checked against.
+        let term = advertised_term();
+        let Some(terminfo) = read_advertised_terminfo_entry() else {
+            // A missing terminfo database must never break the build, so
+            // the parity check is skipped rather than failed.
+            eprintln!("skipping terminfo parity check: no compiled entry for {term}");
+            return;
+        };
+        let cases: &[(Key, &str, &str)] = &[
             (Key::Up, "s-up", "kri"),
             (Key::Down, "s-down", "kind"),
             (Key::Right, "s-right", "kRIT"),
@@ -630,14 +651,20 @@ mod key_event_tests {
             (Key::End, "s-end", "kEND"),
             (Key::Delete, "s-delete", "kDC"),
         ];
-        for (key, name, cap) in shift_cases {
+
+        for (key, name, cap) in cases {
             let Some(expected) = cap_bytes(&terminfo, cap) else {
+                // A capability this entry omits cannot be asserted against.
                 continue;
             };
+
+            // When encoding the key through both encoder paths.
             let event = KeyEvent {
                 key: key.clone(),
                 modifiers: Modifiers::shift(),
             };
+
+            // Then both paths emit exactly the capability's bytes.
             assert_eq!(
                 encode_key_event(&event),
                 expected,
@@ -713,7 +740,9 @@ mod key_event_tests {
     #[case("c-s-up", "s-c-up")]
     #[case("shift+ctrl+up", "ctrl+shift+up")]
     fn modifier_prefixes_combine_in_any_order(#[case] first: &str, #[case] second: &str) {
-        // When encoding the same combination spelled two ways.
+        // Given the same key combination spelled two ways.
+
+        // When encoding both spellings.
         let a = encode_key(first);
         let b = encode_key(second);
 

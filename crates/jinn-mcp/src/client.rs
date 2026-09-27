@@ -650,6 +650,7 @@ mod tests {
         // Given a fresh buffer.
         let buf = McpStderrBuffer::default();
 
+        // When reading its tail.
         // Then its tail is empty.
         assert!(buf.tail().is_empty());
     }
@@ -697,6 +698,7 @@ mod tests {
             "<port>".to_owned(), // token presence proves expansion path
         ];
 
+        // When connecting over HTTP.
         let mut half =
             McpClient::connect_http("sh", &args, "http://127.0.0.1:<port>/mcp", Vec::new())
                 .expect("spawn");
@@ -776,57 +778,60 @@ mod tests {
         );
     }
 
+    /// Capture exactly one connection's request head from `listener`.
+    ///
+    /// Bounded by a short wall-clock guard and a loop: TCP fragments the
+    /// head, so a single `read` is not guaranteed to see all of it. A canned
+    /// response is written afterwards so the pending client send completes
+    /// instead of deadlocking the test against itself.
+    async fn capture_one_request_head(
+        listener: tokio::net::TcpListener,
+    ) -> Result<String, std::io::Error> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let (mut sock, _) = listener.accept().await?;
+        let mut head = String::new();
+        let mut buf = [0u8; 1024];
+        loop {
+            let n = sock.read(&mut buf).await.unwrap_or(0);
+            if n == 0 {
+                break;
+            }
+            if let Some(chunk) = buf.get(..n) {
+                head.push_str(&String::from_utf8_lossy(chunk));
+            }
+            if head.contains("\r\n\r\n") {
+                break;
+            }
+        }
+        let _ = sock
+            .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n")
+            .await;
+        drop(sock);
+        Ok(head)
+    }
+
     /// Default headers built by `http_client_with` are sent on real requests.
     #[rstest::rstest]
     #[tokio::test]
     async fn default_headers_are_sent_on_the_wire() {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-        // Given a TCP listener acting as a raw HTTP capture server.
+        // Given a TCP listener acting as a raw HTTP capture server and an
+        // HTTP client carrying one Authorization default header.
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind");
         let addr = listener.local_addr().expect("addr");
-
-        // And an HTTP client carrying one Authorization default header.
         let client = http_client_with(&[(
             "Authorization".to_owned(),
             "Bearer captured-value".to_owned(),
         )])
         .expect("client builds");
 
-        // When issuing a request to the capture server.
+        // When issuing a request to the capture server and reading the head.
         let request_handle =
             tokio::spawn(async move { client.get(format!("http://{addr}/probe")).send().await });
-
-        // And capturing exactly one connection's request head, bounded by a
-        // short wall-clock guard and a loop (TCP fragments — a single `read`
-        // is not guaranteed to see the whole head).
-        let captured = tokio::time::timeout(Duration::from_secs(2), async {
-            let (mut sock, _) = listener.accept().await?;
-            let mut head = String::new();
-            let mut buf = [0u8; 1024];
-            loop {
-                let n = sock.read(&mut buf).await.unwrap_or(0);
-                if n == 0 {
-                    break;
-                }
-                if let Some(chunk) = buf.get(..n) {
-                    head.push_str(&String::from_utf8_lossy(chunk));
-                }
-                if head.contains("\r\n\r\n") {
-                    break;
-                }
-            }
-            // Respond so the pending client send completes instead of
-            // deadlocking the test against itself.
-            let _ = sock
-                .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n")
-                .await;
-            drop(sock);
-            Ok::<String, std::io::Error>(head)
-        })
-        .await;
+        let captured =
+            tokio::time::timeout(Duration::from_secs(2), capture_one_request_head(listener)).await;
 
         // Then the configured header appears on the wire. The captured head is
         // included in every failure message for diagnosis (no subscriber wired
@@ -840,7 +845,7 @@ mod tests {
             "expected header on wire, got: {head}"
         );
 
-        // The sender completes once the canned response arrives.
+        // And the sender completes once the canned response arrives.
         let _ = request_handle.await;
     }
 }

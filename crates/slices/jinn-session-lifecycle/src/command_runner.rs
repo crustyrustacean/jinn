@@ -489,6 +489,7 @@ mod tests {
     #[tokio::test]
     async fn setup_returns_error_on_nonzero_exit() {
         // Given a command that exits with code 1.
+        // When running it as the setup command.
         let result = run_setup_command("exit 1", "/bin/sh").await;
 
         // Then the result is a CommandFailed error.
@@ -509,6 +510,7 @@ mod tests {
     #[tokio::test]
     async fn setup_captures_stdout_and_stderr_on_failure() {
         // Given a command that writes to both stdout and stderr before failing.
+        // When running it as the setup command.
         let result = run_setup_command(
             "echo 'stdout message'; echo 'stderr message' >&2; exit 1",
             "/bin/sh",
@@ -534,6 +536,7 @@ mod tests {
     #[tokio::test]
     async fn setup_returns_none_on_empty_stdout() {
         // Given a setup command that succeeds with no output (side-effect-only).
+        // When running it.
         let result = run_setup_command("true", "/bin/sh").await;
 
         // Then the result is Ok(None): success, but no CWD path to apply.
@@ -570,6 +573,7 @@ mod tests {
     #[tokio::test]
     async fn setup_returns_error_when_path_does_not_exist() {
         // Given a setup command that outputs a non-existent path.
+        // When running it.
         let result = run_setup_command("echo /nonexistent/path/xyzzy", "/bin/sh").await;
 
         // Then the result is an InvalidPath error.
@@ -650,6 +654,7 @@ mod tests {
     #[tokio::test]
     async fn teardown_returns_failure_on_nonzero_exit() {
         // Given a teardown command that fails.
+        // When running it.
         let result = run_teardown_command("exit 42", "/bin/sh").await;
 
         // Then we get a CommandFailed error.
@@ -687,6 +692,7 @@ mod tests {
     #[tokio::test]
     async fn teardown_succeeds_with_any_stdout() {
         // Given a teardown command that produces stdout but exits 0.
+        // When running it.
         let result = run_teardown_command("echo 'cleaning up...'", "/bin/sh").await;
 
         // Then the command succeeds (stdout is ignored).
@@ -840,6 +846,8 @@ mod tests {
                 jinn_kernel::common::process_kill::kill_process_group_by_pid(handle.pid);
                 handle.abort_handle.abort();
             });
+            // Then the cancel task joins cleanly — no panic payload, so the
+            // old `blocking_lock` SIGABRT on a worker thread cannot recur.
             cancel.await.expect("cancel task must not panic");
         });
         rt.shutdown_background();

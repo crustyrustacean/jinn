@@ -101,14 +101,8 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
-    /// The load-bearing test for a slice-owned picker: the render pass must
-    /// draw it. The kernel dispatches a `FocusScope::Dynamic` picker through
-    /// the generic overlay path, so this exercises geometry + view + cell
-    /// with no kernel borrow at all.
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn render_draws_the_skill_picker_from_its_own_cell() {
-        // Given an activated skills slice holding one skill.
+    /// An activated skills slice whose picker cell holds one `web-coder` item.
+    async fn slices_with_one_skill() -> jinn_slices::Slices {
         let slices = jinn_slices::Slices::new();
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = OverlayViews::new();
@@ -142,6 +136,18 @@ mod tests {
                             .search(|e: &jinn_skills_msg::SkillEntry| e.name.clone()),
                     ));
             });
+        slices
+    }
+
+    /// The load-bearing test for a slice-owned picker: the render pass must
+    /// draw it. The kernel dispatches a `FocusScope::Dynamic` picker through
+    /// the generic overlay path, so this exercises geometry + view + cell
+    /// with no kernel borrow at all.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn render_draws_the_skill_picker_from_its_own_cell() {
+        // Given an activated skills slice holding one skill.
+        let slices = slices_with_one_skill().await;
         let facts = jinn_slices::RenderFacts::new(jinn_theme::default_theme(), &slices);
 
         // When the overlay view renders the picker.

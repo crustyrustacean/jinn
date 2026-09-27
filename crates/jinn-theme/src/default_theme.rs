@@ -32,13 +32,12 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
-    #[rstest::rstest]
-    fn default_theme_has_no_reset_colors() {
-        // Given the default theme.
-        let theme = default_theme();
-
-        // Then no field is Color::Reset (every field should have a concrete value).
-        let fields: Vec<(&str, ratatui::style::Color)> = vec![
+    /// Every color field of a theme, paired with its name.
+    ///
+    /// Shared by the tests below so each one reads as a recipe rather than a
+    /// wall of field accesses.
+    fn color_fields(theme: &Theme) -> Vec<(&'static str, ratatui::style::Color)> {
+        vec![
             ("focus_accent", theme.focus_accent),
             ("border_unfocused", theme.border_unfocused),
             ("popup_title", theme.popup_title),
@@ -85,15 +84,26 @@ mod tests {
             ("infopopup_border", theme.infopopup_border),
             ("infopopup_fg", theme.infopopup_fg),
             ("quake_bar_bg", theme.quake_bar_bg),
-        ];
+        ]
+    }
 
-        for (name, color) in &fields {
-            assert_ne!(
-                *color,
-                ratatui::style::Color::Reset,
-                "default theme field '{name}' should not be Reset"
-            );
-        }
+    #[rstest::rstest]
+    fn default_theme_has_no_reset_colors() {
+        // Given the default theme.
+        let theme = default_theme();
+
+        // When collecting its color fields and finding the reset ones.
+        let reset_fields = color_fields(&theme)
+            .iter()
+            .filter(|(_, color)| *color == ratatui::style::Color::Reset)
+            .map(|(name, _)| *name)
+            .collect::<Vec<_>>();
+
+        // Then no field is Color::Reset (every field should have a concrete value).
+        assert!(
+            reset_fields.is_empty(),
+            "default theme fields should not be Reset: {reset_fields:?}"
+        );
     }
 
     #[rstest::rstest]
@@ -113,6 +123,7 @@ mod tests {
         // Given the default theme.
         let theme = default_theme();
 
+        // When checking its two input mode fields against the reset color.
         // Then both input mode fields are non-Reset (i.e. have real fallback colors).
         assert_ne!(
             theme.input_mode_queue,

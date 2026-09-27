@@ -77,12 +77,15 @@ mod tests {
     #[case::rescan_context(RescanContext::schema_def())]
     fn slice_commands_declare_the_session_shard_key(#[case] schema: trouper::schema::SchemaDef) {
         // Given one of the slice's keyed commands' schemas.
-        // Then exactly the session_id field is marked as the shard key.
+
+        // When collecting the fields marked as the shard key.
         let keyed: Vec<_> = schema
             .fields
             .iter()
             .filter(|f| f.role == Some(FieldRole::ShardKey))
             .collect();
+
+        // Then exactly the session_id field is marked as the shard key.
         assert_eq!(keyed.len(), 1);
         // And the field is the uuid-typed session id.
         assert_eq!(keyed[0].name, "session_id");

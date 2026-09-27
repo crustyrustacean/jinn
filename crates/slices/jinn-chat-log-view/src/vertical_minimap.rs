@@ -478,84 +478,129 @@ mod tests {
     use jinn_kernel::protocol::ChatEntry;
     use jinn_theme::default_theme;
 
+    /// A visible-entry list whose token counts are all unmeasured — the
+    /// fixture used by the block-index and scroll-position tests.
+    fn uncounted_visible(vi_indices: &[usize]) -> Vec<VisibleEntry> {
+        vi_indices
+            .iter()
+            .map(|&vi_index| VisibleEntry {
+                vi_index,
+                token_count: None,
+            })
+            .collect()
+    }
+
     #[rstest::rstest]
     fn find_block_index_returns_position_for_existing_entry() {
-        let visible = vec![
-            VisibleEntry {
-                vi_index: 0,
-                token_count: None,
-            },
-            VisibleEntry {
-                vi_index: 2,
-                token_count: None,
-            },
-            VisibleEntry {
-                vi_index: 5,
-                token_count: None,
-            },
-        ];
-        assert_eq!(find_block_index(Some(2), &visible), Some(1));
+        // Given three visible entries at visual indices 0, 2, and 5.
+        let visible = uncounted_visible(&[0, 2, 5]);
+
+        // When locating the block for the visual index 2.
+        let block = find_block_index(Some(2), &visible);
+
+        // Then the block is the second one.
+        assert_eq!(block, Some(1));
     }
 
     #[rstest::rstest]
     fn find_block_index_returns_none_for_excluded_entry() {
-        let visible = vec![
-            VisibleEntry {
-                vi_index: 0,
-                token_count: None,
-            },
-            VisibleEntry {
-                vi_index: 2,
-                token_count: None,
-            },
-        ];
-        assert!(find_block_index(Some(1), &visible).is_none());
+        // Given visible entries at visual indices 0 and 2.
+        let visible = uncounted_visible(&[0, 2]);
+
+        // When locating the block for the excluded visual index 1.
+        let block = find_block_index(Some(1), &visible);
+
+        // Then there is no block for it.
+        assert!(block.is_none());
     }
 
     #[rstest::rstest]
     fn find_block_index_returns_last_when_none() {
-        let visible = vec![
-            VisibleEntry {
-                vi_index: 0,
-                token_count: None,
-            },
-            VisibleEntry {
-                vi_index: 2,
-                token_count: None,
-            },
-        ];
-        assert_eq!(find_block_index(None, &visible), Some(1));
+        // Given two visible entries at visual indices 0 and 2.
+        let visible = uncounted_visible(&[0, 2]);
+
+        // When locating the block with no selected visual index.
+        let block = find_block_index(None, &visible);
+
+        // Then the last block is returned.
+        assert_eq!(block, Some(1));
     }
 
     #[rstest::rstest]
     fn find_block_index_returns_none_for_empty() {
+        // Given an empty visible-entry list.
         let visible: Vec<VisibleEntry> = vec![];
-        assert!(find_block_index(Some(0), &visible).is_none());
+
+        // When locating the block for visual index 0.
+        let block = find_block_index(Some(0), &visible);
+
+        // Then there is no block.
+        assert!(block.is_none());
     }
 
     #[rstest::rstest]
     fn scroll_is_midpoint_based() {
-        assert_eq!(compute_minimap_scroll(4, 5, 10), 0);
+        // Given a 10-row viewport (midpoint 5) and a selection at block 4.
+        let viewport_height = 10;
+        let selected_block = 4;
+
+        // When computing the scroll offset.
+        let offset = compute_minimap_scroll(selected_block, 5, viewport_height);
+
+        // Then the offset is zero because the selection sits above the midpoint.
+        assert_eq!(offset, 0);
     }
 
     #[rstest::rstest]
     fn scroll_centers_selected() {
-        assert_eq!(compute_minimap_scroll(45, 50, 10), 40);
+        // Given a 10-row viewport (midpoint 5) and a selection at block 45.
+        let viewport_height = 10;
+        let selected_block = 45;
+
+        // When computing the scroll offset.
+        let offset = compute_minimap_scroll(selected_block, 50, viewport_height);
+
+        // Then the selected block lands on the midpoint.
+        assert_eq!(offset, 40);
     }
 
     #[rstest::rstest]
     fn scroll_at_start_is_zero() {
-        assert_eq!(compute_minimap_scroll(0, 50, 10), 0);
+        // Given a 10-row viewport (midpoint 5) and a selection at block 0.
+        let viewport_height = 10;
+        let selected_block = 0;
+
+        // When computing the scroll offset.
+        let offset = compute_minimap_scroll(selected_block, 50, viewport_height);
+
+        // Then the offset is zero.
+        assert_eq!(offset, 0);
     }
 
     #[rstest::rstest]
     fn scroll_at_last_block() {
-        assert_eq!(compute_minimap_scroll(49, 50, 10), 44);
+        // Given a 10-row viewport (midpoint 5) and a selection on the last block.
+        let viewport_height = 10;
+        let selected_block = 49;
+
+        // When computing the scroll offset.
+        let offset = compute_minimap_scroll(selected_block, 50, viewport_height);
+
+        // Then the offset places the last block on the midpoint.
+        assert_eq!(offset, 44);
     }
 
     #[rstest::rstest]
     fn scroll_near_midpoint() {
-        assert_eq!(compute_minimap_scroll(5, 50, 10), 0);
+        // Given a 10-row viewport (midpoint 5) and a selection at block 5.
+        let viewport_height = 10;
+        let selected_block = 5;
+
+        // When computing the scroll offset.
+        let offset = compute_minimap_scroll(selected_block, 50, viewport_height);
+
+        // Then the offset is zero.
+        assert_eq!(offset, 0);
     }
 
     /// A layer holding no config, for tests that do not exercise the
@@ -590,20 +635,32 @@ mod tests {
 
     #[rstest::rstest]
     fn empty_history_renders_nothing() {
+        // Given a session with no entries.
         let state = AppState::default();
+
+        // When rendering the minimap.
         let (arrow, rows) = render_to_buffer(&state, 1, 10);
+
+        // Then no arrow is produced.
         assert!(arrow.is_none());
+        // And the minimap column is blank.
         assert!(rows[0].trim().is_empty());
     }
 
     #[rstest::rstest]
     fn single_entry_no_cache_shows_space_at_midpoint() {
+        // Given one user entry with no cached token count.
         let mut state = AppState::default();
         state
             .active_session_mut()
             .push_entry(ChatEntry::user("hello"));
+
+        // When rendering the minimap.
         let (arrow, rows) = render_to_buffer(&state, 1, 10);
+
+        // Then an arrow is still produced.
         assert!(arrow.is_some());
+        // And the midpoint row holds no block.
         assert!(
             !rows[5].contains('\u{2588}'),
             "no block without token count"
@@ -612,29 +669,41 @@ mod tests {
 
     #[rstest::rstest]
     fn single_entry_with_count_shows_block_at_midpoint() {
+        // Given one user entry whose cached token count is 50.
         let mut state = AppState::default();
         let mut entry = ChatEntry::user("hello world");
         entry.token_count = Some(50);
         state.active_session_mut().push_entry(entry);
+
+        // When rendering the minimap.
         let (arrow, rows) = render_to_buffer(&state, 1, 10);
+
+        // Then an arrow is produced.
         assert!(arrow.is_some());
+        // And a block is drawn on the midpoint row.
         assert!(rows[5].contains('\u{2588}'), "expected block at midpoint");
     }
 
     #[rstest::rstest]
     fn arrow_at_midpoint_when_last_entry_selected() {
+        // Given three entries with no cursor placed.
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry::user("a"));
         state
             .active_session_mut()
             .push_entry(ChatEntry::assistant("b"));
         state.active_session_mut().push_entry(ChatEntry::user("c"));
+
+        // When rendering the minimap.
         let (arrow, _) = render_to_buffer(&state, 1, 10);
+
+        // Then the arrow sits on the midpoint row.
         assert_eq!(arrow.expect("arrow exists").row, 5);
     }
 
     #[rstest::rstest]
     fn excluded_entries_produce_no_blocks() {
+        // Given a history mixing an actor entry, a thinking entry, and users.
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry::user("a"));
         state
@@ -646,25 +715,36 @@ mod tests {
         state
             .active_session_mut()
             .push_entry(ChatEntry::assistant("b"));
+
+        // When rendering the minimap.
         let (arrow, rows) = render_to_buffer(&state, 1, 10);
+
+        // Then no block is drawn for the excluded entry types.
         assert_eq!(rows.iter().filter(|r| r.contains('\u{2588}')).count(), 0);
+        // And the arrow still lands on the midpoint row.
         assert_eq!(arrow.expect("arrow").row, 5);
     }
 
     #[rstest::rstest]
     fn arrow_clamps_to_viewport_height() {
+        // Given 20 entries in a 5-row minimap viewport.
         let mut state = AppState::default();
         for i in 0..20 {
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user(format!("msg {i}")));
         }
+
+        // When rendering the minimap.
         let (arrow, _) = render_to_buffer(&state, 1, 5);
+
+        // Then the arrow is clamped to the midpoint of the short viewport.
         assert_eq!(arrow.expect("arrow").row, 2);
     }
 
     #[rstest::rstest]
     fn arrow_renders_greater_than_character() {
+        // Given an arrow on row 3 with no token count.
         let (mut terminal, area) = jinn_testutil::setup_term(40, 10);
         let arrow = MinimapArrow {
             row: 3,
@@ -673,17 +753,22 @@ mod tests {
             tokens_below: None,
         };
         let theme = default_theme();
+
+        // When rendering the arrow.
         terminal
             .draw(|frame| {
                 render_minimap_arrow(frame, area, &arrow, theme.border_unfocused);
             })
             .unwrap();
+
+        // Then a `>` glyph is drawn on the arrow's row.
         let rows = jinn_testutil::buffer_rows(terminal.backend().buffer(), 40, 10);
         assert!(rows[3].contains('>'));
     }
 
     #[rstest::rstest]
     fn scroll_down_arrow_at_bottom() {
+        // Given 20 entries with the cursor on the first one.
         let mut state = AppState::default();
         for i in 0..20 {
             state
@@ -691,43 +776,64 @@ mod tests {
                 .push_entry(ChatEntry::user(format!("msg {i}")));
         }
         state.active_session_mut().set_selected_entry_index(0);
+
+        // When rendering the minimap.
         let (_, rows) = render_to_buffer(&state, 1, 5);
+
+        // Then the scroll-down arrow is drawn on the bottom row.
         assert!(rows[4].contains('▼'));
     }
 
     #[rstest::rstest]
     fn scroll_up_arrow_at_top() {
+        // Given 20 entries with no cursor placed, so the last one is selected.
         let mut state = AppState::default();
         for i in 0..20 {
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user(format!("msg {i}")));
         }
+
+        // When rendering the minimap.
         let (_, rows) = render_to_buffer(&state, 1, 5);
+
+        // Then the scroll-up arrow is drawn on the top row.
         assert!(rows[0].contains('▲'));
     }
 
     #[rstest::rstest]
     fn no_arrows_when_all_entries_fit() {
+        // Given three entries that all fit the 10-row minimap viewport.
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry::user("a"));
         state
             .active_session_mut()
             .push_entry(ChatEntry::assistant("b"));
         state.active_session_mut().push_entry(ChatEntry::user("c"));
+
+        // When rendering the minimap.
         let (_, rows) = render_to_buffer(&state, 1, 10);
+
+        // Then no scroll-up arrow is drawn.
         assert!(!rows.iter().any(|r| r.contains('▲')));
+        // And no scroll-down arrow is drawn.
         assert!(!rows.iter().any(|r| r.contains('▼')));
     }
 
     #[rstest::rstest]
     fn empty_assistant_entry_produces_no_block() {
+        // Given a single empty assistant entry.
         let mut state = AppState::default();
         state
             .active_session_mut()
             .push_entry(ChatEntry::assistant(""));
+
+        // When rendering the minimap.
         let (arrow, rows) = render_to_buffer(&state, 1, 10);
+
+        // Then no arrow is produced.
         assert!(arrow.is_none());
+        // And no block is drawn.
         assert_eq!(rows.iter().filter(|r| r.contains('\u{2588}')).count(), 0);
     }
 
@@ -745,113 +851,219 @@ mod tests {
 
     #[rstest::rstest]
     fn in_context_entry_with_count_shows_block() {
+        // Given one in-context entry with a cached token count of 500.
         let mut state = AppState::default();
         let mut entry = ChatEntry::user("hello world this is a test");
         entry.token_count = Some(500);
         state.active_session_mut().push_entry(entry);
+
+        // When rendering the minimap.
         let (_, rows) = render_to_buffer(&state, 1, 10);
+
+        // Then exactly one block is drawn on the midpoint row.
         assert_eq!(rows[5].chars().filter(|&c| c == '\u{2588}').count(), 1);
     }
 
     #[rstest::rstest]
     fn entry_without_count_shows_space() {
+        // Given one in-context entry with no cached token count.
         let mut state = AppState::default();
         state
             .active_session_mut()
             .push_entry(ChatEntry::user("hello"));
+
+        // When rendering the minimap.
         let (_, rows) = render_to_buffer(&state, 1, 10);
+
+        // Then the midpoint row holds a space rather than a block.
         assert_eq!(rows[5].chars().filter(|&c| c == '\u{2588}').count(), 0);
     }
 
     #[rstest::rstest]
     fn token_threshold_band_0_is_blue() {
-        // Band 0: [0, 250) - deep indigo
-        assert_eq!(token_threshold_color(0, 2000), Color::Rgb(39, 12, 77));
-        assert_eq!(token_threshold_color(249, 2000), Color::Rgb(39, 12, 77));
+        // Given a max token count of 2000, the low band is [0, 250).
+
+        // When colouring counts at both ends of band 0.
+        let low = token_threshold_color(0, 2000);
+        let high = token_threshold_color(249, 2000);
+
+        // Then both are the deep-indigo band 0 colour.
+        assert_eq!(low, Color::Rgb(39, 12, 77));
+        // And the upper edge still belongs to band 0.
+        assert_eq!(high, Color::Rgb(39, 12, 77));
     }
 
     #[rstest::rstest]
     fn token_threshold_band_1_is_cyan() {
-        // Band 1: [250, 500) - deep indigo
-        assert_eq!(token_threshold_color(250, 2000), Color::Rgb(39, 12, 77));
-        assert_eq!(token_threshold_color(499, 2000), Color::Rgb(39, 12, 77));
+        // Given a max token count of 2000, the second band is [250, 500).
+
+        // When colouring counts at both ends of band 1.
+        let low = token_threshold_color(250, 2000);
+        let high = token_threshold_color(499, 2000);
+
+        // Then both are the deep-indigo band 1 colour.
+        assert_eq!(low, Color::Rgb(39, 12, 77));
+        // And the upper edge still belongs to band 1.
+        assert_eq!(high, Color::Rgb(39, 12, 77));
     }
 
     #[rstest::rstest]
     fn token_threshold_band_2_is_green() {
-        // Band 2: [500, 750) - violet
-        assert_eq!(token_threshold_color(500, 2000), Color::Rgb(100, 20, 108));
-        assert_eq!(token_threshold_color(749, 2000), Color::Rgb(100, 20, 108));
+        // Given a max token count of 2000, the third band is [500, 750).
+
+        // When colouring counts at both ends of band 2.
+        let low = token_threshold_color(500, 2000);
+        let high = token_threshold_color(749, 2000);
+
+        // Then both are the violet band 2 colour.
+        assert_eq!(low, Color::Rgb(100, 20, 108));
+        // And the upper edge still belongs to band 2.
+        assert_eq!(high, Color::Rgb(100, 20, 108));
     }
 
     #[rstest::rstest]
     fn token_threshold_band_3_is_yellow_green() {
-        // Band 3: [750, 1000) - magenta-rose
-        assert_eq!(token_threshold_color(750, 2000), Color::Rgb(156, 43, 99));
-        assert_eq!(token_threshold_color(999, 2000), Color::Rgb(156, 43, 99));
+        // Given a max token count of 2000, the fourth band is [750, 1000).
+
+        // When colouring counts at both ends of band 3.
+        let low = token_threshold_color(750, 2000);
+        let high = token_threshold_color(999, 2000);
+
+        // Then both are the magenta-rose band 3 colour.
+        assert_eq!(low, Color::Rgb(156, 43, 99));
+        // And the upper edge still belongs to band 3.
+        assert_eq!(high, Color::Rgb(156, 43, 99));
     }
 
     #[rstest::rstest]
     fn token_threshold_band_4_is_gold() {
-        // Band 4: [1000, 1250) - warm red
-        assert_eq!(token_threshold_color(1000, 2000), Color::Rgb(208, 74, 67));
-        assert_eq!(token_threshold_color(1249, 2000), Color::Rgb(208, 74, 67));
+        // Given a max token count of 2000, the fifth band is [1000, 1250).
+
+        // When colouring counts at both ends of band 4.
+        let low = token_threshold_color(1000, 2000);
+        let high = token_threshold_color(1249, 2000);
+
+        // Then both are the warm-red band 4 colour.
+        assert_eq!(low, Color::Rgb(208, 74, 67));
+        // And the upper edge still belongs to band 4.
+        assert_eq!(high, Color::Rgb(208, 74, 67));
     }
 
     #[rstest::rstest]
     fn token_threshold_band_5_is_red_orange() {
-        // Band 5: [1250, 1500) - orange
-        assert_eq!(token_threshold_color(1250, 2000), Color::Rgb(243, 125, 22));
-        assert_eq!(token_threshold_color(1499, 2000), Color::Rgb(243, 125, 22));
+        // Given a max token count of 2000, the sixth band is [1250, 1500).
+
+        // When colouring counts at both ends of band 5.
+        let low = token_threshold_color(1250, 2000);
+        let high = token_threshold_color(1499, 2000);
+
+        // Then both are the orange band 5 colour.
+        assert_eq!(low, Color::Rgb(243, 125, 22));
+        // And the upper edge still belongs to band 5.
+        assert_eq!(high, Color::Rgb(243, 125, 22));
     }
 
     #[rstest::rstest]
     fn token_threshold_band_6_is_dark_red() {
-        // Band 6: [1500, 1750) - gold
-        assert_eq!(token_threshold_color(1500, 2000), Color::Rgb(251, 197, 51));
-        assert_eq!(token_threshold_color(1749, 2000), Color::Rgb(251, 197, 51));
+        // Given a max token count of 2000, the seventh band is [1500, 1750).
+
+        // When colouring counts at both ends of band 6.
+        let low = token_threshold_color(1500, 2000);
+        let high = token_threshold_color(1749, 2000);
+
+        // Then both are the gold band 6 colour.
+        assert_eq!(low, Color::Rgb(251, 197, 51));
+        // And the upper edge still belongs to band 6.
+        assert_eq!(high, Color::Rgb(251, 197, 51));
     }
 
     #[rstest::rstest]
     fn token_threshold_band_7_is_crimson() {
-        // Band 7: [1750, ∞) - pale yellow
-        assert_eq!(token_threshold_color(1750, 2000), Color::Rgb(252, 255, 164));
-        assert_eq!(token_threshold_color(2000, 2000), Color::Rgb(252, 255, 164));
-        assert_eq!(token_threshold_color(9999, 2000), Color::Rgb(252, 255, 164));
+        // Given a max token count of 2000, the top band is [1750, ∞).
+
+        // When colouring counts at the band start, at the max, and past it.
+        let low = token_threshold_color(1750, 2000);
+        let at_max = token_threshold_color(2000, 2000);
+        let high = token_threshold_color(9999, 2000);
+
+        // Then the band start is the pale-yellow top colour.
+        assert_eq!(low, Color::Rgb(252, 255, 164));
+        // And the max itself still belongs to that band.
+        assert_eq!(at_max, Color::Rgb(252, 255, 164));
+        // And a count past the max saturates to that colour.
+        assert_eq!(high, Color::Rgb(252, 255, 164));
     }
 
     #[rstest::rstest]
     fn token_threshold_custom_max_tokens_adjusts_bands() {
-        // With max_tokens=1000, each band is 125 tokens wide.
-        assert_eq!(token_threshold_color(0, 1000), Color::Rgb(39, 12, 77));
-        assert_eq!(token_threshold_color(124, 1000), Color::Rgb(39, 12, 77));
-        assert_eq!(token_threshold_color(125, 1000), Color::Rgb(39, 12, 77));
-        assert_eq!(token_threshold_color(999, 1000), Color::Rgb(252, 255, 164));
+        // Given a max token count of 1000, each band is 125 tokens wide.
+
+        // When colouring counts across the narrowed bands.
+        let first = token_threshold_color(0, 1000);
+        let last_of_first_band = token_threshold_color(124, 1000);
+        let first_band_top = token_threshold_color(125, 1000);
+        let last_band_top = token_threshold_color(999, 1000);
+
+        // Then the first band keeps the palette's opening colour.
+        assert_eq!(first, Color::Rgb(39, 12, 77));
+        // And the count just below the band boundary does too.
+        assert_eq!(last_of_first_band, Color::Rgb(39, 12, 77));
+        // And the boundary itself is still that same opening colour.
+        assert_eq!(first_band_top, Color::Rgb(39, 12, 77));
+        // And the top of the range is the pale-yellow final colour.
+        assert_eq!(last_band_top, Color::Rgb(252, 255, 164));
     }
 
     #[rstest::rstest]
     fn token_threshold_zero_max_returns_first_band() {
-        assert_eq!(token_threshold_color(100, 0), MINIMAP_PALETTE[0]);
+        // Given a max token count of zero.
+
+        // When colouring a count of 100.
+        let color = token_threshold_color(100, 0);
+
+        // Then the first palette colour is returned.
+        assert_eq!(color, MINIMAP_PALETTE[0]);
     }
 
     #[rstest::rstest]
     fn format_entry_tokens_small() {
-        assert_eq!(format_entry_tokens(42), "42");
+        // Given a count below one thousand.
+
+        // When formatting it.
+        let text = format_entry_tokens(42);
+
+        // Then it is rendered verbatim.
+        assert_eq!(text, "42");
     }
 
     #[rstest::rstest]
     fn format_entry_tokens_k() {
-        assert_eq!(format_entry_tokens(1_000), "1.0k");
-        assert_eq!(format_entry_tokens(42_500), "42.5k");
+        // Given counts of one thousand and forty-two thousand five hundred.
+
+        // When formatting them.
+        let one_k = format_entry_tokens(1_000);
+        let forty_two_k = format_entry_tokens(42_500);
+
+        // Then one thousand is rendered as `1.0k`.
+        assert_eq!(one_k, "1.0k");
+        // And the larger count is rendered as `42.5k`.
+        assert_eq!(forty_two_k, "42.5k");
     }
 
     #[rstest::rstest]
     fn format_entry_tokens_m() {
-        assert_eq!(format_entry_tokens(1_000_000), "1.0M");
+        // Given a count of one million.
+
+        // When formatting it.
+        let text = format_entry_tokens(1_000_000);
+
+        // Then it is rendered with an `M` suffix.
+        assert_eq!(text, "1.0M");
     }
 
     #[rstest::rstest]
     fn arrow_with_token_count_renders_formatted_count() {
+        // Given an arrow on row 3 carrying a token count of 3000.
         let (mut terminal, area) = jinn_testutil::setup_term(40, 10);
         let arrow = MinimapArrow {
             row: 3,
@@ -860,18 +1072,24 @@ mod tests {
             tokens_below: None,
         };
         let theme = default_theme();
+
+        // When rendering the arrow.
         terminal
             .draw(|frame| {
                 render_minimap_arrow(frame, area, &arrow, theme.border_unfocused);
             })
             .unwrap();
+
+        // Then the arrow's row shows the formatted count.
         let rows = jinn_testutil::buffer_rows(terminal.backend().buffer(), 40, 10);
         assert!(rows[3].contains('3'));
+        // And the row also shows the arrow glyph.
         assert!(rows[3].contains('>'));
     }
 
     #[rstest::rstest]
     fn arrow_without_token_count_renders_just_gt() {
+        // Given an arrow on row 3 with no token count.
         let (mut terminal, area) = jinn_testutil::setup_term(40, 10);
         let arrow = MinimapArrow {
             row: 3,
@@ -880,40 +1098,65 @@ mod tests {
             tokens_below: None,
         };
         let theme = default_theme();
+
+        // When rendering the arrow.
         terminal
             .draw(|frame| {
                 render_minimap_arrow(frame, area, &arrow, theme.border_unfocused);
             })
             .unwrap();
+
+        // Then the arrow's row shows the `>` glyph.
         let rows = jinn_testutil::buffer_rows(terminal.backend().buffer(), 40, 10);
         assert!(rows[3].contains('>'));
+        // And no count suffix is drawn.
         assert!(!rows[3].contains('k'));
     }
 
     // ── Strict-above / strict-below computation tests ──
 
-    #[rstest::rstest]
-    fn tokens_above_and_below_for_single_entry() {
-        // Single in-context entry selected: both sides are empty.
+    /// A session whose history carries the given token counts in order,
+    /// paired with visual items built from that history.
+    fn state_with_counts(counts: &[u32]) -> AppState {
         let mut state = AppState::default();
-        let mut entry = ChatEntry::user("hello");
-        entry.token_count = Some(100);
-        state.active_session_mut().push_entry(entry);
+        for (i, &count) in counts.iter().enumerate() {
+            let mut entry = ChatEntry::user(format!("msg {i}"));
+            entry.token_count = Some(count);
+            state.active_session_mut().push_entry(entry);
+        }
         setup_visual_items(&state);
+        state
+    }
+
+    /// The `Above` / `Below` pair rendered for a given visual-item cursor.
+    fn arrow_counts(state: &AppState, cursor_vi: Option<usize>) -> (Option<u32>, Option<u32>) {
         let items = state.active_session().visual_items_snapshot();
         let history_len = state.active_session().history().len();
-        let (start, end) = cursor_history_range(&items, Some(0), history_len);
-        let above = compute_tokens_above(&state, start);
-        let below = compute_tokens_below(&state, end);
-        // Empty range → Some(0).
+        let (start, end) = cursor_history_range(&items, cursor_vi, history_len);
+        (
+            compute_tokens_above(state, start),
+            compute_tokens_below(state, end),
+        )
+    }
+
+    #[rstest::rstest]
+    fn tokens_above_and_below_for_single_entry() {
+        // Given one in-context entry with a cached count of 100.
+        let state = state_with_counts(&[100]);
+
+        // When summing the counts above and below the selected entry.
+        let (above, below) = arrow_counts(&state, Some(0));
+
+        // Then the range above is empty.
         assert_eq!(above, Some(0));
+        // And the range below is empty.
         assert_eq!(below, Some(0));
     }
 
     #[rstest::rstest]
     fn tokens_above_and_below_skip_excluded_entries() {
-        // Two entries: [thinking (excluded), user (in-context, selected)].
-        // Above-skipped because thinking is not in context; below-empty.
+        // Given a thinking entry (excluded, 7 tokens) followed by a user
+        // entry (in context, 200 tokens) that is selected.
         let mut state = AppState::default();
         let mut thinking = ChatEntry::thinking("reasoning");
         thinking.token_count = Some(7);
@@ -922,60 +1165,82 @@ mod tests {
         state.active_session_mut().push_entry(thinking);
         state.active_session_mut().push_entry(user);
         setup_visual_items(&state);
-        let items = state.active_session().visual_items_snapshot();
-        let history_len = state.active_session().history().len();
-        // Cursor on the user entry — the last visual item.
-        let last_vi = items.len() - 1;
-        let (start, end) = cursor_history_range(&items, Some(last_vi), history_len);
-        let above = compute_tokens_above(&state, start);
-        let below = compute_tokens_below(&state, end);
-        // thinking's 0 cached count is skipped; nothing remains above.
-        // No in-context entries above → Some(0); nothing below → Some(0).
+
+        // When selecting the selected user entry and summing around it.
+        let last_vi = state.active_session().visual_items_snapshot().len() - 1;
+        let (above, below) = arrow_counts(&state, Some(last_vi));
+
+        // Then nothing counts above it, because the thinking entry is out of context.
         assert_eq!(above, Some(0));
+        // And nothing counts below it.
         assert_eq!(below, Some(0));
     }
 
     #[rstest::rstest]
-    fn tokens_above_excludes_cursor_tokens_below_sums_after_cursor() {
-        // Three in-context entries [user100, assistant200, user300].
-        let mut state = AppState::default();
-        let mut e1 = ChatEntry::user("a");
-        e1.token_count = Some(100);
-        let mut e2 = ChatEntry::assistant("b");
-        e2.token_count = Some(200);
-        let mut e3 = ChatEntry::user("c");
-        e3.token_count = Some(300);
-        state.active_session_mut().push_entry(e1);
-        state.active_session_mut().push_entry(e2);
-        state.active_session_mut().push_entry(e3);
-        setup_visual_items(&state);
-        let items = state.active_session().visual_items_snapshot();
-        let history_len = state.active_session().history().len();
+    fn tokens_above_sums_entries_before_the_cursor() {
+        // Given three in-context entries cached at 100, 200, and 300 tokens.
+        let state = state_with_counts(&[100, 200, 300]);
 
-        // Case 1: cursor on the LAST entry (history idx 2, last visual item).
-        let last_vi = items.len() - 1;
-        let (start, end) = cursor_history_range(&items, Some(last_vi), history_len);
-        let above = compute_tokens_above(&state, start);
-        let below = compute_tokens_below(&state, end);
-        assert_eq!(above, Some(300)); // e1 + e2
-        // Empty range below last cursor → Some(0).
-        assert_eq!(below, Some(0));
+        // When summing the counts above a cursor on the last entry.
+        let last_vi = state.active_session().visual_items_snapshot().len() - 1;
+        let (above, _) = arrow_counts(&state, Some(last_vi));
 
-        // Case 2: cursor on the MIDDLE entry (history idx 1).
-        // Find the visual item index for history index 1.
-        let mid_vi = items
+        // Then the sum is the two entries before the cursor.
+        assert_eq!(above, Some(300));
+    }
+
+    #[rstest::rstest]
+    fn tokens_below_sums_entries_after_the_cursor() {
+        // Given three in-context entries cached at 100, 200, and 300 tokens.
+        let state = state_with_counts(&[100, 200, 300]);
+        let mid_vi = state
+            .active_session()
+            .visual_items_snapshot()
             .iter()
             .position(|i| matches!(i, VisualItem::Entry(1)))
             .expect("history idx 1 must be a visual item");
-        let (start, end) = cursor_history_range(&items, Some(mid_vi), history_len);
-        let above = compute_tokens_above(&state, start);
-        let below = compute_tokens_below(&state, end);
-        assert_eq!(above, Some(100));
+
+        // When summing the counts below a cursor on the middle entry.
+        let (_, below) = arrow_counts(&state, Some(mid_vi));
+
+        // Then the sum is the single entry after the cursor.
         assert_eq!(below, Some(300));
     }
 
     #[rstest::rstest]
+    fn tokens_above_excludes_the_cursor_entry() {
+        // Given three in-context entries cached at 100, 200, and 300 tokens.
+        let state = state_with_counts(&[100, 200, 300]);
+        let mid_vi = state
+            .active_session()
+            .visual_items_snapshot()
+            .iter()
+            .position(|i| matches!(i, VisualItem::Entry(1)))
+            .expect("history idx 1 must be a visual item");
+
+        // When summing the counts above a cursor on the middle entry.
+        let (above, _) = arrow_counts(&state, Some(mid_vi));
+
+        // Then only the entry before the cursor contributes.
+        assert_eq!(above, Some(100));
+    }
+
+    #[rstest::rstest]
+    fn tokens_below_is_zero_at_the_last_entry() {
+        // Given three in-context entries cached at 100, 200, and 300 tokens.
+        let state = state_with_counts(&[100, 200, 300]);
+        let last_vi = state.active_session().visual_items_snapshot().len() - 1;
+
+        // When summing the counts below a cursor on the last entry.
+        let (_, below) = arrow_counts(&state, Some(last_vi));
+
+        // Then the range below the cursor is empty.
+        assert_eq!(below, Some(0));
+    }
+
+    #[rstest::rstest]
     fn tokens_above_and_below_are_zero_when_no_counts_computed() {
+        // Given two in-context entries with no cached token counts.
         let mut state = AppState::default();
         state
             .active_session_mut()
@@ -984,26 +1249,22 @@ mod tests {
             .active_session_mut()
             .push_entry(ChatEntry::assistant("world"));
         setup_visual_items(&state);
-        let items = state.active_session().visual_items_snapshot();
-        let history_len = state.active_session().history().len();
-        let last_vi = items.len() - 1;
-        let (start, end) = cursor_history_range(&items, Some(last_vi), history_len);
-        let above = compute_tokens_above(&state, start);
-        let below = compute_tokens_below(&state, end);
-        // Cache is empty: sum is 0 → Some(0). Renderer now shows "0 ▲"/
-        // "0 ▼" rather than glyph-alone, because the user wants to see
-        // explicit zero counts.
+
+        // When summing the counts around the last entry.
+        let last_vi = state.active_session().visual_items_snapshot().len() - 1;
+        let (above, below) = arrow_counts(&state, Some(last_vi));
+
+        // Then the sum above is zero.
         assert_eq!(above, Some(0));
+        // And the sum below is zero.
         assert_eq!(below, Some(0));
     }
 
     #[rstest::rstest]
-    fn collapsed_ignored_block_cursor_excludes_entire_block() {
-        // History indices: 0=user(100), 1=thinking(50), 2=thinking(60), 3=thinking(70),
-        // 4=user(200), 5=user(300). Cursor sits on the collapsed block covering
-        // indices 1..4.
+    fn collapsed_ignored_block_cursor_spans_the_whole_block() {
+        // Given six entries [100, 50, 60, 70, 200, 300] rendered as entry 0,
+        // a collapsed block covering 1..4, then entries 4 and 5.
         let mut state = AppState::default();
-        let counts = [100u32, 50, 60, 70, 200, 300];
         let entries: Vec<ChatEntry> = vec![
             ChatEntry::user("first"),
             ChatEntry::thinking("t1"),
@@ -1015,15 +1276,13 @@ mod tests {
         .into_iter()
         .enumerate()
         .map(|(i, mut entry)| {
-            entry.token_count = Some(counts[i]);
+            entry.token_count = Some([100u32, 50, 60, 70, 200, 300][i]);
             entry
         })
         .collect();
         for entry in entries {
             state.active_session_mut().push_entry(entry);
         }
-
-        // Manually install visual items with a collapsed block.
         let items = vec![
             VisualItem::Entry(0),
             VisualItem::CollapsedIgnoredBlock { start: 1, count: 3 },
@@ -1032,17 +1291,54 @@ mod tests {
         ];
         state.active_session().set_visual_items(items);
 
-        // Cursor on the collapsed block (vi_idx = 1).
-        let items = state.active_session().visual_items_snapshot();
+        // When resolving the history range occupied by the collapsed block.
+        let range = state.active_session().visual_items_snapshot();
         let history_len = state.active_session().history().len();
-        let (start, end) = cursor_history_range(&items, Some(1), history_len);
+        let (start, end) = cursor_history_range(&range, Some(1), history_len);
+
+        // Then the range covers the block from its first entry.
         assert_eq!(start, 1);
+        // And up to the entry after its last.
         assert_eq!(end, 4);
-        let above = compute_tokens_above(&state, start);
-        let below = compute_tokens_below(&state, end);
-        // Above excludes the block (only user(0) = 100).
+    }
+
+    #[rstest::rstest]
+    fn collapsed_ignored_block_cursor_excludes_entire_block() {
+        // Given six entries [100, 50, 60, 70, 200, 300] rendered as entry 0,
+        // a collapsed block covering 1..4, then entries 4 and 5.
+        let mut state = AppState::default();
+        let entries: Vec<ChatEntry> = vec![
+            ChatEntry::user("first"),
+            ChatEntry::thinking("t1"),
+            ChatEntry::thinking("t2"),
+            ChatEntry::thinking("t3"),
+            ChatEntry::user("second"),
+            ChatEntry::user("third"),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(i, mut entry)| {
+            entry.token_count = Some([100u32, 50, 60, 70, 200, 300][i]);
+            entry
+        })
+        .collect();
+        for entry in entries {
+            state.active_session_mut().push_entry(entry);
+        }
+        let items = vec![
+            VisualItem::Entry(0),
+            VisualItem::CollapsedIgnoredBlock { start: 1, count: 3 },
+            VisualItem::Entry(4),
+            VisualItem::Entry(5),
+        ];
+        state.active_session().set_visual_items(items);
+
+        // When selecting the collapsed block and summing the counts around it.
+        let (above, below) = arrow_counts(&state, Some(1));
+
+        // Then the above sum is only entry 0's 100 — the block is excluded.
         assert_eq!(above, Some(100));
-        // Below excludes the block (user(4) + user(5) = 500).
+        // And the below sum is entries 4 and 5 — the block is excluded.
         assert_eq!(below, Some(500));
     }
 
@@ -1050,7 +1346,7 @@ mod tests {
 
     #[rstest::rstest]
     fn above_and_below_lines_flank_arrow() {
-        // Arrow on row 3 with token counts on both sides.
+        // Given an arrow on row 3 with token counts on both sides.
         let (mut terminal, area) = jinn_testutil::setup_term(40, 10);
         let arrow = MinimapArrow {
             row: 3,
@@ -1059,28 +1355,34 @@ mod tests {
             tokens_below: Some(1500),
         };
         let theme = default_theme();
+
+        // When rendering the arrow.
         terminal
             .draw(|frame| {
                 render_minimap_arrow(frame, area, &arrow, theme.border_unfocused);
             })
             .unwrap();
+
+        // Then the arrow's own row carries the cursor's tokens.
         let rows = jinn_testutil::buffer_rows(terminal.backend().buffer(), 40, 10);
-        // Arrow row has the cursor tokens and `>`.
         assert!(rows[3].contains('1'));
+        // And the row also carries the arrow glyph.
         assert!(rows[3].contains('>'));
-        // Row ABOVE has 6.0k and ▲.
+        // And the row above carries the above-count and the ▲ glyph.
         assert!(rows[2].contains('6'));
         assert!(rows[2].contains('▲'));
+        // And no arrow glyph leaks onto the row above.
         assert!(!rows[2].contains('>'));
-        // Row BELOW has 1.5k and ▼.
+        // And the row below carries the below-count and the ▼ glyph.
         assert!(rows[4].contains('1'));
         assert!(rows[4].contains('▼'));
+        // And no arrow glyph leaks onto the row below.
         assert!(!rows[4].contains('>'));
     }
 
     #[rstest::rstest]
     fn below_line_skipped_when_arrow_at_last_row_above_still_renders() {
-        // Arrow at row 9 (last) — ▼ cannot fit below, but ▲ on row 8 still renders.
+        // Given an arrow on the last row (9) with counts on both sides.
         let (mut terminal, area) = jinn_testutil::setup_term(40, 10);
         let arrow = MinimapArrow {
             row: 9,
@@ -1089,22 +1391,26 @@ mod tests {
             tokens_below: Some(999),
         };
         let theme = default_theme();
+
+        // When rendering the arrow.
         terminal
             .draw(|frame| {
                 render_minimap_arrow(frame, area, &arrow, theme.border_unfocused);
             })
             .unwrap();
+
+        // Then the arrow's row carries the arrow glyph.
         let rows = jinn_testutil::buffer_rows(terminal.backend().buffer(), 40, 10);
-        // Row 9 has the arrow (>) but NO ▼.
         assert!(rows[9].contains('>'));
+        // And the ▼ line does not fit, so it is skipped.
         assert!(!rows[9].contains('▼'));
-        // Row 8 still has ▲.
+        // And the row above still carries the ▲ glyph.
         assert!(rows[8].contains('▲'));
     }
 
     #[rstest::rstest]
     fn above_line_skipped_when_arrow_at_row_zero() {
-        // Arrow at row 0 — ▲ cannot fit above, but ▼ on row 1 still renders.
+        // Given an arrow on row 0 with counts on both sides.
         let (mut terminal, area) = jinn_testutil::setup_term(40, 10);
         let arrow = MinimapArrow {
             row: 0,
@@ -1113,22 +1419,26 @@ mod tests {
             tokens_below: Some(999),
         };
         let theme = default_theme();
+
+        // When rendering the arrow.
         terminal
             .draw(|frame| {
                 render_minimap_arrow(frame, area, &arrow, theme.border_unfocused);
             })
             .unwrap();
+
+        // Then the arrow's row carries the arrow glyph.
         let rows = jinn_testutil::buffer_rows(terminal.backend().buffer(), 40, 10);
-        // Row 0 has the arrow (>) but NO ▲.
         assert!(rows[0].contains('>'));
+        // And the ▲ line does not fit, so it is skipped.
         assert!(!rows[0].contains('▲'));
-        // Row 1 has ▼.
+        // And the row below still carries the ▼ glyph.
         assert!(rows[1].contains('▼'));
     }
 
     #[rstest::rstest]
     fn glyph_alone_rendered_when_no_cached_counts() {
-        // tokens_above = None and tokens_below = None: glyph alone on both rows.
+        // Given an arrow on row 3 with no cached counts above or below.
         let (mut terminal, area) = jinn_testutil::setup_term(40, 10);
         let arrow = MinimapArrow {
             row: 3,
@@ -1137,17 +1447,22 @@ mod tests {
             tokens_below: None,
         };
         let theme = default_theme();
+
+        // When rendering the arrow.
         terminal
             .draw(|frame| {
                 render_minimap_arrow(frame, area, &arrow, theme.border_unfocused);
             })
             .unwrap();
+
+        // Then the row above shows the ▲ glyph alone.
         let rows = jinn_testutil::buffer_rows(terminal.backend().buffer(), 40, 10);
-        // Row above has ▲ alone (no digit).
         assert!(rows[2].contains('▲'));
+        // And no digit accompanies it.
         assert!(!rows[2].chars().any(|c| c.is_ascii_digit()));
-        // Row below has ▼ alone (no digit).
+        // And the row below shows the ▼ glyph alone.
         assert!(rows[4].contains('▼'));
+        // And no digit accompanies it.
         assert!(!rows[4].chars().any(|c| c.is_ascii_digit()));
     }
 
@@ -1155,14 +1470,7 @@ mod tests {
     /// Glyph-alone is reserved for `None` (no cached counts at all).
     #[rstest::rstest]
     fn zero_count_renders_with_digit() {
-        let mut state = AppState::default();
-        for i in 0..3 {
-            state
-                .active_session_mut()
-                .push_entry(ChatEntry::user(format!("msg {i}")));
-        }
-        state.active_session_mut().set_selected_entry_index(1);
-        // No token cache populated — render_minimap_arrow with a literal arrow.
+        // Given an arrow on row 3 whose above/below counts are zero.
         let arrow = MinimapArrow {
             row: 3,
             token_count: None,
@@ -1171,17 +1479,22 @@ mod tests {
         };
         let (mut terminal, area) = jinn_testutil::setup_term(40, 10);
         let theme = default_theme();
+
+        // When rendering the arrow.
         terminal
             .draw(|frame| {
                 render_minimap_arrow(frame, area, &arrow, theme.border_unfocused);
             })
             .unwrap();
+
+        // Then the row above shows `0 ▲`.
         let rows = jinn_testutil::buffer_rows(terminal.backend().buffer(), 40, 10);
-        // Row above has `0 ▲` (digit + glyph).
         assert!(rows[2].contains('0'));
+        // And the ▲ glyph accompanies the zero.
         assert!(rows[2].contains('▲'));
-        // Row below has `0 ▼` (digit + glyph).
+        // And the row below shows `0 ▼`.
         assert!(rows[4].contains('0'));
+        // And the ▼ glyph accompanies the zero.
         assert!(rows[4].contains('▼'));
     }
 
@@ -1190,18 +1503,18 @@ mod tests {
     /// counts are meaningful immediately on first render.
     #[rstest::rstest]
     fn no_cursor_falls_back_to_last_visual_item() {
-        let mut state = AppState::default();
-        for i in 0..3 {
-            let mut entry = ChatEntry::user(format!("msg {i}"));
-            entry.token_count = Some((i as u32 + 1) * 100);
-            state.active_session_mut().push_entry(entry);
-        }
-        // Deliberately do NOT call set_selected_entry_index.
+        // Given three entries cached at 100, 200, and 300 tokens and no
+        // cursor placed.
+        let state = state_with_counts(&[100, 200, 300]);
+
+        // When rendering the minimap.
         let (arrow, _rows) = render_to_buffer(&state, 1, 10);
+
+        // Then the arrow is produced and its above-count is the sum of every
+        // entry before the implicit last-item cursor.
         let arrow = arrow.expect("arrow should render even without cursor");
-        // History: [100, 200, 300]. Cursor defaults to last → above = 100+200 = 300.
         assert_eq!(arrow.tokens_above, Some(300));
-        // Below = no entries after cursor → Some(0).
+        // And the below-count is zero, since nothing follows the cursor.
         assert_eq!(arrow.tokens_below, Some(0));
     }
 }

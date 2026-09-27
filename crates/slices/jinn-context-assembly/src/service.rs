@@ -75,6 +75,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn ask_returns_assembled_prompt() {
+        // Given a spawned service and a session holding one user entry.
         let services = jinn_kernel::Services::new_fake().await;
         let _ = crate::service::spawn(&services.trouper_system);
         let state = State::new(AppState::default_with_scope_focus());
@@ -89,6 +90,7 @@ mod tests {
             let guard = state.read();
             build_assembly_inputs(&guard, &session_id)
         };
+        // When asking the service to assemble.
         let reply = services
             .trouper_system
             .ask(
@@ -99,6 +101,8 @@ mod tests {
             .await
             .expect("ask succeeds");
         let response: AssembledResponse = reply.decode().expect("reply decodes");
+
+        // Then the assembled prompt belongs to the same session.
         assert_eq!(response.prompt.session_id, session_id);
         assert!(
             !response.prompt.messages.is_empty(),

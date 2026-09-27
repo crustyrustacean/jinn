@@ -98,11 +98,14 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn save_active_session_skips_non_persistable_session() {
+        // Given a recording actor whose active session has never been interacted with.
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = actor.state.read().session.active_session_id().clone();
 
+        // When saving the active session.
         actor.save_active_session(&session_id).await;
 
+        // Then nothing reaches the store.
         assert!(
             store.last_saved_session(&session_id).is_none(),
             "non-interacted session should not be persisted"
@@ -112,6 +115,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn save_active_session_persists_interacted_session() {
+        // Given a recording actor whose active session has been interacted with.
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = actor.state.read().session.active_session_id().clone();
         {
@@ -119,8 +123,10 @@ mod tests {
             state.active_session_mut().mark_interacted();
         }
 
+        // When saving the active session.
         actor.save_active_session(&session_id).await;
 
+        // Then the snapshot reaches the store.
         assert!(
             store.last_saved_session(&session_id).is_some(),
             "interacted session should be persisted"

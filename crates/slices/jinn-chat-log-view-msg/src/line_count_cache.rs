@@ -601,6 +601,7 @@ mod tests {
         let entry1 = ChatEntry::assistant("hello");
         let entry2 = ChatEntry::assistant("hello");
 
+        // When fingerprinting both.
         // Then their fingerprints match.
         assert_eq!(entry1.content_fingerprint(), entry2.content_fingerprint());
     }
@@ -611,6 +612,7 @@ mod tests {
         let entry1 = ChatEntry::assistant("hello");
         let entry2 = ChatEntry::assistant("world");
 
+        // When fingerprinting both.
         // Then their fingerprints differ.
         assert_ne!(entry1.content_fingerprint(), entry2.content_fingerprint());
     }
@@ -621,6 +623,7 @@ mod tests {
         let assistant = ChatEntry::assistant("hello");
         let system = ChatEntry::system("hello");
 
+        // When fingerprinting both.
         // Then their fingerprints differ.
         assert_ne!(
             assistant.content_fingerprint(),

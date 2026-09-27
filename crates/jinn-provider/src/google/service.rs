@@ -266,6 +266,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn service_list_models_returns_models_via_mock() {
+        // Given a mock server returning a valid models response.
         let mut server = mockito::Server::new_async().await;
         let mock = server
             .mock("GET", "/v1beta/models?key=test-key")
@@ -283,9 +284,13 @@ mod tests {
             server.url(),
         );
 
+        // When listing models through the service.
         let result = svc.list_models().await;
+
+        // Then a single model is returned with the mapped fields.
         let models = result.expect("should succeed");
         assert_eq!(models.len(), 1);
+        // And the model matches the expected `ModelInfo`.
         assert_eq!(
             models[0],
             ModelInfo {
@@ -300,6 +305,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn service_list_models_returns_error_on_http_failure() {
+        // Given a mock server returning 500.
         let mut server = mockito::Server::new_async().await;
         let mock = server
             .mock("GET", "/v1beta/models?key=test-key")
@@ -314,7 +320,10 @@ mod tests {
             server.url(),
         );
 
+        // When listing models through the service.
         let result = svc.list_models().await;
+
+        // Then it returns an error.
         assert!(result.is_err(), "should return Err on HTTP failure");
         mock.assert_async().await;
     }

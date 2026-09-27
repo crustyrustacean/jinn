@@ -145,18 +145,26 @@ mod tests {
 
     #[rstest::rstest]
     fn done_sentinel() {
+        // Given a parser fed the `[DONE]` sentinel.
         let mut parser = SseParser::new();
+
+        // When feeding the sentinel bytes.
         let events = parser.feed(b"data: [DONE]\n\n");
 
+        // Then a single Done event is produced.
         assert_eq!(events.len(), 1);
         assert_eq!(events[0], SseEvent::Done);
     }
 
     #[rstest::rstest]
     fn multiple_events_in_one_chunk() {
+        // Given a parser fed three complete events in a single chunk.
         let mut parser = SseParser::new();
+
+        // When feeding those bytes.
         let events = parser.feed(b"data: {\"a\":1}\n\ndata: {\"b\":2}\n\ndata: [DONE]\n\n");
 
+        // Then all three events are produced in order.
         assert_eq!(events.len(), 3);
         assert_eq!(events[0], SseEvent::Data("{\"a\":1}".to_owned()));
         assert_eq!(events[1], SseEvent::Data("{\"b\":2}".to_owned()));
@@ -165,57 +173,74 @@ mod tests {
 
     #[rstest::rstest]
     fn partial_bytes_accumulate() {
+        // Given a parser fed an event split across two chunks.
         let mut parser = SseParser::new();
 
-        // First chunk is incomplete.
+        // When feeding only the first, incomplete chunk.
         let events1 = parser.feed(b"data: {\"hel");
+
+        // Then no event is produced yet.
         assert!(events1.is_empty());
 
-        // Second chunk completes the event.
+        // And when the completing chunk arrives.
         let events2 = parser.feed(b"lo\":true}\n\n");
+
+        // Then the buffered bytes form one complete event.
         assert_eq!(events2.len(), 1);
         assert_eq!(events2[0], SseEvent::Data("{\"hello\":true}".to_owned()));
     }
 
     #[rstest::rstest]
     fn ignores_non_data_lines() {
+        // Given a chunk carrying an `event:` line alongside a data line.
         let mut parser = SseParser::new();
+
+        // When feeding those bytes.
         let events = parser.feed(b"event: message\ndata: {\"x\":1}\n\n");
 
+        // Then only the data event is produced.
         assert_eq!(events.len(), 1);
         assert_eq!(events[0], SseEvent::Data("{\"x\":1}".to_owned()));
     }
 
     #[rstest::rstest]
     fn ignores_empty_data() {
+        // Given a chunk with an empty data line followed by a real one.
         let mut parser = SseParser::new();
+
+        // When feeding those bytes.
         let events = parser.feed(b"data: \n\ndata: {\"x\":1}\n\n");
 
+        // Then the empty line is dropped and one event is produced.
         assert_eq!(events.len(), 1);
         assert_eq!(events[0], SseEvent::Data("{\"x\":1}".to_owned()));
     }
 
     #[rstest::rstest]
     fn handles_cr_lf() {
+        // Given a complete SSE event delimited by CRLF line endings.
         let mut parser = SseParser::new();
+
+        // When feeding those bytes.
         let events = parser.feed(b"data: {\"x\":1}\r\n\r\n");
 
+        // Then one data event is produced.
         assert_eq!(events.len(), 1);
         assert_eq!(events[0], SseEvent::Data("{\"x\":1}".to_owned()));
     }
 
     #[rstest::rstest]
     fn finish_drains_remaining() {
+        // Given a parser holding an event with no terminating blank line.
+        // The parser only completes events separated by \n\n, so a stream
+        // that ends without one leaves the buffered content unemitted.
         let mut parser = SseParser::new();
         parser.feed(b"data: {\"x\":1}\n");
 
-        // No double-newline yet, so no events from feed.
-        // Simulate stream ending without trailing newline.
+        // When the stream is finished.
         let events = parser.finish();
-        // The parser only processes events separated by \n\n, so without
-        // the second newline, the buffered content sits. finish() calls
-        // drain_events() which still needs \n\n boundaries.
-        // This is correct behavior - the stream should always end with \n\n.
+
+        // Then no events are produced.
         assert!(events.is_empty());
     }
 }

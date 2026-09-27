@@ -141,6 +141,7 @@ mod tests {
         let a = SliceScopeId::new("quake-bar", "open");
         let b = SliceScopeId::new("quake-bar", "scroll");
 
+        // When comparing the two ids.
         // Then ordering is by name within the same slice.
         assert!(a < b);
     }

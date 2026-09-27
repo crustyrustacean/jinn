@@ -32,6 +32,7 @@ mod tests {
 
     #[rstest::rstest]
     fn no_api_keys_msg_is_transient_entry() {
+        // Given the message builder.
         // When creating the no-api-keys message.
         let entry = no_api_keys_msg();
 
@@ -41,11 +42,12 @@ mod tests {
 
     #[rstest::rstest]
     fn no_api_keys_msg_contains_guidance() {
-        // When creating the no-api-keys message.
+        // Given the message builder.
+        // When creating the no-api-keys message and reading its text.
         let entry = no_api_keys_msg();
+        let text = entry.text();
 
         // Then it mentions guidance keywords.
-        let text = entry.text();
         assert!(text.contains("No API keys found"), "should mention header");
         assert!(text.contains(".env"), "should mention .env");
         assert!(

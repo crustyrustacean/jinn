@@ -119,6 +119,8 @@ mod tests {
         let mut state = AppState::default();
         state.active_session_mut().begin_sending();
         let (mut terminal, area) = setup_term(30, 1);
+
+        // When rendering the element.
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
@@ -145,6 +147,8 @@ mod tests {
         let mut element = StreamingIndicatorElement::new();
         let state = AppState::default();
         let (mut terminal, area) = setup_term(30, 1);
+
+        // When rendering the element.
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();
@@ -174,6 +178,8 @@ mod tests {
         let mut state = AppState::default();
         state.active_session_mut().begin_busy();
         let (mut terminal, area) = setup_term(30, 1);
+
+        // When rendering the element.
         terminal
             .draw(|frame| {
                 let slices = jinn_slices::Slices::new();

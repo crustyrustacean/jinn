@@ -438,32 +438,160 @@ mod tests {
     use jinn_session_msg::SessionPhaseChanged;
     use jinn_token_count_msg::TokenRecord;
 
+    use super::SessionPersistenceActor;
+
+    /// Builds the `StreamCompleted` event a provider emits when a turn ends.
+    fn stream_completed(
+        session_id: &jinn_core_types::SessionId,
+        reason: StreamCompletedReason,
+        assistant_content: Option<&str>,
+        tool_calls: Option<Vec<jinn_core_types::tool_types::ToolCall>>,
+        provider_completion_tokens: Option<u64>,
+        thinking_content: Option<&str>,
+    ) -> StreamCompleted {
+        StreamCompleted {
+            model_used: None,
+            session_id: session_id.clone(),
+            reason,
+            assistant_content: assistant_content.map(str::to_owned),
+            tool_calls,
+            cost: None,
+            provider_completion_tokens,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
+            thinking_content: thinking_content.map(str::to_owned),
+            dispatched_at: jiff::Timestamp::now(),
+        }
+    }
+
+    /// Builds a `StreamToken` carrying content (not thinking) for one index.
+    fn content_token(
+        session_id: &jinn_core_types::SessionId,
+        index: usize,
+        token: &str,
+    ) -> StreamToken {
+        StreamToken {
+            session_id: session_id.clone(),
+            index,
+            token: token.to_owned(),
+            is_thinking: false,
+            dispatched_at: jiff::Timestamp::now(),
+        }
+    }
+
+    /// Builds a tool call the provider requests from the model.
+    fn tool_call(id: &str, name: &str, arguments: &str) -> jinn_core_types::tool_types::ToolCall {
+        jinn_core_types::tool_types::ToolCall {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            arguments: arguments.to_owned(),
+        }
+    }
+
+    /// Reads the `finished_at` stamp off the session's thinking entry.
+    ///
+    /// Returns `None` while the entry is still streaming; panics only when
+    /// the entry's timing is not `Streamed` at all, which no streaming test
+    /// can produce.
+    #[expect(
+        clippy::unwrap_in_result,
+        reason = "the test actor is the only writer; a missing entry is a test bug"
+    )]
+    fn thinking_finished_at(
+        actor: &SessionPersistenceActor,
+        session_id: &jinn_core_types::SessionId,
+    ) -> Option<jiff::Timestamp> {
+        let state = actor.state.read();
+        let session = state
+            .session
+            .get(session_id)
+            .expect("session exists")
+            .history()
+            .iter()
+            .find(|e| matches!(e.kind, jinn_core_types::ChatEntryKind::Thinking(_)))
+            .expect("thinking entry");
+        streamed_finished_at(session)
+    }
+
+    /// Unwraps a streamed entry's `finished_at` stamp.
+    fn streamed_finished_at(entry: &jinn_kernel::protocol::ChatEntry) -> Option<jiff::Timestamp> {
+        match &entry.timing {
+            jinn_core_types::EntryTiming::Streamed { finished_at, .. } => *finished_at,
+            other => panic!("expected Streamed, got {other:?}"),
+        }
+    }
+
+    /// Puts the active session into streaming phase, returning its id.
+    fn begin_streaming_session(actor: &SessionPersistenceActor) -> jinn_core_types::SessionId {
+        let mut state = actor.state.write();
+        let session = state.active_session_mut();
+        session.begin_streaming();
+        state.session.active_session_id().clone()
+    }
+
+    /// Puts the active session into streaming phase with one queued
+    /// context-override mutation, returning the targeted entry id and the
+    /// session id.
+    fn seed_streaming_session_with_pending_mutation(
+        actor: &SessionPersistenceActor,
+        assistant_text: &str,
+    ) -> (jinn_core_types::ChatEntryId, jinn_core_types::SessionId) {
+        let mut state = actor.state.write();
+        let session = state.active_session_mut();
+        session.push_entry(ChatEntry::user("hello"));
+        let entry = ChatEntry::assistant(assistant_text);
+        let entry_id = entry.id.clone();
+        session.push_entry(entry);
+        session.begin_streaming();
+        session.queue_mutations(vec![jinn_core_types::HistoryMutation::SetContextOverride {
+            entry_id: entry_id.clone(),
+            value: jinn_core_types::ContextOverride::ForcedExclude,
+            source: ChangeSource::Internal {
+                label: "test".into(),
+            },
+        }]);
+        (entry_id, state.session.active_session_id().clone())
+    }
+
+    /// Puts the active session into streaming phase with a token record
+    /// pending finalization, returning its id.
+    fn seed_streaming_session_with_token_record(
+        actor: &SessionPersistenceActor,
+    ) -> jinn_core_types::SessionId {
+        let mut state = actor.state.write();
+        let session = state.active_session_mut();
+        session.push_token_record(TokenRecord {
+            model_used: None,
+            timestamp: jiff::Timestamp::now(),
+            tokens_sent: 100,
+            tokens_received: 0,
+            cost: None,
+            prompt_tokens: None,
+            cached_tokens: None,
+        });
+        session.begin_streaming();
+        state.session.active_session_id().clone()
+    }
+
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_error_stops_streaming() {
+        // Given a session in streaming phase.
         let (actor, _audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.begin_streaming();
-            state.session.active_session_id().clone()
-        };
+        let session_id = begin_streaming_session(&actor);
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Error,
-            assistant_content: None,
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes with an error.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Error,
+            None,
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then the session is no longer streaming.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(!matches!(session.phase(), PhaseKind::Streaming));
@@ -472,6 +600,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_error_reason_drains_queue_to_input_buffer() {
+        // Given a streaming session with one queued user message.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -483,21 +612,18 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Error,
-            assistant_content: None,
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes with an error.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Error,
+            None,
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then the queue is empty and its text lands in the input buffer.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(session.queue_len(), 0);
@@ -510,6 +636,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_error_with_multiple_queued_messages_joins_with_newline() {
+        // Given a streaming session with two queued user messages.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -524,21 +651,18 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Error,
-            assistant_content: None,
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes with an error.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Error,
+            None,
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then both messages are joined by a newline in the input buffer.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(session.queue_len(), 0);
@@ -551,6 +675,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_canceled_reason_drains_queue_to_input_buffer() {
+        // Given a streaming session with one queued user message.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -562,21 +687,18 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Canceled,
-            assistant_content: None,
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes because it was canceled.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Canceled,
+            None,
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then the queue is empty and its text lands in the input buffer.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(session.queue_len(), 0);
@@ -589,6 +711,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_finished_emits_history_appended() {
+        // Given a streaming session holding one user entry.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -598,21 +721,18 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Finished,
-            assistant_content: Some("response".to_owned()),
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes normally.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Finished,
+            Some("response"),
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then HistoryAppended is emitted.
         assert!(
             audit.contains_name("HistoryAppended"),
             "expected HistoryAppended event after stream completed"
@@ -622,6 +742,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_error_emits_history_appended() {
+        // Given a streaming session holding one user entry.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -631,21 +752,18 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Error,
-            assistant_content: None,
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes with an error.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Error,
+            None,
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then HistoryAppended is emitted.
         assert!(
             audit.contains_name("HistoryAppended"),
             "expected HistoryAppended event after stream error"
@@ -655,6 +773,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_canceled_emits_history_appended() {
+        // Given a streaming session holding one user entry.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -664,21 +783,18 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Canceled,
-            assistant_content: None,
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes because it was canceled.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Canceled,
+            None,
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then HistoryAppended is emitted.
         assert!(
             audit.contains_name("HistoryAppended"),
             "expected HistoryAppended event after stream canceled"
@@ -688,41 +804,34 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_canceled_after_sync_cancel_publishes_phase_change() {
-        // The ESC-confirm path transitions the phase `Streaming → Idle` directly
-        // in the shared `State` (`cancel_stream_and_drain`) without emitting a
-        // bus event. When the provider's `StreamCompleted(Canceled)` then
-        // arrives, the phase is already `Idle`. Subscribers still need a turn-
-        // end signal, so `on_stream_completed` must force-publish a
-        // `SessionPhaseChanged` — and history is complete with the
-        // `Error("Cancelled")` entry by then.
+        // Given a session the frontend already canceled synchronously: the
+        // ESC-confirm path drives `Streaming → Idle` straight in the shared
+        // `State` (`cancel_stream_and_drain`) without emitting a bus event, so
+        // subscribers still lack a turn-end signal by the time the provider's
+        // `StreamCompleted(Canceled)` arrives.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.begin_streaming();
-            // Synchronous cancel: phase → Idle, no bus event.
             session.cancel_stream_and_drain();
             assert_eq!(session.phase(), PhaseKind::Idle);
             state.session.active_session_id().clone()
         };
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Canceled,
-            assistant_content: None,
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the canceled stream completes after that synchronous cancel.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Canceled,
+            None,
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
-        // Then a SessionPhaseChanged was published despite the Idle→Idle no-op.
+        // Then a SessionPhaseChanged is published despite the Idle→Idle no-op.
         let phase_events = audit.of_type::<SessionPhaseChanged>();
         assert!(
             phase_events.iter().any(|e| e.new_phase == PhaseKind::Idle),
@@ -734,6 +843,8 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_canceled_force_excludes_dangling_tool_calls() {
+        // Given a streaming session whose last entry is a tool call with no
+        // matching result, followed by a dangling empty assistant entry.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -745,21 +856,19 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Canceled,
-            assistant_content: None,
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes because it was canceled.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Canceled,
+            None,
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then the empty assistant and tool-call entries are force-excluded
+        // while the completed user and cancel entries stay in context.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         let history = session.history();
@@ -784,29 +893,15 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_token_appends_text_to_assistant_entry() {
+        // Given a session in streaming phase.
         let (actor, _audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.begin_streaming();
-            state.session.active_session_id().clone()
-        };
+        let session_id = begin_streaming_session(&actor);
 
-        actor.on_stream_token(&StreamToken {
-            session_id: session_id.clone(),
-            index: 0,
-            token: "Hello".to_owned(),
-            is_thinking: false,
-            dispatched_at: jiff::Timestamp::now(),
-        });
-        actor.on_stream_token(&StreamToken {
-            session_id: session_id.clone(),
-            index: 1,
-            token: " world".to_owned(),
-            is_thinking: false,
-            dispatched_at: jiff::Timestamp::now(),
-        });
+        // When two content tokens stream in.
+        actor.on_stream_token(&content_token(&session_id, 0, "Hello"));
+        actor.on_stream_token(&content_token(&session_id, 1, " world"));
 
+        // Then one assistant entry holds both tokens concatenated.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         let assistant_text = session
@@ -823,24 +918,14 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_token_keeps_phase_as_streaming() {
+        // Given a session in streaming phase.
         let (actor, _audit) = test_actor_recording().await;
-        let session_id = {
-            let state = actor.state.read();
-            state.session.active_session_id().clone()
-        };
+        let session_id = begin_streaming_session(&actor);
 
-        {
-            let mut state = actor.state.write();
-            state.active_session_mut().begin_streaming();
-        }
-        actor.on_stream_token(&StreamToken {
-            session_id: session_id.clone(),
-            index: 0,
-            token: "hi".to_owned(),
-            is_thinking: false,
-            dispatched_at: jiff::Timestamp::now(),
-        });
+        // When a content token streams in.
+        actor.on_stream_token(&content_token(&session_id, 0, "hi"));
 
+        // Then the phase remains Streaming.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
@@ -853,6 +938,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_token_corrects_sending_phase_to_streaming() {
+        // Given a session in sending phase, ahead of the first token.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -862,14 +948,10 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        actor.on_stream_token(&StreamToken {
-            session_id: session_id.clone(),
-            index: 0,
-            token: "response".to_owned(),
-            is_thinking: false,
-            dispatched_at: jiff::Timestamp::now(),
-        });
+        // When a content token streams in.
+        actor.on_stream_token(&content_token(&session_id, 0, "response"));
 
+        // Then the phase is corrected to Streaming.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
@@ -882,6 +964,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_finished_persists_session() {
+        // Given an interacted session in streaming phase.
         let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
         let session_id = {
             let mut state = actor.state.write();
@@ -892,19 +975,15 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Finished,
-            assistant_content: Some("response".to_owned()),
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes normally.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Finished,
+            Some("response"),
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
         // Then the session was persisted (should_save = true for Finished).
@@ -928,20 +1007,15 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When handling StreamCompleted with Error reason.
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Error,
-            assistant_content: None,
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes with an error.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Error,
+            None,
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
         // Then the session was persisted (should_save = true for Error).
@@ -965,20 +1039,15 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When handling StreamCompleted with Canceled reason.
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Canceled,
-            assistant_content: None,
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes because it was canceled.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Canceled,
+            None,
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
         // Then the session was persisted.
@@ -991,38 +1060,22 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_does_not_count_tokens_on_error() {
+        // Given a streaming session with a token record pending finalization.
         let (actor, _audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_token_record(TokenRecord {
-                model_used: None,
-                timestamp: jiff::Timestamp::now(),
-                tokens_sent: 100,
-                tokens_received: 0,
-                cost: None,
-                prompt_tokens: None,
-                cached_tokens: None,
-            });
-            session.begin_streaming();
-            state.session.active_session_id().clone()
-        };
+        let session_id = seed_streaming_session_with_token_record(&actor);
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Error,
-            assistant_content: Some("some error content".to_owned()),
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes with an error.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Error,
+            Some("some error content"),
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then the ledger records no output tokens for the failed turn.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         let ledger = session.token_ledger();
@@ -1036,6 +1089,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_tool_use_preserves_assistant_entry() {
+        // Given a streaming session that already streamed one content token.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -1044,33 +1098,20 @@ mod tests {
             session.begin_streaming();
             state.session.active_session_id().clone()
         };
-        actor.on_stream_token(&StreamToken {
-            session_id: session_id.clone(),
-            index: 0,
-            token: "I will help".to_owned(),
-            is_thinking: false,
-            dispatched_at: jiff::Timestamp::now(),
-        });
+        actor.on_stream_token(&content_token(&session_id, 0, "I will help"));
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::ToolUse,
-            assistant_content: Some("response".to_owned()),
-            tool_calls: Some(vec![jinn_core_types::tool_types::ToolCall {
-                id: "tc-1".to_owned(),
-                name: "bash".to_owned(),
-                arguments: "{}".to_owned(),
-            }]),
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes requesting a tool call.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::ToolUse,
+            Some("response"),
+            Some(vec![tool_call("tc-1", "bash", "{}")]),
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then the streamed assistant entry is preserved.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         let has_assistant = session
@@ -1086,42 +1127,26 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_tool_use_counts_tool_call_arguments() {
+        // Given a streaming session with a token record pending finalization.
         let (actor, _audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_token_record(TokenRecord {
-                model_used: None,
-                timestamp: jiff::Timestamp::now(),
-                tokens_sent: 100,
-                tokens_received: 0,
-                cost: None,
-                prompt_tokens: None,
-                cached_tokens: None,
-            });
-            session.begin_streaming();
-            state.session.active_session_id().clone()
-        };
+        let session_id = seed_streaming_session_with_token_record(&actor);
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::ToolUse,
-            assistant_content: Some("checking".to_owned()),
-            tool_calls: Some(vec![jinn_core_types::tool_types::ToolCall {
-                id: "tc-1".to_owned(),
-                name: "bash".to_owned(),
-                arguments: r#"{"command":"ls -la /very/long/path"}"#.to_owned(),
-            }]),
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes requesting a tool call with long arguments.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::ToolUse,
+            Some("checking"),
+            Some(vec![tool_call(
+                "tc-1",
+                "bash",
+                r#"{"command":"ls -la /very/long/path"}"#,
+            )]),
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then the tool call arguments are counted alongside the text.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         let ledger = session.token_ledger();
@@ -1136,6 +1161,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_finished_preserves_assistant_entry() {
+        // Given a streaming session that already streamed one content token.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -1144,29 +1170,20 @@ mod tests {
             session.begin_streaming();
             state.session.active_session_id().clone()
         };
-        actor.on_stream_token(&StreamToken {
-            session_id: session_id.clone(),
-            index: 0,
-            token: "world".to_owned(),
-            is_thinking: false,
-            dispatched_at: jiff::Timestamp::now(),
-        });
+        actor.on_stream_token(&content_token(&session_id, 0, "world"));
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Finished,
-            assistant_content: Some("world".to_owned()),
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes normally.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Finished,
+            Some("world"),
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then the streamed assistant entry is preserved.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         let has_world = session
@@ -1182,6 +1199,8 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_canceled_with_complete_tool_loop_does_not_exclude() {
+        // Given a streaming session whose tool loop completed: the tool call
+        // has a matching result, so nothing dangles.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -1199,21 +1218,18 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Canceled,
-            assistant_content: None,
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes because it was canceled.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Canceled,
+            None,
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then no entry is excluded from context.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         for entry in session.history() {
@@ -1229,6 +1245,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_finished_without_auto_compaction_goes_to_idle() {
+        // Given a streaming session that has never grown an auto-compaction ledger.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -1238,21 +1255,18 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Finished,
-            assistant_content: Some("response".to_owned()),
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes normally.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Finished,
+            Some("response"),
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then the session settles in Idle.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
@@ -1265,40 +1279,23 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_finished_applies_pending_mutations() {
+        // Given a streaming session with one queued context-override mutation.
         let (actor, audit) = test_actor_recording().await;
-        let (entry_id, session_id) = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("hello"));
-            let entry = ChatEntry::assistant("response");
-            let entry_id = entry.id.clone();
-            session.push_entry(entry);
-            session.begin_streaming();
-            session.queue_mutations(vec![jinn_core_types::HistoryMutation::SetContextOverride {
-                entry_id: entry_id.clone(),
-                value: jinn_core_types::ContextOverride::ForcedExclude,
-                source: ChangeSource::Internal {
-                    label: "test".into(),
-                },
-            }]);
-            (entry_id, state.session.active_session_id().clone())
-        };
+        let (entry_id, session_id) =
+            seed_streaming_session_with_pending_mutation(&actor, "response");
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Finished,
-            assistant_content: Some("response".to_owned()),
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes normally.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Finished,
+            Some("response"),
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then the queued mutation is applied to the assistant entry.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         let assistant = session
@@ -1315,39 +1312,20 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_error_applies_pending_mutations() {
+        // Given a streaming session with one queued context-override mutation.
         let (actor, _audit) = test_actor_recording().await;
-        let (entry_id, session_id) = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("hello"));
-            let entry = ChatEntry::assistant("partial");
-            let entry_id = entry.id.clone();
-            session.push_entry(entry);
-            session.begin_streaming();
-            session.queue_mutations(vec![jinn_core_types::HistoryMutation::SetContextOverride {
-                entry_id: entry_id.clone(),
-                value: jinn_core_types::ContextOverride::ForcedExclude,
-                source: ChangeSource::Internal {
-                    label: "test".into(),
-                },
-            }]);
-            (entry_id, state.session.active_session_id().clone())
-        };
+        let (entry_id, session_id) =
+            seed_streaming_session_with_pending_mutation(&actor, "partial");
 
-        // When handling StreamCompleted with Error reason.
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Error,
-            assistant_content: None,
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes with an error.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Error,
+            None,
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
         // Then the mutation was applied.
@@ -1388,22 +1366,18 @@ mod tests {
             (entry_id, state.session.active_session_id().clone())
         };
 
-        // When handling StreamCompleted with Canceled reason.
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Canceled,
-            assistant_content: None,
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes because it was canceled.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Canceled,
+            None,
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then the queued mutation was applied to the assistant entry.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         let assistant = session
@@ -1420,44 +1394,23 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_tool_use_does_not_apply_mutations() {
+        // Given a streaming session with one queued context-override mutation.
         let (actor, _audit) = test_actor_recording().await;
-        let (entry_id, session_id) = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("hello"));
-            let entry = ChatEntry::assistant("checking");
-            let entry_id = entry.id.clone();
-            session.push_entry(entry);
-            session.begin_streaming();
-            session.queue_mutations(vec![jinn_core_types::HistoryMutation::SetContextOverride {
-                entry_id: entry_id.clone(),
-                value: jinn_core_types::ContextOverride::ForcedExclude,
-                source: ChangeSource::Internal {
-                    label: "test".into(),
-                },
-            }]);
-            (entry_id, state.session.active_session_id().clone())
-        };
+        let (entry_id, session_id) =
+            seed_streaming_session_with_pending_mutation(&actor, "checking");
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::ToolUse,
-            assistant_content: Some("response".to_owned()),
-            tool_calls: Some(vec![jinn_core_types::tool_types::ToolCall {
-                id: "tc-1".to_owned(),
-                name: "bash".to_owned(),
-                arguments: "{}".to_owned(),
-            }]),
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes requesting a tool call.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::ToolUse,
+            Some("response"),
+            Some(vec![tool_call("tc-1", "bash", "{}")]),
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then the mutation is still queued and the entry keeps its default override.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         let assistant = session
@@ -1475,38 +1428,22 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_provider_tokens_used_directly() {
+        // Given a streaming session with a token record pending finalization.
         let (actor, _audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_token_record(TokenRecord {
-                timestamp: jiff::Timestamp::now(),
-                tokens_sent: 100,
-                tokens_received: 0,
-                cost: None,
-                prompt_tokens: None,
-                cached_tokens: None,
-                model_used: None,
-            });
-            session.begin_streaming();
-            state.session.active_session_id().clone()
-        };
+        let session_id = seed_streaming_session_with_token_record(&actor);
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Finished,
-            assistant_content: Some("short".to_owned()),
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: Some(5000),
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: Some("very long thinking content here".to_owned()),
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes with a provider completion-token report.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Finished,
+            Some("short"),
+            None,
+            Some(5000),
+            Some("very long thinking content here"),
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then the provider's count is recorded verbatim.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(session.token_ledger()[0].tokens_received, 5000);
@@ -1515,38 +1452,22 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_local_fallback_includes_thinking() {
+        // Given a streaming session with a token record pending finalization.
         let (actor, _audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_token_record(TokenRecord {
-                timestamp: jiff::Timestamp::now(),
-                tokens_sent: 100,
-                tokens_received: 0,
-                cost: None,
-                prompt_tokens: None,
-                cached_tokens: None,
-                model_used: None,
-            });
-            session.begin_streaming();
-            state.session.active_session_id().clone()
-        };
+        let session_id = seed_streaming_session_with_token_record(&actor);
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Finished,
-            assistant_content: Some("short".to_owned()),
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: Some("a substantial amount of reasoning text".to_owned()),
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes with thinking content and no provider report.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Finished,
+            Some("short"),
+            None,
+            None,
+            Some("a substantial amount of reasoning text"),
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then the local count covers more than the two-word text alone.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
@@ -1559,38 +1480,22 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_local_fallback_without_thinking_backward_compat() {
+        // Given a streaming session with a token record pending finalization.
         let (actor, _audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_token_record(TokenRecord {
-                model_used: None,
-                timestamp: jiff::Timestamp::now(),
-                tokens_sent: 100,
-                tokens_received: 0,
-                cost: None,
-                prompt_tokens: None,
-                cached_tokens: None,
-            });
-            session.begin_streaming();
-            state.session.active_session_id().clone()
-        };
+        let session_id = seed_streaming_session_with_token_record(&actor);
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Finished,
-            assistant_content: Some("response text".to_owned()),
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes with text only and no provider report.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Finished,
+            Some("response text"),
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then the local count still covers the response text.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
@@ -1602,40 +1507,22 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_provider_tokens_preferred_over_local() {
+        // Given a streaming session with a token record pending finalization.
         let (actor, _audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_token_record(TokenRecord {
-                model_used: None,
-                timestamp: jiff::Timestamp::now(),
-                tokens_sent: 100,
-                tokens_received: 0,
-                cost: None,
-                prompt_tokens: None,
-                cached_tokens: None,
-            });
-            session.begin_streaming();
-            state.session.active_session_id().clone()
-        };
+        let session_id = seed_streaming_session_with_token_record(&actor);
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Finished,
-            assistant_content: Some("short".to_owned()),
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: Some(9999),
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: Some(
-                "extremely long thinking content that would produce many tokens".to_owned(),
-            ),
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes with both a provider report and long thinking.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Finished,
+            Some("short"),
+            None,
+            Some(9999),
+            Some("extremely long thinking content that would produce many tokens"),
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then the provider's count wins over the local maximum.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(session.token_ledger()[0].tokens_received, 9999);
@@ -1644,37 +1531,19 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_takes_max_when_provider_undercounts() {
+        // Given a streaming session with a token record pending finalization.
         let (actor, _audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_token_record(TokenRecord {
-                model_used: None,
-                timestamp: jiff::Timestamp::now(),
-                tokens_sent: 100,
-                tokens_received: 0,
-                cost: None,
-                prompt_tokens: None,
-                cached_tokens: None,
-            });
-            session.begin_streaming();
-            state.session.active_session_id().clone()
-        };
+        let session_id = seed_streaming_session_with_token_record(&actor);
 
-        // When handling StreamCompleted with no provider tokens and no thinking.
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Finished,
-            assistant_content: Some("response text".to_owned()),
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes with text and no provider report.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Finished,
+            Some("response text"),
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
         // Then tokens_received counts only the text (backward compat).
@@ -1692,38 +1561,22 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_stream_completed_takes_max_when_provider_overcounts() {
+        // Given a streaming session with a token record pending finalization.
         let (actor, _audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_token_record(TokenRecord {
-                model_used: None,
-                timestamp: jiff::Timestamp::now(),
-                tokens_sent: 100,
-                tokens_received: 0,
-                cost: None,
-                prompt_tokens: None,
-                cached_tokens: None,
-            });
-            session.begin_streaming();
-            state.session.active_session_id().clone()
-        };
+        let session_id = seed_streaming_session_with_token_record(&actor);
 
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Finished,
-            assistant_content: Some("ok".to_owned()),
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: Some(50000),
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        // When the stream completes with a provider count far above the local one.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Finished,
+            Some("ok"),
+            None,
+            Some(50000),
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then the provider's larger count wins.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(session.token_ledger()[0].tokens_received, 50000);
@@ -1733,39 +1586,24 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_uses_local_count_when_no_provider_report() {
         use jinn_llm_support::token_estimator::TokenCounter;
-        let (actor, _audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_token_record(TokenRecord {
-                model_used: None,
-                timestamp: jiff::Timestamp::now(),
-                tokens_sent: 100,
-                tokens_received: 0,
-                cost: None,
-                prompt_tokens: None,
-                cached_tokens: None,
-            });
-            session.begin_streaming();
-            state.session.active_session_id().clone()
-        };
 
+        // Given a streaming session with a token record pending finalization.
+        let (actor, _audit) = test_actor_recording().await;
+        let session_id = seed_streaming_session_with_token_record(&actor);
+
+        // When the stream completes with text and no provider report.
         let content = "hello world this is a test";
-        let event = StreamCompleted {
-            model_used: None,
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Finished,
-            assistant_content: Some(content.to_owned()),
-            tool_calls: None,
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-            thinking_content: None,
-            dispatched_at: jiff::Timestamp::now(),
-        };
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Finished,
+            Some(content),
+            None,
+            None,
+            None,
+        );
         actor.on_stream_completed(&event).await;
 
+        // Then the locally counted tokens are recorded.
         let counter = jinn_llm_support::token_estimator::TiktokenCounter::o200k_base();
         let expected = counter.count(content) as u32;
 
@@ -1984,35 +1822,11 @@ mod tests {
             is_thinking: true,
             dispatched_at: dispatched,
         });
-        actor.on_stream_token(&StreamToken {
-            session_id: session_id.clone(),
-            index: 1,
-            token: "answer".to_owned(),
-            is_thinking: false,
-            dispatched_at: dispatched,
-        });
-        let finished_at_first = {
-            let state = actor.state.read();
-            let session = state.session.get(&session_id).expect("session exists");
-            let thinking = session
-                .history()
-                .iter()
-                .find(|e| matches!(e.kind, jinn_core_types::ChatEntryKind::Thinking(_)))
-                .expect("thinking entry");
-            match &thinking.timing {
-                jinn_core_types::EntryTiming::Streamed { finished_at, .. } => *finished_at,
-                other => panic!("expected Streamed, got {other:?}"),
-            }
-        };
+        actor.on_stream_token(&content_token(&session_id, 1, "answer"));
+        let finished_at_first = thinking_finished_at(&actor, &session_id);
 
         // When a second content token arrives.
-        actor.on_stream_token(&StreamToken {
-            session_id: session_id.clone(),
-            index: 2,
-            token: " more".to_owned(),
-            is_thinking: false,
-            dispatched_at: dispatched,
-        });
+        actor.on_stream_token(&content_token(&session_id, 2, " more"));
 
         // Then the thinking entry's finished_at is unchanged (idempotent).
         let state = actor.state.read();

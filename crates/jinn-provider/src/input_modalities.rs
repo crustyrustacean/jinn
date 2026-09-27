@@ -86,10 +86,17 @@ mod tests {
         // Given text-only input modalities.
         let modalities = InputModalities::text();
 
+        // When checking the contained modalities and their display.
+        let has_text = modalities.contains(Modality::Text);
+        let has_image = modalities.contains(Modality::Image);
+        let display = modalities.display();
+
         // Then text is present and image is absent, displaying "t".
-        assert!(modalities.contains(Modality::Text));
-        assert!(!modalities.contains(Modality::Image));
-        assert_eq!(modalities.display(), "t");
+        assert!(has_text);
+        // And image is absent.
+        assert!(!has_image);
+        // And the display is "t".
+        assert_eq!(display, "t");
     }
 
     #[rstest::rstest]

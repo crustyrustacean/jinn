@@ -331,41 +331,65 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn extract_path_from_valid_json() {
+        // Given tool arguments carrying a string `path`.
+        // When extracting the path.
         let path = extract_path_from_arguments(r#"{"path": "/foo/bar.rs"}"#);
+
+        // Then the path is returned.
         assert_eq!(path, Some("/foo/bar.rs".to_owned()));
     }
 
     #[rstest::rstest]
     #[test]
     fn extract_path_from_json_with_extra_fields() {
+        // Given tool arguments carrying a string `path` alongside other fields.
+        // When extracting the path.
         let path = extract_path_from_arguments(r#"{"path": "/foo.rs", "offset": 1, "limit": 50}"#);
+
+        // Then the path is returned.
         assert_eq!(path, Some("/foo.rs".to_owned()));
     }
 
     #[rstest::rstest]
     #[test]
     fn extract_path_returns_none_for_missing_path() {
+        // Given tool arguments with no `path` field.
+        // When extracting the path.
         let path = extract_path_from_arguments(r#"{"file": "/foo.rs"}"#);
+
+        // Then no path is returned.
         assert_eq!(path, None);
     }
 
     #[rstest::rstest]
     #[test]
     fn extract_path_returns_none_for_malformed_json() {
+        // Given tool arguments that are not valid JSON.
+        // When extracting the path.
         let path = extract_path_from_arguments("not json");
+
+        // Then no path is returned.
         assert_eq!(path, None);
     }
 
     #[rstest::rstest]
     #[test]
     fn extract_path_returns_none_for_non_string_path() {
+        // Given tool arguments whose `path` is a number.
+        // When extracting the path.
         let path = extract_path_from_arguments(r#"{"path": 42}"#);
+
+        // Then no path is returned.
         assert_eq!(path, None);
     }
 
     #[rstest::rstest]
     #[test]
     fn is_modify_tool_recognizes_edit_and_write() {
+        // Given the tool names `edit`, `write`, `read`, and `bash`.
+
+        // When classifying each as a modifying tool.
+        // Then only `edit` and `write` are modifying tools.
         assert!(is_modify_tool("edit"));
         assert!(is_modify_tool("write"));
         assert!(!is_modify_tool("read"));
@@ -375,19 +399,25 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn no_edit_read_pattern_produces_no_mutations() {
+        // Given a history with no edit-then-read pattern.
         let history = vec![
             ChatEntry::user("hello"),
             ChatEntry::assistant("hi"),
             ChatEntry::user("what is 2+2?"),
             ChatEntry::assistant("4"),
         ];
+
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn backward_prunes_prior_edits_on_same_file() {
+        // Given two edits of `/foo.rs` followed by a read of the same file.
         let mut history = Vec::new();
         let edit1 = edit_call_result("tc-1", "/foo.rs", "edit 1 applied");
         history.push(edit1[0].clone());
@@ -399,8 +429,10 @@ mod tests {
         history.push(read[0].clone());
         history.push(read[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
         // edit1 call+result + edit2 call+result = 4 backward mutations.
+        // Then all four prior edit entries are pruned.
         assert_eq!(
             mutations.len(),
             4,
@@ -417,6 +449,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn backward_prunes_prior_writes_on_same_file() {
+        // Given two writes of `/foo.rs` followed by a read of the same file.
         let mut history = Vec::new();
         let write1 = write_call_result("tc-1", "/foo.rs", "written 1");
         history.push(write1[0].clone());
@@ -428,7 +461,10 @@ mod tests {
         history.push(read[0].clone());
         history.push(read[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then all four prior write entries are pruned.
         assert_eq!(
             mutations.len(),
             4,
@@ -445,6 +481,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn backward_prunes_mixed_prior_edits_and_writes() {
+        // Given an edit and a write of `/foo.rs` followed by a read of the same file.
         let mut history = Vec::new();
         let edit1 = edit_call_result("tc-1", "/foo.rs", "edit applied");
         history.push(edit1[0].clone());
@@ -456,7 +493,10 @@ mod tests {
         history.push(read[0].clone());
         history.push(read[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then both prior pairs are pruned.
         assert_eq!(
             mutations.len(),
             4,
@@ -473,18 +513,23 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn backward_no_mutation_when_no_prior_edits_or_writes() {
+        // Given a read of `/foo.rs` with nothing before it.
         let mut history = Vec::new();
         let read = read_call_result("tc-1", "/foo.rs", "file contents");
         history.push(read[0].clone());
         history.push(read[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty(), "nothing to backward-prune");
     }
 
     #[rstest::rstest]
     #[test]
     fn backward_does_not_prune_different_files() {
+        // Given an edit of `/bar.rs` followed by a read of `/foo.rs`.
         let mut history = Vec::new();
         let edit1 = edit_call_result("tc-1", "/bar.rs", "edit on bar");
         history.push(edit1[0].clone());
@@ -493,7 +538,10 @@ mod tests {
         history.push(read[0].clone());
         history.push(read[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then no mutations are produced.
         assert!(
             mutations.is_empty(),
             "edit on different file should not be pruned"
@@ -512,8 +560,10 @@ mod tests {
         history.push(read2[0].clone());
         history.push(read2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
-        // Reads should never be pruned by edit-read worker.
+
+        // Then reads are never pruned by the edit-read worker.
         assert!(
             mutations.is_empty(),
             "reads should never be pruned by edit-read worker"
@@ -523,6 +573,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn backward_already_excluded_edit_no_duplicate() {
+        // Given an already-excluded edit of `/foo.rs` followed by a read of the same file.
         let mut history = Vec::new();
         let edit1 = edit_call_result("tc-1", "/foo.rs", "edit applied");
         let mut edit_call = edit1[0].clone();
@@ -545,7 +596,10 @@ mod tests {
         history.push(read[0].clone());
         history.push(read[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then no mutations are produced.
         assert!(
             mutations.is_empty(),
             "already-excluded edit should not produce duplicate mutations"
@@ -555,6 +609,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn backward_runs_even_when_read_already_excluded() {
+        // Given an edit of `/foo.rs` followed by an already-excluded read of the same file.
         let mut history = Vec::new();
         let edit1 = edit_call_result("tc-1", "/foo.rs", "edit applied");
         history.push(edit1[0].clone());
@@ -577,8 +632,10 @@ mod tests {
         history.push(read_call);
         history.push(read_result);
 
+        // When evaluating the history.
         let mutations = evaluate(history);
         // Even though the read is fully excluded, backward pruning should still run.
+        // Then the prior edit pair is still pruned.
         assert_eq!(
             mutations.len(),
             2,
@@ -593,6 +650,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn backward_skips_edit_without_result() {
+        // Given an edit call on `/foo.rs` with no result, followed by a read of the same file.
         let mut history = Vec::new();
         let orphan_entry = ChatEntry::tool_call("tc-orphan", "edit", r#"{"path": "/foo.rs"}"#);
         let orphan_id = orphan_entry.id.clone();
@@ -601,8 +659,10 @@ mod tests {
         history.push(read[0].clone());
         history.push(read[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
         // The orphan edit call has no result to find. The call itself should be pruned.
+        // Then the orphaned edit call is pruned.
         assert_eq!(
             mutations.len(),
             1,
@@ -619,6 +679,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn backward_prunes_five_prior_edits() {
+        // Given five edits of `/foo.rs` followed by a read of the same file.
         let mut history = Vec::new();
         let mut prior_edits = Vec::new();
         for i in 0..5 {
@@ -631,8 +692,10 @@ mod tests {
         history.push(read[0].clone());
         history.push(read[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
         // 5 edits × 2 (call+result) = 10 backward mutations.
+        // Then all ten prior edit entries are pruned.
         assert_eq!(mutations.len(), 10);
 
         let ids = mutation_ids(&mutations);
@@ -648,6 +711,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn min_age_protects_recent_write_from_backward_prune() {
+        // Given a recent write of `/foo.rs` followed by a read of the same file, with a worker using min_age 10.
         let mut history = Vec::new();
         let write = write_call_result("tc-write", "/foo.rs", "written");
         history.push(write[0].clone());
@@ -664,7 +728,10 @@ mod tests {
         let w = worker_with_min_age(10);
         let mutations = evaluate_with(&w, history);
 
+        // When evaluating the history.
         let ids = mutation_ids(&mutations);
+
+        // Then neither write entry is pruned.
         assert!(
             !ids.contains(&write[0].id),
             "write call should be protected by min_age"
@@ -681,6 +748,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn min_age_zero_backward_prunes_as_before() {
+        // Given a write of `/foo.rs` followed by a read of the same file, with a worker using min_age 0.
         let mut history = Vec::new();
         let write = write_call_result("tc-write", "/foo.rs", "written");
         history.push(write[0].clone());
@@ -694,7 +762,10 @@ mod tests {
         let w = worker_with_min_age(0);
         let mutations = evaluate_with(&w, history);
 
+        // When evaluating the history.
         let ids = mutation_ids(&mutations);
+
+        // Then both write entries are pruned.
         assert!(
             ids.contains(&write[0].id),
             "write call should be pruned with min_age = 0"
@@ -710,6 +781,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn old_write_still_pruned_in_long_history() {
+        // Given an old write of `/foo.rs`, 100 padding entries, then a read, with a worker using min_age 10.
         let mut history = Vec::new();
         let write = write_call_result("tc-write", "/foo.rs", "written");
         history.push(write[0].clone());
@@ -728,7 +800,10 @@ mod tests {
         let w = worker_with_min_age(10);
         let mutations = evaluate_with(&w, history);
 
+        // When evaluating the history.
         let ids = mutation_ids(&mutations);
+
+        // Then both write entries are pruned.
         assert!(
             ids.contains(&write[0].id),
             "old write call should be pruned regardless of min_age"

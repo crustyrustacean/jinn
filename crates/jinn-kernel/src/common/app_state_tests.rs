@@ -30,12 +30,13 @@ fn default_creates_normal_base() {
     // Given a default ScopeStack.
     let stack = ScopeStack::default();
 
+    // When inspecting the current scope.
     // Then the current scope is Normal.
     assert_eq!(stack.current(), &FocusScope::Normal);
 }
 
 #[rstest::rstest]
-fn push_and_pop_round_trip() {
+fn push_updates_current_scope() {
     // Given a default ScopeStack.
     let mut stack = ScopeStack::default();
 
@@ -44,12 +45,31 @@ fn push_and_pop_round_trip() {
 
     // Then current is Input.
     assert_eq!(stack.current(), &FocusScope::Input);
+}
+
+#[rstest::rstest]
+fn pop_returns_the_pushed_scope() {
+    // Given a ScopeStack with Input pushed.
+    let mut stack = ScopeStack::default();
+    stack.push(FocusScope::Input);
 
     // When popping.
     let popped = stack.pop();
 
-    // Then we get Input back and current is Normal.
+    // Then we get Input back.
     assert_eq!(popped, Some(FocusScope::Input));
+}
+
+#[rstest::rstest]
+fn pop_restores_the_base_scope() {
+    // Given a ScopeStack with Input pushed.
+    let mut stack = ScopeStack::default();
+    stack.push(FocusScope::Input);
+
+    // When popping.
+    let _ = stack.pop();
+
+    // Then current is back to Normal.
     assert_eq!(stack.current(), &FocusScope::Normal);
 }
 
@@ -72,6 +92,7 @@ fn parent_returns_none_on_base() {
     // Given a default ScopeStack (only base).
     let stack = ScopeStack::default();
 
+    // When asking for the parent scope.
     // Then parent is None.
     assert!(stack.parent().is_none());
 }
@@ -82,6 +103,7 @@ fn parent_returns_previous_after_push() {
     let mut stack = ScopeStack::default();
     stack.push(FocusScope::Input);
 
+    // When asking for the parent scope.
     // Then parent is Normal.
     assert_eq!(stack.parent(), Some(&FocusScope::Normal));
 }
@@ -111,6 +133,7 @@ fn is_picker_returns_true_when_picker_active() {
         kind: PickerKind::CompactionModel,
     });
 
+    // When asking whether the top scope is a picker.
     // Then is_picker is true.
     assert!(stack.is_picker());
 }
@@ -121,19 +144,21 @@ fn is_picker_returns_false_when_input_active() {
     let mut stack = ScopeStack::default();
     stack.push(FocusScope::Input);
 
+    // When asking whether the top scope is a picker.
     // Then is_picker is false.
     assert!(!stack.is_picker());
 }
 
 #[rstest::rstest]
 fn picker_kind_returns_kind_when_picker_active() {
-    // Given a ScopeStack with Picker(Provider) on top.
+    // Given a ScopeStack with Picker(CompactionModel) on top.
     let mut stack = ScopeStack::default();
     stack.push(FocusScope::Picker {
         kind: PickerKind::CompactionModel,
     });
 
-    // Then picker_kind returns Provider.
+    // When reading the picker kind.
+    // Then picker_kind returns CompactionModel.
     assert_eq!(stack.picker_kind(), Some(&PickerKind::CompactionModel));
 }
 
@@ -142,6 +167,7 @@ fn picker_kind_returns_none_when_not_picker() {
     // Given a default ScopeStack.
     let stack = ScopeStack::default();
 
+    // When reading the picker kind.
     // Then picker_kind is None.
     assert!(stack.picker_kind().is_none());
 }
@@ -152,6 +178,7 @@ fn is_sidebar_returns_true_when_sidebar_active() {
     let mut stack = ScopeStack::default();
     stack.push(jinn_sidebar_msg::SidebarSectionId::Persona.focus_scope());
 
+    // When asking whether the top scope is the sidebar.
     // Then is_sidebar is true.
     assert!(stack.is_sidebar());
 }
@@ -161,6 +188,7 @@ fn is_sidebar_returns_false_when_normal() {
     // Given a default ScopeStack.
     let stack = ScopeStack::default();
 
+    // When asking whether the top scope is the sidebar.
     // Then is_sidebar is false.
     assert!(!stack.is_sidebar());
 }

@@ -680,14 +680,18 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn scalar_value_is_updated_in_place_preserving_comments() {
+        // Given a document with a commented scalar and a patcher replacing its value.
         let original = "# important comment\nfoo = \"old\"\n";
         let mut d = doc(original);
         let mut new = toml::value::Table::new();
         new.insert("foo".to_owned(), toml::Value::String("new".to_owned()));
 
         let p = DocumentPatcher::new();
+
+        // When applying the patch.
         p.apply(&new, d.as_table_mut()).expect("apply");
 
+        // Then the comment survives and the value is replaced.
         let out = d.to_string();
         assert!(out.contains("# important comment"), "comment preserved");
         assert!(out.contains("foo = \"new\""), "value updated");
@@ -697,6 +701,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn new_scalar_key_is_added_at_end() {
+        // Given a document with one scalar and a patcher adding a second key.
         let original = "foo = 1\n";
         let mut d = doc(original);
         let mut new = toml::value::Table::new();
@@ -704,8 +709,11 @@ mod tests {
         new.insert("bar".to_owned(), toml::Value::Integer(2));
 
         let p = DocumentPatcher::new();
+
+        // When applying the patch.
         p.apply(&new, d.as_table_mut()).expect("apply");
 
+        // Then the new key is present.
         let out = d.to_string();
         assert!(out.contains("bar = 2"));
     }
@@ -713,6 +721,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn sub_table_is_updated_independently() {
+        // Given a document with a commented sub-table and a patcher replacing a child value.
         let original = "# parent comment\n[parent]\n# child comment\nchild = \"old\"\n";
         let mut d = doc(original);
 
@@ -723,8 +732,11 @@ mod tests {
         new.insert("parent".to_owned(), toml::Value::Table(parent));
 
         let p = DocumentPatcher::new();
+
+        // When applying the patch.
         p.apply(&new, d.as_table_mut()).expect("apply");
 
+        // Then both comments survive and the child value is replaced.
         let out = d.to_string();
         assert!(out.contains("# parent comment"), "parent comment kept");
         assert!(out.contains("# child comment"), "child comment kept");
@@ -735,6 +747,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn array_of_scalars_is_replaced_wholesale() {
+        // Given a document with a commented array and a patcher replacing it with a shorter array.
         let original = "# above\nitems = [1, 2, 3]\n";
         let mut d = doc(original);
 
@@ -745,8 +758,11 @@ mod tests {
         );
 
         let p = DocumentPatcher::new();
+
+        // When applying the patch.
         p.apply(&new, d.as_table_mut()).expect("apply");
 
+        // Then the comment survives and the array is replaced wholesale.
         let out = d.to_string();
         assert!(out.contains("# above"), "comment above preserved");
         assert!(out.contains("items = [4, 5]"));
@@ -756,6 +772,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn array_of_tables_existing_entry_updated_in_place_by_key() {
+        // Given a document with two commented array-of-tables entries keyed by name, and a patcher that changes alpha's value only.
         let original = "# alpha comment\n[[items]]\nname = \"alpha\"\nvalue = 1\n\n# beta comment\n[[items]]\nname = \"beta\"\nvalue = 2\n";
         let mut d = doc(original);
 
@@ -774,8 +791,11 @@ mod tests {
 
         let mut p = DocumentPatcher::new();
         p.register_array_key(["items"], "name");
+
+        // When applying the patch.
         p.apply(&new, d.as_table_mut()).expect("apply");
 
+        // Then both comments survive and alpha's value is updated.
         let out = d.to_string();
         assert!(out.contains("# alpha comment"), "alpha comment preserved");
         assert!(out.contains("# beta comment"), "beta comment preserved");
@@ -785,6 +805,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn array_of_tables_new_entry_appended_at_end() {
+        // Given a document with one array-of-tables entry and a patcher that adds a second entry.
         let original = "[[items]]\nname = \"alpha\"\nvalue = 1\n";
         let mut d = doc(original);
 
@@ -803,8 +824,11 @@ mod tests {
 
         let mut p = DocumentPatcher::new();
         p.register_array_key(["items"], "name");
+
+        // When applying the patch.
         p.apply(&new, d.as_table_mut()).expect("apply");
 
+        // Then the new entry is appended after the existing one.
         let out = d.to_string();
         let alpha_pos = out.find("name = \"alpha\"").expect("alpha present");
         let beta_pos = out.find("name = \"beta\"").expect("beta present");
@@ -814,6 +838,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn array_of_tables_removed_entry_is_deleted() {
+        // Given a document with two commented array-of-tables entries and a patcher that keeps only alpha.
         let original = "# alpha\n[[items]]\nname = \"alpha\"\nvalue = 1\n\n# beta\n[[items]]\nname = \"beta\"\nvalue = 2\n";
         let mut d = doc(original);
 
@@ -829,8 +854,11 @@ mod tests {
 
         let mut p = DocumentPatcher::new();
         p.register_array_key(["items"], "name");
+
+        // When applying the patch.
         p.apply(&new, d.as_table_mut()).expect("apply");
 
+        // Then alpha is kept and beta's entry and comment are removed.
         let out = d.to_string();
         assert!(out.contains("alpha"), "alpha kept");
         assert!(!out.contains("beta"), "beta removed");
@@ -840,6 +868,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn unknown_keys_in_document_are_preserved() {
+        // Given a document carrying a key the patcher knows nothing about.
         let original = "# unknown\n[some_future_field]\nx = 1\n\nfoo = \"bar\"\n";
         let mut d = doc(original);
 
@@ -847,8 +876,11 @@ mod tests {
         new.insert("foo".to_owned(), toml::Value::String("bar".to_owned()));
 
         let p = DocumentPatcher::new();
+
+        // When applying a patch that touches only a known key.
         p.apply(&new, d.as_table_mut()).expect("apply");
 
+        // Then the unknown key and its comment survive.
         let out = d.to_string();
         assert!(out.contains("# unknown"), "unknown-field comment kept");
         assert!(out.contains("[some_future_field]"), "unknown field kept");
@@ -857,6 +889,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn nested_path_keying_works_for_auto_prune_regex_rules() {
+        // Given a document with nested auto_prune regex rules, and a patcher that mutates foo, drops bar, and adds baz.
         let original = "[auto_prune.regex]\nenabled = true\n\n# matches foo\n[[auto_prune.regex.rules]]\npattern = \"foo\"\nkeep_last = 3\n\n# matches bar\n[[auto_prune.regex.rules]]\npattern = \"bar\"\nkeep_last = 5\n";
         let mut d = doc(original);
 
@@ -882,8 +915,10 @@ mod tests {
         new.insert("auto_prune".to_owned(), toml::Value::Table(auto_prune));
 
         let p = make_patcher();
+        // When applying the patch.
         p.apply(&new, d.as_table_mut()).expect("apply");
 
+        // Then foo's comment and updated value survive, bar is gone, and baz is added.
         let out = d.to_string();
         assert!(out.contains("# matches foo"), "foo comment preserved");
         assert!(out.contains("keep_last = 99"), "foo updated");
@@ -894,6 +929,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn boolean_and_integer_scalar_replacement_works() {
+        // Given a document with an integer and a boolean scalar, and a patcher replacing both.
         let original = "x = 1\ny = false\n";
         let mut d = doc(original);
 
@@ -902,8 +938,11 @@ mod tests {
         new.insert("y".to_owned(), toml::Value::Boolean(true));
 
         let p = DocumentPatcher::new();
+
+        // When applying the patch.
         p.apply(&new, d.as_table_mut()).expect("apply");
 
+        // Then both scalars are replaced.
         let out = d.to_string();
         assert!(out.contains("x = 42"));
         assert!(out.contains("y = true"));
@@ -912,6 +951,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn empty_array_in_new_value_clears_registered_array() {
+        // Given a document with one array-of-tables entry and a patcher supplying an empty array.
         let original = "[[items]]\nname = \"alpha\"\nvalue = 1\n";
         let mut d = doc(original);
 
@@ -920,8 +960,11 @@ mod tests {
 
         let mut p = DocumentPatcher::new();
         p.register_array_key(["items"], "name");
+
+        // When applying the patch.
         p.apply(&new, d.as_table_mut()).expect("apply");
 
+        // Then every entry is removed.
         let out = d.to_string();
         assert!(!out.contains("alpha"), "all entries removed");
     }

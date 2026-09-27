@@ -310,6 +310,8 @@ mod tests {
         let style = Style::default()
             .fg(theme.infopopup_title)
             .bg(theme.infopopup_bg);
+
+        // When building the centered title line.
         let line = centered_title("Metadata", 60, style);
 
         // Then the rendered text is exactly 58 characters (content width).
@@ -325,15 +327,18 @@ mod tests {
         let style = Style::default()
             .fg(theme.infopopup_title)
             .bg(theme.infopopup_bg);
+
+        // When building the centered title line.
         let line = centered_title("Metadata", 60, style);
         let rendered = text(&line);
 
         // Then the label is surrounded by spaces and dashes.
         assert!(rendered.contains(" Metadata "));
-        // And the line starts and ends with dashes.
+        // And the line starts with a dash.
         assert!(rendered.starts_with('-'));
+        // And the line ends with a dash.
         assert!(rendered.ends_with('-'));
-        // And dash count is 48 (58 content - 8 label - 2 spaces).
+        // And the dash count is 48 (58 content - 8 label - 2 spaces).
         let dash_count = rendered.chars().filter(|c| *c == '-').count();
         assert_eq!(dash_count, 48);
     }
@@ -589,6 +594,8 @@ mod tests {
             let chat = layout();
             // Entry at row 35, popup needs 8 rows (content 6 + 2 borders).
             // area_bottom = 40, so popup would render at 35..43 — overflow by 3.
+
+            // When computing the rect.
             let rect = audit_popup_rect(chat, 35, 6);
 
             // Then popup slides up so its bottom edge equals area bottom.
@@ -603,10 +610,13 @@ mod tests {
             // Given entry at a row where the popup fits exactly to area bottom.
             let chat = layout();
             // 3 content lines + 2 borders = 5 height. Entry at row 35 → 35+5=40 = area_bottom.
+
+            // When computing the rect.
             let rect = audit_popup_rect(chat, 35, 3);
 
             // Then no slide; popup top equals entry top.
             assert_eq!(rect.y, 35);
+            // And the popup still ends at the area bottom.
             assert_eq!(rect.y + rect.height, chat.y + chat.height);
         }
 

@@ -132,6 +132,7 @@ mod tests {
         // When applying SetPersona with a name.
         AppStateUpdate::SetPersona(Some("default".to_owned())).apply(&mut state);
 
+        // Then persona_name is set.
         assert_eq!(state.persona_name.as_deref(), Some("default"));
     }
 

@@ -389,6 +389,8 @@ mod tests {
             false,
             &ctx,
         );
+
+        // Then the hidden-line indicator is present.
         let has_indicator = lines.iter().any(|line| {
             line.spans
                 .iter()

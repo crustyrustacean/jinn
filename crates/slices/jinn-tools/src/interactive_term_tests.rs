@@ -256,6 +256,7 @@ async fn kill_without_own_terminal_fails_cleanly_at_the_coordinator_layer() {
     // Given the send and kill definitions.
     let def = interactive_term_send::definition();
 
+    // When reading both parameter schemas.
     // Then the schema requires no session_id — there is no model-facing
     // terminal id to get wrong (kill's schema is likewise empty).
     let def_json = serde_json::to_value(&def.parameters).expect("schema json");
@@ -282,6 +283,7 @@ fn spawn_definition_warns_against_pipes_and_redirections() {
     // Given the interactive_term definition.
     let def = super::interactive_term::definition();
 
+    // When reading the description and guidelines.
     // Then the description warns that pipes/redirections lose the output
     // (the tool returns the rendered screen).
     assert!(
@@ -304,6 +306,7 @@ fn send_definition_describes_the_no_argument_snapshot() {
     // Given the interactive_term_send definition.
     let def = interactive_term_send::definition();
 
+    // When reading the description and guidelines.
     // Then the description presents the no-argument call as a snapshot.
     assert!(
         def.description.contains("NO arguments") && def.description.contains("SNAPSHOT"),

@@ -935,6 +935,7 @@ mod tests {
         // When parsing.
         let result = parse_arguments("   ");
 
+        // Then it parses to no arguments.
         assert!(result.is_ok_and(|opt| opt.is_none()));
     }
 

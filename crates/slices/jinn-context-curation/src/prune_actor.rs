@@ -168,5 +168,4 @@ impl MsgHandler<HistoryAppended> for PruneActor {
 }
 
 #[cfg(test)]
-#[path = "prune_actor_tests.rs"]
-mod tests;
+mod prune_actor_tests;

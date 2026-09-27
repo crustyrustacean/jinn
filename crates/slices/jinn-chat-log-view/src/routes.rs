@@ -433,13 +433,15 @@ mod tests {
         let routes = KeyRoutes::new();
         attach_all(&routes);
 
-        // Then each scroll key declares both static scopes.
+        // When checking each scroll key's declared scopes.
         for key in bound_keys_input() {
             let row = routes
                 .rows()
                 .into_iter()
                 .find(|row| row.key == key)
                 .expect("the scroll key has a row");
+
+            // Then each scroll key declares both static scopes.
             assert!(
                 matches!(row.site, BindSite::StaticScopes(&["Normal", "Input"])),
                 "`{key}` must bind in both Normal and Input; got {:?}",
@@ -455,14 +457,16 @@ mod tests {
         let routes = KeyRoutes::new();
         attach_all(&routes);
 
-        // Then each row routes back to the log's own scope.
+        // When inspecting each attached row.
         for row in routes.rows() {
+            // Then each row routes back to the log's own scope.
             assert_eq!(
                 row.scope,
                 chat_log_scope(),
                 "row `{}` must carry the log's scope",
                 row.route_id.as_str()
             );
+            // And each row names an action.
             assert!(
                 matches!(row.outcome, RouteOutcome::Action { .. }),
                 "row `{}` must be an Action row",
@@ -480,12 +484,14 @@ mod tests {
         let routes = KeyRoutes::new();
         attach_all(&routes);
 
-        // Then `p` is one token, so nothing can describe it as a group.
+        // When locating the row bound to `p`.
         let row = routes
             .rows()
             .into_iter()
             .find(|row| row.key == "p")
             .expect("`p` has a row");
+
+        // Then `p` is one token, so nothing can describe it as a group.
         assert_eq!(
             row.key, "p",
             "`p` must stay a single-token leaf in Normal scope"

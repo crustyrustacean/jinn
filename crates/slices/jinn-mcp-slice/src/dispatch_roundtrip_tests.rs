@@ -34,6 +34,7 @@ use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 use jinn_tools_msg::ExecuteTool;
 use jinn_tools_msg::ToolExecutionCompleted;
 use jinn_tools_msg::ToolsUnregistered;
+use trouper::actor::ActorPath;
 
 /// The server name injected into the actor — becomes the tool namespace segment
 /// (`mcp__stub__echo`) and the strip-namespace key the actor matches on.
@@ -47,6 +48,49 @@ fn stub_config() -> McpServerConfig {
         args: vec![],
         ..Default::default()
     }
+}
+
+/// Spawns an `McpActor` wired to the stub server for `session_id`, plus the
+/// services it was spawned from. Every roundtrip test starts from this.
+async fn spawn_actor_against_stub(
+    harness: &TestHarness,
+    session_id: &SessionId,
+) -> (jinn_kernel::Services, ActorPath) {
+    let services = harness.services().await;
+    let client = spawn_stub_client().await;
+    let actor = McpActor::spawn(
+        &services.trouper_system,
+        McpActorDeps::with_client(
+            ActorDeps {
+                services: services.clone(),
+            },
+            session_id.clone(),
+            SERVER_NAME.to_owned(),
+            stub_config(),
+            client,
+        ),
+    )
+    .await;
+    (services, actor)
+}
+
+/// `true` once `pid` has been reaped (ESRCH); a zombie is still killable and
+/// returns 0. Signal 0 is an existence check with no side effects.
+fn is_reaped(pid: u32) -> bool {
+    // SAFETY: `libc::kill(pid, 0)` is a signal-0 existence check with no side
+    // effects; safe to call from a test.
+    unsafe { libc::kill(pid as i32, 0) != 0 }
+}
+
+/// Polls `predicate` until it holds or `budget` elapses.
+async fn wait_until(mut predicate: impl FnMut() -> bool, budget: Duration) -> bool {
+    tokio::time::timeout(budget, async {
+        while !predicate() {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .is_ok()
 }
 
 /// An `ExecuteTool` for a namespaced MCP tool is dispatched to the actor, which
@@ -262,26 +306,17 @@ async fn transport_close_publishes_dead_status() {
     )
     .await;
 
-    // Then the actor publishes Starting and Running during startup.
+    // When the actor starts up, the watcher runs a few ticks with the
+    // connection alive, and the server's transport then closes (kill -9).
     let startup = await_recorded(&status_recorder, 2, Duration::from_secs(3)).await;
     assert!(
         startup
             .iter()
             .any(|m| m.status == McpConnectionStatus::Running),
-        "expected a Running status before kill, got: {startup:?}"
+        "the actor must report Running before the kill, got: {startup:?}"
     );
-
-    // Let the watcher run a few ticks with the connection alive to prove the
-    // recorder is drained (no spurious pre-kill Dead), then drop the killer.
     tokio::time::sleep(Duration::from_millis(800)).await;
     let drained = await_recorded(&status_recorder, 0, Duration::from_millis(50)).await;
-    assert!(
-        drained
-            .iter()
-            .all(|m| m.status != McpConnectionStatus::Dead),
-        "no Dead should fire while the connection is alive, got: {drained:?}"
-    );
-    // When the server's transport closes (simulating kill -9).
     drop(killer);
 
     // Then a Dead status is published within the watch cadence + slack. The
@@ -295,61 +330,13 @@ async fn transport_close_publishes_dead_status() {
         dead >= 1,
         "expected at least one Dead status after transport close, got: {after:?}"
     );
-}
 
-/// On normal teardown (`on_stop`), the liveness watcher exits without
-/// double-publishing `Dead` beyond `on_stop`'s own publish — the shutdown-flag
-/// ordering prevents the race.
-///
-/// Covers AC3.
-#[rstest::rstest]
-#[tokio::test]
-async fn normal_teardown_publishes_exactly_one_dead() {
-    // Given a running McpActor recording status.
-    let harness = TestHarness::new().await;
-    let status_recorder = harness.spawn_recorder::<McpServerStatus>().await;
-    let session_id = SessionId::new();
-
-    let client = spawn_stub_client().await;
-    let services = harness.services().await;
-    let actor_path = McpActor::spawn(
-        &services.trouper_system,
-        McpActorDeps::with_client(
-            ActorDeps {
-                services: services.clone(),
-            },
-            session_id.clone(),
-            SERVER_NAME.to_owned(),
-            stub_config(),
-            client,
-        ),
-    )
-    .await;
-
-    // Wait for startup to publish Starting + Running.
-    let startup = await_recorded(&status_recorder, 2, Duration::from_secs(3)).await;
+    // And no Dead fires while the connection is still alive.
     assert!(
-        startup
+        drained
             .iter()
-            .any(|m| m.status == McpConnectionStatus::Running)
-    );
-
-    // When the actor is stopped normally (the coordinator's teardown path).
-    services.trouper_system.stop(&actor_path).await;
-    // Then exactly one Dead is published by teardown. The startup await already
-    // drained Starting + Running, so a single new message is the on_stop Dead.
-    // A grace window then catches any racing watcher publish that would make two.
-    let on_stop_statuses = await_recorded(&status_recorder, 1, Duration::from_secs(5)).await;
-    tokio::time::sleep(Duration::from_millis(450)).await;
-    let trailing = await_recorded(&status_recorder, 0, Duration::from_millis(50)).await;
-    let final_statuses = [on_stop_statuses, trailing].concat();
-    let dead_count = final_statuses
-        .iter()
-        .filter(|m| m.status == McpConnectionStatus::Dead)
-        .count();
-    assert_eq!(
-        dead_count, 1,
-        "teardown must publish exactly one Dead, got {dead_count}: {final_statuses:?}"
+            .all(|m| m.status != McpConnectionStatus::Dead),
+        "no Dead should fire while the connection is alive, got: {drained:?}"
     );
 }
 
@@ -458,38 +445,22 @@ async fn normal_teardown_publishes_tools_unregistered() {
     assert_eq!(messages[0].session_id, session_id);
 }
 
-/// End-to-end disable cycle: while the actor is alive an `ExecuteTool` call
-/// succeeds; after teardown (the coordinator's disable path) the actor is gone
-/// and the registry cleanup means no subscriber hangs the call — the exact
-/// bug this work fixes, exercised across the real bus.
+/// On normal teardown (`on_stop`), the liveness watcher exits without
+/// double-publishing `Dead` beyond `on_stop`'s own publish — the shutdown-flag
+/// ordering prevents the race.
+///
+/// Covers AC3.
 #[rstest::rstest]
 #[tokio::test]
-async fn disable_cycle_calls_fail_fast_after_teardown() {
-    // Given a running McpActor wired to the stub server, its tools registered
-    // for the session, and the session marked enabled + Running (the live
-    // state the orchestrator's dispatch gate checks).
+async fn normal_teardown_publishes_exactly_one_dead() {
+    // Given a running McpActor recording status.
     let harness = TestHarness::new().await;
-    let results = harness.spawn_recorder::<ToolExecutionCompleted>().await;
+    let status_recorder = harness.spawn_recorder::<McpServerStatus>().await;
     let session_id = SessionId::new();
 
-    let services = harness.services().await;
-    let state = jinn_kernel::common::state::State::new(
-        jinn_kernel::common::app_state::AppState::default_with_scope_focus(),
-    );
-    state.write().session.get_or_create(&session_id);
-    state
-        .write()
-        .session
-        .get_mut(&session_id)
-        .expect("session")
-        .enable_mcp_server("stub");
-    let runtime = crate::activate_runtime(&services.slices).expect("MCP runtime cell");
-    runtime.update(|runtime| {
-        runtime.set_status(&session_id, "stub", McpConnectionStatus::Running);
-    });
-
     let client = spawn_stub_client().await;
-    let actor = McpActor::spawn(
+    let services = harness.services().await;
+    let actor_path = McpActor::spawn(
         &services.trouper_system,
         McpActorDeps::with_client(
             ActorDeps {
@@ -503,16 +474,72 @@ async fn disable_cycle_calls_fail_fast_after_teardown() {
     )
     .await;
 
+    // Wait for startup to publish Starting + Running.
+    let startup = await_recorded(&status_recorder, 2, Duration::from_secs(3)).await;
+    assert!(
+        startup
+            .iter()
+            .any(|m| m.status == McpConnectionStatus::Running)
+    );
+
+    // When the actor is stopped normally (the coordinator's teardown path).
+    services.trouper_system.stop(&actor_path).await;
+
+    // Then exactly one Dead is published by teardown. The startup await already
+    // drained Starting + Running, so a single new message is the on_stop Dead.
+    // A grace window then catches any racing watcher publish that would make two.
+    let on_stop_statuses = await_recorded(&status_recorder, 1, Duration::from_secs(5)).await;
+    tokio::time::sleep(Duration::from_millis(450)).await;
+    let trailing = await_recorded(&status_recorder, 0, Duration::from_millis(50)).await;
+    let final_statuses = [on_stop_statuses, trailing].concat();
+    let dead_count = final_statuses
+        .iter()
+        .filter(|m| m.status == McpConnectionStatus::Dead)
+        .count();
+    assert_eq!(
+        dead_count, 1,
+        "teardown must publish exactly one Dead, got {dead_count}: {final_statuses:?}"
+    );
+}
+
+/// End-to-end disable cycle, live half: while the actor is alive an
+/// `ExecuteTool` call succeeds against the registered tool — the state the
+/// orchestrator's dispatch gate is checked against before a disable.
+#[rstest::rstest]
+#[tokio::test]
+async fn live_disable_cycle_call_succeeds_before_teardown() {
+    // Given a running McpActor wired to the stub server, its tools registered
+    // for the session, and the session marked enabled + Running (the live
+    // state the orchestrator's dispatch gate checks).
+    let harness = TestHarness::new().await;
+    let results = harness.spawn_recorder::<ToolExecutionCompleted>().await;
+    let session_id = SessionId::new();
+    let state = jinn_kernel::common::state::State::new(
+        jinn_kernel::common::app_state::AppState::default_with_scope_focus(),
+    );
+    state.write().session.get_or_create(&session_id);
+    state
+        .write()
+        .session
+        .get_mut(&session_id)
+        .expect("session")
+        .enable_mcp_server("stub");
+    let services = harness.services().await;
+    let runtime = crate::activate_runtime(&services.slices).expect("MCP runtime cell");
+    runtime.update(|runtime| {
+        runtime.set_status(&session_id, "stub", McpConnectionStatus::Running);
+    });
+    spawn_actor_against_stub(&harness, &session_id).await;
+
     // When calling the echo tool while the server is live.
-    let live_call = ToolCall {
-        id: "tc_live".to_owned(),
-        name: "mcp__stub__echo".to_owned(),
-        arguments: r#"{"message": "before disable"}"#.to_owned(),
-    };
     harness
         .publish(ExecuteTool {
             session_id: session_id.clone(),
-            tool_call: live_call,
+            tool_call: ToolCall {
+                id: "tc_live".to_owned(),
+                name: "mcp__stub__echo".to_owned(),
+                arguments: r#"{"message": "before disable"}"#.to_owned(),
+            },
             dispatched_at: jiff::Timestamp::now(),
             max_output_lines: None,
             max_output_bytes: None,
@@ -526,9 +553,36 @@ async fn disable_cycle_calls_fail_fast_after_teardown() {
         "live call must succeed, got: {:?}",
         before[0].result
     );
+}
 
-    // When the server is disabled (teardown: actor stops, registry pruned,
-    // session enablement flipped off — the confirm_mcp ordering).
+/// End-to-end disable cycle, torn-down half: once the coordinator's disable
+/// path has stopped the actor and pruned the registry, a subsequent call
+/// fails fast with a legible reason instead of hanging — the exact bug this
+/// work fixes, exercised across the real bus.
+#[rstest::rstest]
+#[tokio::test]
+async fn disable_cycle_calls_fail_fast_after_teardown() {
+    // Given a running McpActor wired to the stub server, its tools registered
+    // for the session, and the session marked enabled + Running.
+    let harness = TestHarness::new().await;
+    let _results = harness.spawn_recorder::<ToolExecutionCompleted>().await;
+    let session_id = SessionId::new();
+    let state = jinn_kernel::common::state::State::new(
+        jinn_kernel::common::app_state::AppState::default_with_scope_focus(),
+    );
+    state.write().session.get_or_create(&session_id);
+    state
+        .write()
+        .session
+        .get_mut(&session_id)
+        .expect("session")
+        .enable_mcp_server("stub");
+    let services = harness.services().await;
+    let runtime = crate::activate_runtime(&services.slices).expect("MCP runtime cell");
+    runtime.update(|runtime| {
+        runtime.set_status(&session_id, "stub", McpConnectionStatus::Running);
+    });
+    let (_services, actor) = spawn_actor_against_stub(&harness, &session_id).await;
     services.trouper_system.stop(&actor).await;
     state
         .write()
@@ -537,23 +591,24 @@ async fn disable_cycle_calls_fail_fast_after_teardown() {
         .expect("session")
         .disable_mcp_server("stub");
 
-    // Then a subsequent call fails fast with a legible reason (recorded
-    // through the same recorder — no hang, no watchdog rescue).
-    let dead_call = ToolCall {
-        id: "tc_dead".to_owned(),
-        name: "mcp__stub__echo".to_owned(),
-        arguments: r#"{"message": "after disable"}"#.to_owned(),
-    };
+    // When calling the echo tool again after teardown (actor stopped, registry
+    // pruned, session enablement flipped off — the confirm_mcp ordering).
     harness
         .publish(ExecuteTool {
             session_id: session_id.clone(),
-            tool_call: dead_call,
+            tool_call: ToolCall {
+                id: "tc_dead".to_owned(),
+                name: "mcp__stub__echo".to_owned(),
+                arguments: r#"{"message": "after disable"}"#.to_owned(),
+            },
             dispatched_at: jiff::Timestamp::now(),
             max_output_lines: None,
             max_output_bytes: None,
         })
         .await;
     tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Then the call fails fast rather than hanging.
     // The actor is stopped; the raw ExecuteTool now has no subscriber. This
     // test pins the actor-side half of the cycle; the orchestrator-side
     // fail-fast (gate + prune) is covered by mcp_dispatch_gate_tests, which
@@ -576,30 +631,19 @@ async fn http_child_exit_reaps_and_cancels_transport() {
     use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
 
-    let is_reaped = |pid: u32| -> bool {
-        // Returns true once the child has been reaped (ESRCH); a zombie is
-        // still killable (returns 0).
-        // SAFETY: `libc::kill(pid, 0)` is a signal-0 existence check with no
-        // side effects; safe to call from a test.
-        unsafe { libc::kill(pid as i32, 0) != 0 }
-    };
-
     let sleep_child = tokio::process::Command::new("sleep")
         .arg("30")
         .kill_on_drop(true)
         .spawn()
         .expect("spawn sleep");
     let pid = sleep_child.id().expect("child has a pid");
-
     let stub_client = spawn_stub_client().await;
     let probe = stub_client.liveness_probe();
-    let cancel_token = stub_client.cancel_token();
     assert!(!probe.is_transport_closed(), "transport open before kill");
 
     // When the child-exit watcher runs and the child is killed externally.
     let shutdown = Arc::new(AtomicBool::new(false));
-    crate::connection::spawn_child_watch(shutdown.clone(), sleep_child, cancel_token);
-    // `try_wait` requires the child to be dead; kill it via the OS.
+    crate::connection::spawn_child_watch(shutdown.clone(), sleep_child, stub_client.cancel_token());
     // SAFETY: sending SIGKILL to a child we just spawned; the pid is valid
     // for the duration of the test.
     unsafe {
@@ -608,27 +652,11 @@ async fn http_child_exit_reaps_and_cancels_transport() {
 
     // Then within the watcher cadence + slack, the transport reports closed
     // (cancel token fired) AND the child is reaped (no longer in /proc).
-    let closed = tokio::time::timeout(Duration::from_secs(3), async {
-        while !probe.is_transport_closed() {
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-    })
-    .await
-    .is_ok();
+    let closed = wait_until(|| probe.is_transport_closed(), Duration::from_secs(3)).await;
     assert!(closed, "transport should report closed after child death");
-
-    // The child should be reaped — `kill(pid, 0)` returns ESRCH (no such
-    // process) once reaped. A zombie would still be killable (return 0).
-    let reaped = tokio::time::timeout(Duration::from_secs(3), async {
-        loop {
-            if is_reaped(pid) {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-    })
-    .await
-    .is_ok();
+    // `kill(pid, 0)` returns ESRCH (no such process) once reaped. A zombie
+    // would still be killable (return 0).
+    let reaped = wait_until(|| is_reaped(pid), Duration::from_secs(3)).await;
     assert!(
         reaped,
         "child should be reaped (no zombie) after watcher handles exit"
@@ -644,11 +672,6 @@ async fn http_teardown_kills_and_reaps_still_alive_child() {
     // Given a watcher running over a still-alive child.
     use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
-
-    let is_reaped = |pid: u32| -> bool {
-        // SAFETY: `libc::kill(pid, 0)` is a signal-0 existence check, no side effects.
-        unsafe { libc::kill(pid as i32, 0) != 0 }
-    };
 
     let sleep_child = tokio::process::Command::new("sleep")
         .arg("30")
@@ -667,16 +690,7 @@ async fn http_teardown_kills_and_reaps_still_alive_child() {
     shutdown.store(true, std::sync::atomic::Ordering::SeqCst);
 
     // Then within the cadence the child is killed (kill_on_drop) and reaped.
-    let reaped = tokio::time::timeout(Duration::from_secs(3), async {
-        loop {
-            if is_reaped(pid) {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-    })
-    .await
-    .is_ok();
+    let reaped = wait_until(|| is_reaped(pid), Duration::from_secs(3)).await;
     assert!(
         reaped,
         "teardown should kill + reap the still-alive child, no zombie"
@@ -693,22 +707,9 @@ async fn execute_tool_exceeding_timeout_yields_failed_result() {
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<ToolExecutionCompleted>().await;
     let session_id = SessionId::new();
-    let services = harness.services().await;
 
-    let client = spawn_stub_client().await;
-    let _actor = McpActor::spawn(
-        &services.trouper_system,
-        McpActorDeps::with_client(
-            ActorDeps {
-                services: services.clone(),
-            },
-            session_id.clone(),
-            SERVER_NAME.to_owned(),
-            stub_config(),
-            client,
-        ),
-    )
-    .await;
+    // And the actor's own services carry a tight tool timeout.
+    let (services, _actor) = spawn_actor_against_stub(&harness, &session_id).await;
     {
         services
             .config

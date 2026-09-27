@@ -183,20 +183,39 @@ mod tests {
 
     #[rstest::rstest]
     fn parse_script_single_key() {
-        let result = parse_script("a", &leader());
+        // Given a script holding a single key.
+        let script = "a";
+
+        // When parsing the script.
+        let result = parse_script(script, &leader());
+
+        // Then it yields one key sequence.
         assert_eq!(result.len(), 1);
+        // And the sequence holds one key.
         assert_eq!(result[0].len(), 1);
     }
 
     #[rstest::rstest]
     fn parse_script_ignores_blank_lines() {
-        let result = parse_script("a\n\nb", &leader());
+        // Given a script whose second line is blank.
+        let script = "a\n\nb";
+
+        // When parsing the script.
+        let result = parse_script(script, &leader());
+
+        // Then the blank line is dropped, leaving two key sequences.
         assert_eq!(result.len(), 2);
     }
 
     #[rstest::rstest]
     fn parse_script_ignores_comments() {
-        let result = parse_script("a\n# comment\nb", &leader());
+        // Given a script with a comment line between two key lines.
+        let script = "a\n# comment\nb";
+
+        // When parsing the script.
+        let result = parse_script(script, &leader());
+
+        // Then the comment is dropped, leaving two key sequences.
         assert_eq!(result.len(), 2);
     }
 }

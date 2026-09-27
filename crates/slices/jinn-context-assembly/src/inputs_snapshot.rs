@@ -98,11 +98,13 @@ mod composition_ask_tests {
         reason = "test helper: a failed ask fails the test"
     )]
     async fn minimal_ask_reproduces_resolution() {
+        // Given a service spawned at the production path, and a session
+        // holding one user entry.
+        // Composition parity: production wiring spawns the slice service at
+        // this exact path at boot; unit tests spawn the test-crate stub at the
+        // same path so the live-value ask crosses no compilation boundary (see
+        // assembly_test_bridge docs).
         let services = jinn_kernel::Services::new_fake().await;
-        // Composition parity: production wiring spawns the slice service
-        // at this exact path at boot; unit tests spawn the test-crate
-        // stub at the same path so the live-value ask crosses no
-        // compilation boundary (see assembly_test_bridge docs).
         let _ = crate::assembly_test_bridge::spawn(&services.trouper_system);
         let state = State::new(AppState::default_with_scope_focus());
         let session_id = state.read().session.active_session_id().clone();
@@ -116,9 +118,12 @@ mod composition_ask_tests {
             let guard = state.read();
             build_assembly_inputs(&guard, &session_id)
         };
+        // When assembling through the service.
         let prompt = assemble_via_service(&services, inputs)
             .await
             .expect("ask resolves");
+
+        // Then the prompt comes back for the same session.
         assert_eq!(prompt.session_id, session_id);
     }
 }

@@ -529,6 +529,7 @@ mod layout_tests {
         // Given the longest state word the view can render.
         let longest = longest_state_word();
 
+        // When comparing it against the fixed column width.
         // Then the fixed column fits it, with room to spare.
         assert!(
             STATE_COL > longest,
@@ -541,6 +542,7 @@ mod layout_tests {
         // Given a name exactly the column width.
         let exact = "a".repeat(usize::from(NAME_COL));
 
+        // When measuring it against the column.
         // Then it needs no overlay.
         assert!(!is_truncated(&exact, NAME_COL));
     }
@@ -550,6 +552,7 @@ mod layout_tests {
         // Given a name one cell too wide.
         let over = "a".repeat(usize::from(NAME_COL) + 1);
 
+        // When measuring it against the column.
         // Then it does.
         assert!(is_truncated(&over, NAME_COL));
     }
@@ -561,6 +564,7 @@ mod layout_tests {
         // Given a real derived path.
         let path = "jinn.discovery/0199a3b2-1234-7abc-8def-0123456789ab";
 
+        // When measuring it against the column.
         // Then it overflows and so gets the overlay treatment.
         assert!(path.width() > usize::from(NAME_COL));
         assert!(is_truncated(path, NAME_COL));
@@ -571,16 +575,17 @@ mod layout_tests {
     /// not. Measuring bytes would get both wrong.
     #[rstest::rstest]
     fn truncation_is_measured_in_display_cells() {
-        // Given a 20-character name that is 40 cells wide.
+        // Given a 20-character name that is 40 cells wide, and one that is
+        // 42 cells wide.
         let wide = "間".repeat(20);
+        let wider = "間".repeat(21);
+
+        // When measuring both in display cells and comparing them to the column.
+        // Then the 40-cell one fits and the 42-cell one does not.
+        // And the cell count, not the char count, is what drives the decision.
         assert_eq!(wide.chars().count(), 20);
         assert_eq!(wide.width(), 40);
-
-        // And one that is 42 cells wide.
-        let wider = "間".repeat(21);
         assert_eq!(wider.width(), 42);
-
-        // Then the 40-cell one fits and the 42-cell one does not.
         assert!(!is_truncated(&wide, NAME_COL));
         assert!(is_truncated(&wider, NAME_COL));
     }
@@ -756,6 +761,7 @@ mod layout_tests {
         // Given a 10-row area and a 3-row scroll offset.
         let area = Rect::new(0, 0, 80, 10);
 
+        // When mapping each row to its screen line.
         // Then the first visible data row lands under the header.
         assert_eq!(row_y(area, 3, 3), Some(1));
         assert_eq!(row_y(area, 4, 3), Some(2));
@@ -957,6 +963,7 @@ mod layout_tests {
         // Given an area starting below the tab bar.
         let area = Rect::new(0, 1, 80, 10);
 
+        // When mapping each row to an absolute screen line.
         // Then a relative row is shifted by the origin.
         assert_eq!(absolute_y(area, 0), Some(1));
         assert_eq!(absolute_y(area, 1), Some(2));
@@ -972,6 +979,7 @@ mod layout_tests {
     #[rstest::rstest]
     fn the_name_column_starts_after_the_highlight_state_and_spacing() {
         // Given the fixed column geometry.
+        // When deriving the name column from the highlight, state, and gap.
         // Then the name begins past the highlight symbol, state, and gap.
         assert_eq!(NAME_X, HIGHLIGHT + STATE_COL + COLUMN_SPACING);
         // And it starts on screen in a normal-width terminal.

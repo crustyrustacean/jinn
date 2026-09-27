@@ -102,7 +102,8 @@ mod tests {
         // Given a default SessionProfile.
         let profile = SessionProfile::default();
 
-        // Then model is Single(NO_PROVIDER_ID).
+        // When reading the profile's model.
+        // Then it is Single(NO_PROVIDER_ID).
         assert_eq!(
             profile.model,
             ModelSelection::Single(NO_PROVIDER_ID.to_owned())
@@ -114,6 +115,7 @@ mod tests {
         // Given a model.
         let profile = SessionProfile::from_config("ollama/llama3".to_owned());
 
+        // When reading the profile's model.
         // Then the profile uses that model.
         assert_eq!(
             profile.model,
@@ -220,7 +222,8 @@ mod tests {
         // Given a default profile.
         let profile = SessionProfile::default();
 
-        // Then both tool and skill opt-out sets are empty.
+        // When reading the opt-out sets.
+        // Then both tool and skill sets are empty.
         assert!(profile.disabled_tools.is_empty());
         assert!(profile.disabled_skills.is_empty());
     }

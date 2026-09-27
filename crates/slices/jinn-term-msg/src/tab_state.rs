@@ -140,9 +140,8 @@ mod tests {
         assert!(mirror.cursor_hidden);
     }
 
-    #[rstest::rstest]
-    fn mirrors_are_keyed_by_chat_session() {
-        // Given a state with two sessions' mirrors.
+    /// A state holding mirrors for two chat sessions.
+    fn two_session_state() -> (TerminalTabState, SessionId, SessionId) {
         let mut state = TerminalTabState::default();
         let a = SessionId::new();
         let b = SessionId::new();
@@ -154,11 +153,24 @@ mod tests {
             false,
         );
         state.apply_screen(&b, "beta".to_owned(), ScreenCells::default(), (0, 0), false);
+        (state, a, b)
+    }
+
+    #[rstest::rstest]
+    fn each_session_reads_back_only_its_own_mirror() {
+        // Given a state with two sessions' mirrors.
+        let (state, a, b) = two_session_state();
 
         // When reading each mirror back.
         // Then each session sees only its own screen.
         assert_eq!(state.mirror(&a).expect("a").screen, "alpha");
         assert_eq!(state.mirror(&b).expect("b").screen, "beta");
+    }
+
+    #[rstest::rstest]
+    fn removing_one_mirror_leaves_the_other() {
+        // Given a state with two sessions' mirrors.
+        let (mut state, a, b) = two_session_state();
 
         // When removing one mirror.
         state.remove_mirror(&a);
@@ -169,7 +181,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn record_layout_size_reports_change_once() {
+    fn first_recorded_layout_size_reports_change() {
         // Given a default terminal state (0, 0).
         let mut state = TerminalTabState::default();
 
@@ -178,6 +190,13 @@ mod tests {
 
         // Then the first report signals change.
         assert!(first);
+    }
+
+    #[rstest::rstest]
+    fn recording_the_same_layout_size_again_reports_no_change() {
+        // Given a state that has already recorded a 24x100 layout.
+        let mut state = TerminalTabState::default();
+        state.record_layout_size(24, 100);
 
         // When recording the same size again.
         let second = state.record_layout_size(24, 100);
@@ -191,8 +210,11 @@ mod tests {
         // Given a default terminal state (no overlay ever laid out).
         let state = TerminalTabState::default();
 
+        // When reading the spawn size.
+        let size = state.spawn_size();
+
         // Then the spawn size is the VT100 default, not the zeroed layout.
-        assert_eq!(state.spawn_size(), DEFAULT_PTY_SIZE);
+        assert_eq!(size, DEFAULT_PTY_SIZE);
     }
 
     #[rstest::rstest]
@@ -202,8 +224,11 @@ mod tests {
         let mut state = TerminalTabState::default();
         state.record_layout_size(0, 0);
 
+        // When reading the spawn size.
+        let size = state.spawn_size();
+
         // Then the spawn size is still the VT100 default.
-        assert_eq!(state.spawn_size(), DEFAULT_PTY_SIZE);
+        assert_eq!(size, DEFAULT_PTY_SIZE);
     }
 
     #[rstest::rstest]
@@ -212,7 +237,10 @@ mod tests {
         let mut state = TerminalTabState::default();
         state.record_layout_size(30, 110);
 
+        // When reading the spawn size.
+        let size = state.spawn_size();
+
         // Then the spawn size is that rect (WYSIWYG).
-        assert_eq!(state.spawn_size(), (30, 110));
+        assert_eq!(size, (30, 110));
     }
 }

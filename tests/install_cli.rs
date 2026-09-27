@@ -31,30 +31,32 @@ fn run_jinn(
         .expect("run jinn")
 }
 
-// Given no existing jinn state in the temp environment.
-// When running `jinn install`.
-// Then it succeeds, seeds the four resource kinds (themes, personas,
-// prompts, skills), lists jinn.toml as Created, and prints no plugin output.
 #[rstest::rstest]
 #[test]
 fn install_seeds_all_resource_kinds_and_creates_jinn_toml() {
+    // Given no existing jinn state in the temp environment.
     let bin = jinn_bin();
     let (home, _guard) = temp_env();
     let config = home.join("config");
     let data = home.join("data");
 
+    // When running `jinn install`.
     let output = run_jinn(&bin, &config, &data, &["install"]);
+
+    // Then it succeeds.
     assert!(
         output.status.success(),
         "jinn install failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
+    // And it seeds the four resource kinds (themes, personas, prompts, skills).
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("default.toml"), "theme seeded: {stdout}");
     assert!(stdout.contains("general.md"), "persona seeded: {stdout}");
     assert!(stdout.contains("plan.md"), "prompt seeded: {stdout}");
     assert!(stdout.contains("SKILL.md"), "skills seeded: {stdout}");
+    // And it lists jinn.toml as Created.
     assert!(
         stdout.contains("Created") && stdout.contains("jinn.toml"),
         "first install must list jinn.toml as Created: {stdout}"
@@ -64,12 +66,10 @@ fn install_seeds_all_resource_kinds_and_creates_jinn_toml() {
     assert!(!stdout.contains(".wasm"), "no wasm payloads: {stdout}");
 }
 
-// Given a completed first install.
-// When running `jinn install` again without --force.
-// Then jinn.toml is listed as skipped alongside the other resources.
 #[rstest::rstest]
 #[test]
 fn install_second_run_lists_jinn_toml_as_skipped() {
+    // Given a completed first install.
     let bin = jinn_bin();
     let (home, _guard) = temp_env();
     let config = home.join("config");
@@ -78,8 +78,12 @@ fn install_second_run_lists_jinn_toml_as_skipped() {
     let first = run_jinn(&bin, &config, &data, &["install"]);
     assert!(first.status.success());
 
+    // When running `jinn install` again without --force.
     let second = run_jinn(&bin, &config, &data, &["install"]);
+
+    // Then it succeeds.
     assert!(second.status.success());
+    // And jinn.toml is listed as skipped alongside the other resources.
     let stdout = String::from_utf8_lossy(&second.stdout);
     let toml_line = stdout
         .lines()
@@ -91,13 +95,11 @@ fn install_second_run_lists_jinn_toml_as_skipped() {
     );
 }
 
-// Given a completed first install whose jinn.toml the user hand-edited
-// (a compaction knob + a comment).
-// When running `jinn install --force`.
-// Then jinn.toml is byte-identical while resource files are overwritten.
 #[rstest::rstest]
 #[test]
 fn install_force_preserves_edited_jinn_toml() {
+    // Given a completed first install whose jinn.toml the user hand-edited
+    // (a compaction knob + a comment).
     let bin = jinn_bin();
     let (home, _guard) = temp_env();
     let config = home.join("config");
@@ -117,7 +119,10 @@ fn install_force_preserves_edited_jinn_toml() {
     );
     std::fs::write(&toml_path, &edited).expect("write edited jinn.toml");
 
+    // When running `jinn install --force`.
     let forced = run_jinn(&bin, &config, &data, &["install", "--force"]);
+
+    // Then it succeeds and jinn.toml is byte-identical.
     assert!(forced.status.success());
     let on_disk = std::fs::read_to_string(&toml_path).expect("read jinn.toml after --force");
     assert_eq!(on_disk, edited, "--force must never modify jinn.toml");
@@ -128,12 +133,10 @@ fn install_force_preserves_edited_jinn_toml() {
     assert!(stdout.contains("Overwrote"));
 }
 
-// Given a malformed jinn.toml from a prior broken edit.
-// When running `jinn install`.
-// Then it succeeds and the file is left untouched.
 #[rstest::rstest]
 #[test]
 fn install_succeeds_with_malformed_jinn_toml() {
+    // Given a malformed jinn.toml from a prior broken edit.
     let bin = jinn_bin();
     let (home, _guard) = temp_env();
     let config = home.join("config");
@@ -143,12 +146,16 @@ fn install_succeeds_with_malformed_jinn_toml() {
     std::fs::create_dir_all(&toml_dir).expect("create config dir");
     std::fs::write(toml_dir.join("jinn.toml"), "NOT [valid toml").expect("write jinn.toml");
 
+    // When running `jinn install`.
     let output = run_jinn(&bin, &config, &data, &["install"]);
+
+    // Then it succeeds.
     assert!(
         output.status.success(),
         "malformed jinn.toml must not fail install: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    // And the malformed file is left untouched.
     let on_disk = std::fs::read_to_string(toml_dir.join("jinn.toml")).expect("read jinn.toml");
     assert_eq!(
         on_disk, "NOT [valid toml",

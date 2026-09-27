@@ -222,29 +222,47 @@ mod tests {
 
     #[rstest::rstest]
     fn user_message_uses_user_role() {
-        let json = message_to_json(&LlmMessage::User {
+        // Given a user message.
+        let message = LlmMessage::User {
             content: "hi".into(),
             attachments: Vec::new(),
-        });
+        };
+
+        // When converting it to the Gemini wire shape.
+        let json = message_to_json(&message);
+
+        // Then its role is "user".
         assert_eq!(json["role"], "user");
     }
 
     #[rstest::rstest]
     fn assistant_message_uses_model_role() {
-        let json = message_to_json(&LlmMessage::Assistant {
+        // Given an assistant message with no tool calls.
+        let message = LlmMessage::Assistant {
             content: "hey".into(),
             tool_calls: None,
-        });
+        };
+
+        // When converting it to the Gemini wire shape.
+        let json = message_to_json(&message);
+
+        // Then its role is "model".
         assert_eq!(json["role"], "model");
     }
 
     #[rstest::rstest]
     fn tool_result_uses_function_role() {
-        let json = message_to_json(&LlmMessage::Tool {
+        // Given a tool result message.
+        let message = LlmMessage::Tool {
             tool_call_id: "call_1".into(),
             name: "echo".into(),
             content: "result".into(),
-        });
+        };
+
+        // When converting it to the Gemini wire shape.
+        let json = message_to_json(&message);
+
+        // Then its role is "function" and its first part is a functionResponse.
         assert_eq!(json["role"], "function");
         let parts = json["parts"].as_array().unwrap();
         assert!(parts[0].get("functionResponse").is_some());
@@ -252,6 +270,7 @@ mod tests {
 
     #[rstest::rstest]
     fn tool_definitions_use_function_declarations() {
+        // Given a tool definition with an object parameter schema.
         let def = ToolDefinition {
             name: "echo".into(),
             description: "Echo".into(),
@@ -264,21 +283,31 @@ mod tests {
             }),
             server_tool_type: None,
         };
+
+        // When converting it to the Gemini wire shape.
         let json = tool_definition_to_json(&def);
+
+        // Then the tool name and its parameters are carried across.
         assert_eq!(json["name"], "echo");
         assert!(json.get("parameters").is_some());
     }
 
     #[rstest::rstest]
     fn assistant_with_tool_calls_includes_function_call_parts() {
-        let json = message_to_json(&LlmMessage::Assistant {
+        // Given an assistant message carrying one tool call.
+        let message = LlmMessage::Assistant {
             content: String::new(),
             tool_calls: Some(vec![jinn_core_types::tool_types::ToolCall {
                 id: "call_1".into(),
                 name: "echo".into(),
                 arguments: r#"{"x":1}"#.into(),
             }]),
-        });
+        };
+
+        // When converting it to the Gemini wire shape.
+        let json = message_to_json(&message);
+
+        // Then its role is "model" and its first part is a functionCall.
         assert_eq!(json["role"], "model");
         let parts = json["parts"].as_array().unwrap();
         assert!(parts[0].get("functionCall").is_some());

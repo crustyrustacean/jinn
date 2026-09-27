@@ -139,6 +139,7 @@ mod tests {
         let home = dirs::home_dir().expect("home dir available in test");
         let entry = ProjectEntry::new(home.join("code").join("jinn"), default_theme());
 
+        // When reading its display label.
         // Then the display label is tilde-compressed.
         assert_eq!(entry.display_label(), "~/code/jinn");
     }

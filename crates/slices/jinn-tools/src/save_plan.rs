@@ -176,6 +176,7 @@ mod tests {
         // Given the save_plan tool definition.
         let def = definition();
 
+        // When reading its name.
         // Then the name is "save_plan".
         assert_eq!(def.name, "save_plan");
     }
@@ -185,6 +186,7 @@ mod tests {
         // Given the save_plan tool definition.
         let def = definition();
 
+        // When reading the schema's required list.
         // Then the parameters require both "path" and "content".
         let required = def
             .parameters
@@ -200,6 +202,7 @@ mod tests {
         // Given the save_plan tool definition.
         let def = definition();
 
+        // When reading the prompt guidelines.
         // Then at least one guideline mentions .plans/.
         assert!(
             def.prompt_guidelines.iter().any(|g| g.contains(".plans")),

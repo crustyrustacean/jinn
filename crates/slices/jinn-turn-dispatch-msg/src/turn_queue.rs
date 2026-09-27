@@ -147,6 +147,7 @@ mod tests {
         queue.enqueue(user_msg("c"));
 
         // When checking length.
+        // Then it is the number of enqueued items.
         assert_eq!(queue.len(), 3);
     }
 }

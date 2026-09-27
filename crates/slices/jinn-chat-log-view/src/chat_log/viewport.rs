@@ -147,10 +147,11 @@ mod tests {
         // Entry 3 spans lines 3-8, viewport at 0 (viewport_bottom = 4).
         // entry_height = 5 > area_height = 4, so we enter the else branch.
         // abs_start (3) < viewport_bottom (4), so neither else-if fires.
+
+        // When computing scroll with entry 3 selected.
         let result = compute_scroll(4, 8, Some(3), &ranges, Some(0));
 
-        // entering the first branch and scrolling to abs_start = 3.
-        // The correct behavior is NOT scrolling because the entry is partially visible.
+        // Then the scroll is left alone because the entry is partially visible.
         assert_eq!(
             result.clamped, 0,
             "large entry partially visible should not scroll"
@@ -165,8 +166,11 @@ mod tests {
         // Entry 4 spans lines 4-15, entry_height = 11 > area_height = 4.
         // viewport at 0, viewport_bottom = 4.
         // abs_start = 4 >= viewport_bottom = 4, so clamped = abs_start = 4.
+
+        // When computing scroll with entry 4 selected.
         let result = compute_scroll(4, 15, Some(4), &ranges, Some(0));
 
+        // Then the scroll moves down to the entry's first line.
         assert_eq!(
             result.clamped, 4,
             "large entry completely below should scroll to its start"
@@ -181,14 +185,13 @@ mod tests {
         // Entry 0 spans lines 0-5, entry_height = 5 > area_height = 4.
         // viewport at 10, viewport_top = 10.
         // abs_end = 5 <= viewport_top = 10, so clamped = 5 - 4 = 1.
+
+        // When computing scroll with entry 0 selected.
         let result = compute_scroll(4, 9, Some(0), &ranges, Some(10));
 
-        // max_offset = 9 - 4 = 5, clamped starts at min(10, 5) = 5.
-        // Wait, resolved = scroll_offset.unwrap_or(max_offset) = 10, clamped = min(10, 5) = 5.
-        // Then scroll-to-selected: abs_start=0, abs_end=5, viewport_top=5, viewport_bottom=9.
-        // entry_height = 5 > area_height = 4.
-        // abs_start (0) < viewport_bottom (9) → false for first else-if.
-        // abs_end (5) <= viewport_top (5) → true, so clamped = 5 - 4 = 1.
+        // Then the scroll moves up so the entry's last line clears the top.
+        // max_offset = 9 - 4 = 5, so the incoming offset clamps to 5 and the
+        // scroll-to-selected pass then pulls it back to 1.
         assert_eq!(
             result.clamped, 1,
             "large entry completely above should scroll up"
@@ -232,9 +235,11 @@ mod tests {
 
         // Viewport at clamped=0, area_height=10.
         // abs positions: entry 0 = [3, 5), entry 1 = [5, 8).
+
+        // When finding the entries overlapping the blank-shifted viewport.
         let visible = find_visible_indices(&ranges, 3, 0, 10);
 
-        // Both entries should be visible.
+        // Then both entries are visible.
         assert_eq!(visible, vec![0, 1]);
     }
 
@@ -243,8 +248,10 @@ mod tests {
         // Given no entries.
         let ranges: Vec<(u32, u32)> = vec![];
 
+        // When finding the entries overlapping the viewport.
         let visible = find_visible_indices(&ranges, 0, 0, 10);
 
+        // Then nothing is visible.
         assert!(visible.is_empty());
     }
 }

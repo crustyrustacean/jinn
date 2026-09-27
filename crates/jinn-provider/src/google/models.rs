@@ -100,6 +100,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn list_models_returns_models_on_success() {
+        // Given a mock server returning a valid models response.
         let mut server = mockito::Server::new_async().await;
         let mock = server
             .mock("GET", "/v1beta/models?key=test-key")
@@ -112,10 +113,14 @@ mod tests {
             .await;
 
         let client = Client::new();
+
+        // When listing models against the mock server.
         let result = list_models_with_base_url(&client, "test-key", &server.url()).await;
 
+        // Then a single model is returned with the mapped fields.
         let models = result.expect("should succeed");
         assert_eq!(models.len(), 1);
+        // And the model matches the expected `ModelInfo`.
         assert_eq!(
             models[0],
             ModelInfo {
@@ -130,6 +135,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn list_models_returns_error_on_http_failure() {
+        // Given a mock server returning 403.
         let mut server = mockito::Server::new_async().await;
         let mock = server
             .mock("GET", "/v1beta/models?key=bad-key")
@@ -139,8 +145,11 @@ mod tests {
             .await;
 
         let client = Client::new();
+
+        // When listing models against the failing server.
         let result = list_models_with_base_url(&client, "bad-key", &server.url()).await;
 
+        // Then it returns an error (not Ok(vec![])).
         assert!(result.is_err(), "HTTP error should return Err, not Ok");
         mock.assert_async().await;
     }

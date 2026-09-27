@@ -884,6 +884,8 @@ fn render_scroll_down_through_tall_entry_works() {
         .unwrap();
     // Now scroll up to show the middle of the tall entry.
     state.active_session_mut().scroll_up(20);
+
+    // When rendering again.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -944,6 +946,8 @@ fn render_tall_entry_snaps_when_completely_below_viewport() {
 
     // Scroll to top so the tall entry is completely below the viewport.
     state.active_session_mut().scroll_to_top();
+
+    // When rendering again.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -1001,10 +1005,9 @@ fn virtualization_populates_cache_after_render() {
     );
 }
 
-#[rstest::rstest]
-fn expand_collapse_invalidates_and_rerenders() {
-    // Given a ChatLogElement with a long tool result entry.
-    let mut element = ChatLogElement::new();
+/// A state holding one long tool-result entry (20 lines) plus the id needed
+/// to toggle it. Rendering it at 80x30 truncates it to 5 lines.
+fn long_tool_result_state() -> (AppState, jinn_kernel::protocol::ChatEntryId) {
     let long_content: String = (0..20)
         .map(|i| format!("line {i}"))
         .collect::<Vec<_>>()
@@ -1013,10 +1016,27 @@ fn expand_collapse_invalidates_and_rerenders() {
     let entry_id = entry.id.clone();
     let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().push_entry(entry);
+    (state, entry_id)
+}
 
+/// True when any row of a 80-wide, 30-tall buffer contains `needle`.
+fn buffer_contains_rows(buffer: &ratatui::buffer::Buffer, needle: &str) -> bool {
+    (0..30).any(|row| {
+        let row_text: String = (2..80)
+            .filter_map(|col| buffer.cell((col, row)).map(|c| c.symbol().to_owned()))
+            .collect();
+        row_text.contains(needle)
+    })
+}
+
+#[rstest::rstest]
+fn collapsed_tool_result_renders_truncation_indicator() {
+    // Given a ChatLogElement with a long, collapsed tool result entry.
+    let mut element = ChatLogElement::new();
+    let (state, _entry_id) = long_tool_result_state();
     let (mut terminal, area) = setup_term(80, 30);
 
-    // When rendering (truncated - max_lines=5 by default).
+    // When rendering (truncated — max_lines=5 by default).
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -1028,19 +1048,21 @@ fn expand_collapse_invalidates_and_rerenders() {
 
     // Then the truncation indicator is visible in the buffer.
     let buffer = terminal.backend().buffer().clone();
-    let has_more_lines = (0..30).any(|row| {
-        let row_text: String = (2..80)
-            .filter_map(|col| buffer.cell((col, row)).map(|c| c.symbol().to_owned()))
-            .collect();
-        row_text.contains("lines hidden above")
-    });
     assert!(
-        has_more_lines,
+        buffer_contains_rows(&buffer, "lines hidden above"),
         "truncated tool result should show truncation indicator"
     );
+}
 
-    // When expanding the entry and re-rendering.
+#[rstest::rstest]
+fn expanded_tool_result_renders_all_lines() {
+    // Given a ChatLogElement with a long tool result entry that is expanded.
+    let mut element = ChatLogElement::new();
+    let (mut state, entry_id) = long_tool_result_state();
     state.active_session_mut().toggle_expand_entry(entry_id);
+    let (mut terminal, area) = setup_term(80, 30);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -1050,16 +1072,10 @@ fn expand_collapse_invalidates_and_rerenders() {
         })
         .unwrap();
 
-    // Then the expanded content shows all lines.
-    let buffer2 = terminal.backend().buffer().clone();
-    let has_line_19 = (0..30).any(|row| {
-        let row_text: String = (2..80)
-            .filter_map(|col| buffer2.cell((col, row)).map(|c| c.symbol().to_owned()))
-            .collect();
-        row_text.contains("line 19")
-    });
+    // Then the content beyond the collapsed cutoff is visible in the buffer.
+    let buffer = terminal.backend().buffer().clone();
     assert!(
-        has_line_19,
+        buffer_contains_rows(&buffer, "line 19"),
         "expanded tool result should show all content including line 19"
     );
 }
@@ -1119,18 +1135,23 @@ fn resize_clears_cache_and_rerenders() {
     );
 }
 
-#[rstest::rstest]
-fn streaming_content_change_invalidates_cache() {
-    // Given a ChatLogElement rendered during active streaming.
-    let mut element = ChatLogElement::new();
-    let (mut terminal, area) = setup_term(40, 10);
-
+/// A state mid-stream with `initial` already appended as the active entry.
+fn streaming_state() -> AppState {
     let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().begin_streaming();
     state
         .active_session_mut()
         .append_stream_token("initial", jiff::Timestamp::now())
         .expect("ok");
+    state
+}
+
+#[rstest::rstest]
+fn initial_stream_render_populates_one_cache_entry() {
+    // Given a ChatLogElement rendering an active stream with one token.
+    let mut element = ChatLogElement::new();
+    let state = streaming_state();
+    let (mut terminal, area) = setup_term(40, 10);
 
     // When rendering with initial streaming content.
     terminal
@@ -1142,18 +1163,34 @@ fn streaming_content_change_invalidates_cache() {
         })
         .unwrap();
 
+    // Then the cache holds the single streamed entry.
     assert_eq!(
         state.frontend.caches.entry_line_cache.read().len(),
         1,
         "cache should have 1 entry"
     );
+}
+
+#[rstest::rstest]
+fn streaming_token_append_keeps_one_cache_entry() {
+    // Given a ChatLogElement already rendered a stream with one token.
+    let mut element = ChatLogElement::new();
+    let mut state = streaming_state();
+    let (mut terminal, area) = setup_term(40, 10);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
 
     // When more tokens arrive (content changes, fingerprint changes).
     state
         .active_session_mut()
         .append_stream_token(" + more text", jiff::Timestamp::now())
         .expect("ok");
-
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -1169,8 +1206,38 @@ fn streaming_content_change_invalidates_cache() {
         1,
         "cache should have 1 entry after streaming token append"
     );
+}
 
-    // And the updated content is visible.
+#[rstest::rstest]
+fn streaming_token_append_renders_updated_content() {
+    // Given a ChatLogElement already rendered a stream with one token.
+    let mut element = ChatLogElement::new();
+    let mut state = streaming_state();
+    let (mut terminal, area) = setup_term(40, 10);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // When more tokens arrive and the log is re-rendered.
+    state
+        .active_session_mut()
+        .append_stream_token(" + more text", jiff::Timestamp::now())
+        .expect("ok");
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the updated content is visible.
     let buffer = terminal.backend().buffer().clone();
     let has_more = (0..10).any(|row| {
         let row_text: String = (2..40)
@@ -1217,14 +1284,10 @@ fn render_transient_entry_has_muted_text_color() {
     );
 }
 
-#[rstest::rstest]
-fn render_auto_scrolls_jumped_compaction_into_view() {
-    // Given a history taller than a 6-line viewport, with a compaction as the
-    // FIRST entry and many user entries below it. The default viewport shows the
-    // bottom (newest) entries, so the compaction is scrolled off the top.
-    use crate::chat_entry_selection::intent::handle_jump_prev_entry;
-
-    let mut element = ChatLogElement::new();
+/// A history taller than a 6-line viewport whose FIRST entry is a compaction,
+/// followed by 12 user entries, with visual state ready to render. Returns
+/// the state and the compaction's entry id.
+fn history_leading_with_compaction() -> (AppState, jinn_kernel::protocol::ChatEntryId) {
     let mut state = normal_state();
     state
         .active_session_mut()
@@ -1235,11 +1298,18 @@ fn render_auto_scrolls_jumped_compaction_into_view() {
             .active_session_mut()
             .push_entry(ChatEntry::user(format!("msg-{n}")));
     }
+    (state, compaction_id)
+}
 
+#[rstest::rstest]
+fn compaction_is_off_screen_until_a_jump_reaches_it() {
+    // Given a history taller than a 6-line viewport, with a compaction as the
+    // FIRST entry and many user entries below it. The default viewport shows the
+    // bottom (newest) entries, so the compaction is scrolled off the top.
+    use crate::chat_entry_selection::intent::handle_jump_prev_entry;
+    let mut element = ChatLogElement::new();
+    let (mut state, compaction_id) = history_leading_with_compaction();
     let (mut terminal, area) = setup_term(40, 6);
-
-    // Initial render: viewport defaults to the newest entries, so the compaction
-    // (history index 0) is NOT in the visible range.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -1249,21 +1319,32 @@ fn render_auto_scrolls_jumped_compaction_into_view() {
         })
         .unwrap();
     let range_before = state.active_session().visible_entry_range();
-    assert!(
-        !range_before.contains(&0),
-        "compaction at index 0 should be off-screen before the jump; range = {range_before:?}"
-    );
 
     // When jumping to the previous compaction from the last entry (no selection
     // -> anchor on last entry; the prev jump lands on the only compaction at index 0).
     handle_jump_prev_entry(&mut state, jinn_kernel::protocol::ChatEntry::is_compaction);
+
+    // Then the compaction at index 0 was off-screen before the jump.
+    assert!(
+        !range_before.contains(&0),
+        "compaction at index 0 should be off-screen before the jump; range = {range_before:?}"
+    );
+    // And the jump lands on that compaction.
     assert_eq!(
         state.active_session().selected_cursor_id(),
         Some(compaction_id),
         "prev jump must land on the compaction entry"
     );
+}
 
-    // Re-render: the viewport must auto-scroll so the jumped-to compaction is now visible.
+#[rstest::rstest]
+fn render_auto_scrolls_jumped_compaction_into_view() {
+    // Given a history leading with an off-screen compaction that the previous
+    // -compaction jump has just selected.
+    use crate::chat_entry_selection::intent::handle_jump_prev_entry;
+    let mut element = ChatLogElement::new();
+    let (mut state, _compaction_id) = history_leading_with_compaction();
+    let (mut terminal, area) = setup_term(40, 6);
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -1272,6 +1353,19 @@ fn render_auto_scrolls_jumped_compaction_into_view() {
             element.render(frame, area, &ctx);
         })
         .unwrap();
+    handle_jump_prev_entry(&mut state, jinn_kernel::protocol::ChatEntry::is_compaction);
+
+    // When re-rendering after the jump.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the viewport auto-scrolled so the compaction is now visible.
     let range_after = state.active_session().visible_entry_range();
     assert!(
         range_after.contains(&0),

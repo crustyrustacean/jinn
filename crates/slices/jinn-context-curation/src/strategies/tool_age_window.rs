@@ -345,7 +345,11 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn empty_history_produces_no_mutations() {
+        // Given a worker keeping the last 100 entries and an empty history.
         let w = worker(100);
+
+        // When evaluating the empty history.
+        // Then no mutations are produced.
         assert!(evaluate(&w, Vec::new()).is_empty());
     }
 
@@ -355,8 +359,12 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn history_under_threshold_produces_no_mutations() {
+        // Given a worker keeping the last 100 entries and a history of 50 user entries.
         let w = worker(100);
         let history = users(50);
+
+        // When evaluating the history.
+        // Then no mutations are produced.
         assert!(evaluate(&w, history).is_empty());
     }
 
@@ -368,8 +376,12 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn history_exactly_at_threshold_produces_no_mutations() {
+        // Given a worker keeping the last 100 entries and a history of exactly 100 user entries.
         let w = worker(100);
         let history = users(100);
+
+        // When evaluating the history.
+        // Then no mutations are produced.
         assert!(evaluate(&w, history).is_empty());
     }
 
@@ -383,6 +395,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn history_one_over_threshold_prunes_oldest_pair() {
+        // Given a worker keeping the last 100 entries and a bash pair at the start of a 102-entry history.
         let w = worker(100);
         let mut history = Vec::new();
 
@@ -397,8 +410,12 @@ mod tests {
         // Pair at positions 0,1 is in the prune region.
         history.extend(users(100));
 
+        // When evaluating the history.
         let mutations = evaluate(&w, history);
+
         let excluded = excluded_ids(&mutations);
+
+        // Then only the bash pair is pruned.
         assert_eq!(mutations.len(), 2, "exactly the pair should be pruned");
         assert!(excluded.contains(&call_id));
         assert!(excluded.contains(&result_id));
@@ -419,6 +436,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn pair_atomicity_when_result_straddles_cutoff() {
+        // Given a worker keeping the last 100 entries and a bash pair whose result falls on the kept side of the cutoff.
         let w = worker(100);
         let mut history = Vec::new();
 
@@ -441,8 +459,12 @@ mod tests {
         let result_id = result.id.clone();
         history.push(result);
 
+        // When evaluating the history.
         let mutations = evaluate(&w, history);
+
         let excluded = excluded_ids(&mutations);
+
+        // Then both the call and the result are pruned.
         assert!(
             excluded.contains(&call_id),
             "call must be excluded (in prune region)"
@@ -465,6 +487,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn pair_at_protection_boundary_is_not_pruned() {
+        // Given a worker keeping the last 100 entries and a bash pair sitting exactly at the protection boundary.
         let w = worker(100);
         let mut history = Vec::new();
 
@@ -480,8 +503,12 @@ mod tests {
         let result_id = result.id.clone();
         history.push(result);
 
+        // When evaluating the history.
         let mutations = evaluate(&w, history);
+
         let excluded = excluded_ids(&mutations);
+
+        // Then no mutations are produced.
         assert!(
             !excluded.contains(&call_id),
             "call inside protection floor must not be pruned"
@@ -499,6 +526,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn pending_result_pair_is_skipped() {
+        // Given a worker keeping the last 100 entries and a bash pair whose result is still pending.
         let w = worker(100);
         let mut history = Vec::new();
 
@@ -510,7 +538,10 @@ mod tests {
         // Push the prune region past the pair.
         history.extend(users(100));
 
+        // When evaluating.
         let mutations = evaluate(&w, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty(), "pending pair must never be pruned");
     }
 
@@ -520,6 +551,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn orphaned_call_with_no_result_is_skipped() {
+        // Given a worker keeping the last 100 entries and a bash call with no result.
         let w = worker(100);
         let mut history = Vec::new();
 
@@ -528,7 +560,10 @@ mod tests {
 
         history.extend(users(100));
 
+        // When evaluating.
         let mutations = evaluate(&w, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty(), "orphaned call must not be pruned");
     }
 
@@ -541,6 +576,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn already_excluded_call_does_not_get_duplicate_mutation() {
+        // Given a worker keeping the last 100 entries and a bash pair whose call is already excluded.
         let w = worker(100);
         let mut history = Vec::new();
 
@@ -560,7 +596,10 @@ mod tests {
 
         history.extend(users(100));
 
+        // When evaluating.
         let mutations = evaluate(&w, history);
+
+        // Then only the non-excluded result mutates.
         assert_eq!(mutations.len(), 1, "only the non-excluded result mutates");
         let excluded = excluded_ids(&mutations);
         assert!(excluded.contains(&result_id));
@@ -576,6 +615,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn forced_included_call_does_not_get_mutation() {
+        // Given a worker keeping the last 100 entries and a bash pair whose call is force-included.
         let w = worker(100);
         let mut history = Vec::new();
 
@@ -590,7 +630,10 @@ mod tests {
 
         history.extend(users(100));
 
+        // When evaluating.
         let mutations = evaluate(&w, history);
+
+        // Then only the non-protected result mutates.
         assert_eq!(mutations.len(), 1, "only the non-protected result mutates");
         let excluded = excluded_ids(&mutations);
         assert!(excluded.contains(&result_id));
@@ -608,13 +651,17 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn min_age_clamped_to_1() {
+        // Given a worker with min_age 0 (clamped to 1) and a single bash pair.
         let w = worker(0);
         let history: Vec<ChatEntry> = bash_pair("tc-clamp", "ls", "out").into();
         // 2 entries. min_age=0 → clamped to 1. Prune region starts at
         // index 1 (the result). Loop runs `for i in 0..1`, examines the
         // call. find_completed_matching_result finds the result at index 1.
         // Both excluded.
+        // When evaluating.
         let mutations = evaluate(&w, history);
+
+        // Then the pair is pruned.
         assert_eq!(
             mutations.len(),
             2,
@@ -631,6 +678,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn multiple_tool_pairs_all_pruned_when_old() {
+        // Given a worker keeping the last 100 entries and 5 bash pairs in a 200-entry history.
         let w = worker(100);
         let mut history = Vec::new();
 
@@ -644,8 +692,10 @@ mod tests {
         // 190 user entries to push the total to 200.
         history.extend(users(190));
 
+        // When evaluating.
         let mutations = evaluate(&w, history);
         // 5 pairs * 2 mutations each = 10.
+        // Then all 5 pairs are pruned.
         assert_eq!(
             mutations.len(),
             10,
@@ -663,6 +713,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn non_tool_entries_in_prune_window_are_not_targeted() {
+        // Given a worker keeping the last 100 entries, an old user entry, an old assistant entry, and an old bash pair.
         let w = worker(100);
         let mut history = Vec::new();
 
@@ -682,8 +733,12 @@ mod tests {
         // (positions 2, 3) should mutate.
         history.extend(users(100));
 
+        // When evaluating the history.
         let mutations = evaluate(&w, history);
+
         let excluded = excluded_ids(&mutations);
+
+        // Then only the bash pair is pruned and the assistant entry is left alone.
         assert_eq!(mutations.len(), 2);
         assert!(
             !excluded.contains(&asst_id),
@@ -699,6 +754,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn min_age_zero_prunes_everything() {
+        // Given a worker with min_age 0 and 3 completed bash pairs.
         let w = worker(0);
         let mut history = Vec::new();
 
@@ -712,8 +768,10 @@ mod tests {
         // 10 trailing user entries so history.len() > 0.
         history.extend(users(10));
 
+        // When evaluating.
         let mutations = evaluate(&w, history);
         // 3 pairs * 2 mutations each = 6.
+        // Then all 3 pairs are pruned.
         assert_eq!(
             mutations.len(),
             6,

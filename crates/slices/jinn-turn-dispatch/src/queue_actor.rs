@@ -516,5 +516,4 @@ impl MsgHandler<DispatchTurn> for QueueActor {
 }
 
 #[cfg(test)]
-#[path = "queue_actor_tests.rs"]
-mod tests;
+mod queue_actor_tests;

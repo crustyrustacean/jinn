@@ -155,10 +155,14 @@ mod tests {
 
     #[rstest::rstest]
     fn text_delta_produces_text_event() {
+        // Given a chunk carrying a text part.
         let json =
             r#"{"candidates":[{"content":{"parts":[{"text":"Hello"}]},"finishReason":"STOP"}]}"#;
+
+        // When parsing it.
         let events = parse_single(json);
 
+        // Then a Text event with the chunk's text is produced.
         assert!(
             events
                 .iter()
@@ -168,10 +172,14 @@ mod tests {
 
     #[rstest::rstest]
     fn function_call_produces_tool_events() {
+        // Given a chunk carrying a functionCall part.
         let json = r#"{"candidates":[{"content":{"parts":[{"functionCall":{"name":"get_weather","args":{"city":"Paris"}}}]},"finishReason":"STOP"}]}"#;
+
+        // When parsing it.
         let events = parse_single(json);
 
-        // Should produce ToolUseStart + ToolUseInputDelta + ToolUseComplete + Done.
+        // Then the tool lifecycle events are produced: ToolUseStart,
+        // ToolUseInputDelta, ToolUseComplete, and Done.
         assert!(
             events.iter().any(
                 |e| matches!(e, StreamEvent::ToolUseStart { name, .. } if name == "get_weather")
@@ -187,32 +195,50 @@ mod tests {
 
     #[rstest::rstest]
     fn empty_text_produces_no_text_event() {
+        // Given a chunk whose only text part is empty.
         let json = r#"{"candidates":[{"content":{"parts":[{"text":""}]}}]}"#;
+
+        // When parsing it.
         let events = parse_single(json);
+
+        // Then no Text event is produced.
         assert!(!events.iter().any(|e| matches!(e, StreamEvent::Text(_))));
     }
 
     #[rstest::rstest]
     fn invalid_json_produces_no_events() {
+        // Given a payload that is not valid JSON.
+        // When parsing it.
         let events = parse_single("not json");
+
+        // Then no events are produced.
         assert!(events.is_empty());
     }
 
     #[rstest::rstest]
     fn done_sentinel_after_finish_is_noop() {
+        // Given a parser that already saw a finished chunk.
         let mut parser = GeminiStreamParser::new();
         let json =
             r#"{"candidates":[{"content":{"parts":[{"text":"hi"}]},"finishReason":"STOP"}]}"#;
         parser.parse_data(json);
 
+        // When the stream's done sentinel arrives.
         let events = parser.handle_done();
+
+        // Then no further events are produced.
         assert!(events.is_empty());
     }
 
     #[rstest::rstest]
     fn done_sentinel_without_finish_produces_done() {
+        // Given a parser that has not seen a finish reason.
         let mut parser = GeminiStreamParser::new();
+
+        // When the stream's done sentinel arrives.
         let events = parser.handle_done();
+
+        // Then exactly one Done event with `EndTurn` is produced.
         assert_eq!(events.len(), 1);
         assert!(matches!(
             &events[0],
@@ -228,7 +254,6 @@ mod tests {
         // Given two chunks both with finishReason STOP.
         // Changing `&&` to `||` on the guard would emit duplicate Done events.
         let mut parser = GeminiStreamParser::new();
-
         let chunk = serde_json::json!({
             "candidates": [{
                 "content": {"parts": [{"text": "hi"}]},
@@ -236,13 +261,18 @@ mod tests {
             }]
         })
         .to_string();
+
+        // When feeding that same chunk to the parser twice.
         let events1 = parser.parse_data(&chunk);
+
+        // Then the first chunk emits exactly one Done.
         let done_count_1 = events1
             .iter()
             .filter(|e| matches!(e, StreamEvent::Done { .. }))
             .count();
         assert_eq!(done_count_1, 1, "first chunk should emit exactly one Done");
 
+        // And the second chunk emits none.
         let events2 = parser.parse_data(&chunk);
         let done_count_2 = events2
             .iter()
@@ -263,8 +293,11 @@ mod tests {
             }]
         })
         .to_string();
+
+        // When parsing it.
         let events = parser.parse_data(&json);
 
+        // Then the Done event carries an EndTurn stop reason.
         let done = events
             .iter()
             .find(|e| matches!(e, StreamEvent::Done { .. }))

@@ -114,6 +114,7 @@ mod tests {
         // Given a freshly built entry.
         let entry = make_entry("excalimate", "npx ...", true);
 
+        // When reading its preview mode.
         // Then it defaults to the logs pane.
         assert_eq!(entry.preview_mode, McpPreviewMode::Logs);
     }

@@ -201,6 +201,7 @@ mod tests {
     #[rstest::rstest]
     fn from_ledger_returns_defaults_for_empty() {
         // Given an empty ledger.
+        // When deriving stats.
         let stats = TokenStats::from_ledger(&[]);
 
         // Then all fields are zero.
@@ -297,6 +298,7 @@ mod tests {
             children_cost: 0.02,
         };
 
+        // When reading the combined totals.
         // Then totals sum both.
         assert_eq!(agg.total_sent(), 300);
         assert_eq!(agg.total_received(), 150);

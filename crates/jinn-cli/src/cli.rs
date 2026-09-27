@@ -166,20 +166,22 @@ mod tests {
     use super::*;
     use clap::Parser;
 
-    // Given no --log-file argument.
-    // Then Cli.log_file is None (default).
     #[rstest::rstest]
     #[test]
     fn log_file_flag_defaults_to_none() {
+        // Given no --log-file argument.
+        // When parsing.
         let cli = Cli::parse_from(["jinn", "--db-path", "/tmp/test.db"]);
+
+        // Then Cli.log_file is None (default).
         assert!(cli.log_file.is_none());
     }
 
-    // Given a global --log-file argument before a subcommand.
-    // Then Cli.log_file captures the override.
     #[rstest::rstest]
     #[test]
     fn log_file_flag_global_overrides() {
+        // Given a global --log-file argument before a subcommand.
+        // When parsing.
         let cli = Cli::parse_from([
             "jinn",
             "--db-path",
@@ -188,29 +190,32 @@ mod tests {
             "/tmp/x.log",
             "tui",
         ]);
+
+        // Then Cli.log_file captures the override.
         assert_eq!(
             cli.log_file.as_deref(),
             Some(std::path::Path::new("/tmp/x.log"))
         );
     }
 
-    // Given the old --log-dir argument.
-    // Then clap rejects it (the flag has been removed).
     #[rstest::rstest]
     #[test]
     fn log_dir_flag_removed() {
-        // In debug mode, missing --db-path would trigger first,
-        // so provide a dummy path.
+        // Given the old --log-dir argument (and a dummy --db-path, so a
+        // missing --db-path cannot trigger first in debug mode).
+        // When parsing.
         let result =
             Cli::try_parse_from(["jinn", "--db-path", "/tmp/test.db", "--log-dir", "/tmp"]);
+
+        // Then clap rejects it (the flag has been removed).
         assert!(result.is_err());
     }
 
-    // Given --log-file scoped to the headless subcommand (old shape).
-    // Then clap rejects it: the flag is global now, not a subcommand arg.
     #[rstest::rstest]
     #[test]
     fn headless_scoped_log_file_removed() {
+        // Given --log-file scoped to the headless subcommand (old shape).
+        // When parsing.
         let result = Cli::try_parse_from([
             "jinn",
             "--db-path",
@@ -221,14 +226,16 @@ mod tests {
             "send-chat",
             "hi",
         ]);
+
+        // Then clap rejects it: the flag is global now, not a subcommand arg.
         assert!(result.is_err());
     }
 
-    // Given a global --log-file alongside a headless subcommand.
-    // Then Cli.log_file captures the override.
     #[rstest::rstest]
     #[test]
     fn log_file_flag_works_with_headless() {
+        // Given a global --log-file alongside a headless subcommand.
+        // When parsing.
         let cli = Cli::parse_from([
             "jinn",
             "--db-path",
@@ -239,28 +246,30 @@ mod tests {
             "send-chat",
             "hi",
         ]);
+
+        // Then Cli.log_file captures the override.
         assert_eq!(
             cli.log_file.as_deref(),
             Some(std::path::Path::new("/tmp/x.log"))
         );
     }
 
-    // Given no --config argument.
-    // When parsing.
-    // Then Cli.config is None (the default location is used).
     #[rstest::rstest]
     #[test]
     fn config_flag_defaults_to_none() {
+        // Given no --config argument.
+        // When parsing.
         let cli = Cli::parse_from(["jinn", "--db-path", "/tmp/test.db"]);
+
+        // Then Cli.config is None (the default location is used).
         assert!(cli.config.is_none());
     }
 
-    // Given a --config argument before a subcommand.
-    // When parsing.
-    // Then Cli.config captures the override and the subcommand still parses.
     #[rstest::rstest]
     #[test]
     fn config_flag_before_subcommand_captures_override() {
+        // Given a --config argument before a subcommand.
+        // When parsing.
         let cli = Cli::parse_from([
             "jinn",
             "--db-path",
@@ -269,6 +278,8 @@ mod tests {
             "/tmp/alt.toml",
             "tui",
         ]);
+
+        // Then Cli.config captures the override and the subcommand still parses.
         assert_eq!(
             cli.config.as_deref(),
             Some(std::path::Path::new("/tmp/alt.toml"))
@@ -277,12 +288,11 @@ mod tests {
         assert!(matches!(cli.command, Some(Commands::Tui)));
     }
 
-    // Given a --config argument after a subcommand.
-    // When parsing.
-    // Then Cli.config captures the override (the flag is global).
     #[rstest::rstest]
     #[test]
     fn config_flag_after_subcommand_captures_override() {
+        // Given a --config argument after a subcommand.
+        // When parsing.
         let cli = Cli::parse_from([
             "jinn",
             "--db-path",
@@ -291,6 +301,8 @@ mod tests {
             "--config",
             "/tmp/alt.toml",
         ]);
+
+        // Then Cli.config captures the override (the flag is global).
         assert_eq!(
             cli.config.as_deref(),
             Some(std::path::Path::new("/tmp/alt.toml"))

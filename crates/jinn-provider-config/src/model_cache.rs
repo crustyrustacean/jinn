@@ -191,6 +191,7 @@ mod tests {
     #[rstest::rstest]
     fn new_cache_is_empty() {
         // Given a new ModelCache.
+        // When inspecting it before any load.
         let cache = ModelCache::new();
 
         // Then it has no entries and no timestamp.
@@ -340,6 +341,8 @@ mod tests {
     #[rstest::rstest]
     fn cache_path_returns_nonempty_path() {
         // If cache_path returned an empty PathBuf, it wouldn't point to a valid cache location.
+        // Given the current process environment.
+        // When reading the cache path.
         let path = cache_path();
 
         // Then the path is non-empty and contains the expected filename.

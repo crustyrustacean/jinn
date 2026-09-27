@@ -19,6 +19,7 @@ fn chat_entry_id_is_unique() {
     let id1 = ChatEntryId::new();
     let id2 = ChatEntryId::new();
 
+    // When comparing them.
     // Then they are not equal.
     assert_ne!(id1, id2);
 }
@@ -28,7 +29,8 @@ fn chat_entry_id_is_valid_uuid() {
     // Given a generated ID.
     let id = ChatEntryId::new();
 
-    // Then the string representation is a valid UUID.
+    // When parsing the string representation.
+    // Then it is a valid UUID.
     let s = id.to_string();
     assert!(uuid::Uuid::parse_str(&s).is_ok());
 }
@@ -178,7 +180,8 @@ fn with_pin_sets_position() {
     // Given a user entry.
     let entry = ChatEntry::user("test").with_pin(PinPosition::Top);
 
-    // Then pin_position is Some(Top).
+    // When reading pin_position.
+    // Then it is Some(Top).
     assert_eq!(entry.pin_position, Some(PinPosition::Top));
 }
 
@@ -187,7 +190,8 @@ fn is_pinned_returns_true_when_pinned() {
     // Given a pinned entry.
     let entry = ChatEntry::user("test").with_pin(PinPosition::Top);
 
-    // Then is_pinned returns true.
+    // When checking is_pinned.
+    // Then it returns true.
     assert!(entry.is_pinned());
 }
 
@@ -196,7 +200,8 @@ fn is_pinned_returns_false_when_unpinned() {
     // Given a default entry.
     let entry = ChatEntry::user("test");
 
-    // Then is_pinned returns false.
+    // When checking is_pinned.
+    // Then it returns false.
     assert!(!entry.is_pinned());
 }
 
@@ -205,7 +210,8 @@ fn is_protected_from_prune_default_returns_false() {
     // Given a default entry.
     let entry = ChatEntry::user("test");
 
-    // Then is_protected_from_prune returns false.
+    // When checking is_protected_from_prune.
+    // Then it returns false.
     assert!(!entry.is_protected_from_prune());
 }
 
@@ -215,7 +221,8 @@ fn is_protected_from_prune_forced_include_returns_true() {
     let mut entry = ChatEntry::user("test");
     entry.context_override = ContextOverride::ForcedInclude;
 
-    // Then is_protected_from_prune returns true.
+    // When checking is_protected_from_prune.
+    // Then it returns true.
     assert!(entry.is_protected_from_prune());
 }
 
@@ -225,7 +232,8 @@ fn is_protected_from_prune_forced_exclude_returns_true() {
     let mut entry = ChatEntry::user("test");
     entry.context_override = ContextOverride::ForcedExclude;
 
-    // Then is_protected_from_prune returns true.
+    // When checking is_protected_from_prune.
+    // Then it returns true.
     assert!(entry.is_protected_from_prune());
 }
 
@@ -234,7 +242,8 @@ fn pin_position_returns_some_when_pinned() {
     // Given a pinned entry.
     let entry = ChatEntry::user("test").with_pin(PinPosition::Bottom);
 
-    // Then pin_position() returns the correct variant.
+    // When reading pin_position().
+    // Then it returns the correct variant.
     assert_eq!(entry.pin_position(), Some(PinPosition::Bottom));
 }
 
@@ -243,7 +252,8 @@ fn pin_position_returns_none_when_unpinned() {
     // Given an unpinned entry.
     let entry = ChatEntry::user("test");
 
-    // Then pin_position() returns None.
+    // When reading pin_position().
+    // Then it returns None.
     assert_eq!(entry.pin_position(), None);
 }
 
@@ -279,7 +289,8 @@ fn thinking_kind_str_returns_thinking() {
     // Given a thinking entry.
     let entry = ChatEntry::thinking("test");
 
-    // Then kind_str returns "thinking".
+    // When reading kind_str().
+    // Then it returns "thinking".
     assert_eq!(entry.kind_str(), "thinking");
 }
 
@@ -288,7 +299,8 @@ fn thinking_text_returns_content() {
     // Given a thinking entry.
     let entry = ChatEntry::thinking("some reasoning");
 
-    // Then text() returns the reasoning text.
+    // When reading text().
+    // Then it returns the reasoning text.
     assert_eq!(entry.text(), "some reasoning");
 }
 
@@ -345,7 +357,8 @@ fn thinking_entry_pin_position_defaults_to_none() {
     // Given a thinking entry.
     let entry = ChatEntry::thinking("test");
 
-    // Then pin_position is None.
+    // When reading pin_position.
+    // Then it is None.
     assert_eq!(entry.pin_position, None);
 }
 
@@ -367,6 +380,9 @@ fn transient_entry_has_transient_kind() {
 fn transient_kind_str_returns_transient() {
     // Given a transient entry.
     let entry = ChatEntry::transient("test");
+
+    // When reading kind_str().
+    // Then it returns "transient".
     assert_eq!(entry.kind_str(), "transient");
 }
 
@@ -375,7 +391,8 @@ fn transient_text_returns_content() {
     // Given a transient entry.
     let entry = ChatEntry::transient("some hint");
 
-    // Then text() returns the content.
+    // When reading text().
+    // Then it returns the content.
     assert_eq!(entry.text(), "some hint");
 }
 
@@ -400,7 +417,8 @@ fn transient_entry_pin_position_defaults_to_none() {
     // Given a transient entry.
     let entry = ChatEntry::transient("test");
 
-    // Then pin_position is None.
+    // When reading pin_position.
+    // Then it is None.
     assert_eq!(entry.pin_position, None);
 }
 
@@ -511,7 +529,8 @@ fn pending_tool_result_fingerprint_includes_content() {
     let entry1 = ChatEntry::tool_result("id", "bash", "line1", ToolResultStatus::Pending);
     let entry2 = ChatEntry::tool_result("id", "bash", "line1\nline2", ToolResultStatus::Pending);
 
-    // Then their fingerprints differ (content included for all statuses).
+    // When computing their fingerprints.
+    // Then they differ (content included for all statuses).
     assert_ne!(entry1.content_fingerprint(), entry2.content_fingerprint());
 }
 
@@ -521,7 +540,8 @@ fn completed_tool_result_fingerprint_includes_content() {
     let entry1 = ChatEntry::tool_result("id", "bash", "line1", ToolResultStatus::Success);
     let entry2 = ChatEntry::tool_result("id", "bash", "line1\nline2", ToolResultStatus::Success);
 
-    // Then their fingerprints differ (content included for completed).
+    // When computing their fingerprints.
+    // Then they differ (content included for completed).
     assert_ne!(entry1.content_fingerprint(), entry2.content_fingerprint());
 }
 
@@ -544,7 +564,8 @@ fn tool_result_fingerprint_differs_with_truncation() {
         },
     );
 
-    // Then their fingerprints differ (truncation presence affects hash).
+    // When computing their fingerprints.
+    // Then they differ (truncation presence affects hash).
     assert_ne!(entry1.content_fingerprint(), entry2.content_fingerprint());
 }
 
@@ -553,7 +574,8 @@ fn is_empty_assistant_true_for_empty_assistant() {
     // Given an empty assistant entry.
     let entry = ChatEntry::assistant("");
 
-    // Then is_empty_assistant returns true.
+    // When checking is_empty_assistant.
+    // Then it returns true.
     assert!(entry.is_empty_assistant());
 }
 
@@ -562,7 +584,8 @@ fn is_empty_assistant_false_for_nonempty_assistant() {
     // Given a non-empty assistant entry.
     let entry = ChatEntry::assistant("hello");
 
-    // Then is_empty_assistant returns false.
+    // When checking is_empty_assistant.
+    // Then it returns false.
     assert!(!entry.is_empty_assistant());
 }
 
@@ -571,7 +594,8 @@ fn is_empty_assistant_false_for_user_entry() {
     // Given a user entry (even with empty display text).
     let entry = ChatEntry::user("");
 
-    // Then is_empty_assistant returns false.
+    // When checking is_empty_assistant.
+    // Then it returns false.
     assert!(!entry.is_empty_assistant());
 }
 
@@ -580,7 +604,8 @@ fn is_empty_assistant_false_for_system_entry() {
     // Given a system entry.
     let entry = ChatEntry::system("");
 
-    // Then is_empty_assistant returns false.
+    // When checking is_empty_assistant.
+    // Then it returns false.
     assert!(!entry.is_empty_assistant());
 }
 
@@ -589,7 +614,8 @@ fn user_kind_is_included_by_default() {
     // Given a User entry.
     let entry = ChatEntry::user("hello");
 
-    // Then the kind is included by default.
+    // When checking is_included_by_default.
+    // Then the kind is included.
     assert!(entry.kind.is_included_by_default());
 }
 
@@ -598,7 +624,8 @@ fn assistant_kind_is_included_by_default() {
     // Given an Assistant entry.
     let entry = ChatEntry::assistant("response");
 
-    // Then the kind is included by default.
+    // When checking is_included_by_default.
+    // Then the kind is included.
     assert!(entry.kind.is_included_by_default());
 }
 
@@ -607,7 +634,8 @@ fn error_kind_is_not_included_by_default() {
     // Given an Error entry.
     let entry = ChatEntry::error("something went wrong");
 
-    // Then the kind is NOT included by default.
+    // When checking is_included_by_default.
+    // Then the kind is NOT included.
     assert!(!entry.kind.is_included_by_default());
 }
 
@@ -616,7 +644,8 @@ fn tool_call_kind_is_included_by_default() {
     // Given a ToolCall entry.
     let entry = ChatEntry::tool_call("id", "name", "{}");
 
-    // Then the kind is included by default.
+    // When checking is_included_by_default.
+    // Then the kind is included.
     assert!(entry.kind.is_included_by_default());
 }
 
@@ -625,7 +654,8 @@ fn tool_result_kind_is_included_by_default() {
     // Given a ToolResult entry.
     let entry = ChatEntry::tool_result("id", "name", "content", ToolResultStatus::Success);
 
-    // Then the kind is included by default.
+    // When checking is_included_by_default.
+    // Then the kind is included.
     assert!(entry.kind.is_included_by_default());
 }
 
@@ -640,7 +670,8 @@ fn compaction_kind_is_included_by_default() {
         model_used: "gpt-4".to_owned(),
     };
 
-    // Then the kind is included by default.
+    // When checking is_included_by_default.
+    // Then the kind is included.
     assert!(kind.is_included_by_default());
 }
 
@@ -649,7 +680,8 @@ fn thinking_kind_is_not_included_by_default() {
     // Given a Thinking entry.
     let entry = ChatEntry::thinking("reasoning");
 
-    // Then the kind is NOT included by default.
+    // When checking is_included_by_default.
+    // Then the kind is NOT included.
     assert!(!entry.kind.is_included_by_default());
 }
 
@@ -658,7 +690,8 @@ fn transient_kind_is_not_included_by_default() {
     // Given a Transient entry.
     let entry = ChatEntry::transient("hint");
 
-    // Then the kind is NOT included by default.
+    // When checking is_included_by_default.
+    // Then the kind is NOT included.
     assert!(!entry.kind.is_included_by_default());
 }
 
@@ -667,7 +700,8 @@ fn system_kind_is_not_included_by_default() {
     // Given a System entry.
     let entry = ChatEntry::system("status");
 
-    // Then the kind is NOT included by default.
+    // When checking is_included_by_default.
+    // Then the kind is NOT included.
     assert!(!entry.kind.is_included_by_default());
 }
 
@@ -676,7 +710,8 @@ fn actor_kind_is_not_included_by_default() {
     // Given an Actor entry.
     let entry = ChatEntry::actor("echo", "HELLO");
 
-    // Then the kind is NOT included by default.
+    // When checking is_included_by_default.
+    // Then the kind is NOT included.
     assert!(!entry.kind.is_included_by_default());
 }
 
@@ -685,7 +720,8 @@ fn annotation_kind_is_not_included_by_default() {
     // Given an Annotation entry.
     let entry = ChatEntry::annotation(vec![]);
 
-    // Then the kind is NOT included by default.
+    // When checking is_included_by_default.
+    // Then the kind is NOT included.
     assert!(!entry.kind.is_included_by_default());
 }
 
@@ -694,6 +730,7 @@ fn user_entry_is_in_context_by_default() {
     // Given a default User entry.
     let entry = ChatEntry::user("hello");
 
+    // When checking is_in_context.
     // Then it is in context.
     assert!(entry.is_in_context());
 }
@@ -703,6 +740,7 @@ fn thinking_entry_is_not_in_context_by_default() {
     // Given a default Thinking entry.
     let entry = ChatEntry::thinking("reasoning");
 
+    // When checking is_in_context.
     // Then it is NOT in context.
     assert!(!entry.is_in_context());
 }
@@ -712,6 +750,7 @@ fn system_entry_is_not_in_context_by_default() {
     // Given a default System entry.
     let entry = ChatEntry::system("status");
 
+    // When checking is_in_context.
     // Then it is NOT in context.
     assert!(!entry.is_in_context());
 }
@@ -721,6 +760,7 @@ fn transient_entry_is_not_in_context_by_default() {
     // Given a default Transient entry.
     let entry = ChatEntry::transient("hint");
 
+    // When checking is_in_context.
     // Then it is NOT in context.
     assert!(!entry.is_in_context());
 }
@@ -730,6 +770,7 @@ fn actor_entry_is_not_in_context_by_default() {
     // Given a default Actor entry.
     let entry = ChatEntry::actor("echo", "HELLO");
 
+    // When checking is_in_context.
     // Then it is NOT in context.
     assert!(!entry.is_in_context());
 }
@@ -739,6 +780,7 @@ fn pinned_thinking_entry_is_in_context() {
     // Given a Thinking entry pinned to Top.
     let entry = ChatEntry::thinking("reasoning").with_pin(PinPosition::Top);
 
+    // When checking is_in_context.
     // Then pin overrides kind default - it IS in context.
     assert!(entry.is_in_context());
 }
@@ -748,6 +790,7 @@ fn pinned_system_entry_is_in_context() {
     // Given a System entry pinned to Top.
     let entry = ChatEntry::system("instruction").with_pin(PinPosition::Top);
 
+    // When checking is_in_context.
     // Then pin overrides kind default - it IS in context.
     assert!(entry.is_in_context());
 }
@@ -757,6 +800,7 @@ fn ignored_user_entry_is_not_in_context() {
     // Given a User entry marked as ignored.
     let entry = ChatEntry::user("hello").with_ignored(true);
 
+    // When checking is_in_context.
     // Then it is NOT in context.
     assert!(!entry.is_in_context());
 }
@@ -768,6 +812,7 @@ fn ignored_but_pinned_entry_is_in_context() {
         .with_ignored(true)
         .with_pin(PinPosition::Top);
 
+    // When checking is_in_context.
     // Then pin overrides ignore - it IS in context.
     assert!(entry.is_in_context());
 }
@@ -779,6 +824,7 @@ fn pinned_ignored_thinking_entry_is_in_context() {
         .with_ignored(true)
         .with_pin(PinPosition::Bottom);
 
+    // When checking is_in_context.
     // Then pin overrides both kind default and ignore - it IS in context.
     assert!(entry.is_in_context());
 }
@@ -793,6 +839,7 @@ fn all_include_default_kinds_are_in_context() {
         ChatEntry::tool_result("id", "name", "content", ToolResultStatus::Success),
     ];
 
+    // When checking is_in_context for each.
     // Then all are in context by default.
     for entry in &entries {
         assert!(
@@ -814,6 +861,7 @@ fn all_exclude_default_kinds_are_not_in_context() {
         ChatEntry::actor("echo", "HELLO"),
     ];
 
+    // When checking is_in_context for each.
     // Then none are in context by default.
     for entry in &entries {
         assert!(
@@ -829,6 +877,7 @@ fn empty_assistant_default_is_not_in_context() {
     // Given an empty Assistant entry with Default override.
     let entry = ChatEntry::assistant("");
 
+    // When checking is_in_context.
     // Then it is NOT in context (empty assistants carry no information).
     assert!(!entry.is_in_context());
 }
@@ -838,6 +887,7 @@ fn nonempty_assistant_default_is_in_context() {
     // Given a non-empty Assistant entry with Default override.
     let entry = ChatEntry::assistant("response text");
 
+    // When checking is_in_context.
     // Then it IS in context.
     assert!(entry.is_in_context());
 }
@@ -847,6 +897,7 @@ fn empty_assistant_forced_include_is_in_context() {
     // Given an empty Assistant entry with ForcedInclude override.
     let entry = ChatEntry::assistant("").with_context_override(ContextOverride::ForcedInclude);
 
+    // When checking is_in_context.
     // Then ForcedInclude overrides the empty-assistant rule - it IS in context.
     assert!(entry.is_in_context());
 }
@@ -856,6 +907,7 @@ fn empty_assistant_forced_exclude_is_not_in_context() {
     // Given an empty Assistant entry with ForcedExclude override.
     let entry = ChatEntry::assistant("").with_context_override(ContextOverride::ForcedExclude);
 
+    // When checking is_in_context.
     // Then it is NOT in context.
     assert!(!entry.is_in_context());
 }
@@ -865,6 +917,7 @@ fn pinned_empty_assistant_default_is_in_context() {
     // Given an empty Assistant entry that is pinned.
     let entry = ChatEntry::assistant("").with_pin(PinPosition::Top);
 
+    // When checking is_in_context.
     // Then pin overrides the empty-assistant rule - it IS in context.
     assert!(entry.is_in_context());
 }
@@ -874,6 +927,7 @@ fn pending_tool_result_default_is_not_in_context() {
     // Given a ToolResult with Pending status and Default override.
     let entry = ChatEntry::tool_result("tc-1", "bash", "", ToolResultStatus::Pending);
 
+    // When checking is_in_context.
     // Then it is NOT in context (pending results are incomplete).
     assert!(!entry.is_in_context());
 }
@@ -883,6 +937,7 @@ fn success_tool_result_default_is_in_context() {
     // Given a ToolResult with Success status and Default override.
     let entry = ChatEntry::tool_result("tc-1", "bash", "output", ToolResultStatus::Success);
 
+    // When checking is_in_context.
     // Then it IS in context.
     assert!(entry.is_in_context());
 }
@@ -892,6 +947,7 @@ fn failure_tool_result_default_is_in_context() {
     // Given a ToolResult with Failure status and Default override.
     let entry = ChatEntry::tool_result("tc-1", "bash", "error", ToolResultStatus::Failure);
 
+    // When checking is_in_context.
     // Then it IS in context (failed results are still complete).
     assert!(entry.is_in_context());
 }
@@ -902,6 +958,7 @@ fn pending_tool_result_forced_include_is_in_context() {
     let entry = ChatEntry::tool_result("tc-1", "bash", "", ToolResultStatus::Pending)
         .with_context_override(ContextOverride::ForcedInclude);
 
+    // When checking is_in_context.
     // Then ForcedInclude overrides the pending rule - it IS in context.
     assert!(entry.is_in_context());
 }
@@ -912,6 +969,7 @@ fn pinned_pending_tool_result_default_is_in_context() {
     let entry = ChatEntry::tool_result("tc-1", "bash", "", ToolResultStatus::Pending)
         .with_pin(PinPosition::Top);
 
+    // When checking is_in_context.
     // Then pin overrides the pending rule - it IS in context.
     assert!(entry.is_in_context());
 }
@@ -964,6 +1022,7 @@ fn context_override_default_is_default_trait() {
     // Given a default ContextOverride.
     let value = ContextOverride::default();
 
+    // When comparing it to the Default variant.
     // Then it is Default.
     assert_eq!(value, ContextOverride::Default);
 }
@@ -1256,7 +1315,8 @@ fn content_signature_is_stable_for_identical_content() {
     let entry1 = ChatEntry::assistant("hello");
     let entry2 = ChatEntry::assistant("hello");
 
-    // Then their signatures match.
+    // When computing their signatures.
+    // Then they match.
     assert_eq!(entry1.content_signature(), entry2.content_signature());
 }
 
@@ -1266,7 +1326,8 @@ fn content_signature_differs_across_kinds() {
     let assistant = ChatEntry::assistant("hello");
     let system = ChatEntry::system("hello");
 
-    // Then their signatures differ, so a kind change invalidates the cache.
+    // When computing their signatures.
+    // Then they differ, so a kind change invalidates the cache.
     assert_ne!(assistant.content_signature(), system.content_signature());
 }
 
@@ -1333,10 +1394,10 @@ fn content_signature_changes_when_a_fingerprinted_field_changes(
     #[case] varied: ChatEntry,
 ) {
     // Given two entries differing in exactly one fingerprinted field.
-    // And their fingerprints agree the change is real.
+    // When computing their fingerprints and signatures.
+    // Then their fingerprints agree the change is real.
     assert_ne!(base.content_fingerprint(), varied.content_fingerprint());
-
-    // Then the signature also reflects the change.
+    // And the signature also reflects the change.
     assert_ne!(base.content_signature(), varied.content_signature());
 }
 
@@ -1346,7 +1407,8 @@ fn content_signature_is_unchanged_by_same_length_text_edits() {
     let one = ChatEntry::assistant("hello");
     let two = ChatEntry::assistant("world");
 
-    // Then their signatures match, even though the content differs.
+    // When computing their signatures.
+    // Then they match, even though the content differs.
     //
     // This pins the known limitation of the O(1) signature: it is a length
     // summary, so a same-length content swap is invisible to it. Callers must

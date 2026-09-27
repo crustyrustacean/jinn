@@ -163,6 +163,7 @@ mod tests {
 
     #[rstest::rstest]
     fn tool_definition_roundtrips_through_serde() {
+        // Given a tool definition with a prompt snippet and guidelines.
         let def = ToolDefinition {
             name: "file_read".to_owned(),
             description: "Read a file".to_owned(),
@@ -171,8 +172,12 @@ mod tests {
             prompt_guidelines: vec!["Use read to examine files.".to_owned()],
             server_tool_type: None,
         };
+
+        // When serializing and deserializing.
         let json = serde_json::to_string(&def).expect("serialize");
         let back: ToolDefinition = serde_json::from_str(&json).expect("deserialize");
+
+        // Then it roundtrips.
         assert_eq!(back, def);
     }
 
@@ -192,18 +197,24 @@ mod tests {
 
     #[rstest::rstest]
     fn tool_call_roundtrips_through_serde() {
+        // Given a tool call.
         let call = ToolCall {
             id: "call_123".to_owned(),
             name: "echo".to_owned(),
             arguments: r#"{"input":"hi"}"#.to_owned(),
         };
+
+        // When serializing and deserializing.
         let json = serde_json::to_string(&call).expect("serialize");
         let back: ToolCall = serde_json::from_str(&json).expect("deserialize");
+
+        // Then it roundtrips.
         assert_eq!(back, call);
     }
 
     #[rstest::rstest]
     fn tool_result_roundtrips_through_serde() {
+        // Given a tool result with no truncation.
         let result = ToolResult {
             tool_call_id: "call_123".to_owned(),
             name: "echo".to_owned(),
@@ -213,13 +224,18 @@ mod tests {
             truncation: None,
             pin_position: None,
         };
+
+        // When serializing and deserializing.
         let json = serde_json::to_string(&result).expect("serialize");
         let back: ToolResult = serde_json::from_str(&json).expect("deserialize");
+
+        // Then it roundtrips.
         assert_eq!(back, result);
     }
 
     #[rstest::rstest]
     fn tool_result_with_truncation_roundtrips() {
+        // Given a tool result carrying truncation metadata and a full copy.
         let result = ToolResult {
             tool_call_id: "call_456".to_owned(),
             name: "bash".to_owned(),
@@ -235,8 +251,12 @@ mod tests {
             }),
             pin_position: None,
         };
+
+        // When serializing and deserializing.
         let json = serde_json::to_string(&result).expect("serialize");
         let back: ToolResult = serde_json::from_str(&json).expect("deserialize");
+
+        // Then it roundtrips.
         assert_eq!(back, result);
     }
 
@@ -257,6 +277,9 @@ mod tests {
 
     #[rstest::rstest]
     fn server_tool_type_as_str_returns_correct_string() {
+        // Given the OpenRouter web search server tool type.
+        // When reading its wire name.
+        // Then it is the "openrouter:web_search" name.
         assert_eq!(
             ServerToolType::OpenrouterWebSearch.as_str(),
             "openrouter:web_search"
@@ -265,6 +288,7 @@ mod tests {
 
     #[rstest::rstest]
     fn tool_definition_with_server_tool_type_roundtrips() {
+        // Given a tool definition carrying a server tool type.
         let def = ToolDefinition {
             name: "openrouter:web_search".to_owned(),
             description: "Search the web".to_owned(),
@@ -273,8 +297,12 @@ mod tests {
             prompt_guidelines: vec![],
             server_tool_type: Some(ServerToolType::OpenrouterWebSearch),
         };
+
+        // When serializing and deserializing.
         let json = serde_json::to_string(&def).expect("serialize");
         let back: ToolDefinition = serde_json::from_str(&json).expect("deserialize");
+
+        // Then it roundtrips.
         assert_eq!(back, def);
         assert_eq!(
             back.server_tool_type,
@@ -300,7 +328,8 @@ mod tests {
         // Given the OpenRouter web search server tool.
         let tool = ServerToolType::OpenrouterWebSearch;
 
-        // Then it is supported when the provider is "openrouter".
+        // When checking the "openrouter" provider.
+        // Then it is supported.
         assert!(tool.supports_provider("openrouter"));
     }
 
@@ -309,7 +338,8 @@ mod tests {
         // Given the OpenRouter web search server tool.
         let tool = ServerToolType::OpenrouterWebSearch;
 
-        // Then it is NOT supported for other providers.
+        // When checking other providers.
+        // Then it is NOT supported for any of them.
         assert!(!tool.supports_provider("zai"));
         assert!(!tool.supports_provider("ollama"));
         assert!(!tool.supports_provider(""));
@@ -342,6 +372,7 @@ mod tests {
         // Given a plain function tool.
         let def = function_tool();
 
+        // When checking availability per provider.
         // Then it is available regardless of provider.
         assert!(def.available_for_provider("zai"));
         assert!(def.available_for_provider("openrouter"));
@@ -353,7 +384,8 @@ mod tests {
         // Given the OpenRouter web search tool.
         let def = web_search_tool();
 
-        // Then it is available on the openrouter provider.
+        // When checking availability on openrouter.
+        // Then it is available.
         assert!(def.available_for_provider("openrouter"));
     }
 
@@ -362,7 +394,8 @@ mod tests {
         // Given the OpenRouter web search tool.
         let def = web_search_tool();
 
-        // Then it is NOT available on a non-openrouter provider.
+        // When checking availability on a non-openrouter provider.
+        // Then it is NOT available.
         assert!(!def.available_for_provider("zai"));
         assert!(!def.available_for_provider("ollama"));
         assert!(!def.available_for_provider(""));

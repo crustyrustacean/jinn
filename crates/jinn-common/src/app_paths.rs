@@ -459,8 +459,11 @@ mod tests {
         // Given a default AppPaths.
         let paths = AppPaths::default();
 
-        // Then the system data dir is /usr/share/jinn.
-        assert_eq!(paths.system_data_dir(), Path::new("/usr/share/jinn"));
+        // When reading the system data dir.
+        let system_data_dir = paths.system_data_dir();
+
+        // Then it is /usr/share/jinn.
+        assert_eq!(system_data_dir, Path::new("/usr/share/jinn"));
     }
 
     #[rstest::rstest]
@@ -469,8 +472,11 @@ mod tests {
         let root = tempfile::TempDir::new().expect("temp dir");
         let paths = AppPaths::new_in(root.path());
 
-        // Then the system data dir is root/share.
-        assert_eq!(paths.system_data_dir(), root.path().join("share"));
+        // When reading the system data dir.
+        let system_data_dir = paths.system_data_dir();
+
+        // Then it is root/share.
+        assert_eq!(system_data_dir, root.path().join("share"));
     }
 
     #[rstest::rstest]
@@ -478,11 +484,11 @@ mod tests {
         // Given a default AppPaths.
         let paths = AppPaths::default();
 
-        // Then the system skills dir is /usr/share/jinn/skills.
-        assert_eq!(
-            paths.system_skills_dir(),
-            Path::new("/usr/share/jinn/skills")
-        );
+        // When reading the system skills dir.
+        let system_skills_dir = paths.system_skills_dir();
+
+        // Then it is /usr/share/jinn/skills.
+        assert_eq!(system_skills_dir, Path::new("/usr/share/jinn/skills"));
     }
 
     #[rstest::rstest]
@@ -491,8 +497,11 @@ mod tests {
         let root = tempfile::TempDir::new().expect("temp dir");
         let paths = AppPaths::new_in(root.path());
 
-        // Then the system skills dir is root/share/skills.
-        assert_eq!(paths.system_skills_dir(), root.path().join("share/skills"));
+        // When reading the system skills dir.
+        let system_skills_dir = paths.system_skills_dir();
+
+        // Then it is root/share/skills.
+        assert_eq!(system_skills_dir, root.path().join("share/skills"));
     }
 
     #[rstest::rstest]
@@ -501,9 +510,12 @@ mod tests {
         let root = tempfile::TempDir::new().expect("temp dir");
         let paths = AppPaths::new_in(root.path());
 
-        // Then log_path is root/state/jinn/jinn.log.
+        // When reading the log path.
+        let log_path = paths.log_path();
+
+        // Then it is root/state/jinn/jinn.log.
         assert_eq!(
-            paths.log_path(),
+            log_path,
             root.path().join("state").join("jinn").join("jinn.log")
         );
     }
@@ -514,9 +526,12 @@ mod tests {
         let root = tempfile::TempDir::new().expect("temp dir");
         let paths = AppPaths::new_in(root.path());
 
-        // Then state_file_path is root/state/jinn/state.toml.
+        // When reading the state file path.
+        let state_file_path = paths.state_file_path();
+
+        // Then it is root/state/jinn/state.toml.
         assert_eq!(
-            paths.state_file_path(),
+            state_file_path,
             root.path().join("state").join("jinn").join("state.toml")
         );
     }
@@ -527,9 +542,11 @@ mod tests {
         let root = tempfile::TempDir::new().expect("temp dir");
         let paths = AppPaths::new_in(root.path());
 
-        // Then the filename component is jinn.log.
+        // When reading the filename component of the log path.
         let log_path = paths.log_path();
         let filename = log_path.file_name().and_then(|s| s.to_str());
+
+        // Then it is jinn.log.
         assert_eq!(filename, Some("jinn.log"));
     }
 

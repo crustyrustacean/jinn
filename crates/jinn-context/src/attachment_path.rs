@@ -488,22 +488,31 @@ mod tests {
     #[rstest::rstest]
     fn sniff_png_from_magic_bytes() {
         // Given PNG magic bytes.
+        let bytes = b"\x89PNG\r\n\x1a\n";
+
+        // When sniffing the media type.
         // Then the sniffer identifies it as image/png.
-        assert_eq!(sniff_media_type(b"\x89PNG\r\n\x1a\n"), Some("image/png"));
+        assert_eq!(sniff_media_type(bytes), Some("image/png"));
     }
 
     #[rstest::rstest]
     fn sniff_jpeg_from_magic_bytes() {
         // Given JPEG magic bytes.
+        let bytes = b"\xff\xd8\xff\xe0";
+
+        // When sniffing the media type.
         // Then the sniffer identifies it as image/jpeg.
-        assert_eq!(sniff_media_type(b"\xff\xd8\xff\xe0"), Some("image/jpeg"));
+        assert_eq!(sniff_media_type(bytes), Some("image/jpeg"));
     }
 
     #[rstest::rstest]
     fn sniff_returns_none_for_unknown() {
         // Given non-image bytes.
+        let bytes = b"plain text";
+
+        // When sniffing the media type.
         // Then the sniffer returns None.
-        assert_eq!(sniff_media_type(b"plain text"), None);
+        assert_eq!(sniff_media_type(bytes), None);
     }
 
     #[rstest::rstest]

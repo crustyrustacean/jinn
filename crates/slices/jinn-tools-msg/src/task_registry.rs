@@ -123,33 +123,49 @@ mod tests {
     fn has_in_flight_reflects_registration() {
         // Given an empty registry.
         let registry = TaskSpawnRegistry::default();
+        let untouched = TaskSpawnRegistry::default();
         let parent = SessionId::new();
         let child = SessionId::new();
-
-        // Then the parent has nothing in flight.
-        assert!(!registry.has_in_flight(&parent));
 
         // When registering a pair.
         let _guard = registry.guard(parent.clone(), child);
 
         // Then the parent has an in-flight task.
         assert!(registry.has_in_flight(&parent));
+        // And the same parent had nothing in flight before the registration.
+        assert!(!untouched.has_in_flight(&parent));
     }
 
     #[rstest::rstest]
     #[test]
     fn guard_drop_unregisters_pair() {
-        // Given a registry with a registered pair.
+        // Given a registry and a guard holding a registered pair.
         let registry = TaskSpawnRegistry::default();
         let parent = SessionId::new();
         let child = SessionId::new();
-        {
-            let _guard = registry.guard(parent.clone(), child);
-            assert!(registry.has_in_flight(&parent));
-        }
+        let guard = registry.guard(parent.clone(), child);
 
-        // Then dropping the guard unregisters it.
+        // When the guard is dropped.
+        drop(guard);
+
+        // Then the pair is unregistered.
         assert!(!registry.has_in_flight(&parent));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn guard_tracks_pair_while_alive() {
+        // Given a registry and a guard holding a registered pair.
+        let registry = TaskSpawnRegistry::default();
+        let parent = SessionId::new();
+        let child = SessionId::new();
+        let _guard = registry.guard(parent.clone(), child);
+
+        // When checking the parent for in-flight work.
+        let in_flight = registry.has_in_flight(&parent);
+
+        // Then the pair is still registered.
+        assert!(in_flight);
     }
 
     #[rstest::rstest]
@@ -160,6 +176,8 @@ mod tests {
         let parent = SessionId::new();
         let child = SessionId::new();
         let guard = registry.guard(parent.clone(), child);
+
+        // When the guard is defused before it drops.
         guard.defuse();
 
         // Then the pair is gone while the guard is still alive.

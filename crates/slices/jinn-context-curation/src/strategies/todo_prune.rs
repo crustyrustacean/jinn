@@ -522,13 +522,16 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn no_todo_calls_produces_no_mutations() {
+        // Given a history with no todo tool calls.
         let history = vec![
             ChatEntry::user("hello"),
             ChatEntry::assistant("hi"),
             ChatEntry::user("what is 2+2?"),
             ChatEntry::assistant("4"),
         ];
+        // When evaluating the history.
         let mutations = evaluate(history);
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
@@ -565,6 +568,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn multiple_get_task_list_prunes_older() {
+        // Given 3 get_task_list pairs and a worker keeping the last 1.
         let mut history = Vec::new();
         // First call (older — should be pruned).
         let cr1 = get_task_list_call_result("tc-1", "list v1");
@@ -575,8 +579,10 @@ mod tests {
         history.push(cr2[0].clone());
         history.push(cr2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
         // Should emit: 2 includes for tc-2 (the latest) + 2 excludes for tc-1.
+        // Then the two older pairs are pruned.
         assert_eq!(mutations.len(), 4);
 
         // tc-1 (superseded) is excluded; tc-2 (latest) is included.
@@ -589,6 +595,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn multiple_complete_task_prunes_older() {
+        // Given 3 complete_task pairs and a worker keeping the last 1.
         let mut history = Vec::new();
         let cr1 = complete_task_call_result("tc-1", "completed t1");
         history.push(cr1[0].clone());
@@ -597,8 +604,10 @@ mod tests {
         history.push(cr2[0].clone());
         history.push(cr2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
         // 2 includes for tc-2 (latest) + 2 excludes for tc-1.
+        // Then the two older pairs are pruned.
         assert_eq!(mutations.len(), 4);
 
         assert!(any_exclude(&mutations, &cr1[0].id));
@@ -610,6 +619,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn interleaved_todo_tools_pruned_as_group() {
+        // Given 3 interleaved get_task_list pairs and a worker keeping the last 1.
         let mut history = Vec::new();
         // get_task_list v1 (older — should be pruned)
         let g1 = get_task_list_call_result("g-1", "list v1");
@@ -628,9 +638,11 @@ mod tests {
         history.push(c2[0].clone());
         history.push(c2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
         // Unified pruning: only c-2 survives. g-1, c-1, g-2 are pruned
         // (6 excludes) and c-2 is force-included (2 includes) = 8.
+        // Then the two older pairs are pruned.
         assert_eq!(mutations.len(), 8);
 
         // g-1, c-1, and g-2 should be pruned.
@@ -650,6 +662,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn already_excluded_no_duplicate_mutation() {
+        // Given a todo pair that is already fully excluded, plus a newer todo pair.
         let mut history = Vec::new();
         let cr1 = get_task_list_call_result("tc-1", "list v1");
         // Mark both as already excluded.
@@ -674,9 +687,11 @@ mod tests {
         history.push(cr2[0].clone());
         history.push(cr2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
         // tc-1 halves are already excluded → their re-excludes are emitted
         // but are apply-time no-ops; tc-2 gets its 2 includes.
+        // Then no duplicate mutations are produced for the excluded pair.
         assert_eq!(mutations.len(), 4);
         assert!(any_include(&mutations, &cr2[0].id));
         assert!(any_include(&mutations, &cr2[1].id));
@@ -717,6 +732,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn tool_call_without_result_still_prunes_call() {
+        // Given a todo call with no result, plus 2 newer todo pairs.
         let mut history = Vec::new();
         // Orphan ToolCall with no corresponding ToolResult.
         history.push(ChatEntry::tool_call(
@@ -730,9 +746,11 @@ mod tests {
         history.push(cr2[0].clone());
         history.push(cr2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
         // 3 mutations: 2 includes for tc-2 (latest, protected) + the orphan
         // ToolCall exclude (it has no result half to prune).
+        // Then the orphaned call is pruned.
         assert_eq!(mutations.len(), 3);
         assert!(any_include(&mutations, &cr2[0].id));
         assert!(any_include(&mutations, &cr2[1].id));
@@ -754,6 +772,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn three_calls_prunes_first_two() {
+        // Given 3 todo pairs and a worker keeping the last 1.
         let mut history = Vec::new();
         let cr1 = get_task_list_call_result("tc-1", "v1");
         history.push(cr1[0].clone());
@@ -765,8 +784,10 @@ mod tests {
         history.push(cr3[0].clone());
         history.push(cr3[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
         // tc-1 + tc-2 excluded (4) and tc-3 included (2) = 6 mutations.
+        // Then the first two pairs are pruned.
         assert_eq!(mutations.len(), 6);
 
         // tc-1 and tc-2 pruned.
@@ -784,6 +805,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn other_tool_calls_not_affected() {
+        // Given 3 bash pairs and 3 todo pairs, with a worker keeping the last 1 of each tool.
         let mut history = Vec::new();
         // A read tool call (should not be touched).
         history.push(ChatEntry::tool_call(
@@ -802,9 +824,11 @@ mod tests {
         history.push(cr[0].clone());
         history.push(cr[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
         // The single todo pair is the latest → 2 includes. Non-todo tools
         // are untouched.
+        // Then only the todo pairs are pruned.
         assert_eq!(mutations.len(), 2);
         assert!(any_include(&mutations, &cr[0].id));
         assert!(any_include(&mutations, &cr[1].id));
@@ -813,6 +837,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn different_todo_tools_prunes_older() {
+        // Given a get_task_list pair then a complete_task pair, with a worker keeping the last 1.
         let mut history = Vec::new();
         // add_task (older — should be pruned)
         let a1 = add_task_call_result("a-1", "created t1");
@@ -823,8 +848,10 @@ mod tests {
         history.push(a2[0].clone());
         history.push(a2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
         // a-1 excluded (2) + a-2 included (2) = 4 mutations.
+        // Then the older get_task_list pair is pruned.
         assert_eq!(mutations.len(), 4);
 
         assert!(any_exclude(&mutations, &a1[0].id));
@@ -836,6 +863,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn mixed_todo_tools_keeps_only_last() {
+        // Given interleaved get_task_list and complete_task pairs, with a worker keeping the last 1.
         let mut history = Vec::new();
         // add_task (oldest)
         let a1 = add_task_call_result("a-1", "created t1");
@@ -850,8 +878,10 @@ mod tests {
         history.push(g1[0].clone());
         history.push(g1[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
         // a-1 + a-2 excluded (4) and g-1 included (2) = 6 mutations.
+        // Then only the most recent pair survives.
         assert_eq!(mutations.len(), 6);
 
         // a-1 and a-2 pruned.
@@ -947,50 +977,64 @@ mod tests {
         assert!(!any_exclude(&mutations, &cr1[1].id));
     }
 
+    fn history_with_aged_todo_calls() -> (Vec<ChatEntry>, ChatEntryId, ChatEntryId) {
+        let mut history = Vec::new();
+        let mut oldest = None;
+        for (i, summary) in ["list v1", "list v2", "list v3"].iter().enumerate() {
+            let pair = get_task_list_call_result(&format!("tc-{i}"), summary);
+            if oldest.is_none() {
+                oldest = Some((pair[0].id.clone(), pair[1].id.clone()));
+            }
+            history.push(pair[0].clone());
+            history.push(pair[1].clone());
+        }
+        history.extend(std::iter::repeat_n(ChatEntry::assistant("tail"), 46));
+        let (call, result) = oldest.expect("three pairs pushed");
+        (history, call, result)
+    }
+
     #[rstest::rstest]
     #[test]
-    fn min_age_boundary_strict_less_than_todo() {
-        // Three pairs padded to 52 entries: oldest call_idx 0 (age 51),
-        // superseded call_idx 2 (age 49), latest call_idx 4 (age 47).
-        //
-        // is_within_min_age returns true when age < min_age (strict
-        // less-than). The superseded pair bypasses min_age (protect_latest);
-        // the boundary is observable on the oldest pair:
-        //   min_age = 52: age 51 < 52 → protected (no exclude for tc-1).
-        //   min_age = 51: age 51 < 51 is false → NOT protected (tc-1 excluded).
-        let mut history = Vec::new();
-        let cr1 = get_task_list_call_result("tc-1", "list v1");
-        history.push(cr1[0].clone());
-        history.push(cr1[1].clone());
-        let cr2 = get_task_list_call_result("tc-2", "list v2");
-        history.push(cr2[0].clone());
-        history.push(cr2[1].clone());
-        let cr3 = get_task_list_call_result("tc-3", "list v3");
-        history.push(cr3[0].clone());
-        history.push(cr3[1].clone());
-        history.extend(std::iter::repeat_n(ChatEntry::assistant("tail"), 46));
+    fn min_age_boundary_protects_the_oldest_pair_below_it() {
+        // Given 3 todo calls whose oldest call is at age 51, and a worker with
+        // min_age 52.
+        let (history, oldest_call, oldest_result) = history_with_aged_todo_calls();
 
-        // Protected: age = 51 < min_age = 52 → only the 2 latest includes
-        // (the superseded pair's demote+exclude bypasses min_age).
-        let mutations = evaluate_with_min_age(history.clone(), 52);
+        // When evaluating.
+        let mutations = evaluate_with_min_age(history, 52);
+
+        // Then the oldest pair is protected while the superseded pair still demotes.
         assert_eq!(
             mutations.len(),
             4,
             "age = min_age - 1 must protect only the oldest pair"
         );
-        assert!(mutations.iter().all(|m| !targets_exclude(m, &cr1[0].id)));
-        assert!(mutations.iter().all(|m| !targets_exclude(m, &cr1[1].id)));
+        assert!(mutations.iter().all(|m| !targets_exclude(m, &oldest_call)));
+        assert!(
+            mutations
+                .iter()
+                .all(|m| !targets_exclude(m, &oldest_result))
+        );
+    }
 
-        // Not protected: age = 51 = min_age → oldest pair excluded too
-        // (2 excludes for tc-1 + 2 excludes for tc-2 + 2 includes = 6).
+    #[rstest::rstest]
+    #[test]
+    fn min_age_boundary_is_strictly_less_than_for_todo() {
+        // Given 3 todo calls whose oldest call is at age 51, and a worker with
+        // min_age 51.
+        let (history, oldest_call, oldest_result) = history_with_aged_todo_calls();
+
+        // When evaluating.
         let mutations = evaluate_with_min_age(history, 51);
+
+        // Then the oldest pair is not protected either.
         assert_eq!(
             mutations.len(),
             6,
             "age = min_age must NOT be protected (strict less-than)"
         );
-        assert!(any_exclude(&mutations, &cr1[0].id));
-        assert!(any_exclude(&mutations, &cr1[1].id));
+        assert!(any_exclude(&mutations, &oldest_call));
+        assert!(any_exclude(&mutations, &oldest_result));
     }
 
     // ------------------------------------------------------------------

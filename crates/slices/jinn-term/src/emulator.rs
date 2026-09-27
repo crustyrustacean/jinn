@@ -499,6 +499,7 @@ mod tests {
         // Given a fresh emulator.
         let emu = Emulator::default();
 
+        // When reading the transcript tail before any sync.
         // Then the transcript tail is empty.
         assert!(emu.transcript_tail(10).is_empty());
     }

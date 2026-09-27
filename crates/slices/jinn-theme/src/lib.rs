@@ -248,6 +248,7 @@ mod tests {
     #[rstest::rstest]
     fn missing_directories_yield_default_only() {
         // Given directories that do not exist.
+        // When scanning both directories.
         let entries = scan(Path::new("/nonexistent-a"), Path::new("/nonexistent-b"));
 
         // Then the selection is the built-in default alone.

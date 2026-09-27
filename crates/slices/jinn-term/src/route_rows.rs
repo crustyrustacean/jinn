@@ -954,6 +954,8 @@ mod tests {
         // Given the attached rows.
         let routes = KeyRoutes::new();
         attach_rows(&routes, "<c-g>");
+
+        // When reading the attached rows' keys and outcomes.
         let rows = routes.rows();
 
         // Then the send-key row binds no key (the key hook mints its

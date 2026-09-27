@@ -164,9 +164,15 @@ mod tests {
 
     #[rstest::rstest]
     fn the_tools_and_skills_defaults_are_empty() {
-        // Given nothing configured.
+        // Given no configuration for the tools or skills sections.
+        let tools = ToolsConfig::default();
+        let skills = SkillsConfig::default();
+
+        // When reading their disabled sets.
+        let (disabled_tools, disabled_skills) = (&tools.disabled, &skills.disabled);
+
         // Then the code defaults disable nothing.
-        assert!(ToolsConfig::default().disabled.is_empty());
-        assert!(SkillsConfig::default().disabled.is_empty());
+        assert!(disabled_tools.is_empty());
+        assert!(disabled_skills.is_empty());
     }
 }

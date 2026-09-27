@@ -134,21 +134,28 @@ async fn tick_loop_picks_up_sessions_marked_after_startup() {
     assert!(indexed, "tick loop should converge on newly dirty sessions");
 }
 
-#[rstest::rstest]
-#[tokio::test]
-async fn failed_drain_leaves_marker_and_next_drain_recovers() {
-    // Given a session whose marker is re-inserted directly (simulating
-    // pending work left behind by a failed drain).
-    let (_dir, harness, deps, store) = sqlite_actor_deps().await;
-    let session_id = SessionId::new();
-    deps.services
-        .session_store
-        .save(&needle_session(&session_id))
-        .await
-        .expect("save");
+/// Spawns the search-index actor on a fast tick, as every drain test needs.
+fn spawn_fast_search_index(
+    harness: &TestHarness,
+    deps: &jinn_kernel::common::actor_deps::ActorDeps,
+) {
+    let _path = crate::search_index_actor::SearchIndexActor::spawn(
+        harness.system(),
+        SearchIndexActorDeps {
+            deps: deps.clone(),
+            interval: Duration::from_millis(50),
+            batch: usize::MAX,
+        },
+    );
+}
 
-    // Drain once so the index is built, then re-mark the session dirty the
-    // way a crashed drain would leave it (insert straight into fts_dirty).
+/// Drains the index, then re-marks `session_id` dirty straight in
+/// `fts_dirty` — the pending work a crashed drain leaves behind.
+async fn prime_then_mark_dirty(
+    store: &std::sync::Arc<SqliteSessionStore>,
+    deps: &jinn_kernel::common::actor_deps::ActorDeps,
+    session_id: &SessionId,
+) {
     let primed = deps
         .services
         .session_store
@@ -162,28 +169,39 @@ async fn failed_drain_leaves_marker_and_next_drain_recovers() {
             .await
             .expect("priming reindex");
     }
+    let marked = session_id.to_string();
     store
         .pool()
         .with_conn(move |conn| {
             conn.execute(
                 "INSERT INTO fts_dirty(session_id) VALUES (?) \
                  ON CONFLICT(session_id) DO NOTHING",
-                rusqlite::params![session_id.to_string()],
+                rusqlite::params![marked],
             )
             .map_err(daow::Error::from)
         })
         .await
         .expect("mark dirty");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn failed_drain_leaves_marker_and_next_drain_recovers() {
+    // Given a session whose marker is re-inserted directly (simulating
+    // pending work left behind by a failed drain).
+    let (_dir, harness, deps, store) = sqlite_actor_deps().await;
+    let session_id = SessionId::new();
+    deps.services
+        .session_store
+        .save(&needle_session(&session_id))
+        .await
+        .expect("save");
+
+    // And the index is drained, then the session re-marked dirty.
+    prime_then_mark_dirty(&store, &deps, &session_id).await;
 
     // When the actor runs with a tiny interval.
-    let _path = crate::search_index_actor::SearchIndexActor::spawn(
-        harness.system(),
-        SearchIndexActorDeps {
-            deps: deps.clone(),
-            interval: Duration::from_millis(50),
-            batch: usize::MAX,
-        },
-    );
+    spawn_fast_search_index(&harness, &deps);
 
     // Then a tick drains the pending work to zero and the session stays
     // searchable throughout.
@@ -208,7 +226,8 @@ async fn failed_drain_leaves_marker_and_next_drain_recovers() {
 #[test]
 fn production_interval_is_five_seconds() {
     // Given the production interval constant.
-    // Then it is exactly 5 seconds (matches the record/plan contract).
+    // When comparing it against the record/plan contract.
+    // Then it is exactly 5 seconds.
     assert_eq!(REINDEX_INTERVAL, Duration::from_secs(5));
 }
 
@@ -274,7 +293,7 @@ async fn failing_session_does_not_block_rest_of_batch() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn failed_session_marker_survives_and_recovers_when_fault_clears() {
+async fn failed_session_marker_survives_while_fault_persists() {
     // Given a poisoned session alongside a good one (tripwire aborts the
     // poisoned session's rebuild).
     let (_dir, harness, deps, store) = sqlite_actor_deps().await;
@@ -289,15 +308,8 @@ async fn failed_session_marker_survives_and_recovers_when_fault_clears() {
     }
     create_reindex_tripwire(&store, &poisoned).await;
 
-    // When the actor runs with a tiny interval.
-    let _path = crate::search_index_actor::SearchIndexActor::spawn(
-        harness.system(),
-        SearchIndexActorDeps {
-            deps: deps.clone(),
-            interval: Duration::from_millis(50),
-            batch: usize::MAX,
-        },
-    );
+    // When the index actor runs with a tiny interval.
+    spawn_fast_search_index(&harness, &deps);
 
     // Then the failed session's marker survives (durable pending work) while
     // the good session drains.
@@ -317,6 +329,37 @@ async fn failed_session_marker_survives_and_recovers_when_fault_clears() {
         .await
         .expect("read dirty");
     assert_eq!(still_dirty, vec![poisoned.to_string()]);
+}
+
+/// A session whose reindex keeps failing is drained by the very next tick
+/// once the fault clears — the retry half of the durable-marker contract.
+#[rstest::rstest]
+#[tokio::test]
+async fn failed_session_recovers_on_a_later_drain() {
+    // Given a poisoned session alongside a good one, with the index actor
+    // already having left the poisoned session's marker behind.
+    let (_dir, harness, deps, store) = sqlite_actor_deps().await;
+    let good = SessionId::new();
+    let poisoned = SessionId::new();
+    for id in [&good, &poisoned] {
+        deps.services
+            .session_store
+            .save(&needle_session(id))
+            .await
+            .expect("save");
+    }
+    create_reindex_tripwire(&store, &poisoned).await;
+    spawn_fast_search_index(&harness, &deps);
+    let marker_left = poll_until(Duration::from_millis(50), 40, || async {
+        deps.services
+            .session_store
+            .pending_dirty_count()
+            .await
+            .expect("count")
+            == 1
+    })
+    .await;
+    assert!(marker_left, "poisoned marker should remain after the drain");
 
     // When the tripwire is removed (fault clears), the next tick retries.
     store

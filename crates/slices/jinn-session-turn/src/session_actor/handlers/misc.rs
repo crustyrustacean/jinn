@@ -228,6 +228,69 @@ mod tests {
     use jinn_core_types::SessionId;
     use jinn_kernel::protocol::{ChangeSource, ChatEntry};
 
+    use super::SessionPersistenceActor;
+
+    /// Builds the mutation a pruner submits to exclude one entry from context.
+    fn prune_override_mutation(
+        entry_id: jinn_core_types::ChatEntryId,
+    ) -> jinn_core_types::HistoryMutation {
+        jinn_core_types::HistoryMutation::SetContextOverride {
+            entry_id,
+            value: jinn_core_types::ContextOverride::ForcedExclude,
+            source: ChangeSource::Internal {
+                label: "test".to_owned(),
+            },
+        }
+    }
+
+    /// Builds the mutation a worker submits to protect one entry from pruning.
+    fn worker_include_override_mutation(
+        entry_id: jinn_core_types::ChatEntryId,
+    ) -> jinn_core_types::HistoryMutation {
+        jinn_core_types::HistoryMutation::SetContextOverride {
+            entry_id,
+            value: jinn_core_types::ContextOverride::ForcedInclude,
+            source: ChangeSource::Internal {
+                label: "test".to_owned(),
+            },
+        }
+    }
+
+    /// Pushes two user entries into the active session, returning the session
+    /// id and the first entry's id.
+    fn seed_two_entry_session(
+        actor: &SessionPersistenceActor,
+    ) -> (SessionId, jinn_core_types::ChatEntryId) {
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("first"));
+            session.push_entry(ChatEntry::user("second"));
+            state.session.active_session_id().clone()
+        };
+        let first_entry_id = {
+            let state = actor.state.read();
+            state.session.get(&session_id).unwrap().history()[0]
+                .id
+                .clone()
+        };
+        (session_id, first_entry_id)
+    }
+
+    /// Submits a single history mutation for the given session.
+    async fn submit_history_mutations(
+        actor: &SessionPersistenceActor,
+        session_id: SessionId,
+        mutation: jinn_core_types::HistoryMutation,
+    ) {
+        actor
+            .handle_submit_history_mutations(&jinn_session_history_msg::SubmitHistoryMutations {
+                session_id,
+                mutations: vec![mutation],
+            })
+            .await;
+    }
+
     #[rstest::rstest]
     #[tokio::test]
     async fn handle_submit_history_mutations_buffers_subthreshold_override_when_idle() {
@@ -277,12 +340,14 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn handle_submit_history_mutations_with_empty_batch_is_noop() {
+        // Given a recording actor with an active session.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
             let state = actor.state.read();
             state.session.active_session_id().clone()
         };
 
+        // When submitting an empty mutation batch.
         actor
             .handle_submit_history_mutations(&jinn_session_history_msg::SubmitHistoryMutations {
                 session_id: session_id.clone(),
@@ -290,6 +355,7 @@ mod tests {
             })
             .await;
 
+        // Then no pending mutations are queued on the session.
         let state = actor.state.read();
         let session = state.session.get(&session_id).unwrap();
         assert!(!session.has_pending_mutations());
@@ -298,9 +364,11 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn handle_submit_history_mutations_creates_session_if_missing() {
+        // Given a recording actor and a session id that does not exist yet.
         let (actor, _audit) = test_actor_recording().await;
         let new_session_id = SessionId::new();
 
+        // When submitting a mutation for the unknown session.
         actor
             .handle_submit_history_mutations(&jinn_session_history_msg::SubmitHistoryMutations {
                 session_id: new_session_id.clone(),
@@ -314,6 +382,7 @@ mod tests {
             })
             .await;
 
+        // Then the session is created and no pending mutations are queued.
         let state = actor.state.read();
         let session = state.session.get(&new_session_id).unwrap();
         assert!(!session.has_pending_mutations());
@@ -325,20 +394,8 @@ mod tests {
      {
         // Given a default (10_000) accumulation threshold and two user entries.
         let (actor, _audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("first"));
-            session.push_entry(ChatEntry::user("second"));
-            state.session.active_session_id().clone()
-        };
-        let entry_id_1 = {
-            let state = actor.state.read();
-            state.session.get(&session_id).unwrap().history()[0]
-                .id
-                .clone()
-        };
-        let entry_id_2 = {
+        let (session_id, exclude_entry_id) = seed_two_entry_session(&actor);
+        let include_entry_id = {
             let state = actor.state.read();
             state.session.get(&session_id).unwrap().history()[1]
                 .id
@@ -347,30 +404,18 @@ mod tests {
 
         // When submitting a sub-threshold ForcedExclude (prune) for entry 1
         // and a ForcedInclude (worker protection) for entry 2.
-        actor
-            .handle_submit_history_mutations(&jinn_session_history_msg::SubmitHistoryMutations {
-                session_id: session_id.clone(),
-                mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
-                    entry_id: entry_id_1,
-                    value: jinn_core_types::ContextOverride::ForcedExclude,
-                    source: ChangeSource::Internal {
-                        label: "test".to_owned(),
-                    },
-                }],
-            })
-            .await;
-        actor
-            .handle_submit_history_mutations(&jinn_session_history_msg::SubmitHistoryMutations {
-                session_id: session_id.clone(),
-                mutations: vec![jinn_core_types::HistoryMutation::SetContextOverride {
-                    entry_id: entry_id_2,
-                    value: jinn_core_types::ContextOverride::ForcedInclude,
-                    source: ChangeSource::Internal {
-                        label: "test".to_owned(),
-                    },
-                }],
-            })
-            .await;
+        submit_history_mutations(
+            &actor,
+            session_id.clone(),
+            prune_override_mutation(exclude_entry_id),
+        )
+        .await;
+        submit_history_mutations(
+            &actor,
+            session_id.clone(),
+            worker_include_override_mutation(include_entry_id),
+        )
+        .await;
 
         // Then the ForcedExclude is buffered (entry 1 still Default) and the
         // ForcedInclude applies immediately (entry 2 is ForcedInclude), so only
@@ -392,9 +437,11 @@ mod tests {
             "only the ForcedExclude (prune) should be buffered; the include applies immediately"
         );
     }
+
     #[rstest::rstest]
     #[tokio::test]
     async fn handle_submit_history_mutations_emits_context_override_changed_on_change() {
+        // Given a recording actor with one user entry in the active session.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -409,6 +456,7 @@ mod tests {
                 .clone()
         };
 
+        // When submitting a compaction-worker ForcedExclude override.
         actor
             .handle_submit_history_mutations(&jinn_session_history_msg::SubmitHistoryMutations {
                 session_id: session_id.clone(),
@@ -422,6 +470,7 @@ mod tests {
             })
             .await;
 
+        // Then ContextOverrideChanged is emitted for the applied change.
         assert!(
             audit.contains_name("ContextOverrideChanged"),
             "expected ContextOverrideChanged to be emitted for worker-applied change"
@@ -431,6 +480,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn handle_submit_history_mutations_does_not_emit_on_noop_mutation() {
+        // Given a recording actor whose only entry already has a ForcedExclude override.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -453,6 +503,7 @@ mod tests {
                 .clone()
         };
 
+        // When re-submitting the same ForcedExclude override from a worker source.
         actor
             .handle_submit_history_mutations(&jinn_session_history_msg::SubmitHistoryMutations {
                 session_id: session_id.clone(),
@@ -466,6 +517,7 @@ mod tests {
             })
             .await;
 
+        // Then no ContextOverrideChanged is emitted and no context history entry is added.
         assert!(
             !audit.contains_name("ContextOverrideChanged"),
             "expected no ContextOverrideChanged for no-op mutation"

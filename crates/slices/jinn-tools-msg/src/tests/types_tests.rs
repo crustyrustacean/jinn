@@ -22,12 +22,15 @@ use crate::todo_list::{PhaseId, PhaseInput, TaskList, TaskStatus};
 #[rstest::rstest]
 #[test]
 fn set_from_inputs_creates_phase_with_id_and_description() {
+    // Given an empty task list.
     let mut list = TaskList::new();
+
+    // When setting the list from a single phase input.
     list.set_from_inputs(&[PhaseInput {
         description: "Research".to_owned(),
         tasks: vec![],
     }]);
-    // ID should start with 'p' and be 4 chars total (prefix + 3 random chars).
+    // Then the phase gets an ID of a 'p' prefix plus 3 random chars.
     let id = list.phases()[0].id.to_string();
     assert!(id.starts_with('p'));
     assert_eq!(id.len(), 4);
@@ -40,7 +43,10 @@ fn set_from_inputs_creates_phase_with_id_and_description() {
 #[rstest::rstest]
 #[test]
 fn set_from_inputs_generates_distinct_ids() {
+    // Given an empty task list.
     let mut list = TaskList::new();
+
+    // When setting the list from three phase inputs.
     list.set_from_inputs(&[
         PhaseInput {
             description: "Research".to_owned(),
@@ -55,6 +61,8 @@ fn set_from_inputs_generates_distinct_ids() {
             tasks: vec![],
         },
     ]);
+
+    // Then every phase receives a distinct ID.
     let ids: Vec<_> = list.phases().iter().map(|p| p.id.clone()).collect();
     assert_ne!(ids[0], ids[1]);
     assert_ne!(ids[1], ids[2]);
@@ -68,18 +76,27 @@ fn set_from_inputs_generates_distinct_ids() {
 #[rstest::rstest]
 #[test]
 fn is_empty_true_when_no_phases() {
+    // Given a newly created task list.
     let list = TaskList::new();
+
+    // When asking whether the list is empty.
+    // Then the list reports no phases.
     assert!(list.is_empty());
 }
 
 #[rstest::rstest]
 #[test]
 fn is_empty_false_when_has_phases() {
+    // Given an empty task list.
     let mut list = TaskList::new();
+
+    // When setting the list from one phase input.
     list.set_from_inputs(&[PhaseInput {
         description: "Build".to_owned(),
         tasks: vec![],
     }]);
+
+    // Then the list reports a phase.
     assert!(!list.is_empty());
 }
 
@@ -90,14 +107,21 @@ fn is_empty_false_when_has_phases() {
 #[rstest::rstest]
 #[test]
 fn render_text_returns_empty_placeholder() {
+    // Given a task list with no phases.
     let list = TaskList::new();
+
+    // When rendering the list as text.
+    // Then the empty placeholder is rendered.
     assert_eq!(list.render_text(), "No phases defined.");
 }
 
 #[rstest::rstest]
 #[test]
 fn render_text_shows_phases_and_tasks() {
+    // Given a phase with two pending tasks.
     let mut list = TaskList::new();
+
+    // When rendering the list as text.
     list.set_from_inputs(&[PhaseInput {
         description: "Research".to_owned(),
         tasks: vec![
@@ -106,6 +130,7 @@ fn render_text_shows_phases_and_tasks() {
         ],
     }]);
 
+    // Then the phase and both task lines are rendered.
     let rendered = list.render_text();
     assert!(rendered.contains("Phase 1: Research"));
     assert!(rendered.contains("[ ] Read docs"));
@@ -115,12 +140,16 @@ fn render_text_shows_phases_and_tasks() {
 #[rstest::rstest]
 #[test]
 fn render_text_shows_completed_task() {
+    // Given a phase with one completed task.
     let mut list = TaskList::new();
+
+    // When rendering the list as text.
     list.set_from_inputs(&[PhaseInput {
         description: "Build".to_owned(),
         tasks: vec![("Write code".to_owned(), TaskStatus::Completed)],
     }]);
 
+    // Then the task line carries the completed marker.
     let rendered = list.render_text();
     assert!(rendered.contains("[✓] Write code"));
 }
@@ -132,6 +161,7 @@ fn render_text_shows_completed_task() {
 #[rstest::rstest]
 #[test]
 fn serde_roundtrip_preserves_state() {
+    // Given a list of two phases with mixed task statuses.
     let mut list = TaskList::new();
     list.set_from_inputs(&[
         PhaseInput {
@@ -147,9 +177,11 @@ fn serde_roundtrip_preserves_state() {
         },
     ]);
 
+    // When serialising and deserialising the list.
     let json = serde_json::to_string(&list).unwrap();
     let restored: TaskList = serde_json::from_str(&json).unwrap();
 
+    // Then the restored list equals the original.
     assert_eq!(list, restored);
     assert!(!restored.is_empty());
 }
@@ -157,17 +189,27 @@ fn serde_roundtrip_preserves_state() {
 #[rstest::rstest]
 #[test]
 fn serde_default_creates_empty_list() {
+    // Given JSON with no fields at all.
     let json = "{}";
+
+    // When deserialising it as a task list.
     let list: TaskList = serde_json::from_str(json).unwrap();
+
+    // Then the list has no phases.
     assert!(list.is_empty());
 }
 
 #[rstest::rstest]
 #[test]
 fn serde_deserializes_partial_json() {
+    // Given old-format JSON carrying only a phases field.
     // Only phases field (no counters) - a valid old-format JSON.
     let json = r#"{"phases":[]}"#;
+
+    // When deserialising it as a task list.
     let list: TaskList = serde_json::from_str(json).unwrap();
+
+    // Then the list has no phases.
     assert!(list.is_empty());
 }
 
@@ -178,8 +220,12 @@ fn serde_deserializes_partial_json() {
 #[rstest::rstest]
 #[test]
 fn id_display_format() {
+    // Given a phase ID and a task ID built from raw values.
     let pid = PhaseId::new_for_test("p1");
     let tid = crate::todo_list::TaskId::new_for_test("t2");
+
+    // When displaying each identifier.
+    // Then each identifier displays its raw value.
     assert_eq!(format!("{pid}"), "p1");
     assert_eq!(format!("{tid}"), "t2");
 }
@@ -191,15 +237,19 @@ fn id_display_format() {
 #[rstest::rstest]
 #[test]
 fn id_format_is_correct() {
+    // Given a phase with one pending task.
     // Phase IDs start with 'p' and are 4 chars total.
     // Task IDs start with 't' and are 4 chars total.
     // The remaining 3 chars are from the charset [a-z0-9 minus {p, t}].
     let mut list = TaskList::new();
+
+    // When setting the list so the IDs are minted.
     list.set_from_inputs(&[PhaseInput {
         description: "Phase".to_owned(),
         tasks: vec![("Task".to_owned(), TaskStatus::Pending)],
     }]);
 
+    // Then both IDs match the documented format.
     let pid_str = list.phases()[0].id.to_string();
     let tid_str = list.phases()[0].tasks[0].id.to_string();
 
@@ -230,6 +280,7 @@ fn id_format_is_correct() {
 #[rstest::rstest]
 #[test]
 fn id_generation_no_collision() {
+    // Given 50 phase inputs, each with one task.
     let mut list = TaskList::new();
     let inputs: Vec<PhaseInput> = (0..50)
         .map(|i| PhaseInput {
@@ -237,6 +288,8 @@ fn id_generation_no_collision() {
             tasks: vec![(format!("Task {i}"), TaskStatus::Pending)],
         })
         .collect();
+
+    // When setting the list so the IDs are minted.
     list.set_from_inputs(&inputs);
 
     let phase_ids: Vec<_> = list.phases().iter().map(|p| p.id.clone()).collect();
@@ -247,7 +300,7 @@ fn id_generation_no_collision() {
         .map(|t| t.id.clone())
         .collect();
 
-    // All phase IDs are unique.
+    // Then every phase ID is unique.
     let mut sorted_pids = phase_ids.clone();
     sorted_pids.sort();
     sorted_pids.dedup();
@@ -263,16 +316,24 @@ fn id_generation_no_collision() {
 #[rstest::rstest]
 #[test]
 fn serde_backward_compat_with_counters() {
+    // Given old-format JSON carrying counter fields.
     // Old-format JSON with counter fields should deserialize cleanly.
     let json = r#"{"phases":[],"next_phase_id":5,"next_task_id":10}"#;
+
+    // When deserialising it as a task list.
     let list: TaskList = serde_json::from_str(json).unwrap();
+
+    // Then the list deserialises to no phases.
     assert!(list.is_empty());
 }
 
 #[rstest::rstest]
 #[test]
 fn render_text_excludes_postponed() {
+    // Given one postponed task and one pending task in later phases.
     let mut list = TaskList::new();
+
+    // When rendering the list as text.
     list.set_from_inputs(&[
         PhaseInput {
             description: "Research".to_owned(),
@@ -284,6 +345,7 @@ fn render_text_excludes_postponed() {
         },
     ]);
 
+    // Then the postponed task is omitted and the pending one is shown.
     let rendered = list.render_text();
 
     // The deferred source should NOT appear as a task line.
@@ -298,7 +360,10 @@ fn render_text_excludes_postponed() {
 #[rstest::rstest]
 #[test]
 fn render_text_shows_no_tasks_when_all_postponed() {
+    // Given a phase whose tasks are all postponed.
     let mut list = TaskList::new();
+
+    // When rendering the list as text.
     list.set_from_inputs(&[PhaseInput {
         description: "Research".to_owned(),
         tasks: vec![
@@ -307,6 +372,7 @@ fn render_text_shows_no_tasks_when_all_postponed() {
         ],
     }]);
 
+    // Then the phase reports having no tasks.
     let rendered = list.render_text();
 
     assert!(
@@ -349,12 +415,16 @@ fn clear_empties_all_phases() {
 #[rstest::rstest]
 #[test]
 fn render_text_shows_cancelled_with_prefix() {
+    // Given a phase with one cancelled task.
     let mut list = TaskList::new();
+
+    // When rendering the list as text.
     list.set_from_inputs(&[PhaseInput {
         description: "Build".to_owned(),
         tasks: vec![("Write code".to_owned(), TaskStatus::Cancelled)],
     }]);
 
+    // Then the task line carries the cancelled prefix and marker.
     let rendered = list.render_text();
     assert!(rendered.contains("CANCELLED: Write code"));
     assert!(rendered.contains("[\u{2717}]"));
@@ -363,7 +433,10 @@ fn render_text_shows_cancelled_with_prefix() {
 #[rstest::rstest]
 #[test]
 fn render_text_hides_postponed_shows_cancelled() {
+    // Given a phase with one postponed and one cancelled task.
     let mut list = TaskList::new();
+
+    // When rendering the list as text.
     list.set_from_inputs(&[PhaseInput {
         description: "Research".to_owned(),
         tasks: vec![
@@ -372,6 +445,7 @@ fn render_text_hides_postponed_shows_cancelled() {
         ],
     }]);
 
+    // Then the postponed task is omitted and the cancelled one is shown.
     let rendered = list.render_text();
     // Postponed should be hidden.
     assert!(
@@ -388,14 +462,18 @@ fn render_text_hides_postponed_shows_cancelled() {
 #[rstest::rstest]
 #[test]
 fn serde_roundtrip_with_cancelled() {
+    // Given a phase with one cancelled task.
     let mut list = TaskList::new();
     list.set_from_inputs(&[PhaseInput {
         description: "Build".to_owned(),
         tasks: vec![("Write code".to_owned(), TaskStatus::Cancelled)],
     }]);
 
+    // When serialising and deserialising the list.
     let json = serde_json::to_string(&list).unwrap();
     let restored: TaskList = serde_json::from_str(&json).unwrap();
+
+    // Then the restored list equals the original.
     assert_eq!(list, restored);
 }
 
@@ -406,7 +484,10 @@ fn serde_roundtrip_with_cancelled() {
 #[rstest::rstest]
 #[test]
 fn has_pending_work_true_when_any_pending() {
+    // Given a phase with one completed and one pending task.
     let mut list = TaskList::new();
+
+    // When setting the list from that input.
     list.set_from_inputs(&[PhaseInput {
         description: "Build".to_owned(),
         tasks: vec![
@@ -414,13 +495,18 @@ fn has_pending_work_true_when_any_pending() {
             ("Write tests".to_owned(), TaskStatus::Pending),
         ],
     }]);
+
+    // Then the phase reports pending work.
     assert!(list.phases()[0].has_pending_work());
 }
 
 #[rstest::rstest]
 #[test]
 fn has_pending_work_false_when_only_completed_cancelled_postponed() {
+    // Given a phase with completed, cancelled, and postponed tasks only.
     let mut list = TaskList::new();
+
+    // When setting the list from that input.
     list.set_from_inputs(&[PhaseInput {
         description: "Build".to_owned(),
         tasks: vec![
@@ -429,6 +515,8 @@ fn has_pending_work_false_when_only_completed_cancelled_postponed() {
             ("Write docs".to_owned(), TaskStatus::Postponed),
         ],
     }]);
+
+    // Then the phase reports no pending work.
     assert!(
         !list.phases()[0].has_pending_work(),
         "phase with only completed/cancelled/postponed tasks has no pending work"
@@ -442,14 +530,21 @@ fn has_pending_work_false_when_only_completed_cancelled_postponed() {
 #[rstest::rstest]
 #[test]
 fn active_phase_returns_none_when_empty() {
+    // Given a task list with no phases.
     let list = TaskList::new();
+
+    // When asking for the active phase.
+    // Then there is no active phase.
     assert!(list.active_phase().is_none());
 }
 
 #[rstest::rstest]
 #[test]
 fn active_phase_returns_earliest_with_pending() {
+    // Given three phases where only the last two have pending work.
     let mut list = TaskList::new();
+
+    // When asking for the active phase.
     list.set_from_inputs(&[
         PhaseInput {
             description: "Done".to_owned(),
@@ -465,6 +560,7 @@ fn active_phase_returns_earliest_with_pending() {
         },
     ]);
 
+    // Then the earliest phase with pending work is returned.
     let active = list.active_phase().expect("active phase should exist");
     assert_eq!(active.description, "Active");
 }
@@ -472,19 +568,26 @@ fn active_phase_returns_earliest_with_pending() {
 #[rstest::rstest]
 #[test]
 fn active_phase_returns_none_when_all_complete() {
+    // Given a single phase whose only task is completed.
     let mut list = TaskList::new();
+
+    // When asking for the active phase.
     list.set_from_inputs(&[PhaseInput {
         description: "Build".to_owned(),
         tasks: vec![("Write code".to_owned(), TaskStatus::Completed)],
     }]);
 
+    // Then there is no active phase.
     assert!(list.active_phase().is_none());
 }
 
 #[rstest::rstest]
 #[test]
 fn active_phase_skips_phase_with_only_postponed_cancelled_completed() {
+    // Given a stale phase followed by two phases with pending work.
     let mut list = TaskList::new();
+
+    // When asking for the active phase.
     list.set_from_inputs(&[
         PhaseInput {
             description: "All-stale".to_owned(),
@@ -504,6 +607,7 @@ fn active_phase_skips_phase_with_only_postponed_cancelled_completed() {
         },
     ]);
 
+    // Then the stale phase is skipped in favour of the first with pending work.
     let active = list.active_phase().expect("second phase should be active");
     assert_eq!(active.description, "Has work");
 }
@@ -515,14 +619,21 @@ fn active_phase_skips_phase_with_only_postponed_cancelled_completed() {
 #[rstest::rstest]
 #[test]
 fn completion_counts_empty_list_is_zero_zero() {
+    // Given a task list with no phases.
     let list = TaskList::new();
+
+    // When counting completion.
+    // Then nothing is completed and nothing is counted.
     assert_eq!(list.completion_counts(), (0, 0));
 }
 
 #[rstest::rstest]
 #[test]
 fn completion_counts_all_pending() {
+    // Given a phase whose three tasks are all pending.
     let mut list = TaskList::new();
+
+    // When counting completion.
     list.set_from_inputs(&[PhaseInput {
         description: "Research".to_owned(),
         tasks: vec![
@@ -531,13 +642,18 @@ fn completion_counts_all_pending() {
             ("Write notes".to_owned(), TaskStatus::Pending),
         ],
     }]);
+
+    // Then 0 of 3 tasks are completed.
     assert_eq!(list.completion_counts(), (0, 3));
 }
 
 #[rstest::rstest]
 #[test]
 fn completion_counts_all_completed() {
+    // Given a phase whose three tasks are all completed.
     let mut list = TaskList::new();
+
+    // When counting completion.
     list.set_from_inputs(&[PhaseInput {
         description: "Research".to_owned(),
         tasks: vec![
@@ -546,6 +662,8 @@ fn completion_counts_all_completed() {
             ("Write notes".to_owned(), TaskStatus::Completed),
         ],
     }]);
+
+    // Then 3 of 3 tasks are completed.
     assert_eq!(list.completion_counts(), (3, 3));
 }
 
@@ -554,6 +672,8 @@ fn completion_counts_all_completed() {
 fn completion_counts_counts_only_completed() {
     // Given a phase with two completed, one pending, one postponed, one cancelled.
     let mut list = TaskList::new();
+
+    // When counting completion.
     list.set_from_inputs(&[PhaseInput {
         description: "Research".to_owned(),
         tasks: vec![
@@ -627,19 +747,27 @@ fn completion_counts_treats_empty_phases_as_zero() {
 #[rstest::rstest]
 #[test]
 fn render_text_with_blockers_returns_empty_placeholder() {
+    // Given a task list with no phases.
     let list = TaskList::new();
+
+    // When rendering the list with blocker annotations.
+    // Then the empty placeholder is rendered.
     assert_eq!(list.render_text_with_blockers(), "No phases defined.");
 }
 
 #[rstest::rstest]
 #[test]
 fn render_text_with_blockers_no_prefix_for_single_phase() {
+    // Given a single phase with a pending task.
     let mut list = TaskList::new();
+
+    // When rendering the list with blocker annotations.
     list.set_from_inputs(&[PhaseInput {
         description: "Research".to_owned(),
         tasks: vec![("Read docs".to_owned(), TaskStatus::Pending)],
     }]);
 
+    // Then the phase renders without a blocker prefix.
     let rendered = list.render_text_with_blockers();
     assert!(rendered.contains("Phase 1: Research"));
     assert!(
@@ -651,7 +779,10 @@ fn render_text_with_blockers_no_prefix_for_single_phase() {
 #[rstest::rstest]
 #[test]
 fn render_text_with_blockers_prefixes_non_active_phases() {
+    // Given a completed phase, an active phase, and a later pending phase.
     let mut list = TaskList::new();
+
+    // When rendering the list with blocker annotations.
     list.set_from_inputs(&[
         PhaseInput {
             description: "Done".to_owned(),
@@ -667,6 +798,7 @@ fn render_text_with_blockers_prefixes_non_active_phases() {
         },
     ]);
 
+    // Then only the later phase carries a blocker prefix.
     let rendered = list.render_text_with_blockers();
 
     // Phase 1: done phases render normally (no prefix needed; nothing blocked).
@@ -682,12 +814,16 @@ fn render_text_with_blockers_prefixes_non_active_phases() {
 #[rstest::rstest]
 #[test]
 fn render_text_with_blockers_no_prefix_when_all_complete() {
+    // Given a single phase whose only task is completed.
     let mut list = TaskList::new();
+
+    // When rendering the list with blocker annotations.
     list.set_from_inputs(&[PhaseInput {
         description: "Build".to_owned(),
         tasks: vec![("Write code".to_owned(), TaskStatus::Completed)],
     }]);
 
+    // Then no phase carries a blocker prefix.
     let rendered = list.render_text_with_blockers();
     assert!(rendered.contains("Phase 1: Build"));
     assert!(!rendered.contains("(Blocked by previous phase)"));
@@ -696,7 +832,10 @@ fn render_text_with_blockers_no_prefix_when_all_complete() {
 #[rstest::rstest]
 #[test]
 fn render_text_with_blockers_no_prefix_for_completed_phase() {
+    // Given a completed phase followed by an active phase.
     let mut list = TaskList::new();
+
+    // When rendering the list with blocker annotations.
     list.set_from_inputs(&[
         PhaseInput {
             description: "Done".to_owned(),
@@ -708,6 +847,7 @@ fn render_text_with_blockers_no_prefix_for_completed_phase() {
         },
     ]);
 
+    // Then the completed phase carries no blocker prefix.
     let rendered = list.render_text_with_blockers();
     assert!(rendered.contains("Phase 1: Done"));
     assert!(!rendered.contains("(Blocked by previous phase) Phase 1"));
@@ -716,26 +856,36 @@ fn render_text_with_blockers_no_prefix_for_completed_phase() {
 #[rstest::rstest]
 #[test]
 fn render_next_block_empty_when_no_phases() {
+    // Given a task list with no phases.
     let list = TaskList::new();
+
+    // When rendering the next block.
+    // Then no next block is rendered.
     assert_eq!(list.render_next_block(), "");
 }
 
 #[rstest::rstest]
 #[test]
 fn render_next_block_empty_when_phases_have_no_tasks() {
+    // Given a single phase that has no tasks.
     let mut list = TaskList::new();
+
+    // When rendering the next block.
     list.set_from_inputs(&[PhaseInput {
         description: "Empty phase".to_owned(),
         tasks: vec![],
     }]);
-    // Phase exists but has zero tasks. No tasks ever created.
+    // Then no next block is rendered.
     assert_eq!(list.render_next_block(), "");
 }
 
 #[rstest::rstest]
 #[test]
 fn render_next_block_points_at_active_phase_next_task() {
+    // Given a completed phase followed by a phase with two pending tasks.
     let mut list = TaskList::new();
+
+    // When rendering the next block.
     list.set_from_inputs(&[
         PhaseInput {
             description: "Done".to_owned(),
@@ -750,6 +900,7 @@ fn render_next_block_points_at_active_phase_next_task() {
         },
     ]);
 
+    // Then the block points at the active phase's next task.
     let block = list.render_next_block();
     assert_eq!(block, "→ NEXT: First pending (2 pending in phase: Active)");
 }
@@ -757,8 +908,11 @@ fn render_next_block_points_at_active_phase_next_task() {
 #[rstest::rstest]
 #[test]
 fn render_next_block_skips_cancelled_tasks() {
+    // Given a phase whose first task is cancelled and second is pending.
     // Cancelled tasks are filtered out; the next Pending task is found.
     let mut list = TaskList::new();
+
+    // When rendering the next block.
     list.set_from_inputs(&[PhaseInput {
         description: "Active".to_owned(),
         tasks: vec![
@@ -767,6 +921,7 @@ fn render_next_block_skips_cancelled_tasks() {
         ],
     }]);
 
+    // Then the block points past the cancelled task.
     let block = list.render_next_block();
     assert!(block.starts_with("→ NEXT: Real next"), "got: {block}");
 }
@@ -774,7 +929,10 @@ fn render_next_block_skips_cancelled_tasks() {
 #[rstest::rstest]
 #[test]
 fn render_next_block_includes_remaining_count() {
+    // Given a phase with three pending tasks.
     let mut list = TaskList::new();
+
+    // When rendering the next block.
     list.set_from_inputs(&[PhaseInput {
         description: "Active".to_owned(),
         tasks: vec![
@@ -784,6 +942,7 @@ fn render_next_block_includes_remaining_count() {
         ],
     }]);
 
+    // Then the block names the first task and the remaining count.
     let block = list.render_next_block();
     assert!(block.contains("3 pending in phase"));
     // First pending task is identified.
@@ -793,12 +952,16 @@ fn render_next_block_includes_remaining_count() {
 #[rstest::rstest]
 #[test]
 fn render_next_block_all_complete_message() {
+    // Given a single phase whose only task is completed.
     let mut list = TaskList::new();
+
+    // When rendering the next block.
     list.set_from_inputs(&[PhaseInput {
         description: "One".to_owned(),
         tasks: vec![("Do".to_owned(), TaskStatus::Completed)],
     }]);
 
+    // Then the block reports that all phases are complete.
     let block = list.render_next_block();
     assert_eq!(block, "→ All phases complete — stop.");
 }
@@ -806,7 +969,10 @@ fn render_next_block_all_complete_message() {
 #[rstest::rstest]
 #[test]
 fn render_next_block_all_complete_with_multiple_phases() {
+    // Given a completed phase followed by a phase with no tasks.
     let mut list = TaskList::new();
+
+    // When rendering the next block.
     list.set_from_inputs(&[
         PhaseInput {
             description: "One".to_owned(),
@@ -818,6 +984,7 @@ fn render_next_block_all_complete_with_multiple_phases() {
         },
     ]);
 
+    // Then the block reports that all phases are complete.
     let block = list.render_next_block();
     assert_eq!(block, "→ All phases complete — stop.");
 }
@@ -825,18 +992,22 @@ fn render_next_block_all_complete_with_multiple_phases() {
 #[rstest::rstest]
 #[test]
 fn render_next_block_empty_for_phase_with_no_tasks_anywhere() {
+    // Given a single phase that has no tasks.
     let mut list = TaskList::new();
+
+    // When rendering the next block.
     list.set_from_inputs(&[PhaseInput {
         description: "Empty".to_owned(),
         tasks: vec![],
     }]);
-    // No tasks ever added to any phase.
+    // Then no next block is rendered.
     assert_eq!(list.render_next_block(), "");
 }
 
 #[rstest::rstest]
 #[test]
 fn render_next_block_after_completion_same_phase_remaining() {
+    // Given a phase with one completed and one pending task, plus a later phase.
     let mut list = TaskList::new();
     list.set_from_inputs(&[
         PhaseInput {
@@ -851,8 +1022,11 @@ fn render_next_block_after_completion_same_phase_remaining() {
             tasks: vec![("Run suite".to_owned(), TaskStatus::Pending)],
         },
     ]);
+
+    // When rendering the next block after that phase completed.
     let completed_phase = &list.phases()[0];
 
+    // Then the block points at the same phase's remaining task.
     let block = list.render_next_block_after_completion(&completed_phase.id);
     assert!(block.starts_with("→ NEXT: Second"), "got: {block}");
     assert!(block.contains("1 pending in phase"));
@@ -861,13 +1035,17 @@ fn render_next_block_after_completion_same_phase_remaining() {
 #[rstest::rstest]
 #[test]
 fn render_next_block_after_completion_phase_done_no_later() {
+    // Given a single phase whose only task is completed.
     let mut list = TaskList::new();
     list.set_from_inputs(&[PhaseInput {
         description: "Build".to_owned(),
         tasks: vec![("Only".to_owned(), TaskStatus::Completed)],
     }]);
+
+    // When rendering the next block after that phase completed.
     let completed_phase = &list.phases()[0];
 
+    // Then the block reports the phase complete with nothing later.
     let block = list.render_next_block_after_completion(&completed_phase.id);
     assert_eq!(block, "→ Phase \"Build\" complete — proceed to verify.");
 }
@@ -875,6 +1053,7 @@ fn render_next_block_after_completion_phase_done_no_later() {
 #[rstest::rstest]
 #[test]
 fn render_next_block_after_completion_phase_done_with_later_blocked() {
+    // Given a completed phase followed by a phase with a pending task.
     let mut list = TaskList::new();
     list.set_from_inputs(&[
         PhaseInput {
@@ -886,8 +1065,11 @@ fn render_next_block_after_completion_phase_done_with_later_blocked() {
             tasks: vec![("Later".to_owned(), TaskStatus::Pending)],
         },
     ]);
+
+    // When rendering the next block after that phase completed.
     let completed_phase = &list.phases()[0];
 
+    // Then the block reports the phase complete and the later phase blocked.
     let block = list.render_next_block_after_completion(&completed_phase.id);
     assert_eq!(
         block,
@@ -898,15 +1080,17 @@ fn render_next_block_after_completion_phase_done_with_later_blocked() {
 #[rstest::rstest]
 #[test]
 fn render_next_block_after_completion_falls_back_when_phase_missing() {
+    // Given a list whose only phase holds a pending task.
     let mut list = TaskList::new();
     list.set_from_inputs(&[PhaseInput {
         description: "Build".to_owned(),
         tasks: vec![("Task".to_owned(), TaskStatus::Pending)],
     }]);
 
+    // When rendering the next block after an unknown phase completed.
     let bogus = crate::todo_list::PhaseId::new_for_test("pzz");
     let block = list.render_next_block_after_completion(&bogus);
-    // Falls back to global next-task.
+    // Then the block falls back to the global next task.
     assert!(block.starts_with("→ NEXT:"));
 }
 

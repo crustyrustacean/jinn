@@ -211,12 +211,19 @@ mod tests {
 
     #[rstest::rstest]
     fn tool_result_message_uses_user_role() {
-        let json = message_to_json(&LlmMessage::Tool {
+        // Given a tool result message.
+        let message = LlmMessage::Tool {
             tool_call_id: "toolu_1".into(),
             name: "echo".into(),
             content: "result".into(),
-        });
+        };
+
+        // When converting it to the Anthropic wire shape.
+        let json = message_to_json(&message);
+
+        // Then it is a user message carrying a tool_result block.
         assert_eq!(json["role"], "user");
+        // And the first content block is a `tool_result` referencing the call id.
         let content = json["content"].as_array().unwrap();
         assert_eq!(content[0]["type"], "tool_result");
         assert_eq!(content[0]["tool_use_id"], "toolu_1");
@@ -224,15 +231,23 @@ mod tests {
 
     #[rstest::rstest]
     fn assistant_with_tool_calls_uses_content_blocks() {
-        let json = message_to_json(&LlmMessage::Assistant {
+        // Given an assistant message carrying one tool call.
+        // When converting it to the Anthropic wire shape.
+        // Then it is an assistant message whose first block is a `tool_use`
+        // naming the tool.
+        let message = LlmMessage::Assistant {
             content: String::new(),
             tool_calls: Some(vec![jinn_core_types::tool_types::ToolCall {
                 id: "toolu_1".into(),
                 name: "echo".into(),
                 arguments: r#"{"x":1}"#.into(),
             }]),
-        });
+        };
+
+        let json = message_to_json(&message);
+
         assert_eq!(json["role"], "assistant");
+        // And the first content block is a `tool_use` naming the tool.
         let content = json["content"].as_array().unwrap();
         assert_eq!(content[0]["type"], "tool_use");
         assert_eq!(content[0]["name"], "echo");
@@ -240,6 +255,7 @@ mod tests {
 
     #[rstest::rstest]
     fn tool_definitions_use_input_schema() {
+        // Given a tool definition with an object parameter schema.
         let def = ToolDefinition {
             name: "echo".into(),
             description: "Echo".into(),
@@ -248,7 +264,11 @@ mod tests {
             parameters: serde_json::json!({"type": "object"}),
             server_tool_type: None,
         };
+
+        // When converting it to the Anthropic wire shape.
         let json = tool_definition_to_json(&def);
+
+        // Then the schema is emitted as `input_schema` and not `parameters`.
         assert!(json.get("input_schema").is_some());
         assert!(json.get("parameters").is_none());
     }

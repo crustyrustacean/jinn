@@ -439,6 +439,9 @@ mod tests {
     #[case::kilobytes(2048, "2.0KB")]
     #[case::megabytes(2 * 1024 * 1024, "2.0MB")]
     fn format_size_formats_correctly(#[case] bytes: usize, #[case] expected: &str) {
+        // Given a byte count and its expected human-readable form.
+        // When formatting the size.
+        // Then the formatted label matches the expected form.
         assert_eq!(format_size(bytes), expected);
     }
 
@@ -469,8 +472,10 @@ mod tests {
     #[rstest::rstest]
     fn default_max_bytes_is_50kb() {
         // Given the DEFAULT_MAX_BYTES constant.
+        // When compared with the 50KB it is meant to express.
         // Then it equals 50 * 1024 (not 50 + 1024).
         assert_eq!(DEFAULT_MAX_BYTES, 50 * 1024);
+        // And it is 51200 bytes.
         assert_eq!(DEFAULT_MAX_BYTES, 51200);
     }
 

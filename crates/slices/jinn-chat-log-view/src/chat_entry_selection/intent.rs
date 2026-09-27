@@ -568,6 +568,32 @@ mod tests {
 
     use super::*;
 
+    /// Rebuild the visual items from the session's current shown-block set and
+    /// install them, returning the installed list.
+    fn rebuild_visual_items(state: &mut AppState) -> Vec<jinn_chat_log_view_msg::VisualItem> {
+        use jinn_chat_log_view_msg::{
+            DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
+        };
+        let items = build_visual_items(
+            state.active_session().history(),
+            &state.active_session().shown_ignored_blocks_snapshot(),
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
+        state.active_session_mut().set_visual_items(items.clone());
+        items
+    }
+
+    /// The visual-item index of the entry at `hist_idx`, panicking when absent.
+    fn vi_of_entry(items: &[jinn_chat_log_view_msg::VisualItem], hist_idx: usize) -> usize {
+        items
+            .iter()
+            .position(
+                |i| matches!(i, jinn_chat_log_view_msg::VisualItem::Entry(idx) if *idx == hist_idx),
+            )
+            .unwrap_or_else(|| panic!("history index {hist_idx} must be a visual item"))
+    }
+
     #[rstest::rstest]
     fn chat_entry_select_next_increments_index() {
         // Given a state with entries and selection at first.
@@ -1189,10 +1215,6 @@ mod tests {
     #[rstest::rstest]
     fn toggle_ignored_block_collapses_expanded_block() {
         // Given a session with an expanded ignored block, an ignored entry selected.
-        use jinn_chat_log_view_msg::{
-            DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
-        };
-
         let mut state = AppState::default_with_scope_focus();
         state.active_session_mut().push_entry(ChatEntry::user("a"));
         for _ in 0..15 {
@@ -1223,21 +1245,10 @@ mod tests {
         );
 
         // Rebuild visual items (now expanded - individual Entry items).
-        let items = build_visual_items(
-            state.active_session().history(),
-            &state.active_session().shown_ignored_blocks_snapshot(),
-            PROXIMITY_COUNT,
-            DEFAULT_MIN_COLLAPSE_COUNT,
-        );
-        state.active_session_mut().set_visual_items(items.clone());
+        let items = rebuild_visual_items(&mut state);
 
         // Select an ignored entry within the expanded block (history index 5).
-        let target_vi_idx = items
-            .iter()
-            .position(|i| {
-                matches!(i, jinn_chat_log_view_msg::VisualItem::Entry(hist_idx) if *hist_idx == 5)
-            })
-            .expect("should find ignored entry at history index 5");
+        let target_vi_idx = vi_of_entry(&items, 5);
         state
             .active_session_mut()
             .set_selected_entry_index(target_vi_idx);
@@ -1905,16 +1916,11 @@ mod tests {
         assert_eq!(sweep, Some(ContextOverride::ForcedInclude));
     }
 
-    #[rstest::rstest]
-    fn sweep_skips_collapsed_block_without_mutating() {
-        // Given: 1 user, 10 ignored (will collapse), 5 user.
-        // The 10 ignored entries form a collapsed block.
-        // The sweep should skip the collapsed block entirely — no expansion,
-        // no mutation of entries inside.
-        use jinn_chat_log_view_msg::{
-            DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
-        };
-
+    /// Fixture for the collapsed-block sweep tests: one user entry, a run of
+    /// forced-excluded entries long enough to collapse, then `after` entries.
+    /// Visual items are built and the cursor sits on the first user entry.
+    fn session_with_collapsed_block(after: usize) -> AppState {
+        use jinn_chat_log_view_msg::VisualItem;
         let mut state = AppState::default_with_scope_focus();
         state
             .active_session_mut()
@@ -1924,35 +1930,31 @@ mod tests {
                 .active_session_mut()
                 .push_entry(ChatEntry::user("ignored").with_ignored(true));
         }
-        for _ in 0..5 {
+        for n in 0..after {
             state
                 .active_session_mut()
-                .push_entry(ChatEntry::user("after"));
+                .push_entry(ChatEntry::user(format!("after{n}")));
         }
-
-        // Build visual items so the collapsed block exists.
-        let items = build_visual_items(
-            state.active_session().history(),
-            &state.active_session().shown_ignored_blocks_snapshot(),
-            PROXIMITY_COUNT,
-            DEFAULT_MIN_COLLAPSE_COUNT,
+        let items = rebuild_visual_items(&mut state);
+        assert!(
+            items
+                .iter()
+                .any(|i| matches!(i, VisualItem::CollapsedIgnoredBlock { .. })),
+            "fixture must contain a collapsed ignored block"
         );
-        state.active_session_mut().set_visual_items(items.clone());
-
-        // Verify we have a collapsed block.
-        let collapsed = items
-            .iter()
-            .find(|i| matches!(i, VisualItem::CollapsedIgnoredBlock { .. }));
-        assert!(collapsed.is_some(), "should have a collapsed block");
-
-        // Select first user entry.
-        let first_vi = items
-            .iter()
-            .position(|i| matches!(i, VisualItem::Entry(0)))
-            .expect("first entry");
+        let first_vi = vi_of_entry(&items, 0);
         state
             .active_session_mut()
             .set_selected_entry_index(first_vi);
+        state
+    }
+
+    #[rstest::rstest]
+    fn sweep_skips_collapsed_block_without_mutating() {
+        // Given 1 user, 10 ignored (will collapse), 5 user, cursor on the first.
+        // The sweep should skip the collapsed block entirely — no expansion,
+        // no mutation of entries inside.
+        let mut state = session_with_collapsed_block(5);
 
         // First press - toggles entry 0 to ForcedExclude, advances.
         let _result = handle_ignore_selected(&mut state);
@@ -1961,13 +1963,10 @@ mod tests {
             ContextOverride::ForcedExclude
         );
 
-        // Second press - should skip the collapsed block and land on
-        // an entry after it.
+        // When handling ignore selected a second time.
         let _result = handle_ignore_selected(&mut state);
 
-        // Entries inside the collapsed block should NOT be mutated
-        // (they were already ForcedExclude, no change applied).
-        // Just verify the block was NOT expanded.
+        // Then the collapsed block was not expanded during the sweep.
         let block_start_id = state.active_session().history()[1].id.clone();
         assert!(
             !state
@@ -1976,9 +1975,7 @@ mod tests {
                 .contains(&block_start_id),
             "collapsed block should NOT be expanded during sweep"
         );
-
-        // The cursor should have jumped past the collapsed block
-        // to one of the 'after' entries.
+        // And the cursor sits on an entry after the collapsed block.
         let selected = state.active_session().selected_entry();
         assert!(
             selected.is_some(),
@@ -1992,14 +1989,9 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn sweep_unignore_propagates_shown_to_new_block() {
-        // Given: 1 user, 15 ignored in a shown (expanded) block, 5 user.
-        // Sweep un-ignore will bring entries into context, splitting the block.
-        // The new forward sub-block should auto-expand.
-        use jinn_chat_log_view_msg::{
-            DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
-        };
-
+    fn sweep_unignore_sets_entry_to_forced_include() {
+        // Given 1 user, 15 ignored in a shown (expanded) block, 5 user, with
+        // the cursor on the first ignored entry.
         let mut state = AppState::default_with_scope_focus();
         state
             .active_session_mut()
@@ -2009,10 +2001,52 @@ mod tests {
                 .active_session_mut()
                 .push_entry(ChatEntry::user("ignored").with_ignored(true));
         }
-        for _ in 0..5 {
+        for n in 0..5 {
             state
                 .active_session_mut()
-                .push_entry(ChatEntry::user("after"));
+                .push_entry(ChatEntry::user(format!("after{n}")));
+        }
+        let block_start_id = state.active_session().history()[1].id.clone();
+        state
+            .active_session_mut()
+            .show_ignored_block(block_start_id);
+        let items = rebuild_visual_items(&mut state);
+        let vi_idx = vi_of_entry(&items, 1);
+        state.active_session_mut().set_selected_entry_index(vi_idx);
+
+        // When handling ignore selected - toggles entry 1 to ForcedInclude.
+        let _result = handle_ignore_selected(&mut state);
+
+        // Then the entry is brought back into context.
+        assert_eq!(
+            state.active_session().history()[1].context_override(),
+            ContextOverride::ForcedInclude
+        );
+        // And the sweep remembers ForcedInclude as its target.
+        assert_eq!(
+            state.active_session_mut().take_ignore_sweep(),
+            Some(ContextOverride::ForcedInclude)
+        );
+    }
+
+    #[rstest::rstest]
+    fn sweep_unignore_propagates_shown_to_new_block() {
+        // Given: 1 user, 15 ignored in a shown (expanded) block, 5 user.
+        // Sweep un-ignore will bring entries into context, splitting the block.
+        // The new forward sub-block should auto-expand.
+        let mut state = AppState::default_with_scope_focus();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("before"));
+        for _ in 0..15 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("ignored").with_ignored(true));
+        }
+        for n in 0..5 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user(format!("after{n}")));
         }
 
         // Show (expand) the block first.
@@ -2022,37 +2056,16 @@ mod tests {
             .show_ignored_block(block_start_id);
 
         // Build visual items (now expanded - individual entries).
-        let items = build_visual_items(
-            state.active_session().history(),
-            &state.active_session().shown_ignored_blocks_snapshot(),
-            PROXIMITY_COUNT,
-            DEFAULT_MIN_COLLAPSE_COUNT,
-        );
-        state.active_session_mut().set_visual_items(items.clone());
+        let items = rebuild_visual_items(&mut state);
 
         // Select entry at history index 1 (first ignored entry).
-        let vi_idx = items
-            .iter()
-            .position(|i| matches!(i, jinn_chat_log_view_msg::VisualItem::Entry(1)))
-            .expect("entry at history index 1");
+        let vi_idx = vi_of_entry(&items, 1);
         state.active_session_mut().set_selected_entry_index(vi_idx);
 
-        // First press - toggles entry 1 from ForcedExclude → ForcedInclude.
+        // When handling ignore selected - toggles entry 1 to ForcedInclude.
         let _result = handle_ignore_selected(&mut state);
-        assert_eq!(
-            state.active_session().history()[1].context_override(),
-            ContextOverride::ForcedInclude
-        );
-        // Sweep state is ForcedInclude (un-ignore sweep target).
-        assert_eq!(
-            state.active_session_mut().take_ignore_sweep(),
-            Some(ContextOverride::ForcedInclude)
-        );
-        // Restore sweep since we consumed it.
-        state
-            .active_session_mut()
-            .set_ignore_sweep(ContextOverride::ForcedInclude);
-        // Propagation should have shown the forward sub-block.
+
+        // Then the forward sub-block left behind is auto-shown.
         // Entry 2 is the start of the forward excluded sub-block.
         let forward_block_id = state.active_session().history()[2].id.clone();
         assert!(
@@ -2066,85 +2079,48 @@ mod tests {
 
     #[rstest::rstest]
     fn sweep_continues_past_collapsed_block_to_entries_beyond() {
-        // Given: 1 user (in-context), 10 ignored (collapsed block), 3 user (in-context).
-        // Sweep starts on the first user entry, should continue through the
-        // collapsed block and reach the user entries after it.
-        use jinn_chat_log_view_msg::{
-            DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
-        };
+        // Given: 1 user (in-context), 10 ignored (collapsed block), 3 user
+        // (in-context), with the cursor on the first user entry.
+        let mut state = session_with_collapsed_block(3);
 
-        let mut state = AppState::default_with_scope_focus();
-        state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("before"));
-        for _ in 0..10 {
-            state
-                .active_session_mut()
-                .push_entry(ChatEntry::user("ignored").with_ignored(true));
-        }
-        state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("after1"));
-        state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("after2"));
-        state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("after3"));
-
-        // Build visual items.
-        let items = build_visual_items(
-            state.active_session().history(),
-            &state.active_session().shown_ignored_blocks_snapshot(),
-            PROXIMITY_COUNT,
-            DEFAULT_MIN_COLLAPSE_COUNT,
-        );
-        state.active_session_mut().set_visual_items(items.clone());
-
-        // Verify layout: Entry(0), CollapsedIgnoredBlock(1, 10), Entry(11), Entry(12), Entry(13).
-        let collapsed = items
-            .iter()
-            .find(|i| matches!(i, VisualItem::CollapsedIgnoredBlock { .. }));
-        assert!(collapsed.is_some(), "should have a collapsed block");
-
-        // Select first user entry ("before").
-        let first_vi = items
-            .iter()
-            .position(|i| matches!(i, VisualItem::Entry(0)))
-            .expect("first entry");
-        state
-            .active_session_mut()
-            .set_selected_entry_index(first_vi);
-
-        // First press - toggles "before" to ForcedExclude, advances to collapsed block.
+        // First press - toggles "before" to ForcedExclude, advances to the
+        // collapsed block.
         let _result = handle_ignore_selected(&mut state);
         assert_eq!(
             state.active_session().history()[0].context_override(),
             ContextOverride::ForcedExclude
         );
 
-        // Second press - should expand collapsed block, apply override, advance past it.
+        // When handling ignore selected a second time.
         let _result = handle_ignore_selected(&mut state);
 
-        // The sweep should have continued — cursor should now be on an entry
-        // after the collapsed block (not stuck on it).
+        // Then the sweep continued rather than stalling on the block.
         let selected_idx = state.active_session().selected_entry_index();
         assert!(
             selected_idx.is_some(),
             "cursor should have a selection after sweep through block"
         );
-
-        // The selected entry should be one of the "after" entries (history index 11+).
+        // And the cursor landed on an entry beyond the block (index 11+).
         let selected_entry = state.active_session().selected_entry().expect("entry");
         assert!(
             selected_entry.text().starts_with("after"),
             "cursor should be on an 'after' entry, got: {:?}",
             selected_entry.text()
         );
+    }
 
-        // Third press - should continue sweeping the "after" entries.
+    #[rstest::rstest]
+    fn sweep_third_press_excludes_an_entry_beyond_the_block() {
+        // Given: 1 user (in-context), 10 ignored (collapsed block), 3 user
+        // (in-context), with two presses already spent reaching the block.
+        let mut state = session_with_collapsed_block(3);
+        handle_ignore_selected(&mut state); // entry 0
+        handle_ignore_selected(&mut state); // through the collapsed block
+
+        // When handling ignore selected a third time.
         let _result = handle_ignore_selected(&mut state);
-        // Verify one of the after entries got ForcedExclude.
+
+        // Then one of the "after" entries has been excluded.
         let any_after_excluded = state
             .active_session()
             .history()
@@ -2157,14 +2133,11 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]
-    fn sweep_skips_multiple_collapsed_blocks() {
-        // Given: 2 user, 10 ignored (block 1), 2 user, 10 ignored (block 2), 5 user.
-        // Sweep starts on first user, skips collapsed blocks, processes in-between entries.
-        use jinn_chat_log_view_msg::{
-            DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
-        };
-
+    /// Fixture for the multi-block sweep tests: user "a", user "b", 10 ignored
+    /// (block 1), users "c" and "d", 10 more ignored (block 2), then five
+    /// "after" entries. Visual items are built and the cursor sits on "a".
+    fn two_collapsed_blocks_state() -> AppState {
+        use jinn_chat_log_view_msg::VisualItem;
         let mut state = AppState::default_with_scope_focus();
         state.active_session_mut().push_entry(ChatEntry::user("a"));
         state.active_session_mut().push_entry(ChatEntry::user("b"));
@@ -2180,100 +2153,127 @@ mod tests {
                 .active_session_mut()
                 .push_entry(ChatEntry::user("ignored2").with_ignored(true));
         }
-        for _ in 0..5 {
+        for n in 0..5 {
             state
                 .active_session_mut()
-                .push_entry(ChatEntry::user("after"));
+                .push_entry(ChatEntry::user(format!("after{n}")));
         }
-
-        // Build visual items.
-        let items = build_visual_items(
-            state.active_session().history(),
-            &state.active_session().shown_ignored_blocks_snapshot(),
-            PROXIMITY_COUNT,
-            DEFAULT_MIN_COLLAPSE_COUNT,
+        let items = rebuild_visual_items(&mut state);
+        assert_eq!(
+            items
+                .iter()
+                .filter(|i| matches!(i, VisualItem::CollapsedIgnoredBlock { .. }))
+                .count(),
+            2,
+            "fixture must contain two collapsed blocks"
         );
-        state.active_session_mut().set_visual_items(items.clone());
-
-        // Verify two collapsed blocks exist.
-        let collapsed_count = items
-            .iter()
-            .filter(|i| matches!(i, VisualItem::CollapsedIgnoredBlock { .. }))
-            .count();
-        assert_eq!(collapsed_count, 2, "should have two collapsed blocks");
-
-        // The ignored entries inside the blocks should NOT be mutated.
-        let block1_start_id = state.active_session().history()[2].id.clone();
-
-        // Select first entry.
-        let first_vi = items
-            .iter()
-            .position(|i| matches!(i, VisualItem::Entry(0)))
-            .expect("first entry");
+        let first_vi = vi_of_entry(&items, 0);
         state
             .active_session_mut()
             .set_selected_entry_index(first_vi);
+        state
+    }
 
-        // First press - toggles entry "a" to ForcedExclude.
+    #[rstest::rstest]
+    fn sweep_skips_multiple_collapsed_blocks() {
+        // Given: 2 user, 10 ignored (block 1), 2 user, 10 ignored (block 2),
+        // 5 user, with the first press spent on "a".
+        let mut state = two_collapsed_blocks_state();
         let _result = handle_ignore_selected(&mut state);
         assert_eq!(
             state.active_session().history()[0].context_override(),
             ContextOverride::ForcedExclude
         );
 
-        // Second press - cursor is on "b" (the entry after "a").
+        // When handling ignore selected a second time (cursor on "b").
         // Applying ForcedExclude to "b" merges entries 0-1 with the pre-existing
         // ignored block (2-11) into a single collapsed block, so the cursor
         // lands on the merged block and is advanced past it to "c".
         // Only "b" is adjusted this press (1 keypress = 1 entry).
         let _result = handle_ignore_selected(&mut state);
+
+        // Then "b" is excluded.
         assert_eq!(
             state.active_session().history()[1].context_override(),
             ContextOverride::ForcedExclude,
             "entry 'b' should be ForcedExclude after second press"
         );
-        // Entry "c" must NOT be excluded yet (it is only reached on press 3).
+        // And "c" is untouched — it is only reached on press 3.
         assert_eq!(
             state.active_session().history()[12].context_override(),
             ContextOverride::Default,
             "entry 'c' should still be Default after second press (no chain)"
         );
+    }
 
-        // Third press - cursor on "c", applies ForcedExclude.
+    #[rstest::rstest]
+    fn sweep_third_press_reaches_entry_c() {
+        // Given: 2 user, 10 ignored (block 1), 2 user, 10 ignored (block 2),
+        // 5 user, with two presses spent (the second lands past the block).
+        let mut state = two_collapsed_blocks_state();
+        handle_ignore_selected(&mut state); // "a"
+        handle_ignore_selected(&mut state); // "b", merged into the block
+
+        // When handling ignore selected a third time (cursor on "c").
         let _result = handle_ignore_selected(&mut state);
 
-        // Entry "b" (index 1) should be ForcedExclude.
-        assert_eq!(
-            state.active_session().history()[1].context_override(),
-            ContextOverride::ForcedExclude,
-            "entry 'b' should be ForcedExclude"
-        );
-
-        // Entry "c" (index 12) should be processed on press 3.
+        // Then "c" is excluded.
         assert_eq!(
             state.active_session().history()[12].context_override(),
             ContextOverride::ForcedExclude,
             "entry 'c' should be ForcedExclude after third press"
         );
-
-        // Guard against over-chaining: "d" (index 13) must still be Default.
-        // Before the fix, press 2 chained through "c", "d", and beyond.
+        // And "b" is untouched by the third press.
+        assert_eq!(
+            state.active_session().history()[1].context_override(),
+            ContextOverride::ForcedExclude,
+            "entry 'b' should be ForcedExclude"
+        );
+        // And "d" is still Default: before the fix, press 2 chained through
+        // "c", "d", and beyond.
         assert_eq!(
             state.active_session().history()[13].context_override(),
             ContextOverride::Default,
             "entry 'd' should still be Default (no over-chain)"
         );
+    }
 
-        // The block entries (2..=11) should NOT be mutated (skipped).
-        for i in 2..=11 {
+    #[rstest::rstest]
+    fn sweep_skips_multiple_collapsed_blocks_leaves_block_entries_untouched() {
+        // Given: 2 user, 10 ignored (block 1), 2 user, 10 ignored (block 2),
+        // 5 user, with three presses spent.
+        let mut state = two_collapsed_blocks_state();
+        let block1_start_id = state.active_session().history()[2].id.clone();
+        handle_ignore_selected(&mut state); // "a"
+        handle_ignore_selected(&mut state); // "b", merged into the block
+        handle_ignore_selected(&mut state); // "c"
+
+        // When inspecting the entries inside the first collapsed block.
+        let block_overrides: Vec<ContextOverride> = state
+            .active_session()
+            .history()
+            .iter()
+            .skip(2)
+            .take(10)
+            .map(jinn_core_types::ChatEntry::context_override)
+            .collect();
+
+        // Then each is skipped untouched, still ForcedExclude.
+        for (offset, override_value) in block_overrides.iter().enumerate() {
             assert_eq!(
-                state.active_session().history()[i].context_override(),
+                *override_value,
                 ContextOverride::ForcedExclude,
-                "ignored entry {i} should still be ForcedExclude (untouched by sweep)"
+                "ignored entry {} should still be ForcedExclude (untouched by sweep)",
+                offset + 2
             );
         }
-
-        // The block should NOT be expanded.
+        // And the entry merged into that block on press 2 is still excluded.
+        assert_eq!(
+            state.active_session().history()[1].context_override(),
+            ContextOverride::ForcedExclude,
+            "entry 'b' should be ForcedExclude"
+        );
+        // And the block was never expanded.
         assert!(
             !state
                 .active_session()
@@ -2390,22 +2390,33 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn sweep_does_not_chain_to_bottom_in_large_history() {
+    fn sweep_first_press_excludes_one_entry() {
         // Given 50 in-context user entries with the cursor on the first.
-        // A large history is where the bug was most visible: press 3 used to
-        // chain ~47 entries to the proximity tail in a single keypress.
         let mut state = AppState::default_with_scope_focus();
         build_in_context_history(&mut state, 50);
 
         // When handling ignore selected twice.
         handle_ignore_selected(&mut state); // entry 0
         handle_ignore_selected(&mut state); // entry 1
+
         // Then exactly 2 entries are excluded.
         assert_eq!(
             count_excluded(&state),
             2,
             "two presses must exclude exactly two entries"
         );
+    }
+
+    #[rstest::rstest]
+    fn sweep_does_not_chain_to_bottom_in_large_history() {
+        // Given 50 in-context user entries with the cursor on the first, and
+        // two presses already spent. A large history is where the bug was most
+        // visible: the third press used to chain ~47 entries to the proximity
+        // tail in a single keypress.
+        let mut state = AppState::default_with_scope_focus();
+        build_in_context_history(&mut state, 50);
+        handle_ignore_selected(&mut state); // entry 0
+        handle_ignore_selected(&mut state); // entry 1
 
         // When handling ignore selected a third time (the press that forms
         // a real collapse and would previously chain to the bottom).
@@ -2418,8 +2429,22 @@ mod tests {
             3,
             "third press must exclude exactly one more entry, not chain to bottom"
         );
-        // And the cursor sits on a real entry near the top, not at the end.
+    }
+
+    #[rstest::rstest]
+    fn sweep_leaves_cursor_near_the_top_in_large_history() {
+        // Given 50 in-context user entries with the cursor on the first, and
+        // three presses already spent.
+        let mut state = AppState::default_with_scope_focus();
+        build_in_context_history(&mut state, 50);
+        handle_ignore_selected(&mut state); // entry 0
+        handle_ignore_selected(&mut state); // entry 1
+        handle_ignore_selected(&mut state); // entry 2
+
+        // When reading where the cursor ended up.
         let selected = state.active_session().selected_entry().expect("entry");
+
+        // Then it sits on a real entry near the top, not at the end.
         assert!(
             selected.text().starts_with("entry-3"),
             "cursor should be on entry-3, got: {:?}",

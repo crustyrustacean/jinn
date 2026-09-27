@@ -369,17 +369,14 @@ mod tests {
     #[test]
     fn result_rule_reads_parallel_web_search_shape() {
         // Given a Parallel web_search result payload.
-        let content = r#"{
-            "search_id": "search_e593614d82424176ae7dfce52d958cf9",
-            "results": [
-                {
-                    "url": "https://parallel.ai/blog/series-a",
-                    "title": "Parallel raises $100M Series A",
-                    "publish_date": null,
-                    "excerpts": ["Answer-ready excerpt text."]
-                }
-            ]
-        }"#;
+        let content = concat!(
+            r#"{"#,
+            r#""search_id": "search_e593614d82424176ae7dfce52d958cf9", "#,
+            r#""results": [{"url": "https://parallel.ai/blog/series-a", "#,
+            r#""title": "Parallel raises $100M Series A", "#,
+            r#""publish_date": null, "#,
+            r#""excerpts": ["Answer-ready excerpt text."]}]}"#
+        );
 
         // When extracting citations.
         let citations = citations_from_result_content(content);
@@ -398,11 +395,12 @@ mod tests {
     #[test]
     fn result_rule_reads_multiple_results() {
         // Given a payload with three result objects.
-        let content = r#"{"results":[
-            {"url":"https://a.example","title":"A"},
-            {"url":"https://b.example","title":"B"},
-            {"url":"https://c.example","title":"C"}
-        ]}"#;
+        let content = concat!(
+            r#"{"results": ["#,
+            r#"{"url":"https://a.example","title":"A"}, "#,
+            r#"{"url":"https://b.example","title":"B"}, "#,
+            r#"{"url":"https://c.example","title":"C"}]}"#
+        );
 
         // When extracting citations.
         // Then all three yield, in order.
@@ -510,9 +508,10 @@ mod tests {
     #[test]
     fn result_rule_prefers_url_over_link_when_both_present() {
         // Given an object carrying both keys.
-        let content = r#"{"results":[
-            {"url":"https://canonical.example","link":"https://decorated.example","title":"T"}
-        ]}"#;
+        let content = concat!(
+            r#"{"results": ["#,
+            r#"{"url":"https://canonical.example","link":"https://decorated.example","title":"T"}]}"#
+        );
 
         // When extracting citations.
         let citations = citations_from_result_content(content);
@@ -567,12 +566,13 @@ mod tests {
     fn snippet_prefers_excerpts_over_content() {
         // Given an object carrying both an excerpts array and a content
         // string (a hybrid shape).
-        let content = r#"{"results":[{
-            "url":"https://parallel.example",
-            "title":"P",
-            "excerpts":["the excerpt"],
-            "content":"the full text"
-        }]}"#;
+        let content = concat!(
+            r#"{"results": [{"#,
+            r#""url":"https://parallel.example", "#,
+            r#""title":"P", "#,
+            r#""excerpts":["the excerpt"], "#,
+            r#""content":"the full text"}]}"#
+        );
 
         // When extracting citations.
         let citations = citations_from_result_content(content);

@@ -87,7 +87,11 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn new_buffer_is_empty() {
+        // Given a newly constructed buffer.
         let buf = SteeringBuffer::new();
+
+        // When the buffer is queried for its contents.
+        // Then it holds nothing.
         assert!(buf.is_empty());
         assert_eq!(buf.len(), 0);
     }
@@ -95,28 +99,53 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn push_increments_len() {
+        // Given an empty buffer.
         let mut buf = SteeringBuffer::new();
+
+        // When a single fragment is pushed.
         buf.push_fragment("a");
+
+        // Then the buffer holds exactly that fragment.
         assert_eq!(buf.len(), 1);
         assert!(!buf.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn push_increments_len_for_each_fragment() {
+        // Given a buffer already holding one fragment.
+        let mut buf = SteeringBuffer::new();
+        buf.push_fragment("a");
+
+        // When a second fragment is pushed.
         buf.push_fragment("b");
+
+        // Then the buffer holds both fragments.
         assert_eq!(buf.len(), 2);
     }
 
     #[rstest::rstest]
     #[test]
     fn drain_empty_returns_none() {
+        // Given a buffer with no fragments.
         let mut buf = SteeringBuffer::new();
+
+        // When the buffer is drained.
+        // Then there is no entry to produce.
         assert!(buf.drain_into_entry().is_none());
     }
 
     #[rstest::rstest]
     #[test]
     fn drain_single_fragment_produces_user_entry() {
+        // Given a buffer holding one fragment.
         let mut buf = SteeringBuffer::new();
         buf.push_fragment("hello");
 
+        // When the buffer is drained into an entry.
         let entry = buf.drain_into_entry().expect("entry");
+
+        // Then it is a user entry carrying the fragment in both fields.
         match entry.kind {
             ChatEntryKind::User {
                 display, expanded, ..
@@ -131,12 +160,16 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn drain_multiple_fragments_joined_by_blank_line_in_order() {
+        // Given a buffer holding three fragments.
         let mut buf = SteeringBuffer::new();
         buf.push_fragment("a");
         buf.push_fragment("b");
         buf.push_fragment("c");
 
+        // When the buffer is drained into an entry.
         let entry = buf.drain_into_entry().expect("entry");
+
+        // Then the fragments are joined by a blank line, in push order.
         match entry.kind {
             ChatEntryKind::User {
                 display, expanded, ..
@@ -151,11 +184,15 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn drain_clears_buffer() {
+        // Given a buffer holding two fragments.
         let mut buf = SteeringBuffer::new();
         buf.push_fragment("a");
         buf.push_fragment("b");
 
+        // When the buffer is drained.
         let _ = buf.drain_into_entry();
+
+        // Then the buffer is empty again.
         assert!(buf.is_empty());
         assert_eq!(buf.len(), 0);
     }
@@ -163,22 +200,30 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn drain_after_drain_returns_none() {
+        // Given a buffer that has already been drained once.
         let mut buf = SteeringBuffer::new();
         buf.push_fragment("a");
         let _ = buf.drain_into_entry();
+
+        // When the buffer is drained again.
+        // Then there is no entry to produce.
         assert!(buf.drain_into_entry().is_none());
     }
 
     #[rstest::rstest]
     #[test]
     fn push_after_drain_starts_fresh() {
+        // Given a buffer whose first fragment was pushed and then drained.
         let mut buf = SteeringBuffer::new();
         buf.push_fragment("first");
         let _ = buf.drain_into_entry();
+
+        // When two more fragments are pushed and the buffer is drained.
         buf.push_fragment("second");
         buf.push_fragment("third");
-
         let entry = buf.drain_into_entry().expect("entry");
+
+        // Then the entry holds only the post-drain fragments, in order.
         match entry.kind {
             ChatEntryKind::User { expanded, .. } => assert_eq!(expanded, "second\n\nthird"),
             other => panic!("expected User, got {other:?}"),

@@ -69,7 +69,8 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn pick_free_port_returns_a_rebindable_port() {
-        // When allocating a port on loopback.
+        // Given loopback as the bind address.
+        // When allocating a port.
         let port = pick_free_port("127.0.0.1").expect("allocate port");
 
         // Then the same port can be re-bound immediately (bind-and-release works).
@@ -83,6 +84,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn pick_free_port_returns_distinct_ports_across_calls() {
+        // Given loopback as the bind address.
         // When allocating two ports in quick succession.
         let a = pick_free_port("127.0.0.1").expect("allocate port a");
         let b = pick_free_port("127.0.0.1").expect("allocate port b");
@@ -94,7 +96,8 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn pick_free_port_rejects_invalid_bind_addr() {
-        // When allocating with an invalid address.
+        // Given an invalid address.
+        // When allocating a port.
         let result = pick_free_port("not-an-ip");
 
         // Then it errors.

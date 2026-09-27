@@ -210,12 +210,18 @@ mod tests {
 
     #[rstest::rstest]
     fn openrouter_config_includes_experimental_metadata_header() {
+        // Given the OpenRouter provider config.
         let config = ProviderConfig::openrouter();
+
+        // When scanning its custom headers for the experimental metadata header.
+        let has_metadata_header = config
+            .custom_headers
+            .iter()
+            .any(|(k, v)| k == "X-OpenRouter-Experimental-Metadata" && v == "enabled");
+
+        // Then the header is present and enabled.
         assert!(
-            config
-                .custom_headers
-                .iter()
-                .any(|(k, v)| k == "X-OpenRouter-Experimental-Metadata" && v == "enabled"),
+            has_metadata_header,
             "OpenRouter config should include experimental metadata header"
         );
     }
@@ -291,7 +297,13 @@ mod tests {
         #[case] expected_name: &str,
         #[case] expected_url: &str,
     ) {
-        let config = ProviderConfig::from(backend);
+        // Given a backend.
+        let backend = backend.clone();
+
+        // When mapping it to a provider config.
+        let config = ProviderConfig::from(&backend);
+
+        // Then the config carries the expected name and base URL.
         assert_eq!(config.name, expected_name);
         assert_eq!(config.default_base_url, expected_url);
     }

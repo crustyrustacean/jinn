@@ -17,15 +17,24 @@ use jinn_token_count_msg::TokenRecord;
 
 #[rstest::rstest]
 fn name_returns_status_bar() {
+    // Given the status bar element.
     let element = StatusBarElement;
-    assert_eq!(element.name(), "status-bar");
+
+    // When reading its name.
+    let element_name = element.name();
+
+    // Then the name identifies the status bar.
+    assert_eq!(element_name, "status-bar");
 }
 
 #[rstest::rstest]
 fn render_shows_no_model_selected_when_unset() {
+    // Given a state with no model selected.
     let mut element = StatusBarElement;
     let state = AppState::default();
     let (mut terminal, area) = setup_term(50, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -36,12 +45,16 @@ fn render_shows_no_model_selected_when_unset() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 50);
+
+    // Then the info line opens with the indicator arrow.
     assert!(row.starts_with("\u{2191}"));
+    // And names the missing model.
     assert!(row.contains("no model selected"));
 }
 
 #[rstest::rstest]
 fn render_shows_status_hint_instead_of_model_when_set() {
+    // Given a status-bar cell carrying a hint.
     let mut element = StatusBarElement;
     let state = AppState::default();
     let slices = jinn_slices::Slices::new();
@@ -61,6 +74,8 @@ fn render_shows_status_hint_instead_of_model_when_set() {
         cell.update(|s| s.hint = Some("that session has no live terminal".to_owned()));
     }
     let (mut terminal, area) = setup_term(60, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let overlay_views = jinn_slices::OverlayViews::new();
@@ -70,6 +85,7 @@ fn render_shows_status_hint_instead_of_model_when_set() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 60);
+
     // Then the hint replaces the model display.
     assert!(row.contains("no live terminal"), "row: {row}");
     // And the model is not shown while a hint is up.
@@ -83,6 +99,8 @@ fn render_defaults_to_model_when_cell_absent() {
     let mut element = StatusBarElement;
     let state = AppState::default();
     let (mut terminal, area) = setup_term(60, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -93,18 +111,22 @@ fn render_defaults_to_model_when_cell_absent() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 60);
+
     // Then the model display shows (the no-hint default).
     assert!(row.contains("no model selected"), "row: {row}");
 }
 
 #[rstest::rstest]
 fn render_shows_provider_and_model() {
+    // Given a session with a single model selected.
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     let (mut terminal, area) = setup_term(50, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -115,7 +137,10 @@ fn render_shows_provider_and_model() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 50);
+
+    // Then the info line opens with the indicator arrow.
     assert!(row.starts_with("\u{2191}"));
+    // And shows the provider in parentheses before the model.
     assert!(row.contains("(ollama)/llama3"));
 }
 
@@ -164,12 +189,15 @@ fn render_single_model_ignores_stale_ledger_model_used() {
 
 #[rstest::rstest]
 fn render_right_aligns_text() {
+    // Given a session with a single model selected, in a 50-column terminal.
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     let (mut terminal, area) = setup_term(50, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -179,7 +207,9 @@ fn render_right_aligns_text() {
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    // Row 1 is the info line.
+
+    // Then the info line (row 1) is right-aligned, starting with the indicator
+    // arrow and ending with the scrollbar handle.
     let first = buffer.cell((0, 1)).expect("first cell");
     assert_eq!(first.symbol(), "\u{2191}");
     let last = buffer.cell((49, 1)).expect("last cell");
@@ -188,12 +218,15 @@ fn render_right_aligns_text() {
 
 #[rstest::rstest]
 fn render_shows_provider_with_slash_in_model() {
+    // Given a session whose model id itself contains a slash.
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().set_model(ModelSelection::Single(
         "openrouter/anthropic/claude-sonnet-4".to_owned(),
     ));
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -204,7 +237,11 @@ fn render_shows_provider_with_slash_in_model() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
+
+    // Then the info line opens with the indicator arrow.
     assert!(row.starts_with("\u{2191}"));
+    // And only the FIRST slash splits provider from model, so the rest of the
+    // model path survives intact.
     assert!(row.contains("(openrouter)/anthropic/claude-sonnet-4"));
 }
 
@@ -214,6 +251,8 @@ fn render_shows_token_counts_with_zero_values() {
     let mut element = StatusBarElement;
     let state = AppState::default();
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -224,6 +263,7 @@ fn render_shows_token_counts_with_zero_values() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
+
     // Then the status bar shows zero token counts.
     assert!(row.contains("\u{2191}0 \u{2193}0"));
     // And cost is always shown as $0.00000.
@@ -249,6 +289,8 @@ fn render_shows_token_counts_with_values() {
         cached_tokens: None,
     });
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -259,6 +301,7 @@ fn render_shows_token_counts_with_values() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
+
     // Then the status bar shows token counts.
     assert!(row.contains("1.5k"));
     assert!(row.contains("750"));
@@ -285,6 +328,8 @@ fn render_shows_cache_percent_when_cached_tokens_present() {
         cached_tokens: Some(400),
     });
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -295,6 +340,7 @@ fn render_shows_cache_percent_when_cached_tokens_present() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
+
     // Then the cache glyph + 40% appears leftmost.
     assert!(row.contains("\u{2B22} 40%"));
 }
@@ -456,6 +502,8 @@ fn render_hides_cache_glyph_when_no_cached_tokens() {
         cached_tokens: None,
     });
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -466,6 +514,7 @@ fn render_hides_cache_glyph_when_no_cached_tokens() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
+
     // Then no cache glyph appears.
     assert!(!row.contains('\u{2B22}'));
 }
@@ -500,6 +549,8 @@ fn render_cache_percent_uses_measured_turns_only() {
         cached_tokens: None,
     });
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -510,6 +561,7 @@ fn render_cache_percent_uses_measured_turns_only() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
+
     // Then the percentage is 40% (measured only), not 38% (1050 denominator).
     assert!(row.contains("\u{2B22} 40%"));
 }
@@ -534,6 +586,8 @@ fn render_shows_zero_percent_max_when_context_size_but_no_limit() {
     });
     state.active_session_mut().set_context_size(5000);
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -544,6 +598,7 @@ fn render_shows_zero_percent_max_when_context_size_but_no_limit() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
+
     // Then the status bar shows usage with unknown limit (no context_length available).
     assert!(row.contains("5.0k/???"), "expected 5.0k/???, got: {row}");
 }
@@ -554,6 +609,8 @@ fn render_shows_zero_percent_max_when_no_context_size() {
     let mut element = StatusBarElement;
     let state = AppState::default();
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -564,6 +621,7 @@ fn render_shows_zero_percent_max_when_no_context_size() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
+
     // Then the context display shows 0/??? as fallback (no context_size, no model cache).
     assert!(row.contains("0/???"), "expected 0/??? fallback, got: {row}");
     // And token counts are still shown.
@@ -579,6 +637,8 @@ fn render_shows_zero_turns_when_no_history() {
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -589,6 +649,7 @@ fn render_shows_zero_turns_when_no_history() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
+
     // Then the status bar shows "Turns: 0".
     assert!(row.contains("\u{21BB}0"));
 }
@@ -614,6 +675,8 @@ fn render_shows_turn_count_with_history() {
         .active_session_mut()
         .push_entry(jinn_kernel::protocol::ChatEntry::assistant("doing well"));
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -624,6 +687,7 @@ fn render_shows_turn_count_with_history() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
+
     // Then the status bar shows "Turns: 4".
     assert!(row.contains("\u{21BB}4"));
 }
@@ -653,6 +717,8 @@ fn render_turn_count_skips_tool_loop_intermediates() {
         .active_session_mut()
         .push_entry(jinn_kernel::protocol::ChatEntry::assistant("fixed it"));
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -663,6 +729,7 @@ fn render_turn_count_skips_tool_loop_intermediates() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
+
     // Then only the user and final assistant count as turns.
     assert!(row.contains("\u{21BB}2"));
 }
@@ -673,6 +740,8 @@ fn render_shows_cwd_on_first_line() {
     let mut element = StatusBarElement;
     let state = AppState::default();
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -682,7 +751,8 @@ fn render_shows_cwd_on_first_line() {
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    // The first row should have content (cwd).
+
+    // Then the first row carries the cwd and is not empty.
     let row0 = buffer_row(&buffer, 0, 80);
     assert!(!row0.trim().is_empty(), "cwd line should not be empty");
 }
@@ -699,6 +769,8 @@ fn render_shows_absolute_path_for_non_home_cwd() {
         .active_session_mut()
         .set_cwd(std::path::PathBuf::from("/tmp/test-project"));
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -708,7 +780,8 @@ fn render_shows_absolute_path_for_non_home_cwd() {
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    // The cwd line (row 0) should show the full absolute path.
+
+    // Then the cwd line (row 0) shows the full absolute path, with no tilde.
     let row0 = buffer_row(&buffer, 0, 80);
     assert!(
         row0.contains("/tmp/test-project"),
@@ -727,6 +800,8 @@ fn render_shows_tilde_for_home_cwd() {
     let home = dirs::home_dir().expect("home dir exists");
     state.active_session_mut().set_cwd(home);
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -736,7 +811,8 @@ fn render_shows_tilde_for_home_cwd() {
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    // The cwd line should show just "~" (home dir).
+
+    // Then the cwd line collapses to just "~".
     let row0 = buffer_row(&buffer, 0, 80);
     assert!(
         row0.trim_start().starts_with('~'),
@@ -757,6 +833,8 @@ fn render_shows_tilde_substitution_for_path_under_home() {
         .active_session_mut()
         .set_cwd(home.join("projects/my-app"));
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -766,12 +844,42 @@ fn render_shows_tilde_substitution_for_path_under_home() {
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    // The cwd line should show "~/projects/my-app".
+
+    // Then only the home-directory prefix is replaced by "~".
     let row0 = buffer_row(&buffer, 0, 80);
     assert!(
         row0.trim_start().starts_with("~/projects/my-app"),
         "expected ~/projects/my-app in cwd line, got: {row0}"
     );
+}
+
+/// Attach a model cache to the state's provider cell, holding exactly one model
+/// under `provider` whose id is `model_id` and whose context length is
+/// `context_length`.
+fn attach_model_cache(
+    state: &mut AppState,
+    provider: &str,
+    model_id: &str,
+    context_length: Option<u32>,
+) {
+    let mut entries = std::collections::HashMap::new();
+    entries.insert(
+        provider.to_owned(),
+        vec![jinn_provider_config::ModelInfo {
+            id: model_id.to_owned(),
+            context_length,
+            input_modalities: jinn_provider_config::InputModalities::text(),
+        }],
+    );
+    state
+        .provider_state()
+        .expect("provider cell attached")
+        .update(|cell| {
+            cell.model_cache = Some(jinn_provider_config::ModelCache {
+                entries,
+                last_updated_at: None,
+            });
+        });
 }
 
 #[rstest::rstest]
@@ -793,28 +901,15 @@ fn render_shows_context_limit_with_usage_and_percentage() {
         cached_tokens: None,
     });
     state.active_session_mut().set_context_size(5000);
-
-    // And a model cache with context_length for the active model.
-    let mut cache_entries = std::collections::HashMap::new();
-    cache_entries.insert(
-        "openrouter".to_owned(),
-        vec![jinn_provider_config::ModelInfo {
-            id: "anthropic/claude-sonnet-4".to_owned(),
-            context_length: Some(200_000),
-            input_modalities: jinn_provider_config::InputModalities::text(),
-        }],
+    attach_model_cache(
+        &mut state,
+        "openrouter",
+        "anthropic/claude-sonnet-4",
+        Some(200_000),
     );
-    state
-        .provider_state()
-        .expect("provider cell attached")
-        .update(|cell| {
-            cell.model_cache = Some(jinn_provider_config::ModelCache {
-                entries: cache_entries,
-                last_updated_at: None,
-            });
-        });
-
     let (mut terminal, area) = setup_term(100, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -825,6 +920,7 @@ fn render_shows_context_limit_with_usage_and_percentage() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 100);
+
     // Then the status bar shows the percentage and formatted max.
     assert!(row.contains("2.5%/200k"), "expected 2.5%/200k, got: {row}");
 }
@@ -848,28 +944,10 @@ fn render_falls_back_when_no_context_limit_in_cache() {
         cached_tokens: None,
     });
     state.active_session_mut().set_context_size(5000);
-
-    // Model cache exists but has no context_length.
-    let mut cache_entries = std::collections::HashMap::new();
-    cache_entries.insert(
-        "ollama".to_owned(),
-        vec![jinn_provider_config::ModelInfo {
-            id: "llama3".to_owned(),
-            context_length: None,
-            input_modalities: jinn_provider_config::InputModalities::text(),
-        }],
-    );
-    state
-        .provider_state()
-        .expect("provider cell attached")
-        .update(|cell| {
-            cell.model_cache = Some(jinn_provider_config::ModelCache {
-                entries: cache_entries,
-                last_updated_at: None,
-            });
-        });
-
+    attach_model_cache(&mut state, "ollama", "llama3", None);
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -880,6 +958,7 @@ fn render_falls_back_when_no_context_limit_in_cache() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
+
     // Then the status bar shows usage with unknown limit (model found but no context_length).
     assert!(
         row.contains("5.0k/???"),
@@ -914,6 +993,8 @@ fn render_falls_back_when_no_model_cache() {
     );
 
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -924,6 +1005,7 @@ fn render_falls_back_when_no_model_cache() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
+
     // Then the status bar shows usage with unknown limit (no model cache at all).
     assert!(
         row.contains("5.0k/???"),
@@ -940,27 +1022,15 @@ fn render_shows_zero_percent_with_max_when_no_messages_sent() {
         "openrouter/anthropic/claude-sonnet-4".to_owned(),
     ));
 
-    // And a model cache with context_length for the active model.
-    let mut cache_entries = std::collections::HashMap::new();
-    cache_entries.insert(
-        "openrouter".to_owned(),
-        vec![jinn_provider_config::ModelInfo {
-            id: "anthropic/claude-sonnet-4".to_owned(),
-            context_length: Some(200_000),
-            input_modalities: jinn_provider_config::InputModalities::text(),
-        }],
+    attach_model_cache(
+        &mut state,
+        "openrouter",
+        "anthropic/claude-sonnet-4",
+        Some(200_000),
     );
-    state
-        .provider_state()
-        .expect("provider cell attached")
-        .update(|cell| {
-            cell.model_cache = Some(jinn_provider_config::ModelCache {
-                entries: cache_entries,
-                last_updated_at: None,
-            });
-        });
-
     let (mut terminal, area) = setup_term(100, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -971,6 +1041,7 @@ fn render_shows_zero_percent_with_max_when_no_messages_sent() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 100);
+
     // Then the status bar shows 0.0% with the real max.
     assert!(row.contains("0.0%/200k"), "expected 0.0%/200k, got: {row}");
 }
@@ -986,26 +1057,11 @@ fn render_shows_used_over_unknown_when_no_context_length() {
     state.active_session_mut().set_context_size(15_000);
 
     // Model cache exists but has no context_length.
-    let mut cache_entries = std::collections::HashMap::new();
-    cache_entries.insert(
-        "ollama".to_owned(),
-        vec![jinn_provider_config::ModelInfo {
-            id: "llama3".to_owned(),
-            context_length: None,
-            input_modalities: jinn_provider_config::InputModalities::text(),
-        }],
-    );
-    state
-        .provider_state()
-        .expect("provider cell attached")
-        .update(|cell| {
-            cell.model_cache = Some(jinn_provider_config::ModelCache {
-                entries: cache_entries,
-                last_updated_at: None,
-            });
-        });
+    attach_model_cache(&mut state, "ollama", "llama3", None);
 
     let (mut terminal, area) = setup_term(100, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -1016,6 +1072,7 @@ fn render_shows_used_over_unknown_when_no_context_length() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 100);
+
     // Then the status bar shows the formatted usage with unknown limit.
     assert!(row.contains("15.0k/???"), "expected 15.0k/???, got: {row}");
 }
@@ -1026,6 +1083,8 @@ fn render_always_shows_cost_even_when_zero() {
     let mut element = StatusBarElement;
     let state = AppState::default();
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -1036,6 +1095,7 @@ fn render_always_shows_cost_even_when_zero() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
+
     // Then cost is always shown as $0.00000.
     assert!(
         row.contains("$0.00000"),
@@ -1062,6 +1122,8 @@ fn render_shows_cost_with_non_zero_value() {
         cached_tokens: None,
     });
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -1072,6 +1134,7 @@ fn render_shows_cost_with_non_zero_value() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
+
     // Then the status bar shows the cost value.
     assert!(
         row.contains("$0.00230"),
@@ -1079,12 +1142,10 @@ fn render_shows_cost_with_non_zero_value() {
     );
 }
 
-#[rstest::rstest]
-fn render_tree_cache_segment_is_success_when_at_or_above_95_percent() {
-    use jinn_token_count_msg::TokenRecord;
-
-    // Given a parent and child session whose aggregated ledgers report 96% cache hits.
-    let mut element = StatusBarElement;
+/// Build a state with an active (parent) session and one child session whose
+/// ledgers report cache hits. The parent reports 1000 prompt / 960 cached
+/// tokens; the child 200 prompt / 192 cached — 1152/1200 = 96% when aggregated.
+fn state_with_parent_and_child_cache() -> AppState {
     let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
@@ -1100,19 +1161,25 @@ fn render_tree_cache_segment_is_success_when_at_or_above_95_percent() {
     });
     let child_id = jinn_core_types::SessionId::new();
     let active_id = state.session.active_session_id().clone();
-    {
-        let child = state.session_mut_or_create(&child_id);
-        child.push_token_record(TokenRecord {
-            model_used: None,
-            timestamp: jiff::Timestamp::now(),
-            tokens_sent: 500,
-            tokens_received: 250,
-            cost: Some(0.005),
-            prompt_tokens: Some(200),
-            cached_tokens: Some(192),
-        });
-        child.set_parent_session(active_id);
-    }
+    let child = state.session_mut_or_create(&child_id);
+    child.push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 500,
+        tokens_received: 250,
+        cost: Some(0.005),
+        prompt_tokens: Some(200),
+        cached_tokens: Some(192),
+    });
+    child.set_parent_session(active_id);
+    state
+}
+
+#[rstest::rstest]
+fn render_tree_cache_segment_is_success_when_at_or_above_95_percent() {
+    // Given a parent and child session whose aggregated ledgers report 96% cache hits.
+    let mut element = StatusBarElement;
+    let state = state_with_parent_and_child_cache();
 
     // When rendering.
     let (mut terminal, area) = setup_term(120, 2);
@@ -1149,34 +1216,7 @@ fn render_tree_cache_segment_is_success_when_at_or_above_95_percent() {
 fn render_tree_cache_segment_keeps_muted_neighbors() {
     // Given a parent and child session showing a tree aggregate at 96% cache hits.
     let mut element = StatusBarElement;
-    let mut state = AppState::default_with_scope_focus();
-    state
-        .active_session_mut()
-        .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
-    state.active_session_mut().push_token_record(TokenRecord {
-        model_used: None,
-        timestamp: jiff::Timestamp::now(),
-        tokens_sent: 1200,
-        tokens_received: 600,
-        cost: Some(0.01),
-        prompt_tokens: Some(1000),
-        cached_tokens: Some(960),
-    });
-    let child_id = jinn_core_types::SessionId::new();
-    let active_id = state.session.active_session_id().clone();
-    {
-        let child = state.session_mut_or_create(&child_id);
-        child.push_token_record(TokenRecord {
-            model_used: None,
-            timestamp: jiff::Timestamp::now(),
-            tokens_sent: 500,
-            tokens_received: 250,
-            cost: Some(0.005),
-            prompt_tokens: Some(200),
-            cached_tokens: Some(192),
-        });
-        child.set_parent_session(active_id);
-    }
+    let state = state_with_parent_and_child_cache();
 
     // When rendering.
     let (mut terminal, area) = setup_term(120, 2);
@@ -1231,6 +1271,8 @@ fn render_shows_cost_before_turns_indicator() {
         cached_tokens: None,
     });
     let (mut terminal, area) = setup_term(80, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -1241,6 +1283,7 @@ fn render_shows_cost_before_turns_indicator() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
+
     // Then cost appears before Turns in the rendered row.
     let cost_pos = row.find("$0.00150").expect("cost should be present");
     let turns_pos = row
@@ -1261,6 +1304,8 @@ fn render_hides_tree_aggregate_for_single_session() {
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     let (mut terminal, area) = setup_term(120, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -1271,6 +1316,7 @@ fn render_hides_tree_aggregate_for_single_session() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row0 = buffer_row(&buffer, 0, 120);
+
     // Then line 1 should NOT contain the tree prefix.
     assert!(
         !row0.contains('\u{1F333}'),
@@ -1280,7 +1326,7 @@ fn render_hides_tree_aggregate_for_single_session() {
 
 #[rstest::rstest]
 fn render_shows_tree_aggregate_when_parent_has_child() {
-    // Given a parent session with a child session.
+    // Given a parent session with a child session, neither reporting cache hits.
     use jinn_token_count_msg::TokenRecord;
 
     let mut element = StatusBarElement;
@@ -1289,7 +1335,7 @@ fn render_shows_tree_aggregate_when_parent_has_child() {
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
 
-    // Add token records to the active (parent) session.
+    // The active (parent) session has a ledger entry...
     state.active_session_mut().push_token_record(TokenRecord {
         model_used: None,
         timestamp: jiff::Timestamp::now(),
@@ -1299,25 +1345,24 @@ fn render_shows_tree_aggregate_when_parent_has_child() {
         prompt_tokens: None,
         cached_tokens: None,
     });
-
-    // Create a child session.
+    // ...and so does a child session.
     let child_id = jinn_core_types::SessionId::new();
     let active_id = state.session.active_session_id().clone();
-    {
-        let child = state.session_mut_or_create(&child_id);
-        child.push_token_record(TokenRecord {
-            model_used: None,
-            timestamp: jiff::Timestamp::now(),
-            tokens_sent: 500,
-            tokens_received: 250,
-            cost: Some(0.005),
-            prompt_tokens: None,
-            cached_tokens: None,
-        });
-        child.set_parent_session(active_id);
-    }
+    let child = state.session_mut_or_create(&child_id);
+    child.push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 500,
+        tokens_received: 250,
+        cost: Some(0.005),
+        prompt_tokens: None,
+        cached_tokens: None,
+    });
+    child.set_parent_session(active_id);
 
     let (mut terminal, area) = setup_term(120, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -1328,6 +1373,7 @@ fn render_shows_tree_aggregate_when_parent_has_child() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row0 = buffer_row(&buffer, 0, 120);
+
     // Then line 1 right should show tree aggregate with \u{29C9}2.
     assert!(
         row0.contains("\u{29C9}2"),
@@ -1368,6 +1414,8 @@ fn render_shows_tree_aggregate_from_child_viewpoint() {
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
 
     let (mut terminal, area) = setup_term(120, 2);
+
+    // When rendering.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -1378,6 +1426,7 @@ fn render_shows_tree_aggregate_from_child_viewpoint() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row0 = buffer_row(&buffer, 0, 120);
+
     // Then tree aggregate still shows \u{29C9}2 (both sessions in tree).
     assert!(
         row0.contains("\u{29C9}2"),

@@ -631,5 +631,4 @@ async fn generate_summary(
 }
 
 #[cfg(test)]
-#[path = "compaction_worker_tests.rs"]
-mod worker_tests;
+mod compaction_worker_tests;

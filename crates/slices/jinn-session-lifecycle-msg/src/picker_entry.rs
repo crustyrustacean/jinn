@@ -110,40 +110,60 @@ mod tests {
 
     #[rstest::rstest]
     fn row_unselected_has_spaces() {
+        // Given an unselected lifecycle entry with no description or args.
         let entry = test_entry("blank", None, false);
         let ranges = no_matches();
         let ctx = row_ctx(&ranges, false);
+
+        // When rendering the row.
         let line = lifecycle_row(&entry, &ctx);
+
+        // Then the row is padded with spaces instead of a cursor marker.
         let text = line.to_string();
         assert!(text.starts_with("  blank"));
     }
 
     #[rstest::rstest]
     fn row_selected_has_arrow() {
+        // Given a selected lifecycle entry with no description or args.
         let entry = test_entry("blank", None, false);
         let ranges = no_matches();
         let ctx = row_ctx(&ranges, true);
+
+        // When rendering the row.
         let line = lifecycle_row(&entry, &ctx);
+
+        // Then the row is prefixed with the cursor marker.
         let text = line.to_string();
         assert!(text.starts_with("> blank"));
     }
 
     #[rstest::rstest]
     fn row_shows_args_indicator() {
+        // Given an unselected lifecycle entry whose setup command takes args.
         let entry = test_entry("fossil branch", None, true);
         let ranges = no_matches();
         let ctx = row_ctx(&ranges, false);
+
+        // When rendering the row.
         let line = lifecycle_row(&entry, &ctx);
+
+        // Then the row carries the args indicator.
         let text = line.to_string();
         assert!(text.contains('*'));
     }
 
     #[rstest::rstest]
     fn row_shows_description() {
+        // Given an unselected lifecycle entry with a description.
         let entry = test_entry("fossil branch", Some("Open a fossil branch"), false);
         let ranges = no_matches();
         let ctx = row_ctx(&ranges, false);
+
+        // When rendering the row.
         let line = lifecycle_row(&entry, &ctx);
+
+        // Then the row includes the description text.
         let text = line.to_string();
         assert!(text.contains("Open a fossil branch"));
     }

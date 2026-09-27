@@ -129,6 +129,8 @@ mod tests {
     fn restart_mcp_server_is_registered() {
         // Given the builtin tool list.
         let tools = builtin_tools(30);
+
+        // When collecting the registered tool names.
         let names: Vec<&str> = tools.iter().map(|(d, _, _)| d.name.as_str()).collect();
 
         // Then restart_mcp_server is present alongside the existing builtins.

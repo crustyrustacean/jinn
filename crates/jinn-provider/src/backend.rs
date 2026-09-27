@@ -120,17 +120,33 @@ mod tests {
     #[case("OPENAI", Backend::OpenAI)]
     #[case("OpenRouter", Backend::OpenRouter)]
     fn from_str_parses_known_backends(#[case] input: &str, #[case] expected: Backend) {
-        assert_eq!(input.parse::<Backend>().unwrap(), expected);
+        // Given a known backend name.
+        // When parsing the backend name.
+        let parsed = input.parse::<Backend>();
+
+        // Then it resolves to the expected backend.
+        assert_eq!(parsed.unwrap(), expected);
     }
 
     #[rstest::rstest]
     fn from_str_rejects_unknown() {
-        assert!("not-a-backend".parse::<Backend>().is_err());
+        // Given a name that is not a known backend.
+        // When parsing it.
+        let parsed = "not-a-backend".parse::<Backend>();
+
+        // Then parsing fails.
+        assert!(parsed.is_err());
     }
 
     #[rstest::rstest]
     fn display_roundtrips() {
+        // Given a backend.
         let backend = Backend::OpenRouter;
-        assert_eq!(backend.to_string().parse::<Backend>().unwrap(), backend);
+
+        // When displaying it and parsing the result back.
+        let roundtripped = backend.to_string().parse::<Backend>();
+
+        // Then the parsed backend is the original one.
+        assert_eq!(roundtripped.unwrap(), backend);
     }
 }

@@ -18,6 +18,8 @@ use jinn_core_types::{ChatEntryKind, HistoryMutation};
 use jinn_kernel::protocol::{ChangeSource, ChatEntry, ChatEntryId, ContextOverride};
 use jinn_kernel::protocol::{PinPosition, ToolResultStatus};
 use jinn_session_state::ChatSessionState;
+use rand::Rng;
+use std::collections::HashSet;
 
 /// A complete loop: empty assistant, one call, one result.
 fn simple_loop() -> Vec<ChatEntry> {
@@ -593,87 +595,101 @@ fn sequence_is_valid(messages: &[LlmMessage]) -> bool {
     open.is_none_or(|remaining| remaining.is_empty())
 }
 
+/// The mutable state a randomized editor run threads through its steps.
+struct RunState {
+    session: ChatSessionState,
+    rng: rand::rngs::StdRng,
+    call_counter: usize,
+    pinned: HashSet<ChatEntryId>,
+}
+
+/// Applies one randomized editor op. Kept out of the test body so the
+/// test itself reads as Given/When/Then rather than an eight-arm match.
+fn apply_random_op(run: &mut RunState, step: usize) {
+    let history_len = run.session.history().len();
+    if history_len == 0 {
+        run.session.edit_history().append(ChatEntry::user("start"));
+        return;
+    }
+    let pick = run.rng.random_range(0..8);
+    let random_index = run.rng.random_range(0..history_len);
+    let id = run.session.history()[random_index].id.clone();
+    match pick {
+        0 | 1 => {
+            run.session
+                .edit_history()
+                .append(ChatEntry::user(format!("u{step}")));
+        }
+        2 => {
+            run.session
+                .edit_history()
+                .append(ChatEntry::assistant(format!("a{step}")));
+        }
+        3 => {
+            run.call_counter += 1;
+            run.session.edit_history().append(ChatEntry::tool_call(
+                format!("c{}", run.call_counter),
+                "bash",
+                "{}",
+            ));
+        }
+        4 => {
+            let call_id = format!("c{}", run.rng.random_range(1..=(run.call_counter.max(1))));
+            run.session.edit_history().append(ChatEntry::tool_result(
+                call_id,
+                "bash",
+                "ok",
+                ToolResultStatus::Success,
+            ));
+        }
+        5 => {
+            let changed = run.session.edit_history().set_context(
+                &id,
+                ContextOverride::ForcedExclude,
+                &ChangeSource::Worker {
+                    name: "rand".to_owned(),
+                },
+            );
+            let _ = changed;
+        }
+        6 => {
+            if !run.pinned.contains(&id) {
+                run.session.edit_history().pin(&id, PinPosition::Relative);
+                run.pinned.clear();
+                // After chunk pinning, re-derive which ids are pinned.
+                run.pinned.extend(
+                    run.session
+                        .history()
+                        .iter()
+                        .filter(|e| e.is_pinned())
+                        .map(|e| e.id.clone()),
+                );
+            }
+        }
+        _ => {
+            run.session.edit_history().normalize_loop_layout();
+        }
+    }
+}
+
 #[rstest::rstest]
 #[test]
 fn randomized_editor_ops_always_assemble_valid_sequences() {
-    use rand::Rng;
-    use std::collections::HashSet;
-
     // Given a seeded generator and a session built from editor ops only.
-    let mut rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(0x5EED);
-    let mut session = ChatSessionState::new();
-    let mut call_counter = 0usize;
-    let mut pinned: HashSet<ChatEntryId> = HashSet::new();
+    let mut run = RunState {
+        session: ChatSessionState::new(),
+        rng: <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(0x5EED),
+        call_counter: 0,
+        pinned: HashSet::new(),
+    };
 
     for step in 0..2000 {
-        let history_len = session.history().len();
-        if history_len == 0 {
-            session.edit_history().append(ChatEntry::user("start"));
-            continue;
-        }
-        let pick = rng.random_range(0..8);
-        let random_index = rng.random_range(0..history_len);
-        let id = session.history()[random_index].id.clone();
-        match pick {
-            0 | 1 => {
-                session
-                    .edit_history()
-                    .append(ChatEntry::user(format!("u{step}")));
-            }
-            2 => {
-                session
-                    .edit_history()
-                    .append(ChatEntry::assistant(format!("a{step}")));
-            }
-            3 => {
-                call_counter += 1;
-                session.edit_history().append(ChatEntry::tool_call(
-                    format!("c{call_counter}"),
-                    "bash",
-                    "{}",
-                ));
-            }
-            4 => {
-                let call_id = format!("c{}", rng.random_range(1..=(call_counter.max(1))));
-                session.edit_history().append(ChatEntry::tool_result(
-                    call_id,
-                    "bash",
-                    "ok",
-                    ToolResultStatus::Success,
-                ));
-            }
-            5 => {
-                let changed = session.edit_history().set_context(
-                    &id,
-                    ContextOverride::ForcedExclude,
-                    &ChangeSource::Worker {
-                        name: "rand".to_owned(),
-                    },
-                );
-                let _ = changed;
-            }
-            6 => {
-                if !pinned.contains(&id) {
-                    session.edit_history().pin(&id, PinPosition::Relative);
-                    pinned.clear();
-                    // After chunk pinning, re-derive which ids are pinned.
-                    pinned.extend(
-                        session
-                            .history()
-                            .iter()
-                            .filter(|e| e.is_pinned())
-                            .map(|e| e.id.clone()),
-                    );
-                }
-            }
-            _ => {
-                session.edit_history().normalize_loop_layout();
-            }
-        }
+        // When applying one randomized editor op.
+        apply_random_op(&mut run, step);
 
         // Then the assembled message list is always sequence-valid.
         let messages =
-            jinn_llm_support::entries_to_messages::entries_to_messages(session.history());
+            jinn_llm_support::entries_to_messages::entries_to_messages(run.session.history());
         assert!(
             sequence_is_valid(&messages),
             "step {step} produced an invalid sequence: {messages:?}"

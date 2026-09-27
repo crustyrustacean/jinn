@@ -859,7 +859,11 @@ fn the_picker_state_lives_only_in_its_slice_cell() {
     // cell. A second copy in the kernel would let the menu show one store
     // while a different one is written — the defect that left the skills
     // menu blank.
+    // Given the kernel's frontend state source.
     let kernel_source = include_str!("../../../jinn-kernel/src/state/frontend_state.rs");
+
+    // When checking it for theme picker state.
+    // Then the kernel must not hold theme picker state; the slice cell is the only home.
     assert!(
         !kernel_source.contains("theme_picker"),
         "the kernel must not hold theme picker state; the slice cell is the only home"
@@ -871,7 +875,8 @@ fn the_kernel_names_no_theme_picker_at_all() {
     // The central app crate and the TUI layer must not know this picker
     // exists: no scope variant, no picker kind, no spec id. That is what makes
     // adding a picker a folder-local change.
-    for (label, source) in [
+    // Given the kernel and TUI sources that must stay picker-agnostic.
+    let sources = [
         (
             "jinn-kernel frontend state",
             include_str!("../../../jinn-kernel/src/state/frontend_state.rs"),
@@ -884,13 +889,18 @@ fn the_kernel_names_no_theme_picker_at_all() {
             "jinn-tui scope table",
             include_str!("../../../jinn-tui/src/scope.rs"),
         ),
-    ] {
-        let picker_named = ["PickerTheme", "Picker(theme)", "THEME_ID", "theme_spec"];
+    ];
+    let picker_named = ["PickerTheme", "Picker(theme)", "THEME_ID", "theme_spec"];
+
+    // When checking each source for theme picker names.
+    for (label, source) in sources {
         let hits: Vec<&str> = picker_named
             .iter()
             .filter(|needle| source.contains(*needle))
             .copied()
             .collect();
+
+        // Then that source names the theme picker nowhere.
         assert!(
             hits.is_empty(),
             "{label} still names the theme picker ({hits:?}); the slice must own it entirely"

@@ -128,21 +128,24 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn get_task_list_returns_placeholder_when_empty() {
+        // Given a session with no task list.
         let app = AppState::default();
         let state = State::new(app);
         let session_id = {
             let r = state.read();
             r.session.active_session_id().clone()
         };
-
         let call = ToolCall {
             id: "call-1".to_owned(),
             name: "todo_get_list".to_owned(),
             arguments: "{}".to_owned(),
         };
         let ctx = make_context(Some(state), Some(session_id));
-        let result = execute(call, ctx);
-        let result = futures::executor::block_on(result);
+
+        // When executing the call.
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then a placeholder stands in for the empty list.
         assert!(result.success);
         assert_eq!(result.content, "No phases defined.");
     }
@@ -150,6 +153,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn get_task_list_returns_full_list() {
+        // Given a session holding one phase with one task.
         let app = AppState::default();
         let state = State::new(app);
         let session_id = {
@@ -164,15 +168,17 @@ mod tests {
                 tasks: vec![("Write code".to_owned(), TaskStatus::Pending)],
             }]);
         }
-
         let call = ToolCall {
             id: "call-1".to_owned(),
             name: "todo_get_list".to_owned(),
             arguments: "{}".to_owned(),
         };
         let ctx = make_context(Some(state), Some(session_id));
-        let result = execute(call, ctx);
-        let result = futures::executor::block_on(result);
+
+        // When executing the call.
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the result lists the phase and its task.
         assert!(result.success);
         assert!(result.content.contains("Phase 1: Build"));
         assert!(result.content.contains("Write code"));
@@ -181,6 +187,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn get_task_list_return_has_next_block_at_top() {
+        // Given a session holding one phase with one task.
         let app = AppState::default();
         let state = State::new(app);
         let session_id = {
@@ -195,15 +202,17 @@ mod tests {
                 tasks: vec![("Write code".to_owned(), TaskStatus::Pending)],
             }]);
         }
-
         let call = ToolCall {
             id: "call-1".to_owned(),
             name: "todo_get_list".to_owned(),
             arguments: "{}".to_owned(),
         };
         let ctx = make_context(Some(state), Some(session_id));
-        let result = execute(call, ctx);
-        let result = futures::executor::block_on(result);
+
+        // When executing the call.
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the NEXT block leads the result.
         assert!(result.success);
         assert!(
             result.content.starts_with("\u{2192}"),
@@ -215,14 +224,18 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn get_task_list_requires_state() {
+        // Given a tool context with no application state.
         let call = ToolCall {
             id: "call-1".to_owned(),
             name: "todo_get_list".to_owned(),
             arguments: "{}".to_owned(),
         };
         let ctx = make_context(None, Some(SessionId::new()));
-        let result = execute(call, ctx);
-        let result = futures::executor::block_on(result);
+
+        // When executing the call.
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the call fails.
         assert!(!result.success);
     }
 }

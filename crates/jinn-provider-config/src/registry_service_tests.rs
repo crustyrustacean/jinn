@@ -263,16 +263,20 @@ fn config_snapshot_returns_current_config() {
 #[rstest::rstest]
 fn is_available_returns_false_for_key_required_without_key() {
     // If is_available always returned true, the key-required provider would appear available.
+    // Given a service whose key-required provider has no key.
     let service = service_with_providers();
     let api_keys = crate::api_keys::ApiKeys::new();
     let id = crate::provider_id::ProviderId::new("openrouter/gpt-4".to_owned());
 
+    // When checking availability.
+    // Then the provider is unavailable.
     assert!(!service.is_available(&id, &api_keys));
 }
 
 #[rstest::rstest]
 fn merge_cache_actually_adds_entries_to_registry() {
     // If merge_cache were a no-op, the new model would not be available.
+    // Given a service and a cache holding one new remote model.
     let service = service_with_providers();
 
     let mut cache_entries = std::collections::HashMap::new();
@@ -289,6 +293,7 @@ fn merge_cache_actually_adds_entries_to_registry() {
         last_updated_at: None,
     };
 
+    // When merging the cache into the service.
     service.merge_cache(&cache);
 
     // Then the merged model should be in the registry.

@@ -130,7 +130,12 @@ mod tests {
     #[case("end_turn", StopReason::EndTurn)]
     #[case("something_else", StopReason::Other("something_else".to_owned()))]
     fn from_str_parses_known_reasons(#[case] input: &str, #[case] expected: StopReason) {
-        assert_eq!(StopReason::from(input), expected);
+        // Given a stop-reason name.
+        // When converting the string into a stop reason.
+        let reason = StopReason::from(input);
+
+        // Then it is the expected stop reason.
+        assert_eq!(reason, expected);
     }
 
     #[rstest::rstest]
@@ -138,6 +143,11 @@ mod tests {
     #[case(StopReason::EndTurn, "end_turn")]
     #[case(StopReason::Other("max_tokens".to_owned()), "max_tokens")]
     fn display_formats_correctly(#[case] reason: StopReason, #[case] expected: &str) {
-        assert_eq!(format!("{reason}"), expected);
+        // Given a stop reason.
+        // When displaying it.
+        let rendered = format!("{reason}");
+
+        // Then it renders as the expected string.
+        assert_eq!(rendered, expected);
     }
 }

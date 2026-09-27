@@ -274,6 +274,22 @@ mod tests {
         }
     }
 
+    /// Build a worker sharing a caller-supplied token cache, so a test can
+    /// seed or inspect the cache the worker reads.
+    fn worker_with_cache(
+        token_cache: HistoryWorkerChatEntryTokenCache,
+    ) -> TrivialAssistantAutoPruneWorker {
+        TrivialAssistantAutoPruneWorker {
+            layer: crate::worker::layer_with_strategy(
+                "trivial_assistant",
+                "min_age = 0\nmax_tokens = 80\n".to_owned(),
+            ),
+            config: TrivialAssistantAutoPruneConfig::default(),
+            token_cache,
+            counter: TiktokenCounter::o200k_base(),
+        }
+    }
+
     use jinn_core_types::ChatEntryId;
 
     /// Build N plain user entries (all in-context).
@@ -332,7 +348,11 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn empty_history_produces_no_mutations() {
+        // Given a worker keeping the last 100 entries and an empty history.
         let w = worker(100, 80);
+
+        // When evaluating the empty history.
+        // Then no mutations are produced.
         assert!(evaluate(&w, Vec::new()).is_empty());
     }
 
@@ -342,9 +362,14 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn history_under_threshold_produces_no_mutations() {
+        // Given a worker keeping the last 100 entries and a 51-entry history led by a trivial assistant.
         let w = worker(100, 80);
+
         let mut history = users(50);
         history.insert(0, trivial_assistant("ok"));
+
+        // When evaluating the history.
+        // Then no mutations are produced.
         assert!(evaluate(&w, history).is_empty());
     }
 
@@ -357,11 +382,17 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn history_exactly_at_threshold_produces_no_mutations() {
+        // Given a worker keeping the last 100 entries and a 100-entry history led by a trivial assistant.
         let w = worker(100, 80);
+
         let mut history = Vec::new();
         history.push(trivial_assistant("ok"));
         history.extend(users(99));
+        // And the history is exactly at the threshold.
         assert_eq!(history.len(), 100);
+
+        // When evaluating the history.
+        // Then no mutations are produced.
         assert!(evaluate(&w, history).is_empty());
     }
 
@@ -371,6 +402,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn trivial_assistant_outside_window_is_pruned() {
+        // Given a worker keeping the last 100 entries and a trivial assistant at the start of a 101-entry history.
         let w = worker(100, 80);
         let mut history = Vec::new();
         let asst = trivial_assistant("done");
@@ -380,8 +412,12 @@ mod tests {
         // (positions 1..=100). Position 0 (the assistant) is outside.
         history.extend(users(100));
 
+        // When evaluating the history.
         let mutations = evaluate(&w, history);
+
         let excluded = excluded_ids(&mutations);
+
+        // Then the assistant is pruned.
         assert_eq!(mutations.len(), 1);
         assert!(excluded.contains(&asst_id));
     }
@@ -396,13 +432,18 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn large_assistant_outside_window_is_not_pruned() {
+        // Given a worker keeping the last 100 entries and an assistant over 80 tokens at the start of a 101-entry history.
         let counter = TiktokenCounter::o200k_base();
         let asst = large_assistant();
         let text = match &asst.kind {
             ChatEntryKind::Assistant(t) => t.clone(),
             _ => panic!("expected assistant"),
         };
+
+        // When evaluating.
         let tokens = counter.count(&text);
+
+        // Then no mutations are produced.
         assert!(
             tokens > 80,
             "test helper must produce >80 tokens, got {tokens}"
@@ -433,6 +474,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn trivial_assistant_inside_window_is_not_pruned() {
+        // Given a worker keeping the last 100 entries and a trivial assistant as the last of 101 entries.
         let w = worker(100, 80);
         let mut history = users(100);
         let asst = trivial_assistant("ok");
@@ -440,8 +482,12 @@ mod tests {
         history.push(asst);
         // total = 101 entries. Window is last 100 (positions 1..=100).
         // The assistant at idx 100 is inside the window.
+        // When evaluating the history.
         let mutations = evaluate(&w, history);
+
         let excluded = excluded_ids(&mutations);
+
+        // Then no mutations are produced.
         assert!(!excluded.contains(&asst_id));
         assert!(mutations.is_empty());
     }
@@ -452,11 +498,16 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn empty_assistant_outside_window_is_not_targeted() {
+        // Given a worker keeping the last 100 entries and an empty assistant at the start of a 101-entry history.
         let w = worker(100, 80);
         let mut history = Vec::new();
         history.push(trivial_assistant(""));
         history.extend(users(100));
+
+        // When evaluating.
         let mutations = evaluate(&w, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty(), "empty assistant must not be targeted");
     }
 
@@ -469,6 +520,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn non_assistant_entries_in_prune_window_are_not_targeted() {
+        // Given a worker keeping the last 100 entries, an old user entry, and an old trivial assistant.
         let w = worker(100, 80);
         let mut history = Vec::new();
         let old_user = ChatEntry::user("old user");
@@ -479,8 +531,12 @@ mod tests {
         history.push(asst);
         history.extend(users(100));
 
+        // When evaluating the history.
         let mutations = evaluate(&w, history);
+
         let excluded = excluded_ids(&mutations);
+
+        // Then the assistant is pruned and the user entry is left alone.
         assert_eq!(mutations.len(), 1);
         assert!(excluded.contains(&asst_id));
         assert!(
@@ -495,6 +551,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn already_excluded_assistant_does_not_get_duplicate_mutation() {
+        // Given a worker keeping the last 100 entries and a trivial assistant that is already excluded.
         let w = worker(100, 80);
         let mut history = Vec::new();
         let mut asst = trivial_assistant("done");
@@ -508,7 +565,10 @@ mod tests {
         history.push(asst);
         history.extend(users(100));
 
+        // When evaluating.
         let mutations = evaluate(&w, history);
+
+        // Then no mutations are produced.
         assert!(
             mutations.is_empty(),
             "already-excluded entry must not receive duplicate mutation"
@@ -524,6 +584,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn forced_included_assistant_does_not_get_mutation() {
+        // Given a worker keeping the last 100 entries and a force-included trivial assistant.
         let w = worker(100, 80);
         let mut history = Vec::new();
         let mut asst = trivial_assistant("done");
@@ -532,9 +593,12 @@ mod tests {
         history.push(asst);
         history.extend(users(100));
 
+        // When evaluating the history.
         let mutations = evaluate(&w, history);
         // No mutation for the ForcedInclude entry.
         let excluded = excluded_ids(&mutations);
+
+        // Then the assistant receives no mutation.
         assert!(
             !excluded.contains(&asst_id),
             "ForcedInclude entry must not receive ForcedExclude mutation"
@@ -552,6 +616,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn min_age_zero_prunes_old_entries() {
+        // Given a worker with min_age 0 and a trivial assistant followed by one user entry.
         let w = worker(0, 80);
         let mut history = Vec::new();
         let asst = trivial_assistant("done");
@@ -559,8 +624,12 @@ mod tests {
         history.push(asst);
         history.push(ChatEntry::user("after"));
 
+        // When evaluating the history.
         let mutations = evaluate(&w, history);
+
         let excluded = excluded_ids(&mutations);
+
+        // Then the assistant is pruned.
         assert!(excluded.contains(&asst_id));
     }
 
@@ -573,6 +642,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn min_age_protects_recent_trivial_assistant() {
+        // Given a worker with min_age 5 and a trivial assistant followed by one user entry.
         let w = worker(5, 80);
         let mut history = Vec::new();
         let asst = trivial_assistant("done");
@@ -580,7 +650,10 @@ mod tests {
         history.push(asst);
         history.push(ChatEntry::user("after"));
 
+        // When evaluating.
         let mutations = evaluate(&w, history);
+
+        // Then the assistant is protected.
         assert!(
             !excluded_ids(&mutations).contains(&asst_id),
             "recent trivial assistant must be protected by min_age"
@@ -594,32 +667,45 @@ mod tests {
     // history_len = 100, trivial_assistant at idx 95 → age = 4. With
     // min_age = 5: 4 < 5 → protected. With min_age = 4: 4 < 4 → not protected.
     // ------------------------------------------------------------------
-    #[rstest::rstest]
-    #[test]
-    fn min_age_boundary_strict_less_than() {
-        // Protected case: age 4 < min_age 5.
-        let w = worker(5, 80);
-        let mut history = users(95); // 95 user entries
-        let asst = trivial_assistant("done");
-        let asst_id = asst.id.clone();
-        history.push(asst);
-        history.extend(users(4)); // total 100, assistant at idx 95, age = 4
-
-        let mutations = evaluate(&w, history);
-        assert!(
-            !excluded_ids(&mutations).contains(&asst_id),
-            "age = min_age - 1 must be protected"
-        );
-
-        // Not-protected case: age 4 = min_age 4.
-        let w = worker(4, 80);
+    /// Build a history of 100 entries whose only assistant sits at index 95,
+    /// giving it an age of 4.
+    fn history_with_aged_assistant() -> (Vec<ChatEntry>, ChatEntryId) {
         let mut history = users(95);
         let asst = trivial_assistant("done");
         let asst_id = asst.id.clone();
         history.push(asst);
         history.extend(users(4));
+        (history, asst_id)
+    }
 
+    #[rstest::rstest]
+    #[test]
+    fn min_age_boundary_protects_below_it() {
+        // Given a trivial assistant at age 4 and a worker with min_age 5.
+        let w = worker(5, 80);
+        let (history, asst_id) = history_with_aged_assistant();
+
+        // When evaluating.
         let mutations = evaluate(&w, history);
+
+        // Then the assistant is protected.
+        assert!(
+            !excluded_ids(&mutations).contains(&asst_id),
+            "age = min_age - 1 must be protected"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn min_age_boundary_is_strictly_less_than() {
+        // Given a trivial assistant at age 4 and a worker with min_age 4.
+        let w = worker(4, 80);
+        let (history, asst_id) = history_with_aged_assistant();
+
+        // When evaluating.
+        let mutations = evaluate(&w, history);
+
+        // Then the assistant is not protected.
         assert!(
             excluded_ids(&mutations).contains(&asst_id),
             "age = min_age must NOT be protected (strict less-than)"
@@ -635,9 +721,14 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn max_tokens_clamped_to_1() {
+        // Given a worker with max_tokens 0 (clamped to 1) and a one-token assistant at the start of a 101-entry history.
         let counter = TiktokenCounter::o200k_base();
         let text = "ok";
+
+        // When evaluating.
         let tokens = counter.count(text);
+
+        // Then the assistant is pruned.
         assert_eq!(tokens, 1, "test assumes 'ok' is 1 token under o200k_base");
 
         let w = worker(100, 0);
@@ -664,6 +755,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn multiple_trivial_assistants_all_pruned_when_old() {
+        // Given a worker keeping the last 100 entries and 5 trivial assistants in the first 5 of 200 entries.
         let w = worker(100, 80);
         let mut history = Vec::new();
         let mut expected_ids = Vec::new();
@@ -675,8 +767,12 @@ mod tests {
         // 195 user entries → total 200 entries. Window covers last 100.
         history.extend(users(195));
 
+        // When evaluating the history.
         let mutations = evaluate(&w, history);
+
         let excluded = excluded_ids(&mutations);
+
+        // Then all 5 assistants are pruned.
         assert_eq!(mutations.len(), 5);
         for id in &expected_ids {
             assert!(excluded.contains(id), "expected {id} to be pruned");
@@ -691,6 +787,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn token_cache_populated_after_evaluate() {
+        // Given a worker and a trivial assistant at the start of a 101-entry history.
         let w = worker(100, 80);
         let session_id = SessionId::new();
         let asst = trivial_assistant("done");
@@ -699,9 +796,12 @@ mod tests {
         history.extend(users(100));
 
         let history: Arc<[ChatEntry]> = history.into();
+
         let rt = tokio::runtime::Runtime::new().expect("runtime");
+        // When evaluating the history.
         rt.block_on(async { w.evaluate(&session_id, history).await });
 
+        // Then the assistant's token count is cached.
         assert_eq!(
             w.token_cache.get(&session_id, &asst_id),
             Some(1),
@@ -721,6 +821,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn second_evaluate_uses_cached_tokens_not_recomputed() {
+        // Given a worker, a trivial assistant at the start of a 101-entry history, and a cache sabotaged to 81 tokens.
         let w = worker(100, 80);
         let session_id = SessionId::new();
         let asst = trivial_assistant("done");
@@ -732,7 +833,10 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().expect("runtime");
 
         // Sanity: first call prunes the entry.
+        // When evaluating a second time after the first evaluation pruned the entry.
         let first = rt.block_on(async { w.evaluate(&session_id, history.clone()).await });
+
+        // Then the entry is skipped because the cached count is read rather than recomputed.
         assert!(
             excluded_ids(&first).contains(&asst_id),
             "first evaluate must prune 'done' (1 token, outside window)"
@@ -773,6 +877,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn pinned_trivial_assistant_outside_window_is_not_pruned() {
+        // Given a worker keeping the last 100 entries and a pinned trivial assistant at the start of a 101-entry history.
         use jinn_core_types::PinPosition;
         let w = worker(100, 80);
         let mut asst = trivial_assistant("done");
@@ -781,7 +886,10 @@ mod tests {
         let mut history = vec![asst];
         history.extend(users(100));
 
+        // When evaluating.
         let mutations = evaluate(&w, history);
+
+        // Then the assistant is not pruned.
         assert!(
             !excluded_ids(&mutations).contains(&asst_id),
             "pinned trivial assistant must not be pruned even outside window"
@@ -808,20 +916,13 @@ mod tests {
     fn anchored_assistant_worker_reads_external_cache_writes() {
         use crate::strategies::anchored_assistant::AnchoredAssistantAutoPruneWorker;
 
+        // Given a shared token cache and an anchored-assistant worker holding it.
         let shared_cache = HistoryWorkerChatEntryTokenCache::new();
         let session_id = SessionId::new();
 
-        // Trivial worker constructed against the shared handle — proves
-        // both workers can hold the same cache instance (type-check).
-        let _trivial = TrivialAssistantAutoPruneWorker {
-            layer: crate::worker::layer_with_strategy(
-                "trivial_assistant",
-                "min_age = 0\nmax_tokens = 80\n".to_owned(),
-            ),
-            config: TrivialAssistantAutoPruneConfig::default(),
-            token_cache: shared_cache.clone(),
-            counter: TiktokenCounter::o200k_base(),
-        };
+        // A trivial worker constructed against the same handle — proves both
+        // workers can hold one cache instance (type-check).
+        let _trivial = worker_with_cache(shared_cache.clone());
 
         let anchored = AnchoredAssistantAutoPruneWorker {
             layer: crate::worker::layer_with_strategy(
@@ -849,16 +950,17 @@ mod tests {
 
         let history: Arc<[ChatEntry]> = history.into();
         let rt = tokio::runtime::Runtime::new().expect("runtime");
+
+        // When evaluating with the anchored-assistant worker.
         let mutations = rt.block_on(async { anchored.evaluate(&session_id, history).await });
 
+        // Then the entry read from the sabotaged cache is treated as a candidate.
         assert!(
             excluded_ids(&mutations).contains(&target_id),
             "anchored-assistant worker must read sabotaged cache value (999 > 81 -> candidate); \",
              if it recomputed it would see 1 token and skip",
         );
-
-        // Belt-and-suspenders: the anchored-assistant worker's get_or_insert_with
-        // must not overwrite an existing cache entry.
+        // And the existing cache entry is left untouched.
         assert_eq!(
             shared_cache.get(&session_id, &target_id),
             Some(999),

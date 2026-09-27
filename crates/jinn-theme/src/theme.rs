@@ -596,10 +596,10 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
-    #[rstest::rstest]
-    fn empty_theme_file_resolves_to_default() {
-        // Given an empty theme file (all None).
-        let file = ThemeFile {
+    /// A theme file with every field left unset, so resolution must fall back
+    /// to the default theme for each one.
+    fn all_fields_unset() -> ThemeFile {
+        ThemeFile {
             focus_accent: None,
             border_unfocused: None,
             popup_title: None,
@@ -647,106 +647,12 @@ mod tests {
             infopopup_border: None,
             infopopup_fg: None,
             quake_bar_bg: None,
-        };
-
-        // When resolving.
-        let theme = file.resolve();
-        let default = default_theme();
-
-        // Then all fields match the default theme.
-        assert_eq!(theme.focus_accent, default.focus_accent);
-        assert_eq!(theme.muted_text, default.muted_text);
-        assert_eq!(theme.popup_title, default.popup_title);
-        assert_eq!(theme.gutter_bg, default.gutter_bg);
-        assert_eq!(theme.sidebar_resize_accent, default.sidebar_resize_accent);
-        assert_eq!(theme.infopopup_bg, default.infopopup_bg);
-        assert_eq!(theme.infopopup_title, default.infopopup_title);
-        assert_eq!(theme.infopopup_border, default.infopopup_border);
-        assert_eq!(theme.infopopup_fg, default.infopopup_fg);
+        }
     }
 
-    #[rstest::rstest]
-    fn partial_theme_file_overrides_only_specified() {
-        // Given a theme file with only focus_accent set.
-        let file = ThemeFile {
-            focus_accent: Some(ThemeColor(ratatui::style::Color::Red)),
-            border_unfocused: None,
-            popup_title: None,
-            primary_text: None,
-            muted_text: None,
-            subagent_fg: None,
-            subagent_bg: None,
-            error_text: None,
-            success: None,
-            warning: None,
-            streaming: None,
-
-            gutter_bg: None,
-            gutter_context_included: None,
-            user_block_bg: None,
-            tool_fg: None,
-            tool_success_bg: None,
-            tool_failure_bg: None,
-            tool_pending_bg: None,
-            challenge_alert_bg: None,
-            challenge_alert_fg: None,
-            compaction_block_bg: None,
-            sources_header_bg: None,
-            sources_header_fg: None,
-            truncation_fg: None,
-            picker_active_marker: None,
-            picker_selected_bg: None,
-            picker_highlight_bg: None,
-            tab_active_fg: None,
-            tab_active_bg: None,
-            tab_inactive_fg: None,
-            selection_fg: None,
-            selection_bg: None,
-            in_flight_bg: None,
-            in_flight_fg: None,
-            accent_action: None,
-            age_fresh: None,
-            age_stale: None,
-            scroll_indicator_bg: None,
-            sidebar_resize_accent: None,
-            input_mode_queue: None,
-            input_mode_steer: None,
-            infopopup_bg: None,
-            infopopup_title: None,
-            infopopup_border: None,
-            infopopup_fg: None,
-            quake_bar_bg: None,
-        };
-
-        // When resolving.
-        let theme = file.resolve();
-        let default = default_theme();
-
-        // Then focus_accent is overridden.
-        assert_eq!(theme.focus_accent, Color::Red);
-        // And other fields remain default.
-        assert_eq!(theme.muted_text, default.muted_text);
-        assert_eq!(theme.gutter_bg, default.gutter_bg);
-    }
-
-    #[rstest::rstest]
-    fn theme_file_from_toml() {
-        // Given a TOML string with one field.
-        let toml_str = "focus_accent = \"red\"";
-        let file: ThemeFile = toml::from_str(toml_str).expect("parse");
-
-        // When resolving.
-        let theme = file.resolve();
-
-        // Then focus_accent is Red and everything else is default.
-        assert_eq!(theme.focus_accent, Color::Red);
-        assert_eq!(theme.muted_text, default_theme().muted_text);
-    }
-
-    #[rstest::rstest]
-    fn theme_file_round_trip() {
-        // Given a theme file with all fields set.
-        let original = ThemeFile {
+    /// A theme file with every field set to a distinct, concrete color.
+    fn all_fields_set() -> ThemeFile {
+        ThemeFile {
             focus_accent: Some(ThemeColor(Color::Rgb(255, 0, 0))),
             border_unfocused: Some(ThemeColor(Color::DarkGray)),
             primary_text: Some(ThemeColor(Color::White)),
@@ -794,7 +700,72 @@ mod tests {
             popup_title: Some(ThemeColor(Color::Yellow)),
             input_mode_queue: Some(ThemeColor(Color::DarkGray)),
             input_mode_steer: Some(ThemeColor(Color::Magenta)),
-        };
+        }
+    }
+
+    /// An all-unset theme file with only `focus_accent` overridden.
+    fn only_focus_accent_set() -> ThemeFile {
+        ThemeFile {
+            focus_accent: Some(ThemeColor(Color::Red)),
+            ..all_fields_unset()
+        }
+    }
+
+    #[rstest::rstest]
+    fn empty_theme_file_resolves_to_default() {
+        // Given an empty theme file (all fields unset).
+        let file = all_fields_unset();
+
+        // When resolving.
+        let theme = file.resolve();
+        let default = default_theme();
+
+        // Then all fields match the default theme.
+        assert_eq!(theme.focus_accent, default.focus_accent);
+        assert_eq!(theme.muted_text, default.muted_text);
+        assert_eq!(theme.popup_title, default.popup_title);
+        assert_eq!(theme.gutter_bg, default.gutter_bg);
+        assert_eq!(theme.sidebar_resize_accent, default.sidebar_resize_accent);
+        assert_eq!(theme.infopopup_bg, default.infopopup_bg);
+        assert_eq!(theme.infopopup_title, default.infopopup_title);
+        assert_eq!(theme.infopopup_border, default.infopopup_border);
+        assert_eq!(theme.infopopup_fg, default.infopopup_fg);
+    }
+
+    #[rstest::rstest]
+    fn partial_theme_file_overrides_only_specified() {
+        // Given a theme file with only focus_accent set.
+        let file = only_focus_accent_set();
+
+        // When resolving.
+        let theme = file.resolve();
+        let default = default_theme();
+
+        // Then focus_accent is overridden.
+        assert_eq!(theme.focus_accent, Color::Red);
+        // And other fields remain default.
+        assert_eq!(theme.muted_text, default.muted_text);
+        assert_eq!(theme.gutter_bg, default.gutter_bg);
+    }
+
+    #[rstest::rstest]
+    fn theme_file_from_toml() {
+        // Given a TOML string with one field.
+        let toml_str = "focus_accent = \"red\"";
+        let file: ThemeFile = toml::from_str(toml_str).expect("parse");
+
+        // When resolving.
+        let theme = file.resolve();
+
+        // Then focus_accent is Red and everything else is default.
+        assert_eq!(theme.focus_accent, Color::Red);
+        assert_eq!(theme.muted_text, default_theme().muted_text);
+    }
+
+    #[rstest::rstest]
+    fn theme_file_round_trip() {
+        // Given a theme file with all fields set.
+        let original = all_fields_set();
 
         // When serializing to TOML and back.
         let toml_str = toml::to_string(&original).expect("serialize");
@@ -829,55 +800,7 @@ mod tests {
     fn input_mode_fields_fall_back_when_absent() {
         // Given a ThemeFile with both input_mode fields explicitly None.
         let fallback = crate::default_theme::default_theme();
-        let sparse = ThemeFile {
-            focus_accent: None,
-            border_unfocused: None,
-            popup_title: None,
-            primary_text: None,
-            muted_text: None,
-            subagent_fg: None,
-            subagent_bg: None,
-            error_text: None,
-            success: None,
-            warning: None,
-            streaming: None,
-
-            gutter_bg: None,
-            gutter_context_included: None,
-            user_block_bg: None,
-            tool_fg: None,
-            tool_success_bg: None,
-            tool_failure_bg: None,
-            tool_pending_bg: None,
-            challenge_alert_bg: None,
-            challenge_alert_fg: None,
-            compaction_block_bg: None,
-            sources_header_bg: None,
-            sources_header_fg: None,
-            truncation_fg: None,
-            picker_active_marker: None,
-            picker_selected_bg: None,
-            picker_highlight_bg: None,
-            tab_active_fg: None,
-            tab_active_bg: None,
-            tab_inactive_fg: None,
-            selection_fg: None,
-            selection_bg: None,
-            in_flight_bg: None,
-            in_flight_fg: None,
-            accent_action: None,
-            age_fresh: None,
-            age_stale: None,
-            scroll_indicator_bg: None,
-            sidebar_resize_accent: None,
-            input_mode_queue: None,
-            input_mode_steer: None,
-            infopopup_bg: None,
-            infopopup_title: None,
-            infopopup_border: None,
-            infopopup_fg: None,
-            quake_bar_bg: None,
-        };
+        let sparse = all_fields_unset();
 
         // When resolving with the fallback.
         let resolved = sparse.resolve_with_fallback(&fallback);

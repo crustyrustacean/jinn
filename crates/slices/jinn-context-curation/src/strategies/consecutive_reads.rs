@@ -289,6 +289,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn no_read_calls_produces_no_mutations() {
+        // Given a history with no read tool calls and a worker keeping the last 3.
         let history = vec![
             ChatEntry::user("hello"),
             ChatEntry::assistant("hi"),
@@ -296,37 +297,55 @@ mod tests {
             ChatEntry::assistant("4"),
         ];
         let worker = worker_with_keep_last(3);
+
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn single_read_produces_no_mutations() {
+        // Given a single read pair of `/foo.rs` and a worker keeping the last 3.
         let history = history_with_n_reads("/foo.rs", 1);
         let worker = worker_with_keep_last(3);
+
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn exact_keep_last_produces_no_mutations() {
+        // Given 3 read pairs of `/foo.rs` and a worker keeping the last 3.
         let history = history_with_n_reads("/foo.rs", 3);
         let worker = worker_with_keep_last(3);
+
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn one_over_keep_last_prunes_oldest_pair() {
+        // Given 4 read pairs of `/foo.rs` and a worker keeping the last 3.
         let history = history_with_n_reads("/foo.rs", 4);
         let expected_call_id = history[0].id.clone();
         let expected_result_id = history[1].id.clone();
         let worker = worker_with_keep_last(3);
+
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
 
+        // Then the oldest pair is pruned and no newer pair is.
         assert_eq!(mutations.len(), 2);
 
         let mut pruned_ids: Vec<_> = mutations
@@ -352,17 +371,22 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn two_over_keep_last_prunes_two_oldest_pairs() {
+        // Given 5 read pairs of `/foo.rs` and a worker keeping the last 3.
         let history = history_with_n_reads("/foo.rs", 5);
         let worker = worker_with_keep_last(3);
+
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
 
         // 2 oldest pairs × 2 entries each = 4 mutations.
+        // Then the two oldest pairs are pruned.
         assert_eq!(mutations.len(), 4);
     }
 
     #[rstest::rstest]
     #[test]
     fn multiple_files_pruned_independently() {
+        // Given 4 read pairs of `/a.rs` and 2 read pairs of `/b.rs`, with a worker keeping the last 2 per file.
         let mut history = Vec::new();
 
         // 4 reads of /a.rs (exceeds keep_last=2 by 2 → 4 mutations)
@@ -380,15 +404,19 @@ mod tests {
         }
 
         let worker = worker_with_keep_last(2);
+
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
 
         // 2 pruned pairs for /a.rs × 2 entries each = 4 mutations
+        // Then only the `/a.rs` pairs are pruned.
         assert_eq!(mutations.len(), 4);
     }
 
     #[rstest::rstest]
     #[test]
     fn already_excluded_call_and_result_produces_no_duplicate() {
+        // Given 4 read pairs of `/foo.rs` whose oldest pair is already excluded, and a worker keeping the last 3.
         let mut history = history_with_n_reads("/foo.rs", 4);
         // Mark the oldest pair as already excluded.
         history[0].apply_context_override(
@@ -405,13 +433,18 @@ mod tests {
         );
 
         let worker = worker_with_keep_last(3);
+
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn already_excluded_call_only_prunes_result() {
+        // Given 4 read pairs of `/foo.rs` whose oldest call is already excluded, and a worker keeping the last 3.
         let mut history = history_with_n_reads("/foo.rs", 4);
         // Mark only the call as excluded.
         history[0].apply_context_override(
@@ -423,9 +456,12 @@ mod tests {
         let expected_result_id = history[1].id.clone();
 
         let worker = worker_with_keep_last(3);
+
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
 
         // Only the result should get a mutation.
+        // Then only the oldest result is pruned.
         assert_eq!(mutations.len(), 1);
         match &mutations[0] {
             HistoryMutation::SetContextOverride {
@@ -441,6 +477,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn already_excluded_result_only_prunes_call() {
+        // Given 4 read pairs of `/foo.rs` whose oldest result is already excluded, and a worker keeping the last 3.
         let mut history = history_with_n_reads("/foo.rs", 4);
         // Mark only the result as excluded.
         history[1].apply_context_override(
@@ -452,9 +489,12 @@ mod tests {
         let expected_call_id = history[0].id.clone();
 
         let worker = worker_with_keep_last(3);
+
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
 
         // Only the call should get a mutation.
+        // Then only the oldest call is pruned.
         assert_eq!(mutations.len(), 1);
         match &mutations[0] {
             HistoryMutation::SetContextOverride {
@@ -470,15 +510,19 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn forced_included_call_only_prunes_result() {
+        // Given 4 read pairs of `/foo.rs` whose oldest call is force-included, and a worker keeping the last 3.
         let mut history = history_with_n_reads("/foo.rs", 4);
         // Mark only the call as force-included.
         history[0].context_override = ContextOverride::ForcedInclude;
         let expected_result_id = history[1].id.clone();
 
         let worker = worker_with_keep_last(3);
+
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
 
         // Only the result should get a mutation.
+        // Then only the oldest result is pruned.
         assert_eq!(mutations.len(), 1);
         match &mutations[0] {
             HistoryMutation::SetContextOverride {
@@ -494,6 +538,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn orphaned_call_without_result_is_skipped() {
+        // Given a read tool call with no matching result, and a worker keeping the last 3.
         let history = vec![ChatEntry::tool_call(
             "tc-orphan",
             "read",
@@ -501,26 +546,36 @@ mod tests {
         )];
 
         let worker = worker_with_keep_last(3);
+
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn read_without_path_argument_is_skipped() {
+        // Given a read pair whose arguments carry no `path`, and a worker keeping the last 3.
         let history = vec![
             ChatEntry::tool_call("tc-1", "read", r#"{"offset": 1}"#),
             ChatEntry::tool_result("tc-1", "read", "some output", ToolResultStatus::Success),
         ];
 
         let worker = worker_with_keep_last(3);
+
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn different_paths_tracked_separately() {
+        // Given one read pair for `/abs/path/foo.rs` and one for `foo.rs`, with a worker keeping the last 1.
         let mut history = Vec::new();
 
         let pair1 = read_call_result("tc-1", "/abs/path/foo.rs", "abs contents");
@@ -532,9 +587,12 @@ mod tests {
         history.push(pair2[1].clone());
 
         let worker = worker_with_keep_last(1);
+
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
 
         // Each path has 1 pair, keep_last=1, so no pruning.
+        // Then the two paths are tracked independently and nothing is pruned.
         assert!(
             mutations.is_empty(),
             "different string paths should be tracked independently"
@@ -544,19 +602,28 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn keep_last_1_prunes_all_but_last() {
+        // Given 5 read pairs of `/foo.rs` and a worker keeping the last 1.
         let history = history_with_n_reads("/foo.rs", 5);
         let worker = worker_with_keep_last(1);
+
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
 
         // 4 pruned pairs × 2 entries each = 8 mutations.
+        // Then all four older pairs are pruned.
         assert_eq!(mutations.len(), 8);
     }
 
     #[rstest::rstest]
     #[test]
     fn empty_history_produces_no_mutations() {
+        // Given an empty history and a worker keeping the last 3.
         let worker = worker_with_keep_last(3);
+
+        // When evaluating the history.
         let mutations = evaluate(&worker, vec![]);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
@@ -568,10 +635,14 @@ mod tests {
     #[test]
     fn min_age_zero_prunes_old_read_pair() {
         // With min_age = 0, old read pairs are pruned even when recent.
+        // Given 4 read pairs of `/foo.rs` and a worker with min_age 0.
         let history = history_with_n_reads("/foo.rs", 4);
         let worker = worker_with(3, 0);
+
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
         // 1 pair pruned × 2 entries = 2 mutations.
+        // Then the oldest pair is pruned.
         assert_eq!(mutations.len(), 2);
     }
 
@@ -581,38 +652,57 @@ mod tests {
         // 4 reads of same file, keep_last = 3 → oldest pair normally pruned.
         // History length = 8, oldest pair at idx 0 → age = 7.
         // With min_age = 50, age 7 < 50 → protected → not pruned.
+        // Given 4 read pairs of `/foo.rs` and a worker with min_age 50.
         let history = history_with_n_reads("/foo.rs", 4);
         let worker = worker_with(3, 50);
+
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(
             mutations.is_empty(),
             "recent read pair must be protected by min_age"
         );
     }
 
-    #[rstest::rstest]
-    #[test]
-    fn min_age_boundary_strict_less_than_consecutive_reads() {
-        // Build history so oldest pair has age exactly at the floor.
-        // 4 reads of /foo.rs (8 entries, idx 0..7), then N user entries.
-        // history_len = 8 + N. Oldest call at idx 0 → age = 8 + N - 1.
-        // For age = N + 7 = min_age = N + 7: NOT protected (strict <).
-        // For age = N + 7 < min_age = N + 8: protected.
-        const N: usize = 10;
+    /// Build a history whose oldest read pair sits at age 17: 4 read pairs of
+    /// `/foo.rs` (8 entries) followed by 10 user entries.
+    fn history_with_aged_reads() -> Vec<ChatEntry> {
         let mut history = history_with_n_reads("/foo.rs", 4);
-        for i in 0..N {
+        for i in 0..10 {
             history.push(ChatEntry::user(format!("padding {i}")));
         }
-        // history.len() = 18, oldest call at idx 0, age = 17.
+        history
+    }
 
-        // Protected case: age 17 < min_age 18.
-        let worker = worker_with(3, N + 8);
-        let mutations = evaluate(&worker, history.clone());
-        assert!(mutations.is_empty(), "age = min_age - 1 must be protected");
+    #[rstest::rstest]
+    #[test]
+    fn min_age_boundary_protects_below_it() {
+        // Given 4 read pairs whose oldest call is at age 17, and a worker with
+        // min_age 18.
+        let history = history_with_aged_reads();
+        let worker = worker_with(3, 18);
 
-        // Not-protected case: age 17 = min_age 17.
-        let worker = worker_with(3, N + 7);
+        // When evaluating.
         let mutations = evaluate(&worker, history);
+
+        // Then the oldest pair is protected.
+        assert!(mutations.is_empty(), "age = min_age - 1 must be protected");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn min_age_boundary_is_strictly_less_than() {
+        // Given 4 read pairs whose oldest call is at age 17, and a worker with
+        // min_age 17.
+        let history = history_with_aged_reads();
+        let worker = worker_with(3, 17);
+
+        // When evaluating.
+        let mutations = evaluate(&worker, history);
+
+        // Then the oldest pair is not protected.
         assert_eq!(
             mutations.len(),
             2,

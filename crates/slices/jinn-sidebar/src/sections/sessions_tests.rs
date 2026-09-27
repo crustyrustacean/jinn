@@ -81,44 +81,50 @@ fn state_with_sessions(count: usize) -> AppState {
 
 #[rstest::rstest]
 fn section_id_is_sessions() {
+    // Given a sessions section.
     let mut section = SessionsSection::new();
+
+    // When asking the section for its id.
+    // Then it identifies itself as the sessions section.
     assert_eq!(section.id(), jinn_sidebar_msg::SidebarSectionId::Sessions);
 }
 
 #[rstest::rstest]
 fn content_height_with_one_session() {
+    // Given a state holding a single session.
     let mut section = SessionsSection::new();
     let state = AppState::default_with_scope_focus();
-    assert_eq!(
-        {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            section.content_height(&RenderCtx::new_with_default_config(
-                &state,
-                &slices,
-                &overlay_views,
-            ))
-        },
-        2
-    ); // 1 session + footer
+
+    // When asking the section for its content height.
+    let slices = jinn_slices::Slices::new();
+    let overlay_views = jinn_slices::OverlayViews::new();
+    let height = section.content_height(&RenderCtx::new_with_default_config(
+        &state,
+        &slices,
+        &overlay_views,
+    ));
+
+    // Then it reserves 1 session + footer.
+    assert_eq!(height, 2);
 }
 
 #[rstest::rstest]
 fn content_height_with_three_sessions() {
+    // Given a state holding three sessions.
     let mut section = SessionsSection::new();
     let state = state_with_sessions(3);
-    assert_eq!(
-        {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            section.content_height(&RenderCtx::new_with_default_config(
-                &state,
-                &slices,
-                &overlay_views,
-            ))
-        },
-        4
-    ); // 3 sessions + footer
+
+    // When asking the section for its content height.
+    let slices = jinn_slices::Slices::new();
+    let overlay_views = jinn_slices::OverlayViews::new();
+    let height = section.content_height(&RenderCtx::new_with_default_config(
+        &state,
+        &slices,
+        &overlay_views,
+    ));
+
+    // Then it reserves 3 sessions + footer.
+    assert_eq!(height, 4);
 }
 
 #[rstest::rstest]
@@ -222,12 +228,17 @@ fn navigate_up_at_top_returns_exhausted() {
 
 #[rstest::rstest]
 fn navigate_action_returns_moved() {
+    // Given a state with a single session.
     let mut state = AppState::default_with_scope_focus();
+
+    // When navigating with an action intent.
     let (result, _) = navigate(
         &SidebarIntent::Action(jinn_kernel::KernelIntent::Quit),
         &mut state,
         jinn_slices::empty_config_layer(),
     );
+
+    // Then the section lets the action through instead of exhausting.
     assert_eq!(result, SectionNavResult::Moved);
 }
 
@@ -441,8 +452,12 @@ fn receive_cursor_noop_when_empty() {
 
 #[rstest::rstest]
 fn sorted_sessions_orders_by_created_at_descending() {
+    // Given a state holding three sessions.
     let state = state_with_sessions(3);
+
+    // When collecting the sorted open sessions.
     let sessions = sorted_open_sessions(&state);
+
     // Then sessions are sorted by created_at descending (newest first).
     // Read created_at from live sessions, not from the tree entry.
     assert_eq!(sessions.len(), 3);
@@ -467,8 +482,14 @@ fn sorted_sessions_orders_by_created_at_descending() {
 
 #[rstest::rstest]
 fn sorted_sessions_count_matches_hashmap() {
+    // Given a state holding four sessions.
     let state = state_with_sessions(4);
-    assert_eq!(sorted_open_sessions(&state).len(), 4);
+
+    // When collecting the sorted open sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then every session is listed.
+    assert_eq!(sessions.len(), 4);
 }
 
 #[rstest::rstest]
@@ -581,9 +602,14 @@ fn render_shows_sessions_footer() {
 
 #[rstest::rstest]
 fn render_shows_active_indicator_on_active_session() {
+    // Given a state with a single, active session.
     let mut section = SessionsSection::new();
     let state = AppState::default_with_scope_focus();
+
+    // When rendering the section.
     let rows = render_rows(&mut section, &state, 30, 5);
+
+    // Then the active session's row carries the active indicator.
     let combined = rows.join("\n");
     assert!(
         combined.contains("\u{25b8}"),
@@ -593,9 +619,14 @@ fn render_shows_active_indicator_on_active_session() {
 
 #[rstest::rstest]
 fn render_shows_untitled_for_session_without_title() {
+    // Given a state whose session has no title.
     let mut section = SessionsSection::new();
     let state = AppState::default_with_scope_focus();
+
+    // When rendering the section.
     let rows = render_rows(&mut section, &state, 30, 5);
+
+    // Then the row falls back to a placeholder title.
     let combined = rows.join("\n");
     assert!(
         combined.contains("Untitled Session"),
@@ -1772,9 +1803,9 @@ fn archiving_root_does_not_create_visual_parents_for_orphaned_children() {
     );
 }
 
-#[rstest::rstest]
-fn multi_level_intermediate_hiding_reparents_to_nearest_loaded_ancestor() {
-    // Given a chain: root -> A -> B -> leaf.
+/// A four-deep chain `root -> A -> B -> leaf` in the session map, with the
+/// default session removed and the sidebar focused on sessions.
+fn state_with_four_level_chain() -> ChainIds {
     let mut state = AppState::default_with_scope_focus();
 
     let mut root = ChatSessionState::new();
@@ -1806,54 +1837,82 @@ fn multi_level_intermediate_hiding_reparents_to_nearest_loaded_ancestor() {
         state.session.remove(&default_id);
     }
     state.session.set_active(root_id.clone());
-
-    // When archiving A.
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    let sessions = sorted_open_sessions(&state);
-    let a_index = sessions.iter().position(|s| s.id == a_id).expect("A");
+
+    (state, root_id, a_id, b_id, leaf_id)
+}
+
+/// The `visual_parents` entry recorded for `id`, if any.
+fn visual_parent_of(
+    state: &AppState,
+    id: &jinn_core_types::SessionId,
+) -> Option<jinn_core_types::SessionId> {
     state
         .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(a_index));
-    complete_removed_session(&mut state, &a_id);
+        .with_sections(|s| s.sessions.visual_parents.get(id).cloned(), || None)
+}
+
+/// Archives `id` the way a keypress would: put the cursor on it, then complete
+/// its removal.
+fn archive_session_from_the_list(state: &mut AppState, id: &jinn_core_types::SessionId) {
+    let sessions = sorted_open_sessions(state);
+    let index = sessions
+        .iter()
+        .position(|s| &s.id == id)
+        .expect("session is listed");
+    state
+        .frontend
+        .update_sections(|s| s.sessions.selected_index = Some(index));
+    complete_removed_session(state, id);
+}
+
+#[rstest::rstest]
+fn multi_level_intermediate_hiding_reparents_to_nearest_loaded_ancestor() {
+    // Given a chain: root -> A -> B -> leaf, with A archived.
+    let (mut state, root_id, a_id, b_id, _leaf_id) = state_with_four_level_chain();
+
+    // When archiving A.
+    archive_session_from_the_list(&mut state, &a_id);
 
     // Then B is reparented to root.
     assert_eq!(
-        state
-            .frontend
-            .with_sections(
-                |s| s.sessions.visual_parents.clone(),
-                std::collections::HashMap::new
-            )
-            .get(&b_id),
-        Some(&root_id),
+        visual_parent_of(&state, &b_id),
+        Some(root_id),
         "B should be reparented to root"
     );
+}
+
+#[rstest::rstest]
+fn archiving_a_reparented_session_reparents_its_child_transitively() {
+    // Given a chain: root -> A -> B -> leaf, with A archived and B therefore
+    // reparented to root.
+    let (mut state, root_id, a_id, b_id, leaf_id) = state_with_four_level_chain();
+    archive_session_from_the_list(&mut state, &a_id);
 
     // When archiving B.
-    let sessions = sorted_open_sessions(&state);
-    let b_index = sessions.iter().position(|s| s.id == b_id).expect("B");
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(b_index));
-    complete_removed_session(&mut state, &b_id);
+    archive_session_from_the_list(&mut state, &b_id);
 
-    // Then leaf is reparented to root (transitive via B visual parent).
+    // Then leaf is reparented to root (transitive via B's visual parent).
     assert_eq!(
-        state
-            .frontend
-            .with_sections(
-                |s| s.sessions.visual_parents.clone(),
-                std::collections::HashMap::new
-            )
-            .get(&leaf_id),
-        Some(&root_id),
+        visual_parent_of(&state, &leaf_id),
+        Some(root_id),
         "leaf should be reparented to root (transitive)"
     );
+}
 
-    // And the sidebar tree shows leaf at depth 1 under root.
+#[rstest::rstest]
+fn a_transitively_reparented_leaf_sits_at_depth_one_under_root() {
+    // Given a chain: root -> A -> B -> leaf, with A and B archived.
+    let (mut state, _root_id, a_id, b_id, leaf_id) = state_with_four_level_chain();
+    archive_session_from_the_list(&mut state, &a_id);
+    archive_session_from_the_list(&mut state, &b_id);
+
+    // When building the sidebar tree.
     let remaining = sorted_open_sessions(&state);
+
+    // Then leaf sits at depth 1 under root.
     let leaf_entry = remaining.iter().find(|s| s.id == leaf_id).expect("leaf");
     assert_eq!(
         leaf_entry.depth, 1,
@@ -1920,6 +1979,7 @@ fn tree_children_last_child_flag_is_correct() {
         .filter(|s| s.parent_id.as_ref() == Some(&root_a_id))
         .collect();
 
+    // Then root_a has two children, and only the last is flagged as such.
     assert_eq!(children.len(), 2, "root_a should have 2 children");
     assert!(
         !children[0].is_last_child,
@@ -1931,11 +1991,17 @@ fn tree_children_last_child_flag_is_correct() {
     );
 }
 
-#[rstest::rstest]
-fn update_visual_parents_on_removal_reparents_only_children_of_removed_session() {
-    // Given a chain: root -> A -> B.
-    use crate::sections::sessions::update_visual_parents_on_removal;
+/// A chain `root -> A -> B` alongside an unrelated `parent -> child` pair, with
+/// the default session removed and `root` active.
+type ChainIds = (
+    AppState,
+    jinn_core_types::SessionId,
+    jinn_core_types::SessionId,
+    jinn_core_types::SessionId,
+    jinn_core_types::SessionId,
+);
 
+fn state_with_chain_and_unrelated_pair() -> ChainIds {
     let mut state = AppState::default_with_scope_focus();
 
     let mut root = ChatSessionState::new();
@@ -1972,27 +2038,29 @@ fn update_visual_parents_on_removal_reparents_only_children_of_removed_session()
     state.session.remove(&default_id);
     state.session.set_active(root_id.clone());
 
+    (state, root_id, a_id, b_id, unrelated_child_id)
+}
+
+#[rstest::rstest]
+fn update_visual_parents_on_removal_reparents_only_children_of_removed_session() {
+    // Given a chain: root -> A -> B, plus an unrelated parent -> child pair.
+    use crate::sections::sessions::update_visual_parents_on_removal;
+
+    let (mut state, root_id, a_id, b_id, unrelated_child_id) =
+        state_with_chain_and_unrelated_pair();
+
     // When removing A.
     update_visual_parents_on_removal(&mut state, &a_id);
 
     // Then B is reparented to root.
     assert_eq!(
-        state
-            .frontend
-            .with_sections(
-                |s| s.sessions.visual_parents.clone(),
-                std::collections::HashMap::new
-            )
-            .get(&b_id),
-        Some(&root_id),
+        visual_parent_of(&state, &b_id),
+        Some(root_id),
         "B should be reparented to root"
     );
     // And the unrelated child is NOT reparented (it has a different parent).
     assert_eq!(
-        state.frontend.with_sections(
-            |s| s.sessions.visual_parents.get(&unrelated_child_id).cloned(),
-            || None
-        ),
+        visual_parent_of(&state, &unrelated_child_id),
         None,
         "unrelated child should not be reparented - its parent is not being removed"
     );
@@ -3199,37 +3267,23 @@ fn adding_a_session_rebuilds_the_tree() {
     assert_eq!(section.rebuilds(), before + 1);
 }
 
-#[rstest::rstest]
-fn a_renamed_session_rebuilds_the_tree() {
-    // Given a section that has built its tree.
-    let mut section = SessionsSection::new();
-    let mut state = state_with_sessions(2);
-    let before = {
-        let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_slices::OverlayViews::new();
-        let ctx = RenderCtx::new(
-            &state,
-            &slices,
-            &overlay_views,
-            jinn_kernel::common::render_ctx::empty_config_layer(),
-        );
-        section.content_height(&ctx);
-        section.rebuilds()
-    };
-
-    // When an untouched frame renders first (proving the memo is warm).
+/// Measures a section's content height against `state`, which is what drives
+/// the tree build.
+fn measure_content_height(section: &mut SessionsSection, state: &AppState) -> u16 {
     let slices = jinn_slices::Slices::new();
     let overlay_views = jinn_slices::OverlayViews::new();
     let ctx = RenderCtx::new(
-        &state,
+        state,
         &slices,
         &overlay_views,
         jinn_kernel::common::render_ctx::empty_config_layer(),
     );
-    section.content_height(&ctx);
-    assert_eq!(section.rebuilds(), before, "no change, no rebuild");
+    section.content_height(&ctx)
+}
 
-    // Then a same-length rename still invalidates the memo.
+/// Replaces a session's title with the same-length string formed by flipping
+/// every `a` to `b` and every other character to `a`.
+fn rename_session_length_preserving(state: &mut AppState) {
     let target = state.session.iter().next().map(|(id, _)| id.clone());
     if let Some(session) = target.as_ref().and_then(|id| state.session.get_mut(id)) {
         let original = session.title().unwrap_or("Untitled Session").to_owned();
@@ -3246,17 +3300,26 @@ fn a_renamed_session_rebuilds_the_tree() {
         );
         session.set_title(flipped);
     }
+}
+
+#[rstest::rstest]
+fn a_renamed_session_rebuilds_the_tree() {
+    // Given a section that has built its tree, warmed by a frame that changed
+    // nothing.
+    let mut section = SessionsSection::new();
+    let mut state = state_with_sessions(2);
+    let before = {
+        measure_content_height(&mut section, &state);
+        section.rebuilds()
+    };
+    measure_content_height(&mut section, &state);
+    assert_eq!(section.rebuilds(), before, "no change, no rebuild");
+
+    // When a session is renamed the same length.
+    rename_session_length_preserving(&mut state);
 
     // Then exactly one more rebuild happens.
-    let slices = jinn_slices::Slices::new();
-    let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new(
-        &state,
-        &slices,
-        &overlay_views,
-        jinn_kernel::common::render_ctx::empty_config_layer(),
-    );
-    section.content_height(&ctx);
+    measure_content_height(&mut section, &state);
     assert_eq!(
         section.rebuilds(),
         before + 1,
@@ -3275,22 +3338,21 @@ fn session_reloaded_from_the_archive_is_listed() {
         .get_mut(&session_id)
         .expect("active session")
         .set_session_state(jinn_session_store_msg::SessionState::Archived);
-    {
-        // Given the load completes and marks it live again.
-        let mut state = state;
-        state
-            .session
-            .get_mut(&session_id)
-            .expect("active session")
-            .set_session_state(jinn_session_store_msg::SessionState::Loaded);
+    // And the load completes and marks it live again.
+    state
+        .session
+        .get_mut(&session_id)
+        .expect("active session")
+        .set_session_state(jinn_session_store_msg::SessionState::Loaded);
 
-        // Then the sidebar's session list includes it.
-        let listed = sorted_open_sessions(&state);
-        assert!(
-            listed.iter().any(|entry| entry.id == session_id),
-            "a reloaded session must be listed; got {listed:?}"
-        );
-    }
+    // When the sidebar's session list is built.
+    let listed = sorted_open_sessions(&state);
+
+    // Then the session is included.
+    assert!(
+        listed.iter().any(|entry| entry.id == session_id),
+        "a reloaded session must be listed; got {listed:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -3525,6 +3587,8 @@ fn both_spinners_share_the_theme_busy_color() {
 fn in_flight_indicator_animates_across_block_symbols() {
     // Given an in-flight entry stepped through the whole cycle.
     let symbols = throbber_widgets_tui::symbols::throbber::HORIZONTAL_BLOCK.symbols;
+
+    // When each step of the cycle is rendered.
     let seen = (0..symbols.len())
         .map(|step| {
             let mut throbber = ThrobberState::default();
@@ -3577,12 +3641,11 @@ mod navigation_preview_requests {
     use super::*;
     use crate::sections::section_trait::{EnterFrom, SectionNavResult, SidebarIntent};
     use crate::sections::sessions::navigate::{navigate, receive_cursor};
-    use jinn_core_types::SessionId;
     use jinn_kernel::common::app_state::AppState;
     use jinn_session_state::ChatSessionState;
 
     /// App state with a sessions section holding `count` sessions.
-    fn state_with_sessions(count: usize) -> (AppState, Vec<SessionId>) {
+    fn state_with_sessions(count: usize) -> (AppState, Vec<jinn_core_types::SessionId>) {
         let mut state = AppState::default_with_scope_focus();
         let mut ids = Vec::new();
         for _ in 0..count {

@@ -186,6 +186,7 @@ mod tests {
         // Given a default pins state.
         let state = PinsState::default();
 
+        // When reading its selected entry.
         // Then no entry is selected.
         assert!(state.selected_id().is_none());
     }

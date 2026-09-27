@@ -162,6 +162,7 @@ mod tests {
         // Given a new LineInput.
         let li = LineInput::new();
 
+        // When inspecting its text and cursor.
         // Then it is empty with cursor at 0.
         assert!(li.input.is_empty());
         assert_eq!(li.cursor_pos, 0);
@@ -200,7 +201,7 @@ mod tests {
         let mut li = LineInput::new();
         li.set("ab".to_owned()); // cursor at 2
 
-        // Inserting 'é' (2 bytes) at the end.
+        // When inserting 'é' (2 bytes) at the end.
         li.insert_char('é');
 
         // Then the cursor advanced by the byte length, not 1.
@@ -467,7 +468,8 @@ mod tests {
         li.set("aéb".to_owned()); // a, é(2 bytes), b → len 4
         li.cursor_pos = 3; // after 'é'
 
-        // Then graphemes_before_cursor is 2 (a, é), not 3 bytes.
+        // When counting graphemes before the cursor.
+        // Then it is 2 (a, é), not 3 bytes.
         assert_eq!(li.graphemes_before_cursor(), 2);
     }
 }

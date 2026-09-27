@@ -128,18 +128,27 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn get_on_empty_cache_returns_none() {
+        // Given an empty cache.
         let cache = SkillPreviewCache::new();
+
+        // When looking up an entry.
+        // Then nothing is cached.
         assert!(cache.get(&body_key("any body"), 80).is_none());
     }
 
     #[rstest::rstest]
     #[test]
     fn insert_then_get_returns_stored_lines() {
+        // Given a cache holding one inserted preview.
         let cache = SkillPreviewCache::new();
         cache.insert(body_key("# bash"), 80, lines("rendered bash preview"));
+
+        // When looking that entry up.
         let got = cache
             .get(&body_key("# bash"), 80)
             .expect("entry should exist");
+
+        // Then the stored lines come back as they went in.
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].spans.len(), 1);
         assert_eq!(got[0].spans[0].content, "rendered bash preview");
@@ -147,14 +156,26 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn width_is_part_of_the_key() {
+    fn a_different_width_is_a_cache_miss() {
+        // Given a cache with a preview inserted at width 80.
         let cache = SkillPreviewCache::new();
         cache.insert(body_key("# rust"), 80, lines("width 80"));
-        // Same body, different width -> miss.
+
+        // When looking the same body up at width 100.
+        // Then it misses, because the width is part of the key.
         assert!(cache.get(&body_key("# rust"), 100).is_none());
-        // Insert at the new width.
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn each_width_keys_its_own_entry() {
+        // Given a cache with the same body inserted at two widths.
+        let cache = SkillPreviewCache::new();
+        cache.insert(body_key("# rust"), 80, lines("width 80"));
         cache.insert(body_key("# rust"), 100, lines("width 100"));
-        // Both widths now hit.
+
+        // When reading both back.
+        // Then each width hits its own entry.
         assert!(cache.get(&body_key("# rust"), 80).is_some());
         assert!(cache.get(&body_key("# rust"), 100).is_some());
     }
@@ -162,20 +183,28 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn different_bodies_are_independent() {
+        // Given a cache holding only the `# alpha` body.
         let cache = SkillPreviewCache::new();
         cache.insert(body_key("# alpha"), 80, lines("a"));
-        // beta's body is not cached.
+
+        // When looking up a different body.
+        // Then it is not cached.
         assert!(cache.get(&body_key("# beta"), 80).is_none());
     }
 
     #[rstest::rstest]
     #[test]
     fn clear_empties_all_entries() {
+        // Given a cache holding two entries.
         let cache = SkillPreviewCache::new();
         cache.insert(body_key("# a"), 80, lines("a"));
         cache.insert(body_key("# b"), 100, lines("b"));
         assert_eq!(cache.len(), 2);
+
+        // When clearing it.
         cache.clear();
+
+        // Then no entries remain.
         assert!(cache.is_empty());
         assert!(cache.get(&body_key("# a"), 80).is_none());
         assert!(cache.get(&body_key("# b"), 100).is_none());
@@ -184,13 +213,17 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn get_returns_an_owned_clone_not_a_reference() {
-        // The PreviewCache trait returns owned Vec<Line>, so callers can hold
-        // the result across the cache being mutated.
+        // Given a cache holding one entry, where the PreviewCache trait
+        // returns owned Vec<Line> so callers can hold the result across the
+        // cache being mutated.
         let cache = SkillPreviewCache::new();
         cache.insert(body_key("# k"), 80, lines("v"));
         let got = cache.get(&body_key("# k"), 80).expect("entry should exist");
+
+        // When clearing the cache.
         cache.clear();
-        // The clone survives the clear.
+
+        // Then the clone taken beforehand survives the clear.
         assert_eq!(got.len(), 1);
     }
 }

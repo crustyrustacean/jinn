@@ -139,6 +139,7 @@ mod tests {
     fn create_routes_anthropic_to_anthropic_factory() {
         // If the Anthropic arm were deleted, it would fall through to the OpenAI-compatible
         // path, which would produce a different error (wrong endpoint).
+        // Given a factory for an Anthropic backend with an API key.
         let factory = GenericLlmServiceFactory::new(
             "test-anthropic".to_owned(),
             Backend::Anthropic,
@@ -156,6 +157,7 @@ mod tests {
         // With a test key, it will fail on the actual HTTP call, but the point is
         // that the Anthropic code path is taken (not OpenAI-compatible).
         // We verify by checking that the factory name is set correctly.
+        // Then the factory keeps its configured name.
         assert_eq!(factory.name(), "test-anthropic");
         // The create() call exercises the match arm - even if it fails,
         // the test verifies that the factory routes correctly.
@@ -165,6 +167,7 @@ mod tests {
     #[rstest::rstest]
     fn create_routes_google_to_google_factory() {
         // If the Google arm were deleted, it would fall through to the OpenAI-compatible path.
+        // Given a factory for a Google backend with an API key.
         let factory = GenericLlmServiceFactory::new(
             "test-google".to_owned(),
             Backend::Google,
@@ -175,7 +178,11 @@ mod tests {
             None,
         );
 
+        // When creating the service with a Google backend and an API key.
+        let result = factory.create();
+
+        // Then the Google route is taken, evidenced by the factory name.
         assert_eq!(factory.name(), "test-google");
-        let _ = factory.create();
+        let _ = result;
     }
 }

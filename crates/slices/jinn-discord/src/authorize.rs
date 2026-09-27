@@ -46,6 +46,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn rejects_unlisted_author() {
+        // Given an author list containing only one other user.
         let authorized_users = &["123456789012345678".to_owned()];
 
         // When checking authorization.

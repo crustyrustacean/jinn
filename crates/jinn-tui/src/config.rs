@@ -48,7 +48,10 @@ mod tests {
         // Given no explicit config.
         let config = TuiConfig::default();
 
-        // Then mouse selection is enabled.
-        assert!(config.mouse_selection);
+        // When reading the mouse selection flag.
+        let mouse_selection = config.mouse_selection;
+
+        // Then it is enabled.
+        assert!(mouse_selection);
     }
 }

@@ -11,11 +11,136 @@
 use crate::orchestrator::{ToolOrchestratorActor, ToolOrchestratorActorDeps};
 use jinn_core_types::tool_types::ToolCall;
 use jinn_inference_msg::SendToLlmProvider;
+use jinn_kernel::common::actor_deps::BusPublish;
 use jinn_kernel::common::bus::HarnessServices;
 use jinn_kernel::common::state::State;
 use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 use jinn_tools_msg::{ExecuteToolBatch, ToolBatchCompleted};
 use std::time::Duration;
+
+/// A state whose active session holds one `bash` tool call, phase Sending.
+///
+/// The seeded history is what lets the session actor continue the tool loop
+/// once the batch completes.
+fn bash_batch_state() -> (State, jinn_core_types::SessionId) {
+    let state = State::new(jinn_kernel::AppState::default());
+    {
+        let mut s = state.write();
+        let session = s.active_session_mut();
+        session.push_entry(jinn_core_types::ChatEntry::user("list files"));
+        session.push_entry(jinn_core_types::ChatEntry::assistant("checking"));
+        session.push_entry(jinn_core_types::ChatEntry::tool_call(
+            "tc-bash-2",
+            "bash",
+            r#"{"command":"echo loop-continues"}"#,
+        ));
+        session.begin_sending();
+    }
+    let session_id = state.read().session.active_session_id().clone();
+    (state, session_id)
+}
+
+/// Spawns the session-turn actor that turns a completed batch into the next
+/// provider call.
+async fn spawn_session_actor(harness: &TestHarness, state: State) {
+    jinn_session_turn::activate(
+        harness.system(),
+        jinn_session_turn::session_actor::SessionPersistenceActorDeps {
+            deps: {
+                let deps = harness.actor_deps().await;
+                let _ =
+                    jinn_context_assembly::service::ensure_spawned(&deps.services.trouper_system);
+                deps
+            },
+            state,
+            counter: jinn_llm_support::token_estimator::TiktokenCounter::o200k_base(),
+            token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
+            image_converter: jinn_llm_support::image_convert::ImageConverterService::unavailable(),
+        },
+    );
+}
+
+/// A stub provider actor that answers `ExecuteTool` with a completed result,
+/// like an MCP server would.
+struct StubProvider {
+    bus: jinn_kernel::common::services::bus_service::BusService,
+    session_id: jinn_core_types::SessionId,
+}
+
+impl BusPublish for StubProvider {
+    fn bus(&self) -> &jinn_kernel::common::services::bus_service::BusService {
+        &self.bus
+    }
+}
+
+impl trouper::actor::ServiceActor for StubProvider {
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
+        Err(
+            error_stack::Report::new(trouper::registry::RegistryError::InvalidSpec)
+                .attach("StubProvider is spawned via start_with"),
+        )
+    }
+}
+
+impl trouper::actor::MsgHandler<jinn_tools_msg::ExecuteTool> for StubProvider {
+    async fn handle(
+        &mut self,
+        msg: &jinn_tools_msg::ExecuteTool,
+        _ctx: &mut trouper::context::MsgCtx<'_>,
+    ) {
+        use jinn_tools_msg::ToolExecutionCompleted;
+
+        self.publish(ToolExecutionCompleted {
+            session_id: self.session_id.clone(),
+            result: jinn_core_types::tool_types::ToolResult {
+                tool_call_id: msg.tool_call.id.clone(),
+                name: msg.tool_call.name.clone(),
+                content: "mcp-stub-answer".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
+            },
+        })
+        .await;
+    }
+}
+
+/// Spawns the stub provider at `test.stub-mcp-provider`.
+fn spawn_stub_provider(harness: &TestHarness, session_id: jinn_core_types::SessionId) {
+    let _ = trouper::builder::spawn_service_builder::<StubProvider>(harness.system())
+        .at(trouper::actor::ActorPath::new("test.stub-mcp-provider"))
+        .start_with({
+            let bus = harness.bus();
+            move || {
+                let bus = bus.clone();
+                let session_id = session_id.clone();
+                Box::pin(async move { Ok(StubProvider { bus, session_id }) })
+            }
+        })
+        .handles::<jinn_tools_msg::ExecuteTool>()
+        .start();
+}
+
+/// Registers `mcp__stub__echo` as a session-scoped actor tool for `session_id`.
+async fn register_stub_tool(harness: &TestHarness, session_id: &jinn_core_types::SessionId) {
+    harness
+        .publish(jinn_tools_msg::RegisterTools {
+            provider: "mcp__stub__".to_owned(),
+            definitions: vec![jinn_core_types::tool_types::ToolDefinition {
+                name: "mcp__stub__echo".to_owned(),
+                description: "echo".to_owned(),
+                parameters: serde_json::json!({"type": "object"}),
+                prompt_snippet: None,
+                prompt_guidelines: vec![],
+                server_tool_type: None,
+            }],
+            session_id: Some(session_id.clone()),
+        })
+        .await;
+}
 
 /// The orchestrator executes a real builtin (`bash`) dispatched over the bus
 /// and emits `ToolBatchCompleted` with the tool's output.
@@ -85,21 +210,7 @@ async fn tool_batch_completed_over_the_bus_continues_the_tool_loop() {
     // tool-call entry in its history, phase Sending.
     let harness = TestHarness::new().await;
     let loop_recorder = harness.spawn_recorder::<SendToLlmProvider>().await;
-
-    let state = State::new(jinn_kernel::AppState::default());
-    {
-        let mut s = state.write();
-        let session = s.active_session_mut();
-        session.push_entry(jinn_core_types::ChatEntry::user("list files"));
-        session.push_entry(jinn_core_types::ChatEntry::assistant("checking"));
-        session.push_entry(jinn_core_types::ChatEntry::tool_call(
-            "tc-bash-2",
-            "bash",
-            r#"{"command":"echo loop-continues"}"#,
-        ));
-        session.begin_sending();
-    }
-    let session_id = state.read().session.active_session_id().clone();
+    let (state, session_id) = bash_batch_state();
 
     ToolOrchestratorActor::spawn(
         harness.system(),
@@ -110,21 +221,7 @@ async fn tool_batch_completed_over_the_bus_continues_the_tool_loop() {
             builtin_filter: Some(vec!["bash".to_owned()]),
         },
     );
-    jinn_session_turn::activate(
-        harness.system(),
-        jinn_session_turn::session_actor::SessionPersistenceActorDeps {
-            deps: {
-                let deps = harness.actor_deps().await;
-                let _ =
-                    jinn_context_assembly::service::ensure_spawned(&deps.services.trouper_system);
-                deps
-            },
-            state,
-            counter: jinn_llm_support::token_estimator::TiktokenCounter::o200k_base(),
-            token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
-            image_converter: jinn_llm_support::image_convert::ImageConverterService::unavailable(),
-        },
-    );
+    spawn_session_actor(&harness, state).await;
 
     // When the batch is dispatched over the bus (the orchestrator executes the
     // builtin and publishes ToolBatchCompleted itself).
@@ -156,66 +253,12 @@ async fn tool_batch_completed_over_the_bus_continues_the_tool_loop() {
 #[rstest::rstest]
 #[tokio::test]
 async fn registered_session_scoped_actor_tool_completes_its_batch() {
-    use jinn_kernel::common::actor_deps::BusPublish;
-    use jinn_tools_msg::{ExecuteTool, RegisterTools, ToolExecutionCompleted};
-    use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
-    use trouper::context::MsgCtx;
-    use trouper::registry::RegistryError;
-
     // Given a stub provider actor that answers ExecuteTool with a completed
     // result (like an MCP server would), and a spawned orchestrator.
-    struct StubProvider {
-        bus: jinn_kernel::common::services::bus_service::BusService,
-        session_id: jinn_core_types::SessionId,
-    }
-    impl ServiceActor for StubProvider {
-        async fn start(
-            _args: &trouper::json::Json,
-        ) -> Result<Self, error_stack::Report<RegistryError>> {
-            Err(error_stack::Report::new(RegistryError::InvalidSpec)
-                .attach("StubProvider is spawned via start_with"))
-        }
-    }
-    impl BusPublish for StubProvider {
-        fn bus(&self) -> &jinn_kernel::common::services::bus_service::BusService {
-            &self.bus
-        }
-    }
-    impl MsgHandler<ExecuteTool> for StubProvider {
-        async fn handle(&mut self, msg: &ExecuteTool, _ctx: &mut MsgCtx<'_>) {
-            self.publish(ToolExecutionCompleted {
-                session_id: self.session_id.clone(),
-                result: jinn_core_types::tool_types::ToolResult {
-                    tool_call_id: msg.tool_call.id.clone(),
-                    name: msg.tool_call.name.clone(),
-                    content: "mcp-stub-answer".to_owned(),
-                    success: true,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                },
-            })
-            .await;
-        }
-    }
-
     let harness = TestHarness::new().await;
     let batch_recorder = harness.spawn_recorder::<ToolBatchCompleted>().await;
     let session_id = jinn_core_types::SessionId::new();
-
-    let _ = trouper::builder::spawn_service_builder::<StubProvider>(harness.system())
-        .at(ActorPath::new("test.stub-mcp-provider"))
-        .start_with({
-            let bus = harness.bus();
-            let session_id = session_id.clone();
-            move || {
-                let bus = bus.clone();
-                let session_id = session_id.clone();
-                Box::pin(async move { Ok(StubProvider { bus, session_id }) })
-            }
-        })
-        .handles::<ExecuteTool>()
-        .start();
+    spawn_stub_provider(&harness, session_id.clone());
 
     ToolOrchestratorActor::spawn(
         harness.system(),
@@ -229,20 +272,7 @@ async fn registered_session_scoped_actor_tool_completes_its_batch() {
 
     // When the provider registers an actor tool and a batch referencing it is
     // dispatched.
-    harness
-        .publish(RegisterTools {
-            provider: "mcp__stub__".to_owned(),
-            definitions: vec![jinn_core_types::tool_types::ToolDefinition {
-                name: "mcp__stub__echo".to_owned(),
-                description: "echo".to_owned(),
-                parameters: serde_json::json!({"type": "object"}),
-                prompt_snippet: None,
-                prompt_guidelines: vec![],
-                server_tool_type: None,
-            }],
-            session_id: Some(session_id.clone()),
-        })
-        .await;
+    register_stub_tool(&harness, &session_id).await;
     harness
         .publish(ExecuteToolBatch {
             session_id: session_id.clone(),

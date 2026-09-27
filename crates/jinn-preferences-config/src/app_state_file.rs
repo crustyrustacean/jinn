@@ -131,6 +131,7 @@ mod tests {
     #[rstest::rstest]
     fn default_state_has_all_none() {
         // Given default state.
+        // When reading each of its persisted fields.
         let state = AppStateFile::default();
 
         // Then all fields are None.

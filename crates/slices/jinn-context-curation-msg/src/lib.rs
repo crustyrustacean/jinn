@@ -86,6 +86,7 @@ mod tests {
         // Given the command's schema definition.
         let schema = <TriggerCompaction as trouper::schema::Schema>::schema_def();
 
+        // When inspecting its name, kind, and fields.
         // Then it is a command named TriggerCompaction with the two
         // fields.
         assert_eq!(schema.name, "TriggerCompaction");

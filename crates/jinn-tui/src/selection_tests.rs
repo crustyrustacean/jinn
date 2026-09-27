@@ -78,10 +78,13 @@ fn idle_returns_none_for_accessors() {
     // Given an Idle state.
     let state = SelectionState::Idle;
 
-    // Then all accessors return None.
-    assert!(state.anchor().is_none());
-    assert!(state.focus().is_none());
-    assert!(state.bounds().is_none());
+    // When reading the anchor, focus, and bounds accessors.
+    let (anchor, focus, bounds) = (state.anchor(), state.focus(), state.bounds());
+
+    // Then all three are None.
+    assert!(anchor.is_none());
+    assert!(focus.is_none());
+    assert!(bounds.is_none());
 }
 
 #[rstest::rstest]
@@ -206,10 +209,13 @@ fn accessors_return_positions_for_active_state() {
         bounds: bounds(),
     };
 
-    // Then the accessors return the raw positions.
-    assert_eq!(state.anchor(), Some((5, 5)));
-    assert_eq!(state.focus(), Some((2, 2)));
-    assert_eq!(state.bounds(), Some(bounds()));
+    // When reading the anchor, focus, and bounds accessors.
+    let (anchor, focus, read_bounds) = (state.anchor(), state.focus(), state.bounds());
+
+    // Then the accessors return the raw positions, unsorted.
+    assert_eq!(anchor, Some((5, 5)));
+    assert_eq!(focus, Some((2, 2)));
+    assert_eq!(read_bounds, Some(bounds()));
 }
 
 #[rstest::rstest]
@@ -470,7 +476,7 @@ fn selectable_rects_rebuild_replaces_previous_rects() {
 
 #[rstest::rstest]
 fn find_for_position_excludes_right_and_bottom_edges() {
-    // Rect at (0,0) with width=10, height=5.
+    // Given a registry holding a single rect at (0,0) with width=10, height=5.
     // right()=10, bottom()=5.
     // Point (10, 2) is on the right edge - must NOT match (x < right is false when x==right).
     // With <= it would incorrectly match.
@@ -478,32 +484,31 @@ fn find_for_position_excludes_right_and_bottom_edges() {
     let rect = Rect::new(0, 0, 10, 5);
     rects.rebuild(vec![rect]);
 
-    // Right edge exclusion.
-    assert_eq!(
-        rects.find_for_position(10, 2),
-        None,
-        "x=right() must not match with <"
-    );
-    // Bottom edge exclusion.
-    assert_eq!(
-        rects.find_for_position(5, 5),
-        None,
-        "y=bottom() must not match with <"
-    );
-    // Interior point must match.
-    assert_eq!(rects.find_for_position(5, 2), Some(rect));
+    // When probing the right edge, the bottom edge, and an interior point.
+    let on_right = rects.find_for_position(10, 2);
+    let on_bottom = rects.find_for_position(5, 5);
+    let interior = rects.find_for_position(5, 2);
+
+    // Then the right edge exclusion holds.
+    assert_eq!(on_right, None, "x=right() must not match with <");
+    // And the bottom edge exclusion holds.
+    assert_eq!(on_bottom, None, "y=bottom() must not match with <");
+    // And the interior point matches.
+    assert_eq!(interior, Some(rect));
 }
 
 #[rstest::rstest]
 fn find_for_position_uses_multiplication_for_area() {
-    // Two rects: one 2x3=6 area, one 3x2=6 area (tie).
-    // And one 1x1=1 area inside both. The smallest must win.
+    // Given two overlapping rects, a 3x3 (area 9) and a 1x1 (area 1) inside it.
     let large1 = Rect::new(0, 0, 3, 3); // area = 3*3 = 9
     let small = Rect::new(0, 0, 1, 1); // area = 1*1 = 1
     let mut rects = SelectableRects::new();
     rects.rebuild(vec![large1, small]);
 
+    // When looking up the position shared by both rects.
     let found = rects.find_for_position(0, 0);
+
+    // Then the smallest-area rect wins.
     assert_eq!(
         found,
         Some(small),
@@ -514,6 +519,7 @@ fn find_for_position_uses_multiplication_for_area() {
 #[rstest::rstest]
 fn find_last_nonws_returns_last_not_first_nonws() {
     use crate::selection::find_last_nonws_in_row;
+    // Given a single row holding "A  B" — non-whitespace at x=0 and x=3 only.
     let area = Rect::new(0, 0, 10, 1);
     let mut buffer = Buffer::empty(area);
     // Cells: "A  B"
@@ -522,9 +528,12 @@ fn find_last_nonws_returns_last_not_first_nonws() {
     buffer.cell_mut((3, 0)).unwrap().set_symbol("B");
     // (4,0) through (9,0) are whitespace
 
-    let result = find_last_nonws_in_row(&buffer, 0, 0, 9);
+    // When scanning row 0 across its full width.
     // Without the !, it would return the first non-ws (x=0).
     // With !, it returns the last non-ws (x=3).
+    let result = find_last_nonws_in_row(&buffer, 0, 0, 9);
+
+    // Then the last non-whitespace position is returned.
     assert_eq!(
         result,
         Some(3),
@@ -534,41 +543,61 @@ fn find_last_nonws_returns_last_not_first_nonws() {
 
 #[rstest::rstest]
 fn cancel_dragging_returns_idle_variant() {
+    // Given a Dragging state.
     let state = SelectionState::Dragging {
         anchor: (1, 2),
         focus: (3, 4),
         bounds: bounds(),
     };
+
+    // When cancelling.
     let cancelled = state.cancel();
-    // Explicitly check it's Idle, not just that it's the default value.
+
+    // Then the result is the Idle variant, not merely the default value.
     assert_eq!(cancelled, SelectionState::Idle);
     assert!(matches!(cancelled, SelectionState::Idle));
 }
 
 #[rstest::rstest]
 fn idle_is_not_active() {
-    assert!(
-        !SelectionState::Idle.is_active(),
-        "Idle must return false for is_active"
-    );
+    // Given the Idle state.
+    let state = SelectionState::Idle;
+
+    // When asking whether it is active.
+    let is_active = state.is_active();
+
+    // Then it reports false.
+    assert!(!is_active, "Idle must return false for is_active");
 }
 
 #[rstest::rstest]
 fn dragging_is_active() {
+    // Given a Dragging state.
     let state = SelectionState::Dragging {
         anchor: (1, 2),
         focus: (3, 4),
         bounds: bounds(),
     };
-    assert!(state.is_active(), "Dragging must return true for is_active");
+
+    // When asking whether it is active.
+    let is_active = state.is_active();
+
+    // Then it reports true.
+    assert!(is_active, "Dragging must return true for is_active");
 }
 
 #[rstest::rstest]
 fn active_selection_is_active() {
+    // Given an Active state.
     let state = SelectionState::Active {
         anchor: (1, 2),
         focus: (3, 4),
         bounds: bounds(),
     };
-    assert!(state.is_active(), "Active must return true for is_active");
+
+    // When asking whether it is active.
+    let is_active = state.is_active();
+
+    // Then it reports true.
+    assert!(is_active, "Active must return true for is_active");
 }

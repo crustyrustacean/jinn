@@ -196,6 +196,8 @@ async fn dashboard_app() -> jinn_tui::TuiApp {
 async fn registered_tab_is_highlighted_in_its_scope() {
     // Given a composed app whose base scope is the registered dashboard tab.
     let mut app = dashboard_app().await;
+
+    // When rendering it at 80x24.
     let (mut terminal, _area) = jinn_testutil::setup_term(80, 24);
     terminal.draw(|frame| app.render(frame)).expect("render");
 
@@ -234,6 +236,8 @@ async fn registered_tab_stays_highlighted_when_another_overlay_opens() {
             jinn_slices::SliceScopeId::new("quake-bar", "bar"),
         ));
     let (mut terminal, _area) = jinn_testutil::setup_term(80, 24);
+
+    // When rendering it with the quake overlay on the scope stack.
     terminal.draw(|frame| app.render(frame)).expect("render");
 
     // Then the dashboard tab is still highlighted (uses base scope, not top).
@@ -411,12 +415,14 @@ async fn a_real_actor_appears_in_the_dashboard_without_any_feature_publish() {
 #[rstest::rstest]
 #[tokio::test]
 async fn a_census_row_carries_no_description_without_a_feature_status_publish() {
-    // Given a composed app with a running census row.
+    // Given a composed app whose census cell is readable.
     let app = test_app().await;
     let slot = jinn_dashboard::dashboard_slot();
     let cell: TypedCell<jinn_dashboard::DashboardState> =
         app.services.slices.reader(&slot).expect("cell");
     let path = spawn_probe(&app.services.trouper_system, "undescribed-probe").await;
+
+    // When waiting for the spawned actor's row to appear.
     wait_for("the row to appear", || {
         cell.read().actors().iter().any(|e| e.name == path)
     })
@@ -453,6 +459,8 @@ async fn a_feature_status_message_populates_a_census_row() {
         status_message: Some("working".to_owned()),
     };
     let _ = app.core.bridge.send(Bridge::publish_closure(update));
+
+    // When waiting for the status row to appear.
     wait_for("the status row to appear", || {
         cell.read()
             .actors()

@@ -357,11 +357,17 @@ mod tests {
 
     #[rstest::rstest]
     fn tool_result_message_serializes_correctly() {
-        let json = message_to_json(&LlmMessage::Tool {
+        // Given a tool result message.
+        let message = LlmMessage::Tool {
             tool_call_id: "call_1".into(),
             name: "echo".into(),
             content: "result".into(),
-        });
+        };
+
+        // When converting it to the OpenAI wire shape.
+        let json = message_to_json(&message);
+
+        // Then it is a tool message carrying the call id and content.
         assert_eq!(json["role"], "tool");
         assert_eq!(json["tool_call_id"], "call_1");
         assert_eq!(json["content"], "result");
@@ -384,14 +390,20 @@ mod tests {
 
     #[rstest::rstest]
     fn assistant_with_tool_calls_serializes_correctly() {
-        let json = message_to_json(&LlmMessage::Assistant {
+        // Given an assistant message carrying one tool call.
+        let message = LlmMessage::Assistant {
             content: String::new(),
             tool_calls: Some(vec![jinn_core_types::tool_types::ToolCall {
                 id: "call_1".into(),
                 name: "echo".into(),
                 arguments: r#"{"x":1}"#.into(),
             }]),
-        });
+        };
+
+        // When converting it to the OpenAI wire shape.
+        let json = message_to_json(&message);
+
+        // Then it is an assistant message whose `tool_calls` names the tool.
         assert_eq!(json["role"], "assistant");
         let calls = json["tool_calls"].as_array().unwrap();
         assert_eq!(calls.len(), 1);

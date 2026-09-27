@@ -220,6 +220,19 @@ async fn save_updates_existing_session() {
     assert_eq!(loaded.history().len(), 2);
 }
 
+/// A token ledger record with the given sent/received counts.
+fn token_record(sent: u32, received: u32) -> jinn_token_count_msg::TokenRecord {
+    jinn_token_count_msg::TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: sent,
+        tokens_received: received,
+        cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
+    }
+}
+
 #[rstest::rstest]
 #[tokio::test]
 async fn failed_complete_snapshot_write_rolls_back_every_durable_part() {
@@ -237,15 +250,7 @@ async fn failed_complete_snapshot_write_rolls_back_every_durable_part() {
         ));
     }
     session.push_entry(entry);
-    session.push_token_record(jinn_token_count_msg::TokenRecord {
-        model_used: None,
-        timestamp: jiff::Timestamp::now(),
-        tokens_sent: 100,
-        tokens_received: 50,
-        cost: None,
-        prompt_tokens: None,
-        cached_tokens: None,
-    });
+    session.push_token_record(token_record(100, 50));
     store
         .save(&session.capture_snapshot())
         .await
@@ -262,15 +267,7 @@ async fn failed_complete_snapshot_write_rolls_back_every_durable_part() {
         .expect("create failure trigger");
     session.set_title("newer".to_owned());
     session.push_entry(ChatEntry::assistant("new message"));
-    session.push_token_record(jinn_token_count_msg::TokenRecord {
-        model_used: None,
-        timestamp: jiff::Timestamp::now(),
-        tokens_sent: 200,
-        tokens_received: 75,
-        cost: None,
-        prompt_tokens: None,
-        cached_tokens: None,
-    });
+    session.push_token_record(token_record(200, 75));
 
     // When a newer complete snapshot is saved and its ledger insert fails.
     let result = store.save(&session.capture_snapshot()).await;
@@ -815,11 +812,9 @@ async fn token_ledger_round_trips_prompt_and_cached_tokens() {
     assert_eq!(ledger[1].cached_tokens, None);
 }
 
-#[rstest::rstest]
-#[tokio::test]
-async fn delete_cleans_up_orphaned_entries() {
-    // Given two sessions sharing entries via fork.
-    let (_dir, store) = make_store().await;
+/// A store holding a source session and a fork of it, which share entries.
+async fn store_with_fork() -> (tempfile::TempDir, SqliteSessionStore, SessionId, SessionId) {
+    let (dir, store) = make_store().await;
     let source_id = SessionId::new();
     let mut source = ChatSessionState::new();
     source.set_session_id(source_id.clone());
@@ -829,8 +824,15 @@ async fn delete_cleans_up_orphaned_entries() {
         .save(&source.capture_snapshot())
         .await
         .expect("save source");
-
     let forked_id = store.fork(&source_id, 0).await.expect("fork");
+    (dir, store, source_id, forked_id)
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn deleting_a_fork_leaves_the_source_entries_intact() {
+    // Given two sessions sharing entries via fork.
+    let (_dir, store, source_id, forked_id) = store_with_fork().await;
 
     // When deleting the forked session.
     store.delete(&forked_id).await.expect("delete forked");
@@ -842,8 +844,16 @@ async fn delete_cleans_up_orphaned_entries() {
         .expect("load source")
         .expect("should exist");
     assert_eq!(source.history().len(), 1);
+}
 
-    // When also deleting the source.
+#[rstest::rstest]
+#[tokio::test]
+async fn deleting_both_sessions_cleans_up_orphaned_entries() {
+    // Given two sessions sharing entries via fork, the fork already deleted.
+    let (_dir, store, source_id, forked_id) = store_with_fork().await;
+    store.delete(&forked_id).await.expect("delete forked");
+
+    // When deleting the source too.
     store.delete(&source_id).await.expect("delete source");
 
     // Then the entry is fully cleaned up (verified by saving the same
@@ -2899,11 +2909,9 @@ async fn pending_dirty_count_includes_unparseable_marker() {
     // the dashboard can surface the stuck row instead of hiding it.
     assert_eq!(count, 1);
 }
-#[rstest::rstest]
-#[tokio::test]
-async fn partial_chunk_persists_resume_point_and_next_chunk_finishes() {
-    // Given a store with a 6-entry session and chunks of 2.
-    let (_dir, store) = make_store().await;
+/// A store holding a saved six-entry session, each entry mentioning "needle".
+async fn store_with_six_needle_entries() -> (tempfile::TempDir, SqliteSessionStore, SessionId) {
+    let (dir, store) = make_store().await;
     let id = SessionId::new();
     let mut session = ChatSessionState::new();
     session.set_session_id(id.clone());
@@ -2912,15 +2920,12 @@ async fn partial_chunk_persists_resume_point_and_next_chunk_finishes() {
         session.push_entry(ChatEntry::user(format!("entry {i} mentions needle")));
     }
     store.save(&session.capture_snapshot()).await.expect("save");
+    (dir, store, id)
+}
 
-    // When the first bounded chunk runs.
-    let finished = store.reindex_session_chunk(&id, 2).await.expect("chunk 1");
-
-    // Then the session is not finished, its marker stays, and the resume
-    // point advanced to 2 — so search finds only the prefix.
-    assert!(!finished);
-    assert_eq!(store.pending_dirty_count().await.expect("count"), 1);
-    let first = store
+/// The total match count for a "needle" search across every session.
+async fn needle_match_count(store: &SqliteSessionStore) -> u64 {
+    store
         .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
             session_ids: Vec::new(),
@@ -2930,8 +2935,36 @@ async fn partial_chunk_persists_resume_point_and_next_chunk_finishes() {
             limit: 10,
         })
         .await
-        .expect("search");
-    assert_eq!(first.total_matches, 2, "only the indexed prefix is visible");
+        .expect("search")
+        .total_matches
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn partial_chunk_persists_resume_point() {
+    // Given a store with a 6-entry session and chunks of 2.
+    let (_dir, store, id) = store_with_six_needle_entries().await;
+
+    // When the first bounded chunk runs.
+    let finished = store.reindex_session_chunk(&id, 2).await.expect("chunk 1");
+
+    // Then the session is not finished, its marker stays, and the resume
+    // point advanced to 2 — so search finds only the prefix.
+    assert!(!finished);
+    assert_eq!(store.pending_dirty_count().await.expect("count"), 1);
+    assert_eq!(
+        needle_match_count(&store).await,
+        2,
+        "only the indexed prefix is visible"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn next_chunks_finish_a_partially_indexed_session() {
+    // Given a store with a 6-entry session whose first chunk of 2 has run.
+    let (_dir, store, id) = store_with_six_needle_entries().await;
+    store.reindex_session_chunk(&id, 2).await.expect("chunk 1");
 
     // When the remaining chunks run (2+2+2 = three exactly-full chunks; the
     // final full chunk is followed by an empty one that reports completion).
@@ -2943,18 +2976,7 @@ async fn partial_chunk_persists_resume_point_and_next_chunk_finishes() {
     // are searchable.
     assert!(finished);
     assert_eq!(store.pending_dirty_count().await.expect("count"), 0);
-    let all = store
-        .search(crate::session_search::SearchParams {
-            query: "needle".to_owned(),
-            session_ids: Vec::new(),
-            roles: Vec::new(),
-            since: None,
-            until: None,
-            limit: 10,
-        })
-        .await
-        .expect("search");
-    assert_eq!(all.total_matches, 6);
+    assert_eq!(needle_match_count(&store).await, 6);
 }
 
 #[rstest::rstest]

@@ -485,6 +485,7 @@ target = "ollama/llama3""#;
     #[rstest::rstest]
     fn load_config_parses_provider_count_and_models() {
         // Given a well-formed TOML config.
+        // When loading it.
         let config = load_test_config();
 
         // Then provider count and models are correct.
@@ -498,6 +499,7 @@ target = "ollama/llama3""#;
     #[rstest::rstest]
     fn load_config_uses_table_name_as_provider_key() {
         // Given a well-formed TOML config.
+        // When loading it.
         let config = load_test_config();
 
         // Then the map key is the provider name (no name field on disk).
@@ -507,6 +509,7 @@ target = "ollama/llama3""#;
     #[rstest::rstest]
     fn load_config_parses_alias_fields() {
         // Given a well-formed TOML config.
+        // When loading it.
         let config = load_test_config();
 
         // Then the alias name and target match.
@@ -664,6 +667,7 @@ target = "ollama/llama3""#;
     #[rstest::rstest]
     fn config_path_uses_dirs_config_dir() {
         // Given the standard config path.
+        // When reading it.
         let path = config_path();
 
         // Then it ends with jinn/providers.toml.
@@ -799,6 +803,7 @@ tool_stream = true"#;
     #[rstest::rstest]
     fn save_config_actually_writes_to_disk() {
         // If save_config were a no-op, the file would not exist after the call.
+        // Given a config to persist and a target path.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
         let config = ProvidersConfig {
@@ -807,6 +812,7 @@ tool_stream = true"#;
             default_provider: Some("test-save/llama3".to_owned()),
         };
 
+        // When saving it to disk.
         save_config_to(&config, &path).expect("save");
 
         // Then the file exists on disk.
@@ -819,9 +825,11 @@ tool_stream = true"#;
     #[rstest::rstest]
     fn create_default_config_returns_actual_path() {
         // If it returned an empty PathBuf, the path would not point to a file.
+        // Given a path with no config file yet.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
 
+        // When creating the default config there.
         create_default_config_to(&path).expect("create");
 
         // Then the path is valid and the file exists with content.
@@ -833,6 +841,7 @@ tool_stream = true"#;
     #[rstest::rstest]
     fn default_true_makes_requires_key_default_to_true() {
         // Verifies that a provider entry without requires_key in TOML defaults to true.
+        // Given a provider entry with no requires_key field.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
         // No requires_key field - should default to true.
@@ -842,8 +851,10 @@ tool_stream = true"#;
         )
         .expect("write");
 
+        // When loading it.
         let config = load_config_from(&path).expect("load");
 
+        // Then requires_key defaults to true.
         assert!(
             config.providers["openai"].requires_key,
             "requires_key should default to true"

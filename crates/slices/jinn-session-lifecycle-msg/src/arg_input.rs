@@ -77,15 +77,18 @@ mod tests {
 
     #[rstest::rstest]
     fn popup_identity_is_stable() {
+        // Given nothing but the popup's own identity accessors.
         // When reading the popup identities twice.
         let first_scope = arg_input_scope();
         let second_scope = arg_input_scope();
         let first_slot = arg_input_slot();
         let second_slot = arg_input_slot();
 
-        // Then both mint the same dynamic identity values.
+        // Then both reads mint the same scope identity.
         assert_eq!(first_scope, second_scope);
+        // And both mint the same slot identity.
         assert_eq!(first_slot, second_slot);
+        // And the scope captures input.
         assert!(first_scope.captures_input());
     }
 }

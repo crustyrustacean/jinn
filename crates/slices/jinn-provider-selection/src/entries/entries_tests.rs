@@ -74,6 +74,7 @@ fn load_two_providers() -> Vec<ProviderPickerEntry> {
 #[rstest::rstest]
 fn load_provider_entries_returns_two_providers() {
     // Given a registry with two providers.
+    // When loading its provider entries.
     let entries = load_two_providers();
 
     // Then exactly two entries are returned.
@@ -91,6 +92,7 @@ fn load_provider_entries_returns_provider_with_correct_fields(
     #[case] is_available: bool,
 ) {
     // Given a registry with two providers.
+    // When loading its provider entries.
     let entries = load_two_providers();
 
     // Then the entry at the given index has the expected fields.
@@ -183,6 +185,7 @@ fn load_entries_with_alias() -> (Vec<ProviderPickerEntry>, ProviderPickerEntry) 
 #[rstest::rstest]
 fn load_provider_entries_alias_count() {
     // Given a registry with one provider and one alias.
+    // When loading its provider entries.
     let (entries, _) = load_entries_with_alias();
 
     // Then both entries are returned.
@@ -198,9 +201,8 @@ fn load_provider_entries_alias_count() {
 #[case::model("model", "llama3")]
 fn load_provider_entries_alias_field_matches(#[case] field: &str, #[case] expected: &str) {
     // Given a registry with one provider and one alias.
+    // When reading the requested field off the alias entry.
     let (_, alias) = load_entries_with_alias();
-
-    // Then the alias entry has the expected field value.
     let actual = match field {
         "name" => alias.name.as_str(),
         "provider_id" => alias.provider_id.as_str(),
@@ -210,6 +212,8 @@ fn load_provider_entries_alias_field_matches(#[case] field: &str, #[case] expect
         "model" => alias.model.as_str(),
         _ => panic!("unknown field: {field}"),
     };
+
+    // Then the alias entry has the expected field value.
     assert_eq!(actual, expected);
 }
 
@@ -1092,6 +1096,7 @@ fn display_label_includes_provider_name() {
     // Given a ProviderPickerEntry with model "glm5.1" and provider_name "zai".
     let entry = make_picker_entry("glm5.1", "zai", true, false);
 
+    // When reading its display label.
     // Then display_label contains both model and provider name.
     assert!(entry.display_label().contains("glm5.1"));
     assert!(entry.display_label().contains("zai"));
@@ -1103,6 +1108,7 @@ fn display_label_allows_searching_by_provider_name() {
     let zai_entry = make_picker_entry("glm5.1", "zai", true, false);
     let openrouter_entry = make_picker_entry("gpt-4o", "openrouter", true, false);
 
+    // When reading both display labels.
     // Then the zai entry's display_label contains "zai".
     assert!(zai_entry.display_label().contains("zai"));
     // And the openrouter entry's display_label does NOT contain "zai".

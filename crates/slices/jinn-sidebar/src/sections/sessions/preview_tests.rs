@@ -912,6 +912,8 @@ mod loading_state {
     fn the_loading_state_shows_a_spinner() {
         // Given a session whose preview has not been rendered.
         let session = make_session_with_title("busy");
+
+        // When drawing the loading popup.
         let (buffer, _popup_area) = draw_loading(&session, 100, 40);
 
         // Then the content area carries a spinner glyph.
@@ -927,6 +929,8 @@ mod loading_state {
         // Given a session whose entries carry distinctive text.
         let mut session = make_session_with_title("busy");
         session.push_entry(ChatEntry::user("SECRETENTRYTEXT"));
+
+        // When drawing the loading popup.
         let (buffer, _popup_area) = draw_loading(&session, 100, 40);
 
         // Then none of it is drawn, because the render has not come back.
@@ -941,6 +945,8 @@ mod loading_state {
     fn the_loading_state_shows_the_session_title() {
         // Given a titled session whose preview has not been rendered.
         let session = make_session_with_title("busy");
+
+        // When drawing the loading popup.
         let (buffer, _popup_area) = draw_loading(&session, 100, 40);
 
         // Then the chrome is already drawn, so only the content waits.
@@ -951,6 +957,8 @@ mod loading_state {
     fn the_loading_state_shows_the_keybinds() {
         // Given a session whose preview has not been rendered.
         let session = make_session_with_title("busy");
+
+        // When drawing the loading popup.
         let (buffer, _popup_area) = draw_loading(&session, 100, 40);
 
         // Then the footer is present, matching the ready state.

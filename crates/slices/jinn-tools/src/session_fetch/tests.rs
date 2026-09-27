@@ -413,6 +413,7 @@ fn definition_names_session_fetch() {
     // Given the tool definition.
     let def = definition();
 
+    // When reading its name and required parameters.
     // Then it is named session_fetch and requires no parameters.
     assert_eq!(def.name, "session_fetch");
     assert!(def.parameters["required"].is_null());

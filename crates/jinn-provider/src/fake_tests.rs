@@ -535,8 +535,14 @@ async fn tool_loop_with_multiple_tool_calls_on_first_response() {
 
 #[rstest::rstest]
 fn factory_name_returns_fake_llm() {
+    // Given a fake LLM factory with an empty script.
     let factory = FakeLlmServiceFactory::new(vec![]);
-    assert_eq!(factory.name(), "FakeLlm");
+
+    // When reading its name.
+    let name = factory.name();
+
+    // Then the name is "FakeLlm".
+    assert_eq!(name, "FakeLlm");
 }
 
 /// Collect a tool stream into (text-joined, stop-reason).
