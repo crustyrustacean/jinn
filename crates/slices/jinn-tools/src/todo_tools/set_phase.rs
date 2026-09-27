@@ -540,7 +540,7 @@ mod tests {
     #[case("deferred")]
     #[test]
     fn set_phase_rejects_postponed_status(#[case] status: &str) {
-        // Given a payload declaring the non-declarable status.
+        // Given a payload declaring a status jinn cannot represent.
         let (state, session_id) = setup_with_two_phases();
 
         // When executing the tool.
@@ -551,10 +551,19 @@ mod tests {
         let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
         let result = futures::executor::block_on(execute(call, ctx));
 
-        // Then the call fails with guidance.
+        // Then the call fails, naming the word and the accepted vocabulary.
         assert!(!result.success);
         assert!(
-            result.content.contains("not a declarable status"),
+            result
+                .content
+                .contains(&format!("unknown status \"{status}\"")),
+            "got: {:?}",
+            result.content
+        );
+        assert!(
+            result
+                .content
+                .contains("expected pending, completed, or cancelled"),
             "got: {:?}",
             result.content
         );
@@ -562,6 +571,34 @@ mod tests {
         let snapshot = state.read();
         let session = snapshot.session.get(&session_id).expect("session present");
         assert_eq!(session.task_list().phases()[0].tasks().len(), 2);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_phase_accepts_model_status_vocabulary() {
+        // Given a progress update written entirely in the status words a
+        // model trained on other task tooling reaches for.
+        let (state, session_id) = setup_with_two_phases();
+        let call = set_phase_call(
+            "Build",
+            serde_json::json!([
+                { "description": "Write code", "status": "in_progress" },
+                { "description": "Review code", "status": "done" }
+            ]),
+        );
+
+        // When executing the tool.
+        let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
+        let result = futures::executor::block_on(execute(call, ctx));
+        assert!(result.success, "expected success: {:?}", result.content);
+
+        // Then the update is written, each alias coerced to the declarable
+        // status it stands for.
+        let snapshot = state.read();
+        let session = snapshot.session.get(&session_id).expect("session present");
+        let tasks = &session.task_list().phases()[0].tasks;
+        assert_eq!(tasks[0].status, TaskStatus::Pending);
+        assert_eq!(tasks[1].status, TaskStatus::Completed);
     }
 
     #[rstest::rstest]

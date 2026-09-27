@@ -27,6 +27,12 @@
 //! JSON-encode the whole array into a string. [`normalize_array`] absorbs
 //! those shapes before parsing, so a mis-encoded payload costs the caller a
 //! retried tool call instead of a wiped task list.
+//!
+//! Status vocabulary drifts the same way: a model trained on other task tooling
+//! says `in_progress` or `done` where jinn declares `pending` and `completed`.
+//! `parse_status` resolves those through a synonym table, so a routine
+//! progress update costs nothing. Coercion is silent — the rendered list shows
+//! the status that was stored, so there is nothing to report back.
 
 use jinn_tools_msg::{PhaseInput, TaskStatus};
 
@@ -110,28 +116,90 @@ fn normalize_text(text: &str, field: &str) -> Result<Vec<serde_json::Value>, Str
     }
 }
 
+/// Resolves a model-supplied status word to one of the three declarable
+/// statuses.
+///
+/// A model trained on other task tooling reaches for a much wider vocabulary:
+/// `in_progress` is the status name in the Codex plan tool, in Claude Code's
+/// `TodoWrite`/`TaskUpdate`, and in pi-agent's todo extension, yet jinn has no
+/// state to hold it. Every entry below is a true synonym of its target — the
+/// same intent spelled differently or in a different register — so a routine
+/// progress update resolves instead of failing the whole write.
+///
+/// Values that name a *different* intent jinn cannot represent are
+/// deliberately absent and continue to fail as unknown: `blocked`, `waiting`,
+/// `on_hold`, `paused`, `partial`, `failed`, `error`, `in_review`, and the
+/// non-declarable `postponed` / `deferred`. The declared values are present
+/// too, so every accepted spelling is resolved through this one table.
+const STATUS_ALIASES: &[(&str, TaskStatus)] = &[
+    ("pending", TaskStatus::Pending),
+    ("in_progress", TaskStatus::Pending),
+    ("not_started", TaskStatus::Pending),
+    ("new", TaskStatus::Pending),
+    ("open", TaskStatus::Pending),
+    ("todo", TaskStatus::Pending),
+    ("to_do", TaskStatus::Pending),
+    ("queued", TaskStatus::Pending),
+    ("backlog", TaskStatus::Pending),
+    ("ready", TaskStatus::Pending),
+    ("doing", TaskStatus::Pending),
+    ("started", TaskStatus::Pending),
+    ("active", TaskStatus::Pending),
+    ("working", TaskStatus::Pending),
+    ("wip", TaskStatus::Pending),
+    ("completed", TaskStatus::Completed),
+    ("complete", TaskStatus::Completed),
+    ("done", TaskStatus::Completed),
+    ("finished", TaskStatus::Completed),
+    ("resolved", TaskStatus::Completed),
+    ("closed", TaskStatus::Completed),
+    ("fixed", TaskStatus::Completed),
+    ("shipped", TaskStatus::Completed),
+    ("landed", TaskStatus::Completed),
+    ("cancelled", TaskStatus::Cancelled),
+    ("canceled", TaskStatus::Cancelled),
+    ("skipped", TaskStatus::Cancelled),
+    ("dropped", TaskStatus::Cancelled),
+    ("abandoned", TaskStatus::Cancelled),
+    ("obsolete", TaskStatus::Cancelled),
+    ("wontfix", TaskStatus::Cancelled),
+    ("not_needed", TaskStatus::Cancelled),
+    ("rejected", TaskStatus::Cancelled),
+    ("removed", TaskStatus::Cancelled),
+    ("superseded", TaskStatus::Cancelled),
+    ("invalid", TaskStatus::Cancelled),
+    ("moot", TaskStatus::Cancelled),
+    ("deprecated", TaskStatus::Cancelled),
+    ("deleted", TaskStatus::Cancelled),
+];
+
+/// Folds a status word to its lookup key: trimmed, lowercased, with `-` and
+/// space written as `_`, so `"In Progress"` and `"in-progress"` are one entry.
+fn normalize_status_key(text: &str) -> String {
+    text.trim().to_ascii_lowercase().replace(['-', ' '], "_")
+}
+
 /// Parses the `status` field of one task entry.
 ///
-/// Omitted or empty means [`TaskStatus::Pending`]. Accepted values are
-/// exactly `pending`, `completed`, or `cancelled` (trimmed, case-insensitive).
-/// `postponed` and `deferred` are rejected with guidance — postponement is
-/// not a declarable status; restructure the phase or cancel the task instead.
+/// Omitted or empty means [`TaskStatus::Pending`]. A value is resolved through
+/// [`STATUS_ALIASES`], so the model vocabulary around `pending`, `completed`,
+/// and `cancelled` is accepted and coerced silently; anything else is rejected
+/// with the accepted vocabulary named.
 fn parse_status(raw: &serde_json::Value, label: &str) -> Result<TaskStatus, String> {
     let Some(text) = raw.as_str() else {
         return Err(format!("{label} has a 'status' but it must be a string"));
     };
-    match text.trim().to_ascii_lowercase().as_str() {
-        "" | "pending" => Ok(TaskStatus::Pending),
-        "completed" => Ok(TaskStatus::Completed),
-        "cancelled" => Ok(TaskStatus::Cancelled),
-        "postponed" | "deferred" => Err(format!(
-            "{label}: 'postponed' is not a declarable status; \
-             move the task to a later phase or cancel it instead"
-        )),
-        other => Err(format!(
-            "{label}: unknown status \"{other}\" (expected pending, completed, or cancelled)"
-        )),
+    let key = normalize_status_key(text);
+    if key.is_empty() {
+        return Ok(TaskStatus::Pending);
     }
+    STATUS_ALIASES
+        .iter()
+        .find(|(alias, _)| *alias == key)
+        .map(|(_, status)| *status)
+        .ok_or_else(|| {
+            format!("{label}: unknown status \"{key}\" (expected pending, completed, or cancelled)")
+        })
 }
 
 /// Parses one task entry: a bare string or `{description, status?}`.
@@ -411,7 +479,7 @@ mod tests {
     #[case("deferred")]
     #[test]
     fn parse_status_rejects_postponed_and_deferred(#[case] status: &str) {
-        // Given a task entry declaring the non-declarable status.
+        // Given a task entry declaring a status jinn cannot hold.
         let payload = json!({ "description": "P", "tasks": [
             { "description": "t", "status": status }
         ]});
@@ -419,14 +487,99 @@ mod tests {
         // When parsing the phase.
         let result = parse_phase_body(&payload, "phase at index 0");
 
-        // Then it is rejected with guided messaging.
+        // Then it is rejected as an unknown status, like any unrecognised value.
         let msg = result.expect_err("rejected");
         assert!(
-            msg.contains("not a declarable status"),
-            "expected guided error, got: {msg}"
+            msg.contains(&format!("unknown status \"{status}\"")),
+            "got: {msg}"
         );
-        // And the message names the alternatives.
-        assert!(msg.contains("cancel it instead"), "got: {msg}");
+        // And the message names the accepted vocabulary.
+        assert!(
+            msg.contains("expected pending, completed, or cancelled"),
+            "got: {msg}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[case("postponed")]
+    #[case("deferred")]
+    #[case("blocked")]
+    #[case("on_hold")]
+    #[case("failed")]
+    #[case("in_review")]
+    #[case("partial")]
+    #[test]
+    fn parse_status_rejects_intent_jinn_cannot_hold(#[case] status: &str) {
+        // Given a status naming an intent with no declarable counterpart.
+        let payload = json!({ "description": "P", "tasks": [
+            { "description": "t", "status": status }
+        ]});
+
+        // When parsing the phase.
+        let result = parse_phase_body(&payload, "phase");
+
+        // Then it is rejected rather than coerced to the nearest status.
+        let msg = result.expect_err("rejected");
+        assert!(
+            msg.contains(&format!("unknown status \"{status}\"")),
+            "got: {msg}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[case("in_progress", TaskStatus::Pending)]
+    #[case("not started", TaskStatus::Pending)]
+    #[case("IN-PROGRESS", TaskStatus::Pending)]
+    #[case("ToDo", TaskStatus::Pending)]
+    #[case("wip", TaskStatus::Pending)]
+    #[case("done", TaskStatus::Completed)]
+    #[case("DONE", TaskStatus::Completed)]
+    #[case("finished", TaskStatus::Completed)]
+    #[case("shipped", TaskStatus::Completed)]
+    #[case("canceled", TaskStatus::Cancelled)]
+    #[case("skipped", TaskStatus::Cancelled)]
+    #[case("wontfix", TaskStatus::Cancelled)]
+    #[case("deprecated", TaskStatus::Cancelled)]
+    #[case("pending", TaskStatus::Pending)]
+    #[case("completed", TaskStatus::Completed)]
+    #[case("cancelled", TaskStatus::Cancelled)]
+    #[test]
+    fn parse_status_resolves_model_vocabulary(#[case] status: &str, #[case] expected: TaskStatus) {
+        // Given a task entry using a status a model reaches for.
+        let payload = json!({ "description": "P", "tasks": [
+            { "description": "t", "status": status }
+        ]});
+
+        // When parsing the phase.
+        let phase = parse_phase_body(&payload, "phase").expect("parses");
+
+        // Then it resolves to the declarable status it stands for.
+        assert_eq!(phase.tasks[0].1, expected, "for status: {status}");
+    }
+
+    #[rstest::rstest]
+    #[case::hyphen(json!("in-progress"))]
+    #[case::space(json!("in progress"))]
+    #[case::mixed_case(json!("In_Progress"))]
+    #[case::padded(json!("  DONE  "))]
+    #[test]
+    fn parse_status_normalizes_separators_and_case(#[case] raw: serde_json::Value) {
+        // Given a status word written with hyphens, spaces, or mixed case.
+        // When parsing a task entry carrying it.
+        let phase = parse_phase_body(
+            &json!({ "description": "P", "tasks": [{ "description": "t", "status": raw }] }),
+            "phase",
+        )
+        .expect("parses");
+
+        // Then it resolves to the same status as its underscore form.
+        let key = normalize_status_key(raw.as_str().expect("string"));
+        let expected = STATUS_ALIASES
+            .iter()
+            .find(|(alias, _)| *alias == key)
+            .map(|(_, status)| *status)
+            .expect("alias present");
+        assert_eq!(phase.tasks[0].1, expected);
     }
 
     #[rstest::rstest]
@@ -446,5 +599,66 @@ mod tests {
         assert_eq!(phases.tasks[0].1, TaskStatus::Completed);
         assert_eq!(phases.tasks[1].1, TaskStatus::Pending);
         assert_eq!(phases.tasks[2].1, TaskStatus::Cancelled);
+    }
+
+    #[rstest::rstest]
+    #[case::omitted(json!({ "description": "t" }))]
+    #[case::null(json!({ "description": "t", "status": null }))]
+    #[case::empty_string(json!({ "description": "t", "status": "" }))]
+    #[case::blank_string(json!({ "description": "t", "status": "   " }))]
+    #[test]
+    fn parse_status_absent_or_empty_means_pending(#[case] entry: serde_json::Value) {
+        // Given a task entry with no usable status.
+        let payload = json!({ "description": "P", "tasks": [entry] });
+
+        // When parsing the phase.
+        let phase = parse_phase_body(&payload, "phase").expect("parses");
+
+        // Then the task is Pending.
+        assert_eq!(phase.tasks[0].1, TaskStatus::Pending);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn parse_status_unknown_value_names_the_accepted_vocabulary() {
+        // Given a status word that is not in the table.
+        let payload = json!({ "description": "P", "tasks": [
+            { "description": "t", "status": "nonsense" }
+        ]});
+
+        // When parsing the phase.
+        let result = parse_phase_body(&payload, "phase at index 0, task at index 0");
+
+        // Then the error quotes the word and names the accepted statuses.
+        let msg = result.expect_err("rejected");
+        assert!(msg.contains("unknown status \"nonsense\""), "got: {msg}");
+        assert!(
+            msg.contains("expected pending, completed, or cancelled"),
+            "got: {msg}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn parse_status_alias_table_holds_only_synonyms() {
+        // Given the alias table.
+        // When scanning it for intent jinn cannot represent.
+        // Then those spellings stay out, so they keep failing as unknown.
+        let keys: Vec<&str> = STATUS_ALIASES.iter().map(|(alias, _)| *alias).collect();
+        for excluded in [
+            "postponed",
+            "deferred",
+            "blocked",
+            "waiting",
+            "on_hold",
+            "paused",
+            "partial",
+            "failed",
+            "error",
+            "needs_review",
+            "in_review",
+        ] {
+            assert!(!keys.contains(&excluded), "{excluded} must not be aliased");
+        }
     }
 }
