@@ -8,9 +8,9 @@
 
 use error_stack::Report;
 use jinn_boot_msg::EnvironmentLoaded;
-use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
-use jinn_domain::common::services::bus_service::BusService;
-use jinn_domain::common::state::State;
+use jinn_kernel::common::actor_deps::{ActorDeps, BusPublish};
+use jinn_kernel::common::services::bus_service::BusService;
+use jinn_kernel::common::state::State;
 use jinn_provider_config::{ModelCache, ProviderRegistry};
 use jinn_provider_selection_msg::ModelCacheLoaded;
 use jinn_provider_selection_msg::ProviderSwitch;
@@ -197,10 +197,10 @@ mod tests {
 
     use super::ProviderInitActor;
     use jinn_core_types::model_selection::ModelSelection;
-    use jinn_domain::common::actor_deps::ActorDeps;
-    use jinn_domain::common::services::Services;
-    use jinn_domain::common::services::bus_service::BusAudit;
-    use jinn_domain::common::state::State;
+    use jinn_kernel::common::actor_deps::ActorDeps;
+    use jinn_kernel::common::services::Services;
+    use jinn_kernel::common::services::bus_service::BusAudit;
+    use jinn_kernel::common::state::State;
     use jinn_provider_config::ProviderEntry;
     use jinn_provider_selection_msg::ModelCacheLoaded;
     use jinn_provider_selection_msg::ProviderSwitch;
@@ -219,9 +219,9 @@ mod tests {
     }
 
     async fn create_actor() -> (ProviderInitActor, BusAudit, Services, State) {
-        let (bus, audit) = jinn_domain::common::services::BusService::new_recording();
+        let (bus, audit) = jinn_kernel::common::services::BusService::new_recording();
         let services = Services::new_fake_with_bus(bus).await;
-        let state = State::new(jinn_domain::common::app_state::AppState::default());
+        let state = State::new(jinn_kernel::common::app_state::AppState::default());
         let actor = ProviderInitActor {
             deps: ActorDeps {
                 services: services.clone(),

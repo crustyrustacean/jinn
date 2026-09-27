@@ -1,7 +1,7 @@
 //! Re-runs a selected session's lifecycle setup command.
 
-use jinn_domain::IntentResult;
-use jinn_domain::common::app_state::AppState;
+use jinn_kernel::IntentResult;
+use jinn_kernel::common::app_state::AppState;
 use jinn_preferences_config::schemas::LifecycleCommand;
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_lifecycle_msg::{

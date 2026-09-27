@@ -30,7 +30,7 @@ trouper = { workspace = true }
 # feature helpers. The kernel never depends back on this crate.
 jinn-core-types = { workspace = true }
 jinn-skills = { workspace = true }
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-tools = { workspace = true }
 tracing = { workspace = true }
@@ -49,6 +49,6 @@ rstest = { workspace = true }
 
 [dev-dependencies]
 jinn-config = { workspace = true }
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 jinn-testutil = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "time"] }

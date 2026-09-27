@@ -21,7 +21,7 @@
 //!   managed URL with no child process.
 //!
 //! Both HTTP transports accept resolved `(name, value)` header pairs that are
-//! applied as default headers on every request. jinn-domain expands `${VAR}`
+//! applied as default headers on every request. jinn-kernel expands `${VAR}`
 //! tokens before calling in; this module never reads the environment.
 //!
 //! [`McpClient::shutdown`] closes the transport and waits (with a timeout) for

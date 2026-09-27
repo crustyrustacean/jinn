@@ -1,6 +1,6 @@
 //! Session-lifecycle slice-composition tests.
 
-use jinn_domain::common::state::State;
+use jinn_kernel::common::state::State;
 use jinn_session_lifecycle_msg::arg_input_scope;
 use jinn_session_lifecycle_msg::arg_input_slot;
 use jinn_slices::SliceHost;
@@ -16,8 +16,8 @@ async fn activation_registers_argument_popup_surfaces() {
     let overlay_views = jinn_slices::OverlayViews::new();
     let routes = jinn_slices::KeyRoutes::new();
     let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
-    let services = jinn_domain::Services::new_fake().await;
-    let state = State::new(jinn_domain::AppState::default());
+    let services = jinn_kernel::Services::new_fake().await;
+    let state = State::new(jinn_kernel::AppState::default());
     let mut host = SliceHost::new(&slices, &mut viewport, &overlay_views, &routes, &system);
 
     // When the lifecycle slice activates.
@@ -94,7 +94,7 @@ struct CrossSlice {
     slices: jinn_slices::Slices,
     routes: jinn_slices::KeyRoutes,
     config: jinn_config::ConfigLayer,
-    state: jinn_domain::AppState,
+    state: jinn_kernel::AppState,
 }
 
 impl CrossSlice {
@@ -110,7 +110,7 @@ impl CrossSlice {
         // `default_with_scope_focus`, not `default`: a scope push is a no-op
         // without the shared scope cell, and `<c-enter>` only acts on a
         // highlighted row.
-        let state = jinn_domain::AppState::default_with_scope_focus();
+        let state = jinn_kernel::AppState::default_with_scope_focus();
         state.frontend.attach_slices(slices.clone());
         {
             let mut host = jinn_slices::SliceHost::new(
@@ -155,9 +155,9 @@ impl CrossSlice {
         &mut self,
         action: &str,
         scope: jinn_slices::SliceScopeId,
-    ) -> jinn_domain::IntentResult {
-        jinn_domain::IntentHandler::handle(
-            &jinn_domain::KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
+    ) -> jinn_kernel::IntentResult {
+        jinn_kernel::IntentHandler::handle(
+            &jinn_kernel::KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
                 scope, action, action,
             )),
             &mut self.state,
@@ -168,7 +168,7 @@ impl CrossSlice {
     }
 
     /// The project picker's `<c-enter>`: chain into the lifecycle picker.
-    fn press_control_enter(&mut self) -> jinn_domain::IntentResult {
+    fn press_control_enter(&mut self) -> jinn_kernel::IntentResult {
         self.dispatch(
             "new-session-with-lifecycle",
             jinn_project_msg::project_picker_scope(),

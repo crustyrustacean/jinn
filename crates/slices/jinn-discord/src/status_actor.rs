@@ -101,7 +101,7 @@ pub struct DiscordStatusActorDeps {
     /// is its single writer.
     pub cell: TypedCell<ConnectionState>,
     /// The message bus, for the dashboard's generic vocabulary.
-    pub bus: jinn_domain::common::services::bus_service::BusService,
+    pub bus: jinn_kernel::common::services::bus_service::BusService,
     /// The trouper system, for the native topic publish + schema
     /// registration.
     pub system: ActorSystem,
@@ -144,7 +144,7 @@ impl ServiceActor for DiscordStatusActor {
 async fn drain_status_channel(
     rx: kanal::AsyncReceiver<DiscordStatusUpdate>,
     cell: TypedCell<ConnectionState>,
-    bus: jinn_domain::common::services::bus_service::BusService,
+    bus: jinn_kernel::common::services::bus_service::BusService,
     system: ActorSystem,
 ) {
     while let Ok(update) = rx.recv().await {
@@ -272,7 +272,7 @@ mod tests {
                 },
             )
             .expect("fresh registry");
-        use jinn_domain::common::bus::HarnessServices;
+        use jinn_kernel::common::bus::HarnessServices;
         let harness = jinn_testutil::bus_harness::TestHarness::new().await;
         let services = harness.services().await;
         let (tx, rx) = kanal::bounded::<DiscordStatusUpdate>(8);

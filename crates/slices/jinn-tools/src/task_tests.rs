@@ -21,11 +21,11 @@ use crate::tool_types::ToolContext;
 use jinn_chat_input_msg::EnqueueUserMessage;
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::{ToolCall, ToolResult};
-use jinn_domain::common::app_paths::AppPaths;
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::bus::HarnessServices;
-use jinn_domain::common::state::State;
-use jinn_domain::protocol::{ChatEntry, ChatEntryKind};
+use jinn_kernel::common::app_paths::AppPaths;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::bus::HarnessServices;
+use jinn_kernel::common::state::State;
+use jinn_kernel::protocol::{ChatEntry, ChatEntryKind};
 use jinn_inference_msg::CancelStream;
 use jinn_session_init_msg::{ContextFilesLoaded, PromptTemplatesLoaded};
 use jinn_session_lifecycle_msg::SessionCreated;
@@ -99,7 +99,7 @@ fn parent_fixture() -> (State, SessionId) {
 /// produces. Publishes the same `SessionPhaseChanged` events the session
 /// actor emits, so a subscribed listener sees the run.
 async fn finish_child_like_session_actor(
-    bus: &jinn_domain::common::services::bus_service::BusService,
+    bus: &jinn_kernel::common::services::bus_service::BusService,
     state: &State,
     child_id: &SessionId,
     text: &str,
@@ -126,7 +126,7 @@ async fn finish_child_like_session_actor(
 /// `Error("Cancelled")` entry the streaming handler pushes on cancel.
 /// Publishes the force-published `Idle→Idle` event the cancel path emits.
 async fn cancel_child_like_user(
-    bus: &jinn_domain::common::services::bus_service::BusService,
+    bus: &jinn_kernel::common::services::bus_service::BusService,
     state: &State,
     child_id: &SessionId,
 ) {
@@ -162,7 +162,7 @@ fn result_parts(result: &ToolResult) -> (bool, &str) {
 /// test must call this after `SessionCreated` arrives, or the tool's settle
 /// gate holds the enqueue for the full 15s budget.
 async fn settle_child_discovery(
-    bus: &jinn_domain::common::services::bus_service::BusService,
+    bus: &jinn_kernel::common::services::bus_service::BusService,
     child_id: &SessionId,
     servers: &BTreeSet<String>,
 ) {

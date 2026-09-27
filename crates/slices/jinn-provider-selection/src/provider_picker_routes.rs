@@ -30,7 +30,7 @@
 //! shared data rather than menu state.
 
 use jinn_core_types::model_selection::ModelSelection;
-use jinn_domain::ChatEntry;
+use jinn_kernel::ChatEntry;
 use jinn_preferences_config::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
 use jinn_provider_selection_msg::LoadProviderPickerEntries;
 use jinn_provider_selection_msg::ProviderPickerState;
@@ -62,10 +62,10 @@ pub const PROVIDER_PICKER_BINDINGS: &[(&str, &str)] = &[
 ];
 
 /// The kernel's application state behind an [`ActionCtx`].
-fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_domain::AppState> {
+fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_kernel::AppState> {
     ctx.state
         .as_any_mut()?
-        .downcast_mut::<jinn_domain::AppState>()
+        .downcast_mut::<jinn_kernel::AppState>()
 }
 
 /// Wraps a picker action in an [`ActionFn`], handing it the cell.
@@ -314,7 +314,7 @@ fn refresh_models(ctx: &mut ActionCtx<'_>, _cell: &ProviderPickerCell) -> Intent
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    if jinn_domain::session_lifecycle::validator::validate_refresh_models(state).is_err() {
+    if jinn_kernel::session_lifecycle::validator::validate_refresh_models(state).is_err() {
         return IntentResult::empty();
     }
     state

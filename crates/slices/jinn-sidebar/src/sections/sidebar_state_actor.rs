@@ -22,7 +22,7 @@ use trouper::system::ActorSystem;
 
 use crate::sections::sessions;
 use jinn_chat_log_view_msg::{ArmPreviewDeadline, SessionPreviewRendered};
-use jinn_domain::common::state::State;
+use jinn_kernel::common::state::State;
 use jinn_session_lifecycle_msg::SessionTeardownFinished;
 use jinn_session_msg::{SessionArchiveFailed, SessionRemoved};
 
@@ -185,8 +185,8 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::state::State;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::common::state::State;
     use jinn_session_state::ChatSessionState;
 
     /// Marks a session in flight and returns the actor plus the session id.

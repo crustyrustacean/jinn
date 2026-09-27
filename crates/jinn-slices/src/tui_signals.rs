@@ -14,7 +14,7 @@
 // along with this program.  If not, not, see <https://www.gnu.org/licenses/>.
 
 //! Signals from the intent handler for the outer platform layer
-//! (shared vocabulary; the kernel re-exports under `jinn_domain`).
+//! (shared vocabulary; the kernel re-exports under `jinn_kernel`).
 //!
 //! The intent handler sets these flags during processing. The platform layer
 //! (`TuiApp` or headless runner) reads them after each `handle()` call and

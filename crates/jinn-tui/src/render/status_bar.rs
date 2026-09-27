@@ -3,7 +3,7 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 
-use jinn_domain::{AppUiRegistry, RenderCtx};
+use jinn_kernel::{AppUiRegistry, RenderCtx};
 
 /// Renders the status bar at the bottom of the main column.
 pub(super) fn render_status_bar(

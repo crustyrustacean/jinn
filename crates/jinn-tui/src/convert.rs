@@ -3,7 +3,7 @@
 //! Bridges platform-specific terminal input and the protocol key types
 //! used by the keymap and command routing.
 
-use jinn_domain::{Key, KeyEvent, Modifiers};
+use jinn_kernel::{Key, KeyEvent, Modifiers};
 
 /// Converts a platform key event to an application key event.
 ///

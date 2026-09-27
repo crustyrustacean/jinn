@@ -13,7 +13,7 @@ use std::time::Duration;
 use crate::authorize;
 use jinn_context::PromptTemplateStore;
 use jinn_core_types::SessionId;
-use jinn_domain::Bridge;
+use jinn_kernel::Bridge;
 use jinn_session_store_msg::ArchiveSession;
 use poise::serenity_prelude as serenity;
 
@@ -114,11 +114,11 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
         // project picker). Without this the handler falls back to inheriting
         // the currently-active session's CWD, which is unrelated to the pick.
         state.frontend.pending_creation =
-            Some(jinn_domain::state::frontend_state::PendingSessionCreation {
+            Some(jinn_kernel::state::frontend_state::PendingSessionCreation {
                 project_dir: chosen.path.clone(),
                 starting_cwd: chosen.path.clone(),
             });
-        let result = jinn_domain::session_lifecycle::intent::handle_session_lifecycle_setup(
+        let result = jinn_kernel::session_lifecycle::intent::handle_session_lifecycle_setup(
             &mut state,
             &lifecycle,
             &args,
@@ -209,11 +209,11 @@ pub async fn teardown(ctx: BotContext<'_>) -> Result<(), BotError> {
 /// Resolve + render the teardown command for `session_id` and wrap it as a
 /// publish closure. Returns `None` when the session has no teardown command.
 fn build_teardown_publish(
-    state: &jinn_domain::StateReadGuard<'_>,
+    state: &jinn_kernel::StateReadGuard<'_>,
     session_id: &SessionId,
     config: &jinn_config::ConfigLayer,
-) -> Option<jinn_domain::BridgeClosure> {
-    let msg = jinn_domain::session_lifecycle::intent::build_run_session_teardown(
+) -> Option<jinn_kernel::BridgeClosure> {
+    let msg = jinn_kernel::session_lifecycle::intent::build_run_session_teardown(
         state, session_id, config,
     )?;
     Some(Bridge::publish_closure(msg))

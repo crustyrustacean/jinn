@@ -196,11 +196,6 @@ ci: lint test
     cargo test --workspace --doc --exclude llm
     cargo doc --workspace --no-deps
 
-# Rebuild the dao compile-time validation DB (forces jinn-domain build.rs on next check)
-dao-db-rebuild:
-    cargo clean -p jinn-domain
-
-
 # Build and open documentation
 docs:
     cargo doc --workspace --no-deps --open

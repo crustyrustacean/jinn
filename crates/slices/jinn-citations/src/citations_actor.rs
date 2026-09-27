@@ -30,7 +30,7 @@ use trouper::system::ActorSystem;
 
 use jinn_core_types::SessionId;
 use jinn_core_types::UrlCitation;
-use jinn_domain::Services;
+use jinn_kernel::Services;
 use jinn_inference_msg::StreamCompleted;
 use jinn_inference_msg::StreamCompletedReason;
 use jinn_session_history_msg::CitationsReceived;
@@ -234,7 +234,7 @@ mod tests {
     /// via a recorder (the delivery path under test).
     async fn actor(harness: &TestHarness) -> CitationsActor {
         CitationsActor::with_services(
-            jinn_domain::common::services::Services::new_fake_with_bus(harness.bus()).await,
+            jinn_kernel::common::services::Services::new_fake_with_bus(harness.bus()).await,
         )
     }
 

@@ -11,7 +11,7 @@ jinn-theme-msg = { workspace = true }
 error-stack = { workspace = true }
 # Slice → kernel edge: the drain calls the kernel's relay spawner. The
 # kernel never depends back on this crate.
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-theme = { workspace = true }
 jinn-core-types = { workspace = true }

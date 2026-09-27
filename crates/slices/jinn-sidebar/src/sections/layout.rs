@@ -17,7 +17,7 @@
 //! When the document is shorter than the column there is nothing to scroll, so
 //! the offset is 0 and the sections keep their natural top-down placement.
 
-use jinn_domain::common::app_state::AppState;
+use jinn_kernel::common::app_state::AppState;
 use jinn_slices::ConfigLayer;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -544,9 +544,9 @@ mod tests {
         clippy::panic,
         reason = "test code"
     )]
-    use jinn_domain::common::app_state::AppState;
-    use jinn_domain::protocol::ChatEntry;
-    use jinn_domain::protocol::PinPosition;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::protocol::ChatEntry;
+    use jinn_kernel::protocol::PinPosition;
     use jinn_session_state::ChatSessionState;
     use jinn_tools_msg::{PhaseInput, TaskStatus};
 
@@ -605,7 +605,7 @@ mod tests {
         };
 
         // When building the document table.
-        let config = jinn_domain::common::render_ctx::empty_config_layer();
+        let config = jinn_kernel::common::render_ctx::empty_config_layer();
         let document = document(&state, config);
 
         // Then the total is the sum of the individual section heights.
@@ -625,7 +625,7 @@ mod tests {
         // When building the document table.
         let document = document(
             &state,
-            jinn_domain::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
         );
 
         // Then each span starts where the previous one ended.

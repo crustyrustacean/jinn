@@ -11,7 +11,7 @@ tracing = { workspace = true }
 [dev-dependencies]
 jinn-llm-support = { workspace = true }
 rand = { workspace = true }
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 jinn-session-state = { workspace = true }
 rstest = { workspace = true }
 

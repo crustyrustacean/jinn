@@ -1,8 +1,8 @@
 //! [`SidebarSection`] trait and supporting types for pluggable sidebar sections.
 
-use jinn_domain::common::render_ctx::RenderCtx;
+use jinn_kernel::common::render_ctx::RenderCtx;
 
-use jinn_domain::KernelIntent;
+use jinn_kernel::KernelIntent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 

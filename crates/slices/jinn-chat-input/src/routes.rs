@@ -13,9 +13,9 @@
 //! `Scope::Input` catch-all, which dispatches to `insert-char`.
 
 use jinn_chat_input_msg::chat_input_scope;
-use jinn_domain::AppState;
-use jinn_domain::IntentResult;
-use jinn_domain::common::slices::key_routes::into_route_result;
+use jinn_kernel::AppState;
+use jinn_kernel::IntentResult;
+use jinn_kernel::common::slices::key_routes::into_route_result;
 use jinn_slices::KeyRoutes;
 use jinn_slices::RouteId;
 use jinn_slices::RouteResult;
@@ -27,10 +27,10 @@ use crate::intent;
 ///
 /// Returns [`None`] when the implementor is not the kernel's state — the
 /// action is then a no-op rather than a panic.
-fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_domain::AppState> {
+fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_kernel::AppState> {
     ctx.state
         .as_any_mut()?
-        .downcast_mut::<jinn_domain::AppState>()
+        .downcast_mut::<jinn_kernel::AppState>()
 }
 
 /// The editing keys the box binds in the `Input` scope, for the wiring test.

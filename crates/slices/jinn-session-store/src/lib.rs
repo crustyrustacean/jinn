@@ -26,8 +26,8 @@ pub mod sqlite;
 // vocabulary surface.
 pub use jinn_session_store_msg as session_search;
 
-use jinn_domain::Services;
-use jinn_domain::common::state::State;
+use jinn_kernel::Services;
+use jinn_kernel::common::state::State;
 use jinn_slices::SliceHost;
 use jinn_slices::cell::TypedCell;
 use trouper::actor::ActorPath;

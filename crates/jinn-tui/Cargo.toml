@@ -20,7 +20,7 @@ jinn-token-count-msg = { workspace = true }
 jinn-mcp-msg = { workspace = true }
 jinn-project-msg = { workspace = true }
 jinn-mcp = { workspace = true }
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 jinn-sidebar = { workspace = true }
 jinn-cwd = { workspace = true }
 jinn-status-bar = { workspace = true }

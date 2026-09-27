@@ -3,7 +3,7 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 
-use jinn_domain::{AppUiRegistry, RenderCtx};
+use jinn_kernel::{AppUiRegistry, RenderCtx};
 
 /// Renders the chat input box element.
 pub(super) fn render_input_box(

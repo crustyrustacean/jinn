@@ -324,7 +324,7 @@ const SETTLE_BUDGET: Duration = Duration::from_secs(15);
 /// subscriptions are live but *before* `EnqueueUserMessage` is published.
 pub(crate) async fn await_discovery_settlement(
     system: &trouper::system::ActorSystem,
-    bus: &jinn_domain::common::services::bus_service::BusService,
+    bus: &jinn_kernel::common::services::bus_service::BusService,
     child_id: &SessionId,
     expected_servers: &std::collections::BTreeSet<String>,
     budget: Duration,
@@ -349,7 +349,7 @@ pub(crate) async fn await_discovery_settlement(
 
 /// Result of the await step.
 async fn await_child(
-    bus: &jinn_domain::common::services::bus_service::BusService,
+    bus: &jinn_kernel::common::services::bus_service::BusService,
     completion: tokio::sync::oneshot::Receiver<()>,
     child_id: SessionId,
     deadline: Option<Duration>,

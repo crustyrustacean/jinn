@@ -13,9 +13,9 @@
 //! `[[providers.model_info]]` `input_modalities` in `providers.toml`.
 
 use jinn_core_types::SessionId;
-use jinn_domain::common::services::Services;
-use jinn_domain::common::state::State;
-use jinn_domain::protocol::{ChatEntry, ChatEntryKind};
+use jinn_kernel::common::services::Services;
+use jinn_kernel::common::state::State;
+use jinn_kernel::protocol::{ChatEntry, ChatEntryKind};
 use jinn_provider_config::{Modality, ModelCache, ModelsDevData};
 
 /// Decides whether a user entry with attachments may be dispatched to the model.

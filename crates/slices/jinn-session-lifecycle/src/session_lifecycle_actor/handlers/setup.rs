@@ -1,7 +1,7 @@
 //! Setup lifecycle command handling.
 
 use jinn_chat_input_msg::ChatEntrySubmitted;
-use jinn_domain::common::actor_deps::BusPublish;
+use jinn_kernel::common::actor_deps::BusPublish;
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_lifecycle_msg::builtin::BuiltinId;
 use jinn_session_lifecycle_msg::{FinishSessionSetup, RunSessionSetup, SessionSetupCompleted};

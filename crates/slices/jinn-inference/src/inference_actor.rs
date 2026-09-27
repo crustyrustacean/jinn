@@ -7,10 +7,10 @@ use futures::StreamExt as _;
 use jiff::Timestamp;
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::ToolCall;
-use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::common::services::Services;
-use jinn_domain::common::services::bus_service::BusService;
-use jinn_domain::protocol::ChatEntry;
+use jinn_kernel::common::actor_deps::BusPublish;
+use jinn_kernel::common::services::Services;
+use jinn_kernel::common::services::bus_service::BusService;
+use jinn_kernel::protocol::ChatEntry;
 use jinn_inference_msg::{
     CancelStream, SendToLlmProvider, StreamActivity, StreamCompleted, StreamCompletedReason,
     StreamOrigin, StreamToken,
@@ -123,7 +123,7 @@ pub struct InferenceActor {
     cancelled_sessions: HashSet<SessionId>,
 }
 
-impl jinn_domain::common::actor_deps::BusPublish for InferenceActor {
+impl jinn_kernel::common::actor_deps::BusPublish for InferenceActor {
     fn bus(&self) -> &BusService {
         &self.services.bus
     }
@@ -854,7 +854,7 @@ mod tests;
 /// actor publishes stream events through `services.bus`, so tests hand in the
 /// harness's bus to observe them.
 pub async fn test_services_with_bus(
-    bus: jinn_domain::common::services::bus_service::BusService,
-) -> jinn_domain::common::services::Services {
-    jinn_domain::common::services::Services::new_fake_with_bus(bus).await
+    bus: jinn_kernel::common::services::bus_service::BusService,
+) -> jinn_kernel::common::services::Services {
+    jinn_kernel::common::services::Services::new_fake_with_bus(bus).await
 }

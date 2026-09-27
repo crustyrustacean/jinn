@@ -52,10 +52,10 @@ pub const MCP_PICKER_BINDINGS: &[(&str, &str)] = &[
 ///
 /// When the state is not the kernel's (a test double), the action declines
 /// rather than panicking.
-fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_domain::AppState> {
+fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_kernel::AppState> {
     ctx.state
         .as_any_mut()?
-        .downcast_mut::<jinn_domain::AppState>()
+        .downcast_mut::<jinn_kernel::AppState>()
 }
 
 /// Wraps an inspector action in an [`ActionFn`], handing it the cell.
@@ -355,9 +355,9 @@ fn restart_mcp_server(ctx: &mut ActionCtx<'_>, cell: &McpPickerCell) -> IntentRe
         session_id: session_id.clone(),
         server,
     })
-    .with_message(jinn_domain::PushChatEntry {
+    .with_message(jinn_kernel::PushChatEntry {
         session_id,
-        entry: jinn_domain::ChatEntry::transient("Restarting MCP server"),
+        entry: jinn_kernel::ChatEntry::transient("Restarting MCP server"),
     })
 }
 

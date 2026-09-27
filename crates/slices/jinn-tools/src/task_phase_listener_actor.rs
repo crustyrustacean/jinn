@@ -27,7 +27,7 @@ use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 
 use jinn_core_types::SessionId;
-use jinn_domain::common::services::bus_service::BusService;
+use jinn_kernel::common::services::bus_service::BusService;
 use jinn_session_msg::PhaseKind;
 use jinn_session_msg::SessionPhaseChanged;
 

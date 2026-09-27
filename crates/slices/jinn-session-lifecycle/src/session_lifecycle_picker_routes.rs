@@ -65,10 +65,10 @@ pub const SESSION_LIFECYCLE_PICKER_BINDINGS: &[(&str, &str)] =
 /// Confirming a lifecycle changes the session, so it downcasts. When the state
 /// is not the kernel's (a test double), the action declines rather than
 /// panicking.
-fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_domain::AppState> {
+fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_kernel::AppState> {
     ctx.state
         .as_any_mut()?
-        .downcast_mut::<jinn_domain::AppState>()
+        .downcast_mut::<jinn_kernel::AppState>()
 }
 
 /// Wraps a picker action in an [`ActionFn`], handing it both the dispatch
@@ -347,7 +347,7 @@ fn confirm_session_lifecycle_picker(
     // No args - proceed directly. The setup function owns the scope
     // transition (clear overlays, push input), so this outcome carries no
     // close signal.
-    jinn_domain::session_lifecycle::intent::handle_session_lifecycle_setup(
+    jinn_kernel::session_lifecycle::intent::handle_session_lifecycle_setup(
         state,
         &name,
         &[],
@@ -370,7 +370,7 @@ fn new_session(ctx: &mut ActionCtx<'_>, _cell: &LifecyclePickerCell) -> IntentRe
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    jinn_domain::session_lifecycle::intent::handle_session_new(state, config)
+    jinn_kernel::session_lifecycle::intent::handle_session_new(state, config)
 }
 
 /// Ctrl-C: clear the filter, or close when it is already empty.

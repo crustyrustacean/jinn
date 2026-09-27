@@ -284,7 +284,7 @@ Entries are added or amended **only with human approval**.
 - (term) Shift+Tab reaches a child pty as `ESC[Z`, carried as Tab with the shift modifier.
 - (keybinds) Shift+Tab is represented as `Key::Tab` with the shift modifier rather than a distinct key variant, so `<s-tab>` notation and display work through the existing modifier path.
 - (tools) The jinn-tools slice owns the tool orchestrator, the built-in and todo tools, the task subagent machinery, and the tool protocol contracts in jinn-tools-msg; tool nouns (ToolDefinition/ToolCall/ToolResult) live in jinn-core-types.
-- (slices) Kernel feature extraction follows the absorb model: each slice family absorbs its feat/ modules, leaving jinn-domain as shared multi-slice vocabulary.
+- (slices) Kernel feature extraction follows the absorb model: each slice family absorbs its feat/ modules, leaving jinn-kernel as shared multi-slice vocabulary.
 - (slices) The turn-dispatch slice is a crate owning the queue ServiceActor and the enqueue dispatch path; its wire contracts live in jinn-turn-dispatch-msg.
 - (session) Forking a session persists the source session before forking, so the fork always reflects the source's current history and includes the entry it was forked from.
 - (input) In the rename popup, ctrl+c clears the buffer and closes the popup when the buffer is already empty; escape always closes.
@@ -319,7 +319,7 @@ Entries are added or amended **only with human approval**.
 - (arch) The kernel crate holds shared cross-slice vocabulary only; each feature component lives in the slice that owns it, and a component whose only callers are kernel dispatch code stays in the kernel as a top-level module.
 - (arch) A slice-owned feature whose actors are reached only by the kernel stays in the kernel's top-level module tree rather than moving to its slice, because the slice would otherwise need a kernel dependency to be reachable.
 - (arch) AppState is composed of a session map and a frontend state struct defined outside any feature module, so the shared state carries no dependency on a standalone UI component.
-- (arch) No crate outside the kernel names a jinn_domain feature path; the kernel's feature modules are reached only from within the kernel.
+- (arch) No crate outside the kernel names a jinn_kernel feature path; the kernel's feature modules are reached only from within the kernel.
 - (slices) A message crate never depends on another message crate; a type two message crates both need is shared vocabulary and lives in a common or kernel crate.
 - (testing) The bus test harness lives in jinn-testutil and is available to every crate without a feature flag.
 - (arch) Displayed UI elements are registered by composition in jinn-tui, because the kernel's element registry cannot reference slice crates.

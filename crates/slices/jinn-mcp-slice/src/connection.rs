@@ -38,14 +38,14 @@ use trouper::registry::RegistryError;
 use error_stack::{Report, ResultExt as _};
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
+use jinn_kernel::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_mcp_msg::{McpConnectionStatus, McpServerLog, McpServerStatus};
 use jinn_preferences_config::schemas::mcp::{McpServerConfig, TransportKind};
 use jinn_tools_msg::truncation::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncate_tail};
 use jinn_tools_msg::{ExecuteTool, RegisterTools};
 use jinn_tools_msg::{ToolExecutionCompleted, ToolsUnregistered};
 
-use jinn_domain::Services;
+use jinn_kernel::Services;
 use jinn_preferences_config::schemas::ToolsConfig;
 
 /// Debounce interval for live stderr republishing while the actor is Running.
@@ -167,7 +167,7 @@ fn server_command(config: &McpServerConfig) -> ServerCommand {
 /// - [`TransportKind::RemoteHttp`]: connect to the configured `url` with no child.
 ///
 /// For both HTTP transports, configured header values are expanded from
-/// [`ApiKeysService`](jinn_domain::common::services::api_keys_service::ApiKeysService)
+/// [`ApiKeysService`](jinn_kernel::common::services::api_keys_service::ApiKeysService)
 /// (`${VAR}` tokens resolved against variables seeded at startup) *before* any
 /// connect attempt; an unresolvable variable aborts the connect, which the
 /// caller surfaces as a dead server.
@@ -679,7 +679,7 @@ impl McpActor {
 }
 
 impl BusPublish for McpActor {
-    fn bus(&self) -> &jinn_domain::common::services::bus_service::BusService {
+    fn bus(&self) -> &jinn_kernel::common::services::bus_service::BusService {
         &self.deps.services.bus
     }
 }

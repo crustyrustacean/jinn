@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// A unique identifier for a [`ChatEntry`](https://docs.rs/jinn-domain) entry.
+/// A unique identifier for a [`ChatEntry`](https://docs.rs/jinn-kernel) entry.
 ///
 /// Auto-generated as a UUID (v7 via `now_v7`). Used by prompt assembly
 /// strategies to reference specific entries without positional coupling, and

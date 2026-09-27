@@ -2,14 +2,14 @@
 //!
 //! v20 backfills `metadata` for pre-v8 rows whose blob is `NULL` by
 //! reconstructing one from the legacy columns. The reconstructed blob must
-//! deserialize via jinn-domain's **runtime** `PersistableCore`. Rather than
-//! import that live type (which would couple this leaf crate to jinn-domain
+//! deserialize via jinn-kernel's **runtime** `PersistableCore`. Rather than
+//! import that live type (which would couple this leaf crate to jinn-kernel
 //! and break the build cycle), we snapshot the shape as it exists at v20.
 //!
 //! **This is not duplication — it is a snapshot.** If the live `PersistableCore`
 //! gains a field in v21, this struct correctly stays frozen; v21 owns its own
 //! logic for the new field. The coupling between this snapshot and the runtime
-//! deserializer is explicit and pinned by a round-trip test in jinn-domain.
+//! deserializer is explicit and pinned by a round-trip test in jinn-kernel.
 //!
 //! Field names and JSON representations must match the runtime
 //! `PersistableCore`'s serde output exactly. The runtime derives
@@ -66,7 +66,7 @@ pub struct LegacySessionColumns {
 /// A frozen snapshot of the `metadata` blob as it exists at migration v20.
 ///
 /// See the module docs for why this is a separate struct rather than an import
-/// of jinn-domain's live `PersistableCore`.
+/// of jinn-kernel's live `PersistableCore`.
 #[derive(Serialize)]
 pub struct PersistableCoreV20 {
     pub session_id: String,

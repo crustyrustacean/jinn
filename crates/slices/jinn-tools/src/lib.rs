@@ -64,8 +64,8 @@ pub use orchestrator::{ToolOrchestratorActor, ToolOrchestratorActorDeps};
 pub use jinn_tools_msg::tool_picker_scope;
 pub use tool_picker_routes::open_from_scope as open_tool_picker_from_scope;
 
-use jinn_domain::common::services::Services;
-use jinn_domain::common::state::State;
+use jinn_kernel::common::services::Services;
+use jinn_kernel::common::state::State;
 
 /// Activates the tools slice over the kernel's services: registers the
 /// `tools/registry` cell (idempotent — re-registering over an existing cell

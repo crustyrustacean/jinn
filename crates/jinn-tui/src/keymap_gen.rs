@@ -9,8 +9,8 @@
 //! row's `(slice, action)` identity. An unregistered slice's keys are
 //! simply never bound — removability is automatic, not maintained.
 
-use jinn_domain::Key;
-use jinn_domain::KeyEvent;
+use jinn_kernel::Key;
+use jinn_kernel::KeyEvent;
 use jinn_slices::DynamicIntent;
 use jinn_slices::SliceScopeId;
 use jinn_slices::route::BindSite;
@@ -22,7 +22,7 @@ use ratatui_which_key::parse_key_sequence;
 
 use crate::keymap::KeyCategory;
 use crate::scope::Scope;
-use jinn_domain::KernelIntent;
+use jinn_kernel::KernelIntent;
 
 /// Resolves a static row's [`RouteId`] to the composition intent it
 /// binds. Slice keybind blocks used to hardcode these — the table is
@@ -196,7 +196,7 @@ fn derive_groups_from_rows(
 fn plain_key(c: char) -> KeyEvent {
     KeyEvent {
         key: Key::Char(c),
-        modifiers: jinn_domain::Modifiers::none(),
+        modifiers: jinn_kernel::Modifiers::none(),
     }
 }
 

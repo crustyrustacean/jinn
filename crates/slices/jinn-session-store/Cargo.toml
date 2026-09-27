@@ -7,13 +7,13 @@ The session-store slice: session persistence/restoration actor, SQLite backend,
 and background FTS search-index maintenance actor.
 
 Kernel dependency: the shared `SessionStore` service seam and `State` live in
-`jinn-domain`; session snapshots and reconstruction
+`jinn-kernel`; session snapshots and reconstruction
 contracts come from `jinn-session-state`.
 """
 
 [dependencies]
 jinn-chat-log-view = { workspace = true }
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-provider = { workspace = true }
 jinn-provider-config = { workspace = true }
@@ -57,14 +57,14 @@ uuid = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 
 # The migrator tests stand a DB up at a specific legacy schema version, which
 # needs jinn-session-schema's test-only helpers.
 jinn-session-schema = { workspace = true, features = ["testing"] }
 
 # The build script creates the compile-time SQL validation DB (schema-crate
-# pattern; mirrors jinn-domain/build.rs).
+# pattern; mirrors jinn-kernel/build.rs).
 [build-dependencies]
 rusqlite = { workspace = true }
 jinn-session-schema = { workspace = true }

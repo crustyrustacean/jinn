@@ -11,7 +11,7 @@
 
 #![allow(clippy::expect_used, clippy::panic, reason = "test harness")]
 
-use jinn_domain::AppCore;
+use jinn_kernel::AppCore;
 use jinn_sidebar::sections::register_sections;
 use jinn_sidebar::sections::sidebar::Sidebar;
 use jinn_tui::TuiApp;
@@ -33,9 +33,9 @@ use jinn_tui::{AppStatus, MsgHandler};
 ///
 /// Panics if slice activation fails — the harness cannot compose without
 /// the slices it exists to test.
-pub async fn launch_for_test(core: AppCore, mut services: jinn_domain::Services) -> TuiApp {
-    let mut ui_registry = jinn_domain::AppUiRegistry::new();
-    jinn_domain::register_all_ui_elements(&mut ui_registry);
+pub async fn launch_for_test(core: AppCore, mut services: jinn_kernel::Services) -> TuiApp {
+    let mut ui_registry = jinn_kernel::AppUiRegistry::new();
+    jinn_kernel::register_all_ui_elements(&mut ui_registry);
     jinn_status_bar::register(&mut ui_registry);
     jinn_chat_input::register(&mut ui_registry);
 
@@ -128,7 +128,7 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_domain::Services)
 ///
 /// The slice crate is kernel-free, so composition assembles the
 /// `SliceHost` borrows and hands them over.
-fn activate_quake_bar(services: &mut jinn_domain::Services) {
+fn activate_quake_bar(services: &mut jinn_kernel::Services) {
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
         &mut services.viewport,
@@ -140,7 +140,7 @@ fn activate_quake_bar(services: &mut jinn_domain::Services) {
     host.finalize(&|_scope, _hook| {});
 }
 
-fn activate_scope_focus(services: &mut jinn_domain::Services) {
+fn activate_scope_focus(services: &mut jinn_kernel::Services) {
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
         &mut services.viewport,
@@ -152,7 +152,7 @@ fn activate_scope_focus(services: &mut jinn_domain::Services) {
     host.finalize(&|_scope, _hook| {});
 }
 
-fn activate_chat_input(services: &mut jinn_domain::Services) {
+fn activate_chat_input(services: &mut jinn_kernel::Services) {
     // `Services` is cheap to clone (Arc fields); the clone side-steps the
     // host's mutable viewport borrow, matching the production wiring.
     let services_snapshot = services.clone();
@@ -163,15 +163,15 @@ fn activate_chat_input(services: &mut jinn_domain::Services) {
         &services.key_routes,
         &services.trouper_system,
     );
-    let deps = jinn_domain::common::actor_deps::ActorDeps {
+    let deps = jinn_kernel::common::actor_deps::ActorDeps {
         services: services_snapshot,
     };
-    let state = jinn_domain::common::state::State::new(jinn_domain::AppState::default());
+    let state = jinn_kernel::common::state::State::new(jinn_kernel::AppState::default());
     jinn_chat_input::activate(&mut host, deps, &state);
     host.finalize(&|_scope, _hook| {});
 }
 
-fn activate_status_bar(services: &mut jinn_domain::Services) {
+fn activate_status_bar(services: &mut jinn_kernel::Services) {
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
         &mut services.viewport,
@@ -194,7 +194,7 @@ fn activate_status_bar(services: &mut jinn_domain::Services) {
 /// Activates the provider-selection slice: mints the provider cell and
 /// spawns the provider + discover actors over the same `State` and
 /// trouper system the harness wires.
-fn activate_provider_selection(services: &mut jinn_domain::Services, state: &jinn_domain::State) {
+fn activate_provider_selection(services: &mut jinn_kernel::Services, state: &jinn_kernel::State) {
     let services_snapshot = services.clone();
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
@@ -214,7 +214,7 @@ fn activate_provider_selection(services: &mut jinn_domain::Services, state: &jin
     host.finalize(&|_scope, _hook| {});
 }
 
-async fn activate_session_init(services: &mut jinn_domain::Services, core: &jinn_domain::AppCore) {
+async fn activate_session_init(services: &mut jinn_kernel::Services, core: &jinn_kernel::AppCore) {
     let state = core.state.clone();
     if let Err(error) = jinn_session_init::activate(services, state) {
         panic!("session-init slice activation failed: {error}");
@@ -227,10 +227,10 @@ async fn activate_session_init(services: &mut jinn_domain::Services, core: &jinn
 ///
 /// Panics if slice activation fails — see [`launch_for_test`].
 pub async fn test_app() -> TuiApp {
-    let services = jinn_domain::Services::new_fake().await;
-    let state = jinn_domain::AppState::default();
+    let services = jinn_kernel::Services::new_fake().await;
+    let state = jinn_kernel::AppState::default();
     let core = AppCore {
-        state: jinn_domain::State::new(state),
+        state: jinn_kernel::State::new(state),
         bridge: services.bridge.clone(),
     };
     launch_for_test(core, services).await
@@ -279,9 +279,9 @@ pub fn composition_routes() -> jinn_slices::route::KeyRoutes {
 /// `bind_route_rows` itself — production parity, no manual chrome here.
 #[must_use]
 pub fn composed_keymap() -> ratatui_which_key::Keymap<
-    jinn_domain::KeyEvent,
+    jinn_kernel::KeyEvent,
     jinn_tui::Scope,
-    jinn_domain::KernelIntent,
+    jinn_kernel::KernelIntent,
     jinn_tui::KeyCategory,
 > {
     let routes = composition_routes();
@@ -338,16 +338,16 @@ pub async fn wait_for_bounded(what: &str, secs: u64, mut predicate: impl FnMut()
 
 /// Builds a plain (unmodified) character `KeyEvent`.
 #[must_use]
-pub fn plain(ch: char) -> jinn_domain::KeyEvent {
-    jinn_domain::KeyEvent {
-        key: jinn_domain::Key::Char(ch),
-        modifiers: jinn_domain::Modifiers::none(),
+pub fn plain(ch: char) -> jinn_kernel::KeyEvent {
+    jinn_kernel::KeyEvent {
+        key: jinn_kernel::Key::Char(ch),
+        modifiers: jinn_kernel::Modifiers::none(),
     }
 }
 
 /// Activates the sidebar slice on the harness services. Async because
 /// the drain awaits relay startup on the ambient tokio runtime.
-pub async fn activate_sidebar(services: &mut jinn_domain::Services, state: jinn_domain::State) {
+pub async fn activate_sidebar(services: &mut jinn_kernel::Services, state: jinn_kernel::State) {
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
         &mut services.viewport,
@@ -361,7 +361,7 @@ pub async fn activate_sidebar(services: &mut jinn_domain::Services, state: jinn_
 
 /// Activates the token-count slice on the harness services. Async because
 /// the drain awaits relay startup on the ambient tokio runtime.
-pub async fn activate_token_count(services: &mut jinn_domain::Services, state: jinn_domain::State) {
+pub async fn activate_token_count(services: &mut jinn_kernel::Services, state: jinn_kernel::State) {
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
         &mut services.viewport,
@@ -379,8 +379,8 @@ pub async fn activate_token_count(services: &mut jinn_domain::Services, state: j
 /// point. Async because the drain awaits relay startup on the ambient
 /// tokio runtime.
 pub async fn activate_turn_dispatch(
-    services: &mut jinn_domain::Services,
-    state: jinn_domain::State,
+    services: &mut jinn_kernel::Services,
+    state: jinn_kernel::State,
 ) {
     // `Services` is cheap to clone (Arc fields); the clone side-steps
     // the host's mutable viewport borrow for the activation call.
@@ -398,7 +398,7 @@ pub async fn activate_turn_dispatch(
 
 /// Activates the inference slice: spawns the inference actor (trouper
 /// ServiceActor) and stages its crossing routes, then drains them.
-pub async fn activate_inference(services: &mut jinn_domain::Services) {
+pub async fn activate_inference(services: &mut jinn_kernel::Services) {
     // `Services` is cheap to clone (Arc fields); the clone side-steps
     // the host's mutable viewport borrow for the activation call.
     let services_snapshot = services.clone();
@@ -420,7 +420,7 @@ pub async fn activate_inference(services: &mut jinn_domain::Services) {
 /// precedent); a test that wants a fast trip writes a smaller
 /// `[stall_watchdog].timeout_secs` into the snapshot's preferences
 /// *before* calling this helper.
-pub async fn activate_watchdog(services: &mut jinn_domain::Services, state: &jinn_domain::State) {
+pub async fn activate_watchdog(services: &mut jinn_kernel::Services, state: &jinn_kernel::State) {
     // `Services` is cheap to clone (Arc fields); the clone side-steps
     // the host's mutable viewport borrow for the activation call.
     let services_snapshot = services.clone();
@@ -438,7 +438,7 @@ pub async fn activate_watchdog(services: &mut jinn_domain::Services, state: &jin
 
 /// Activates the citations slice: spawns the citations actor (trouper
 /// ServiceActor) on the kernel's trouper system.
-pub async fn activate_citations(services: &mut jinn_domain::Services) {
+pub async fn activate_citations(services: &mut jinn_kernel::Services) {
     // `Services` is cheap to clone (Arc fields); the clone side-steps
     // the host's mutable viewport borrow for the activation call.
     let services_snapshot = services.clone();
@@ -453,7 +453,7 @@ pub async fn activate_citations(services: &mut jinn_domain::Services) {
     host.finalize(&|_scope, _hook| {});
 }
 
-pub fn activate_persona(services: &mut jinn_domain::Services) {
+pub fn activate_persona(services: &mut jinn_kernel::Services) {
     // `Services::new_fake*` pre-seeds the personas cell the way production
     // wiring does; re-activating would trip the once-only slot invariant.
     if services
@@ -474,7 +474,7 @@ pub fn activate_persona(services: &mut jinn_domain::Services) {
     host.finalize(&|_scope, _hook| {});
 }
 
-pub fn activate_theme(services: &mut jinn_domain::Services) {
+pub fn activate_theme(services: &mut jinn_kernel::Services) {
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
         &mut services.viewport,
@@ -492,7 +492,7 @@ pub fn activate_theme(services: &mut jinn_domain::Services) {
 }
 
 /// Activates the cwd slice on the harness services.
-pub fn activate_cwd(services: &mut jinn_domain::Services) {
+pub fn activate_cwd(services: &mut jinn_kernel::Services) {
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
         &mut services.viewport,
@@ -505,7 +505,7 @@ pub fn activate_cwd(services: &mut jinn_domain::Services) {
 }
 
 /// Activates the project slice on the harness services.
-pub fn activate_project(services: &mut jinn_domain::Services) {
+pub fn activate_project(services: &mut jinn_kernel::Services) {
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
         &mut services.viewport,
@@ -518,7 +518,7 @@ pub fn activate_project(services: &mut jinn_domain::Services) {
 }
 
 /// Activates the preferences slice on the harness services.
-pub fn activate_preferences(services: &mut jinn_domain::Services) {
+pub fn activate_preferences(services: &mut jinn_kernel::Services) {
     let system = services.trouper_system.clone();
     let services_handle = services.clone();
     let mut host = jinn_slices::SliceHost::new(
@@ -532,8 +532,8 @@ pub fn activate_preferences(services: &mut jinn_domain::Services) {
         &mut host,
         &system,
         services_handle,
-        jinn_domain::common::state::State::new(
-            jinn_domain::common::app_state::AppState::default_with_scope_focus(),
+        jinn_kernel::common::state::State::new(
+            jinn_kernel::common::app_state::AppState::default_with_scope_focus(),
         ),
     );
     host.finalize(&|_scope, _hook| {});
@@ -548,7 +548,7 @@ pub fn activate_preferences(services: &mut jinn_domain::Services) {
 /// path calls in (persona's pre-seeded-cell branch calls this too). Registering
 /// a slot twice is a wiring error, so each registration is attempted once and
 /// the picker activated only when the registration succeeded.
-pub fn activate_every_picker(services: &mut jinn_domain::Services) {
+pub fn activate_every_picker(services: &mut jinn_kernel::Services) {
     use jinn_slices::cell::TypedCell;
 
     let mut host = jinn_slices::SliceHost::new(
@@ -624,7 +624,7 @@ where
 #[cfg(test)]
 mod term_keybinds_spot_check {
     use super::composed_keymap;
-    use jinn_domain::{KernelIntent, Key, KeyEvent, Modifiers};
+    use jinn_kernel::{KernelIntent, Key, KeyEvent, Modifiers};
     use jinn_tui::Scope;
     use jinn_tui::app::WhichKeyInstance;
 
@@ -773,7 +773,7 @@ mod term_keybinds_spot_check {
         let routes = jinn_slices::route::KeyRoutes::new();
         jinn_sidebar::key_routes::attach_sidebar_rows(&routes);
         let sessions = jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id();
-        let mut state = jinn_domain::AppState::default_with_scope_focus();
+        let mut state = jinn_kernel::AppState::default_with_scope_focus();
 
         // When firing the row.
         let result = routes

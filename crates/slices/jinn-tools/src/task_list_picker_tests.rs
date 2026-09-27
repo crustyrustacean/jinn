@@ -20,7 +20,7 @@
 //! registry than production, so they passed with the production registration
 //! deleted. These would not have caught that.
 
-use jinn_domain::AppState;
+use jinn_kernel::AppState;
 use jinn_selection_widget::TreeItem;
 use jinn_slices::DynamicIntent;
 use jinn_slices::RouteResult as IntentResult;
@@ -63,7 +63,7 @@ impl Harness {
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let routes = jinn_slices::KeyRoutes::new();
-        let services = jinn_domain::Services::new_fake().await;
+        let services = jinn_kernel::Services::new_fake().await;
         {
             let mut host = jinn_slices::SliceHost::new(
                 &slices,

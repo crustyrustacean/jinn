@@ -14,8 +14,8 @@ use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
 use jinn_core_types::SessionId;
-use jinn_domain::common::state::State;
-use jinn_domain::protocol::ChatEntry;
+use jinn_kernel::common::state::State;
+use jinn_kernel::protocol::ChatEntry;
 
 use crate::contracts::SessionDiscoverySettled;
 

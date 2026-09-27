@@ -31,9 +31,9 @@ use trouper::registry::RegistryError;
 
 use crate::connection::{McpActor, McpActorDeps, McpConnectionStateProbe, McpConnectionStateReply};
 use jinn_core_types::SessionId;
-use jinn_domain::Services;
-use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
-use jinn_domain::common::services::bus_service::BusService;
+use jinn_kernel::Services;
+use jinn_kernel::common::actor_deps::{ActorDeps, BusPublish};
+use jinn_kernel::common::services::bus_service::BusService;
 use jinn_mcp_msg::{McpEnablementChanged, McpRuntimeState, RestartError, RestartMcpServer};
 use jinn_mcp_msg::{McpServerLog, McpServerStatus};
 use jinn_preferences_config::schemas::mcp::McpServerConfig;
@@ -62,7 +62,7 @@ pub const MCP_COORDINATOR_PATH: &str = "jinn.mcp.coordinator";
 pub struct McpCoordinatorActor {
     deps: ActorDeps,
     system: trouper::system::ActorSystem,
-    state: jinn_domain::common::state::State,
+    state: jinn_kernel::common::state::State,
     runtime: TypedCell<McpRuntimeState>,
     /// Tracks every live `McpActor` by (session_id, server_name).
     /// Guarded by a mutex so spawn/kill helpers can borrow `self` while
@@ -76,7 +76,7 @@ pub struct McpCoordinatorActorDeps {
     /// Common actor dependencies (services + bus).
     pub deps: ActorDeps,
     /// Shared application state used for durable session enablement.
-    pub state: jinn_domain::common::state::State,
+    pub state: jinn_kernel::common::state::State,
     /// Runtime-only status and stderr projection written by the coordinator.
     pub runtime: TypedCell<McpRuntimeState>,
 }
@@ -508,8 +508,8 @@ mod lifecycle_tests {
     use std::collections::BTreeSet;
 
     use jinn_core_types::SessionId;
-    use jinn_domain::common::actor_deps::ActorDeps;
-    use jinn_domain::common::bus::HarnessServices;
+    use jinn_kernel::common::actor_deps::ActorDeps;
+    use jinn_kernel::common::bus::HarnessServices;
     use jinn_mcp_msg::{McpConnectionStatus, McpServerStatus};
     use jinn_preferences_config::schemas::mcp::McpServerConfig;
     use jinn_preferences_config::schemas::mcp::McpServersConfig;
@@ -546,8 +546,8 @@ mod lifecycle_tests {
         servers: &[(&str, McpServerConfig)],
     ) -> (
         trouper::actor::ActorPath,
-        jinn_domain::Services,
-        jinn_domain::common::state::State,
+        jinn_kernel::Services,
+        jinn_kernel::common::state::State,
     ) {
         let services = harness.services().await;
         let mcp_server = servers
@@ -560,8 +560,8 @@ mod lifecycle_tests {
             .config
             .put::<McpServersConfig>(&McpServersConfig(mcp_server))
             .expect("seed the mcp.server section");
-        let state = jinn_domain::common::state::State::new(
-            jinn_domain::common::app_state::AppState::default(),
+        let state = jinn_kernel::common::state::State::new(
+            jinn_kernel::common::app_state::AppState::default(),
         );
         let runtime = crate::activate_runtime(&services.slices)
             .expect("MCP runtime cell is registered exactly once");
@@ -777,7 +777,7 @@ mod lifecycle_tests {
     /// Inserts a fresh session carrying `enabled` into the harness's shared
     /// state and returns its id.
     fn insert_session_with_enablement(
-        state: &jinn_domain::common::state::State,
+        state: &jinn_kernel::common::state::State,
         enabled: &BTreeSet<String>,
     ) -> SessionId {
         let mut session = jinn_session_state::ChatSessionState::new();
@@ -952,10 +952,10 @@ mod status_tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
     use jinn_core_types::SessionId;
-    use jinn_domain::common::actor_deps::ActorDeps;
-    use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::bus::HarnessServices;
-    use jinn_domain::common::state::State;
+    use jinn_kernel::common::actor_deps::ActorDeps;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::common::bus::HarnessServices;
+    use jinn_kernel::common::state::State;
     use jinn_mcp_msg::{McpConnectionStatus, McpRuntimeState, McpServerLog, McpServerStatus};
     use jinn_session_lifecycle_msg::SessionTeardownFinished;
     use jinn_session_msg::{SessionArchived, SessionClosed};

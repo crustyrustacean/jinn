@@ -241,7 +241,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
         let window = match &args.1 {
             FetchMode::Anchored { entry_id, context } => {
-                let anchor = jinn_domain::protocol::ChatEntryId::from(entry_id.clone());
+                let anchor = jinn_kernel::protocol::ChatEntryId::from(entry_id.clone());
                 match store.fetch_window(&session_id, &anchor, *context).await {
                     Ok(v) => v,
                     Err(e) => return fail(format!("{e:?}")),

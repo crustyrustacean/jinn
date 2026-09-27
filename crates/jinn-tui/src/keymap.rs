@@ -6,9 +6,9 @@
 
 use crossterm::event::{self, MouseEventKind};
 use derive_more::Display;
-use jinn_domain::KernelIntent;
-use jinn_domain::protocol::CwdRoot;
-use jinn_domain::{Key, KeyEvent};
+use jinn_kernel::KernelIntent;
+use jinn_kernel::protocol::CwdRoot;
+use jinn_kernel::{Key, KeyEvent};
 use ratatui_which_key::CrosstermKeymapExt as _;
 use ratatui_which_key::Keymap;
 
@@ -186,14 +186,14 @@ mod tests {
     #[test]
     fn p_prefix_group_in_sidebar_does_not_drop_normal_pin_binding() {
         use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, Modifiers};
+        use jinn_kernel::{Key, Modifiers};
 
         // Given a fresh keymap with no custom bindings.
         let keymap = init();
         let mut wk = WhichKeyInstance::new(keymap, Scope::Normal);
 
         // When pressing 'p' alone.
-        let intent = wk.handle_key(jinn_domain::KeyEvent {
+        let intent = wk.handle_key(jinn_kernel::KeyEvent {
             key: Key::Char('p'),
             modifiers: Modifiers::none(),
         });
@@ -202,7 +202,7 @@ mod tests {
         assert!(
             matches!(
                 intent,
-                Some(jinn_domain::KernelIntent::ChatEntryPinSelected)
+                Some(jinn_kernel::KernelIntent::ChatEntryPinSelected)
             ),
             "'p' in Normal scope should fire ChatEntryPinSelected; got {intent:?}",
         );
@@ -224,7 +224,7 @@ mod tests {
     #[rstest::rstest]
     fn bracket_c_chord_resolves_to_jump_compaction_intents() {
         // Given the default keymap.
-        use jinn_domain::{Key, KeyEvent, Modifiers};
+        use jinn_kernel::{Key, KeyEvent, Modifiers};
         use ratatui_which_key::NodeResult;
         let keymap = init();
 
@@ -284,7 +284,7 @@ mod tests {
         // Input scope has a catch-all that turns every Char into InsertChar,
         // so the `]c` / `[c` jump chords (bound only in Normal) must never fire here.
         use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, KeyEvent, Modifiers};
+        use jinn_kernel::{Key, KeyEvent, Modifiers};
 
         let keymap = init();
         let mut wk = WhichKeyInstance::new(keymap, Scope::Input);
@@ -322,7 +322,7 @@ mod tests {
     #[rstest::rstest]
     fn bracket_p_chord_resolves_to_jump_pinned_intents() {
         // Given the default keymap.
-        use jinn_domain::{Key, KeyEvent, Modifiers};
+        use jinn_kernel::{Key, KeyEvent, Modifiers};
         use ratatui_which_key::NodeResult;
         let keymap = init();
 
@@ -378,7 +378,7 @@ mod tests {
     #[rstest::rstest]
     fn bracket_s_chord_resolves_to_jump_sources_intents() {
         // Given the default keymap.
-        use jinn_domain::{Key, KeyEvent, Modifiers};
+        use jinn_kernel::{Key, KeyEvent, Modifiers};
         use ratatui_which_key::NodeResult;
         let keymap = init();
 
@@ -447,9 +447,9 @@ mod leak_check {
         // scope is a leaf (ChatEntryPinSelected → "pin entry"), not the
         // sessions branch, so we only assert the bracket groups here.
         let keymap: WKKeymap<
-            jinn_domain::KeyEvent,
+            jinn_kernel::KeyEvent,
             Scope,
-            jinn_domain::KernelIntent,
+            jinn_kernel::KernelIntent,
             crate::keymap::KeyCategory,
         > = init();
         let groups = keymap.bindings_for_scope(Scope::Normal);
@@ -474,7 +474,7 @@ mod leak_check {
     #[test]
     fn enter_in_normal_scope_fires_load_subagent_session() {
         use crate::app::WhichKeyInstance;
-        use jinn_domain::{Key, Modifiers};
+        use jinn_kernel::{Key, Modifiers};
 
         // Given the default keymap with the sidebar's route rows bound.
         let mut keymap = init();
@@ -484,7 +484,7 @@ mod leak_check {
         let mut wk = WhichKeyInstance::new(keymap, Scope::Normal);
 
         // When pressing <enter>.
-        let enter = jinn_domain::KeyEvent {
+        let enter = jinn_kernel::KeyEvent {
             key: Key::Enter,
             modifiers: Modifiers::none(),
         };
@@ -494,7 +494,7 @@ mod leak_check {
         assert!(
             matches!(
             intent,
-            Some(jinn_domain::KernelIntent::Dynamic(ref dynamic))
+            Some(jinn_kernel::KernelIntent::Dynamic(ref dynamic))
                 if dynamic.action == "load-subagent"
             ),
             "enter must open the subagent session for the selected task; got {intent:?}",

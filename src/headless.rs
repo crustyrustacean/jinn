@@ -5,9 +5,9 @@
 
 use error_stack::{Report, ResultExt};
 use jinn_chat_input_msg::EnqueueUserMessage;
-use jinn_domain::IntentHandler;
-use jinn_domain::common::services::Services;
-use jinn_domain::{AppCore, Bridge, ChatEntry};
+use jinn_kernel::IntentHandler;
+use jinn_kernel::common::services::Services;
+use jinn_kernel::{AppCore, Bridge, ChatEntry};
 use std::time::Duration;
 use wherror::Error;
 
@@ -81,9 +81,9 @@ impl HeadlessApp {
         };
 
         let lines = {
-            let leader = jinn_domain::KeyEvent {
-                key: jinn_domain::Key::Char('\\'),
-                modifiers: jinn_domain::Modifiers::none(),
+            let leader = jinn_kernel::KeyEvent {
+                key: jinn_kernel::Key::Char('\\'),
+                modifiers: jinn_kernel::Modifiers::none(),
             };
             let mut content = String::new();
             reader
@@ -158,8 +158,8 @@ impl HeadlessApp {
 /// with `#` are skipped. Returns one `Vec<KeyEvent>` per non-skipped line.
 pub fn parse_script(
     content: &str,
-    leader: &jinn_domain::KeyEvent,
-) -> Vec<Vec<jinn_domain::KeyEvent>> {
+    leader: &jinn_kernel::KeyEvent,
+) -> Vec<Vec<jinn_kernel::KeyEvent>> {
     content
         .lines()
         .map(|line| line.trim())
@@ -170,7 +170,7 @@ pub fn parse_script(
 
 #[cfg(test)]
 mod tests {
-    use jinn_domain::{Key, KeyEvent, Modifiers};
+    use jinn_kernel::{Key, KeyEvent, Modifiers};
 
     use super::*;
 

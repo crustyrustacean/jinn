@@ -8,10 +8,10 @@ mod handlers;
 
 use jinn_boot_msg::EnvironmentLoaded;
 use jinn_chat_log_view_msg::{ArmLayoutDeadline, LayoutChatSession};
-use jinn_domain::Services;
-use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::common::services::BusService;
-use jinn_domain::common::state::State;
+use jinn_kernel::Services;
+use jinn_kernel::common::actor_deps::BusPublish;
+use jinn_kernel::common::services::BusService;
+use jinn_kernel::common::state::State;
 use jinn_session_store_msg::PersistSession;
 use jinn_session_store_msg::SessionLoadRequested;
 use jinn_session_store_msg::{ArchiveSession, ArchiveSessionTree};

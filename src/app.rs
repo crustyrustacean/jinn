@@ -8,14 +8,14 @@ use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
 use jinn_cli::Cli;
-use jinn_domain::ApiKeys;
-use jinn_domain::ApiKeysService;
-use jinn_domain::ConfigStorageService;
-use jinn_domain::FilesystemConfigStorage;
-use jinn_domain::LlmServiceFactoryService;
-use jinn_domain::NoProvidersAvailableFactory;
-use jinn_domain::ProviderRegistry;
-use jinn_domain::ProviderRegistryService;
+use jinn_kernel::ApiKeys;
+use jinn_kernel::ApiKeysService;
+use jinn_kernel::ConfigStorageService;
+use jinn_kernel::FilesystemConfigStorage;
+use jinn_kernel::LlmServiceFactoryService;
+use jinn_kernel::NoProvidersAvailableFactory;
+use jinn_kernel::ProviderRegistry;
+use jinn_kernel::ProviderRegistryService;
 use jinn_preferences_config::AppStateStorageService;
 use jinn_preferences_config::FilesystemAppStateStorage;
 use jinn_session_state::SessionStoreService;
@@ -138,7 +138,7 @@ impl App {
         // Provider registry is populated by the provider-init actor.
         // Start with an empty registry.
         let provider_registry = ProviderRegistryService::new(
-            ProviderRegistry::from_config(jinn_domain::ProvidersConfig {
+            ProviderRegistry::from_config(jinn_kernel::ProvidersConfig {
                 providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
@@ -181,7 +181,7 @@ impl App {
                     return Ok(());
                 }
                 ConfigCommands::Providers { force } => {
-                    use jinn_domain::{
+                    use jinn_kernel::{
                         InitProvidersOutcome, config_path, init_default_providers_to,
                     };
 
@@ -208,7 +208,7 @@ impl App {
         // must run before any actor wiring — and it needs no preferences/DB,
         // so it dispatches before the session store is opened.
         if let Some(Commands::Install { force }) = &cli.command {
-            use jinn_domain::AppPaths;
+            use jinn_kernel::AppPaths;
             use jinn_install::{
                 Destinations, InstallOutcome, InstallReport, JinnTomlOutcome, install_defaults_to,
             };
@@ -348,7 +348,7 @@ impl App {
 
         let app_state_storage = {
             let backend =
-                FilesystemAppStateStorage::new(jinn_domain::AppPaths::default().state_file_path());
+                FilesystemAppStateStorage::new(jinn_kernel::AppPaths::default().state_file_path());
             let svc = AppStateStorageService::new(Arc::new(backend));
             if let Err(report) = svc.reload() {
                 tracing::error!("failed to load app state");
@@ -371,8 +371,8 @@ impl App {
             }
             Commands::Tui => {
                 let compaction_prompt = jinn_tui::load_compaction_prompt(
-                    &jinn_domain::AppPaths::default().prompts_dir(),
-                    &jinn_domain::AppPaths::default().system_prompts_dir(),
+                    &jinn_kernel::AppPaths::default().prompts_dir(),
+                    &jinn_kernel::AppPaths::default().system_prompts_dir(),
                 )
                 .change_context(AppError)?;
                 let (core, services, discord_activated) = self.runtime.block_on(async {
@@ -385,7 +385,7 @@ impl App {
                         session_store: session_store.clone(),
                         config: config.clone(),
                         app_state_storage: app_state_storage.clone(),
-                        paths: jinn_domain::AppPaths::default(),
+                        paths: jinn_kernel::AppPaths::default(),
                         dump_requests: cli.dump_requests.clone(),
                         compaction_prompt,
                     })
@@ -411,8 +411,8 @@ impl App {
             Commands::Headless { command, .. } => {
                 let store_for_shutdown = session_store.clone();
                 let compaction_prompt = jinn_tui::load_compaction_prompt(
-                    &jinn_domain::AppPaths::default().prompts_dir(),
-                    &jinn_domain::AppPaths::default().system_prompts_dir(),
+                    &jinn_kernel::AppPaths::default().prompts_dir(),
+                    &jinn_kernel::AppPaths::default().system_prompts_dir(),
                 )
                 .change_context(AppError)?;
                 let (core, services, _discord_activated) = self.runtime.block_on(async {
@@ -425,7 +425,7 @@ impl App {
                         session_store,
                         config: config.clone(),
                         app_state_storage,
-                        paths: jinn_domain::AppPaths::default(),
+                        paths: jinn_kernel::AppPaths::default(),
                         dump_requests: cli.dump_requests.clone(),
                         compaction_prompt,
                     })
@@ -512,7 +512,7 @@ fn seed_config_template(path: &std::path::Path) {
 /// the config path and the underlying TOML detail attached to the report.
 fn providers_load_error_report(storage: &ConfigStorageService) -> Result<(), Report<AppError>> {
     if let Err(report) = storage.load() {
-        let path = jinn_domain::config_path();
+        let path = jinn_kernel::config_path();
         return Err(report.change_context(AppError).attach(format!(
             "failed to load providers config at {}",
             path.display()
@@ -531,7 +531,7 @@ fn providers_load_error_report(storage: &ConfigStorageService) -> Result<(), Rep
 /// Returns an error if the HTTP request fails, the response is not valid JSON,
 /// or the file cannot be written.
 async fn fetch_models() -> Result<(), Report<AppError>> {
-    use jinn_domain::common::app_info::APP_NAME;
+    use jinn_kernel::common::app_info::APP_NAME;
     let target_path = dirs::cache_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join(APP_NAME)
@@ -606,7 +606,7 @@ async fn fetch_models_from_url(
 
 #[cfg(test)]
 mod tests {
-    use jinn_domain::{AppState, State};
+    use jinn_kernel::{AppState, State};
     use jinn_tui::{load_compaction_prompt, load_theme};
     use std::path::{Path, PathBuf};
 

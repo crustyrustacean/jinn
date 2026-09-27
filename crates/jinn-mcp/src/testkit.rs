@@ -3,7 +3,7 @@
 //! rmcp marks its model structs `#[non_exhaustive]`, which means they cannot be
 //! constructed with a struct literal from outside the crate — even in tests.
 //! These helpers provide the constructors tests need (a simple `CallToolResult`
-//! with content blocks) so jinn-domain tests can exercise `format_result_content`
+//! with content blocks) so jinn-kernel tests can exercise `format_result_content`
 //! and related logic without depending on rmcp internals.
 
 #![allow(

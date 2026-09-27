@@ -30,11 +30,11 @@ use jinn_chat_log_view_msg::{
     DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
 };
 use jinn_core_types::SessionId;
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::render_ctx::RenderCtx;
-use jinn_domain::common::ui_element::UiElement;
-use jinn_domain::protocol::ToolResultStatus;
-use jinn_domain::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::render_ctx::RenderCtx;
+use jinn_kernel::common::ui_element::UiElement;
+use jinn_kernel::protocol::ToolResultStatus;
+use jinn_kernel::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 use jinn_session_msg::PhaseKind;
 use jinn_session_state::ChatSessionState;
 use jinn_theme::Theme;

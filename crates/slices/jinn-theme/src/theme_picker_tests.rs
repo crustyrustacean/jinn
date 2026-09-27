@@ -35,7 +35,7 @@ use jinn_theme_msg::{ThemePickerState, theme_entries_slot, theme_picker_scope};
 struct Wired {
     slices: Slices,
     routes: KeyRoutes,
-    state: std::cell::RefCell<jinn_domain::AppState>,
+    state: std::cell::RefCell<jinn_kernel::AppState>,
 }
 
 impl Wired {
@@ -47,7 +47,7 @@ impl Wired {
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let routes = KeyRoutes::new();
-        let services = jinn_domain::Services::new_fake().await;
+        let services = jinn_kernel::Services::new_fake().await;
         {
             let mut host = SliceHost::new(
                 &slices,
@@ -76,7 +76,7 @@ impl Wired {
                     })
                     .collect();
             });
-        let state = jinn_domain::AppState::default();
+        let state = jinn_kernel::AppState::default();
         state.frontend.attach_slices(slices.clone());
         Self {
             slices,
@@ -859,7 +859,7 @@ fn the_picker_state_lives_only_in_its_slice_cell() {
     // cell. A second copy in the kernel would let the menu show one store
     // while a different one is written — the defect that left the skills
     // menu blank.
-    let kernel_source = include_str!("../../../jinn-domain/src/state/frontend_state.rs");
+    let kernel_source = include_str!("../../../jinn-kernel/src/state/frontend_state.rs");
     assert!(
         !kernel_source.contains("theme_picker"),
         "the kernel must not hold theme picker state; the slice cell is the only home"
@@ -873,12 +873,12 @@ fn the_kernel_names_no_theme_picker_at_all() {
     // adding a picker a folder-local change.
     for (label, source) in [
         (
-            "jinn-domain frontend state",
-            include_str!("../../../jinn-domain/src/state/frontend_state.rs"),
+            "jinn-kernel frontend state",
+            include_str!("../../../jinn-kernel/src/state/frontend_state.rs"),
         ),
         (
-            "jinn-domain intent handler",
-            include_str!("../../../jinn-domain/src/feat/intent/handler.rs"),
+            "jinn-kernel intent handler",
+            include_str!("../../../jinn-kernel/src/feat/intent/handler.rs"),
         ),
         (
             "jinn-tui scope table",

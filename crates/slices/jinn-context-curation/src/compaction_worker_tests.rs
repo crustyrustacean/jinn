@@ -22,9 +22,9 @@ use jinn_core_types::HistoryMutation;
 use jinn_core_types::SessionId;
 use jinn_core_types::model_selection::ModelSelection;
 use jinn_core_types::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::services::test_services::TestServices;
-use jinn_domain::common::state::State;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::services::test_services::TestServices;
+use jinn_kernel::common::state::State;
 use jinn_preferences_config::schemas::CompactionConfig;
 use jinn_provider_config::{FakeLlmServiceFactory, LlmServiceFactoryService};
 use jinn_session_state::ChatSessionState;
@@ -667,7 +667,7 @@ struct ThresholdTestEnv {
     session_id: SessionId,
     /// Carried so `set_compaction_config` writes through the same layer
     /// the worker reads from.
-    services: jinn_domain::Services,
+    services: jinn_kernel::Services,
 }
 
 impl ThresholdTestEnv {

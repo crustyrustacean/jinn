@@ -8,8 +8,8 @@
 use std::path::Path;
 
 use error_stack::{Report, ResultExt};
-use jinn_domain::common::system_resource::load_system_resource;
-use jinn_domain::{AppCore, AppUiRegistry, State};
+use jinn_kernel::common::system_resource::load_system_resource;
+use jinn_kernel::{AppCore, AppUiRegistry, State};
 use jinn_sidebar::sections::register_sections;
 use jinn_sidebar::sections::sidebar::Sidebar;
 use wherror::Error;
@@ -49,7 +49,7 @@ pub struct LaunchError;
 /// cannot run without it).
 pub fn launch(
     core: AppCore,
-    mut services: jinn_domain::Services,
+    mut services: jinn_kernel::Services,
 ) -> Result<TuiApp, Report<LaunchError>> {
     let paths = &services.paths;
     load_compaction_prompt(&paths.prompts_dir(), &paths.system_prompts_dir())?;
@@ -65,7 +65,7 @@ pub fn launch(
     // bootstrap, not here.)
 
     let mut ui_registry = AppUiRegistry::new();
-    jinn_domain::register_all_ui_elements(&mut ui_registry);
+    jinn_kernel::register_all_ui_elements(&mut ui_registry);
     // The status-bar slice's element (the slice's cell is minted in the
     // actor-system bootstrap). Registered here because the kernel cannot
     // reference slice crates, and jinn-tui's registry assembly is the
@@ -152,11 +152,11 @@ pub fn load_theme(state: &State, user_dir: &Path, system_dir: &Path) {
 /// bindings. A slice whose activate is commented out leaves no keymap,
 /// scope, or which-key residue: removability is automatic.
 fn register_slice_wiring(
-    services: &mut jinn_domain::Services,
+    services: &mut jinn_kernel::Services,
     keymap: &mut ratatui_which_key::Keymap<
-        jinn_domain::KeyEvent,
+        jinn_kernel::KeyEvent,
         Scope,
-        jinn_domain::KernelIntent,
+        jinn_kernel::KernelIntent,
         KeyCategory,
     >,
 ) {

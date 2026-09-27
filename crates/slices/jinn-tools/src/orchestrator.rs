@@ -23,10 +23,10 @@ use crate::tool_types::ToolContext;
 use jiff::Timestamp;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_core_types::{ServerToolType, SessionId};
-use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
-use jinn_domain::common::services::Services;
-use jinn_domain::common::services::bus_service::BusService;
-use jinn_domain::common::state::State;
+use jinn_kernel::common::actor_deps::{ActorDeps, BusPublish};
+use jinn_kernel::common::services::Services;
+use jinn_kernel::common::services::bus_service::BusService;
+use jinn_kernel::common::state::State;
 use jinn_mcp_msg::McpConnectionStatus;
 use jinn_session_msg::SessionClosed;
 use jinn_tools_msg::{CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools};
@@ -1031,7 +1031,7 @@ mod timeout_tests {
 
     use super::{BoxedToolFuture, ToolContext, run_builtin_with_timeout};
     use jinn_core_types::tool_types::{ToolCall, ToolResult};
-    use jinn_domain::common::app_paths::AppPaths;
+    use jinn_kernel::common::app_paths::AppPaths;
     use jinn_preferences_config::schemas::ToolsConfig;
 
     fn make_call() -> ToolCall {
@@ -1305,7 +1305,7 @@ mod panic_safety_tests {
                 timeout: None,
                 state: None,
                 session_id: None,
-                app_paths: jinn_domain::common::app_paths::AppPaths::new_in(std::path::Path::new(
+                app_paths: jinn_kernel::common::app_paths::AppPaths::new_in(std::path::Path::new(
                     "/tmp",
                 )),
                 bus: None,
@@ -1473,9 +1473,9 @@ mod mcp_dispatch_gate_tests {
 
     use jinn_core_types::SessionId;
     use jinn_core_types::tool_types::{ToolCall, ToolDefinition};
-    use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::bus::HarnessServices;
-    use jinn_domain::common::state::State;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::common::bus::HarnessServices;
+    use jinn_kernel::common::state::State;
     use jinn_mcp_msg::McpConnectionStatus;
     use jinn_session_msg::SessionClosed;
     use jinn_testutil::bus_harness::{TestHarness, await_recorded};
@@ -1488,7 +1488,7 @@ mod mcp_dispatch_gate_tests {
 
     async fn spawn_orchestrator(
         state: &State,
-    ) -> (TestHarness, jinn_domain::common::services::Services) {
+    ) -> (TestHarness, jinn_kernel::common::services::Services) {
         let harness = TestHarness::new().await;
         let services = harness.services().await;
         let _runtime = services
@@ -1501,7 +1501,7 @@ mod mcp_dispatch_gate_tests {
         ToolOrchestratorActor::spawn(
             &services.trouper_system.clone(),
             ToolOrchestratorActorDeps {
-                deps: jinn_domain::common::actor_deps::ActorDeps {
+                deps: jinn_kernel::common::actor_deps::ActorDeps {
                     services: services.clone(),
                 },
                 state: state.clone(),
@@ -1543,7 +1543,7 @@ mod mcp_dispatch_gate_tests {
     }
 
     fn tools_registry(
-        services: &jinn_domain::common::services::Services,
+        services: &jinn_kernel::common::services::Services,
     ) -> jinn_slices::TypedCell<jinn_tools_msg::ToolRegistry> {
         services
             .slices
@@ -1552,7 +1552,7 @@ mod mcp_dispatch_gate_tests {
     }
 
     fn mcp_runtime(
-        services: &jinn_domain::common::services::Services,
+        services: &jinn_kernel::common::services::Services,
     ) -> jinn_slices::TypedCell<jinn_mcp_msg::McpRuntimeState> {
         services
             .slices

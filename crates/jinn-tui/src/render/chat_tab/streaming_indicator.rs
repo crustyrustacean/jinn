@@ -3,7 +3,7 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 
-use jinn_domain::{AppUiRegistry, RenderCtx};
+use jinn_kernel::{AppUiRegistry, RenderCtx};
 
 /// Renders the streaming indicator (1 row at bottom of content area).
 pub(super) fn render_streaming_indicator(

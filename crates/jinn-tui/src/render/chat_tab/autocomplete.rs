@@ -3,7 +3,7 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 
-use jinn_domain::RenderCtx;
+use jinn_kernel::RenderCtx;
 
 /// Renders the autocomplete popup overlay (transient, not a UiElement).
 pub(super) fn render_autocomplete(frame: &mut Frame<'_>, input: Rect, ctx: &RenderCtx) {

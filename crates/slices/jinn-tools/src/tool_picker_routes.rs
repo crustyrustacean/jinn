@@ -65,10 +65,10 @@ pub const TOOL_PICKER_BINDINGS: &[(&str, &str)] = &[
 /// downcast. This is the established slice-side seam; when the state is not the
 /// kernel's (a test double), the caller gets `None` and the action declines
 /// rather than panicking.
-fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_domain::AppState> {
+fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_kernel::AppState> {
     ctx.state
         .as_any_mut()?
-        .downcast_mut::<jinn_domain::AppState>()
+        .downcast_mut::<jinn_kernel::AppState>()
 }
 
 /// Wraps a picker action in an [`ActionFn`], handing it both the dispatch
@@ -247,10 +247,10 @@ pub fn register_tool_picker_input_hook(routes: &KeyRoutes, cell: &ToolPickerCell
 /// works. The open *action* is what seeds the rows, so a caller that only
 /// pushes the scope gets an empty menu until a keypress reaches the action.
 #[must_use]
-pub fn open_from_scope(state: &mut jinn_domain::AppState) -> IntentResult {
+pub fn open_from_scope(state: &mut jinn_kernel::AppState) -> IntentResult {
     state
         .frontend
-        .scope_push(jinn_domain::FocusScope::Dynamic(tool_picker_scope()));
+        .scope_push(jinn_kernel::FocusScope::Dynamic(tool_picker_scope()));
     IntentResult::empty()
 }
 
@@ -269,7 +269,7 @@ fn open_tool_picker(ctx: &mut ActionCtx<'_>, cell: &ToolPickerCell) -> IntentRes
 
     state
         .frontend
-        .scope_push(jinn_domain::FocusScope::Dynamic(tool_picker_scope()));
+        .scope_push(jinn_kernel::FocusScope::Dynamic(tool_picker_scope()));
     IntentResult::empty()
 }
 
@@ -289,7 +289,7 @@ struct Seed {
 /// come back sorted case-insensitively by name so the menu is in a stable order
 /// regardless of registry hash order. An absent registry yields no rows: a
 /// session with no tool context offers nothing rather than panicking.
-fn seed_from_session(state: &jinn_domain::AppState) -> Seed {
+fn seed_from_session(state: &jinn_kernel::AppState) -> Seed {
     let active_session = state.active_session();
     let disabled = active_session.disabled_tools().clone();
     let provider_name = active_session.model_selection().provider_name().to_owned();
@@ -366,7 +366,7 @@ fn new_session(ctx: &mut ActionCtx<'_>, _cell: &ToolPickerCell) -> IntentResult 
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    jinn_domain::session_lifecycle::intent::handle_session_new(state, config)
+    jinn_kernel::session_lifecycle::intent::handle_session_new(state, config)
 }
 
 /// Clears a non-empty filter, or closes the picker when the filter is empty.

@@ -38,8 +38,8 @@ use jinn_preferences_config::schemas::term::InteractiveTermPrefs;
 /// set-once static so it can share the minted registry with the
 /// coordinator actor it spawns afterwards.
 pub fn activate(
-    services: &mut jinn_domain::common::services::Services,
-    _state: &jinn_domain::common::state::State,
+    services: &mut jinn_kernel::common::services::Services,
+    _state: &jinn_kernel::common::state::State,
 ) {
     // The cell is registered by composition today (actor_wiring) so the
     // spawn order matches the tools-registry cell; re-registering is a

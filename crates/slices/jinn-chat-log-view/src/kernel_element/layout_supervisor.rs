@@ -28,7 +28,7 @@ use crate::kernel_element::layout_worker::{
     LAYOUT_WORKER_POOL_SIZE, LayoutWorkerActor, LayoutWorkerActorDeps, PREVIEW_WORKER_POOL_SIZE,
     layout_worker_path, preview_worker_path,
 };
-use jinn_domain::common::state::State;
+use jinn_kernel::common::state::State;
 
 /// Static path the layout supervisor spawns at (one per process).
 pub const LAYOUT_SUPERVISOR_PATH: &str = "jinn.chat_log.layout.supervisor";

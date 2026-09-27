@@ -20,8 +20,8 @@ use crate::kernel_element::layout_complete::LayoutCompletionActorDeps;
 use crate::kernel_element::layout_complete::{LayoutApplied, LayoutCompletionActor};
 use crate::kernel_element::layout_supervisor::{LayoutSupervisorActor, LayoutSupervisorActorDeps};
 use crate::kernel_element::layout_worker::{MeasureJob, measure, render_preview};
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::state::State;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::state::State;
 
 /// State with `count` user entries in its active session, measured at
 /// `content_width`.

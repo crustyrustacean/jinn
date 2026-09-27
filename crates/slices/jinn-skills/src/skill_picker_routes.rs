@@ -66,10 +66,10 @@ pub fn bound_keys() -> Vec<&'static str> {
 /// they downcast. This is the established slice-side seam, documented on
 /// [`SliceActionState::as_any_mut`]; when the state is not the kernel's (a test
 /// double), the caller gets `None` and the action declines rather than panicking.
-fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_domain::AppState> {
+fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_kernel::AppState> {
     ctx.state
         .as_any_mut()?
-        .downcast_mut::<jinn_domain::AppState>()
+        .downcast_mut::<jinn_kernel::AppState>()
 }
 
 /// Wraps a picker action in an [`ActionFn`], handing it both the dispatch
@@ -185,7 +185,7 @@ pub fn attach_skill_picker_rows(routes: &KeyRoutes, cell: &SkillPickerCell) {
             let Some(state) = app(ctx) else {
                 return IntentResult::empty();
             };
-            jinn_domain::session_lifecycle::intent::handle_session_new(state, config)
+            jinn_kernel::session_lifecycle::intent::handle_session_new(state, config)
         }),
     ));
     routes.attach(row(
@@ -436,7 +436,7 @@ fn load_highlighted_skill(ctx: &mut ActionCtx<'_>, cell: &SkillPickerCell) -> In
 
 /// Auto-enables a skill everywhere it could otherwise be re-disabled: its row in
 /// the picker, the ESC-revert snapshot, and the session's live set.
-fn enable_durably(state: &mut jinn_domain::AppState, cell: &SkillPickerCell, name: &str) {
+fn enable_durably(state: &mut jinn_kernel::AppState, cell: &SkillPickerCell, name: &str) {
     cell.update(|picker| {
         if let Some(snapshot) = picker.snapshot.as_mut() {
             snapshot.remove(name);

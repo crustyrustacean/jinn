@@ -18,8 +18,8 @@
 use crate::sections::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::render_ctx::RenderCtx;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_mcp_msg::McpConnectionStatus;
 use jinn_preferences_config::schemas::mcp::McpServersConfig;
 use jinn_slices::ConfigLayer;
@@ -279,8 +279,8 @@ mod tests {
         EnterFrom, SectionNavResult, SidebarIntent, SidebarSection,
     };
     use jinn_config::ConfigLayer;
-    use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::render_ctx::RenderCtx;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::common::render_ctx::RenderCtx;
     use jinn_mcp_msg::McpConnectionStatus;
     use jinn_preferences_config::schemas::mcp::McpServerConfig;
     use jinn_testutil::setup_term;

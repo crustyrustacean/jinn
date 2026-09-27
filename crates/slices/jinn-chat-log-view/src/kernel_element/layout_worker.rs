@@ -35,7 +35,7 @@ use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 
 use crate::kernel_element::history::LayoutInputs;
-use jinn_domain::common::state::State;
+use jinn_kernel::common::state::State;
 
 /// Static path the layout worker pool spawns at (one pool per process).
 pub const LAYOUT_WORKER_POOL_SIZE: usize = 3;

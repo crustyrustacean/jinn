@@ -240,8 +240,8 @@ fn keymap_with_routes_at(scope: Scope) -> WhichKeyInstance {
     WhichKeyInstance::new(km, scope)
 }
 
-fn key<'a>(notation: &'a str) -> jinn_domain::KeyEvent {
-    jinn_domain::KeyEvent::parse_notation(notation).expect("notation should parse")
+fn key<'a>(notation: &'a str) -> jinn_kernel::KeyEvent {
+    jinn_kernel::KeyEvent::parse_notation(notation).expect("notation should parse")
 }
 
 #[rstest::rstest]
@@ -265,7 +265,7 @@ fn s_outside_sidebar_task_list_does_not_open_task_list_picker(#[case] scope: Sco
     // that `s` did not become a dynamic route into the task-list scope.
     let opened_the_task_list = matches!(
         intent,
-        Some(jinn_domain::KernelIntent::Dynamic(dynamic))
+        Some(jinn_kernel::KernelIntent::Dynamic(dynamic))
             if dynamic.slice == jinn_tools_msg::task_list_picker_scope()
     );
     assert!(

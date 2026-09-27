@@ -11,9 +11,9 @@ use std::borrow::Cow;
 use crate::sections::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::render_ctx::RenderCtx;
-use jinn_domain::protocol::IntentResult;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::render_ctx::RenderCtx;
+use jinn_kernel::protocol::IntentResult;
 use jinn_theme::Theme;
 use jinn_tools_msg::{Phase, PhaseId, TaskList};
 use ratatui::Frame;
@@ -403,8 +403,8 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::render_ctx::RenderCtx;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::common::render_ctx::RenderCtx;
     use jinn_tools_msg::{PhaseInput, TaskStatus};
 
     fn setup_with_tasks() -> AppState {

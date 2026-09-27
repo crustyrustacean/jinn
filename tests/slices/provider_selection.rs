@@ -15,7 +15,7 @@
 use std::time::Duration;
 
 use jinn_core_types::model_selection::ModelSelection;
-use jinn_domain::AppCore;
+use jinn_kernel::AppCore;
 use jinn_provider_config::ModelInfo;
 use jinn_provider_selection_msg::{
     LoadProviderPickerEntries, ModelCacheLoaded, ModelsRefreshed, ProviderCell, ProviderSwitch,
@@ -33,8 +33,8 @@ const PROVIDER_PATH: &str = "jinn.provider.actor";
 /// provider-selection, so the provider + discover actors are already
 /// subscribed when this returns.
 async fn composed_app() -> TuiApp {
-    let services = jinn_domain::Services::new_fake().await;
-    let state = jinn_domain::State::new(jinn_domain::AppState::default());
+    let services = jinn_kernel::Services::new_fake().await;
+    let state = jinn_kernel::State::new(jinn_kernel::AppState::default());
     let core = AppCore {
         state: state.clone(),
         bridge: services.bridge.clone(),

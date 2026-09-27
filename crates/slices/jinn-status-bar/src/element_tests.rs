@@ -10,9 +10,9 @@ use jinn_testutil::{buffer_row, setup_term};
 
 use crate::element::StatusBarElement;
 use jinn_core_types::model_selection::{AlloyStrategy, ModelSelection};
-use jinn_domain::AppState;
-use jinn_domain::common::render_ctx::RenderCtx;
-use jinn_domain::common::ui_element::UiElement;
+use jinn_kernel::AppState;
+use jinn_kernel::common::render_ctx::RenderCtx;
+use jinn_kernel::common::ui_element::UiElement;
 use jinn_token_count_msg::TokenRecord;
 
 #[rstest::rstest]
@@ -603,16 +603,16 @@ fn render_shows_turn_count_with_history() {
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state
         .active_session_mut()
-        .push_entry(jinn_domain::protocol::ChatEntry::user("hello"));
+        .push_entry(jinn_kernel::protocol::ChatEntry::user("hello"));
     state
         .active_session_mut()
-        .push_entry(jinn_domain::protocol::ChatEntry::assistant("hi there"));
+        .push_entry(jinn_kernel::protocol::ChatEntry::assistant("hi there"));
     state
         .active_session_mut()
-        .push_entry(jinn_domain::protocol::ChatEntry::user("how are you?"));
+        .push_entry(jinn_kernel::protocol::ChatEntry::user("how are you?"));
     state
         .active_session_mut()
-        .push_entry(jinn_domain::protocol::ChatEntry::assistant("doing well"));
+        .push_entry(jinn_kernel::protocol::ChatEntry::assistant("doing well"));
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
@@ -638,20 +638,20 @@ fn render_turn_count_skips_tool_loop_intermediates() {
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state
         .active_session_mut()
-        .push_entry(jinn_domain::protocol::ChatEntry::user("fix the bug"));
+        .push_entry(jinn_kernel::protocol::ChatEntry::user("fix the bug"));
     state
         .active_session_mut()
-        .push_entry(jinn_domain::protocol::ChatEntry::assistant("let me check"));
+        .push_entry(jinn_kernel::protocol::ChatEntry::assistant("let me check"));
     state
         .active_session_mut()
-        .push_entry(jinn_domain::protocol::ChatEntry::tool_call(
+        .push_entry(jinn_kernel::protocol::ChatEntry::tool_call(
             "id-1",
             "bash",
             r#"{"command":"ls"}"#,
         ));
     state
         .active_session_mut()
-        .push_entry(jinn_domain::protocol::ChatEntry::assistant("fixed it"));
+        .push_entry(jinn_kernel::protocol::ChatEntry::assistant("fixed it"));
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
@@ -1217,10 +1217,10 @@ fn render_shows_cost_before_turns_indicator() {
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state
         .active_session_mut()
-        .push_entry(jinn_domain::protocol::ChatEntry::user("hello"));
+        .push_entry(jinn_kernel::protocol::ChatEntry::user("hello"));
     state
         .active_session_mut()
-        .push_entry(jinn_domain::protocol::ChatEntry::assistant("hi there"));
+        .push_entry(jinn_kernel::protocol::ChatEntry::assistant("hi there"));
     state.active_session_mut().push_token_record(TokenRecord {
         model_used: None,
         timestamp: jiff::Timestamp::now(),
@@ -1350,14 +1350,14 @@ fn render_shows_tree_aggregate_from_child_viewpoint() {
     let parent_id = jinn_core_types::SessionId::new();
     {
         let parent = state.session_mut_or_create(&parent_id);
-        parent.push_entry(jinn_domain::protocol::ChatEntry::user("parent msg"));
+        parent.push_entry(jinn_kernel::protocol::ChatEntry::user("parent msg"));
     }
 
     // Create child session.
     let child_id = jinn_core_types::SessionId::new();
     {
         let child = state.session_mut_or_create(&child_id);
-        child.push_entry(jinn_domain::protocol::ChatEntry::user("child msg"));
+        child.push_entry(jinn_kernel::protocol::ChatEntry::user("child msg"));
         child.set_parent_session(parent_id.clone());
     }
 
@@ -1533,7 +1533,7 @@ fn render_appends_resolved_reasoning_effort_after_model() {
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state.active_session_mut().profile_mut().reasoning_effort =
-        Some(jinn_domain::ReasoningEffort::High);
+        Some(jinn_kernel::ReasoningEffort::High);
 
     // When rendering.
     let (mut terminal, area) = setup_term(50, 2);
@@ -1564,9 +1564,9 @@ fn render_session_override_beats_global_reasoning_effort() {
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     // A stale global value must not affect rendering — only the session's own effort matters.
-    state.frontend.app_state.reasoning_effort = Some(jinn_domain::ReasoningEffort::High);
+    state.frontend.app_state.reasoning_effort = Some(jinn_kernel::ReasoningEffort::High);
     state.active_session_mut().profile_mut().reasoning_effort =
-        Some(jinn_domain::ReasoningEffort::Low);
+        Some(jinn_kernel::ReasoningEffort::Low);
 
     // When rendering.
     let (mut terminal, area) = setup_term(50, 2);
@@ -1642,7 +1642,7 @@ fn cache_with_modalities(
 }
 
 fn render_model_row(state: &AppState) -> String {
-    use jinn_domain::common::ui_element::UiElement;
+    use jinn_kernel::common::ui_element::UiElement;
     let mut element = StatusBarElement;
     let (mut terminal, area) = setup_term(80, 2);
     terminal
@@ -1764,7 +1764,7 @@ fn status_bar_shows_effort_bracket_then_modality_indicator() {
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state.active_session_mut().profile_mut().reasoning_effort =
-        Some(jinn_domain::ReasoningEffort::High);
+        Some(jinn_kernel::ReasoningEffort::High);
     let mut m = jinn_provider_config::InputModalities::text();
     m.insert(jinn_provider_config::Modality::Image);
     state

@@ -35,7 +35,7 @@ use jinn_slices::{KeyRoutes, SliceHost, SliceScopeId, Slices};
 struct Wired {
     slices: Slices,
     routes: KeyRoutes,
-    state: std::cell::RefCell<jinn_domain::AppState>,
+    state: std::cell::RefCell<jinn_kernel::AppState>,
     /// Replaced by `with_servers` so a test can configure the MCP catalog.
     config: std::cell::RefCell<jinn_config::ConfigLayer>,
 }
@@ -47,7 +47,7 @@ impl Wired {
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let routes = KeyRoutes::new();
-        let services = jinn_domain::Services::new_fake().await;
+        let services = jinn_kernel::Services::new_fake().await;
         {
             let mut host = SliceHost::new(
                 &slices,
@@ -64,7 +64,7 @@ impl Wired {
             jinn_slices::scope_focus_slot(),
             jinn_slices::ScopeFocusState::default(),
         );
-        let state = jinn_domain::AppState::default();
+        let state = jinn_kernel::AppState::default();
         state.frontend.attach_slices(slices.clone());
         Self {
             slices,

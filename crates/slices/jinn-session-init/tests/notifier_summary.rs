@@ -10,8 +10,8 @@
 
 use std::time::Duration;
 
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::state::State;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::state::State;
 use jinn_session_init::contracts::{DiscoverySnapshot, SessionDiscoverySettled};
 
 /// Polls `check` until it passes or the retry budget runs out.
@@ -55,7 +55,7 @@ impl Wired {
                 s.history()
                     .iter()
                     .filter_map(|e| match &e.kind {
-                        jinn_domain::protocol::ChatEntryKind::Transient(text) => {
+                        jinn_kernel::protocol::ChatEntryKind::Transient(text) => {
                             Some(text.to_string())
                         }
                         _ => None,

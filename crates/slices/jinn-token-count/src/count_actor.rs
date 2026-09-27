@@ -19,7 +19,7 @@ use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
 use jinn_core_types::{ChatEntry, ChatEntryId, SessionId};
-use jinn_domain::common::state::State;
+use jinn_kernel::common::state::State;
 use jinn_llm_support::token_estimator::{
     TiktokenCounter, TokenCounter, TokenEstimator, estimate_entry_content_tokens,
 };
@@ -187,10 +187,10 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use jinn_domain::common::app_state::AppState;
-    use jinn_domain::protocol::ChangeSource;
-    use jinn_domain::protocol::ChatEntry;
-    use jinn_domain::protocol::ContextOverride;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::protocol::ChangeSource;
+    use jinn_kernel::protocol::ChatEntry;
+    use jinn_kernel::protocol::ContextOverride;
     use jinn_llm_support::token_estimator::estimate_entry_tokens;
     use jinn_session_state::ChatSessionState;
 

@@ -1935,10 +1935,10 @@ dependencies = [
  "jinn-dashboard",
  "jinn-discord",
  "jinn-discord-msg",
- "jinn-domain",
  "jinn-inference",
  "jinn-inference-msg",
  "jinn-install",
+ "jinn-kernel",
  "jinn-llm-support",
  "jinn-mcp-msg",
  "jinn-mcp-slice",
@@ -2017,7 +2017,7 @@ dependencies = [
  "jinn-boot-msg",
  "jinn-config",
  "jinn-core-types",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-mcp-msg",
  "jinn-preferences-config",
  "jinn-provider-config",
@@ -2057,7 +2057,7 @@ dependencies = [
  "jinn-context",
  "jinn-context-curation-msg",
  "jinn-core-types",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-preferences-config",
  "jinn-session-msg",
  "jinn-slices",
@@ -2094,8 +2094,8 @@ dependencies = [
  "jinn-chat-log-view-msg",
  "jinn-config",
  "jinn-core-types",
- "jinn-domain",
  "jinn-inference-msg",
+ "jinn-kernel",
  "jinn-preferences-config",
  "jinn-provider",
  "jinn-session-history-msg",
@@ -2145,8 +2145,8 @@ dependencies = [
  "error-stack",
  "form_urlencoded",
  "jinn-core-types",
- "jinn-domain",
  "jinn-inference-msg",
+ "jinn-kernel",
  "jinn-session-history-msg",
  "jinn-slices",
  "jinn-testutil",
@@ -2235,7 +2235,7 @@ dependencies = [
  "jinn-context",
  "jinn-context-assembly-msg",
  "jinn-core-types",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-llm-support",
  "jinn-persona-msg",
  "jinn-provider",
@@ -2278,7 +2278,7 @@ dependencies = [
  "jinn-config",
  "jinn-context-curation-msg",
  "jinn-core-types",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-llm-support",
  "jinn-preferences-config",
  "jinn-provider",
@@ -2365,7 +2365,7 @@ version = "0.118.0"
 dependencies = [
  "error-stack",
  "jinn-core-types",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-mcp-msg",
  "jinn-sidebar-msg",
  "jinn-slices",
@@ -2395,7 +2395,7 @@ dependencies = [
  "jinn-context",
  "jinn-core-types",
  "jinn-discord-msg",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-preferences-config",
  "jinn-session-lifecycle-msg",
  "jinn-session-msg",
@@ -2433,7 +2433,64 @@ dependencies = [
 ]
 
 [[package]]
-name = "jinn-domain"
+name = "jinn-inference"
+version = "0.118.0"
+dependencies = [
+ "async-trait",
+ "error-stack",
+ "futures",
+ "jiff",
+ "jinn-core-types",
+ "jinn-inference-msg",
+ "jinn-kernel",
+ "jinn-preferences-config",
+ "jinn-provider",
+ "jinn-provider-config",
+ "jinn-session-history-msg",
+ "jinn-session-msg",
+ "jinn-slices",
+ "jinn-testutil",
+ "jinn-tools-msg",
+ "ratatui",
+ "reasoning-parser",
+ "rstest",
+ "serde_json",
+ "throbber-widgets-tui",
+ "tokio",
+ "tracing",
+ "trouper",
+]
+
+[[package]]
+name = "jinn-inference-msg"
+version = "0.118.0"
+dependencies = [
+ "jiff",
+ "jinn-core-types",
+ "jinn-slices",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "trouper",
+]
+
+[[package]]
+name = "jinn-install"
+version = "0.118.0"
+dependencies = [
+ "error-stack",
+ "jinn-common",
+ "jinn-preferences-config",
+ "jinn-skills",
+ "jinn-slices",
+ "rstest",
+ "tempfile",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-kernel"
 version = "0.118.0"
 dependencies = [
  "async-trait",
@@ -2503,63 +2560,6 @@ dependencies = [
  "unicode-width 0.2.2",
  "uuid",
  "wasm-encoder",
- "wherror",
-]
-
-[[package]]
-name = "jinn-inference"
-version = "0.118.0"
-dependencies = [
- "async-trait",
- "error-stack",
- "futures",
- "jiff",
- "jinn-core-types",
- "jinn-domain",
- "jinn-inference-msg",
- "jinn-preferences-config",
- "jinn-provider",
- "jinn-provider-config",
- "jinn-session-history-msg",
- "jinn-session-msg",
- "jinn-slices",
- "jinn-testutil",
- "jinn-tools-msg",
- "ratatui",
- "reasoning-parser",
- "rstest",
- "serde_json",
- "throbber-widgets-tui",
- "tokio",
- "tracing",
- "trouper",
-]
-
-[[package]]
-name = "jinn-inference-msg"
-version = "0.118.0"
-dependencies = [
- "jiff",
- "jinn-core-types",
- "jinn-slices",
- "rstest",
- "serde",
- "serde_json",
- "tokio",
- "trouper",
-]
-
-[[package]]
-name = "jinn-install"
-version = "0.118.0"
-dependencies = [
- "error-stack",
- "jinn-common",
- "jinn-preferences-config",
- "jinn-skills",
- "jinn-slices",
- "rstest",
- "tempfile",
  "wherror",
 ]
 
@@ -2634,7 +2634,7 @@ dependencies = [
  "jiff",
  "jinn-config",
  "jinn-core-types",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-mcp",
  "jinn-mcp-msg",
  "jinn-picker",
@@ -2667,7 +2667,7 @@ name = "jinn-persona"
 version = "0.118.0"
 dependencies = [
  "error-stack",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-persona-msg",
  "jinn-picker",
  "jinn-preferences-config",
@@ -2723,7 +2723,7 @@ dependencies = [
  "error-stack",
  "jinn-config",
  "jinn-core-types",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-persona-msg",
  "jinn-preferences-config",
  "jinn-project",
@@ -2772,7 +2772,7 @@ dependencies = [
  "jinn-config",
  "jinn-core-types",
  "jinn-cwd-msg",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-picker",
  "jinn-preferences-config",
  "jinn-project-msg",
@@ -2858,7 +2858,7 @@ dependencies = [
  "humantime",
  "jiff",
  "jinn-core-types",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-picker",
  "jinn-preferences-config",
  "jinn-provider",
@@ -2945,7 +2945,7 @@ name = "jinn-session-history"
 version = "0.118.0"
 dependencies = [
  "jinn-core-types",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-llm-support",
  "jinn-session-state",
  "rand 0.9.5",
@@ -2972,7 +2972,7 @@ dependencies = [
  "error-stack",
  "jinn-context",
  "jinn-core-types",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-session-init-msg",
  "jinn-session-lifecycle-msg",
  "jinn-session-msg",
@@ -3013,7 +3013,7 @@ dependencies = [
  "jinn-common",
  "jinn-config",
  "jinn-core-types",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-picker",
  "jinn-preferences-config",
  "jinn-selection-widget",
@@ -3143,7 +3143,7 @@ dependencies = [
  "jinn-chat-log-view-msg",
  "jinn-common",
  "jinn-core-types",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-mcp-msg",
  "jinn-picker",
  "jinn-preferences-config",
@@ -3204,8 +3204,8 @@ dependencies = [
  "jinn-context-assembly",
  "jinn-context-assembly-msg",
  "jinn-core-types",
- "jinn-domain",
  "jinn-inference-msg",
+ "jinn-kernel",
  "jinn-llm-support",
  "jinn-persona-msg",
  "jinn-preferences-config",
@@ -3242,7 +3242,7 @@ dependencies = [
  "jinn-chat-log-view-msg",
  "jinn-config",
  "jinn-core-types",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-mcp-msg",
  "jinn-persona",
  "jinn-persona-msg",
@@ -3297,7 +3297,7 @@ dependencies = [
  "error-stack",
  "jinn-chat-log-view",
  "jinn-core-types",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-picker",
  "jinn-selection-widget",
  "jinn-session-init-msg",
@@ -3368,7 +3368,7 @@ dependencies = [
  "jinn-common",
  "jinn-core-types",
  "jinn-cwd-msg",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-provider-config",
  "jinn-session-state",
  "jinn-slices",
@@ -3399,7 +3399,7 @@ dependencies = [
  "jinn-chat-input-msg",
  "jinn-config",
  "jinn-core-types",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-preferences-config",
  "jinn-session-list",
  "jinn-session-msg",
@@ -3491,7 +3491,7 @@ dependencies = [
  "jinn-chat-log-view",
  "jinn-chat-log-view-msg",
  "jinn-core-types",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-picker",
  "jinn-preferences-config",
  "jinn-selection-widget",
@@ -3511,7 +3511,7 @@ version = "0.118.0"
 dependencies = [
  "error-stack",
  "jinn-core-types",
- "jinn-domain",
+ "jinn-kernel",
  "jinn-llm-support",
  "jinn-session-history-msg",
  "jinn-session-msg",
@@ -3554,8 +3554,8 @@ dependencies = [
  "jinn-config",
  "jinn-context-assembly",
  "jinn-core-types",
- "jinn-domain",
  "jinn-inference-msg",
+ "jinn-kernel",
  "jinn-llm-support",
  "jinn-mcp-msg",
  "jinn-picker",
@@ -3631,8 +3631,8 @@ dependencies = [
  "jinn-core-types",
  "jinn-cwd",
  "jinn-cwd-msg",
- "jinn-domain",
  "jinn-inference",
+ "jinn-kernel",
  "jinn-mcp",
  "jinn-mcp-msg",
  "jinn-persona-msg",
@@ -3680,8 +3680,8 @@ dependencies = [
  "jinn-chat-input-msg",
  "jinn-context-assembly",
  "jinn-core-types",
- "jinn-domain",
  "jinn-inference-msg",
+ "jinn-kernel",
  "jinn-provider",
  "jinn-provider-selection",
  "jinn-provider-selection-msg",
@@ -3717,8 +3717,8 @@ version = "0.118.0"
 dependencies = [
  "error-stack",
  "jinn-core-types",
- "jinn-domain",
  "jinn-inference-msg",
+ "jinn-kernel",
  "jinn-preferences-config",
  "jinn-session-history-msg",
  "jinn-session-msg",

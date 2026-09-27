@@ -2,7 +2,7 @@
 
 use crate::sections::sessions::close::validate_session_close;
 use crate::sections::sessions::state::{mark_in_flight, sorted_open_sessions};
-use jinn_domain::common::app_state::AppState;
+use jinn_kernel::common::app_state::AppState;
 
 /// Handles `SidebarSessionArchive` - archives the selected session without teardown.
 ///
@@ -11,12 +11,12 @@ use jinn_domain::common::app_state::AppState;
 ///
 /// # Panics
 /// Panics if `sessions_section.selected_index` is `None`.
-pub fn handle_session_archive(state: &mut AppState) -> jinn_domain::protocol::IntentResult {
+pub fn handle_session_archive(state: &mut AppState) -> jinn_kernel::protocol::IntentResult {
     use jinn_session_store_msg::ArchiveSession;
 
     // Validate - same preconditions as session close.
     if validate_session_close(state).is_err() {
-        return jinn_domain::protocol::IntentResult::empty();
+        return jinn_kernel::protocol::IntentResult::empty();
     }
 
     let index = state
@@ -25,7 +25,7 @@ pub fn handle_session_archive(state: &mut AppState) -> jinn_domain::protocol::In
         .unwrap();
     let sessions = sorted_open_sessions(state);
     let Some(target) = sessions.get(index) else {
-        return jinn_domain::protocol::IntentResult::empty();
+        return jinn_kernel::protocol::IntentResult::empty();
     };
     let target_id = target.id.clone();
 
@@ -33,7 +33,7 @@ pub fn handle_session_archive(state: &mut AppState) -> jinn_domain::protocol::In
     mark_in_flight(state, std::slice::from_ref(&target_id));
 
     // Emit ArchiveSession - the actor handles archival without teardown.
-    jinn_domain::protocol::IntentResult::new_message(ArchiveSession {
+    jinn_kernel::protocol::IntentResult::new_message(ArchiveSession {
         session_id: target_id,
     })
 }

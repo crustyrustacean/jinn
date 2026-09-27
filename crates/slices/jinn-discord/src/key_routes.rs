@@ -16,7 +16,7 @@
 use jinn_slices::SliceScopeId;
 
 use super::to_thread_intent;
-use jinn_domain::protocol::KernelIntent;
+use jinn_kernel::protocol::KernelIntent;
 use jinn_slices::route::ActionFn;
 use jinn_slices::route::BindSite;
 use jinn_slices::route::KeyRoutes;
@@ -86,8 +86,8 @@ mod tests {
     use super::to_thread_intent_action;
     use crate::ConnectionState;
     use crate::discord_connection_slot;
-    use jinn_domain::protocol::ChatEntryKind;
-    use jinn_domain::protocol::KernelIntent;
+    use jinn_kernel::protocol::ChatEntryKind;
+    use jinn_kernel::protocol::KernelIntent;
     use jinn_slices::route::ActionCtx;
     use jinn_slices::route::BindSite;
     use jinn_slices::route::KeyRoutes;
@@ -138,7 +138,7 @@ mod tests {
     fn action_pushes_error_entry_when_bot_disabled() {
         // Given a route table and a default state: no title, bot disabled.
         let routes = routed();
-        let mut state = jinn_domain::common::app_state::AppState::default();
+        let mut state = jinn_kernel::common::app_state::AppState::default();
         let slices = jinn_slices::Slices::new();
 
         // When dispatching the to-thread dynamic intent.
@@ -175,7 +175,7 @@ mod tests {
         // Given a route table and a state meeting every precondition:
         // titled session, bot enabled, connection cell reporting connected.
         let routes = routed();
-        let mut state = jinn_domain::common::app_state::AppState::default();
+        let mut state = jinn_kernel::common::app_state::AppState::default();
         state
             .active_session_mut()
             .set_title("My session".to_owned());
@@ -223,7 +223,7 @@ mod tests {
         let result = routes.action_for(
             &to_thread_dynamic(),
             ActionCtx {
-                state: &mut jinn_domain::common::app_state::AppState::default(),
+                state: &mut jinn_kernel::common::app_state::AppState::default(),
                 slices: &jinn_slices::Slices::new(),
                 config: jinn_slices::empty_config_layer(),
                 key_bytes: Vec::new(),

@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use jinn_core_types::SessionId;
-use jinn_domain::common::actor_deps::BusPublish;
+use jinn_kernel::common::actor_deps::BusPublish;
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_lifecycle_msg::CommandTemplate;
 use jinn_session_lifecycle_msg::LifecycleScriptState;
@@ -240,7 +240,7 @@ impl SessionLifecycleActor {
             .get(session_id)?
             .lifecycle_name()?
             .to_owned();
-        jinn_domain::session_lifecycle::intent::lifecycle_teardown(&self.services.config, &name)
+        jinn_kernel::session_lifecycle::intent::lifecycle_teardown(&self.services.config, &name)
     }
 
     async fn guarded_tree_closure(&self, root: &SessionId) -> Option<Vec<SessionId>> {

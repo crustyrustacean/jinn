@@ -65,7 +65,7 @@ use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
 use jinn_core_types::SessionId;
-use jinn_domain::Services;
+use jinn_kernel::Services;
 use jinn_inference_msg::CancelStream;
 use jinn_inference_msg::SendToLlmProvider;
 use jinn_inference_msg::StreamActivity;

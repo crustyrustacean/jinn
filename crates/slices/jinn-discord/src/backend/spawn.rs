@@ -6,10 +6,10 @@
 //! Composition (`app.rs`) calls [`spawn_gateway`] once per process with
 //! the activated slice's parked channels + validated config.
 //!
-//! [`Services`]: jinn_domain::Services
+//! [`Services`]: jinn_kernel::Services
 
 use crate::backend::gateway;
-use jinn_domain::Services;
+use jinn_kernel::Services;
 use tokio::task::JoinHandle;
 
 /// Re-exported so callers name one crate for the pool type.
@@ -25,7 +25,7 @@ pub use daow::Pool as SessionPool;
 /// `session_pool` backs the thread-map DAO.
 pub fn spawn_gateway(
     handle: &tokio::runtime::Handle,
-    core: &jinn_domain::AppCore,
+    core: &jinn_kernel::AppCore,
     services: &Services,
     session_pool: SessionPool,
     activated: crate::ActivatedDiscord,
@@ -73,8 +73,8 @@ mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
     use super::*;
-    use jinn_domain::common::bridge::Bridge;
-    use jinn_domain::common::state::State;
+    use jinn_kernel::common::bridge::Bridge;
+    use jinn_kernel::common::state::State;
 
     /// A throwaway in-memory pool; the disabled path never touches it.
     fn detached_pool() -> SessionPool {
@@ -89,9 +89,9 @@ mod tests {
     async fn spawn_gateway_noops_when_disabled() {
         // Given a disabled slice activation output (the gate decided at
         // activation).
-        let services = jinn_domain::Services::new_fake().await;
-        let core = jinn_domain::AppCore {
-            state: State::new(jinn_domain::common::app_state::AppState::default()),
+        let services = jinn_kernel::Services::new_fake().await;
+        let core = jinn_kernel::AppCore {
+            state: State::new(jinn_kernel::common::app_state::AppState::default()),
             bridge: Bridge::new(services.bus.clone()),
         };
         let activated = crate::ActivatedDiscord {

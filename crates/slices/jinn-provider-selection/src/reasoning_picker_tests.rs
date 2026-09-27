@@ -37,7 +37,7 @@ use jinn_slices::{KeyRoutes, SliceHost, Slices};
 struct Wired {
     slices: Slices,
     routes: KeyRoutes,
-    state: std::cell::RefCell<jinn_domain::AppState>,
+    state: std::cell::RefCell<jinn_kernel::AppState>,
 }
 
 impl Wired {
@@ -49,7 +49,7 @@ impl Wired {
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let routes = KeyRoutes::new();
-        let services = jinn_domain::Services::new_fake().await;
+        let services = jinn_kernel::Services::new_fake().await;
         {
             let mut host = SliceHost::new(
                 &slices,
@@ -60,7 +60,7 @@ impl Wired {
             );
             crate::activate_picker(&mut host);
         }
-        let state = jinn_domain::AppState::default_with_scope_focus();
+        let state = jinn_kernel::AppState::default_with_scope_focus();
         state.frontend.attach_slices(slices.clone());
         Self {
             slices,
@@ -271,7 +271,7 @@ async fn opening_the_picker_pushes_its_own_scope() {
     assert_eq!(state.frontend.scope_len(), before + 1);
     assert_eq!(
         state.frontend.scope(),
-        jinn_domain::FocusScope::Dynamic(reasoning_picker_scope())
+        jinn_kernel::FocusScope::Dynamic(reasoning_picker_scope())
     );
 }
 
@@ -838,7 +838,7 @@ fn the_picker_state_lives_only_in_its_slice_cell() {
     // The reasoning picker's state is reachable from exactly one place: the
     // slice cell. A second copy in the kernel would let the menu show one
     // store while a different one is written.
-    let kernel_source = include_str!("../../../jinn-domain/src/state/frontend_state.rs");
+    let kernel_source = include_str!("../../../jinn-kernel/src/state/frontend_state.rs");
     assert!(
         !kernel_source.contains("reasoning_effort_picker"),
         "the kernel must not hold reasoning picker state; the slice cell is the only home"
@@ -852,12 +852,12 @@ fn the_kernel_names_no_reasoning_picker_at_all() {
     // adding a picker a folder-local change.
     for (label, source) in [
         (
-            "jinn-domain frontend state",
-            include_str!("../../../jinn-domain/src/state/frontend_state.rs"),
+            "jinn-kernel frontend state",
+            include_str!("../../../jinn-kernel/src/state/frontend_state.rs"),
         ),
         (
-            "jinn-domain intent handler",
-            include_str!("../../../jinn-domain/src/feat/intent/handler.rs"),
+            "jinn-kernel intent handler",
+            include_str!("../../../jinn-kernel/src/feat/intent/handler.rs"),
         ),
         (
             "jinn-tui scope table",

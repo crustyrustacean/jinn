@@ -6,8 +6,8 @@
 //! applies all diffs, saves to disk, and syncs the frontend
 //! theme/sidebar/persona fields inline.
 
-use jinn_domain::common::services::Services;
-use jinn_domain::common::state::State;
+use jinn_kernel::common::services::Services;
+use jinn_kernel::common::state::State;
 use jinn_preferences_config::app_state_file::AppStateFile;
 use jinn_preferences_config::protocol::app_state_command::UpdateAppState;
 use trouper::actor::MsgHandler;
@@ -189,7 +189,7 @@ mod tests {
 
     use super::AppStateActor;
     use jinn_core_types::model_selection::ModelSelection;
-    use jinn_domain::common::services::Services;
+    use jinn_kernel::common::services::Services;
     use jinn_preferences_config::app_state_file::AppStateFile;
     use jinn_preferences_config::app_state_storage::InMemoryAppStateStorage;
     use jinn_preferences_config::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
@@ -207,8 +207,8 @@ mod tests {
 
         let actor = AppStateActor {
             services: services.clone(),
-            state: jinn_domain::common::state::State::new(
-                jinn_domain::common::app_state::AppState::default(),
+            state: jinn_kernel::common::state::State::new(
+                jinn_kernel::common::app_state::AppState::default(),
             ),
         };
         (actor, services)

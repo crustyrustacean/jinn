@@ -62,8 +62,8 @@ pub mod size_actor;
 /// system, not a caller bug.
 pub fn install_actors(
     system: &trouper::system::ActorSystem,
-    state: jinn_domain::common::state::State,
-    services: &jinn_domain::Services,
+    state: jinn_kernel::common::state::State,
+    services: &jinn_kernel::Services,
 ) {
     let _ = service::spawn(system);
     let _path = size_actor::ContextSizeActor::spawn(system, state, services.clone());

@@ -25,8 +25,8 @@ use jinn_mcp::server_testkit::{spawn_stub_client, spawn_stub_client_with_killer}
 use crate::connection::{McpActor, McpActorDeps};
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::ToolCall;
-use jinn_domain::common::actor_deps::ActorDeps;
-use jinn_domain::common::bus::HarnessServices;
+use jinn_kernel::common::actor_deps::ActorDeps;
+use jinn_kernel::common::bus::HarnessServices;
 use jinn_mcp_msg::{McpConnectionStatus, McpServerStatus};
 use jinn_preferences_config::schemas::ToolsConfig;
 use jinn_preferences_config::schemas::mcp::McpServerConfig;
@@ -473,8 +473,8 @@ async fn disable_cycle_calls_fail_fast_after_teardown() {
     let session_id = SessionId::new();
 
     let services = harness.services().await;
-    let state = jinn_domain::common::state::State::new(
-        jinn_domain::common::app_state::AppState::default_with_scope_focus(),
+    let state = jinn_kernel::common::state::State::new(
+        jinn_kernel::common::app_state::AppState::default_with_scope_focus(),
     );
     state.write().session.get_or_create(&session_id);
     state

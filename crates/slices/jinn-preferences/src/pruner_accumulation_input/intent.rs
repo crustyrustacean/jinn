@@ -199,8 +199,8 @@ mod tests {
     use super::*;
     use jinn_slices::route::EditIntent;
 
-    fn state() -> jinn_domain::AppState {
-        jinn_domain::AppState::default_with_scope_focus()
+    fn state() -> jinn_kernel::AppState {
+        jinn_kernel::AppState::default_with_scope_focus()
     }
 
     fn cell() -> (jinn_slices::Slices, PrunerCell) {

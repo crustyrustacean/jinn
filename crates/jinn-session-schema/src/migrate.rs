@@ -1,6 +1,6 @@
 //! The migration runner and individual migrations (v0..=v28).
 //!
-//! Ported verbatim from jinn-domain's `migrator.rs` so the schema crate is the
+//! Ported verbatim from jinn-kernel's `migrator.rs` so the schema crate is the
 //! single source of truth. Three mechanical changes from the original:
 //!
 //! - error type `SessionStoreError` → [`crate::SchemaMigrationError`]
@@ -1167,7 +1167,7 @@ pub fn migrate_v25(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaM
 /// - `session_fts` — a contentful FTS5 virtual table holding one row per
 ///   **(session, entry)** pair. The searchable unit exists in no single
 ///   physical table (entries are shared across forked sessions; the junction
-///   is rewritten wholesale on every save), so jinn-domain's search-index
+///   is rewritten wholesale on every save), so jinn-kernel's search-index
 ///   actor recomputes each session's rows from the live tables when the
 ///   session is marked dirty. `body` is the only indexed column — the
 ///   entry's searchable prose — while `role`, `session_id`, `entry_id`, and
@@ -1186,7 +1186,7 @@ pub fn migrate_v25(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaM
 ///
 /// Every existing session is seeded dirty, so the first post-upgrade launch
 /// backfills the index lazily in the background — startup never blocks on
-/// parsing the full history. Row bodies are written by jinn-domain (which owns
+/// parsing the full history. Row bodies are written by jinn-kernel (which owns
 /// the `ChatEntryKind` JSON schema); this migration only creates the objects.
 pub fn migrate_v26(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.execute_batch(
@@ -1404,8 +1404,8 @@ where
 
 // ── Test helpers ─────────────────────────────────────────────────────────
 //
-// `apply_migrations_inner` mirrors jinn-domain's test-only helper of the same
-// name so the schema crate's own tests and (transitively) jinn-domain's tests
+// `apply_migrations_inner` mirrors jinn-kernel's test-only helper of the same
+// name so the schema crate's own tests and (transitively) jinn-kernel's tests
 // can stand a DB up at any schema version. It drives [`MIGRATIONS`] directly,
 // so seeding and production application can never drift.
 
@@ -1423,7 +1423,7 @@ pub fn apply_migrations_inner(conn: &mut rusqlite::Connection, target: i32) {
 /// Test-only: applies migrations up to (and including) `target` on a held
 /// connection, recording each version.
 ///
-/// Mirrors jinn-domain's test-only helper so the schema crate's own tests can
+/// Mirrors jinn-kernel's test-only helper so the schema crate's own tests can
 /// stand up a DB at a specific legacy version. FK=OFF is the caller's job
 /// (the public [`crate::run_migrations`] toggles it; direct test callers
 /// toggle it themselves).
@@ -1436,7 +1436,7 @@ pub fn apply_up_to_no_fk(conn: &mut rusqlite::Connection, target: i32) {
 
 /// Test-only re-exports of individual migrations and helpers.
 ///
-/// Downstream test suites (e.g. jinn-domain's migrator tests) need to stand a
+/// Downstream test suites (e.g. jinn-kernel's migrator tests) need to stand a
 /// DB up at a specific version and assert against a single migration's
 #[cfg(feature = "testing")]
 #[allow(unused_imports)]

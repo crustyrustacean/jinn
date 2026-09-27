@@ -21,8 +21,8 @@
 pub mod stall_watchdog_actor;
 pub mod tool_call_watchdog_actor;
 
-use jinn_domain::Services;
-use jinn_domain::common::state::State;
+use jinn_kernel::Services;
+use jinn_kernel::common::state::State;
 use jinn_preferences_config::schemas::StallWatchdogConfig;
 use jinn_preferences_config::schemas::ToolCallWatchdogConfig;
 use jinn_slices::RenderFacts;

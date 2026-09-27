@@ -36,10 +36,10 @@ pub const SESSION_PICKER_BINDINGS: &[(&str, &str)] = &[
 ];
 
 /// The kernel's application state behind an [`ActionCtx`].
-fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_domain::AppState> {
+fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_kernel::AppState> {
     ctx.state
         .as_any_mut()?
-        .downcast_mut::<jinn_domain::AppState>()
+        .downcast_mut::<jinn_kernel::AppState>()
 }
 
 /// Wraps a picker action in an [`ActionFn`], handing it the cell.
@@ -247,7 +247,7 @@ fn new_session(ctx: &mut ActionCtx<'_>, _cell: &SessionPickerCell) -> IntentResu
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    jinn_domain::session_lifecycle::intent::handle_session_new(state, config)
+    jinn_kernel::session_lifecycle::intent::handle_session_new(state, config)
 }
 
 /// Ctrl-C: clear the filter, or close when it is already empty.

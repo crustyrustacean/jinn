@@ -7,8 +7,8 @@
 use crate::sections::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::render_ctx::RenderCtx;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::render_ctx::RenderCtx;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
@@ -144,9 +144,9 @@ mod tests {
     use crate::sections::section_trait::{
         EnterFrom, SectionNavResult, SidebarIntent, SidebarSection,
     };
-    use jinn_domain::KernelIntent;
-    use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::render_ctx::RenderCtx;
+    use jinn_kernel::KernelIntent;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::common::render_ctx::RenderCtx;
     use jinn_slices::Persona;
 
     #[rstest::rstest]

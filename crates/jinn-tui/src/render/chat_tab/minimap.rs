@@ -1,7 +1,7 @@
 //! TUI rendering adapter for the vertical minimap column and arrow overlay.
 
 use jinn_chat_log_view::vertical_minimap;
-use jinn_domain::RenderCtx;
+use jinn_kernel::RenderCtx;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 

@@ -6,7 +6,7 @@ use crate::common::{activate_preferences, activate_project};
 #[tokio::test]
 async fn project_activation_registers_project_add_cell() {
     // Given fresh fake services without project activation.
-    let services = jinn_domain::Services::new_fake().await;
+    let services = jinn_kernel::Services::new_fake().await;
 
     // When the project slice activates.
     let mut services = services;
@@ -25,7 +25,7 @@ async fn project_activation_registers_project_add_cell() {
 #[tokio::test]
 async fn preferences_activation_does_not_register_project_add_cell() {
     // Given fresh fake services without project activation.
-    let services = jinn_domain::Services::new_fake().await;
+    let services = jinn_kernel::Services::new_fake().await;
 
     // When only the preferences persistence slice activates.
     let mut services = services;

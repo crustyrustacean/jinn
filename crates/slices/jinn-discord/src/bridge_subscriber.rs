@@ -28,8 +28,8 @@ use jinn_discord_msg::{
     BridgeEvent, CreateThreadForSession, CreateThreadReason, DiscordThreadCreateFailed,
     DiscordThreadCreated, ForumChannelError, GatewayRequest,
 };
-use jinn_domain::common::state::State;
-use jinn_domain::protocol::ChatEntry;
+use jinn_kernel::common::state::State;
+use jinn_kernel::protocol::ChatEntry;
 use jinn_session_lifecycle_msg::{SessionSetupCompleted, SessionTeardownFinished};
 use jinn_session_msg::{SessionArchived, SessionPhaseChanged};
 use trouper::actor::ActorPath;
@@ -322,8 +322,8 @@ mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
     use super::*;
     use jinn_core_types::SessionId;
-    use jinn_domain::common::app_state::AppState;
-    use jinn_domain::protocol::ChatEntryKind;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::protocol::ChatEntryKind;
 
     /// Build a bridge subscriber with one seeded session, plus its session id.
     ///

@@ -2,7 +2,7 @@
 //!
 //! Validators for message submission and autocomplete confirmation.
 
-use jinn_domain::AppState;
+use jinn_kernel::AppState;
 use wherror::Error;
 
 /// Errors from validating a SubmitMessage intent.

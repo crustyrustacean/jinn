@@ -79,7 +79,7 @@ pub use jinn_session_msg::PhaseKind;
 // Re-export reasoning types
 // The reasoning-effort vocabulary is owned by the provider-selection
 // slice's msg crate (kernel→msg direction); re-exported here so the
-// long-standing `jinn_domain::ReasoningEffort` paths keep resolving.
+// long-standing `jinn_kernel::ReasoningEffort` paths keep resolving.
 pub use jinn_provider_selection_msg::ReasoningEffort;
 pub use jinn_provider_selection_msg::resolve_effort;
 
@@ -100,22 +100,22 @@ pub use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
 pub use jinn_slices::fabric::{ActorShutdownCompleted, ActorStarted, ActorStarting};
 // The curation contracts are owned by the context-curation slice's msg
 // crate (kernel→msg direction, same as the stream contracts); re-exported
-// here so the long-standing `jinn_domain::TriggerCompaction` path keeps
+// here so the long-standing `jinn_kernel::TriggerCompaction` path keeps
 // resolving.
 pub use jinn_context_curation_msg::TriggerCompaction;
 // Stream contracts are owned by the inference slice's msg crate (kernel→msg
 // direction, jinn-session-msg precedent); re-exported here so the long-standing
-// `jinn_domain::X` paths keep resolving.
+// `jinn_kernel::X` paths keep resolving.
 // Provider-selection contracts are owned by the provider-selection slice's
 // msg crate (kernel→msg direction); re-exported here so the long-standing
-// `jinn_domain::X` paths keep resolving.
+// `jinn_kernel::X` paths keep resolving.
 pub use jinn_provider_selection_msg::{
     LoadProviderPickerEntries, ModelCacheLoaded, ModelsRefreshed, ProviderSwitch, ProviderSwitched,
     RefreshModels,
 };
 // The prompt-scan contracts are owned by the session-init slice's msg crate
 // (kernel→msg direction, skills precedent); re-exported here so the
-// long-standing `jinn_domain::X` paths keep resolving.
+// long-standing `jinn_kernel::X` paths keep resolving.
 pub use jinn_inference_msg::{
     CancelStream, SendToLlmProvider, StreamCompleted, StreamCompletedReason, StreamOrigin,
     StreamToken,

@@ -21,8 +21,8 @@ use crate::compaction_algorithm::{
     adjust_cut_to_boundary, compute_cut_index, find_start_boundary, gather_compactable_entries,
 };
 use crate::compaction_serializer::serialize_entries_for_compaction;
-use jinn_domain::common::services::Services;
-use jinn_domain::common::state::State;
+use jinn_kernel::common::services::Services;
+use jinn_kernel::common::state::State;
 use jinn_llm_support::token_estimator::{CharRatioEstimator, TokenEstimator};
 
 use crate::worker::HistoryWorker;

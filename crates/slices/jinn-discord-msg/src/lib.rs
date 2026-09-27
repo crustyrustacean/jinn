@@ -38,7 +38,7 @@ pub enum BridgeEvent {
     /// The gateway reads the session's history from shared [`State`] to extract
     /// the final `Assistant` (or `Error`) entry.
     ///
-    /// [`State`]: jinn_domain::common::state::State
+    /// [`State`]: jinn_kernel::common::state::State
     TurnFinished {
         /// The jinn session whose turn just ended.
         session_id: SessionId,

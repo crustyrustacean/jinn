@@ -92,16 +92,16 @@ fn the_central_crates_name_no_picker() {
     // Given the central crates' sources.
     let central = [
         (
-            "jinn-domain intent handler",
-            include_str!("../../crates/jinn-domain/src/feat/intent/handler.rs"),
+            "jinn-kernel intent handler",
+            include_str!("../../crates/jinn-kernel/src/feat/intent/handler.rs"),
         ),
         (
-            "jinn-domain protocol intents",
-            include_str!("../../crates/jinn-domain/src/protocol/intent.rs"),
+            "jinn-kernel protocol intents",
+            include_str!("../../crates/jinn-kernel/src/protocol/intent.rs"),
         ),
         (
-            "jinn-domain frontend state",
-            include_str!("../../crates/jinn-domain/src/state/frontend_state.rs"),
+            "jinn-kernel frontend state",
+            include_str!("../../crates/jinn-kernel/src/state/frontend_state.rs"),
         ),
         (
             "jinn-tui scope table",
@@ -369,7 +369,7 @@ fn production_wiring_calls_every_picker_activation() {
 #[rstest::rstest]
 #[tokio::test]
 async fn sidebar_task_list_section_opens_the_task_list_picker() {
-    use jinn_domain::{KernelIntent, Key, KeyEvent, Modifiers};
+    use jinn_kernel::{KernelIntent, Key, KeyEvent, Modifiers};
     use jinn_slices::focus::FocusScope;
     use jinn_slices::route::{ActionCtx, ScopeSignal};
     use jinn_tui::Scope;

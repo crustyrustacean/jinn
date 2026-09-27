@@ -13,7 +13,7 @@ trouper = { workspace = true }
 # read/write AppState through the shared `State` API, publish
 # provider contracts, and reuse the kernel session vocabulary
 # (no_api_keys_msg).
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-mcp-msg = { workspace = true }
 # The provider cell (minted by the provider-selection slice's install and
@@ -36,7 +36,7 @@ jinn-testutil = { workspace = true }
 
 rstest = { workspace = true }
 toml = { workspace = true }
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 tempfile = { workspace = true }
 
 [lints]

@@ -128,12 +128,12 @@ fn confirm_arg_input(ctx: &mut ActionCtx<'_>, cell: &ArgInputCell) -> IntentResu
     let Some(app_state) = ctx
         .state
         .as_any_mut()
-        .and_then(|state| state.downcast_mut::<jinn_domain::AppState>())
+        .and_then(|state| state.downcast_mut::<jinn_kernel::AppState>())
     else {
         return IntentResult::empty();
     };
 
-    jinn_domain::session_lifecycle::intent::handle_session_lifecycle_setup(
+    jinn_kernel::session_lifecycle::intent::handle_session_lifecycle_setup(
         app_state,
         &lifecycle_name,
         &args,
@@ -177,13 +177,13 @@ mod tests {
     use jinn_slices::SliceActionState;
 
     struct FakeState {
-        kernel: jinn_domain::AppState,
+        kernel: jinn_kernel::AppState,
     }
 
     impl Default for FakeState {
         fn default() -> Self {
             Self {
-                kernel: jinn_domain::AppState::default_with_scope_focus(),
+                kernel: jinn_kernel::AppState::default_with_scope_focus(),
             }
         }
     }

@@ -8,7 +8,7 @@ jinn-common = { workspace = true }
 jinn-config = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-cwd-msg = { workspace = true }
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 jinn-picker = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-selection-widget = { workspace = true }

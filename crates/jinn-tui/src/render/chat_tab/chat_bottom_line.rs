@@ -4,7 +4,7 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 
-use jinn_domain::RenderCtx;
+use jinn_kernel::RenderCtx;
 
 /// Renders the horizontal separator line (`─`) at the bottom of the content area.
 ///

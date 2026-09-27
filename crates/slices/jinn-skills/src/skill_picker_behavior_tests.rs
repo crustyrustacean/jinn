@@ -63,13 +63,13 @@ fn wired() -> (TypedCell<SkillPickerState>, KeyRoutes) {
 async fn activated() -> (
     jinn_slices::Slices,
     KeyRoutes,
-    &'static jinn_domain::Services,
+    &'static jinn_kernel::Services,
 ) {
     let slices = jinn_slices::Slices::new();
     let key_routes = KeyRoutes::new();
     let mut viewport = jinn_slices::view::Viewport::new();
     let overlay_views = jinn_slices::OverlayViews::new();
-    let services = jinn_domain::Services::new_fake().await;
+    let services = jinn_kernel::Services::new_fake().await;
     let mut host = jinn_slices::SliceHost::new(
         &slices,
         &mut viewport,
@@ -81,7 +81,7 @@ async fn activated() -> (
     crate::activate(&mut host);
     host.finalize(&|_scope, _hook| ());
 
-    let system: &'static jinn_domain::Services = Box::leak(Box::new(services));
+    let system: &'static jinn_kernel::Services = Box::leak(Box::new(services));
     (slices, key_routes, system)
 }
 

@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 
 /// Where a tool result's session entry should be pinned in the assembled prompt.
 ///
-/// Mirrors `jinn_domain::session::chat_entry::PinPosition`; duplicated here so
-/// provider-side code can express pinning without depending on `jinn-domain`. The
+/// Mirrors `jinn_kernel::session::chat_entry::PinPosition`; duplicated here so
+/// provider-side code can express pinning without depending on `jinn-kernel`. The
 /// session actor converts to the domain type at the boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ToolResultPinPosition {
@@ -108,7 +108,7 @@ impl ToolDefinition {
     ///
     /// `provider_name` is the prefix of the model string (e.g. `"openrouter"`
     /// from `openrouter/openai/gpt-oss-120b`). The caller is expected to derive it
-    /// from the session's active model (in `jinn-domain`, that is
+    /// from the session's active model (in `jinn-kernel`, that is
     /// `ModelSelection::provider_name`).
     #[must_use]
     pub fn available_for_provider(&self, provider_name: &str) -> bool {

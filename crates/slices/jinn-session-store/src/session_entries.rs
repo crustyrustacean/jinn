@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use jinn_core_types::SessionId;
-use jinn_domain::common::services::Services;
+use jinn_kernel::common::services::Services;
 use jinn_session_store_msg::SessionTreeEntry;
 use jinn_theme::Theme;
 
@@ -202,8 +202,8 @@ mod tests {
         reason = "test code"
     )]
     use jinn_core_types::SessionId;
-    use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::services::test_services::TestServices;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::common::services::test_services::TestServices;
     use jinn_selection_widget::PickerItem;
     use jinn_selection_widget::TreeItem;
     use jinn_session_state::SessionSnapshot;
@@ -287,7 +287,7 @@ mod tests {
     #[tokio::test]
     async fn load_session_entries_returns_empty_on_error() {
         // Given a test Services (with fake session store that returns empty).
-        let services = jinn_domain::common::services::Services::new_fake().await;
+        let services = jinn_kernel::common::services::Services::new_fake().await;
 
         // When loading session entries.
         let entries = load_session_entries(&services, &default_theme()).await;
@@ -399,7 +399,7 @@ mod tests {
         async fn fetch_window(
             &self,
             _session_id: &SessionId,
-            _anchor: &jinn_domain::protocol::ChatEntryId,
+            _anchor: &jinn_kernel::protocol::ChatEntryId,
             _context: usize,
         ) -> Result<
             Option<jinn_session_store_msg::TranscriptWindow>,
@@ -551,7 +551,7 @@ mod tests {
         async fn fetch_window(
             &self,
             _session_id: &SessionId,
-            _anchor: &jinn_domain::protocol::ChatEntryId,
+            _anchor: &jinn_kernel::protocol::ChatEntryId,
             _context: usize,
         ) -> Result<
             Option<jinn_session_store_msg::TranscriptWindow>,

@@ -15,10 +15,10 @@ use trouper::system::ActorSystem;
 
 use jinn_context_curation_msg::TriggerCompaction;
 use jinn_core_types::ChatEntry;
-use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::common::services::Services;
-use jinn_domain::common::services::bus_service::BusService;
-use jinn_domain::common::state::State;
+use jinn_kernel::common::actor_deps::BusPublish;
+use jinn_kernel::common::services::Services;
+use jinn_kernel::common::services::bus_service::BusService;
+use jinn_kernel::common::state::State;
 use jinn_session_history_msg::{PushChatEntry, SubmitHistoryMutations};
 
 use crate::compaction_worker::{CompactionTrigger, CompactionWorker};

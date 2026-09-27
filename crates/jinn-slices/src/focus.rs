@@ -1,5 +1,5 @@
 //! Focus scope and scope stack — tracking what the user is focused on
-//! (shared vocabulary; the kernel re-exports under `jinn_domain::common`).
+//! (shared vocabulary; the kernel re-exports under `jinn_kernel::common`).
 
 use crate::mode::Mode;
 use crate::picker_kind::PickerKind;

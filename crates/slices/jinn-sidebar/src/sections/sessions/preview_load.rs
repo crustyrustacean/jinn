@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 use jinn_chat_log_view_msg::{PREVIEW_ENTRY_COUNT, PreviewSessionRequested};
 use jinn_core_types::{ChatEntry, SessionId};
-use jinn_domain::common::app_state::AppState;
+use jinn_kernel::common::app_state::AppState;
 use jinn_preferences_config::schemas::ChatLogConfig;
 use jinn_slices::ConfigLayer;
 
@@ -197,7 +197,7 @@ mod preview_load_tests {
     )]
 
     use super::*;
-    use jinn_domain::protocol::ChatEntry;
+    use jinn_kernel::protocol::ChatEntry;
     use jinn_session_state::ChatSessionState;
 
     /// App state holding one loaded session, with a recorded preview width.

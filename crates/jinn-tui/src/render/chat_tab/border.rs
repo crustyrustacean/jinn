@@ -1,6 +1,6 @@
 //! Vertical border line between main column and sidebar.
 
-use jinn_domain::RenderCtx;
+use jinn_kernel::RenderCtx;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;

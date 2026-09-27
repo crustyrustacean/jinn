@@ -8,7 +8,7 @@ use jinn_context_assembly::inputs_snapshot::assemble_via_service;
 use jinn_context_assembly_msg::ContextOverrideChanged;
 use jinn_core_types::PinPosition;
 use jinn_core_types::model_selection::ModelSelection;
-use jinn_domain::common::actor_deps::BusPublish;
+use jinn_kernel::common::actor_deps::BusPublish;
 use jinn_inference_msg::SendToLlmProvider;
 use jinn_session_msg::PhaseKind;
 use jinn_token_count_msg::TokenRecord;
@@ -184,7 +184,7 @@ impl SessionPersistenceActor {
 
                 let reasoning_effort = {
                     let profile = session.profile();
-                    jinn_domain::resolve_effort(profile.reasoning_effort)
+                    jinn_kernel::resolve_effort(profile.reasoning_effort)
                 };
                 let (provider_id, model_used, endpoint_tag) = {
                     // Snapshot the endpoint tag immutably before mutating the model
@@ -361,7 +361,7 @@ mod tests {
     use super::super::super::helpers::{ensure_context_assembly, test_actor, test_actor_recording};
     use jinn_core_types::ToolResultStatus;
     use jinn_core_types::tool_types::{ToolCall, ToolResult};
-    use jinn_domain::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
+    use jinn_kernel::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
     use jinn_inference_msg::{StreamCompleted, StreamCompletedReason};
     use jinn_session_msg::PhaseKind;
     use jinn_token_count_msg::TokenRecord;
@@ -411,9 +411,9 @@ mod tests {
     async fn tool_batch_completed_via_bus_emits_continuation() {
         // Given a spawned session actor with a tool-call entry in its history.
         use crate::session_actor::{SessionPersistenceActor, SessionPersistenceActorDeps};
-        use jinn_domain::common::app_state::AppState;
-        use jinn_domain::common::bus::HarnessServices;
-        use jinn_domain::common::state::State;
+        use jinn_kernel::common::app_state::AppState;
+        use jinn_kernel::common::bus::HarnessServices;
+        use jinn_kernel::common::state::State;
         use jinn_inference_msg::SendToLlmProvider;
         use jinn_llm_support::token_estimator::TiktokenCounter;
         use jinn_testutil::bus_harness::{TestHarness, await_recorded};
@@ -481,9 +481,9 @@ mod tests {
         use crate::session_actor::{SessionPersistenceActor, SessionPersistenceActorDeps};
         use jinn_core_types::ChatEntry;
         use jinn_core_types::tool_types::ToolResult;
-        use jinn_domain::common::app_state::AppState;
-        use jinn_domain::common::bus::HarnessServices;
-        use jinn_domain::common::state::State;
+        use jinn_kernel::common::app_state::AppState;
+        use jinn_kernel::common::bus::HarnessServices;
+        use jinn_kernel::common::state::State;
         use jinn_inference_msg::SendToLlmProvider;
         use jinn_inference_msg::{StreamCompleted, StreamCompletedReason};
         use jinn_llm_support::token_estimator::TiktokenCounter;
@@ -634,9 +634,9 @@ mod tests {
         // timing-dependent and not deterministically reproducible here; this guard
         // ensures the wiring stays correct and the burst path stays livelock-free.
         use crate::session_actor::{SessionPersistenceActor, SessionPersistenceActorDeps};
-        use jinn_domain::common::app_state::AppState;
-        use jinn_domain::common::bus::HarnessServices;
-        use jinn_domain::common::state::State;
+        use jinn_kernel::common::app_state::AppState;
+        use jinn_kernel::common::bus::HarnessServices;
+        use jinn_kernel::common::state::State;
         use jinn_inference_msg::SendToLlmProvider;
         use jinn_inference_msg::StreamToken;
         use jinn_llm_support::token_estimator::TiktokenCounter;

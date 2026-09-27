@@ -3,7 +3,7 @@
 //! A pure value type: the dashboard folds bus lifecycle events
 //! (`ActorStarting`, `ActorStarted`, `ActorShutdownCompleted`) into it,
 //! and any consumer of actor status can compare against it without
-//! depending on `jinn-domain`.
+//! depending on `jinn-kernel`.
 
 /// The lifecycle phase of an actor.
 ///

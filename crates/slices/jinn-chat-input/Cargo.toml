@@ -6,7 +6,7 @@ edition.workspace = true
 [dependencies]
 jinn-chat-input-msg = { workspace = true }
 jinn-slices = { workspace = true }
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 jinn-config = { workspace = true }
 jinn-context = { workspace = true }
 jinn-context-curation-msg = { workspace = true }

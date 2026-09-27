@@ -15,8 +15,8 @@
 
 use jinn_core_types::llm_message::LlmMessage;
 use jinn_core_types::{ChatEntryKind, HistoryMutation};
-use jinn_domain::protocol::{ChangeSource, ChatEntry, ChatEntryId, ContextOverride};
-use jinn_domain::protocol::{PinPosition, ToolResultStatus};
+use jinn_kernel::protocol::{ChangeSource, ChatEntry, ChatEntryId, ContextOverride};
+use jinn_kernel::protocol::{PinPosition, ToolResultStatus};
 use jinn_session_state::ChatSessionState;
 
 /// A complete loop: empty assistant, one call, one result.

@@ -6,10 +6,10 @@
 
 use jinn_common::shorten_path;
 use jinn_core_types::model_selection::ModelSelection;
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::render_ctx::RenderCtx;
-use jinn_domain::common::ui_element::UiElement;
-use jinn_domain::resolve_effort;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::render_ctx::RenderCtx;
+use jinn_kernel::common::ui_element::UiElement;
+use jinn_kernel::resolve_effort;
 use jinn_provider_config::InputModalities;
 use jinn_provider_config::ModelCache;
 use jinn_provider_config::ModelInfo;

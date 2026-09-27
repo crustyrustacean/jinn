@@ -9,8 +9,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use jinn_core_types::SessionId;
-use jinn_domain::common::services::bus_service::BusService;
-use jinn_domain::common::state::State;
+use jinn_kernel::common::services::bus_service::BusService;
+use jinn_kernel::common::state::State;
 
 /// Context provided to every built-in tool at execution time.
 ///

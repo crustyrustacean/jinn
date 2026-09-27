@@ -22,10 +22,10 @@ use trouper::system::ActorSystem;
 
 use jinn_core_types::HistoryMutation;
 use jinn_core_types::{ChatEntry, SessionId};
-use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::common::services::Services;
-use jinn_domain::common::services::bus_service::BusService;
-use jinn_domain::common::state::State;
+use jinn_kernel::common::actor_deps::BusPublish;
+use jinn_kernel::common::services::Services;
+use jinn_kernel::common::services::bus_service::BusService;
+use jinn_kernel::common::state::State;
 use jinn_session_history_msg::{HistoryAppended, SubmitHistoryMutations};
 
 use crate::worker::HistoryWorker;

@@ -11,7 +11,7 @@
 #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
 use crate::common::{composed_keymap, plain};
-use jinn_domain::KernelIntent;
+use jinn_kernel::KernelIntent;
 use jinn_tui::Scope;
 use ratatui_which_key::NodeResult;
 

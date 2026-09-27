@@ -7,8 +7,8 @@
 //! no rows, so the keys stay unbound — the sidebar is inert by
 //! construction.
 
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::protocol::IntentResult;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::protocol::IntentResult;
 use jinn_slices::SliceScopeId;
 use jinn_slices::route::{
     ActionCtx, ActionFn, BindSite, KeyRoutes, RouteId, RouteOutcome, RouteRow, ScopeSignal,
@@ -243,7 +243,7 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "t",
         "general",
         "pin to top",
-        sync(|state| pins::handle_pins_pin(state, jinn_domain::protocol::PinPosition::Top)),
+        sync(|state| pins::handle_pins_pin(state, jinn_kernel::protocol::PinPosition::Top)),
     ));
     routes.attach(row(
         "pin-bottom",
@@ -251,7 +251,7 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "b",
         "general",
         "pin to bottom",
-        sync(|state| pins::handle_pins_pin(state, jinn_domain::protocol::PinPosition::Bottom)),
+        sync(|state| pins::handle_pins_pin(state, jinn_kernel::protocol::PinPosition::Bottom)),
     ));
     routes.attach(row(
         "pin-relative",
@@ -259,7 +259,7 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "r",
         "general",
         "pin above/below",
-        sync(|state| pins::handle_pins_pin(state, jinn_domain::protocol::PinPosition::Relative)),
+        sync(|state| pins::handle_pins_pin(state, jinn_kernel::protocol::PinPosition::Relative)),
     ));
     routes.attach(row(
         "pin-cycle",
@@ -699,7 +699,7 @@ mod tests {
 fn session_terminal_row_toggles_the_overlay() {
     // Given a session holding a live terminal, with the Sessions section
     // selected in the sidebar.
-    use jinn_domain::AppState;
+    use jinn_kernel::AppState;
     use jinn_session_state::ChatSessionState;
     let _ = jinn_term_msg::TERM_CONTROLS.set(jinn_term_msg::TermControls::default());
     let mut state = AppState::default_with_scope_focus();

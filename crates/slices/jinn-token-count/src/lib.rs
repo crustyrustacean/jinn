@@ -9,7 +9,7 @@
 //! cache for their reads.
 //!
 //! Kernel dependency: the count actor fills token counts through the
-//! session mutation projection on shared [`jinn_domain::common::state::State`].
+//! session mutation projection on shared [`jinn_kernel::common::state::State`].
 
 pub mod count_actor;
 pub mod eviction_actor;
@@ -34,7 +34,7 @@ pub use jinn_token_count_msg::token_cache_slot;
 )]
 pub fn activate(
     host: &mut SliceHost<'_, jinn_slices::RenderFacts>,
-    state: jinn_domain::common::state::State,
+    state: jinn_kernel::common::state::State,
 ) -> HistoryWorkerChatEntryTokenCache {
     let cache = HistoryWorkerChatEntryTokenCache::new();
     let _cell = host
@@ -64,7 +64,7 @@ mod tests {
     #[tokio::test]
     async fn activate_registers_cell_backed_by_the_returned_cache() {
         // Given an activated slice host.
-        let mut services = jinn_domain::Services::new_fake().await;
+        let mut services = jinn_kernel::Services::new_fake().await;
         let mut host = jinn_slices::SliceHost::new(
             &services.slices,
             &mut services.viewport,
@@ -76,8 +76,8 @@ mod tests {
         // When activating and inserting through the registered cell.
         let cache = activate(
             &mut host,
-            jinn_domain::common::state::State::new(
-                jinn_domain::common::app_state::AppState::default(),
+            jinn_kernel::common::state::State::new(
+                jinn_kernel::common::app_state::AppState::default(),
             ),
         );
         let cell = services

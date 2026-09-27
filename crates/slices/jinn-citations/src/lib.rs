@@ -17,7 +17,7 @@
 pub mod citations_actor;
 pub mod detect;
 
-use jinn_domain::Services;
+use jinn_kernel::Services;
 use jinn_slices::RenderFacts;
 use jinn_slices::SliceHost;
 

@@ -338,7 +338,7 @@ fn shell_escape(s: &str) -> String {
 /// Routing through the [`Bridge`] is what makes the selection actually
 /// reach the session actor.
 fn apply_selected_cwd(
-    bridge: &jinn_domain::common::bridge::Bridge,
+    bridge: &jinn_kernel::common::bridge::Bridge,
     session_id: jinn_core_types::SessionId,
     path: &std::path::Path,
 ) -> bool {
@@ -360,7 +360,7 @@ fn apply_selected_cwd(
             return false;
         }
     };
-    let _ = bridge.send(jinn_domain::Bridge::publish_closure(
+    let _ = bridge.send(jinn_kernel::Bridge::publish_closure(
         jinn_session_lifecycle_msg::SetSessionCwd {
             session_id,
             cwd: canonical,
@@ -378,7 +378,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use jinn_domain::common::bridge::Bridge;
+    use jinn_kernel::common::bridge::Bridge;
     use jinn_session_lifecycle_msg::SetSessionCwd;
     use std::sync::{Arc, Mutex};
 
@@ -421,7 +421,7 @@ mod tests {
     fn spawn_system_with_recorder(
         handle: &tokio::runtime::Handle,
     ) -> (
-        jinn_domain::common::services::bus_service::BusService,
+        jinn_kernel::common::services::bus_service::BusService,
         Bridge,
         Arc<Mutex<Vec<SetSessionCwd>>>,
     ) {
@@ -429,7 +429,7 @@ mod tests {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
         let bus =
-            jinn_domain::common::services::bus_service::BusService::new_trouper(system.clone());
+            jinn_kernel::common::services::bus_service::BusService::new_trouper(system.clone());
         let buffer = Arc::new(Mutex::new(Vec::new()));
         let path = trouper::actor::ActorPath::new(format!(
             "test.cwd-recorder.{}",

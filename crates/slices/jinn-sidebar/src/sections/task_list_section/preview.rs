@@ -19,8 +19,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::sections::task_list_section::clamp_scroll;
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::render_ctx::RenderCtx;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_theme::Theme;
 use jinn_tools_msg::{Phase, Task, TaskStatus};
 
@@ -309,7 +309,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use jinn_domain::common::app_state::AppState;
+    use jinn_kernel::common::app_state::AppState;
     use jinn_theme::default_theme;
     use jinn_tools_msg::{PhaseInput, TaskList, TaskStatus};
     use ratatui::{Terminal, backend::TestBackend};
@@ -373,7 +373,7 @@ mod tests {
         // When computing the popup rect.
         let rect = task_list_preview_popup_rect(
             &app,
-            jinn_domain::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
             frame_area(),
             sidebar_rect(),
             5,
@@ -393,7 +393,7 @@ mod tests {
         // When computing the popup rect.
         let rect = task_list_preview_popup_rect(
             &app,
-            jinn_domain::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
             frame_area(),
             sidebar,
             5,
@@ -415,7 +415,7 @@ mod tests {
         // When resolving the rect for a 60-line popup.
         let rect = task_list_preview_popup_rect(
             &app,
-            jinn_domain::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
             frame,
             sidebar,
             60,
@@ -448,7 +448,7 @@ mod tests {
         // When resolving the popup rect.
         let rect = task_list_preview_popup_rect(
             &app,
-            jinn_domain::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
             frame,
             sidebar,
             2,
@@ -460,7 +460,7 @@ mod tests {
         let phase_row = crate::sections::layout::frame_row_of(
             sidebar,
             &app,
-            jinn_domain::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
             jinn_sidebar_msg::SidebarSectionId::TaskList,
             crate::sections::layout::cursor_row_in_section(
                 &app,
@@ -496,7 +496,7 @@ mod tests {
         // When computing the popup rect for a popup that would overflow.
         let rect = task_list_preview_popup_rect(
             &app,
-            jinn_domain::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
             frame,
             sidebar,
             40,
@@ -526,7 +526,7 @@ mod tests {
         // When computing the popup rect.
         let rect = task_list_preview_popup_rect(
             &app,
-            jinn_domain::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
             frame,
             sidebar,
             5,
@@ -643,7 +643,7 @@ mod tests {
         // When the pre-render pass measures geometry for the (short) phase.
         write_preview_geometry(
             &mut app,
-            jinn_domain::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
             frame_area(),
             sidebar_rect(),
         );
@@ -684,7 +684,7 @@ mod tests {
         // When measuring preview geometry.
         write_preview_geometry(
             &mut app,
-            jinn_domain::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
             frame_area(),
             sidebar_rect(),
         );

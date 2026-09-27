@@ -212,8 +212,8 @@ mod tests {
     use crate::tool_types::ToolContext;
     use jinn_core_types::SessionId;
     use jinn_core_types::tool_types::ToolCall;
-    use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::state::State;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::common::state::State;
     use jinn_tools_msg::{PhaseInput, TaskStatus};
 
     use super::*;
@@ -226,7 +226,7 @@ mod tests {
             timeout: None,
             state,
             session_id,
-            app_paths: jinn_domain::common::app_paths::AppPaths::default(),
+            app_paths: jinn_kernel::common::app_paths::AppPaths::default(),
             bus: None,
             max_output_lines: None,
             max_output_bytes: None,

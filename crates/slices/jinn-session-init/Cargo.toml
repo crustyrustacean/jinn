@@ -18,7 +18,7 @@ trouper = { workspace = true }
 # The kernel seam: shared `State`, the trouper bridge relay spawn functions,
 # `scan_cwd_for_session`'s gate, and
 # kernel event types this slice translates and returns via relays.
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 jinn-session-msg = { workspace = true }
 jinn-session-store-msg = { workspace = true }
 serde = { workspace = true }

@@ -801,7 +801,7 @@ mod tests {
             spawn_setup_command("sleep 30", "/bin/sh", std::path::Path::new(".")).expect("spawn");
 
         // When killing the process group then aborting the inner reader task.
-        jinn_domain::common::process_kill::kill_process_group_by_pid(handle.pid);
+        jinn_kernel::common::process_kill::kill_process_group_by_pid(handle.pid);
         handle.abort_handle.abort();
 
         // Then the join resolves to a failure outcome — either the inner task
@@ -837,7 +837,7 @@ mod tests {
             // Cancel from a runtime worker thread, exactly as the session actor
             // does. The whole point of this test is that this does NOT panic.
             let cancel = handle_cl.spawn(async move {
-                jinn_domain::common::process_kill::kill_process_group_by_pid(handle.pid);
+                jinn_kernel::common::process_kill::kill_process_group_by_pid(handle.pid);
                 handle.abort_handle.abort();
             });
             cancel.await.expect("cancel task must not panic");

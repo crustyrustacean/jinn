@@ -7,10 +7,10 @@ use std::mem;
 
 use crossterm::event::{MouseButton, MouseEventKind};
 use derive_more::Debug;
-use jinn_domain::AppCore;
-use jinn_domain::AppUiRegistry;
-use jinn_domain::IntentHandler;
-use jinn_domain::{FocusScope, KernelIntent};
+use jinn_kernel::AppCore;
+use jinn_kernel::AppUiRegistry;
+use jinn_kernel::IntentHandler;
+use jinn_kernel::{FocusScope, KernelIntent};
 use jinn_sidebar::sections::Sidebar;
 use ratatui::Frame;
 use ratatui_which_key::{CrosstermKeymapExt as _, WhichKeyState};
@@ -27,7 +27,7 @@ pub use builder::TuiAppBuilder;
 
 /// Type alias for the which-key state parameterized for jinn.
 pub type WhichKeyInstance =
-    WhichKeyState<jinn_domain::KeyEvent, Scope, KernelIntent, crate::keymap::KeyCategory>;
+    WhichKeyState<jinn_kernel::KeyEvent, Scope, KernelIntent, crate::keymap::KeyCategory>;
 
 /// Top-level application state and event loop.
 #[derive(Debug)]
@@ -36,7 +36,7 @@ pub struct TuiApp {
     pub core: AppCore,
     /// Runtime services.
     #[debug(skip)]
-    pub services: jinn_domain::Services,
+    pub services: jinn_kernel::Services,
     /// UI element registry.
     pub ui_registry: AppUiRegistry,
     /// Message channel for the event loop.
@@ -139,7 +139,7 @@ impl TuiApp {
                         // A paste belongs to the chat input box, not the
                         // kernel: mint the box's dynamic intent and let its
                         // `paste-text` row insert the text.
-                        self.route_intent(jinn_domain::KernelIntent::Dynamic(
+                        self.route_intent(jinn_kernel::KernelIntent::Dynamic(
                             jinn_slices::DynamicIntent::with_bytes(
                                 jinn_chat_input_msg::chat_input_scope(),
                                 jinn_chat_input::routes::PASTE_TEXT_ACTION,
@@ -252,10 +252,10 @@ impl TuiApp {
         }
         if let Some(root) = signals.change_cwd_requested {
             let search_root = match root {
-                jinn_domain::protocol::CwdRoot::Session => {
+                jinn_kernel::protocol::CwdRoot::Session => {
                     self.core.state.read().active_session().cwd().to_owned()
                 }
-                jinn_domain::protocol::CwdRoot::Home => dirs::home_dir().unwrap_or_default(),
+                jinn_kernel::protocol::CwdRoot::Home => dirs::home_dir().unwrap_or_default(),
             };
             self.suspend
                 .request(SuspendAction::ChangeCwd { search_root });

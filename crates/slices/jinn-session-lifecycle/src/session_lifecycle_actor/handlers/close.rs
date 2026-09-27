@@ -1,7 +1,7 @@
 //! Close and teardown completion handling.
 
 use jinn_core_types::SessionId;
-use jinn_domain::common::actor_deps::BusPublish;
+use jinn_kernel::common::actor_deps::BusPublish;
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_lifecycle_msg::{
     FinishSessionTeardown, LifecycleScriptState, SessionTeardownFinished, TeardownFollowUp,
@@ -136,7 +136,7 @@ impl SessionLifecycleActor {
             return None;
         }
         let name = session.lifecycle_name()?;
-        jinn_domain::session_lifecycle::intent::lifecycle_teardown(&self.services.config, name)
+        jinn_kernel::session_lifecycle::intent::lifecycle_teardown(&self.services.config, name)
     }
 
     async fn advance_after_teardown(&self, session_id: &SessionId) {
