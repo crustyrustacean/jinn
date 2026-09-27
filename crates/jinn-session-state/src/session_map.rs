@@ -22,10 +22,13 @@ use crate::chat_session::ChatSessionState;
 /// moment the session is in memory would make the next frame lay out the whole
 /// history, which is the freeze the hand-off to the layout workers avoids.
 ///
-/// It is cleared in three places, one per way a load can end:
+/// It is cleared in four places, one per way a load can end:
 /// - the layout completion actor, once the line counts are measured;
 /// - the session store actor, on a load that failed (no measurement is
 ///   dispatched, so there is nothing left to wait for);
+/// - the session store actor, when a fork completes — the child it re-arms
+///   the guard for is measured off a cache the source already warmed, so the
+///   indication is not left to a measurement that may never run;
 /// - the layout supervisor, on an expired deadline or a worker that died.
 #[derive(Debug)]
 pub struct SessionLoadGuard {
