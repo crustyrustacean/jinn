@@ -34,10 +34,10 @@ use jinn_core_types::SessionId;
 use jinn_domain::Services;
 use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_domain::common::services::bus_service::BusService;
-use jinn_mcp_msg::McpServerConfig;
-use jinn_mcp_msg::config::McpServersConfig;
 use jinn_mcp_msg::{McpEnablementChanged, McpRuntimeState, RestartError, RestartMcpServer};
 use jinn_mcp_msg::{McpServerLog, McpServerStatus};
+use jinn_preferences_config::schemas::mcp::McpServerConfig;
+use jinn_preferences_config::schemas::mcp::McpServersConfig;
 use jinn_session_lifecycle_msg::SessionCreated;
 use jinn_session_msg::SessionArchived;
 use jinn_session_msg::SessionClosed;
@@ -510,9 +510,9 @@ mod lifecycle_tests {
     use jinn_core_types::SessionId;
     use jinn_domain::common::actor_deps::ActorDeps;
     use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
-    use jinn_mcp_msg::McpServerConfig;
-    use jinn_mcp_msg::config::McpServersConfig;
     use jinn_mcp_msg::{McpConnectionStatus, McpServerStatus};
+    use jinn_preferences_config::schemas::mcp::McpServerConfig;
+    use jinn_preferences_config::schemas::mcp::McpServersConfig;
 
     use super::{McpCoordinatorActor, McpCoordinatorActorDeps};
     use jinn_mcp_msg::McpEnablementChanged;

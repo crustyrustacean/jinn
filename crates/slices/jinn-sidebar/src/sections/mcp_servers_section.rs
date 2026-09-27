@@ -21,7 +21,7 @@ use crate::sections::section_trait::{
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::render_ctx::RenderCtx;
 use jinn_mcp_msg::McpConnectionStatus;
-use jinn_mcp_msg::config::McpServersConfig;
+use jinn_preferences_config::schemas::mcp::McpServersConfig;
 use jinn_slices::ConfigLayer;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -282,7 +282,7 @@ mod tests {
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::render_ctx::RenderCtx;
     use jinn_mcp_msg::McpConnectionStatus;
-    use jinn_mcp_msg::McpServerConfig;
+    use jinn_preferences_config::schemas::mcp::McpServerConfig;
     use jinn_testutil::setup_term;
 
     fn server(name: &str) -> (String, McpServerConfig) {

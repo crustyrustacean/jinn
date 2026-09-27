@@ -20,7 +20,7 @@ use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_mcp_msg::RestartError;
 
 use super::BoxedToolFuture;
-use jinn_mcp_msg::config::McpServersConfig;
+use jinn_preferences_config::schemas::mcp::McpServersConfig;
 
 /// Defensive outer bound on the `ask`. The coordinator's own `restart_one`
 /// already bounds at 60s; this catches a coordinator that never replies

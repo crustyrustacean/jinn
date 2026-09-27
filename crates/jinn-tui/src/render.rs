@@ -101,6 +101,39 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
         wstate.frontend.sidebar_width,
         full_width,
     );
+    // The session preview wraps its lines at a width derived from the frame, and
+    // the keyboard path asks for those lines by name. Both sides must name the
+    // same width or the rendered lines can never match the lookup and the
+    // preview spins forever. It is recorded here, in the one place that runs
+    // every frame with the true area and no early return — recording it from
+    // the preview's own render pass would leave the window between a cursor
+    // move and the next frame asking for a stale width.
+    let preview_width = jinn_sidebar::sections::sessions::preview::preview_content_width(area);
+    wstate
+        .frontend
+        .update_sections(|s| s.sessions.preview_content_width = preview_width);
+
+    // The popup's cache is not driven by the cursor alone: a session can load
+    // into the list, or the width can be measured, long after the last key. A
+    // cache miss with nothing in flight is a request nobody made, so this pass
+    // makes it — the same shape as the terminal resize below, which detects a
+    // change in its cell and publishes only when it fires. `update_preview`
+    // dedupes against the cache and against in-flight renders, so a settled
+    // cursor publishes once and then stays silent.
+    if let Some(request) = jinn_sidebar::sections::sessions::preview_load::request_preview_if_needed(
+        &mut wstate,
+        &app.services.config,
+    ) {
+        // The request and its deadline travel together, exactly as the keyboard
+        // path sends them: a render nobody watches is a spinner with nothing to
+        // end it.
+        for closure in
+            jinn_sidebar::sections::sessions::navigate::preview_messages(request).messages
+        {
+            let _ = app.core.bridge.send(closure);
+        }
+    }
+
     // The terminal overlay's inner rect sizes the pty (WYSIWYG). Computed
     // every frame while open; deduped by the mirror, sent through the bridge.
     if matches!(

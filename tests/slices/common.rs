@@ -88,6 +88,15 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_domain::Services)
         // activation before the boot trio, whose init actor writes the
         // disk-loaded cache through the returned cell).
         activate_provider_selection(&mut services, &core.state);
+        // The layout pool and its supervisor — the component that owns the
+        // preview deadline. Production wiring installs these in
+        // `actor_wiring::build`; without them here, nothing in the composed test
+        // app can ever time a preview out, so any test of that path would hang
+        // for reasons that have nothing to do with the code under test.
+        jinn_domain::feat::ui::chat_log::install_layout_actors(
+            &services.trouper_system,
+            core.state.clone(),
+        );
         // Bindings generate after all activations so every slice's rows exist.
         jinn_tui::keymap_gen::bind_route_rows(&services.key_routes, &mut keymap);
     }

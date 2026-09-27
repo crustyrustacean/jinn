@@ -28,10 +28,10 @@ use jinn_theme::Theme;
 /// the [`jinn_picker::PickerHost`](jinn_picker::PickerHost) seam.
 ///
 /// The session preview's rendered lines are deliberately *not* cached here.
-/// They live in the sidebar slice's own cell as `PreviewLoad::Ready`, which the
-/// render pass reads and a theme change resets through the slice's actor — the
-/// same arrangement the skills preview uses. A cache here would be a second copy
-/// of the same lines under a second invalidation rule.
+/// They live in the sidebar slice's own cell as `PreviewLoad`'s per-session
+/// cache, which the render pass reads and a theme change resets through the
+/// slice's actor — the same arrangement the skills preview uses. A cache here
+/// would be a second copy of the same lines under a second invalidation rule.
 #[derive(Debug, Default)]
 pub struct FrontendCaches {
     /// Cached wrapped line counts and rendered lines per chat entry.

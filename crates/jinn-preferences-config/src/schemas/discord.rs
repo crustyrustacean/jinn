@@ -1,9 +1,11 @@
-//! `[discord]` configuration table for `jinn.toml`.
+//! The `[discord]` section — the Discord bot's configuration.
 //!
-//! Slice-owned: read through the host's config-section view with
-//! slice-supplied defaults. When `enabled = true`, the TUI process
-//! spawns a Discord bot (via the `jinn-discord` crate) that drives the
-//! same running jinn instance.
+//! All fields are optional and default to a disabled bot. When
+//! `enabled = true`, the TUI process spawns a Discord bot (via the
+//! `jinn-discord` crate) that drives the same running jinn instance.
+//!
+//! The gateway connection, slash-command registration, and thread
+//! bridging stay in `jinn-discord`. This module is data only.
 
 use serde::{Deserialize, Serialize};
 
@@ -54,6 +56,10 @@ impl jinn_config::Configurable for DiscordConfig {
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::expect_used,
+        reason = "test assertions need expect to state what went wrong"
+    )]
     use super::DiscordConfig;
     use serde::Deserialize;
 

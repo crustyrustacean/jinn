@@ -197,7 +197,7 @@ pub fn task_list_rows(state: &AppState) -> u16 {
 pub fn mcp_servers_rows(state: &AppState, config: &ConfigLayer) -> u16 {
     let enabled = state.active_session().enabled_mcp_servers();
     let count = config
-        .read::<jinn_mcp_msg::config::McpServersConfig>()
+        .read::<jinn_preferences_config::schemas::mcp::McpServersConfig>()
         .iter()
         .filter(|(name, _)| enabled.contains(name.as_str()))
         .count();

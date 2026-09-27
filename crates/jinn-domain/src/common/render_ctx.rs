@@ -102,7 +102,7 @@ impl<'a> RenderCtx<'a> {
         );
         let toggle_key = self
             .config
-            .read::<jinn_term_msg::prefs::InteractiveTermPrefs>()
+            .read::<jinn_preferences_config::schemas::term::InteractiveTermPrefs>()
             .control_toggle_key
             .clone();
         facts.set_facts([

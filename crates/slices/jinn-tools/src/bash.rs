@@ -584,6 +584,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+    use jinn_preferences_config::schemas::command_policy::CommandPolicyRule;
     use jinn_tools_msg::CompiledCommandPolicy;
     use std::path::PathBuf;
 
@@ -635,7 +636,7 @@ mod tests {
         let sentinel = dir.path().join("sentinel");
         let ctx = ctx_with_policy(
             dir.path(),
-            CompiledCommandPolicy::compile(&[jinn_tools_msg::CommandPolicyRule {
+            CompiledCommandPolicy::compile(&[CommandPolicyRule {
                 pattern: r"cargo\s+(test|t)\b.*\s-p\b".to_owned(),
                 message: "use just test".to_owned(),
             }]),
@@ -676,7 +677,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         let ctx = ctx_with_policy(
             dir.path(),
-            CompiledCommandPolicy::compile(&[jinn_tools_msg::CommandPolicyRule {
+            CompiledCommandPolicy::compile(&[CommandPolicyRule {
                 pattern: r"cargo\s+(test|t)\b.*\s-p\b".to_owned(),
                 message: "use just test".to_owned(),
             }]),
@@ -714,7 +715,7 @@ mod tests {
         let sentinel = dir.path().join("sentinel");
         let ctx = ctx_with_policy(
             dir.path(),
-            CompiledCommandPolicy::compile(&[jinn_tools_msg::CommandPolicyRule {
+            CompiledCommandPolicy::compile(&[CommandPolicyRule {
                 pattern: "rg -rn".to_owned(),
                 message: "ripgrep `-r` takes a replacement value — use `-n` alone.".to_owned(),
             }]),

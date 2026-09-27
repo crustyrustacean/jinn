@@ -20,7 +20,7 @@ pub mod query_responder;
 pub mod route_rows;
 pub mod screen_task;
 
-use jinn_term_msg::prefs::InteractiveTermPrefs;
+use jinn_preferences_config::schemas::term::InteractiveTermPrefs;
 
 /// Activates the term slice over the kernel's services: registers the
 /// `term/tabs` cell (idempotent), attaches the keybind rows and the
@@ -61,10 +61,10 @@ pub fn activate(
         .unwrap_or_else(|| {
             tracing::warn!(
                 configured = %configured,
-                default = jinn_term_msg::prefs::DEFAULT_CONTROL_TOGGLE_KEY,
+                default = jinn_preferences_config::schemas::term::DEFAULT_CONTROL_TOGGLE_KEY,
                 "invalid [interactive_term] control_toggle_key; falling back to the default"
             );
-            jinn_term_msg::prefs::DEFAULT_CONTROL_TOGGLE_KEY.to_owned()
+            jinn_preferences_config::schemas::term::DEFAULT_CONTROL_TOGGLE_KEY.to_owned()
         });
     // Row keys are `&'static str`; the normalized key is interned once
     // per launch (bounded, config-derived — a deliberate leak).

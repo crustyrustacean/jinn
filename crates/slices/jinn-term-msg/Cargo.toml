@@ -4,7 +4,6 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-jinn-config = { workspace = true }
 jinn-core-types = { workspace = true }
 trouper = { workspace = true }
 jinn-slices = { workspace = true }

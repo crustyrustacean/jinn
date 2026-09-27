@@ -152,7 +152,7 @@ Entries are added or amended **only with human approval**.
 - (storage) `jinn.toml` holds slice-owned config sections and is auto-created if missing from a comment-rich embedded template, written as bytes so its comments survive.
 - (config) The `jinn.toml` path is selectable per run via the `--config` flag, which redirects both reads and writes for that run.
 - (config) The config path resolves to the user's default location unless `--config` names one, and a `--config` path that does not exist aborts launch. `jinn config init` is the exception: it honors the override and creates the file there, since creating it is the command's purpose.
-- (storage) Startup fail-fast: whole-file providers.toml/jinn.toml syntax errors abort launch before actor wiring; slice-owned config sections validate at slice activation, which is the fail-fast gate for section-shaped config; recovery via jinn config subcommands stays unguarded.
+- (storage) Startup fail-fast: whole-file providers.toml/jinn.toml syntax errors abort launch before actor wiring; config sections validate through the configuration layer's launch-time roster, also before actor wiring, which is the fail-fast gate for section-shaped config; recovery via jinn config subcommands stays unguarded.
 - (storage) `state.toml` holds machine-managed runtime state (e.g. last-selected model) and is NOT auto-created.
 - (storage) Schema migrations run atomically in a single transaction; a crash or interrupt mid-migration rolls back to the last-applied version, leaving no partial schema.
 - (theme) Themes are TOML files in `~/.config/jinn/themes/` (ANSI name, ANSI code, hex, RGB formats); the theme slice scans them into its cell at activation and the theme picker reads the cell, not disk.
@@ -249,10 +249,13 @@ Entries are added or amended **only with human approval**.
 - (slices) The token-count slice is a crate owning the per-session entry token cache cell and both token actors (count fill, cache eviction); the session actor and the prune workers share the cache from the cell.
 - (slices) The preferences slice owns the AppStateActor for state.toml persistence and the pruner accumulation threshold popup; jinn.toml persistence belongs to the configuration layer, so there is no preferences actor.
 - (slices) The project slice owns the project-add popup cell, dynamic scope, route rows, input hook, and overlay rendering.
-- (config) The Configurable trait and the ConfigLayer live in the kernel-free jinn-config crate; jinn.toml section types live with their owning slice and are declared by that slice, and the jinn.toml patcher preserves user comments and key order. The state.toml schema and its storage trait live in jinn-preferences-config.
+- (config) The Configurable trait and the ConfigLayer live in the kernel-free jinn-config crate; every jinn.toml section type lives in the kernel-free jinn-preferences-config crate under src/schemas, one module per section, each declaring its own Configurable or ConfigList impl, and the jinn.toml patcher preserves user comments and key order. The state.toml schema and its storage trait live in jinn-preferences-config.
+- (config) A jinn.toml section's value vocabulary (the payload type a section deserializes into) lives in the same module as the section, even when the type declares no Configurable impl; the behavior that reads a section stays with the feature that runs it.
+- (config) A malformed jinn.toml section aborts launch through the configuration layer's validate, which walks every section registered with it before actor wiring begins; register_all_sections is the single exhaustive roster, called from composition before the check.
+- (config) ConfigList sections are not registered for launch validation — register is bound to Configurable, which supplies from_table — so a malformed list section surfaces at first read rather than at launch.
 - (config) The configuration layer is a ConfigLayer service in Services holding an in-memory snapshot of jinn.toml; every jinn.toml value is read through it and none through AppState.
 - (config) A ConfigLayer is a cheap cloneable handle; consumers read through it at the point of use and never cache a config value.
-- (config) Each jinn.toml section lives under its owning slice's umbrella, named for the slice, and is declared by that slice's Configurable impl.
+- (config) Each jinn.toml section lives under an umbrella named for the feature that runs it (for example `[ui.minimap]`, `[watchdog.stall]`), and is declared in jinn-preferences-config's schemas rather than by the consuming slice.
 - (config) A config section declares its dotted key and its list-of-tables entry key field through the Configurable trait; the layer patches it generically and names no section.
 - (config) A section holding a list-of-tables at the top level (projects, lifecycles, command policies) uses the ConfigList trait so it is written as an array-of-tables rather than a wrapper table.
 - (config) Reading a config section yields a typed value layering the section's present keys over its Default, so a partial section keeps the defaults it omits.
@@ -300,8 +303,11 @@ Entries are added or amended **only with human approval**.
 - (chat-log) A session that has not yet rendered a frame records no content width, and a measurement of such a session is applied rather than treated as stale.
 - (chat-log) The chat log's line counts are keyed to the width each entry was measured at, so a resize invalidates only the counts taken at the old width.
 - (chat-log) The session loading guard is released only by the session that holds it, so a deadline armed for a session the user has left cannot end another session's load.
-- (preview) The sidebar session preview renders its entry lines on the layout worker pool, not the render thread, and shows a spinner until they return; a result for a request the cursor has moved past is discarded rather than shown.
+- (preview) The sidebar session preview renders its entry lines on the layout worker pool, not the render thread, and shows a spinner until they return.
 - (preview) The session preview is keyed on the content of the entries it shows, not on the history's length, so a streaming session previews live text rather than the text the entry started with.
+- (preview) The session preview cache is keyed by session, so moving the cursor between sessions serves a preview from memory rather than re-rendering it.
+- (preview) A session preview render is abandoned on its deadline but a late result is still cached; a result is discarded only when a newer request for the same session supersedes it.
+- (preview) A preview request identical to one already in flight is not republished.
 - (session) Session activation is one command: the session store actor skips the disk read for a session already in memory and measures its chat log instead, so the sidebar, the session picker, and subagent entry all behave alike.
 - (ui) The spinner animation interval is a single shared constant, but the animation *state* is per widget: the three loading indicators render through `throbber-widgets-tui`'s stateful widget, and only the session preview derives its glyph from elapsed time, because it is a bare paragraph with no widget to hold state.
 - (slices) The chat input box is owned by the `jinn-chat-input` slice: its element, validation, autocomplete rendering, directory-lister actor, and keybinds.
