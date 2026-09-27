@@ -2015,12 +2015,9 @@ dependencies = [
  "jinn-chat-input-msg",
  "jinn-chat-log-view-msg",
  "jinn-config",
- "jinn-context-curation-msg",
  "jinn-core-types",
- "jinn-inference-msg",
  "jinn-mcp-msg",
  "jinn-persona-msg",
- "jinn-picker",
  "jinn-preferences-config",
  "jinn-project-msg",
  "jinn-provider-selection-msg",
@@ -2037,7 +2034,6 @@ dependencies = [
  "jinn-tools-msg",
  "parking_lot",
  "rstest",
- "serde",
  "serde_json",
  "tokio",
  "wherror",
@@ -2704,6 +2700,7 @@ name = "jinn-persona"
 version = "0.118.0"
 dependencies = [
  "error-stack",
+ "jinn-app-state",
  "jinn-kernel",
  "jinn-persona-msg",
  "jinn-picker",
@@ -3526,6 +3523,7 @@ name = "jinn-theme-slice"
 version = "0.118.0"
 dependencies = [
  "error-stack",
+ "jinn-app-state",
  "jinn-chat-log-view",
  "jinn-chat-log-view-msg",
  "jinn-core-types",

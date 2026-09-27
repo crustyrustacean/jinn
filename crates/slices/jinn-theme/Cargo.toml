@@ -11,13 +11,17 @@ jinn-slices = { workspace = true }
 jinn-theme = { workspace = true }
 jinn-picker = { workspace = true }
 jinn-selection-widget = { workspace = true }
-jinn-kernel = { workspace = true }
+jinn-app-state = { workspace = true }
 jinn-preferences-config = { workspace = true }
 ratatui = { workspace = true }
 error-stack = { workspace = true }
 wherror = { workspace = true }
 
 [dev-dependencies]
+# The picker tests wire the slice the way composition does, which needs the
+# kernel's Services. Production code reaches the state through jinn-app-state
+# and never touches the kernel, which is what keeps this slice kernel-free.
+jinn-kernel = { workspace = true }
 jinn-chat-log-view = { workspace = true }
 jinn-core-types = { workspace = true }
 rstest = { workspace = true }
