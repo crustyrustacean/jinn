@@ -63,26 +63,17 @@ pub fn activate(
     // scope stands a lower overlay down) and the per-frame write hooks
     // that record this slice's geometry. Stated here, once, so the
     // composition layer never matches a sidebar scope by name.
-    if let Some(hints) = host.slices().scope_hints() {
-        render_wiring::register_hints(&hints);
-    }
-    if let Some(hooks) = host
-        .slices()
-        .pre_render_hooks::<jinn_kernel::common::app_state::AppState>()
-    {
-        render_wiring::register_pre_render_hooks(&hooks);
-    }
+    render_wiring::register_hints(host.slices());
+    render_wiring::register_pre_render_hooks(host.slices());
 
     // The sidebar's late overlays paint after the chat column, anchored
     // to the sidebar's own rect. Registering them against the sidebar
     // region means the render pass has one sidebar call site and never
     // names a sidebar draw function.
-    if let Some(slots) = host.slices().render_slots::<AppState>() {
-        slots.register(
-            jinn_slices::Region::Sidebar,
-            render_wiring::column_draw_fn(),
-        );
-    }
+    host.slices().register_render_slot::<AppState>(
+        jinn_slices::Region::Sidebar,
+        render_wiring::column_draw_fn(),
+    );
 
     // The sessions-cursor clamp actor: trouper, fed by the forward
     // route staged below. Subscribe is the readiness point — through

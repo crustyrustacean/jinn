@@ -54,12 +54,7 @@ pub fn activate(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
     routes::attach_all(host.key_routes());
     // The chat log's own screen regions: the history itself, the
     // minimap column, and the audit popup.
-    if let Some(slots) = host
-        .slices()
-        .render_slots::<jinn_kernel::common::app_state::AppState>()
-    {
-        render_regions::register(&slots);
-    }
+    render_regions::register(host.slices());
 }
 
 /// Register the chat log UI element.

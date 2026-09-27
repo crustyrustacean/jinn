@@ -6,8 +6,6 @@ pub mod border;
 pub mod chat_bottom_line;
 
 use jinn_kernel::RenderCtx;
-use jinn_kernel::common::app_state::AppState;
-use jinn_slices::render_slot::RenderSlots;
 use jinn_slices::{DrawTarget, Region};
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -29,7 +27,7 @@ use super::region_dispatch::draw_region;
 /// that registered a draw function for it.
 /// Selectable rects are collected into `rects` for mouse selection support.
 pub(super) fn render_chat_tab(
-    slots: &RenderSlots<AppState>,
+    slices: &jinn_slices::Slices,
     frame: &mut Frame<'_>,
     layout: &AppLayout,
     ctx: &RenderCtx,
@@ -70,7 +68,7 @@ pub(super) fn render_chat_tab(
         })
     };
     draw_region(
-        slots,
+        slices,
         Region::ChatLog,
         frame,
         DrawTarget::with_select(chat_log_area, log_selection),
@@ -82,7 +80,7 @@ pub(super) fn render_chat_tab(
     // The chat-log slice owns its visibility and its geometry, so it is
     // asked for by region rather than called by name.
     draw_region(
-        slots,
+        slices,
         Region::AuditPopup,
         frame,
         DrawTarget::new(chat_log_area),
@@ -94,7 +92,7 @@ pub(super) fn render_chat_tab(
     // selected entry. The chat-log slice reads the same session history
     // the log does, so it owns both.
     draw_region(
-        slots,
+        slices,
         Region::Minimap,
         frame,
         DrawTarget::with_select(layout.minimap, Some(chat_log_area)),
@@ -111,7 +109,7 @@ pub(super) fn render_chat_tab(
         height: 1,
     };
     draw_region(
-        slots,
+        slices,
         Region::StreamingIndicator,
         frame,
         DrawTarget::new(indicator_area),
@@ -153,7 +151,7 @@ pub(super) fn render_chat_tab(
     // chat-input slice draws both, because the popup is anchored to the
     // box and exists only while it is focused.
     draw_region(
-        slots,
+        slices,
         Region::ChatInput,
         frame,
         DrawTarget::new(layout.input),

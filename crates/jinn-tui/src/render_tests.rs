@@ -55,12 +55,7 @@ pub(crate) fn activate_render_slices(app: &mut crate::TuiApp) {
     // activation would abort on a taken slot. Registering the draw
     // functions is the part the builder does not do, and it is the part
     // these tests assert on.
-    if let Some(slots) = services
-        .slices
-        .render_slots::<jinn_kernel::common::app_state::AppState>()
-    {
-        jinn_chat_log_view::render_regions::register(&slots);
-    }
+    jinn_chat_log_view::render_regions::register(&services.slices);
 }
 
 #[rstest::rstest]

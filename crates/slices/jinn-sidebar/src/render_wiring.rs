@@ -19,9 +19,8 @@ use std::sync::Arc;
 
 use jinn_kernel::common::app_state::AppState;
 use jinn_slices::DrawContext;
-use jinn_slices::pre_render::{ChatRects, PreRenderCtx};
-use jinn_slices::scope_hints::{ScopeHints, ScopeRenderHint};
 use jinn_slices::slice_scope::SliceScopeId;
+use jinn_slices::{ChatRects, PreRenderCtx, ScopeRenderHint};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 
@@ -41,26 +40,26 @@ use crate::sections::section_trait::SidebarSectionId;
 /// * The rename popup's scope stands a lower overlay down, because
 ///   the rename input is modal over the sessions list and the chat
 ///   log's audit popup must not paint through it.
-pub fn register_hints(hints: &ScopeHints) {
+pub fn register_hints(slices: &jinn_slices::Slices) {
     for section in [
         SidebarSectionId::Pins,
         SidebarSectionId::Persona,
         SidebarSectionId::TaskList,
         SidebarSectionId::McpServers,
     ] {
-        hints.register(section.scope_id(), ScopeRenderHint::focused());
+        slices.register_scope_hint(section.scope_id(), ScopeRenderHint::focused());
     }
-    hints.register(resize_scope(), ScopeRenderHint::acting());
+    slices.register_scope_hint(resize_scope(), ScopeRenderHint::acting());
     // Two scopes stand a lower overlay down, and they stand it for
     // different reasons, so each claims it rather than the chrome
     // listing sidebar scope names.
-    hints.register(
+    slices.register_scope_hint(
         SidebarSectionId::Sessions.scope_id(),
         // The sessions list owns a rename input that paints over the
         // chat log, so the chat log's audit popup yields to it.
         ScopeRenderHint::focused().suppressing_lower_overlay(),
     );
-    hints.register(
+    slices.register_scope_hint(
         rename_scope(),
         // The rename popup is modal over the sessions list.
         ScopeRenderHint::focused().suppressing_lower_overlay(),
@@ -84,11 +83,11 @@ fn rename_scope() -> SliceScopeId {
 /// sequence, so the order is part of the contract: the preview width
 /// is recorded before anything reads it, and the scroll offset is
 /// written after the geometry that depends on it.
-pub fn register_pre_render_hooks(hooks: &jinn_slices::pre_render::PreRenderHooks<AppState>) {
-    hooks.push(Arc::new(record_preview_width));
-    hooks.push(Arc::new(request_session_preview));
-    hooks.push(Arc::new(write_task_list_geometry));
-    hooks.push(Arc::new(write_scroll_offset));
+pub fn register_pre_render_hooks(slices: &jinn_slices::Slices) {
+    slices.push_pre_render_hook::<AppState>(Arc::new(record_preview_width));
+    slices.push_pre_render_hook::<AppState>(Arc::new(request_session_preview));
+    slices.push_pre_render_hook::<AppState>(Arc::new(write_task_list_geometry));
+    slices.push_pre_render_hook::<AppState>(Arc::new(write_scroll_offset));
 }
 
 /// Records the width a session preview wraps its lines at.

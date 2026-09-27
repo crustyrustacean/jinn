@@ -16,19 +16,14 @@ pub(super) fn render_chat_bottom_line(frame: &mut Frame<'_>, content_area: Rect,
 
     let line_y = content_area.y + content_area.height.saturating_sub(1);
     let accent = match focus_scope {
-        jinn_slices::FocusScope::Normal => jinn_slices::scope_hints::Accent::Focused,
-        jinn_slices::FocusScope::Dynamic(id) => ctx
-            .slices
-            .scope_hints()
-            .map_or(jinn_slices::scope_hints::Accent::Unfocused, |hints| {
-                hints.hint(&id).accent
-            }),
-        _ => jinn_slices::scope_hints::Accent::Unfocused,
+        jinn_slices::FocusScope::Normal => jinn_slices::Accent::Focused,
+        jinn_slices::FocusScope::Dynamic(id) => ctx.slices.hint_for(&id).accent,
+        _ => jinn_slices::Accent::Unfocused,
     };
     let chat_line_color = match accent {
-        jinn_slices::scope_hints::Accent::Focused => theme.focus_accent,
-        jinn_slices::scope_hints::Accent::Acting => theme.sidebar_resize_accent,
-        jinn_slices::scope_hints::Accent::Unfocused => theme.border_unfocused,
+        jinn_slices::Accent::Focused => theme.focus_accent,
+        jinn_slices::Accent::Acting => theme.sidebar_resize_accent,
+        jinn_slices::Accent::Unfocused => theme.border_unfocused,
     };
     let chat_line_style = Style::default().fg(chat_line_color);
     for x in content_area.x..(content_area.x + content_area.width) {

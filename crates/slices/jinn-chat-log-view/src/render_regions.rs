@@ -20,14 +20,14 @@ use crate::kernel_element::ChatLogElement;
 /// The element instance is created here and captured by the draw
 /// closure, so there is exactly one per process and its throbber
 /// animation state persists across frames.
-pub fn register(slots: &jinn_slices::RenderSlots<AppState>) {
+pub fn register(slices: &jinn_slices::Slices) {
     // The registered draw function is a `Fn`, so it cannot hold a `&mut`
     // to the element across calls. The element is therefore held behind
     // interior mutability: one instance per process, so the loading
     // throbber's animation step persists across frames exactly as it
     // did when the element lived in the kernel's element registry.
     let element = parking_lot::Mutex::new(ChatLogElement::new());
-    slots.register(
+    slices.register_render_slot::<AppState>(
         Region::ChatLog,
         Arc::new(
             move |frame: &mut Frame<'_>, target: DrawTarget, ctx, rects| {
@@ -45,7 +45,7 @@ pub fn register(slots: &jinn_slices::RenderSlots<AppState>) {
     // The vertical minimap column and the `>` arrow that points at the
     // selected entry. The arrow anchors to the chat log's rect, which
     // the layout carries alongside the minimap's own column.
-    slots.register(
+    slices.register_render_slot::<AppState>(
         Region::Minimap,
         Arc::new(|frame: &mut Frame<'_>, target: DrawTarget, ctx, _rects| {
             let Some(chat_log_area) = target.select else {
@@ -58,7 +58,7 @@ pub fn register(slots: &jinn_slices::RenderSlots<AppState>) {
     // The audit popup overlaying the chat log. Registered separately
     // because it paints *above* the log and its visibility is a
     // chat-log cell, not a layout decision.
-    slots.register(
+    slices.register_render_slot::<AppState>(
         Region::AuditPopup,
         Arc::new(|frame: &mut Frame<'_>, target: DrawTarget, ctx, rects| {
             render_audit_popup(frame, target.area, ctx, rects);
@@ -164,10 +164,7 @@ pub fn render_audit_popup(
 fn overlay_active(ctx: &dyn DrawContext<AppState>) -> bool {
     match ctx.state().frontend.scope() {
         jinn_slices::FocusScope::Picker { .. } => true,
-        jinn_slices::FocusScope::Dynamic(id) => ctx
-            .slices()
-            .scope_hints()
-            .is_some_and(|hints| hints.hint(&id).suppresses_lower_overlay),
+        jinn_slices::FocusScope::Dynamic(id) => ctx.slices().hint_for(&id).suppresses_lower_overlay,
         _ => false,
     }
 }

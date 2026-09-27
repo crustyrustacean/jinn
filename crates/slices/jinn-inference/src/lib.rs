@@ -38,12 +38,9 @@ pub fn activate(
     // The streaming indicator's own screen region. The element holds
     // throbber animation state, so the draw function keeps exactly one
     // instance behind interior mutability.
-    if let Some(slots) = host
-        .slices()
-        .render_slots::<jinn_kernel::common::app_state::AppState>()
-    {
-        let element = std::sync::Mutex::new(streaming_indicator::StreamingIndicatorElement::new());
-        slots.register(
+    let element = std::sync::Mutex::new(streaming_indicator::StreamingIndicatorElement::new());
+    host.slices()
+        .register_render_slot::<jinn_kernel::common::app_state::AppState>(
             jinn_slices::Region::StreamingIndicator,
             std::sync::Arc::new(
                 move |frame: &mut ratatui::Frame<'_>,
@@ -72,7 +69,6 @@ pub fn activate(
                 },
             ),
         );
-    }
 
     let _path = inference_actor::InferenceActor::spawn(host.system(), services);
 }

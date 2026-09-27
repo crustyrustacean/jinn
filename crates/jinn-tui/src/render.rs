@@ -56,20 +56,10 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     );
     let active_scope_ref = &active_scope;
 
-    // The slice-owned draw registry, resolved at the application state
-    // type. Each slice registered its regions at activation; an
-    // unregistered region paints nothing.
-    let slots = app
-        .services
-        .slices
-        .render_slots::<AppState>()
-        .unwrap_or_default();
-
     let mut rects = vec![];
     render_base_layers(
         &app.services.slices,
         &mut app.services.viewport,
-        &slots,
         frame,
         &ctx,
         &layout,
@@ -118,10 +108,10 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
     // The registered slice hooks, in the order their slices wired them.
     // The publish closures they return travel in the same order, so a
     // request and the deadline that bounds it stay paired.
-    let hook_ctx = jinn_slices::pre_render::PreRenderCtx {
+    let hook_ctx = jinn_slices::PreRenderCtx {
         frame_area: area,
         chat: match &pre_layout {
-            AppFrameLayout::Chat(chat) => Some(jinn_slices::pre_render::ChatRects {
+            AppFrameLayout::Chat(chat) => Some(jinn_slices::ChatRects {
                 main: chat.main,
                 sidebar: chat.sidebar,
                 input: chat.input,
@@ -130,14 +120,12 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
         },
         config: &app.services.config,
     };
-    if let Some(hooks) = app
+    for closure in app
         .services
         .slices
-        .pre_render_hooks::<jinn_kernel::common::app_state::AppState>()
+        .run_pre_render_hooks(&mut *wstate, &hook_ctx)
     {
-        for closure in hooks.run(&mut wstate, &hook_ctx) {
-            let _ = app.core.bridge.send(closure);
-        }
+        let _ = app.core.bridge.send(closure);
     }
 
     match &pre_layout {
@@ -166,7 +154,6 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
 fn render_base_layers(
     slices: &jinn_slices::Slices,
     viewport: &mut jinn_slices::view::Viewport,
-    slots: &jinn_slices::RenderSlots<AppState>,
     frame: &mut Frame<'_>,
     ctx: &RenderCtx<'_>,
     layout: &AppFrameLayout,
@@ -199,7 +186,7 @@ fn render_base_layers(
             // which is what `select` carries; the slice decides whether to
             // register it, the layout decides whether to offer it.
             let sidebar_select = ctx.state.frontend.is_sidebar().then_some(chat.sidebar);
-            if let Some(draw) = slots.draw(jinn_slices::Region::Sidebar) {
+            if let Some(draw) = slices.draw_for::<AppState>(jinn_slices::Region::Sidebar) {
                 draw(
                     frame,
                     jinn_slices::DrawTarget::with_select(chat.sidebar, sidebar_select),
@@ -207,10 +194,10 @@ fn render_base_layers(
                     rects,
                 );
             }
-            chat_tab::render_chat_tab(slots, frame, chat, ctx, rects);
+            chat_tab::render_chat_tab(slices, frame, chat, ctx, rects);
             // The status bar is a slice-owned region too.
             region_dispatch::draw_region(
-                slots,
+                slices,
                 jinn_slices::Region::StatusBar,
                 frame,
                 jinn_slices::DrawTarget::new(chat.status_bar),

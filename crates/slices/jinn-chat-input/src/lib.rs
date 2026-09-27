@@ -49,11 +49,8 @@ pub fn activate(
 
     // The chat input box's own screen region. The element is stateless, so
     // the draw function needs no interior mutability.
-    if let Some(slots) = host
-        .slices()
-        .render_slots::<jinn_kernel::common::app_state::AppState>()
-    {
-        slots.register(
+    host.slices()
+        .register_render_slot::<jinn_kernel::common::app_state::AppState>(
             jinn_slices::Region::ChatInput,
             std::sync::Arc::new(
                 |frame: &mut ratatui::Frame<'_>,
@@ -68,7 +65,6 @@ pub fn activate(
                 },
             ),
         );
-    }
 }
 
 /// Registers the chat input box's element into the UI registry.
