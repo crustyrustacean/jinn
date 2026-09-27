@@ -1,35 +1,33 @@
 //! Chat tab rendering - dispatches to individual chat sub-components.
 
-pub mod audit_popup;
-pub mod autocomplete;
 pub mod border;
 pub mod chat_bottom_line;
-pub mod chat_log;
-pub mod input_box;
-pub mod minimap;
 
-pub mod sidebar;
-pub mod streaming_indicator;
-
-use jinn_kernel::AppUiRegistry;
 use jinn_kernel::RenderCtx;
+use jinn_kernel::common::app_state::AppState;
+use jinn_slices::render_slot::RenderSlots;
+use jinn_slices::{DrawTarget, Region};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
+use jinn_chat_log_view::chat_log::GUTTER_WIDTH;
+
 use super::app_layout::AppLayout;
+use super::region_dispatch::draw_region;
 
 /// Renders the Chat tab content - chat log, streaming indicator,
 /// queue, bottom line, input box, and autocomplete popup.
 ///
 /// Called from the top-level renderer when the chat view is active.
 /// Does NOT render the sidebar or border (those are rendered at top level).
-/// Computes sub-areas from the layout and delegates to individual render functions.
+/// Computes sub-areas from the layout and hands each one to the slice
+/// that registered a draw function for it.
 /// Selectable rects are collected into `rects` for mouse selection support.
 pub(super) fn render_chat_tab(
-    ui_registry: &mut AppUiRegistry,
+    slots: &RenderSlots<AppState>,
     frame: &mut Frame<'_>,
     layout: &AppLayout,
     ctx: &RenderCtx,
@@ -52,19 +50,55 @@ pub(super) fn render_chat_tab(
         content_area
     };
 
-    // Chat log.
-    chat_log::render_chat_log(
-        ui_registry,
+    // Chat log. The chat-log slice draws it and reports whether the
+    // region supports selection; whether that selection is *registered*
+    // also depends on the sidebar not holding focus, which is
+    // composition's call because the sidebar is a column of this layout.
+    let log_selection = if sidebar_focused {
+        None
+    } else {
+        // The log paints into `chat_log_area`, but the selectable region
+        // spans the full content area: the input box and the bottom line
+        // below the log are not part of the selection.
+        Some(Rect {
+            x: content_area.x + GUTTER_WIDTH,
+            y: content_area.y,
+            width: content_area.width.saturating_sub(GUTTER_WIDTH),
+            height: content_area.height,
+        })
+    };
+    draw_region(
+        slots,
+        Region::ChatLog,
         frame,
-        chat_log_area,
-        content_area,
-        sidebar_focused,
+        DrawTarget::with_select(chat_log_area, log_selection),
         ctx,
         rects,
     );
 
     // Audit popup overlay - renders above the chat log when toggled on.
-    audit_popup::render_audit_popup(frame, chat_log_area, ctx, rects);
+    // The chat-log slice owns its visibility and its geometry, so it is
+    // asked for by region rather than called by name.
+    draw_region(
+        slots,
+        Region::AuditPopup,
+        frame,
+        DrawTarget::new(chat_log_area),
+        ctx,
+        rects,
+    );
+
+    // The vertical minimap column and the `>` arrow that points at the
+    // selected entry. The chat-log slice reads the same session history
+    // the log does, so it owns both.
+    draw_region(
+        slots,
+        Region::Minimap,
+        frame,
+        DrawTarget::with_select(layout.minimap, Some(chat_log_area)),
+        ctx,
+        rects,
+    );
 
     // Streaming indicator.
     let indicator_y = content_area.y + content_area.height.saturating_sub(bottom_lines);
@@ -74,10 +108,18 @@ pub(super) fn render_chat_tab(
         width: content_area.width,
         height: 1,
     };
-    streaming_indicator::render_streaming_indicator(ui_registry, frame, indicator_area, ctx);
+    draw_region(
+        slots,
+        Region::StreamingIndicator,
+        frame,
+        DrawTarget::new(indicator_area),
+        ctx,
+        rects,
+    );
 
-    // Cancel stream prompt - overlay at bottom of chat log area.
-
+    // Cancel stream prompt - overlay at bottom of chat log area. This is
+    // composition's own chrome: it is a global confirmation bound to a
+    // frontend flag, not any slice's content.
     if ctx.state.frontend.cancel_stream_prompt {
         let prompt_area = Rect {
             x: chat_log_area.x,
@@ -95,12 +137,15 @@ pub(super) fn render_chat_tab(
     // Chat bottom line.
     chat_bottom_line::render_chat_bottom_line(frame, content_area, ctx);
 
-    // Input box.
-    input_box::render_input_box(ui_registry, frame, layout.input, ctx);
-
-    // Autocomplete popup.
-    autocomplete::render_autocomplete(frame, layout.input, ctx);
-
-    // Vertical minimap column and `>` arrow overlay.
-    minimap::render_minimap(frame, layout.minimap, chat_log_area, ctx);
+    // Input box. The autocomplete popup is part of the same region: the
+    // chat-input slice draws both, because the popup is anchored to the
+    // box and exists only while it is focused.
+    draw_region(
+        slots,
+        Region::ChatInput,
+        frame,
+        DrawTarget::new(layout.input),
+        ctx,
+        rects,
+    );
 }

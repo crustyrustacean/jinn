@@ -123,11 +123,7 @@ impl ScopeHints {
     /// than as a wiring failure.
     #[must_use]
     pub fn hint(&self, scope: &SliceScopeId) -> ScopeRenderHint {
-        self.hints
-            .read()
-            .get(scope)
-            .copied()
-            .unwrap_or_default()
+        self.hints.read().get(scope).copied().unwrap_or_default()
     }
 
     /// The scopes that have a hint, sorted for stable display.
@@ -180,7 +176,10 @@ mod tests {
         // Then the accent round-trips.
         assert_eq!(hint.accent, Accent::Acting);
         // And a sibling scope is unaffected.
-        assert_eq!(hints.hint(&scope("test", "other")).accent, Accent::Unfocused);
+        assert_eq!(
+            hints.hint(&scope("test", "other")).accent,
+            Accent::Unfocused
+        );
     }
 
     #[rstest::rstest]

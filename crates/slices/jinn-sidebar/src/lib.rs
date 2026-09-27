@@ -12,10 +12,12 @@
 
 pub mod key_routes;
 pub mod overlay;
+pub mod render_wiring;
 pub mod sections;
 
 pub use jinn_sidebar_msg::sidebar_sections_slot;
 
+use jinn_kernel::common::app_state::AppState;
 use jinn_slices::SliceHost;
 
 /// Activates the slice: mints the sidebar sections cell, attaches
@@ -55,6 +57,41 @@ pub fn activate(
         std::sync::Arc::new(overlay::render_rename_overlay),
     );
     host.register_overlay_selectable(&key_routes::rename_scope());
+
+    // The sidebar's own rendering registrations: the per-scope chrome
+    // hints (which accent the border and bottom line use, and which
+    // scope stands a lower overlay down) and the per-frame write hooks
+    // that record this slice's geometry. Stated here, once, so the
+    // composition layer never matches a sidebar scope by name.
+    if let Some(hints) = host.slices().scope_hints() {
+        render_wiring::register_hints(&hints);
+    }
+    if let Some(hooks) = host
+        .slices()
+        .pre_render_hooks::<jinn_kernel::common::app_state::AppState>()
+    {
+        render_wiring::register_pre_render_hooks(&hooks);
+    }
+
+    // The sidebar's late overlays paint after the chat column, anchored
+    // to the sidebar's own rect. Registering them against the sidebar
+    // region means the render pass has one sidebar call site and never
+    // names a sidebar draw function.
+    if let Some(slots) = host.slices().render_slots::<AppState>() {
+        slots.register(
+            jinn_slices::Region::Sidebar,
+            std::sync::Arc::new(
+                |frame: &mut ratatui::Frame<'_>,
+                 target: jinn_slices::DrawTarget,
+                 ctx: &dyn jinn_slices::DrawContext<AppState>,
+                 _rects: &mut Vec<ratatui::layout::Rect>| {
+                    // `Frame::area()` is the whole frame; the sidebar rect
+                    // is the region this draw function was called with.
+                    render_wiring::draw_late_overlays(frame, target.area, frame.area(), ctx);
+                },
+            ),
+        );
+    }
 
     // The sessions-cursor clamp actor: trouper, fed by the forward
     // route staged below. Subscribe is the readiness point — through

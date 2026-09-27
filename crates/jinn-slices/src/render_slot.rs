@@ -30,6 +30,11 @@ use parking_lot::RwLock;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 
+use crate::ConfigLayer;
+use crate::OverlayViews;
+use crate::Slices;
+use crate::render_facts::RenderFacts;
+
 /// A region of the screen a slice has claimed for drawing.
 ///
 /// Composition resolves a region to a rect and asks the registry who
@@ -89,14 +94,75 @@ impl fmt::Display for Region {
     }
 }
 
+/// The rects a draw function is given for one frame.
+///
+/// Most regions need only `area` — the rect they paint into. The chat
+/// log needs a second: it paints into a sub-rect of the content area
+/// but registers its mouse selection against the gutter-excluded
+/// content area, and whether that rect exists at all depends on which
+/// column holds focus. `select` carries it; `None` means the slice
+/// should register no selection for this frame.
+#[derive(Debug, Clone, Copy)]
+pub struct DrawTarget {
+    /// The rect this region paints into.
+    pub area: Rect,
+    /// The rect to register as a mouse-selectable region, when one
+    /// applies to this frame.
+    pub select: Option<Rect>,
+}
+
+impl DrawTarget {
+    /// A target for a region that paints into `area` and needs no
+    /// enclosing rect.
+    #[must_use]
+    pub fn new(area: Rect) -> Self {
+        Self { area, select: None }
+    }
+
+    /// A target for a region that also registers `select` as its
+    /// mouse-selectable rect.
+    #[must_use]
+    pub fn with_select(area: Rect, select: Option<Rect>) -> Self {
+        Self { area, select }
+    }
+}
+
+/// What a draw function may read about the frame it paints.
+///
+/// The draw registry is a `'static` cell, so it cannot be keyed on a
+/// borrowed context type. It is keyed on the *state* type `S` instead,
+/// which is `'static`, and the per-frame context reaches the draw
+/// function as `&dyn DrawContext<S>` — a trait object with no lifetime
+/// of its own.
+///
+/// `S` is the application state (`AppState` in this workspace). Naming
+/// it as a parameter is what keeps this crate free of `jinn-kernel`.
+pub trait DrawContext<S>: Send + Sync {
+    /// The application state for this frame, read-only.
+    fn state(&self) -> &S;
+
+    /// The slice registry, for a draw function that resolves a cell
+    /// another slice minted.
+    fn slices(&self) -> &Slices;
+
+    /// The overlay-view registry, for a draw function that paints a
+    /// slice overlay inline.
+    fn overlay_views(&self) -> &OverlayViews<RenderFacts>;
+
+    /// The live configuration layer, read at the point of use.
+    fn config(&self) -> &ConfigLayer;
+}
+
 /// A slice-registered draw function: paints one region for one frame.
 ///
 /// `rects` is the frame's selectable-region accumulator. A draw
 /// function pushes a rect when the region it paints supports mouse
-/// selection — this is why the slot is a parameter rather than a
-/// field on the context: the accumulator is composition's, and the
+/// selection — this is why the accumulator is a parameter rather than
+/// a field on the context: the accumulator is composition's, and the
 /// decision is the slice's.
-pub type DrawFn<C> = Arc<dyn Fn(&mut Frame<'_>, Rect, &C, &mut Vec<Rect>) + Send + Sync>;
+pub type DrawFn<S> = Arc<
+    dyn Fn(&mut Frame<'_>, DrawTarget, &dyn DrawContext<S>, &mut Vec<Rect>) + Send + Sync + 'static,
+>;
 
 /// The frame a draw function paints into, plus the render context.
 ///
@@ -107,21 +173,31 @@ pub type SliceFrame<'f> = ratatui::Frame<'f>;
 
 /// A draw function wrapped for `Debug` (closures are not `Debug`).
 #[derive(Clone)]
-struct DrawEntry<C: 'static>(DrawFn<C>);
+struct DrawEntry<S: 'static>(DrawFn<S>);
 
-impl<C: 'static> fmt::Debug for DrawEntry<C> {
+impl<S: 'static> fmt::Debug for DrawEntry<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("DrawFn(..)")
     }
 }
 
 /// The registry of slice-registered draw functions, keyed by region.
-#[derive(Clone, Debug)]
-pub struct RenderSlots<C: 'static> {
-    slots: Arc<RwLock<HashMap<Region, DrawEntry<C>>>>,
+#[derive(Debug)]
+pub struct RenderSlots<S: 'static> {
+    slots: Arc<RwLock<HashMap<Region, DrawEntry<S>>>>,
 }
 
-impl<C: 'static> Default for RenderSlots<C> {
+impl<S: 'static> Clone for RenderSlots<S> {
+    /// A handle to the same registry, not a copy of it — a slice and the
+    /// render pass each hold one and both observe every registration.
+    fn clone(&self) -> Self {
+        Self {
+            slots: Arc::clone(&self.slots),
+        }
+    }
+}
+
+impl<S: 'static> Default for RenderSlots<S> {
     fn default() -> Self {
         Self {
             slots: Arc::new(RwLock::new(HashMap::new())),
@@ -129,7 +205,7 @@ impl<C: 'static> Default for RenderSlots<C> {
     }
 }
 
-impl<C: 'static> RenderSlots<C> {
+impl<S: 'static> RenderSlots<S> {
     /// Creates an empty registry.
     #[must_use]
     pub fn new() -> Self {
@@ -139,13 +215,13 @@ impl<C: 'static> RenderSlots<C> {
     /// Registers the draw function for `region`, replacing any previous
     /// one. Called once per region at slice activation; a slice that
     /// claims no region registers nothing.
-    pub fn register(&self, region: Region, draw: DrawFn<C>) {
+    pub fn register(&self, region: Region, draw: DrawFn<S>) {
         self.slots.write().insert(region, DrawEntry(draw));
     }
 
     /// Returns the draw function registered for `region`, if any.
     #[must_use]
-    pub fn draw(&self, region: Region) -> Option<DrawFn<C>> {
+    pub fn draw(&self, region: Region) -> Option<DrawFn<S>> {
         self.slots.read().get(&region).map(|entry| entry.0.clone())
     }
 
@@ -160,6 +236,7 @@ impl<C: 'static> RenderSlots<C> {
 
 #[cfg(test)]
 mod tests {
+    use super::DrawContext;
     use super::Region;
     use super::RenderSlots;
 
@@ -172,9 +249,7 @@ mod tests {
         // When registering a draw function for a region.
         slots.register(
             Region::ChatLog,
-            std::sync::Arc::new(|_, _, ctx: &u8, _| {
-                let _ = ctx;
-            }),
+            std::sync::Arc::new(|_, _, _ctx: &dyn DrawContext<u8>, _| {}),
         );
 
         // Then the registry resolves it back for that region.
@@ -212,7 +287,11 @@ mod tests {
         let mut sorted = names.clone();
         sorted.sort();
         sorted.dedup();
-        assert_eq!(sorted.len(), names.len(), "duplicate region name: {names:?}");
+        assert_eq!(
+            sorted.len(),
+            names.len(),
+            "duplicate region name: {names:?}"
+        );
     }
 
     #[rstest::rstest]

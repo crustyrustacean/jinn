@@ -42,6 +42,25 @@ pub fn activate(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
     )]
     host.register_cell(status_bar_slot(), StatusBarState::default())
         .expect("status-bar slot is registered exactly once at wiring");
+
+    // The status bar's own screen region. The element holds no animation
+    // state, so the draw function needs no interior mutability.
+    if let Some(slots) = host
+        .slices()
+        .render_slots::<jinn_kernel::common::app_state::AppState>()
+    {
+        slots.register(
+            jinn_slices::Region::StatusBar,
+            std::sync::Arc::new(
+                |frame: &mut ratatui::Frame<'_>,
+                 target: jinn_slices::DrawTarget,
+                 ctx: &dyn jinn_slices::DrawContext<jinn_kernel::common::app_state::AppState>,
+                 _rects: &mut Vec<ratatui::layout::Rect>| {
+                    element::paint(frame, target.area, ctx);
+                },
+            ),
+        );
+    }
 }
 
 /// Registers the status bar element into the UI registry.

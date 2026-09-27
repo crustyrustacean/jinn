@@ -80,7 +80,8 @@ pub struct PreRenderCtx<'a> {
 /// Returning `Vec<PublishClosure>` rather than publishing directly is
 /// what keeps the bridge out of this signature; an empty vector means
 /// the hook only wrote state.
-pub type PreRenderHook<S> = Arc<dyn Fn(&mut S, &PreRenderCtx<'_>) -> Vec<PublishClosure> + Send + Sync>;
+pub type PreRenderHook<S> =
+    Arc<dyn Fn(&mut S, &PreRenderCtx<'_>) -> Vec<PublishClosure> + Send + Sync>;
 
 /// A hook wrapped for `Debug` (closures are not `Debug`).
 struct HookEntry<S: 'static>(PreRenderHook<S>);
@@ -258,7 +259,9 @@ mod tests {
         };
         hooks.push(Arc::new(
             move |state: &mut FakeState, ctx: &PreRenderCtx<'_>| {
-                state.order.push(if ctx.chat.is_some() { "chat" } else { "tab" });
+                state
+                    .order
+                    .push(if ctx.chat.is_some() { "chat" } else { "tab" });
                 Vec::new()
             },
         ));

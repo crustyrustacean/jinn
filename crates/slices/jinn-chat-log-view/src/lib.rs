@@ -17,6 +17,7 @@ pub mod audit_popup;
 pub mod chat_entry_selection;
 pub mod chat_log;
 pub mod kernel_element;
+pub mod render_regions;
 pub mod routes;
 pub mod vertical_minimap;
 
@@ -51,6 +52,14 @@ pub fn activate(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
         )
         .expect("audit-popup slot is registered exactly once at wiring");
     routes::attach_all(host.key_routes());
+    // The chat log's own screen regions: the history itself, the
+    // minimap column, and the audit popup.
+    if let Some(slots) = host
+        .slices()
+        .render_slots::<jinn_kernel::common::app_state::AppState>()
+    {
+        render_regions::register(&slots);
+    }
 }
 
 /// Register the chat log UI element.

@@ -329,6 +329,50 @@ impl Slices {
     pub fn register_overlay_selectable(&self, scope: &SliceScopeId) {
         self.overlay_selectable.write().insert(scope.clone(), true);
     }
+
+    /// The slice-owned draw registry, resolved at draw context `C`.
+    ///
+    /// The render pass instantiates this at the kernel's `RenderCtx`,
+    /// which carries the application state; a slice instantiates it at
+    /// whatever context its own draw function needs. A slice that
+    /// resolves it at a different `C` than the render pass does gets a
+    /// fresh, empty registry for that type — which is the wiring-bug
+    /// surface, not a runtime condition.
+    #[must_use]
+    pub fn render_slots<S: Send + Sync + 'static>(
+        &self,
+    ) -> Option<crate::render_slot::RenderSlots<S>> {
+        self.get_or_register(
+            &render_slots_slot(),
+            crate::render_slot::RenderSlots::<S>::new(),
+        )
+        .map(|cell| {
+            let slots = cell.read();
+            slots.clone()
+        })
+    }
+
+    /// The per-scope render-hint registry.
+    #[must_use]
+    pub fn scope_hints(&self) -> Option<crate::scope_hints::ScopeHints> {
+        self.get_or_register(&scope_hints_slot(), crate::scope_hints::ScopeHints::new())
+            .map(|cell| {
+                let hints = cell.read();
+                hints.clone()
+            })
+    }
+}
+
+/// The slot key the shared draw registry is stored under.
+#[must_use]
+pub fn render_slots_slot() -> SlotKey {
+    SlotKey::builtin("jinn", "render-slots")
+}
+
+/// The slot key the shared scope-hint registry is stored under.
+#[must_use]
+pub fn scope_hints_slot() -> SlotKey {
+    SlotKey::builtin("jinn", "scope-hints")
 }
 
 #[cfg(test)]

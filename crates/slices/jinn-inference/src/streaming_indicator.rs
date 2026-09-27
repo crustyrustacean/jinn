@@ -7,9 +7,11 @@
 
 use std::time::Instant;
 
+use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_kernel::common::ui_element::UiElement;
 use jinn_session_msg::PhaseKind;
+use jinn_slices::DrawContext;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -48,13 +50,23 @@ impl Default for StreamingIndicatorElement {
     }
 }
 
-impl UiElement for StreamingIndicatorElement {
-    fn name(&self) -> String {
-        "streaming-indicator".to_owned()
-    }
+/// Paints the streaming indicator into `area`.
+///
+/// The indicator holds throbber animation state, so the registered
+/// draw function keeps exactly one element behind interior mutability
+/// and the animation advances across frames.
+pub fn paint(
+    element: &mut StreamingIndicatorElement,
+    frame: &mut Frame<'_>,
+    area: Rect,
+    ctx: &dyn DrawContext<AppState>,
+) {
+    element.render_body(frame, area, ctx.state());
+}
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
-        let state = ctx.state;
+impl StreamingIndicatorElement {
+    /// The indicator's draw body, without the [`UiElement`] plumbing.
+    fn render_body(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         let session = state.active_session();
         let phase = session.phase();
 
@@ -82,6 +94,16 @@ impl UiElement for StreamingIndicatorElement {
 
         // Advance the animation step only when enough time has elapsed.
         self.maybe_advance_animation();
+    }
+}
+
+impl UiElement for StreamingIndicatorElement {
+    fn name(&self) -> String {
+        "streaming-indicator".to_owned()
+    }
+
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+        self.render_body(frame, area, ctx.state);
     }
 }
 

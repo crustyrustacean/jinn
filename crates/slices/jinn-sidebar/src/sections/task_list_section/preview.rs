@@ -20,7 +20,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::sections::task_list_section::clamp_scroll;
 use jinn_kernel::common::app_state::AppState;
-use jinn_kernel::common::render_ctx::RenderCtx;
+use jinn_slices::DrawContext;
 use jinn_theme::Theme;
 use jinn_tools_msg::{Phase, Task, TaskStatus};
 
@@ -246,9 +246,9 @@ pub fn render_task_list_preview_for_state(
     frame: &mut Frame<'_>,
     sidebar_rect: Rect,
     frame_area: Rect,
-    ctx: &RenderCtx,
+    ctx: &dyn DrawContext<AppState>,
 ) {
-    let state = ctx.state;
+    let state = ctx.state();
     let Some(phase) = previewed_phase(state) else {
         return;
     };
@@ -259,7 +259,7 @@ pub fn render_task_list_preview_for_state(
     let line_count = content_lines.len();
 
     let Some(popup_rect) =
-        task_list_preview_popup_rect(state, ctx.config, frame_area, sidebar_rect, line_count)
+        task_list_preview_popup_rect(state, ctx.config(), frame_area, sidebar_rect, line_count)
     else {
         return;
     };
@@ -310,6 +310,7 @@ mod tests {
     )]
     use super::*;
     use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::common::render_ctx::RenderCtx;
     use jinn_theme::default_theme;
     use jinn_tools_msg::{PhaseInput, TaskList, TaskStatus};
     use ratatui::{Terminal, backend::TestBackend};
