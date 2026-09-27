@@ -14,16 +14,3 @@ pub use jinn_session_state::{
     FrozenTreeNode, SessionStore, SessionStoreError, SessionStoreService, aggregate_session_stats,
     aggregate_tree_stats, find_tree_root, snapshot_frozen_node, snapshot_frozen_node_from_snapshot,
 };
-
-#[cfg(test)]
-mod startup_msg_tests {
-    #![allow(
-        clippy::expect_used,
-        clippy::panic,
-        clippy::unreachable,
-        clippy::indexing_slicing,
-        reason = "test code"
-    )]
-    use super::*;
-    use crate::protocol::ChatEntryKind;
-}

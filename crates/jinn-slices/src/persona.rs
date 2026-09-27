@@ -10,8 +10,6 @@
 //! The persona slice's cell payload ([`Personas`], [`Personas::seeded_replace`],
 //! [`personas_slot`]) is genuinely slice state and stays in `jinn-persona-msg`.
 
-use serde::{Deserialize, Serialize};
-
 /// A parsed persona ready for use in the system prompt.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Persona {
@@ -26,7 +24,6 @@ pub struct Persona {
 #[cfg(test)]
 mod tests {
     use super::Persona;
-    use serde::{Deserialize, Serialize};
 
     #[rstest::rstest]
     fn persona_roundtrips_through_serde() {

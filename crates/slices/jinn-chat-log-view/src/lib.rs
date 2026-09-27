@@ -38,6 +38,14 @@ pub fn activate(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
         .expect("chat-log-view slot is registered exactly once at wiring");
 }
 
+/// Register the chat log UI element.
+///
+/// Called by composition in `jinn-tui`: the slice owns the element, so the
+/// kernel's element registry cannot reference it.
+pub fn register(registry: &mut jinn_domain::common::AppUiRegistry) {
+    kernel_element::register(registry);
+}
+
 #[cfg(test)]
 mod activation_tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
@@ -113,12 +121,4 @@ mod activation_tests {
         assert_eq!(views.get(&session_a).and_then(|v| v.scroll_offset), Some(3));
         assert_eq!(views.get(&session_b).and_then(|v| v.scroll_offset), Some(7));
     }
-}
-
-/// Register the chat log UI element.
-///
-/// Called by composition in `jinn-tui`: the slice owns the element, so the
-/// kernel's element registry cannot reference it.
-pub fn register(registry: &mut jinn_domain::common::AppUiRegistry) {
-    kernel_element::register(registry);
 }

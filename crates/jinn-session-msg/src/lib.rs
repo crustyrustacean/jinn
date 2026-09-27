@@ -12,7 +12,6 @@
 
 use jinn_core_types::SessionId;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 
 pub mod phase_machine;
 pub mod session_origin;

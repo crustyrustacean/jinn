@@ -264,6 +264,14 @@ fn close_session_and_switch(closing_id: &SessionId) -> IntentResult {
     })
 }
 
+/// Handle `Intent::SessionNew`: a blank lifecycle setup.
+///
+/// The new-session intent is a lifecycle setup with no name, no args, and
+/// no explicit cwd, so it delegates rather than duplicating the setup path.
+pub fn handle_session_new(state: &mut AppState, config: &ConfigLayer) -> IntentResult {
+    handle_session_lifecycle_setup(state, "", &[], None, config)
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -937,12 +945,4 @@ mod tests {
         let msg = msg.expect("teardown command should be built");
         assert_eq!(msg.command, "cleanup.sh feature-x");
     }
-}
-
-/// Handle `Intent::SessionNew`: a blank lifecycle setup.
-///
-/// The new-session intent is a lifecycle setup with no name, no args, and
-/// no explicit cwd, so it delegates rather than duplicating the setup path.
-pub fn handle_session_new(state: &mut AppState, config: &ConfigLayer) -> IntentResult {
-    handle_session_lifecycle_setup(state, "", &[], None, config)
 }
