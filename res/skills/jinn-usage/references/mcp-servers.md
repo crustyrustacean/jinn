@@ -6,21 +6,21 @@ once and toggled per session.
 
 ## Declaring servers
 
-Servers live in `jinn.toml` under `[[mcp_server]]` blocks (see
+Servers live in `jinn.toml` under `[mcp.<name>]` blocks (see
 `configuration.md` for the exact file path and the restart caveat):
 
 ```toml
 # stdio — jinn spawns the server (default transport)
-[mcp_server.context7]
+[mcp.context7]
 command = "npx"
 args = ["@context7/mcp-server", "--stdio"]
 
 # remote_http — connect to an already-running server; nothing spawned
-[mcp_server.remote]
+[mcp.remote]
 transport = "remote_http"
 url = "http://localhost:3001/mcp"
 
-[mcp_server.remote.headers]            # local_http / remote_http only
+[mcp.remote.headers]                 # local_http / remote_http only
 Authorization = "Bearer ${MY_API_KEY}" # ${VAR} expanded once at startup
 ```
 
