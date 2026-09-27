@@ -442,7 +442,11 @@ something unreachable, say so and ask what to do instead.
     measured, not estimated. The exploration feeding section 6 is the same
     exploration; it must land in the contract, not evaporate.
 
-3.  **Propose the contract only when the target is settled:**
+3.  When you have enough information, restate the PROBLEM and END STATE and FINAL INVENTORY to the user as a chat response.
+    - The user will either approve or iterate on this.
+    - Generate the contract ONLY AFTER the user has approved.
+
+4.  **Propose the contract only when the target is settled:**
     - If you do not have enough information, go back to (1).
     - **DO NOT** propose if questions remain outstanding.
     - **DO NOT** fold assumptions into the contract. Ask first.
