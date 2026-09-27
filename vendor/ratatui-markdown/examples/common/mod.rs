@@ -14,6 +14,12 @@ use ratatui::{
 };
 use ratatui_markdown::theme::{Generation, RichTextTheme};
 
+#[cfg(all(
+    feature = "highlight",
+    any(feature = "highlight-pest", feature = "mermaid")
+))]
+pub mod mcfunction;
+
 pub struct Theme;
 
 impl RichTextTheme for Theme {
