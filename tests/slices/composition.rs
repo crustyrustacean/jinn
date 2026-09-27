@@ -439,3 +439,244 @@ fn the_sessions_section_binds_no_dead_lifecycle_key() {
         "the sessions section must not bind a dead `N` row, got {keys:?}"
     );
 }
+
+// ── Cancel-stream prompt: it must not outlive the keystroke after arming ──
+//
+// The prompt is raised by the kernel, but a turn's keys mostly belong to
+// slices: pickers, sidebar sections, and the chat box all dispatch through
+// route rows that return before the built-in arms. If the dismissal sat with
+// the built-ins, every one of those keystrokes would leave the bar on screen
+// advertising an abort that is still armed.
+//
+// Each test below drives the real path — a key resolved through the keymap
+// the app composes, into the real `IntentHandler` — because asserting the
+// handler in isolation is exactly the assertion that passed while the bug
+// shipped.
+
+/// A keymap over the given routes, matching how the app composes one.
+fn keymap_over(
+    routes: &jinn_slices::KeyRoutes,
+) -> ratatui_which_key::Keymap<
+    jinn_kernel::KeyEvent,
+    jinn_tui::Scope,
+    jinn_kernel::KernelIntent,
+    jinn_tui::KeyCategory,
+> {
+    let mut keymap = jinn_tui::keymap::init();
+    jinn_tui::keymap_gen::bind_route_rows(routes, &mut keymap);
+    keymap
+}
+
+/// A bare character press.
+fn key(c: char) -> jinn_kernel::KeyEvent {
+    jinn_kernel::KeyEvent {
+        key: jinn_kernel::Key::Char(c),
+        modifiers: jinn_kernel::Modifiers::none(),
+    }
+}
+
+/// Presses `key` in `scope` and dispatches it through the real handler.
+///
+/// # Panics
+///
+/// Panics when the key resolves to no intent — a key that mints nothing
+/// never reaches the handler, so the assertion after it would be vacuous.
+#[expect(
+    clippy::panic,
+    reason = "an unresolvable key would make the dismissal assertion vacuous"
+)]
+fn press_and_dispatch(
+    app: &jinn_tui::TuiApp,
+    scope: jinn_slices::SliceScopeId,
+    key: jinn_kernel::KeyEvent,
+) {
+    let intent = jinn_tui::app::WhichKeyInstance::new(
+        keymap_over(&app.services.key_routes),
+        jinn_tui::Scope::Dynamic(scope.clone()),
+    )
+    .handle_key(key)
+    .unwrap_or_else(|| panic!("key resolved to no intent in {scope:?}"));
+
+    jinn_kernel::feat::intent::IntentHandler::handle(
+        &intent,
+        &mut app.core.state.write(),
+        &app.services.slices,
+        &app.services.key_routes,
+        &app.services.config,
+    );
+}
+
+/// Arms the prompt the way a user does: escape during a live stream.
+async fn armed_app() -> jinn_tui::TuiApp {
+    let app = test_app().await;
+    {
+        let mut state = app.core.state.write();
+        state.active_session_mut().begin_streaming();
+        jinn_kernel::feat::intent::IntentHandler::handle(
+            &jinn_kernel::KernelIntent::NormalEscape,
+            &mut state,
+            &app.services.slices,
+            &app.services.key_routes,
+            &app.services.config,
+        );
+    }
+    assert!(
+        app.core.state.read().frontend.cancel_stream_prompt,
+        "the prompt must be armed before the dismissing keystroke"
+    );
+    app
+}
+
+/// A keystroke owned by a slice — here a picker's own row — clears the prompt.
+#[rstest::rstest]
+#[tokio::test]
+async fn a_picker_own_key_dismisses_the_cancel_stream_prompt() {
+    // Given the armed prompt with the skills picker on top.
+    let app = armed_app().await;
+    let scope = jinn_skills_msg::skill_picker_scope();
+    app.core
+        .state
+        .write()
+        .frontend
+        .scope_push(jinn_slices::focus::FocusScope::Dynamic(scope.clone()));
+
+    // When a key the picker owns is pressed there.
+    press_and_dispatch(&app, scope, key('z'));
+
+    // Then the prompt is dismissed by that keystroke.
+    assert!(
+        !app.core.state.read().frontend.cancel_stream_prompt,
+        "a slice-owned key must dismiss the prompt, not leave it armed"
+    );
+}
+
+/// A keystroke owned by a sidebar section clears the prompt.
+#[rstest::rstest]
+#[tokio::test]
+async fn a_sidebar_section_key_dismisses_the_cancel_stream_prompt() {
+    // Given the armed prompt with the task-list section focused.
+    let app = armed_app().await;
+    let scope = jinn_sidebar_msg::SidebarSectionId::TaskList.scope_id();
+    app.core
+        .state
+        .write()
+        .frontend
+        .scope_push(jinn_slices::focus::FocusScope::Dynamic(scope.clone()));
+
+    // When `s` is pressed there, opening the task-list browser.
+    press_and_dispatch(&app, scope, key('s'));
+
+    // Then the prompt is dismissed by that keystroke.
+    assert!(
+        !app.core.state.read().frontend.cancel_stream_prompt,
+        "a sidebar-section key must dismiss the prompt, not leave it armed"
+    );
+}
+
+/// Typing a character in the chat box clears the prompt.
+#[rstest::rstest]
+#[tokio::test]
+async fn typing_in_the_chat_box_dismisses_the_cancel_stream_prompt() {
+    // Given the armed prompt with the box in insert mode.
+    let app = armed_app().await;
+    app.core
+        .state
+        .write()
+        .frontend
+        .scope_push(jinn_slices::FocusScope::Input);
+
+    // When a character is typed.
+    let intent = jinn_tui::app::WhichKeyInstance::new(
+        keymap_over(&app.services.key_routes),
+        jinn_tui::Scope::Input,
+    )
+    .handle_key(key('h'))
+    .unwrap_or_else(|| panic!("a printable character must resolve in insert mode"));
+    jinn_kernel::feat::intent::IntentHandler::handle(
+        &intent,
+        &mut app.core.state.write(),
+        &app.services.slices,
+        &app.services.key_routes,
+        &app.services.config,
+    );
+
+    // Then the prompt is dismissed by that keystroke.
+    assert!(
+        !app.core.state.read().frontend.cancel_stream_prompt,
+        "typing in the box must dismiss the prompt, not leave it armed"
+    );
+}
+
+/// The escape that armed the prompt still cancels the turn.
+#[rstest::rstest]
+#[tokio::test]
+async fn escape_still_cancels_through_the_same_keymap() {
+    // Given the armed prompt, resolved through the same composed keymap.
+    let app = armed_app().await;
+    let intent = jinn_tui::app::WhichKeyInstance::new(
+        keymap_over(&app.services.key_routes),
+        jinn_tui::Scope::Normal,
+    )
+    .handle_key(jinn_kernel::KeyEvent {
+        key: jinn_kernel::Key::Esc,
+        modifiers: jinn_kernel::Modifiers::none(),
+    })
+    .expect("escape resolves in Normal scope");
+
+    // When it is dispatched.
+    let result = jinn_kernel::feat::intent::IntentHandler::handle(
+        &intent,
+        &mut app.core.state.write(),
+        &app.services.slices,
+        &app.services.key_routes,
+        &app.services.config,
+    );
+
+    // Then a CancelStream is emitted.
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("CancelStream")),
+        "the confirming escape must still cancel: {:?}",
+        result.message_names
+    );
+}
+
+/// A turn that finished on its own does not leave the prompt armed.
+#[rstest::rstest]
+#[tokio::test]
+async fn a_finished_turn_dismisses_the_cancel_stream_prompt() {
+    // Given the armed prompt, with the turn now complete.
+    let app = armed_app().await;
+    {
+        let mut state = app.core.state.write();
+        state
+            .active_session_mut()
+            .finish_streaming(false, jiff::Timestamp::now());
+    }
+
+    // When escape is pressed against the stale prompt.
+    let result = jinn_kernel::feat::intent::IntentHandler::handle(
+        &jinn_kernel::KernelIntent::NormalEscape,
+        &mut app.core.state.write(),
+        &app.services.slices,
+        &app.services.key_routes,
+        &app.services.config,
+    );
+
+    // Then the prompt is dismissed and nothing is cancelled.
+    assert!(
+        !app.core.state.read().frontend.cancel_stream_prompt,
+        "a prompt must not outlive the turn it asks to abort"
+    );
+    // And no CancelStream is emitted for a turn that already finished.
+    assert!(
+        !result
+            .message_names
+            .iter()
+            .any(|n| n.contains("CancelStream")),
+        "a finished turn must not be cancelled: {:?}",
+        result.message_names
+    );
+}

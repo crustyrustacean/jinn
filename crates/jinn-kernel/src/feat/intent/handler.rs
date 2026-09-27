@@ -304,11 +304,13 @@ impl IntentHandler {
         routes: &jinn_slices::route::KeyRoutes,
         config: &jinn_config::ConfigLayer,
     ) -> IntentResult {
-        // Session prompts live in the sidebar slice, which owns the route
-        // actions that arm and confirm them. Before dispatch, dismiss an armed
-        // prompt only when the incoming action is unrelated; the owning route
-        // action performs matching revalidation and confirmation.
-        dismiss_unrelated_session_prompts(intent, state);
+        // Confirmation prompts must not survive a keystroke, so every armed
+        // prompt is dismissed here — the first statement of this function,
+        // ahead of the slice route rows and the slice input hooks below, both
+        // of which return early. A prompt that outlived the key that should
+        // have dismissed it keeps advertising a confirmation the user never
+        // made.
+        dismiss_unrelated_prompts(intent, state);
 
         // Slice-registered routes go first: a dynamic intent is
         // delegated to its slice's action and never reaches the
@@ -352,9 +354,10 @@ impl IntentHandler {
         // the sweep run past the 100ms window.
         clear_ignore_sweep_unless_ignoring(state, intent);
 
-        // Cancel stream prompt intercept: if the prompt is showing,
-        // ESC (NormalEscape) confirms the cancel;
-        // any other intent dismisses the prompt and continues processing.
+        // Cancel stream prompt: the confirming half. The prompt was cleared
+        // above for every other intent, so by this point the only way to
+        // reach here with the prompt standing is the `NormalEscape` that
+        // raised it.
         if let Some(result) = try_handle_cancel_stream_prompt(intent, state) {
             return result;
         }
@@ -382,12 +385,7 @@ impl IntentHandler {
             // a session concern, and the intercept above handles the
             // confirming half.
             KernelIntent::NormalEscape => {
-                let busy = state.active_session().is_busy()
-                    || !matches!(
-                        state.active_session().phase(),
-                        jinn_session_msg::PhaseKind::Idle
-                    );
-                if busy {
+                if stream_in_flight(state) {
                     state.frontend.cancel_stream_prompt = true;
                 }
                 IntentResult::empty()
@@ -519,11 +517,18 @@ fn try_handle_cancel_stream_prompt(
     Some(result)
 }
 
-/// Dismisses armed sidebar-session prompts when an unrelated action arrives.
+/// Dismisses armed confirmation prompts when an unrelated action arrives.
 ///
-/// Matching sidebar route actions keep the prompt intact and perform their own
-/// revalidation and confirmation inside `jinn-sidebar`.
-fn dismiss_unrelated_session_prompts(intent: &KernelIntent, state: &mut AppState) {
+/// Runs as the first statement of [`IntentHandler::handle_inner`], ahead of
+/// every dispatch path — including the slice route rows and the slice input
+/// hooks, which both return early. A prompt cleared here cannot survive a
+/// keystroke, which is the whole point: a prompt still on screen advertises a
+/// confirmation the user never made.
+///
+/// The sidebar route actions that arm and confirm a prompt keep it intact and
+/// perform their own revalidation and confirmation inside `jinn-sidebar`; the
+/// cancel prompt is confirmed by the escape that raised it.
+fn dismiss_unrelated_prompts(intent: &KernelIntent, state: &mut AppState) {
     let sidebar_action = match intent {
         KernelIntent::Dynamic(dynamic)
             if dynamic.slice == jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id() =>
@@ -546,6 +551,28 @@ fn dismiss_unrelated_session_prompts(intent: &KernelIntent, state: &mut AppState
             state.frontend.archive_tree_prompt = None;
         }
     }
+
+    // The cancel prompt belongs to the session, not the sidebar: only the
+    // confirming escape may leave it standing, and a turn that finished on
+    // its own leaves nothing to cancel.
+    if state.frontend.cancel_stream_prompt
+        && (!matches!(intent, KernelIntent::NormalEscape) || !stream_in_flight(state))
+    {
+        state.frontend.cancel_stream_prompt = false;
+    }
+}
+
+/// Whether a turn is in flight — the one condition that both raises the
+/// cancel-stream prompt and keeps it standing.
+///
+/// Shared by the arming path and the dismissal above so the two can never
+/// disagree: a prompt must not outlive the work it asks to abort.
+fn stream_in_flight(state: &AppState) -> bool {
+    state.active_session().is_busy()
+        || !matches!(
+            state.active_session().phase(),
+            jinn_session_msg::PhaseKind::Idle
+        )
 }
 
 #[cfg(test)]
@@ -860,8 +887,9 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn cancel_stream_prompt_esc_confirms() {
-        // Given cancel_stream_prompt is showing.
+        // Given cancel_stream_prompt is showing over a turn in flight.
         let mut state = AppState::default_with_scope_focus();
+        state.active_session_mut().begin_streaming();
         state.frontend.cancel_stream_prompt = true;
 
         // When handling NormalEscape.
