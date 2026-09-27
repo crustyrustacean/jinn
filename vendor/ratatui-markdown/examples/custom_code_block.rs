@@ -1,4 +1,3 @@
-#[path = "utils/mod.rs"]
 mod common;
 
 use common::{

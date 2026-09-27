@@ -1,12 +1,11 @@
-#[path = "utils/mod.rs"]
 mod common;
-#[path = "utils/mcfunction.rs"]
-mod mcfunction;
 
 use std::sync::Arc;
 
-use common::{draw_frame, poll_and_handle, restore_terminal, setup_terminal, AppState, Theme};
-use mcfunction::McfunctionHighlighter;
+use common::{
+    draw_frame, mcfunction::McfunctionHighlighter, poll_and_handle, restore_terminal,
+    setup_terminal, AppState, Theme,
+};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui_markdown::highlight::{
     CodeHighlighter, HighlightHooks, StyleSegment, TreeSitterHighlighter,

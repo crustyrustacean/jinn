@@ -16,7 +16,7 @@ use ratatui_markdown::highlight::{pest_pairs_to_segments, CodeHighlighter, Style
 //    Works anywhere (examples, tests, etc.) since no external file is needed.
 //    This is the only option when the grammar lives outside src/.
 //
-// See examples/utils/mcfunction.pest for the same grammar in standalone form.
+// See examples/common/mcfunction.pest for the same grammar in standalone form.
 #[derive(Parser)]
 #[grammar_inline = r##"
 WHITESPACE = _{ " " | "\t" }
