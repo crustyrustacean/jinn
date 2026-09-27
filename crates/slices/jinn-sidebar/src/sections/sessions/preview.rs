@@ -30,7 +30,6 @@ use jinn_chat_log_view::chat_log::RenderContext;
 #[cfg(test)]
 use jinn_chat_log_view::kernel_element::render_preview as render_preview_lines;
 use jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT;
-#[cfg(test)]
 use jinn_chat_log_view_msg::PREVIEW_MAX_LINES;
 use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_session_state::ChatSessionState;
@@ -38,15 +37,13 @@ use jinn_theme::Theme;
 
 /// Default max lines for tool entries when no preference is set.
 pub(crate) const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
-/// Content rows the loading popup reserves.
+/// Rows the popup spends on its footer: two keybinds lines and the model line.
 ///
-/// The popup's height is derived from the line count, and a render that has
-/// not come back has none to report. Sizing from zero lands the box on its
-/// 5-row floor — two borders and the three footer rows — which leaves no
-/// content rows at all, and the content guard then drops the spinner line.
-/// Three matches the usual preview length, so the box barely moves once the
-/// real lines land.
-pub(crate) const LOADING_CONTENT_ROWS: usize = 3;
+/// The bottom strip of the popup's inner area. The content area is whatever is
+/// left of the inner area after these rows, which is what makes the popup's
+/// height a fixed number rather than a function of how much text it happens to
+/// hold.
+pub(crate) const POPUP_FOOTER_ROWS: u16 = 3;
 /// Rows between the popup and the cursor row it describes.
 ///
 /// Two rows leaves a one-row gap, so the popup reads as a separate surface
@@ -139,13 +136,14 @@ pub fn render_session_preview_for_state(
         // `None` is what distinguishes loading from empty — an empty session
         // renders zero lines but is still a cache hit, so it takes the branch
         // below and shows the empty state rather than spinning forever.
-        let popup_rect = session_preview_popup_rect(frame_area, cursor_y, LOADING_CONTENT_ROWS);
+        // The rect is the same one the ready path draws, so the box does not
+        // resize when the lines land.
+        let popup_rect = session_preview_popup_rect(frame_area, cursor_y);
         render_session_preview_loading(frame, popup_rect, session, theme);
         return;
     };
 
-    let line_count = lines.len();
-    let popup_rect = session_preview_popup_rect(frame_area, cursor_y, line_count);
+    let popup_rect = session_preview_popup_rect(frame_area, cursor_y);
 
     render_session_preview(frame, popup_rect, session, theme, &lines);
 }
@@ -185,13 +183,15 @@ fn spinner_elapsed() -> std::time::Duration {
 
 /// Renders the popup's chrome with a spinner where the content will go.
 ///
-/// Sized from [`LOADING_CONTENT_ROWS`] rather than the popup's minimum height:
-/// there are no lines yet to measure, but the minimum is exactly the chrome —
-/// two borders and the three footer rows — so a box at the minimum has no
-/// content rows and the spinner would be dropped. Three rows is a nominal
-/// height that still reads as a nearly-empty preview rather than a void, so the
-/// box barely moves when the real lines land. The chrome, title, badge, and
-/// footer are identical to the ready state, so only the content area changes.
+/// Drawn on the *last* row of the content area rather than the first, and
+/// centred within it, matching the chat log's session-load line: the indicator
+/// reads as a status line under the preview rather than floating at the top of
+/// an empty box. The popup's own height is fixed, so there is no need to
+/// reserve rows for it — the spinner occupies the row where content will appear,
+/// which is the row content arrives on.
+///
+/// The chrome, title, badge, and footer are identical to the ready state, so
+/// only the content area changes.
 pub fn render_session_preview_loading(
     frame: &mut Frame<'_>,
     popup_area: Rect,
@@ -212,10 +212,23 @@ pub fn render_session_preview_loading(
     // color — the same one the chat log's loading indicator uses — so "this is
     // working" reads identically wherever it appears. Muted grey said "nothing
     // here" rather than "wait".
-    let content = Line::from(Span::styled(
-        format!(" {glyph} loading\u{2026}"),
-        Style::default().fg(theme.streaming),
-    ));
+    let text = format!("{glyph} loading\u{2026}");
+    // A bare paragraph draws left-aligned, so the line is indented to centre it
+    // the way the chat log's load line is: start half the slack in. Centring by
+    // counting the *rendered* width rather than `text.len()` keeps it right if
+    // the glyph is ever a wide character, where the two disagree.
+    let line_width = u16::try_from(UnicodeSegmentation::graphemes(text.as_str(), true).count())
+        .unwrap_or(u16::MAX);
+    let indent = inner_width.saturating_sub(line_width) / 2;
+    // Indent only, no trailing pad: the content area already ends in blanks, and
+    // padding out to the full width would overrun it and wrap the label onto a
+    // second row.
+    let mut spans = Vec::with_capacity(2);
+    if indent > 0 {
+        spans.push(Span::raw(" ".repeat(usize::from(indent))));
+    }
+    spans.push(Span::styled(text, Style::default().fg(theme.streaming)));
+    let content = Line::from(spans);
 
     render_session_preview_inner(frame, popup_area, session, theme, &[content]);
 }
@@ -234,6 +247,109 @@ pub fn render_session_preview(
     lines: &[Line<'static>],
 ) {
     render_session_preview_inner(frame, popup_area, session, theme, lines);
+}
+
+/// The preview's lines with any trailing blank rows dropped.
+///
+/// Every entry is padded above and below, so the last line a worker returns is
+/// usually a blank spacer. Anchoring *that* to the row above the footer would
+/// leave the newest actual text one row higher than the surface claims to put
+/// it — the promise is that the newest text is the last visible content row, so
+/// the trailing spacers are not part of it.
+fn without_trailing_blanks<'a>(lines: &'a [Line<'static>]) -> &'a [Line<'static>] {
+    let end = lines
+        .iter()
+        .rposition(|line| {
+            !line
+                .spans
+                .iter()
+                .all(|span| span.content.chars().all(char::is_whitespace))
+        })
+        .map_or(0, |last| last + 1);
+    &lines[..end]
+}
+
+/// How many rows a line occupies when wrapped to `width`.
+///
+/// Normally one: the worker pads every line out to exactly the content width,
+/// and the content area is that same width. The `ceil` matters in the one case
+/// where they disagree — a horizontally capped popup is narrower than the width
+/// the lines were wrapped at, so a padded line re-wraps into more than one
+/// visual row. Counting rows rather than lines is what keeps the bottom anchor
+/// honest there: the newest line must land on the last row, and if it silently
+/// grew to two rows the anchor would be a row off.
+fn rendered_rows(line: &Line<'_>, width: u16) -> u16 {
+    if width == 0 {
+        return 1;
+    }
+    let line_width = u16::try_from(line.width()).unwrap_or(u16::MAX);
+    if line_width == 0 {
+        1
+    } else {
+        line_width.div_ceil(width).max(1)
+    }
+}
+
+/// The trailing lines that fit in a content area `rows` rows tall, and how many
+/// rows they actually occupy.
+///
+/// The preview is anchored to its *end*, not its start: the newest entry is
+/// what the user is reading, and it is what should be where their eye already
+/// is. A preview with fewer rows than the area keeps all of them; one with more
+/// drops the excess from the front, so the newest line always survives.
+///
+/// When even the newest line does not fit — a box too small for the one row it
+/// needs — it is taken anyway. A clipped line is still a preview; an empty
+/// content area is not.
+fn trailing_lines<'a>(
+    lines: &'a [Line<'static>],
+    rows: u16,
+    width: u16,
+) -> (&'a [Line<'static>], u16) {
+    let mut used = 0u16;
+    let mut start = lines.len();
+    for (i, line) in lines.iter().enumerate().rev() {
+        let line_rows = rendered_rows(line, width);
+        if used.saturating_add(line_rows) > rows {
+            break;
+        }
+        used = used.saturating_add(line_rows);
+        start = i;
+    }
+    if start == lines.len()
+        && let Some(last) = lines.last()
+    {
+        return (
+            lines.split_at(lines.len() - 1).1,
+            rendered_rows(last, width).min(rows),
+        );
+    }
+    (&lines[start..], used)
+}
+
+/// Divides the content area into the rectangles a bottom-anchored draw needs.
+///
+/// The tail sits on the content area's *last* row, with whatever room is left
+/// above it for lines that did not fit. Two rects rather than one because the
+/// tail is drawn top-down into its own rect and a line that re-wraps needs
+/// somewhere to grow into; sizing the tail rect to the tail's true rendered
+/// height and pinning it to the bottom is what keeps the newest line on the
+/// last row. A tail that fills the area leaves the head rect empty.
+fn split_content_area(content_area: Rect, tail_rows: u16) -> (Rect, Rect) {
+    let tail_rows = tail_rows.min(content_area.height);
+    let tail = Rect {
+        x: content_area.x,
+        y: content_area.y + content_area.height - tail_rows,
+        width: content_area.width,
+        height: tail_rows,
+    };
+    let head = Rect {
+        x: content_area.x,
+        y: content_area.y,
+        width: content_area.width,
+        height: content_area.height - tail_rows,
+    };
+    (head, tail)
 }
 
 /// Draws the popup's chrome and content.
@@ -255,13 +371,6 @@ fn render_session_preview_inner(
     }
 
     let title = session.title().unwrap_or("Untitled Session");
-
-    // Footer: 2 keybinds lines + 1 model line.
-    let footer_height = 3u16;
-    let content_area_height = popup_area
-        .height
-        .saturating_sub(2) // borders
-        .saturating_sub(footer_height);
 
     // Clear the popup area.
     frame.render_widget(Clear, popup_area);
@@ -305,16 +414,31 @@ fn render_session_preview_inner(
         return;
     }
 
-    // Content paragraph.
-    if content_area_height > 0 && !lines.is_empty() {
-        let content_para = Paragraph::new(lines.to_vec()).wrap(Wrap { trim: false });
-        let content_area = Rect {
-            x: inner_area.x,
-            y: inner_area.y,
-            width: inner_area.width,
-            height: content_area_height.min(inner_area.height),
-        };
-        frame.render_widget(content_para, content_area);
+    // Content, anchored to the bottom of the content area. The footer occupies
+    // the rows below it, so the newest line always sits directly above the
+    // keybinds — in a capped box as well as a full one.
+    let content_area = Rect {
+        x: inner_area.x,
+        y: inner_area.y,
+        width: inner_area.width,
+        height: content_area_height(inner_area),
+    };
+    if content_area.height > 0 {
+        // Trailing spacer rows go first, so what is anchored to the last row is
+        // the newest text rather than the blank line under it.
+        let lines = without_trailing_blanks(lines);
+        if !lines.is_empty() {
+            let (tail, tail_rows) = trailing_lines(lines, content_area.height, content_area.width);
+            let (head, tail_area) = split_content_area(content_area, tail_rows);
+            if head.height > 0 {
+                let head_lines = lines[..lines.len() - tail.len()].to_vec();
+                frame.render_widget(Paragraph::new(head_lines).wrap(Wrap { trim: false }), head);
+            }
+            frame.render_widget(
+                Paragraph::new(tail.to_vec()).wrap(Wrap { trim: false }),
+                tail_area,
+            );
+        }
     }
 
     // Footer: keybinds + model line at the bottom of the inner area.
@@ -455,17 +579,28 @@ fn render_model_line(
 ///
 /// The popup is anchored to the right edge of the frame and sits just above
 /// the cursor row in the sessions section, with a 1-row gap. Width is 60% of
-/// the frame. Height is computed from the content line count plus borders and
-/// keybinds bar, capped to fit within the available space above the cursor.
-pub fn session_preview_popup_rect(
-    frame_area: Rect,
-    cursor_y: u16,
-    content_line_count: usize,
-) -> Rect {
+/// the frame.
+///
+/// Height is *fixed*: the content area is [`PREVIEW_MAX_LINES`] rows, plus the
+/// two borders and the three footer rows. It is deliberately not derived from
+/// how many lines the content happens to render to. A preview that grew and
+/// shrank with its text made the surface move under the cursor while scrolling
+/// the list and re-shaped on every token of a streaming reply; the box now
+/// stays put and the content changes inside it.
+///
+/// The only thing that varies the height is the cap — a terminal with less room
+/// above the cursor than the popup wants gets a shorter box.
+pub fn session_preview_popup_rect(frame_area: Rect, cursor_y: u16) -> Rect {
     let popup_width = preview_width(frame_area);
 
+    // Content rows come from the same budget the layout worker renders to, so
+    // the box is exactly as tall as the preview it was sized for. Not a second
+    // constant: a number asserted twice is a number that will disagree.
+    let content_rows = u16::try_from(PREVIEW_MAX_LINES).unwrap_or(u16::MAX);
     // Total height: content + footer (3) + top border (1) + bottom border (1).
-    let desired_height = (content_line_count + 3 + 2) as u16;
+    let desired_height = content_rows
+        .saturating_add(POPUP_FOOTER_ROWS)
+        .saturating_add(2);
     // Cap to available space above the cursor (with 1-row gap).
     let max_height = cursor_y
         .saturating_sub(frame_area.y)
@@ -480,6 +615,15 @@ pub fn session_preview_popup_rect(
         .saturating_sub(POPUP_GAP);
 
     Rect::new(popup_x, popup_y, popup_width, popup_height)
+}
+
+/// The content rows the popup's inner area has left once the footer is taken.
+///
+/// Where the preview's lines — and the loading indicator — are drawn. Smaller
+/// than [`PREVIEW_MAX_LINES`] whenever the rect was capped, which is why the
+/// content placement below is written against this rather than the budget.
+fn content_area_height(inner_area: Rect) -> u16 {
+    inner_area.height.saturating_sub(POPUP_FOOTER_ROWS)
 }
 
 #[cfg(test)]
