@@ -455,6 +455,8 @@ A **Task Contract**: brief in form, dense in content.
 - **Problem** — what is wrong now, what this fixes.
 - **End State** — the checkable facts, plus a **Final Inventory** when the task
   reshapes a codebase, plus one **Done when** sentence.
+  - **The checkable facts and final inventory MUST NOT be ambiguous.**
+    **The implementing agent only has access to the handoff document.**
 - **Invariants** — numbered, each naming how it is checked.
 - **Decision Rules** — the buckets, the test, the tiebreak, the anti-goal.
 - **Constraints** — numbered boundaries with consequences, the autonomy stance,
