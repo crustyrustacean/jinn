@@ -28,12 +28,12 @@
 use super::QueueActor;
 use jinn_chat_input_msg::ChatEntrySubmitted;
 use jinn_core_types::SessionId;
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::services::Services;
-use jinn_domain::common::services::bus_service::BusAudit;
-use jinn_domain::common::state::State;
-use jinn_domain::protocol::ChatEntry;
 use jinn_inference_msg::{SendToLlmProvider, StreamOrigin};
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::services::Services;
+use jinn_kernel::common::services::bus_service::BusAudit;
+use jinn_kernel::common::state::State;
+use jinn_kernel::protocol::ChatEntry;
 use jinn_session_msg::PhaseKind;
 use jinn_session_msg::SessionPhaseChanged;
 use jinn_session_store_msg::PersistSession;
@@ -41,7 +41,7 @@ use jinn_turn_dispatch_msg::DispatchTurn;
 use jinn_turn_dispatch_msg::QueueItem;
 
 async fn create_actor() -> (QueueActor, State, BusAudit) {
-    let (bus, audit) = jinn_domain::BusService::new_recording();
+    let (bus, audit) = jinn_kernel::BusService::new_recording();
     let services = Services::new_fake_with_bus(bus).await;
     let _ = jinn_context_assembly::service::ensure_spawned(&services.trouper_system);
     let state = State::new(AppState::default_with_scope_focus());
@@ -192,7 +192,7 @@ async fn idle_with_empty_queue_and_steering_dispatches_steering() {
     let has_steering = session.history().iter().any(|e| {
         matches!(
             &e.kind,
-            jinn_domain::protocol::ChatEntryKind::User { expanded, .. } if expanded == "stay focused"
+            jinn_kernel::protocol::ChatEntryKind::User { expanded, .. } if expanded == "stay focused"
         )
     });
     assert!(
@@ -253,7 +253,7 @@ async fn idle_with_both_buffers_dispatches_steering_first_and_keeps_queue() {
     let submitted: Vec<ChatEntrySubmitted> = audit.of_type::<ChatEntrySubmitted>();
     assert_eq!(submitted.len(), 1, "exactly one turn dispatched");
     let dispatched = match &submitted.first().expect("one submission").entry.kind {
-        jinn_domain::protocol::ChatEntryKind::User { expanded, .. } => expanded.as_str(),
+        jinn_kernel::protocol::ChatEntryKind::User { expanded, .. } => expanded.as_str(),
         other => panic!("expected a user entry dispatch, got {other:?}"),
     };
     assert_eq!(
@@ -266,7 +266,7 @@ async fn idle_with_both_buffers_dispatches_steering_first_and_keeps_queue() {
     let has_steering = session.history().iter().any(|e| {
         matches!(
             &e.kind,
-            jinn_domain::protocol::ChatEntryKind::User { expanded, .. } if expanded == "stay focused"
+            jinn_kernel::protocol::ChatEntryKind::User { expanded, .. } if expanded == "stay focused"
         )
     });
     assert!(
@@ -320,7 +320,7 @@ async fn queued_item_dispatches_after_steering_turn_completes() {
     let texts: Vec<&str> = submitted
         .iter()
         .filter_map(|s| match &s.entry.kind {
-            jinn_domain::protocol::ChatEntryKind::User { expanded, .. } => Some(expanded.as_str()),
+            jinn_kernel::protocol::ChatEntryKind::User { expanded, .. } => Some(expanded.as_str()),
             _ => None,
         })
         .collect();
@@ -444,8 +444,8 @@ async fn dispatch_user_message_keeps_degraded_token_literal_through_re_expand() 
     let token = "@/nonexistent/whatever";
     let mut entry = ChatEntry::user(format!("describe {token}"));
     // Simulate the post-resolution state: outcome set, expanded still containing the literal.
-    if let jinn_domain::protocol::ChatEntryKind::User { outcome, .. } = &mut entry.kind {
-        outcome.degraded.push(jinn_domain::protocol::ResolvedToken {
+    if let jinn_kernel::protocol::ChatEntryKind::User { outcome, .. } = &mut entry.kind {
+        outcome.degraded.push(jinn_kernel::protocol::ResolvedToken {
             raw: "/nonexistent/whatever".to_owned(),
             abs: std::path::PathBuf::from("/nonexistent/whatever"),
         });
@@ -464,7 +464,7 @@ async fn dispatch_user_message_keeps_degraded_token_literal_through_re_expand() 
         .iter()
         .rev()
         .find_map(|e| match &e.kind {
-            jinn_domain::protocol::ChatEntryKind::User { expanded, .. } => Some(expanded.clone()),
+            jinn_kernel::protocol::ChatEntryKind::User { expanded, .. } => Some(expanded.clone()),
             _ => None,
         })
         .expect("user entry");
@@ -493,7 +493,7 @@ async fn dispatch_user_message_blocks_attachment_to_unknown_model() {
     }
     // Build an entry that already carries an attachment (as if resolved).
     let mut entry = ChatEntry::user("describe this");
-    if let jinn_domain::protocol::ChatEntryKind::User { attachments, .. } = &mut entry.kind {
+    if let jinn_kernel::protocol::ChatEntryKind::User { attachments, .. } = &mut entry.kind {
         attachments.push(jinn_provider::Attachment::image(
             "image/png".to_owned(),
             vec![1, 2, 3],
@@ -512,7 +512,7 @@ async fn dispatch_user_message_blocks_attachment_to_unknown_model() {
     let has_error = session
         .history()
         .iter()
-        .any(|e| matches!(&e.kind, jinn_domain::protocol::ChatEntryKind::Error(_)));
+        .any(|e| matches!(&e.kind, jinn_kernel::protocol::ChatEntryKind::Error(_)));
     assert!(
         has_error,
         "unknown model must block the attachment on drain"
@@ -767,7 +767,7 @@ async fn dispatch_turn_publishes_none_effort_when_session_has_no_own_effort() {
     }
     {
         let mut app_state = actor.services.app_state_storage.read();
-        app_state.reasoning_effort = Some(jinn_domain::ReasoningEffort::High);
+        app_state.reasoning_effort = Some(jinn_kernel::ReasoningEffort::High);
         actor
             .services
             .app_state_storage
@@ -803,11 +803,11 @@ async fn dispatch_turn_publishes_sessions_own_reasoning_effort() {
     {
         let mut state = state.write();
         let session = state.session_mut_or_create(&sid);
-        session.profile_mut().reasoning_effort = Some(jinn_domain::ReasoningEffort::Low);
+        session.profile_mut().reasoning_effort = Some(jinn_kernel::ReasoningEffort::Low);
     }
     {
         let mut app_state = actor.services.app_state_storage.read();
-        app_state.reasoning_effort = Some(jinn_domain::ReasoningEffort::High);
+        app_state.reasoning_effort = Some(jinn_kernel::ReasoningEffort::High);
         actor
             .services
             .app_state_storage
@@ -829,7 +829,7 @@ async fn dispatch_turn_publishes_sessions_own_reasoning_effort() {
     let send = sends.first().expect("one send");
     assert_eq!(
         send.reasoning_effort,
-        Some(jinn_domain::ReasoningEffort::Low),
+        Some(jinn_kernel::ReasoningEffort::Low),
         "session's own effort is published; global is ignored"
     );
 }
@@ -861,7 +861,7 @@ async fn dispatch_turn_drains_steering_submitted_after_preparation() {
     let has_late = session.history().iter().any(|e| {
         matches!(
             &e.kind,
-            jinn_domain::protocol::ChatEntryKind::User { expanded, .. } if expanded == "late note"
+            jinn_kernel::protocol::ChatEntryKind::User { expanded, .. } if expanded == "late note"
         )
     });
     assert!(has_late, "late steering fragment must make the turn");
@@ -1016,7 +1016,7 @@ async fn dispatch_turn_does_not_drain_stale_queue() {
 #[tokio::test]
 async fn dispatch_turn_with_assembly_failure_publishes_nothing() {
     // Given a session whose assembly will fail (no service spawned).
-    let (bus, audit) = jinn_domain::BusService::new_recording();
+    let (bus, audit) = jinn_kernel::BusService::new_recording();
     let services = Services::new_fake_with_bus(bus).await;
     // NOTE: jinn_context_assembly::service::ensure_spawned deliberately
     // NOT called — the ask fails.

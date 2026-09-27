@@ -11,12 +11,12 @@ pub(super) struct TuiSignalsSnapshot {
     /// Text to copy to the system clipboard (from yank-selected-entry intent).
     pub yank_text: Option<String>,
     /// Request to change CWD via external command. Carries the search root.
-    pub change_cwd_requested: Option<jinn_domain::protocol::CwdRoot>,
+    pub change_cwd_requested: Option<jinn_kernel::protocol::CwdRoot>,
 }
 
 impl TuiSignalsSnapshot {
     /// Extracts TUI signal flags from the given app state.
-    pub(super) fn from_state(state: &jinn_domain::AppState) -> Self {
+    pub(super) fn from_state(state: &jinn_kernel::AppState) -> Self {
         let signals = state.frontend.signals_snapshot();
         Self {
             toggle_whichkey: signals.toggle_whichkey,

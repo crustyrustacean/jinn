@@ -33,7 +33,7 @@ use jinn_slices::SliceHost;
 )]
 pub fn activate(
     host: &mut SliceHost<'_, jinn_slices::RenderFacts>,
-    state: jinn_domain::common::state::State,
+    state: jinn_kernel::common::state::State,
 ) {
     let cell = host
         .register_cell(

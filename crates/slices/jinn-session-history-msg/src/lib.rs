@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 /// Push a chat entry into the conversation history.
 ///
 /// Any component or actor can send this to add an entry to the chat log.
-/// (Formerly `jinn-domain` `chat_input` protocol.)
+/// (Formerly `jinn-kernel` `chat_input` protocol.)
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
 #[schema(description = "Add a chat entry to a session's history.")]
 pub struct PushChatEntry {

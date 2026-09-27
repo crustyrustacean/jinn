@@ -43,7 +43,7 @@ use trouper::registry::RegistryError;
 
 use crate::pty_session::{PtySession, TermExitInfo};
 use crate::screen_task::{ScreenHandle, ScreenWiring};
-use jinn_domain::common::services::bus_service::BusService;
+use jinn_kernel::common::services::bus_service::BusService;
 use jinn_preferences_config::schemas::term::InteractiveTermPrefs;
 use jinn_term_msg::command::{
     ControlHolder, KillTerm, KillTermOutcome, ResizeTerm, SendTermInput, SendTermKey,
@@ -104,7 +104,7 @@ pub struct InteractiveTermActor {
     controls: TermControls,
     /// Live sessions keyed by their owning chat session.
     sessions: HashMap<jinn_core_types::SessionId, TermSession>,
-    state: jinn_domain::common::state::State,
+    state: jinn_kernel::common::state::State,
     /// The configuration layer. The two settle durations are read from it
     /// on every settle rather than baked at spawn, so tuning the wait does
     /// not need a restart.
@@ -120,7 +120,7 @@ pub struct InteractiveTermActorDeps {
     pub controls: TermControls,
     /// Shared application state — the actor owns `frontend.terminal` and
     /// mirrors published screen events into it.
-    pub state: jinn_domain::common::state::State,
+    pub state: jinn_kernel::common::state::State,
     /// The configuration layer, from which the two settle durations are
     /// read per settle.
     pub config: jinn_config::ConfigLayer,
@@ -652,7 +652,7 @@ mod tests {
 
     /// Snapshot a session's mirror from the term/tabs cell.
     fn test_mirror(
-        guard: &jinn_domain::common::state::StateReadGuard<'_>,
+        guard: &jinn_kernel::common::state::StateReadGuard<'_>,
         chat: &jinn_core_types::SessionId,
     ) -> Option<jinn_term_msg::TerminalMirror> {
         guard
@@ -662,7 +662,7 @@ mod tests {
 
     /// Whether a session has a live terminal (from the term/tabs cell).
     fn test_live(
-        guard: &jinn_domain::common::state::StateReadGuard<'_>,
+        guard: &jinn_kernel::common::state::StateReadGuard<'_>,
         chat: &jinn_core_types::SessionId,
     ) -> bool {
         guard
@@ -670,7 +670,7 @@ mod tests {
             .map(|c| c.read().live_terms.contains(chat))
             .unwrap_or(false)
     }
-    use jinn_domain::common::bus::HarnessServices;
+    use jinn_kernel::common::bus::HarnessServices;
     use jinn_testutil::bus_harness::TestHarness;
 
     const QUIET: Duration = Duration::from_millis(150);
@@ -695,9 +695,9 @@ mod tests {
     fn deps(
         bus: BusService,
         controls: TermControls,
-    ) -> (InteractiveTermActorDeps, jinn_domain::common::state::State) {
-        let state = jinn_domain::common::state::State::new(
-            jinn_domain::common::app_state::AppState::default_with_scope_focus(),
+    ) -> (InteractiveTermActorDeps, jinn_kernel::common::state::State) {
+        let state = jinn_kernel::common::state::State::new(
+            jinn_kernel::common::app_state::AppState::default_with_scope_focus(),
         );
         let deps = InteractiveTermActorDeps {
             bus,
@@ -771,7 +771,7 @@ mod tests {
     async fn spawn_coordinator_with_state(
         harness: &TestHarness,
         controls: TermControls,
-    ) -> (TermAskClient, jinn_domain::common::state::State) {
+    ) -> (TermAskClient, jinn_kernel::common::state::State) {
         let services = harness.services().await;
         let (deps, state) = deps(harness.bus(), controls);
         let (path, _controls) = InteractiveTermActor::spawn(&services.trouper_system, deps).await;

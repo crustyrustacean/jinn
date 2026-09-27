@@ -35,7 +35,7 @@ use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 
 use jinn_core_types::SessionId;
-use jinn_domain::common::services::bus_service::BusService;
+use jinn_kernel::common::services::bus_service::BusService;
 use jinn_mcp_msg::{McpConnectionStatus, McpServerStatus};
 use jinn_session_init_msg::{ContextFilesLoaded, PromptTemplatesLoaded};
 use jinn_skills_msg::SkillsLoaded;

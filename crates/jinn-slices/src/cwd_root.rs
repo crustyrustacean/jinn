@@ -1,5 +1,5 @@
 //! The search root for the directory picker (shared vocabulary; the
-//! kernel re-exports under `jinn_domain::protocol::CwdRoot`).
+//! kernel re-exports under `jinn_kernel::protocol::CwdRoot`).
 
 /// The search root for the directory picker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -9,8 +9,8 @@
 
 use error_stack::Report;
 use jinn_boot_msg::AllActorsSpawned;
-use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
-use jinn_domain::common::services::bus_service::BusService;
+use jinn_kernel::common::actor_deps::{ActorDeps, BusPublish};
+use jinn_kernel::common::services::bus_service::BusService;
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
@@ -114,7 +114,7 @@ mod tests {
     )]
 
     use super::*;
-    use jinn_domain::common::bus::HarnessServices;
+    use jinn_kernel::common::bus::HarnessServices;
     use jinn_testutil::bus_harness::TestHarness;
 
     #[rstest::rstest]

@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-# Internal deps (kernel-free: no jinn-domain, no jinn-slices, no slice crates)
+# Internal deps (kernel-free: no jinn-kernel, no jinn-slices, no slice crates)
 jinn-common = { workspace = true }
 
 # External deps

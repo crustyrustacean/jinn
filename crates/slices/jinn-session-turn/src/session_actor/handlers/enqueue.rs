@@ -14,8 +14,8 @@
 use jinn_chat_input_msg::{
     ChatEntrySubmitted, EnqueueResumeTurn, EnqueueUserMessage, SubmitSteeringMessage,
 };
-use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::protocol::{ChatEntry, ChatEntryKind};
+use jinn_kernel::common::actor_deps::BusPublish;
+use jinn_kernel::protocol::{ChatEntry, ChatEntryKind};
 use jinn_session_history_msg::PushChatEntry;
 
 use super::super::SessionPersistenceActor;
@@ -257,7 +257,7 @@ impl SessionPersistenceActor {
                     // (but non-default) marker keeps re-expansion idempotent for
                     // fully-attached messages.
                     *entry_outcome =
-                        jinn_domain::protocol::AttachmentOutcome { attached, degraded };
+                        jinn_kernel::protocol::AttachmentOutcome { attached, degraded };
                 }
                 true
             }
@@ -421,18 +421,18 @@ mod tests {
 
     use jinn_chat_input_msg::{EnqueueResumeTurn, EnqueueUserMessage};
     use jinn_core_types::model_selection::ModelSelection;
-    use jinn_domain::common::services::BusAudit;
-    use jinn_domain::protocol::{ChatEntry, ChatEntryKind};
+    use jinn_kernel::common::services::BusAudit;
+    use jinn_kernel::protocol::{ChatEntry, ChatEntryKind};
     use jinn_session_history_msg::PushChatEntry;
     use jinn_session_msg::PhaseKind;
 
     async fn create_actor() -> (
         super::super::super::SessionPersistenceActor,
-        jinn_domain::common::state::State,
+        jinn_kernel::common::state::State,
         BusAudit,
     ) {
-        let state = jinn_domain::common::state::State::new(
-            jinn_domain::common::app_state::AppState::default(),
+        let state = jinn_kernel::common::state::State::new(
+            jinn_kernel::common::app_state::AppState::default(),
         );
         let (actor, audit) = super::super::super::helpers::test_actor_recording().await;
         let actor = super::super::super::SessionPersistenceActor {
@@ -922,7 +922,7 @@ mod tests {
     // Helper: seed a vision-capable model and return the idle session id.
     async fn idle_vision_session() -> (
         super::super::super::SessionPersistenceActor,
-        jinn_domain::common::state::State,
+        jinn_kernel::common::state::State,
         BusAudit,
         jinn_core_types::SessionId,
     ) {

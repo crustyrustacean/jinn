@@ -7,8 +7,8 @@
 
 use std::time::Instant;
 
-use jinn_domain::common::render_ctx::RenderCtx;
-use jinn_domain::common::ui_element::UiElement;
+use jinn_kernel::common::render_ctx::RenderCtx;
+use jinn_kernel::common::ui_element::UiElement;
 use jinn_session_msg::PhaseKind;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -94,7 +94,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use jinn_domain::AppState;
+    use jinn_kernel::AppState;
 
     use super::*;
 
@@ -196,8 +196,8 @@ mod tests {
 #[cfg(test)]
 mod registration_tests {
     use super::StreamingIndicatorElement;
-    use jinn_domain::common::AppUiRegistry;
-    use jinn_domain::common::ui_element::UiElement;
+    use jinn_kernel::common::AppUiRegistry;
+    use jinn_kernel::common::ui_element::UiElement;
 
     #[rstest::rstest]
     fn register_adds_streaming_indicator() {

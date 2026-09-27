@@ -1,10 +1,10 @@
 //! Activates the session under the cursor.
 
-use jinn_domain::common::app_state::AppState;
+use jinn_kernel::common::app_state::AppState;
 
 use crate::sections::sessions::state::sorted_open_sessions;
 use jinn_chat_log_view::kernel_element::activate_session;
-use jinn_domain::protocol::IntentResult;
+use jinn_kernel::protocol::IntentResult;
 
 /// Activates the session under the cursor.
 ///
@@ -81,7 +81,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use jinn_domain::common::app_state::AppState;
+    use jinn_kernel::common::app_state::AppState;
     use jinn_session_store_msg::SessionLoadRequested;
     use jinn_slices::FocusScope;
 
@@ -130,8 +130,8 @@ mod tests {
     /// will use, and the on-screen session is the one that knows it.
     fn with_measured_active_session(state: &mut AppState, width: u16) {
         use jinn_chat_log_view::kernel_element::ChatLogElement;
-        use jinn_domain::common::render_ctx::RenderCtx;
-        use jinn_domain::common::ui_element::UiElement;
+        use jinn_kernel::common::render_ctx::RenderCtx;
+        use jinn_kernel::common::ui_element::UiElement;
         use jinn_testutil::setup_term;
 
         let target_id = {

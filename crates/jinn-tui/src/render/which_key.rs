@@ -4,7 +4,7 @@ use ratatui::Frame;
 use ratatui::style::Style;
 use ratatui_which_key::{PopupPosition, WhichKey};
 
-use jinn_domain::RenderCtx;
+use jinn_kernel::RenderCtx;
 
 use crate::app::WhichKeyInstance;
 

@@ -13,7 +13,7 @@ use jinn_provider_selection_msg::ProviderPickerEntry;
 use jinn_selection_widget::SelectionState;
 
 use crate::entries::load_provider_entries;
-use jinn_domain::Services;
+use jinn_kernel::Services;
 
 /// Loads provider entries into the picker state, ready for display.
 ///

@@ -23,8 +23,8 @@ use jinn_chat_input_msg::{
 };
 use jinn_context::PromptTemplateStore;
 use jinn_core_types::SessionId;
-use jinn_domain::AppState;
-use jinn_domain::protocol::{ChatEntry, IntentResult};
+use jinn_kernel::AppState;
+use jinn_kernel::protocol::{ChatEntry, IntentResult};
 use jinn_session_msg::MarkSessionInteracted;
 use jinn_session_msg::PhaseKind;
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -418,7 +418,7 @@ fn route_to_enqueue_or_steer(
 fn with_mark_interacted(session_id: SessionId, mut result: IntentResult) -> IntentResult {
     result.messages.insert(
         0,
-        jinn_domain::common::bridge::Bridge::publish_closure(MarkSessionInteracted { session_id }),
+        jinn_kernel::common::bridge::Bridge::publish_closure(MarkSessionInteracted { session_id }),
     );
     result
         .message_names
@@ -443,7 +443,7 @@ fn execute_slash_command(
             })
         }
         SlashCommand::New => {
-            jinn_domain::session_lifecycle::intent::handle_session_new(state, config)
+            jinn_kernel::session_lifecycle::intent::handle_session_new(state, config)
         }
     }
 }

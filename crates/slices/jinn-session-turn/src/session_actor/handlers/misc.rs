@@ -2,12 +2,12 @@
 
 use super::super::SessionPersistenceActor;
 use jinn_context_assembly_msg::ContextOverrideChanged;
-use jinn_domain::common::actor_deps::BusPublish;
+use jinn_kernel::common::actor_deps::BusPublish;
 use jinn_session_history_msg::SubmitHistoryMutations;
 use jinn_session_msg::PhaseKind;
 use jinn_skills_msg::{Skill, SkillsLoaded};
 
-use jinn_domain::protocol::ChatEntry;
+use jinn_kernel::protocol::ChatEntry;
 use jinn_preferences_config::schemas::AutoPruneConfig;
 
 impl SessionPersistenceActor {
@@ -24,7 +24,7 @@ impl SessionPersistenceActor {
             let state = self.state.read();
             matches!(
                 state.frontend.scope(),
-                jinn_domain::FocusScope::Dynamic(ref scope) if scope == &jinn_skills_msg::skill_picker_scope()
+                jinn_kernel::FocusScope::Dynamic(ref scope) if scope == &jinn_skills_msg::skill_picker_scope()
             )
         };
 
@@ -200,8 +200,8 @@ fn is_prune_override(mutation: &jinn_core_types::HistoryMutation) -> bool {
 /// itself a context reduction that must apply promptly, and holding back its
 /// excludes would leave the gathered entries and the new summary both in
 /// context simultaneously.
-fn is_compaction_source(source: &jinn_domain::protocol::ChangeSource) -> bool {
-    matches!(source, jinn_domain::protocol::ChangeSource::Worker { name } if name == "compaction")
+fn is_compaction_source(source: &jinn_kernel::protocol::ChangeSource) -> bool {
+    matches!(source, jinn_kernel::protocol::ChangeSource::Worker { name } if name == "compaction")
 }
 /// Builds a markdown message listing discovered skills.
 fn build_skills_refresh_message(skills: &[Skill]) -> String {
@@ -226,7 +226,7 @@ mod tests {
     )]
     use crate::session_actor::helpers::test_actor_recording;
     use jinn_core_types::SessionId;
-    use jinn_domain::protocol::{ChangeSource, ChatEntry};
+    use jinn_kernel::protocol::{ChangeSource, ChatEntry};
 
     #[rstest::rstest]
     #[tokio::test]

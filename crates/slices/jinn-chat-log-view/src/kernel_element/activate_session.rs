@@ -8,8 +8,8 @@
 //! means the three cannot drift again.
 
 use jinn_core_types::SessionId;
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::protocol::IntentResult;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::protocol::IntentResult;
 use jinn_session_store_msg::SessionLoadRequested;
 
 /// Switches to `target_id`, measuring it if it needs measuring.

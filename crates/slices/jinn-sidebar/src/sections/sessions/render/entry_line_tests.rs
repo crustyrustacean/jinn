@@ -16,7 +16,7 @@ use throbber_widgets_tui::ThrobberState;
 use crate::sections::sessions::render::entry_line::{assemble_entry_line, tree_prefix};
 use crate::sections::sessions::state::{SessionEntry, SessionEntryKind};
 use jinn_core_types::SessionId;
-use jinn_domain::common::app_state::AppState;
+use jinn_kernel::common::app_state::AppState;
 
 use unicode_segmentation::UnicodeSegmentation;
 

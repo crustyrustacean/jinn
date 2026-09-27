@@ -2,9 +2,9 @@
 
 use crate::sections::sessions::close::validate_session_close;
 use crate::sections::sessions::state::sorted_open_sessions;
-use jinn_domain::IntentResult;
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::session_lifecycle::intent::build_run_session_teardown;
+use jinn_kernel::IntentResult;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::session_lifecycle::intent::build_run_session_teardown;
 
 /// Handles `SidebarSessionTeardown` - re-runs teardown without closing the session.
 ///

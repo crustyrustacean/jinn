@@ -8,7 +8,7 @@
 //!
 //! The server advertises one tool, `echo`, which returns its `message` argument
 //! verbatim as text content. Tests that need to exercise the full client →
-//! `tools/list` → `tools/call` lifecycle (e.g. `jinn-domain`'s actor dispatch
+//! `tools/list` → `tools/call` lifecycle (e.g. `jinn-kernel`'s actor dispatch
 //! roundtrip) call [`spawn_stub_client`] to obtain a connected client.
 
 #![allow(

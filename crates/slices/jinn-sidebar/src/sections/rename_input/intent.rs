@@ -1,10 +1,10 @@
 //! Rename session input intent handlers - enter, confirm, leave, and text editing.
 
-use jinn_domain::common::app_state::AppState;
+use jinn_kernel::common::app_state::AppState;
 use jinn_sidebar_msg::sidebar_sections::RenameSessionInputState;
 
 use crate::sections::sessions::state::sorted_open_sessions;
-use jinn_domain::protocol::IntentResult;
+use jinn_kernel::protocol::IntentResult;
 use jinn_session_store_msg::PersistSession;
 use jinn_slices::ScopeSignal;
 use jinn_slices::SliceScopeId;
@@ -217,7 +217,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use jinn_domain::common::app_state::AppState;
+    use jinn_kernel::common::app_state::AppState;
     use jinn_slices::FocusScope;
 
     fn state_with_sessions(count: usize) -> AppState {

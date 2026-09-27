@@ -8,11 +8,11 @@
 
 use crate::chat_log::GUTTER_WIDTH;
 use crate::kernel_element::history::ChatLogElement;
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::render_ctx::RenderCtx;
-use jinn_domain::common::ui_element::UiElement;
-use jinn_domain::protocol::ToolResultStatus;
-use jinn_domain::protocol::{ChatEntry, PinPosition};
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::render_ctx::RenderCtx;
+use jinn_kernel::common::ui_element::UiElement;
+use jinn_kernel::protocol::ToolResultStatus;
+use jinn_kernel::protocol::{ChatEntry, PinPosition};
 use jinn_slices::FocusScope;
 use jinn_testutil::setup_term;
 use ratatui::layout::Rect;
@@ -33,8 +33,8 @@ fn normal_state() -> AppState {
 /// Build a compaction entry with the given summary (struct literal — no
 /// `ChatEntry::compaction(...)` constructor exists).
 fn compaction_entry(summary: &str) -> ChatEntry {
-    use jinn_domain::protocol::{ChatEntryId, ChatEntryKind};
-    use jinn_domain::protocol::{ContextOverride, EntryTiming};
+    use jinn_kernel::protocol::{ChatEntryId, ChatEntryKind};
+    use jinn_kernel::protocol::{ContextOverride, EntryTiming};
     ChatEntry {
         id: ChatEntryId::new(),
         timing: EntryTiming::instant_now(),
@@ -1222,7 +1222,7 @@ fn render_auto_scrolls_jumped_compaction_into_view() {
     // Given a history taller than a 6-line viewport, with a compaction as the
     // FIRST entry and many user entries below it. The default viewport shows the
     // bottom (newest) entries, so the compaction is scrolled off the top.
-    use jinn_domain::chat_entry_selection::intent::handle_jump_prev_entry;
+    use jinn_kernel::chat_entry_selection::intent::handle_jump_prev_entry;
 
     let mut element = ChatLogElement::new();
     let mut state = normal_state();
@@ -1256,7 +1256,7 @@ fn render_auto_scrolls_jumped_compaction_into_view() {
 
     // When jumping to the previous compaction from the last entry (no selection
     // -> anchor on last entry; the prev jump lands on the only compaction at index 0).
-    handle_jump_prev_entry(&mut state, jinn_domain::protocol::ChatEntry::is_compaction);
+    handle_jump_prev_entry(&mut state, jinn_kernel::protocol::ChatEntry::is_compaction);
     assert_eq!(
         state.active_session().selected_cursor_id(),
         Some(compaction_id),
@@ -1403,7 +1403,7 @@ fn task_waiting_fixture(
     child_id: Option<jinn_core_types::SessionId>,
     child_phase: Option<jinn_session_msg::PhaseKind>,
 ) -> AppState {
-    use jinn_domain::protocol::ChatEntryKind;
+    use jinn_kernel::protocol::ChatEntryKind;
     use jinn_tools_msg::TASK_TOOL_NAME;
 
     let mut state = AppState::default_with_scope_focus();
@@ -1547,7 +1547,7 @@ fn waiting_line_absent_when_child_not_in_memory() {
         let mut s = AppState::default_with_scope_focus();
         let entry = ChatEntry::tool_call("tc_orphan", TASK_TOOL_NAME, "{}");
         let entry = {
-            use jinn_domain::protocol::ChatEntryKind;
+            use jinn_kernel::protocol::ChatEntryKind;
             let mut e = entry;
             if let ChatEntryKind::ToolCall { child_session, .. } = &mut e.kind {
                 *child_session = Some(jinn_core_types::SessionId::new());

@@ -103,7 +103,7 @@ use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 /// Actor over its own private fake bus — for tests that only inspect
 /// actor fields (no publish observability needed).
 async fn test_llm_actor_standalone() -> InferenceActor {
-    let services = jinn_domain::common::services::Services::new_fake().await;
+    let services = jinn_kernel::common::services::Services::new_fake().await;
     InferenceActor {
         services,
         tasks: HashMap::new(),

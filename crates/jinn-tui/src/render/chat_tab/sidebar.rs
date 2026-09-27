@@ -3,7 +3,7 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 
-use jinn_domain::RenderCtx;
+use jinn_kernel::RenderCtx;
 use jinn_sidebar::sections::Sidebar;
 
 /// Renders the sidebar and registers it as selectable when focused.

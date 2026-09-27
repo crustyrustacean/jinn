@@ -1,7 +1,7 @@
 //! Startup session hydration and persisted-default seeding.
 
 use jinn_core_types::SessionId;
-use jinn_domain::common::actor_deps::BusPublish;
+use jinn_kernel::common::actor_deps::BusPublish;
 use jinn_preferences_config::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
 use jinn_session_msg::SessionSeed;
 use jinn_session_store_msg::SessionSummary;

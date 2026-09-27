@@ -31,7 +31,7 @@ pub use jinn_slices::picker_kind::PickerKind;
 pub use jinn_llm_support::entries_to_messages::entries_to_messages;
 pub use jinn_provider_selection_msg::ProviderPickerEntry;
 // The `ChatEntry` vocabulary is promoted to `jinn-core-types` (serde-only
-// value types); these re-exports keep the long-standing `jinn_domain::…`
+// value types); these re-exports keep the long-standing `jinn_kernel::…`
 // paths resolving.
 pub use jinn_core_types::chat_history::ChatHistory;
 pub use jinn_core_types::{

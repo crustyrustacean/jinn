@@ -15,9 +15,9 @@
 use std::time::Duration;
 
 use jinn_core_types::SessionId;
-use jinn_domain::common::app_paths::AppPaths;
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::state::State;
+use jinn_kernel::common::app_paths::AppPaths;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::state::State;
 use jinn_session_lifecycle_msg::SessionCreated;
 
 /// Polls `check` until it passes or the retry budget runs out.

@@ -33,7 +33,7 @@ pub use jinn_inference_msg::StreamCompleted;
 /// re-consumes it to finalize per-session tracking).
 pub fn activate(
     host: &mut SliceHost<'_, jinn_slices::RenderFacts>,
-    services: jinn_domain::Services,
+    services: jinn_kernel::Services,
 ) {
     let _path = inference_actor::InferenceActor::spawn(host.system(), services);
 }
@@ -42,7 +42,7 @@ pub fn activate(
 ///
 /// Called by composition in `jinn-tui`: the element is slice-owned, so the
 /// kernel's element registry cannot reference it.
-pub fn register(registry: &mut jinn_domain::common::AppUiRegistry) {
+pub fn register(registry: &mut jinn_kernel::common::AppUiRegistry) {
     registry.register(Box::new(
         streaming_indicator::StreamingIndicatorElement::new(),
     ));

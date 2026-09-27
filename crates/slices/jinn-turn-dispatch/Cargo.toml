@@ -19,7 +19,7 @@ jinn-session-store-msg = { workspace = true }
 jinn-token-count-msg = { workspace = true }
 jinn-provider-selection = { workspace = true }
 jinn-provider-selection-msg = { workspace = true }
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 jinn-chat-input-msg = { workspace = true }
 jinn-context-assembly = { workspace = true }
 jinn-slices = { workspace = true }
@@ -32,7 +32,7 @@ jiff = { workspace = true }
 rstest = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 # Test-only: the attachment-gate test builds a provider `Attachment`.
 jinn-provider = { workspace = true }
 

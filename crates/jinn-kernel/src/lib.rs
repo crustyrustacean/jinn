@@ -1,14 +1,18 @@
-//! The domain layer - actors, intents, protocol types, and UI elements.
+//! The kernel - shared cross-slice vocabulary, actor infrastructure, and the
+//! glue that binds slices together.
 //!
-//! This crate consolidates the application's domain logic:
+//! Feature-specific logic lives in the slice crates under `crates/slices/`.
+//! What remains here is the vocabulary more than one slice needs, plus the
+//! infrastructure every slice is wired through:
 //!
 //! - **Protocol types** (`protocol/`) - cross-cutting value types shared across
 //!   feature boundaries: `Intent`, `Key`, `Mode`, and system events. Slice-owned
 //!   commands and events live in their canonical `*-msg` crates; the actor bus
 //!   routes by `TypeId` via the marker trait `BusMessage` (in `common/bus.rs`)
 //!   rather than a central enum.
-//! - **Domain slices** (`feat/`) - vertical slices where each feature colocates
-//!   its actors, intents, UI elements, and state implementation.
+//! - **Residual features** (`feat/`) - the feature modules not yet absorbed into
+//!   a slice family. Each colocates its actors, intents, UI elements, and state
+//!   implementation; the extraction model moves them out as slices take over.
 //! - **Common** (`common/`) - shared infrastructure (bus, services, app paths,
 //!   TOML patching), most of which is re-exported from the `jinn-common` crate.
 //!
@@ -79,7 +83,7 @@ pub use jinn_session_msg::PhaseKind;
 // Re-export reasoning types
 // The reasoning-effort vocabulary is owned by the provider-selection
 // slice's msg crate (kernel→msg direction); re-exported here so the
-// long-standing `jinn_domain::ReasoningEffort` paths keep resolving.
+// long-standing `jinn_kernel::ReasoningEffort` paths keep resolving.
 pub use jinn_provider_selection_msg::ReasoningEffort;
 pub use jinn_provider_selection_msg::resolve_effort;
 
@@ -100,22 +104,22 @@ pub use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
 pub use jinn_slices::fabric::{ActorShutdownCompleted, ActorStarted, ActorStarting};
 // The curation contracts are owned by the context-curation slice's msg
 // crate (kernel→msg direction, same as the stream contracts); re-exported
-// here so the long-standing `jinn_domain::TriggerCompaction` path keeps
+// here so the long-standing `jinn_kernel::TriggerCompaction` path keeps
 // resolving.
 pub use jinn_context_curation_msg::TriggerCompaction;
 // Stream contracts are owned by the inference slice's msg crate (kernel→msg
 // direction, jinn-session-msg precedent); re-exported here so the long-standing
-// `jinn_domain::X` paths keep resolving.
+// `jinn_kernel::X` paths keep resolving.
 // Provider-selection contracts are owned by the provider-selection slice's
 // msg crate (kernel→msg direction); re-exported here so the long-standing
-// `jinn_domain::X` paths keep resolving.
+// `jinn_kernel::X` paths keep resolving.
 pub use jinn_provider_selection_msg::{
     LoadProviderPickerEntries, ModelCacheLoaded, ModelsRefreshed, ProviderSwitch, ProviderSwitched,
     RefreshModels,
 };
 // The prompt-scan contracts are owned by the session-init slice's msg crate
 // (kernel→msg direction, skills precedent); re-exported here so the
-// long-standing `jinn_domain::X` paths keep resolving.
+// long-standing `jinn_kernel::X` paths keep resolving.
 pub use jinn_inference_msg::{
     CancelStream, SendToLlmProvider, StreamCompleted, StreamCompletedReason, StreamOrigin,
     StreamToken,

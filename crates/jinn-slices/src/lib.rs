@@ -13,7 +13,7 @@
 //!
 //! This crate is the extraction seam for slice *features*: it
 //! depends only on `jinn-theme` and `ratatui` (for the view layer) —
-//! never on `jinn-domain`.
+//! never on `jinn-kernel`.
 
 #![cfg_attr(
     test,

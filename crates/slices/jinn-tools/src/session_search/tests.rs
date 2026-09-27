@@ -15,8 +15,8 @@ use crate::session_search::{definition, execute};
 use crate::tool_types::ToolContext;
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::{ToolCall, ToolResult};
-use jinn_domain::common::app_paths::AppPaths;
-use jinn_domain::protocol::ChatEntryId;
+use jinn_kernel::common::app_paths::AppPaths;
+use jinn_kernel::protocol::ChatEntryId;
 use jinn_session_state::SessionSnapshot;
 use jinn_session_state::{SessionStore, SessionStoreError, SessionStoreService};
 use jinn_session_store_msg::SessionSummary;
@@ -592,7 +592,7 @@ async fn missing_session_store_fails_gracefully() {
     // Given a context with no session store.
     let ctx = tool_ctx(
         SessionStoreService::new(std::sync::Arc::new(
-            jinn_domain::common::services::test_services::FakeSessionStore,
+            jinn_kernel::common::services::test_services::FakeSessionStore,
         )),
         None,
     );

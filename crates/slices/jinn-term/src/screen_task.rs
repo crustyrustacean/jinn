@@ -24,7 +24,7 @@ use parking_lot::{Mutex, MutexGuard};
 use crate::emulator::Emulator;
 use crate::pty_session::OutputRx;
 use crate::query_responder::respond_to_queries;
-use jinn_domain::common::services::bus_service::BusService;
+use jinn_kernel::common::services::bus_service::BusService;
 use jinn_term_msg::event::TermScreenUpdated;
 
 /// Parse cadence of the screen task: ~20 fps — smooth for htop-style
@@ -150,7 +150,7 @@ pub struct ScreenWiring {
     /// Bus for `TermScreenUpdated` events.
     pub bus: BusService,
     /// Shared application state (mirror writes).
-    pub state: jinn_domain::common::state::State,
+    pub state: jinn_kernel::common::state::State,
     /// The owning chat session (event, mirror + live-flag key).
     pub chat: jinn_core_types::SessionId,
 }

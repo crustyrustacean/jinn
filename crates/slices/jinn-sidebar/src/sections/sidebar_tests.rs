@@ -16,10 +16,10 @@ use crate::sections::intent::handle_sidebar_focus;
 use crate::sections::pins::PinsSection;
 use crate::sections::section_trait::SidebarIntent;
 use crate::sections::sidebar::{Sidebar, jump_to_section, navigate_sidebar};
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::render_ctx::RenderCtx;
-use jinn_domain::protocol::ChatEntry;
-use jinn_domain::protocol::PinPosition;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::render_ctx::RenderCtx;
+use jinn_kernel::protocol::ChatEntry;
+use jinn_kernel::protocol::PinPosition;
 use jinn_session_state::ChatSessionState;
 
 fn state_with_pinned(count: usize) -> AppState {

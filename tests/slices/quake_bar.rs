@@ -10,7 +10,7 @@
 #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
 use crate::common::composed_keymap;
-use jinn_domain::{KernelIntent, Key, KeyEvent, Modifiers};
+use jinn_kernel::{KernelIntent, Key, KeyEvent, Modifiers};
 use jinn_quake_bar::quake_scope;
 use jinn_tui::Scope;
 

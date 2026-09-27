@@ -66,7 +66,7 @@ pub fn run(tick_rate: Duration) -> Result<(), Report<TuiRunError>>
 Each `Intent` variant has a dedicated validator function. Validators are plain functions — no registries or trait objects. Fallible validators return `Result<(), SpecificError>` with a custom error enum per intent.
 
 ```rust
-// Validator pattern — co-located per feature, e.g. jinn-domain/src/feat/chat_input/validator.rs
+// Validator pattern — co-located per feature, e.g. slices/jinn-chat-input/src/validator.rs
 pub fn validate_submit_message(state: &AppState) -> Result<(), SubmitMessageError> {
     if state.active_chat_input().is_empty() {
         return Err(SubmitMessageError::EmptyBuffer);
@@ -145,12 +145,12 @@ Actors are domain logic that spans the entire application, so they have specific
 
 ### Dependency Injection
 
-**Services container (in `jinn-domain/src/common/services.rs`):**
+**Services container (in `crates/jinn-kernel/src/common/services.rs`):**
 
 ```rust
 #[derive(Debug, Clone)]
 pub struct Services {
-    // See jinn-domain/src/common/services.rs for the current fields.
+    // See crates/jinn-kernel/src/common/services.rs for the current fields.
     // Services are added as the domain grows — the exact set of fields
     // changes over time. The pattern is what matters, not the specific list.
 }
@@ -209,7 +209,7 @@ let c = {
 ### TOML Persistence (Comment-Preserving)
 
 User-editable TOML files (`providers.toml`, `jinn.toml`) must be written via the
-`DocumentPatcher` in `crates/jinn-domain/src/common/toml_patch.rs`, **never** via
+`DocumentPatcher` in `crates/jinn-common/src/toml_patch.rs`, **never** via
 `toml::to_string_pretty` directly. The plain serializer wipes every comment,
 blank line, and field-ordering choice on every save.
 
@@ -505,9 +505,12 @@ async fn actor_host_loads_manifest() {
 
 ### Test Utilities
 
-**Shared test helpers:**
+**Test sinks:**
 
-- `RecordingSink` (in `jinn-domain/src/common/actor.rs`) — records messages emitted by actors during tests.
+- `RecordingSink` — a test-local `PublishSink` that keeps every payload published
+  through it, so a test can assert on what a command emitted. There is no shared
+  helper: each test that needs one declares its own, e.g.
+  `crates/slices/jinn-sidebar/src/sections/sessions/activate.rs`.
 - Create domain-specific test builders as needed within each feature's test module.
 - Use ratatui's `TestBackend` directly for render tests.
 

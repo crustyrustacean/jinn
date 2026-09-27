@@ -25,14 +25,14 @@ use jinn_slices::route::ScopeSignal;
 /// for the optimistic-write downcast.
 struct FakeState {
     cwd: std::path::PathBuf,
-    kernel: Option<jinn_domain::AppState>,
+    kernel: Option<jinn_kernel::AppState>,
 }
 
 impl Default for FakeState {
     fn default() -> Self {
         Self {
             cwd: std::path::PathBuf::new(),
-            kernel: Some(jinn_domain::AppState::default_with_scope_focus()),
+            kernel: Some(jinn_kernel::AppState::default_with_scope_focus()),
         }
     }
 }

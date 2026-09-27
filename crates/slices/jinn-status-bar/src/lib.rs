@@ -17,7 +17,7 @@ pub mod turn_counter;
 #[cfg(test)]
 mod element_tests;
 
-use jinn_domain::common::ui_registry::UiRegistry;
+use jinn_kernel::common::ui_registry::UiRegistry;
 use jinn_slices::SliceHost;
 
 pub use element::StatusBarElement;
@@ -28,7 +28,7 @@ pub use jinn_status_bar_msg::status_bar_slot;
 ///
 /// Kernel-free of feature state, the slice needs exactly one
 /// registration — everything else it renders is read-only kernel state
-/// resolved through [`RenderCtx`](jinn_domain::common::render_ctx::RenderCtx).
+/// resolved through [`RenderCtx`](jinn_kernel::common::render_ctx::RenderCtx).
 ///
 /// # Panics
 ///
@@ -73,7 +73,7 @@ mod activation_tests {
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let key_routes = jinn_slices::KeyRoutes::new();
-        let services = jinn_domain::Services::new_fake().await;
+        let services = jinn_kernel::Services::new_fake().await;
         let mut host = SliceHost::new(
             &slices,
             &mut viewport,

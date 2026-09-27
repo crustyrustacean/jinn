@@ -21,8 +21,8 @@ pub use env_init_actor::EnvInitActor;
 pub use provider_init_actor::ProviderInitActor;
 pub use system_ready_actor::SystemReadyActor;
 
-use jinn_domain::common::services::Services;
-use jinn_domain::common::state::State;
+use jinn_kernel::common::services::Services;
+use jinn_kernel::common::state::State;
 use trouper::actor::ActorPath;
 
 /// The handles composition needs from the boot installation: the
@@ -59,7 +59,7 @@ pub fn install_actors(
     let _system_ready = SystemReadyActor::spawn(
         system,
         system_ready_actor::SystemReadyActorDeps {
-            deps: jinn_domain::common::actor_deps::ActorDeps {
+            deps: jinn_kernel::common::actor_deps::ActorDeps {
                 services: services.clone(),
             },
             ready_tx,
@@ -72,7 +72,7 @@ pub fn install_actors(
     let env_init_path = EnvInitActor::spawn(
         system,
         env_init_actor::EnvInitActorDeps {
-            deps: jinn_domain::common::actor_deps::ActorDeps {
+            deps: jinn_kernel::common::actor_deps::ActorDeps {
                 services: services.clone(),
             },
         },
@@ -83,7 +83,7 @@ pub fn install_actors(
     let _provider_init = ProviderInitActor::spawn(
         system,
         provider_init_actor::ProviderInitActorDeps {
-            deps: jinn_domain::common::actor_deps::ActorDeps {
+            deps: jinn_kernel::common::actor_deps::ActorDeps {
                 services: services.clone(),
             },
             state,

@@ -64,10 +64,10 @@ pub const ENDPOINT_PICKER_BINDINGS: &[(&str, &str)] = &[
 /// Opening and confirming need the session's model shape and profile, so they
 /// downcast. When the state is not the kernel's (a test double), the action
 /// declines rather than panicking.
-fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_domain::AppState> {
+fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_kernel::AppState> {
     ctx.state
         .as_any_mut()?
-        .downcast_mut::<jinn_domain::AppState>()
+        .downcast_mut::<jinn_kernel::AppState>()
 }
 
 /// Wraps a picker action in an [`ActionFn`], handing it both the dispatch
@@ -363,7 +363,7 @@ fn new_session(ctx: &mut ActionCtx<'_>, _cell: &EndpointPickerCell) -> IntentRes
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    jinn_domain::session_lifecycle::intent::handle_session_new(state, config)
+    jinn_kernel::session_lifecycle::intent::handle_session_new(state, config)
 }
 
 /// Ctrl-C: clear the filter, or close when it is already empty.

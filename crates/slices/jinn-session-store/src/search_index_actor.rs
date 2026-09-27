@@ -31,7 +31,7 @@ use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
 use jinn_core_types::SessionId;
-use jinn_domain::common::actor_deps::ActorDeps;
+use jinn_kernel::common::actor_deps::ActorDeps;
 
 /// How often the actor beats in production.
 pub const REINDEX_INTERVAL: Duration = Duration::from_secs(5);

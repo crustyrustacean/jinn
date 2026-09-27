@@ -16,8 +16,8 @@ use trouper::system::ActorSystem;
 use crate::inputs::build_assembly_inputs;
 use crate::inputs_snapshot::assemble_via_service;
 use jinn_context_assembly_msg::ContextOverrideChanged;
-use jinn_domain::common::state::State;
-use jinn_domain::protocol::system::ActiveSessionChanged;
+use jinn_kernel::common::state::State;
+use jinn_kernel::protocol::system::ActiveSessionChanged;
 use jinn_session_history_msg::ChatEntryPinChanged;
 use jinn_session_history_msg::HistoryAppended;
 use jinn_session_store_msg::SessionLoadCompleted;
@@ -35,7 +35,7 @@ pub struct ContextSizeActor {
     /// Shared application state.
     state: State,
     /// Runtime services (the trouper system for assembly asks).
-    services: jinn_domain::common::services::Services,
+    services: jinn_kernel::common::services::Services,
 }
 
 impl ServiceActor for ContextSizeActor {
@@ -63,7 +63,7 @@ impl ContextSizeActor {
     pub fn spawn(
         system: &ActorSystem,
         state: State,
-        services: jinn_domain::common::services::Services,
+        services: jinn_kernel::common::services::Services,
     ) -> ActorPath {
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new(CONTEXT_SIZE_PATH))
@@ -163,12 +163,12 @@ mod tests {
     )]
 
     use super::*;
-    use jinn_domain::common::app_state::AppState;
-    use jinn_domain::protocol::ChatEntry;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::protocol::ChatEntry;
     use jinn_session_state::ChatSessionState;
 
     async fn test_actor() -> ContextSizeActor {
-        let services = jinn_domain::Services::new_fake().await;
+        let services = jinn_kernel::Services::new_fake().await;
         {
             // Spawn the service directly: this crate IS the slice under test.
             let _ = crate::service::spawn(&services.trouper_system);

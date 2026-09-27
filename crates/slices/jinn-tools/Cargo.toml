@@ -42,7 +42,7 @@ unicode-segmentation = { workspace = true }
 # preference reads (skills discovery, task model selection, term spawn size,
 # project command-policy resolution) are kernel type reads — the discord
 # precedent for a slice consuming kernel vocabulary at execution time.
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 jinn-llm-support = { workspace = true }
 jinn-context-assembly = { workspace = true }
 jinn-session-turn = { workspace = true }

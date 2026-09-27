@@ -24,7 +24,7 @@ use std::{
 
 use clap_verbosity_flag::{Verbosity, VerbosityFilter, WarnLevel};
 use error_stack::{Report, ResultExt};
-use jinn_domain::common::app_info::APP_NAME;
+use jinn_kernel::common::app_info::APP_NAME;
 use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::{
     EnvFilter, Layer,

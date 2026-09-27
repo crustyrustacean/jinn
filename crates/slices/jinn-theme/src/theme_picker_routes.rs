@@ -62,10 +62,10 @@ pub const THEME_PICKER_BINDINGS: &[(&str, &str)] = &[("<enter>", "apply"), ("<es
 /// they downcast. This is the established slice-side seam; when the state is
 /// not the kernel's (a test double), the caller gets `None` and the action
 /// declines rather than panicking.
-fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_domain::AppState> {
+fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_kernel::AppState> {
     ctx.state
         .as_any_mut()?
-        .downcast_mut::<jinn_domain::AppState>()
+        .downcast_mut::<jinn_kernel::AppState>()
 }
 
 /// Wraps a picker action in an [`ActionFn`], handing it both the dispatch
@@ -251,10 +251,10 @@ pub fn register_theme_picker_input_hook(routes: &KeyRoutes, cell: &ThemePickerCe
 /// theme-entries cell, so a caller needs no picker registry and no knowledge
 /// of the picker's contents.
 #[must_use]
-pub fn open_from_scope(state: &mut jinn_domain::AppState) -> IntentResult {
+pub fn open_from_scope(state: &mut jinn_kernel::AppState) -> IntentResult {
     state
         .frontend
-        .scope_push(jinn_domain::FocusScope::Dynamic(theme_picker_scope()));
+        .scope_push(jinn_kernel::FocusScope::Dynamic(theme_picker_scope()));
     IntentResult::empty()
 }
 
@@ -280,7 +280,7 @@ fn open_theme_picker(ctx: &mut ActionCtx<'_>, cell: &ThemePickerCell) -> IntentR
 
     state
         .frontend
-        .scope_push(jinn_domain::FocusScope::Dynamic(theme_picker_scope()));
+        .scope_push(jinn_kernel::FocusScope::Dynamic(theme_picker_scope()));
     IntentResult::empty()
 }
 
@@ -338,7 +338,7 @@ fn new_session(ctx: &mut ActionCtx<'_>, _cell: &ThemePickerCell) -> IntentResult
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    jinn_domain::session_lifecycle::intent::handle_session_new(state, config)
+    jinn_kernel::session_lifecycle::intent::handle_session_new(state, config)
 }
 
 /// Clears a non-empty filter, or closes the picker when the filter is empty.

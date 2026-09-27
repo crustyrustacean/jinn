@@ -7,7 +7,7 @@ use std::time::Duration;
 use crate::search_index_actor::{REINDEX_INTERVAL, SearchIndexActorDeps};
 use crate::sqlite::SqliteSessionStore;
 use jinn_core_types::SessionId;
-use jinn_domain::common::bus::HarnessServices;
+use jinn_kernel::common::bus::HarnessServices;
 use jinn_session_state::SessionSnapshot;
 use jinn_session_state::SessionStoreService;
 use jinn_testutil::bus_harness::TestHarness;
@@ -19,7 +19,7 @@ use jinn_testutil::bus_harness::TestHarness;
 async fn sqlite_actor_deps() -> (
     tempfile::TempDir,
     TestHarness,
-    jinn_domain::common::actor_deps::ActorDeps,
+    jinn_kernel::common::actor_deps::ActorDeps,
     std::sync::Arc<SqliteSessionStore>,
 ) {
     let dir = tempfile::TempDir::new().expect("temp dir");
@@ -27,7 +27,7 @@ async fn sqlite_actor_deps() -> (
     let harness = TestHarness::new().await;
     let mut services = harness.services().await;
     services.session_store = SessionStoreService::new(store.clone());
-    let deps = jinn_domain::common::actor_deps::ActorDeps { services };
+    let deps = jinn_kernel::common::actor_deps::ActorDeps { services };
     (dir, harness, deps, store)
 }
 

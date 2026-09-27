@@ -13,21 +13,21 @@
 //! EnvInitActor is spawned first so dependent actors can pull config from it
 //! via `ask()` on its path.
 
-use jinn_domain::ApiKeysService;
-use jinn_domain::AppState;
-use jinn_domain::ConfigStorageService;
-use jinn_domain::LlmServiceFactoryService;
-use jinn_domain::ProviderRegistryService;
-use jinn_domain::Services;
+use jinn_kernel::ApiKeysService;
+use jinn_kernel::AppState;
+use jinn_kernel::ConfigStorageService;
+use jinn_kernel::LlmServiceFactoryService;
+use jinn_kernel::ProviderRegistryService;
+use jinn_kernel::Services;
 use jinn_provider_selection;
 use jinn_quake_bar;
 use jinn_session_state::SessionStoreService;
 use jinn_slices;
 
-use jinn_domain::common::actor_deps::ActorDeps;
+use jinn_kernel::common::actor_deps::ActorDeps;
 use jinn_llm_support::token_estimator::TiktokenCounter;
 
-use jinn_domain::{AppCore, State};
+use jinn_kernel::{AppCore, State};
 
 /// The fixed (required) inputs to actor-system construction.
 #[derive(Clone)]
@@ -50,7 +50,7 @@ pub struct ActorSystemBuilderArgs {
     /// App state storage service.
     pub app_state_storage: jinn_preferences_config::AppStateStorageService,
     /// Application paths.
-    pub paths: jinn_domain::AppPaths,
+    pub paths: jinn_kernel::AppPaths,
     /// Dump directory for provider request debugging. `None` disables.
     pub dump_requests: Option<std::path::PathBuf>,
     /// The compaction system prompt loaded from the prompts directory at
@@ -116,11 +116,11 @@ impl ActorSystemBuilder {
             let system =
                 trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
             (
-                jinn_domain::common::services::bus_service::BusService::new_trouper(system.clone()),
+                jinn_kernel::common::services::bus_service::BusService::new_trouper(system.clone()),
                 system,
             )
         };
-        let bridge = jinn_domain::common::bridge::Bridge::with_system(&bus, &handle);
+        let bridge = jinn_kernel::common::bridge::Bridge::with_system(&bus, &handle);
 
         let mut services = Services {
             paths: paths.clone(),
@@ -138,7 +138,7 @@ impl ActorSystemBuilder {
             trouper_system,
             mcp_coordinator: std::sync::Arc::new(std::sync::OnceLock::new()),
             interactive_term: std::sync::Arc::new(std::sync::OnceLock::new()),
-            request_dump: jinn_domain::common::request_dump::RequestDumpService::new(dump_requests),
+            request_dump: jinn_kernel::common::request_dump::RequestDumpService::new(dump_requests),
             task_spawns: jinn_tools_msg::TaskSpawnRegistry::default(),
             slices: jinn_slices::Slices::new(),
             key_routes: jinn_slices::route::KeyRoutes::new(),
@@ -550,7 +550,7 @@ fn jinn_scope_focus_activate(services: &mut Services) {
 /// Activates the chat-log-view slice: its state cell only. No routes,
 /// no actors, no view. Also attaches the registry handle on the session
 /// map so every session's view facade resolves the cell.
-fn jinn_chat_log_view_activate(services: &mut Services, state: &jinn_domain::State) {
+fn jinn_chat_log_view_activate(services: &mut Services, state: &jinn_kernel::State) {
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
         &mut services.viewport,
@@ -572,7 +572,7 @@ fn jinn_chat_log_view_activate(services: &mut Services, state: &jinn_domain::Sta
 /// Activates the chat-input slice: its state cell only. No routes, no
 /// actors, no view. The session map already carries the attached registry
 /// handle, so every session's input facade resolves the cell.
-fn jinn_sidebar_activate(services: &mut Services, state: jinn_domain::common::state::State) {
+fn jinn_sidebar_activate(services: &mut Services, state: jinn_kernel::common::state::State) {
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
         &mut services.viewport,
@@ -585,7 +585,7 @@ fn jinn_sidebar_activate(services: &mut Services, state: jinn_domain::common::st
 
 fn jinn_session_lifecycle_activate(
     services: &mut Services,
-    state: jinn_domain::common::state::State,
+    state: jinn_kernel::common::state::State,
     session_store_handles: &jinn_session_store::SessionStoreHandles,
     builtin_registry: jinn_session_lifecycle_msg::BuiltinRegistry,
     shell: String,
@@ -656,7 +656,7 @@ fn jinn_project_activate(services: &mut Services) {
 
 async fn jinn_preferences_activate(
     services: &mut Services,
-    state: jinn_domain::common::state::State,
+    state: jinn_kernel::common::state::State,
 ) {
     // The two persistence actors spawn here with shared state and services,
     // then subscribe synchronously — this must complete before the env-init
@@ -680,8 +680,8 @@ async fn jinn_preferences_activate(
 /// input facade resolves the cell.
 fn jinn_chat_input_activate(
     services: &mut Services,
-    deps: jinn_domain::common::actor_deps::ActorDeps,
-    state: jinn_domain::common::state::State,
+    deps: jinn_kernel::common::actor_deps::ActorDeps,
+    state: jinn_kernel::common::state::State,
 ) {
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
@@ -698,7 +698,7 @@ fn jinn_chat_input_activate(
 /// are the theme picker's open hook and the app-state actor's resolution.
 fn jinn_token_count_activate(
     services: &mut Services,
-    state: jinn_domain::common::state::State,
+    state: jinn_kernel::common::state::State,
 ) -> jinn_token_count_msg::HistoryWorkerChatEntryTokenCache {
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
@@ -720,7 +720,7 @@ fn jinn_token_count_activate(
 /// failure).
 fn jinn_context_curation_activate(
     services: &mut Services,
-    state: jinn_domain::common::state::State,
+    state: jinn_kernel::common::state::State,
     handle: tokio::runtime::Handle,
     compaction_prompt: String,
 ) {
@@ -823,7 +823,7 @@ fn jinn_persona_activate(services: &mut Services) -> jinn_persona_msg::Personas 
 /// Activates the turn-dispatch slice: spawns the queue actor (trouper
 /// ServiceActor) and stages its crossing routes. The queue actor holds a
 /// `Services` clone for its bus publishes and the assembly ask.
-fn jinn_turn_dispatch_activate(services: &mut Services, state: jinn_domain::common::state::State) {
+fn jinn_turn_dispatch_activate(services: &mut Services, state: jinn_kernel::common::state::State) {
     // `Services` is cheap to clone (Arc fields); the clone side-steps
     // the host's mutable viewport borrow for the activation call.
     let services_snapshot = services.clone();
@@ -858,7 +858,7 @@ fn jinn_inference_activate(services: &mut Services) {
 /// actors (trouper ServiceActors) on the kernel's trouper system. The
 /// actors hold a `Services` clone for their bus publishes; the watchdog
 /// knobs are read once from the `State` snapshot at activation.
-fn jinn_watchdog_activate(services: &mut Services, state: jinn_domain::State) {
+fn jinn_watchdog_activate(services: &mut Services, state: jinn_kernel::State) {
     // `Services` is cheap to clone (Arc fields); the clone side-steps
     // the host's mutable viewport borrow for the activation call.
     let services_snapshot = services.clone();
@@ -911,7 +911,7 @@ fn jinn_theme_activate(services: &mut Services) {
 
 fn jinn_provider_selection_activate(
     services: &mut Services,
-    state: jinn_domain::common::state::State,
+    state: jinn_kernel::common::state::State,
 ) -> jinn_provider_selection::ProviderSelectionHandles {
     // `Services` is cheap to clone (Arc fields); the clone side-steps
     // the host's mutable viewport borrow for the activation call
@@ -998,7 +998,7 @@ fn jinn_quake_bar_activate(services: &mut Services) {
 /// channels and its validated config for the frontend spawn.
 async fn jinn_discord_activate(
     services: &mut Services,
-    state: jinn_domain::common::state::State,
+    state: jinn_kernel::common::state::State,
 ) -> jinn_discord::ActivatedDiscord {
     // `Services` is cheap to clone (Arc fields); the clone side-steps
     // the host's mutable viewport borrow for the activation call.
@@ -1016,7 +1016,7 @@ async fn jinn_discord_activate(
 }
 
 /// Activates the session-init slice over the kernel's registries.
-fn jinn_session_init_activate(services: &mut Services, state: jinn_domain::common::state::State) {
+fn jinn_session_init_activate(services: &mut Services, state: jinn_kernel::common::state::State) {
     if let Err(error) = jinn_session_init::activate(services, state) {
         panic!("session-init slice activation failed: {error}");
     }

@@ -79,7 +79,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[case("cargo test -p jinn-domain", true)]
+    #[case("cargo test -p jinn-kernel", true)]
     #[case("cargo t -p foo", true)]
     #[case("cargo test", false)]
     #[case("rg \"cargo test\" notes.md", false)]

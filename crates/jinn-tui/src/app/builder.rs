@@ -1,6 +1,6 @@
 //! Builder for constructing a [`TuiApp`] with sensible defaults for tests.
 
-use jinn_domain::AppCore;
+use jinn_kernel::AppCore;
 
 use crate::TuiApp;
 use crate::app::WhichKeyInstance;
@@ -30,22 +30,22 @@ use jinn_sidebar::sections::sidebar::Sidebar;
 #[derive(Default)]
 pub struct TuiAppBuilder {
     /// Optional services override (defaults to fake services).
-    services: Option<jinn_domain::Services>,
+    services: Option<jinn_kernel::Services>,
     /// Optional app state override (defaults to default state).
-    state: Option<jinn_domain::AppState>,
+    state: Option<jinn_kernel::AppState>,
 }
 
 impl TuiAppBuilder {
     /// Override the default services.
     #[must_use]
-    pub fn services(mut self, services: jinn_domain::Services) -> Self {
+    pub fn services(mut self, services: jinn_kernel::Services) -> Self {
         self.services = Some(services);
         self
     }
 
     /// Override the default app state.
     #[must_use]
-    pub fn state(mut self, state: jinn_domain::AppState) -> Self {
+    pub fn state(mut self, state: jinn_kernel::AppState) -> Self {
         self.state = Some(state);
         self
     }
@@ -59,7 +59,7 @@ impl TuiAppBuilder {
     pub async fn build(self) -> TuiApp {
         let services = match self.services {
             Some(s) => s,
-            None => jinn_domain::Services::new_fake().await,
+            None => jinn_kernel::Services::new_fake().await,
         };
         let state = self.state.unwrap_or_default();
 
@@ -80,12 +80,12 @@ impl TuiAppBuilder {
         }
 
         let core = AppCore {
-            state: jinn_domain::State::new(state),
+            state: jinn_kernel::State::new(state),
             bridge: services.bridge.clone(),
         };
 
-        let mut ui_registry = jinn_domain::AppUiRegistry::new();
-        jinn_domain::register_all_ui_elements(&mut ui_registry);
+        let mut ui_registry = jinn_kernel::AppUiRegistry::new();
+        jinn_kernel::register_all_ui_elements(&mut ui_registry);
         // Slice-owned elements the kernel registry cannot reference. The
         // chat input box is fetched with `if let Some(..)`, so a missing
         // call here fails silently — the box just never draws.

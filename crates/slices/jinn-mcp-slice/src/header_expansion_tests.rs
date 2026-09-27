@@ -24,7 +24,7 @@ use std::time::Duration;
 
 use crate::connection::{McpActor, McpActorDeps};
 use jinn_core_types::SessionId;
-use jinn_domain::common::bus::HarnessServices;
+use jinn_kernel::common::bus::HarnessServices;
 use jinn_mcp_msg::{McpConnectionStatus, McpServerStatus};
 use jinn_preferences_config::schemas::mcp::{McpServerConfig, TransportKind};
 use jinn_testutil::bus_harness::{TestHarness, await_recorded};
@@ -58,7 +58,7 @@ async fn remote_http_server_with_unresolved_header_variable_lands_dead() {
     let _actor = McpActor::spawn(
         &services.trouper_system,
         McpActorDeps::new(
-            jinn_domain::common::actor_deps::ActorDeps {
+            jinn_kernel::common::actor_deps::ActorDeps {
                 services: services.clone(),
             },
             session_id,
@@ -125,7 +125,7 @@ async fn remote_http_server_with_resolvable_headers_enters_retry_loop() {
     let _actor = McpActor::spawn(
         &services.trouper_system,
         McpActorDeps::new(
-            jinn_domain::common::actor_deps::ActorDeps {
+            jinn_kernel::common::actor_deps::ActorDeps {
                 services: services.clone(),
             },
             session_id,
@@ -162,7 +162,7 @@ async fn remote_http_server_with_resolvable_headers_enters_retry_loop() {
 async fn stdio_arm_ignores_configured_headers_entirely() {
     // Given services WITHOUT the variable that the config's headers reference,
     // and a stdio command that cannot exist.
-    let services = jinn_domain::Services::new_fake().await;
+    let services = jinn_kernel::Services::new_fake().await;
     let mut headers = std::collections::BTreeMap::new();
     headers.insert(
         "Authorization".to_owned(),
@@ -228,7 +228,7 @@ async fn stdio_server_with_bogus_header_variable_still_connects() {
     let _actor = McpActor::spawn(
         &services.trouper_system,
         McpActorDeps::with_client(
-            jinn_domain::common::actor_deps::ActorDeps {
+            jinn_kernel::common::actor_deps::ActorDeps {
                 services: services.clone(),
             },
             session_id.clone(),

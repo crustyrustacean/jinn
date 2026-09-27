@@ -11,7 +11,7 @@
 
 use crate::common::{composed_keymap, test_app, wait_for, wait_for_bounded};
 use jinn_dashboard::dashboard_scope;
-use jinn_domain::{Bridge, KernelIntent, Key, KeyEvent, Modifiers};
+use jinn_kernel::{Bridge, KernelIntent, Key, KeyEvent, Modifiers};
 use jinn_slices::TypedCell;
 use jinn_tui::Scope;
 

@@ -28,7 +28,7 @@ use error_stack::Report;
 use jinn_chat_input_msg::{EnqueueUserMessage, SubmitSteeringMessage};
 use jinn_core_types::{ChatEntry, SessionId};
 use jinn_discord_msg::DiscordStatusUpdate;
-use jinn_domain::{Bridge, State};
+use jinn_kernel::{Bridge, State};
 use jinn_session_state::SessionReadProjection;
 use jinn_session_store_msg::SessionLoadRequested;
 use poise::serenity_prelude as serenity;
@@ -64,7 +64,7 @@ pub struct BotData {
     pub config: Arc<DiscordConfig>,
     /// Runtime services — the intent handler reads the slice registry and
     /// key route table from here.
-    pub services: jinn_domain::Services,
+    pub services: jinn_kernel::Services,
 }
 
 /// Runs the Discord gateway: starts poise, registers slash commands, and

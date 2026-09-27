@@ -18,18 +18,18 @@
 )]
 
 use jinn_chat_input::element::ChatInputBoxElement;
-use jinn_domain::AppState;
-use jinn_domain::RenderCtx;
-use jinn_domain::common::ui_element::UiElement;
-use jinn_domain::common::ui_registry::UiRegistry;
-use jinn_domain::protocol::ChatEntry;
+use jinn_kernel::AppState;
+use jinn_kernel::RenderCtx;
+use jinn_kernel::common::ui_element::UiElement;
+use jinn_kernel::common::ui_registry::UiRegistry;
+use jinn_kernel::protocol::ChatEntry;
 use jinn_slices::FocusScope;
 use jinn_theme::default_theme;
 use jinn_turn_dispatch_msg::QueueItem;
 
-use jinn_domain::IntentHandler;
-use jinn_domain::protocol::KernelIntent;
-use jinn_domain::state::frontend_state::PendingSessionCreation;
+use jinn_kernel::IntentHandler;
+use jinn_kernel::protocol::KernelIntent;
+use jinn_kernel::state::frontend_state::PendingSessionCreation;
 use jinn_testutil::setup_term;
 use ratatui::layout::Position;
 
@@ -1170,7 +1170,7 @@ fn submit_message_returns_enqueue_command() {
     // When handling SubmitMessage.
     let result = jinn_chat_input::intent::handle_submit_message(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then a MarkSessionInteracted and an EnqueueUserMessage command are returned.
@@ -1188,7 +1188,7 @@ fn submit_message_clears_input_buffer() {
     // When handling SubmitMessage.
     let _result = jinn_chat_input::intent::handle_submit_message(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then the input buffer is reset.
@@ -1207,7 +1207,7 @@ fn submit_message_noop_with_empty_buffer() {
     // When handling SubmitMessage.
     let result = jinn_chat_input::intent::handle_submit_message(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then no commands are returned.
@@ -1228,7 +1228,7 @@ fn submit_message_completes_and_submits_when_hash_autocomplete_active() {
     // When handling SubmitMessage.
     let result = jinn_chat_input::intent::handle_submit_message(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then the autocomplete is completed and the message is submitted.
@@ -1255,7 +1255,7 @@ fn submit_message_with_hash_autocomplete_clears_buffer() {
     // When handling SubmitMessage.
     let _result = jinn_chat_input::intent::handle_submit_message(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then the input buffer is cleared.
@@ -1310,7 +1310,7 @@ fn toggle_input_mode_is_sticky_across_submissions() {
     // When submitting while Idle (falls back to enqueue).
     let _ = jinn_chat_input::intent::handle_submit_message(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then mode remains Steer (sticky).
@@ -1335,7 +1335,7 @@ fn queue_submit_always_enqueues() {
     // When submitting.
     let result = jinn_chat_input::intent::handle_submit_message(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then an EnqueueUserMessage command is emitted.
@@ -1371,7 +1371,7 @@ fn steer_submit_while_busy_routes_to_steer(
     // When submitting.
     let result = jinn_chat_input::intent::handle_submit_message(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then SubmitSteeringMessage command emitted (not EnqueueUserMessage).
@@ -1405,7 +1405,7 @@ fn steer_submit_while_idle_falls_back_to_enqueue() {
     // When submitting.
     let result = jinn_chat_input::intent::handle_submit_message(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then EnqueueUserMessage command emitted (fall-through).
@@ -1801,7 +1801,7 @@ fn enter_insert_mode_sets_mode_to_input() {
     // Then the scope stack has Input on top.
     assert_eq!(
         state.frontend.scope().mode(),
-        jinn_domain::protocol::Mode::Input
+        jinn_kernel::protocol::Mode::Input
     );
 }
 
@@ -1827,7 +1827,7 @@ fn enter_normal_mode_returns_to_normal_scope() {
     // When handling EnterNormalMode.
     let _ = jinn_chat_input::intent::handle_enter_normal_mode(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then the scope is back to Normal.
@@ -1839,7 +1839,7 @@ fn enter_normal_mode_clears_pending_creation() {
     // Given a state with a stale pending session creation stash.
     let mut state = AppState::default_with_scope_focus();
     state.frontend.pending_creation =
-        Some(jinn_domain::state::frontend_state::PendingSessionCreation {
+        Some(jinn_kernel::state::frontend_state::PendingSessionCreation {
             project_dir: std::path::PathBuf::from("/tmp/stale"),
             starting_cwd: std::path::PathBuf::from("/tmp/stale"),
         });
@@ -1847,7 +1847,7 @@ fn enter_normal_mode_clears_pending_creation() {
     // When handling EnterNormalMode (ESC from the project/lifecycle chain).
     let _ = jinn_chat_input::intent::handle_enter_normal_mode(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then the stash is cleared so it never leaks into a future session
@@ -1865,7 +1865,7 @@ fn enter_normal_mode_from_input_emits_no_commands() {
     // When handling EnterNormalMode.
     let result = jinn_chat_input::intent::handle_enter_normal_mode(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then no commands are emitted.
@@ -1884,7 +1884,7 @@ fn enter_normal_mode_clears_picker_kind_when_leaving_picker() {
     // When handling EnterNormalMode.
     let _ = jinn_chat_input::intent::handle_enter_normal_mode(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then the scope is back to Normal (no picker).
@@ -1904,7 +1904,7 @@ fn enter_normal_mode_from_picker_emits_no_commands() {
     // When handling EnterNormalMode.
     let result = jinn_chat_input::intent::handle_enter_normal_mode(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then no commands are emitted.
@@ -1924,7 +1924,7 @@ fn enter_normal_mode_from_input_with_sidebar_returns_to_normal() {
     // When handling EnterNormalMode.
     let _ = jinn_chat_input::intent::handle_enter_normal_mode(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then the scope is back to Normal (not the sidebar persona section).
@@ -1945,7 +1945,7 @@ fn enter_normal_mode_from_sidebar_input_emits_no_commands() {
     // When handling EnterNormalMode.
     let result = jinn_chat_input::intent::handle_enter_normal_mode(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then no commands are emitted.
@@ -1963,7 +1963,7 @@ fn enter_normal_mode_does_not_cancel_stream() {
     // When handling EnterNormalMode.
     let result = jinn_chat_input::intent::handle_enter_normal_mode(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then no CancelStream command is emitted.
@@ -1986,7 +1986,7 @@ fn enter_normal_mode_preserves_streaming_phase() {
     // When handling EnterNormalMode.
     let _result = jinn_chat_input::intent::handle_enter_normal_mode(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then the session is still streaming (not cancelled).
@@ -2017,7 +2017,7 @@ fn enter_normal_mode_does_not_drain_queue() {
     // When handling EnterNormalMode.
     let _result = jinn_chat_input::intent::handle_enter_normal_mode(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then the queued messages are NOT drained.
@@ -2051,7 +2051,7 @@ fn enter_normal_mode_with_queue_emits_no_cancel_stream() {
     // When handling EnterNormalMode.
     let result = jinn_chat_input::intent::handle_enter_normal_mode(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then no CancelStream command is emitted.
@@ -2410,7 +2410,7 @@ fn submit_new_command_creates_session() {
     // When handling SubmitMessage.
     let _result = jinn_chat_input::intent::handle_submit_message(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then a new session is created.
@@ -2432,7 +2432,7 @@ fn submit_new_command_emits_no_enqueue_command() {
     // When handling SubmitMessage.
     let result = jinn_chat_input::intent::handle_submit_message(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then no EnqueueUserMessage was emitted.
@@ -2454,7 +2454,7 @@ fn submit_unknown_slash_command_sends_as_chat() {
     // When handling SubmitMessage.
     let result = jinn_chat_input::intent::handle_submit_message(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then the message is submitted as a normal chat message.
@@ -2485,7 +2485,7 @@ fn submit_unknown_slash_command_clears_buffer() {
     // When handling SubmitMessage.
     let _result = jinn_chat_input::intent::handle_submit_message(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then the buffer is cleared.
@@ -2505,7 +2505,7 @@ fn submit_compact_slash_command_pushes_system_message() {
     // When handling SubmitMessage.
     let result = jinn_chat_input::intent::handle_submit_message(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then a MarkSessionInteracted and TriggerCompaction command are dispatched.
@@ -2535,7 +2535,7 @@ fn submit_compact_slash_command_clears_buffer() {
     // When handling SubmitMessage.
     let _result = jinn_chat_input::intent::handle_submit_message(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then the buffer is cleared.
@@ -2597,7 +2597,7 @@ fn enter_completes_and_executes_slash_command() {
     // When pressing Enter (SubmitMessage with autocomplete active).
     let _result = jinn_chat_input::intent::handle_submit_message(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then the command is completed and executed.
@@ -2622,7 +2622,7 @@ fn enter_slash_command_emits_no_enqueue() {
     // When pressing Enter (SubmitMessage with autocomplete active).
     let result = jinn_chat_input::intent::handle_submit_message(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then no EnqueueUserMessage was emitted.
@@ -2904,7 +2904,7 @@ fn enter_normal_mode_deactivates_hash_autocomplete() {
     // When handling EnterNormalMode.
     let _ = jinn_chat_input::intent::handle_enter_normal_mode(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then autocomplete is deactivated.
@@ -2928,7 +2928,7 @@ fn enter_normal_mode_with_hash_autocomplete_stays_in_input_scope() {
     // When handling EnterNormalMode.
     let _ = jinn_chat_input::intent::handle_enter_normal_mode(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then scope is still Input (not Normal).
@@ -2950,7 +2950,7 @@ fn enter_normal_mode_deactivates_slash_autocomplete() {
     // When handling EnterNormalMode.
     let _ = jinn_chat_input::intent::handle_enter_normal_mode(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then autocomplete is deactivated.
@@ -2974,7 +2974,7 @@ fn enter_normal_mode_with_slash_autocomplete_stays_in_input_scope() {
     // When handling EnterNormalMode.
     let _ = jinn_chat_input::intent::handle_enter_normal_mode(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then scope is still Input (not Normal).
@@ -2995,7 +2995,7 @@ fn enter_normal_mode_without_autocomplete_switches_to_normal() {
     // When handling EnterNormalMode.
     let _ = jinn_chat_input::intent::handle_enter_normal_mode(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then scope switches to Normal.
@@ -3017,7 +3017,7 @@ fn enter_normal_mode_dismissing_autocomplete_emits_no_commands() {
     // When handling EnterNormalMode.
     let result = jinn_chat_input::intent::handle_enter_normal_mode(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then no commands are emitted.
@@ -3088,8 +3088,8 @@ fn slash_autocomplete_populates_matches_from_slash_commands() {
 #[rstest::rstest]
 fn ctrl_clear_input_empties_chat_input_via_handler() {
     // Given a state in Input scope with text in the buffer.
-    use jinn_domain::IntentHandler;
-    use jinn_domain::protocol::KernelIntent;
+    use jinn_kernel::IntentHandler;
+    use jinn_kernel::protocol::KernelIntent;
 
     let mut state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
@@ -3235,7 +3235,7 @@ fn file_entry(name: &str) -> FileEntry {
     }
 }
 
-fn emits_list_directory(result: &jinn_domain::protocol::IntentResult) -> bool {
+fn emits_list_directory(result: &jinn_kernel::protocol::IntentResult) -> bool {
     result
         .message_names
         .iter()
@@ -4170,7 +4170,7 @@ fn scroll_indicators_show_at_exact_boundary() {
     let state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
     // Just verify the element can be registered and doesn't panic.
-    let mut registry = jinn_domain::AppUiRegistry::new();
+    let mut registry = jinn_kernel::AppUiRegistry::new();
     jinn_chat_input::register(&mut registry);
     assert!(registry.iter_mut().count() > 0);
 }
@@ -4200,7 +4200,7 @@ fn enter_normal_mode_dismisses_active_autocomplete_without_scope_change() {
     // When handling EnterNormalMode.
     let result = jinn_chat_input::intent::handle_enter_normal_mode(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then autocomplete is dismissed but scope stays Input (not Normal).
@@ -4618,10 +4618,10 @@ use std::path::PathBuf;
 
 use jinn_chat_input_msg::ListDirectory;
 use jinn_core_types::SessionId;
-use jinn_domain::common::actor_deps::ActorDeps;
-use jinn_domain::common::app_paths::AppPaths;
-use jinn_domain::common::services::test_services::TestServices;
-use jinn_domain::common::state::State;
+use jinn_kernel::common::actor_deps::ActorDeps;
+use jinn_kernel::common::app_paths::AppPaths;
+use jinn_kernel::common::services::test_services::TestServices;
+use jinn_kernel::common::state::State;
 use jinn_testutil::bus_harness::TestHarness;
 
 use jinn_chat_input::directory_lister_actor::{DirectoryListerActor, DirectoryListerActorDeps};
@@ -4835,7 +4835,7 @@ fn enter_normal_mode_clears_pending_session_creation() {
     // When abandoning the chain via ESC (enter normal mode).
     jinn_chat_input::intent::handle_enter_normal_mode(
         &mut state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
     // Then the stash is cleared so it never leaks into a future `n`/`N`.

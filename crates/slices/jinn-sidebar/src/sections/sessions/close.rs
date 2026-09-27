@@ -1,7 +1,7 @@
 //! Session-close validation and lifecycle command flow.
 
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::protocol::IntentResult;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::protocol::IntentResult;
 use jinn_session_msg::PhaseKind;
 
 use super::state::{mark_in_flight, sorted_open_sessions};

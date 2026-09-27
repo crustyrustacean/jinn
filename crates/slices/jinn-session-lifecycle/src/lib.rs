@@ -2,7 +2,7 @@
 //!
 //! This slice owns the lifecycle actor and command runner. Crossing contracts
 //! and kernel-consumed leaf vocabulary remain in `jinn-session-lifecycle-msg`;
-//! the kernel lifecycle intent and render handlers remain in `jinn-domain`.
+//! the kernel lifecycle intent and render handlers remain in `jinn-kernel`.
 
 pub mod arg_input;
 pub mod arg_input_render;
@@ -16,8 +16,8 @@ mod session_lifecycle_picker_viewport;
 pub use command_runner::{
     LifecycleCancelHandle, LifecycleCommandError, spawn_setup_command, spawn_teardown_command,
 };
-use jinn_domain::Services;
-use jinn_domain::common::state::State;
+use jinn_kernel::Services;
+use jinn_kernel::common::state::State;
 use jinn_session_lifecycle_msg::ArgInputState;
 use jinn_session_lifecycle_msg::BuiltinRegistry;
 use jinn_slices::SliceHost;

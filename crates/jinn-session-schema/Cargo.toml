@@ -7,7 +7,7 @@ description = """
 Standalone schema + migration crate for jinn's session store.
 
 Leaf crate: depends only on rusqlite + serialization helpers. Consumed by
-`jinn-domain`'s build.rs (to create the compile-time validation DB) and by the
+`jinn-kernel`'s build.rs (to create the compile-time validation DB) and by the
 runtime migrator (through the dao pool). Keeping migrations here breaks the
 bootstrap cycle — a crate's build.rs cannot depend on itself.
 """
@@ -21,13 +21,13 @@ jiff = { workspace = true }
 wherror = { workspace = true }
 tracing = { workspace = true }
 
-# The `testing` feature is consumed by jinn-domain test code.
+# The `testing` feature is consumed by jinn-kernel test code.
 # (tests use rstest for the workspace-wide timeout; see .cargo/config.toml)
 
 [features]
 # Exposes test-only helpers (apply_migrations_inner, apply_up_to_no_fk) so
 # downstream crates' test suites can stand up a DB at a specific legacy
-# schema version. Enabled in [dev-dependencies] by jinn-domain's tests.
+# schema version. Enabled in [dev-dependencies] by jinn-kernel's tests.
 testing = []
 
 [dev-dependencies]

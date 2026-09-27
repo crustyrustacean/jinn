@@ -34,7 +34,7 @@ pub use layout_worker::{LayoutWorkerActor, LayoutWorkerActorDeps, render_preview
 /// returns, so a load published after activation cannot race startup.
 pub fn install_layout_actors(
     system: &trouper::system::ActorSystem,
-    state: jinn_domain::common::state::State,
+    state: jinn_kernel::common::state::State,
 ) {
     LayoutSupervisorActor::spawn(
         system,
@@ -46,7 +46,7 @@ pub fn install_layout_actors(
     LayoutCompletionActor::spawn(system, LayoutCompletionActorDeps { state });
 }
 
-use jinn_domain::common::AppUiRegistry;
+use jinn_kernel::common::AppUiRegistry;
 
 /// Register chat log UI element.
 pub fn register(registry: &mut AppUiRegistry) {

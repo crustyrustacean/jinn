@@ -3,7 +3,7 @@
 //! Pin/unpin actions are fallible; navigation intents within the sidebar
 //! are handled by the section itself and are infallible.
 
-use jinn_domain::common::app_state::AppState;
+use jinn_kernel::common::app_state::AppState;
 use wherror::Error;
 
 /// Errors from validating pins section actions.
@@ -95,7 +95,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use jinn_domain::protocol::{ChatEntry, PinPosition};
+    use jinn_kernel::protocol::{ChatEntry, PinPosition};
 
     use super::*;
 

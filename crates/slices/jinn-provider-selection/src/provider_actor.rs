@@ -22,8 +22,8 @@
 //! the async endpoint fetch.
 
 use error_stack::Report;
-use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
-use jinn_domain::common::state::State;
+use jinn_kernel::common::actor_deps::{ActorDeps, BusPublish};
+use jinn_kernel::common::state::State;
 use jinn_provider_config::ModelCache;
 use jinn_provider_config::ProviderRegistry;
 use jinn_provider_config::{InputModalities, Modality, ModelInfo, ProvidersConfig};
@@ -222,7 +222,7 @@ impl MsgHandler<ModelCacheLoaded> for ProviderActor {
 }
 
 impl BusPublish for ProviderActor {
-    fn bus(&self) -> &jinn_domain::common::services::bus_service::BusService {
+    fn bus(&self) -> &jinn_kernel::common::services::bus_service::BusService {
         &self.deps.services.bus
     }
 }
@@ -568,9 +568,9 @@ mod tests {
 
     use std::collections::BTreeMap;
 
-    use jinn_domain::AppState;
-    use jinn_domain::common::bus::HarnessServices;
-    use jinn_domain::common::state::State;
+    use jinn_kernel::AppState;
+    use jinn_kernel::common::bus::HarnessServices;
+    use jinn_kernel::common::state::State;
     use jinn_provider_config::{
         InputModalities, Modality, ModelCache, ModelInfo, ProviderEntry, ProviderRegistry,
         ProvidersConfig,
@@ -582,7 +582,7 @@ mod tests {
         ModelCacheLoaded, ModelsRefreshed, PROVIDER_ACTOR_PATH, ProviderActor, ProviderActorDeps,
     };
     use jinn_core_types::model_selection::ModelSelection;
-    use jinn_domain::common::actor_deps::ActorDeps;
+    use jinn_kernel::common::actor_deps::ActorDeps;
     use jinn_provider_selection_msg::LoadProviderPickerEntries;
     use jinn_provider_selection_msg::ProviderSwitched;
     use trouper::actor::ActorPath;
@@ -1076,7 +1076,7 @@ mod tests {
     /// temp-root `AppPaths` has no models.dev data and precedence over
     /// models.dev would go untested.
     fn seed_models_dev(
-        services: &jinn_domain::common::services::Services,
+        services: &jinn_kernel::common::services::Services,
         model_id: &str,
         image: bool,
     ) {

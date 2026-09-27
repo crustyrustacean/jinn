@@ -6,7 +6,7 @@
 
 use super::render::*;
 use jinn_chat_log_view::chat_log::GUTTER_WIDTH;
-use jinn_domain::protocol::ChatEntry;
+use jinn_kernel::protocol::ChatEntry;
 use jinn_slices::FocusScope;
 use jinn_testutil::setup_term;
 use ratatui::layout::Rect;
@@ -15,7 +15,7 @@ use ratatui::style::Color;
 /// Creates a minimal `TuiApp` for render testing.
 ///
 async fn render_test_app() -> crate::TuiApp {
-    let services = jinn_domain::Services::new_fake().await;
+    let services = jinn_kernel::Services::new_fake().await;
     services
         .slices
         .register(

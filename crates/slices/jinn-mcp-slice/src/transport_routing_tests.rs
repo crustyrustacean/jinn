@@ -47,7 +47,7 @@ async fn remote_http_to_unreachable_url_loops_instead_of_failing() {
     };
 
     // When attempting to connect, bounded by a short timeout.
-    let services = jinn_domain::Services::new_fake().await;
+    let services = jinn_kernel::Services::new_fake().await;
     let result = tokio::time::timeout(
         Duration::from_millis(500),
         connect_for_transport(&services, &config),

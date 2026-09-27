@@ -8,8 +8,8 @@
 
 use crate::sections::sessions::state::{SessionEntryKind, sorted_open_sessions};
 use jinn_chat_input_msg::EnqueueResumeTurn;
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::protocol::IntentResult;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::protocol::IntentResult;
 
 /// Resume the session under the sidebar cursor.
 ///
@@ -71,7 +71,7 @@ mod tests {
     use crate::sections::navigate_sidebar;
     use crate::sections::section_trait::SidebarIntent;
     use crate::sections::sessions::state::sorted_open_sessions;
-    use jinn_domain::common::app_state::AppState;
+    use jinn_kernel::common::app_state::AppState;
 
     #[rstest::rstest]
     fn returns_enqueue_resume_command_for_selected_session() {

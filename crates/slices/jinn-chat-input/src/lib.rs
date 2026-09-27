@@ -22,9 +22,9 @@ pub use jinn_chat_input_msg::AutocompleteTrigger;
 pub use jinn_chat_input_msg::ChatInputBoxState;
 pub use jinn_chat_input_msg::InputMode;
 
-use jinn_domain::common::actor_deps::ActorDeps;
-use jinn_domain::common::state::State;
-use jinn_domain::common::ui_registry::UiRegistry;
+use jinn_kernel::common::actor_deps::ActorDeps;
+use jinn_kernel::common::state::State;
+use jinn_kernel::common::ui_registry::UiRegistry;
 use jinn_slices::SliceHost;
 
 /// Activates the slice: the box's route rows, its key hook, and the

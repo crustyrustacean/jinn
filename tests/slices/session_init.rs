@@ -12,7 +12,7 @@
 use std::time::Duration;
 
 use jinn_core_types::SessionId;
-use jinn_domain::common::bridge::Bridge;
+use jinn_kernel::common::bridge::Bridge;
 use jinn_session_init_msg::{ContextFilesLoaded, PromptTemplatesLoaded};
 use jinn_session_lifecycle_msg::SessionCreated;
 use jinn_session_state::ChatSessionState;

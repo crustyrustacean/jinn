@@ -20,7 +20,7 @@ use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 
-use jinn_domain::common::state::State;
+use jinn_kernel::common::state::State;
 
 /// Static path the layout completion actor spawns at (one per process).
 pub const LAYOUT_COMPLETION_PATH: &str = "jinn.chat_log.layout.completion";
@@ -165,7 +165,7 @@ impl LayoutCompletionActor {
     /// every entry's content a second time and cost as much as the
     /// measurement itself.
     fn store_counts(
-        state: &jinn_domain::common::app_state::AppState,
+        state: &jinn_kernel::common::app_state::AppState,
         computed: &ChatLogLayoutComputed,
     ) {
         let measured: Vec<MeasuredLineCount> = computed

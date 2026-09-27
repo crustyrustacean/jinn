@@ -12,7 +12,7 @@ pub mod which_key;
 
 pub use app_layout::{AppFrameLayout, AppLayout, MIN_HEIGHT, MIN_WIDTH, TabLayout};
 
-use jinn_domain::{AppUiRegistry, FocusScope, Mode, RenderCtx};
+use jinn_kernel::{AppUiRegistry, FocusScope, Mode, RenderCtx};
 use jinn_sidebar::sections::Sidebar;
 use ratatui::{Frame, layout::Rect};
 
@@ -148,7 +148,7 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
             changed
         });
         if layout_changed {
-            let closure = jinn_domain::common::bridge::Bridge::publish_closure(
+            let closure = jinn_kernel::common::bridge::Bridge::publish_closure(
                 jinn_term_msg::command::ResizeTerm {
                     chat_session_id: Some(wstate.session.active_session_id().clone()),
                     size: (rows, cols),

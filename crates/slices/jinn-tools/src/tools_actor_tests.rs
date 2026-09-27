@@ -10,9 +10,9 @@
 
 use crate::orchestrator::{ToolOrchestratorActor, ToolOrchestratorActorDeps};
 use jinn_core_types::tool_types::ToolCall;
-use jinn_domain::common::bus::HarnessServices;
-use jinn_domain::common::state::State;
 use jinn_inference_msg::SendToLlmProvider;
+use jinn_kernel::common::bus::HarnessServices;
+use jinn_kernel::common::state::State;
 use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 use jinn_tools_msg::{ExecuteToolBatch, ToolBatchCompleted};
 use std::time::Duration;
@@ -29,7 +29,7 @@ async fn orchestrator_completes_builtin_bash_batch_dispatched_over_the_bus() {
         harness.system(),
         ToolOrchestratorActorDeps {
             deps: harness.actor_deps().await,
-            state: State::new(jinn_domain::AppState::default()),
+            state: State::new(jinn_kernel::AppState::default()),
             services: harness.services().await,
             builtin_filter: Some(vec!["bash".to_owned()]),
         },
@@ -86,7 +86,7 @@ async fn tool_batch_completed_over_the_bus_continues_the_tool_loop() {
     let harness = TestHarness::new().await;
     let loop_recorder = harness.spawn_recorder::<SendToLlmProvider>().await;
 
-    let state = State::new(jinn_domain::AppState::default());
+    let state = State::new(jinn_kernel::AppState::default());
     {
         let mut s = state.write();
         let session = s.active_session_mut();
@@ -156,7 +156,7 @@ async fn tool_batch_completed_over_the_bus_continues_the_tool_loop() {
 #[rstest::rstest]
 #[tokio::test]
 async fn registered_session_scoped_actor_tool_completes_its_batch() {
-    use jinn_domain::common::actor_deps::BusPublish;
+    use jinn_kernel::common::actor_deps::BusPublish;
     use jinn_tools_msg::{ExecuteTool, RegisterTools, ToolExecutionCompleted};
     use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
     use trouper::context::MsgCtx;
@@ -165,7 +165,7 @@ async fn registered_session_scoped_actor_tool_completes_its_batch() {
     // Given a stub provider actor that answers ExecuteTool with a completed
     // result (like an MCP server would), and a spawned orchestrator.
     struct StubProvider {
-        bus: jinn_domain::common::services::bus_service::BusService,
+        bus: jinn_kernel::common::services::bus_service::BusService,
         session_id: jinn_core_types::SessionId,
     }
     impl ServiceActor for StubProvider {
@@ -177,7 +177,7 @@ async fn registered_session_scoped_actor_tool_completes_its_batch() {
         }
     }
     impl BusPublish for StubProvider {
-        fn bus(&self) -> &jinn_domain::common::services::bus_service::BusService {
+        fn bus(&self) -> &jinn_kernel::common::services::bus_service::BusService {
             &self.bus
         }
     }
@@ -221,7 +221,7 @@ async fn registered_session_scoped_actor_tool_completes_its_batch() {
         harness.system(),
         ToolOrchestratorActorDeps {
             deps: harness.actor_deps().await,
-            state: State::new(jinn_domain::AppState::default()),
+            state: State::new(jinn_kernel::AppState::default()),
             services: harness.services().await,
             builtin_filter: Some(vec![]),
         },

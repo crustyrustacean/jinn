@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use jinn_chat_log_view_msg::PreviewSessionRequested;
 use jinn_core_types::ChatEntry;
-use jinn_domain::common::bridge::Bridge;
+use jinn_kernel::common::bridge::Bridge;
 use jinn_session_msg::SessionRemoved;
 use jinn_session_state::ChatSessionState;
 

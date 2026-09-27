@@ -7,7 +7,7 @@
 //! It tracks the cursor live as the user navigates.
 
 use jinn_chat_log_view::chat_log::{audit_popup_rect, format_audit_lines};
-use jinn_domain::RenderCtx;
+use jinn_kernel::RenderCtx;
 use jinn_slices::FocusScope;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -115,8 +115,8 @@ mod tests {
     //! Together they pin the contract that the popup paints at the computed
     //! rect with the expected text and is registered as a selectable region.
     use jinn_chat_log_view::chat_log::AUDIT_POPUP_WIDTH;
-    use jinn_domain::RenderCtx;
-    use jinn_domain::protocol::{ChangeSource, ChatEntry, ContextOverride};
+    use jinn_kernel::RenderCtx;
+    use jinn_kernel::protocol::{ChangeSource, ChatEntry, ContextOverride};
     use jinn_slices::FocusScope;
     use jinn_testutil::setup_term;
     use ratatui::layout::Rect;

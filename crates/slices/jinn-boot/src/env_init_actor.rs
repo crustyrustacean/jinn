@@ -12,7 +12,7 @@ use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 
-use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
+use jinn_kernel::common::actor_deps::{ActorDeps, BusPublish};
 use wherror::Error;
 
 use jinn_boot_msg::{EnvironmentConfigReply, EnvironmentLoaded, GetEnvironmentConfig};
@@ -107,7 +107,7 @@ impl MsgHandler<EnvironmentLoaded> for EnvInitActor {
 }
 
 impl BusPublish for EnvInitActor {
-    fn bus(&self) -> &jinn_domain::common::services::bus_service::BusService {
+    fn bus(&self) -> &jinn_kernel::common::services::bus_service::BusService {
         self.deps.bus()
     }
 }
@@ -185,7 +185,7 @@ mod tests {
         EnvInitActor, EnvInitActorDeps, EnvironmentConfigReply, EnvironmentLoaded,
         GetEnvironmentConfig,
     };
-    use jinn_domain::common::bus::HarnessServices;
+    use jinn_kernel::common::bus::HarnessServices;
     use jinn_testutil::bus_harness::{TestHarness, await_recorded};
     use std::sync::Arc;
 
@@ -225,7 +225,7 @@ mod tests {
 
     /// Points the services' config layer at a document seeded with
     /// `document`, then re-reads so the swap is visible immediately.
-    fn layer_with(services: &jinn_domain::Services, document: &str) {
+    fn layer_with(services: &jinn_kernel::Services, document: &str) {
         let parsed = document.parse().expect("test TOML parses");
         services
             .config

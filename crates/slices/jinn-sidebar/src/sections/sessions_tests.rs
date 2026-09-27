@@ -12,11 +12,11 @@ use crate::sections::sessions::{
     SessionCloseError, SessionsSection, handle_session_activate, handle_session_close_arm,
     navigate, receive_cursor, sorted_open_sessions, validate_session_close,
 };
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::render_ctx::RenderCtx;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_session_state::ChatSessionState;
 
-use jinn_domain::protocol::ChatEntry;
+use jinn_kernel::protocol::ChatEntry;
 use ratatui::style::Color;
 
 /// Helper: get a session title from the live session map via a tree entry.
@@ -58,7 +58,7 @@ fn entry_last_is_error(state: &AppState, id: &jinn_core_types::SessionId) -> boo
     state.session.get(id).is_some_and(|s| {
         s.history()
             .last()
-            .is_some_and(|e| matches!(&e.kind, jinn_domain::protocol::ChatEntryKind::Error(..)))
+            .is_some_and(|e| matches!(&e.kind, jinn_kernel::protocol::ChatEntryKind::Error(..)))
     })
 }
 
@@ -224,7 +224,7 @@ fn navigate_up_at_top_returns_exhausted() {
 fn navigate_action_returns_moved() {
     let mut state = AppState::default_with_scope_focus();
     let (result, _) = navigate(
-        &SidebarIntent::Action(jinn_domain::KernelIntent::Quit),
+        &SidebarIntent::Action(jinn_kernel::KernelIntent::Quit),
         &mut state,
         jinn_slices::empty_config_layer(),
     );
@@ -236,7 +236,7 @@ fn navigate_action_returns_moved() {
 fn document_offset_for(state: &AppState, viewport_rows: u16) -> u16 {
     let document = crate::sections::layout::document_with_cursor(
         state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
     document.offset(viewport_rows)
 }
@@ -276,7 +276,7 @@ fn document_offset_clamps_at_the_end_for_the_last_session() {
     // Then the window shows the document's end, so the last row is the last line.
     let document = crate::sections::layout::document_with_cursor(
         &state,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
     assert_eq!(offset + 20, document.total_rows);
 }
@@ -365,7 +365,7 @@ fn content_height_is_uncapped() {
         &state,
         &slices,
         &overlay_views,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     ));
 
     // Then it counts every session, not a fixed window.
@@ -2326,8 +2326,8 @@ fn archive_tree_members_rejected_when_wrong_section() {
 // Archive tree - intent flow (arm, confirm, dismiss, busy flip)
 // ---------------------------------------------------------------------------
 
-use jinn_domain::IntentHandler;
-use jinn_domain::protocol::KernelIntent;
+use jinn_kernel::IntentHandler;
+use jinn_kernel::protocol::KernelIntent;
 
 #[rstest::rstest]
 fn archive_tree_arm_sets_confirm_prompt_with_subtree_count() {
@@ -3111,7 +3111,7 @@ fn an_unchanged_frame_rebuilds_the_tree_only_once() {
             &state,
             &slices,
             &overlay_views,
-            jinn_domain::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
         );
         section.content_height(&ctx);
     }
@@ -3126,7 +3126,7 @@ fn an_unchanged_frame_rebuilds_the_tree_only_once() {
             &state,
             &slices,
             &overlay_views,
-            jinn_domain::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
         );
         section.content_height(&ctx);
     }
@@ -3152,7 +3152,7 @@ fn height_and_render_agree_on_the_session_count() {
         &state,
         &slices,
         &overlay_views,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
     let height = section.content_height(&ctx);
     let tree_len = section.cached_session_count();
@@ -3173,7 +3173,7 @@ fn adding_a_session_rebuilds_the_tree() {
             &state,
             &slices,
             &overlay_views,
-            jinn_domain::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
         );
         section.content_height(&ctx);
         section.rebuilds()
@@ -3193,7 +3193,7 @@ fn adding_a_session_rebuilds_the_tree() {
         &state,
         &slices,
         &overlay_views,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
     section.content_height(&ctx);
     assert_eq!(section.rebuilds(), before + 1);
@@ -3211,7 +3211,7 @@ fn a_renamed_session_rebuilds_the_tree() {
             &state,
             &slices,
             &overlay_views,
-            jinn_domain::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
         );
         section.content_height(&ctx);
         section.rebuilds()
@@ -3224,7 +3224,7 @@ fn a_renamed_session_rebuilds_the_tree() {
         &state,
         &slices,
         &overlay_views,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
     section.content_height(&ctx);
     assert_eq!(section.rebuilds(), before, "no change, no rebuild");
@@ -3254,7 +3254,7 @@ fn a_renamed_session_rebuilds_the_tree() {
         &state,
         &slices,
         &overlay_views,
-        jinn_domain::common::render_ctx::empty_config_layer(),
+        jinn_kernel::common::render_ctx::empty_config_layer(),
     );
     section.content_height(&ctx);
     assert_eq!(
@@ -3578,7 +3578,7 @@ mod navigation_preview_requests {
     use crate::sections::section_trait::{EnterFrom, SectionNavResult, SidebarIntent};
     use crate::sections::sessions::navigate::{navigate, receive_cursor};
     use jinn_core_types::SessionId;
-    use jinn_domain::common::app_state::AppState;
+    use jinn_kernel::common::app_state::AppState;
     use jinn_session_state::ChatSessionState;
 
     /// App state with a sessions section holding `count` sessions.

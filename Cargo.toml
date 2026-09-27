@@ -89,7 +89,7 @@ jinn-sidebar = { workspace = true }
 jinn-cwd = { workspace = true }
 jinn-skills = { workspace = true }
 jinn-tui = { workspace = true }
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-config = { workspace = true }
 jinn-preferences = { workspace = true }
@@ -175,7 +175,7 @@ crossterm = { workspace = true }
 [workspace.dependencies]
 
 # Internal
-jinn-domain = { path = "crates/jinn-domain" }
+jinn-kernel = { path = "crates/jinn-kernel" }
 jinn-install = { path = "crates/jinn-install" }
 jinn-discord = { path = "crates/slices/jinn-discord" }
 jinn-discord-msg = { path = "crates/slices/jinn-discord-msg" }

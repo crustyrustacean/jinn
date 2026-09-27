@@ -1,7 +1,7 @@
 //! Sidebar resize intent handlers - enter/expand/contract/leave.
 
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::protocol::IntentResult;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::protocol::IntentResult;
 use jinn_preferences_config::protocol::app_state_command::{AppStateUpdate, UpdateAppState};
 use jinn_sidebar_msg::SidebarSectionId;
 use jinn_slices::FocusScope;
@@ -78,7 +78,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use jinn_domain::common::app_state::AppState;
+    use jinn_kernel::common::app_state::AppState;
     use jinn_slices::FocusScope;
 
     use super::*;

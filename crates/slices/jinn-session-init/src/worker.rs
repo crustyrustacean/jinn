@@ -44,7 +44,7 @@ use trouper::system::ActorSystem;
 use jinn_context::PromptTemplateStore;
 use jinn_context::env_context::ContextFile;
 use jinn_core_types::SessionId;
-use jinn_domain::common::state::State;
+use jinn_kernel::common::state::State;
 use jinn_session_init_msg::{ContextFilesLoaded, PromptTemplatesLoaded};
 use jinn_skills_msg::Skill;
 
@@ -150,7 +150,7 @@ impl WorkerDeps {
     pub fn for_session_with_budget(
         system: &ActorSystem,
         state: &State,
-        paths: &jinn_domain::common::app_paths::AppPaths,
+        paths: &jinn_kernel::common::app_paths::AppPaths,
         session_id: SessionId,
         settle_budget: Option<std::time::Duration>,
     ) -> Self {
@@ -172,7 +172,7 @@ impl WorkerDeps {
     pub fn for_session(
         system: &ActorSystem,
         state: &State,
-        paths: &jinn_domain::common::app_paths::AppPaths,
+        paths: &jinn_kernel::common::app_paths::AppPaths,
         session_id: SessionId,
     ) -> Self {
         Self::for_session_with_budget(system, state, paths, session_id, None)

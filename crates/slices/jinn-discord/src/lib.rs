@@ -86,8 +86,8 @@ pub struct ActivatedDiscord {
 /// present but malformed — activation is the fail-fast gate.
 pub async fn activate(
     host: &mut jinn_slices::AppSliceHost<'_>,
-    services: &jinn_domain::Services,
-    state: jinn_domain::common::state::State,
+    services: &jinn_kernel::Services,
+    state: jinn_kernel::common::state::State,
 ) -> Result<ActivatedDiscord, jinn_config::ConfigSectionError> {
     // Config: read through the layer at the point of use. A stock
     // `jinn.toml` carries no `[discord]` table, so absence must be a
@@ -161,16 +161,16 @@ mod activate_tests {
 
     /// Fake services whose configuration layer carries a `[discord]`
     /// section with `body` as its contents.
-    async fn services_with_discord(body: &str) -> jinn_domain::Services {
-        let mut services = jinn_domain::Services::new_fake().await;
+    async fn services_with_discord(body: &str) -> jinn_kernel::Services {
+        let mut services = jinn_kernel::Services::new_fake().await;
         services.config = jinn_config::testutil::config_layer(&format!("[discord]\n{body}"));
         services
     }
 
     /// Fake services over a document that carries no `[discord]` section —
     /// a stock install.
-    async fn services_without_discord() -> jinn_domain::Services {
-        let mut services = jinn_domain::Services::new_fake().await;
+    async fn services_without_discord() -> jinn_kernel::Services {
+        let mut services = jinn_kernel::Services::new_fake().await;
         services.config = jinn_config::testutil::config_layer("");
         services
     }
@@ -185,8 +185,8 @@ mod activate_tests {
         let mut viewport = Viewport::new();
         let overlay_views = OverlayViews::<jinn_slices::RenderFacts>::new();
         let services = services_with_discord("enabled = true").await;
-        let state = jinn_domain::common::state::State::new(
-            jinn_domain::common::app_state::AppState::default(),
+        let state = jinn_kernel::common::state::State::new(
+            jinn_kernel::common::app_state::AppState::default(),
         );
         let mut host = SliceHost::new(
             &slices,
@@ -216,8 +216,8 @@ mod activate_tests {
         let mut viewport = Viewport::new();
         let overlay_views = OverlayViews::<jinn_slices::RenderFacts>::new();
         let services = services_without_discord().await;
-        let state = jinn_domain::common::state::State::new(
-            jinn_domain::common::app_state::AppState::default(),
+        let state = jinn_kernel::common::state::State::new(
+            jinn_kernel::common::app_state::AppState::default(),
         );
         let mut host = SliceHost::new(
             &slices,
@@ -247,8 +247,8 @@ mod activate_tests {
         let mut viewport = Viewport::new();
         let overlay_views = OverlayViews::<jinn_slices::RenderFacts>::new();
         let services = services_with_discord("enabled = \"maybe\"").await;
-        let state = jinn_domain::common::state::State::new(
-            jinn_domain::common::app_state::AppState::default(),
+        let state = jinn_kernel::common::state::State::new(
+            jinn_kernel::common::app_state::AppState::default(),
         );
         let mut host = SliceHost::new(
             &slices,

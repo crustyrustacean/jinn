@@ -2,7 +2,7 @@
 
 use jinn_context_assembly_msg::AssemblyInputs;
 use jinn_core_types::{DEFAULT_PERSONA_NAME, SessionId};
-use jinn_domain::common::app_state::AppState;
+use jinn_kernel::common::app_state::AppState;
 use jinn_session_state::AssemblySessionProjection;
 
 /// Builds a coherent assembly request from the current application state.

@@ -3,8 +3,8 @@
 //! Handles entering and leaving the sidebar scope. These are sidebar-panel
 //! concerns, not section-specific - sections never handle ESC.
 
-use jinn_domain::IntentResult;
-use jinn_domain::common::app_state::AppState;
+use jinn_kernel::IntentResult;
+use jinn_kernel::common::app_state::AppState;
 
 /// Handles `SidebarFocus` - enters sidebar scope.
 ///
@@ -158,7 +158,7 @@ mod tests {
     #[rstest::rstest]
     fn sidebar_focus_preserves_existing_cursor() {
         // Given a state with a pre-existing pins selection.
-        use jinn_domain::protocol::{ChatEntry, PinPosition};
+        use jinn_kernel::protocol::{ChatEntry, PinPosition};
 
         let mut state = AppState::default_with_scope_focus();
         let entry = ChatEntry::user("test");
@@ -383,7 +383,7 @@ mod tests {
     #[rstest::rstest]
     fn sidebar_focus_sessions_from_sidebar_pins_jumps_to_sessions() {
         // Given the pins section scope.
-        use jinn_domain::protocol::{ChatEntry, PinPosition};
+        use jinn_kernel::protocol::{ChatEntry, PinPosition};
         let mut state = AppState::default_with_scope_focus();
         let entry = ChatEntry::user("test");
         let id = entry.id.clone();
@@ -416,7 +416,7 @@ mod tests {
     #[rstest::rstest]
     fn sidebar_leave_from_pins_sets_concrete_scroll_offset() {
         // Given a session with 10 entries, entry 2 pinned, viewport state populated.
-        use jinn_domain::protocol::{ChatEntry, PinPosition};
+        use jinn_kernel::protocol::{ChatEntry, PinPosition};
 
         let mut state = AppState::default_with_scope_focus();
         for i in 0..10 {

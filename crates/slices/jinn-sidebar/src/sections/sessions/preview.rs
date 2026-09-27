@@ -32,7 +32,7 @@ use jinn_chat_log_view::kernel_element::render_preview as render_preview_lines;
 use jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT;
 #[cfg(test)]
 use jinn_chat_log_view_msg::PREVIEW_MAX_LINES;
-use jinn_domain::common::render_ctx::RenderCtx;
+use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_session_state::ChatSessionState;
 use jinn_theme::Theme;
 
@@ -491,12 +491,12 @@ mod worker_tests {
     //! cannot isolate from delivery.
 
     use super::*;
-    use jinn_domain::protocol::ChatEntry;
+    use jinn_kernel::protocol::ChatEntry;
     use jinn_session_state::ChatSessionState;
 
     /// The theme the worker's render context carries.
     fn default_theme() -> jinn_theme::Theme {
-        jinn_domain::common::app_state::AppState::default_with_scope_focus()
+        jinn_kernel::common::app_state::AppState::default_with_scope_focus()
             .frontend
             .theme
     }

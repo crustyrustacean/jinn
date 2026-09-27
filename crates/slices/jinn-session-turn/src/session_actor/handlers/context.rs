@@ -5,8 +5,8 @@
 //! persona catalog refresh.
 
 use jinn_core_types::DEFAULT_PERSONA_NAME;
-use jinn_domain::PromptTemplatesLoaded;
-use jinn_domain::common::actor_deps::BusPublish;
+use jinn_kernel::PromptTemplatesLoaded;
+use jinn_kernel::common::actor_deps::BusPublish;
 use jinn_persona_msg::PersonasLoaded;
 use jinn_session_history_msg::ChatEntryPinChanged;
 use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
@@ -20,7 +20,7 @@ fn sorted_pinned_ids_from_session(
     session: &jinn_session_state::ChatSessionState,
 ) -> Vec<jinn_core_types::ChatEntryId> {
     use jinn_core_types::ChatEntryId;
-    use jinn_domain::common::app_state::pin_sort_key;
+    use jinn_kernel::common::app_state::pin_sort_key;
     let mut pinned = session.pinned_entries();
     pinned.sort_by_key(|entry| pin_sort_key(entry.pin_position));
     pinned
@@ -163,10 +163,10 @@ mod tests {
     use super::super::super::helpers::test_actor_with_store_recording;
     use super::*;
     use jinn_core_types::SessionId;
-    use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::services::BusAudit;
-    use jinn_domain::common::state::State;
-    use jinn_domain::protocol::{ChatEntryId, PinPosition};
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::common::services::BusAudit;
+    use jinn_kernel::common::state::State;
+    use jinn_kernel::protocol::{ChatEntryId, PinPosition};
     use jinn_slices::Persona;
 
     fn make_persona(name: &str) -> Persona {

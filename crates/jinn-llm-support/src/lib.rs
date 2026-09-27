@@ -6,7 +6,7 @@
 //!
 //! It deliberately depends on neither the domain kernel nor the slice
 //! contracts. That placement is what makes it reachable from both — every
-//! consumer of these modules already depends on `jinn-domain`, so these
+//! consumer of these modules already depends on `jinn-kernel`, so these
 //! modules can only live in a crate that nothing's dependency path reaches
 //! from.
 

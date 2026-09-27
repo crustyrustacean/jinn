@@ -15,8 +15,8 @@ use std::time::Instant;
 
 use crate::sections::section_trait::{SidebarSection, SidebarSectionId};
 use crate::sections::sessions::state::{SessionEntry, SessionListKey, session_list_key};
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::render_ctx::RenderCtx;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::render_ctx::RenderCtx;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -79,7 +79,7 @@ impl SessionsSection {
     /// and `render` come through here, so they can never disagree on the count.
     fn sessions_tree(
         &mut self,
-        state: &jinn_domain::common::app_state::AppState,
+        state: &jinn_kernel::common::app_state::AppState,
     ) -> &[SessionEntry] {
         let key = session_list_key(state);
         if self.cached_key.as_ref() != Some(&key) {

@@ -1,6 +1,6 @@
 //! Preferences slice-composition tests.
 
-use jinn_domain::common::state::State;
+use jinn_kernel::common::state::State;
 use jinn_preferences::pruner_accumulation_scope;
 use jinn_preferences::pruner_accumulation_slot;
 use jinn_slices::OverlayViews;
@@ -17,8 +17,8 @@ async fn activation_registers_pruner_popup_and_normal_mode_opener() {
     let overlay_views = OverlayViews::new();
     let routes = jinn_slices::KeyRoutes::new();
     let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
-    let services = jinn_domain::Services::new_fake().await;
-    let state = State::new(jinn_domain::AppState::default_with_scope_focus());
+    let services = jinn_kernel::Services::new_fake().await;
+    let state = State::new(jinn_kernel::AppState::default_with_scope_focus());
     let mut host = SliceHost::new(&slices, &mut viewport, &overlay_views, &routes, &system);
 
     // When preferences activation registers the popup surfaces.
@@ -36,9 +36,9 @@ async fn activation_registers_pruner_popup_and_normal_mode_opener() {
     assert!(overlay_views.view(&scope).is_some());
 
     // And generated normal-mode keys resolve to the preferences opener.
-    let plain = |key| jinn_domain::KeyEvent {
-        key: jinn_domain::Key::Char(key),
-        modifiers: jinn_domain::Modifiers::none(),
+    let plain = |key| jinn_kernel::KeyEvent {
+        key: jinn_kernel::Key::Char(key),
+        modifiers: jinn_kernel::Modifiers::none(),
     };
     let result = keymap
         .navigate(
@@ -49,7 +49,7 @@ async fn activation_registers_pruner_popup_and_normal_mode_opener() {
     let NodeResult::Leaf { action } = result else {
         panic!("gcp must be a leaf, got {result:?}");
     };
-    let jinn_domain::KernelIntent::Dynamic(dynamic) = action else {
+    let jinn_kernel::KernelIntent::Dynamic(dynamic) = action else {
         panic!("gcp must resolve to a dynamic intent, got {action:?}");
     };
     assert_eq!(dynamic.slice, pruner_accumulation_scope());

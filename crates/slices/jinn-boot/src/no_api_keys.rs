@@ -1,6 +1,6 @@
 //! Startup guidance for a missing provider configuration.
 
-use jinn_domain::protocol::ChatEntry;
+use jinn_kernel::protocol::ChatEntry;
 
 /// The guidance entry shown when no provider API keys are found.
 ///
@@ -28,7 +28,7 @@ See `{config_path}` for available environment variables."
 #[cfg(test)]
 mod tests {
     use super::no_api_keys_msg;
-    use jinn_domain::protocol::ChatEntryKind;
+    use jinn_kernel::protocol::ChatEntryKind;
 
     #[rstest::rstest]
     fn no_api_keys_msg_is_transient_entry() {

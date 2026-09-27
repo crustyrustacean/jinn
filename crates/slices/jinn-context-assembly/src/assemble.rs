@@ -17,7 +17,7 @@ use jinn_context::env_context::{
 use jinn_context_assembly_msg::AssemblyInputs;
 use jinn_core_types::LlmMessage;
 use jinn_core_types::ToolDefinition;
-use jinn_domain::protocol::{ChatEntry, PinPosition, entries_to_messages};
+use jinn_kernel::protocol::{ChatEntry, PinPosition, entries_to_messages};
 use jinn_llm_support::token_estimator::{IMAGE_ATTACHMENT_TOKENS, TokenCounter};
 use jinn_llm_support::tool_prompt::build_tool_context_block;
 use jinn_skills::format_skills_for_prompt;
@@ -282,7 +282,7 @@ fn count_tool_schema_tokens(tools: &[ToolDefinition], counter: &dyn TokenCounter
 
 /// Runs [`assemble`] over inputs in wire form, for callers that cannot
 /// name this pipeline's domain types across a compilation boundary —
-/// the unit-test bridge in `jinn-domain` enters here (see
+/// the unit-test bridge in `jinn-kernel` enters here (see
 /// `assembly_test_bridge` there); the crate compiles once, so its
 /// deserialization of the payload lands on the same types [`assemble`]
 /// reads.
@@ -312,10 +312,10 @@ mod tests {
     use jinn_core_types::SessionId;
     use jinn_core_types::model_selection::ModelSelection;
     use jinn_core_types::tool_types::ToolDefinition;
-    use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::state::State;
-    use jinn_domain::protocol::ChatEntry;
-    use jinn_domain::protocol::ToolResultStatus;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::common::state::State;
+    use jinn_kernel::protocol::ChatEntry;
+    use jinn_kernel::protocol::ToolResultStatus;
     use jinn_llm_support::token_estimator::TiktokenCounter;
     use jinn_skills_msg::Skill;
     use jinn_tools_msg::TASK_TOOL_NAME;
@@ -412,7 +412,7 @@ mod tests {
                         "call-1",
                         "bash",
                         "ok",
-                        jinn_domain::protocol::ToolResultStatus::Success,
+                        jinn_kernel::protocol::ToolResultStatus::Success,
                     ),
                     ChatEntry::user("continue"),
                 ] {
@@ -451,7 +451,7 @@ mod tests {
                 "orphan",
                 "bash",
                 "bad",
-                jinn_domain::protocol::ToolResultStatus::Success,
+                jinn_kernel::protocol::ToolResultStatus::Success,
             ),
             ChatEntry::user("after"),
         ]);
@@ -602,7 +602,7 @@ mod tests {
                 "orphan",
                 "bash",
                 "stray",
-                jinn_domain::protocol::ToolResultStatus::Success,
+                jinn_kernel::protocol::ToolResultStatus::Success,
             ),
             ChatEntry::user("after"),
         ];
@@ -742,7 +742,7 @@ mod tests {
             "call-1",
             "bash",
             "ok",
-            jinn_domain::protocol::ToolResultStatus::Success,
+            jinn_kernel::protocol::ToolResultStatus::Success,
         );
         let steer = ChatEntry::user_expanded("stay at the foo part", "stay at the foo part");
         let (state, session_id) = state_with_history(vec![
@@ -770,7 +770,7 @@ mod tests {
     #[test]
     fn assemble_prompt_steering_and_bottom_pin_coexist_at_respective_positions() {
         // Given a user-pinned entry and a tail steering entry.
-        use jinn_domain::protocol::PinPosition;
+        use jinn_kernel::protocol::PinPosition;
         let pinned = ChatEntry::user("pinned constraint").with_pin(PinPosition::Bottom);
         let middle = ChatEntry::user("middle");
         let assistant = ChatEntry::assistant("response");
@@ -1744,7 +1744,7 @@ mod tests {
         // image attachment, an assistant tool loop, a pinned entry, plus
         // out-of-context entries the minimap must skip.
         let mut image_user = ChatEntry::user("describe this screenshot");
-        if let jinn_domain::protocol::ChatEntryKind::User { attachments, .. } = &mut image_user.kind
+        if let jinn_kernel::protocol::ChatEntryKind::User { attachments, .. } = &mut image_user.kind
         {
             attachments.push(jinn_provider::Attachment::image(
                 "image/png".to_owned(),
@@ -1760,7 +1760,7 @@ mod tests {
                 "call-1",
                 "bash",
                 "compiled fine",
-                jinn_domain::protocol::ToolResultStatus::Success,
+                jinn_kernel::protocol::ToolResultStatus::Success,
             ),
             ChatEntry::user("always remember this").with_pin(PinPosition::Top),
             // Out of context: excluded from both the prompt and the minimap.

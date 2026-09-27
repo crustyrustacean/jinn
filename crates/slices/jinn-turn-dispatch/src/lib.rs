@@ -12,7 +12,7 @@
 //! the kernel topic.
 //!
 //! Kernel dependency (see Cargo.toml): the queue actor uses shared
-//! [`jinn_domain::common::state::State`] and consumes session vocabulary.
+//! [`jinn_kernel::common::state::State`] and consumes session vocabulary.
 
 pub mod queue_actor;
 
@@ -32,8 +32,8 @@ pub use jinn_turn_dispatch_msg::DispatchTurn;
 /// silently unconsumed.
 pub fn activate(
     host: &mut SliceHost<'_, jinn_slices::RenderFacts>,
-    state: jinn_domain::common::state::State,
-    services: jinn_domain::Services,
+    state: jinn_kernel::common::state::State,
+    services: jinn_kernel::Services,
 ) {
     let _queue_path = queue_actor::QueueActor::spawn(host.system(), state, services);
 }

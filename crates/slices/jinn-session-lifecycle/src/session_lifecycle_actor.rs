@@ -7,10 +7,10 @@
 
 mod handlers;
 
-use jinn_domain::Services;
-use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::common::services::BusService;
-use jinn_domain::common::state::State;
+use jinn_kernel::Services;
+use jinn_kernel::common::actor_deps::BusPublish;
+use jinn_kernel::common::services::BusService;
+use jinn_kernel::common::state::State;
 use jinn_session_lifecycle_msg::builtin::BuiltinRegistry;
 use jinn_session_lifecycle_msg::{
     CancelLifecycleCommand, CloseSession, FinishSessionSetup, FinishSessionTeardown,

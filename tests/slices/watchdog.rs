@@ -23,9 +23,9 @@
 use std::time::Duration;
 
 use jinn_core_types::SessionId;
-use jinn_domain::AppCore;
-use jinn_domain::common::actor_deps::ActorDeps;
 use jinn_inference_msg::SendToLlmProvider;
+use jinn_kernel::AppCore;
+use jinn_kernel::common::actor_deps::ActorDeps;
 use jinn_llm_support::token_estimator::TiktokenCounter;
 use jinn_preferences_config::StallWatchdogConfig;
 use jinn_tui::TuiApp;
@@ -42,14 +42,14 @@ use crate::common::launch_for_test;
 /// SAME trouper system the harness wires, so the watchdog's marker entry
 /// and retry command have their real consumer.
 async fn composed_app_with_fast_stall_watchdog() -> (TuiApp, SessionId) {
-    let services = jinn_domain::Services::new_fake().await;
+    let services = jinn_kernel::Services::new_fake().await;
     // Arm the inference actor with a hung stream (see module docs): the
     // dispatch resolves, streams one token, and never completes — the
     // watchdog's window elapses with the turn genuinely in flight.
     let hung_factory = jinn_provider::HungStreamFactory::new();
     services.llm_service.swap(std::sync::Arc::new(hung_factory));
 
-    let state = jinn_domain::State::new(jinn_domain::AppState::default());
+    let state = jinn_kernel::State::new(jinn_kernel::AppState::default());
     // The watchdog reads its knobs from the layer at activation, so the
     // section is seeded before the slices come up.
     services

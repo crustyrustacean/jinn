@@ -30,11 +30,11 @@ use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
 use jinn_chat_input_msg::{EnqueueResumeTurn, EnqueueUserMessage, SubmitSteeringMessage};
-use jinn_domain::PromptTemplatesLoaded;
-use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
-use jinn_domain::common::services::bus_service::BusService;
-use jinn_domain::common::state::State;
 use jinn_inference_msg::{SendToLlmProvider, StreamCompleted, StreamToken};
+use jinn_kernel::PromptTemplatesLoaded;
+use jinn_kernel::common::actor_deps::{ActorDeps, BusPublish};
+use jinn_kernel::common::services::bus_service::BusService;
+use jinn_kernel::common::state::State;
 use jinn_llm_support::token_estimator::TiktokenCounter;
 use jinn_persona_msg::PersonasLoaded;
 use jinn_session_history_msg::CitationsReceived;
@@ -77,7 +77,7 @@ pub fn default_token_cache() -> jinn_token_count_msg::HistoryWorkerChatEntryToke
 pub struct SessionPersistenceActor {
     state: State,
     /// Runtime services (the session store and the bus).
-    services: jinn_domain::common::services::Services,
+    services: jinn_kernel::common::services::Services,
     /// Token counter for recording token usage in the session ledger.
     counter: TiktokenCounter,
     /// Auto-pruner entry token cache, shared with the prune workers. Used by the

@@ -27,7 +27,7 @@ pub use commands::RunDiscovery;
 pub use contracts::DiscoverySnapshot;
 pub use contracts::SessionDiscoverySettled;
 
-use jinn_domain::common::state::State;
+use jinn_kernel::common::state::State;
 use wherror::Error;
 
 /// The public path of the discovery partition set. Keyed commands are
@@ -61,7 +61,7 @@ pub struct SliceActivateError;
 /// Returns [`SliceActivateError`] when the partition set install
 /// fails — its shard-key declaration is validated at install.
 pub fn activate(
-    services: &jinn_domain::Services,
+    services: &jinn_kernel::Services,
     state: State,
 ) -> Result<(), error_stack::Report<SliceActivateError>> {
     let system = services.trouper_system.clone();
@@ -84,7 +84,7 @@ pub fn activate(
 /// shard-key declaration is validated at install.
 pub fn install_actors(
     system: &trouper::system::ActorSystem,
-    paths: jinn_domain::common::app_paths::AppPaths,
+    paths: jinn_kernel::common::app_paths::AppPaths,
     state: State,
 ) -> Result<(), error_stack::Report<SliceActivateError>> {
     use error_stack::ResultExt;
@@ -122,7 +122,7 @@ pub fn install_actors(
 /// settle budget ([`worker::SETTLE_BUDGET_ARG`]).
 fn partition_spec_with_args(
     system: &trouper::system::ActorSystem,
-    paths: &jinn_domain::common::app_paths::AppPaths,
+    paths: &jinn_kernel::common::app_paths::AppPaths,
     state: &State,
     args_template: trouper::json::Json,
 ) -> trouper::pool::PartitionSpec {
@@ -151,7 +151,7 @@ fn partition_spec_with_args(
 /// Builds the partition spec with the production args template.
 fn partition_spec(
     system: &trouper::system::ActorSystem,
-    paths: &jinn_domain::common::app_paths::AppPaths,
+    paths: &jinn_kernel::common::app_paths::AppPaths,
     state: &State,
 ) -> trouper::pool::PartitionSpec {
     partition_spec_with_args(system, paths, state, trouper::json::Json::default())
@@ -169,7 +169,7 @@ fn partition_spec(
 /// Returns an error when the partition set install fails.
 pub fn install_partition_set_with_args(
     system: &trouper::system::ActorSystem,
-    paths: &jinn_domain::common::app_paths::AppPaths,
+    paths: &jinn_kernel::common::app_paths::AppPaths,
     state: &State,
     args_template: trouper::json::Json,
 ) -> Result<(), error_stack::Report<SliceActivateError>> {
@@ -225,7 +225,7 @@ type ChildSpawnFn = std::sync::Arc<
 /// so the default budget applies there.
 fn entity_spawn_fn(
     system: &trouper::system::ActorSystem,
-    paths: &jinn_domain::common::app_paths::AppPaths,
+    paths: &jinn_kernel::common::app_paths::AppPaths,
     state: &State,
 ) -> ChildSpawnFn {
     let paths = paths.clone();

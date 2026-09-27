@@ -25,11 +25,11 @@ use std::path::PathBuf;
 use crate::coordinator::{McpCoordinatorActor, McpCoordinatorActorDeps};
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::ToolCall;
-use jinn_domain::common::actor_deps::ActorDeps;
-use jinn_domain::common::app_paths::AppPaths;
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::bus::HarnessServices;
-use jinn_domain::common::state::State;
+use jinn_kernel::common::actor_deps::ActorDeps;
+use jinn_kernel::common::app_paths::AppPaths;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::bus::HarnessServices;
+use jinn_kernel::common::state::State;
 use jinn_mcp_msg::RestartError;
 use jinn_preferences_config::schemas::mcp::McpServerConfig;
 use jinn_preferences_config::schemas::mcp::McpServersConfig;
@@ -53,8 +53,8 @@ async fn spawn_coordinator(
     servers: &[(&str, McpServerConfig)],
 ) -> (
     std::sync::Arc<dyn jinn_mcp_msg::McpCoordinatorHandle>,
-    jinn_domain::Services,
-    jinn_domain::common::state::State,
+    jinn_kernel::Services,
+    jinn_kernel::common::state::State,
 ) {
     let services = harness.services().await;
     // Seeded through the layer the coordinator reads from.

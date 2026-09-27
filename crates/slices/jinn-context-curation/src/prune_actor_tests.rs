@@ -14,10 +14,10 @@ use super::PruneActor;
 use async_trait::async_trait;
 use jinn_core_types::HistoryMutation;
 use jinn_core_types::{ChangeSource, ChatEntry, ChatEntryKind, ContextOverride, SessionId};
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::services::Services;
-use jinn_domain::common::services::bus_service::BusAudit;
-use jinn_domain::common::state::State;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::services::Services;
+use jinn_kernel::common::services::bus_service::BusAudit;
+use jinn_kernel::common::state::State;
 use jinn_session_history_msg::{HistoryAppended, SubmitHistoryMutations};
 
 use crate::worker::HistoryWorker;
@@ -83,7 +83,7 @@ impl HistoryWorker for NoOpWorker {
 // ── Test helpers ─────────────────────────────────────────────────────
 
 async fn create_actor(workers: Vec<Box<dyn HistoryWorker>>) -> (PruneActor, State, BusAudit) {
-    let (bus, audit) = jinn_domain::BusService::new_recording();
+    let (bus, audit) = jinn_kernel::BusService::new_recording();
     let services = Services::new_fake_with_bus(bus).await;
     let state = State::new(AppState::default_with_scope_focus());
     (

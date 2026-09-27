@@ -1,6 +1,6 @@
 //! Session working-directory command handling.
 
-use jinn_domain::common::actor_deps::BusPublish;
+use jinn_kernel::common::actor_deps::BusPublish;
 use jinn_session_lifecycle_msg::{SessionCwdChanged, SetSessionCwd};
 
 use crate::session_lifecycle_actor::SessionLifecycleActor;
@@ -27,7 +27,7 @@ impl SessionLifecycleActor {
         _payload: &jinn_session_lifecycle_msg::CancelLifecycleCommand,
     ) {
         if let Some(handle) = self.lifecycle_child.take() {
-            jinn_domain::common::process_kill::kill_process_group_by_pid(handle.pid);
+            jinn_kernel::common::process_kill::kill_process_group_by_pid(handle.pid);
             handle.abort_handle.abort();
         }
     }

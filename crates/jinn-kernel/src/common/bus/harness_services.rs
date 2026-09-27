@@ -3,7 +3,7 @@
 //! The harness itself lives in `jinn-testutil` because it is a pure test
 //! fixture over the message fabric. Building an [`ActorDeps`] from it needs
 //! the kernel's [`Services`] container, so that part lives here as a trait:
-//! `jinn-testutil` stays kernel-free and cannot depend on `jinn-domain`
+//! `jinn-testutil` stays kernel-free and cannot depend on `jinn-kernel`
 //! without a dependency cycle.
 //!
 //! Import this trait wherever a test needs `harness.services()` or

@@ -13,7 +13,7 @@
 
 use std::sync::Arc;
 
-use jinn_domain::state::frontend_state::PendingSessionCreation;
+use jinn_kernel::state::frontend_state::PendingSessionCreation;
 use jinn_preferences_config::schemas::ProjectConfig;
 use jinn_project_msg::ProjectPickerState;
 use jinn_slices::KeyRoutes;
@@ -51,10 +51,10 @@ pub fn bound_keys() -> Vec<&'static str> {
 }
 
 /// The kernel's application state behind an [`ActionCtx`].
-fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_domain::AppState> {
+fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_kernel::AppState> {
     ctx.state
         .as_any_mut()?
-        .downcast_mut::<jinn_domain::AppState>()
+        .downcast_mut::<jinn_kernel::AppState>()
 }
 
 /// Wraps a picker action in an [`ActionFn`], handing it both the dispatch
@@ -147,7 +147,7 @@ pub fn attach_project_picker_rows(routes: &KeyRoutes, cell: &ProjectPickerCell) 
             let Some(state) = app(ctx) else {
                 return IntentResult::empty();
             };
-            jinn_domain::session_lifecycle::intent::handle_session_new(state, config)
+            jinn_kernel::session_lifecycle::intent::handle_session_new(state, config)
         }),
     ));
     routes.attach(row(
@@ -310,14 +310,14 @@ fn confirm_project_picker(ctx: &mut ActionCtx<'_>, cell: &ProjectPickerCell) -> 
         starting_cwd: path,
     });
     state.frontend.scope_pop();
-    let result = jinn_domain::session_lifecycle::intent::handle_session_lifecycle_setup(
+    let result = jinn_kernel::session_lifecycle::intent::handle_session_lifecycle_setup(
         state,
         "",
         &[],
         None,
         config,
     );
-    jinn_domain::common::slices::key_routes::into_route_result(result)
+    jinn_kernel::common::slices::key_routes::into_route_result(result)
 }
 
 /// `<esc>`: leave without starting a session.

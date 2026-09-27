@@ -326,7 +326,7 @@ pub(crate) fn failure_result(tool_call_id: &str, tool_name: &str, msg: &str) -> 
 /// the coordinator actor. The pacer is aborted when the ask completes.
 /// Returns `None` when the ask exceeded `ask_timeout`.
 pub(crate) async fn with_keepalive<F, T>(
-    bus: Option<jinn_domain::common::services::bus_service::BusService>,
+    bus: Option<jinn_kernel::common::services::bus_service::BusService>,
     stream_ctx: Option<StreamCtx>,
     ask_timeout: Duration,
     ask_fut: F,
@@ -368,7 +368,7 @@ mod tests {
     #[tokio::test]
     async fn keepalive_publishes_heartbeats_during_long_ask() {
         // Given a recording bus and a stream context.
-        let (bus, audit) = jinn_domain::common::services::bus_service::BusService::new_recording();
+        let (bus, audit) = jinn_kernel::common::services::bus_service::BusService::new_recording();
         let ctx = Some(StreamCtx {
             session_id: jinn_core_types::SessionId::new(),
             tool_call_id: "call-1".to_owned(),
@@ -398,7 +398,7 @@ mod tests {
     #[tokio::test]
     async fn keepalive_without_session_publishes_nothing() {
         // Given a recording bus and no stream context (no chat session).
-        let (bus, audit) = jinn_domain::common::services::bus_service::BusService::new_recording();
+        let (bus, audit) = jinn_kernel::common::services::bus_service::BusService::new_recording();
 
         // When wrapping the same long ask.
         let result = super::with_keepalive(

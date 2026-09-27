@@ -68,14 +68,14 @@ mod tests {
     use super::*;
     use crate::inputs::build_assembly_inputs;
     use jinn_context_assembly_msg::AssembleContext;
-    use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::state::State;
-    use jinn_domain::protocol::ChatEntry;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::common::state::State;
+    use jinn_kernel::protocol::ChatEntry;
 
     #[rstest::rstest]
     #[tokio::test]
     async fn ask_returns_assembled_prompt() {
-        let services = jinn_domain::Services::new_fake().await;
+        let services = jinn_kernel::Services::new_fake().await;
         let _ = crate::service::spawn(&services.trouper_system);
         let state = State::new(AppState::default_with_scope_focus());
         let session_id = state.read().session.active_session_id().clone();

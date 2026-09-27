@@ -17,7 +17,7 @@ pub use app_state_actor::AppStateActor;
 pub use pruner_accumulation_input::intent::pruner_accumulation_scope;
 pub use pruner_accumulation_input::intent::pruner_accumulation_slot;
 
-use jinn_domain::common::state::State;
+use jinn_kernel::common::state::State;
 use jinn_slices::SliceHost;
 
 /// Activates the preferences slice's pruner-accumulation popup and two
@@ -38,7 +38,7 @@ use jinn_slices::SliceHost;
 pub fn activate(
     host: &mut SliceHost<'_, jinn_slices::RenderFacts>,
     system: &trouper::system::ActorSystem,
-    services: jinn_domain::Services,
+    services: jinn_kernel::Services,
     state: State,
 ) {
     let pruner_cell = host

@@ -14,8 +14,8 @@ use std::time::Duration;
 use crate::tool_types::ToolContext;
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use jinn_domain::common::process_kill::kill_process_tree;
-use jinn_domain::common::services::bus_service::BusService;
+use jinn_kernel::common::process_kill::kill_process_tree;
+use jinn_kernel::common::services::bus_service::BusService;
 use jinn_tools_msg::{ToolExecutionOutput, ToolExecutionStarted, ToolOutputKind};
 
 use jinn_tools_msg::truncation::{
@@ -161,7 +161,7 @@ async fn flush_buffer(
 async fn emit_stream_event(
     bus: Option<&BusService>,
     session_id: Option<&SessionId>,
-    event: impl jinn_domain::common::bus::BusMessage
+    event: impl jinn_kernel::common::bus::BusMessage
     + trouper::schema::Schema
     + serde::Serialize
     + trouper::envelope::PayloadValue,
@@ -596,7 +596,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
-            app_paths: jinn_domain::common::app_paths::AppPaths::default(),
+            app_paths: jinn_kernel::common::app_paths::AppPaths::default(),
             bus: None,
             max_output_lines: None,
             max_output_bytes: None,
@@ -839,7 +839,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
-            app_paths: jinn_domain::common::app_paths::AppPaths::default(),
+            app_paths: jinn_kernel::common::app_paths::AppPaths::default(),
             bus: None,
             max_output_lines: None,
             max_output_bytes: None,

@@ -1,7 +1,7 @@
 //! Autocomplete popup rendering - renders the prompt template and slash command autocomplete overlay.
 
 use crate::AutocompleteTrigger;
-use jinn_domain::AppState;
+use jinn_kernel::AppState;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};

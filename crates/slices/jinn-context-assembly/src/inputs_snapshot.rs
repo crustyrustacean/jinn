@@ -9,7 +9,7 @@ use jinn_core_types::SessionId;
 
 use jinn_context_assembly_msg::{AssembleContext, AssembledResponse, AssemblyInputs};
 use jinn_core_types::DEFAULT_PERSONA_NAME;
-use jinn_domain::common::app_state::AppState;
+use jinn_kernel::common::app_state::AppState;
 
 /// Snapshots everything the assembly service needs for `session_id`.
 ///
@@ -58,7 +58,7 @@ pub fn build_assembly_inputs(state: &AppState, session_id: &SessionId) -> Assemb
 /// Returns the trouper `AskError` report if the service is absent or
 /// the ask times out (dispatch must not proceed without a prompt).
 pub async fn assemble_via_service(
-    services: &jinn_domain::common::services::Services,
+    services: &jinn_kernel::common::services::Services,
     inputs: AssemblyInputs,
 ) -> Result<jinn_slices::AssembledPrompt, error_stack::Report<trouper::context::AskError>> {
     use trouper::actor::ActorPath;
@@ -86,10 +86,10 @@ pub async fn assemble_via_service(
 #[cfg(test)]
 mod composition_ask_tests {
     use super::*;
-    use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::state::State;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::common::state::State;
 
-    use jinn_domain::protocol::ChatEntry;
+    use jinn_kernel::protocol::ChatEntry;
 
     #[rstest::rstest]
     #[tokio::test]
@@ -98,7 +98,7 @@ mod composition_ask_tests {
         reason = "test helper: a failed ask fails the test"
     )]
     async fn minimal_ask_reproduces_resolution() {
-        let services = jinn_domain::Services::new_fake().await;
+        let services = jinn_kernel::Services::new_fake().await;
         // Composition parity: production wiring spawns the slice service
         // at this exact path at boot; unit tests spawn the test-crate
         // stub at the same path so the live-value ask crosses no

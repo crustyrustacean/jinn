@@ -4,8 +4,8 @@ use crate::sections::section_trait::{EnterFrom, SectionNavResult, SidebarIntent}
 use crate::sections::sessions::preview_load::update_preview;
 use crate::sections::sessions::state::sorted_open_sessions;
 use jinn_core_types::SessionId;
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::protocol::IntentResult;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::protocol::IntentResult;
 use jinn_slices::ConfigLayer;
 
 use crate::sections::sidebar_state_actor::PREVIEW_DEADLINE;

@@ -10,10 +10,10 @@
 //! cursor visible.
 
 use jinn_chat_input_msg::{InputMode, WrappedLine};
-use jinn_domain::AppState;
-use jinn_domain::RenderCtx;
-use jinn_domain::common::ui_element::UiElement;
-use jinn_domain::protocol::Mode;
+use jinn_kernel::AppState;
+use jinn_kernel::RenderCtx;
+use jinn_kernel::common::ui_element::UiElement;
+use jinn_kernel::protocol::Mode;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};

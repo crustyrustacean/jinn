@@ -57,7 +57,7 @@ fn lifecycle_document(lifecycles: &[SessionLifecycle]) -> String {
 struct Wired {
     slices: Slices,
     routes: KeyRoutes,
-    state: std::cell::RefCell<jinn_domain::AppState>,
+    state: std::cell::RefCell<jinn_kernel::AppState>,
     /// Kept alive for the test's lifetime: the route actions read lifecycles
     /// through the configuration layer, which borrows the document.
     config: jinn_config::ConfigLayer,
@@ -71,7 +71,7 @@ impl Wired {
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let routes = KeyRoutes::new();
-        let services = jinn_domain::Services::new_fake().await;
+        let services = jinn_kernel::Services::new_fake().await;
         {
             let mut host = SliceHost::new(
                 &slices,
@@ -90,7 +90,7 @@ impl Wired {
         }
         // `default_with_scope_focus`, not `default`: a scope push is a no-op
         // without the shared scope cell, and this test asserts on the stack.
-        let state = jinn_domain::AppState::default_with_scope_focus();
+        let state = jinn_kernel::AppState::default_with_scope_focus();
         state.frontend.attach_slices(slices.clone());
         let config = jinn_config::testutil::config_layer(&lifecycle_document(&lifecycles));
         Self {
@@ -764,7 +764,7 @@ async fn the_filter_hook_is_registered_for_the_picker_scope() {
 #[rstest::rstest]
 fn the_picker_state_lives_only_in_its_slice_cell() {
     // Given the kernel's picker state block.
-    let kernel = include_str!("../../../jinn-domain/src/state/frontend_state.rs");
+    let kernel = include_str!("../../../jinn-kernel/src/state/frontend_state.rs");
 
     // When it is searched for this picker's state.
     let found = kernel.contains("session_lifecycle_picker");
@@ -781,8 +781,8 @@ fn the_picker_state_lives_only_in_its_slice_cell() {
 fn the_kernel_names_no_session_lifecycle_picker() {
     // Given the central crates' sources.
     let sources = [
-        include_str!("../../../jinn-domain/src/feat/intent/handler.rs"),
-        include_str!("../../../jinn-domain/src/protocol/intent.rs"),
+        include_str!("../../../jinn-kernel/src/feat/intent/handler.rs"),
+        include_str!("../../../jinn-kernel/src/protocol/intent.rs"),
     ];
 
     // When each is searched for a picker identity.

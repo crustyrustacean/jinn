@@ -3,8 +3,8 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use jinn_core_types::SessionId;
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::protocol::IntentResult;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::protocol::IntentResult;
 use jinn_session_lifecycle_msg::TeardownSessionTree;
 use jinn_session_store_msg::ArchiveSessionTree;
 pub use jinn_sidebar_msg::{ArchiveTreePrompt, TreePromptAction};

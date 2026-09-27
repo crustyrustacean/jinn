@@ -40,8 +40,8 @@ mod reasoning_picker_routes;
 mod reasoning_picker_tests;
 mod reasoning_picker_viewport;
 
-use jinn_domain::Services;
-use jinn_domain::common::state::State;
+use jinn_kernel::Services;
+use jinn_kernel::common::state::State;
 use jinn_provider_selection_msg::ProviderCell;
 use jinn_slices::SliceHost;
 use trouper::actor::ActorPath;
@@ -120,7 +120,7 @@ pub fn activate(
             panic!("provider-selection activate: provider picker cell slot taken: {e:?}")
         });
 
-    let deps = jinn_domain::common::actor_deps::ActorDeps {
+    let deps = jinn_kernel::common::actor_deps::ActorDeps {
         services: services.clone(),
     };
     let discover = discover_actor::DiscoverActor::spawn(

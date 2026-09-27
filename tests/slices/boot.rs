@@ -14,9 +14,9 @@ use jinn_boot::install_actors;
 use jinn_boot_msg::{
     AllActorsSpawned, EnvironmentConfigReply, EnvironmentLoaded, GetEnvironmentConfig,
 };
-use jinn_domain::common::bus::HarnessServices;
-use jinn_domain::common::services::Services;
-use jinn_domain::common::services::bus_service::BusService;
+use jinn_kernel::common::bus::HarnessServices;
+use jinn_kernel::common::services::Services;
+use jinn_kernel::common::services::bus_service::BusService;
 use jinn_provider_config::ProviderEntry;
 use jinn_provider_config::{ConfigStorageService, InMemoryConfigStorage};
 use jinn_testutil::bus_harness::{TestHarness, await_recorded};
@@ -58,7 +58,7 @@ use std::sync::Arc;
 /// Mints a lone provider cell for boot tests (boot's init actor writes
 /// the disk-loaded cache through it).
 fn test_provider_cell(
-    services: &jinn_domain::Services,
+    services: &jinn_kernel::Services,
 ) -> jinn_slices::TypedCell<jinn_provider_selection_msg::ProviderCell> {
     let _ = services.slices.register(
         jinn_provider_selection_msg::provider_state_slot(),
@@ -78,7 +78,7 @@ async fn install_spawns_trio_and_readiness_fires_on_all_actors_spawned() {
     let (harness, services) = harness_with_config(&config).await;
     let boot = install_actors(
         harness.system(),
-        jinn_domain::State::new(jinn_domain::AppState::default_with_scope_focus()),
+        jinn_kernel::State::new(jinn_kernel::AppState::default_with_scope_focus()),
         &services,
         test_provider_cell(&services),
     );
@@ -100,7 +100,7 @@ async fn env_config_ask_round_trips_seeded_config() {
     let (harness, services) = harness_with_config(&config).await;
     let boot = install_actors(
         harness.system(),
-        jinn_domain::State::new(jinn_domain::AppState::default_with_scope_focus()),
+        jinn_kernel::State::new(jinn_kernel::AppState::default_with_scope_focus()),
         &services,
         test_provider_cell(&services),
     );
@@ -133,7 +133,7 @@ async fn environment_loaded_fans_out_to_subscribers() {
     let (harness, services) = harness_with_config(&config).await;
     let boot = install_actors(
         harness.system(),
-        jinn_domain::State::new(jinn_domain::AppState::default_with_scope_focus()),
+        jinn_kernel::State::new(jinn_kernel::AppState::default_with_scope_focus()),
         &services,
         test_provider_cell(&services),
     );
@@ -193,7 +193,7 @@ async fn env_config_ask_returns_none_when_storage_errors() {
     services.config_storage = ConfigStorageService::new(Arc::new(FailingStorage));
     let boot = install_actors(
         harness.system(),
-        jinn_domain::State::new(jinn_domain::AppState::default_with_scope_focus()),
+        jinn_kernel::State::new(jinn_kernel::AppState::default_with_scope_focus()),
         &services,
         test_provider_cell(&services),
     );
@@ -233,7 +233,7 @@ async fn install_composes_over_a_recording_bus() {
     // When installing the trio.
     let boot = install_actors(
         &system,
-        jinn_domain::State::new(jinn_domain::AppState::default_with_scope_focus()),
+        jinn_kernel::State::new(jinn_kernel::AppState::default_with_scope_focus()),
         &services,
         test_provider_cell(&services),
     );
@@ -251,7 +251,7 @@ async fn provider_init_writes_the_disk_cache_through_the_provider_cell() {
     // Given a trio installed with a provider cell and a seeded config.
     let config = sample_config();
     let (harness, services) = harness_with_config(&config).await;
-    let state = jinn_domain::State::new(jinn_domain::AppState::default_with_scope_focus());
+    let state = jinn_kernel::State::new(jinn_kernel::AppState::default_with_scope_focus());
     let cell = test_provider_cell(&services);
     let _boot = install_actors(harness.system(), state, &services, cell.clone());
 

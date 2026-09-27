@@ -77,7 +77,7 @@ impl Def {
 struct Wired {
     slices: Slices,
     routes: KeyRoutes,
-    state: std::cell::RefCell<jinn_domain::AppState>,
+    state: std::cell::RefCell<jinn_kernel::AppState>,
 }
 
 impl Wired {
@@ -89,7 +89,7 @@ impl Wired {
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let routes = KeyRoutes::new();
-        let services = jinn_domain::Services::new_fake().await;
+        let services = jinn_kernel::Services::new_fake().await;
         {
             let mut host = SliceHost::new(
                 &slices,
@@ -131,7 +131,7 @@ impl Wired {
         // `attach_slices` below is the first and only attachment: the facade
         // handle is a `OnceLock`, and the test harness already minted the
         // cells on *this* `Slices` above.
-        let mut state = jinn_domain::AppState::default();
+        let mut state = jinn_kernel::AppState::default();
         let origin = jinn_session_state::ChatSessionState::new();
         state.session.insert(origin);
         state
@@ -979,7 +979,7 @@ fn the_picker_state_lives_only_in_its_slice_cell() {
     // The tool picker's state is reachable from exactly one place: the slice
     // cell. A second copy in the kernel would let the menu show one store while
     // a different one is written.
-    let kernel_source = include_str!("../../../jinn-domain/src/state/frontend_state.rs");
+    let kernel_source = include_str!("../../../jinn-kernel/src/state/frontend_state.rs");
     assert!(
         !kernel_source.contains("tool_picker"),
         "the kernel must not hold tool picker state; the slice cell is the only home"
@@ -993,16 +993,16 @@ fn the_kernel_names_no_tool_picker_at_all() {
     // picker a folder-local change.
     for (label, source) in [
         (
-            "jinn-domain frontend state",
-            include_str!("../../../jinn-domain/src/state/frontend_state.rs"),
+            "jinn-kernel frontend state",
+            include_str!("../../../jinn-kernel/src/state/frontend_state.rs"),
         ),
         (
-            "jinn-domain intent handler",
-            include_str!("../../../jinn-domain/src/feat/intent/handler.rs"),
+            "jinn-kernel intent handler",
+            include_str!("../../../jinn-kernel/src/feat/intent/handler.rs"),
         ),
         (
-            "jinn-domain protocol intents",
-            include_str!("../../../jinn-domain/src/protocol/intent.rs"),
+            "jinn-kernel protocol intents",
+            include_str!("../../../jinn-kernel/src/protocol/intent.rs"),
         ),
         (
             "jinn-tui scope table",

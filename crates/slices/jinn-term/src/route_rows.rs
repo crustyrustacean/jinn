@@ -39,8 +39,8 @@
 //! optimistic-write + authoritative-write pattern: the synchronous key
 //! path flips it immediately so a settle poll cannot miss the takeover.
 
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::protocol::IntentResult;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::protocol::IntentResult;
 use jinn_slices::FocusScope;
 use jinn_slices::route::{ActionCtx, ActionFn, BindSite, RouteId, RouteOutcome, RouteRow};
 use jinn_slices::{DynamicIntent, KeyRoutes, SliceScopeId};
@@ -324,7 +324,7 @@ pub fn handle_push_screen(state: &mut AppState, slices: &jinn_slices::Slices) ->
     if state.active_session().phase() == jinn_session_msg::PhaseKind::Idle {
         IntentResult::empty().with_message(jinn_chat_input_msg::EnqueueUserMessage {
             session_id,
-            entry: jinn_domain::protocol::ChatEntry::user(text),
+            entry: jinn_kernel::protocol::ChatEntry::user(text),
         })
     } else {
         IntentResult::empty()
@@ -513,7 +513,7 @@ mod tests {
     use super::handle_yank;
     use super::push_screen_text;
     use super::view_scope;
-    use jinn_domain::common::app_state::AppState;
+    use jinn_kernel::common::app_state::AppState;
     use jinn_slices::FocusScope;
     use jinn_slices::Slices;
     use jinn_slices::route::ActionCtx;

@@ -9,11 +9,11 @@ use crate::sections::section_trait::{
 };
 use jinn_chat_log_view::chat_log::strip_ansi;
 use jinn_core_types::SessionId;
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::app_state::pin_sort_key;
-use jinn_domain::common::render_ctx::RenderCtx;
-use jinn_domain::protocol::ToolResultStatus;
-use jinn_domain::protocol::{ChatEntryId, ChatEntryKind, IntentResult, PinPosition};
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::app_state::pin_sort_key;
+use jinn_kernel::common::render_ctx::RenderCtx;
+use jinn_kernel::protocol::ToolResultStatus;
+use jinn_kernel::protocol::{ChatEntryId, ChatEntryKind, IntentResult, PinPosition};
 use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
 use jinn_skills::loaded_skill_summary_label;
 use jinn_theme::Theme;
@@ -422,7 +422,7 @@ pub(crate) fn truncate_str(s: &str, max_width: usize) -> String {
 
 /// Builds the list of lines for the pinned entries panel.
 fn build_entry_list(
-    pinned: &[&jinn_domain::protocol::ChatEntry],
+    pinned: &[&jinn_kernel::protocol::ChatEntry],
     selected_index: usize,
     area_width: u16,
     sidebar_focused: bool,

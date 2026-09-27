@@ -113,7 +113,7 @@ mod tests {
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = OverlayViews::new();
         let key_routes = jinn_slices::KeyRoutes::new();
-        let services = jinn_domain::Services::new_fake().await;
+        let services = jinn_kernel::Services::new_fake().await;
         let mut host = SliceHost::new(
             &slices,
             &mut viewport,
@@ -179,7 +179,7 @@ mod tests {
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = OverlayViews::new();
         let key_routes = jinn_slices::KeyRoutes::new();
-        let services = jinn_domain::Services::new_fake().await;
+        let services = jinn_kernel::Services::new_fake().await;
         let mut host = SliceHost::new(
             &slices,
             &mut viewport,

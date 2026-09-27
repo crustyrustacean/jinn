@@ -6,7 +6,7 @@
 //! must reach disk without routing a command through another actor.
 
 use super::super::SessionPersistenceActor;
-use jinn_domain::common::actor_deps::BusPublish;
+use jinn_kernel::common::actor_deps::BusPublish;
 use jinn_session_msg::{MarkSessionInteracted, UserInteracted};
 
 impl SessionPersistenceActor {

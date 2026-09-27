@@ -13,9 +13,9 @@ trouper = { workspace = true }
 # changes and picker render state, loads entries
 # through the kernel picker registry's spec hooks, and reads services
 # (registry, api keys, paths). The kernel
-# re-exports the slice's contracts so the long-standing jinn_domain::X
+# re-exports the slice's contracts so the long-standing jinn_kernel::X
 # paths keep resolving.
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-provider = { workspace = true }
 jinn-provider-config = { workspace = true }
@@ -42,7 +42,7 @@ jinn-testutil = { workspace = true }
 
 serde_json = { workspace = true }
 rstest = { workspace = true }
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 jinn-session-state = { workspace = true }
 tempfile = { workspace = true }
 

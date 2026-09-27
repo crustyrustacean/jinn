@@ -35,7 +35,7 @@ use wherror::Error;
 
 use crate::emulator::Emulator;
 use crate::screen_task::{ScreenHandle, ScreenWiring, SharedTerminal, spawn_screen_task};
-use jinn_domain::common::process_kill::kill_process_group_by_pid;
+use jinn_kernel::common::process_kill::kill_process_group_by_pid;
 
 /// Sender half of a session's output channel.
 ///
@@ -527,8 +527,8 @@ mod tests {
     /// Screen wiring writing into a throwaway state (no bus subscribers).
     async fn wiring() -> ScreenWiring {
         let harness = jinn_testutil::bus_harness::TestHarness::new().await;
-        let state = jinn_domain::common::state::State::new(
-            jinn_domain::common::app_state::AppState::default_with_scope_focus(),
+        let state = jinn_kernel::common::state::State::new(
+            jinn_kernel::common::app_state::AppState::default_with_scope_focus(),
         );
         ScreenWiring {
             bus: harness.bus(),

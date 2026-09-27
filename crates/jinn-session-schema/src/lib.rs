@@ -3,13 +3,13 @@
 //! This is the **single source of truth** for the SQLite schema. It is consumed
 //! in two places, both of which must see the same schema:
 //!
-//! - **Build time:** `jinn-domain/build.rs` calls [`run_migrations`] on a fresh
+//! - **Build time:** `jinn-kernel/build.rs` calls [`run_migrations`] on a fresh
 //!   `OUT_DIR` database, then points `dao`'s `#[dao]` macro at it via
 //!   `DAOW_DATABASE_URL` for compile-time SQL validation.
 //! - **Runtime:** jinn's session store calls [`run_migrations`] through a
 //!   `dao::Pool::with_conn` closure on the user's `sessions.db` at startup.
 //!
-//! Living in its own crate (a leaf — no dependency on `jinn-domain`) is what
+//! Living in its own crate (a leaf — no dependency on `jinn-kernel`) is what
 //! breaks the bootstrap cycle: `build.rs` can depend on this crate via
 //! `[build-dependencies]`, whereas it cannot depend on the crate it belongs to.
 //!

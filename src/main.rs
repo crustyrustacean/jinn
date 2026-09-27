@@ -14,7 +14,7 @@ fn main() {
 
     let cli = Cli::parse();
 
-    let paths = jinn_domain::AppPaths::default();
+    let paths = jinn_kernel::AppPaths::default();
     let log_path = cli.log_file.clone().unwrap_or_else(|| paths.log_path());
 
     let mode = match &cli.command {

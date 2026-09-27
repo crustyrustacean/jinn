@@ -18,7 +18,7 @@ jinn-common = { workspace = true }
 [features]
 default = []
 # `testkit` exposes constructors for rmcp's `#[non_exhaustive]` model types,
-# so downstream crates (jinn-domain) can build fixtures in their own tests.
+# so downstream crates (jinn-kernel) can build fixtures in their own tests.
 testkit = []
 # `server-testkit` exposes a stub MCP server builder so downstream tests can drive
 # a real `McpClient` over an in-memory transport without spawning a child process.

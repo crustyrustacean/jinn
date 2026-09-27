@@ -42,7 +42,7 @@ pub fn activate(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
 ///
 /// Called by composition in `jinn-tui`: the slice owns the element, so the
 /// kernel's element registry cannot reference it.
-pub fn register(registry: &mut jinn_domain::common::AppUiRegistry) {
+pub fn register(registry: &mut jinn_kernel::common::AppUiRegistry) {
     kernel_element::register(registry);
 }
 
@@ -60,7 +60,7 @@ mod activation_tests {
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let key_routes = jinn_slices::KeyRoutes::new();
-        let services = jinn_domain::Services::new_fake().await;
+        let services = jinn_kernel::Services::new_fake().await;
         let mut host = SliceHost::new(
             &slices,
             &mut viewport,
@@ -95,7 +95,7 @@ mod activation_tests {
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let key_routes = jinn_slices::KeyRoutes::new();
-        let services = jinn_domain::Services::new_fake().await;
+        let services = jinn_kernel::Services::new_fake().await;
         let mut host = SliceHost::new(
             &slices,
             &mut viewport,

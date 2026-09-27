@@ -1,6 +1,6 @@
 //! Tab bar — top-level strip showing one label per registered tab slice.
 
-use jinn_domain::RenderCtx;
+use jinn_kernel::RenderCtx;
 use jinn_slices::SliceScopeId;
 use ratatui::Frame;
 use ratatui::layout::Rect;

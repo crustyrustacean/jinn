@@ -6,9 +6,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use error_stack::Report;
-use jinn_domain::AppState;
-use jinn_domain::common::bus::HarnessServices;
-use jinn_domain::common::state::State;
+use jinn_kernel::AppState;
+use jinn_kernel::common::bus::HarnessServices;
+use jinn_kernel::common::state::State;
 use jinn_preferences_config::schemas::{BuiltinId, LifecycleCommand};
 use jinn_session_lifecycle_msg::CloseSession;
 use jinn_session_lifecycle_msg::SessionTeardownFinished;

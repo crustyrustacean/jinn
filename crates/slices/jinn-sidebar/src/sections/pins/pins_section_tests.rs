@@ -11,9 +11,9 @@ use ratatui::style::Color;
 
 use crate::sections::pins::pins_section::*;
 use crate::sections::section_trait::SidebarSection;
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::render_ctx::RenderCtx;
-use jinn_domain::protocol::{ChangeSource, ChatEntry, PinPosition};
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::render_ctx::RenderCtx;
+use jinn_kernel::protocol::{ChangeSource, ChatEntry, PinPosition};
 
 fn state_with_pinned(count: usize) -> AppState {
     let mut state = AppState::default_with_scope_focus();
@@ -53,7 +53,7 @@ fn sidebar_persona_edit_opens_picker_when_persona_focused() {
     // Then the persona picker's scope is on top of the stack.
     assert_eq!(
         state.frontend.scope(),
-        jinn_domain::FocusScope::Dynamic(jinn_persona_msg::persona_picker_scope())
+        jinn_kernel::FocusScope::Dynamic(jinn_persona_msg::persona_picker_scope())
     );
     // And no loader command is needed: the picker seeds itself from the slice.
     assert!(result.message_names.is_empty());
@@ -454,8 +454,8 @@ fn session_new_works_when_sidebar_sessions_focused() {
     let _old_id = state.session.active_session_id().clone();
 
     // When handling SessionNew via IntentHandler.
-    let result = jinn_domain::IntentHandler::handle(
-        &jinn_domain::KernelIntent::SessionNew,
+    let result = jinn_kernel::IntentHandler::handle(
+        &jinn_kernel::KernelIntent::SessionNew,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -486,8 +486,8 @@ fn session_new_works_when_not_in_sidebar() {
     let old_id = state.session.active_session_id().clone();
 
     // When handling SessionNew via IntentHandler.
-    let _result = jinn_domain::IntentHandler::handle(
-        &jinn_domain::KernelIntent::SessionNew,
+    let _result = jinn_kernel::IntentHandler::handle(
+        &jinn_kernel::KernelIntent::SessionNew,
         &mut state,
         &empty_slices(),
         &empty_routes(),
@@ -509,7 +509,7 @@ fn sync_chat_log_cursor_sets_cursor_by_entry_id_with_visual_items() {
     for _ in 0..15 {
         let mut entry = ChatEntry::user("ignored");
         entry.apply_context_override(
-            jinn_domain::protocol::ContextOverride::ForcedExclude,
+            jinn_kernel::protocol::ContextOverride::ForcedExclude,
             ChangeSource::Internal {
                 label: "test".into(),
             },
@@ -644,7 +644,7 @@ fn resolve_selected_entry_id_returns_real_session_and_entry_ids() {
     );
 }
 
-use jinn_domain::protocol::ToolResultStatus;
+use jinn_kernel::protocol::ToolResultStatus;
 
 /// Empty slice registry + route table for handler tests that don't
 /// exercise slices or route rows.

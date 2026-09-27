@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-# Internal deps (kernel-free: no jinn-domain)
+# Internal deps (kernel-free: no jinn-kernel)
 jinn-config = { workspace = true }
 jinn-common = { workspace = true }
 jinn-core-types = { workspace = true }

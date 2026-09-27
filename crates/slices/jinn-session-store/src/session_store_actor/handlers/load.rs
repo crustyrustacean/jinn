@@ -8,8 +8,8 @@ use jinn_chat_log_view::kernel_element::layout_supervisor::{
 };
 use jinn_chat_log_view_msg::{ArmLayoutDeadline, DEFAULT_MIN_COLLAPSE_COUNT, LayoutChatSession};
 use jinn_core_types::{ChatEntry, ChatEntryId, SessionId};
-use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::protocol::system::ActiveSessionChanged;
+use jinn_kernel::common::actor_deps::BusPublish;
+use jinn_kernel::protocol::system::ActiveSessionChanged;
 use jinn_session_state::SessionStoreService;
 use jinn_session_state::{ChatSessionState, SessionSnapshot, snapshot_frozen_node_from_snapshot};
 use jinn_session_store_msg::SessionForkRequested;

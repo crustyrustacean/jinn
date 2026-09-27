@@ -10,7 +10,7 @@ jinn-status-bar-msg = { workspace = true }
 jinn-cwd-msg = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-token-count-msg = { workspace = true }
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-theme = { workspace = true }
 ratatui = { workspace = true }

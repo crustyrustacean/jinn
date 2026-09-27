@@ -13,9 +13,9 @@ jinn-core-types = { workspace = true }
 jinn-discord-msg = { workspace = true }
 # The bridge subscriber folds trouper topic events (session lifecycle
 # family) into the gateway channels; the session slices have not
-# graduated to crates yet, so shared `State` still lives in jinn-domain.
+# graduated to crates yet, so shared `State` still lives in jinn-kernel.
 # This edge survives the cut (slice → domain is the legal direction).
-jinn-domain = { workspace = true }
+jinn-kernel = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-session-msg = { workspace = true }
 jinn-session-lifecycle-msg = { workspace = true }

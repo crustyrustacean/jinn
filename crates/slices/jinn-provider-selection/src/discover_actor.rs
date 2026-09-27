@@ -8,8 +8,8 @@
 use std::collections::HashMap;
 
 use error_stack::Report;
-use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
-use jinn_domain::common::state::State;
+use jinn_kernel::common::actor_deps::{ActorDeps, BusPublish};
+use jinn_kernel::common::state::State;
 use jinn_provider::{
     Backend, LlmServiceError, ModelInfo, OpenAiCompatibleService, ProviderConfig,
     anthropic::AnthropicService, google::GoogleService,
@@ -101,7 +101,7 @@ impl MsgHandler<RefreshModels> for DiscoverActor {
 }
 
 impl BusPublish for DiscoverActor {
-    fn bus(&self) -> &jinn_domain::common::services::bus_service::BusService {
+    fn bus(&self) -> &jinn_kernel::common::services::bus_service::BusService {
         self.deps.bus()
     }
 }
@@ -248,9 +248,9 @@ mod tests {
 
     use std::time::Duration;
 
-    use jinn_domain::AppState;
-    use jinn_domain::common::bus::HarnessServices;
-    use jinn_domain::common::state::State;
+    use jinn_kernel::AppState;
+    use jinn_kernel::common::bus::HarnessServices;
+    use jinn_kernel::common::state::State;
     use jinn_provider_selection_msg::ModelsRefreshed;
     use jinn_provider_selection_msg::RefreshModels;
     use jinn_testutil::bus_harness::{TestHarness, await_recorded};

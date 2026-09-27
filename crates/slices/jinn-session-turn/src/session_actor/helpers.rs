@@ -1,5 +1,5 @@
 use jinn_core_types::SessionId;
-use jinn_domain::BusService;
+use jinn_kernel::BusService;
 use jinn_session_history_msg::HistoryAppended;
 use jinn_session_msg::PhaseKind;
 use jinn_session_msg::SessionPhaseChanged;
@@ -40,14 +40,14 @@ pub(in crate::session_actor) async fn emit_history_appended(
 
 #[cfg(test)]
 pub(crate) async fn test_actor() -> super::SessionPersistenceActor {
-    use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::state::State;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::common::state::State;
     use jinn_llm_support::token_estimator::TiktokenCounter;
     use jinn_token_count_msg::HistoryWorkerChatEntryTokenCache;
 
     super::SessionPersistenceActor {
         state: State::new(AppState::default_with_scope_focus()),
-        services: jinn_domain::common::services::Services::new_fake().await,
+        services: jinn_kernel::common::services::Services::new_fake().await,
         counter: TiktokenCounter::o200k_base(),
         token_cache: HistoryWorkerChatEntryTokenCache::default(),
         image_converter: test_image_converter(),
@@ -63,15 +63,15 @@ pub(crate) fn ensure_context_assembly(system: &trouper::system::ActorSystem) {
 #[cfg(test)]
 pub(crate) async fn test_actor_recording() -> (
     super::SessionPersistenceActor,
-    jinn_domain::common::services::BusAudit,
+    jinn_kernel::common::services::BusAudit,
 ) {
-    use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::state::State;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::common::state::State;
     use jinn_llm_support::token_estimator::TiktokenCounter;
     use jinn_token_count_msg::HistoryWorkerChatEntryTokenCache;
 
-    let (bus, audit) = jinn_domain::common::services::BusService::new_recording();
-    let services = jinn_domain::common::services::Services::new_fake_with_bus(bus).await;
+    let (bus, audit) = jinn_kernel::common::services::BusService::new_recording();
+    let services = jinn_kernel::common::services::Services::new_fake_with_bus(bus).await;
     ensure_context_assembly(&services.trouper_system);
 
     (
@@ -350,18 +350,18 @@ pub(crate) async fn test_actor_with_store_recording(
 ) -> (
     super::SessionPersistenceActor,
     std::sync::Arc<PopulatedFakeStore>,
-    jinn_domain::common::services::BusAudit,
+    jinn_kernel::common::services::BusAudit,
 ) {
     let store = std::sync::Arc::new(PopulatedFakeStore::new(&sessions));
-    let (bus, audit) = jinn_domain::common::services::BusService::new_recording();
-    let services = jinn_domain::TestServices::builder()
+    let (bus, audit) = jinn_kernel::common::services::BusService::new_recording();
+    let services = jinn_kernel::TestServices::builder()
         .session_store(jinn_session_state::SessionStoreService::new(store.clone()))
         .with_bus(bus)
         .build();
     (
         super::SessionPersistenceActor {
-            state: jinn_domain::common::state::State::new(
-                jinn_domain::common::app_state::AppState::default(),
+            state: jinn_kernel::common::state::State::new(
+                jinn_kernel::common::app_state::AppState::default(),
             ),
             services,
             counter: jinn_llm_support::token_estimator::TiktokenCounter::o200k_base(),

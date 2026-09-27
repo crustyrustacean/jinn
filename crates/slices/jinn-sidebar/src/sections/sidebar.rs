@@ -11,9 +11,9 @@ use super::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
 use super::{mcp_servers_section, persona_section, pins, sessions, task_list_section};
-use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::render_ctx::RenderCtx;
-use jinn_domain::protocol::IntentResult;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::common::render_ctx::RenderCtx;
+use jinn_kernel::protocol::IntentResult;
 use jinn_preferences_config::schemas::mcp::McpServersConfig;
 /// The sidebar container.
 ///
