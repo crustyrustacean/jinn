@@ -3210,6 +3210,7 @@ dependencies = [
  "textwrap",
  "throbber-widgets-tui",
  "tokio",
+ "tracing",
  "trouper",
  "unicode-segmentation",
  "unicode-width 0.2.2",
@@ -3227,6 +3228,7 @@ dependencies = [
  "ratatui",
  "rstest",
  "serde",
+ "tracing",
 ]
 
 [[package]]

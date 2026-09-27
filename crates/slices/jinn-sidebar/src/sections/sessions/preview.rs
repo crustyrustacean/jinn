@@ -38,6 +38,15 @@ use jinn_theme::Theme;
 
 /// Default max lines for tool entries when no preference is set.
 pub(crate) const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
+/// Content rows the loading popup reserves.
+///
+/// The popup's height is derived from the line count, and a render that has
+/// not come back has none to report. Sizing from zero lands the box on its
+/// 5-row floor — two borders and the three footer rows — which leaves no
+/// content rows at all, and the content guard then drops the spinner line.
+/// Three matches the usual preview length, so the box barely moves once the
+/// real lines land.
+pub(crate) const LOADING_CONTENT_ROWS: usize = 3;
 /// Rows between the popup and the cursor row it describes.
 ///
 /// Two rows leaves a one-row gap, so the popup reads as a separate surface
@@ -60,6 +69,7 @@ pub fn render_session_preview_for_state(
     ctx: &RenderCtx,
 ) {
     let state = ctx.state;
+
     if state.frontend.sidebar_section() != Some(jinn_sidebar_msg::SidebarSectionId::Sessions) {
         return;
     }
@@ -90,7 +100,11 @@ pub fn render_session_preview_for_state(
         u16::try_from(idx).unwrap_or(u16::MAX),
     );
 
-    let inner_width = preview_width(frame_area).saturating_sub(2).max(1);
+    // The same derivation the pre-render pass records, with no floor applied:
+    // both sides must produce the identical number, including zero. Flooring
+    // here and not there would put the lookup one column away from the request
+    // that filled it, which is the "loading forever" this whole function guards.
+    let inner_width = preview_content_width(frame_area);
 
     // The cached lines are found by the same identity the keyboard path
     // requested with — session, content, width — so a hit means the worker has
@@ -107,19 +121,25 @@ pub fn render_session_preview_for_state(
         || None,
     );
 
-    // The width the next frame will draw at is recorded so the keyboard path can
-    // request at the same one. Recorded only on the way to a draw: a frame that
-    // returned early above has not committed to a width.
-    state
-        .frontend
-        .update_sections(|s| s.sessions.preview_content_width = inner_width);
-
+    // A miss with nothing in flight means the request that should have been
+    // published never arrived — the popup will spin until the next cursor move.
+    // The transient miss that follows a just-published request is normal and
+    // not worth a line; a *stuck* one is the whole bug, so it is reported.
+    if cached.is_none()
+        && !state
+            .frontend
+            .with_sections(|s| s.sessions.preview.is_in_flight_for(&entry.id), || false)
+    {
+        tracing::warn!(session_id=%entry.id, signature, lookup_width=inner_width,
+            recorded_width=state.frontend.with_sections(|s| s.sessions.preview_content_width, || 0),
+            "session preview has nothing cached and nothing in flight");
+    }
     let Some(lines) = cached else {
         // Nothing for this exact session, width, and content. `cached` returning
         // `None` is what distinguishes loading from empty — an empty session
-        // renders zero lines but is still `Ready`, so it takes the branch below
-        // and shows the empty state rather than spinning forever.
-        let popup_rect = session_preview_popup_rect(frame_area, cursor_y, 0);
+        // renders zero lines but is still a cache hit, so it takes the branch
+        // below and shows the empty state rather than spinning forever.
+        let popup_rect = session_preview_popup_rect(frame_area, cursor_y, LOADING_CONTENT_ROWS);
         render_session_preview_loading(frame, popup_rect, session, theme);
         return;
     };
@@ -131,9 +151,24 @@ pub fn render_session_preview_for_state(
 }
 
 /// Computes the popup width: 60% of frame area, min 30, max frame width.
-fn preview_width(frame_area: Rect) -> u16 {
+///
+/// The width a preview's lines are wrapped at, and the width it is cached
+/// under. Public because the keyboard path has to name the same width when it
+/// asks for a render: if the two sides disagreed by even one column, the
+/// rendered lines could never match the lookup and the preview would spin
+/// forever. Both derive it here rather than each measuring for itself.
+#[must_use]
+pub fn preview_width(frame_area: Rect) -> u16 {
     let w = (f32::from(frame_area.width) * 0.6).ceil() as u16;
     w.max(30).min(frame_area.width)
+}
+
+/// The width a preview's lines are wrapped at, inside the popup's borders.
+///
+/// `0` before a frame has been measured: there is no width to wrap for yet.
+#[must_use]
+pub fn preview_content_width(frame_area: Rect) -> u16 {
+    preview_width(frame_area).saturating_sub(2)
 }
 
 /// How far through the spin the current frame is.
@@ -150,11 +185,13 @@ fn spinner_elapsed() -> std::time::Duration {
 
 /// Renders the popup's chrome with a spinner where the content will go.
 ///
-/// Drawn at the popup's minimum height rather than a content-derived one: there
-/// are no lines yet to measure, and sizing from a count that arrives a frame
-/// later would make the box jump as the cursor moves between sessions. The
-/// chrome, title, badge, and footer are identical to the ready state so only
-/// the content area changes when the render lands.
+/// Sized from [`LOADING_CONTENT_ROWS`] rather than the popup's minimum height:
+/// there are no lines yet to measure, but the minimum is exactly the chrome —
+/// two borders and the three footer rows — so a box at the minimum has no
+/// content rows and the spinner would be dropped. Three rows is a nominal
+/// height that still reads as a nearly-empty preview rather than a void, so the
+/// box barely moves when the real lines land. The chrome, title, badge, and
+/// footer are identical to the ready state, so only the content area changes.
 pub fn render_session_preview_loading(
     frame: &mut Frame<'_>,
     popup_area: Rect,
@@ -171,10 +208,13 @@ pub fn render_session_preview_loading(
     let glyph = jinn_slices::spinner_glyph(spinner_elapsed());
 
     // Content is one line: a glyph followed by a short label, so the popup does
-    // not read as empty while it waits.
+    // not read as empty while it waits. The label takes the theme's `streaming`
+    // color — the same one the chat log's loading indicator uses — so "this is
+    // working" reads identically wherever it appears. Muted grey said "nothing
+    // here" rather than "wait".
     let content = Line::from(Span::styled(
         format!(" {glyph} loading\u{2026}"),
-        Style::default().fg(theme.muted_text),
+        Style::default().fg(theme.streaming),
     ));
 
     render_session_preview_inner(frame, popup_area, session, theme, &[content]);
@@ -543,6 +583,32 @@ mod worker_tests {
 
         // Then there is nothing to show, which is complete rather than loading.
         assert!(lines.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn the_worker_renders_the_same_lines_from_a_trimmed_tail() {
+        // Given a session with more entries than the preview shows.
+        let session = session_with(50);
+        let full = preview(&session);
+        let start = session.history().len().saturating_sub(PREVIEW_ENTRY_COUNT);
+        let tail = &session.history()[start..];
+
+        // When the worker is handed only the trailing entries instead.
+        let ctx = RenderContext {
+            content_width: 40,
+            is_selected: false,
+            is_expanded: false,
+            tool_entry_max_lines: DEFAULT_TOOL_ENTRY_MAX_LINES,
+            theme: default_theme(),
+            paired_status: None,
+            is_streaming: false,
+            is_waiting_on_subagent: false,
+        };
+        let from_tail = render_preview_lines(tail, &ctx, PREVIEW_ENTRY_COUNT, PREVIEW_MAX_LINES);
+
+        // Then the result is identical, so trimming at the request boundary is
+        // invisible to the worker.
+        assert_eq!(full, from_tail);
     }
 
     #[rstest::rstest]

@@ -23,10 +23,29 @@ async fn render_test_app() -> crate::TuiApp {
             jinn_mcp_msg::McpRuntimeState::default(),
         )
         .expect("MCP runtime cell is registered exactly once");
-    crate::TuiApp::test_builder()
+    let mut app = crate::TuiApp::test_builder()
         .services(services)
         .build()
-        .await
+        .await;
+    activate_sidebar(&mut app);
+    app
+}
+
+/// Activates the sidebar slice, which registers the sections cell the preview
+/// state lives in. Without it `update_sections` is a no-op and every sidebar
+/// assertion silently passes against an empty cell.
+fn activate_sidebar(app: &mut crate::TuiApp) {
+    let state = app.core.state.clone();
+    let services = &mut app.services;
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &services.overlay_views,
+        &services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_sidebar::activate(&mut host, state);
+    host.finalize(&|_scope, _hook| {});
 }
 
 #[rstest::rstest]
@@ -270,5 +289,139 @@ async fn which_key_help_renders_above_the_terminal_overlay() {
     assert!(
         rendered.contains("Shortcuts"),
         "which-key help must render above the terminal overlay, got: {rendered}"
+    );
+}
+
+/// Focuses the sessions sidebar on a loaded session with the cursor on it, the
+/// state the popup draws in when a user navigates to a session to preview it.
+fn focus_sessions_on_loaded_session(app: &crate::TuiApp) {
+    let mut state = app.core.state.write();
+    let id = state.active_session().session_id().clone();
+    if let Some(session) = state.session.get_mut(&id) {
+        session.set_session_state(jinn_session_store_msg::SessionState::Loaded);
+    }
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+    state
+        .frontend
+        .update_sections(|s| s.sessions.selected_index = Some(0));
+    drop(state);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_stationary_cursor_gets_its_preview_requested() {
+    // Given a TuiApp with the sessions sidebar focused on a loaded session, the
+    // cursor on it, and no preview rendered yet. Nothing will move the cursor.
+    let mut app = render_test_app().await;
+    // A frame first: it is what activates the sidebar and attaches its cell,
+    // so setup written before it would be discarded.
+    {
+        let (mut terminal, _area) = setup_term(80, 24);
+        terminal.draw(|frame| app.render(frame)).unwrap();
+    }
+    focus_sessions_on_loaded_session(&app);
+    {
+        let mut state = app.core.state.write();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+    }
+
+    // When a frame renders.
+    let (mut terminal, _area) = setup_term(80, 24);
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // Then a preview render was requested, without any key press.
+    // When only the cursor triggered this, a session that loaded, or a width
+    // measured, after the last key left the popup spinning until the user
+    // nudged the cursor.
+    let in_flight = app
+        .core
+        .state
+        .read()
+        .frontend
+        .with_sections(|s| s.sessions.preview.in_flight_len(), || 0);
+    assert!(
+        in_flight > 0,
+        "the render pass did not request a preview for the session under a \
+         stationary cursor, so the popup would spin until the cursor moved"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_cached_preview_is_not_requested_again_every_frame() {
+    // Given a TuiApp whose session preview has already been rendered and cached.
+    let mut app = render_test_app().await;
+    // A frame first: it is what activates the sidebar and attaches its cell,
+    // so setup written before it would be discarded.
+    {
+        let (mut terminal, _area) = setup_term(80, 24);
+        terminal.draw(|frame| app.render(frame)).unwrap();
+    }
+    focus_sessions_on_loaded_session(&app);
+    {
+        let mut state = app.core.state.write();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+    }
+    let (mut terminal, _area) = setup_term(80, 24);
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // When the worker answers and more frames render with the cursor still put.
+    {
+        let state = app.core.state.write();
+        let id = state.active_session().session_id().clone();
+        let width = state
+            .frontend
+            .with_sections(|s| s.sessions.preview_content_width, || 0);
+        // The signature the trigger itself computes, so this is the cache entry
+        // the next frame will actually look for rather than a stand-in.
+        let signature = jinn_sidebar::sections::sessions::preview_load::preview_signature(
+            state.active_session().history(),
+            jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT,
+        );
+        let armed = state
+            .frontend
+            .update_sections(|s| s.sessions.preview.request(id.clone(), signature, width))
+            .expect("the sections cell is attached");
+        state.frontend.update_sections(|s| {
+            s.sessions.preview.complete(
+                id.clone(),
+                armed,
+                signature,
+                width,
+                std::sync::Arc::new(Vec::new()),
+            );
+        });
+    }
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // Then no further render is in flight. Requesting per frame would flood the
+    // render pool with work that is already done.
+    let in_flight = app
+        .core
+        .state
+        .read()
+        .frontend
+        .with_sections(|s| s.sessions.preview.in_flight_len(), || 0);
+    assert_eq!(
+        in_flight, 0,
+        "the render pass kept re-requesting a preview it already holds"
     );
 }

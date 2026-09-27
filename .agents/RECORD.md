@@ -303,7 +303,10 @@ Entries are added or amended **only with human approval**.
 - (chat-log) A session that has not yet rendered a frame records no content width, and a measurement of such a session is applied rather than treated as stale.
 - (chat-log) The chat log's line counts are keyed to the width each entry was measured at, so a resize invalidates only the counts taken at the old width.
 - (chat-log) The session loading guard is released only by the session that holds it, so a deadline armed for a session the user has left cannot end another session's load.
-- (preview) The sidebar session preview renders its entry lines on the layout worker pool, not the render thread, and shows a spinner until they return; a result for a request the cursor has moved past is discarded rather than shown.
+- (preview) The sidebar session preview renders its entry lines on the layout worker pool, not the render thread, and shows a spinner until they return.
 - (preview) The session preview is keyed on the content of the entries it shows, not on the history's length, so a streaming session previews live text rather than the text the entry started with.
+- (preview) The session preview cache is keyed by session, so moving the cursor between sessions serves a preview from memory rather than re-rendering it.
+- (preview) A session preview render is abandoned on its deadline but a late result is still cached; a result is discarded only when a newer request for the same session supersedes it.
+- (preview) A preview request identical to one already in flight is not republished.
 - (session) Session activation is one command: the session store actor skips the disk read for a session already in memory and measures its chat log instead, so the sidebar, the session picker, and subagent entry all behave alike.
 - (ui) The spinner animation interval is a single shared constant, but the animation *state* is per widget: the three loading indicators render through `throbber-widgets-tui`'s stateful widget, and only the session preview derives its glyph from elapsed time, because it is a bare paragraph with no widget to hold state.
