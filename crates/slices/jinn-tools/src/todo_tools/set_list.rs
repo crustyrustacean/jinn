@@ -660,7 +660,7 @@ mod tests {
     #[tokio::test]
     async fn set_list_clear_publishes_task_list_updated() {
         // Given a session with an existing list and a recorder on the bus.
-        let harness = jinn_domain::common::bus::test_harness::TestHarness::new().await;
+        let harness = jinn_testutil::bus_harness::TestHarness::new().await;
         let (state, session_id) = setup_with_existing_list();
         let recorder = harness
             .spawn_recorder::<jinn_session_history_msg::TaskListUpdated>()
@@ -678,7 +678,7 @@ mod tests {
         assert!(result.success, "expected success: {:?}", result.content);
 
         // Then exactly one TaskListUpdated event is published for the session.
-        let events = jinn_domain::common::bus::test_harness::await_recorded(
+        let events = jinn_testutil::bus_harness::await_recorded(
             &recorder,
             1,
             std::time::Duration::from_secs(5),

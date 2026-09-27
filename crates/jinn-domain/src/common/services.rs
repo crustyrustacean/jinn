@@ -247,7 +247,6 @@ impl Services {
     ///
     /// Panics if the embedded temp dir, provider registry, or storage
     /// reloads fail — test infrastructure initialization must abort.
-    #[cfg(any(test, feature = "test-harness"))]
     #[expect(clippy::expect_used, reason = "test infrastructure initialization")]
     #[expect(
         clippy::unused_async_trait_impl,

@@ -1,5 +1,7 @@
 //! Shared test utilities for jinn TUI rendering tests.
 
+pub mod bus_harness;
+
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;

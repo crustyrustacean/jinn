@@ -157,7 +157,6 @@ jinn-session-state = { workspace = true }
 jinn-session-store-msg = { workspace = true }
 jinn-turn-dispatch = { workspace = true }
 jinn-session-history-msg = { workspace = true }
-jinn-watchdog = { workspace = true, features = ["test-harness"] }
 jinn-provider = { workspace = true }
 jinn-chat-input = { workspace = true }
 jinn-chat-log-view = { workspace = true }

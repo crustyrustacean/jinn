@@ -223,8 +223,8 @@ mod tests {
         reason = "test code"
     )]
 
-    use jinn_domain::common::bus::test_harness::TestHarness;
-    use jinn_domain::common::bus::test_harness::await_recorded;
+    use jinn_testutil::bus_harness::TestHarness;
+    use jinn_testutil::bus_harness::await_recorded;
     use std::time::Duration;
 
     use super::*;

@@ -4,9 +4,6 @@ version.workspace = true
 edition.workspace = true
 description = "The citations slice: shape-based web-source detection from tool traffic, flushed once per finished turn."
 
-[features]
-test-harness = ["jinn-domain/test-harness"]
-
 [dependencies]
 jinn-inference-msg = { workspace = true }
 jinn-session-history-msg = { workspace = true }
@@ -26,8 +23,11 @@ tracing = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
+jinn-testutil = { workspace = true }
+
 rstest = { workspace = true }
-jinn-domain = { workspace = true, features = ["test-harness"] }
+jinn-domain = { workspace = true }
 
 [lints]
 workspace = true
+

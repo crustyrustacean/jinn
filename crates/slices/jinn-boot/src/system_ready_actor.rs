@@ -114,7 +114,8 @@ mod tests {
     )]
 
     use super::*;
-    use jinn_domain::common::bus::test_harness::TestHarness;
+    use jinn_domain::common::bus::HarnessServices;
+    use jinn_testutil::bus_harness::TestHarness;
 
     #[rstest::rstest]
     #[tokio::test]

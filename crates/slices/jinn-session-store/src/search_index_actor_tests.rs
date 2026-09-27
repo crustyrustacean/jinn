@@ -7,9 +7,10 @@ use std::time::Duration;
 use crate::search_index_actor::{REINDEX_INTERVAL, SearchIndexActorDeps};
 use crate::sqlite::SqliteSessionStore;
 use jinn_core_types::SessionId;
-use jinn_domain::common::bus::test_harness::TestHarness;
+use jinn_domain::common::bus::HarnessServices;
 use jinn_domain::feat::session::SessionStoreService;
 use jinn_session_state::SessionSnapshot;
+use jinn_testutil::bus_harness::TestHarness;
 
 /// Builds actor deps whose session store is a real SQLite store in a temp
 /// dir, so drains exercise the actual dirty-marker → FTS pipeline. Returns
@@ -395,12 +396,8 @@ async fn drain_publishes_a_countdown_label_after_each_session() {
     // Then the drain published the live remaining count after every
     // session — 3, 2, 1 — and "index up to date" once the queue emptied,
     // so the row steps down per session instead of per drain.
-    let messages = jinn_domain::common::bus::test_harness::await_recorded(
-        &recorder,
-        4,
-        Duration::from_secs(10),
-    )
-    .await;
+    let messages =
+        jinn_testutil::bus_harness::await_recorded(&recorder, 4, Duration::from_secs(10)).await;
     let labels: Vec<&str> = messages
         .iter()
         .filter_map(|m| m.status_message.as_deref())
@@ -611,12 +608,8 @@ async fn countdown_label_counts_every_session_including_the_unprocessed_batch_ta
     // pre-batch "5" without flashing "index up to date", and the queue
     // empties into the idle label. Later idle heartbeats repeat the idle
     // label, so only the deterministic prefix is asserted.
-    let messages = jinn_domain::common::bus::test_harness::await_recorded(
-        &recorder,
-        17,
-        Duration::from_secs(8),
-    )
-    .await;
+    let messages =
+        jinn_testutil::bus_harness::await_recorded(&recorder, 17, Duration::from_secs(8)).await;
     let labels: Vec<&str> = messages
         .iter()
         .filter_map(|m| m.status_message.as_deref())
@@ -668,12 +661,8 @@ async fn unreadable_dirty_markers_keep_the_row_out_of_the_up_to_date_state() {
     );
 
     // Then the row shows the pending label, never "index up to date".
-    let messages = jinn_domain::common::bus::test_harness::await_recorded(
-        &recorder,
-        1,
-        Duration::from_secs(10),
-    )
-    .await;
+    let messages =
+        jinn_testutil::bus_harness::await_recorded(&recorder, 1, Duration::from_secs(10)).await;
     let first = messages.first().expect("at least one status update");
     assert_eq!(first.name, "search-index");
     assert_eq!(first.status_message.as_deref(), Some("1 sessions pending"));
@@ -699,12 +688,8 @@ async fn empty_drain_publishes_index_up_to_date() {
     );
 
     // Then the very first published status is already the drained state.
-    let messages = jinn_domain::common::bus::test_harness::await_recorded(
-        &recorder,
-        1,
-        Duration::from_secs(10),
-    )
-    .await;
+    let messages =
+        jinn_testutil::bus_harness::await_recorded(&recorder, 1, Duration::from_secs(10)).await;
     let first = messages.first().expect("at least one status update");
     assert_eq!(first.name, "search-index");
     assert_eq!(first.status_message.as_deref(), Some("index up to date"));
@@ -738,12 +723,8 @@ async fn failing_session_still_publishes_progress() {
 
     // Then progress is still published after the failed operation: the
     // remaining count (the failed session stays pending) reaches the row.
-    let messages = jinn_domain::common::bus::test_harness::await_recorded(
-        &recorder,
-        1,
-        Duration::from_secs(10),
-    )
-    .await;
+    let messages =
+        jinn_testutil::bus_harness::await_recorded(&recorder, 1, Duration::from_secs(10)).await;
     assert!(
         messages
             .iter()

@@ -28,11 +28,12 @@ use jinn_core_types::tool_types::ToolCall;
 use jinn_domain::common::actor_deps::ActorDeps;
 use jinn_domain::common::app_paths::AppPaths;
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::bus::test_harness::TestHarness;
+use jinn_domain::common::bus::HarnessServices;
 use jinn_domain::common::state::State;
 use jinn_mcp_msg::RestartError;
 use jinn_preferences_config::schemas::mcp::McpServerConfig;
 use jinn_preferences_config::schemas::mcp::McpServersConfig;
+use jinn_testutil::bus_harness::TestHarness;
 use jinn_tools::restart_mcp::execute;
 use jinn_tools::tool_types::ToolContext;
 

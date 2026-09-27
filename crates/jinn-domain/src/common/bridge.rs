@@ -78,7 +78,6 @@ impl Bridge {
     }
 
     /// Creates a minimal bridge for tests that don't need actual bus delivery.
-    #[cfg(any(test, feature = "test-harness"))]
     #[must_use]
     pub fn new_for_test() -> Self {
         let (bus, _audit) = BusService::new_recording();
@@ -128,8 +127,8 @@ mod tests {
 
     use super::*;
 
-    use crate::common::bus::test_harness::TestHarness;
     use jinn_slices::BusMessage;
+    use jinn_testutil::bus_harness::TestHarness;
 
     /// A single message type for testing: small, schema'd, serde-roundtrippable.
     #[derive(
@@ -160,7 +159,7 @@ mod tests {
             bridge.send(closure).expect("send");
 
             // Then the recorder eventually receives the message.
-            let received = crate::common::bus::test_harness::await_recorded::<BridgeTestMsg>(
+            let received = jinn_testutil::bus_harness::await_recorded::<BridgeTestMsg>(
                 &recorder,
                 1,
                 std::time::Duration::from_secs(2),

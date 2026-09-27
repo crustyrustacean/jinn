@@ -50,11 +50,13 @@ jinn-theme = { workspace = true }
 jinn-selection-widget = { workspace = true }
 
 [dev-dependencies]
+jinn-testutil = { workspace = true }
+
 uuid = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
-jinn-domain = { workspace = true, features = ["test-harness"] }
+jinn-domain = { workspace = true }
 
 # The build script creates the compile-time SQL validation DB (schema-crate
 # pattern; mirrors jinn-domain/build.rs).
@@ -67,3 +69,4 @@ rusqlite = { workspace = true, features = ["bundled"] }
 
 [lints]
 workspace = true
+

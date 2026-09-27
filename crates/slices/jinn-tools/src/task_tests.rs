@@ -23,7 +23,7 @@ use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::{ToolCall, ToolResult};
 use jinn_domain::common::app_paths::AppPaths;
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+use jinn_domain::common::bus::HarnessServices;
 use jinn_domain::common::state::State;
 use jinn_domain::protocol::{ChatEntry, ChatEntryKind};
 use jinn_inference_msg::CancelStream;
@@ -31,6 +31,7 @@ use jinn_session_init_msg::{ContextFilesLoaded, PromptTemplatesLoaded};
 use jinn_session_lifecycle_msg::SessionCreated;
 use jinn_session_msg::PhaseKind;
 use jinn_session_msg::SessionPhaseChanged;
+use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 use jinn_tools_msg::{PhaseInput, TaskStatus};
 use std::collections::BTreeSet;
 

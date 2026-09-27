@@ -7,9 +7,6 @@ edition.workspace = true
 # Opt-in: compiles the full 36-grammar tree-sitter set for markdown code-block
 # highlighting instead of the curated default set (see root Cargo.toml).
 syntax-all = ["jinn-chat-log-view/syntax-all"]
-# Opt-in: exposes the bus test harness (in-crate tests enable it via
-# `cfg(test)`; downstream slice-crate tests opt in by feature).
-test-harness = []
 
 [dependencies]
 jinn-chat-input-msg = { workspace = true }
@@ -42,6 +39,7 @@ jinn-context-assembly-msg = { workspace = true }
 jinn-skills-msg = { workspace = true }
 jinn-tools-msg = { workspace = true }
 jinn-slices = { workspace = true }
+jinn-testutil = { workspace = true }
 jinn-term-msg = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-config = { workspace = true }
@@ -93,7 +91,6 @@ jinn-session-schema = { workspace = true, features = ["testing"] }
 wasm-encoder = { workspace = true }
 indoc = "2"
 rstest = { workspace = true }
-jinn-testutil = { workspace = true }
 jinn-mcp = { workspace = true, features = ["testkit", "server-testkit"] }
 tokio = { workspace = true, features = ["test-util"] }
 jinn-common = { workspace = true, features = ["testing"] }

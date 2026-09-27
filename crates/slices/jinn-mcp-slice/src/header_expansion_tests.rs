@@ -24,9 +24,10 @@ use std::time::Duration;
 
 use crate::connection::{McpActor, McpActorDeps};
 use jinn_core_types::SessionId;
-use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+use jinn_domain::common::bus::HarnessServices;
 use jinn_mcp_msg::{McpConnectionStatus, McpServerStatus};
 use jinn_preferences_config::schemas::mcp::{McpServerConfig, TransportKind};
+use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 
 /// A RemoteHttp server whose header references an unknown variable publishes
 /// Dead (never Running) — the failure is surfaced through the standard

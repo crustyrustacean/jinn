@@ -569,13 +569,14 @@ mod tests {
     use std::collections::BTreeMap;
 
     use jinn_domain::AppState;
-    use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+    use jinn_domain::common::bus::HarnessServices;
     use jinn_domain::common::state::State;
     use jinn_provider_config::{
         InputModalities, Modality, ModelCache, ModelInfo, ProviderEntry, ProviderRegistry,
         ProvidersConfig,
     };
     use jinn_provider_selection_msg::{ProviderCell, provider_state_slot};
+    use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 
     use super::{
         ModelCacheLoaded, ModelsRefreshed, PROVIDER_ACTOR_PATH, ProviderActor, ProviderActorDeps,

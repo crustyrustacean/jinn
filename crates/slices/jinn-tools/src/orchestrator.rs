@@ -1474,10 +1474,11 @@ mod mcp_dispatch_gate_tests {
     use jinn_core_types::SessionId;
     use jinn_core_types::tool_types::{ToolCall, ToolDefinition};
     use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+    use jinn_domain::common::bus::HarnessServices;
     use jinn_domain::common::state::State;
     use jinn_mcp_msg::McpConnectionStatus;
     use jinn_session_msg::SessionClosed;
+    use jinn_testutil::bus_harness::{TestHarness, await_recorded};
     use jinn_tools_msg::{ExecuteTool, ExecuteToolBatch, RegisterTools};
     use jinn_tools_msg::{ToolExecutionCompleted, ToolsUnregistered};
 

@@ -11,7 +11,7 @@ use jinn_boot_msg::EnvironmentLoaded;
 use jinn_chat_log_view_msg::LayoutChatSession;
 use jinn_core_types::SessionId;
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::bus::test_harness::{Recorder, TestHarness, await_recorded};
+use jinn_domain::common::bus::HarnessServices;
 use jinn_domain::common::state::State;
 use jinn_domain::feat::session::{SessionStore, SessionStoreService};
 use jinn_provider_config::ProvidersConfig;
@@ -21,6 +21,7 @@ use jinn_session_store_msg::{
     ArchiveSession, ArchiveSessionTree, LoadSessionPickerEntries, PersistSession,
     SessionLoadCompleted, SessionLoadRequested, SessionState,
 };
+use jinn_testutil::bus_harness::{Recorder, TestHarness, await_recorded};
 
 use crate::session_store_actor::{SessionStoreActor, SessionStoreActorDeps};
 use crate::session_store_tests_support::{ControlledStartupStore, poll_until};

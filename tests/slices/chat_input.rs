@@ -4621,9 +4621,9 @@ use jinn_chat_input_msg::ListDirectory;
 use jinn_core_types::SessionId;
 use jinn_domain::common::actor_deps::ActorDeps;
 use jinn_domain::common::app_paths::AppPaths;
-use jinn_domain::common::bus::test_harness::TestHarness;
 use jinn_domain::common::services::test_services::TestServices;
 use jinn_domain::common::state::State;
+use jinn_testutil::bus_harness::TestHarness;
 
 use jinn_chat_input::directory_lister_actor::{DirectoryListerActor, DirectoryListerActorDeps};
 
