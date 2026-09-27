@@ -161,12 +161,13 @@ impl ActorSystemBuilder {
             clippy::panic,
             reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
         )]
-        if let Err(error) = jinn_dashboard::activate(&mut jinn_dashboard::SliceCtx {
-            slices: &services.slices,
-            key_routes: &services.key_routes,
-            viewport: &mut services.viewport,
-            trouper_system: &services.trouper_system,
-        }) {
+        if let Err(error) = jinn_dashboard::activate(&mut jinn_slices::SliceHost::new(
+            &services.slices,
+            &mut services.viewport,
+            &services.overlay_views,
+            &services.key_routes,
+            &services.trouper_system,
+        )) {
             panic!("dashboard slice activation failed: {error}");
         }
 

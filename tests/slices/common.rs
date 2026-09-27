@@ -51,12 +51,13 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_kernel::Services)
         reason = "bootstrap assertion: a broken pairing must abort launch, not render blank"
     )]
     {
-        let activated = jinn_dashboard::activate(&mut jinn_dashboard::SliceCtx {
-            slices: &services.slices,
-            key_routes: &services.key_routes,
-            viewport: &mut services.viewport,
-            trouper_system: &services.trouper_system,
-        });
+        let activated = jinn_dashboard::activate(&mut jinn_slices::SliceHost::new(
+            &services.slices,
+            &mut services.viewport,
+            &services.overlay_views,
+            &services.key_routes,
+            &services.trouper_system,
+        ));
         if let Err(error) = activated {
             panic!("dashboard slice activation failed: {error}");
         }
@@ -137,7 +138,6 @@ fn activate_quake_bar(services: &mut jinn_kernel::Services) {
         &services.trouper_system,
     );
     jinn_quake_bar::activate(&mut host);
-    host.finalize(&|_scope, _hook| {});
 }
 
 fn activate_scope_focus(services: &mut jinn_kernel::Services) {
@@ -149,7 +149,6 @@ fn activate_scope_focus(services: &mut jinn_kernel::Services) {
         &services.trouper_system,
     );
     jinn_scope_focus::activate(&mut host);
-    host.finalize(&|_scope, _hook| {});
 }
 
 fn activate_chat_input(services: &mut jinn_kernel::Services) {
@@ -168,7 +167,6 @@ fn activate_chat_input(services: &mut jinn_kernel::Services) {
     };
     let state = jinn_kernel::common::state::State::new(jinn_kernel::AppState::default());
     jinn_chat_input::activate(&mut host, deps, &state);
-    host.finalize(&|_scope, _hook| {});
 }
 
 fn activate_status_bar(services: &mut jinn_kernel::Services) {
@@ -180,7 +178,6 @@ fn activate_status_bar(services: &mut jinn_kernel::Services) {
         &services.trouper_system,
     );
     jinn_status_bar::activate(&mut host);
-    host.finalize(&|_scope, _hook| {});
 }
 
 /// Activates the session-init slice over the kernel's registries and
@@ -211,7 +208,6 @@ fn activate_provider_selection(services: &mut jinn_kernel::Services, state: &jin
     jinn_provider_selection::activate_picker(&mut host);
     jinn_provider_selection::activate_provider_picker(&mut host, &handles.provider_picker_cell);
     jinn_provider_selection::activate_endpoint_picker(&mut host, &handles.endpoint_picker_cell);
-    host.finalize(&|_scope, _hook| {});
 }
 
 async fn activate_session_init(services: &mut jinn_kernel::Services, core: &jinn_kernel::AppCore) {
@@ -357,7 +353,6 @@ pub async fn activate_sidebar(services: &mut jinn_kernel::Services, state: jinn_
         &services.trouper_system,
     );
     jinn_sidebar::activate(&mut host, state);
-    host.finalize(&|_scope, _hook| {});
 }
 
 /// Activates the token-count slice on the harness services. Async because
@@ -371,7 +366,6 @@ pub async fn activate_token_count(services: &mut jinn_kernel::Services, state: j
         &services.trouper_system,
     );
     let _cache = jinn_token_count::activate(&mut host, state);
-    host.finalize(&|_scope, _hook| {});
 }
 
 /// Activates the turn-dispatch slice on the harness services (the queue
@@ -394,7 +388,6 @@ pub async fn activate_turn_dispatch(
         &services.trouper_system,
     );
     jinn_turn_dispatch::activate(&mut host, state, services_snapshot);
-    host.finalize(&|_scope, _hook| {});
 }
 
 /// Activates the inference slice: spawns the inference actor (trouper
@@ -411,7 +404,6 @@ pub async fn activate_inference(services: &mut jinn_kernel::Services) {
         &services.trouper_system,
     );
     jinn_inference::activate(&mut host, services_snapshot);
-    host.finalize(&|_scope, _hook| {});
 }
 
 /// Activates the watchdog slice: spawns the stall + tool-call watchdog
@@ -433,7 +425,6 @@ pub async fn activate_watchdog(services: &mut jinn_kernel::Services, state: &jin
         &services.trouper_system,
     );
     jinn_watchdog::activate(&mut host, state, services_snapshot);
-    host.finalize(&|_scope, _hook| {});
     eprintln!("DIAG16 watchdog activation ran");
 }
 
@@ -451,7 +442,6 @@ pub async fn activate_citations(services: &mut jinn_kernel::Services) {
         &services.trouper_system,
     );
     jinn_citations::activate(&mut host, services_snapshot);
-    host.finalize(&|_scope, _hook| {});
 }
 
 pub fn activate_persona(services: &mut jinn_kernel::Services) {
@@ -472,7 +462,6 @@ pub fn activate_persona(services: &mut jinn_kernel::Services) {
         &services.trouper_system,
     );
     let _scanned = jinn_persona::activate(&mut host, &services.paths.personas_dir());
-    host.finalize(&|_scope, _hook| {});
 }
 
 pub fn activate_theme(services: &mut jinn_kernel::Services) {
@@ -489,7 +478,6 @@ pub fn activate_theme(services: &mut jinn_kernel::Services) {
         &services.paths.system_themes_dir(),
     );
     jinn_theme_slice::activate_picker(&mut host);
-    host.finalize(&|_scope, _hook| ());
 }
 
 /// Activates the cwd slice on the harness services.
@@ -502,7 +490,6 @@ pub fn activate_cwd(services: &mut jinn_kernel::Services) {
         &services.trouper_system,
     );
     jinn_cwd::activate(&mut host);
-    host.finalize(&|_scope, _hook| {});
 }
 
 /// Activates the project slice on the harness services.
@@ -515,7 +502,6 @@ pub fn activate_project(services: &mut jinn_kernel::Services) {
         &services.trouper_system,
     );
     jinn_project::activate(&mut host);
-    host.finalize(&|_scope, _hook| {});
 }
 
 /// Activates the preferences slice on the harness services.
@@ -537,7 +523,6 @@ pub fn activate_preferences(services: &mut jinn_kernel::Services) {
             jinn_kernel::common::app_state::AppState::default_with_scope_focus(),
         ),
     );
-    host.finalize(&|_scope, _hook| {});
 }
 
 /// Activates the remaining slice-owned pickers over the harness services.
@@ -606,8 +591,6 @@ pub fn activate_every_picker(services: &mut jinn_kernel::Services) {
     ) {
         jinn_session_lifecycle::activate_picker(&mut host);
     }
-
-    host.finalize(&|_scope, _hook| ());
 }
 
 /// Whether `slot` holds no cell of type `T` yet.
