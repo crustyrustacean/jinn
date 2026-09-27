@@ -214,7 +214,9 @@ Entries are added or amended **only with human approval**.
 - (build) Releases ship two cargo-binstall tarballs per tag: `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc` (both cross-built from Linux; the Windows artifact via cargo-xwin).
 - (build) Release binaries are self-contained on both platforms: bundled SQLite in the target graph, no SQLite DLL/import-library requirement.
 - (build) The Windows cross build (cargo-xwin) is wired entirely by env vars in the build-release-tarball recipe; no windows target config exists in .cargo/config.toml.
+- (build) The Windows MSVC cross build suppresses rustc's `linker_messages` lint, because the static MSVC CRT libraries reference Microsoft-internal debug-info PDBs that are never distributed.
 - (build) windows-gnu is not a supported release target; Windows release artifacts use the MSVC target.
+- (release) The `release` recipe verifies both built tarballs and the Windows binary locally — binstall member paths, PE32+ x86-64 structure, and static-CRT imports — before uploading any asset to the GitHub release, so a failed check aborts the upload.
 - (pickers) The theme picker previews the highlighted theme live on cursor movement (invalidating theme caches per move), reverts to the snapshotted theme on ESC, and persists the choice only on confirm.
 - (pickers) The tool picker toggles the highlighted tool with TAB (advancing to the next row), filters to tools available for the session's provider, seeds disabled state from the session profile (config seeds and subagent spawn stamps), and writes the disabled set back to the session only on confirm.
 - (pickers) The session-lifecycle picker starts sessions with a scripted lifecycle from jinn.toml; entries whose setup command has $-parameters hand off to the arg-input popup before setup runs.
