@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use crate::common::bus::BusMessage;
+use crate::route::BusMessage;
 
 // ---------------------------------------------------------------------------
 // BusService
@@ -41,13 +41,6 @@ enum BusInner {
     Troupe {
         system: trouper::system::ActorSystem,
     },
-    #[cfg_attr(
-        not(any(test, feature = "test-harness")),
-        expect(
-            dead_code,
-            reason = "recording mode is test-only but lives in the shared bus type"
-        )
-    )]
     Recording(Arc<Mutex<Vec<RecordedMessage>>>),
 }
 
@@ -86,7 +79,6 @@ impl BusService {
     /// Returns a `(BusService, BusAudit)` pair. The service captures all
     /// `publish()` calls; the audit handle reads them back.
     /// `register()` is a no-op in recording mode.
-    #[cfg(any(test, feature = "test-harness"))]
     pub fn new_recording() -> (Self, BusAudit) {
         let messages = Arc::new(Mutex::new(Vec::new()));
         let service = Self {
@@ -254,6 +246,29 @@ impl fmt::Debug for BusAudit {
     }
 }
 
+impl crate::route_publish::PublishSink for BusService {
+    fn publish_schema(
+        &self,
+        schema_id: trouper::schema::SchemaId,
+        payload: serde_json::Value,
+        name: &'static str,
+    ) {
+        tracing::debug!(message = name, "bridge publish");
+        let system = self.system_ref().clone();
+        tokio::spawn(async move {
+            system
+                .deliver_schema_value(schema_id, trouper::json::Json::from(payload))
+                .await;
+        });
+    }
+}
+
+/// Implements the slice-facing publish surface over the bus.
+///
+/// The closure hands over the JSON payload already serialized; the
+/// broadcast fans out by schema id to every declarant subscriber —
+/// identical delivery to a typed [`BusService::publish`], only the
+/// serialization timing differs.
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
@@ -266,7 +281,7 @@ mod tests {
     struct Alpha {
         val: u32,
     }
-    impl crate::common::bus::BusMessage for Alpha {}
+    impl BusMessage for Alpha {}
 
     #[derive(
         Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, trouper::schema::Event,
@@ -275,7 +290,7 @@ mod tests {
     struct Beta {
         text: String,
     }
-    impl crate::common::bus::BusMessage for Beta {}
+    impl BusMessage for Beta {}
 
     #[rstest::rstest]
     #[tokio::test]
@@ -396,7 +411,7 @@ mod tests {
             tracing_subscriber::fmt::layer()
                 .with_writer(capture.clone())
                 .with_ansi(false)
-                .with_filter(tracing_subscriber::EnvFilter::new("jinn_domain=debug")),
+                .with_filter(tracing_subscriber::EnvFilter::new("jinn_slices=debug")),
         );
         let _guard = tracing::subscriber::set_default(subscriber);
 

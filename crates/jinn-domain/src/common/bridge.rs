@@ -9,7 +9,7 @@
 
 use jinn_slices::PublishSink;
 
-use crate::common::services::bus_service::BusService;
+use jinn_slices::bus::BusService;
 
 /// A closure that publishes a typed message to the fabric's publish sink.
 pub type BridgeClosure = Box<dyn FnOnce(&dyn PublishSink) + Send + 'static>;
@@ -58,7 +58,7 @@ impl Bridge {
     /// declarant subscriber) matches every other emitter.
     #[must_use]
     pub fn with_system(
-        bus: &crate::common::services::bus_service::BusService,
+        bus: &jinn_slices::bus::BusService,
         handle: &tokio::runtime::Handle,
     ) -> Self {
         Self::with_handle(bus.clone(), handle)
@@ -113,29 +113,6 @@ impl Bridge {
             let payload = serde_json::to_value(&msg).unwrap_or(serde_json::Value::Null);
             sink.publish_schema(M::schema_id(), payload, std::any::type_name::<M>());
         })
-    }
-}
-
-/// Implements the slice-facing publish surface over the kernel bus.
-///
-/// The closure hands over the JSON payload already serialized; the
-/// broadcast fans out by schema id to every declarant subscriber —
-/// identical delivery to a typed [`BusService::publish`], only the
-/// serialization timing differs.
-impl PublishSink for BusService {
-    fn publish_schema(
-        &self,
-        schema_id: trouper::schema::SchemaId,
-        payload: serde_json::Value,
-        name: &'static str,
-    ) {
-        tracing::debug!(message = name, "bridge publish");
-        let system = self.system_ref().clone();
-        tokio::spawn(async move {
-            system
-                .deliver_schema_value(schema_id, trouper::json::Json::from(payload))
-                .await;
-        });
     }
 }
 

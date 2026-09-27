@@ -3303,6 +3303,8 @@ dependencies = [
  "tempfile",
  "throbber-widgets-tui",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
  "trouper",
  "unicode-segmentation",
  "unicode-width 0.2.2",

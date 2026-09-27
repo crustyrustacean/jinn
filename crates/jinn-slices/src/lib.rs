@@ -25,6 +25,7 @@
 )]
 
 pub mod assembled_prompt;
+pub mod bus;
 pub mod cell;
 pub mod cwd_root;
 pub mod fabric;
