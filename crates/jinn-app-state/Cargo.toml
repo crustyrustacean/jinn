@@ -1,0 +1,41 @@
+[package]
+name = "jinn-app-state"
+version.workspace = true
+edition.workspace = true
+description = "The shared application state layer: AppState, FrontendState, and the session-creation operations that mutate them."
+
+[dependencies]
+jinn-chat-input-msg = { workspace = true }
+jinn-chat-log-view-msg = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-persona-msg = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-preferences-config = { workspace = true }
+jinn-project-msg = { workspace = true }
+jinn-provider-selection-msg = { workspace = true }
+jinn-session-lifecycle-msg = { workspace = true }
+jinn-session-msg = { workspace = true }
+jinn-session-state = { workspace = true }
+jinn-session-store-msg = { workspace = true }
+jinn-sidebar-msg = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-term-msg = { workspace = true }
+jinn-theme = { workspace = true }
+jinn-theme-msg = { workspace = true }
+jinn-tools-msg = { workspace = true }
+jinn-config = { workspace = true }
+jinn-context-curation-msg = { workspace = true }
+jinn-inference-msg = { workspace = true }
+jinn-mcp-msg = { workspace = true }
+jinn-session-history-msg = { workspace = true }
+parking_lot = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+wherror = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

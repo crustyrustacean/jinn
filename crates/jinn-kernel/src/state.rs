@@ -1,12 +1,15 @@
 //! The kernel's shared state types.
 //!
 //! [`AppState`](crate::common::app_state::AppState) is composed of a session
-//! map and a [`FrontendState`]. Both live here rather than under a feature
-//! module so the shared state has no dependency on any one feature's code —
-//! the frontend state was previously declared under `feat/ui/`, which made a
-//! 7k-line standalone chat-log component load-bearing for every consumer of
-//! `AppState`.
+//! map and a [`FrontendState`](jinn_app_state::FrontendState). Both are defined
+//! in `jinn-app-state`, which sits beneath the kernel so that reaching the
+//! state never requires depending on the kernel itself. This module re-exports
+//! them at the paths the kernel's own callers already use.
 
-pub mod frontend_state;
+pub mod frontend_state {
+    pub use jinn_app_state::frontend_state::{
+        FrontendCaches, FrontendState, PendingSessionCreation,
+    };
+}
 
-pub use frontend_state::{FrontendCaches, FrontendState};
+pub use jinn_app_state::{FrontendCaches, FrontendState, PendingSessionCreation};

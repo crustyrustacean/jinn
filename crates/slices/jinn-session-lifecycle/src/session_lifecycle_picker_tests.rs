@@ -763,17 +763,17 @@ async fn the_filter_hook_is_registered_for_the_picker_scope() {
 
 #[rstest::rstest]
 fn the_picker_state_lives_only_in_its_slice_cell() {
-    // Given the kernel's picker state block.
-    let kernel = include_str!("../../../jinn-kernel/src/state/frontend_state.rs");
+    // Given the shared frontend state, which must hold no picker state.
+    let state_source = include_str!("../../../jinn-app-state/src/frontend_state.rs");
 
     // When it is searched for this picker's state.
-    let found = kernel.contains("session_lifecycle_picker");
+    let found = state_source.contains("session_lifecycle_picker");
 
     // Then the kernel holds no copy: one home, or the menu opens empty.
     assert!(
         !found,
-        "the kernel must not hold session-lifecycle picker state; the slice \
-         cell is the single home"
+        "the shared state layer must not hold session-lifecycle picker state; the \
+         slice cell is the single home"
     );
 }
 

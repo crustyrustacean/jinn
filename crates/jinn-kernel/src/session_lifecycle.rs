@@ -1,9 +1,15 @@
-//! Synchronous kernel preparation for the session lifecycle.
+//! Session creation, re-exported from [`jinn_app_state`].
 //!
-//! The lifecycle slice owns the actors that run setup and teardown scripts.
-//! What lives here is the other half: the intent handlers that read config,
-//! mutate `AppState`, and publish the request. Keeping the split explicit
-//! means the slice never has to depend on the kernel to be reachable from it.
+//! The operations live in `jinn-app-state` beside the [`AppState`] they
+//! mutate, so that a slice can create a session without depending on the
+//! kernel. This module is a path alias only: the definitions are not
+//! duplicated here. The lifecycle slice still owns the actors that run the
+//! setup and teardown scripts these operations request.
 
-pub mod intent;
-pub mod validator;
+pub mod intent {
+    pub use jinn_app_state::session_creation::intent::*;
+}
+
+pub mod validator {
+    pub use jinn_app_state::session_creation::validator::*;
+}

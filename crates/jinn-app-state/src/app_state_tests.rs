@@ -6,9 +6,11 @@
     reason = "test code"
 )]
 
-use crate::common::app_state::AppState;
-use crate::protocol::{ChatEntry, Mode, PickerKind};
+use crate::app_state::AppState;
+use jinn_core_types::ChatEntry;
 use jinn_core_types::SessionId;
+use jinn_slices::Mode;
+use jinn_slices::PickerKind;
 use jinn_slices::{FocusScope, ScopeStack};
 
 #[rstest::rstest]

@@ -5,8 +5,6 @@ pub use jinn_common::{app_info, app_paths, process_kill, system_resource, toml_p
 
 pub mod actor_deps;
 pub mod app_state;
-#[cfg(test)]
-mod app_state_tests;
 pub mod bridge;
 pub mod bus;
 pub mod core;

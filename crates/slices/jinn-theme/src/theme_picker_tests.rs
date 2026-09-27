@@ -856,17 +856,17 @@ fn attached_key(wired: &Wired, key: &str) -> bool {
 #[rstest::rstest]
 fn the_picker_state_lives_only_in_its_slice_cell() {
     // The theme picker's state is reachable from exactly one place: the slice
-    // cell. A second copy in the kernel would let the menu show one store
+    // cell. A second copy in the shared state would let the menu show one store
     // while a different one is written — the defect that left the skills
     // menu blank.
-    // Given the kernel's frontend state source.
-    let kernel_source = include_str!("../../../jinn-kernel/src/state/frontend_state.rs");
+    // Given the shared frontend state source.
+    let state_source = include_str!("../../../jinn-app-state/src/frontend_state.rs");
 
     // When checking it for theme picker state.
-    // Then the kernel must not hold theme picker state; the slice cell is the only home.
+    // Then the shared state layer holds no theme picker state; the slice cell is the only home.
     assert!(
-        !kernel_source.contains("theme_picker"),
-        "the kernel must not hold theme picker state; the slice cell is the only home"
+        !state_source.contains("theme_picker"),
+        "the shared state layer must not hold theme picker state; the slice cell is the only home"
     );
 }
 
@@ -878,8 +878,8 @@ fn the_kernel_names_no_theme_picker_at_all() {
     // Given the kernel and TUI sources that must stay picker-agnostic.
     let sources = [
         (
-            "jinn-kernel frontend state",
-            include_str!("../../../jinn-kernel/src/state/frontend_state.rs"),
+            "shared frontend state",
+            include_str!("../../../jinn-app-state/src/frontend_state.rs"),
         ),
         (
             "jinn-kernel intent handler",

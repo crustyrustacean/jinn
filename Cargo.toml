@@ -176,6 +176,7 @@ crossterm = { workspace = true }
 
 # Internal
 jinn-kernel = { path = "crates/jinn-kernel" }
+jinn-app-state = { path = "crates/jinn-app-state" }
 jinn-install = { path = "crates/jinn-install" }
 jinn-discord = { path = "crates/slices/jinn-discord" }
 jinn-discord-msg = { path = "crates/slices/jinn-discord-msg" }

@@ -1,48 +1,16 @@
 //! Kernel glue for the shared slice route mechanics.
 //!
-//! The route table and vocabulary live in [`jinn_slices::route`]. This module
-//! provides only the kernel-side [`KernelIntent`] → [`EditIntent`] translation
-//! and [`AppState`]'s implementation of [`SliceActionState`].
+//! The route table and vocabulary live in [`jinn_slices::route`], and
+//! [`AppState`]'s implementation of [`SliceActionState`] lives with the type
+//! in `jinn-app-state` (the orphan rule requires it). What remains here is the
+//! [`IntentResult`] ↔ [`RouteResult`] translation and the one place a
+//! slice-requested scope transition is applied.
 
 use jinn_slices::FocusScope;
-use jinn_slices::route::{RouteResult, ScopeSignal, SliceActionState};
+use jinn_slices::route::{RouteResult, ScopeSignal};
 
 use crate::common::app_state::AppState;
 use crate::protocol::intent::IntentResult;
-
-impl SliceActionState for AppState {
-    fn active_session_title(&self) -> Option<String> {
-        self.active_session().title().map(str::to_owned)
-    }
-
-    fn active_session_id(&self) -> jinn_core_types::SessionId {
-        self.session.active_session_id().clone()
-    }
-
-    fn push_session_error(&mut self, message: &str) {
-        self.active_session_mut()
-            .push_entry(crate::protocol::ChatEntry::error(message));
-    }
-
-    fn active_session_cwd(&self) -> std::path::PathBuf {
-        self.active_session().cwd().to_owned()
-    }
-
-    fn publish_session_cwd(
-        &self,
-        session_id: jinn_core_types::SessionId,
-        cwd: std::path::PathBuf,
-    ) -> jinn_slices::PublishClosure {
-        crate::common::bridge::Bridge::publish_closure(jinn_session_lifecycle_msg::SetSessionCwd {
-            session_id,
-            cwd,
-        })
-    }
-
-    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
-        Some(self)
-    }
-}
 
 /// Converts the kernel's [`IntentResult`] into the slice-level
 /// [`RouteResult`] (they are the same shape; this erases the alias).

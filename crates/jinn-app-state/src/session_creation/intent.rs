@@ -1,18 +1,18 @@
-//! Session lifecycle setup and teardown intent handlers.
+//! Session lifecycle setup and teardown operations.
 //!
-//! These handlers bridge the Intent-driven architecture with the session lifecycle
-//! system. The IntentHandler calls these functions directly; they mutate `AppState`
-//! and return `IntentResult` with commands for the actor system.
+//! These bridge the Intent-driven architecture with the session lifecycle
+//! system. An intent handler calls these directly; they mutate
+//! [`AppState`](crate::app_state::AppState) and return the messages for the
+//! actor system.
 //!
-//! This is kernel work, not slice work: the handlers are synchronous AppState
-//! mutation that ends in a published message, which is exactly what the
-//! IntentHandler does everywhere else. The lifecycle slice owns the actors that
-//! act on those messages. Thirteen call sites across the slices need this
-//! function, so it is shared vocabulary rather than any one slice's content —
-//! and a slice cannot own it without depending on the kernel that calls it.
+//! They live here, beside the state they mutate, because that is what they
+//! are: synchronous state mutation that ends in a published message, the same
+//! shape the intent handler has everywhere else. The lifecycle slice owns the
+//! actors that act on those messages; nothing here depends on that slice or
+//! on the kernel, so the eleven call sites scattered across picker routes and
+//! the discord backend reach these without either one being inverted.
 
-use crate::common::app_state::AppState;
-use crate::protocol::IntentResult;
+use crate::app_state::AppState;
 use jinn_config::ConfigLayer;
 use jinn_core_types::{DEFAULT_PERSONA_NAME, SessionId, SessionProfile};
 use jinn_preferences_config::schemas::SessionLifecycle;
@@ -23,6 +23,7 @@ use jinn_session_lifecycle_msg::{CommandTemplate, setup_running_msg};
 use jinn_session_msg::SessionSeed;
 use jinn_session_state::ChatSessionState;
 use jinn_session_store_msg::PersistSession;
+use jinn_slices::RouteResult as IntentResult;
 
 /// Handle `Intent::SessionLifecycleSetup`.
 ///
@@ -282,8 +283,8 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::common::app_state::AppState;
-    use crate::protocol::ChatEntry;
+    use crate::app_state::AppState;
+    use jinn_core_types::ChatEntry;
 
     /// A layer carrying a single lifecycle, as a user's `jinn.toml` holds
     /// one under `[[session_lifecycle.script]]`.
@@ -313,7 +314,7 @@ mod tests {
             "",
             &[],
             None,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_config::empty_config_layer(),
         );
 
         // Then a new session is created.
@@ -340,11 +341,10 @@ mod tests {
         state
             .active_session_mut()
             .set_cwd(std::path::PathBuf::from("/tmp/active-project"));
-        state.frontend.pending_creation =
-            Some(crate::state::frontend_state::PendingSessionCreation {
-                project_dir: std::path::PathBuf::from("/tmp/override-project"),
-                starting_cwd: std::path::PathBuf::from("/tmp/override-project"),
-            });
+        state.frontend.pending_creation = Some(crate::frontend_state::PendingSessionCreation {
+            project_dir: std::path::PathBuf::from("/tmp/override-project"),
+            starting_cwd: std::path::PathBuf::from("/tmp/override-project"),
+        });
 
         // When handling SessionLifecycleSetup with an explicit cwd override.
         let _result = handle_session_lifecycle_setup(
@@ -352,7 +352,7 @@ mod tests {
             "",
             &[],
             Some(std::path::Path::new("/tmp/explicit-dir")),
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_config::empty_config_layer(),
         );
 
         // Then the new session's CWD is the explicit override, not the active
@@ -373,11 +373,10 @@ mod tests {
         state
             .active_session_mut()
             .set_cwd(std::path::PathBuf::from("/tmp/active-project"));
-        state.frontend.pending_creation =
-            Some(crate::state::frontend_state::PendingSessionCreation {
-                project_dir: std::path::PathBuf::from("/tmp/override-project"),
-                starting_cwd: std::path::PathBuf::from("/tmp/override-project"),
-            });
+        state.frontend.pending_creation = Some(crate::frontend_state::PendingSessionCreation {
+            project_dir: std::path::PathBuf::from("/tmp/override-project"),
+            starting_cwd: std::path::PathBuf::from("/tmp/override-project"),
+        });
 
         // When handling SessionLifecycleSetup with no explicit cwd.
         let _result = handle_session_lifecycle_setup(
@@ -385,7 +384,7 @@ mod tests {
             "",
             &[],
             None,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_config::empty_config_layer(),
         );
 
         // Then the new session's CWD is the stashed starting CWD, not the
@@ -402,11 +401,10 @@ mod tests {
     fn setup_stamps_project_from_pending_creation() {
         // Given a state with a pending creation stashed from the projects UI.
         let mut state = AppState::default_with_scope_focus();
-        state.frontend.pending_creation =
-            Some(crate::state::frontend_state::PendingSessionCreation {
-                project_dir: std::path::PathBuf::from("/home/user/projects/jinn"),
-                starting_cwd: std::path::PathBuf::from("/home/user/projects/jinn"),
-            });
+        state.frontend.pending_creation = Some(crate::frontend_state::PendingSessionCreation {
+            project_dir: std::path::PathBuf::from("/home/user/projects/jinn"),
+            starting_cwd: std::path::PathBuf::from("/home/user/projects/jinn"),
+        });
 
         // When handling SessionLifecycleSetup.
         let _result = handle_session_lifecycle_setup(
@@ -414,7 +412,7 @@ mod tests {
             "",
             &[],
             None,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_config::empty_config_layer(),
         );
 
         // Then the new active session is stamped with the stashed project.
@@ -435,7 +433,7 @@ mod tests {
             "",
             &[],
             None,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_config::empty_config_layer(),
         );
 
         // Then the new active session has no project association.
@@ -446,17 +444,16 @@ mod tests {
     fn setup_consumes_stash_exactly_once() {
         // Given a state that already consumed a pending creation.
         let mut state = AppState::default_with_scope_focus();
-        state.frontend.pending_creation =
-            Some(crate::state::frontend_state::PendingSessionCreation {
-                project_dir: std::path::PathBuf::from("/tmp/first-project"),
-                starting_cwd: std::path::PathBuf::from("/tmp/first-project"),
-            });
+        state.frontend.pending_creation = Some(crate::frontend_state::PendingSessionCreation {
+            project_dir: std::path::PathBuf::from("/tmp/first-project"),
+            starting_cwd: std::path::PathBuf::from("/tmp/first-project"),
+        });
         let _result = handle_session_lifecycle_setup(
             &mut state,
             "",
             &[],
             None,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_config::empty_config_layer(),
         );
 
         // When creating a second session (the stash is now None).
@@ -465,7 +462,7 @@ mod tests {
             "",
             &[],
             None,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_config::empty_config_layer(),
         );
 
         // Then the second session has no project association (no leak from
@@ -561,7 +558,7 @@ mod tests {
             "",
             &[],
             None,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_config::empty_config_layer(),
         );
 
         // Then overlays are cleared and Input scope is pushed.
@@ -639,9 +636,9 @@ mod tests {
             .push_entry(ChatEntry::user("old"));
 
         // When handling SessionNew (delegates to blank lifecycle setup).
-        let result = crate::session_lifecycle::intent::handle_session_new(
+        let result = crate::session_creation::intent::handle_session_new(
             &mut state,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_config::empty_config_layer(),
         );
 
         // Then a new session is created (same behavior as before).
@@ -664,7 +661,7 @@ mod tests {
             "",
             &[],
             None,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_config::empty_config_layer(),
         );
 
         // Then the old empty session is preserved (no auto-close).
@@ -688,7 +685,7 @@ mod tests {
             "",
             &[],
             None,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_config::empty_config_layer(),
         );
 
         // Then the old session is preserved.
@@ -703,7 +700,8 @@ mod tests {
     fn lifecycle_setup_seeds_reasoning_effort_from_global_default() {
         // Given a global default effort of High.
         let mut state = AppState::default_with_scope_focus();
-        state.frontend.app_state.reasoning_effort = Some(crate::ReasoningEffort::High);
+        state.frontend.app_state.reasoning_effort =
+            Some(jinn_provider_selection_msg::ReasoningEffort::High);
 
         // When creating a new session via lifecycle setup.
         let _result = handle_session_lifecycle_setup(
@@ -711,13 +709,13 @@ mod tests {
             "",
             &[],
             None,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_config::empty_config_layer(),
         );
 
         // Then the new session owns the seeded effort (a copy, not a live reference).
         assert_eq!(
             state.active_session().profile().reasoning_effort,
-            Some(crate::ReasoningEffort::High),
+            Some(jinn_provider_selection_msg::ReasoningEffort::High),
             "new session should be seeded from the global default"
         );
     }
@@ -734,7 +732,7 @@ mod tests {
             "",
             &[],
             None,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_config::empty_config_layer(),
         );
 
         // Then the new session's effort is None (provider decides).
@@ -915,11 +913,8 @@ mod tests {
         let session_id = state.session.active_session_id().clone();
 
         // When building the teardown command.
-        let msg = build_run_session_teardown(
-            &state,
-            &session_id,
-            crate::common::render_ctx::empty_config_layer(),
-        );
+        let msg =
+            build_run_session_teardown(&state, &session_id, jinn_config::empty_config_layer());
 
         // Then None is returned.
         assert!(msg.is_none());

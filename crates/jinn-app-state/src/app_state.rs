@@ -1,0 +1,292 @@
+//! Shared application state.
+//!
+//! [`AppState`] is the single source of truth for what the user sees and how the
+//! application is currently behaving. Every component reads from and writes to this
+//! shared state.
+//!
+//! Fields are grouped into owner-named structs (`Session`, `Context`, `Provider`,
+//! `Shutdown`, `Frontend`) to make cross-boundary writes visually obvious during
+//! code review. Each group struct carries `/// OWNER:` documentation on the struct
+//! and on each field.
+
+pub use crate::frontend_state::{FrontendCaches, FrontendState, PendingSessionCreation};
+
+use jinn_core_types::ChatEntryId;
+use jinn_core_types::PinPosition;
+use jinn_core_types::SessionId;
+
+pub use jinn_chat_input_msg::ChatInputBoxState;
+use jinn_session_state::ChatSessionState;
+use jinn_session_state::SessionMap;
+
+/// Shared session registry and active-session state. Callers mutate it through
+/// [`SessionMap`] operations so session reads and snapshot capture stay coherent.
+///
+/// See [`SessionMap`] for the full API.
+pub type SessionState = SessionMap;
+
+/// A snapshot of everything the application is doing right now.
+#[derive(Debug, Default)]
+pub struct AppState {
+    /// Session lifecycle state - owned by session-actor.
+    pub session: SessionState,
+    /// Frontend / UI state - owned by IntentHandler.
+    pub frontend: FrontendState,
+}
+
+impl AppState {
+    /// TEST-ONLY: an `AppState` whose scope-focus and chat-log-view cells
+    /// are activated and attached, so facade writes/reads behave like
+    /// production wiring.
+    #[doc(hidden)]
+    pub fn default_with_scope_focus() -> Self {
+        let state = Self::default();
+        let slices = jinn_slices::Slices::new();
+        if slices
+            .register(
+                jinn_slices::scope_focus_slot(),
+                jinn_slices::ScopeFocusState::default(),
+            )
+            .is_err()
+        {
+            // Already registered: this AppState's Slices was seeded
+            // before; attaching it again is the intent.
+        }
+        if slices
+            .register(
+                jinn_chat_log_view_msg::chat_log_views_slot(),
+                jinn_chat_log_view_msg::ChatLogViews::new(),
+            )
+            .is_err()
+        {
+            // Same re-seed intent as scope-focus above.
+        }
+        if slices
+            .register(
+                jinn_session_lifecycle_msg::arg_input_slot(),
+                jinn_session_lifecycle_msg::ArgInputState::empty(),
+            )
+            .is_err()
+        {
+            // Same re-seed intent as scope-focus above.
+        }
+        if slices
+            .register(
+                jinn_sidebar_msg::sidebar_sections_slot(),
+                jinn_sidebar_msg::SidebarSections::default(),
+            )
+            .is_err()
+        {
+            // Same re-seed intent as scope-focus above.
+        }
+        if slices
+            .register(
+                jinn_theme_msg::theme_entries_slot(),
+                jinn_theme_msg::ThemeEntries::default(),
+            )
+            .is_err()
+        {
+            // Same re-seed intent as scope-focus above.
+        }
+        if slices
+            .register(
+                jinn_persona_msg::personas_slot(),
+                jinn_persona_msg::Personas::default(),
+            )
+            .is_err()
+        {
+            // Same re-seed intent as scope-focus above.
+        }
+        if slices
+            .register(
+                jinn_tools_msg::tools_registry_slot(),
+                jinn_tools_msg::ToolRegistry::default(),
+            )
+            .is_err()
+        {
+            // Same re-seed intent as scope-focus above.
+        }
+        if slices
+            .register(
+                jinn_term_msg::term_tabs_slot(),
+                jinn_term_msg::TerminalTabState::default(),
+            )
+            .is_err()
+        {
+            // Same re-seed intent as scope-focus above.
+        }
+        if slices
+            .register(
+                jinn_provider_selection_msg::provider_state_slot(),
+                jinn_provider_selection_msg::ProviderCell::default(),
+            )
+            .is_err()
+        {
+            // Same re-seed intent as scope-focus above.
+        }
+        state.frontend.attach_slices(slices.clone());
+        state.session.attach_slices(slices);
+        state
+    }
+
+    /// The tools-family registry cell, if the registry is attached.
+    ///
+    /// Multi-party state (written by kernel tools handlers, read by
+    /// dispatch snapshots, the TUI, and picker specs) — the cell lives
+    /// in `jinn-slices` per the decomposition policy.
+    #[must_use]
+    pub fn tool_registry(
+        &self,
+    ) -> Option<jinn_slices::cell::TypedCell<jinn_tools_msg::ToolRegistry>> {
+        match self.frontend.slices() {
+            Some(s) => s.reader(&jinn_tools_msg::tools_registry_slot()),
+            None => None,
+        }
+    }
+
+    /// The provider-selection slice's cell, if the slice is attached.
+    ///
+    /// Multi-party state (written by the slice's actors and boot's cache
+    /// loader, read by the picker specs, status bar, and gates) — the cell
+    /// lives in the slice's msg crate per the decomposition policy.
+    #[must_use]
+    pub fn provider_state(
+        &self,
+    ) -> Option<jinn_slices::cell::TypedCell<jinn_provider_selection_msg::ProviderCell>> {
+        match self.frontend.slices() {
+            Some(s) => s.reader(&jinn_provider_selection_msg::provider_state_slot()),
+            None => None,
+        }
+    }
+
+    /// The term slice's terminal tab state cell, if attached.
+    #[must_use]
+    pub fn term_tabs(
+        &self,
+    ) -> Option<jinn_slices::cell::TypedCell<jinn_term_msg::TerminalTabState>> {
+        match self.frontend.slices() {
+            Some(s) => s.reader(&jinn_term_msg::term_tabs_slot()),
+            None => None,
+        }
+    }
+
+    /// The persona slice's selection cell, if attached.
+    #[must_use]
+    pub fn persona_selection(
+        &self,
+    ) -> Option<jinn_slices::cell::TypedCell<jinn_persona_msg::Personas>> {
+        match self.frontend.slices() {
+            Some(s) => s.reader(&jinn_persona_msg::personas_slot()),
+            None => None,
+        }
+    }
+
+    /// Read-only access to the active chat session.
+    ///
+    /// Infallible - `SessionMap` guarantees the active session exists.
+    pub fn active_session(&self) -> &ChatSessionState {
+        self.session.active_session()
+    }
+
+    /// Mutable access to the active chat session.
+    ///
+    /// Infallible - `SessionMap` guarantees the active session exists.
+    pub fn active_session_mut(&mut self) -> &mut ChatSessionState {
+        self.session.active_session_mut()
+    }
+
+    /// Read-only access to a session by ID.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the given session ID does not exist.
+    pub fn session(&self, id: &SessionId) -> &ChatSessionState {
+        self.session.get_unchecked(id)
+    }
+
+    /// Mutable access to a session by ID.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the given session ID does not exist.
+    pub fn session_mut(&mut self, id: &SessionId) -> &mut ChatSessionState {
+        self.session.get_unchecked_mut(id)
+    }
+
+    /// Fallible read-only access to a session by ID.
+    ///
+    /// Returns `None` if the session does not exist. Use this from paths
+    /// where the session may have been closed concurrently (e.g. scan actors
+    /// that received a command for an ID that is no longer present).
+    #[must_use]
+    pub fn try_session(&self, id: &SessionId) -> Option<&ChatSessionState> {
+        self.session.get(id)
+    }
+
+    /// Fallible mutable access to a session by ID.
+    ///
+    /// Returns `None` if the session does not exist.
+    #[must_use]
+    pub fn try_session_mut(&mut self, id: &SessionId) -> Option<&mut ChatSessionState> {
+        self.session.get_mut(id)
+    }
+
+    /// Returns mutable access to a session by ID, creating it if missing.
+    ///
+    /// Used by streaming handlers that receive tokens from actors
+    /// which may create new session IDs not yet present in the
+    /// sessions map.
+    pub fn session_mut_or_create(&mut self, id: &SessionId) -> &mut ChatSessionState {
+        self.session.get_or_create(id)
+    }
+
+    /// Runs `f` against the active session's input draft, writing through
+    /// the chat-input facade (cell when attached, in-struct fallback when
+    /// not). The single write path for input edits.
+    pub fn update_active_input<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut ChatInputBoxState),
+    {
+        self.active_session().update_input(f);
+    }
+
+    /// Reads the active session's input draft through `f`, with `default`
+    /// supplying the result when the session has no entry in the cell.
+    /// The single read path for input state.
+    pub fn with_active_input<R, F, D>(&self, f: F, default: D) -> R
+    where
+        F: FnOnce(&ChatInputBoxState) -> R,
+        D: FnOnce() -> R,
+    {
+        self.active_session().with_input(f, default)
+    }
+
+    /// Returns pinned entry IDs sorted by position for the active session.
+    ///
+    /// Order: TOP entries first, then RELATIVE, then BOTTOM.
+    /// Within each group, entries maintain their original history order (stable sort).
+    #[must_use]
+    pub fn sorted_pinned_ids(&self) -> Vec<ChatEntryId> {
+        let mut pinned = self.active_session().pinned_entries();
+        pinned.sort_by_key(|entry| pin_sort_key(entry.pin_position));
+        pinned.iter().map(|e| e.id.clone()).collect()
+    }
+
+    /// Invalidate all theme-sensitive caches. Called when the active theme changes.
+    pub fn invalidate_theme_caches(&self) {
+        self.frontend.caches.invalidate_all();
+    }
+}
+
+/// Returns the sort key for a pin position.
+///
+/// TOP = 0, RELATIVE (or None) = 1, BOTTOM = 2.
+/// Used to sort pinned entries in display order.
+#[must_use]
+pub fn pin_sort_key(position: Option<PinPosition>) -> u8 {
+    match position {
+        Some(PinPosition::Top) => 0,
+        Some(PinPosition::Relative) | None => 1,
+        Some(PinPosition::Bottom) => 2,
+    }
+}

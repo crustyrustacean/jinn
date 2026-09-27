@@ -1,4 +1,10 @@
 //! Frontend / UI state.
+//!
+//! The frontend half of [`AppState`](crate::app_state::AppState): what the
+//! user sees, which overlays are open, and which theme is in force. It sits
+//! beside [`AppState`](crate::app_state::AppState) rather than under any one
+//! feature so that a consumer of the state never has to load a feature's code
+//! to name a type.
 
 use jinn_chat_input_msg::FilePickerState;
 use jinn_sidebar_msg::SidebarScopeExt;
