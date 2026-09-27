@@ -311,10 +311,13 @@ Entries are added or amended **only with human approval**.
 - (chat-log) The chat log's line counts are keyed to the width each entry was measured at, so a resize invalidates only the counts taken at the old width.
 - (chat-log) The session loading guard is released only by the session that holds it, so a deadline armed for a session the user has left cannot end another session's load.
 - (preview) The sidebar session preview renders its entry lines on the layout worker pool, not the render thread, and shows a spinner until they return.
-- (preview) The session preview is keyed on the content of the entries it shows, not on the history's length, so a streaming session previews live text rather than the text the entry started with.
+- (preview) The session preview renders settled messages: a chat entry still accumulating tokens is shown as a bounded continuation marker built from its last rendered columns, and its own text is never previewed.
+- (preview) The session preview keeps its previously rendered lines on screen across a content or width change, showing a loading indicator only for a session it has never drawn.
 - (preview) The session preview cache is keyed by session, so moving the cursor between sessions serves a preview from memory rather than re-rendering it.
 - (preview) A session preview render is abandoned on its deadline but a late result is still cached; a result is discarded only when a newer request for the same session supersedes it.
 - (preview) A preview request identical to one already in flight is not republished.
+- (preview) The session preview runs at most one render in flight per session, and a result superseded by newer content is dropped rather than cached.
+- (preview) The session preview bounds each entry's previewed text to its last 4096 bytes, because a preview displays at most its last 20 rows.
 - (preview) The session preview popup has a fixed height, derived from the preview's line budget rather than from how many lines its content happens to render to.
 - (preview) Session preview content is anchored to the bottom of the popup's content area, with overflow dropped from the front, so the newest entry is always the last visible row.
 - (preview) The session preview popup draws its loading indicator on the last row of its content area, horizontally centred, matching the chat log's session-load line.
