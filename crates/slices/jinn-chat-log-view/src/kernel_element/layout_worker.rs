@@ -22,21 +22,20 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use crate::chat_log::{RenderContext, entry_to_lines};
 use error_stack::Report;
-use jinn_chat_log_view::chat_log::{
-    ContentIdentity, MeasuredLineCount, RenderContext, entry_to_lines,
-};
 use jinn_chat_log_view_msg::{
-    ChatLogLayoutComputed, LayoutChatSession, MeasuredEntryCount, PROXIMITY_COUNT,
-    PreviewSessionRequested, SessionPreviewRendered, VisualItem,
+    ChatLogLayoutComputed, ContentIdentity, LayoutChatSession, MeasuredEntryCount,
+    MeasuredLineCount, PROXIMITY_COUNT, PreviewSessionRequested, SessionPreviewRendered,
+    VisualItem,
 };
 use ratatui::widgets::{Paragraph, Wrap};
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 
-use crate::common::state::State;
-use crate::feat::ui::chat_log::history::LayoutInputs;
+use crate::kernel_element::history::LayoutInputs;
+use jinn_domain::common::state::State;
 
 /// Static path the layout worker pool spawns at (one pool per process).
 pub const LAYOUT_WORKER_POOL_SIZE: usize = 3;
@@ -414,7 +413,7 @@ fn measure_entry(
             fingerprint: entry.content_fingerprint(),
         },
         is_expanded,
-        variant: crate::feat::ui::chat_log::history::render_variant(
+        variant: crate::kernel_element::history::render_variant(
             paired_status,
             is_streaming,
             is_waiting_on_subagent,

@@ -5,6 +5,7 @@ edition.workspace = true
 description = "The theme slice: loads theme files into the theme-entries cell at activation."
 
 [dependencies]
+jinn-chat-log-view-msg = { workspace = true }
 jinn-theme-msg = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-theme = { workspace = true }

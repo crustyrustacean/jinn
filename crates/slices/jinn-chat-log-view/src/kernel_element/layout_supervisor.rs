@@ -24,11 +24,11 @@ use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 use trouper::supervision::{ActorSpec, Backoff, RestartBudget, RestartPolicy};
 
-use crate::common::state::State;
-use crate::feat::ui::chat_log::layout_worker::{
+use crate::kernel_element::layout_worker::{
     LAYOUT_WORKER_POOL_SIZE, LayoutWorkerActor, LayoutWorkerActorDeps, PREVIEW_WORKER_POOL_SIZE,
     layout_worker_path, preview_worker_path,
 };
+use jinn_domain::common::state::State;
 
 /// Static path the layout supervisor spawns at (one per process).
 pub const LAYOUT_SUPERVISOR_PATH: &str = "jinn.chat_log.layout.supervisor";

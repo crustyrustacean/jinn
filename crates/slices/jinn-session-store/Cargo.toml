@@ -12,6 +12,7 @@ contracts come from `jinn-session-state`.
 """
 
 [dependencies]
+jinn-chat-log-view = { workspace = true }
 jinn-domain = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-provider = { workspace = true }

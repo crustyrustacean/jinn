@@ -10,6 +10,8 @@
 //! handler and the render pass.
 
 pub mod chat_log;
+pub mod kernel_element;
+pub mod vertical_minimap;
 
 pub use jinn_chat_log_view_msg::ChatLogViewUi;
 pub use jinn_chat_log_view_msg::chat_log_views_slot;
@@ -111,4 +113,12 @@ mod activation_tests {
         assert_eq!(views.get(&session_a).and_then(|v| v.scroll_offset), Some(3));
         assert_eq!(views.get(&session_b).and_then(|v| v.scroll_offset), Some(7));
     }
+}
+
+/// Register the chat log UI element.
+///
+/// Called by composition in `jinn-tui`: the slice owns the element, so the
+/// kernel's element registry cannot reference it.
+pub fn register(registry: &mut jinn_domain::common::AppUiRegistry) {
+    kernel_element::register(registry);
 }

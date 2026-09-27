@@ -70,6 +70,9 @@ pub fn launch(
     // actor-system bootstrap). Registered here because the kernel cannot
     // reference slice crates, and jinn-tui's registry assembly is the
     // composition point for display chrome.
+    // The chat log is a slice; its element is registered here because
+    // the kernel's registry cannot reference slice crates.
+    jinn_chat_log_view::register(&mut ui_registry);
     jinn_status_bar::register(&mut ui_registry);
     jinn_chat_input::register(&mut ui_registry);
 

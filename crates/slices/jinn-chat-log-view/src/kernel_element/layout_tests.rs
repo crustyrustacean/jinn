@@ -16,14 +16,12 @@ use jinn_chat_log_view_msg::{ChatLogLayoutComputed, LayoutChatSession, MeasuredE
 use jinn_core_types::{ChatEntry, SessionId};
 use jinn_session_state::ChatSessionState;
 
-use crate::common::app_state::AppState;
-use crate::common::state::State;
-use crate::feat::ui::chat_log::layout_complete::LayoutCompletionActorDeps;
-use crate::feat::ui::chat_log::layout_complete::{LayoutApplied, LayoutCompletionActor};
-use crate::feat::ui::chat_log::layout_supervisor::{
-    LayoutSupervisorActor, LayoutSupervisorActorDeps,
-};
-use crate::feat::ui::chat_log::layout_worker::{MeasureJob, measure, render_preview};
+use crate::kernel_element::layout_complete::LayoutCompletionActorDeps;
+use crate::kernel_element::layout_complete::{LayoutApplied, LayoutCompletionActor};
+use crate::kernel_element::layout_supervisor::{LayoutSupervisorActor, LayoutSupervisorActorDeps};
+use crate::kernel_element::layout_worker::{MeasureJob, measure, render_preview};
+use jinn_domain::common::app_state::AppState;
+use jinn_domain::common::state::State;
 
 /// State with `count` user entries in its active session, measured at
 /// `content_width`.
@@ -405,7 +403,7 @@ fn fingerprint_computations(state: &State) -> u64 {
 fn computed(
     session_id: &SessionId,
     content_width: u16,
-    measured: Vec<jinn_chat_log_view::chat_log::MeasuredLineCount>,
+    measured: Vec<jinn_chat_log_view_msg::MeasuredLineCount>,
 ) -> ChatLogLayoutComputed {
     ChatLogLayoutComputed {
         session_id: session_id.clone(),
@@ -527,8 +525,8 @@ fn an_expired_layout_deadline_writes_nothing_into_the_conversation() {
 
 /// A preview render context at `content_width`, with every per-entry render
 /// input pinned off — which is exactly how the sidebar's preview builds it.
-fn preview_ctx(content_width: u16) -> jinn_chat_log_view::chat_log::RenderContext {
-    jinn_chat_log_view::chat_log::RenderContext {
+fn preview_ctx(content_width: u16) -> crate::chat_log::RenderContext {
+    crate::chat_log::RenderContext {
         content_width,
         is_selected: false,
         is_expanded: false,

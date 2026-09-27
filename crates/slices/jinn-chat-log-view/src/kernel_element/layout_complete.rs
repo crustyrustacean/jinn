@@ -14,13 +14,13 @@
 //! indication up would strand the user on a spinner forever.
 
 use error_stack::Report;
-use jinn_chat_log_view::chat_log::{ContentIdentity, MeasuredLineCount};
 use jinn_chat_log_view_msg::ChatLogLayoutComputed;
+use jinn_chat_log_view_msg::{ContentIdentity, MeasuredLineCount};
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 
-use crate::common::state::State;
+use jinn_domain::common::state::State;
 
 /// Static path the layout completion actor spawns at (one per process).
 pub const LAYOUT_COMPLETION_PATH: &str = "jinn.chat_log.layout.completion";
@@ -164,7 +164,10 @@ impl LayoutCompletionActor {
     /// they are stored verbatim: re-deriving the hashes here would walk
     /// every entry's content a second time and cost as much as the
     /// measurement itself.
-    fn store_counts(state: &crate::common::app_state::AppState, computed: &ChatLogLayoutComputed) {
+    fn store_counts(
+        state: &jinn_domain::common::app_state::AppState,
+        computed: &ChatLogLayoutComputed,
+    ) {
         let measured: Vec<MeasuredLineCount> = computed
             .counts
             .iter()

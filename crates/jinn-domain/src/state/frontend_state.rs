@@ -35,7 +35,7 @@ use jinn_theme::Theme;
 #[derive(Debug, Default)]
 pub struct FrontendCaches {
     /// Cached wrapped line counts and rendered lines per chat entry.
-    pub entry_line_cache: RwLock<jinn_chat_log_view::chat_log::EntryLineCache>,
+    pub entry_line_cache: RwLock<jinn_chat_log_view_msg::EntryLineCache>,
 }
 
 impl FrontendCaches {

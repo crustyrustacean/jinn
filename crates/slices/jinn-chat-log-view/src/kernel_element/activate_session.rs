@@ -7,9 +7,9 @@
 //! laid its history out inline on the frame it was opened. One entry point
 //! means the three cannot drift again.
 
-use crate::common::app_state::AppState;
-use crate::protocol::IntentResult;
 use jinn_core_types::SessionId;
+use jinn_domain::common::app_state::AppState;
+use jinn_domain::protocol::IntentResult;
 use jinn_session_store_msg::SessionLoadRequested;
 
 /// Switches to `target_id`, measuring it if it needs measuring.

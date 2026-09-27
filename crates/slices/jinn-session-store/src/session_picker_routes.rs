@@ -232,7 +232,7 @@ fn confirm_session_picker(ctx: &mut ActionCtx<'_>, cell: &SessionPickerCell) -> 
     // The same activation the sidebar and subagent entry use: the store actor
     // then decides whether the highlighted session needs reading from disk or
     // only measuring, which a caller cannot know.
-    jinn_domain::feat::ui::chat_log::activate_session(
+    jinn_chat_log_view::kernel_element::activate_session(
         state,
         session_id,
         IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(

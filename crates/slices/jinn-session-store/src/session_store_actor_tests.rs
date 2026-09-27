@@ -1065,7 +1065,7 @@ async fn measuring_an_in_memory_session_never_reads_it_from_the_store() {
 async fn a_measured_request_clears_the_load_guard_end_to_end() {
     // Given the full layout subsystem, and an in-memory session to measure.
     let fixture = actor_fixture().await;
-    jinn_domain::feat::ui::chat_log::install_layout_actors(
+    jinn_chat_log_view::kernel_element::install_layout_actors(
         fixture.harness.system(),
         fixture.state.clone(),
     );
@@ -1106,7 +1106,7 @@ async fn a_measured_request_clears_the_load_guard_end_to_end() {
 async fn measuring_after_the_frontend_switched_measures_at_a_usable_width() {
     // Given the full layout subsystem and an in-memory session.
     let fixture = actor_fixture().await;
-    jinn_domain::feat::ui::chat_log::install_layout_actors(
+    jinn_chat_log_view::kernel_element::install_layout_actors(
         fixture.harness.system(),
         fixture.state.clone(),
     );

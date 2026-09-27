@@ -3,7 +3,7 @@
 use jinn_domain::common::app_state::AppState;
 
 use crate::sections::sessions::state::sorted_open_sessions;
-use jinn_domain::feat::ui::chat_log::activate_session;
+use jinn_chat_log_view::kernel_element::activate_session;
 use jinn_domain::protocol::IntentResult;
 
 /// Activates the session under the cursor.
@@ -129,9 +129,9 @@ mod tests {
     /// considered free if the target's counts match the width the next frame
     /// will use, and the on-screen session is the one that knows it.
     fn with_measured_active_session(state: &mut AppState, width: u16) {
+        use jinn_chat_log_view::kernel_element::ChatLogElement;
         use jinn_domain::common::render_ctx::RenderCtx;
         use jinn_domain::common::ui_element::UiElement;
-        use jinn_domain::feat::ui::chat_log::ChatLogElement;
         use jinn_testutil::setup_term;
 
         let target_id = {

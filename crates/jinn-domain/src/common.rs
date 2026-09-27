@@ -24,15 +24,13 @@ pub mod ui_registry;
 /// Standard UI registry type for the jinn application.
 pub type AppUiRegistry = ui_registry::UiRegistry;
 
-/// Register all UI elements from every feature module.
+/// Register the UI elements the kernel itself owns.
 ///
-/// Called once during application startup. Each feature module that provides
-/// UI elements exposes a `register()` function that adds its elements to the registry.
+/// Called once during application startup. Slice-owned elements are
+/// registered by composition in `jinn-tui`, which can reference slice
+/// crates; the kernel cannot.
 pub fn register_all_ui_elements(registry: &mut AppUiRegistry) {
-    crate::feat::ui::chat_log::register(registry);
     crate::feat::provider::register(registry);
-    // The chat input box is a slice; composition registers its element
-    // (the kernel's registry cannot reference slice crates).
 }
 
 #[cfg(test)]

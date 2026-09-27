@@ -8,7 +8,7 @@ repository = "https://github.com/jayson-lennon/jinn"
 
 [features]
 default = []
-syntax-all = ["jinn-domain/syntax-all"]
+syntax-all = ["jinn-chat-log-view/syntax-all"]
 
 # cargo-binstall artifact discovery. The binary is built locally and
 # pushed to GitHub releases (see `just build-release-tarball` / `just release`).

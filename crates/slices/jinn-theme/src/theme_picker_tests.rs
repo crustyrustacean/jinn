@@ -134,7 +134,7 @@ impl Wired {
             .write()
             .insert(
                 &jinn_core_types::ChatEntry::user("seeded"),
-                jinn_chat_log_view::chat_log::ContentIdentity {
+                jinn_chat_log_view_msg::ContentIdentity {
                     signature: 1,
                     fingerprint: 1,
                 },

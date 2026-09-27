@@ -26,15 +26,15 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::common::app_state::AppState;
-use crate::common::render_ctx::RenderCtx;
-use crate::common::ui_element::UiElement;
-use crate::protocol::ToolResultStatus;
-use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 use jinn_chat_log_view_msg::{
     DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
 };
 use jinn_core_types::SessionId;
+use jinn_domain::common::app_state::AppState;
+use jinn_domain::common::render_ctx::RenderCtx;
+use jinn_domain::common::ui_element::UiElement;
+use jinn_domain::protocol::ToolResultStatus;
+use jinn_domain::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 use jinn_session_msg::PhaseKind;
 use jinn_session_state::ChatSessionState;
 use jinn_theme::Theme;
@@ -46,12 +46,12 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use throbber_widgets_tui::{Throbber, ThrobberState, WhichUse};
 
-use jinn_chat_log_view::chat_log::EntryLineCache;
-use jinn_chat_log_view::chat_log::{
+use crate::chat_log::{
     GUTTER_WIDTH, GutterStyle, RenderContext, ScrollState, build_blank_gutter_lines,
     build_collapsed_block_gutter_line, build_entry_gutter_lines, compute_scroll, entry_to_lines,
     find_visible_indices, render_scroll_indicator,
 };
+use jinn_chat_log_view_msg::EntryLineCache;
 use jinn_preferences_config::schemas::ChatLogConfig;
 
 /// Default number of lines to show for tool entries (calls and results) before truncating.

@@ -13,9 +13,9 @@ use crate::sections::sessions::preview::{
     render_session_preview_loading, session_preview_popup_rect,
 };
 use jinn_chat_log_view::chat_log::RenderContext;
+use jinn_chat_log_view::kernel_element::render_preview as render_preview_lines;
 use jinn_chat_log_view_msg::{PREVIEW_ENTRY_COUNT, PREVIEW_MAX_LINES};
 use jinn_core_types::model_selection::ModelSelection;
-use jinn_domain::feat::ui::chat_log::render_preview as render_preview_lines;
 use jinn_domain::protocol::ChatEntry;
 use jinn_session_state::ChatSessionState;
 use jinn_testutil::{buffer_row, setup_term};

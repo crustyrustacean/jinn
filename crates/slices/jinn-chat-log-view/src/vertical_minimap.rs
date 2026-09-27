@@ -15,9 +15,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use unicode_width::UnicodeWidthStr;
 
-use crate::common::app_state::AppState;
-use crate::protocol::{ChatEntry, ChatEntryKind};
 use jinn_chat_log_view_msg::VisualItem;
+use jinn_domain::common::app_state::AppState;
+use jinn_domain::protocol::{ChatEntry, ChatEntryKind};
 
 #[cfg(test)]
 use jinn_chat_log_view_msg::{DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items};
@@ -474,8 +474,8 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use crate::common::app_state::AppState;
-    use crate::protocol::ChatEntry;
+    use jinn_domain::common::app_state::AppState;
+    use jinn_domain::protocol::ChatEntry;
     use jinn_theme::default_theme;
 
     #[rstest::rstest]

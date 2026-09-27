@@ -3,14 +3,8 @@ name = "jinn-domain"
 version.workspace = true
 edition.workspace = true
 
-[features]
-# Opt-in: compiles the full 36-grammar tree-sitter set for markdown code-block
-# highlighting instead of the curated default set (see root Cargo.toml).
-syntax-all = ["jinn-chat-log-view/syntax-all"]
-
 [dependencies]
 jinn-chat-input-msg = { workspace = true }
-jinn-chat-log-view = { workspace = true }
 jinn-chat-log-view-msg = { workspace = true }
 jinn-cwd-msg = { workspace = true }
 jinn-persona-msg = { workspace = true }

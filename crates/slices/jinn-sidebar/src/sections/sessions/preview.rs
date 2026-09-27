@@ -27,12 +27,12 @@ use crate::sections::sessions::preview_load::preview_signature;
 use crate::sections::sessions::state::sorted_open_sessions;
 #[cfg(test)]
 use jinn_chat_log_view::chat_log::RenderContext;
+#[cfg(test)]
+use jinn_chat_log_view::kernel_element::render_preview as render_preview_lines;
 use jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT;
 #[cfg(test)]
 use jinn_chat_log_view_msg::PREVIEW_MAX_LINES;
 use jinn_domain::common::render_ctx::RenderCtx;
-#[cfg(test)]
-use jinn_domain::feat::ui::chat_log::render_preview as render_preview_lines;
 use jinn_session_state::ChatSessionState;
 use jinn_theme::Theme;
 

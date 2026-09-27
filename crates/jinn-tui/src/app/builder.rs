@@ -89,6 +89,9 @@ impl TuiAppBuilder {
         // Slice-owned elements the kernel registry cannot reference. The
         // chat input box is fetched with `if let Some(..)`, so a missing
         // call here fails silently — the box just never draws.
+        // The chat log is a slice; its element is registered here because
+        // the kernel's registry cannot reference slice crates.
+        jinn_chat_log_view::register(&mut ui_registry);
         jinn_chat_input::register(&mut ui_registry);
         jinn_status_bar::register(&mut ui_registry);
 
