@@ -19,6 +19,9 @@ trouper = { workspace = true }
 ratatui = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# Truncation is decided by DISPLAY width, not byte or char count: the
+# overlay must trigger exactly when the name would not fit its column.
+unicode-width = { workspace = true }
 wherror = { workspace = true }
 rstest = { workspace = true }
 jinn-testutil = { workspace = true }
