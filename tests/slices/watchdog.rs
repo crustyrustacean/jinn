@@ -67,7 +67,7 @@ async fn composed_app_with_fast_stall_watchdog() -> (TuiApp, SessionId) {
     // The context-assembly service answers the queue actor's assemble ask
     // on the stall-retry re-dispatch path (must exist before any ask).
     let _assembly = jinn_context_assembly::service::ensure_spawned(&services.trouper_system);
-    let _session_actor = jinn_session_turn::activate(
+    jinn_session_turn::activate(
         &services.trouper_system,
         jinn_session_turn::session_actor::SessionPersistenceActorDeps {
             deps: ActorDeps {

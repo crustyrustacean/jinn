@@ -330,7 +330,7 @@ impl ActorSystemBuilder {
             jinn_session_lifecycle_msg::BuiltinRegistry::new(),
             std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
         );
-        let _session = jinn_session_turn::activate(
+        jinn_session_turn::activate(
             &services.trouper_system,
             jinn_session_turn::session_actor::SessionPersistenceActorDeps {
                 deps: actor_deps.clone(),
