@@ -177,13 +177,50 @@ impl SessionStoreActor {
             let Some(mut snapshot) = snapshot else {
                 continue;
             };
+            // A snapshot read back from the store carries revision 0 — the
+            // store does not persist a revision, because the number is only
+            // meaningful within one process run. A member with no live core has
+            // no counter to draw from, so its revision comes from the store's
+            // record of what it has already accepted, plus one. Writing the
+            // stored value itself would be refused as stale, and writing a
+            // fixed 1 would be refused for any member the store has written
+            // more than once.
             if snapshot.revision.get() == 0 {
-                snapshot.revision = jinn_session_state::SessionRevision::new(1);
+                snapshot.revision = self.next_storable_revision(session_id).await;
             }
             snapshot.metadata.session_state = SessionState::Archived;
             snapshots.push(snapshot);
         }
         (!snapshots.is_empty()).then_some(snapshots)
+    }
+
+    /// Returns a revision the store will accept for a session with no live core.
+    ///
+    /// Falls back to 1 — above the zero an unwritten session holds, and the
+    /// same floor a freshly created session's first capture clears — when the
+    /// store cannot report its own record.
+    async fn next_storable_revision(
+        &self,
+        session_id: &SessionId,
+    ) -> jinn_session_state::SessionRevision {
+        let floor = match self
+            .services
+            .session_store
+            .last_accepted_revision(session_id)
+            .await
+        {
+            Ok(floor) => floor,
+            Err(error) => {
+                tracing::warn!(
+                    ?error,
+                    session_id = %session_id,
+                    "could not read the store's last accepted revision; \
+                     archiving with a minimal revision"
+                );
+                jinn_session_state::SessionRevision::new(0)
+            }
+        };
+        jinn_session_state::SessionRevision::new(floor.get() + 1)
     }
 
     /// Captures immutable tree statistics before dropping the live session.

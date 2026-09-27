@@ -872,6 +872,58 @@ async fn loading_a_session_persists_its_reactivation() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn archiving_a_tree_archives_a_member_that_is_not_live() {
+    // Given a parent with a persisted child, both written to the store more
+    // than once and neither live — the shape a reopened app's sessions have.
+    let fixture = actor_fixture().await;
+    let parent_id = SessionId::new();
+    let child_id = SessionId::new();
+    let mut child = ChatSessionState::new_child(&parent_id, true);
+    child.set_session_id(child_id.clone());
+    child.mark_interacted();
+    child.push_entry(jinn_core_types::ChatEntry::user("child work"));
+    let mut parent = ChatSessionState::new();
+    parent.set_session_id(parent_id.clone());
+    parent.mark_interacted();
+    parent.push_entry(jinn_core_types::ChatEntry::user("parent work"));
+    for session in [&parent, &child] {
+        for _ in 0..3 {
+            fixture
+                .store
+                .save(&session.capture_snapshot())
+                .await
+                .expect("save session");
+        }
+    }
+
+    // When the tree is archived from the parent.
+    fixture
+        .harness
+        .publish(ArchiveSessionTree {
+            root: parent_id.clone(),
+        })
+        .await;
+
+    // Then the not-live child is archived durably, not skipped as a stale write.
+    let archived = poll_until(|| async {
+        let summaries = fixture
+            .store
+            .load_summaries()
+            .await
+            .expect("load summaries");
+        summaries
+            .iter()
+            .all(|summary| summary.session_state == SessionState::Archived)
+    })
+    .await;
+    assert!(
+        archived,
+        "a tree member absent from the live map must still be archived"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn persist_session_writes_interacted_session_to_store() {
     // Given a running store actor and an interacted session.
     let fixture = actor_fixture().await;
