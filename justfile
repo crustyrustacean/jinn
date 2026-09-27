@@ -901,19 +901,19 @@ build-release-tarball TARGET="x86_64-unknown-linux-gnu":
             # are unaffected. +crt-static keeps the binary self-contained
             # (no VC runtime needed).
             #
-            # -A linker_messages silences rustc's `linker_messages` lint, which
-            # is on by default and promotes linker *stderr* to a Rust warning.
-            # The static CRT .lib files reference Microsoft-internal debug-info
-            # PDBs (D:\a\_work\1\s\binaries\...) that are never distributed, so
-            # lld-link emits ~60 LNK4099 "Cannot use debug info" lines per link.
-            # This is not Linux-cross-compile-specific: the lint fires for
-            # every developer on every MSVC link. Only debug info is dropped —
-            # the linked binary is unaffected. The cost is that other linker
-            # warnings (LNK4217, LNK4199, ...) are hidden as well; `release`
-            # validates the artifact structurally instead.
+            # /ignore:4099 tells lld-link to drop the LNK4099 "Cannot use
+            # debug info" warning at the source, rather than suppressing the
+            # whole class of linker diagnostics via `-A linker_messages`. The
+            # static CRT .lib files reference Microsoft-internal debug-info
+            # PDBs (D:\a\_work\1\s\binaries\...) that were never
+            # redistributable, so a cross link always emits ~60 of these.
+            # Only debug info is dropped — the linked binary is unaffected.
+            # Narrowing to one code keeps genuine linker warnings (LNK4217,
+            # LNK4199, ...) visible; `release` validates the artifact
+            # structurally regardless.
             export XWIN_ARCH=x86_64
             export CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=lld-link
-            export RUSTFLAGS="-Ctarget-feature=+crt-static -A linker_messages"
+            export RUSTFLAGS="-Ctarget-feature=+crt-static -Clink-arg=/ignore:4099"
             cargo xwin build --release --target "${TARGET}"
             ;;
         *)
