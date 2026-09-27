@@ -323,3 +323,7 @@ Entries are added or amended **only with human approval**.
 - (slices) A message crate never depends on another message crate; a type two message crates both need is shared vocabulary and lives in a common or kernel crate.
 - (testing) The bus test harness lives in jinn-testutil and is available to every crate without a feature flag.
 - (arch) Displayed UI elements are registered by composition in jinn-tui, because the kernel's element registry cannot reference slice crates.
+- (slices) The chat-log slice owns the chat log's user actions as route rows — scrolling, cursor selection, pinning, forking, yanking, entry context toggles, and the audit popup — with the kernel holding no chat-log intent variant.
+- (slices) The audit popup's visibility is a chat-log slice cell, not a frontend state field.
+- (keybinds) Mouse-wheel scrolling of the chat log resolves through the kernel's crossterm mouse handler, which the route table cannot express.
+- (keybinds) The Normal-scope p pin binding remains guarded against Leaf-to-Branch keymap promotion by a composition-level test over the chat log's rows.

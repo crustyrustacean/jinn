@@ -97,6 +97,29 @@ fn apply_scope_signal(
 /// A hit means the keystroke belonged to the slice's own input surface:
 /// the hook performed the synchronous write and the intent is consumed.
 /// Returns `None` outside dynamic scopes or when no hook is registered
+/// Ends the chat log's `x`-hold ignore sweep unless this intent *is*
+/// the ignore action.
+///
+/// The sweep survives only across consecutive `x` presses, so any other
+/// action ends it. The chat log's `x` is a slice route row, not a
+/// kernel intent, so the action name is read off the dynamic intent and
+/// compared against the name the slice published — the two agree because
+/// both come from the same constant in `jinn-chat-log-view-msg`.
+fn clear_ignore_sweep_unless_ignoring(state: &mut AppState, intent: &KernelIntent) {
+    let action = match intent {
+        KernelIntent::Dynamic(dynamic) => dynamic.action.as_str(),
+        _ => "",
+    };
+    if action != jinn_chat_log_view_msg::IGNORE_SELECTED_ACTION {
+        state.active_session_mut().clear_ignore_sweep();
+    }
+}
+
+/// Dispatches the active dynamic scope's registered input hook.
+///
+/// A hit means the keystroke belonged to the slice's own input surface:
+/// the hook performed the synchronous write and the intent is consumed.
+/// Returns `None` outside dynamic scopes or when no hook is registered
 /// (or the hook declines the intent) — the caller falls through to the
 /// built-in arms.
 fn try_slice_input_hook(
@@ -274,10 +297,6 @@ impl IntentHandler {
     ///    hook is active, editing intents route to the hook (sync write
     ///    of the slice's own state — the typing carve-out).
     /// 3. Built-in arms.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "exhaustive match on all Intent variants"
-    )]
     fn handle_inner(
         intent: &KernelIntent,
         state: &mut AppState,
@@ -324,12 +343,14 @@ impl IntentHandler {
             return result;
         }
 
-        // Clear ignore sweep state when the user performs any action other than
-        // pressing x. This ensures the sweep only continues during consecutive
-        // x presses within 100ms.
-        if !matches!(intent, KernelIntent::ChatEntryIgnoreSelected) {
-            state.active_session_mut().clear_ignore_sweep();
-        }
+        // Clear ignore sweep state when the user performs any action other
+        // than pressing x. This ensures the sweep only continues during
+        // consecutive x presses within 100ms.
+        //
+        // This sits ahead of slice route dispatch so the chat-log slice's
+        // own rows obey the rule too: a row that fired first would let
+        // the sweep run past the 100ms window.
+        clear_ignore_sweep_unless_ignoring(state, intent);
 
         // Cancel stream prompt intercept: if the prompt is showing,
         // ESC (NormalEscape) confirms the cancel;
@@ -339,15 +360,14 @@ impl IntentHandler {
         }
 
         match intent {
-            KernelIntent::ScrollUp => feat::navigation::intent::handle_scroll_up(state),
-            KernelIntent::ScrollDown => feat::navigation::intent::handle_scroll_down(state),
+            // Mouse wheel. A wheel event is a crossterm backend handler on
+            // the `Keymap`, not a keymap node, so no route row can express
+            // it — these two intents stay in the kernel. The scroll they
+            // perform is the log's, reached through the same session
+            // facade the log's own rows use.
             KernelIntent::MouseScrollUp => feat::navigation::intent::handle_mouse_scroll_up(state),
             KernelIntent::MouseScrollDown => {
                 feat::navigation::intent::handle_mouse_scroll_down(state)
-            }
-            KernelIntent::ScrollToTop => feat::navigation::intent::handle_scroll_to_top(state),
-            KernelIntent::ScrollToBottom => {
-                feat::navigation::intent::handle_scroll_to_bottom(state)
             }
 
             KernelIntent::EditInput => feat::navigation::intent::handle_edit_input(state),
@@ -357,9 +377,6 @@ impl IntentHandler {
                 feat::global::intent::handle_interrupt(state, session_id.as_ref())
             }
             KernelIntent::ToggleWhichkey => feat::global::intent::handle_toggle_whichkey(state),
-            KernelIntent::ToggleAuditPopup => {
-                feat::global::intent::handle_toggle_audit_popup(state)
-            }
             // Escape in Normal mode: raise the cancel-stream confirmation
             // when a turn is in flight. The box no longer owns this — it is
             // a session concern, and the intercept above handles the
@@ -394,80 +411,6 @@ impl IntentHandler {
             KernelIntent::RefreshModels => feat::session::intent::handle_refresh_models(state),
             KernelIntent::RescanPromptTemplates => {
                 feat::session::intent::handle_rescan_prompt_templates(state)
-            }
-
-            KernelIntent::ChatEntrySelectNext => {
-                crate::chat_entry_selection::intent::handle_select_next(state)
-            }
-            KernelIntent::ChatEntrySelectPrev => {
-                crate::chat_entry_selection::intent::handle_select_prev(state)
-            }
-            KernelIntent::ChatEntryJumpNextCompaction => {
-                crate::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
-                    entry.is_compaction()
-                })
-            }
-            KernelIntent::ChatEntryJumpPrevCompaction => {
-                crate::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
-                    entry.is_compaction()
-                })
-            }
-            KernelIntent::ChatEntryJumpNextUserEntry => {
-                crate::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
-                    entry.is_user()
-                })
-            }
-            KernelIntent::ChatEntryJumpPrevUserEntry => {
-                crate::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
-                    entry.is_user()
-                })
-            }
-            KernelIntent::ChatEntryJumpNextPinned => {
-                crate::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
-                    entry.is_pinned()
-                })
-            }
-            KernelIntent::ChatEntryJumpPrevPinned => {
-                crate::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
-                    entry.is_pinned()
-                })
-            }
-            KernelIntent::ChatEntryJumpNextSources => {
-                crate::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
-                    entry.is_annotation()
-                })
-            }
-            KernelIntent::ChatEntryJumpPrevSources => {
-                crate::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
-                    entry.is_annotation()
-                })
-            }
-            KernelIntent::ChatEntryPinSelected => {
-                crate::chat_entry_selection::intent::handle_pin_selected(state)
-            }
-            KernelIntent::ExpandToolEntry => {
-                crate::chat_entry_selection::intent::handle_expand_tool_entry(state)
-            }
-            KernelIntent::ToggleIgnoredBlockVisibility => {
-                crate::chat_entry_selection::intent::handle_toggle_ignored_block(state)
-            }
-            KernelIntent::ForkFromEntry => {
-                crate::chat_entry_selection::intent::handle_fork_from_entry(state)
-            }
-            KernelIntent::NewSessionFromEntry => {
-                crate::chat_entry_selection::intent::handle_new_session_from_entry(state, config)
-            }
-            KernelIntent::YankSelectedEntry => {
-                crate::chat_entry_selection::intent::handle_yank_selected(state)
-            }
-            KernelIntent::ChatEntryIgnoreSelected => {
-                crate::chat_entry_selection::intent::handle_ignore_selected(state)
-            }
-            KernelIntent::ChatEntryResetSelected => {
-                crate::chat_entry_selection::intent::handle_reset_selected(state)
-            }
-            KernelIntent::ChatEntryIsolateSelected => {
-                crate::chat_entry_selection::isolate::handle_isolate_selected(state)
             }
 
             KernelIntent::SessionLifecycleSetup {
@@ -827,9 +770,9 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         state.frontend.cancel_stream_prompt = true;
 
-        // When handling a different intent (ScrollUp).
+        // When handling a different intent (NoOp).
         let _result = IntentHandler::handle(
-            &KernelIntent::ScrollUp,
+            &KernelIntent::NoOp,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -868,9 +811,9 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         state.frontend.close_session_prompt = true;
 
-        // When handling a different intent (ScrollUp).
+        // When handling a different intent (NoOp).
         let _result = IntentHandler::handle(
-            &KernelIntent::ScrollUp,
+            &KernelIntent::NoOp,
             &mut state,
             &empty_slices(),
             &empty_routes(),
@@ -964,13 +907,11 @@ mod tests {
         // Activate second session directly (simulating sidebar click).
         state.session.set_active(second_id);
 
-        // When handling an intent (any intent — we use SelectNextEntry as a no-op).
-        // Actually, we need an intent that calls set_active.
-        // The easiest way: call handle with an intent that doesn't change active session,
-        // verify no event. Then manually switch and verify event.
+        // When handling an intent that leaves the active session alone
+        // (NoOp), so no event should be raised.
         state.session.set_active(first_id);
         let result = IntentHandler::handle(
-            &KernelIntent::ChatEntrySelectNext,
+            &KernelIntent::NoOp,
             &mut state,
             &empty_slices(),
             &empty_routes(),

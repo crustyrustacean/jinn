@@ -3,19 +3,19 @@
 //! Validators for chat entry navigation and pinning intents.
 //! Most are infallible; pin selected is fallible.
 
-use crate::common::app_state::AppState;
+use jinn_kernel::AppState;
 use wherror::Error;
 
 #[cfg(test)]
-use crate::protocol::ToolResultStatus;
+use jinn_core_types::ToolResultStatus;
 
-/// Validates the ChatEntrySelectNext intent.
+/// Validates the `select-next` route action.
 pub fn validate_chat_entry_select_next(_state: &AppState) {}
 
-/// Validates the ChatEntrySelectPrev intent.
+/// Validates the `select-prev` route action.
 pub fn validate_chat_entry_select_prev(_state: &AppState) {}
 
-/// Errors from validating a YankSelectedEntry intent.
+/// Errors from validating the `yank-selected` route action.
 #[derive(Debug, Error)]
 #[error(debug)]
 pub enum YankSelectedError {
@@ -23,7 +23,7 @@ pub enum YankSelectedError {
     NoSelection,
 }
 
-/// Validates the YankSelectedEntry intent.
+/// Validates the `yank-selected` route action.
 ///
 /// Returns an error if no entry is currently selected.
 ///
@@ -48,7 +48,7 @@ pub enum ExpandEntryError {
     NotExpandable,
 }
 
-/// Validates the ExpandToolEntry intent.
+/// Validates the `expand-tool-entry` route action.
 ///
 /// Returns an error if no entry is selected or the selected entry is not expandable
 /// (tool call, tool result, compaction, or annotation).
@@ -63,17 +63,17 @@ pub fn validate_expand_tool_entry(state: &AppState) -> Result<(), ExpandEntryErr
         .ok_or(ExpandEntryError::NoSelection)?;
     if !matches!(
         selected.kind,
-        crate::protocol::ChatEntryKind::ToolCall { .. }
-            | crate::protocol::ChatEntryKind::ToolResult { .. }
-            | crate::protocol::ChatEntryKind::Compaction { .. }
-            | crate::protocol::ChatEntryKind::Annotation { .. }
+        jinn_core_types::ChatEntryKind::ToolCall { .. }
+            | jinn_core_types::ChatEntryKind::ToolResult { .. }
+            | jinn_core_types::ChatEntryKind::Compaction { .. }
+            | jinn_core_types::ChatEntryKind::Annotation { .. }
     ) {
         return Err(ExpandEntryError::NotExpandable);
     }
     Ok(())
 }
 
-/// Errors from validating a ForkFromEntry intent.
+/// Errors from validating the `fork-from-entry` route action.
 #[derive(Debug, Error)]
 #[error(debug)]
 pub enum ForkFromEntryError {
@@ -83,7 +83,7 @@ pub enum ForkFromEntryError {
     EmptyHistory,
 }
 
-/// Validates the ForkFromEntry intent.
+/// Validates the `fork-from-entry` route action.
 ///
 /// Returns an error if the history is empty or no entry is selected.
 /// Any entry type can be forked from (unlike pinning, which restricts kinds).
@@ -136,24 +136,24 @@ pub fn validate_new_session_from_entry(state: &AppState) -> Result<(), NewSessio
         .ok_or(NewSessionFromEntryError::NoSelection)?;
     if !matches!(
         entry.kind,
-        crate::protocol::ChatEntryKind::User { .. } | crate::protocol::ChatEntryKind::Assistant(_)
+        jinn_core_types::ChatEntryKind::User { .. } | jinn_core_types::ChatEntryKind::Assistant(_)
     ) {
         return Err(NewSessionFromEntryError::InvalidKind);
     }
     Ok(())
 }
 
-/// Errors from validating a ChatEntryPinSelected intent.
+/// Errors from validating the `pin-selected` route action.
 #[derive(Debug, Error)]
 #[error(debug)]
-pub enum ChatEntryPinSelectedError {
+pub enum PinSelectedError {
     /// No chat entry is currently selected.
     NoSelection,
     /// The chat history is empty.
     EmptyHistory,
 }
 
-/// Validates the ChatEntryPinSelected intent.
+/// Validates the `pin-selected` route action.
 ///
 /// Returns an error if the history is empty or no entry is selected.
 /// All entry types can be pinned - pin overrides context state and forces
@@ -162,18 +162,18 @@ pub enum ChatEntryPinSelectedError {
 /// # Errors
 ///
 /// Returns an error if the history is empty or no entry is selected.
-pub fn validate_chat_entry_pin_selected(state: &AppState) -> Result<(), ChatEntryPinSelectedError> {
+pub fn validate_pin_selected(state: &AppState) -> Result<(), PinSelectedError> {
     if state.active_session().history().is_empty() {
-        return Err(ChatEntryPinSelectedError::EmptyHistory);
+        return Err(PinSelectedError::EmptyHistory);
     }
     let _selected = state
         .active_session()
         .selected_entry()
-        .ok_or(ChatEntryPinSelectedError::NoSelection)?;
+        .ok_or(PinSelectedError::NoSelection)?;
     Ok(())
 }
 
-/// Errors from validating a ChatEntryIgnoreSelected intent.
+/// Errors from validating the `ignore-selected` route action.
 #[derive(Debug, Error)]
 #[error(debug)]
 pub enum ChatEntryIgnoreSelectedError {
@@ -185,7 +185,7 @@ pub enum ChatEntryIgnoreSelectedError {
     IsPinned,
 }
 
-/// Validates the ChatEntryIgnoreSelected intent.
+/// Validates the `ignore-selected` route action.
 ///
 /// Returns an error if the history is empty, no entry is selected,
 /// or the selected entry is pinned. All entry types can be toggled -
@@ -297,8 +297,8 @@ mod fork_from_entry_tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use crate::common::app_state::AppState;
-    use crate::protocol::ChatEntry;
+    use jinn_core_types::ChatEntry;
+    use jinn_kernel::AppState;
 
     use super::*;
 
@@ -356,9 +356,9 @@ mod new_session_from_entry_tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use crate::common::app_state::AppState;
-    use crate::protocol::ChatEntry;
-    use crate::protocol::ToolResultStatus;
+    use jinn_core_types::ChatEntry;
+    use jinn_core_types::ToolResultStatus;
+    use jinn_kernel::AppState;
 
     use super::*;
 
@@ -472,7 +472,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use crate::protocol::ChatEntry;
+    use jinn_core_types::ChatEntry;
 
     use super::*;
 
@@ -486,7 +486,7 @@ mod tests {
         state.active_session_mut().select_next_entry();
 
         // When validating pin selected.
-        let result = validate_chat_entry_pin_selected(&state);
+        let result = validate_pin_selected(&state);
 
         // Then it succeeds (all entry types can be pinned).
         assert!(result.is_ok());
@@ -502,7 +502,7 @@ mod tests {
         state.active_session_mut().select_next_entry();
 
         // When validating pin selected.
-        let result = validate_chat_entry_pin_selected(&state);
+        let result = validate_pin_selected(&state);
 
         // Then it succeeds (all entry types can be pinned).
         assert!(result.is_ok());
@@ -552,9 +552,9 @@ mod tests {
         // Given a state with a selected compaction entry.
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry {
-            id: crate::protocol::ChatEntryId::new(),
-            timing: crate::protocol::EntryTiming::instant_now(),
-            kind: crate::protocol::ChatEntryKind::Compaction {
+            id: jinn_core_types::ChatEntryId::new(),
+            timing: jinn_core_types::EntryTiming::instant_now(),
+            kind: jinn_core_types::ChatEntryKind::Compaction {
                 summary: "summary".to_owned(),
                 tokens_before: 100,
                 tokens_after: 50,
@@ -562,7 +562,7 @@ mod tests {
                 model_used: "test/model".to_owned(),
             },
             pin_position: None,
-            context_override: crate::protocol::ContextOverride::Default,
+            context_override: jinn_core_types::ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
         });
@@ -635,7 +635,7 @@ mod tests {
         state.active_session_mut().select_next_entry();
 
         // When validating pin selected.
-        let result = validate_chat_entry_pin_selected(&state);
+        let result = validate_pin_selected(&state);
 
         // Then it succeeds.
         assert!(result.is_ok());
@@ -647,13 +647,10 @@ mod tests {
         let state = AppState::default();
 
         // When validating pin selected.
-        let result = validate_chat_entry_pin_selected(&state);
+        let result = validate_pin_selected(&state);
 
         // Then it returns EmptyHistory error.
-        assert!(matches!(
-            result,
-            Err(ChatEntryPinSelectedError::EmptyHistory)
-        ));
+        assert!(matches!(result, Err(PinSelectedError::EmptyHistory)));
     }
 
     #[rstest::rstest]
@@ -662,13 +659,10 @@ mod tests {
         let state = AppState::default();
 
         // When validating pin selected.
-        let result = validate_chat_entry_pin_selected(&state);
+        let result = validate_pin_selected(&state);
 
         // Then it returns EmptyHistory error.
-        assert!(matches!(
-            result,
-            Err(ChatEntryPinSelectedError::EmptyHistory)
-        ));
+        assert!(matches!(result, Err(PinSelectedError::EmptyHistory)));
     }
 }
 
@@ -681,8 +675,8 @@ mod yank_selected_tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use crate::common::app_state::AppState;
-    use crate::protocol::ChatEntry;
+    use jinn_core_types::ChatEntry;
+    use jinn_kernel::AppState;
 
     use super::*;
 
@@ -740,8 +734,8 @@ mod ignore_selected_tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use crate::common::app_state::AppState;
-    use crate::protocol::{ChatEntry, PinPosition};
+    use jinn_core_types::{ChatEntry, PinPosition};
+    use jinn_kernel::AppState;
 
     use super::*;
 
@@ -851,9 +845,9 @@ mod ignore_selected_tests {
         // Given a state with a selected compaction entry.
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry {
-            id: crate::protocol::ChatEntryId::new(),
-            timing: crate::protocol::EntryTiming::instant_now(),
-            kind: crate::protocol::ChatEntryKind::Compaction {
+            id: jinn_core_types::ChatEntryId::new(),
+            timing: jinn_core_types::EntryTiming::instant_now(),
+            kind: jinn_core_types::ChatEntryKind::Compaction {
                 summary: "summary".to_owned(),
                 tokens_before: 100,
                 tokens_after: 50,
@@ -861,7 +855,7 @@ mod ignore_selected_tests {
                 model_used: "test/model".to_owned(),
             },
             pin_position: None,
-            context_override: crate::protocol::ContextOverride::Default,
+            context_override: jinn_core_types::ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
         });
@@ -932,7 +926,7 @@ mod ignore_selected_tests {
                 "id",
                 "bash",
                 "output",
-                crate::protocol::ToolResultStatus::Success,
+                jinn_core_types::ToolResultStatus::Success,
             ));
         state.active_session_mut().select_next_entry();
 

@@ -21,12 +21,13 @@
 //! Under the pure-toggle model, the captured target is always `ForcedInclude`
 //! or `ForcedExclude` — never `Default`. Resetting to `Default` is `r`'s job,
 //! which does not use this sweep (it advances the cursor directly).
-use crate::common::app_state::AppState;
-use crate::protocol::ChatEntry;
-use crate::protocol::{ChatEntryId, ContextOverride, IntentResult};
 use jinn_context_assembly_msg::ContextOverrideChanged;
+use jinn_core_types::ChatEntry;
 use jinn_core_types::SessionId;
+use jinn_core_types::{ChatEntryId, ContextOverride};
+use jinn_kernel::AppState;
 use jinn_session_store_msg::PersistSession;
+use jinn_slices::RouteResult;
 
 use super::intent::advance_selection_one;
 
@@ -35,7 +36,7 @@ use super::intent::advance_selection_one;
 /// found or the bottom is reached.
 ///
 /// This replaces the old inline loop in `handle_ignore_selected`.
-pub(crate) fn run_sweep(state: &mut AppState, target: ContextOverride) -> IntentResult {
+pub fn run_sweep(state: &mut AppState, target: ContextOverride) -> RouteResult {
     let session_id = state.active_session().session_id().clone();
     let mut changed_ids: Vec<ChatEntryId> = Vec::new();
 
@@ -43,7 +44,7 @@ pub(crate) fn run_sweep(state: &mut AppState, target: ContextOverride) -> Intent
         let session = state.active_session_mut();
 
         if session.selected_entry_index().is_none() {
-            return IntentResult::empty();
+            return RouteResult::empty();
         }
 
         // Skip pinned entries and collapsed blocks.
@@ -51,7 +52,7 @@ pub(crate) fn run_sweep(state: &mut AppState, target: ContextOverride) -> Intent
         if is_pinned || session.is_selected_collapsed_block() {
             if !advance_selection_one(session) {
                 if changed_ids.is_empty() {
-                    return IntentResult::empty();
+                    return RouteResult::empty();
                 }
                 return finalize_sweep(state, &session_id, changed_ids);
             }
@@ -109,12 +110,12 @@ fn finalize_sweep(
     _state: &mut AppState,
     session_id: &SessionId,
     changed_ids: Vec<ChatEntryId>,
-) -> IntentResult {
+) -> RouteResult {
     let events = changed_ids.into_iter().map(|id| ContextOverrideChanged {
         session_id: session_id.clone(),
         entry_id: id,
     });
-    IntentResult::new_message(PersistSession {
+    RouteResult::new_message(PersistSession {
         session_id: session_id.clone(),
     })
     .with_messages(events)

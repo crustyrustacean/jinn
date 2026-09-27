@@ -13,18 +13,10 @@ pub use jinn_slices::cwd_root::CwdRoot;
 /// The keymap decides the intent; the `IntentHandler` decides what to do with it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum KernelIntent {
-    /// Scroll the chat log up.
-    ScrollUp,
-    /// Scroll the chat log down.
-    ScrollDown,
     /// Mouse scroll up.
     MouseScrollUp,
     /// Mouse scroll down.
     MouseScrollDown,
-    /// Scroll to the very top.
-    ScrollToTop,
-    /// Scroll to the very bottom.
-    ScrollToBottom,
     /// Open the input in an external editor.
     EditInput,
 
@@ -55,54 +47,6 @@ pub enum KernelIntent {
     RefreshModels,
     /// Rescan the prompt templates directory.
     RescanPromptTemplates,
-    /// Open the session lifecycle picker from the sidebar sessions section.
-
-    /// Select the next chat entry.
-    ChatEntrySelectNext,
-    /// Select the previous chat entry.
-    ChatEntrySelectPrev,
-    /// Jump the cursor to the next (newer) compaction summary entry.
-    ChatEntryJumpNextCompaction,
-    /// Jump the cursor to the previous (older) compaction summary entry.
-    ChatEntryJumpPrevCompaction,
-    /// Jump the cursor to the next (newer) user message.
-    ChatEntryJumpNextUserEntry,
-    /// Jump the cursor to the previous (older) user message.
-    ChatEntryJumpPrevUserEntry,
-    /// Jump the cursor to the next (newer) pinned entry.
-    ChatEntryJumpNextPinned,
-    /// Jump the cursor to the previous (older) pinned entry.
-    ChatEntryJumpPrevPinned,
-    /// Jump the cursor to the next (newer) Sources (annotation) entry.
-    ChatEntryJumpNextSources,
-    /// Jump the cursor to the previous (older) Sources (annotation) entry.
-    ChatEntryJumpPrevSources,
-    /// Pin the currently selected chat entry.
-    ChatEntryPinSelected,
-    /// Toggle expand/collapse of the selected tool entry (tool call, tool result, or annotation).
-    ExpandToolEntry,
-    /// Toggle visibility of the audit popup for the currently selected chat entry.
-    ToggleAuditPopup,
-    /// Toggle visibility of the ignored entry block at the cursor.
-    ToggleIgnoredBlockVisibility,
-    /// Fork the session at the currently selected chat entry.
-    ForkFromEntry,
-    /// Create a new empty session seeded with the selected entry's text.
-    ///
-    /// Unlike [`ForkFromEntry`], the new session carries no inherited history;
-    /// only the selected entry is copied in (kind preserved) as the sole
-    /// history entry. Restricted to User and Assistant entries.
-    NewSessionFromEntry,
-    /// Yank (copy) the currently selected chat entry to the system clipboard.
-    YankSelectedEntry,
-    /// Toggle the `ignored` flag on the currently selected chat entry.
-    ChatEntryIgnoreSelected,
-    /// Reset the currently selected chat entry's context override to `Default`.
-    ChatEntryResetSelected,
-    /// Isolate the selected chat entry in context: force-include it and
-    /// force-exclude all other non-pinned entries.
-    ChatEntryIsolateSelected,
-
     /// Run a lifecycle setup command to create a new session.
     SessionLifecycleSetup {
         /// The lifecycle name (e.g., "fossil branch").
@@ -169,12 +113,8 @@ impl trouper::envelope::PayloadValue for KernelIntent {
 impl std::fmt::Display for KernelIntent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            KernelIntent::ScrollUp => write!(f, "scroll up"),
-            KernelIntent::ScrollDown => write!(f, "scroll down"),
             KernelIntent::MouseScrollUp => write!(f, "mouse scroll up"),
             KernelIntent::MouseScrollDown => write!(f, "mouse scroll down"),
-            KernelIntent::ScrollToTop => write!(f, "scroll to top"),
-            KernelIntent::ScrollToBottom => write!(f, "scroll to bottom"),
             KernelIntent::EditInput => write!(f, "edit in $EDITOR"),
             KernelIntent::Quit => write!(f, "quit"),
             KernelIntent::Interrupt { .. } => write!(f, "interrupt"),
@@ -185,31 +125,6 @@ impl std::fmt::Display for KernelIntent {
             KernelIntent::SessionNew => write!(f, "new session"),
             KernelIntent::RefreshModels => write!(f, "refresh models"),
             KernelIntent::RescanPromptTemplates => write!(f, "rescan prompt templates"),
-
-            KernelIntent::ChatEntrySelectNext => write!(f, "select next entry"),
-            KernelIntent::ChatEntrySelectPrev => write!(f, "select prev entry"),
-            KernelIntent::ChatEntryJumpNextCompaction => write!(f, "next compaction"),
-            KernelIntent::ChatEntryJumpPrevCompaction => write!(f, "previous compaction"),
-            KernelIntent::ChatEntryJumpNextUserEntry => write!(f, "next user message"),
-            KernelIntent::ChatEntryJumpPrevUserEntry => write!(f, "previous user message"),
-            KernelIntent::ChatEntryJumpNextPinned => write!(f, "next pinned entry"),
-            KernelIntent::ChatEntryJumpPrevPinned => write!(f, "previous pinned entry"),
-            KernelIntent::ChatEntryJumpNextSources => write!(f, "next sources entry"),
-            KernelIntent::ChatEntryJumpPrevSources => write!(f, "previous sources entry"),
-            KernelIntent::ChatEntryPinSelected => write!(f, "pin entry"),
-            KernelIntent::ExpandToolEntry => write!(f, "expand tool entry"),
-            KernelIntent::ToggleAuditPopup => write!(f, "toggle audit popup"),
-            KernelIntent::ToggleIgnoredBlockVisibility => {
-                write!(f, "toggle ignored block visibility")
-            }
-            KernelIntent::ForkFromEntry => write!(f, "fork from entry"),
-            KernelIntent::NewSessionFromEntry => write!(f, "new session from entry"),
-            KernelIntent::YankSelectedEntry => write!(f, "yank entry"),
-            KernelIntent::ChatEntryIgnoreSelected => write!(f, "toggle entry in/out of context"),
-            KernelIntent::ChatEntryResetSelected => write!(f, "reset entry to default context"),
-            KernelIntent::ChatEntryIsolateSelected => {
-                write!(f, "isolate selected entry in context")
-            }
 
             KernelIntent::SessionLifecycleSetup { lifecycle_name, .. } => {
                 write!(f, "session lifecycle setup: {lifecycle_name}")

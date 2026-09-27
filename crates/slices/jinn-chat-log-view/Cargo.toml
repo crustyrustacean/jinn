@@ -14,6 +14,10 @@ jinn-chat-log-view-msg = { workspace = true }
 # RenderCtx and publishes layout results onto the bus. The kernel depends
 # on this crate for nothing but the -msg edge, so this direction is acyclic.
 jinn-kernel = { workspace = true }
+# The moved entry actions publish context-override changes and the isolate
+# verb folds a tool loop via the session history editor.
+jinn-context-assembly-msg = { workspace = true }
+jinn-session-history = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-skills-msg = { workspace = true }
