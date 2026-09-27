@@ -52,8 +52,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         std::fs::create_dir(dir.path().join(".git")).expect("create .git");
 
+        // When checking the directory for VCS markers.
+        let is_root = is_vcs_root(dir.path());
+
         // Then is_vcs_root reports true.
-        assert!(is_vcs_root(dir.path()));
+        assert!(is_root);
     }
 
     #[rstest::rstest]
@@ -62,8 +65,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         std::fs::create_dir(dir.path().join(".hg")).expect("create .hg");
 
+        // When checking the directory for VCS markers.
+        let is_root = is_vcs_root(dir.path());
+
         // Then is_vcs_root reports true.
-        assert!(is_vcs_root(dir.path()));
+        assert!(is_root);
     }
 
     #[rstest::rstest]
@@ -73,8 +79,11 @@ mod tests {
         std::fs::write(dir.path().join(".fslckout"), b"fossil checkout db")
             .expect("create .fslckout");
 
+        // When checking the directory for VCS markers.
+        let is_root = is_vcs_root(dir.path());
+
         // Then is_vcs_root reports true.
-        assert!(is_vcs_root(dir.path()));
+        assert!(is_root);
     }
 
     #[rstest::rstest]
@@ -83,8 +92,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         std::fs::write(dir.path().join(".fossil"), b"fossil repo db").expect("create .fossil");
 
+        // When checking the directory for VCS markers.
+        let is_root = is_vcs_root(dir.path());
+
         // Then is_vcs_root reports true.
-        assert!(is_vcs_root(dir.path()));
+        assert!(is_root);
     }
 
     #[rstest::rstest]
@@ -93,8 +105,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         std::fs::create_dir(dir.path().join(".jj")).expect("create .jj");
 
+        // When checking the directory for VCS markers.
+        let is_root = is_vcs_root(dir.path());
+
         // Then is_vcs_root reports true.
-        assert!(is_vcs_root(dir.path()));
+        assert!(is_root);
     }
 
     #[rstest::rstest]
@@ -103,8 +118,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         std::fs::write(dir.path().join("README.md"), "hi").expect("write file");
 
+        // When checking the directory for VCS markers.
+        let is_root = is_vcs_root(dir.path());
+
         // Then is_vcs_root reports false.
-        assert!(!is_vcs_root(dir.path()));
+        assert!(!is_root);
     }
 
     #[rstest::rstest]
@@ -113,8 +131,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         let missing = dir.path().join("does-not-exist");
 
+        // When checking the missing path for VCS markers.
+        let is_root = is_vcs_root(&missing);
+
         // Then is_vcs_root reports false (no panic).
-        assert!(!is_vcs_root(&missing));
+        assert!(!is_root);
     }
 
     #[rstest::rstest]
@@ -124,7 +145,10 @@ mod tests {
         std::fs::create_dir(dir.path().join(".git")).expect("create .git");
         std::fs::create_dir(dir.path().join(".hg")).expect("create .hg");
 
+        // When checking the directory for VCS markers.
+        let is_root = is_vcs_root(dir.path());
+
         // Then is_vcs_root reports true (presence of any marker suffices).
-        assert!(is_vcs_root(dir.path()));
+        assert!(is_root);
     }
 }

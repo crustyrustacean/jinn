@@ -26,14 +26,17 @@ mod tests {
     #[rstest::rstest]
     fn request_retry_to_provider_config_uses_actual_values_not_defaults() {
         // If the conversion returned Default::default(), all durations would be zero.
+        // Given a retry policy with non-default values.
         let config = RequestRetryConfig {
             max_retries: 3,
             base_delay_secs: 5,
             max_delay_secs: 120,
         };
 
+        // When converting it to the provider retry config.
         let retry = request_retry_to_provider_config(&config);
 
+        // Then the actual values carry over rather than defaults.
         assert_eq!(retry.max_retries, 3);
         assert_eq!(retry.base_delay, std::time::Duration::from_secs(5));
         assert_eq!(retry.max_delay, std::time::Duration::from_mins(2));

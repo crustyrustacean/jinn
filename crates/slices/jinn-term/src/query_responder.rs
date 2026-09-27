@@ -233,6 +233,7 @@ mod tests {
     #[rstest::rstest]
     fn query_embedded_in_output_still_gets_answered() {
         // Given program output that styles, queries, then continues.
+        // When scanning for queries.
         let reply = respond_to_queries(b"\x1b[1m\x1b[c\x1b[0m", (0, 0));
 
         // Then the DA1 reply is synthesized.
@@ -242,6 +243,7 @@ mod tests {
     #[rstest::rstest]
     fn truncated_escape_at_chunk_end_is_ignored() {
         // Given a chunk ending mid-escape (chunk boundary split).
+        // When scanning for queries.
         let reply = respond_to_queries(b"\x1b[1", (0, 0));
 
         // Then nothing is synthesized and nothing panics.

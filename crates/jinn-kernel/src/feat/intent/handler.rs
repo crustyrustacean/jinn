@@ -630,6 +630,128 @@ mod tests {
         ))
     }
 
+    /// A state holding a child session linked from the active one, a live
+    /// terminal for the parent, and the term view overlay pushed on top of
+    /// a `Normal` base — i.e. everything the switch guard reacts to.
+    fn state_with_linked_child_and_terminal_overlay(
+        entry_id: &str,
+    ) -> (AppState, jinn_core_types::SessionId) {
+        use crate::protocol::ChatEntryKind;
+        use jinn_core_types::SessionId;
+        use jinn_session_state::ChatSessionState;
+        use jinn_tools_msg::TASK_TOOL_NAME;
+
+        let mut state = AppState::default_with_scope_focus();
+        let first_id = state.session.active_session_id().clone();
+        let child_id = SessionId::new();
+        let mut child = ChatSessionState::new_child(&first_id, false);
+        child.set_session_id(child_id.clone());
+        state.session.insert(child);
+        let mut entry = ChatEntry::tool_call(entry_id, TASK_TOOL_NAME, "{}");
+        let ChatEntryKind::ToolCall { child_session, .. } = &mut entry.kind else {
+            panic!("expected ToolCall kind");
+        };
+        *child_session = Some(child_id.clone());
+        state.active_session_mut().push_entry(entry);
+        state.active_session_mut().select_prev_entry();
+
+        state
+            .term_tabs()
+            .expect("term tabs cell")
+            .update(|t| t.set_live(&first_id, true));
+        // The real overlay opens on top of the base scope
+        // (clear_overlays + push); the guard clears overlays, so the
+        // overlay must not be the base itself.
+        state.frontend.scope_swap_base(FocusScope::Normal);
+        state
+            .frontend
+            .scope_push(FocusScope::Dynamic(jinn_term_msg::view_scope()));
+
+        (state, child_id)
+    }
+
+    /// A state whose only session is live in the terminal, with the
+    /// Sessions sidebar section selected and the base swapped to it.
+    fn state_with_live_terminal_session_selected() -> (AppState, jinn_core_types::SessionId) {
+        use jinn_session_state::ChatSessionState;
+
+        let mut state = AppState::default_with_scope_focus();
+        let second = ChatSessionState::new();
+        let second_id = second.session_id().clone();
+        state.session.insert(second);
+        state
+            .term_tabs()
+            .expect("term tabs cell")
+            .update(|t| t.set_live(&second_id, true));
+        state
+            .frontend
+            .scope_swap_base(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_index = Some(0));
+
+        (state, second_id)
+    }
+
+    /// A dynamic intent plus the route table that activates `second_id` and
+    /// then toggles the terminal view overlay for the newly active session.
+    fn activate_and_toggle_overlay_routes(
+        second_id: jinn_core_types::SessionId,
+    ) -> (KernelIntent, jinn_slices::route::KeyRoutes) {
+        let intent = KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
+            jinn_term_msg::view_scope(),
+            "toggle-for-selected",
+            "toggle terminal",
+        ));
+        let routes = jinn_slices::route::KeyRoutes::new();
+        routes.attach(jinn_slices::route::RouteRow {
+            route_id: jinn_slices::route::RouteId::new("term:toggle-for-selected"),
+            scope: jinn_term_msg::view_scope(),
+            key: "T",
+            category: "general",
+            site: jinn_slices::route::BindSite::OwnScope,
+            feature: "term",
+            outcome: jinn_slices::route::RouteOutcome::Action {
+                action: "toggle-for-selected",
+                display: "toggle terminal",
+                run: jinn_slices::route::ActionFn::new(move |ctx| {
+                    let Some(state) = ctx
+                        .state
+                        .as_any_mut()
+                        .and_then(|a| a.downcast_mut::<AppState>())
+                    else {
+                        return IntentResult::empty();
+                    };
+                    // Inline term-slice semantics: activate the target
+                    // session, then toggle the overlay for the active one.
+                    if state.frontend.sidebar_section()
+                        == Some(jinn_sidebar_msg::SidebarSectionId::Sessions)
+                    {
+                        state.session.set_active(second_id.clone());
+                    }
+                    let chat = state.session.active_session_id().clone();
+                    let live = state
+                        .term_tabs()
+                        .is_some_and(|cell| cell.read().live_terms.contains(&chat));
+                    if !live {
+                        return IntentResult::empty();
+                    }
+                    if state.frontend.scope() == FocusScope::Dynamic(jinn_term_msg::view_scope()) {
+                        state.frontend.scope_pop();
+                    } else {
+                        state.frontend.scope_clear_overlays();
+                        state
+                            .frontend
+                            .scope_push(FocusScope::Dynamic(jinn_term_msg::view_scope()));
+                    }
+                    IntentResult::empty()
+                }),
+            },
+        });
+
+        (intent, routes)
+    }
+
     /// Route table whose single row requests `signal` for `scope`, plus a
     /// scope-enter hook for that same scope that bumps `enters`.
     fn transitioning_routes(
@@ -1035,7 +1157,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn switch_tab_cycles_through_registered_tabs() {
+    fn switch_tab_activates_the_registered_tab() {
         // Given a slices registry with one dynamic tab registered.
         let slices = jinn_slices::Slices::new();
         let tab = jinn_slices::SliceScopeId::new("dashboard", "tab");
@@ -1045,7 +1167,7 @@ mod tests {
         );
         let mut state = AppState::default_with_scope_focus();
 
-        // When switching tabs twice.
+        // When switching tabs.
         IntentHandler::handle(
             &KernelIntent::SwitchTab,
             &mut state,
@@ -1053,11 +1175,27 @@ mod tests {
             &empty_routes(),
             jinn_slices::empty_config_layer(),
         );
+
         // Then the base is the registered tab.
         assert_eq!(
             state.frontend.scope_base(),
             FocusScope::Dynamic(tab.clone())
         );
+    }
+
+    #[rstest::rstest]
+    fn switch_tab_wraps_to_normal_after_the_last_tab() {
+        // Given a state whose base is the only registered tab.
+        let slices = jinn_slices::Slices::new();
+        let tab = jinn_slices::SliceScopeId::new("dashboard", "tab");
+        slices.register_tab_scope(
+            tab.clone(),
+            jinn_slices::SlotKey::builtin("dashboard", "tab"),
+        );
+        let mut state = AppState::default_with_scope_focus();
+        state
+            .frontend
+            .scope_swap_base(FocusScope::Dynamic(tab.clone()));
 
         // When switching tabs again.
         IntentHandler::handle(
@@ -1067,6 +1205,7 @@ mod tests {
             &empty_routes(),
             jinn_slices::empty_config_layer(),
         );
+
         // Then the cycle wraps to Normal.
         assert_eq!(state.frontend.scope_base(), FocusScope::Normal);
     }
@@ -1100,38 +1239,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn active_session_switch_closes_terminal_overlay() {
-        // Given a state with two sessions, the overlay open over the first.
-        use crate::protocol::ChatEntryKind;
-        use jinn_core_types::SessionId;
-        use jinn_session_state::ChatSessionState;
-        use jinn_tools_msg::TASK_TOOL_NAME;
-        let mut state = AppState::default_with_scope_focus();
+    fn active_session_switch_activates_the_child_session() {
+        // Given a state with two sessions and the overlay open over the first.
         let slices = status_bar_slices();
-        let first_id = state.session.active_session_id().clone();
-        let child_id = SessionId::new();
-        let mut child = ChatSessionState::new_child(&first_id, false);
-        child.set_session_id(child_id.clone());
-        state.session.insert(child);
-        let mut entry = ChatEntry::tool_call("tc_guard_test", TASK_TOOL_NAME, "{}");
-        let ChatEntryKind::ToolCall { child_session, .. } = &mut entry.kind else {
-            panic!("expected ToolCall kind");
-        };
-        *child_session = Some(child_id.clone());
-        state.active_session_mut().push_entry(entry);
-        state.active_session_mut().select_prev_entry();
-
-        state
-            .term_tabs()
-            .expect("term tabs cell")
-            .update(|t| t.set_live(&first_id, true));
-        // The real overlay opens on top of the base scope
-        // (clear_overlays + push); the guard clears overlays, so the
-        // overlay must not be the base itself.
-        state.frontend.scope_swap_base(FocusScope::Normal);
-        state
-            .frontend
-            .scope_push(FocusScope::Dynamic(jinn_term_msg::view_scope()));
+        let (mut state, child_id) = state_with_linked_child_and_terminal_overlay("tc_guard_test");
 
         // When a route-owned action switches the active session.
         IntentHandler::handle(
@@ -1148,13 +1259,47 @@ mod tests {
             &child_id,
             "the child session must be activated"
         );
-        // And the previously-open terminal overlay did not survive the switch.
+    }
+
+    #[rstest::rstest]
+    fn active_session_switch_closes_terminal_overlay() {
+        // Given a state with two sessions and the overlay open over the first.
+        let slices = status_bar_slices();
+        let (mut state, child_id) = state_with_linked_child_and_terminal_overlay("tc_guard_test");
+
+        // When a route-owned action switches the active session.
+        IntentHandler::handle(
+            &activate_child_intent(),
+            &mut state,
+            &slices,
+            &activate_child_route(child_id.clone()),
+            jinn_slices::empty_config_layer(),
+        );
+
+        // Then the previously-open terminal overlay did not survive the switch.
         assert_ne!(
             state.frontend.scope(),
             FocusScope::Dynamic(jinn_term_msg::view_scope()),
             "a switch under an open overlay must not carry it to the new session"
         );
-        // And the hint explains the abrupt close.
+    }
+
+    #[rstest::rstest]
+    fn active_session_switch_hints_that_the_overlay_closed() {
+        // Given a state with two sessions and the overlay open over the first.
+        let slices = status_bar_slices();
+        let (mut state, child_id) = state_with_linked_child_and_terminal_overlay("tc_guard_test");
+
+        // When a route-owned action switches the active session.
+        IntentHandler::handle(
+            &activate_child_intent(),
+            &mut state,
+            &slices,
+            &activate_child_route(child_id.clone()),
+            jinn_slices::empty_config_layer(),
+        );
+
+        // Then the hint explains the abrupt close.
         let hint = status_hint(&slices);
         assert!(
             hint.as_deref().is_some_and(|h| h.contains("closed")),
@@ -1228,74 +1373,11 @@ mod tests {
     fn overlay_opened_by_the_switch_intent_survives_the_guard() {
         // Given a state with two sessions where the *second* holds the live
         // terminal, and no overlay open yet.
-        use jinn_session_state::ChatSessionState;
-        let mut state = AppState::default_with_scope_focus();
-        let second = ChatSessionState::new();
-        let second_id = second.session_id().clone();
-        state.session.insert(second);
-        state
-            .term_tabs()
-            .expect("term tabs cell")
-            .update(|t| t.set_live(&second_id, true));
-        state
-            .frontend
-            .scope_swap_base(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-        state
-            .frontend
-            .update_sections(|s| s.sessions.selected_index = Some(0));
+        let (mut state, second_id) = state_with_live_terminal_session_selected();
 
         // When the sidebar toggle activates the session and opens the overlay
         // in the same intent.
-        let intent = KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
-            jinn_term_msg::view_scope(),
-            "toggle-for-selected",
-            "toggle terminal",
-        ));
-        let routes = jinn_slices::route::KeyRoutes::new();
-        routes.attach(jinn_slices::route::RouteRow {
-            route_id: jinn_slices::route::RouteId::new("term:toggle-for-selected"),
-            scope: jinn_term_msg::view_scope(),
-            key: "T",
-            category: "general",
-            site: jinn_slices::route::BindSite::OwnScope,
-            feature: "term",
-            outcome: jinn_slices::route::RouteOutcome::Action {
-                action: "toggle-for-selected",
-                display: "toggle terminal",
-                run: jinn_slices::route::ActionFn::new(move |ctx| {
-                    let Some(state) = ctx
-                        .state
-                        .as_any_mut()
-                        .and_then(|a| a.downcast_mut::<AppState>())
-                    else {
-                        return crate::protocol::IntentResult::empty();
-                    };
-                    // Inline term-slice semantics: activate the target
-                    // session, then toggle the overlay for the active one.
-                    if state.frontend.sidebar_section()
-                        == Some(jinn_sidebar_msg::SidebarSectionId::Sessions)
-                    {
-                        state.session.set_active(second_id.clone());
-                    }
-                    let chat = state.session.active_session_id().clone();
-                    let live = state
-                        .term_tabs()
-                        .is_some_and(|cell| cell.read().live_terms.contains(&chat));
-                    if !live {
-                        return crate::protocol::IntentResult::empty();
-                    }
-                    if state.frontend.scope() == FocusScope::Dynamic(jinn_term_msg::view_scope()) {
-                        state.frontend.scope_pop();
-                    } else {
-                        state.frontend.scope_clear_overlays();
-                        state
-                            .frontend
-                            .scope_push(FocusScope::Dynamic(jinn_term_msg::view_scope()));
-                    }
-                    crate::protocol::IntentResult::empty()
-                }),
-            },
-        });
+        let (intent, routes) = activate_and_toggle_overlay_routes(second_id);
         IntentHandler::handle(
             &intent,
             &mut state,

@@ -380,6 +380,7 @@ mod tests {
         std::fs::write(dir.path().join("notes.txt"), "not a template").expect("write txt");
         std::fs::write(dir.path().join("data.json"), "{}").expect("write json");
 
+        // When scanning the directory.
         let mut templates = Vec::new();
         let mut seen_names = std::collections::HashSet::new();
         PromptTemplateStore::scan_dir(dir.path(), &mut templates, &mut seen_names).expect("scan");
@@ -397,6 +398,7 @@ mod tests {
         write_template(dir.path(), "visible.md", "visible", "Should load");
         write_template(dir.path(), "_hidden.md", "_hidden", "Should skip");
 
+        // When scanning the directory.
         let mut templates = Vec::new();
         let mut seen_names = std::collections::HashSet::new();
         PromptTemplateStore::scan_dir(dir.path(), &mut templates, &mut seen_names).expect("scan");

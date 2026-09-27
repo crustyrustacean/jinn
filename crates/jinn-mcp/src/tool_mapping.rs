@@ -124,6 +124,7 @@ mod tests {
         let alpha = namespaced_tool_name("alpha", "create_scene");
         let beta = namespaced_tool_name("beta", "create_scene");
 
+        // When comparing the two namespaced names.
         // Then the namespaced names differ.
         assert_ne!(alpha, beta);
         // And each strips back to the bare tool name under its own server.

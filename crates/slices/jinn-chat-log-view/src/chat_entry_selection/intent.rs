@@ -2255,7 +2255,7 @@ mod tests {
             .iter()
             .skip(2)
             .take(10)
-            .map(|e| e.context_override())
+            .map(jinn_core_types::ChatEntry::context_override)
             .collect();
 
         // Then each is skipped untouched, still ForcedExclude.

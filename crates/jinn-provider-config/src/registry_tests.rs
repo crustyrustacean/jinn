@@ -199,6 +199,7 @@ fn is_available_returns_true_when_key_resolved() {
     api_keys.insert("OPENROUTER_API_KEY".to_owned(), "sk-test-value".to_owned());
 
     // When checking availability.
+    // Then the provider is available.
     assert!(registry.is_available(&ProviderId::new("openrouter/gpt-4".to_owned()), &api_keys));
 }
 
@@ -210,6 +211,7 @@ fn is_available_returns_false_when_key_missing() {
     let api_keys = ApiKeys::new();
 
     // When checking availability.
+    // Then the provider is unavailable.
     assert!(!registry.is_available(&ProviderId::new("openrouter/gpt-4".to_owned()), &api_keys));
 }
 
@@ -266,6 +268,7 @@ fn resolve_alias_returns_none_for_unknown() {
     let registry = ProviderRegistry::from_config(config).expect("registry");
 
     // When resolving a nonexistent alias.
+    // Then nothing is resolved.
     assert!(registry.resolve_alias("missing").is_none());
 }
 
@@ -340,6 +343,7 @@ fn default_provider_id_returns_none_when_unset() {
     let registry = ProviderRegistry::from_config(config).expect("registry");
 
     // When asking for the default.
+    // Then there is no default.
     assert!(registry.default_provider_id().is_none());
 }
 

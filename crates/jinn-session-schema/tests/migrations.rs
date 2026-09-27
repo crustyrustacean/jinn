@@ -21,38 +21,21 @@ fn fresh_database_has_all_tables_and_v21() {
         .map(|r| r.expect("row"))
         .collect();
 
-    assert!(
-        tables.contains(&"sessions".to_owned()),
-        "sessions table missing: {tables:?}"
-    );
-    assert!(
-        tables.contains(&"entries".to_owned()),
-        "entries table missing: {tables:?}"
-    );
-    assert!(
-        tables.contains(&"session_history".to_owned()),
-        "session_history table missing: {tables:?}",
-    );
-    assert!(
-        tables.contains(&"token_ledger".to_owned()),
-        "token_ledger table missing: {tables:?}",
-    );
-    assert!(
-        tables.contains(&"discord_thread".to_owned()),
-        "discord_thread table missing: {tables:?}"
-    );
-    assert!(
-        tables.contains(&"entry_blobs".to_owned()),
-        "entry_blobs table missing: {tables:?}"
-    );
-    assert!(
-        tables.contains(&"session_fts".to_owned()),
-        "session_fts table missing: {tables:?}"
-    );
-    assert!(
-        tables.contains(&"fts_dirty".to_owned()),
-        "fts_dirty table missing: {tables:?}"
-    );
+    for table in [
+        "sessions",
+        "entries",
+        "session_history",
+        "token_ledger",
+        "discord_thread",
+        "entry_blobs",
+        "session_fts",
+        "fts_dirty",
+    ] {
+        assert!(
+            tables.contains(&table.to_owned()),
+            "{table} table missing: {tables:?}"
+        );
+    }
 
     // And the highest recorded migration version is the published latest.
     let version: i64 = conn
@@ -68,14 +51,12 @@ fn fresh_database_has_all_tables_and_v21() {
         .expect("query")
         .map(|r| r.expect("row"))
         .collect();
-    assert!(
-        columns.contains(&"prompt_tokens".to_owned()),
-        "token_ledger.prompt_tokens missing: {columns:?}"
-    );
-    assert!(
-        columns.contains(&"cached_tokens".to_owned()),
-        "token_ledger.cached_tokens missing: {columns:?}"
-    );
+    for column in ["prompt_tokens", "cached_tokens"] {
+        assert!(
+            columns.contains(&column.to_owned()),
+            "token_ledger.{column} missing: {columns:?}"
+        );
+    }
 }
 
 /// Re-running `run_migrations` on a fully-migrated database is a no-op: the
@@ -83,6 +64,7 @@ fn fresh_database_has_all_tables_and_v21() {
 #[rstest::rstest]
 #[test]
 fn re_running_migrations_is_noop() {
+    // Given a fully-migrated in-memory database with a sentinel row.
     let mut conn = rusqlite::Connection::open_in_memory().expect("open in-memory db");
     run_migrations(&mut conn).expect("first run");
 
@@ -93,8 +75,10 @@ fn re_running_migrations_is_noop() {
     )
     .expect("insert sentinel");
 
+    // When running the migrations again.
     run_migrations(&mut conn).expect("second run");
 
+    // Then no migration re-applied and the sentinel row survived.
     let count: i64 = conn
         .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
         .expect("count");
@@ -105,9 +89,11 @@ fn re_running_migrations_is_noop() {
 #[rstest::rstest]
 #[test]
 fn sessions_has_nine_authoritative_columns() {
+    // Given a fully-migrated in-memory database.
     let mut conn = rusqlite::Connection::open_in_memory().expect("open in-memory db");
     run_migrations(&mut conn).expect("run migrations");
 
+    // When reading the `sessions` column list.
     let columns: Vec<String> = conn
         .prepare("PRAGMA table_info(sessions)")
         .expect("prepare")
@@ -116,6 +102,7 @@ fn sessions_has_nine_authoritative_columns() {
         .map(|r| r.expect("row"))
         .collect();
 
+    // Then it is exactly the nine authoritative columns.
     assert_eq!(
         columns,
         vec![
@@ -136,19 +123,11 @@ fn sessions_has_nine_authoritative_columns() {
 /// v23 strips the legacy `s-` prefix from every persisted session-id
 /// location: the five SQL columns plus the `session_id` and
 /// `parent_session` keys inside the `sessions.metadata` JSON blob.
-#[rstest::rstest]
-#[test]
 #[cfg(feature = "testing")]
-fn v23_strips_s_prefix_from_all_session_id_locations() {
-    // Given a fresh DB migrated only to v22, seeded with s-prefixed IDs
-    // across all five SQL columns and a prefixed metadata blob.
-    use jinn_session_schema::testing::{apply_migrations_inner, bootstrap_tracking_table};
-
-    let mut conn = rusqlite::Connection::open_in_memory().expect("open db");
-    bootstrap_tracking_table(&mut conn).expect("bootstrap");
-    apply_migrations_inner(&mut conn, 22);
-
-    // A valid UUID v4 we will prefix in the seeded rows.
+/// A v22 database seeded with `s-`-prefixed session ids in every SQL column
+/// the migration touches, plus a metadata blob carrying the prefixed ids.
+/// The child's uuid, returned for the post-migration assertions.
+fn seed_v22_with_prefixed_ids(conn: &mut rusqlite::Connection) -> &'static str {
     const CHILD: &str = "0195a3b2-4f8c-7d2e-8a1b-5c3d2e1f0a0b";
     const PARENT: &str = "0195a3b2-4f8c-7d2e-0000-000000000001";
 
@@ -173,60 +152,83 @@ fn v23_strips_s_prefix_from_all_session_id_locations() {
     .expect("insert parent session");
 
     // session_history, token_ledger, discord_thread with prefixed child id.
+    let child = format!("s-{CHILD}");
     conn.execute(
         "INSERT INTO entries (id, timing, kind) VALUES ('e-1', '2024-01-01T00:00:00Z', '{}')",
         [],
     )
     .expect("insert entry");
-    conn.execute(
-        "INSERT INTO session_history (session_id, entry_id, ordinal) VALUES (?, 'e-1', 0)",
-        [format!("s-{CHILD}")],
-    )
-    .expect("insert session_history");
-    conn.execute(
-        "INSERT INTO token_ledger (session_id, timestamp, tokens_sent, tokens_received) VALUES (?, '2024-01-01T00:00:00Z', 1, 1)",
-        [format!("s-{CHILD}")],
-    )
-    .expect("insert token_ledger");
-    conn.execute(
-        "INSERT INTO discord_thread (thread_id, session_id, guild_id, created_at) VALUES ('t-1', ?, NULL, 0)",
-        [format!("s-{CHILD}")],
-    )
-    .expect("insert discord_thread");
+    for sql in [
+        "INSERT INTO session_history (session_id, entry_id, ordinal) VALUES (?1, 'e-1', 0)",
+        "INSERT INTO token_ledger (session_id, timestamp, tokens_sent, tokens_received) VALUES (?1, '2024-01-01T00:00:00Z', 1, 1)",
+        "INSERT INTO discord_thread (thread_id, session_id, guild_id, created_at) VALUES ('t-1', ?1, NULL, 0)",
+    ] {
+        conn.execute(sql, [&child]).expect("insert child-id row");
+    }
+    CHILD
+}
+
+/// The parent session's uuid, matching `seed_v22_with_prefixed_ids`.
+const V23_PARENT: &str = "0195a3b2-4f8c-7d2e-0000-000000000001";
+
+/// Every SQL column v23 rewrites, as `(label, query, expected bare id)`.
+fn v23_id_locations<'a>(
+    child: &'a str,
+    parent: &'a str,
+) -> [(&'static str, &'static str, &'a str); 5] {
+    [
+        (
+            "sessions.id",
+            "SELECT id FROM sessions WHERE title = 'child'",
+            child,
+        ),
+        (
+            "sessions.parent_session",
+            "SELECT parent_session FROM sessions WHERE title = 'child'",
+            parent,
+        ),
+        (
+            "session_history.session_id",
+            "SELECT session_id FROM session_history",
+            child,
+        ),
+        (
+            "token_ledger.session_id",
+            "SELECT session_id FROM token_ledger",
+            child,
+        ),
+        (
+            "discord_thread.session_id",
+            "SELECT session_id FROM discord_thread",
+            child,
+        ),
+    ]
+}
+
+#[rstest::rstest]
+#[test]
+#[cfg(feature = "testing")]
+fn v23_strips_s_prefix_from_all_session_id_locations() {
+    // Given a fresh DB migrated only to v22, seeded with s-prefixed IDs
+    // across all five SQL columns and a prefixed metadata blob.
+    use jinn_session_schema::testing::{apply_migrations_inner, bootstrap_tracking_table};
+
+    let mut conn = rusqlite::Connection::open_in_memory().expect("open db");
+    bootstrap_tracking_table(&mut conn).expect("bootstrap");
+    apply_migrations_inner(&mut conn, 22);
+
+    // And rows seeded with `s-`-prefixed ids in every location.
+    let child = seed_v22_with_prefixed_ids(&mut conn);
+    const PARENT: &str = V23_PARENT;
+
     // When running migrations (production path: toggles FK off, runs v23, re-enables + checks).
     run_migrations(&mut conn).expect("run pending migrations");
 
     // Then the five SQL columns are bare UUIDs.
-    let sid: String = conn
-        .query_row("SELECT id FROM sessions WHERE title = 'child'", [], |r| {
-            r.get(0)
-        })
-        .expect("select child id");
-    assert_eq!(sid, CHILD, "sessions.id should be bare");
-
-    let parent_col: String = conn
-        .query_row(
-            "SELECT parent_session FROM sessions WHERE title = 'child'",
-            [],
-            |r| r.get(0),
-        )
-        .expect("select parent_session");
-    assert_eq!(parent_col, PARENT, "sessions.parent_session should be bare");
-
-    let hist: String = conn
-        .query_row("SELECT session_id FROM session_history", [], |r| r.get(0))
-        .expect("select history");
-    assert_eq!(hist, CHILD, "session_history.session_id should be bare");
-
-    let tl: String = conn
-        .query_row("SELECT session_id FROM token_ledger", [], |r| r.get(0))
-        .expect("select ledger");
-    assert_eq!(tl, CHILD, "token_ledger.session_id should be bare");
-
-    let dt: String = conn
-        .query_row("SELECT session_id FROM discord_thread", [], |r| r.get(0))
-        .expect("select discord");
-    assert_eq!(dt, CHILD, "discord_thread.session_id should be bare");
+    for (label, sql, expected) in v23_id_locations(child, PARENT) {
+        let got: String = conn.query_row(sql, [], |r| r.get(0)).expect(label);
+        assert_eq!(got, expected, "{label} should be bare");
+    }
 
     // And the metadata blob's session_id / parent_session are bare.
     let blob: String = conn
@@ -236,14 +238,15 @@ fn v23_strips_s_prefix_from_all_session_id_locations() {
             |r| r.get(0),
         )
         .expect("select metadata");
-    assert!(
-        blob.contains(&format!("\"session_id\":\"{CHILD}\"")),
-        "blob session_id should be bare, got: {blob}"
-    );
-    assert!(
-        blob.contains(&format!("\"parent_session\":\"{PARENT}\"")),
-        "blob parent_session should be bare, got: {blob}"
-    );
+    for (label, key, id) in [
+        ("session_id", "session_id", child),
+        ("parent_session", "parent_session", PARENT),
+    ] {
+        assert!(
+            blob.contains(&format!("\"{key}\":\"{id}\"")),
+            "blob {label} should be bare, got: {blob}"
+        );
+    }
 }
 
 /// v25 adds the nullable `entries.token_count` column. Legacy rows (pre-v25)
@@ -355,50 +358,43 @@ fn v26_seeds_every_existing_session_dirty() {
 #[test]
 #[cfg(feature = "testing")]
 fn v26_triggers_mark_sessions_dirty_on_insert_update_delete() {
-    // Given a fully-migrated DB.
+    // Given a fully-migrated DB, and one fully-migrated DB with `s-b` seeded.
     let mut conn = rusqlite::Connection::open_in_memory().expect("open db");
     run_migrations(&mut conn).expect("run migrations");
+    let mut seeded = rusqlite::Connection::open_in_memory().expect("open db");
+    run_migrations(&mut seeded).expect("run migrations");
+    seeded
+        .execute(
+            "INSERT INTO sessions (id, title, updated_at, created_at) VALUES ('s-b', 'B', 't2', 't2')",
+            [],
+        )
+        .expect("insert second session");
 
-    // When inserting a session.
-    conn.execute(
-        "INSERT INTO sessions (id, title, updated_at, created_at) VALUES ('s-a', 'A', 't1', 't1')",
-        [],
-    )
-    .expect("insert session");
+    // When running the insert, update, and delete the triggers fire on.
+    let insert_a =
+        "INSERT INTO sessions (id, title, updated_at, created_at) VALUES ('s-a', 'A', 't1', 't1')";
+    for sql in [
+        insert_a,
+        "UPDATE sessions SET title = 'A2' WHERE id = 's-a'",
+    ] {
+        conn.execute(sql, []).expect("trigger statement");
+    }
+    for sql in [insert_a, "DELETE FROM sessions WHERE id = 's-a'"] {
+        seeded.execute(sql, []).expect("trigger statement");
+    }
 
-    // Then the insert trigger marks it dirty.
-    let dirty: i64 = conn
+    // Then every touched session is marked dirty, deduplicated by the primary
+    // key — and the delete marks only the deleted id.
+    let count: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM fts_dirty WHERE session_id = 's-a'",
             [],
             |row| row.get(0),
         )
-        .expect("count dirty after insert");
-    assert_eq!(dirty, 1, "insert must mark dirty");
+        .expect("count dirty after insert + update");
+    assert_eq!(count, 1, "insert and update must mark dirty exactly once");
 
-    // When updating that session (the save path upserts the row every save).
-    conn.execute("UPDATE sessions SET title = 'A2' WHERE id = 's-a'", [])
-        .expect("update session");
-
-    // Then the update trigger marks it dirty, and the PRIMARY KEY dedupes
-    // repeated marks into a single row.
-    let dirty: i64 = conn
-        .query_row("SELECT COUNT(*) FROM fts_dirty", [], |row| row.get(0))
-        .expect("count dirty after update");
-    assert_eq!(dirty, 1, "update must not duplicate the dirty row");
-
-    // When inserting a second session (to prove DELETE only marks its own id)
-    // and then deleting the first.
-    conn.execute(
-        "INSERT INTO sessions (id, title, updated_at, created_at) VALUES ('s-b', 'B', 't2', 't2')",
-        [],
-    )
-    .expect("insert second session");
-    conn.execute("DELETE FROM sessions WHERE id = 's-a'", [])
-        .expect("delete session");
-
-    // Then the delete trigger marks the deleted id dirty.
-    let dirty: Vec<String> = conn
+    let dirty: Vec<String> = seeded
         .prepare("SELECT session_id FROM fts_dirty ORDER BY session_id")
         .expect("prepare")
         .query_map([], |row| row.get::<_, String>(0))
@@ -418,52 +414,44 @@ fn v26_fts_table_accepts_rows_and_matches() {
     let mut conn = rusqlite::Connection::open_in_memory().expect("open db");
     run_migrations(&mut conn).expect("run migrations");
 
-    // When inserting two FTS rows with UNINDEXED metadata.
-    conn.execute(
-        "INSERT INTO session_fts(body, role, session_id, entry_id, entry_ts) \
-         VALUES ('the parser rewrites the junction table', 'assistant', 's-a', 'e-1', \
-         '2026-09-01T00:00:00Z')",
-        [],
-    )
-    .expect("insert fts row 1");
-    conn.execute(
-        "INSERT INTO session_fts(body, role, session_id, entry_id, entry_ts) \
-         VALUES ('something entirely unrelated to the query terms', 'assistant', 's-b', 'e-2', \
-         '2026-09-02T00:00:00Z')",
-        [],
-    )
-    .expect("insert fts row 2");
-
-    // Then a MATCH on 'parser' hits exactly the first row.
-    let hits: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM session_fts WHERE session_fts MATCH 'parser'",
-            [],
-            |row| row.get(0),
+    // When inserting two FTS rows with UNINDEXED metadata and querying them.
+    for (body, session, entry, ts) in [
+        (
+            "the parser rewrites the junction table",
+            "s-a",
+            "e-1",
+            "2026-09-01T00:00:00Z",
+        ),
+        (
+            "something entirely unrelated to the query terms",
+            "s-b",
+            "e-2",
+            "2026-09-02T00:00:00Z",
+        ),
+    ] {
+        conn.execute(
+            "INSERT INTO session_fts(body, role, session_id, entry_id, entry_ts) \
+             VALUES (?1, 'assistant', ?2, ?3, ?4)",
+            rusqlite::params![body, session, entry, ts],
         )
-        .expect("match parser");
-    assert_eq!(hits, 1, "MATCH 'parser' must hit only row 1");
+        .expect("insert fts row");
+    }
 
-    // And the term 'assistant' never matches via body because the role column
-    // is UNINDEXED (bare terms can't match filter columns).
-    let hits: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM session_fts WHERE session_fts MATCH 'assistant'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("match assistant");
-    assert_eq!(hits, 0, "UNINDEXED role words must never match");
-
-    // And porter stemming folds 'rewrites' into 'rewrite'.
-    let hits: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM session_fts WHERE session_fts MATCH 'rewrite'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("match rewrite");
-    assert_eq!(hits, 1, "porter stemmer must fold rewrites/rewrite");
+    // Then a MATCH hits the expected rows: 'parser' only row 1; porter stems
+    // 'rewrites' to 'rewrite'; the UNINDEXED role word never matches.
+    for (term, expected) in [("parser", 1), ("rewrite", 1), ("assistant", 0)] {
+        let hits: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM session_fts WHERE session_fts MATCH ?1",
+                [term],
+                |row| row.get(0),
+            )
+            .expect("match term");
+        assert_eq!(
+            hits, expected,
+            "MATCH '{term}' hit the wrong number of rows"
+        );
+    }
 
     // And snippet() wraps the matched terms.
     let snip: String = conn

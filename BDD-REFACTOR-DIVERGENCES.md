@@ -24,3 +24,24 @@ actually does, and the change made.
   `cursor_left_past_the_token_start_does_not_reactivate_the_popup`. The shared
   setup now lives in the `file_popup_deactivated_by_trailing_bar` fixture so
   both halves of the original test still run the same state transition.
+
+---
+
+## `crates/slices/jinn-session-store/src/migrator.rs` — `run_migrations_creates_tracking_table`
+
+- **What the test asserted.** A 36-assertion block checking `_migrations` row
+  indices 0-14 and 19-21, each for a `(version, name)` pair.
+- **Intermediate state introduced during this task.** A refactor replaced the
+  36 assertions with a `MIGRATION_HISTORY` const table holding only 16 entries
+  — versions 0-14 plus 19-21 — and indexed `rows[version]`. That table omitted
+  versions 15-18, 22-28 and violated its own doc comment ("Every migration ever
+  added appears here, so a renamed or renumbered migration is a test failure
+  rather than silent history drift"). Because v15-v18 rows occupy positions
+  15-18 in the `ORDER BY version` result, indexing by version rather than by
+  position misaligned every row from v19 onward.
+- **What the code does.** `MIGRATIONS` in `crates/jinn-session-schema/src/migrate.rs`
+  registers versions 0 through 28; `_migrations` therefore holds 29 rows.
+- **Change.** The table was completed to all 29 `(version, name)` pairs read
+  from that registry, and the loop indexes `rows[index]` positionally with a
+  comment recording why position and version differ. The test now asserts
+  strictly more than the original: 29 migrations instead of 18.

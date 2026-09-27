@@ -82,10 +82,12 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn isolation_child_has_no_controlling_tty() {
-        // Given an isolated child that tries to open the controlling tty.
-        let output = isolated_sh("exec 3>/dev/tty")
-            .output()
-            .expect("spawn should succeed");
+        // Given a script that tries to open the controlling tty.
+        let script = "exec 3>/dev/tty";
+        let mut cmd = isolated_sh(script);
+
+        // When spawning it as an isolated child.
+        let output = cmd.output().expect("spawn should succeed");
 
         // Then the child exited non-zero: opening /dev/tty must fail without
         // a controlling terminal.
@@ -133,15 +135,15 @@ mod tests {
     #[test]
     fn isolation_windows_child_completes_with_piped_output() {
         // Given an isolated cmd child writing to piped stdout.
-        let output = {
-            let mut cmd = std::process::Command::new("cmd");
-            cmd.args(["/C", "echo ok"])
-                .stdin(Stdio::null())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-            isolate(&mut cmd);
-            cmd.output().expect("spawn should succeed")
-        };
+        let mut cmd = std::process::Command::new("cmd");
+        cmd.args(["/C", "echo ok"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        isolate(&mut cmd);
+
+        // When spawning it.
+        let output = cmd.output().expect("spawn should succeed");
 
         // Then the output was captured and the child exited zero — the
         // creation flags do not break spawn or capture.

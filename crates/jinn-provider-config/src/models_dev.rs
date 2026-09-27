@@ -279,6 +279,7 @@ mod tests {
     #[rstest::rstest]
     fn load_returns_empty_when_neither_exists() {
         // Given no files at either path.
+        // When loading from those paths.
         let data = ModelsDevData::load(
             Path::new("/nonexistent/user"),
             Path::new("/nonexistent/system"),
@@ -387,6 +388,7 @@ mod tests {
     #[rstest::rstest]
     fn is_empty_returns_false_when_data_present() {
         // If is_empty always returned true, data loading would appear to never work.
+        // Given a models.dev file holding one model.
         let dir = tempfile::tempdir().expect("temp dir");
         let user_path = write_json(
             dir.path(),
@@ -394,8 +396,10 @@ mod tests {
             r#"{"openai":{"models":{"gpt-4o":{"limit":{"context":128000}}}}}"#,
         );
 
+        // When loading it.
         let data = ModelsDevData::load(&user_path, Path::new("/nonexistent"));
 
+        // Then the data reports itself non-empty and serves the model.
         assert!(
             !data.is_empty(),
             "is_empty should return false when data is loaded"

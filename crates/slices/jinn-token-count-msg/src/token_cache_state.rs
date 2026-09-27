@@ -149,66 +149,92 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn new_cache_returns_none_for_get() {
+        // Given a fresh cache and an unknown session/entry pair.
         let cache = HistoryWorkerChatEntryTokenCache::new();
         let s = test_session_id(0);
         let e = test_entry_id(0);
+
+        // When looking the pair up.
+        // Then no count is cached.
         assert_eq!(cache.get(&s, &e), None);
     }
 
     #[rstest::rstest]
     #[test]
     fn default_cache_returns_none_for_get() {
+        // Given a default-constructed cache and an unknown session/entry pair.
         let cache = HistoryWorkerChatEntryTokenCache::default();
         let s = test_session_id(0);
         let e = test_entry_id(0);
+
+        // When looking the pair up.
+        // Then no count is cached.
         assert_eq!(cache.get(&s, &e), None);
     }
 
     #[rstest::rstest]
     #[test]
     fn insert_then_get_returns_value() {
+        // Given a fresh cache and a session/entry pair.
         let cache = HistoryWorkerChatEntryTokenCache::new();
         let s = test_session_id(0);
         let e = test_entry_id(0);
+
+        // When storing a count for the pair.
         cache.insert(s.clone(), e.clone(), 42);
+
+        // Then looking the pair up returns the stored count.
         assert_eq!(cache.get(&s, &e), Some(42));
     }
 
     #[rstest::rstest]
     #[test]
     fn insert_overwrites_previous_value() {
+        // Given a cache already holding a count for a session/entry pair.
         let cache = HistoryWorkerChatEntryTokenCache::new();
         let s = test_session_id(0);
         let e = test_entry_id(0);
         cache.insert(s.clone(), e.clone(), 42);
+
+        // When storing a second count for the same pair.
         cache.insert(s.clone(), e.clone(), 99);
+
+        // Then the latest count wins.
         assert_eq!(cache.get(&s, &e), Some(99));
     }
 
     #[rstest::rstest]
     #[test]
     fn get_or_insert_with_invokes_closure_on_first_call() {
+        // Given an empty cache and a call counter.
         let cache = HistoryWorkerChatEntryTokenCache::new();
         let s = test_session_id(0);
         let e = test_entry_id(0);
         let calls = Arc::new(AtomicUsize::new(0));
+
+        // When getting or inserting with a counting closure.
         let calls_clone = calls.clone();
         let result = cache.get_or_insert_with(&s, &e, move || {
             calls_clone.fetch_add(1, Ordering::SeqCst);
             7
         });
+
+        // Then the computed value is returned.
         assert_eq!(result, 7);
+        // And the closure ran exactly once.
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     #[rstest::rstest]
     #[test]
     fn get_or_insert_with_does_not_reinvoke_on_second_call() {
+        // Given a cache warmed once by a counting closure.
         let cache = HistoryWorkerChatEntryTokenCache::new();
         let s = test_session_id(0);
         let e = test_entry_id(0);
         let calls = Arc::new(AtomicUsize::new(0));
 
+        // When getting or inserting a second time.
         let calls_a = calls.clone();
         let first = cache.get_or_insert_with(&s, &e, move || {
             calls_a.fetch_add(1, Ordering::SeqCst);
@@ -220,22 +246,27 @@ mod tests {
             999 // should not be returned
         });
 
+        // Then both calls see the cached value.
         assert_eq!(first, 10);
         assert_eq!(second, 10);
+        // And the closure was never re-invoked.
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     #[rstest::rstest]
     #[test]
     fn get_or_insert_with_distinguishes_entries_within_session() {
+        // Given one session with two distinct entries.
         let cache = HistoryWorkerChatEntryTokenCache::new();
         let s = test_session_id(0);
         let e1 = test_entry_id(1);
         let e2 = test_entry_id(2);
 
+        // When computing a count for each entry.
         let v1 = cache.get_or_insert_with(&s, &e1, || 100);
         let v2 = cache.get_or_insert_with(&s, &e2, || 200);
 
+        // Then each entry keeps its own count.
         assert_eq!(v1, 100);
         assert_eq!(v2, 200);
         assert_eq!(cache.get(&s, &e1), Some(100));
@@ -248,14 +279,17 @@ mod tests {
         // ChatEntryId uniqueness is global, so this is a defensive test —
         // the same ChatEntryId in two sessions must produce independent
         // counts because the outer key differs.
+        // Given two sessions sharing one entry id.
         let cache = HistoryWorkerChatEntryTokenCache::new();
         let s1 = test_session_id(1);
         let s2 = test_session_id(2);
         let e = test_entry_id(0);
 
+        // When computing a count for the entry in each session.
         let v1 = cache.get_or_insert_with(&s1, &e, || 11);
         let v2 = cache.get_or_insert_with(&s2, &e, || 22);
 
+        // Then the two sessions hold independent counts.
         assert_eq!(v1, 11);
         assert_eq!(v2, 22);
         assert_eq!(cache.get(&s1, &e), Some(11));
@@ -265,54 +299,82 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn remove_session_evicts_inner_map() {
+        // Given a cache holding a computed count for a session.
         let cache = HistoryWorkerChatEntryTokenCache::new();
         let s = test_session_id(0);
         let e = test_entry_id(0);
-
         let calls = Arc::new(AtomicUsize::new(0));
+
+        // When evicting the session.
         let calls_a = calls.clone();
         cache.get_or_insert_with(&s, &e, move || {
             calls_a.fetch_add(1, Ordering::SeqCst);
             5
         });
         assert_eq!(calls.load(Ordering::SeqCst), 1);
-
         cache.remove_session(&s);
-        assert_eq!(cache.get(&s, &e), None);
 
-        // Re-insert after eviction must invoke closure again.
+        // Then the session's counts are gone.
+        assert_eq!(cache.get(&s, &e), None);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn get_or_insert_with_recomputes_after_session_eviction() {
+        // Given a session whose cached count was evicted.
+        let cache = HistoryWorkerChatEntryTokenCache::new();
+        let s = test_session_id(0);
+        let e = test_entry_id(0);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_a = calls.clone();
+        cache.get_or_insert_with(&s, &e, move || {
+            calls_a.fetch_add(1, Ordering::SeqCst);
+            5
+        });
+        cache.remove_session(&s);
+
+        // When getting or inserting for the evicted entry again.
         let calls_b = calls.clone();
         let v = cache.get_or_insert_with(&s, &e, move || {
             calls_b.fetch_add(1, Ordering::SeqCst);
             9
         });
+
+        // Then the freshly computed value is returned.
         assert_eq!(v, 9);
+        // And the closure has now run twice.
         assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
 
     #[rstest::rstest]
     #[test]
     fn remove_session_is_noop_if_session_not_present() {
+        // Given a cache with no entries for the session.
         let cache = HistoryWorkerChatEntryTokenCache::new();
         let s = test_session_id(0);
-        // Must not panic.
+
+        // When evicting the absent session. Must not panic.
         cache.remove_session(&s);
+
+        // Then the cache still holds nothing for it.
         assert_eq!(cache.get(&s, &test_entry_id(0)), None);
     }
 
     #[rstest::rstest]
     #[test]
     fn remove_session_does_not_affect_other_sessions() {
+        // Given two sessions that both hold a count for the same entry.
         let cache = HistoryWorkerChatEntryTokenCache::new();
         let s1 = test_session_id(1);
         let s2 = test_session_id(2);
         let e = test_entry_id(0);
-
         cache.insert(s1.clone(), e.clone(), 111);
         cache.insert(s2.clone(), e.clone(), 222);
 
+        // When evicting the first session.
         cache.remove_session(&s1);
 
+        // Then only that session's count is gone.
         assert_eq!(cache.get(&s1, &e), None);
         assert_eq!(cache.get(&s2, &e), Some(222));
     }
@@ -320,17 +382,17 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn clone_shares_underlying_state() {
+        // Given a cache holding a count and a clone of that cache.
         let cache_a = HistoryWorkerChatEntryTokenCache::new();
         let cache_b = cache_a.clone();
-
         let s = test_session_id(0);
         let e = test_entry_id(0);
         cache_a.insert(s.clone(), e.clone(), 50);
 
-        // Read via the clone — shared state.
+        // When reading through the clone, then evicting through the clone.
+        // Then the clone sees the original's count.
         assert_eq!(cache_b.get(&s, &e), Some(50));
-
-        // Mutate via the clone — visible to the original.
+        // And the original sees the clone's eviction — shared state.
         cache_b.remove_session(&s);
         assert_eq!(cache_a.get(&s, &e), None);
     }
@@ -342,12 +404,14 @@ mod tests {
         // closure increments an AtomicUsize and sleeps briefly to widen the
         // race window. Assertion: closure ran exactly once across all
         // tasks, and every task observed the same value.
+        // Given N tasks racing on the same session/entry pair.
         const N: usize = 32;
         let cache = Arc::new(HistoryWorkerChatEntryTokenCache::new());
         let s = Arc::new(test_session_id(0));
         let e = Arc::new(test_entry_id(0));
         let calls = Arc::new(AtomicUsize::new(0));
 
+        // When all tasks get-or-insert concurrently and are awaited.
         let mut handles = Vec::with_capacity(N);
         for _ in 0..N {
             let cache = Arc::clone(&cache);
@@ -370,11 +434,13 @@ mod tests {
             results.push(h.await.expect("task did not panic"));
         }
 
+        // Then the closure ran exactly once.
         assert_eq!(
             calls.load(Ordering::SeqCst),
             1,
             "closure must run exactly once"
         );
+        // And every task observed the same value.
         assert!(
             results.iter().all(|&v| v == 777),
             "all tasks must observe 777"

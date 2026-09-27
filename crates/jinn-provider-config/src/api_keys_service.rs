@@ -116,27 +116,36 @@ mod tests {
 
     #[rstest::rstest]
     fn is_set_returns_true_when_key_present() {
+        // Given a service wrapping a key store holding "MY_KEY".
         let mut keys = crate::api_keys::ApiKeys::new();
         keys.insert("MY_KEY".to_owned(), "sk-secret".to_owned());
         let service = ApiKeysService::new(keys);
 
+        // When checking whether the key is set.
+        // Then it reports set.
         assert!(service.is_set("MY_KEY"));
     }
 
     #[rstest::rstest]
     fn is_set_returns_false_when_key_absent() {
+        // Given a service wrapping an empty key store.
         let keys = crate::api_keys::ApiKeys::new();
         let service = ApiKeysService::new(keys);
 
+        // When checking whether an unknown key is set.
+        // Then it reports unset.
         assert!(!service.is_set("NONEXISTENT"));
     }
 
     #[rstest::rstest]
     fn is_empty_returns_false_when_keys_present() {
+        // Given a service wrapping a key store holding one key.
         let mut keys = crate::api_keys::ApiKeys::new();
         keys.insert("KEY".to_owned(), "val".to_owned());
         let service = ApiKeysService::new(keys);
 
+        // When checking whether the store is empty.
+        // Then it reports non-empty.
         assert!(!service.is_empty());
     }
 }

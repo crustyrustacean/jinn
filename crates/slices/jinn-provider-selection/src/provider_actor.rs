@@ -1353,61 +1353,52 @@ mod tests {
         assert_eq!(cache.entries["local"][0].context_length, None);
     }
 
+    /// A single-model cache entry keyed by provider, holding one model with
+    /// the given id and context length.
+    fn one_model(
+        provider: &str,
+        model_id: &str,
+        context_length: Option<u32>,
+    ) -> (String, Vec<ModelInfo>) {
+        (
+            provider.to_owned(),
+            vec![ModelInfo {
+                id: model_id.to_owned(),
+                context_length,
+                input_modalities: InputModalities::text(),
+            }],
+        )
+    }
+
     #[rstest::rstest]
     #[tokio::test]
     async fn merge_priority_is_api_then_config_then_models_dev() {
-        // Given three models with different source scenarios.
+        // Given four models, one per source scenario: A already has an API
+        // value, B is filled in by the config merge, C only models.dev can
+        // fill, and D nothing can fill.
         let mut cache = ModelCache::new();
-        // Model A: API returned a value.
-        cache.entries.insert(
-            "provider-a".to_owned(),
-            vec![ModelInfo {
-                id: "model-a".to_owned(),
-                context_length: Some(100_000),
-                input_modalities: InputModalities::text(),
-            }],
-        );
-        // Model B: API returned None, config will fill it.
-        cache.entries.insert(
-            "provider-b".to_owned(),
-            vec![ModelInfo {
-                id: "model-b".to_owned(),
-                context_length: None,
-                input_modalities: InputModalities::text(),
-            }],
-        );
-        // Model C: API returned None, no config, models.dev should fill it.
-        cache.entries.insert(
-            "provider-c".to_owned(),
-            vec![ModelInfo {
-                id: "model-c".to_owned(),
-                context_length: None,
-                input_modalities: InputModalities::text(),
-            }],
-        );
-        // Model D: API returned None, no config, not in models.dev.
-        cache.entries.insert(
-            "provider-d".to_owned(),
-            vec![ModelInfo {
-                id: "model-d".to_owned(),
-                context_length: None,
-                input_modalities: InputModalities::text(),
-            }],
-        );
+        for entry in [
+            one_model("provider-a", "model-a", Some(100_000)),
+            one_model("provider-b", "model-b", None),
+            one_model("provider-c", "model-c", None),
+            one_model("provider-d", "model-d", None),
+        ] {
+            cache.entries.insert(entry.0, entry.1);
+        }
 
-        // Simulate config merge: set model-b to 64000.
+        // And a config merge that filled model-b, plus a models.dev dataset
+        // carrying values for all but model-d.
         cache.entries.get_mut("provider-b").unwrap()[0].context_length = Some(64_000);
-
         let mut models_dev = jinn_provider_config::ModelsDevData::new();
-        models_dev
-            .context_lengths
-            .insert("model-a".to_owned(), 999_999);
-        models_dev
-            .context_lengths
-            .insert("model-b".to_owned(), 999_999);
-        models_dev
-            .context_lengths
-            .insert("model-c".to_owned(), 300_000);
+        for (id, context_length) in [
+            ("model-a", 999_999),
+            ("model-b", 999_999),
+            ("model-c", 300_000),
+        ] {
+            models_dev
+                .context_lengths
+                .insert(id.to_owned(), context_length);
+        }
 
         // When merging from models.dev.
         super::merge_models_dev_data(&mut cache, &models_dev);

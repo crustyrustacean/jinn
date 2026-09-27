@@ -178,57 +178,29 @@ mod tests {
         assert_eq!(cell.bg, Color::Blue); // unchanged
     }
 
+    /// Build a buffer of yellow text on rows 1-3, the shared starting point
+    /// for forward and backward selection comparisons.
+    fn colored_rows_buffer(area: Rect) -> ratatui::buffer::Buffer {
+        let mut buf = ratatui::buffer::Buffer::empty(area);
+        for (row, text) in ["ABCDE", "FGHIJ", "KLMNO"].iter().enumerate() {
+            for (i, ch) in text.chars().enumerate() {
+                let cell = buf.cell_mut((i as u16, row as u16 + 1)).unwrap();
+                cell.set_symbol(&ch.to_string());
+                cell.set_fg(Color::Yellow);
+            }
+        }
+        buf
+    }
+
     #[rstest::rstest]
     #[tokio::test]
     async fn backward_selection_highlights_same_cells_as_forward() {
-        // Given a buffer with colored cells on rows 1-3.
+        // Given a buffer with colored cells on rows 1-3, and forward and
+        // backward selections covering the same endpoints.
         let area = Rect::new(0, 0, 10, 5);
-        let forward_buf = {
-            let mut buf = ratatui::buffer::Buffer::empty(area);
-            for (i, ch) in "ABCDE".chars().enumerate() {
-                buf.cell_mut((i as u16, 1))
-                    .unwrap()
-                    .set_symbol(&ch.to_string());
-                buf.cell_mut((i as u16, 1)).unwrap().set_fg(Color::Yellow);
-            }
-            for (i, ch) in "FGHIJ".chars().enumerate() {
-                buf.cell_mut((i as u16, 2))
-                    .unwrap()
-                    .set_symbol(&ch.to_string());
-                buf.cell_mut((i as u16, 2)).unwrap().set_fg(Color::Yellow);
-            }
-            for (i, ch) in "KLMNO".chars().enumerate() {
-                buf.cell_mut((i as u16, 3))
-                    .unwrap()
-                    .set_symbol(&ch.to_string());
-                buf.cell_mut((i as u16, 3)).unwrap().set_fg(Color::Yellow);
-            }
-            buf
-        };
-        let backward_buf = {
-            let mut buf = ratatui::buffer::Buffer::empty(area);
-            for (i, ch) in "ABCDE".chars().enumerate() {
-                buf.cell_mut((i as u16, 1))
-                    .unwrap()
-                    .set_symbol(&ch.to_string());
-                buf.cell_mut((i as u16, 1)).unwrap().set_fg(Color::Yellow);
-            }
-            for (i, ch) in "FGHIJ".chars().enumerate() {
-                buf.cell_mut((i as u16, 2))
-                    .unwrap()
-                    .set_symbol(&ch.to_string());
-                buf.cell_mut((i as u16, 2)).unwrap().set_fg(Color::Yellow);
-            }
-            for (i, ch) in "KLMNO".chars().enumerate() {
-                buf.cell_mut((i as u16, 3))
-                    .unwrap()
-                    .set_symbol(&ch.to_string());
-                buf.cell_mut((i as u16, 3)).unwrap().set_fg(Color::Yellow);
-            }
-            buf
-        };
+        let mut forward_buf = colored_rows_buffer(area);
+        let mut backward_buf = colored_rows_buffer(area);
 
-        // And forward and backward selections covering the same endpoints.
         let mut forward_app = render_test_app().await;
         forward_app.selection = SelectionState::Active {
             anchor: (1, 1),
@@ -243,9 +215,7 @@ mod tests {
         };
 
         // When applying selection highlight to both buffers.
-        let mut forward_buf = forward_buf;
         apply_selection_highlight(&forward_app, &mut forward_buf);
-        let mut backward_buf = backward_buf;
         apply_selection_highlight(&backward_app, &mut backward_buf);
 
         // Then every cell has the same colors in both buffers.

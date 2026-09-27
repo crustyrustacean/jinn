@@ -82,6 +82,7 @@ mod tests {
         // Given the command's schema definition.
         let schema = <DispatchTurn as trouper::schema::Schema>::schema_def();
 
+        // When inspecting its name, kind, and fields.
         // Then it is a command named DispatchTurn with the session_id
         // field.
         assert_eq!(schema.name, "DispatchTurn");

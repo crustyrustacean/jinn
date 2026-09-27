@@ -403,6 +403,7 @@ mod tests {
         let routes = KeyRoutes::new();
         attach_editing_rows(&routes);
 
+        // When collecting the keys every row binds.
         // Then each key the kernel used to bind statically has a row.
         let bound: Vec<&'static str> = routes.rows().into_iter().map(|row| row.key).collect();
         for key in [
@@ -428,6 +429,7 @@ mod tests {
         attach_chat_input_rows(&routes);
         attach_editing_rows(&routes);
 
+        // When reading each row's declared bind site.
         // Then every row declares the Input static scope, so composition
         // binds it where the keymap resolves typing.
         for row in routes.rows() {
@@ -445,6 +447,7 @@ mod tests {
         let routes = KeyRoutes::new();
         attach_insert_char_row(&routes);
 
+        // When collecting the delivered action names.
         // Then the keymap catch-all's action name has a delivering row.
         let action = routes
             .rows()
@@ -460,18 +463,24 @@ mod tests {
     #[rstest::rstest]
     fn char_from_bytes_reads_a_single_character() {
         // Given a UTF-8 character payload.
+        // When decoding it.
+        // Then the character is read out.
         assert_eq!(char_from_bytes("é".as_bytes()), Some('é'));
     }
 
     #[rstest::rstest]
     fn char_from_bytes_rejects_a_multi_character_payload() {
         // Given a payload holding more than one character.
+        // When decoding it.
+        // Then nothing is read.
         assert_eq!(char_from_bytes(b"ab"), None);
     }
 
     #[rstest::rstest]
     fn text_from_bytes_reads_a_paste_payload() {
         // Given a multi-line paste payload.
+        // When decoding it.
+        // Then the whole payload is read as text.
         assert_eq!(
             text_from_bytes("hello\nworld".as_bytes()),
             Some("hello\nworld".to_owned())
@@ -481,6 +490,8 @@ mod tests {
     #[rstest::rstest]
     fn text_from_bytes_rejects_invalid_utf8() {
         // Given a payload that is not valid UTF-8.
+        // When decoding it.
+        // Then nothing is read.
         assert_eq!(text_from_bytes(&[0xff, 0xfe]), None);
     }
 }

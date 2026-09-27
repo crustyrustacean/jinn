@@ -204,6 +204,7 @@ mod tests {
     #[test]
     fn empty_history_yields_zero_report() {
         // Given no history.
+        // When computing the prune report.
         let report = prune_report(&[]);
 
         // Then both totals are zero.

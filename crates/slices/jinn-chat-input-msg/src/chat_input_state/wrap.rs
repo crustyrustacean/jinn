@@ -454,7 +454,8 @@ mod tests {
         // When wrapping at width 7.
         let lines = wrap_text(text, 7);
 
-        // "hello中" = 7 cols, "文" = 2 → 9 > 7, forced break.
+        // Then it breaks in two because "hello中" already fills the width and
+        // the next wide grapheme would overflow: "hello中" = 7 cols, "文" = 2.
         assert_eq!(lines.len(), 2);
         // Line 1: "hello中" = 6 graphemes (7 display cols).
         assert_eq!(lines[0].grapheme_end - lines[0].grapheme_start, 6);
@@ -535,6 +536,8 @@ mod tests {
     fn grapheme_ranges_are_correct() {
         // Given "hello world and more" at width 10.
         let text = "hello world and more";
+
+        // When wrapping it.
         let lines = wrap_text(text, 10);
 
         // Then ranges are contiguous and correct.

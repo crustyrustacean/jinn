@@ -15,7 +15,11 @@ struct ColorWrapper {
 #[rstest::rstest]
 fn toml_ansi_name() {
     // Given a TOML string with an ANSI color name.
-    let wrapper: ColorWrapper = toml::from_str("color = \"yellow\"").expect("parse");
+    let toml_str = "color = \"yellow\"";
+
+    // When deserializing it.
+    let wrapper: ColorWrapper = toml::from_str(toml_str).expect("parse");
+
     // Then it deserializes to the named color.
     assert_eq!(wrapper.color.0, Color::Yellow);
 }
@@ -23,7 +27,11 @@ fn toml_ansi_name() {
 #[rstest::rstest]
 fn toml_hex() {
     // Given a TOML string with a hex color.
-    let wrapper: ColorWrapper = toml::from_str("color = \"#FFA500\"").expect("parse");
+    let toml_str = "color = \"#FFA500\"";
+
+    // When deserializing it.
+    let wrapper: ColorWrapper = toml::from_str(toml_str).expect("parse");
+
     // Then it deserializes to RGB.
     assert_eq!(wrapper.color.0, Color::Rgb(255, 165, 0));
 }
@@ -31,7 +39,11 @@ fn toml_hex() {
 #[rstest::rstest]
 fn toml_rgb_array() {
     // Given a TOML array with 3 u8 values.
-    let wrapper: ColorWrapper = toml::from_str("color = [25, 27, 30]").expect("parse");
+    let toml_str = "color = [25, 27, 30]";
+
+    // When deserializing it.
+    let wrapper: ColorWrapper = toml::from_str(toml_str).expect("parse");
+
     // Then it deserializes to RGB.
     assert_eq!(wrapper.color.0, Color::Rgb(25, 27, 30));
 }
@@ -39,7 +51,11 @@ fn toml_rgb_array() {
 #[rstest::rstest]
 fn toml_ansi_code() {
     // Given a TOML string with an ANSI code.
-    let wrapper: ColorWrapper = toml::from_str("color = \"A80\"").expect("parse");
+    let toml_str = "color = \"A80\"";
+
+    // When deserializing it.
+    let wrapper: ColorWrapper = toml::from_str(toml_str).expect("parse");
+
     // Then it deserializes to an RGB color (resolved via anstyle-lossy).
     assert!(matches!(wrapper.color.0, Color::Rgb(_, _, _)));
 }
@@ -47,7 +63,11 @@ fn toml_ansi_code() {
 #[rstest::rstest]
 fn toml_invalid_string_fails() {
     // Given a TOML string that is not a valid color.
-    let result: Result<ColorWrapper, _> = toml::from_str("color = \"notacolor123\"");
+    let toml_str = "color = \"notacolor123\"";
+
+    // When deserializing it.
+    let result: Result<ColorWrapper, _> = toml::from_str(toml_str);
+
     // Then deserialization fails.
     assert!(result.is_err());
 }
@@ -55,7 +75,11 @@ fn toml_invalid_string_fails() {
 #[rstest::rstest]
 fn toml_invalid_array_fails() {
     // Given a TOML array with only 2 values.
-    let result: Result<ColorWrapper, _> = toml::from_str("color = [255, 165]");
+    let toml_str = "color = [255, 165]";
+
+    // When deserializing it.
+    let result: Result<ColorWrapper, _> = toml::from_str(toml_str);
+
     // Then deserialization fails.
     assert!(result.is_err());
 }

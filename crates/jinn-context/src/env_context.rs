@@ -261,6 +261,7 @@ mod tests {
 
     #[rstest::rstest]
     fn date_section_includes_date() {
+        // Given the current clock.
         // When building the date section.
         let result = date_section();
 
@@ -320,6 +321,7 @@ mod tests {
     #[rstest::rstest]
     fn date_from_days_known_date() {
         // Given 20000 days since epoch (2024-10-04 roughly).
+        // When converting.
         let date = date_from_days(20000);
 
         // Then it's a valid date format.
@@ -340,6 +342,7 @@ mod tests {
     #[rstest::rstest]
     fn date_from_days_negative() {
         // Given -1 days (1969-12-31).
+        // When converting.
         let date = date_from_days(-1);
 
         // Then it's 1969-12-31.
@@ -349,6 +352,7 @@ mod tests {
     #[rstest::rstest]
     fn date_from_days_large_known_date() {
         // Given 20023 days = 2024-10-27 (verified externally).
+        // When converting.
         let date = date_from_days(20023);
 
         // Then it produces an exact known date.
@@ -360,6 +364,7 @@ mod tests {
         // Given 10957 days = 2000-01-01 (30 years including leap days).
         // 365 * 30 + 8 leap days (72,76,80,84,88,92,96,00 - 00 is leap in Gregorian) = 10957 + 7 = 10958?
         // Actually 10957 = 2000-01-01.
+        // When converting.
         let date = date_from_days(10957);
 
         // Then it starts with 2000.
@@ -368,6 +373,7 @@ mod tests {
 
     #[rstest::rstest]
     fn format_current_date_is_not_empty() {
+        // Given the current clock.
         // When formatting the current date.
         let date = format_current_date();
 
@@ -379,6 +385,7 @@ mod tests {
 
     #[rstest::rstest]
     fn format_current_date_is_not_xyzzy() {
+        // Given the current clock.
         // When formatting the current date.
         let date = format_current_date();
 

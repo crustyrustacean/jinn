@@ -916,7 +916,8 @@ mod preview_cache_bound_tests {
         let ids = fill(&mut load, PREVIEW_CACHE_CAPACITY + 1);
         let evicted = ids.first().expect("a session was cached");
 
-        // Then the least-recently-used session is gone.
+        // When reading back the least-recently-used session.
+        // Then it is gone.
         assert!(
             load.cached(evicted, 7, 40).is_none(),
             "the cache must not grow past its bound"
@@ -930,7 +931,8 @@ mod preview_cache_bound_tests {
         let ids = fill(&mut load, PREVIEW_CACHE_CAPACITY + 1);
         let newest = ids.last().expect("a session was cached");
 
-        // Then the newest session is still served.
+        // When reading back the newest session.
+        // Then it is still served.
         assert!(
             load.cached(newest, 7, 40).is_some(),
             "the most recent preview must survive the bound"

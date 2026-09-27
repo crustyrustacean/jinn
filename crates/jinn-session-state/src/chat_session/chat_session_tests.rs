@@ -755,6 +755,7 @@ fn is_idle_false_when_sending() {
     let mut session = ChatSessionState::new();
     session.begin_sending();
 
+    // When its phase is inspected.
     // Then it is not idle.
     assert_ne!(session.phase(), PhaseKind::Idle);
 }
@@ -1298,7 +1299,9 @@ fn regression_pin_in_expanded_block_keeps_all_visible() {
         DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
     };
 
-    // Layout: [user] [ignored-A] [ignored-B] [ignored-C] [ignored-D] [user]
+    // Given a layout of [user] [ignored-A] [ignored-B] [ignored-C]
+    // [ignored-D] [user], with the ignored block expanded and ignored-B
+    // pinned to the top.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("before"));
     session.push_entry(ChatEntry::assistant("a").with_ignored(true));
@@ -1315,8 +1318,9 @@ fn regression_pin_in_expanded_block_keeps_all_visible() {
     let pin_id = session.history()[2].id.clone();
     session.pin_entry(&pin_id, PinPosition::Top);
 
-    // Build visual items - all 4 ignored entries should be individually visible
-    // (backward sub-block + pinned entry + forward sub-block).
+    // When building visual items - all 4 ignored entries should be
+    // individually visible (backward sub-block + pinned entry + forward
+    // sub-block).
     let items = build_visual_items(
         session.history(),
         &session.shown_ignored_blocks_snapshot(),
@@ -1324,7 +1328,7 @@ fn regression_pin_in_expanded_block_keeps_all_visible() {
         DEFAULT_MIN_COLLAPSE_COUNT,
     );
 
-    // There should be no CollapsedIgnoredBlock - all entries are shown.
+    // Then there is no CollapsedIgnoredBlock - all entries are shown.
     let collapsed = items
         .iter()
         .any(|item| matches!(item, VisualItem::CollapsedIgnoredBlock { .. }));
@@ -1333,7 +1337,7 @@ fn regression_pin_in_expanded_block_keeps_all_visible() {
         "no entries should be collapsed after pinning in expanded block"
     );
 
-    // All history entries should appear as VisualItem::Entry.
+    // And all history entries appear as VisualItem::Entry.
     let entry_count = items
         .iter()
         .filter(|item| matches!(item, VisualItem::Entry(_)))
@@ -2664,6 +2668,7 @@ fn session_state_defaults_to_loaded() {
     // Given a new session.
     let session = ChatSessionState::new();
 
+    // When its session state is read.
     // Then session state is Loaded.
     assert_eq!(session.session_state(), SessionState::Loaded);
 }
@@ -3524,6 +3529,7 @@ fn lifecycle_session_is_always_persistable() {
     let mut session = ChatSessionState::new();
     session.core.lifecycle.lifecycle_name = Some("test-lifecycle".to_owned());
 
+    // When persistability is checked.
     // Then the session is persistable even without interaction.
     assert!(session.is_persistable());
     assert!(!session.has_interacted());
@@ -4287,7 +4293,7 @@ fn phase_kind_from_str_is_case_insensitive(#[case] input: &str) {
 #[rstest::rstest]
 fn phase_kind_from_str_rejects_unknown() {
     // Given an unknown phase string.
-    let phase: &str = "unknown_phase";
+    let phase = "unknown_phase";
 
     // When it is parsed into a PhaseKind.
     let result: Result<PhaseKind, _> = phase.parse();
@@ -4299,7 +4305,7 @@ fn phase_kind_from_str_rejects_unknown() {
 #[rstest::rstest]
 fn phase_kind_from_str_rejects_empty() {
     // Given an empty phase string.
-    let phase: &str = "";
+    let phase = "";
 
     // When it is parsed into a PhaseKind.
     let result: Result<PhaseKind, _> = phase.parse();
@@ -4502,9 +4508,8 @@ fn visible_entry_range_includes_entry_at_viewport_bottom_edge() {
     // When computing visible range.
     let range = session.visible_entry_range();
 
-    // Entry 0: 2>0 && 0<4 → visible.
-    // Entry 1: 4>0 && 2<4 → visible.
-    // Entry 2: 6>0 && 4<4 → 4<4 is false → NOT visible.
+    // Then entries 0 and 1 are visible but entry 2 is not: it starts exactly
+    // at the viewport bottom (4<4 is false).
     assert_eq!(range, 0..2);
 }
 
@@ -4678,7 +4683,8 @@ fn select_prev_entry_skips_empty_assistant_at_end() {
     session.push_entry(ChatEntry::user("b")); // idx 1
     session.push_entry(ChatEntry::assistant("")); // idx 2
 
-    // Clear and select prev (starts at last → should skip empty assistant).
+    // When clearing the selection and selecting prev (starts at last, so the
+    // trailing empty assistant is skipped).
     session.clear_selection();
     session.select_prev_entry();
 
@@ -5861,6 +5867,7 @@ fn default_origin_is_user() {
     // Given a newly created session.
     let session = ChatSessionState::new();
 
+    // When its origin is read.
     // Then its origin is User.
     assert_eq!(session.origin(), SessionOrigin::User);
 }

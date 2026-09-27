@@ -204,9 +204,10 @@ mod tests {
 
     #[rstest::rstest]
     fn load_theme_returns_not_found_for_missing_file() {
-        // Given a theme name that doesn't exist.
+        // Given a themes directory with no such theme file.
         let dir = TempDir::new().expect("temp dir");
 
+        // When loading a theme name that doesn't exist.
         let result = load_theme_from_dir("nonexistent_theme_xyz", dir.path());
 
         // Then it returns NotFound error.

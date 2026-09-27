@@ -233,8 +233,6 @@ async fn cancel_token_cancels_the_transport() {
     let client = McpClient::connect_remote(&url, Vec::new())
         .await
         .expect("connect succeeds against the live server");
-
-    // Then the transport is open before cancellation.
     let probe = client.liveness_probe();
     assert!(
         !probe.is_transport_closed(),
@@ -264,7 +262,7 @@ async fn cancel_token_cancels_the_transport() {
 /// same `http_client_with` + `attempt_http_handshake` pair under test here.
 #[rstest::rstest]
 #[tokio::test]
-async fn auth_gated_server_rejects_headerless_and_accepts_resolved_header() {
+async fn auth_gated_server_rejects_headerless_connect() {
     // Given an MCP server that requires `Authorization: Bearer s3cr3t`.
     let (url, shutdown) = spawn_auth_gated_http_server("Bearer s3cr3t").await;
 
@@ -280,6 +278,15 @@ async fn auth_gated_server_rejects_headerless_and_accepts_resolved_header() {
         headerless.is_err(),
         "headerless connect must never succeed against an auth-gated server"
     );
+
+    shutdown.cancel();
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn auth_gated_server_accepts_resolved_header() {
+    // Given an MCP server that requires `Authorization: Bearer s3cr3t`.
+    let (url, shutdown) = spawn_auth_gated_http_server("Bearer s3cr3t").await;
 
     // When connecting WITH the resolved header.
     let mut client = tokio::time::timeout(

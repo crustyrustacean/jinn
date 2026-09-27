@@ -406,8 +406,8 @@ fn desired_col_preserved_across_shorter_intermediate_line_up() {
 }
 
 #[rstest::rstest]
-fn desired_col_cleared_by_horizontal_move() {
-    // Given "abcd\nef\nghij" with cursor at col 3 on line 1.
+fn move_cursor_down_clamps_desired_col_to_shorter_line() {
+    // Given "abcd\nef\nghij" with cursor at col 3 on line 0.
     let mut state = ChatInputBoxState::new();
     state.insert_text("abcd\nef\nghij");
     state.move_cursor_to_start();
@@ -416,14 +416,17 @@ fn desired_col_cleared_by_horizontal_move() {
     state.move_cursor_right(); // col=3
     assert_eq!(state.cursor_row_col(), (0, 3));
 
-    // When moving down (sets desired_col=3), then right (clears desired_col), then down.
+    // When moving down onto the shorter line "ef".
     state.move_cursor_down();
-    assert_eq!(state.cursor_row_col(), (1, 2)); // clamped
-    state.move_cursor_right(); // clears desired_col, col is now actual position
-    // Now on line 1, actual col is past end of "ef" (col=2). move_cursor_right is noop on end.
-    // Let's use a different setup for clarity.
 
-    // Better: start over with "hello\nab\nworld"
+    // Then the cursor clamps to the end of that line.
+    assert_eq!(state.cursor_row_col(), (1, 2)); // clamped
+}
+
+#[rstest::rstest]
+fn desired_col_cleared_by_horizontal_move() {
+    // Given "hello\nab\nworld" with the cursor on "ab" at col 2 and
+    // desired_col pinned to 3 by an earlier vertical move.
     let mut state = ChatInputBoxState::new();
     state.insert_text("hello\nab\nworld");
     state.move_cursor_to_start();
@@ -431,14 +434,15 @@ fn desired_col_cleared_by_horizontal_move() {
         state.move_cursor_right();
     }
     assert_eq!(state.cursor_row_col(), (0, 3)); // at 'l'
-
     state.move_cursor_down(); // desired_col = 3, clamped to col 2 on "ab"
     assert_eq!(state.cursor_row_col(), (1, 2));
 
+    // When moving left, which clears desired_col, then moving down again.
     state.move_cursor_left(); // clears desired_col, actual col now 1
     assert_eq!(state.cursor_row_col(), (1, 1));
-
     state.move_cursor_down(); // desired_col is None → uses actual col 1
+
+    // Then the cursor lands at the actual column, not the stale desired one.
     assert_eq!(state.cursor_row_col(), (2, 1)); // col 1 on "world" = 'o'
 }
 
@@ -474,14 +478,14 @@ fn desired_col_cleared_by_delete() {
     }
     assert_eq!(state.cursor_row_col(), (0, 4));
 
+    // When moving down, then deleting before the cursor, then moving down again.
     state.move_cursor_down(); // desired_col = 4, clamped to col 2 on "xy"
     assert_eq!(state.cursor_row_col(), (1, 2));
-
-    // When deleting before cursor.
     state.delete_grapheme_before_cursor(); // clears desired_col, col now 1
     assert_eq!(state.cursor_row_col(), (1, 1));
-
     state.move_cursor_down(); // desired_col is None → uses actual col 1
+
+    // Then the cursor lands at the actual column, not the stale desired one.
     assert_eq!(state.cursor_row_col(), (2, 1));
 }
 
@@ -650,7 +654,6 @@ fn scroll_to_cursor_does_not_scroll_away_first_line_on_multiline() {
     // Cursor is at end (row 1, col 5).
     // The element renders with Borders::BOTTOM, so inner.height = input_height - 1.
     // input_height = 1 + 2 = 3, inner.height = 2, so max_visible_lines = 2.
-    // When scrolling with 2 visible lines.
 
     // When scrolling to cursor with correct visible-line count (2).
     state.scroll_to_cursor(2);

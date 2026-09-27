@@ -84,6 +84,46 @@ mod tests {
         }
     }
 
+    /// The eight-tool catalog every rendering determinism check is run over.
+    #[rustfmt::skip]
+    const TOOL_CATALOG: [(&str, &str, &[&str]); 8] = [
+        ("bash", "Execute shell commands", &["Prefer bash for pipelines"]),
+        ("read", "Read file contents", &["Use read for file contents"]),
+        ("write", "Write file contents", &["Use write for modifications"]),
+        ("edit", "Edit file contents", &["Use edit for surgical changes"]),
+        ("search", "Search the codebase", &["Use search before reading"]),
+        ("list", "List directory entries", &["Use list to explore"]),
+        ("grep", "Find text in files", &["Use grep for one-off matches"]),
+        ("cd", "Change directory", &["Use cd to move between dirs"]),
+    ];
+
+    /// Builds a tool map from `TOOL_CATALOG`, in catalog order.
+    fn catalog_tools() -> BTreeMap<String, ToolDefinition> {
+        TOOL_CATALOG
+            .iter()
+            .map(|(name, snippet, guidelines)| {
+                (
+                    name.to_string(),
+                    test_tool(name, Some(snippet), guidelines.to_vec()),
+                )
+            })
+            .collect()
+    }
+
+    /// Builds a tool map from `TOOL_CATALOG`, in reversed catalog order.
+    fn reversed_catalog_tools() -> BTreeMap<String, ToolDefinition> {
+        TOOL_CATALOG
+            .iter()
+            .rev()
+            .map(|(name, snippet, guidelines)| {
+                (
+                    name.to_string(),
+                    test_tool(name, Some(snippet), guidelines.to_vec()),
+                )
+            })
+            .collect()
+    }
+
     #[rstest::rstest]
     fn tools_with_snippets_produce_available_tools_section() {
         // Given tools with snippets.
@@ -191,56 +231,29 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn tool_block_always_renders_the_same_so_we_get_cache_hits() {
-        #[rustfmt::skip]
-        const TOOL_CATALOG: [(&str, &str, &[&str]); 8] = [
-            ("bash", "Execute shell commands", &["Prefer bash for pipelines"]),
-            ("read", "Read file contents", &["Use read for file contents"]),
-            ("write", "Write file contents", &["Use write for modifications"]),
-            ("edit", "Edit file contents", &["Use edit for surgical changes"]),
-            ("search", "Search the codebase", &["Use search before reading"]),
-            ("list", "List directory entries", &["Use list to explore"]),
-            ("grep", "Find text in files", &["Use grep for one-off matches"]),
-            ("cd", "Change directory", &["Use cd to move between dirs"]),
-        ];
-
-        // Given a tool catalog.
-        let tools = TOOL_CATALOG
-            .iter()
-            .map(|(name, snippet, guidelines)| {
-                (
-                    name.to_string(),
-                    test_tool(name, Some(snippet), guidelines.to_vec()),
-                )
-            })
-            .collect();
-
+    fn tool_block_is_stable_across_repeated_builds() {
+        // Given a tool catalog and the block it renders to first.
+        let tools = catalog_tools();
         let initial_block = build_tool_context_block(&tools).expect("should produce a block");
 
         for _ in 0..100 {
-            // When building the tool context block.
+            // When building the tool context block again.
             let block = build_tool_context_block(&tools).expect("missing block");
 
             // Then it's the same as the initial block
             assert_eq!(block, initial_block);
         }
+    }
 
-        // Given a tool catalog.
-        let tools = TOOL_CATALOG
-            .iter()
-            .rev()
-            .map(|(name, snippet, guidelines)| {
-                (
-                    name.to_string(),
-                    test_tool(name, Some(snippet), guidelines.to_vec()),
-                )
-            })
-            .collect();
-
+    #[rstest::rstest]
+    fn tool_block_is_stable_when_the_catalog_order_is_reversed() {
+        // Given the same tool catalog in reverse insertion order, and the
+        // block it renders to first.
+        let tools = reversed_catalog_tools();
         let initial_block = build_tool_context_block(&tools).expect("should produce a block");
 
         for _ in 0..100 {
-            // When building the tool context block.
+            // When building the tool context block again.
             let block = build_tool_context_block(&tools).expect("missing block");
 
             // Then it's the same as the initial block

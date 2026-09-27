@@ -266,7 +266,11 @@ mod tests {
     #[rstest::rstest]
     fn string_dispatches_to_hex() {
         // Given a string starting with #.
-        let result = parse_color_string("#112233");
+        let input = "#112233";
+
+        // When parsing.
+        let result = parse_color_string(input);
+
         // Then it is treated as hex.
         assert_eq!(result, Some(Color::Rgb(0x11, 0x22, 0x33)));
     }
@@ -274,7 +278,11 @@ mod tests {
     #[rstest::rstest]
     fn string_dispatches_to_ansi_code() {
         // Given a string starting with A followed by digits.
-        let result = parse_color_string("A1");
+        let input = "A1";
+
+        // When parsing.
+        let result = parse_color_string(input);
+
         // Then it is treated as an ANSI code.
         assert!(result.is_some());
     }
@@ -282,7 +290,11 @@ mod tests {
     #[rstest::rstest]
     fn string_dispatches_to_name() {
         // Given a plain color name.
-        let result = parse_color_string("cyan");
+        let input = "cyan";
+
+        // When parsing.
+        let result = parse_color_string(input);
+
         // Then it is treated as an ANSI name.
         assert_eq!(result, Some(Color::Cyan));
     }

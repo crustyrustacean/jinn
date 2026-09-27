@@ -453,28 +453,50 @@ mod tests {
 
     #[rstest::rstest]
     fn shell_escape_simple_path() {
-        assert_eq!(shell_escape("/home/user/project"), "'/home/user/project'");
+        // Given a path with no shell metacharacters.
+        let path = "/home/user/project";
+
+        // When escaping it for a shell.
+        let escaped = shell_escape(path);
+
+        // Then it is single-quoted verbatim.
+        assert_eq!(escaped, "'/home/user/project'");
     }
 
     #[rstest::rstest]
     fn shell_escape_path_with_spaces() {
-        assert_eq!(
-            shell_escape("/home/user/my project"),
-            "'/home/user/my project'"
-        );
+        // Given a path containing spaces.
+        let path = "/home/user/my project";
+
+        // When escaping it for a shell.
+        let escaped = shell_escape(path);
+
+        // Then the whole path is single-quoted, spaces included.
+        assert_eq!(escaped, "'/home/user/my project'");
     }
 
     #[rstest::rstest]
     fn shell_escape_path_with_single_quote() {
-        assert_eq!(
-            shell_escape("/home/user/it's/project"),
-            "'/home/user/it'\\''s/project'"
-        );
+        // Given a path containing a single quote.
+        let path = "/home/user/it's/project";
+
+        // When escaping it for a shell.
+        let escaped = shell_escape(path);
+
+        // Then the quote is closed, escaped, and reopened.
+        assert_eq!(escaped, "'/home/user/it'\\''s/project'");
     }
 
     #[rstest::rstest]
     fn shell_escape_empty_string() {
-        assert_eq!(shell_escape(""), "''");
+        // Given an empty path.
+        let path = "";
+
+        // When escaping it for a shell.
+        let escaped = shell_escape(path);
+
+        // Then it becomes a pair of empty single quotes.
+        assert_eq!(escaped, "''");
     }
 
     #[rstest::rstest]

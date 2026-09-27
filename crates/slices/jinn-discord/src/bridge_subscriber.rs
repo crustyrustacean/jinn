@@ -345,7 +345,11 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn reason_message_already_bound_is_descriptive() {
+        // Given the AlreadyBound reason.
+        // When rendering its explanation.
         let msg = reason_message(&CreateThreadReason::AlreadyBound);
+
+        // Then the message says the session is already in a thread.
         assert!(msg.contains("already in a Discord thread"));
     }
 
@@ -353,9 +357,13 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn reason_message_forum_channel_missing_explains_how_to_set() {
+        // Given the forum-channel-missing reason.
+        // When rendering its explanation.
         let msg = reason_message(&CreateThreadReason::ForumChannel(
             ForumChannelError::Missing,
         ));
+
+        // Then the message names the unset field and how to obtain its value.
         assert!(msg.contains("no `forum_channel` is set"));
         assert!(msg.contains("snowflake"));
         assert!(msg.contains("GUILD_FORUM"));
@@ -366,11 +374,15 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn reason_message_forum_channel_invalid_shows_bad_value() {
+        // Given the forum-channel-invalid reason carrying a bad value.
+        // When rendering its explanation.
         let msg = reason_message(&CreateThreadReason::ForumChannel(
             ForumChannelError::Invalid {
                 value: "sessions".to_owned(),
             },
         ));
+
+        // Then the message quotes the bad value and what a valid one looks like.
         assert!(
             msg.contains("`sessions`"),
             "expected the bad value in the message: {msg}"
@@ -383,7 +395,11 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn reason_message_create_failed_includes_detail() {
+        // Given the create-failed reason carrying a Discord error detail.
+        // When rendering its explanation.
         let msg = reason_message(&CreateThreadReason::CreateFailed("boom".to_owned()));
+
+        // Then the message includes the detail verbatim.
         assert!(msg.contains("boom"));
     }
 
@@ -391,7 +407,11 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn reason_message_mapping_write_failed_describes_orphan() {
+        // Given the mapping-write-failed reason.
+        // When rendering its explanation.
         let msg = reason_message(&CreateThreadReason::MappingWriteFailed);
+
+        // Then the message describes the orphaned thread receiving no replies.
         assert!(msg.contains("won't receive replies"));
     }
 

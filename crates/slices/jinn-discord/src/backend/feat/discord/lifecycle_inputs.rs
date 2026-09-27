@@ -242,6 +242,7 @@ mod tests {
             teardown: None,
         }];
 
+        // When resolving inputs.
         // Then the count is 0 and the prompt is empty: the lifecycle exists,
         // so we proceed with no args rather than erroring as if it were missing.
         let spec = resolve_lifecycle_inputs(&lifecycles, "blank").expect("found");

@@ -161,122 +161,14 @@ mod tests {
         None
     }
 
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn render_audit_popup_paints_header_and_body_at_computed_rect() {
-        // Given a state with audit visible and one excluded entry, with
-        // pre-populated line ranges (simulating what render_chat_log does).
-        let app = app_with_audit_visible().await;
-        let (mut terminal, _area) = setup_term(120, 24);
-
-        // Pre-populate the line-range cache that render_chat_log normally fills.
-        // The selected entry occupies wrapped-line 0..=0 (one line).
-        {
-            let mut wstate = app.core.state.write();
-            let session = wstate.active_session_mut();
-            session.set_entry_line_ranges(vec![(0, 0)]);
-            session.set_rendered_scroll_offset(0);
-            session.set_viewport_height(24);
-            session.set_blank_count(0);
-        }
-
-        // The chat-log area we render against. Wide enough to fit the
-        // 70-col popup with room to spare.
-        let chat_log_area = Rect::new(30, 0, 70, 24);
-
-        // When rendering the popup directly.
-        let mut rects: Vec<Rect> = Vec::new();
-        terminal
-            .draw(|frame| {
-                let guard = app.core.state.read();
-                // The app's own registry, not a throwaway one: the popup's
-                // visibility is a chat-log cell, and an empty registry
-                // would read as hidden and make these tests vacuous.
-                let views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new_with_default_config(&guard, &app.services.slices, &views);
-                render_audit_popup(frame, chat_log_area, &ctx, &mut rects);
-            })
-            .unwrap();
-
-        // Then exactly one rect is registered, matching the popup width.
-        assert_eq!(
-            rects.len(),
-            1,
-            "exactly one popup rect should be registered"
-        );
-        let popup = rects[0];
-        assert_eq!(popup.width, AUDIT_POPUP_WIDTH, "popup width");
-        assert_eq!(
-            popup.x + popup.width,
-            chat_log_area.x + chat_log_area.width,
-            "popup right edge should align to chat-log right edge"
-        );
-
-        // And the popup height accommodates Metadata section + audit section + 2 borders
-        // (3 Metadata lines + 1 audit header + 1 audit body = 5 content lines + 2 borders = 7).
-        assert_eq!(
-            popup.height, 7,
-            "popup height should be content + 2 borders"
-        );
-
-        // And the rendered buffer contains the Metadata title on the first body
-        // line (popup.y + 1, since row 0 is the top border).
-        let buffer = terminal.backend().buffer();
-        let metadata_y = popup.y + 1;
-        let metadata_row: String = (popup.x..popup.x + popup.width)
-            .filter_map(|x| buffer.cell((x, metadata_y)).map(|c| c.symbol().to_owned()))
-            .collect();
-        assert!(
-            metadata_row.contains("Metadata"),
-            "metadata title row at y={metadata_y}: {metadata_row:?}"
-        );
-
-        // And the Sent line appears on the second body line (popup.y + 2).
-        let sent_y = popup.y + 2;
-        let sent_row: String = (popup.x..popup.x + popup.width)
-            .filter_map(|x| buffer.cell((x, sent_y)).map(|c| c.symbol().to_owned()))
-            .collect();
-        assert!(
-            sent_row.contains("Sent:"),
-            "sent row at y={sent_y}: {sent_row:?}"
-        );
-
-        // And the rendered buffer contains the audit header text on the fourth
-        // body line (popup.y + 4, after Metadata title + Sent + blank).
-        let audit_header_y = popup.y + 4;
-        let audit_header_row: String = (popup.x..popup.x + popup.width)
-            .filter_map(|x| {
-                buffer
-                    .cell((x, audit_header_y))
-                    .map(|c| c.symbol().to_owned())
-            })
-            .collect();
-        assert!(
-            audit_header_row.contains("audit")
-                && audit_header_row.contains("1 events")
-                && audit_header_row.contains("ForcedExclude"),
-            "audit header row at y={audit_header_y}: {audit_header_row:?}"
-        );
-
-        // And the rendered buffer contains the event body text on the fifth
-        // body line (popup.y + 5).
-        let body_y = popup.y + 5;
-        let body_row: String = (popup.x..popup.x + popup.width)
-            .filter_map(|x| buffer.cell((x, body_y)).map(|c| c.symbol().to_owned()))
-            .collect();
-        assert!(
-            body_row.contains("user") && body_row.contains("Default"),
-            "body row at y={body_y}: {body_row:?}"
-        );
-    }
-
-    /// Render the audit popup into an 80×24 terminal and return a snapshot
-    /// of the rendered buffer together with the popup's screen rect.
+    /// Render the audit popup into a 100×24 terminal and return a snapshot
+    /// of the rendered buffer, the chat-log area it was rendered against, and
+    /// every rect the popup registered.
     ///
     /// Mirrors the paint test's setup: one excluded entry, audit visible,
     /// pre-populated line ranges, popup rendered right-aligned in a 70-col
     /// chat-log area.
-    async fn render_popup_buffer() -> (ratatui::buffer::Buffer, Rect) {
+    async fn render_popup_buffer() -> (ratatui::buffer::Buffer, Rect, Vec<Rect>) {
         let app = app_with_audit_visible().await;
         let (mut terminal, _area) = setup_term(100, 24);
 
@@ -304,26 +196,130 @@ mod tests {
             })
             .unwrap();
 
-        let popup = rects
-            .into_iter()
-            .next()
-            .expect("audit popup rect should be registered");
-        (terminal.backend().buffer().clone(), popup)
+        (terminal.backend().buffer().clone(), chat_log_area, rects)
+    }
+
+    /// The single rect the popup registered, or a panic naming the count.
+    fn only_popup_rect(rects: &[Rect]) -> Rect {
+        assert_eq!(
+            rects.len(),
+            1,
+            "exactly one popup rect should be registered"
+        );
+        rects[0]
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn render_audit_popup_registers_one_rect_at_the_computed_geometry() {
+        // Given audit visible with one excluded entry and pre-populated line
+        // ranges, rendered into a chat-log area wide enough for the popup.
+        let (_buffer, chat_log_area, rects) = render_popup_buffer().await;
+
+        // When reading the rect the popup registered.
+        let popup = only_popup_rect(&rects);
+
+        // Then its width matches the popup width.
+        assert_eq!(popup.width, AUDIT_POPUP_WIDTH, "popup width");
+        // And its right edge aligns to the chat-log right edge.
+        assert_eq!(
+            popup.x + popup.width,
+            chat_log_area.x + chat_log_area.width,
+            "popup right edge should align to chat-log right edge"
+        );
+        // And its height is content + 2 borders: 3 Metadata lines
+        // (title, Sent, blank) + 1 audit header + 1 audit body = 7.
+        assert_eq!(
+            popup.height, 7,
+            "popup height should be content + 2 borders"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn render_audit_popup_paints_the_metadata_block_body_rows() {
+        // Given the audit popup rendered with one excluded entry.
+        let (buffer, _chat_log_area, rects) = render_popup_buffer().await;
+        let popup = only_popup_rect(&rects);
+
+        // When reading the first two body rows (row 0 is the top border).
+        let metadata_y = popup.y + 1;
+        let sent_y = popup.y + 2;
+        let row_text = |y: u16| -> String {
+            (popup.x..popup.x + popup.width)
+                .filter_map(|x| buffer.cell((x, y)).map(|c| c.symbol().to_owned()))
+                .collect()
+        };
+        let metadata_row = row_text(metadata_y);
+        let sent_row = row_text(sent_y);
+
+        // Then the first carries the Metadata title.
+        assert!(
+            metadata_row.contains("Metadata"),
+            "metadata title row at y={metadata_y}: {metadata_row:?}"
+        );
+        // And the second carries the Sent line.
+        assert!(
+            sent_row.contains("Sent:"),
+            "sent row at y={sent_y}: {sent_row:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn render_audit_popup_paints_the_audit_section_body_rows() {
+        // Given the audit popup rendered with one excluded entry.
+        let (buffer, _chat_log_area, rects) = render_popup_buffer().await;
+        let popup = only_popup_rect(&rects);
+
+        // When reading the audit header and event body rows, past the
+        // Metadata title, Sent line, and their blank row.
+        let audit_header_y = popup.y + 4;
+        let body_y = popup.y + 5;
+        let row_text = |y: u16| -> String {
+            (popup.x..popup.x + popup.width)
+                .filter_map(|x| buffer.cell((x, y)).map(|c| c.symbol().to_owned()))
+                .collect()
+        };
+        let audit_header_row = row_text(audit_header_y);
+        let body_row = row_text(body_y);
+
+        // Then the header row names the event count and the excluded tool.
+        assert!(
+            audit_header_row.contains("audit")
+                && audit_header_row.contains("1 events")
+                && audit_header_row.contains("ForcedExclude"),
+            "audit header row at y={audit_header_y}: {audit_header_row:?}"
+        );
+        // And the body row names the role and decision.
+        assert!(
+            body_row.contains("user") && body_row.contains("Default"),
+            "body row at y={body_y}: {body_row:?}"
+        );
     }
 
     #[rstest::rstest]
     #[tokio::test]
     async fn render_audit_popup_paints_vertical_borders_on_every_content_row() {
-        let (buffer, popup) = render_popup_buffer().await;
+        // Given the audit popup rendered with one excluded entry.
+        let (buffer, _chat_log_area, rects) = render_popup_buffer().await;
+        let popup = only_popup_rect(&rects);
 
-        // Then every content row (strictly between the top and bottom border
-        // rows) is bounded by the vertical border glyph on both edges.
-        for y in (popup.y + 1)..(popup.y + popup.height - 1) {
-            let left = buffer.cell((popup.x, y)).map(|c| c.symbol()).unwrap_or("");
-            let right = buffer
-                .cell((popup.x + popup.width - 1, y))
-                .map(|c| c.symbol())
-                .unwrap_or("");
+        // When probing every row strictly between the top and bottom borders.
+        let rows = (popup.y + 1)..(popup.y + popup.height - 1);
+        let edges = rows
+            .map(|y| {
+                let left = buffer.cell((popup.x, y)).map(|c| c.symbol()).unwrap_or("");
+                let right = buffer
+                    .cell((popup.x + popup.width - 1, y))
+                    .map(|c| c.symbol())
+                    .unwrap_or("");
+                (y, left, right)
+            })
+            .collect::<Vec<_>>();
+
+        // Then each is bounded by the vertical border glyph on both edges.
+        for (y, left, right) in edges {
             assert_eq!(left, "│", "missing left border at ({}, {})", popup.x, y);
             assert_eq!(
                 right,
@@ -339,34 +335,33 @@ mod tests {
     #[tokio::test]
     async fn render_audit_popup_paints_four_rounded_corners() {
         // Given the audit popup rendered into a buffer.
-        let (buffer, popup) = render_popup_buffer().await;
+        let (buffer, _chat_log_area, rects) = render_popup_buffer().await;
+        let popup = only_popup_rect(&rects);
 
         let top = popup.y;
         let bottom = popup.y + popup.height - 1;
         let left = popup.x;
         let right = popup.x + popup.width - 1;
 
+        // When reading the four corner cells.
+        let corners = [
+            ((left, top), buffer.cell((left, top)).map(|c| c.symbol())),
+            ((right, top), buffer.cell((right, top)).map(|c| c.symbol())),
+            (
+                (left, bottom),
+                buffer.cell((left, bottom)).map(|c| c.symbol()),
+            ),
+            (
+                (right, bottom),
+                buffer.cell((right, bottom)).map(|c| c.symbol()),
+            ),
+        ];
+
         // Then the four corners are the rounded border glyphs.
-        assert_eq!(
-            buffer.cell((left, top)).map(|c| c.symbol()),
-            Some("╭"),
-            "top-left corner"
-        );
-        assert_eq!(
-            buffer.cell((right, top)).map(|c| c.symbol()),
-            Some("╮"),
-            "top-right corner"
-        );
-        assert_eq!(
-            buffer.cell((left, bottom)).map(|c| c.symbol()),
-            Some("╰"),
-            "bottom-left corner"
-        );
-        assert_eq!(
-            buffer.cell((right, bottom)).map(|c| c.symbol()),
-            Some("╯"),
-            "bottom-right corner"
-        );
+        assert_eq!(corners[0].1, Some("╭"), "top-left corner");
+        assert_eq!(corners[1].1, Some("╮"), "top-right corner");
+        assert_eq!(corners[2].1, Some("╰"), "bottom-left corner");
+        assert_eq!(corners[3].1, Some("╯"), "bottom-right corner");
     }
 
     #[rstest::rstest]

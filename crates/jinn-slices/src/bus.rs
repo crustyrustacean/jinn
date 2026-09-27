@@ -295,19 +295,30 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn new_recording_starts_empty() {
+        // Given a recording bus.
         let (_bus, audit) = BusService::new_recording();
+
+        // When inspecting the audit log before any publish.
+        // Then it holds no messages.
         assert!(audit.is_empty());
         assert_eq!(audit.len(), 0);
+        // And no message names are recorded.
         assert!(audit.names().is_empty());
     }
 
     #[rstest::rstest]
     #[tokio::test]
     async fn publish_captures_single_message() {
+        // Given a recording bus.
         let (bus, audit) = BusService::new_recording();
+
+        // When publishing one Alpha.
         bus.publish(Alpha { val: 42 }).await;
+
+        // Then the audit holds exactly one message named "Alpha".
         assert_eq!(audit.len(), 1);
         assert_eq!(audit.names(), ["Alpha"]);
+        // And the recorded Alpha carries the published value.
         let alphas: Vec<Alpha> = audit.of_type::<Alpha>();
         assert_eq!(alphas.len(), 1);
         assert_eq!(alphas[0].val, 42);
@@ -316,14 +327,20 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn publish_captures_multiple_types_in_order() {
+        // Given a recording bus.
         let (bus, audit) = BusService::new_recording();
+
+        // When publishing Alpha, Beta, then Alpha again.
         bus.publish(Alpha { val: 1 }).await;
         bus.publish(Beta {
             text: "hello".into(),
         })
         .await;
         bus.publish(Alpha { val: 2 }).await;
+
+        // Then the audit records the three names in publish order.
         assert_eq!(audit.names(), ["Alpha", "Beta", "Alpha"]);
+        // And each type is recoverable with its published payload.
         assert_eq!(audit.of_type::<Alpha>().len(), 2);
         assert_eq!(audit.of_type::<Beta>().len(), 1);
         assert_eq!(audit.of_type::<Alpha>()[0].val, 1);
@@ -334,8 +351,12 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn contains_name_finds_published_type() {
+        // Given a recording bus with one Alpha published.
         let (bus, audit) = BusService::new_recording();
         bus.publish(Alpha { val: 99 }).await;
+
+        // When looking up message names in the audit.
+        // Then the published type is found and the unpublished one is not.
         assert!(audit.contains_name("Alpha"));
         assert!(!audit.contains_name("Beta"));
     }
@@ -343,20 +364,30 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn clear_removes_all_messages() {
+        // Given a recording bus holding two published messages.
         let (bus, audit) = BusService::new_recording();
         bus.publish(Alpha { val: 1 }).await;
         bus.publish(Beta { text: "x".into() }).await;
         assert_eq!(audit.len(), 2);
+
+        // When clearing the audit.
         audit.clear();
+
+        // Then the audit is empty again.
         assert!(audit.is_empty());
     }
 
     #[rstest::rstest]
     #[tokio::test]
     async fn of_type_returns_empty_for_unpublished_type() {
+        // Given a recording bus with only an Alpha published.
         let (bus, audit) = BusService::new_recording();
         bus.publish(Alpha { val: 1 }).await;
+
+        // When filtering the audit for Beta.
         let betas: Vec<Beta> = audit.of_type::<Beta>();
+
+        // Then nothing comes back.
         assert!(betas.is_empty());
     }
 

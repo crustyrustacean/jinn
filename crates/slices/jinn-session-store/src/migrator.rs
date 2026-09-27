@@ -116,6 +116,57 @@ mod tests {
         (pool, dir)
     }
 
+    /// The (version, name) pairs this schema has introduced, in order. Every
+    /// migration ever added appears here, so a renamed or renumbered migration
+    /// is a test failure rather than silent history drift.
+    const MIGRATION_HISTORY: &[(i32, &str)] = &[
+        (0, "create_initial_schema"),
+        (1, "add_cwd_column"),
+        (2, "add_created_at_column"),
+        (3, "add_ignored_to_session_entries"),
+        (4, "add_cost_to_token_ledger"),
+        (5, "add_lifecycle_columns_to_sessions"),
+        (6, "add_archived_column"),
+        (7, "add_lifecycle_script_state_column"),
+        (8, "add_metadata_column"),
+        (9, "rename_session_entries_to_session_history"),
+        (10, "consolidate_to_compaction_strategy"),
+        (11, "add_is_workflow_column"),
+        (12, "replace_ignored_with_context_override"),
+        (13, "add_judge_meta_column"),
+        (14, "add_context_history"),
+        (15, "drop_strategy_state_column"),
+        (16, "rename_is_workflow_to_is_automated_and_add_persist"),
+        (17, "rewrite_model_to_model_selection_and_add_model_used"),
+        (18, "rename_entries_timestamp_to_timing"),
+        (19, "rewrite_metadata_blob_profile_model"),
+        (20, "drop_zombie_columns_backfill_metadata"),
+        (21, "add_discord_thread_table"),
+        (22, "add_entry_blobs_table"),
+        (23, "strip_s_prefix_from_session_ids"),
+        (24, "add_token_ledger_prompt_cached_columns"),
+        (25, "add_entries_token_count_column"),
+        (26, "add_fts_search_index"),
+        (27, "add_fts_dirty_resume_offset"),
+        (28, "add_fts_rowid_map"),
+    ];
+
+    /// Reads every `(version, name)` row from the `_migrations` table.
+    async fn read_migration_rows(pool: &daow::Pool) -> Vec<(i32, String)> {
+        pool.with_conn(|conn| {
+            let mut stmt =
+                conn.prepare("SELECT version, name FROM _migrations ORDER BY version")?;
+            let mapped = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            let mut out = Vec::new();
+            for row in mapped {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+        .await
+        .unwrap()
+    }
+
     #[rstest::rstest]
     #[tokio::test]
     async fn run_migrations_creates_tracking_table() {
@@ -126,60 +177,18 @@ mod tests {
         run_migrations(&pool).await.unwrap();
 
         // Then the _migrations table has one entry per migration.
-        let rows: Vec<(i32, String)> = pool
-            .with_conn(|conn| {
-                let mut stmt =
-                    conn.prepare("SELECT version, name FROM _migrations ORDER BY version")?;
-                let mapped = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
-                let mut out = Vec::new();
-                for row in mapped {
-                    out.push(row?);
-                }
-                Ok(out)
-            })
-            .await
-            .unwrap();
-
+        let rows = read_migration_rows(&pool).await;
         let expected = usize::try_from(jinn_session_schema::LATEST_VERSION)
             .expect("LATEST_VERSION is non-negative")
             + 1;
         assert_eq!(rows.len(), expected);
-        assert_eq!(rows[0].0, 0);
-        assert_eq!(rows[0].1, "create_initial_schema");
-        assert_eq!(rows[1].0, 1);
-        assert_eq!(rows[1].1, "add_cwd_column");
-        assert_eq!(rows[2].0, 2);
-        assert_eq!(rows[2].1, "add_created_at_column");
-        assert_eq!(rows[3].0, 3);
-        assert_eq!(rows[3].1, "add_ignored_to_session_entries");
-        assert_eq!(rows[4].0, 4);
-        assert_eq!(rows[4].1, "add_cost_to_token_ledger");
-        assert_eq!(rows[5].0, 5);
-        assert_eq!(rows[5].1, "add_lifecycle_columns_to_sessions");
-        assert_eq!(rows[6].0, 6);
-        assert_eq!(rows[6].1, "add_archived_column");
-        assert_eq!(rows[7].0, 7);
-        assert_eq!(rows[7].1, "add_lifecycle_script_state_column");
-        assert_eq!(rows[8].0, 8);
-        assert_eq!(rows[8].1, "add_metadata_column");
-        assert_eq!(rows[9].0, 9);
-        assert_eq!(rows[9].1, "rename_session_entries_to_session_history");
-        assert_eq!(rows[10].0, 10);
-        assert_eq!(rows[10].1, "consolidate_to_compaction_strategy");
-        assert_eq!(rows[11].0, 11);
-        assert_eq!(rows[11].1, "add_is_workflow_column");
-        assert_eq!(rows[12].0, 12);
-        assert_eq!(rows[12].1, "replace_ignored_with_context_override");
-        assert_eq!(rows[13].0, 13);
-        assert_eq!(rows[13].1, "add_judge_meta_column");
-        assert_eq!(rows[14].0, 14);
-        assert_eq!(rows[14].1, "add_context_history");
-        assert_eq!(rows[19].0, 19);
-        assert_eq!(rows[19].1, "rewrite_metadata_blob_profile_model");
-        assert_eq!(rows[20].0, 20);
-        assert_eq!(rows[20].1, "drop_zombie_columns_backfill_metadata");
-        assert_eq!(rows[21].0, 21);
-        assert_eq!(rows[21].1, "add_discord_thread_table");
+        // Indexed by POSITION, not by version: the table skips v15-v18, so a
+        // row's index is not its version number.
+        for (index, (version, name)) in MIGRATION_HISTORY.iter().enumerate() {
+            let (got_version, got_name) = &rows[index];
+            assert_eq!(got_version, version);
+            assert_eq!(got_name.as_str(), *name);
+        }
     }
 
     #[rstest::rstest]
@@ -220,15 +229,16 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn migration_guards_do_not_reapply_completed_version() {
+        // Given a database migrated up to each version in turn.
         for target_version in 0..=jinn_session_schema::LATEST_VERSION {
             let (pool, _dir) = apply_migrations_up_to(target_version).await;
 
-            // Re-running should succeed - applying only versions > target_version.
+            // When re-running the full migration set.
             run_migrations(&pool).await.unwrap_or_else(|e| {
                 panic!("re-run at target_version={target_version} should succeed: {e:?}")
             });
 
-            // Verify no duplicate rows: exactly one migration row per version.
+            // Then no duplicate rows: exactly one migration row per version.
             let count: i64 = pool
                 .with_conn(|conn| {
                     conn.query_row("SELECT COUNT(*) AS count FROM _migrations", [], |r| {

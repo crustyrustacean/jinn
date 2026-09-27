@@ -835,10 +835,13 @@ async fn the_filter_hook_is_registered_so_typing_reaches_the_picker() {
 
 #[rstest::rstest]
 fn the_picker_state_lives_only_in_its_slice_cell() {
-    // The reasoning picker's state is reachable from exactly one place: the
-    // slice cell. A second copy in the kernel would let the menu show one
-    // store while a different one is written.
+    // Given the kernel's frontend state, which must hold no reasoning picker
+    // state: the slice cell is the only home. A second copy there would let the
+    // menu show one store while a different one is written.
     let kernel_source = include_str!("../../../jinn-kernel/src/state/frontend_state.rs");
+
+    // When scanning it for the picker's vocabulary.
+    // Then no reasoning picker state is held in the kernel.
     assert!(
         !kernel_source.contains("reasoning_effort_picker"),
         "the kernel must not hold reasoning picker state; the slice cell is the only home"
@@ -847,9 +850,9 @@ fn the_picker_state_lives_only_in_its_slice_cell() {
 
 #[rstest::rstest]
 fn the_kernel_names_no_reasoning_picker_at_all() {
-    // The central app crate and the TUI layer must not know this picker
-    // exists: no scope variant, no picker kind, no spec id. That is what makes
-    // adding a picker a folder-local change.
+    // Given the central app crate and the TUI layer, which must not know this
+    // picker exists: no scope variant, no picker kind, no spec id. That is what
+    // makes adding a picker a folder-local change.
     for (label, source) in [
         (
             "jinn-kernel frontend state",
@@ -870,11 +873,14 @@ fn the_kernel_names_no_reasoning_picker_at_all() {
             "REASONING_EFFORT_ID",
             "reasoning_effort_spec",
         ];
+        // When scanning each source for the picker's own vocabulary.
         let hits: Vec<&str> = picker_named
             .iter()
             .filter(|needle| source.contains(*needle))
             .copied()
             .collect();
+
+        // Then none of them name the reasoning picker.
         assert!(
             hits.is_empty(),
             "{label} still names the reasoning picker ({hits:?}); the slice must own it entirely"

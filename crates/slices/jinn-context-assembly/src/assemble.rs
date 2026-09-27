@@ -1381,54 +1381,52 @@ mod tests {
         }
     }
 
+    /// A state populated so every system-prompt section carries its marker.
+    fn state_with_every_system_section() -> (State, SessionId) {
+        let (state, session_id) = state_with_history(vec![]);
+        let cell = state
+            .read()
+            .persona_selection()
+            .expect("persona cell attached");
+        let () = cell.update(|p| {
+            p.entries.push(jinn_slices::Persona {
+                name: "custom".to_owned(),
+                description: "Custom persona".to_owned(),
+                body: "ORDER-MARK-PERSONA".to_owned(),
+            });
+        });
+        let mut guard = state.write();
+        guard
+            .session
+            .get_mut(&session_id)
+            .expect("session exists")
+            .set_persona_name("custom".to_owned());
+        guard
+            .active_session_mut()
+            .set_discovered_context_files(vec![ContextFile {
+                path: std::path::PathBuf::from("/project/AGENTS.md"),
+                content: "ORDER-MARK-FILES".to_owned(),
+            }]);
+        guard
+            .active_session_mut()
+            .set_discovered_skills(vec![make_skill("ordermark-skill")]);
+        drop(guard);
+        let cell = state
+            .read()
+            .tool_registry()
+            .expect("registry cell attached");
+        cell.update(|r| {
+            r.global
+                .insert("ordermark".to_owned(), make_tool("ordermark"));
+        });
+        (state, session_id)
+    }
+
     #[rstest::rstest]
     #[test]
     fn assemble_prompt_system_sections_appear_in_declared_order() {
         // Given a state where every system section has content.
-        let (state, session_id) = state_with_history(vec![]);
-        {
-            let cell = {
-                state
-                    .read()
-                    .persona_selection()
-                    .expect("persona cell attached")
-            };
-            let () = cell.update(|p| {
-                p.entries.push(jinn_slices::Persona {
-                    name: "custom".to_owned(),
-                    description: "Custom persona".to_owned(),
-                    body: "ORDER-MARK-PERSONA".to_owned(),
-                });
-            });
-            let mut guard = state.write();
-            guard
-                .session
-                .get_mut(&session_id)
-                .expect("session exists")
-                .set_persona_name("custom".to_owned());
-            guard
-                .active_session_mut()
-                .set_discovered_context_files(vec![ContextFile {
-                    path: std::path::PathBuf::from("/project/AGENTS.md"),
-                    content: "ORDER-MARK-FILES".to_owned(),
-                }]);
-            guard
-                .active_session_mut()
-                .set_discovered_skills(vec![make_skill("ordermark-skill")]);
-            drop(guard);
-            {
-                let cell = {
-                    state
-                        .read()
-                        .tool_registry()
-                        .expect("registry cell attached")
-                };
-                cell.update(|r| {
-                    r.global
-                        .insert("ordermark".to_owned(), make_tool("ordermark"));
-                });
-            }
-        }
+        let (state, session_id) = state_with_every_system_section();
 
         // When assembling the prompt.
         let guard = state.read();
@@ -1653,6 +1651,30 @@ mod tests {
         );
     }
 
+    /// The provider-facing projection of a tool definition: exactly the
+    /// name, description, and parameters an API receives in its tools array.
+    fn schema_projection_of(def: &ToolDefinition) -> String {
+        serde_json::json!({
+            "name": def.name,
+            "description": def.description,
+            "parameters": def.parameters,
+        })
+        .to_string()
+    }
+
+    /// The summed token count of every message's content in an assembly.
+    fn message_content_tokens(result: &AssembledPrompt, counter: &TiktokenCounter) -> usize {
+        result
+            .messages
+            .iter()
+            .map(|m| match m {
+                LlmMessage::User { content, .. }
+                | LlmMessage::Assistant { content, .. }
+                | LlmMessage::Tool { content, .. } => counter.count(content),
+            })
+            .sum()
+    }
+
     #[rstest::rstest]
     #[test]
     fn assemble_estimate_includes_tool_schema_tokens() {
@@ -1660,32 +1682,26 @@ mod tests {
         // carries substantial text, plus large snippet/guidelines that ride in
         // the system prompt.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
-        {
-            let cell = {
-                state
-                    .read()
-                    .tool_registry()
-                    .expect("registry cell attached")
-            };
-            cell.update(|r| {
-                r.global.insert(
-                    "schema-heavy".to_owned(),
-                    ToolDefinition {
-                        name: "schema-heavy".to_owned(),
-                        description: "A".repeat(200),
-                        parameters: serde_json::json!({
-                            "type": "object",
-                            "properties": {
-                                "path": {"type": "string", "description": "BBBB".repeat(20)}
-                            }
-                        }),
-                        prompt_snippet: Some("SNIPPET-ONLY-IN-SYSTEM-PROMPT".to_owned()),
-                        prompt_guidelines: vec!["GUIDELINE-ONLY-IN-SYSTEM-PROMPT".to_owned()],
-                        server_tool_type: None,
-                    },
-                );
-            });
-        }
+        let cell = state
+            .read()
+            .tool_registry()
+            .expect("registry cell attached");
+        let heavy_schema = || ToolDefinition {
+            name: "schema-heavy".to_owned(),
+            description: "A".repeat(200),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "BBBB".repeat(20)}
+                }
+            }),
+            prompt_snippet: Some("SNIPPET-ONLY-IN-SYSTEM-PROMPT".to_owned()),
+            prompt_guidelines: vec!["GUIDELINE-ONLY-IN-SYSTEM-PROMPT".to_owned()],
+            server_tool_type: None,
+        };
+        cell.update(|r| {
+            r.global.insert("schema-heavy".to_owned(), heavy_schema());
+        });
 
         // When assembling the prompt.
         let counter = counter();
@@ -1695,29 +1711,9 @@ mod tests {
         // Then the estimate at least covers the schema projection: the count
         // of serializing name, description, and parameters (what providers
         // actually receive in the tools array).
-        let schema_projection = {
-            let def = &result.tool_definitions[0];
-            serde_json::json!({
-                "name": def.name,
-                "description": def.description,
-                "parameters": def.parameters,
-            })
-            .to_string()
-        };
-        let schema_tokens = counter.count(&schema_projection);
-        let system_tokens = {
-            let system = result.system_prompt.to_string();
-            counter.count(&system)
-        };
-        let message_tokens: usize = result
-            .messages
-            .iter()
-            .map(|m| match m {
-                LlmMessage::User { content, .. }
-                | LlmMessage::Assistant { content, .. }
-                | LlmMessage::Tool { content, .. } => counter.count(content),
-            })
-            .sum::<usize>();
+        let schema_tokens = counter.count(&schema_projection_of(&result.tool_definitions[0]));
+        let system_tokens = counter.count(&result.system_prompt.to_string());
+        let message_tokens = message_content_tokens(&result, &counter);
         let floor = system_tokens + message_tokens + schema_tokens;
         assert!(
             result.estimated_tokens() >= floor as u32,
@@ -1735,6 +1731,29 @@ mod tests {
             "estimate exceeds schema floor by {headroom}; \
              snippet/guidelines must not be double-counted"
         );
+    }
+
+    /// The minimap's basis: the sum of per-entry content token estimates
+    /// over in-context entries only (persisted `token_count` is that same
+    /// per-entry estimate, gated by `is_in_context`).
+    fn in_context_minimap_sum(
+        state: &State,
+        session_id: &SessionId,
+        counter: &TiktokenCounter,
+    ) -> usize {
+        let estimator = CounterAsEstimator(counter);
+        let guard = state.read();
+        guard
+            .session
+            .get(session_id)
+            .expect("session exists")
+            .history()
+            .iter()
+            .filter(|entry| entry.is_in_context())
+            .map(|entry| {
+                jinn_llm_support::token_estimator::estimate_entry_content_tokens(&estimator, entry)
+            })
+            .sum()
     }
 
     #[rstest::rstest]
@@ -1768,41 +1787,19 @@ mod tests {
             ChatEntry::transient("Welcome to jinn!"),
         ];
         let (state, session_id) = state_with_history(entries);
-        {
-            let cell = {
-                state
-                    .read()
-                    .tool_registry()
-                    .expect("registry cell attached")
-            };
-            cell.update(|r| {
-                r.global.insert("bash".to_owned(), make_tool("bash"));
-            });
-        }
+        let cell = state
+            .read()
+            .tool_registry()
+            .expect("registry cell attached");
+        cell.update(|r| {
+            r.global.insert("bash".to_owned(), make_tool("bash"));
+        });
 
         // When assembling the prompt and summing per-entry token counts over
         // in-context entries (the minimap's basis: persisted token_count is
         // the per-entry content estimate, summed with is_in_context gating).
         let counter = counter();
-        let estimator = CounterAsEstimator(&counter);
-        let minimap_sum: usize = {
-            let guard = state.read();
-            let history = guard
-                .session
-                .get(&session_id)
-                .expect("session exists")
-                .history()
-                .to_vec();
-            history
-                .iter()
-                .filter(|entry| entry.is_in_context())
-                .map(|entry| {
-                    jinn_llm_support::token_estimator::estimate_entry_content_tokens(
-                        &estimator, entry,
-                    )
-                })
-                .sum()
-        };
+        let minimap_sum = in_context_minimap_sum(&state, &session_id, &counter);
         let result = {
             let guard = state.read();
             assemble_prompt(&guard, &session_id, &counter)

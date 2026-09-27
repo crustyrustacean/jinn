@@ -1010,24 +1010,14 @@ fn no_dangling_tool_calls_in_messages_after_hard_cancel() {
     ];
 
     // Force-exclude the dangling entries (tc-3, tc-4, and their empty Assistant).
-    entries[7].apply_context_override(
-        jinn_core_types::ContextOverride::ForcedExclude,
-        jinn_core_types::ChangeSource::Internal {
-            label: "test".to_owned(),
-        },
-    );
-    entries[8].apply_context_override(
-        jinn_core_types::ContextOverride::ForcedExclude,
-        jinn_core_types::ChangeSource::Internal {
-            label: "test".to_owned(),
-        },
-    );
-    entries[9].apply_context_override(
-        jinn_core_types::ContextOverride::ForcedExclude,
-        jinn_core_types::ChangeSource::Internal {
-            label: "test".to_owned(),
-        },
-    );
+    for entry in entries.iter_mut().skip(7) {
+        entry.apply_context_override(
+            jinn_core_types::ContextOverride::ForcedExclude,
+            jinn_core_types::ChangeSource::Internal {
+                label: "test".to_owned(),
+            },
+        );
+    }
 
     // When converting to messages.
     let messages = entries_to_messages(&entries);
@@ -1362,8 +1352,9 @@ fn excluding_compaction_summary_never_breaks_message_sequencing() {
 #[rstest::rstest]
 #[test]
 fn including_compaction_summary_produces_valid_sequencing() {
-    // Same history as above, but the summary is included (regression: the
-    // old code was only valid because the summary masked the broken opener).
+    // Given the same history as above, but with the summary included
+    // (regression: the old code was only valid because the summary masked
+    // the broken opener), and the earlier entries force-excluded.
     use jinn_context_curation::compaction_algorithm::adjust_cut_to_boundary;
 
     let mut entries = vec![
@@ -1377,8 +1368,7 @@ fn including_compaction_summary_produces_valid_sequencing() {
     for entry in entries.iter_mut().take(cut) {
         force_exclude(entry);
     }
-    let summary = compaction_entry("summary");
-    entries.push(summary);
+    entries.push(compaction_entry("summary"));
 
     // When converting with the summary included.
     let messages = entries_to_messages(&entries);

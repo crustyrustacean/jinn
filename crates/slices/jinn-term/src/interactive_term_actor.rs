@@ -676,6 +676,68 @@ mod tests {
     const QUIET: Duration = Duration::from_millis(150);
     const CAP: Duration = Duration::from_secs(2);
 
+    /// Every live (non-zombie) `/sleep` process whose cmdline carries
+    /// `marker`. A candidate must be a real `/sleep` binary; transient pid
+    /// slots between readdir and open are skipped, and a zombie is already
+    /// dead (the group kill worked) so it is not an orphan.
+    fn find_sleep_orphans(marker: &str) -> Vec<String> {
+        let mut found = Vec::new();
+        let entries = std::fs::read_dir("/proc").expect("/proc is readable");
+        for entry in entries.flatten() {
+            let Ok(exe) = std::fs::read_link(entry.path().join("exe")) else {
+                continue;
+            };
+            if !exe.to_string_lossy().ends_with("/sleep") {
+                continue;
+            }
+            let Ok(stat) = std::fs::read_to_string(entry.path().join("stat")) else {
+                continue;
+            };
+            let Some(state) = stat
+                .rsplit(')')
+                .next()
+                .and_then(|rest| rest.split(' ').next())
+            else {
+                continue;
+            };
+            if state == "Z" {
+                continue;
+            }
+            let Ok(cmdline) = std::fs::read_to_string(entry.path().join("cmdline")) else {
+                continue;
+            };
+            if cmdline.replace('\0', " ").contains(marker) {
+                found.push(entry.file_name().to_string_lossy().to_string());
+            }
+        }
+        found
+    }
+
+    /// Polls the realtime mirror for `chat` until its screen contains
+    /// `needle`, or `budget` elapses. Returns whether it appeared.
+    async fn mirror_shows(
+        state: &jinn_kernel::common::state::State,
+        chat: &jinn_core_types::SessionId,
+        needle: &str,
+        budget: Duration,
+    ) -> bool {
+        let deadline = tokio::time::Instant::now() + budget;
+        loop {
+            let contains = state
+                .read()
+                .term_tabs()
+                .and_then(|c| c.read().mirror(chat).map(|m| m.screen.contains(needle)))
+                .unwrap_or(false);
+            if contains {
+                return true;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return false;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
+
     /// A layer carrying the given settle windows, so the timing these
     /// tests assert on is read from configuration the same way production
     /// reads it.
@@ -1267,26 +1329,10 @@ mod tests {
         // And the user's bytes reached the program — observable in the
         // realtime mirror the overlay renders (the screen task pumps `cat`'s
         // echo without any tool call in flight).
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
-        loop {
-            let contains = state
-                .read()
-                .term_tabs()
-                .and_then(|c| {
-                    c.read()
-                        .mirror(&chat)
-                        .map(|m| m.screen.contains("user-marker"))
-                })
-                .unwrap_or(false);
-            if contains {
-                break;
-            }
-            assert!(
-                tokio::time::Instant::now() < deadline,
-                "user bytes never reached the program during capture"
-            );
-            tokio::time::sleep(Duration::from_millis(25)).await;
-        }
+        assert!(
+            mirror_shows(&state, &chat, "user-marker", Duration::from_secs(2)).await,
+            "user bytes never reached the program during capture"
+        );
     }
 
     #[rstest::rstest]
@@ -1696,50 +1742,14 @@ mod tests {
         assert!(plain_screen(&screen.screen).contains("second-run"));
 
         // And the *killed* program is gone (no orphans of the first spawn).
-        // A candidate must be a live (non-zombie) `/sleep` with the marker in
-        // its cmdline; transient pid slots between readdir and open are skipped.
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let find_orphans = || {
-            let mut found = Vec::new();
-            let entries = std::fs::read_dir("/proc").expect("/proc is readable");
-            for entry in entries.flatten() {
-                let Ok(exe) = std::fs::read_link(entry.path().join("exe")) else {
-                    continue; // kernel thread, vanished, or not ours.
-                };
-                if !exe.to_string_lossy().ends_with("/sleep") {
-                    continue;
-                }
-                // A zombie is already dead (the group kill worked); only a
-                // live state counts as an orphan.
-                let Ok(stat) = std::fs::read_to_string(entry.path().join("stat")) else {
-                    continue;
-                };
-                let Some(state) = stat
-                    .rsplit(')')
-                    .next()
-                    .and_then(|rest| rest.split(' ').next())
-                else {
-                    continue;
-                };
-                if state == "Z" {
-                    continue;
-                }
-                let Ok(cmdline) = std::fs::read_to_string(entry.path().join("cmdline")) else {
-                    continue;
-                };
-                if cmdline.replace('\0', " ").contains("sleep 31") {
-                    found.push(entry.file_name().to_string_lossy().to_string());
-                }
-            }
-            found
-        };
-        let mut orphans = find_orphans();
+        let mut orphans = find_sleep_orphans("sleep 31");
         for _ in 0..3 {
             if orphans.is_empty() {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(150)).await;
-            orphans = find_orphans();
+            orphans = find_sleep_orphans("sleep 31");
         }
         assert!(
             orphans.is_empty(),
@@ -1788,18 +1798,30 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn live_flag_mirrors_spawn_and_kill() {
+    async fn live_flag_is_set_after_spawn() {
         // Given a coordinator wired to a readable state.
         let harness = TestHarness::new().await;
         let (actor, state) = spawn_coordinator_with_state(&harness, TermControls::default()).await;
         let chat = jinn_core_types::SessionId::new();
+
+        // When spawning a terminal for the chat session.
         spawn_cat(&actor, &chat).await;
 
-        // Then the session is marked live after spawn.
+        // Then the session is marked live.
         assert!(
             test_live(&state.read(), &chat),
             "chat session must be live after spawn"
         );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn live_flag_clears_after_kill() {
+        // Given a coordinator with a live terminal for the chat session.
+        let harness = TestHarness::new().await;
+        let (actor, state) = spawn_coordinator_with_state(&harness, TermControls::default()).await;
+        let chat = jinn_core_types::SessionId::new();
+        spawn_cat(&actor, &chat).await;
 
         // When killing the terminal.
         let _: KillTermOutcome = actor
@@ -1864,26 +1886,10 @@ mod tests {
         // The screen task ticks at 50ms; a fresh print must land within ~1s
         // (generous vs. the ~100ms AC, but tight enough to catch a
         // regression to settle-only pumping).
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
-        loop {
-            let contains = state
-                .read()
-                .term_tabs()
-                .and_then(|c| {
-                    c.read()
-                        .mirror(&chat)
-                        .map(|m| m.screen.contains("realtime-echo"))
-                })
-                .unwrap_or(false);
-            if contains {
-                break;
-            }
-            assert!(
-                tokio::time::Instant::now() < deadline,
-                "mirror never updated without an in-flight ask"
-            );
-            tokio::time::sleep(Duration::from_millis(25)).await;
-        }
+        let mirrored = mirror_shows(&state, &chat, "realtime-echo", Duration::from_secs(1)).await;
+
+        // Then the mirror updates anyway.
+        assert!(mirrored, "mirror never updated without an in-flight ask");
     }
 
     // ── v3: per-session control + cross-session isolation ─────────────────

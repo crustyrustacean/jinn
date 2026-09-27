@@ -136,6 +136,7 @@ mod tests {
         let first = spinner_glyph(Duration::ZERO);
         let second = spinner_glyph(SPINNER_INTERVAL);
 
+        // When comparing the two glyphs.
         // Then the glyph advanced — the animation is actually turning.
         assert_ne!(
             first, second,

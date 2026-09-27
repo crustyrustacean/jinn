@@ -111,15 +111,18 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn handle_session_closed_removes_session_entries() {
+        // Given an actor caching one entry for each of two sessions.
         let actor = make_actor();
         let s_a = test_session_id(0);
         let s_b = test_session_id(1);
         let e = test_entry_id(0);
-
         actor.cache.insert(s_a.clone(), e.clone(), 10);
         actor.cache.insert(s_b.clone(), e.clone(), 20);
 
+        // When closing the first session.
         actor.handle_session_closed(&s_a);
+
+        // Then its entry is gone and the other session's survives.
         assert_eq!(actor.cache.get(&s_a, &e), None);
         assert_eq!(actor.cache.get(&s_b, &e), Some(20));
     }
@@ -127,14 +130,15 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn handle_session_closed_is_noop_for_unknown_session() {
+        // Given an actor caching one entry for a session that is not closing.
         let actor = make_actor();
         let s_known = test_session_id(0);
         let s_unknown = test_session_id(1);
         let e = test_entry_id(0);
-
         actor.cache.insert(s_known.clone(), e.clone(), 30);
 
-        // Must not panic, must not disturb s_known.
+        // When closing an unknown session.
+        // Then nothing panics and the known session is undisturbed.
         actor.handle_session_closed(&s_unknown);
         assert_eq!(actor.cache.get(&s_known, &e), Some(30));
     }

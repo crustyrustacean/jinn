@@ -735,7 +735,8 @@ async fn loaded_from_archive_appears_in_the_session_list() {
             content_width: None,
         })
         .await;
-    // When the session carries the state the sidebar lists.
+
+    // Then the session carries the state the sidebar lists.
     let listed = poll_until(|| async {
         fixture.state.read().session.iter().any(|(id, session)| {
             id == &session_id && session.session_state() == SessionState::Loaded

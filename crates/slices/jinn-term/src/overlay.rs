@@ -386,41 +386,29 @@ mod tests {
         assert!(row.contains("no active terminal session"), "row: {row:?}");
     }
 
-    #[rstest::rstest]
-    fn renders_styled_cells_with_colors_and_attributes() {
-        // Given facts whose mirror carries a styled cell grid: red bold "R"
-        // followed by default-colored plain text.
+    /// A 24x80 mirror whose first two cells are `styled` and whose row 0
+    /// holds the screen text, published into a fresh registry together with
+    /// the facts the overlay reads.
+    fn slices_with_styled_grid(
+        styled: Vec<TermCell>,
+        screen: &str,
+    ) -> (Slices, jinn_core_types::SessionId, RenderFacts) {
         let slices = Slices::new();
         slices
             .register(term_tabs_slot(), jinn_term_msg::TerminalTabState::default())
             .expect("fresh registry");
-        let styled = {
-            let mut cells = vec![
-                TermCell::Styled {
-                    ch: 'R',
-                    style: CellStyle {
-                        fg: TermColor::Idx(1),
-                        bold: true,
-                        ..CellStyle::default()
-                    },
-                },
-                TermCell::Styled {
-                    ch: 'x',
-                    style: CellStyle::default(),
-                },
-            ];
-            cells.resize(200, TermCell::Blank);
-            ScreenCells {
-                rows: 24,
-                cols: 80,
-                cells,
-            }
+        let mut cells = styled;
+        cells.resize(200, TermCell::Blank);
+        let screen_cells = ScreenCells {
+            rows: 24,
+            cols: 80,
+            cells,
         };
         let id = jinn_core_types::SessionId::new();
         slices
             .reader::<jinn_term_msg::TerminalTabState>(&term_tabs_slot())
             .expect("cell")
-            .update(|t| t.apply_screen(&id, "Rx".to_owned(), styled, (0, 2), false));
+            .update(|t| t.apply_screen(&id, screen.to_owned(), screen_cells, (0, 2), false));
         let mut facts = RenderFacts::new(default_theme(), &slices);
         facts.set_facts([
             jinn_slices::AppFact {
@@ -436,6 +424,30 @@ mod tests {
                 value: "<c-g>".to_owned(),
             },
         ]);
+        (slices, id, facts)
+    }
+
+    #[rstest::rstest]
+    fn renders_styled_cells_with_colors_and_attributes() {
+        // Given facts whose mirror carries a styled cell grid: red bold "R"
+        // followed by default-colored plain text.
+        let (_slices, _id, facts) = slices_with_styled_grid(
+            vec![
+                TermCell::Styled {
+                    ch: 'R',
+                    style: CellStyle {
+                        fg: TermColor::Idx(1),
+                        bold: true,
+                        ..CellStyle::default()
+                    },
+                },
+                TermCell::Styled {
+                    ch: 'x',
+                    style: CellStyle::default(),
+                },
+            ],
+            "Rx",
+        );
 
         // When rendering on a test backend.
         let buffer = render_to_buffer(&facts, Rect::new(0, 0, 80, 24));

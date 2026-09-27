@@ -250,6 +250,7 @@ mod tests {
     #[rstest::rstest]
     fn missing_directory_yields_empty_set() {
         // Given a directory that does not exist.
+        // When scanning it for personas.
         let personas = scan(Path::new("/nonexistent-personas"));
 
         // Then the set is empty.

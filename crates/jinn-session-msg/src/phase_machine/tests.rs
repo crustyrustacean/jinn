@@ -299,72 +299,99 @@ fn tool_loop_disabled_cleared() {
 #[rstest::rstest]
 #[test]
 fn reject_dispatch_while_streaming() {
+    // Given a machine in Streaming.
     let mut m = streaming_machine();
+    // When dispatching a message.
     let err = m.on_dispatch_message().unwrap_err();
+    // Then the transition is rejected and the error reports Streaming as the from phase.
     assert_from(&err, PhaseKind::Streaming);
 }
 
 #[rstest::rstest]
 #[test]
 fn reject_dispatch_while_sending() {
+    // Given a machine in Sending.
     let mut m = sending_machine();
+    // When dispatching a message.
     let err = m.on_dispatch_message().unwrap_err();
+    // Then the transition is rejected and the error reports Sending as the from phase.
     assert_from(&err, PhaseKind::Sending);
 }
 
 #[rstest::rstest]
 #[test]
 fn reject_first_token_while_idle() {
+    // Given a machine in Idle.
     let mut m = idle_machine();
+    // When receiving the first token.
     let err = m.on_first_token().unwrap_err();
+    // Then the transition is rejected and the error reports Idle as the from phase.
     assert_from(&err, PhaseKind::Idle);
 }
 
 #[rstest::rstest]
 #[test]
 fn reject_first_token_while_streaming() {
+    // Given a machine in Streaming.
     let mut m = streaming_machine();
+    // When receiving the first token.
     let err = m.on_first_token().unwrap_err();
+    // Then the transition is rejected and the error reports Streaming as the from phase.
     assert_from(&err, PhaseKind::Streaming);
 }
 
 #[rstest::rstest]
 #[test]
 fn reject_stream_completed_while_idle() {
+    // Given a machine in Idle.
     let mut m = idle_machine();
+    // When the stream completes.
     let err = m.on_stream_completed_finished().unwrap_err();
+    // Then the transition is rejected and the error reports Idle as the from phase.
     assert_from(&err, PhaseKind::Idle);
 }
 
 #[rstest::rstest]
 #[test]
 fn reject_stream_completed_while_sending() {
+    // Given a machine in Sending.
     let mut m = sending_machine();
+    // When the stream completes.
     let err = m.on_stream_completed_finished().unwrap_err();
+    // Then the transition is rejected and the error reports Sending as the from phase.
     assert_from(&err, PhaseKind::Sending);
 }
 
 #[rstest::rstest]
 #[test]
 fn reject_tool_batch_while_idle() {
+    // Given a machine in Idle.
     let mut m = idle_machine();
+    // When the tool batch completes.
     let err = m.on_tool_batch_completed().unwrap_err();
+    // Then the transition is rejected and the error reports Idle as the from phase.
     assert_from(&err, PhaseKind::Idle);
 }
 
 #[rstest::rstest]
 #[test]
 fn reject_tool_batch_while_streaming() {
+    // Given a machine in Streaming.
     let mut m = streaming_machine();
+    // When the tool batch completes.
     let err = m.on_tool_batch_completed().unwrap_err();
+    // Then the transition is rejected and the error reports Streaming as the from phase.
     assert_from(&err, PhaseKind::Streaming);
 }
 
 #[rstest::rstest]
 #[test]
 fn reject_cancel_while_idle() {
+    // Given a machine in Idle.
     let mut m = idle_machine();
+    // When cancelling.
     let err = m.cancel().unwrap_err();
+    // Then the transition is rejected and the error reports Idle as the from phase.
     assert_from(&err, PhaseKind::Idle);
 }
 
@@ -389,16 +416,22 @@ fn cancel_during_sending() {
 #[rstest::rstest]
 #[test]
 fn reject_soft_cancel_while_idle() {
+    // Given a machine in Idle.
     let mut m = idle_machine();
+    // When requesting a soft cancel.
     let err = m.soft_cancel().unwrap_err();
+    // Then the transition is rejected and the error reports Idle as the from phase.
     assert_from(&err, PhaseKind::Idle);
 }
 
 #[rstest::rstest]
 #[test]
 fn reject_soft_cancel_while_sending() {
+    // Given a machine in Sending.
     let mut m = sending_machine();
+    // When requesting a soft cancel.
     let err = m.soft_cancel().unwrap_err();
+    // Then the transition is rejected and the error reports Sending as the from phase.
     assert_from(&err, PhaseKind::Sending);
 }
 
@@ -409,36 +442,38 @@ fn reject_soft_cancel_while_sending() {
 #[rstest::rstest]
 #[test]
 fn full_tool_loop_cycle() {
+    // Given a fresh machine in Idle.
     // Idle → Sending → Streaming → Sending → Streaming → Idle
     let mut m = SessionPhaseMachine::new();
 
-    // First turn: dispatch and stream with tool use.
+    // When running the whole tool loop: dispatch, stream, tool use, tool batch, second stream.
     m.on_dispatch_message().expect("dispatch 1");
     assert_eq!(m.kind(), PhaseKind::Sending);
     m.on_first_token().expect("first token 1");
     assert_eq!(m.kind(), PhaseKind::Streaming);
     m.on_stream_completed_tool_use().expect("tool use 1");
     assert_eq!(m.kind(), PhaseKind::Sending);
-
-    // Tool batch completes - continue to second stream.
     m.on_tool_batch_completed().expect("tool batch");
     assert_eq!(m.kind(), PhaseKind::Streaming);
-
-    // Second stream finishes normally.
     m.on_stream_completed_finished().expect("finished");
+
+    // Then the cycle ends back in Idle.
     assert_eq!(m.kind(), PhaseKind::Idle);
 }
 
 #[rstest::rstest]
 #[test]
 fn tool_loop_with_cancel_mid_stream() {
+    // Given a machine dispatched and already streaming.
     // Idle → Sending → Streaming → cancel() → Idle
     let mut m = SessionPhaseMachine::new();
-
     m.on_dispatch_message().expect("dispatch");
     m.on_first_token().expect("first token");
+
+    // When cancelling mid-stream.
     let result = m.cancel().expect("cancel");
 
+    // Then the outcome is Streaming → Idle and the machine is Idle.
     assert_eq!(result.outcome.new_phase, PhaseKind::Idle);
     assert_eq!(m.kind(), PhaseKind::Idle);
 }
@@ -446,15 +481,17 @@ fn tool_loop_with_cancel_mid_stream() {
 #[rstest::rstest]
 #[test]
 fn tool_loop_with_soft_cancel_at_boundary() {
+    // Given a machine streaming with a soft cancel requested.
     // Idle → Sending → Streaming → soft_cancel() → on_stream_completed_tool_use() → Idle
     let mut m = SessionPhaseMachine::new();
-
     m.on_dispatch_message().expect("dispatch");
     m.on_first_token().expect("first token");
     m.soft_cancel().expect("soft cancel");
 
-    // Soft cancel should cause tool-use completion to go to Idle, not Sending.
+    // When the tool-use stream completes after the soft cancel.
     let outcome = m.on_stream_completed_tool_use().expect("tool use");
+
+    // Then the outcome goes to Idle, not Sending, and the machine is Idle.
     assert_eq!(outcome.new_phase, PhaseKind::Idle);
     assert_eq!(m.kind(), PhaseKind::Idle);
 }
@@ -462,17 +499,18 @@ fn tool_loop_with_soft_cancel_at_boundary() {
 #[rstest::rstest]
 #[test]
 fn tool_loop_disabled_mid_cycle() {
+    // Given a machine in Sending after a tool use, with tool_loop_disabled set.
     // Idle → Sending → Streaming → Sending(tool_loop_disabled=true) → Idle
     let mut m = SessionPhaseMachine::new();
-
     m.on_dispatch_message().expect("dispatch");
     m.on_first_token().expect("first token");
     m.on_stream_completed_tool_use().expect("tool use");
-
-    // Set tool_loop_disabled while in Sending.
     m.set_tool_loop_disabled();
 
+    // When the tool batch completes.
     let outcome = m.on_tool_batch_completed().expect("tool batch");
+
+    // Then the outcome goes to Idle and the machine is Idle.
     assert_eq!(outcome.new_phase, PhaseKind::Idle);
     assert_eq!(m.kind(), PhaseKind::Idle);
 }
@@ -598,25 +636,42 @@ fn soft_cancel_flag_consumed_on_transition() {
 #[rstest::rstest]
 #[test]
 fn streaming_accessor_returns_none_when_not_streaming() {
-    let m = SessionPhaseMachine::new();
-    assert!(m.streaming_phase().is_none());
-    let mut m = m;
+    // Given a machine in Idle.
+    let mut m = SessionPhaseMachine::new();
+
+    // When reading the streaming phase immutably and mutably.
+    let shared = m.streaming_phase();
+
+    // Then both accessors yield nothing.
+    assert!(shared.is_none());
     assert!(m.streaming_phase_mut().is_none());
 }
 
 #[rstest::rstest]
 #[test]
 fn sending_accessor_returns_none_when_not_sending() {
-    let m = SessionPhaseMachine::new();
-    assert!(m.sending_phase().is_none());
-    let mut m = m;
+    // Given a machine in Idle.
+    let mut m = SessionPhaseMachine::new();
+
+    // When reading the sending phase immutably and mutably.
+    let shared = m.sending_phase();
+
+    // Then both accessors yield nothing.
+    assert!(shared.is_none());
     assert!(m.sending_phase_mut().is_none());
 }
 
 #[rstest::rstest]
 #[test]
 fn phase_starts_as_idle() {
+    // Given a freshly constructed machine.
     let m = SessionPhaseMachine::new();
-    assert_eq!(m.kind(), PhaseKind::Idle);
-    assert!(matches!(m.phase(), Phase::Idle(_)));
+
+    // When reading its phase.
+    let kind = m.kind();
+    let phase = m.phase();
+
+    // Then the kind is Idle and the phase variant is Idle.
+    assert_eq!(kind, PhaseKind::Idle);
+    assert!(matches!(phase, Phase::Idle(_)));
 }

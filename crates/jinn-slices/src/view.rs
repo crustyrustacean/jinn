@@ -294,15 +294,10 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn viewport_rejects_unresolvable_view_slot() {
-        // Given a registry where the view's slot is missing, and one
-        // where it holds the wrong type.
+    fn viewport_rejects_unregistered_view_slot() {
+        // Given a registry where the view's slot is missing.
         let slices = Slices::new();
         let missing = SlotKey::builtin("test", "missing");
-        let mismatched = SlotKey::builtin("test", "mismatched");
-        let _ = slices
-            .register(mismatched.clone(), Payload::default())
-            .expect("register");
         let mut viewport = Viewport::new();
 
         // When registering a view over the missing slot.
@@ -318,6 +313,18 @@ mod tests {
         // Then the pairing fails at registration, not at render.
         assert_eq!(err.key, missing);
         assert_eq!(err.reason, ViewSlotErrorReason::Unregistered);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn viewport_rejects_view_slot_type_mismatch() {
+        // Given a registry whose slot holds a different slice's payload.
+        let slices = Slices::new();
+        let mismatched = SlotKey::builtin("test", "mismatched");
+        let _ = slices
+            .register(mismatched.clone(), Payload::default())
+            .expect("register");
+        let mut viewport = Viewport::new();
 
         // When registering a view whose slice type differs from the
         // cell's payload.

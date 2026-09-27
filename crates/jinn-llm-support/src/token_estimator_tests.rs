@@ -43,6 +43,7 @@ fn char_ratio_name() {
     // Given a char ratio estimator.
     let estimator = CharRatioEstimator;
 
+    // When reading its name.
     // Then its name is "char_ratio".
     assert_eq!(estimator.name(), "char_ratio");
 }
@@ -196,6 +197,7 @@ fn tiktoken_counter_name_is_o200k_base() {
     // Given a tiktoken counter.
     let counter = TiktokenCounter::o200k_base();
 
+    // When reading its name.
     // Then its name is "o200k_base".
     assert_eq!(counter.name(), "o200k_base");
 }

@@ -337,8 +337,8 @@ async fn a_stationary_cursor_gets_its_preview_requested() {
         })
         .unwrap();
 
-    // Then a preview render was requested, without any key press.
-    // When only the cursor triggered this, a session that loaded, or a width
+    // Then a preview render was requested, without any key press. With only
+    // the cursor able to trigger this, a session that loaded, or a width
     // measured, after the last key left the popup spinning until the user
     // nudged the cursor.
     let in_flight = app
@@ -359,8 +359,6 @@ async fn a_stationary_cursor_gets_its_preview_requested() {
 async fn a_cached_preview_is_not_requested_again_every_frame() {
     // Given a TuiApp whose session preview has already been rendered and cached.
     let mut app = render_test_app().await;
-    // A frame first: it is what activates the sidebar and attaches its cell,
-    // so setup written before it would be discarded.
     {
         let (mut terminal, _area) = setup_term(80, 24);
         terminal.draw(|frame| app.render(frame)).unwrap();
@@ -379,33 +377,8 @@ async fn a_cached_preview_is_not_requested_again_every_frame() {
         })
         .unwrap();
 
-    // When the worker answers and more frames render with the cursor still put.
-    {
-        let state = app.core.state.write();
-        let id = state.active_session().session_id().clone();
-        let width = state
-            .frontend
-            .with_sections(|s| s.sessions.preview_content_width, || 0);
-        // The signature the trigger itself computes, so this is the cache entry
-        // the next frame will actually look for rather than a stand-in.
-        let signature = jinn_sidebar::sections::sessions::preview_load::preview_signature(
-            state.active_session().history(),
-            jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT,
-        );
-        let armed = state
-            .frontend
-            .update_sections(|s| s.sessions.preview.request(id.clone(), signature, width))
-            .expect("the sections cell is attached");
-        state.frontend.update_sections(|s| {
-            s.sessions.preview.complete(
-                id.clone(),
-                armed,
-                signature,
-                width,
-                std::sync::Arc::new(Vec::new()),
-            );
-        });
-    }
+    // When the worker answers and another frame renders with the cursor still put.
+    cache_preview_as_answered(&app);
     terminal
         .draw(|frame| {
             app.render(frame);
@@ -424,6 +397,35 @@ async fn a_cached_preview_is_not_requested_again_every_frame() {
         in_flight, 0,
         "the render pass kept re-requesting a preview it already holds"
     );
+}
+
+/// Answers the focused session's in-flight preview request with empty lines,
+/// standing in for the worker a render test does not run. The signature is the
+/// one the trigger itself computes, so this writes the cache entry the next
+/// frame will actually look for rather than a stand-in.
+fn cache_preview_as_answered(app: &crate::TuiApp) {
+    let state = app.core.state.write();
+    let id = state.active_session().session_id().clone();
+    let width = state
+        .frontend
+        .with_sections(|s| s.sessions.preview_content_width, || 0);
+    let signature = jinn_sidebar::sections::sessions::preview_load::preview_signature(
+        state.active_session().history(),
+        jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT,
+    );
+    let armed = state
+        .frontend
+        .update_sections(|s| s.sessions.preview.request(id.clone(), signature, width))
+        .expect("the sections cell is attached");
+    state.frontend.update_sections(|s| {
+        s.sessions.preview.complete(
+            id.clone(),
+            armed,
+            signature,
+            width,
+            std::sync::Arc::new(Vec::new()),
+        );
+    });
 }
 
 /// Fills the preview cache for the focused session with `text` per entry, so
@@ -523,14 +525,7 @@ async fn the_popup_keeps_its_borders_where_they_are_as_content_grows() {
 
     // And the same session grows to a long history — the shape a streaming
     // reply takes.
-    {
-        let mut state = app.core.state.write();
-        for i in 0..40 {
-            state
-                .active_session_mut()
-                .push_entry(ChatEntry::assistant(format!("reply {i}")));
-        }
-    }
+    grow_session_to_long_history(&app);
     fill_preview_cache(&app);
     terminal.draw(|frame| app.render(frame)).unwrap();
     let long_rows = popup_border_rows(terminal.backend().buffer(), popup);
@@ -552,4 +547,15 @@ async fn the_popup_keeps_its_borders_where_they_are_as_content_grows() {
         short_buffer, long_buffer,
         "the two frames rendered identically, so nothing was compared"
     );
+}
+
+/// Pushes forty assistant replies onto the active session, growing its
+/// history to the length a streaming reply reaches.
+fn grow_session_to_long_history(app: &crate::TuiApp) {
+    let mut state = app.core.state.write();
+    for i in 0..40 {
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant(format!("reply {i}")));
+    }
 }

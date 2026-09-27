@@ -311,6 +311,7 @@ mod tests {
     #[rstest::rstest]
     fn config_storage_service_save_actually_persists() {
         // If save were a no-op, the underlying storage would not be updated.
+        // Given a service over in-memory storage and a config to persist.
         let storage = InMemoryConfigStorage::new();
         let service = ConfigStorageService::new(Arc::new(storage) as Arc<dyn ConfigStorage>);
 
@@ -332,6 +333,7 @@ mod tests {
             default_provider: None,
         };
 
+        // When saving and reloading through the service.
         service.save(&config).expect("save");
         let reloaded = service.load().expect("load");
 

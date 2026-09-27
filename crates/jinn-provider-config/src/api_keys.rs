@@ -97,6 +97,7 @@ mod tests {
         let keys = ApiKeys::new();
 
         // When checking a nonexistent key.
+        // Then it returns false.
         assert!(!keys.is_set("NONEXISTENT"));
     }
 
@@ -107,6 +108,7 @@ mod tests {
         keys.insert("MY_KEY".to_owned(), "sk-secret".to_owned());
 
         // When getting the value.
+        // Then the stored secret comes back.
         assert_eq!(keys.get("MY_KEY"), Some("sk-secret"));
     }
 
@@ -116,6 +118,7 @@ mod tests {
         let keys = ApiKeys::new();
 
         // When getting a nonexistent key.
+        // Then nothing comes back.
         assert_eq!(keys.get("NOPE"), None);
     }
 
