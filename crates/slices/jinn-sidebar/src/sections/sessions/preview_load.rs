@@ -26,6 +26,7 @@ use jinn_preferences_config::schemas::ChatLogConfig;
 use jinn_slices::ConfigLayer;
 
 use crate::sections::sessions::preview::DEFAULT_TOOL_ENTRY_MAX_LINES;
+use crate::sections::sessions::state::sorted_open_sessions;
 
 /// A summary of the content a preview would show.
 ///
@@ -151,6 +152,38 @@ fn preview_is_current(
         },
         || false,
     )
+}
+
+/// The preview request to publish for the session under the cursor, if one is
+/// needed and the popup is actually on screen.
+///
+/// The keyboard path asks for previews when the cursor *moves*, but the cursor
+/// is not the only thing that changes what the popup should show: a session can
+/// finish loading into the list, or a frame can measure the width, long after
+/// the last keystroke. Every such transition left a popup spinning on a request
+/// nobody had made, resolved only by nudging the cursor.
+///
+/// So the render pass asks too, through the same builder the keyboard path
+/// uses, with the same dedupe against the cache and against in-flight renders.
+/// A settled cursor therefore asks once and then stays silent: the request is
+/// only produced while the cache is empty and nothing is running, and the
+/// result's arrival fills the cache and ends the ask.
+///
+/// Returns `None` — publishing nothing — when the sessions section is not
+/// focused, the cursor is on nothing, or the popup has what it needs.
+#[must_use]
+pub fn request_preview_if_needed(
+    state: &mut AppState,
+    config: &jinn_slices::ConfigLayer,
+) -> Option<PreviewSessionRequested> {
+    if state.frontend.sidebar_section() != Some(jinn_sidebar_msg::SidebarSectionId::Sessions) {
+        return None;
+    }
+    let index = state
+        .frontend
+        .with_sections(|s| s.sessions.selected_index, || None)?;
+    let session_id = sorted_open_sessions(state).get(index)?.id.clone();
+    update_preview(state, &session_id, config)
 }
 
 #[cfg(test)]
@@ -393,6 +426,92 @@ mod preview_load_tests {
             found,
             "an empty session's preview was reported as missing, so the popup spins forever"
         );
+    }
+
+    /// State focused on the sessions section, with the cursor on its first row.
+    ///
+    /// The session is marked `Loaded` because the list the popup resolves its
+    /// entry through only contains loaded sessions — a session still loading has
+    /// no row to preview, which is a different situation entirely.
+    fn state_focused_on_sessions() -> AppState {
+        let (mut state, id) = state_with_session(46);
+        if let Some(session) = state.session.get_mut(&id) {
+            session.set_session_state(jinn_session_store_msg::SessionState::Loaded);
+        }
+        // The scope is pushed before the section is set: `set_sidebar_section`
+        // is a no-op on a stack with no sidebar scope on it, so setting the
+        // section alone would leave the sidebar unfocused and silent.
+        state
+            .frontend
+            .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_index = Some(0));
+        state
+    }
+
+    #[rstest::rstest]
+    fn a_stationary_cursor_still_asks_for_its_preview() {
+        // Given the sidebar focused on a session whose preview has never been
+        // rendered, and the cursor not going to move again.
+        let mut state = state_focused_on_sessions();
+
+        // When the render pass asks.
+        let request = request_preview_if_needed(&mut state, jinn_slices::empty_config_layer());
+
+        // Then it asks. The cursor is the only thing that used to trigger this,
+        // so a session that loaded, or a width that got measured, after the last
+        // key left the popup spinning until the user nudged the cursor.
+        assert!(
+            request.is_some(),
+            "nothing asked for the preview, so a stationary cursor would spin forever"
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_stationary_cursor_stops_asking_once_the_preview_is_cached() {
+        // Given the sidebar focused, and a preview already rendered and cached
+        // for the session the list resolves the cursor to — the same session the
+        // render path will ask about, since a cache keyed to any other id would
+        // not be the one it finds.
+        let mut state = state_focused_on_sessions();
+        let id = sorted_open_sessions(&state)[0].id.clone();
+        let signature = signature_of(&state, &id);
+        // Armed first, exactly as a real request is: a result is only accepted
+        // for a generation that was actually issued, so completing one that was
+        // never armed is refused by design rather than filling the cache.
+        let armed = state
+            .frontend
+            .update_sections(|s| s.sessions.preview.request(id.clone(), signature, 46))
+            .expect("the sections cell is attached");
+        state.frontend.update_sections(|s| {
+            s.sessions
+                .preview
+                .complete(id.clone(), armed, signature, 46, Arc::new(Vec::new()));
+        });
+
+        // When the render pass asks again, as it does every frame.
+        let request = request_preview_if_needed(&mut state, jinn_slices::empty_config_layer());
+
+        // Then it stops asking. Publishing per frame would flood the render pool
+        // with work that is already done, which is the failure this dedupe
+        // exists to prevent.
+        assert!(
+            request.is_none(),
+            "the render pass re-requested a preview it already has"
+        );
+    }
+
+    #[rstest::rstest]
+    fn nothing_is_asked_for_while_the_sessions_section_is_unfocused() {
+        // Given the sidebar not focused on sessions, where no popup is drawn.
+        let (mut state, _) = state_with_session(46);
+
+        // When the render pass asks.
+        let request = request_preview_if_needed(&mut state, jinn_slices::empty_config_layer());
+
+        // Then it asks for nothing: there is no popup on screen to fill.
+        assert!(request.is_none());
     }
 
     #[rstest::rstest]

@@ -9,7 +9,7 @@ use jinn_domain::protocol::IntentResult;
 use jinn_slices::ConfigLayer;
 
 use crate::sections::sidebar_state_actor::PREVIEW_DEADLINE;
-use jinn_chat_log_view_msg::ArmPreviewDeadline;
+use jinn_chat_log_view_msg::{ArmPreviewDeadline, PreviewSessionRequested};
 
 /// The session under the cursor, if there is one.
 fn highlighted_session(
@@ -32,19 +32,32 @@ fn highlighted_session(
 /// it to exactly one handler; an actor that merely wanted to arm a timer would
 /// be a second handler competing with the preview workers, and every request it
 /// won would be consumed without ever being rendered.
+///
+/// A request without its deadline is a spinner that never expires, so the two
+/// travel together and every caller — the keyboard path here and the render
+/// pass — sends them as a pair. [`preview_messages`] is the single place that
+/// builds them.
 fn request_preview(state: &mut AppState, config: &ConfigLayer) -> IntentResult {
     let sessions = sorted_open_sessions(state);
     let Some(session_id) = highlighted_session(state, &sessions) else {
         return IntentResult::empty();
     };
-    update_preview(state, &session_id, config).map_or_else(IntentResult::empty, |request| {
-        let deadline = ArmPreviewDeadline {
-            session_id: request.session_id.clone(),
-            generation: request.generation,
-            after: PREVIEW_DEADLINE,
-        };
-        IntentResult::new_message(request).with_message(deadline)
-    })
+    update_preview(state, &session_id, config).map_or_else(IntentResult::empty, preview_messages)
+}
+
+/// A built request paired with the deadline that bounds it.
+///
+/// Published together by every caller. Keeping them in one builder is what
+/// stops a path from arming a render it never watches, which is a spinner with
+/// nothing to end it.
+#[must_use]
+pub fn preview_messages(request: PreviewSessionRequested) -> IntentResult {
+    let deadline = ArmPreviewDeadline {
+        session_id: request.session_id.clone(),
+        generation: request.generation,
+        after: PREVIEW_DEADLINE,
+    };
+    IntentResult::new_message(request).with_message(deadline)
 }
 
 /// Navigate within the sessions section.

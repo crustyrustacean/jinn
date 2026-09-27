@@ -200,6 +200,16 @@ impl PreviewLoad {
     /// The render pass cannot publish, so a duplicate request has to be stopped
     /// here: rapid navigation otherwise queues one render per keystroke on a
     /// pool that is already busy with chat-log measurement.
+    /// How many previews are currently rendering.
+    ///
+    /// A count rather than a peek at any one session's entry: the render pass
+    /// needs to know whether it is already waiting on work before it asks for
+    /// more, without naming a session to ask about.
+    #[must_use]
+    pub fn in_flight_len(&self) -> usize {
+        self.in_flight.len()
+    }
+
     #[must_use]
     pub fn in_flight_matches(
         &self,
