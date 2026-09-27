@@ -486,15 +486,14 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
             result
         }),
     ));
-    routes.attach(RouteRow {
-        route_id: RouteId::new("sidebar:resize-mode"),
-        scope: resize,
-        key: "<c-c>",
-        category: "general",
-        site: BindSite::OwnScope,
-        feature: "sidebar",
-        outcome: RouteOutcome::StaticIntent(RouteId::new("sidebar:quit")),
-    });
+    routes.attach(row(
+        "resize-clear-or-leave",
+        resize,
+        "<c-c>",
+        "general",
+        "leave resize",
+        sync(resize::handle_resize_leave),
+    ));
 
     // ---- Entry keys (Normal + Input scopes) ----
     routes.attach(RouteRow {
@@ -685,6 +684,33 @@ mod tests {
                     RouteOutcome::Action { action, .. } if *action == "rename-clear-or-leave"
                 )
         }));
+    }
+
+    /// `<c-c>` in the resize scope left resize mode. It carried
+    /// `RouteOutcome::StaticIntent("sidebar:quit")`, so the key quit the app
+    /// instead — a row id of "resize-mode" with a quit outcome under it, which
+    /// no reviewer reading the id alone would catch.
+    #[rstest::rstest]
+    #[test]
+    fn attach_sidebar_rows_does_not_bind_ctrl_clear_to_quit_in_resize_scope() {
+        // Given an empty shared route table.
+        let routes = KeyRoutes::new();
+
+        // When the sidebar's rows are attached.
+        attach_sidebar_rows(&routes);
+
+        // Then no row in the resize scope binds <c-c> to the quit intent.
+        assert!(
+            !routes.rows().iter().any(|row| {
+                row.scope == resize_scope()
+                    && row.key == "<c-c>"
+                    && matches!(
+                        &row.outcome,
+                        RouteOutcome::StaticIntent(id) if id.as_str() == "sidebar:quit"
+                    )
+            }),
+            "<c-c> in the resize scope must not resolve to quit"
+        );
     }
 }
 
