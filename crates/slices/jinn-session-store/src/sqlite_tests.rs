@@ -399,7 +399,7 @@ async fn a_revision_already_archived_is_refused_a_second_time() {
     let session = make_session(&SessionId::new(), "archived once");
     let snapshot = session.capture_snapshot();
     store
-        .archive_snapshots(&[snapshot.clone()])
+        .archive_snapshots(std::slice::from_ref(&snapshot))
         .await
         .expect("archive");
 
