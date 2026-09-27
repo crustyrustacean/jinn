@@ -825,6 +825,7 @@ async fn openrouter_emits_nested_reasoning_effort_in_request() {
         .create_async()
         .await;
 
+    // When streaming a message through the service.
     let service = factory.create().unwrap();
     let stream = service
         .chat_stream_with_tools(
@@ -869,6 +870,7 @@ async fn non_openrouter_emits_flat_reasoning_effort_in_request() {
         .create_async()
         .await;
 
+    // When streaming a message through the service.
     let service = factory.create().unwrap();
     let stream = service
         .chat_stream_with_tools(

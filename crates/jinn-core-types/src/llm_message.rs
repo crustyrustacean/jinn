@@ -81,18 +81,24 @@ mod tests {
 
     #[rstest::rstest]
     fn tool_message_roundtrips() {
+        // Given a tool message.
         let msg = LlmMessage::Tool {
             tool_call_id: "call_1".to_owned(),
             name: "echo".to_owned(),
             content: "result text".to_owned(),
         };
+
+        // When serializing and deserializing.
         let json = serde_json::to_string(&msg).expect("serialize");
         let back: LlmMessage = serde_json::from_str(&json).expect("deserialize");
+
+        // Then it roundtrips.
         assert_eq!(back, msg);
     }
 
     #[rstest::rstest]
     fn assistant_with_tool_calls_roundtrips() {
+        // Given an assistant message carrying a tool call.
         let msg = LlmMessage::Assistant {
             content: "Let me check.".to_owned(),
             tool_calls: Some(vec![ToolCall {
@@ -101,27 +107,31 @@ mod tests {
                 arguments: r#"{\"input\":\"hi\"}"#.to_owned(),
             }]),
         };
+
+        // When serializing and deserializing.
         let json = serde_json::to_string(&msg).expect("serialize");
         let back: LlmMessage = serde_json::from_str(&json).expect("deserialize");
+
+        // Then it roundtrips.
         assert_eq!(back, msg);
+    }
 
-        #[rstest::rstest]
-        fn user_with_attachments_roundtrips() {
-            // Given a user message with an image attachment.
-            let msg = LlmMessage::User {
-                content: "describe this".to_owned(),
-                attachments: vec![crate::attachment::Attachment::image(
-                    "image/png".to_owned(),
-                    vec![1, 2, 3],
-                )],
-            };
+    #[rstest::rstest]
+    fn user_with_attachments_roundtrips() {
+        // Given a user message with an image attachment.
+        let msg = LlmMessage::User {
+            content: "describe this".to_owned(),
+            attachments: vec![crate::attachment::Attachment::image(
+                "image/png".to_owned(),
+                vec![1, 2, 3],
+            )],
+        };
 
-            // When serializing and deserializing.
-            let json = serde_json::to_string(&msg).expect("serialize");
-            let back: LlmMessage = serde_json::from_str(&json).expect("deserialize");
+        // When serializing and deserializing.
+        let json = serde_json::to_string(&msg).expect("serialize");
+        let back: LlmMessage = serde_json::from_str(&json).expect("deserialize");
 
-            // Then it roundtrips including the attachment.
-            assert_eq!(back, msg);
-        }
+        // Then it roundtrips including the attachment.
+        assert_eq!(back, msg);
     }
 }

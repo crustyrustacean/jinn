@@ -254,12 +254,46 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn is_valid_kept_opener_accepts_only_user_and_system() {
-        // Given every kind of entry.
+    fn is_valid_kept_opener_accepts_user_and_system() {
+        // Given a User entry and a System entry.
         let user = ChatEntry::user("hello");
         let system = ChatEntry::system("ready");
+
+        // When checking each for a valid kept-region opener.
+        // Then both are valid openers.
+        assert!(
+            is_valid_kept_opener(&user.kind),
+            "User should be valid opener"
+        );
+        assert!(
+            is_valid_kept_opener(&system.kind),
+            "System should be valid opener"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn is_valid_kept_opener_rejects_assistant_entries() {
+        // Given an empty Assistant entry and a non-empty Assistant entry.
         let empty_assistant = ChatEntry::assistant("");
         let text_assistant = ChatEntry::assistant("done");
+
+        // When checking each for a valid kept-region opener.
+        // Then both are invalid openers.
+        assert!(
+            !is_valid_kept_opener(&empty_assistant.kind),
+            "empty Assistant must be invalid"
+        );
+        assert!(
+            !is_valid_kept_opener(&text_assistant.kind),
+            "non-empty Assistant must be invalid"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn is_valid_kept_opener_rejects_tool_entries() {
+        // Given a ToolCall entry and a ToolResult entry.
         let tool_call = ChatEntry::tool_call("tc", "bash", "{}");
         let tool_result = ChatEntry::tool_result(
             "tc",
@@ -267,9 +301,44 @@ mod tests {
             "out",
             jinn_core_types::ToolResultStatus::Success,
         );
+
+        // When checking each for a valid kept-region opener.
+        // Then both are invalid openers.
+        assert!(
+            !is_valid_kept_opener(&tool_call.kind),
+            "ToolCall must be invalid"
+        );
+        assert!(
+            !is_valid_kept_opener(&tool_result.kind),
+            "ToolResult must be invalid"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn is_valid_kept_opener_rejects_annotated_entries() {
+        // Given an Actor, a Thinking, and a Transient entry.
         let actor = ChatEntry::actor("src", "text");
         let thinking = ChatEntry::thinking("reasoning");
         let transient = ChatEntry::transient("welcome");
+
+        // When checking each for a valid kept-region opener.
+        // Then all three are invalid openers.
+        assert!(!is_valid_kept_opener(&actor.kind), "Actor must be invalid");
+        assert!(
+            !is_valid_kept_opener(&thinking.kind),
+            "Thinking must be invalid"
+        );
+        assert!(
+            !is_valid_kept_opener(&transient.kind),
+            "Transient must be invalid"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn is_valid_kept_opener_rejects_error_and_compaction_entries() {
+        // Given an Error entry and a Compaction entry.
         let error = ChatEntry::error("boom");
         let compaction = ChatEntry {
             id: ChatEntryId::new(),
@@ -287,42 +356,8 @@ mod tests {
             token_count: None,
         };
 
-        // Then only User and System are valid openers.
-        assert!(
-            is_valid_kept_opener(&user.kind),
-            "User should be valid opener"
-        );
-        assert!(
-            is_valid_kept_opener(&system.kind),
-            "System should be valid opener"
-        );
-
-        // And every other kind is rejected, including a non-empty Assistant.
-        assert!(
-            !is_valid_kept_opener(&empty_assistant.kind),
-            "empty Assistant must be invalid"
-        );
-        assert!(
-            !is_valid_kept_opener(&text_assistant.kind),
-            "non-empty Assistant must be invalid"
-        );
-        assert!(
-            !is_valid_kept_opener(&tool_call.kind),
-            "ToolCall must be invalid"
-        );
-        assert!(
-            !is_valid_kept_opener(&tool_result.kind),
-            "ToolResult must be invalid"
-        );
-        assert!(!is_valid_kept_opener(&actor.kind), "Actor must be invalid");
-        assert!(
-            !is_valid_kept_opener(&thinking.kind),
-            "Thinking must be invalid"
-        );
-        assert!(
-            !is_valid_kept_opener(&transient.kind),
-            "Transient must be invalid"
-        );
+        // When checking each for a valid kept-region opener.
+        // Then both are invalid openers.
         assert!(!is_valid_kept_opener(&error.kind), "Error must be invalid");
         assert!(
             !is_valid_kept_opener(&compaction.kind),
@@ -333,13 +368,20 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn find_start_boundary_returns_zero_when_no_compaction() {
+        // Given history with no compaction entry.
         let entries = vec![ChatEntry::user("hello"), ChatEntry::assistant("hi")];
-        assert_eq!(find_start_boundary(&entries), 0);
+
+        // When finding the compaction start boundary.
+        let boundary = find_start_boundary(&entries);
+
+        // Then the boundary is the start of the history.
+        assert_eq!(boundary, 0);
     }
 
     #[rstest::rstest]
     #[test]
     fn find_start_boundary_returns_after_last_compaction() {
+        // Given history with a compaction entry in the middle.
         let entries = vec![
             ChatEntry::user("hello"),
             ChatEntry {
@@ -359,29 +401,51 @@ mod tests {
             },
             ChatEntry::user("world"),
         ];
-        assert_eq!(find_start_boundary(&entries), 2);
+
+        // When finding the compaction start boundary.
+        let boundary = find_start_boundary(&entries);
+
+        // Then the boundary is the index after that compaction entry.
+        assert_eq!(boundary, 2);
     }
 
     #[rstest::rstest]
     #[test]
     fn compute_cut_index_returns_len_for_compact_all() {
+        // Given two entries and a reserve of 100 tokens.
         let entries = vec![ChatEntry::user("hello"), ChatEntry::assistant("hi")];
-        assert_eq!(compute_cut_index(&entries, 0, 100, true), 2);
+
+        // When computing the cut index for a compact-all trigger.
+        let cut = compute_cut_index(&entries, 0, 100, true);
+
+        // Then the cut index is the end of the history.
+        assert_eq!(cut, 2);
     }
 
     #[rstest::rstest]
     #[test]
     fn compute_cut_index_returns_start_when_all_fit() {
+        // Given a single short entry and a reserve of 10000 tokens.
         let entries = vec![ChatEntry::user("hi")];
         // A short entry fits in 10000 tokens reserve.
-        assert_eq!(compute_cut_index(&entries, 0, 10000, false), 0);
+
+        // When computing the cut index for a token-triggered compaction.
+        let cut = compute_cut_index(&entries, 0, 10000, false);
+
+        // Then the cut index stays at the start of the history.
+        assert_eq!(cut, 0);
     }
 
     #[rstest::rstest]
     #[test]
     fn gather_compactable_excludes_system() {
+        // Given history of a System entry followed by a User entry.
         let entries = vec![ChatEntry::system("ready"), ChatEntry::user("hello")];
+
+        // When gathering the compactable entries across the whole history.
         let (indices, _) = gather_compactable_entries(&entries, 0, 2);
+
+        // Then only the User entry is gathered.
         assert_eq!(indices.len(), 1);
         assert_eq!(indices[0], 1); // Only the user entry
     }

@@ -97,7 +97,13 @@ mod tests {
 
     #[rstest::rstest]
     fn factory_name_returns_no_providers_available() {
+        // Given a no-providers factory.
         let factory = NoProvidersAvailableFactory;
-        assert_eq!(factory.name(), "NoProvidersAvailable");
+
+        // When reading its name.
+        let name = factory.name();
+
+        // Then the name is "NoProvidersAvailable".
+        assert_eq!(name, "NoProvidersAvailable");
     }
 }

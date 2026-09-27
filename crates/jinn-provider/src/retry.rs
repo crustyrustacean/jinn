@@ -442,25 +442,28 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn compute_delay_returns_none_for_non_retryable() {
+        // Given a retrying service over a never-failing backend.
         let svc = RetryingLlmService::new(
             Box::new(FlakyService::new(0, LlmServiceError::Retryable)),
             RetryConfig::default(),
             Box::new(NoOpOnRetry),
         );
 
-        let d = svc.compute_delay(0, &Report::new(LlmServiceError::Provider));
-        assert!(d.is_none());
+        // When computing the delay for each non-retryable error.
+        let provider = svc.compute_delay(0, &Report::new(LlmServiceError::Provider));
+        let api_key = svc.compute_delay(0, &Report::new(LlmServiceError::ApiKey));
+        let config = svc.compute_delay(0, &Report::new(LlmServiceError::Config));
 
-        let d = svc.compute_delay(0, &Report::new(LlmServiceError::ApiKey));
-        assert!(d.is_none());
-
-        let d = svc.compute_delay(0, &Report::new(LlmServiceError::Config));
-        assert!(d.is_none());
+        // Then no delay is scheduled for any of them.
+        assert!(provider.is_none());
+        assert!(api_key.is_none());
+        assert!(config.is_none());
     }
 
     #[rstest::rstest]
     #[test]
     fn compute_delay_uses_provider_hint() {
+        // Given a retrying service whose max_delay is below the provider hint.
         let svc = RetryingLlmService::new(
             Box::new(FlakyService::new(0, LlmServiceError::Retryable)),
             RetryConfig {
@@ -471,13 +474,15 @@ mod tests {
             Box::new(NoOpOnRetry),
         );
 
+        // When computing the delay for a rate-limited error carrying a hint.
         let d = svc.compute_delay(
             0,
             &Report::new(LlmServiceError::RateLimited {
                 retry_after: Some(Duration::from_secs(100)),
             }),
         );
-        // Provider hint overrides max_delay.
+
+        // Then the provider hint is used, overriding max_delay.
         assert_eq!(d, Some(Duration::from_secs(100)));
     }
 

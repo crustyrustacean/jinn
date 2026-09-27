@@ -226,15 +226,25 @@ mod tests {
 
     #[rstest::rstest]
     fn text_delta_produces_text_event() {
+        // Given a text_delta content block.
         let json = r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}"#;
+
+        // When parsing it.
         let event = parse_single(json);
+
+        // Then a Text event carrying the delta is produced.
         assert_eq!(event, Some(StreamEvent::Text("Hello".to_owned())));
     }
 
     #[rstest::rstest]
     fn tool_use_start_produces_tool_use_start() {
+        // Given a content_block_start event opening a tool_use block.
         let json = r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_01","name":"get_weather","input":{}}}"#;
+
+        // When parsing it.
         let event = parse_single(json);
+
+        // Then a ToolUseStart event carrying the index, id, and name is produced.
         assert_eq!(
             event,
             Some(StreamEvent::ToolUseStart {
@@ -247,17 +257,18 @@ mod tests {
 
     #[rstest::rstest]
     fn input_json_delta_accumulates() {
+        // Given a parser that has already opened a tool_use block.
+        // When an input_json_delta is parsed for it.
+        // Then a ToolUseInputDelta event carries the accumulated partial JSON.
         let mut parser = AnthropicStreamParser::new();
-
-        // Start.
         parser.parse_data(
             r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_01","name":"echo","input":{}}}"#,
         );
 
-        // Delta.
         let event = parser.parse_data(
             r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"key\":"}}"#,
         );
+
         assert!(matches!(
             event,
             Some(StreamEvent::ToolUseInputDelta { partial_json, .. })
@@ -267,8 +278,10 @@ mod tests {
 
     #[rstest::rstest]
     fn content_block_stop_produces_tool_use_complete() {
+        // Given a parser whose tool_use block has opened and received its arguments.
+        // When the closing content_block_stop is parsed.
+        // Then a ToolUseComplete event carries the tool name and assembled arguments.
         let mut parser = AnthropicStreamParser::new();
-
         parser.parse_data(
             r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_01","name":"echo","input":{}}}"#,
         );
@@ -289,14 +302,16 @@ mod tests {
 
     #[rstest::rstest]
     fn empty_tool_arguments_default_to_empty_object() {
+        // Given a parser whose tool_use block received no argument deltas.
         let mut parser = AnthropicStreamParser::new();
-
         parser.parse_data(
             r#"{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_01","name":"get_time","input":{}}}"#,
         );
 
+        // When parsing the closing content_block_stop.
         let event = parser.parse_data(r#"{"type":"content_block_stop","index":0}"#);
 
+        // Then the completed tool call has an empty JSON object as its arguments.
         match event {
             Some(StreamEvent::ToolUseComplete { tool_call, .. }) => {
                 assert_eq!(tool_call.arguments, "{}");
@@ -307,8 +322,13 @@ mod tests {
 
     #[rstest::rstest]
     fn message_delta_stop_reason_end_turn() {
+        // Given a message_delta with an `end_turn` stop reason.
         let json = r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"}}"#;
+
+        // When parsing it.
         let event = parse_single(json);
+
+        // Then a Done event with `EndTurn` is produced.
         assert!(matches!(
             event,
             Some(StreamEvent::Done {
@@ -320,8 +340,13 @@ mod tests {
 
     #[rstest::rstest]
     fn message_delta_stop_reason_tool_use() {
+        // Given a message_delta with a `tool_use` stop reason.
         let json = r#"{"type":"message_delta","delta":{"stop_reason":"tool_use"}}"#;
+
+        // When parsing it.
         let event = parse_single(json);
+
+        // Then a Done event with `ToolUse` is produced.
         assert!(matches!(
             event,
             Some(StreamEvent::Done {
@@ -333,13 +358,24 @@ mod tests {
 
     #[rstest::rstest]
     fn unknown_event_type_produces_none() {
+        // Given an event with an unrecognised type.
         let json = r#"{"type":"ping"}"#;
-        assert!(parse_single(json).is_none());
+
+        // When parsing it.
+        let event = parse_single(json);
+
+        // Then no event is produced.
+        assert!(event.is_none());
     }
 
     #[rstest::rstest]
     fn invalid_json_produces_none() {
-        assert!(parse_single("not json").is_none());
+        // Given a payload that is not valid JSON.
+        // When parsing it.
+        let event = parse_single("not json");
+
+        // Then no event is produced.
+        assert!(event.is_none());
     }
 
     #[rstest::rstest]
@@ -376,16 +412,12 @@ mod tests {
 
     #[rstest::rstest]
     fn message_start_captures_input_tokens_for_usage() {
-        // Given a message_start event with input_tokens, followed by
-        // a message_delta with stop_reason and output_tokens.
-        // Deleting the message_start match arm or returning None from
-        // handle_message_start would lose input_tokens.
+        // Given a parser primed by a message_start event carrying input_tokens.
+        // Input tokens reported there must survive into the eventual Done event.
         let mut parser = AnthropicStreamParser::new();
-
-        // message_start with usage.input_tokens.
         parser.parse_data(r#"{"type":"message_start","message":{"usage":{"input_tokens":42}}}"#);
 
-        // message_delta with stop_reason and output_tokens.
+        // When parsing a message_delta with a stop reason and output_tokens.
         let event = parser.parse_data(
             r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":7}}"#,
         );
@@ -402,14 +434,13 @@ mod tests {
 
     #[rstest::rstest]
     fn usage_present_with_only_input_tokens() {
-        // Given message_start with input_tokens but message_delta with no
-        // output_tokens. The usage condition uses `||` so either field being
-        // present should yield usage. Changing `||` to `&&` would break this.
+        // Given a parser primed by a message_start event carrying only input_tokens.
+        // Usage is reported when either token count is present, so a message_delta
+        // with no usage of its own must not drop the tokens captured earlier.
         let mut parser = AnthropicStreamParser::new();
-
         parser.parse_data(r#"{"type":"message_start","message":{"usage":{"input_tokens":99}}}"#);
 
-        // message_delta with stop_reason but NO usage/output_tokens.
+        // When parsing a message_delta with a stop reason but no usage.
         let event =
             parser.parse_data(r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"}}"#);
 

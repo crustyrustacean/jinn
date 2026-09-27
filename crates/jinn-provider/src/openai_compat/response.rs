@@ -429,26 +429,39 @@ mod tests {
 
     #[rstest::rstest]
     fn text_delta_produces_text_event() {
+        // Given a chunk whose delta carries text content.
         let json = r#"{"id":"x","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}"#;
+
+        // When parsing it.
         let events = parse_single(json);
 
+        // Then a single Text event carrying the content is produced.
         assert_eq!(events.len(), 1);
         assert_eq!(events[0], StreamEvent::Text("Hello".to_owned()));
     }
 
     #[rstest::rstest]
     fn empty_content_produces_no_event() {
+        // Given a chunk whose delta carries empty content.
         let json =
             r#"{"id":"x","choices":[{"index":0,"delta":{"content":""},"finish_reason":null}]}"#;
+
+        // When parsing it.
         let events = parse_single(json);
+
+        // Then no events are produced.
         assert!(events.is_empty());
     }
 
     #[rstest::rstest]
     fn reasoning_delta_produces_reasoning_event() {
+        // Given a chunk whose delta carries `reasoning_content`.
         let json = r#"{"id":"x","choices":[{"index":0,"delta":{"reasoning_content":"thinking..."},"finish_reason":null}]}"#;
+
+        // When parsing it.
         let events = parse_single(json);
 
+        // Then a single Reasoning event carrying the content is produced.
         assert_eq!(events.len(), 1);
         assert_eq!(events[0], StreamEvent::Reasoning("thinking...".to_owned()));
     }
@@ -456,9 +469,13 @@ mod tests {
     #[rstest::rstest]
     fn thinking_content_delta_produces_reasoning_event() {
         // DeepSeek V4 uses `thinking_content` instead of `reasoning_content`.
+        // Given a chunk whose delta carries `thinking_content`.
         let json = r#"{"id":"x","choices":[{"index":0,"delta":{"thinking_content":"reasoning..."},"finish_reason":null}]}"#;
+
+        // When parsing it.
         let events = parse_single(json);
 
+        // Then a single Reasoning event carrying the content is produced.
         assert_eq!(events.len(), 1);
         assert_eq!(events[0], StreamEvent::Reasoning("reasoning...".to_owned()));
     }
@@ -466,9 +483,13 @@ mod tests {
     #[rstest::rstest]
     fn reasoning_field_delta_produces_reasoning_event() {
         // OpenRouter uses `reasoning` instead of `reasoning_content`.
+        // Given a chunk whose delta carries the `reasoning` field.
         let json = r#"{"id":"x","choices":[{"index":0,"delta":{"content":"","reasoning":"thinking..."},"finish_reason":null}]}"#;
+
+        // When parsing it.
         let events = parse_single(json);
 
+        // Then a single Reasoning event carrying the content is produced.
         assert_eq!(events.len(), 1);
         assert_eq!(events[0], StreamEvent::Reasoning("thinking...".to_owned()));
     }
@@ -477,6 +498,8 @@ mod tests {
     fn reasoning_content_takes_precedence_over_reasoning_field() {
         // Given a delta that carries both `reasoning_content` and `reasoning`.
         let json = r#"{"id":"x","choices":[{"index":0,"delta":{"reasoning_content":"primary","reasoning":"secondary"},"finish_reason":null}]}"#;
+
+        // When parsing it.
         let events = parse_single(json);
 
         // Then the first-listed field (`reasoning_content`) wins.
@@ -490,16 +513,23 @@ mod tests {
         // even though a later-listed field carries content. The search
         // stops at the first match, so no event is emitted.
         let json = r#"{"id":"x","choices":[{"index":0,"delta":{"reasoning_content":"","reasoning":"ignored"},"finish_reason":null}]}"#;
+
+        // When parsing it.
         let events = parse_single(json);
 
+        // Then no events are produced.
         assert!(events.is_empty());
     }
 
     #[rstest::rstest]
     fn tool_call_start_produces_tool_use_start() {
+        // Given a chunk whose delta opens a tool call.
         let json = r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}]}"#;
+
+        // When parsing it.
         let events = parse_single(json);
 
+        // Then a single ToolUseStart event carrying the index, id, and name is produced.
         assert_eq!(events.len(), 1);
         assert_eq!(
             events[0],
@@ -513,16 +543,21 @@ mod tests {
 
     #[rstest::rstest]
     fn tool_call_arguments_delta_accumulates() {
+        // Given a parser that has just opened a tool call.
         let mut parser = StreamResponseParser::new();
-
-        // Start.
         let start_json = r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"echo","arguments":""}}]},"finish_reason":null}]}"#;
+
+        // When parsing the tool-call start chunk.
         let events1 = parser.parse_data(start_json);
+
+        // Then a ToolUseStart event names the tool.
         assert!(matches!(&events1[0], StreamEvent::ToolUseStart { name, .. } if name == "echo"));
 
-        // Arguments delta.
+        // And when an arguments delta for that call arrives.
         let delta_json = r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"key\":"}}]},"finish_reason":null}]}"#;
         let events2 = parser.parse_data(delta_json);
+
+        // Then a single ToolUseInputDelta event carries the partial JSON.
         assert_eq!(events2.len(), 1);
         assert!(matches!(
             &events2[0],
@@ -556,28 +591,29 @@ mod tests {
 
     #[rstest::rstest]
     fn finish_reason_tool_calls_produces_complete_and_done() {
+        // Given a parser primed with a tool call and its arguments.
+        // When the finish chunk is parsed, [DONE] is then sent.
+        // Then a single ToolUseComplete is emitted, and [DONE] flushes the
+        // pending Done.
         let mut parser = StreamResponseParser::new();
-
-        // Set up a tool call.
         let start_json = r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"echo","arguments":""}}]},"finish_reason":null}]}"#;
         parser.parse_data(start_json);
-
-        // Simulate some arguments.
         let args_json = r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"x\":1}"}}]},"finish_reason":null}]}"#;
         parser.parse_data(args_json);
 
-        // Finish.
+        // When parsing the finish chunk.
         let finish_json =
             r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#;
         let events = parser.parse_data(finish_json);
 
+        // Then a single ToolUseComplete event carries the assembled call.
         // ToolUseComplete is emitted immediately; Done is deferred.
         assert_eq!(events.len(), 1);
         assert!(
             matches!(&events[0], StreamEvent::ToolUseComplete { index: 0, tool_call } if tool_call.name == "echo" && tool_call.arguments == "{\"x\":1}")
         );
 
-        // [DONE] flushes the pending Done.
+        // And [DONE] flushes the pending Done.
         let done_events = parser.handle_done();
         assert_eq!(done_events.len(), 1);
         assert!(matches!(
@@ -591,26 +627,31 @@ mod tests {
 
     #[rstest::rstest]
     fn done_sentinel_after_finish_is_noop() {
+        // Given a parser primed with a finished chunk.
         let mut parser = StreamResponseParser::new();
-
-        // Finish with stop.
         let json = r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#;
         parser.parse_data(json);
 
-        // [DONE] sentinel - flushes pending Done.
+        // When the first [DONE] sentinel arrives, it flushes the pending Done.
         let events = parser.handle_done();
+
+        // Then exactly one event is produced.
         assert_eq!(events.len(), 1);
 
-        // Second [DONE] is a no-op.
+        // And a second [DONE] is a no-op.
         let events2 = parser.handle_done();
         assert!(events2.is_empty());
     }
 
     #[rstest::rstest]
     fn done_sentinel_without_finish_produces_done() {
+        // Given a parser that has not seen a finish reason.
         let mut parser = StreamResponseParser::new();
+
+        // When the [DONE] sentinel arrives.
         let events = parser.handle_done();
 
+        // Then a single Done event with `EndTurn` is produced.
         assert_eq!(events.len(), 1);
         assert!(matches!(
             &events[0],
@@ -623,9 +664,13 @@ mod tests {
 
     #[rstest::rstest]
     fn parallel_tool_calls_start() {
+        // Given a chunk whose delta opens two tool calls at once.
         let json = r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"f1","arguments":""}},{"index":1,"id":"c2","function":{"name":"f2","arguments":""}}]},"finish_reason":null}]}"#;
+
+        // When parsing it.
         let events = parse_single(json);
 
+        // Then two ToolUseStart events are produced, in call order.
         assert_eq!(events.len(), 2);
         assert!(matches!(&events[0], StreamEvent::ToolUseStart { name, .. } if name == "f1"));
         assert!(matches!(&events[1], StreamEvent::ToolUseStart { name, .. } if name == "f2"));
@@ -633,27 +678,35 @@ mod tests {
 
     #[rstest::rstest]
     fn invalid_json_produces_no_events() {
+        // Given a payload that is not valid JSON.
+        // When parsing it.
         let events = parse_single("not json");
+
+        // Then no events are produced.
         assert!(events.is_empty());
     }
 
     #[rstest::rstest]
     fn no_choices_produces_no_events() {
+        // Given a payload with no `choices` array.
+        // When parsing it.
         let events = parse_single(r#"{"id":"x"}"#);
+
+        // Then no events are produced.
         assert!(events.is_empty());
     }
 
     #[rstest::rstest]
     fn done_sentinel_with_pending_tool_calls() {
+        // Given a parser with a tool call started but never finished.
         let mut parser = StreamResponseParser::new();
-
-        // Start a tool call.
         let start_json = r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"echo","arguments":""}}]},"finish_reason":null}]}"#;
         parser.parse_data(start_json);
 
-        // [DONE] without finish_reason.
+        // When [DONE] arrives without a finish_reason.
         let events = parser.handle_done();
 
+        // Then the call is completed and a ToolUse Done is emitted.
         assert_eq!(events.len(), 2);
         assert!(matches!(&events[0], StreamEvent::ToolUseComplete { .. }));
         assert!(matches!(
@@ -774,34 +827,39 @@ mod tests {
 
     #[rstest::rstest]
     fn full_tool_call_sequence() {
+        // Given a parser that will replay a whole tool-call stream: a start
+        // chunk, two argument chunks, a finish reason, and the [DONE] sentinel.
+        // When that stream is replayed chunk by chunk, each step yields its
+        // own event and [DONE] flushes the pending Done.
+        // Then the start chunk names the tool, each argument chunk contributes
+        // its own partial JSON, the finish chunk completes the call with the
+        // assembled arguments, and [DONE] flushes the pending Done.
         let mut parser = StreamResponseParser::new();
 
-        // 1. Start.
         let e1 = parser.parse_data(
             r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}]}"#,
         );
-        assert!(matches!(&e1[0], StreamEvent::ToolUseStart { name, .. } if name == "get_weather"));
-
-        // 2. Arguments delta.
         let e2 = parser.parse_data(
             r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":"}}]},"finish_reason":null}]}"#,
         );
-        assert!(
-            matches!(&e2[0], StreamEvent::ToolUseInputDelta { partial_json, .. } if partial_json == "{\"city\":")
-        );
-
-        // 3. More arguments.
         let e3 = parser.parse_data(
             r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"Paris\"}"}}]},"finish_reason":null}]}"#,
+        );
+        let e4 = parser.parse_data(
+            r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
+        );
+        let e5 = parser.handle_done();
+
+        // The start chunk names the tool.
+        assert!(matches!(&e1[0], StreamEvent::ToolUseStart { name, .. } if name == "get_weather"));
+        // And each argument chunk contributes its own partial JSON.
+        assert!(
+            matches!(&e2[0], StreamEvent::ToolUseInputDelta { partial_json, .. } if partial_json == "{\"city\":")
         );
         assert!(
             matches!(&e3[0], StreamEvent::ToolUseInputDelta { partial_json, .. } if partial_json == "\"Paris\"}")
         );
-
-        // 4. Finish.
-        let e4 = parser.parse_data(
-            r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
-        );
+        // And the finish chunk completes the call with the assembled arguments.
         assert_eq!(e4.len(), 1);
         let tc = match &e4[0] {
             StreamEvent::ToolUseComplete { tool_call, .. } => tool_call.clone(),
@@ -809,9 +867,7 @@ mod tests {
         };
         assert_eq!(tc.name, "get_weather");
         assert_eq!(tc.arguments, "{\"city\":\"Paris\"}");
-
-        // 5. [DONE] flushes the pending Done.
-        let e5 = parser.handle_done();
+        // And [DONE] flushes the pending Done.
         assert_eq!(e5.len(), 1);
         assert!(matches!(
             &e5[0],
@@ -827,20 +883,20 @@ mod tests {
         // Given OpenRouter-style SSE: finish_reason in chunk 1, usage+cost in chunk 2.
         let mut parser = StreamResponseParser::new();
 
+        // When both chunks and then the [DONE] sentinel are fed.
         // Chunk 1: finish_reason "stop" without usage.
         let chunk1 = r#"{"id":"x","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":null},"finish_reason":"stop","native_finish_reason":"stop"}]}"#;
         let events1 = parser.parse_data(chunk1);
-        // Done is deferred - no events from parse_data.
-        assert!(events1.is_empty());
-
         // Chunk 2: second finish_reason with usage.cost (OpenRouter sends both).
         let chunk2 = r#"{"id":"x","choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"stop","native_finish_reason":"stop"}],"usage":{"prompt_tokens":6,"completion_tokens":56,"total_tokens":62,"cost":0.00001308384}}"#;
         let events2 = parser.parse_data(chunk2);
-        // No new events - pending_done is enriched with usage from this chunk.
-        assert!(events2.is_empty());
-
-        // [DONE] sentinel flushes the enriched pending Done.
         let events_done = parser.handle_done();
+
+        // Then neither chunk emits directly; Done stays deferred and pending.
+        assert!(events1.is_empty());
+        // And the second chunk adds no events - it enriches the pending Done.
+        assert!(events2.is_empty());
+        // And the [DONE] sentinel flushes a single enriched Done.
         assert_eq!(events_done.len(), 1);
 
         let usage = match &events_done[0] {
@@ -856,18 +912,17 @@ mod tests {
     fn openrouter_split_chunk_usage_only_in_second_chunk() {
         // Given usage arrives in a chunk WITHOUT a second finish_reason.
         let mut parser = StreamResponseParser::new();
-
-        // Chunk 1: finish_reason without usage.
         let chunk1 = r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#;
         parser.parse_data(chunk1);
 
+        // When a usage-only chunk and then the [DONE] sentinel are fed.
         // Chunk 2: usage only (no choices, no finish_reason).
         let chunk2 =
             r#"{"id":"x","usage":{"prompt_tokens":10,"completion_tokens":20,"cost":0.005}}"#;
         parser.parse_data(chunk2);
-
-        // [DONE] flushes with usage from chunk 2.
         let events = parser.handle_done();
+
+        // Then the flushed Done carries the usage from chunk 2.
         assert_eq!(events.len(), 1);
         let usage = match &events[0] {
             StreamEvent::Done { usage: Some(u), .. } => u.clone(),
@@ -920,31 +975,32 @@ mod tests {
         // self.pending_done.is_none() && !self.done_finalized` must prevent
         // duplicates.
         let mut parser = StreamResponseParser::new();
-
-        // First chunk with finish_reason.
         let chunk1 = serde_json::json!({
             "id": "x",
             "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
         })
         .to_string();
         let events1 = parser.parse_data(&chunk1);
-        // Done is deferred - no events from parse_data.
-        assert!(events1.is_empty());
 
-        // Second chunk also has finish_reason (should be ignored).
+        // When a second chunk repeats the finish_reason and [DONE] arrives.
         let chunk2 = serde_json::json!({
             "id": "x",
             "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
         })
         .to_string();
         let events2 = parser.parse_data(&chunk2);
+        let done_events = parser.handle_done();
+
+        // Then the repeat emits nothing and [DONE] flushes exactly one Done.
+        // The first chunk defers its Done rather than emitting directly.
+        assert!(
+            events1.is_empty(),
+            "first chunk should defer its Done to the sentinel"
+        );
         assert!(
             events2.is_empty(),
             "duplicate finish_reason should not emit events"
         );
-
-        // [DONE] sentinel flushes exactly one Done.
-        let done_events = parser.handle_done();
         assert_eq!(done_events.len(), 1, "should emit exactly one Done event");
     }
 
@@ -1065,6 +1121,8 @@ mod tests {
             "choices": [{"index": 0, "delta": {"content": "hi"}, "finish_reason": "stop"}]
         })
         .to_string();
+
+        // When the chunk and the [DONE] sentinel are fed.
         parser.parse_data(&json);
         let done_events = parser.handle_done();
 
@@ -1091,6 +1149,8 @@ mod tests {
             }]
         })
         .to_string();
+
+        // When the chunk and the [DONE] sentinel are fed.
         parser.parse_data(&json);
         let done_events = parser.handle_done();
 

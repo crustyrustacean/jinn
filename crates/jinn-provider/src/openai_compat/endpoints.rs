@@ -246,6 +246,8 @@ mod tests {
             .await;
 
         let client = Client::new();
+
+        // When listing endpoints for the model.
         let result = list_endpoints(
             &client,
             &server.url(),
@@ -278,6 +280,8 @@ mod tests {
             .await;
 
         let client = Client::new();
+
+        // When listing endpoints for the nonexistent model.
         let result = list_endpoints(&client, &server.url(), "no/such/model", "test-key", &[]).await;
 
         // Then it returns an error (not Ok(vec![])).
@@ -312,6 +316,8 @@ mod tests {
             .await;
 
         let client = Client::new();
+
+        // When listing endpoints for the model.
         let result = list_endpoints(&client, &server.url(), "m/test", "test-key", &[]).await;
 
         // Then it parses despite the missing/null optional fields.

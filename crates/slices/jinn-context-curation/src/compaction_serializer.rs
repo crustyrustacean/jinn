@@ -59,16 +59,26 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn serializes_user_entry() {
+        // Given history holding a single User entry.
         let entries = vec![ChatEntry::user("Hello world")];
+
+        // When serializing for compaction.
         let result = serialize_entries_for_compaction(&entries);
+
+        // Then the entry is labelled `[User]`.
         assert_eq!(result, "[User]: Hello world");
     }
 
     #[rstest::rstest]
     #[test]
     fn serializes_assistant_entry() {
+        // Given history holding a single Assistant entry.
         let entries = vec![ChatEntry::assistant("Hi there")];
+
+        // When serializing for compaction.
         let result = serialize_entries_for_compaction(&entries);
+
+        // Then the entry is labelled `[Assistant]`.
         assert_eq!(result, "[Assistant]: Hi there");
     }
 
@@ -77,7 +87,10 @@ mod tests {
     fn skips_tool_call_entry() {
         // Given a tool call.
         let entries = vec![ChatEntry::tool_call("id1", "bash", r#"{"command":"ls"}"#)];
+
+        // When serializing for compaction.
         let result = serialize_entries_for_compaction(&entries);
+
         // Then it produces no output (tool calls are skipped).
         assert!(result.is_empty());
     }
@@ -85,6 +98,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn truncates_long_tool_result() {
+        // Given a tool result carrying 5000 characters of content.
         let long_content = "x".repeat(5000);
         let entries = vec![ChatEntry::tool_result(
             "id1",
@@ -92,29 +106,44 @@ mod tests {
             &long_content,
             jinn_core_types::ToolResultStatus::Success,
         )];
+
+        // When serializing for compaction.
         let result = serialize_entries_for_compaction(&entries);
+
+        // Then it produces no output.
         assert!(result.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn skips_system_entry() {
+        // Given history holding a single System entry.
         let entries = vec![ChatEntry::system("ready")];
+
+        // When serializing for compaction.
         let result = serialize_entries_for_compaction(&entries);
+
+        // Then it produces no output.
         assert!(result.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn skips_thinking_entry() {
+        // Given history holding a single Thinking entry.
         let entries = vec![ChatEntry::thinking("reasoning")];
+
+        // When serializing for compaction.
         let result = serialize_entries_for_compaction(&entries);
+
+        // Then it produces no output.
         assert!(result.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn serializes_mixed_entries() {
+        // Given history mixing User, Assistant, ToolCall, and ToolResult entries.
         let entries = vec![
             ChatEntry::user("fix the bug"),
             ChatEntry::assistant("let me check"),
@@ -127,8 +156,12 @@ mod tests {
             ),
             ChatEntry::assistant("done"),
         ];
+
+        // When serializing for compaction.
         let result = serialize_entries_for_compaction(&entries);
         let lines: Vec<&str> = result.split('\n').collect();
+
+        // Then only the three conversation entries are emitted, in order.
         assert_eq!(lines.len(), 3);
         assert!(lines[0].starts_with("[User]"));
         assert!(lines[1].starts_with("[Assistant]"));

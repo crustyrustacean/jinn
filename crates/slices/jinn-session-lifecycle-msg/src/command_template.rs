@@ -633,79 +633,157 @@ mod tests {
 
     #[rstest::rstest]
     fn parse_no_params() {
-        let tmpl = CommandTemplate::parse("echo hello");
+        // Given a setup command with no parameter placeholders.
+        let command = "echo hello";
+
+        // When parsing it as a command template.
+        let tmpl = CommandTemplate::parse(command);
+
+        // Then it reports having no parameters.
         assert!(!tmpl.has_params());
+        // And its parameter list is empty.
         assert!(tmpl.params().is_empty());
+        // And its parameter count is zero.
         assert_eq!(tmpl.param_count(), 0);
     }
 
     #[rstest::rstest]
     fn parse_one_param() {
-        let tmpl = CommandTemplate::parse("script.sh $1");
+        // Given a setup command with a single positional placeholder.
+        let command = "script.sh $1";
+
+        // When parsing it as a command template.
+        let tmpl = CommandTemplate::parse(command);
+
+        // Then it reports having parameters.
         assert!(tmpl.has_params());
+        // And the parameter list holds that one positional parameter.
         assert_eq!(tmpl.params(), &[Param::Positional(1)]);
+        // And the parameter count is one.
         assert_eq!(tmpl.param_count(), 1);
     }
 
     #[rstest::rstest]
     fn parse_multiple_params() {
-        let tmpl = CommandTemplate::parse("script.sh $1 $2");
+        // Given a setup command with two positional placeholders.
+        let command = "script.sh $1 $2";
+
+        // When parsing it as a command template.
+        let tmpl = CommandTemplate::parse(command);
+
+        // Then both positional parameters are extracted in order.
         assert_eq!(tmpl.params(), &[Param::Positional(1), Param::Positional(2)]);
+        // And the parameter count is two.
         assert_eq!(tmpl.param_count(), 2);
     }
 
     #[rstest::rstest]
     fn parse_deduplicates_repeated_params() {
-        let tmpl = CommandTemplate::parse("script.sh $1 $2 $1");
+        // Given a setup command that repeats a positional placeholder.
+        let command = "script.sh $1 $2 $1";
+
+        // When parsing it as a command template.
+        let tmpl = CommandTemplate::parse(command);
+
+        // Then the repeated parameter appears only once.
         assert_eq!(tmpl.params(), &[Param::Positional(1), Param::Positional(2)]);
+        // And the parameter count stays at two.
         assert_eq!(tmpl.param_count(), 2);
     }
 
     #[rstest::rstest]
     fn parse_splat_at() {
-        let tmpl = CommandTemplate::parse("script.sh $@");
+        // Given a setup command using the `@` splat placeholder.
+        let command = "script.sh $@";
+
+        // When parsing it as a command template.
+        let tmpl = CommandTemplate::parse(command);
+
+        // Then the splat placeholder is recognized.
         assert!(tmpl.has_splat());
+        // And the template is treated as parameterized.
         assert!(tmpl.has_params());
     }
 
     #[rstest::rstest]
     fn parse_splat_star() {
-        let tmpl = CommandTemplate::parse("script.sh $*");
+        // Given a setup command using the `*` splat placeholder.
+        let command = "script.sh $*";
+
+        // When parsing it as a command template.
+        let tmpl = CommandTemplate::parse(command);
+
+        // Then the splat placeholder is recognized.
         assert!(tmpl.has_splat());
     }
 
     #[rstest::rstest]
     fn parse_mixed_numbered_and_splat() {
-        let tmpl = CommandTemplate::parse("script.sh $1 $@");
+        // Given a setup command mixing a positional placeholder with a splat.
+        let command = "script.sh $1 $@";
+
+        // When parsing it as a command template.
+        let tmpl = CommandTemplate::parse(command);
+
+        // Then the positional parameter and the splat are both extracted.
         assert_eq!(tmpl.params(), &[Param::Positional(1), Param::Splat]);
+        // And the splat placeholder is recognized.
         assert!(tmpl.has_splat());
+        // And only the positional parameter is counted.
         assert_eq!(tmpl.param_count(), 1);
     }
 
     #[rstest::rstest]
     fn parse_skips_dollar_zero() {
-        let tmpl = CommandTemplate::parse("echo $0");
+        // Given a setup command using the shell name placeholder `$0`.
+        let command = "echo $0";
+
+        // When parsing it as a command template.
+        let tmpl = CommandTemplate::parse(command);
+
+        // Then it reports having no parameters.
         assert!(!tmpl.has_params());
     }
 
     #[rstest::rstest]
     fn parse_non_consecutive_params() {
-        let tmpl = CommandTemplate::parse("script.sh $1 $3");
+        // Given a setup command whose positional placeholders are not adjacent.
+        let command = "script.sh $1 $3";
+
+        // When parsing it as a command template.
+        let tmpl = CommandTemplate::parse(command);
+
+        // Then both placeholders are extracted at their original positions.
         assert_eq!(tmpl.params(), &[Param::Positional(1), Param::Positional(3)]);
+        // And the parameter count is two.
         assert_eq!(tmpl.param_count(), 2);
     }
 
     #[rstest::rstest]
     fn parse_named_param() {
-        let tmpl = CommandTemplate::parse("script.sh <branch>");
+        // Given a setup command with a single named placeholder.
+        let command = "script.sh <branch>";
+
+        // When parsing it as a command template.
+        let tmpl = CommandTemplate::parse(command);
+
+        // Then it reports having parameters.
         assert!(tmpl.has_params());
+        // And the parameter list holds that one named parameter.
         assert_eq!(tmpl.params(), &[Param::Named("branch".to_owned())]);
+        // And the parameter count is one.
         assert_eq!(tmpl.param_count(), 1);
     }
 
     #[rstest::rstest]
     fn parse_multiple_named_params() {
-        let tmpl = CommandTemplate::parse("script.sh <branch> <target>");
+        // Given a setup command with two named placeholders.
+        let command = "script.sh <branch> <target>";
+
+        // When parsing it as a command template.
+        let tmpl = CommandTemplate::parse(command);
+
+        // Then both named parameters are extracted in order.
         assert_eq!(
             tmpl.params(),
             &[
@@ -713,12 +791,19 @@ mod tests {
                 Param::Named("target".to_owned()),
             ]
         );
+        // And the parameter count is two.
         assert_eq!(tmpl.param_count(), 2);
     }
 
     #[rstest::rstest]
     fn parse_deduplicates_named_params() {
-        let tmpl = CommandTemplate::parse("script.sh <branch> <target> <branch>");
+        // Given a setup command that repeats a named placeholder.
+        let command = "script.sh <branch> <target> <branch>";
+
+        // When parsing it as a command template.
+        let tmpl = CommandTemplate::parse(command);
+
+        // Then the repeated name appears only once.
         assert_eq!(
             tmpl.params(),
             &[
@@ -726,33 +811,55 @@ mod tests {
                 Param::Named("target".to_owned()),
             ]
         );
+        // And the parameter count stays at two.
         assert_eq!(tmpl.param_count(), 2);
     }
 
     #[rstest::rstest]
     fn parse_mixed_named_and_positional() {
-        let tmpl = CommandTemplate::parse("script.sh <branch> $1");
+        // Given a setup command mixing a named and a positional placeholder.
+        let command = "script.sh <branch> $1";
+
+        // When parsing it as a command template.
+        let tmpl = CommandTemplate::parse(command);
+
+        // Then both parameter kinds are extracted in order.
         assert_eq!(
             tmpl.params(),
             &[Param::Named("branch".to_owned()), Param::Positional(1)]
         );
+        // And the parameter count is two.
         assert_eq!(tmpl.param_count(), 2);
     }
 
     #[rstest::rstest]
     fn parse_named_with_splat() {
-        let tmpl = CommandTemplate::parse("script.sh <branch> $@");
+        // Given a setup command mixing a named placeholder with a splat.
+        let command = "script.sh <branch> $@";
+
+        // When parsing it as a command template.
+        let tmpl = CommandTemplate::parse(command);
+
+        // Then the named parameter and the splat are both extracted.
         assert_eq!(
             tmpl.params(),
             &[Param::Named("branch".to_owned()), Param::Splat]
         );
+        // And the splat placeholder is recognized.
         assert!(tmpl.has_splat());
+        // And only the named parameter is counted.
         assert_eq!(tmpl.param_count(), 1);
     }
 
     #[rstest::rstest]
     fn parse_multiple_named_same_value() {
-        let tmpl = CommandTemplate::parse("script.sh <foo> <bar> <foo>");
+        // Given a setup command whose first named placeholder repeats.
+        let command = "script.sh <foo> <bar> <foo>";
+
+        // When parsing it as a command template.
+        let tmpl = CommandTemplate::parse(command);
+
+        // Then the repeated name appears only once.
         assert_eq!(
             tmpl.params(),
             &[
@@ -760,165 +867,270 @@ mod tests {
                 Param::Named("bar".to_owned())
             ]
         );
+        // And the parameter count stays at two.
         assert_eq!(tmpl.param_count(), 2);
     }
 
     #[rstest::rstest]
     fn render_no_params() {
+        // Given a template parsed from a command with no placeholders.
         let tmpl = CommandTemplate::parse("echo hello");
-        assert_eq!(tmpl.render(&[]), "echo hello");
+
+        // When rendering it with no arguments.
+        let rendered = tmpl.render(&[]);
+
+        // Then the command text is unchanged.
+        assert_eq!(rendered, "echo hello");
     }
 
     #[rstest::rstest]
     fn render_one_param() {
+        // Given a template with a single positional placeholder and one argument.
         let tmpl = CommandTemplate::parse("script.sh $1");
-        assert_eq!(
-            tmpl.render(&["my-branch".to_owned()]),
-            "script.sh my-branch"
-        );
+        let args = ["my-branch".to_owned()];
+
+        // When rendering it.
+        let rendered = tmpl.render(&args);
+
+        // Then the placeholder is replaced by the argument.
+        assert_eq!(rendered, "script.sh my-branch");
     }
 
     #[rstest::rstest]
     fn render_multiple_params() {
+        // Given a template with two positional placeholders and two arguments.
         let tmpl = CommandTemplate::parse("script.sh $1 $2");
-        assert_eq!(
-            tmpl.render(&["foo".to_owned(), "bar".to_owned()]),
-            "script.sh foo bar"
-        );
+        let args = ["foo".to_owned(), "bar".to_owned()];
+
+        // When rendering it.
+        let rendered = tmpl.render(&args);
+
+        // Then each placeholder takes its positional argument.
+        assert_eq!(rendered, "script.sh foo bar");
     }
 
     #[rstest::rstest]
     fn render_repeated_param() {
+        // Given a template that repeats a positional placeholder.
         let tmpl = CommandTemplate::parse("script.sh $1 $2 $1");
-        assert_eq!(
-            tmpl.render(&["branch".to_owned(), "dir".to_owned()]),
-            "script.sh branch dir branch"
-        );
+        let args = ["branch".to_owned(), "dir".to_owned()];
+
+        // When rendering it.
+        let rendered = tmpl.render(&args);
+
+        // Then the repeated placeholder is filled from the first argument both times.
+        assert_eq!(rendered, "script.sh branch dir branch");
     }
 
     #[rstest::rstest]
     fn render_splat() {
+        // Given a template with a splat placeholder and three arguments.
         let tmpl = CommandTemplate::parse("script.sh $@");
-        assert_eq!(
-            tmpl.render(&["a".to_owned(), "b".to_owned(), "c".to_owned()]),
-            "script.sh a b c"
-        );
+        let args = ["a".to_owned(), "b".to_owned(), "c".to_owned()];
+
+        // When rendering it.
+        let rendered = tmpl.render(&args);
+
+        // Then the splat expands to every argument in order.
+        assert_eq!(rendered, "script.sh a b c");
     }
 
     #[rstest::rstest]
     fn render_one_named_param() {
+        // Given a template with a single named placeholder and one argument.
         let tmpl = CommandTemplate::parse("script.sh <branch>");
-        assert_eq!(
-            tmpl.render(&["my-feature".to_owned()]),
-            "script.sh my-feature"
-        );
+        let args = ["my-feature".to_owned()];
+
+        // When rendering it.
+        let rendered = tmpl.render(&args);
+
+        // Then the named placeholder is replaced by the argument.
+        assert_eq!(rendered, "script.sh my-feature");
     }
 
     #[rstest::rstest]
     fn render_multiple_named_params() {
+        // Given a template with two named placeholders and two arguments.
         let tmpl = CommandTemplate::parse("script.sh <branch> <target>");
-        assert_eq!(
-            tmpl.render(&["my-feature".to_owned(), "/tmp/workdir".to_owned()]),
-            "script.sh my-feature /tmp/workdir"
-        );
+        let args = ["my-feature".to_owned(), "/tmp/workdir".to_owned()];
+
+        // When rendering it.
+        let rendered = tmpl.render(&args);
+
+        // Then each named placeholder takes the argument in its own position.
+        assert_eq!(rendered, "script.sh my-feature /tmp/workdir");
     }
 
     #[rstest::rstest]
     fn render_named_with_splat() {
+        // Given a template mixing a named placeholder, a splat, and three arguments.
         let tmpl = CommandTemplate::parse("script.sh <branch> $@");
-        assert_eq!(
-            tmpl.render(&["my-feature".to_owned(), "a".to_owned(), "b".to_owned()]),
-            "script.sh my-feature a b"
-        );
+        let args = ["my-feature".to_owned(), "a".to_owned(), "b".to_owned()];
+
+        // When rendering it.
+        let rendered = tmpl.render(&args);
+
+        // Then the named placeholder takes the first argument and the splat the rest.
+        assert_eq!(rendered, "script.sh my-feature a b");
     }
 
     #[rstest::rstest]
     fn render_repeated_named_param() {
+        // Given a template that repeats a named placeholder alongside a positional one.
         let tmpl = CommandTemplate::parse("script.sh <branch> $2 <branch>");
-        assert_eq!(
-            tmpl.render(&["my-feature".to_owned(), "other".to_owned()]),
-            "script.sh my-feature other my-feature"
-        );
+        let args = ["my-feature".to_owned(), "other".to_owned()];
+
+        // When rendering it.
+        let rendered = tmpl.render(&args);
+
+        // Then the repeated named placeholder is filled from the first argument both times.
+        assert_eq!(rendered, "script.sh my-feature other my-feature");
     }
 
     #[rstest::rstest]
     fn render_mixed_named_and_positional() {
+        // Given a template mixing a named and a positional placeholder.
         let tmpl = CommandTemplate::parse("script.sh <branch> $1");
-        assert_eq!(
-            tmpl.render(&["my-feature".to_owned(), "dup".to_owned()]),
-            // <branch> gets args[0]="my-feature", $1 gets args[1]="dup"
-            "script.sh my-feature dup"
-        );
+        let args = ["my-feature".to_owned(), "dup".to_owned()];
+
+        // When rendering it.
+        let rendered = tmpl.render(&args);
+
+        // Then <branch> takes args[0] and $1 takes args[1].
+        assert_eq!(rendered, "script.sh my-feature dup");
     }
 
     #[rstest::rstest]
     fn display_no_params() {
+        // Given a template parsed from a command with no placeholders.
         let tmpl = CommandTemplate::parse("echo hello");
-        assert_eq!(tmpl.display(), "echo hello");
+
+        // When building its display form.
+        let display = tmpl.display();
+
+        // Then the display form is the command text itself.
+        assert_eq!(display, "echo hello");
     }
 
     #[rstest::rstest]
     fn display_with_params() {
+        // Given a template with two positional placeholders.
         let tmpl = CommandTemplate::parse("script.sh $1 $2");
-        assert_eq!(tmpl.display(), "script.sh <1> <2>");
+
+        // When building its display form.
+        let display = tmpl.display();
+
+        // Then each placeholder is shown in angle-bracket form.
+        assert_eq!(display, "script.sh <1> <2>");
     }
 
     #[rstest::rstest]
     fn display_with_splat() {
+        // Given a template with a splat placeholder.
         let tmpl = CommandTemplate::parse("script.sh $@");
-        assert_eq!(tmpl.display(), "script.sh <args>");
+
+        // When building its display form.
+        let display = tmpl.display();
+
+        // Then the splat is shown as the `<args>` placeholder.
+        assert_eq!(display, "script.sh <args>");
     }
 
     #[rstest::rstest]
     fn display_repeated_params() {
+        // Given a template that repeats a positional placeholder.
         let tmpl = CommandTemplate::parse("script.sh $1 $2 $1");
-        assert_eq!(tmpl.display(), "script.sh <1> <2> <1>");
+
+        // When building its display form.
+        let display = tmpl.display();
+
+        // Then the repetition is preserved in the display form.
+        assert_eq!(display, "script.sh <1> <2> <1>");
     }
 
     #[rstest::rstest]
     fn display_named_params() {
+        // Given a template with two named placeholders.
         let tmpl = CommandTemplate::parse("script.sh <branch> <target>");
-        // Named params are already displayed as `<branch> <target>`.
-        assert_eq!(tmpl.display(), "script.sh <branch> <target>");
+
+        // When building its display form.
+        let display = tmpl.display();
+
+        // Then the named placeholders are shown unchanged.
+        assert_eq!(display, "script.sh <branch> <target>");
     }
 
     #[rstest::rstest]
     fn display_named_with_positional() {
+        // Given a template mixing a named and a positional placeholder.
         let tmpl = CommandTemplate::parse("script.sh <branch> $1");
-        assert_eq!(tmpl.display(), "script.sh <branch> <1>");
+
+        // When building its display form.
+        let display = tmpl.display();
+
+        // Then only the positional placeholder is converted.
+        assert_eq!(display, "script.sh <branch> <1>");
     }
 
     #[rstest::rstest]
     fn display_does_not_confuse_redirection_with_params() {
+        // Given a template that mixes a placeholder with a shell redirection.
         let tmpl = CommandTemplate::parse("echo $1 > output.txt");
-        assert_eq!(tmpl.display(), "echo <1> > output.txt");
+
+        // When building its display form.
+        let display = tmpl.display();
+
+        // Then the redirection is left alone and only the placeholder is converted.
+        assert_eq!(display, "echo <1> > output.txt");
     }
 
     #[rstest::rstest]
     fn render_preserves_redirection() {
+        // Given a template that mixes a placeholder with a shell redirection.
         let tmpl = CommandTemplate::parse("echo $1 > output.txt");
-        assert_eq!(
-            tmpl.render(&["hello".to_owned()]),
-            "echo hello > output.txt"
-        );
+        let args = ["hello".to_owned()];
+
+        // When rendering it.
+        let rendered = tmpl.render(&args);
+
+        // Then the redirection survives rendering.
+        assert_eq!(rendered, "echo hello > output.txt");
     }
 
     #[rstest::rstest]
     fn parse_unclosed_angle_bracket_is_not_a_param() {
-        let tmpl = CommandTemplate::parse("script.sh <unclosed");
+        // Given a setup command with an unclosed named placeholder.
+        let command = "script.sh <unclosed";
+
+        // When parsing it as a command template.
+        let tmpl = CommandTemplate::parse(command);
+
+        // Then it reports having no parameters.
         assert!(!tmpl.has_params());
     }
 
     #[rstest::rstest]
     fn parse_empty_angle_bracket_is_not_a_param() {
-        let tmpl = CommandTemplate::parse("script.sh <>");
+        // Given a setup command with an empty angle-bracket placeholder.
+        let command = "script.sh <>";
+
+        // When parsing it as a command template.
+        let tmpl = CommandTemplate::parse(command);
+
+        // Then it reports having no parameters.
         assert!(!tmpl.has_params());
     }
 
     #[rstest::rstest]
     fn display_trait_delegates_to_display_method() {
+        // Given a template with two positional placeholders.
         let tmpl = CommandTemplate::parse("script.sh $1 $2");
-        assert_eq!(format!("{tmpl}"), tmpl.display());
+
+        // When formatting it with the Display trait.
+        let formatted = format!("{tmpl}");
+
+        // Then the output matches the explicit display form.
+        assert_eq!(formatted, tmpl.display());
     }
 
     #[rstest::rstest]
@@ -1136,155 +1348,282 @@ mod tests {
 
     #[rstest::rstest]
     fn parse_quoted_args_empty_input() {
-        assert_eq!(parse_quoted_args(""), Vec::<String>::new());
+        // Given an empty argument string.
+        let input = "";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then no arguments are produced.
+        assert_eq!(args, Vec::<String>::new());
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_whitespace_only() {
-        assert_eq!(parse_quoted_args("   "), Vec::<String>::new());
+        // Given an argument string containing only spaces.
+        let input = "   ";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then no arguments are produced.
+        assert_eq!(args, Vec::<String>::new());
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_unquoted_single() {
-        assert_eq!(parse_quoted_args("foo"), vec!["foo".to_owned()]);
+        // Given a single unquoted token.
+        let input = "foo";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then the token is the only argument.
+        assert_eq!(args, vec!["foo".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_unquoted_multiple() {
+        // Given three whitespace-separated unquoted tokens.
+        let input = "foo bar baz";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then each token becomes its own argument.
         assert_eq!(
-            parse_quoted_args("foo bar baz"),
+            args,
             vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()]
         );
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_quoted_single() {
-        assert_eq!(parse_quoted_args("\"foo bar\""), vec!["foo bar".to_owned()]);
+        // Given a single quoted token containing a space.
+        let input = "\"foo bar\"";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then the quotes are stripped and the space is kept.
+        assert_eq!(args, vec!["foo bar".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_quoted_preserves_internal_spaces() {
-        assert_eq!(
-            parse_quoted_args("\"hello   world\""),
-            vec!["hello   world".to_owned()]
-        );
+        // Given a quoted token containing several consecutive spaces.
+        let input = "\"hello   world\"";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then the internal spacing is preserved verbatim.
+        assert_eq!(args, vec!["hello   world".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_mixed_quoted_and_unquoted() {
-        assert_eq!(
-            parse_quoted_args("a \"b c\" d"),
-            vec!["a".to_owned(), "b c".to_owned(), "d".to_owned()]
-        );
+        // Given a quoted token surrounded by unquoted tokens.
+        let input = "a \"b c\" d";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then each of the three tokens becomes its own argument.
+        assert_eq!(args, vec!["a".to_owned(), "b c".to_owned(), "d".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_quoted_at_start() {
-        assert_eq!(
-            parse_quoted_args("\"foo bar\" baz"),
-            vec!["foo bar".to_owned(), "baz".to_owned()]
-        );
+        // Given a quoted token followed by an unquoted token.
+        let input = "\"foo bar\" baz";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then both tokens become arguments with the quotes stripped.
+        assert_eq!(args, vec!["foo bar".to_owned(), "baz".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_quoted_at_end() {
-        assert_eq!(
-            parse_quoted_args("foo \"bar baz\""),
-            vec!["foo".to_owned(), "bar baz".to_owned()]
-        );
+        // Given an unquoted token followed by a quoted token.
+        let input = "foo \"bar baz\"";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then both tokens become arguments with the quotes stripped.
+        assert_eq!(args, vec!["foo".to_owned(), "bar baz".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_adjacent_quoted_tokens() {
-        assert_eq!(
-            parse_quoted_args("\"foo\"\"bar\""),
-            vec!["foobar".to_owned()]
-        );
+        // Given two quoted tokens with nothing between them.
+        let input = "\"foo\"\"bar\"";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then they are concatenated into a single argument.
+        assert_eq!(args, vec!["foobar".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_empty_quotes() {
-        assert_eq!(parse_quoted_args("\"\""), Vec::<String>::new());
+        // Given a quoted token with nothing inside it.
+        let input = "\"\"";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then no arguments are produced.
+        assert_eq!(args, Vec::<String>::new());
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_empty_quotes_between_tokens() {
-        assert_eq!(
-            parse_quoted_args("foo \"\" bar"),
-            vec!["foo".to_owned(), "bar".to_owned()]
-        );
+        // Given an empty quoted token between two unquoted tokens.
+        let input = "foo \"\" bar";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then the empty token is dropped and the others survive.
+        assert_eq!(args, vec!["foo".to_owned(), "bar".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_unterminated_quote() {
-        // Unterminated quote captures the rest as the token content.
-        assert_eq!(parse_quoted_args("\"foo bar"), vec!["foo bar".to_owned()]);
+        // Given a quoted token whose closing quote is missing.
+        let input = "\"foo bar";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then the rest of the input becomes the token content.
+        assert_eq!(args, vec!["foo bar".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_unterminated_quote_with_spaces() {
-        // Unterminated quote: everything after " is one token.
-        assert_eq!(
-            parse_quoted_args("\"foo bar baz"),
-            vec!["foo bar baz".to_owned()]
-        );
+        // Given an unterminated quote followed by further words.
+        let input = "\"foo bar baz";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then everything after the opening quote is one token.
+        assert_eq!(args, vec!["foo bar baz".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_escaped_quote_outside_quotes() {
-        // Input: foo\"bar → parser sees \" as escaped quote → foo"bar
-        assert_eq!(parse_quoted_args("foo\\\"bar"), vec!["foo\"bar".to_owned()]);
+        // Given an unquoted token with a backslash-escaped quote.
+        let input = "foo\\\"bar";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then the backslash is dropped and the quote is literal.
+        assert_eq!(args, vec!["foo\"bar".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_escaped_quote_inside_quotes() {
-        assert_eq!(
-            parse_quoted_args("\"foo\\\"bar\""),
-            vec!["foo\"bar".to_owned()]
-        );
+        // Given a quoted token with a backslash-escaped quote.
+        let input = "\"foo\\\"bar\"";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then the backslash is dropped and the quote is literal.
+        assert_eq!(args, vec!["foo\"bar".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_escaped_backslash_outside_quotes() {
-        assert_eq!(parse_quoted_args("foo\\\\bar"), vec!["foo\\bar".to_owned()]);
+        // Given an unquoted token with an escaped backslash.
+        let input = "foo\\\\bar";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then the pair of backslashes collapses to one.
+        assert_eq!(args, vec!["foo\\bar".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_escaped_backslash_inside_quotes() {
-        assert_eq!(
-            parse_quoted_args("\"foo\\\\bar\""),
-            vec!["foo\\bar".to_owned()]
-        );
+        // Given a quoted token with an escaped backslash.
+        let input = "\"foo\\\\bar\"";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then the pair of backslashes collapses to one.
+        assert_eq!(args, vec!["foo\\bar".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_escaped_other_char() {
-        // \\n → n (we don't interpret escape sequences, just strip the backslash).
-        assert_eq!(parse_quoted_args("foo\\nbar"), vec!["foonbar".to_owned()]);
+        // Given an unquoted token with a backslash before a plain character.
+        let input = "foo\\nbar";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then the backslash is dropped without interpreting the escape.
+        assert_eq!(args, vec!["foonbar".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_trailing_backslash_outside_quotes() {
-        // Trailing backslash at end of input - treat as literal.
-        assert_eq!(parse_quoted_args("foo\\"), vec!["foo\\".to_owned()]);
+        // Given an unquoted token ending in a backslash.
+        let input = "foo\\";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then the backslash is kept as a literal character.
+        assert_eq!(args, vec!["foo\\".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_trailing_backslash_inside_quotes() {
-        // Trailing backslash at end of input inside quotes - treat as literal.
-        assert_eq!(parse_quoted_args("\"foo\\"), vec!["foo\\".to_owned()]);
+        // Given a quoted token ending in a backslash.
+        let input = "\"foo\\";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then the backslash is kept as a literal character.
+        assert_eq!(args, vec!["foo\\".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_escaped_space_outside_quotes() {
-        assert_eq!(parse_quoted_args("foo\\ bar"), vec!["foo bar".to_owned()]);
+        // Given an unquoted token with a backslash-escaped space.
+        let input = "foo\\ bar";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then the escape does not split the token and the space survives.
+        assert_eq!(args, vec!["foo bar".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_complex_mixed() {
-        // Complex input mixing quotes, escapes, and unquoted tokens.
+        // Given a string mixing quoted sections, escapes, and unquoted tokens.
+        let input = "branch \"my feature\" target\\ dir";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then each of the three sources produces its own argument.
         assert_eq!(
-            parse_quoted_args("branch \"my feature\" target\\ dir"),
+            args,
             vec![
                 "branch".to_owned(),
                 "my feature".to_owned(),
@@ -1295,101 +1634,197 @@ mod tests {
 
     #[rstest::rstest]
     fn parse_quoted_args_multiple_spaces_between_tokens() {
-        assert_eq!(
-            parse_quoted_args("foo    bar"),
-            vec!["foo".to_owned(), "bar".to_owned()]
-        );
+        // Given two tokens separated by several spaces.
+        let input = "foo    bar";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then the run of spaces acts as a single separator.
+        assert_eq!(args, vec!["foo".to_owned(), "bar".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_leading_and_trailing_whitespace() {
-        assert_eq!(
-            parse_quoted_args("  foo bar  "),
-            vec!["foo".to_owned(), "bar".to_owned()]
-        );
+        // Given two tokens padded with leading and trailing spaces.
+        let input = "  foo bar  ";
+
+        // When parsing it into arguments.
+        let args = parse_quoted_args(input);
+
+        // Then the padding is ignored and only the two tokens remain.
+        assert_eq!(args, vec!["foo".to_owned(), "bar".to_owned()]);
     }
 
     #[rstest::rstest]
     fn shell_quote_safe_value_passes_through() {
-        assert_eq!(shell_quote("hello"), "hello");
+        // Given a value with no shell-special characters.
+        let value = "hello";
+
+        // When shell-quoting it.
+        let quoted = shell_quote(value);
+
+        // Then it is returned unchanged.
+        assert_eq!(quoted, "hello");
     }
 
     #[rstest::rstest]
     fn shell_quote_value_with_spaces_is_wrapped() {
-        assert_eq!(shell_quote("my branch"), "'my branch'");
+        // Given a value containing a space.
+        let value = "my branch";
+
+        // When shell-quoting it.
+        let quoted = shell_quote(value);
+
+        // Then it is wrapped in single quotes.
+        assert_eq!(quoted, "'my branch'");
     }
 
     #[rstest::rstest]
     fn shell_quote_empty_string_is_empty_quotes() {
-        assert_eq!(shell_quote(""), "''");
+        // Given the empty value.
+        let value = "";
+
+        // When shell-quoting it.
+        let quoted = shell_quote(value);
+
+        // Then it becomes an empty quoted word.
+        assert_eq!(quoted, "''");
     }
 
     #[rstest::rstest]
     fn shell_quote_embedded_single_quote_is_escaped() {
-        assert_eq!(shell_quote("it's here"), "'it'\\''s here'");
+        // Given a value containing a single quote.
+        let value = "it's here";
+
+        // When shell-quoting it.
+        let quoted = shell_quote(value);
+
+        // Then the embedded quote is closed, escaped, and reopened.
+        assert_eq!(quoted, "'it'\\''s here'");
     }
 
     #[rstest::rstest]
     fn shell_quote_dollar_sign_is_quoted() {
-        assert_eq!(shell_quote("$HOME"), "'$HOME'");
+        // Given a value containing a dollar sign.
+        let value = "$HOME";
+
+        // When shell-quoting it.
+        let quoted = shell_quote(value);
+
+        // Then it is wrapped so the shell does not expand it.
+        assert_eq!(quoted, "'$HOME'");
     }
 
     #[rstest::rstest]
     fn shell_quote_semicolon_is_quoted() {
-        assert_eq!(shell_quote("foo;bar"), "'foo;bar'");
+        // Given a value containing a command separator.
+        let value = "foo;bar";
+
+        // When shell-quoting it.
+        let quoted = shell_quote(value);
+
+        // Then it is wrapped so the semicolon stays literal.
+        assert_eq!(quoted, "'foo;bar'");
     }
 
     #[rstest::rstest]
     fn shell_quote_pipe_is_quoted() {
-        assert_eq!(shell_quote("foo|bar"), "'foo|bar'");
+        // Given a value containing a pipe.
+        let value = "foo|bar";
+
+        // When shell-quoting it.
+        let quoted = shell_quote(value);
+
+        // Then it is wrapped so the pipe does not start a new command.
+        assert_eq!(quoted, "'foo|bar'");
     }
 
     #[rstest::rstest]
     fn shell_quote_path_with_slash_is_safe() {
-        // Forward slashes are not shell-special.
-        assert_eq!(shell_quote("/tmp/workdir"), "/tmp/workdir");
+        // Given a filesystem path.
+        let value = "/tmp/workdir";
+
+        // When shell-quoting it.
+        let quoted = shell_quote(value);
+
+        // Then forward slashes are not shell-special, so it passes through.
+        assert_eq!(quoted, "/tmp/workdir");
     }
 
     #[rstest::rstest]
     fn shell_quote_hyphenated_value_is_safe() {
-        assert_eq!(shell_quote("my-branch"), "my-branch");
+        // Given a hyphenated value.
+        let value = "my-branch";
+
+        // When shell-quoting it.
+        let quoted = shell_quote(value);
+
+        // Then hyphens are not shell-special, so it passes through.
+        assert_eq!(quoted, "my-branch");
     }
 
     #[rstest::rstest]
     fn split_preserving_quotes_keeps_quotes() {
+        // Given a quoted token followed by an unquoted token.
+        let input = "\"my branch\" target";
+
+        // When splitting it into tokens.
+        let tokens = split_preserving_quotes(input);
+
+        // Then the surrounding quotes are retained on the first token.
         assert_eq!(
-            split_preserving_quotes("\"my branch\" target"),
+            tokens,
             vec!["\"my branch\"".to_owned(), "target".to_owned()]
         );
     }
 
     #[rstest::rstest]
     fn split_preserving_quotes_no_quotes() {
-        assert_eq!(
-            split_preserving_quotes("foo bar"),
-            vec!["foo".to_owned(), "bar".to_owned()]
-        );
+        // Given two unquoted tokens.
+        let input = "foo bar";
+
+        // When splitting it into tokens.
+        let tokens = split_preserving_quotes(input);
+
+        // Then each whitespace-separated word becomes a token.
+        assert_eq!(tokens, vec!["foo".to_owned(), "bar".to_owned()]);
     }
 
     #[rstest::rstest]
     fn split_preserving_quotes_empty_input() {
-        assert_eq!(split_preserving_quotes(""), Vec::<String>::new());
+        // Given an empty string.
+        let input = "";
+
+        // When splitting it into tokens.
+        let tokens = split_preserving_quotes(input);
+
+        // Then no tokens are produced.
+        assert_eq!(tokens, Vec::<String>::new());
     }
 
     #[rstest::rstest]
     fn split_preserving_quotes_single_quoted_arg() {
-        assert_eq!(
-            split_preserving_quotes("\"hello world\""),
-            vec!["\"hello world\"".to_owned()]
-        );
+        // Given a single quoted token containing a space.
+        let input = "\"hello world\"";
+
+        // When splitting it into tokens.
+        let tokens = split_preserving_quotes(input);
+
+        // Then the quotes are kept and the token is not split on the space.
+        assert_eq!(tokens, vec!["\"hello world\"".to_owned()]);
     }
 
     #[rstest::rstest]
     fn split_preserving_quotes_unterminated_quote() {
-        assert_eq!(
-            split_preserving_quotes("\"foo bar"),
-            vec!["\"foo bar".to_owned()]
-        );
+        // Given a quoted token whose closing quote is missing.
+        let input = "\"foo bar";
+
+        // When splitting it into tokens.
+        let tokens = split_preserving_quotes(input);
+
+        // Then the remainder is one token with its quote preserved.
+        assert_eq!(tokens, vec!["\"foo bar".to_owned()]);
     }
 
     #[rstest::rstest]
@@ -1705,45 +2140,60 @@ mod tests {
     #[rstest::rstest]
     fn split_preserving_quotes_backslash_at_end_inside_quotes() {
         // Given a quoted string ending in backslash.
-        let result = split_preserving_quotes("\"foo\\");
+        let input = "\"foo\\";
+
+        // When splitting it into tokens.
+        let tokens = split_preserving_quotes(input);
 
         // Then the backslash is preserved in the output.
-        assert_eq!(result, vec!["\"foo\\".to_owned()]);
+        assert_eq!(tokens, vec!["\"foo\\".to_owned()]);
     }
 
     #[rstest::rstest]
     fn split_preserving_quotes_backslash_escape_outside_quotes() {
         // Given a backslash-escaped space outside quotes.
-        let result = split_preserving_quotes("foo\\ bar");
+        let input = "foo\\ bar";
+
+        // When splitting it into tokens.
+        let tokens = split_preserving_quotes(input);
 
         // Then it produces a single token with the backslash.
-        assert_eq!(result, vec!["foo\\ bar".to_owned()]);
+        assert_eq!(tokens, vec!["foo\\ bar".to_owned()]);
     }
 
     #[rstest::rstest]
     fn split_preserving_quotes_adjacent_quotes() {
         // Given two adjacent quoted sections.
-        let result = split_preserving_quotes("\"a\"\"b\"");
+        let input = "\"a\"\"b\"";
+
+        // When splitting it into tokens.
+        let tokens = split_preserving_quotes(input);
 
         // Then they are merged into a single token with quotes preserved.
-        assert_eq!(result, vec!["\"a\"\"b\"".to_owned()]);
+        assert_eq!(tokens, vec!["\"a\"\"b\"".to_owned()]);
     }
 
     #[rstest::rstest]
     fn split_preserving_quotes_whitespace_separates_tokens() {
         // Given multiple whitespace-separated tokens.
-        let result = split_preserving_quotes("a b c");
+        let input = "a b c";
+
+        // When splitting it into tokens.
+        let tokens = split_preserving_quotes(input);
 
         // Then three separate tokens are returned.
-        assert_eq!(result, vec!["a".to_owned(), "b".to_owned(), "c".to_owned()]);
+        assert_eq!(tokens, vec!["a".to_owned(), "b".to_owned(), "c".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_command_template_adjacent_dollar_params() {
-        // Given "$1$2" - adjacent positional params.
-        let tmpl = CommandTemplate::parse("$1$2");
+        // Given a setup command with two adjacent positional placeholders.
+        let command = "$1$2";
 
-        // Then both are extracted.
+        // When parsing it as a command template.
+        let tmpl = CommandTemplate::parse(command);
+
+        // Then both placeholders are extracted.
         assert_eq!(tmpl.params(), &[Param::Positional(1), Param::Positional(2)]);
     }
 }

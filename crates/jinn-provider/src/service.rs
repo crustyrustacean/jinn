@@ -216,7 +216,11 @@ mod tests {
 
     #[rstest::rstest]
     fn classify_429_as_rate_limited() {
+        // Given a 429 with no body and no retry hint.
+        // When classifying it.
         let report = classify_http_error(reqwest::StatusCode::TOO_MANY_REQUESTS, "", "test", None);
+
+        // Then it is a rate-limited error with no retry hint.
         let err = report.downcast_ref::<LlmServiceError>().expect("downcast");
         assert!(matches!(
             err,
@@ -226,12 +230,16 @@ mod tests {
 
     #[rstest::rstest]
     fn classify_429_uses_retry_after_header_over_hint() {
+        // Given a 429 whose body offers a hint.
+        // When classifying it.
         let report = classify_http_error(
             reqwest::StatusCode::TOO_MANY_REQUESTS,
             "reset at 2099-01-01 00:00:00",
             "test",
             Some(Duration::from_secs(42)),
         );
+
+        // Then the explicit retry hint is used rather than the body.
         let err = report.downcast_ref::<LlmServiceError>().expect("downcast");
         assert!(matches!(
             err,
@@ -243,19 +251,27 @@ mod tests {
 
     #[rstest::rstest]
     fn classify_5xx_as_retryable() {
+        // Given a 500 response.
+        // When classifying it.
         let report = classify_http_error(
             reqwest::StatusCode::INTERNAL_SERVER_ERROR,
             "oops",
             "test",
             None,
         );
+
+        // Then it is a retryable error.
         let err = report.downcast_ref::<LlmServiceError>().expect("downcast");
         assert!(matches!(err, LlmServiceError::Retryable));
     }
 
     #[rstest::rstest]
     fn classify_4xx_as_provider() {
+        // Given a 400 response.
+        // When classifying it.
         let report = classify_http_error(reqwest::StatusCode::BAD_REQUEST, "bad", "test", None);
+
+        // Then it is a provider error.
         let err = report.downcast_ref::<LlmServiceError>().expect("downcast");
         assert!(matches!(err, LlmServiceError::Provider));
     }
@@ -265,14 +281,22 @@ mod tests {
         // The regex captures a datetime without timezone, which jiff
         // cannot parse without a TZ indicator. This tests that the
         // function returns None rather than panicking.
+        // Given a body with no datetime in it.
+        // When parsing it.
         let result = parse_retry_after_hint("nothing to see here");
+
+        // Then no hint is produced.
         assert!(result.is_none());
     }
 
     #[rstest::rstest]
     fn parse_retry_after_hint_returns_none_for_expired() {
         // Even if jiff could parse this, the result would be expired.
+        // Given a body whose datetime is in the past.
+        // When parsing it.
         let result = parse_retry_after_hint("reset at 2000-01-01 00:00:00");
+
+        // Then no hint is produced.
         assert!(
             result.is_none(),
             "expired or unparseable should return None"
@@ -281,7 +305,11 @@ mod tests {
 
     #[rstest::rstest]
     fn parse_retry_after_header_seconds() {
+        // Given a delta-seconds Retry-After value.
+        // When parsing it.
         let result = parse_retry_after_header("120");
+
+        // Then it yields two minutes.
         assert_eq!(result, Some(Duration::from_mins(2)));
     }
 
@@ -289,14 +317,22 @@ mod tests {
     fn parse_retry_after_header_zero_seconds_returns_zero_duration() {
         // "0" parses as u64=0 and returns Some(ZERO), not None.
         // so we instead test that non-zero values produce non-zero durations.
+        // Given a delta-seconds value of zero.
+        // When parsing it.
         let result = parse_retry_after_header("0");
+
+        // Then it yields a zero duration rather than None.
         assert_eq!(result, Some(Duration::ZERO));
     }
 
     #[rstest::rstest]
     fn parse_retry_after_header_http_date_future() {
         // Use an ISO 8601 date far in the future.
+        // Given a Retry-After HTTP date in the future.
+        // When parsing it.
         let result = parse_retry_after_header("2099-01-01T00:00:00Z");
+
+        // Then a non-zero duration is produced.
         assert!(result.is_some());
         let dur = result.expect("present");
         assert!(dur > Duration::ZERO);
@@ -304,13 +340,21 @@ mod tests {
 
     #[rstest::rstest]
     fn parse_retry_after_header_http_date_past_returns_none() {
+        // Given a Retry-After HTTP date in the past.
+        // When parsing it.
         let result = parse_retry_after_header("2000-01-01T00:00:00Z");
+
+        // Then no duration is produced.
         assert!(result.is_none(), "past date should return None");
     }
 
     #[rstest::rstest]
     fn parse_retry_after_header_garbage_returns_none() {
+        // Given a value that is neither seconds nor a date.
+        // When parsing it.
         let result = parse_retry_after_header("not-a-date");
+
+        // Then no duration is produced.
         assert!(result.is_none());
     }
 }

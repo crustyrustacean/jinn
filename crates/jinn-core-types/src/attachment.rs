@@ -110,7 +110,8 @@ mod tests {
         // Given an image attachment.
         let attachment = Attachment::image("image/jpeg".to_owned(), vec![10, 20, 30]);
 
-        // Then accessors return the expected fields.
+        // When reading the accessors.
+        // Then they return the expected fields.
         assert_eq!(attachment.media_type(), "image/jpeg");
         assert_eq!(attachment.data(), &[10, 20, 30]);
         assert!(attachment.is_image());

@@ -104,6 +104,8 @@ mod tests {
             .await;
 
         let client = Client::new();
+
+        // When listing models against the mock server.
         let result = list_models_with_url(&client, "test-key", &server.url()).await;
 
         // Then models are returned.
@@ -133,6 +135,8 @@ mod tests {
             .await;
 
         let client = Client::new();
+
+        // When listing models against the failing server.
         let result = list_models_with_url(&client, "bad-key", &server.url()).await;
 
         // Then it returns an error (not Ok(vec![])).

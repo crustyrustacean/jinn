@@ -356,6 +356,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn no_edit_write_produces_no_mutations() {
+        // Given a history with no edit or write tool calls, and a worker with max 2.
         let history = vec![
             ChatEntry::user("hello"),
             ChatEntry::assistant("hi"),
@@ -363,13 +364,18 @@ mod tests {
             ChatEntry::assistant("4"),
         ];
         let worker = worker_with_max(2);
+
+        // When evaluating the history.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn under_max_produces_no_mutations() {
+        // Given 2 edit pairs of `/foo.rs` and a worker with max 2.
         let mut history = Vec::new();
         let e1 = edit_call_result("tc-1", "/foo.rs", "edit 1");
         history.push(e1[0].clone());
@@ -379,13 +385,18 @@ mod tests {
         history.push(e2[1].clone());
 
         let worker = worker_with_max(2);
+
+        // When evaluating the history.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn over_max_prunes_oldest() {
+        // Given 3 edit pairs of `/foo.rs` and a worker with max 2.
         let mut history = Vec::new();
         let e1 = edit_call_result("tc-1", "/foo.rs", "edit 1");
         history.push(e1[0].clone());
@@ -401,17 +412,22 @@ mod tests {
         let expected_result_id = history[1].id.clone();
 
         let worker = worker_with_max(2);
+
+        // When evaluating the history.
         let mutations = block_on_evaluate(&worker, history);
         let pruned_ids = collect_pruned_ids(mutations);
 
         let mut expected = vec![expected_call_id, expected_result_id];
         expected.sort_by_key(std::string::ToString::to_string);
+
+        // Then only the oldest pair is pruned.
         assert_eq!(pruned_ids, expected);
     }
 
     #[rstest::rstest]
     #[test]
     fn mixed_edit_and_write_count_together() {
+        // Given an edit and two writes of `/foo.rs`, and a worker with max 2.
         let mut history = Vec::new();
         // edit (oldest) + write + write = 3, max=2 → prune the edit
         let e1 = edit_call_result("tc-1", "/foo.rs", "edit 1");
@@ -428,17 +444,22 @@ mod tests {
         let expected_result_id = history[1].id.clone();
 
         let worker = worker_with_max(2);
+
+        // When evaluating the history.
         let mutations = block_on_evaluate(&worker, history);
         let pruned_ids = collect_pruned_ids(mutations);
 
         let mut expected = vec![expected_call_id, expected_result_id];
         expected.sort_by_key(std::string::ToString::to_string);
+
+        // Then only the oldest pair is pruned - edits and writes count together.
         assert_eq!(pruned_ids, expected);
     }
 
     #[rstest::rstest]
     #[test]
     fn different_files_independent() {
+        // Given 2 edits of `/foo.rs` and 1 edit of `/bar.rs`, and a worker with max 2.
         let mut history = Vec::new();
         // 3 edits to /foo.rs, 1 edit to /bar.rs, max=2
         let e1 = edit_call_result("tc-1", "/foo.rs", "edit 1");
@@ -459,11 +480,15 @@ mod tests {
         let expected_result_id = history[1].id.clone();
 
         let worker = worker_with_max(2);
+
+        // When evaluating the history.
         let mutations = block_on_evaluate(&worker, history);
         let pruned_ids = collect_pruned_ids(mutations);
 
         let mut expected = vec![expected_call_id, expected_result_id];
         expected.sort_by_key(std::string::ToString::to_string);
+
+        // Then only the oldest `/foo.rs` pair is pruned.
         assert_eq!(pruned_ids, expected);
     }
 
@@ -473,6 +498,7 @@ mod tests {
         // 3 pairs total, max=2 -> prune oldest 1.
         // The oldest call is already ForcedExclude -> only its non-excluded
         // result gets a mutation.
+        // Given 3 edit pairs of `/foo.rs` whose oldest call is already excluded, and a worker with max 2.
         let mut history = Vec::new();
         let e1 = edit_call_result("tc-1", "/foo.rs", "edit 1");
         let mut e1_call = e1[0].clone();
@@ -493,8 +519,11 @@ mod tests {
         history.push(e3[1].clone());
 
         let worker = worker_with_max(2);
+
+        // When evaluating the history.
         let mutations = block_on_evaluate(&worker, history);
 
+        // Then only the non-excluded result of the oldest pair is pruned.
         assert_eq!(mutations.len(), 1, "only the non-excluded result mutates");
         match &mutations[0] {
             HistoryMutation::SetContextOverride {
@@ -513,6 +542,7 @@ mod tests {
         // Same shape as `already_excluded_skipped` but with ForcedInclude on
         // the oldest call. Proves ForcedInclude is treated symmetrically at
         // the mutation-emission step.
+        // Given 3 edit pairs of `/foo.rs` whose oldest call is force-included, and a worker with max 2.
         let mut history = Vec::new();
         let e1 = edit_call_result("tc-1", "/foo.rs", "edit 1");
         let mut e1_call = e1[0].clone();
@@ -528,8 +558,11 @@ mod tests {
         history.push(e3[1].clone());
 
         let worker = worker_with_max(2);
+
+        // When evaluating the history.
         let mutations = block_on_evaluate(&worker, history);
 
+        // Then only the non-protected result of the oldest pair is pruned.
         assert_eq!(mutations.len(), 1, "only the non-protected result mutates");
         match &mutations[0] {
             HistoryMutation::SetContextOverride {
@@ -545,6 +578,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn tool_call_without_result_ignored() {
+        // Given an edit call with no result plus 2 complete edit pairs, and a worker with max 2.
         let mut history = Vec::new();
         // Orphan edit ToolCall (no result).
         history.push(ChatEntry::tool_call(
@@ -562,13 +596,18 @@ mod tests {
 
         // Only 2 complete pairs, max=2 → nothing pruned.
         let worker = worker_with_max(2);
+
+        // When evaluating the history.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn exact_max_no_prune() {
+        // Given 2 edit pairs of `/foo.rs` and a worker with max 2.
         let mut history = Vec::new();
         let e1 = edit_call_result("tc-1", "/foo.rs", "edit 1");
         history.push(e1[0].clone());
@@ -578,13 +617,18 @@ mod tests {
         history.push(e2[1].clone());
 
         let worker = worker_with_max(2);
+
+        // When evaluating the history.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn max_zero_means_no_limit() {
+        // Given 5 edit pairs of `/foo.rs` and a worker with max 0.
         let mut history = Vec::new();
         for i in 0..5 {
             let e = edit_call_result(&format!("tc-{i}"), "/foo.rs", &format!("edit {i}"));
@@ -593,13 +637,18 @@ mod tests {
         }
 
         let worker = worker_with_max(0);
+
+        // When evaluating the history.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn five_edits_prune_three_oldest() {
+        // Given 5 edit pairs of `/foo.rs` and a worker with max 2.
         let mut history = Vec::new();
         let mut oldest_ids = Vec::new();
         for i in 0..5 {
@@ -613,7 +662,11 @@ mod tests {
         }
 
         let worker = worker_with_max(2);
+
+        // When evaluating the history.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then the three oldest pairs are pruned.
         assert_eq!(mutations.len(), 6, "3 oldest pairs × 2 = 6 mutations");
 
         let pruned_ids = collect_pruned_ids(mutations);
@@ -624,6 +677,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn multiple_files_both_overflow() {
+        // Given 4 edits of `/a.rs` and 3 of `/b.rs`, and a worker with max 2 per file.
         let mut history = Vec::new();
         // 4 edits to /a.rs
         for i in 0..4 {
@@ -642,7 +696,11 @@ mod tests {
         // /b.rs: 3 entries, keep 2 → prune 1 oldest (2 mutations)
         // Total: 6 mutations
         let worker = worker_with_max(2);
+
+        // When evaluating the history.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then three pairs are pruned in total.
         assert_eq!(mutations.len(), 6);
     }
 
@@ -665,6 +723,7 @@ mod tests {
         // and a short history (the writes themselves occupy indices 0..6,
         // so the oldest call is at age = 6 − 0 − 1 = 5 < 20) all three
         // pairs are protected.
+        // Given 3 writes of `/file.rs` all within min_age 20, and a worker with max 2.
         let mut history = Vec::new();
         for i in 0..3 {
             let w = write_call_result(&format!("tc-{i}"), "/file.rs", &format!("v{i}"));
@@ -673,7 +732,11 @@ mod tests {
         }
         // history.len() = 6; every call is age < 20.
         let worker = worker_with_max_and_min_age(2, 20);
+
+        // When evaluating the history.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert_eq!(
             mutations.len(),
             0,
@@ -686,6 +749,7 @@ mod tests {
     fn min_age_zero_prunes_as_before() {
         // min_age=0 must preserve pre-fix behavior: oldest pair pruned when
         // the file exceeds max_file_edits.
+        // Given 3 writes of `/file.rs` and a worker with max 2 and min_age 0.
         let mut history = Vec::new();
         for i in 0..3 {
             let w = write_call_result(&format!("tc-{i}"), "/file.rs", &format!("v{i}"));
@@ -693,8 +757,11 @@ mod tests {
             history.push(w[1].clone());
         }
         let worker = worker_with_max_and_min_age(2, 0);
+
+        // When evaluating the history.
         let mutations = block_on_evaluate(&worker, history);
         // 3 writes / max 2 → prune oldest call+result pair (2 mutations).
+        // Then the oldest write pair is pruned.
         assert_eq!(mutations.len(), 2);
     }
 
@@ -706,6 +773,7 @@ mod tests {
         // max_file_edits=2 + min_age=20 means: we have 4 writes total,
         // would normally prune the 2 oldest, but only the very oldest is
         // outside the protection floor.
+        // Given one old write, 50 padding entries, and 3 young writes of `/file.rs`.
         let mut history = Vec::new();
 
         // Write #0 at indices 0,1 — age will be ≫ 20.
@@ -730,7 +798,11 @@ mod tests {
         // With max_file_edits=2, the worker would prune 2 oldest if it could,
         // but only write #0 is eligible → exactly 2 mutations (call+result).
         let worker = worker_with_max_and_min_age(2, 20);
+
+        // When evaluating the history.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then only the old write pair is pruned.
         assert_eq!(
             mutations.len(),
             2,

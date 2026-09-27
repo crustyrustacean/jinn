@@ -295,19 +295,25 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn no_read_edit_pattern_produces_no_mutations() {
+        // Given a history with no read-then-edit pattern.
         let history = vec![
             ChatEntry::user("hello"),
             ChatEntry::assistant("hi"),
             ChatEntry::user("what is 2+2?"),
             ChatEntry::assistant("4"),
         ];
+
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn read_edit_does_not_prune_edits() {
+        // Given two edits of `/foo.rs` followed by a read of the same file.
         let mut history = Vec::new();
         let edit1 = edit_call_result("tc-1", "/foo.rs", "edit 1");
         history.push(edit1[0].clone());
@@ -319,9 +325,11 @@ mod tests {
         history.push(read[0].clone());
         history.push(read[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
         // read_edit only prunes reads, never edits. This read has 0 subsequent
         // edits, so it shouldn't be pruned either.
+        // Then no mutations are produced.
         assert!(
             mutations.is_empty(),
             "read_edit worker should never prune edits"
@@ -331,6 +339,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn read_then_one_edit_no_prune() {
+        // Given a read of `/foo.rs` followed by one edit of the same file.
         let mut history = Vec::new();
         let read = read_call_result("tc-1", "/foo.rs", "file contents");
         history.push(read[0].clone());
@@ -339,13 +348,17 @@ mod tests {
         history.push(edit[0].clone());
         history.push(edit[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn read_then_two_edits_prunes_both_call_and_result() {
+        // Given a read of `/foo.rs` followed by two edits of the same file.
         let mut history = Vec::new();
         let read = read_call_result("tc-1", "/foo.rs", "file contents");
         history.push(read[0].clone());
@@ -357,7 +370,10 @@ mod tests {
         history.push(edit2[0].clone());
         history.push(edit2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then both the read call and the read result are pruned.
         assert_eq!(mutations.len(), 2, "should prune both call and result");
 
         let ids = mutation_ids(&mutations);
@@ -371,6 +387,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn read_edit_different_files_no_prune() {
+        // Given a read of `/foo.rs` followed by two edits of `/bar.rs`.
         let mut history = Vec::new();
         let read = read_call_result("tc-1", "/foo.rs", "contents");
         history.push(read[0].clone());
@@ -382,13 +399,17 @@ mod tests {
         history.push(edit2[0].clone());
         history.push(edit2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn already_excluded_call_no_duplicate_mutation() {
+        // Given a read of `/foo.rs` whose call is already excluded, followed by two edits of the same file.
         let mut history = Vec::new();
         let read = read_call_result("tc-1", "/foo.rs", "contents");
         let mut call = read[0].clone();
@@ -407,7 +428,10 @@ mod tests {
         history.push(edit2[0].clone());
         history.push(edit2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then only the read result is pruned.
         assert_eq!(mutations.len(), 1, "only result should be pruned");
 
         match &mutations[0] {
@@ -424,6 +448,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn already_excluded_result_no_duplicate_mutation() {
+        // Given a read of `/foo.rs` whose result is already excluded, followed by two edits of the same file.
         let mut history = Vec::new();
         let read = read_call_result("tc-1", "/foo.rs", "contents");
         history.push(read[0].clone()); // call NOT excluded
@@ -442,7 +467,10 @@ mod tests {
         history.push(edit2[0].clone());
         history.push(edit2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then only the read call is pruned.
         assert_eq!(mutations.len(), 1, "only call should be pruned");
 
         match &mutations[0] {
@@ -459,6 +487,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn forced_included_call_no_forward_mutation() {
+        // Given a read of `/foo.rs` whose call is force-included, followed by two edits of the same file.
         let mut history = Vec::new();
         let read = read_call_result("tc-1", "/foo.rs", "contents");
         let mut call = read[0].clone();
@@ -472,7 +501,10 @@ mod tests {
         history.push(edit2[0].clone());
         history.push(edit2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then only the read result is pruned.
         assert_eq!(mutations.len(), 1, "only result should be pruned");
 
         match &mutations[0] {
@@ -489,6 +521,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn both_already_excluded_no_forward_mutations() {
+        // Given a read of `/foo.rs` that is fully excluded, followed by two edits of the same file.
         let mut history = Vec::new();
         let read = read_call_result("tc-1", "/foo.rs", "contents");
         let mut call = read[0].clone();
@@ -514,7 +547,10 @@ mod tests {
         history.push(edit2[0].clone());
         history.push(edit2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then no mutations are produced.
         assert!(
             mutations.is_empty(),
             "should not produce forward-pruning mutations for already-excluded entries"
@@ -524,6 +560,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn multiple_reads_same_file_both_forward_pruned() {
+        // Given two reads of `/foo.rs` followed by two edits of the same file.
         let mut history = Vec::new();
         // First read of /foo.rs
         let read1 = read_call_result("tc-1", "/foo.rs", "contents v1");
@@ -541,8 +578,10 @@ mod tests {
         history.push(edit2[0].clone());
         history.push(edit2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
         // 2 mutations per read (call+result) × 2 reads = 4 forward-pruning mutations.
+        // Then all four read entries are pruned.
         assert_eq!(
             mutations.len(),
             4,
@@ -559,6 +598,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn interleaved_files_tracked_independently() {
+        // Given interleaved reads of `/a.rs` and `/b.rs`, each followed by two edits of the same file.
         let mut history = Vec::new();
         let read_a = read_call_result("tc-1", "/a.rs", "contents a");
         history.push(read_a[0].clone());
@@ -579,7 +619,10 @@ mod tests {
         history.push(edit_b2[0].clone());
         history.push(edit_b2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then both read pairs are pruned.
         assert_eq!(mutations.len(), 4, "both reads should be pruned");
 
         let ids = mutation_ids(&mutations);
@@ -592,6 +635,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn orphan_read_no_result_no_mutation() {
+        // Given a read call on `/foo.rs` with no result, followed by two edits of the same file.
         let mut history = Vec::new();
         // Read tool call but no corresponding tool result.
         history.push(ChatEntry::tool_call(
@@ -606,13 +650,17 @@ mod tests {
         history.push(edit2[0].clone());
         history.push(edit2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn edit_before_read_not_counted_forward() {
+        // Given an edit of `/foo.rs`, then a read of the same file, then one further edit.
         let mut history = Vec::new();
         // Edit before the read — should not count toward forward threshold.
         let edit0 = edit_call_result("tc-0", "/foo.rs", "edit 0");
@@ -629,7 +677,10 @@ mod tests {
         let mutations = evaluate(history);
         // The read should NOT be forward-pruned (only 1 edit after it).
         // This worker does not backward-prune edits — that's EditReadAutoPruneWorker.
+        // When evaluating the history.
         let ids = mutation_ids(&mutations);
+
+        // Then neither the read nor the earlier edit is pruned.
         assert!(
             !ids.contains(&read[0].id),
             "read should not be forward-pruned with only 1 subsequent edit"
@@ -648,6 +699,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn three_edits_still_prunes() {
+        // Given a read of `/foo.rs` followed by three edits of the same file.
         let mut history = Vec::new();
         let read = read_call_result("tc-1", "/foo.rs", "contents");
         history.push(read[0].clone());
@@ -662,13 +714,17 @@ mod tests {
         history.push(edit3[0].clone());
         history.push(edit3[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then the read pair is pruned.
         assert_eq!(mutations.len(), 2, "should still prune read with 3 edits");
     }
 
     #[rstest::rstest]
     #[test]
     fn read_then_two_writes_prunes_read() {
+        // Given a read of `/foo.rs` followed by two writes of the same file.
         let mut history = Vec::new();
         let read = read_call_result("tc-1", "/foo.rs", "contents");
         history.push(read[0].clone());
@@ -680,7 +736,10 @@ mod tests {
         history.push(write2[0].clone());
         history.push(write2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then the read pair is pruned.
         assert_eq!(mutations.len(), 2, "should prune read after 2 writes");
 
         let ids = mutation_ids(&mutations);
@@ -691,6 +750,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn read_then_mixed_edit_and_write_prunes_read() {
+        // Given a read of `/foo.rs` followed by one edit and one write of the same file.
         let mut history = Vec::new();
         let read = read_call_result("tc-1", "/foo.rs", "contents");
         history.push(read[0].clone());
@@ -702,7 +762,10 @@ mod tests {
         history.push(write1[0].clone());
         history.push(write1[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then the read pair is pruned.
         assert_eq!(mutations.len(), 2, "1 edit + 1 write = threshold met");
 
         let ids = mutation_ids(&mutations);
@@ -713,6 +776,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn read_then_one_write_no_prune() {
+        // Given a read of `/foo.rs` followed by one write of the same file.
         let mut history = Vec::new();
         let read = read_call_result("tc-1", "/foo.rs", "contents");
         history.push(read[0].clone());
@@ -721,13 +785,17 @@ mod tests {
         history.push(write1[0].clone());
         history.push(write1[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn threshold_3_requires_3_edits() {
+        // Given a read of `/foo.rs` followed by two edits, and a worker with a threshold of 3.
         let mut history = Vec::new();
         let read = read_call_result("tc-1", "/foo.rs", "contents");
         history.push(read[0].clone());
@@ -741,7 +809,11 @@ mod tests {
 
         // With threshold = 3, only 2 edits is not enough.
         let w = worker_with_threshold(3);
+
+        // When evaluating the history.
         let mutations = evaluate_with(&w, history);
+
+        // Then no mutations are produced.
         assert!(
             mutations.is_empty(),
             "2 edits should not meet threshold of 3"
@@ -751,6 +823,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn threshold_3_met_with_3_edits() {
+        // Given a read of `/foo.rs` followed by three edits, and a worker with a threshold of 3.
         let mut history = Vec::new();
         let read = read_call_result("tc-1", "/foo.rs", "contents");
         history.push(read[0].clone());
@@ -767,7 +840,11 @@ mod tests {
 
         // With threshold = 3, 3 edits is enough.
         let w = worker_with_threshold(3);
+
+        // When evaluating the history.
         let mutations = evaluate_with(&w, history);
+
+        // Then the read pair is pruned.
         assert_eq!(mutations.len(), 2, "3 edits should meet threshold of 3");
 
         let ids = mutation_ids(&mutations);
@@ -780,6 +857,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn min_age_protects_recent_read() {
+        // Given a recent read of `/foo.rs` followed by two edits, and a worker with min_age 10.
         let mut history = Vec::new();
         let read = read_call_result("tc-read", "/foo.rs", "contents");
         history.push(read[0].clone());
@@ -796,7 +874,10 @@ mod tests {
         let w = worker_with_min_age(10);
         let mutations = evaluate_with(&w, history);
 
+        // When evaluating the history.
         let ids = mutation_ids(&mutations);
+
+        // Then neither read entry is pruned.
         assert!(
             !ids.contains(&read[0].id),
             "read call should be protected by min_age"
@@ -812,6 +893,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn min_age_zero_prunes_as_before() {
+        // Given a read of `/foo.rs` followed by two edits, and a worker with min_age 0.
         let mut history = Vec::new();
         let read = read_call_result("tc-read", "/foo.rs", "contents");
         history.push(read[0].clone());
@@ -826,7 +908,10 @@ mod tests {
         let w = worker_with_min_age(0);
         let mutations = evaluate_with(&w, history);
 
+        // When evaluating the history.
         let ids = mutation_ids(&mutations);
+
+        // Then both read entries are pruned.
         assert!(
             ids.contains(&read[0].id),
             "read call should be pruned with min_age = 0"
@@ -842,6 +927,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn old_read_still_pruned_in_long_history() {
+        // Given an old read of `/foo.rs`, 100 padding entries, then two edits, with a worker using min_age 10.
         let mut history = Vec::new();
         let read = read_call_result("tc-read", "/foo.rs", "contents");
         history.push(read[0].clone());
@@ -863,7 +949,10 @@ mod tests {
         let w = worker_with_min_age(10);
         let mutations = evaluate_with(&w, history);
 
+        // When evaluating the history.
         let ids = mutation_ids(&mutations);
+
+        // Then both read entries are pruned.
         assert!(
             ids.contains(&read[0].id),
             "old read call should be pruned regardless of min_age"

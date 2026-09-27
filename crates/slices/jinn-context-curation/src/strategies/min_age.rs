@@ -57,42 +57,77 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn age_zero_protected() {
-        // Last entry, min_age = 1 → age 0 < 1 → protected.
-        assert!(is_within_min_age(100, 99, 1));
+        // Given the last entry of a 100-entry history with min_age = 1.
+        let history_len = 100;
+        let entry_idx = 99;
+        let min_age = 1;
+
+        // When checking whether the entry is protected.
+        let protected = is_within_min_age(history_len, entry_idx, min_age);
+
+        // Then it is protected, because age 0 < 1.
+        assert!(protected);
     }
 
     #[rstest::rstest]
     #[test]
     fn age_at_boundary_protected() {
-        // age = min_age - 1 → still protected (strict less-than).
-        // history_len=100, entry_idx=50, age = 49. min_age = 50 → 49 < 50 → protected.
-        assert!(is_within_min_age(100, 50, 50));
+        // Given entry 50 of a 100-entry history with min_age = 50.
+        let history_len = 100;
+        let entry_idx = 50;
+        let min_age = 50;
+
+        // When checking whether the entry is protected.
+        let protected = is_within_min_age(history_len, entry_idx, min_age);
+
+        // Then it is protected, because age 49 is strictly less than 50.
+        assert!(protected);
     }
 
     #[rstest::rstest]
     #[test]
     fn age_at_boundary_not_protected() {
-        // age == min_age → not protected.
-        // history_len=100, entry_idx=49, age = 50. min_age = 50 → 50 < 50 is false.
-        assert!(!is_within_min_age(100, 49, 50));
+        // Given entry 49 of a 100-entry history with min_age = 50.
+        let history_len = 100;
+        let entry_idx = 49;
+        let min_age = 50;
+
+        // When checking whether the entry is protected.
+        let protected = is_within_min_age(history_len, entry_idx, min_age);
+
+        // Then it is not protected, because age 50 is not strictly less than 50.
+        assert!(!protected);
     }
 
     #[rstest::rstest]
     #[test]
     fn min_age_zero_never_protects() {
-        // min_age = 0 means no entry is protected (back-compat baseline).
-        assert!(!is_within_min_age(100, 99, 0));
-        assert!(!is_within_min_age(100, 0, 0));
-        assert!(!is_within_min_age(1, 0, 0));
+        // Given histories of length 100, 100, and 1, all with min_age = 0.
+        let histories = [(100, 99), (100, 0), (1, 0)];
+
+        // When checking each entry for protection.
+        let protected: Vec<bool> = histories
+            .iter()
+            .map(|(history_len, entry_idx)| is_within_min_age(*history_len, *entry_idx, 0))
+            .collect();
+
+        // Then none of them is protected.
+        assert_eq!(protected, vec![false, false, false]);
     }
 
     #[rstest::rstest]
     #[test]
     fn out_of_range_index_not_protected() {
-        // entry_idx >= history_len → returns false (defensive contract).
-        assert!(!is_within_min_age(10, 10, 5));
-        assert!(!is_within_min_age(10, 100, 5));
-        assert!(!is_within_min_age(0, 0, 5));
-        assert!(!is_within_min_age(0, usize::MAX, 5));
+        // Given out-of-range indices, all with min_age = 5.
+        let cases = [(10, 10), (10, 100), (0, 0), (0, usize::MAX)];
+
+        // When checking each for protection.
+        let protected: Vec<bool> = cases
+            .iter()
+            .map(|(history_len, entry_idx)| is_within_min_age(*history_len, *entry_idx, 5))
+            .collect();
+
+        // Then none of them is protected.
+        assert_eq!(protected, vec![false, false, false, false]);
     }
 }

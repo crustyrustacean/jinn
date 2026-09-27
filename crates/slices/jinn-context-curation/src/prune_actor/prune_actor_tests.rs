@@ -109,16 +109,21 @@ fn appended_event(session_id: &SessionId) -> HistoryAppended {
 #[rstest::rstest]
 #[test]
 fn worker_produces_mutations_for_long_history() {
+    // Given 5 user entries and a worker that keeps the last 3.
     let entries: Vec<ChatEntry> = (0..5)
         .map(|i| ChatEntry::user(format!("msg {i}")))
         .collect();
     let worker = TruncateOldUserEntries;
+
+    // When evaluating the history.
     let mutations = {
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(entries)).await })
     };
-    // 5 entries - 3 kept = 2 excluded.
+
+    // Then 5 entries - 3 kept = 2 excluded.
     assert_eq!(mutations.len(), 2);
+    // And every mutation is a ForcedExclude.
     for m in &mutations {
         if let HistoryMutation::SetContextOverride { value, .. } = m {
             assert!(matches!(value, ContextOverride::ForcedExclude));
@@ -131,14 +136,19 @@ fn worker_produces_mutations_for_long_history() {
 #[rstest::rstest]
 #[test]
 fn worker_produces_no_mutations_for_short_history() {
+    // Given 3 user entries and a worker that keeps the last 3.
     let entries: Vec<ChatEntry> = (0..3)
         .map(|i| ChatEntry::user(format!("msg {i}")))
         .collect();
     let worker = TruncateOldUserEntries;
+
+    // When evaluating the history.
     let mutations = {
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(entries)).await })
     };
+
+    // Then no entry is old enough to be excluded.
     assert!(mutations.is_empty());
 }
 

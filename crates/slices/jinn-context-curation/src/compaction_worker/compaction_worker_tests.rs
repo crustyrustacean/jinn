@@ -192,6 +192,47 @@ fn insert_entries(mutations: &[HistoryMutation]) -> Vec<&HistoryMutation> {
         .collect()
 }
 
+/// Build a `CompactionWorker` whose state holds a session already in the
+/// Sending phase, seeded with `turns` of history and a tiny reserve so a
+/// background compaction triggers.
+fn sending_session_worker(turns: usize) -> (CompactionWorker, SessionId) {
+    let mut session = ChatSessionState::new();
+    for entry in alternating_history(turns) {
+        session.push_entry(entry);
+    }
+    session.begin_sending();
+    let session_id = session.session_id().clone();
+
+    let state = State::new(AppState::default_with_scope_focus());
+    {
+        let mut app = state.write();
+        app.session.insert(session);
+    }
+
+    let services = TestServices::builder()
+        .llm_service(LlmServiceFactoryService::new(Arc::new(
+            FakeLlmServiceFactory::new(vec![FAKE_SUMMARY.to_owned()]),
+        )))
+        .build();
+    // A tiny reserve so compaction triggers with just 20 turns, written
+    // through the layer the worker actually reads.
+    services
+        .config
+        .put::<CompactionConfig>(&CompactionConfig {
+            model: None,
+            threshold: 0.8,
+            reserve_tokens: 100,
+            fallback_context_window: 150_000,
+        })
+        .expect("layer writes the compaction section");
+    let handle = services.handle.clone();
+
+    (
+        CompactionWorker::new(services, handle, state, String::new()),
+        session_id,
+    )
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // SECTION 1: Compaction worker integration tests
 // ═══════════════════════════════════════════════════════════════════════════
@@ -557,39 +598,7 @@ fn session_continues_after_background_compaction() {
     // should not change the session phase.
 
     // Given a session in Sending phase with enough history to trigger compaction.
-    let mut session = ChatSessionState::new();
-    let history = alternating_history(20);
-    for entry in &history {
-        session.push_entry(entry.clone());
-    }
-    session.begin_sending();
-    let session_id = session.session_id().clone();
-
-    let state = State::new(AppState::default_with_scope_focus());
-    {
-        let mut app = state.write();
-        app.session.insert(session);
-    }
-
-    let services = TestServices::builder()
-        .llm_service(LlmServiceFactoryService::new(Arc::new(
-            FakeLlmServiceFactory::new(vec![FAKE_SUMMARY.to_owned()]),
-        )))
-        .build();
-    // A tiny reserve so compaction triggers with just 20 turns, written
-    // through the layer the worker actually reads.
-    services
-        .config
-        .put::<CompactionConfig>(&CompactionConfig {
-            model: None,
-            threshold: 0.8,
-            reserve_tokens: 100,
-            fallback_context_window: 150_000,
-        })
-        .expect("layer writes the compaction section");
-    let handle = services.handle.clone();
-
-    let worker = CompactionWorker::new(services, handle, state, String::new());
+    let (worker, session_id) = sending_session_worker(20);
 
     // When evaluating compaction for the session.
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
@@ -601,21 +610,20 @@ fn session_continues_after_background_compaction() {
             })
             .await
     });
-
-    // Then compaction produced mutations.
     let mutations = result.expect("should not error");
-    assert!(
-        !mutations.is_empty(),
-        "should have mutations for long history"
-    );
 
-    // And the session phase is still Sending (compaction doesn't change phase).
+    // Then the session phase is still Sending (compaction doesn't change phase).
     let guard = worker.state.read();
     let session = guard.session(&session_id);
     assert_eq!(
         session.phase(),
         jinn_session_msg::PhaseKind::Sending,
         "session should remain in Sending phase after background compaction"
+    );
+    // And the long history did produce mutations.
+    assert!(
+        !mutations.is_empty(),
+        "should have mutations for long history"
     );
 }
 
@@ -790,14 +798,18 @@ fn threshold_config(threshold: f64, fallback: usize) -> CompactionConfig {
 #[rstest::rstest]
 #[test]
 fn gate_skips_when_context_size_is_none() {
+    // Given a 200k-context model cache, a 70% threshold, and a session whose context size is never set.
     let env = ThresholdTestEnv::new();
     // context_size defaults to None - don't set it.
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
     env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then no mutations are produced.
     assert!(
         mutations.is_empty(),
         "should not compact when context_size is None"
@@ -809,14 +821,18 @@ fn gate_skips_when_context_size_is_none() {
 #[rstest::rstest]
 #[test]
 fn gate_skips_when_context_size_is_zero() {
+    // Given a 200k-context model cache, a 70% threshold, and a session whose context size is 0.
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(0));
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
     env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then no mutations are produced.
     assert!(
         mutations.is_empty(),
         "should not compact when context_size is 0"
@@ -828,14 +844,18 @@ fn gate_skips_when_context_size_is_zero() {
 #[rstest::rstest]
 #[test]
 fn gate_skips_when_below_threshold() {
+    // Given a 200k-context model cache, a 70% threshold, and a session at 50% of the window.
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(100_000)); // 100k/200k = 50% < 70%
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
     env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then no mutations are produced.
     assert!(
         mutations.is_empty(),
         "should not compact at 50% with 70% threshold"
@@ -847,14 +867,18 @@ fn gate_skips_when_below_threshold() {
 #[rstest::rstest]
 #[test]
 fn gate_triggers_when_above_threshold() {
+    // Given a 200k-context model cache, a 70% threshold, and a session at 75% of the window.
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(150_000)); // 150k/200k = 75% > 70%
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
     env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then mutations are produced.
     assert!(
         !mutations.is_empty(),
         "should compact at 75% with 70% threshold"
@@ -866,6 +890,7 @@ fn gate_triggers_when_above_threshold() {
 #[rstest::rstest]
 #[test]
 fn gate_triggers_when_exactly_at_threshold() {
+    // Given a 200k-context model cache, a 70% threshold, and a session at exactly 70% of the window.
     let env = ThresholdTestEnv::new();
     // 140_000 / 200_000 = 0.7 exactly
     env.set_context_size(Some(140_000));
@@ -873,8 +898,11 @@ fn gate_triggers_when_exactly_at_threshold() {
     env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then mutations are produced.
     assert!(
         !mutations.is_empty(),
         "should compact at exactly 70% (>= threshold)"
@@ -886,6 +914,7 @@ fn gate_triggers_when_exactly_at_threshold() {
 #[rstest::rstest]
 #[test]
 fn gate_skips_just_below_threshold() {
+    // Given a 200k-context model cache, a 70% threshold, and a session at 69.999% of the window.
     let env = ThresholdTestEnv::new();
     // 139_999 / 200_000 = 0.69999... < 0.7
     env.set_context_size(Some(139_999));
@@ -893,8 +922,11 @@ fn gate_skips_just_below_threshold() {
     env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then no mutations are produced.
     assert!(
         mutations.is_empty(),
         "should not compact at 69.999% with 70% threshold"
@@ -906,6 +938,7 @@ fn gate_skips_just_below_threshold() {
 #[rstest::rstest]
 #[test]
 fn gate_uses_fallback_when_no_model_cache() {
+    // Given no model cache at all, a 150k fallback, and a session at 80% of the fallback window.
     let env = ThresholdTestEnv::new();
     // No model cache at all - should use fallback.
     env.set_context_size(Some(120_000)); // 120k/150k = 80% > 70%
@@ -913,8 +946,11 @@ fn gate_uses_fallback_when_no_model_cache() {
     env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then mutations are produced.
     assert!(
         !mutations.is_empty(),
         "should compact using fallback context window"
@@ -926,6 +962,7 @@ fn gate_uses_fallback_when_no_model_cache() {
 #[rstest::rstest]
 #[test]
 fn gate_uses_fallback_when_model_not_in_cache() {
+    // Given a cache for a different provider, a 200k fallback, and a session at 50% of the window.
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(100_000)); // 100k/200k = 50% < 70%
     // Cache has a different provider - "provider/model-200k" won't match.
@@ -933,8 +970,11 @@ fn gate_uses_fallback_when_model_not_in_cache() {
     env.set_compaction_config(&threshold_config(0.7, 200_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then no mutations are produced.
     assert!(
         mutations.is_empty(),
         "should skip - fallback 200k, context at 50%"
@@ -946,14 +986,18 @@ fn gate_uses_fallback_when_model_not_in_cache() {
 #[rstest::rstest]
 #[test]
 fn gate_uses_fallback_when_model_context_length_is_none() {
+    // Given a cached model with no context length, a 150k fallback, and a session at 80% of the fallback window.
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(120_000)); // 120k/150k = 80% > 70%
     env.set_model_cache(model_cache_no_context_length("provider", "model-200k"));
     env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then mutations are produced.
     assert!(
         !mutations.is_empty(),
         "should compact - model has no context_length, fallback used"
@@ -965,6 +1009,7 @@ fn gate_uses_fallback_when_model_context_length_is_none() {
 #[rstest::rstest]
 #[test]
 fn gate_skips_when_session_not_found() {
+    // Given a worker whose state has no session for the requested id.
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(150_000));
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
@@ -973,9 +1018,12 @@ fn gate_skips_when_session_not_found() {
     let worker = env.build_worker(FAKE_SUMMARY);
     // Use a session ID that doesn't exist.
     let fake_id = SessionId::new();
+
+    // When evaluating a session id that is not in state.
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
     let mutations = rt.block_on(async { worker.evaluate(&fake_id, Arc::from([])).await });
 
+    // Then no mutations are produced.
     assert!(
         mutations.is_empty(),
         "should not compact for nonexistent session"
@@ -987,14 +1035,18 @@ fn gate_skips_when_session_not_found() {
 #[rstest::rstest]
 #[test]
 fn gate_triggers_at_high_threshold() {
+    // Given a 200k-context model cache, a 90% threshold, and a session at 90% of the window.
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(180_000)); // 180k/200k = 90% >= 90%
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
     env.set_compaction_config(&threshold_config(0.9, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then mutations are produced.
     assert!(
         !mutations.is_empty(),
         "should compact at 90% with 90% threshold"
@@ -1006,14 +1058,18 @@ fn gate_triggers_at_high_threshold() {
 #[rstest::rstest]
 #[test]
 fn gate_skips_at_high_threshold() {
+    // Given a 200k-context model cache, a 90% threshold, and a session at 85% of the window.
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(170_000)); // 170k/200k = 85% < 90%
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
     env.set_compaction_config(&threshold_config(0.9, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then no mutations are produced.
     assert!(
         mutations.is_empty(),
         "should not compact at 85% with 90% threshold"
@@ -1025,14 +1081,18 @@ fn gate_skips_at_high_threshold() {
 #[rstest::rstest]
 #[test]
 fn gate_triggers_at_low_threshold() {
+    // Given a 200k-context model cache, a 20% threshold, and a session at 25% of the window.
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(50_000)); // 50k/200k = 25% > 20%
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
     env.set_compaction_config(&threshold_config(0.2, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then mutations are produced.
     assert!(
         !mutations.is_empty(),
         "should compact at 25% with 20% threshold"
@@ -1044,14 +1104,18 @@ fn gate_triggers_at_low_threshold() {
 #[rstest::rstest]
 #[test]
 fn gate_skips_at_low_threshold() {
+    // Given a 200k-context model cache, a 20% threshold, and a session at 15% of the window.
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(30_000)); // 30k/200k = 15% < 20%
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
     env.set_compaction_config(&threshold_config(0.2, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then no mutations are produced.
     assert!(
         mutations.is_empty(),
         "should not compact at 15% with 20% threshold"
@@ -1063,14 +1127,18 @@ fn gate_skips_at_low_threshold() {
 #[rstest::rstest]
 #[test]
 fn gate_triggers_when_context_size_equals_limit() {
+    // Given a 200k-context model cache, a 70% threshold, and a session at 100% of the window.
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(200_000)); // 200k/200k = 100%
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
     env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then mutations are produced.
     assert!(
         !mutations.is_empty(),
         "should compact when context is 100% full"
@@ -1082,14 +1150,18 @@ fn gate_triggers_when_context_size_equals_limit() {
 #[rstest::rstest]
 #[test]
 fn gate_triggers_when_context_size_exceeds_limit() {
+    // Given a 200k-context model cache, a 70% threshold, and a session at 125% of the window.
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(250_000)); // 250k/200k = 125% - over budget
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
     env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then mutations are produced.
     assert!(
         !mutations.is_empty(),
         "should compact when context exceeds limit"
@@ -1101,6 +1173,7 @@ fn gate_triggers_when_context_size_exceeds_limit() {
 #[rstest::rstest]
 #[test]
 fn manual_compact_all_bypasses_threshold_gate() {
+    // Given a 200k-context model cache, a 70% threshold, and a session at a context size of 0.
     let env = ThresholdTestEnv::new();
     // context_size is 0 - threshold gate would block, but compact_all ignores it.
     env.set_context_size(Some(0));
@@ -1108,6 +1181,8 @@ fn manual_compact_all_bypasses_threshold_gate() {
     env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When triggering compaction for the session.
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
     let result = rt.block_on(async {
         worker
@@ -1119,6 +1194,7 @@ fn manual_compact_all_bypasses_threshold_gate() {
     });
 
     let mutations = result.expect("should succeed");
+    // Then mutations are produced despite the context size being 0.
     assert!(
         !mutations.is_empty(),
         "compact_all should bypass threshold gate"
@@ -1133,6 +1209,7 @@ fn manual_compact_all_bypasses_threshold_gate() {
 #[rstest::rstest]
 #[test]
 fn manual_compact_bypasses_threshold_gate() {
+    // Given a 200k-context model cache, a 70% threshold, and a session at a context size of 0.
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(0)); // would block auto-compaction
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
@@ -1145,6 +1222,8 @@ fn manual_compact_bypasses_threshold_gate() {
     });
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When triggering compaction for the session.
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
     let result = rt.block_on(async {
         worker
@@ -1156,6 +1235,7 @@ fn manual_compact_bypasses_threshold_gate() {
     });
 
     let mutations = result.expect("should succeed");
+    // Then mutations are produced despite the context size being 0.
     assert!(
         !mutations.is_empty(),
         "manual /compact should bypass threshold gate"
@@ -1167,6 +1247,7 @@ fn manual_compact_bypasses_threshold_gate() {
 #[rstest::rstest]
 #[test]
 fn gate_splits_provider_model_format() {
+    // Given a session on `ollama/llama3` and a 200k-context cache for that provider and model.
     let env = ThresholdTestEnv::new();
     // Session model is "ollama/llama3" - provider="ollama", model="llama3"
     {
@@ -1179,8 +1260,11 @@ fn gate_splits_provider_model_format() {
     env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then mutations are produced.
     assert!(
         !mutations.is_empty(),
         "should compact with ollama/llama3 model lookup"
@@ -1192,6 +1276,7 @@ fn gate_splits_provider_model_format() {
 #[rstest::rstest]
 #[test]
 fn gate_handles_nested_provider_path() {
+    // Given a session on `openrouter/anthropic/claude-sonnet` and a 200k cache under the nested path.
     let env = ThresholdTestEnv::new();
     // Session model is "openrouter/anthropic/claude-sonnet"
     // provider = "openrouter", model = "anthropic/claude-sonnet"
@@ -1211,8 +1296,11 @@ fn gate_handles_nested_provider_path() {
     env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then mutations are produced.
     assert!(
         !mutations.is_empty(),
         "should compact with nested provider/model path"
@@ -1225,6 +1313,7 @@ fn gate_handles_nested_provider_path() {
 #[rstest::rstest]
 #[test]
 fn gate_passes_but_nothing_to_compact_with_empty_history() {
+    // Given a session at 75% of a 200k window but with an empty history.
     let mut session = ChatSessionState::new();
     session.set_model(ModelSelection::Single("provider/model-200k".to_owned()));
     // No entries - empty history.
@@ -1255,9 +1344,11 @@ fn gate_passes_but_nothing_to_compact_with_empty_history() {
     let handle = services.handle.clone();
     let worker = CompactionWorker::new(services, handle, state, String::new());
 
+    // When evaluating the empty-history session.
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
     let mutations = rt.block_on(async { worker.evaluate(&session_id, Arc::from([])).await });
 
+    // Then no mutations are produced.
     assert!(
         mutations.is_empty(),
         "threshold passes but empty history = no mutations"
@@ -1269,6 +1360,7 @@ fn gate_passes_but_nothing_to_compact_with_empty_history() {
 #[rstest::rstest]
 #[test]
 fn gate_ratio_matches_status_bar_math() {
+    // Given a 150k-context model cache, a 70% threshold, and a session at exactly 70% of the window.
     let env = ThresholdTestEnv::new();
     // 105_000 / 150_000 = 0.7 exactly - same as status bar "70.0%" display
     env.set_context_size(Some(105_000));
@@ -1276,8 +1368,11 @@ fn gate_ratio_matches_status_bar_math() {
     env.set_compaction_config(&threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then mutations are produced.
     assert!(
         !mutations.is_empty(),
         "should compact at exactly 70.0% like status bar"
@@ -1289,6 +1384,7 @@ fn gate_ratio_matches_status_bar_math() {
 #[rstest::rstest]
 #[test]
 fn gate_threshold_one_requires_full_context() {
+    // Given a 200k-context model cache, a threshold of 1.0, and a session at 99.999% of the window.
     let env = ThresholdTestEnv::new();
     // 199_999 / 200_000 = 0.99999... < 1.0
     env.set_context_size(Some(199_999));
@@ -1296,8 +1392,11 @@ fn gate_threshold_one_requires_full_context() {
     env.set_compaction_config(&threshold_config(1.0, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then no mutations are produced.
     assert!(
         mutations.is_empty(),
         "should not compact at 99.999% with threshold 1.0"
@@ -1309,6 +1408,7 @@ fn gate_threshold_one_requires_full_context() {
 #[rstest::rstest]
 #[test]
 fn gate_threshold_zero_always_triggers() {
+    // Given a 200k-context model cache, a threshold of 0.0, and a session at a non-zero context size.
     let env = ThresholdTestEnv::new();
     // 1 / 200_000 = 0.0005% - but threshold is 0.0 so anything >= 0 triggers
     env.set_context_size(Some(1));
@@ -1316,8 +1416,11 @@ fn gate_threshold_zero_always_triggers() {
     env.set_compaction_config(&threshold_config(0.0, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then mutations are produced.
     assert!(
         !mutations.is_empty(),
         "threshold 0.0 should trigger for any non-zero context"
@@ -1330,6 +1433,7 @@ fn gate_threshold_zero_always_triggers() {
 #[rstest::rstest]
 #[test]
 fn gate_uses_session_model_for_context_lookup() {
+    // Given a session model on a 200k-context model, and a compaction model on a different one.
     let env = ThresholdTestEnv::new();
     // Session model is "provider/model-200k" (matches cache entry)
     // Compaction config model is "other/model-tiny" (doesn't match and shouldn't be used)
@@ -1343,8 +1447,11 @@ fn gate_uses_session_model_for_context_lookup() {
     });
 
     let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating the session against the threshold gate.
     let mutations = env.run_evaluate(&worker);
 
+    // Then mutations are produced from the session model's context length.
     assert!(
         !mutations.is_empty(),
         "should use session model for threshold, not compaction model"
@@ -1360,6 +1467,30 @@ fn gate_uses_session_model_for_context_lookup() {
 #[rstest::rstest]
 #[test]
 fn gate_prevents_double_compaction_after_first() {
+    // Given a 200k-context model cache, a 70% threshold, and a session that
+    // starts above the threshold then drops below it after compaction.
+    let env = ThresholdTestEnv::new();
+    env.set_context_size(Some(150_000)); // 75% > 70%
+    env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
+    env.set_compaction_config(&threshold_config(0.7, 150_000));
+    env.set_context_size(Some(50_000)); // 50k/200k = 25% < 70%
+
+    let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating a second time after the context size dropped.
+    let mutations = env.run_evaluate(&worker);
+
+    // Then no mutations are produced.
+    assert!(
+        mutations.is_empty(),
+        "second call should not compact after context_size drops"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn gate_compacts_a_first_evaluation_above_the_threshold() {
+    // Given a 200k-context model cache, a 70% threshold, and a session above it.
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(150_000)); // 75% > 70%
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
@@ -1367,19 +1498,11 @@ fn gate_prevents_double_compaction_after_first() {
 
     let worker = env.build_worker(FAKE_SUMMARY);
 
-    // First call should produce mutations.
-    let mutations_1 = env.run_evaluate(&worker);
-    assert!(!mutations_1.is_empty(), "first call should compact");
+    // When evaluating a first time.
+    let mutations = env.run_evaluate(&worker);
 
-    // Simulate what happens after compaction: context_size drops below threshold.
-    env.set_context_size(Some(50_000)); // 50k/200k = 25% < 70%
-
-    // Second call should not compact.
-    let mutations_2 = env.run_evaluate(&worker);
-    assert!(
-        mutations_2.is_empty(),
-        "second call should not compact after context_size drops"
-    );
+    // Then mutations are produced.
+    assert!(!mutations.is_empty(), "first call should compact");
 }
 
 // ── Test 27: threshold re-checked on next HistoryAppended after skip ──
@@ -1387,25 +1510,43 @@ fn gate_prevents_double_compaction_after_first() {
 #[rstest::rstest]
 #[test]
 fn gate_re_evaluated_on_subsequent_event() {
+    // Given a 200k-context model cache, a 70% threshold, and a session that
+    // starts just below the threshold and later reaches it.
     let env = ThresholdTestEnv::new();
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
     env.set_compaction_config(&threshold_config(0.7, 200_000));
-
-    // First event: below threshold.
-    env.set_context_size(Some(139_999)); // 69.999% < 70%
-    let worker = env.build_worker(FAKE_SUMMARY);
-    let mutations_1 = env.run_evaluate(&worker);
-    assert!(
-        mutations_1.is_empty(),
-        "first event below threshold - no compact"
-    );
-
-    // Second event: crosses threshold (new entry pushed, prompt reassembled).
     env.set_context_size(Some(140_000)); // 70% >= 70%
-    let mutations_2 = env.run_evaluate(&worker);
+
+    let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating a second event at the threshold.
+    let mutations = env.run_evaluate(&worker);
+
+    // Then mutations are produced.
     assert!(
-        !mutations_2.is_empty(),
+        !mutations.is_empty(),
         "second event at threshold - should compact"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn gate_skips_a_first_event_below_the_threshold() {
+    // Given a 200k-context model cache, a 70% threshold, and a session below it.
+    let env = ThresholdTestEnv::new();
+    env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
+    env.set_compaction_config(&threshold_config(0.7, 200_000));
+    env.set_context_size(Some(139_999)); // 69.999% < 70%
+
+    let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating a first event below the threshold.
+    let mutations = env.run_evaluate(&worker);
+
+    // Then no mutations are produced.
+    assert!(
+        mutations.is_empty(),
+        "first event below threshold - no compact"
     );
 }
 
@@ -1414,26 +1555,41 @@ fn gate_re_evaluated_on_subsequent_event() {
 #[rstest::rstest]
 #[test]
 fn gate_skips_after_compaction_reduces_context_size() {
+    // Given a 200k-context model cache, a 70% threshold, and a session that
+    // drops below the threshold after compaction and prompt reassembly.
     let env = ThresholdTestEnv::new();
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
     env.set_compaction_config(&threshold_config(0.7, 200_000));
+    env.set_context_size(Some(50_000)); // 50k/200k = 25% < 70%
 
-    // Before compaction: above threshold.
-    env.set_context_size(Some(150_000));
     let worker = env.build_worker(FAKE_SUMMARY);
-    let mutations_1 = env.run_evaluate(&worker);
-    assert!(
-        !mutations_1.is_empty(),
-        "before compaction - should compact"
-    );
 
-    // After compaction + reassembly: context_size drops to 50k (25% < 70%).
-    env.set_context_size(Some(50_000));
-    let mutations_2 = env.run_evaluate(&worker);
+    // When evaluating after the context size dropped.
+    let mutations = env.run_evaluate(&worker);
+
+    // Then no mutations are produced.
     assert!(
-        mutations_2.is_empty(),
+        mutations.is_empty(),
         "after reassembly below threshold - should not compact"
     );
+}
+
+#[rstest::rstest]
+#[test]
+fn gate_compacts_before_compaction_reduces_context_size() {
+    // Given a 200k-context model cache, a 70% threshold, and a session above it.
+    let env = ThresholdTestEnv::new();
+    env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
+    env.set_compaction_config(&threshold_config(0.7, 200_000));
+    env.set_context_size(Some(150_000));
+
+    let worker = env.build_worker(FAKE_SUMMARY);
+
+    // When evaluating before any compaction has run.
+    let mutations = env.run_evaluate(&worker);
+
+    // Then mutations are produced.
+    assert!(!mutations.is_empty(), "before compaction - should compact");
 }
 
 // ── Compaction deduplication tests ──────────────────────────────────
@@ -1505,10 +1661,11 @@ fn snapshot_clears_flag_when_compaction_entry_found() {
     snapshot[0].id = pending_id;
     let snapshot: Arc<[ChatEntry]> = Arc::from(snapshot);
 
+    // When evaluating with that snapshot.
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
     let mutations = rt.block_on(async { worker.evaluate(&session_id, snapshot).await });
 
-    // Then the flag is cleared.
+    // Then the flag and its pending ID are cleared.
     assert!(
         !worker_in_flight(&worker, &session_id),
         "flag should be cleared"
@@ -1517,7 +1674,6 @@ fn snapshot_clears_flag_when_compaction_entry_found() {
         worker_pending_id(&worker, &session_id).is_none(),
         "pending ID should be cleared"
     );
-
     // And mutations are empty (no context_size set, threshold not crossed).
     assert!(
         mutations.is_empty(),

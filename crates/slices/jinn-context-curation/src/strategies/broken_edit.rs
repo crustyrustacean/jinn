@@ -247,6 +247,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn no_edit_produces_no_mutations() {
+        // Given a history with no edit tool calls.
         let history = vec![
             ChatEntry::user("hello"),
             ChatEntry::assistant("hi"),
@@ -254,13 +255,18 @@ mod tests {
             ChatEntry::assistant("4"),
         ];
         let worker = worker_with_min_age(0);
+
+        // When evaluating the history with the worker.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn successful_edit_produces_no_mutations() {
+        // Given a successful edit pair followed by 100 tail entries, and a worker with min_age 50.
         let mut history = Vec::new();
         let edit = successful_edit_call_result("tc-1", "/foo.rs", "edit applied");
         history.push(edit[0].clone());
@@ -269,58 +275,83 @@ mod tests {
             history.push(ChatEntry::user(format!("tail message {i}")));
         }
         let worker = worker_with_min_age(50);
+
+        // When evaluating the history with the worker.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn min_age_zero_prunes_old_failed_edit() {
-        // With min_age = 0, the failed edit is pruned even when it is recent.
+        // Given a failed edit pair with one tail entry, and a worker with min_age 0.
         let history = history_with_failed_edit_and_tail("/foo.rs", 1);
         let worker = worker_with_min_age(0);
+
+        // When evaluating the history with the worker.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then both halves of the failed edit are pruned.
         assert_eq!(mutations.len(), 2);
     }
 
     #[rstest::rstest]
     #[test]
     fn min_age_protects_recent_failed_edit() {
-        // Failed edit at idx 0, history len = 12, age = 11. With min_age = 50, protected.
+        // Given a failed edit pair with 10 tail entries, and a worker with min_age 50.
         let history = history_with_failed_edit_and_tail("/foo.rs", 10);
         let worker = worker_with_min_age(50);
+
+        // When evaluating the history with the worker.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn min_age_zero_prunes_old_failed_edit_with_long_history() {
-        // Long history, failed edit far back, min_age = 0 → prune.
+        // Given a failed edit pair with 100 tail entries, and a worker with min_age 0.
         let history = history_with_failed_edit_and_tail("/foo.rs", 100);
         let worker = worker_with_min_age(0);
+
+        // When evaluating the history with the worker.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then both halves of the failed edit are pruned.
         assert_eq!(mutations.len(), 2);
     }
 
     #[rstest::rstest]
     #[test]
-    fn failed_edit_at_boundary_protected() {
-        // Failed edit at idx 0. history.len() = 51 (edit + result + 49 user).
+    fn failed_edit_at_boundary_prunes() {
+        // Given a failed edit at age 50 and a worker with min_age 50.
         // age = 51 - 0 - 1 = 50. min_age = 50 → 50 < 50 false → NOT protected → prunes.
         let history = history_with_failed_edit_and_tail("/foo.rs", 49);
         let worker = worker_with_min_age(50);
+
+        // When evaluating.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then both halves of the failed edit are pruned.
         assert_eq!(mutations.len(), 2, "age == min_age is not protected");
     }
 
     #[rstest::rstest]
     #[test]
-    fn failed_edit_one_below_boundary_not_protected() {
+    fn failed_edit_one_below_boundary_is_protected() {
+        // Given a failed edit at age 49 and a worker with min_age 50.
         // history.len() = 50, age = 49. min_age = 50 → 49 < 50 → protected.
         let history = history_with_failed_edit_and_tail("/foo.rs", 48);
         let worker = worker_with_min_age(50);
+
+        // When evaluating.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty(), "age = min_age - 1 is protected");
     }
 
@@ -351,6 +382,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn already_excluded_call_produces_no_duplicate_mutation() {
+        // Given a failed edit pair whose call is already excluded, and a worker with min_age 0.
         let mut history = history_with_failed_edit_and_tail("/foo.rs", 100);
         // Mark the edit ToolCall as already excluded.
         history[0].apply_context_override(
@@ -361,13 +393,18 @@ mod tests {
         );
 
         let worker = worker_with_min_age(0);
+
+        // When evaluating the history with the worker.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn already_excluded_result_produces_no_duplicate_mutation() {
+        // Given a failed edit pair whose result is already excluded, and a worker with min_age 0.
         let mut history = history_with_failed_edit_and_tail("/foo.rs", 100);
         // Mark the edit ToolResult as already excluded.
         history[1].apply_context_override(
@@ -378,13 +415,18 @@ mod tests {
         );
 
         let worker = worker_with_min_age(0);
+
+        // When evaluating the history with the worker.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn forced_included_call_produces_no_mutation() {
+        // Given a failed edit pair whose call is force-included, and a worker with min_age 0.
         let mut history = history_with_failed_edit_and_tail("/foo.rs", 100);
         // Mark the edit ToolCall as force-included.
         history[0].context_override = ContextOverride::ForcedInclude;
@@ -392,9 +434,12 @@ mod tests {
         let result_id = history[1].id.clone();
 
         let worker = worker_with_min_age(0);
+
+        // When evaluating the history with the worker.
         let mutations = block_on_evaluate(&worker, history);
         // broken_edit is pair-atomic: if either half is protected, neither mutates.
         // So protecting the call protects the entire pair.
+        // Then no mutations are produced - protecting the call protects the whole pair.
         assert!(
             mutations.is_empty(),
             "pair-atomic: protecting call protects result"
@@ -405,6 +450,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn forced_included_result_produces_no_mutation() {
+        // Given a failed edit pair whose result is force-included, and a worker with min_age 0.
         let mut history = history_with_failed_edit_and_tail("/foo.rs", 100);
         // Mark the edit ToolResult as force-included.
         history[1].context_override = ContextOverride::ForcedInclude;
@@ -412,8 +458,11 @@ mod tests {
         let result_id = history[1].id.clone();
 
         let worker = worker_with_min_age(0);
+
+        // When evaluating the history with the worker.
         let mutations = block_on_evaluate(&worker, history);
         // pair-atomic: protecting the result also protects the call.
+        // Then no mutations are produced - protecting the result protects the whole pair.
         assert!(
             mutations.is_empty(),
             "pair-atomic: protecting result protects call"
@@ -424,6 +473,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn multiple_failed_edits_all_pruned_when_old_enough() {
+        // Given two failed edit pairs followed by 100 tail entries, and a worker with min_age 50.
         let mut history = Vec::new();
 
         // First failed edit.
@@ -442,7 +492,11 @@ mod tests {
         }
 
         let worker = worker_with_min_age(50);
+
+        // When evaluating the history with the worker.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then all four pair members are pruned.
         assert_eq!(
             mutations.len(),
             4,
@@ -453,6 +507,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn edit_without_result_produces_no_mutation() {
+        // Given an edit tool call with no matching result, followed by 100 tail entries.
         let mut history = Vec::new();
         // Edit tool call but no corresponding tool result.
         history.push(ChatEntry::tool_call(
@@ -465,13 +520,18 @@ mod tests {
         }
 
         let worker = worker_with_min_age(0);
+
+        // When evaluating the history with the worker.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn only_failed_edits_are_pruned_not_successful_ones() {
+        // Given a successful edit pair and a failed edit pair followed by 100 tail entries.
         let mut history = Vec::new();
 
         // Successful edit.
@@ -490,7 +550,11 @@ mod tests {
         }
 
         let worker = worker_with_min_age(50);
+
+        // When evaluating the history with the worker.
         let mutations = block_on_evaluate(&worker, history);
+
+        // Then only the failed edit pair is pruned.
         assert_eq!(
             mutations.len(),
             2,

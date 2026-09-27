@@ -293,6 +293,7 @@ mod tests {
         // Given the default model selection.
         let selection = ModelSelection::default();
 
+        // When treating it as the current model.
         // Then it is Single with the no-provider sentinel.
         assert_eq!(selection, ModelSelection::Single(NO_PROVIDER_ID.to_owned()));
     }
@@ -374,7 +375,8 @@ mod tests {
         // Given a Single with the no-provider sentinel.
         let selection = ModelSelection::Single(NO_PROVIDER_ID.to_owned());
 
-        // Then is_no_provider is true.
+        // When checking is_no_provider.
+        // Then it is true.
         assert!(selection.is_no_provider());
     }
 
@@ -384,7 +386,8 @@ mod tests {
         // Given a Single with a real model.
         let selection = ModelSelection::Single("ollama/llama3".to_owned());
 
-        // Then is_no_provider is false.
+        // When checking is_no_provider.
+        // Then it is false.
         assert!(!selection.is_no_provider());
     }
 
@@ -397,7 +400,8 @@ mod tests {
             strategy: AlloyStrategy::Random { last_index: 0 },
         };
 
-        // Then is_no_provider is false.
+        // When checking is_no_provider.
+        // Then it is false.
         assert!(!selection.is_no_provider());
     }
 
@@ -446,7 +450,8 @@ mod tests {
         // Given a Single model with provider/model/sub format.
         let selection = ModelSelection::Single("openrouter/openai/gpt-oss-120b".to_owned());
 
-        // Then provider_name returns the prefix before the first slash.
+        // When reading the provider name.
+        // Then it returns the prefix before the first slash.
         assert_eq!(selection.provider_name(), "openrouter");
     }
 
@@ -456,7 +461,8 @@ mod tests {
         // Given a Single model with no slash (bare model name).
         let selection = ModelSelection::Single("llama3".to_owned());
 
-        // Then provider_name returns the whole string (a bare name is not
+        // When reading the provider name.
+        // Then it returns the whole string (a bare name is not
         // "openrouter", so web search is still correctly filtered out).
         assert_eq!(selection.provider_name(), "llama3");
     }
@@ -473,7 +479,8 @@ mod tests {
             strategy: AlloyStrategy::RoundRobin { index: 0 },
         };
 
-        // Then provider_name returns the first member's provider.
+        // When reading the provider name.
+        // Then it returns the first member's provider.
         assert_eq!(selection.provider_name(), "openrouter");
     }
 }

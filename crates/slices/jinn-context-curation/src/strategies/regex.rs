@@ -391,6 +391,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn keep_last_is_clamped_to_minimum_1() {
+        // Given a rule configured with keep_last 0.
         let worker = worker_with(vec![RegexPruneRule {
             pattern: "cargo check".to_owned(),
             tool_name: "bash".to_owned(),
@@ -403,7 +404,9 @@ mod tests {
             bash_call_result("tc-1", "cargo check", "ok")[0].clone(),
             bash_call_result("tc-1", "cargo check", "ok")[1].clone(),
         ];
+        // When compiling the worker's rules.
         let mutations = evaluate(&worker, history);
+        // Then the compiled rule keeps the last 1 match.
         assert!(
             mutations.is_empty(),
             "keep_last clamped to 1, single match should not prune"
@@ -413,6 +416,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn invalid_pattern_is_skipped_without_failing_the_strategy() {
+        // Given a rule whose pattern is not a valid regex.
         let worker = worker_with(vec![RegexPruneRule {
             pattern: "[".to_owned(),
             tool_name: "bash".to_owned(),
@@ -420,6 +424,7 @@ mod tests {
             min_age: 0,
         }]);
 
+        // When compiling the worker's rules.
         // Then the bad rule is simply not applied — one typo costs that
         // rule, not the whole strategy, and certainly not a restart.
         assert_eq!(worker.compile().map(|rules| rules.len()), Some(0));
@@ -428,7 +433,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn a_good_rule_still_applies_alongside_an_invalid_one() {
-        // Given two rules, one uncompilable.
+        // Given one valid rule and one uncompilable rule on the same tool.
         let worker = worker_with(vec![
             RegexPruneRule {
                 pattern: "[".to_owned(),
@@ -444,6 +449,7 @@ mod tests {
             },
         ]);
 
+        // When compiling the worker's rules.
         // Then only the good one survives.
         assert_eq!(worker.compile().map(|rules| rules.len()), Some(1));
     }
@@ -451,6 +457,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn disabled_section_produces_no_mutations() {
+        // Given a disabled regex section and a history of matching calls.
         let worker = worker_with_disabled(vec![RegexPruneRule {
             pattern: "cargo check".to_owned(),
             tool_name: "bash".to_owned(),
@@ -462,7 +469,11 @@ mod tests {
             bash_call_result("tc-1", "cargo check", "ok")[0].clone(),
             bash_call_result("tc-1", "cargo check", "ok")[1].clone(),
         ];
+
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
+
+        // Then no mutations are produced.
         assert!(
             mutations.is_empty(),
             "disabled worker should produce no mutations"
@@ -472,57 +483,55 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn no_matching_tool_calls_produces_no_mutations() {
+        // Given a rule on tool `bash` and a history with no bash calls.
         let history = vec![ChatEntry::user("hello"), ChatEntry::assistant("hi")];
         let worker = worker_for_cargo_check(1);
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn single_match_with_keep_last_1_produces_no_mutations() {
+        // Given 1 call matching the rule and a worker keeping the last 1.
         let pair = bash_call_result("tc-1", "cargo check 2>&1", "all good");
         let history = vec![pair[0].clone(), pair[1].clone()];
         let worker = worker_for_cargo_check(1);
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
+    }
+
+    /// Build a history of 3 bash call/result pairs all matching `cargo check`,
+    /// and return the entry ids in history order.
+    fn history_with_three_cargo_check_pairs() -> (Vec<ChatEntry>, Vec<ChatEntryId>) {
+        let mut history = Vec::new();
+        for i in 1..=3 {
+            let pair = bash_call_result(&format!("tc-{i}"), "cargo check", "errors: 0");
+            history.push(pair[0].clone());
+            history.push(pair[1].clone());
+        }
+        let ids = history.iter().map(|e| e.id.clone()).collect();
+        (history, ids)
     }
 
     #[rstest::rstest]
     #[test]
     fn three_matches_keep_last_1_prunes_two_oldest() {
-        let mut history = Vec::new();
-
-        // First pair
-        let p1 = bash_call_result("tc-1", "cargo check", "errors: 0");
-        history.push(p1[0].clone());
-        history.push(p1[1].clone());
-
-        // Second pair
-        let p2 = bash_call_result("tc-2", "cargo check", "errors: 0");
-        history.push(p2[0].clone());
-        history.push(p2[1].clone());
-
-        // Third pair (most recent)
-        let p3 = bash_call_result("tc-3", "cargo check", "errors: 0");
-        history.push(p3[0].clone());
-        history.push(p3[1].clone());
-
-        // Save entry IDs before move.
-        let id_0 = history[0].id.clone();
-        let id_1 = history[1].id.clone();
-        let id_2 = history[2].id.clone();
-        let id_3 = history[3].id.clone();
-        let id_4 = history[4].id.clone();
-        let id_5 = history[5].id.clone();
-
+        // Given 3 calls matching the rule and a worker keeping the last 1.
+        let (history, ids) = history_with_three_cargo_check_pairs();
         let worker = worker_for_cargo_check(1);
+
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
 
-        // Should prune 2 oldest pairs = 4 mutations (2 calls + 2 results).
+        // Then the two oldest pairs are pruned, 2 calls plus 2 results.
         assert_eq!(mutations.len(), 4);
 
-        // Verify the first two calls and their results are targeted.
+        // And every mutation is a ForcedExclude.
         let mut excluded_ids = std::collections::HashSet::new();
         for m in &mutations {
             if let HistoryMutation::SetContextOverride {
@@ -534,25 +543,35 @@ mod tests {
             }
         }
 
-        // First two calls and first two results should be excluded.
-        assert!(excluded_ids.contains(&id_0), "tc-1 call should be excluded");
+        // And the first two calls and their results are the targeted ones.
         assert!(
-            excluded_ids.contains(&id_1),
+            excluded_ids.contains(&ids[0]),
+            "tc-1 call should be excluded"
+        );
+        assert!(
+            excluded_ids.contains(&ids[1]),
             "tc-1 result should be excluded"
         );
-        assert!(excluded_ids.contains(&id_2), "tc-2 call should be excluded");
         assert!(
-            excluded_ids.contains(&id_3),
+            excluded_ids.contains(&ids[2]),
+            "tc-2 call should be excluded"
+        );
+        assert!(
+            excluded_ids.contains(&ids[3]),
             "tc-2 result should be excluded"
         );
-        // Third pair should NOT be excluded.
-        assert!(!excluded_ids.contains(&id_4), "tc-3 call should be kept");
-        assert!(!excluded_ids.contains(&id_5), "tc-3 result should be kept");
+        // And the third pair is kept.
+        assert!(!excluded_ids.contains(&ids[4]), "tc-3 call should be kept");
+        assert!(
+            !excluded_ids.contains(&ids[5]),
+            "tc-3 result should be kept"
+        );
     }
 
     #[rstest::rstest]
     #[test]
     fn three_matches_keep_last_2_prunes_one_oldest() {
+        // Given 3 calls matching the rule and a worker keeping the last 2.
         let mut history = Vec::new();
 
         let p1 = bash_call_result("tc-1", "cargo check", "errors: 0");
@@ -568,15 +587,18 @@ mod tests {
         history.push(p3[1].clone());
 
         let worker = worker_for_cargo_check(2);
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
 
         // Should prune 1 oldest pair = 2 mutations.
+        // Then only the oldest pair is pruned.
         assert_eq!(mutations.len(), 2);
     }
 
     #[rstest::rstest]
     #[test]
     fn keep_last_3_with_only_2_matches_produces_no_mutations() {
+        // Given 2 calls matching the rule and a worker keeping the last 3.
         let mut history = Vec::new();
 
         let p1 = bash_call_result("tc-1", "cargo check", "errors: 0");
@@ -588,13 +610,16 @@ mod tests {
         history.push(p2[1].clone());
 
         let worker = worker_for_cargo_check(3);
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn already_excluded_entries_are_not_re_pruned() {
+        // Given 3 matching calls whose oldest pair is already excluded, and a worker keeping the last 1.
         let mut history = Vec::new();
 
         let p1 = bash_call_result("tc-1", "cargo check", "errors: 0");
@@ -615,11 +640,13 @@ mod tests {
         // Clone ID before move.
         let result1_id = history[1].id.clone();
         let worker = worker_for_cargo_check(1);
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
 
         // With the new logic, excluded entries still count for positioning.
         // Both pairs match, keep_last=1, so the first pair is pruned.
         // The first call is already excluded, so only the first result gets a mutation.
+        // Then only the non-excluded entries of that pair are pruned.
         assert_eq!(mutations.len(), 1);
         match &mutations[0] {
             HistoryMutation::SetContextOverride {
@@ -635,6 +662,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn forced_included_entries_are_not_pruned() {
+        // Given 3 matching calls whose oldest call is force-included, and a worker keeping the last 1.
         let mut history = Vec::new();
 
         let p1 = bash_call_result("tc-1", "cargo check", "errors: 0");
@@ -650,9 +678,11 @@ mod tests {
         // Clone ID before move.
         let result1_id = history[1].id.clone();
         let worker = worker_for_cargo_check(1);
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
 
         // Force-included call is protected; only the result mutates.
+        // Then only the non-protected entries of that pair are pruned.
         assert_eq!(mutations.len(), 1);
         match &mutations[0] {
             HistoryMutation::SetContextOverride {
@@ -668,6 +698,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn multiple_rules_apply_independently() {
+        // Given 2 rules on tool `bash` with different patterns, and a history matching both.
         let worker = worker_with(vec![
             RegexPruneRule {
                 pattern: "cargo check".to_owned(),
@@ -703,15 +734,18 @@ mod tests {
         history.push(t2[0].clone());
         history.push(t2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
 
         // Each rule prunes 1 oldest pair = 2 rules * 2 mutations = 4 total.
+        // Then both rules prune their own matches.
         assert_eq!(mutations.len(), 4);
     }
 
     #[rstest::rstest]
     #[test]
     fn rules_filter_by_tool_name() {
+        // Given a rule on tool `read` and a history of matching bash calls.
         let worker = worker_with(vec![RegexPruneRule {
             pattern: "foo".to_owned(),
             tool_name: "bash".to_owned(),
@@ -726,7 +760,9 @@ mod tests {
         history.push(r1[0].clone());
         history.push(r1[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
+        // Then no mutations are produced.
         assert!(
             mutations.is_empty(),
             "read tool should not match bash-only rule"
@@ -736,6 +772,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn regex_matches_against_tool_call_text() {
+        // Given a rule whose pattern matches the command text rather than a path.
         let worker = worker_with(vec![RegexPruneRule {
             pattern: "bash:.*cargo check".to_owned(),
             tool_name: "bash".to_owned(),
@@ -753,23 +790,29 @@ mod tests {
         history.push(p2[0].clone());
         history.push(p2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
 
         // Pattern matches "bash: {"command": "cargo check"}".
+        // Then the matching call is pruned.
         assert_eq!(mutations.len(), 2, "should prune the older pair");
     }
 
     #[rstest::rstest]
     #[test]
     fn empty_history_produces_no_mutations() {
+        // Given a worker and an empty history.
         let worker = worker_for_cargo_check(1);
+        // When evaluating the history.
         let mutations = evaluate(&worker, vec![]);
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn tool_call_without_matching_result_is_skipped() {
+        // Given a matching tool call with no result.
         let history = vec![ChatEntry::tool_call(
             "tc-orphan",
             "bash",
@@ -777,13 +820,16 @@ mod tests {
         )];
 
         let worker = worker_for_cargo_check(1);
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
+        // Then no mutations are produced.
         assert!(mutations.is_empty());
     }
 
     #[rstest::rstest]
     #[test]
     fn multiple_rules_same_tool_different_patterns() {
+        // Given 2 rules on the same tool with non-overlapping patterns, and a history matching one.
         let worker = worker_with(vec![
             RegexPruneRule {
                 pattern: "cargo check".to_owned(),
@@ -819,9 +865,11 @@ mod tests {
         history.push(cl2[0].clone());
         history.push(cl2[1].clone());
 
+        // When evaluating the history.
         let mutations = evaluate(&worker, history);
 
         // Each rule prunes 1 oldest pair = 2 rules * 2 mutations = 4 total.
+        // Then only the matching rule prunes.
         assert_eq!(mutations.len(), 4);
     }
 
@@ -908,23 +956,31 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn min_age_boundary_strict_less_than_regex() {
-        // history_len = 52, oldest call_idx = 0, age = 51.
-        //
-        // is_within_min_age returns true when age < min_age (strict less-than).
-        //
-        // At min_age = 52: age=51 < 52 → protected.
-        // At min_age = 51: age=51 < 51 is false → NOT protected.
+    fn min_age_boundary_protects_below_it() {
+        // Given two check pairs whose oldest call is at age 51, and a worker
+        // with min_age 52.
         let (history, _, _) = history_with_two_check_pairs_and_tail();
-
-        // Protected: age = 51 < min_age = 52.
         let worker = worker_with_min_age(1, 52);
-        let mutations = evaluate(&worker, history.clone());
-        assert!(mutations.is_empty(), "age = min_age - 1 must be protected");
 
-        // Not protected: age = 51 = min_age.
-        let worker = worker_with_min_age(1, 51);
+        // When evaluating.
         let mutations = evaluate(&worker, history);
+
+        // Then the oldest pair is protected.
+        assert!(mutations.is_empty(), "age = min_age - 1 must be protected");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn min_age_boundary_is_strictly_less_than() {
+        // Given two check pairs whose oldest call is at age 51, and a worker
+        // with min_age 51.
+        let (history, _, _) = history_with_two_check_pairs_and_tail();
+        let worker = worker_with_min_age(1, 51);
+
+        // When evaluating.
+        let mutations = evaluate(&worker, history);
+
+        // Then the oldest pair is not protected.
         assert_eq!(
             mutations.len(),
             2,
@@ -942,7 +998,8 @@ mod tests {
         // Given the default regex prune config.
         let config = RegexAutoPruneConfig::default();
 
-        // Then every built-in rule pattern compiles as a regex.
+        // When compiling every built-in rule pattern as a regex.
+        // Then each pattern compiles.
         for rule in &config.rules {
             let _compiled = regex::Regex::new(&rule.pattern).expect("pattern compiles");
         }
@@ -958,6 +1015,7 @@ mod tests {
             min_age: default_regex_min_age(),
         };
 
+        // When reading the rule's default fields.
         // Then the tool name default is a usable tool name.
         assert!(!rule.tool_name.is_empty());
         // And keep_last is at least 1 (a rule must keep something).
@@ -1026,8 +1084,8 @@ threshold = 0.7
 
     #[rstest::rstest]
     fn load_parses_regex_rules_with_header_section() {
-        // Mirrors the real user config: the [context_curation.auto_prune.regex]
-        // header + [[context_curation.auto_prune.regex.rules]] entries.
+        // Given a config document mirroring the real user config: a
+        // [context_curation.auto_prune.regex] header plus two rule entries.
         let config = jinn_config::testutil::config_layer(
             r#"[context_curation.auto_prune.regex]
 enabled = true

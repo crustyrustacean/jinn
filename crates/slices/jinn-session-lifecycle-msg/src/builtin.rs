@@ -137,8 +137,11 @@ mod tests {
         // Given an empty registry.
         let registry = BuiltinRegistry::new();
 
-        // When checking is_empty.
-        assert!(registry.is_empty());
+        // When checking whether it holds any handler.
+        let is_empty = registry.is_empty();
+
+        // Then it reports itself as empty.
+        assert!(is_empty);
     }
 
     #[rstest::rstest]
@@ -148,8 +151,11 @@ mod tests {
         let mut registry = BuiltinRegistry::new();
         registry.register(BuiltinId("test".to_owned()), Arc::new(MockHandler));
 
-        // When checking is_empty.
-        assert!(!registry.is_empty());
+        // When checking whether it holds any handler.
+        let is_empty = registry.is_empty();
+
+        // Then it reports itself as non-empty.
+        assert!(!is_empty);
     }
 
     #[rstest::rstest]

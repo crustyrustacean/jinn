@@ -340,7 +340,13 @@ mod tests {
 
     #[rstest::rstest]
     fn factory_name_returns_sample_llm() {
+        // Given a sample LLM factory.
         let factory = SampleLlmServiceFactory;
-        assert_eq!(factory.name(), "Sample");
+
+        // When reading its name.
+        let name = factory.name();
+
+        // Then the name is "Sample".
+        assert_eq!(name, "Sample");
     }
 }
