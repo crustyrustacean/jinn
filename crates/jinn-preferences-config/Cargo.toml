@@ -27,6 +27,10 @@ wherror = { workspace = true }
 [dev-dependencies]
 rstest = { workspace = true }
 tempfile = { workspace = true }
+# Compiling the shipped `[[tools.bash_command_policy]]` patterns in
+# template_validation_tests — a pattern the engine rejects is inert at
+# runtime, so a typo would ship a rule that silently never blocks.
+regex = { workspace = true }
 
 [lints]
 workspace = true

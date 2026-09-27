@@ -119,6 +119,20 @@ compile is inert (logged, no block), and there is no lookaround — `(?<!...)`
 and `(?=...)` do not work. Guards apply to the **bash tool only**; interactive
 terminals and MCP-provided tools are not policed.
 
+A fresh install ships five global rules: the `rg -rn` guard, plus four guards
+against unbounded whole-filesystem searches — `find /`, `find ~`, `ls -R /`,
+`ls -R ~`. The `find` guards match the command word and a bare `/` or `~`
+search path. The `ls` guards additionally pin the *recursive* flag: `-R` in
+any combined cluster (`-lR`, `-1R`, `-Rt`) or `--recursive`, never lowercase
+`-r`, which is `--reverse` and only flips sort order. Both tolerate other
+flags and a leading `cd <dir> &&` chain, and still catch the root walk when it
+is dressed up as `ls -lR /`, `ls --recursive ~`, or `ls -R "$HOME"`.
+
+Bounded forms keep working: `find /mnt/zed/... -name foo`, `ls -R ~/code`, and
+even `ls -lR /usr` are all allowed, because the guard is about the *path*, not
+the flag cluster. Delete or edit the block in your `jinn.toml` if a project
+legitimately needs one.
+
 **MCP servers** — see `mcp-servers.md` for the full transport matrix:
 
 ```toml
