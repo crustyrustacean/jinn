@@ -28,12 +28,12 @@
 use super::QueueActor;
 use jinn_chat_input_msg::ChatEntrySubmitted;
 use jinn_core_types::SessionId;
+use jinn_inference_msg::{SendToLlmProvider, StreamOrigin};
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::services::Services;
 use jinn_kernel::common::services::bus_service::BusAudit;
 use jinn_kernel::common::state::State;
 use jinn_kernel::protocol::ChatEntry;
-use jinn_inference_msg::{SendToLlmProvider, StreamOrigin};
 use jinn_session_msg::PhaseKind;
 use jinn_session_msg::SessionPhaseChanged;
 use jinn_session_store_msg::PersistSession;

@@ -9,9 +9,9 @@ use std::collections::VecDeque;
 use jinn_context_assembly_msg::ContextOverrideChanged;
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::ToolCall;
+use jinn_inference_msg::{StreamCompleted, StreamCompletedReason, StreamToken};
 use jinn_kernel::common::actor_deps::BusPublish;
 use jinn_kernel::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
-use jinn_inference_msg::{StreamCompleted, StreamCompletedReason, StreamToken};
 use jinn_llm_support::token_estimator::{TiktokenCounter, TokenCounter};
 use jinn_session_history_msg::CitationsReceived;
 use jinn_session_msg::SessionPhaseChanged;
@@ -431,8 +431,8 @@ mod tests {
     use super::super::super::helpers::{
         test_actor, test_actor_recording, test_actor_with_store_recording,
     };
-    use jinn_kernel::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
     use jinn_inference_msg::{StreamCompleted, StreamCompletedReason, StreamToken};
+    use jinn_kernel::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
     use jinn_session_history_msg::CitationsReceived;
     use jinn_session_msg::PhaseKind;
     use jinn_session_msg::SessionPhaseChanged;

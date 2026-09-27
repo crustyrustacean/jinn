@@ -30,9 +30,9 @@ use trouper::system::ActorSystem;
 
 use jinn_core_types::SessionId;
 use jinn_core_types::UrlCitation;
-use jinn_kernel::Services;
 use jinn_inference_msg::StreamCompleted;
 use jinn_inference_msg::StreamCompletedReason;
+use jinn_kernel::Services;
 use jinn_session_history_msg::CitationsReceived;
 use jinn_tools_msg::ToolCallReceived;
 use jinn_tools_msg::ToolExecutionCompleted;

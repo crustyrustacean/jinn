@@ -7,14 +7,14 @@ use futures::StreamExt as _;
 use jiff::Timestamp;
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::ToolCall;
-use jinn_kernel::common::actor_deps::BusPublish;
-use jinn_kernel::common::services::Services;
-use jinn_kernel::common::services::bus_service::BusService;
-use jinn_kernel::protocol::ChatEntry;
 use jinn_inference_msg::{
     CancelStream, SendToLlmProvider, StreamActivity, StreamCompleted, StreamCompletedReason,
     StreamOrigin, StreamToken,
 };
+use jinn_kernel::common::actor_deps::BusPublish;
+use jinn_kernel::common::services::Services;
+use jinn_kernel::common::services::bus_service::BusService;
+use jinn_kernel::protocol::ChatEntry;
 use jinn_preferences_config::schemas::RequestRetryConfig;
 use jinn_provider::{
     LlmMessage, LlmService, LlmServiceError, OnRetry, RetryingLlmService, ToolDefinition,

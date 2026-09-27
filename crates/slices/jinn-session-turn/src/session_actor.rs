@@ -30,11 +30,11 @@ use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
 use jinn_chat_input_msg::{EnqueueResumeTurn, EnqueueUserMessage, SubmitSteeringMessage};
+use jinn_inference_msg::{SendToLlmProvider, StreamCompleted, StreamToken};
 use jinn_kernel::PromptTemplatesLoaded;
 use jinn_kernel::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_kernel::common::services::bus_service::BusService;
 use jinn_kernel::common::state::State;
-use jinn_inference_msg::{SendToLlmProvider, StreamCompleted, StreamToken};
 use jinn_llm_support::token_estimator::TiktokenCounter;
 use jinn_persona_msg::PersonasLoaded;
 use jinn_session_history_msg::CitationsReceived;

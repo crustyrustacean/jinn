@@ -8,8 +8,8 @@
 //! a hard provider error: partial streaming entries are discarded and the
 //! turn is re-dispatched.
 
-use jinn_kernel::common::actor_deps::BusPublish;
 use jinn_inference_msg::SendToLlmProvider;
+use jinn_kernel::common::actor_deps::BusPublish;
 use jinn_session_msg::PhaseKind;
 use jinn_session_msg::RetryStalledSession;
 use jinn_turn_dispatch_msg::DispatchTurn;
@@ -143,8 +143,8 @@ mod tests {
         reason = "test code"
     )]
     use super::super::super::helpers::test_actor_recording;
-    use jinn_kernel::common::services::BusAudit;
     use jinn_inference_msg::SendToLlmProvider;
+    use jinn_kernel::common::services::BusAudit;
 
     use crate::session_actor::SessionPersistenceActor;
     use jinn_core_types::ChatEntryKind;

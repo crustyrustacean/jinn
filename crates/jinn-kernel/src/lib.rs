@@ -1,14 +1,18 @@
-//! The domain layer - actors, intents, protocol types, and UI elements.
+//! The kernel - shared cross-slice vocabulary, actor infrastructure, and the
+//! glue that binds slices together.
 //!
-//! This crate consolidates the application's domain logic:
+//! Feature-specific logic lives in the slice crates under `crates/slices/`.
+//! What remains here is the vocabulary more than one slice needs, plus the
+//! infrastructure every slice is wired through:
 //!
 //! - **Protocol types** (`protocol/`) - cross-cutting value types shared across
 //!   feature boundaries: `Intent`, `Key`, `Mode`, and system events. Slice-owned
 //!   commands and events live in their canonical `*-msg` crates; the actor bus
 //!   routes by `TypeId` via the marker trait `BusMessage` (in `common/bus.rs`)
 //!   rather than a central enum.
-//! - **Domain slices** (`feat/`) - vertical slices where each feature colocates
-//!   its actors, intents, UI elements, and state implementation.
+//! - **Residual features** (`feat/`) - the feature modules not yet absorbed into
+//!   a slice family. Each colocates its actors, intents, UI elements, and state
+//!   implementation; the extraction model moves them out as slices take over.
 //! - **Common** (`common/`) - shared infrastructure (bus, services, app paths,
 //!   TOML patching), most of which is re-exported from the `jinn-common` crate.
 //!

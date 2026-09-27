@@ -10,9 +10,9 @@
 
 use crate::orchestrator::{ToolOrchestratorActor, ToolOrchestratorActorDeps};
 use jinn_core_types::tool_types::ToolCall;
+use jinn_inference_msg::SendToLlmProvider;
 use jinn_kernel::common::bus::HarnessServices;
 use jinn_kernel::common::state::State;
-use jinn_inference_msg::SendToLlmProvider;
 use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 use jinn_tools_msg::{ExecuteToolBatch, ToolBatchCompleted};
 use std::time::Duration;

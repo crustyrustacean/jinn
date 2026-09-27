@@ -23,9 +23,9 @@
 use std::time::Duration;
 
 use jinn_core_types::SessionId;
+use jinn_inference_msg::SendToLlmProvider;
 use jinn_kernel::AppCore;
 use jinn_kernel::common::actor_deps::ActorDeps;
-use jinn_inference_msg::SendToLlmProvider;
 use jinn_llm_support::token_estimator::TiktokenCounter;
 use jinn_preferences_config::StallWatchdogConfig;
 use jinn_tui::TuiApp;
