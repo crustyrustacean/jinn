@@ -2562,7 +2562,6 @@ version = "0.118.0"
 dependencies = [
  "async-trait",
  "error-stack",
- "jinn-config",
  "jinn-core-types",
  "jinn-picker",
  "jinn-selection-widget",
@@ -2702,10 +2701,7 @@ dependencies = [
  "jinn-common",
  "jinn-config",
  "jinn-core-types",
- "jinn-mcp-msg",
  "jinn-slices",
- "jinn-term-msg",
- "jinn-tools-msg",
  "parking_lot",
  "rstest",
  "serde",
@@ -3342,6 +3338,7 @@ dependencies = [
  "jinn-config",
  "jinn-core-types",
  "jinn-domain",
+ "jinn-preferences-config",
  "jinn-session-list",
  "jinn-session-msg",
  "jinn-session-state",
@@ -3370,7 +3367,6 @@ name = "jinn-term-msg"
 version = "0.118.0"
 dependencies = [
  "async-trait",
- "jinn-config",
  "jinn-core-types",
  "jinn-slices",
  "parking_lot",
@@ -3536,6 +3532,7 @@ dependencies = [
  "jinn-config",
  "jinn-core-types",
  "jinn-picker",
+ "jinn-preferences-config",
  "jinn-selection-widget",
  "jinn-slices",
  "jinn-theme",

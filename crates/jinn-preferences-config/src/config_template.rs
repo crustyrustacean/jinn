@@ -1,10 +1,11 @@
 //! `jinn.toml` bootstrap: where it lives, and the template it is seeded from.
 //!
-//! `jinn.toml` has no aggregate schema struct. Each section is declared by
-//! its owning slice through a `Configurable` impl and read through the
-//! configuration layer (`jinn_config::ConfigLayer`). This module owns the
-//! two things a section cannot provide: the canonical on-disk path, and
-//! the comment-rich template a fresh install is seeded from.
+//! `jinn.toml` has no aggregate schema struct. Each section is declared in
+//! `crate::schemas` by a `Configurable` or `ConfigList` impl and read
+//! through the configuration layer (`jinn_config::ConfigLayer`). This
+//! module owns the two things a section cannot provide: the canonical
+//! on-disk path, and the comment-rich template a fresh install is seeded
+//! from.
 //!
 //! The template is documentation, not authority — it is not consulted at
 //! read time. It is written as *bytes*, never serialized from a struct,
@@ -16,12 +17,15 @@ use error_stack::{Report, ResultExt as _};
 use jinn_common::app_info::{APP_NAME, PREFS_FILE_NAME};
 use wherror::Error;
 
-// The section types live in `crate::schemas` (co-located by feature
-// domain) and are re-exported so a consumer has one import home for
-// `jinn.toml` shapes.
+// Every section type lives in `crate::schemas` — one module per section,
+// wherever the feature that runs it lives — and the common ones are
+// re-exported here so a consumer has one import home for `jinn.toml`
+// shapes.
 pub use crate::schemas::{
-    AutoPruneConfig, CompactionConfig, CwdSelectorConfig, MinimapConfig, ProjectConfig,
-    RequestRetryConfig, SessionLifecycle, StallWatchdogConfig, ToolCallWatchdogConfig,
+    AutoPruneConfig, ChatLogConfig, CommandPolicyRule, CompactionConfig, CwdSelectorConfig,
+    DiscordConfig, InteractiveTermPrefs, McpServerConfig, McpServersConfig, MinimapConfig,
+    ProjectConfig, RequestRetryConfig, SessionLifecycle, SkillsConfig, StallWatchdogConfig,
+    ToolCallWatchdogConfig, ToolsConfig, TransportKind, WebSearchConfig,
 };
 
 /// Canonical default `jinn.toml` embedded at compile time.

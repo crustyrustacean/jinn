@@ -10,7 +10,7 @@
 
 use std::path::PathBuf;
 
-use jinn_tools_msg::CommandPolicyRule;
+use super::command_policy::CommandPolicyRule;
 use serde::{Deserialize, Serialize};
 
 impl jinn_config::ConfigList for ProjectConfig {
@@ -88,7 +88,7 @@ mod tests {
         // Then they are distinct, so neither shadows the other.
         assert_ne!(
             <ProjectConfig as ConfigList>::KEY,
-            jinn_tools_msg::GLOBAL_COMMAND_POLICY_KEY
+            crate::schemas::command_policy::GLOBAL_COMMAND_POLICY_KEY
         );
     }
 }

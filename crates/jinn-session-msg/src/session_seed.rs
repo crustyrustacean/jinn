@@ -25,7 +25,7 @@ impl SessionSeed {
     pub fn from_config(config: &jinn_config::ConfigLayer) -> Self {
         let tools = config.read::<jinn_preferences_config::schemas::ToolsConfig>();
         let skills = config.read::<jinn_preferences_config::schemas::SkillsConfig>();
-        let mcp = config.read::<jinn_mcp_msg::config::McpServersConfig>();
+        let mcp = config.read::<jinn_preferences_config::schemas::mcp::McpServersConfig>();
         Self {
             disabled_tools: tools.disabled.iter().cloned().collect(),
             disabled_skills: skills.disabled.iter().cloned().collect(),
@@ -51,7 +51,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    use jinn_mcp_msg::config::McpServersConfig;
+    use jinn_preferences_config::schemas::mcp::McpServersConfig;
     use jinn_preferences_config::schemas::{SkillsConfig, ToolsConfig};
 
     /// A layer over `document`, for exercising the same read path

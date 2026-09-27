@@ -8,10 +8,7 @@ edition.workspace = true
 jinn-config = { workspace = true }
 jinn-common = { workspace = true }
 jinn-core-types = { workspace = true }
-jinn-mcp-msg = { workspace = true }
 jinn-slices = { workspace = true }
-jinn-term-msg = { workspace = true }
-jinn-tools-msg = { workspace = true }
 
 # The trouper runtime: crossing_schema! impls for the two protocol commands.
 trouper = { workspace = true }

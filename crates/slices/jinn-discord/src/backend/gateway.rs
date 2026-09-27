@@ -16,10 +16,12 @@ use std::sync::Arc;
 use crate::backend::session_route::{
     InboundOutcome, classify_inbound, is_forwardable_message_type,
 };
+use jinn_preferences_config::schemas::discord::DiscordConfig;
+
 use crate::{
-    BridgeEvent, CreateThreadReason, DiscordConfig, DiscordThreadCreateFailed,
-    DiscordThreadCreated, DiscordThreadMap, FinalReply, ForumChannelError, GatewayRequest,
-    authorize, read_final_reply, split_message,
+    BridgeEvent, CreateThreadReason, DiscordThreadCreateFailed, DiscordThreadCreated,
+    DiscordThreadMap, FinalReply, ForumChannelError, GatewayRequest, authorize, read_final_reply,
+    split_message,
 };
 use derive_more::Debug;
 use error_stack::Report;

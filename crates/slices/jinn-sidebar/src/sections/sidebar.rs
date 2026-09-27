@@ -14,7 +14,7 @@ use super::{mcp_servers_section, persona_section, pins, sessions, task_list_sect
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::render_ctx::RenderCtx;
 use jinn_domain::protocol::IntentResult;
-use jinn_mcp_msg::config::McpServersConfig;
+use jinn_preferences_config::schemas::mcp::McpServersConfig;
 /// The sidebar container.
 ///
 /// Holds registered sections in order, manages focus, and handles

@@ -21,8 +21,8 @@
 //! catch-all variant — registering the hook makes composition synthesize the
 //! printable-character catch-all and the editing keys.
 
-use jinn_mcp_msg::config::McpServersConfig;
 use jinn_mcp_msg::mcp_picker_scope;
+use jinn_preferences_config::schemas::mcp::McpServersConfig;
 use jinn_slices::KeyRoutes;
 use jinn_slices::RouteId;
 use jinn_slices::RouteResult as IntentResult;

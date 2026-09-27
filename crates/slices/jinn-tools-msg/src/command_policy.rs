@@ -2,22 +2,14 @@
 //!
 //! Advisory-strength by design: rules exist to stop well-trained habits
 //! (like per-package test invocations in a whole-workspace repo), not to
-//! resist a determined actor. Resolution from project config happens in the
-//! tools slice (which owns the preferences read); this module holds only the
-//! vocabulary: the rule source type and the compiled matcher.
+//! resist a determined actor.
+//!
+//! The `[[tools.bash_command_policy]]` section declaration and the
+//! [`CommandPolicyRule`] value shape live in `jinn-preferences-config`;
+//! this module holds only the compiled matcher, which is the behavior.
 
+use jinn_preferences_config::schemas::command_policy::CommandPolicyRule;
 use regex::Regex;
-
-/// A rule pairs a user-authored regex with the corrective message returned
-/// when the regex matches a command. Rules are advisory-strength by design:
-/// they exist to stop well-trained habits, not to resist a determined actor.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct CommandPolicyRule {
-    /// Regex matched against the full command string.
-    pub pattern: String,
-    /// Message returned in the failed tool result when [`Self::pattern`] matches.
-    pub message: String,
-}
 
 /// Compiled blocked-command rules for one project. Empty matches nothing.
 #[derive(Debug, Clone, Default)]
@@ -66,14 +58,6 @@ impl CompiledCommandPolicy {
     pub fn is_empty(&self) -> bool {
         self.rules.is_empty()
     }
-}
-
-/// The `jinn.toml` key the global (non-project-specific) rules live at.
-pub const GLOBAL_COMMAND_POLICY_KEY: &str = "tools.bash_command_policy";
-
-impl jinn_config::ConfigList for CommandPolicyRule {
-    const KEY: &'static str = GLOBAL_COMMAND_POLICY_KEY;
-    const ENTRY_KEY: &'static str = "pattern";
 }
 
 #[cfg(test)]

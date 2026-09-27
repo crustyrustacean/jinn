@@ -322,8 +322,13 @@ impl App {
         };
 
         // Fail-fast on a malformed section before any actor wiring runs.
-        // A section is only checked once it has been registered, so this
-        // is the gate for the sections that opt in.
+        // `validate` only walks sections registered on the layer, so the
+        // roster goes in first — an unregistered section is never checked
+        // and a malformed table would boot to a running app reading
+        // defaults. Registration must precede the check, and both must
+        // precede `ActorSystemBuilder::build` further down.
+        jinn_preferences_config::register_all_sections(&config);
+
         if let Err(error) = config.validate() {
             tracing::error!(%error, "jinn.toml section failed validation");
             eprintln!("error: {error}");
