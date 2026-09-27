@@ -2946,6 +2946,10 @@ name = "jinn-session-history"
 version = "0.118.0"
 dependencies = [
  "jinn-core-types",
+ "jinn-domain",
+ "jinn-llm-support",
+ "jinn-session-state",
+ "rand 0.9.5",
  "rstest",
  "tracing",
 ]

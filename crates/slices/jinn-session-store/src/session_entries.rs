@@ -5,12 +5,12 @@
 
 use std::collections::HashMap;
 
-use crate::common::services::Services;
 use jinn_core_types::SessionId;
+use jinn_domain::common::services::Services;
 use jinn_session_store_msg::SessionTreeEntry;
 use jinn_theme::Theme;
 
-use super::SessionStoreService;
+use jinn_session_state::SessionStoreService;
 
 /// Sorts session entries so that whole trees move as a unit.
 ///
@@ -201,9 +201,9 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use crate::common::app_state::AppState;
-    use crate::common::services::test_services::TestServices;
     use jinn_core_types::SessionId;
+    use jinn_domain::common::app_state::AppState;
+    use jinn_domain::common::services::test_services::TestServices;
     use jinn_selection_widget::PickerItem;
     use jinn_selection_widget::TreeItem;
     use jinn_session_state::SessionSnapshot;
@@ -287,7 +287,7 @@ mod tests {
     #[tokio::test]
     async fn load_session_entries_returns_empty_on_error() {
         // Given a test Services (with fake session store that returns empty).
-        let services = crate::common::services::Services::new_fake().await;
+        let services = jinn_domain::common::services::Services::new_fake().await;
 
         // When loading session entries.
         let entries = load_session_entries(&services, &default_theme()).await;
@@ -302,66 +302,69 @@ mod tests {
     }
 
     #[async_trait::async_trait]
-    impl super::super::SessionStore for OneSummaryStore {
+    impl jinn_session_state::SessionStore for OneSummaryStore {
         fn name(&self) -> &'static str {
             "one-summary"
         }
         async fn save(
             &self,
             _snapshot: &SessionSnapshot,
-        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
+        ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
             Ok(())
         }
         async fn load_summaries(
             &self,
-        ) -> Result<Vec<SessionSummary>, error_stack::Report<super::super::SessionStoreError>>
+        ) -> Result<Vec<SessionSummary>, error_stack::Report<jinn_session_state::SessionStoreError>>
         {
             Ok(vec![self.summary.clone()])
         }
         async fn load_session(
             &self,
             _session_id: &SessionId,
-        ) -> Result<Option<SessionSnapshot>, error_stack::Report<super::super::SessionStoreError>>
-        {
+        ) -> Result<
+            Option<SessionSnapshot>,
+            error_stack::Report<jinn_session_state::SessionStoreError>,
+        > {
             Ok(None)
         }
         async fn delete(
             &self,
             _session_id: &SessionId,
-        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
+        ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
             Ok(())
         }
         async fn fork(
             &self,
             _source_session_id: &SessionId,
             _at_ordinal: usize,
-        ) -> Result<SessionId, error_stack::Report<super::super::SessionStoreError>> {
+        ) -> Result<SessionId, error_stack::Report<jinn_session_state::SessionStoreError>> {
             Ok(SessionId::new())
         }
         async fn set_archived(
             &self,
             _session_id: &SessionId,
             _archived: bool,
-        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
+        ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
             Ok(())
         }
         async fn set_archived_many(
             &self,
             _session_ids: &[SessionId],
             _archived: bool,
-        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
+        ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
             Ok(())
         }
         async fn load_unarchived_summaries(
             &self,
-        ) -> Result<Vec<SessionSummary>, error_stack::Report<super::super::SessionStoreError>>
+        ) -> Result<Vec<SessionSummary>, error_stack::Report<jinn_session_state::SessionStoreError>>
         {
             Ok(vec![self.summary.clone()])
         }
 
         async fn dirty_session_ids(
             &self,
-        ) -> Result<Vec<SessionId>, error_stack::Report<super::super::SessionStoreError>> {
+        ) -> Result<Vec<SessionId>, error_stack::Report<jinn_session_state::SessionStoreError>>
+        {
             Ok(Vec::new())
         }
 
@@ -369,13 +372,13 @@ mod tests {
             &self,
             _session_id: &SessionId,
             _max_entries: usize,
-        ) -> Result<bool, error_stack::Report<super::super::SessionStoreError>> {
+        ) -> Result<bool, error_stack::Report<jinn_session_state::SessionStoreError>> {
             Ok(true)
         }
 
         async fn pending_dirty_count(
             &self,
-        ) -> Result<usize, error_stack::Report<super::super::SessionStoreError>> {
+        ) -> Result<usize, error_stack::Report<jinn_session_state::SessionStoreError>> {
             Ok(0)
         }
 
@@ -384,7 +387,7 @@ mod tests {
             _params: jinn_session_store_msg::SearchParams,
         ) -> Result<
             jinn_session_store_msg::SearchOutcome,
-            error_stack::Report<super::super::SessionStoreError>,
+            error_stack::Report<jinn_session_state::SessionStoreError>,
         > {
             Ok(jinn_session_store_msg::SearchOutcome {
                 total_matches: 0,
@@ -396,11 +399,11 @@ mod tests {
         async fn fetch_window(
             &self,
             _session_id: &SessionId,
-            _anchor: &crate::protocol::ChatEntryId,
+            _anchor: &jinn_domain::protocol::ChatEntryId,
             _context: usize,
         ) -> Result<
             Option<jinn_session_store_msg::TranscriptWindow>,
-            error_stack::Report<super::super::SessionStoreError>,
+            error_stack::Report<jinn_session_state::SessionStoreError>,
         > {
             Ok(None)
         }
@@ -411,7 +414,7 @@ mod tests {
             _limit: usize,
         ) -> Result<
             Option<jinn_session_store_msg::TranscriptWindow>,
-            error_stack::Report<super::super::SessionStoreError>,
+            error_stack::Report<jinn_session_state::SessionStoreError>,
         > {
             Ok(None)
         }
@@ -432,7 +435,7 @@ mod tests {
             project: None,
         };
         let store =
-            crate::feat::session::SessionStoreService::new(std::sync::Arc::new(OneSummaryStore {
+            jinn_session_state::SessionStoreService::new(std::sync::Arc::new(OneSummaryStore {
                 summary,
             }));
         let services = TestServices::builder().session_store(store).build();
@@ -451,66 +454,69 @@ mod tests {
     }
 
     #[async_trait::async_trait]
-    impl super::super::SessionStore for ManySummariesStore {
+    impl jinn_session_state::SessionStore for ManySummariesStore {
         fn name(&self) -> &'static str {
             "many-summaries"
         }
         async fn save(
             &self,
             _snapshot: &SessionSnapshot,
-        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
+        ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
             Ok(())
         }
         async fn load_summaries(
             &self,
-        ) -> Result<Vec<SessionSummary>, error_stack::Report<super::super::SessionStoreError>>
+        ) -> Result<Vec<SessionSummary>, error_stack::Report<jinn_session_state::SessionStoreError>>
         {
             Ok(self.summaries.clone())
         }
         async fn load_session(
             &self,
             _session_id: &SessionId,
-        ) -> Result<Option<SessionSnapshot>, error_stack::Report<super::super::SessionStoreError>>
-        {
+        ) -> Result<
+            Option<SessionSnapshot>,
+            error_stack::Report<jinn_session_state::SessionStoreError>,
+        > {
             Ok(None)
         }
         async fn delete(
             &self,
             _session_id: &SessionId,
-        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
+        ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
             Ok(())
         }
         async fn fork(
             &self,
             _source_session_id: &SessionId,
             _at_ordinal: usize,
-        ) -> Result<SessionId, error_stack::Report<super::super::SessionStoreError>> {
+        ) -> Result<SessionId, error_stack::Report<jinn_session_state::SessionStoreError>> {
             Ok(SessionId::new())
         }
         async fn set_archived(
             &self,
             _session_id: &SessionId,
             _archived: bool,
-        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
+        ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
             Ok(())
         }
         async fn set_archived_many(
             &self,
             _session_ids: &[SessionId],
             _archived: bool,
-        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
+        ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
             Ok(())
         }
         async fn load_unarchived_summaries(
             &self,
-        ) -> Result<Vec<SessionSummary>, error_stack::Report<super::super::SessionStoreError>>
+        ) -> Result<Vec<SessionSummary>, error_stack::Report<jinn_session_state::SessionStoreError>>
         {
             Ok(self.summaries.clone())
         }
 
         async fn dirty_session_ids(
             &self,
-        ) -> Result<Vec<SessionId>, error_stack::Report<super::super::SessionStoreError>> {
+        ) -> Result<Vec<SessionId>, error_stack::Report<jinn_session_state::SessionStoreError>>
+        {
             Ok(Vec::new())
         }
 
@@ -518,13 +524,13 @@ mod tests {
             &self,
             _session_id: &SessionId,
             _max_entries: usize,
-        ) -> Result<bool, error_stack::Report<super::super::SessionStoreError>> {
+        ) -> Result<bool, error_stack::Report<jinn_session_state::SessionStoreError>> {
             Ok(true)
         }
 
         async fn pending_dirty_count(
             &self,
-        ) -> Result<usize, error_stack::Report<super::super::SessionStoreError>> {
+        ) -> Result<usize, error_stack::Report<jinn_session_state::SessionStoreError>> {
             Ok(0)
         }
 
@@ -533,7 +539,7 @@ mod tests {
             _params: jinn_session_store_msg::SearchParams,
         ) -> Result<
             jinn_session_store_msg::SearchOutcome,
-            error_stack::Report<super::super::SessionStoreError>,
+            error_stack::Report<jinn_session_state::SessionStoreError>,
         > {
             Ok(jinn_session_store_msg::SearchOutcome {
                 total_matches: 0,
@@ -545,11 +551,11 @@ mod tests {
         async fn fetch_window(
             &self,
             _session_id: &SessionId,
-            _anchor: &crate::protocol::ChatEntryId,
+            _anchor: &jinn_domain::protocol::ChatEntryId,
             _context: usize,
         ) -> Result<
             Option<jinn_session_store_msg::TranscriptWindow>,
-            error_stack::Report<super::super::SessionStoreError>,
+            error_stack::Report<jinn_session_state::SessionStoreError>,
         > {
             Ok(None)
         }
@@ -560,7 +566,7 @@ mod tests {
             _limit: usize,
         ) -> Result<
             Option<jinn_session_store_msg::TranscriptWindow>,
-            error_stack::Report<super::super::SessionStoreError>,
+            error_stack::Report<jinn_session_state::SessionStoreError>,
         > {
             Ok(None)
         }
@@ -586,9 +592,10 @@ mod tests {
             summary_with_project("Short", Some(std::path::PathBuf::from("/code/jinn"))),
             summary_with_project("Blank", None),
         ];
-        let store = crate::feat::session::SessionStoreService::new(std::sync::Arc::new(
-            ManySummariesStore { summaries },
-        ));
+        let store =
+            jinn_session_state::SessionStoreService::new(std::sync::Arc::new(ManySummariesStore {
+                summaries,
+            }));
         let services = TestServices::builder().session_store(store).build();
 
         // When loading session entries.
@@ -609,9 +616,10 @@ mod tests {
             "Stamped",
             Some(std::path::PathBuf::from("/code/jinn")),
         )];
-        let store = crate::feat::session::SessionStoreService::new(std::sync::Arc::new(
-            ManySummariesStore { summaries },
-        ));
+        let store =
+            jinn_session_state::SessionStoreService::new(std::sync::Arc::new(ManySummariesStore {
+                summaries,
+            }));
         let services = TestServices::builder().session_store(store).build();
 
         // When loading session entries.
@@ -635,7 +643,7 @@ mod tests {
             project: None,
         };
         let store =
-            crate::feat::session::SessionStoreService::new(std::sync::Arc::new(OneSummaryStore {
+            jinn_session_state::SessionStoreService::new(std::sync::Arc::new(OneSummaryStore {
                 summary,
             }));
 
@@ -660,7 +668,7 @@ mod tests {
             project: None,
         };
         let store =
-            crate::feat::session::SessionStoreService::new(std::sync::Arc::new(OneSummaryStore {
+            jinn_session_state::SessionStoreService::new(std::sync::Arc::new(OneSummaryStore {
                 summary,
             }));
         let services = TestServices::builder().session_store(store).build();
@@ -687,7 +695,7 @@ mod tests {
             project: None,
         };
         let store =
-            crate::feat::session::SessionStoreService::new(std::sync::Arc::new(OneSummaryStore {
+            jinn_session_state::SessionStoreService::new(std::sync::Arc::new(OneSummaryStore {
                 summary,
             }));
         let state = AppState::default();

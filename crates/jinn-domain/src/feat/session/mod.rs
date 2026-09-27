@@ -1,17 +1,12 @@
 //! Session management - session lifecycle, persistence, and loading.
 //!
-//! Contains the session intent handlers, validators, entry loaders, and
-//! picker rendering. The persistence seam ([`SessionStore`],
-//! [`SessionStoreService`]) lives in `jinn_session_state` beside
-//! `SessionSnapshot`, so the kernel's service container no longer reaches
-//! into a feature module for its storage type.
+//! Contains the session intent handlers and their validators. The
+//! persistence seam ([`SessionStore`], [`SessionStoreService`]) lives in
+//! `jinn_session_state` beside `SessionSnapshot`, so the kernel's service
+//! container no longer reaches into a feature module for its storage type.
+//! Picker entry loading lives in the `jinn-session-store` slice, which owns
+//! the picker.
 
-pub mod entries;
-#[cfg(test)]
-mod entries_tests;
-#[cfg(test)]
-#[path = "history_editor_tests.rs"]
-mod history_editor_tests;
 pub mod intent;
 pub mod validator;
 

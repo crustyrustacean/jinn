@@ -45,7 +45,7 @@ impl MsgHandler<AssembleContext> for TestAssemblyService {
         // slice crate (singly compiled) deserializes into ITS types and
         // returns only wire-safe values.
         let inputs = serde_json::to_value(&msg.inputs).unwrap_or(serde_json::Value::Null);
-        let prompt = jinn_context_assembly::assemble::assemble_erased(inputs).ok();
+        let prompt = crate::assemble::assemble_erased(inputs).ok();
         let Some(prompt) = prompt else {
             tracing::error!("assembly test bridge: inputs failed to roundtrip");
             return;

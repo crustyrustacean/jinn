@@ -59,6 +59,10 @@ tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 jinn-domain = { workspace = true }
 
+# The migrator tests stand a DB up at a specific legacy schema version, which
+# needs jinn-session-schema's test-only helpers.
+jinn-session-schema = { workspace = true, features = ["testing"] }
+
 # The build script creates the compile-time SQL validation DB (schema-crate
 # pattern; mirrors jinn-domain/build.rs).
 [build-dependencies]

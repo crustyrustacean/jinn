@@ -12,6 +12,9 @@ pub mod hydrate;
 pub mod hydrate_worker;
 pub mod migrator;
 pub mod search_index_actor;
+pub mod session_entries;
+#[cfg(test)]
+mod session_entries_tests;
 pub mod session_picker_actions;
 pub mod session_picker_render;
 pub mod session_picker_routes;

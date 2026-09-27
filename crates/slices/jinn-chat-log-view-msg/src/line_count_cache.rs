@@ -54,10 +54,9 @@ pub struct CachedEntryCount {
     ///
     /// `None` when inserted via [`EntryLineCache::insert`] (count-only).
     /// `Some` when inserted via [`EntryLineCache::insert_with_lines`].
-    #[expect(
-        clippy::rc_buffer,
-        reason = "Arc keeps cloning a rendered entry's line buffer O(1) where a plain Vec would deep-copy every line on each cache hit"
-    )]
+    // Arc keeps cloning a rendered entry's line buffer O(1) where a plain Vec
+    // would deep-copy every line on each cache hit.
+    #[allow(clippy::rc_buffer, reason = "see comment above")]
     pub lines: Option<Arc<Vec<Line<'static>>>>,
     /// The `touch_counter` value when this entry's lines were last used.
     ///

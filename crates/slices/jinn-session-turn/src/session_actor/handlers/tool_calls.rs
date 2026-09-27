@@ -4,11 +4,11 @@
 //! execution tracking, result collection, and batch completion routing.
 
 use jinn_context_assembly::inputs::build_assembly_inputs;
+use jinn_context_assembly::inputs_snapshot::assemble_via_service;
 use jinn_context_assembly_msg::ContextOverrideChanged;
 use jinn_core_types::PinPosition;
 use jinn_core_types::model_selection::ModelSelection;
 use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::feat::context::snapshot::assemble_via_service;
 use jinn_inference_msg::SendToLlmProvider;
 use jinn_session_msg::PhaseKind;
 use jinn_token_count_msg::TokenRecord;

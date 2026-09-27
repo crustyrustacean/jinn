@@ -1,5 +1,9 @@
-//! Tests for the `HistoryEditor` (owned by the `jinn-session-history`
-//! slice; exercised here through the kernel `ChatSessionState`).
+//! `HistoryEditor` behavior, exercised over kernel `ChatEntry` values.
+//!
+//! The editor is a pure function of the entries it is handed, so it needs no
+//! `AppState` and no bus. These cases drive it through the same entry types
+//! the runtime feeds it, and live with the editor rather than with the kernel
+//! that assembles those entries.
 
 #![allow(
     clippy::expect_used,
@@ -8,10 +12,12 @@
     clippy::indexing_slicing,
     reason = "test code"
 )]
-use crate::protocol::{ChangeSource, ChatEntry, ChatEntryId, ContextOverride};
-use crate::protocol::{PinPosition, ToolResultStatus};
+
 use jinn_core_types::llm_message::LlmMessage;
 use jinn_core_types::{ChatEntryKind, HistoryMutation};
+use jinn_domain::protocol::{ChangeSource, ChatEntry, ChatEntryId, ContextOverride};
+use jinn_domain::protocol::{PinPosition, ToolResultStatus};
+use jinn_session_history::HistoryEditor;
 use jinn_session_state::ChatSessionState;
 
 /// A complete loop: empty assistant, one call, one result.

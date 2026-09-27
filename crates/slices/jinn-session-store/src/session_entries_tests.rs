@@ -13,7 +13,7 @@
 //! so that whole trees move as a unit, positioned by the most recent
 //! `updated_at` across all nodes in the tree.
 
-use crate::feat::session::entries::sort_entries_tree_aware;
+use crate::session_entries::sort_entries_tree_aware;
 use jinn_core_types::SessionId;
 use jinn_session_store_msg::SessionState;
 use jinn_session_store_msg::SessionTreeEntry;
