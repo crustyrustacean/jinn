@@ -2161,11 +2161,13 @@ version = "0.118.0"
 dependencies = [
  "dirs",
  "error-stack",
+ "kill_tree",
  "libc",
  "rstest",
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
  "toml",
  "toml_edit 0.22.27",
  "wherror",

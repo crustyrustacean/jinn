@@ -413,7 +413,7 @@ impl ActorSystemBuilder {
         // tick self-kicks after the spawn handshake (B7).
         services
             .bus
-            .publish(jinn_domain::common::actor::protocol::event::ActorStarting {
+            .publish(jinn_slices::fabric::ActorStarting {
                 name: jinn_session_store::search_index_actor::SEARCH_INDEX_ROW_NAME.to_owned(),
                 description: Some("SearchIndexActor".to_owned()),
             })
@@ -428,7 +428,7 @@ impl ActorSystemBuilder {
         );
         services
             .bus
-            .publish(jinn_domain::common::actor::protocol::event::ActorStarted {
+            .publish(jinn_slices::fabric::ActorStarted {
                 name: jinn_session_store::search_index_actor::SEARCH_INDEX_ROW_NAME.to_owned(),
                 description: Some("SearchIndexActor".to_owned()),
             })

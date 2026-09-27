@@ -1,9 +1,7 @@
-//! Shared infrastructure - actor framework, services, core coordination, state.
+//! Shared infrastructure - services, core coordination, state, and projections.
 
 // Re-export shared infra that now lives in the `jinn-common` leaf crate.
-pub use jinn_common::{app_info, app_paths, toml_patch};
-
-pub mod actor;
+pub use jinn_common::{app_info, app_paths, process_kill, system_resource, toml_patch};
 
 pub mod actor_deps;
 pub mod app_state;
@@ -13,14 +11,12 @@ pub mod bridge;
 pub mod bus;
 pub mod core;
 pub mod frontend_projection;
-pub mod process_kill;
 pub mod render_ctx;
 pub mod request_dump;
 pub mod services;
 pub mod session_projection;
 pub mod slices;
 pub mod state;
-pub mod system_resource;
 pub mod ui_element;
 pub mod ui_element_fake;
 pub mod ui_registry;

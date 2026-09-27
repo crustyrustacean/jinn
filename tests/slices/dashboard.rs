@@ -362,7 +362,7 @@ async fn kernel_lifecycle_events_drive_the_dashboard_rows() {
 
     // When an ActorStarting publish rides the bus (the kernel path:
     // `Bridge::publish_closure` → `bus.tell(Publish(msg))`).
-    let starting = jinn_domain::common::actor::protocol::event::ActorStarting {
+    let starting = jinn_slices::fabric::ActorStarting {
         name: "test-actor".to_owned(),
         description: Some("regression probe".to_owned()),
     };
@@ -375,7 +375,7 @@ async fn kernel_lifecycle_events_drive_the_dashboard_rows() {
     .await;
 
     // And when the matching ActorStarted publish rides the bus.
-    let started = jinn_domain::common::actor::protocol::event::ActorStarted {
+    let started = jinn_slices::fabric::ActorStarted {
         name: "test-actor".to_owned(),
         description: Some("regression probe".to_owned()),
     };
@@ -424,17 +424,18 @@ async fn lifecycle_flood_through_the_bridge_loses_no_events() {
     for i in 0..PAIRS {
         let name = format!("flood-{i}");
         let _ = app.core.bridge.send(Bridge::publish_closure(
-            jinn_domain::common::actor::protocol::event::ActorStarting {
+            jinn_slices::fabric::ActorStarting {
                 name: name.clone(),
                 description: None,
             },
         ));
-        let _ = app.core.bridge.send(Bridge::publish_closure(
-            jinn_domain::common::actor::protocol::event::ActorStarted {
+        let _ = app
+            .core
+            .bridge
+            .send(Bridge::publish_closure(jinn_slices::fabric::ActorStarted {
                 name,
                 description: None,
-            },
-        ));
+            }));
     }
 
     // Then every flooded actor's row exists and reads Running.
@@ -498,7 +499,7 @@ async fn status_message_row_is_promoted_by_lifecycle_events() {
     );
 
     // And when the kernel lifecycle event arrives, the row is promoted.
-    let started = jinn_domain::common::actor::protocol::event::ActorStarted {
+    let started = jinn_slices::fabric::ActorStarted {
         name: "svc-actor".to_owned(),
         description: None,
     };

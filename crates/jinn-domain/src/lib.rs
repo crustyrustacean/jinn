@@ -34,7 +34,6 @@ pub mod state;
 pub mod protocol;
 
 // Re-export actor types that are still in use
-pub use common::actor::{ActorCounter, ActorName};
 // Re-export component types (state, UI)
 pub use common::app_paths::{AppPaths, BrowserProfileMode};
 pub use common::app_state::pin_sort_key;
@@ -99,11 +98,11 @@ pub use protocol::{
 };
 
 // Re-export domain types from their canonical locations
-pub use common::actor::protocol::command::ProceedWithShutdown;
-pub use common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting};
+
 pub use jinn_provider::LlmMessage;
 pub use jinn_session_history_msg::PushChatEntry;
 pub use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
+pub use jinn_slices::fabric::{ActorShutdownCompleted, ActorStarted, ActorStarting};
 // The curation contracts are owned by the context-curation slice's msg
 // crate (kernel→msg direction, same as the stream contracts); re-exported
 // here so the long-standing `jinn_domain::TriggerCompaction` path keeps
