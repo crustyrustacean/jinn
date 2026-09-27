@@ -129,15 +129,17 @@ The primary usage target for `jinn` is agentic coding, so it comes pre-packaged 
 Use this when you want an agent to arrive at a goal fully autonomously by giving it a rough idea of the end state. Goal-based implementation allows the agent to make detailed decisions on the way to the goal. Although the agent will decide how things get done, you can still configure what it should and shouldn't do before entering autonomous mode.
 
 1. Start a new session
-2. Type `#goal` followed by what you want to do. The agent will ask questions, gather context, and eventually propose a "contract" in the chat.
-
-- The contract is large and it's not meant for you to read the whole thing. Check the "**End State**" section and the "**Constraint**" sections to ensure they align with what you had in mind. Skim over the rest if you want to double check anything.
-
-3. If you want anything changed in the contract, tell the agent now.
-4. When the contract looks good, select the message and type `gcip` to isolate the message and then pin it. This gives you a fresh context with just the contract that can't be evicted from context.
-5. Tell the agent to begin.
-6. After the agent finishes, it will produce a report documenting any potential issues and if any followups are needed.
-7. You can optionally send a `#gap-analysis` prompt to double-check the agent's work.
+2. Type `#goal` followed by what you want to do. The agent will ask questions, gather context, and eventually propose a "_Contract Brief_" in the chat.
+   - The brief should be reviewed by you: it contains a summary+inventory of the end state.
+3. If you want anything changed in the brief, tell the agent now.
+4. When the brief looks good, approve it by saying "approved" or "confirmed" (the agent will guide you). The agent will then produce the full "contract" for achieving the goal.
+   - The contract is large and you are _not_ expected to read the whole thing (it's for the agent).
+   - Confirm that the **End State** and **Constraint** sections align with what you had in mind. Skim over the rest if you want to double check anything.
+5. If it looks good, select the contract message and type `gcip` to isolate the message and pin it.
+   - This gives you a fresh context containing just the contract, and the pin prevents the contract from being evicted from context.
+6. Tell the agent to begin.
+7. After the agent finishes, it will produce a report documenting any potential issues and if any followups are needed.
+8. You can optionally send a `#gap-analysis` prompt to double-check the agent's work.
 
 ### Plan-Based Feature Implementation
 
