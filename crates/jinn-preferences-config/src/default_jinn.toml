@@ -44,6 +44,58 @@ disabled = ["grep"]
 pattern = 'rg -rn'
 message = 'ripgrep is already recursive and `-r` takes a replacement value, so `rg -rn` rewrites every match to `n` and still exits 0 — use `-n` alone for line numbers.'
 
+# > The next four rules block whole-filesystem search habits. An agent that
+# > cannot find something reaches for `find /` or `ls -R /` and walks the
+# > entire machine, hanging for minutes and returning thousands of
+# > irrelevant hits.
+# >
+# > Each pattern anchors on the command word and its search path, ending at a
+# > space or end-of-command so a *bounded* path is never caught:
+# > `find /mnt/zed/...` and `ls -R ~/code/myapp` do not match, but
+# > `find / more crap here` does. Because the regex is searched anywhere in
+# > the command string, a leading `cd <dir> &&` chain is caught too — only
+# > the argument shape is constrained, not the whole line.
+[[tools.bash_command_policy]]
+pattern = '\bfind\s+/(\s|$)'
+message = 'A bare `find /` walks the entire filesystem — it will hang for minutes and bury the answer in noise. Search a bounded root instead: `find <project-dir> -name <pattern>`, or `rg --files -g <glob>` which is recursive by default and much faster. If you truly need a system-wide search, scope it with `-maxdepth` and prune noise (`-path /proc -prune -o -path /sys -prune -o ...`).'
+
+[[tools.bash_command_policy]]
+pattern = '\bfind\s+~(\s|$)'
+message = 'A bare `find ~` walks your entire home directory, including caches, build trees, and dotfile folders. Search a bounded path instead: `find ~/code/myapp -name <pattern>`, or `rg --files -g <glob>`. If you truly need a home-wide search, scope it with `-maxdepth` and prune build directories.'
+
+# > The `ls` rules guard the recursive flag. The flag is matched as a short
+# > cluster containing an uppercase `R` (`-R`, and combined forms like `-lR`,
+# > `-1R`, `-Rt`) or as the long `--recursive`. Lowercase `-r` is
+# > `--reverse` — it only flips sort order within one directory and dumps
+# > nothing — so it is deliberately not matched, and the uppercase `R` is why
+# > the pattern carries no `(?i)`.
+# >
+# > Anything may sit between `ls` and the flag, and between the flag and the
+# > path: other flags, `--color=always`, quoted values. The argument run that
+# > absorbs them cannot start with the characters a bare path starts with
+# > (`/ ~ $ ' "`) and cannot cross a `;`, `&`, or `|`, which is what keeps
+# > `ls -R /usr` and `ls -R ~/code` (both bounded) from matching while
+# > stopping `ls -R ~/code && cd /` from letting the run reach into the next
+# > command.
+# >
+# > The path is then a bare `/` or home reference (`~`, `$HOME`, `${HOME}`,
+# > optionally quoted, with an optional glob or trailing slash), followed by a
+# > boundary that is whitespace, a separator, a redirect, a closing paren, or
+# > end of command — never a path character. That boundary is what stops
+# > `ls -R /usr` from matching on its `ls -R /` prefix, while still catching
+# > `ls -R / 2>/dev/null | head` and `(ls -R /)`.
+# >
+# > These two patterns are double-quoted rather than single-quoted: the quoted
+# > path forms contain a `'`, which a literal TOML string cannot hold.
+# > Everywhere else in this file, prefer single quotes.
+[[tools.bash_command_policy]]
+pattern = "\\bls\\b\\s*(?:[^\\s;&|/~$'\\\"][^\\s;&|]*\\s+)*(-\\w*R\\w*|--recursive)\\s+(?:[^\\s;&|/~$'\\\"][^\\s;&|]*\\s+)*(?:/|'\\/'|\\\"/\\\")(?:\\*+|/+)?(?:\\s|;|&|\\||\\)|\\]|\\}|<|>|$)"
+message = 'Listing a bare `/` or `~` recursively dumps the whole filesystem or home tree into the transcript — thousands of irrelevant lines and a slow tool call. Scope it to the directory you actually care about (`ls -R <project-dir> -I target`), or search with `rg --files -g <glob>` / `fd`.'
+
+[[tools.bash_command_policy]]
+pattern = "\\bls\\b\\s*(?:[^\\s;&|/~$'\\\"][^\\s;&|]*\\s+)*(-\\w*R\\w*|--recursive)\\s+(?:[^\\s;&|/~$'\\\"][^\\s;&|]*\\s+)*(?:~|\\$HOME|\\\"\\$HOME\\\"|'~'|'\\$HOME'|\\$\\{HOME\\}|\\\"\\$\\{HOME\\}\\\")(?:\\*+|/+)*(?:\\s|;|&|\\||\\)|\\]|\\}|<|>|$)"
+message = 'Listing a bare `~` recursively dumps your whole home directory — caches, build trees, and dotfile folders. Scope it to the directory you actually care about (`ls -R <dir> -I target`), or search with `rg --files -g <glob>` / `fd`.'
+
 # ###########################################################################
 # Chat log
 # ###########################################################################
