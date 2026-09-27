@@ -114,12 +114,11 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
         // new session's starting CWD and project stamp (same convention as the
         // project picker). Without this the handler falls back to inheriting
         // the currently-active session's CWD, which is unrelated to the pick.
-        state.frontend.pending_creation = Some(
-            jinn_domain::feat::ui::frontend_state::PendingSessionCreation {
+        state.frontend.pending_creation =
+            Some(jinn_domain::state::frontend_state::PendingSessionCreation {
                 project_dir: chosen.path.clone(),
                 starting_cwd: chosen.path.clone(),
-            },
-        );
+            });
         let result = jinn_domain::feat::intent::IntentHandler::handle(
             &KernelIntent::SessionLifecycleSetup {
                 lifecycle_name: lifecycle.clone(),

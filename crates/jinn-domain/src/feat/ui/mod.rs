@@ -1,7 +1,6 @@
 //! Display-only UI elements.
 
 pub mod chat_log;
-pub mod frontend_state;
 pub mod vertical_minimap;
 
 #[cfg(test)]

@@ -13,7 +13,7 @@
 
 use std::sync::Arc;
 
-use jinn_domain::feat::ui::frontend_state::PendingSessionCreation;
+use jinn_domain::state::frontend_state::PendingSessionCreation;
 use jinn_preferences_config::schemas::ProjectConfig;
 use jinn_project_msg::ProjectPickerState;
 use jinn_slices::KeyRoutes;

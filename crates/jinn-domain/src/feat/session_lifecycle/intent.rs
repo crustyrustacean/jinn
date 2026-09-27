@@ -326,7 +326,7 @@ mod tests {
             .active_session_mut()
             .set_cwd(std::path::PathBuf::from("/tmp/active-project"));
         state.frontend.pending_creation =
-            Some(crate::feat::ui::frontend_state::PendingSessionCreation {
+            Some(crate::state::frontend_state::PendingSessionCreation {
                 project_dir: std::path::PathBuf::from("/tmp/override-project"),
                 starting_cwd: std::path::PathBuf::from("/tmp/override-project"),
             });
@@ -359,7 +359,7 @@ mod tests {
             .active_session_mut()
             .set_cwd(std::path::PathBuf::from("/tmp/active-project"));
         state.frontend.pending_creation =
-            Some(crate::feat::ui::frontend_state::PendingSessionCreation {
+            Some(crate::state::frontend_state::PendingSessionCreation {
                 project_dir: std::path::PathBuf::from("/tmp/override-project"),
                 starting_cwd: std::path::PathBuf::from("/tmp/override-project"),
             });
@@ -388,7 +388,7 @@ mod tests {
         // Given a state with a pending creation stashed from the projects UI.
         let mut state = AppState::default_with_scope_focus();
         state.frontend.pending_creation =
-            Some(crate::feat::ui::frontend_state::PendingSessionCreation {
+            Some(crate::state::frontend_state::PendingSessionCreation {
                 project_dir: std::path::PathBuf::from("/home/user/projects/jinn"),
                 starting_cwd: std::path::PathBuf::from("/home/user/projects/jinn"),
             });
@@ -432,7 +432,7 @@ mod tests {
         // Given a state that already consumed a pending creation.
         let mut state = AppState::default_with_scope_focus();
         state.frontend.pending_creation =
-            Some(crate::feat::ui::frontend_state::PendingSessionCreation {
+            Some(crate::state::frontend_state::PendingSessionCreation {
                 project_dir: std::path::PathBuf::from("/tmp/first-project"),
                 starting_cwd: std::path::PathBuf::from("/tmp/first-project"),
             });

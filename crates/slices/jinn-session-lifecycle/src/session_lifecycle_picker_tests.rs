@@ -764,7 +764,7 @@ async fn the_filter_hook_is_registered_for_the_picker_scope() {
 #[rstest::rstest]
 fn the_picker_state_lives_only_in_its_slice_cell() {
     // Given the kernel's picker state block.
-    let kernel = include_str!("../../../jinn-domain/src/feat/ui/frontend_state.rs");
+    let kernel = include_str!("../../../jinn-domain/src/state/frontend_state.rs");
 
     // When it is searched for this picker's state.
     let found = kernel.contains("session_lifecycle_picker");

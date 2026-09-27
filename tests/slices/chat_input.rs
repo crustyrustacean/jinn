@@ -28,8 +28,8 @@ use jinn_theme::default_theme;
 use jinn_turn_dispatch_msg::QueueItem;
 
 use jinn_domain::IntentHandler;
-use jinn_domain::feat::ui::frontend_state::PendingSessionCreation;
 use jinn_domain::protocol::KernelIntent;
+use jinn_domain::state::frontend_state::PendingSessionCreation;
 use jinn_testutil::setup_term;
 use ratatui::layout::Position;
 
@@ -1838,12 +1838,11 @@ fn enter_normal_mode_returns_to_normal_scope() {
 fn enter_normal_mode_clears_pending_creation() {
     // Given a state with a stale pending session creation stash.
     let mut state = AppState::default_with_scope_focus();
-    state.frontend.pending_creation = Some(
-        jinn_domain::feat::ui::frontend_state::PendingSessionCreation {
+    state.frontend.pending_creation =
+        Some(jinn_domain::state::frontend_state::PendingSessionCreation {
             project_dir: std::path::PathBuf::from("/tmp/stale"),
             starting_cwd: std::path::PathBuf::from("/tmp/stale"),
-        },
-    );
+        });
 
     // When handling EnterNormalMode (ESC from the project/lifecycle chain).
     let _ = jinn_chat_input::intent::handle_enter_normal_mode(
