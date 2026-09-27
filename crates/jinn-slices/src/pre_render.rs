@@ -82,7 +82,14 @@ pub type PreRenderHook<S> =
     Arc<dyn Fn(&mut S, &PreRenderCtx<'_>) -> Vec<PublishClosure> + Send + Sync>;
 
 /// A hook wrapped for `Debug` (closures are not `Debug`).
-pub(crate) struct HookEntry<S: 'static>(pub(crate) PreRenderHook<S>);
+pub(crate) struct HookEntry<S: 'static>(PreRenderHook<S>);
+
+impl<S: 'static> HookEntry<S> {
+    /// The registered hook this entry wraps.
+    pub(crate) fn hook(&self) -> &PreRenderHook<S> {
+        &self.0
+    }
+}
 
 impl<S: 'static> Clone for HookEntry<S> {
     fn clone(&self) -> Self {
@@ -157,8 +164,8 @@ impl<S: 'static> PreRenderHooks<S> {
         ctx: &PreRenderCtx<'_>,
     ) -> Vec<PublishClosure> {
         let mut publishes = Vec::new();
-        for hook in hooks {
-            publishes.extend((hook.0)(state, ctx));
+        for entry in hooks {
+            publishes.extend((entry.hook())(state, ctx));
         }
         publishes
     }

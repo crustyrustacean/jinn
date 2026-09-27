@@ -1,6 +1,7 @@
 //! Autocomplete popup rendering - renders the prompt template and slash command autocomplete overlay.
 
 use crate::AutocompleteTrigger;
+use jinn_chat_input_msg::FilePickerState;
 use jinn_kernel::AppState;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -194,7 +195,7 @@ fn render_at_popup(
     ) else {
         return;
     };
-    let Some(picker) = state.frontend.with_file_picker(|picker| picker.clone()) else {
+    let Some(picker) = state.frontend.with_file_picker(FilePickerState::clone) else {
         return;
     };
 

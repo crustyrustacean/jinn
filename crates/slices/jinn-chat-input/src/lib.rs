@@ -57,15 +57,33 @@ pub fn activate(
     directory_lister_actor::DirectoryListerActor::spawn(host.system(), lister_deps);
     routes::attach_all(host.key_routes());
 
-    // The chat input box's own screen region. The element is stateless, so
-    // the draw function needs no interior mutability.
-    host.slices()
-        .register_render_slot::<jinn_kernel::common::app_state::AppState>(
-            jinn_slices::Region::ChatInput,
+    render_regions::register(host.slices());
+}
+
+/// The chat input box's own screen region registration, split out of
+/// `activate` so a composition path that cannot run activation (the TUI
+/// test app) can still register the draw function. Activation mints the
+/// cells; this only claims the region.
+pub mod render_regions {
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_slices::DrawContext;
+    use jinn_slices::DrawTarget;
+    use jinn_slices::Region;
+
+    use crate::element;
+
+    /// Registers the chat input region — the box, and the autocomplete
+    /// popup anchored to it — against `slices`.
+    ///
+    /// The element is stateless, so the draw function needs no interior
+    /// mutability.
+    pub fn register(slices: &jinn_slices::Slices) {
+        slices.register_render_slot::<AppState>(
+            Region::ChatInput,
             std::sync::Arc::new(
                 |frame: &mut ratatui::Frame<'_>,
-                 target: jinn_slices::DrawTarget,
-                 ctx: &dyn jinn_slices::DrawContext<jinn_kernel::common::app_state::AppState>,
+                 target: DrawTarget,
+                 ctx: &dyn DrawContext<AppState>,
                  _rects: &mut Vec<ratatui::layout::Rect>| {
                     element::paint(frame, target.area, ctx);
                     // The autocomplete popup is drawn by the same slice, so
@@ -75,6 +93,7 @@ pub fn activate(
                 },
             ),
         );
+    }
 }
 
 /// Registers the chat input box's element into the UI registry.
