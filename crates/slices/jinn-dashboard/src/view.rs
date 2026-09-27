@@ -151,8 +151,8 @@ fn is_truncated(name: &str, max: u16) -> bool {
 /// Paints the selected row's full name over the row, breaking the
 /// Name column's width so the whole value is readable.
 ///
-/// `y` is the buffer row the table actually drew this entry on; the
-/// caller computes it, because only the caller knows the scroll offset.
+/// `y` is the row's OFFSET WITHIN `area`, not an absolute buffer row.
+/// The caller converts it with [`absolute_y`] when placing the rect.
 fn overlay_selected_name(
     frame: &mut Frame<'_>,
     area: Rect,
@@ -161,11 +161,13 @@ fn overlay_selected_name(
     y: u16,
 ) {
     let width = area.width.saturating_sub(NAME_X);
-    if width == 0 || y >= area.height {
+    // `y` is area-relative; the buffer wants an absolute row.
+    let Some(y) = absolute_y(area, y) else { return };
+    if width == 0 {
         return;
     }
     let overlay_area = Rect {
-        x: NAME_X,
+        x: NAME_X + area.x,
         y,
         width,
         height: 1,
@@ -195,13 +197,26 @@ const HIGHLIGHT: u16 = 2;
 const COLUMN_SPACING: u16 = 2;
 const NAME_X: u16 = HIGHLIGHT + STATE_COL + COLUMN_SPACING;
 
-/// The buffer row the table draws data row `index` on, accounting for
-/// the header row and the scroll offset. `None` when the row is scrolled
-/// out of the viewport — there is nothing to overlay in that case.
+/// The row the table draws data row `index` on, RELATIVE TO `area`.
+/// `None` when the row is scrolled out of the viewport — there is
+/// nothing to overlay in that case.
 fn row_y(area: Rect, index: usize, offset: usize) -> Option<u16> {
     let relative = index.checked_sub(offset)?;
     let y = 1 + u16::try_from(relative).ok()?;
     (y < area.height).then_some(y)
+}
+
+/// Converts an area-relative row into an absolute buffer row, rejecting
+/// anything past the area's bottom edge.
+///
+/// The view's area does NOT start at the buffer origin. The app hands
+/// the dashboard the content region below the tab bar, so `area.y` is 1.
+/// Treating a relative row as absolute therefore puts the overlay one
+/// row too high, on the header directly above the cursor row it is
+/// meant to extend.
+fn absolute_y(area: Rect, relative: u16) -> Option<u16> {
+    let y = area.y.checked_add(relative)?;
+    (y < area.y.saturating_add(area.height)).then_some(y)
 }
 
 /// Renders the empty-state placeholder.
@@ -843,6 +858,115 @@ mod layout_tests {
             !buf.contains("a-note-that-should-be-covered"),
             "the overlay covers its own row's notes: {buf}"
         );
+    }
+
+    /// The real geometry: the app hands the dashboard the content region
+    /// BELOW the tab bar, so the area starts at y=1, not y=0.
+    ///
+    /// Every other overlay test renders at the buffer origin, which is
+    /// why an overlay drawn one row HIGH went unnoticed: relative and
+    /// absolute rows coincide at y=0 and only diverge below it. This is
+    /// the test that pins the overlay to the cursor row in the layout
+    /// the app actually uses.
+    #[rstest::rstest]
+    fn the_overlay_lands_on_the_cursor_row_not_the_one_above() {
+        // Given a content area that starts below a 1-row tab bar.
+        let area = Rect::new(0, 1, WIDTH, 8);
+        let mut slice = DashboardState::new();
+        let long = "jinn.discovery/0199a3b2-1234-7abc-8def-0123456789ab";
+        slice.mark_running(long, None);
+        slice.mark_running("inference", None);
+        slice.select_first();
+
+        // When rendering.
+        let theme = default_theme();
+        let cx = ViewCx { theme: &theme };
+        let (mut terminal, _area) = setup_term(WIDTH, 9);
+        terminal
+            .draw(|frame| {
+                let mut view = DashboardView::new();
+                view.render(frame, area, &cx, &slice);
+            })
+            .expect("render");
+
+        // Then the header (the first row of the area, buffer row 1) is
+        // untouched, and the revealed tail sits on the FIRST DATA row
+        // (buffer row 2) — the same row as the cursor marker.
+        let buf = terminal.backend().buffer();
+        let tail_x = NAME_X + NAME_COL;
+        assert_eq!(
+            buf[(tail_x, 2)].fg,
+            theme.focus_accent,
+            "the tail is highlighted on the data row"
+        );
+        assert_ne!(
+            buf[(tail_x, 1)].fg,
+            theme.focus_accent,
+            "the header row must not be overwritten by the overlay"
+        );
+        // And the full name is on the data row, not above it.
+        let row_text = |y: u16| (0..WIDTH).map(|x| buf[(x, y)].symbol()).collect::<String>();
+        assert!(
+            row_text(2).contains(long),
+            "the full name is on the cursor row: {}",
+            row_text(2)
+        );
+        assert!(
+            !row_text(1).contains(long),
+            "and not on the row above: {}",
+            row_text(1)
+        );
+    }
+
+    /// The offset of the content area must not shift the name column
+    /// horizontally either — the overlay starts at the name column, not
+    /// at the buffer's left edge.
+    #[rstest::rstest]
+    fn the_overlay_starts_at_the_name_column_of_an_offset_area() {
+        // Given a content area with a non-zero x and y.
+        let area = Rect::new(4, 2, WIDTH, 8);
+        let mut slice = DashboardState::new();
+        let long = "jinn.discovery/0199a3b2-1234-7abc-8def-0123456789ab";
+        slice.mark_running(long, None);
+        slice.select_first();
+
+        // When rendering.
+        let theme = default_theme();
+        let cx = ViewCx { theme: &theme };
+        let (mut terminal, _area) = setup_term(WIDTH + 4, 10);
+        terminal
+            .draw(|frame| {
+                let mut view = DashboardView::new();
+                view.render(frame, area, &cx, &slice);
+            })
+            .expect("render");
+
+        // Then the name begins at the area's x plus the name column.
+        let buf = terminal.backend().buffer();
+        let row = (0..WIDTH + 4)
+            .map(|x| buf[(x, 3)].symbol())
+            .collect::<String>();
+        assert!(
+            row[usize::from(area.x + NAME_X)..].contains(long),
+            "the name starts at the column, not the area edge: {row}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn absolute_y_shifts_by_the_area_origin_and_rejects_the_bottom_edge() {
+        // Given an area starting below the tab bar.
+        let area = Rect::new(0, 1, 80, 10);
+
+        // Then a relative row is shifted by the origin.
+        assert_eq!(absolute_y(area, 0), Some(1));
+        assert_eq!(absolute_y(area, 1), Some(2));
+        // And the area's LAST row is still inside it: rows 1..=10.
+        assert_eq!(absolute_y(area, 9), Some(10));
+        // And anything past that bottom edge is rejected.
+        assert_eq!(absolute_y(area, 10), None);
+        assert_eq!(absolute_y(area, 100), None);
+        // And an origin-anchored area is the identity.
+        assert_eq!(absolute_y(Rect::new(0, 0, 80, 10), 3), Some(3));
     }
 
     #[rstest::rstest]
