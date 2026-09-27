@@ -15,19 +15,14 @@ pub fn render_border(frame: &mut Frame<'_>, border: Rect, ctx: &RenderCtx) {
     let theme = &ctx.state.frontend.theme;
 
     let accent = match focus_scope {
-        jinn_slices::FocusScope::Normal => jinn_slices::scope_hints::Accent::Focused,
-        jinn_slices::FocusScope::Dynamic(id) => ctx
-            .slices
-            .scope_hints()
-            .map_or(jinn_slices::scope_hints::Accent::Unfocused, |hints| {
-                hints.hint(&id).accent
-            }),
-        _ => jinn_slices::scope_hints::Accent::Unfocused,
+        jinn_slices::FocusScope::Normal => jinn_slices::Accent::Focused,
+        jinn_slices::FocusScope::Dynamic(id) => ctx.slices.hint_for(&id).accent,
+        _ => jinn_slices::Accent::Unfocused,
     };
     let border_color = match accent {
-        jinn_slices::scope_hints::Accent::Focused => theme.focus_accent,
-        jinn_slices::scope_hints::Accent::Acting => theme.sidebar_resize_accent,
-        jinn_slices::scope_hints::Accent::Unfocused => theme.border_unfocused,
+        jinn_slices::Accent::Focused => theme.focus_accent,
+        jinn_slices::Accent::Acting => theme.sidebar_resize_accent,
+        jinn_slices::Accent::Unfocused => theme.border_unfocused,
     };
     let border_style = Style::default().fg(border_color);
     for y in border.y..(border.y + border.height) {

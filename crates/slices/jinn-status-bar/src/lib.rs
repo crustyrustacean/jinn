@@ -45,11 +45,8 @@ pub fn activate(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
 
     // The status bar's own screen region. The element holds no animation
     // state, so the draw function needs no interior mutability.
-    if let Some(slots) = host
-        .slices()
-        .render_slots::<jinn_kernel::common::app_state::AppState>()
-    {
-        slots.register(
+    host.slices()
+        .register_render_slot::<jinn_kernel::common::app_state::AppState>(
             jinn_slices::Region::StatusBar,
             std::sync::Arc::new(
                 |frame: &mut ratatui::Frame<'_>,
@@ -60,7 +57,6 @@ pub fn activate(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
                 },
             ),
         );
-    }
 }
 
 /// Registers the status bar element into the UI registry.

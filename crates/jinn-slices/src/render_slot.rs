@@ -26,7 +26,6 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
-use parking_lot::RwLock;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 
@@ -200,53 +199,46 @@ impl<S: 'static> fmt::Debug for DrawEntry<S> {
 }
 
 /// The registry of slice-registered draw functions, keyed by region.
+///
+/// The collection is the cell payload and nothing more: the cell that
+/// holds it supplies the lock, so this type carries no interior
+/// mutability of its own. Callers reach it through
+/// [`Slices::register_render_slot`](crate::Slices::register_render_slot)
+/// and [`Slices::draw_for`](crate::Slices::draw_for) rather than
+/// holding a handle to it.
 #[derive(Debug)]
 pub struct RenderSlots<S: 'static> {
-    slots: Arc<RwLock<HashMap<Region, DrawEntry<S>>>>,
+    slots: HashMap<Region, DrawEntry<S>>,
 }
 
-impl<S: 'static> Clone for RenderSlots<S> {
-    /// A handle to the same registry, not a copy of it — a slice and the
-    /// render pass each hold one and both observe every registration.
-    fn clone(&self) -> Self {
-        Self {
-            slots: Arc::clone(&self.slots),
-        }
-    }
-}
-
+// Hand-written rather than derived: a derive would demand `S: Default`,
+// and the payload's element type is what is empty, not the state type.
 impl<S: 'static> Default for RenderSlots<S> {
     fn default() -> Self {
         Self {
-            slots: Arc::new(RwLock::new(HashMap::new())),
+            slots: HashMap::new(),
         }
     }
 }
 
 impl<S: 'static> RenderSlots<S> {
-    /// Creates an empty registry.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Registers the draw function for `region`, replacing any previous
     /// one. Called once per region at slice activation; a slice that
     /// claims no region registers nothing.
-    pub fn register(&self, region: Region, draw: DrawFn<S>) {
-        self.slots.write().insert(region, DrawEntry(draw));
+    pub(crate) fn register(&mut self, region: Region, draw: DrawFn<S>) {
+        self.slots.insert(region, DrawEntry(draw));
     }
 
     /// Returns the draw function registered for `region`, if any.
     #[must_use]
-    pub fn draw(&self, region: Region) -> Option<DrawFn<S>> {
-        self.slots.read().get(&region).map(|entry| entry.0.clone())
+    pub(crate) fn draw(&self, region: Region) -> Option<DrawFn<S>> {
+        self.slots.get(&region).map(|entry| entry.0.clone())
     }
 
     /// The regions that have a draw function, sorted for stable display.
     #[must_use]
-    pub fn registered(&self) -> Vec<Region> {
-        let mut regions: Vec<Region> = self.slots.read().keys().copied().collect();
+    pub(crate) fn registered(&self) -> Vec<Region> {
+        let mut regions: Vec<Region> = self.slots.keys().copied().collect();
         regions.sort();
         regions
     }
@@ -262,7 +254,7 @@ mod tests {
     #[test]
     fn register_then_resolve_roundtrips_region() {
         // Given an empty draw registry.
-        let slots: RenderSlots<u8> = RenderSlots::new();
+        let mut slots = RenderSlots::<u8>::default();
 
         // When registering a draw function for a region.
         slots.register(
@@ -280,7 +272,7 @@ mod tests {
     #[test]
     fn reregister_replaces_the_previous_draw_fn() {
         // Given a registry with one draw function for a region.
-        let slots: RenderSlots<u8> = RenderSlots::new();
+        let mut slots = RenderSlots::<u8>::default();
         slots.register(Region::ChatLog, std::sync::Arc::new(|_, _, _, _| {}));
         slots.register(Region::ChatLog, std::sync::Arc::new(|_, _, _, _| {}));
 
@@ -316,7 +308,7 @@ mod tests {
     #[test]
     fn empty_registry_reports_no_registered_regions() {
         // Given an empty draw registry.
-        let slots: RenderSlots<u8> = RenderSlots::new();
+        let slots = RenderSlots::<u8>::default();
 
         // When enumerating the registered regions.
         let registered = slots.registered();

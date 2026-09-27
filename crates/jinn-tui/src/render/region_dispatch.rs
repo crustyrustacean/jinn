@@ -8,7 +8,6 @@
 
 use jinn_kernel::RenderCtx;
 use jinn_kernel::common::app_state::AppState;
-use jinn_slices::render_slot::RenderSlots;
 use jinn_slices::{DrawTarget, Region};
 use ratatui::Frame;
 
@@ -19,14 +18,14 @@ use ratatui::Frame;
 /// the startup pairing check exists. Selection is the draw function's
 /// own decision: it pushes onto `rects` when the region supports it.
 pub fn draw_region(
-    slots: &RenderSlots<AppState>,
+    slices: &jinn_slices::Slices,
     region: Region,
     frame: &mut Frame<'_>,
     target: DrawTarget,
     ctx: &RenderCtx<'_>,
     rects: &mut Vec<ratatui::layout::Rect>,
 ) {
-    if let Some(draw) = slots.draw(region) {
+    if let Some(draw) = slices.draw_for::<AppState>(region) {
         draw(frame, target, ctx, rects);
     }
 }

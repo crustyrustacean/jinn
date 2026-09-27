@@ -55,12 +55,11 @@ pub(crate) fn activate_render_slices(app: &mut crate::TuiApp) {
     // activation would abort on a taken slot. Registering the draw
     // functions is the part the builder does not do, and it is the part
     // these tests assert on.
-    if let Some(slots) = services
-        .slices
-        .render_slots::<jinn_kernel::common::app_state::AppState>()
-    {
-        jinn_chat_log_view::render_regions::register(&slots);
-    }
+    jinn_chat_log_view::render_regions::register(&services.slices);
+    // The chat input region, which owns the `@path` popup's draw function.
+    // Same reason as the chat log's: activation does not run here, and a
+    // region nobody registered paints nothing.
+    jinn_chat_input::render_regions::register(&services.slices);
 }
 
 #[rstest::rstest]
@@ -645,4 +644,49 @@ fn grow_session_to_long_history(app: &crate::TuiApp) {
             .active_session_mut()
             .push_entry(ChatEntry::assistant(format!("reply {i}")));
     }
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn the_at_path_popup_draws_its_rows_from_the_file_picker_cell() {
+    // Given a TuiApp whose input buffer holds an open `@` popup and whose
+    // file-picker cell is seeded with a directory listing.
+    let mut app = render_test_app().await;
+    {
+        let state = app.core.state.clone();
+        let mut wstate = state.write();
+        let _ = jinn_chat_input::intent::handle_insert_char('@', &mut wstate);
+        wstate.frontend.update_file_picker(|picker| {
+            *picker = jinn_chat_input_msg::FilePickerState::with_entries(vec![
+                jinn_chat_input_msg::FileEntry {
+                    name: "alpha.txt".into(),
+                    is_dir: false,
+                },
+                jinn_chat_input_msg::FileEntry {
+                    name: "subdir".into(),
+                    is_dir: true,
+                },
+            ]);
+            picker.loading = false;
+        });
+    }
+    let (mut terminal, _area) = setup_term(80, 24);
+
+    // When rendering.
+    terminal.draw(|frame| app.render(frame)).unwrap();
+
+    // Then the popup painted the cell's entries as real rows.
+    let rows = jinn_testutil::buffer_rows(terminal.backend().buffer(), 80, 24);
+    let file_row = rows.iter().find(|r| r.contains("alpha.txt"));
+    assert!(file_row.is_some(), "entry row missing: {rows:?}");
+    // And the directory entry is marked as one.
+    assert!(
+        rows.iter().any(|r| r.contains("subdir/")),
+        "dir row missing its trailing slash: {rows:?}"
+    );
+    // And the in-flight placeholder is gone, because loading is false.
+    assert!(
+        !rows.iter().any(|r| r.contains("<loading")),
+        "spinner shown though the listing landed: {rows:?}"
+    );
 }

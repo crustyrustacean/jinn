@@ -19,9 +19,6 @@
 //! and the mechanism is data.
 
 use std::collections::HashMap;
-use std::sync::Arc;
-
-use parking_lot::RwLock;
 
 use crate::slice_scope::SliceScopeId;
 
@@ -99,21 +96,22 @@ impl ScopeRenderHint {
 }
 
 /// The registry of per-scope render hints, keyed by scope.
-#[derive(Clone, Debug, Default)]
+///
+/// The collection is the cell payload and nothing more: the cell that
+/// holds it supplies the lock, so this type carries no interior
+/// mutability of its own. Callers reach it through
+/// [`Slices::register_scope_hint`](crate::Slices::register_scope_hint)
+/// and [`Slices::hint_for`](crate::Slices::hint_for) rather than
+/// holding a handle to it.
+#[derive(Debug, Default)]
 pub struct ScopeHints {
-    hints: Arc<RwLock<HashMap<SliceScopeId, ScopeRenderHint>>>,
+    hints: HashMap<SliceScopeId, ScopeRenderHint>,
 }
 
 impl ScopeHints {
-    /// Creates an empty registry.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Registers the hint for `scope`, replacing any previous one.
-    pub fn register(&self, scope: SliceScopeId, hint: ScopeRenderHint) {
-        self.hints.write().insert(scope, hint);
+    pub(crate) fn register(&mut self, scope: SliceScopeId, hint: ScopeRenderHint) {
+        self.hints.insert(scope, hint);
     }
 
     /// Returns the hint registered for `scope`.
@@ -122,25 +120,16 @@ impl ScopeHints {
     /// never registers behaves as an ordinary unfocused scope rather
     /// than as a wiring failure.
     #[must_use]
-    pub fn hint(&self, scope: &SliceScopeId) -> ScopeRenderHint {
-        self.hints.read().get(scope).copied().unwrap_or_default()
-    }
-
-    /// The scopes that have a hint, sorted for stable display.
-    #[must_use]
-    pub fn registered(&self) -> Vec<SliceScopeId> {
-        let mut scopes: Vec<SliceScopeId> = self.hints.read().keys().cloned().collect();
-        scopes.sort();
-        scopes
+    pub(crate) fn hint(&self, scope: &SliceScopeId) -> ScopeRenderHint {
+        self.hints.get(scope).copied().unwrap_or_default()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::Accent;
-    use super::ScopeHints;
     use super::ScopeRenderHint;
-    use crate::SliceScopeId;
+    use crate::{SliceScopeId, Slices};
 
     fn scope(slice: &str, name: &str) -> SliceScopeId {
         SliceScopeId::new(slice, name)
@@ -150,11 +139,11 @@ mod tests {
     #[test]
     fn unregistered_scope_reads_as_the_default_hint() {
         // Given a registry with no registration for a scope.
-        let hints = ScopeHints::new();
+        let slices = Slices::new();
         let target = scope("test", "unregistered");
 
         // When reading the hint.
-        let hint = hints.hint(&target);
+        let hint = slices.hint_for(&target);
 
         // Then it is the default: unfocused, no suppression.
         assert_eq!(hint, ScopeRenderHint::default());
@@ -166,18 +155,18 @@ mod tests {
     #[test]
     fn register_then_resolve_roundtrips_scope() {
         // Given a registry with a hint registered for a scope.
-        let hints = ScopeHints::new();
+        let slices = Slices::new();
         let target = scope("test", "acting");
-        hints.register(target.clone(), ScopeRenderHint::acting());
+        slices.register_scope_hint(target.clone(), ScopeRenderHint::acting());
 
         // When reading the hint back.
-        let hint = hints.hint(&target);
+        let hint = slices.hint_for(&target);
 
         // Then the accent round-trips.
         assert_eq!(hint.accent, Accent::Acting);
         // And a sibling scope is unaffected.
         assert_eq!(
-            hints.hint(&scope("test", "other")).accent,
+            slices.hint_for(&scope("test", "other")).accent,
             Accent::Unfocused
         );
     }
@@ -198,16 +187,32 @@ mod tests {
     #[test]
     fn reregister_replaces_the_previous_hint() {
         // Given a registry with one hint for a scope.
-        let hints = ScopeHints::new();
+        let slices = Slices::new();
         let target = scope("test", "moving");
-        hints.register(target.clone(), ScopeRenderHint::focused());
+        slices.register_scope_hint(target.clone(), ScopeRenderHint::focused());
 
         // When re-registering a different hint for the same scope.
-        hints.register(target.clone(), ScopeRenderHint::acting());
+        slices.register_scope_hint(target.clone(), ScopeRenderHint::acting());
 
         // Then the later hint wins.
-        assert_eq!(hints.hint(&target).accent, Accent::Acting);
-        // And the scope still appears once in the enumeration.
-        assert_eq!(hints.registered(), vec![target]);
+        assert_eq!(slices.hint_for(&target).accent, Accent::Acting);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn hint_for_a_hint_claiming_a_distinct_state_carries_both_fields() {
+        // Given a registry with a hint that stands a lower overlay down.
+        let slices = Slices::new();
+        let target = scope("test", "rename");
+        slices.register_scope_hint(
+            target.clone(),
+            ScopeRenderHint::focused().suppressing_lower_overlay(),
+        );
+
+        // When reading the hint.
+        let hint = slices.hint_for(&target);
+
+        // Then suppression survives the round trip through the cell.
+        assert!(hint.suppresses_lower_overlay);
     }
 }

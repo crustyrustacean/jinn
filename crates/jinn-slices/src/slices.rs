@@ -12,6 +12,9 @@ use std::sync::Arc;
 
 use parking_lot::RwLock;
 
+use crate::render_slot::Region;
+use crate::route::PublishClosure;
+use crate::scope_hints::ScopeRenderHint;
 use crate::slice_scope::SliceScopeId;
 
 /// Uniquely addresses one slice cell.
@@ -330,48 +333,169 @@ impl Slices {
         self.overlay_selectable.write().insert(scope.clone(), true);
     }
 
-    /// The slice-owned draw registry, resolved at draw context `C`.
+    /// Resolves the shared draw registry at state type `S`, the first
+    /// caller registering it.
     ///
-    /// The render pass instantiates this at the kernel's `RenderCtx`,
-    /// which carries the application state; a slice instantiates it at
-    /// whatever context its own draw function needs. A slice that
-    /// resolves it at a different `C` than the render pass does gets a
-    /// fresh, empty registry for that type — which is the wiring-bug
-    /// surface, not a runtime condition.
-    #[must_use]
-    pub fn render_slots<S: Send + Sync + 'static>(
-        &self,
-    ) -> Option<crate::render_slot::RenderSlots<S>> {
+    /// This is the cell behind [`Self::register_render_slot`] and
+    /// [`Self::draw_for`]; it is private so no caller can hold a handle
+    /// to the payload. A caller that resolves it at a different `S` than
+    /// the render pass does gets a fresh, empty registry for that type —
+    /// which is the wiring-bug surface, not a runtime condition.
+    fn draw_registry<S>(&self) -> Option<crate::cell::TypedCell<crate::render_slot::RenderSlots<S>>>
+    where
+        S: Send + Sync + 'static,
+    {
         self.get_or_register(
             &render_slots_slot(),
-            crate::render_slot::RenderSlots::<S>::new(),
+            crate::render_slot::RenderSlots::<S>::default(),
         )
-        .map(|cell| {
-            let slots = cell.read();
-            slots.clone()
-        })
     }
 
-    /// The per-scope render-hint registry.
+    /// Registers the draw function that paints `region`, replacing any
+    /// previous one. Called once per region at slice activation; a slice
+    /// that claims no region registers nothing.
+    pub fn register_render_slot<S>(&self, region: Region, draw: crate::render_slot::DrawFn<S>)
+    where
+        S: Send + Sync + 'static,
+    {
+        if let Some(cell) = self.draw_registry::<S>() {
+            cell.update(|slots| slots.register(region, draw));
+        }
+    }
+
+    /// Returns the draw function registered for `region`, if any.
+    ///
+    /// `None` means nobody claimed the region, so it paints nothing.
     #[must_use]
-    pub fn scope_hints(&self) -> Option<crate::scope_hints::ScopeHints> {
-        self.get_or_register(&scope_hints_slot(), crate::scope_hints::ScopeHints::new())
-            .map(|cell| {
-                let hints = cell.read();
-                hints.clone()
-            })
+    pub fn draw_for<S>(&self, region: Region) -> Option<crate::render_slot::DrawFn<S>>
+    where
+        S: Send + Sync + 'static,
+    {
+        let cell = self.draw_registry::<S>()?;
+        let slots = cell.read();
+        slots.draw(region)
+    }
+
+    /// The regions that have a draw function, sorted for stable display.
+    ///
+    /// Backs the startup check that reports which regions went
+    /// unregistered; a region no slice claimed simply does not appear.
+    #[must_use]
+    pub fn registered_regions<S>(&self) -> Vec<Region>
+    where
+        S: Send + Sync + 'static,
+    {
+        let Some(cell) = self.draw_registry::<S>() else {
+            return Vec::new();
+        };
+        let slots = cell.read();
+        slots.registered()
+    }
+
+    /// Resolves the shared per-scope render-hint registry, the first
+    /// caller registering it.
+    ///
+    /// This is the cell behind [`Self::register_scope_hint`] and
+    /// [`Self::hint_for`]; it is private so no caller can hold a handle
+    /// to the payload.
+    fn hint_registry(&self) -> Option<crate::cell::TypedCell<crate::scope_hints::ScopeHints>> {
+        self.get_or_register(
+            &scope_hints_slot(),
+            crate::scope_hints::ScopeHints::default(),
+        )
+    }
+
+    /// Registers what the chat chrome should do while `scope` is
+    /// focused, replacing any previous hint. Called at slice activation.
+    pub fn register_scope_hint(&self, scope: SliceScopeId, hint: ScopeRenderHint) {
+        if let Some(cell) = self.hint_registry() {
+            cell.update(|hints| hints.register(scope, hint));
+        }
+    }
+
+    /// Returns the render hint registered for `scope`.
+    ///
+    /// An unregistered scope yields the default hint, so a scope that
+    /// never registers behaves as an ordinary unfocused scope rather
+    /// than as a wiring failure.
+    #[must_use]
+    pub fn hint_for(&self, scope: &SliceScopeId) -> ScopeRenderHint {
+        let Some(cell) = self.hint_registry() else {
+            return ScopeRenderHint::default();
+        };
+        let hints = cell.read();
+        hints.hint(scope)
+    }
+
+    /// Resolves the shared pre-render hook list at state type `S`, the
+    /// first caller registering it.
+    ///
+    /// This is the cell behind [`Self::push_pre_render_hook`] and
+    /// [`Self::run_pre_render_hooks`]; it is private so no caller can
+    /// hold a handle to the payload. `None` means the slot holds a list
+    /// for a *different* state type, which no workspace path produces.
+    fn pre_render_hook_list<S>(
+        &self,
+    ) -> Option<crate::cell::TypedCell<crate::pre_render::PreRenderHooks<S>>>
+    where
+        S: Send + Sync + 'static,
+    {
+        self.get_or_register(
+            &crate::pre_render::pre_render_hooks_slot(),
+            crate::pre_render::PreRenderHooks::<S>::default(),
+        )
+    }
+
+    /// Appends `hook` to the per-frame write pass, after every hook
+    /// already registered.
+    ///
+    /// Order is part of the contract: a slice that must run before
+    /// another is wired earlier in the boot list.
+    pub fn push_pre_render_hook<S>(&self, hook: crate::pre_render::PreRenderHook<S>)
+    where
+        S: Send + Sync + 'static,
+    {
+        if let Some(cell) = self.pre_render_hook_list::<S>() {
+            cell.update(|hooks| hooks.push(hook));
+        }
+    }
+
+    /// Runs every registered pre-render hook in order against `state`,
+    /// collecting the closures they want published, in the same order.
+    ///
+    /// Takes the state by mutable reference once: the caller holds the
+    /// write lock across the whole pass, so no hook re-acquires it.
+    ///
+    /// The hook list is moved out under the cell's lock, which is then
+    /// released before the first hook runs, and the list is restored in
+    /// front of anything pushed meanwhile. A hook is therefore free to
+    /// resolve cells of its own — a hook that pushed onto this very list
+    /// would deadlock under a lock held across the loop.
+    pub fn run_pre_render_hooks<S>(
+        &self,
+        state: &mut S,
+        ctx: &crate::pre_render::PreRenderCtx<'_>,
+    ) -> Vec<PublishClosure>
+    where
+        S: Send + Sync + 'static,
+    {
+        let Some(cell) = self.pre_render_hook_list::<S>() else {
+            return Vec::new();
+        };
+        let hooks = cell.update(crate::pre_render::PreRenderHooks::take_hooks);
+        let publishes = crate::pre_render::PreRenderHooks::run(&hooks, state, ctx);
+        cell.update(|registered| registered.restore(hooks));
+        publishes
     }
 }
 
 /// The slot key the shared draw registry is stored under.
-#[must_use]
-pub fn render_slots_slot() -> SlotKey {
+pub(crate) fn render_slots_slot() -> SlotKey {
     SlotKey::builtin("jinn", "render-slots")
 }
 
 /// The slot key the shared scope-hint registry is stored under.
-#[must_use]
-pub fn scope_hints_slot() -> SlotKey {
+pub(crate) fn scope_hints_slot() -> SlotKey {
     SlotKey::builtin("jinn", "scope-hints")
 }
 

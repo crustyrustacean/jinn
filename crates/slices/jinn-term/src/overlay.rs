@@ -58,7 +58,7 @@ pub fn register_views(
 /// silent.
 pub fn record_pty_layout(
     state: &mut jinn_kernel::common::app_state::AppState,
-    ctx: &jinn_slices::pre_render::PreRenderCtx<'_>,
+    ctx: &jinn_slices::PreRenderCtx<'_>,
 ) -> Vec<jinn_slices::route::PublishClosure> {
     if !matches!(
         state.frontend.scope(),

@@ -36,11 +36,9 @@
 use std::fmt;
 use std::sync::Arc;
 
-use parking_lot::RwLock;
 use ratatui::layout::Rect;
 
 use crate::route::PublishClosure;
-use crate::slices::Slices;
 
 /// The chat-layout rects a pre-render hook may need.
 ///
@@ -84,7 +82,14 @@ pub type PreRenderHook<S> =
     Arc<dyn Fn(&mut S, &PreRenderCtx<'_>) -> Vec<PublishClosure> + Send + Sync>;
 
 /// A hook wrapped for `Debug` (closures are not `Debug`).
-struct HookEntry<S: 'static>(PreRenderHook<S>);
+pub(crate) struct HookEntry<S: 'static>(PreRenderHook<S>);
+
+impl<S: 'static> HookEntry<S> {
+    /// The registered hook this entry wraps.
+    pub(crate) fn hook(&self) -> &PreRenderHook<S> {
+        &self.0
+    }
+}
 
 impl<S: 'static> Clone for HookEntry<S> {
     fn clone(&self) -> Self {
@@ -104,72 +109,71 @@ impl<S: 'static> fmt::Debug for HookEntry<S> {
 /// ran in a specific order, and two of them write the same state, so
 /// this is an ordered list, not a map. Registration appends; a slice
 /// that must run earlier than another is wired earlier in the boot list.
+///
+/// The list is the cell payload and nothing more: the cell that holds
+/// it supplies the lock, so this type carries no interior mutability of
+/// its own. Callers reach it through
+/// [`Slices::push_pre_render_hook`](crate::Slices::push_pre_render_hook)
+/// and [`Slices::run_pre_render_hooks`](crate::Slices::run_pre_render_hooks)
+/// rather than holding a handle to it.
 #[derive(Debug)]
 pub struct PreRenderHooks<S: 'static> {
-    hooks: Arc<RwLock<Vec<HookEntry<S>>>>,
+    hooks: Vec<HookEntry<S>>,
 }
 
-impl<S: 'static> Clone for PreRenderHooks<S> {
-    /// A handle to the same list, not a copy of it — several slices hold
-    /// one and all of their pushes land in one call order.
-    fn clone(&self) -> Self {
-        Self {
-            hooks: Arc::clone(&self.hooks),
-        }
-    }
-}
-
+// Hand-written rather than derived: a derive would demand `S: Default`,
+// and the payload's element type is what is empty, not the state type.
 impl<S: 'static> Default for PreRenderHooks<S> {
     fn default() -> Self {
-        Self {
-            hooks: Arc::new(RwLock::new(Vec::new())),
-        }
+        Self { hooks: Vec::new() }
     }
 }
 
 impl<S: 'static> PreRenderHooks<S> {
-    /// Creates an empty registry.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Appends `hook` to the call order.
-    pub fn push(&self, hook: PreRenderHook<S>) {
-        self.hooks.write().push(HookEntry(hook));
+    pub(crate) fn push(&mut self, hook: PreRenderHook<S>) {
+        self.hooks.push(HookEntry(hook));
     }
 
-    /// Runs every hook in registration order against `state`, collecting
-    /// the closures they want published, in the same order.
+    /// Moves the call order out, leaving the list empty.
+    ///
+    /// The pass runs on the moved-out list so the cell's lock is not held
+    /// while a hook runs; [`Self::restore`] puts it back.
+    pub(crate) fn take_hooks(&mut self) -> Vec<HookEntry<S>> {
+        std::mem::take(&mut self.hooks)
+    }
+
+    /// Restores a taken call order in front of anything registered since.
+    pub(crate) fn restore(&mut self, taken: Vec<HookEntry<S>>) {
+        self.hooks.splice(0..0, taken);
+    }
+
+    /// Runs `hooks` in order against `state`, collecting the closures they
+    /// want published, in the same order.
     ///
     /// Takes the state by mutable reference once: the caller holds the
-    /// write lock across the whole pass, so no hook re-acquires it and
-    /// no hook can block on it.
-    pub fn run(&self, state: &mut S, ctx: &PreRenderCtx<'_>) -> Vec<PublishClosure> {
-        let hooks = self.hooks.read().clone();
+    /// write lock across the whole pass, so no hook re-acquires it and no
+    /// hook can block on it.
+    ///
+    /// The caller must have released the cell's lock before calling — a
+    /// hook is free to resolve this very cell, and one running under its
+    /// own write guard would deadlock the moment it did.
+    pub(crate) fn run(
+        hooks: &[HookEntry<S>],
+        state: &mut S,
+        ctx: &PreRenderCtx<'_>,
+    ) -> Vec<PublishClosure> {
         let mut publishes = Vec::new();
-        for hook in hooks {
-            publishes.extend((hook.0)(state, ctx));
+        for entry in hooks {
+            publishes.extend((entry.hook())(state, ctx));
         }
         publishes
-    }
-
-    /// How many hooks are registered.
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.hooks.read().len()
-    }
-
-    /// Whether no hook is registered.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
     }
 }
 
 /// The slot key the shared pre-render hook list is stored under.
 ///
-/// The list is a [`Slices`] cell rather than a new field on `Services`
+/// The list is a [`Slices`](crate::Slices) cell rather than a new field on `Services`
 /// or on [`SliceHost`](crate::SliceHost): the cell registry already
 /// mints one shared handle to a value several slices push into, which
 /// is exactly what a hook list is. Keeping it there means the seam
@@ -181,35 +185,26 @@ pub fn pre_render_hooks_slot() -> crate::slices::SlotKey {
     crate::slices::SlotKey::builtin("jinn", "pre-render-hooks")
 }
 
-impl Slices {
-    /// The shared pre-render hook list, resolved at state type `S`.
-    ///
-    /// The first caller registers the list; every later caller — the
-    /// next slice's `activate`, the render pass — resolves a handle to
-    /// that same list. `None` means the slot holds a list for a
-    /// *different* state type, which no workspace path produces.
-    #[must_use]
-    pub fn pre_render_hooks<S: Send + Sync + 'static>(&self) -> Option<PreRenderHooks<S>> {
-        let cell = self.get_or_register(&pre_render_hooks_slot(), PreRenderHooks::<S>::new())?;
-        let hooks = cell.read();
-        // Clone the handle out from under the guard; the list itself is
-        // shared, so the returned handle keeps observing later pushes.
-        Some(hooks.clone())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
     use super::ChatRects;
     use super::PreRenderCtx;
-    use super::PreRenderHooks;
-    use crate::ConfigLayer;
+    use crate::scope_hints::Accent;
+    use crate::{ConfigLayer, ScopeRenderHint, SliceScopeId, Slices};
 
     #[derive(Default, Debug, PartialEq, Eq)]
     struct FakeState {
         order: Vec<&'static str>,
+    }
+
+    /// Two counters so a pass's own hook and one appended mid-pass are
+    /// told apart by which counter they moved.
+    #[derive(Default)]
+    struct CountingState {
+        earlier: usize,
+        later: usize,
     }
 
     fn ctx(config: &ConfigLayer, chat: Option<ChatRects>) -> PreRenderCtx<'_> {
@@ -227,12 +222,12 @@ mod tests {
     #[rstest::rstest]
     fn hooks_run_in_registration_order() {
         // Given two hooks that each record themselves.
-        let hooks: PreRenderHooks<FakeState> = PreRenderHooks::new();
-        hooks.push(Arc::new(|state: &mut FakeState, _| {
+        let slices = Slices::new();
+        slices.push_pre_render_hook(Arc::new(|state: &mut FakeState, _| {
             state.order.push("first");
             Vec::new()
         }));
-        hooks.push(Arc::new(|state: &mut FakeState, _| {
+        slices.push_pre_render_hook(Arc::new(|state: &mut FakeState, _| {
             state.order.push("second");
             Vec::new()
         }));
@@ -240,7 +235,7 @@ mod tests {
         let config = crate::empty_config_layer();
 
         // When running the pass.
-        let publishes = hooks.run(&mut state, &ctx(config, None));
+        let publishes = slices.run_pre_render_hooks(&mut state, &ctx(config, None));
 
         // Then the hooks ran in registration order.
         assert_eq!(state.order, vec!["first", "second"]);
@@ -251,13 +246,13 @@ mod tests {
     #[rstest::rstest]
     fn hook_receives_the_chat_rects_when_the_layout_has_them() {
         // Given a hook that records the chat rects it was handed.
-        let hooks: PreRenderHooks<FakeState> = PreRenderHooks::new();
+        let slices = Slices::new();
         let expected = ChatRects {
             main: rect(),
             sidebar: rect(),
             input: rect(),
         };
-        hooks.push(Arc::new(
+        slices.push_pre_render_hook(Arc::new(
             move |state: &mut FakeState, ctx: &PreRenderCtx<'_>| {
                 state
                     .order
@@ -269,8 +264,8 @@ mod tests {
         let config = crate::empty_config_layer();
 
         // When running the pass for a chat layout and for a tab layout.
-        hooks.run(&mut state, &ctx(config, Some(expected)));
-        hooks.run(&mut state, &ctx(config, None));
+        slices.run_pre_render_hooks(&mut state, &ctx(config, Some(expected)));
+        slices.run_pre_render_hooks(&mut state, &ctx(config, None));
 
         // Then the hook saw a chat layout and then a tab layout.
         assert_eq!(state.order, vec!["chat", "tab"]);
@@ -279,8 +274,8 @@ mod tests {
     #[rstest::rstest]
     fn hook_writes_reach_the_caller_state() {
         // Given a hook that writes a value into the state it is handed.
-        let hooks: PreRenderHooks<FakeState> = PreRenderHooks::new();
-        hooks.push(Arc::new(|state: &mut FakeState, _| {
+        let slices = Slices::new();
+        slices.push_pre_render_hook(Arc::new(|state: &mut FakeState, _| {
             state.order.push("written");
             Vec::new()
         }));
@@ -288,7 +283,7 @@ mod tests {
         let config = crate::empty_config_layer();
 
         // When running the pass.
-        hooks.run(&mut state, &ctx(config, None));
+        slices.run_pre_render_hooks(&mut state, &ctx(config, None));
 
         // Then the write is visible to the caller.
         assert_eq!(state.order, vec!["written"]);
@@ -297,17 +292,69 @@ mod tests {
     #[rstest::rstest]
     fn empty_registry_runs_nothing() {
         // Given a registry with no hooks.
-        let hooks: PreRenderHooks<FakeState> = PreRenderHooks::new();
+        let slices = Slices::new();
         let mut state = FakeState::default();
         let config = crate::empty_config_layer();
 
         // When running the pass.
-        let publishes = hooks.run(&mut state, &ctx(config, None));
+        let publishes = slices.run_pre_render_hooks(&mut state, &ctx(config, None));
 
         // Then nothing ran and nothing published.
-        assert!(hooks.is_empty());
-        assert_eq!(hooks.len(), 0);
         assert!(publishes.is_empty());
         assert!(state.order.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn a_hook_may_resolve_a_cell_while_the_pass_runs() {
+        // Given a hook that resolves the scope-hint cell from inside the
+        // pass — the shape the chat-log slice's overlay check has.
+        let slices = Slices::new();
+        let registry = slices.clone();
+        let target = SliceScopeId::new("test", "resolving");
+        slices.register_scope_hint(target.clone(), ScopeRenderHint::acting());
+        slices.push_pre_render_hook(Arc::new(move |state: &mut FakeState, _| {
+            let hint = registry.hint_for(&target);
+            state.order.push(match hint.accent {
+                Accent::Focused => "focused",
+                Accent::Acting => "acting",
+                Accent::Unfocused => "unfocused",
+            });
+            Vec::new()
+        }));
+        let mut state = FakeState::default();
+        let config = crate::empty_config_layer();
+
+        // When running the pass.
+        slices.run_pre_render_hooks(&mut state, &ctx(config, None));
+
+        // Then the hook read the cell rather than deadlocking on it.
+        assert_eq!(state.order, vec!["acting"]);
+    }
+
+    #[rstest::rstest]
+    fn a_hook_that_registers_another_hook_runs_on_the_next_pass() {
+        // Given a hook that appends a second hook to the same list.
+        let slices = Slices::new();
+        let registry = slices.clone();
+        let later: super::PreRenderHook<CountingState> =
+            Arc::new(|state: &mut CountingState, _| {
+                state.later += 1;
+                Vec::new()
+            });
+        slices.push_pre_render_hook(Arc::new(move |state: &mut CountingState, _| {
+            state.earlier += 1;
+            registry.push_pre_render_hook(Arc::clone(&later));
+            Vec::new()
+        }));
+        let mut state = CountingState::default();
+        let config = crate::empty_config_layer();
+
+        // When running the pass twice.
+        slices.run_pre_render_hooks(&mut state, &ctx(config, None));
+        slices.run_pre_render_hooks(&mut state, &ctx(config, None));
+
+        // Then the appended hook ran on the following pass, not this one.
+        assert_eq!(state.earlier, 2);
+        assert_eq!(state.later, 1);
     }
 }

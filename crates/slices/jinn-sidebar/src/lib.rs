@@ -63,15 +63,8 @@ pub fn activate(
     // scope stands a lower overlay down) and the per-frame write hooks
     // that record this slice's geometry. Stated here, once, so the
     // composition layer never matches a sidebar scope by name.
-    if let Some(hints) = host.slices().scope_hints() {
-        render_wiring::register_hints(&hints);
-    }
-    if let Some(hooks) = host
-        .slices()
-        .pre_render_hooks::<jinn_kernel::common::app_state::AppState>()
-    {
-        render_wiring::register_pre_render_hooks(&hooks);
-    }
+    render_wiring::register_hints(host.slices());
+    render_wiring::register_pre_render_hooks(host.slices());
 
     // The sidebar's column, and the surfaces that overflow it. Two
     // registrations, because they are two different draws: the column is
@@ -84,16 +77,14 @@ pub fn activate(
     // while this is the only registrant of the region. A second slice
     // registering here brings a `u16` priority per registration, and the
     // layer orders by it with ties broken by call order.
-    if let Some(slots) = host.slices().render_slots::<AppState>() {
-        slots.register(
-            jinn_slices::Region::Sidebar,
-            render_wiring::column_draw_fn(),
-        );
-        slots.register(
-            jinn_slices::Region::FloatingSurfaces,
-            render_wiring::floating_surfaces_draw_fn(),
-        );
-    }
+    host.slices().register_render_slot::<AppState>(
+        jinn_slices::Region::Sidebar,
+        render_wiring::column_draw_fn(),
+    );
+    host.slices().register_render_slot::<AppState>(
+        jinn_slices::Region::FloatingSurfaces,
+        render_wiring::floating_surfaces_draw_fn(),
+    );
 
     // The sessions-cursor clamp actor: trouper, fed by the forward
     // route staged below. Subscribe is the readiness point — through

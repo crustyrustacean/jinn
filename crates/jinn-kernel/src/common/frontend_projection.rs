@@ -2,10 +2,13 @@
 //!
 //! Each projection keeps a mutation closure inside one application-state write
 //! lock while exposing the existing operation wrappers for its domain.
+//!
+//! Cell-backed state is the exception: the `@path` file popup resolves
+//! through its own cell, so reaching it never takes the application-state
+//! lock at all.
 
 use crate::common::state::State;
 use crate::state::frontend_state::FrontendState;
-use jinn_chat_input_msg::FilePickerState;
 use jinn_preferences_config::app_state_file::AppStateFile;
 
 /// Narrow write handle to the frontend's persisted view state.
@@ -15,22 +18,12 @@ use jinn_preferences_config::app_state_file::AppStateFile;
 /// not — it is read through the configuration layer, never cached here.
 pub struct FrontendStateOps<'a>(&'a mut FrontendState);
 
-/// Narrow write handle to the file-picker state.
-pub struct FilePickerOps<'a>(&'a mut FilePickerState);
-
 /// Narrow write handle to persisted application state.
 pub struct AppStateOps<'a>(&'a mut AppStateFile);
 
 impl FrontendStateOps<'_> {
     /// Mutably access the whole frontend state.
     pub fn frontend(&mut self) -> &mut FrontendState {
-        self.0
-    }
-}
-
-impl FilePickerOps<'_> {
-    /// Mutably access the file-picker state.
-    pub fn file_picker(&mut self) -> &mut FilePickerState {
         self.0
     }
 }
@@ -64,14 +57,20 @@ impl State {
         f(&mut AppStateOps(&mut app.frontend.app_state))
     }
 
-    /// Mutate file-picker state through [`FilePickerOps`].
-    pub fn with_file_picker<R, F>(&self, f: F) -> R
+    /// Mutate the `@path` file popup's state, returning `f`'s result.
+    ///
+    /// The popup lives in a cell, so this resolves it through the
+    /// frontend's attached slice registry rather than through the
+    /// application-state write lock — reaching the payload no longer
+    /// contends with the render pass for `AppState`. `None` means the
+    /// chat-input slice was never activated.
+    pub fn with_file_picker<R, F>(&self, f: F) -> Option<R>
     where
-        F: FnOnce(&mut FilePickerOps<'_>) -> R,
+        R: Sized,
+        F: FnOnce(&mut jinn_chat_input_msg::FilePickerState) -> R,
     {
-        let mut guard = self.write_lock();
-        let app = &mut *guard;
-        f(&mut FilePickerOps(&mut app.frontend.file_picker))
+        let guard = self.read();
+        guard.frontend.update_file_picker(f)
     }
 }
 
