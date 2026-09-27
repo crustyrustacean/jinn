@@ -163,6 +163,9 @@ jinn-chat-input = { workspace = true }
 jinn-chat-log-view = { workspace = true }
 jinn-scope-focus = { workspace = true }
 jinn-status-bar = { workspace = true }
+jinn-context = { workspace = true }
+jinn-turn-dispatch-msg = { workspace = true }
+uuid = { workspace = true }
 jinn-testutil = { workspace = true }
 jinn-theme = { workspace = true }
 ratatui = { workspace = true }

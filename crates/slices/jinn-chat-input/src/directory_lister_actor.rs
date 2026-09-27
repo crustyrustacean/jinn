@@ -6,9 +6,9 @@ use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 
-use crate::common::actor_deps::{ActorDeps, BusPublish};
-use crate::common::services::bus_service::BusService;
-use crate::common::state::State;
+use jinn_domain::common::actor_deps::{ActorDeps, BusPublish};
+use jinn_domain::common::services::bus_service::BusService;
+use jinn_domain::common::state::State;
 
 /// Dependencies for [`DirectoryListerActor`].
 #[derive(Clone)]

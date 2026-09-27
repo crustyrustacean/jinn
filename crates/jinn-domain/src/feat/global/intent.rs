@@ -1,8 +1,8 @@
 //! Global intent handlers - quit, toggle which-key, and interrupt.
 
 use crate::common::app_state::AppState;
-use crate::feat::chat_input::ChatInputBoxState;
 use crate::protocol::{IntentResult, KernelIntent};
+use jinn_chat_input_msg::ChatInputBoxState;
 use jinn_core_types::SessionId;
 use jinn_inference_msg::CancelStream;
 

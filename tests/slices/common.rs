@@ -37,6 +37,7 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_domain::Services)
     let mut ui_registry = jinn_domain::AppUiRegistry::new();
     jinn_domain::register_all_ui_elements(&mut ui_registry);
     jinn_status_bar::register(&mut ui_registry);
+    jinn_chat_input::register(&mut ui_registry);
 
     // Slice activation on the ambient runtime (test path is async).
     // `Services` itself is mutated: the viewport is the render-side view
@@ -152,6 +153,9 @@ fn activate_scope_focus(services: &mut jinn_domain::Services) {
 }
 
 fn activate_chat_input(services: &mut jinn_domain::Services) {
+    // `Services` is cheap to clone (Arc fields); the clone side-steps the
+    // host's mutable viewport borrow, matching the production wiring.
+    let services_snapshot = services.clone();
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
         &mut services.viewport,
@@ -159,7 +163,11 @@ fn activate_chat_input(services: &mut jinn_domain::Services) {
         &services.key_routes,
         &services.trouper_system,
     );
-    jinn_chat_input::activate(&mut host);
+    let deps = jinn_domain::common::actor_deps::ActorDeps {
+        services: services_snapshot,
+    };
+    let state = jinn_domain::common::state::State::new(jinn_domain::AppState::default());
+    jinn_chat_input::activate(&mut host, deps, &state);
     host.finalize(&|_scope, _hook| {});
 }
 

@@ -6,12 +6,24 @@ edition.workspace = true
 [dependencies]
 jinn-chat-input-msg = { workspace = true }
 jinn-slices = { workspace = true }
+jinn-domain = { workspace = true }
+jinn-config = { workspace = true }
+jinn-context = { workspace = true }
+jinn-context-curation-msg = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-session-msg = { workspace = true }
+jinn-preferences-config = { workspace = true }
+error-stack = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+ratatui = { workspace = true }
+trouper = { workspace = true }
+unicode-segmentation = { workspace = true }
+unicode-width = { workspace = true }
+wherror = { workspace = true }
 
 [dev-dependencies]
-jinn-core-types = { workspace = true }
 rstest = { workspace = true }
-tokio = { workspace = true }
-jinn-domain = { workspace = true }
 
 [lints]
 workspace = true

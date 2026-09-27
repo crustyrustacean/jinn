@@ -97,11 +97,23 @@ fn printable_char_synthesizes_insert_char_in_quake_hook_scope() {
     };
     let intent = wk.handle_key(key_x);
 
-    // Then which-key synthesizes the generic editing intent for the hook
-    // scopes (the handler's hook consult routes it to the slice writer).
-    assert!(
-        matches!(intent, Some(KernelIntent::InsertChar { ch: 'x' })),
-        "printable char must synthesize InsertChar for the slice input hook; got {intent:?}"
+    // Then which-key synthesizes the slice's `insert-char` dynamic intent
+    // for the hook scope (the handler's hook consult routes it to the
+    // slice writer).
+    let Some(KernelIntent::Dynamic(dynamic)) = intent else {
+        panic!(
+            "printable char must synthesize insert-char for the slice input hook; got {intent:?}"
+        );
+    };
+    assert_eq!(
+        dynamic.action, "insert-char",
+        "printable char must synthesize insert-char for the slice input hook; got {dynamic:?}"
+    );
+    // And the character travels in the intent's payload.
+    assert_eq!(
+        String::from_utf8(dynamic.bytes).ok().as_deref(),
+        Some("x"),
+        "the typed character must travel in the intent payload"
     );
 }
 

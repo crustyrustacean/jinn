@@ -55,9 +55,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             // `*_picker_routes.rs` carry the description text that which-key
             // shows; duplicating them here would shadow the slice's row
             // (dispatch is first-match-wins) and freeze the footer labels.
-            // Input - enter input mode
-            .bind("i", KernelIntent::EnterInsertMode, KeyCategory::Input)
-            .bind("<c-j>", KernelIntent::EnterInsertMode, KeyCategory::Input)
+            // Input - enter input mode. The `i` and `<c-j>` keys for this
+            // are the chat input slice's own row (bound in the `Normal`
+            // static scope), not a kernel bind.
             // Navigation - scrolling and tab switching
             .bind("k", KernelIntent::ChatEntrySelectPrev, KeyCategory::Navigation)
             .bind("j", KernelIntent::ChatEntrySelectNext, KeyCategory::Navigation)
@@ -135,43 +135,29 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
         
         // Input scope: typing into the input buffer
         .scope(Scope::Input, |b| {
-            b.bind("<enter>", KernelIntent::SubmitMessage, KeyCategory::Input)
-                .bind("<M-q>", KernelIntent::ToggleInputMode, KeyCategory::Input)
-            .bind("<s-enter>", KernelIntent::InsertChar { ch: '\n' }, KeyCategory::Input)
-            .bind("<c-enter>", KernelIntent::InsertChar { ch: '\n' }, KeyCategory::Input)
-            .bind("<esc>", KernelIntent::EnterNormalMode, KeyCategory::General)
-            .bind("<c-k>", KernelIntent::EnterNormalMode, KeyCategory::General)
-            .bind("<c-c>", KernelIntent::CtrlClear, KeyCategory::General)
+            // Chat input keys are the slice's own route rows, bound into
+            // this scope by `bind_route_rows` after the static binds
+            // (a later bind for the same key+scope replaces the earlier
+            // one). Only the non-chat-input keys the box shares its scope
+            // with are bound here.
+            //
+            // <c-c>: clear the box (or a picker filter, in its own scope).
+            b.bind("<c-c>", KernelIntent::CtrlClear, KeyCategory::General)
             .bind("<c-e>", KernelIntent::EditInput, KeyCategory::Input)
-            // <c-g> consensus one-shot removed (workflow system deprecated)
             // Change CWD - search from session CWD
             .bind("<M-c>", KernelIntent::ChangeCwd { root: CwdRoot::Session }, KeyCategory::Navigation)
             // Change CWD - search from home directory
             .bind("<M-d>", KernelIntent::ChangeCwd { root: CwdRoot::Home }, KeyCategory::Navigation)
             .bind("<f1>", KernelIntent::ToggleWhichkey, KeyCategory::General)
-            .bind("<backspace>", KernelIntent::DeleteGrapheme, KeyCategory::Input)
-            .bind("<left>", KernelIntent::MoveCursorLeft, KeyCategory::Input)
-            .bind("<right>", KernelIntent::MoveCursorRight, KeyCategory::Input)
-            .bind("<home>", KernelIntent::MoveCursorToStart, KeyCategory::Input)
-            .bind("<end>", KernelIntent::MoveCursorToEnd, KeyCategory::Input)
-            .bind("<delete>", KernelIntent::DeleteGraphemeForward, KeyCategory::Input)
-            .bind("<c-left>", KernelIntent::MoveCursorWordLeft, KeyCategory::Input)
-            .bind("<c-right>", KernelIntent::MoveCursorWordRight, KeyCategory::Input)
-            .bind("<up>", KernelIntent::MoveCursorUp, KeyCategory::Input)
-            .bind("<down>", KernelIntent::MoveCursorDown, KeyCategory::Input)
-            .bind("<tab>", KernelIntent::AutocompleteConfirm, KeyCategory::Input)
             .bind("<c-u>", KernelIntent::ScrollUp, KeyCategory::Navigation)
-            .bind("<c-d>", KernelIntent::ScrollDown, KeyCategory::Navigation)
-
-            .bind("<c-j>", KernelIntent::InsertChar { ch: '\n' }, KeyCategory::Input)
-            .catch_all(|key: KeyEvent| {
-                if let Key::Char(c) = key.key {
-                    Some(KernelIntent::InsertChar { ch: c })
-                } else {
-                    None
-                }
-            });
+            .bind("<c-d>", KernelIntent::ScrollDown, KeyCategory::Navigation);
         });
+
+    // The chat input box's printable-character catch-all. It lives here,
+    // not in `keymap_gen`, because it is part of the `Input` scope's
+    // identity: any keymap that resolves typing needs it, including the
+    // one a test builds to assert the scope's invariants.
+    crate::keymap_gen::bind_chat_input_catch_all(&mut keymap);
 
     // No global bindings by design: globals survive every scope's catch-all
     // and would pierce slice capture-mode hooks (stranding the control flag
@@ -311,13 +297,26 @@ mod tests {
         // When pressing `]` in Input scope.
         let intent = wk.handle_key(bracket);
 
-        // Then it resolves to a literal InsertChar(']'), not the jump chord prefix.
-        // The `]c` jump intents are therefore unreachable in Input scope.
+        // Then it resolves to the chat input's `insert-char` action, not
+        // the jump chord prefix. The `]c` jump intents are therefore
+        // unreachable in Input scope.
         let intent = intent.expect("] in Input scope must fire an intent (catch-all)");
-        assert!(
-            matches!(intent, KernelIntent::InsertChar { ch: ']' }),
-            "] in Input scope must insert a literal ], not start the jump chord; got {intent:?}",
-        );
+        match intent {
+            KernelIntent::Dynamic(dynamic) => {
+                assert_eq!(
+                    dynamic.action, "insert-char",
+                    "] in Input scope must insert a literal ], not start the jump chord; got {dynamic:?}",
+                );
+                assert_eq!(
+                    String::from_utf8(dynamic.bytes).ok().as_deref(),
+                    Some("]"),
+                    "the typed character travels in the intent payload",
+                );
+            }
+            other => panic!(
+                "] in Input scope must insert a literal ], not start the jump chord; got {other:?}"
+            ),
+        }
     }
 
     #[rstest::rstest]
