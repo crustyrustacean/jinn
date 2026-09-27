@@ -179,12 +179,10 @@ fn render_base_layers(
         AppFrameLayout::Chat(chat) => {
             tab_bar::render_tab_bar(frame, chat.tab_bar, ctx);
             chat_tab::border::render_border(frame, chat.border, ctx);
-            // The sidebar column: the slice's sections plus the late
-            // overlays it registers (archive-tree prompt, close-session
-            // prompt, session preview, task-list preview).
-            // The column is mouse-selectable only while it holds focus,
-            // which is what `select` carries; the slice decides whether to
-            // register it, the layout decides whether to offer it.
+            // The sidebar column: the slice's section list. It is
+            // mouse-selectable only while it holds focus, which is what
+            // `select` carries; the slice decides whether to register it,
+            // the layout decides whether to offer it.
             let sidebar_select = ctx.state.frontend.is_sidebar().then_some(chat.sidebar);
             if let Some(draw) = slices.draw_for::<AppState>(jinn_slices::Region::Sidebar) {
                 draw(
@@ -201,6 +199,23 @@ fn render_base_layers(
                 jinn_slices::Region::StatusBar,
                 frame,
                 jinn_slices::DrawTarget::new(chat.status_bar),
+                ctx,
+                rects,
+            );
+            // Surfaces that overflow the region anchoring them — the
+            // sidebar's preview popups and confirmation banners reach left
+            // across this layout. They come last so nothing they cover can
+            // paint over them; the which-key popup below still comes after
+            // these, above everything on screen.
+            //
+            // This is the layer's one dispatch. The order within it belongs
+            // to the slice that registered it, and a second registrant brings
+            // a `u16` priority per registration that the layer sorts by.
+            region_dispatch::draw_region(
+                slices,
+                jinn_slices::Region::FloatingSurfaces,
+                frame,
+                jinn_slices::DrawTarget::new(chat.sidebar),
                 ctx,
                 rects,
             );

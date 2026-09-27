@@ -118,6 +118,8 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
     let state_snapshot = ctx.state().clone();
     jinn_sidebar::activate(&mut ctx.host(), state_snapshot);
     let state_snapshot = ctx.state().clone();
+    jinn_export::activate(&mut ctx.host(), state_snapshot);
+    let state_snapshot = ctx.state().clone();
     let services_snapshot = ctx.services().clone();
     jinn_watchdog::activate(&mut ctx.host(), &state_snapshot, services_snapshot);
     let state_snapshot = ctx.state().clone();

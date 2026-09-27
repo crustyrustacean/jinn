@@ -34,6 +34,37 @@ impl MsgHandler<HydrateCompleted> for SessionStoreActor {
 }
 
 impl SessionStoreActor {
+    /// Rebuilds a live session whose capture numbering outranks storage's record.
+    ///
+    /// The store refuses any write whose revision it has already accepted and
+    /// keeps that record for the whole process run, but a rebuilt session's
+    /// counter starts at zero. Without this floor the first save after a load
+    /// is silently skipped and the first archive is rejected — a session that
+    /// can be read but never written again.
+    async fn restore_seeded(&self, snapshot: SessionSnapshot) -> ChatSessionState {
+        let floor = match self
+            .services
+            .session_store
+            .last_accepted_revision(&snapshot.metadata.session_id)
+            .await
+        {
+            Ok(floor) => floor,
+            Err(error) => {
+                // The floor is a best-effort safety net, not the read the load
+                // depends on: a session restored without it behaves exactly as
+                // it did before, so a failure here must not block the load.
+                tracing::warn!(
+                    ?error,
+                    session_id = %snapshot.metadata.session_id,
+                    "could not read the store's last accepted revision; \
+                     restoring with a fresh capture counter"
+                );
+                jinn_session_state::SessionRevision::new(0)
+            }
+        };
+        snapshot.restore_live_above(floor)
+    }
+
     /// Inserts a loaded session and returns its ID.
     pub(crate) fn insert_loaded_session(&self, session: ChatSessionState) -> SessionId {
         let session_id = session.session_id().clone();
@@ -62,7 +93,7 @@ impl SessionStoreActor {
         }
         if let Some(snapshot) = msg.snapshot.clone() {
             let session_id = self.insert_loaded_session({
-                let mut session = snapshot.restore_live();
+                let mut session = self.restore_seeded(snapshot).await;
                 session.mark_interacted();
                 session
             });
@@ -134,7 +165,7 @@ impl SessionStoreActor {
         } else {
             snapshot.metadata.profile.model.clone()
         };
-        let mut session = snapshot.restore_live();
+        let mut session = self.restore_seeded(snapshot).await;
         session.set_model(model);
         session.mark_interacted();
         // The snapshot may have been taken while the session was archived. Loading it

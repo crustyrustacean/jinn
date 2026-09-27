@@ -2467,6 +2467,140 @@ fn submit_compact_slash_command_clears_buffer() {
 }
 
 #[rstest::rstest]
+fn submit_export_slash_command_dispatches_export_command() {
+    // Given a state with "/export" in the buffer.
+    let mut state = AppState::default_with_scope_focus();
+    state.update_active_input(|i| i.insert_text("/export"));
+
+    // When handling SubmitMessage.
+    let result = jinn_chat_input::intent::handle_submit_message(
+        &mut state,
+        jinn_kernel::common::render_ctx::empty_config_layer(),
+    );
+
+    // Then the export command is dispatched.
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("ExportSessionToFile")),
+        "commands were {:?}",
+        result.message_names
+    );
+}
+
+#[rstest::rstest]
+fn submit_export_slash_command_clears_buffer() {
+    // Given a state with "/export" in the buffer.
+    let mut state = AppState::default_with_scope_focus();
+    state.update_active_input(|i| i.insert_text("/export"));
+
+    // When handling SubmitMessage.
+    let _result = jinn_chat_input::intent::handle_submit_message(
+        &mut state,
+        jinn_kernel::common::render_ctx::empty_config_layer(),
+    );
+
+    // Then the buffer is cleared.
+    assert!(
+        state.with_active_input(jinn_chat_input_msg::ChatInputBoxState::is_empty, || {
+            true
+        })
+    );
+}
+
+/// A [`jinn_slices::PublishSink`] that keeps every payload published
+/// through it, so a test can assert on what a command emitted.
+#[derive(Default)]
+struct RecordingSink {
+    published: std::sync::Mutex<Vec<(String, serde_json::Value)>>,
+}
+
+impl jinn_slices::PublishSink for RecordingSink {
+    fn publish_schema(
+        &self,
+        schema_id: trouper::schema::SchemaId,
+        payload: serde_json::Value,
+        _name: &'static str,
+    ) {
+        self.published
+            .lock()
+            .expect("sink lock")
+            .push((format!("{schema_id}"), payload));
+    }
+}
+
+/// The export request a submit produced, decoded from the bus payloads.
+fn export_request(
+    result: jinn_kernel::protocol::IntentResult,
+) -> jinn_export_msg::ExportSessionToFile {
+    let sink = RecordingSink::default();
+    for closure in result.messages {
+        closure(&sink);
+    }
+    let published = sink.published.lock().expect("sink lock");
+    let (_, payload) = published
+        .iter()
+        .find(|(id, _)| id.ends_with("ExportSessionToFile"))
+        .expect("an export request is published");
+    serde_json::from_value(payload.clone()).expect("decodes")
+}
+
+#[rstest::rstest]
+fn submit_export_with_argument_carries_that_path() {
+    // Given a state with "/export notes/session.md" in the buffer.
+    let mut state = AppState::default_with_scope_focus();
+    state.update_active_input(|i| i.insert_text("/export notes/session.md"));
+
+    // When handling SubmitMessage.
+    let result = jinn_chat_input::intent::handle_submit_message(
+        &mut state,
+        jinn_kernel::common::render_ctx::empty_config_layer(),
+    );
+
+    // Then the request carries the typed path, not an empty one.
+    assert_eq!(
+        export_request(result).path,
+        std::path::PathBuf::from("notes/session.md")
+    );
+}
+
+#[rstest::rstest]
+fn submit_export_argument_keeps_spaces_inside_it() {
+    // Given a state with "/export my notes/session.md" in the buffer.
+    let mut state = AppState::default_with_scope_focus();
+    state.update_active_input(|i| i.insert_text("/export my notes/session.md"));
+
+    // When handling SubmitMessage.
+    let result = jinn_chat_input::intent::handle_submit_message(
+        &mut state,
+        jinn_kernel::common::render_ctx::empty_config_layer(),
+    );
+
+    // Then the whole remainder is the path, spaces intact.
+    assert_eq!(
+        export_request(result).path,
+        std::path::PathBuf::from("my notes/session.md")
+    );
+}
+
+#[rstest::rstest]
+fn submit_export_without_argument_carries_an_empty_path() {
+    // Given a state with a bare "/export" in the buffer.
+    let mut state = AppState::default_with_scope_focus();
+    state.update_active_input(|i| i.insert_text("/export"));
+
+    // When handling SubmitMessage.
+    let result = jinn_chat_input::intent::handle_submit_message(
+        &mut state,
+        jinn_kernel::common::render_ctx::empty_config_layer(),
+    );
+
+    // Then the path is empty, which is how the actor picks a default name.
+    assert_eq!(export_request(result).path, std::path::PathBuf::new());
+}
+
+#[rstest::rstest]
 fn tab_completes_name_without_executing() {
     // Given a state with slash autocomplete active ("/" typed, popup showing entries).
     let mut state = AppState::default_with_scope_focus();

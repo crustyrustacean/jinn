@@ -393,6 +393,62 @@ async fn stale_archive_snapshot_is_rejected() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn a_revision_already_archived_is_refused_a_second_time() {
+    // Given a snapshot the store has already archived.
+    let (_dir, store) = make_store().await;
+    let session = make_session(&SessionId::new(), "archived once");
+    let snapshot = session.capture_snapshot();
+    store
+        .archive_snapshots(std::slice::from_ref(&snapshot))
+        .await
+        .expect("archive");
+
+    // When the very same revision is archived again.
+    let result = store.archive_snapshots(&[snapshot]).await;
+
+    // Then the second archive is refused as stale.
+    assert!(result.is_err());
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn last_accepted_revision_reports_the_highest_revision_written() {
+    // Given a session whose second snapshot was the one accepted.
+    let (_dir, store) = make_store().await;
+    let session = make_session(&SessionId::new(), "tracked");
+    let first = session.capture_snapshot();
+    let second = session.capture_snapshot();
+    store.save(&first).await.expect("save first");
+    store.save(&second).await.expect("save second");
+
+    // When the store is asked what it has taken.
+    let floor = store
+        .last_accepted_revision(session.session_id())
+        .await
+        .expect("last accepted revision");
+
+    // Then it reports the second revision, so a reloaded session can resume above it.
+    assert_eq!(floor, second.revision);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn last_accepted_revision_is_zero_for_a_session_never_written() {
+    // Given a store that has never seen this session.
+    let (_dir, store) = make_store().await;
+
+    // When the store is asked what it has taken.
+    let floor = store
+        .last_accepted_revision(&SessionId::new())
+        .await
+        .expect("last accepted revision");
+
+    // Then the floor is zero, which every fresh session already starts above.
+    assert_eq!(floor.get(), 0);
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn load_session_returns_none_for_unknown_id() {
     // Given an empty store.
     let (_dir, store) = make_store().await;

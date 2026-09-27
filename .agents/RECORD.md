@@ -353,3 +353,6 @@ Entries are added or amended **only with human approval**.
 - (slices) The slice registries the render pass reads — draw functions, per-scope render hints, and pre-render hooks — are cell payloads whose collections are guarded by the cell alone, reached through Slices methods rather than through a handle a caller can hold.
 - (slices) The @path file popup's directory listing is a jinn-chat-input cell, written only by the directory-lister actor and by the request-id stamp the intent handler emits.
 - (slices) A cell that the TUI renders from is registered by the slice that owns it and by the TUI test app builder, because the builder does not run slice activation.
+- (storage) A session's snapshot revision is seeded from the store's per-session last-accepted revision when the session is loaded, so post-reload writes are never refused as stale; a core rebuilt from storage otherwise restarts its capture counter at zero.
+- (storage) The store's stale-write guard refuses a save by skipping it and refuses an archive by returning an error, so a failed archive surfaces a status-bar hint naming the session.
+- (session) An archive-tree action archives members that are persisted but absent from the live session map, numbering each one above the store's last-accepted revision rather than a fixed 1.

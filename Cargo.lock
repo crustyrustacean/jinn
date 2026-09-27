@@ -1935,6 +1935,8 @@ dependencies = [
  "jinn-dashboard",
  "jinn-discord",
  "jinn-discord-msg",
+ "jinn-export",
+ "jinn-export-msg",
  "jinn-inference",
  "jinn-inference-msg",
  "jinn-install",
@@ -2088,6 +2090,7 @@ dependencies = [
  "jinn-context",
  "jinn-context-curation-msg",
  "jinn-core-types",
+ "jinn-export-msg",
  "jinn-kernel",
  "jinn-preferences-config",
  "jinn-session-msg",
@@ -2467,6 +2470,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-export"
+version = "1.0.1"
+dependencies = [
+ "base64 0.22.1",
+ "error-stack",
+ "jiff",
+ "jinn-core-types",
+ "jinn-export-msg",
+ "jinn-kernel",
+ "jinn-session-history-msg",
+ "jinn-session-state",
+ "jinn-slices",
+ "jinn-testutil",
+ "pulldown-cmark",
+ "rstest",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "trouper",
+ "unicode-segmentation",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-export-msg"
+version = "1.0.1"
+dependencies = [
+ "jinn-core-types",
+ "jinn-slices",
+ "rstest",
+ "serde",
+ "serde_json",
+ "trouper",
+]
+
+[[package]]
 name = "jinn-inference"
 version = "1.0.1"
 dependencies = [
@@ -2788,6 +2827,7 @@ dependencies = [
  "jinn-core-types",
  "jinn-slices",
  "parking_lot",
+ "regex",
  "rstest",
  "serde",
  "serde_json",
@@ -3191,6 +3231,7 @@ dependencies = [
  "jinn-session-state",
  "jinn-session-store-msg",
  "jinn-slices",
+ "jinn-status-bar-msg",
  "jinn-testutil",
  "jinn-theme",
  "jinn-token-count-msg",

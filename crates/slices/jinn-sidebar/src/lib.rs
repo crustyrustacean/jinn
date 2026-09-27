@@ -66,13 +66,24 @@ pub fn activate(
     render_wiring::register_hints(host.slices());
     render_wiring::register_pre_render_hooks(host.slices());
 
-    // The sidebar's late overlays paint after the chat column, anchored
-    // to the sidebar's own rect. Registering them against the sidebar
-    // region means the render pass has one sidebar call site and never
-    // names a sidebar draw function.
+    // The sidebar's column, and the surfaces that overflow it. Two
+    // registrations, because they are two different draws: the column is
+    // part of the layout and the render pass draws it early, while the
+    // floating surfaces have to land on top of the columns they reach
+    // across. Registering both here is what lets the render pass ask for
+    // a region by role and never name a sidebar draw function.
+    //
+    // The priority a floating surface registers with is a call sequence
+    // while this is the only registrant of the region. A second slice
+    // registering here brings a `u16` priority per registration, and the
+    // layer orders by it with ties broken by call order.
     host.slices().register_render_slot::<AppState>(
         jinn_slices::Region::Sidebar,
         render_wiring::column_draw_fn(),
+    );
+    host.slices().register_render_slot::<AppState>(
+        jinn_slices::Region::FloatingSurfaces,
+        render_wiring::floating_surfaces_draw_fn(),
     );
 
     // The sessions-cursor clamp actor: trouper, fed by the forward

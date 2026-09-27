@@ -70,6 +70,22 @@ pub trait SessionStore: Send + Sync + 'static {
         Ok(())
     }
 
+    /// Returns the highest revision this store has already accepted for a session.
+    ///
+    /// The store refuses a write whose revision it has already taken, and it
+    /// keeps that record for the whole process run. A session rebuilt from
+    /// storage has to start its capture numbering above this value, or its next
+    /// save is silently skipped and its next archive is rejected. Returns
+    /// [`SessionRevision::new(0)`] for a session this store has never written,
+    /// which is the floor a fresh session already starts above.
+    async fn last_accepted_revision(
+        &self,
+        session_id: &SessionId,
+    ) -> Result<crate::snapshot::SessionRevision, Report<SessionStoreError>> {
+        let _ = session_id;
+        Ok(crate::snapshot::SessionRevision::new(0))
+    }
+
     /// Load lightweight summaries for all sessions.
     ///
     /// Returns one [`SessionSummary`] per session, suitable for picker display.
