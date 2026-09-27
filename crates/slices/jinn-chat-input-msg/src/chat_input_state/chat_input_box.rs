@@ -901,8 +901,7 @@ impl Default for ChatInputBoxState {
 }
 
 #[cfg(test)]
-#[path = "chat_input_box_tests.rs"]
-mod chat_input_tests;
+mod chat_input_box_tests;
 
 #[cfg(test)]
 mod tests {

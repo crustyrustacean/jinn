@@ -33,7 +33,6 @@ pub mod tool_types;
 pub mod url_citation;
 
 #[cfg(test)]
-#[path = "chat_entry_tests.rs"]
 mod chat_entry_tests;
 
 pub use actor_lifecycle::ActorLifecycle;

@@ -846,8 +846,7 @@ fn build_streaming_service(
 }
 
 #[cfg(test)]
-#[path = "inference_actor_tests.rs"]
-mod tests;
+mod inference_actor_tests;
 
 #[cfg(test)]
 /// Builds fake [`Services`] over the given bus for struct-direct tests: the
