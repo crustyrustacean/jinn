@@ -83,11 +83,15 @@ pub(crate) fn fuzzy_bytes_to_ranges(indices: &[usize]) -> Vec<std::ops::Range<us
     ranges
 }
 
-/// Computes the popup rectangle for the selection widget.
+/// Computes the popup rectangle for the selection widget, centered within `area`.
 ///
-/// Uses ~20% total horizontal padding (10% each side) and positions the popup
-/// in the top third of the terminal. Height scales with terminal size, capped
-/// at [`PICKER_MAX_HEIGHT_FRAC`] of the terminal height.
+/// Uses ~20% total horizontal padding (10% each side) and centers the popup on
+/// both axes. Height scales with terminal size, capped at
+/// [`PICKER_MAX_HEIGHT_FRAC`] of `area.height`.
+///
+/// The returned rect is positioned relative to `area`'s origin, so the result
+/// is correct for any input rect — including one that is itself an overlay
+/// region rather than the full terminal.
 #[must_use]
 pub fn compute_popup_rect(area: Rect) -> Rect {
     let popup_width = ((f32::from(area.width) * (1.0 - 2.0 * PICKER_H_PAD_FRAC)).ceil() as u16)
@@ -100,10 +104,11 @@ pub fn compute_popup_rect(area: Rect) -> Rect {
     let popup_height = (max_body_rows + 4).min(area.height);
 
     // Integer division is intentional - we're computing cell positions for centering.
+    // The extra cell from an odd leftover space lands on the trailing edge.
     #[expect(clippy::integer_division, reason = "cell positions are integers")]
-    let popup_x = area.width.saturating_sub(popup_width) / 2;
+    let popup_x = area.x + area.width.saturating_sub(popup_width) / 2;
     #[expect(clippy::integer_division, reason = "cell positions are integers")]
-    let popup_y = area.height.saturating_sub(popup_height) / 3; // bias toward top third
+    let popup_y = area.y + area.height.saturating_sub(popup_height) / 2;
 
     Rect::new(popup_x, popup_y, popup_width, popup_height)
 }
@@ -192,13 +197,15 @@ where
         self
     }
 
-    /// Renders the selection popup within the given frame area.
+    /// Renders the selection popup into the given popup rectangle.
     ///
-    /// Computes the popup rectangle, draws the bordered block, filter input,
-    /// separator, scrollable result rows, and optional footer.
-    /// Sets the cursor position for the filter input.
+    /// The caller owns the geometry: `area` is the popup rectangle the slice's
+    /// overlay geometry function produced (see [`compute_popup_rect`]). This
+    /// draws the bordered block, filter input, separator, scrollable result
+    /// rows, and optional footer into it, and sets the cursor position for the
+    /// filter input.
     pub fn render(self, frame: &mut Frame<'_>, area: Rect) {
-        let popup_area = compute_popup_rect(area);
+        let popup_area = area;
 
         // Clear the popup area so content behind it doesn't show through.
         frame.render_widget(Clear, popup_area);

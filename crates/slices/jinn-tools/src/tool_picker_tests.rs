@@ -245,7 +245,9 @@ fn draw_frame(wired: &Wired, area: ratatui::layout::Rect) -> Vec<String> {
         jinn_slices::RenderFacts::new(wired.state.borrow().frontend.theme.clone(), &wired.slices);
     terminal
         .draw(|frame| {
-            crate::tool_picker_render::render_tool_picker(frame, area, &facts);
+            let popup = crate::tool_picker_render::tool_picker_overlay_rect(&area)
+                .expect("geometry fn yields a popup rect");
+            crate::tool_picker_render::render_tool_picker(frame, popup, &facts);
         })
         .expect("draw");
     terminal
@@ -535,7 +537,10 @@ async fn page_down_steps_by_the_rows_the_last_frame_actually_laid_out() {
     // visibly different distance.
     let frame = ratatui::layout::Rect::new(0, 0, 100, 16);
     draw_frame(&wired, frame);
-    let on_screen = crate::tool_picker_viewport::results_viewport(frame);
+    let on_screen = crate::tool_picker_viewport::results_viewport(
+        crate::tool_picker_render::tool_picker_overlay_rect(&frame)
+            .expect("geometry fn yields a popup rect"),
+    );
 
     // When page down is pressed.
     wired.fire("page-tool-picker-down");
@@ -835,6 +840,49 @@ async fn the_status_line_tracks_a_toggle_live() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn the_published_viewport_matches_the_rows_the_drawn_popup_shows() {
+    // Given an open picker with more rows than one frame can show.
+    let many: Vec<Def> = (0..200)
+        .map(|i| Def::plain_owned(format!("t{i:03}"), "A tool".to_owned()))
+        .collect();
+    let wired = Wired::new(many).await;
+    wired.open();
+
+    // When a frame is drawn and the rows the buffer actually shows are counted.
+    let frame = ratatui::layout::Rect::new(0, 0, 100, 30);
+    let popup = crate::tool_picker_render::tool_picker_overlay_rect(&frame)
+        .expect("geometry fn yields a popup rect");
+    let rows = draw_frame(&wired, frame);
+    let drawn_result_rows = count_result_rows(&rows, popup);
+
+    // Then the published viewport equals the drawn result rows, so paging by it
+    // keeps the highlight on screen instead of scrolling it out of view.
+    let published = wired.cell().read().results_viewport;
+    assert_eq!(published, drawn_result_rows);
+}
+
+/// Counts the populated result rows inside a drawn popup, excluding the border,
+/// filter, separator, and footer chrome.
+fn count_result_rows(rows: &[String], popup: ratatui::layout::Rect) -> usize {
+    // The result rows sit below the filter and separator, above the footers.
+    let first_row = usize::from(popup.y) + 3;
+    let last_row = usize::from(popup.y + popup.height) - 3;
+    let inner_width = usize::from(popup.width) - 2;
+    rows.iter()
+        .enumerate()
+        .skip(first_row)
+        .take_while(|(i, _)| *i < last_row)
+        .filter(|(_, line)| {
+            line.chars()
+                .skip(1) // the popup's left border
+                .take(inner_width)
+                .any(|c| !c.is_whitespace())
+        })
+        .count()
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn drawing_a_frame_publishes_the_measured_row_count_for_paging() {
     // Given an open picker whose cell starts on the pre-render fallback.
     let wired = Wired::new(three_tools()).await;
@@ -854,7 +902,9 @@ async fn drawing_a_frame_publishes_the_measured_row_count_for_paging() {
     // the tab advance move by a page of what is on screen rather than a fixed
     // guess.
     let measured = wired.cell().read().results_viewport;
-    let expected = crate::tool_picker_viewport::results_viewport(frame);
+    let popup = crate::tool_picker_render::tool_picker_overlay_rect(&frame)
+        .expect("geometry fn yields a popup rect");
+    let expected = crate::tool_picker_viewport::results_viewport(popup);
     assert_eq!(measured, expected);
     assert_ne!(
         measured, fallback,

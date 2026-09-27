@@ -167,7 +167,9 @@ fn draw_frame(wired: &Wired, area: ratatui::layout::Rect) {
     let facts = jinn_slices::RenderFacts::new(jinn_theme::default_theme(), &wired.slices);
     terminal
         .draw(|frame| {
-            crate::persona_picker_render::render_persona_picker(frame, area, &facts);
+            let popup = crate::persona_picker_render::persona_picker_overlay_rect(&area)
+                .expect("geometry fn yields a popup rect");
+            crate::persona_picker_render::render_persona_picker(frame, popup, &facts);
         })
         .expect("draw");
 }
@@ -305,7 +307,9 @@ async fn page_down_steps_by_the_rows_the_last_frame_actually_laid_out() {
     // move a visibly different distance.
     let frame = ratatui::layout::Rect::new(0, 0, 100, 30);
     draw_frame(&wired, frame);
-    let on_screen = crate::persona_picker_viewport::results_viewport(frame);
+    let popup = crate::persona_picker_render::persona_picker_overlay_rect(&frame)
+        .expect("geometry fn yields a popup rect");
+    let on_screen = crate::persona_picker_viewport::results_viewport(popup);
 
     // When page down is pressed.
     wired.fire("page-persona-picker-down");

@@ -17,14 +17,17 @@ use ratatui::layout::Rect;
 /// side-by-side preview layout.
 const CHROME_ROWS_LIST: u16 = 2;
 
-/// The skill picker's result-row count for a frame of the given size.
+/// The skill picker's result-row count for the given popup rectangle.
+///
+///
+/// `popup` is the popup rectangle handed down by the render pass (see
+/// `jinn_selection_widget::compute_popup_rect`), not a terminal frame.
 ///
 /// Mirrors the preview widget's own split decision, so the value tracks what the
 /// user can see. At least 1, so paging never windows against zero on a tiny
 /// terminal.
 #[must_use]
-pub fn results_viewport(frame_area: Rect) -> usize {
-    let popup = jinn_selection_widget::compute_popup_rect(frame_area);
+pub fn results_viewport(popup: Rect) -> usize {
     let inner = popup.height.saturating_sub(2); // both borders
 
     if popup.width >= jinn_selection_widget::VERTICAL_SPLIT_MIN_WIDTH {
@@ -60,11 +63,11 @@ mod tests {
         let frame = Rect::new(0, 0, 200, 50);
 
         // When measuring the picker's results.
-        let rows = results_viewport(frame);
+        let popup = jinn_selection_widget::compute_popup_rect(frame);
+        let rows = results_viewport(popup);
 
         // Then the rows come from the full popup height less the borders and
         // the list pane's own input and separator.
-        let popup = jinn_selection_widget::compute_popup_rect(frame);
         let expected = popup
             .height
             .saturating_sub(2)
@@ -78,7 +81,8 @@ mod tests {
         let frame = Rect::new(0, 0, 70, 50);
 
         // When measuring the picker's results.
-        let rows = results_viewport(frame);
+        let popup = jinn_selection_widget::compute_popup_rect(frame);
+        let rows = results_viewport(popup);
 
         // Then the stacked list's fixed row count applies, not the tall layout.
         assert_eq!(rows, jinn_selection_widget::HORIZONTAL_LIST_ROWS as usize);
@@ -90,7 +94,8 @@ mod tests {
         let frame = Rect::new(0, 0, 8, 3);
 
         // When measuring the picker's results.
-        let rows = results_viewport(frame);
+        let popup = jinn_selection_widget::compute_popup_rect(frame);
+        let rows = results_viewport(popup);
 
         // Then paging has a non-zero window and cannot underflow.
         assert!(rows >= 1, "viewport must never be zero, got {rows}");

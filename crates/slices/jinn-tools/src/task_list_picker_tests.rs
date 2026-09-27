@@ -657,7 +657,9 @@ async fn render_measures_the_result_viewport_into_the_cell() {
 
     // Then the cell holds the row count this frame actually measured, which is
     // what makes paging follow the window rather than a fixed constant.
-    let measured = crate::task_list_picker_viewport::results_viewport(area);
+    let popup = crate::task_list_picker_render::task_list_picker_overlay_rect(&area)
+        .expect("geometry fn yields a popup rect");
+    let measured = crate::task_list_picker_viewport::results_viewport(popup);
     assert_eq!(
         h.read().results_viewport,
         measured,
@@ -707,7 +709,9 @@ fn draw_frame(h: &Harness, area: Rect) -> Vec<String> {
     let facts = jinn_slices::RenderFacts::new(h.state.borrow().frontend.theme.clone(), &h.slices);
     terminal
         .draw(|frame| {
-            crate::task_list_picker_render::render_task_list_picker(frame, area, &facts);
+            let popup = crate::task_list_picker_render::task_list_picker_overlay_rect(&area)
+                .expect("geometry fn yields a popup rect");
+            crate::task_list_picker_render::render_task_list_picker(frame, popup, &facts);
         })
         .expect("draw");
     terminal

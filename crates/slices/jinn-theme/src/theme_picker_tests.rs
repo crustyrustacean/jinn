@@ -204,7 +204,9 @@ fn draw_frame(wired: &Wired, area: ratatui::layout::Rect) -> Vec<String> {
         jinn_slices::RenderFacts::new(wired.state.borrow().frontend.theme.clone(), &wired.slices);
     terminal
         .draw(|frame| {
-            crate::theme_picker_render::render_theme_picker(frame, area, &facts);
+            let popup = crate::theme_picker_render::theme_picker_overlay_rect(&area)
+                .expect("geometry fn yields a popup rect");
+            crate::theme_picker_render::render_theme_picker(frame, popup, &facts);
         })
         .expect("draw");
     terminal
@@ -449,7 +451,9 @@ async fn page_down_steps_by_the_rows_the_last_frame_actually_laid_out() {
     // visibly different distance.
     let frame = ratatui::layout::Rect::new(0, 0, 100, 30);
     draw_frame(&wired, frame);
-    let on_screen = crate::theme_picker_viewport::results_viewport(frame);
+    let popup = crate::theme_picker_render::theme_picker_overlay_rect(&frame)
+        .expect("geometry fn yields a popup rect");
+    let on_screen = crate::theme_picker_viewport::results_viewport(popup);
 
     // When page down is pressed.
     wired.fire("page-theme-picker-down");

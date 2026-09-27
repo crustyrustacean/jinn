@@ -149,7 +149,10 @@ mod tests {
         let mut terminal =
             Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
         terminal
-            .draw(|frame| render_skill_picker(frame, area, &facts))
+            .draw(|frame| {
+                let popup = skill_picker_overlay_rect(&area).expect("geometry fn yields a rect");
+                render_skill_picker(frame, popup, &facts);
+            })
             .expect("draw");
 
         // Then the skill's name is on screen — the picker draws itself.

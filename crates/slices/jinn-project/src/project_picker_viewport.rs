@@ -13,17 +13,20 @@ use ratatui::layout::Rect;
 
 /// The project picker's result-row count for a frame of the given size.
 ///
+///
+/// `popup` is the popup rectangle handed down by the render pass (see
+/// `jinn_selection_widget::compute_popup_rect`), not a terminal frame.
+///
 /// The project picker is a single-pane list, so this is the popup's inner
 // Filter row + separator, and the one keybind footer row the spec draws.
 const CHROME_ROWS: u16 = 3;
 
-/// The number of result rows the project picker can show in `frame_area`:
+/// The number of result rows the project picker can show in `popup`:
 /// its popup height less its borders and the filter/separator chrome, and the
 /// keybind footer. At least 1, so paging never windows against zero on a tiny
 /// terminal.
 #[must_use]
-pub fn results_viewport(frame_area: Rect) -> usize {
-    let popup = jinn_selection_widget::compute_popup_rect(frame_area);
+pub fn results_viewport(popup: Rect) -> usize {
     let inner = popup.height.saturating_sub(2); // both borders
     inner.saturating_sub(CHROME_ROWS).max(1) as usize
 }
@@ -49,10 +52,10 @@ mod tests {
         let frame = Rect::new(0, 0, 120, 50);
 
         // When measuring the picker's results.
-        let rows = results_viewport(frame);
+        let popup = jinn_selection_widget::compute_popup_rect(frame);
+        let rows = results_viewport(popup);
 
         // Then the rows are the popup's inner height less borders and chrome.
-        let popup = jinn_selection_widget::compute_popup_rect(frame);
         let expected = popup.height.saturating_sub(2).saturating_sub(3);
         assert_eq!(rows, expected as usize);
     }
@@ -63,7 +66,8 @@ mod tests {
         let frame = Rect::new(0, 0, 8, 3);
 
         // When measuring the picker's results.
-        let rows = results_viewport(frame);
+        let popup = jinn_selection_widget::compute_popup_rect(frame);
+        let rows = results_viewport(popup);
 
         // Then paging has a non-zero window and cannot underflow.
         assert!(rows >= 1, "viewport must never be zero, got {rows}");

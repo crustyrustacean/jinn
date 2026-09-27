@@ -74,6 +74,7 @@ Entries are added or amended **only with human approval**.
 - (pickers) Picker scopes are dynamic slice scopes, so the kernel holds no per-picker scope variant, picker kind, spec, or registry.
 - (pickers) A picker measures its own results viewport in its render pass and publishes it into its cell; the kernel measures nothing.
 - (pickers) A slice picker resets its per-open state — filter text, highlight, and rows — each time its dynamic scope is entered, so every opener shows the same fresh menu.
+- (pickers) A picker's popup rect is computed once per frame by its slice's overlay geometry function and centered on the terminal on both axes; the selection widgets render into the rect they are handed rather than recomputing it.
 - (keybinds) Picker keybinds are route rows owned by the slice that owns the picker.
 - (keybinds) Feature keybinds are route rows carrying scope and key; keymap bindings are generated from registered rows at launch; dynamic intents and scope ids are data-carried, so an unregistered slice leaves no keymap, scope, or intent residue.
 - (keybinds) The terminal overlay's keybinds are term-slice route rows binding the dynamic scopes term:view and term:control; no static terminal scope or terminal intent variants exist in the kernel.
