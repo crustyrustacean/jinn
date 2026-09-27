@@ -9,11 +9,13 @@
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 
 use crate::TreePickerState;
 use crate::TreePickerWidget;
+use crate::compute_popup_rect;
 use crate::tree_item::TreeItem;
 use std::ops::Range;
 
@@ -132,10 +134,36 @@ where
     terminal
         .draw(|frame| {
             let widget = configure(TreePickerWidget::new(state).title(Line::from(" Test Tree ")));
-            widget.render(frame, frame.area());
+            widget.render(frame, compute_popup_rect(frame.area()));
         })
         .expect("draw");
     terminal.backend().clone().buffer().clone()
+}
+
+#[rstest::rstest]
+#[test]
+fn tree_widget_renders_into_the_rect_it_is_given() {
+    // Given a state and an explicit popup rect not derived from the frame.
+    let state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("create terminal");
+    let popup = Rect::new(4, 2, 30, 10);
+
+    // When rendering into that rect.
+    terminal
+        .draw(|frame| {
+            TreePickerWidget::new(&state).render(frame, popup);
+        })
+        .expect("draw");
+
+    // Then the border is drawn on the supplied rect's top-left corner.
+    let buffer = terminal.backend().buffer().clone();
+    let top_left = buffer.cell((popup.x, popup.y)).expect("top-left cell");
+    assert_eq!(
+        top_left.symbol(),
+        "┌",
+        "border should sit on the supplied rect's corner"
+    );
 }
 
 #[rstest::rstest]

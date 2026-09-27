@@ -61,7 +61,7 @@ fn render_shows_telescope_layout() {
     terminal
         .draw(|frame| {
             let widget = SelectionWidget::new(&state);
-            widget.render(frame, frame.area());
+            widget.render(frame, compute_popup_rect(frame.area()));
         })
         .unwrap();
 
@@ -117,7 +117,7 @@ fn render_uses_dark_gray_border() {
     terminal
         .draw(|frame| {
             let widget = SelectionWidget::new(&state);
-            widget.render(frame, frame.area());
+            widget.render(frame, compute_popup_rect(frame.area()));
         })
         .unwrap();
 
@@ -139,7 +139,7 @@ fn render_calls_render_row_for_selected_item() {
     terminal
         .draw(|frame| {
             let widget = SelectionWidget::new(&state);
-            widget.render(frame, frame.area());
+            widget.render(frame, compute_popup_rect(frame.area()));
         })
         .unwrap();
 
@@ -162,7 +162,7 @@ fn render_shows_title() {
     terminal
         .draw(|frame| {
             let widget = SelectionWidget::new(&state).title(Line::from(" Model "));
-            widget.render(frame, frame.area());
+            widget.render(frame, compute_popup_rect(frame.area()));
         })
         .unwrap();
 
@@ -199,7 +199,7 @@ fn render_shows_footer_when_provided() {
     terminal
         .draw(|frame| {
             let widget = SelectionWidget::new(&state).footer(Line::from(footer_text));
-            widget.render(frame, frame.area());
+            widget.render(frame, compute_popup_rect(frame.area()));
         })
         .unwrap();
 
@@ -240,7 +240,7 @@ fn render_multiple_footers_each_on_own_row() {
         .draw(|frame| {
             let widget = SelectionWidget::new(&state)
                 .footers(vec![Line::from("TOP FOOTER"), Line::from("BOTTOM FOOTER")]);
-            widget.render(frame, frame.area());
+            widget.render(frame, compute_popup_rect(frame.area()));
         })
         .unwrap();
 
@@ -283,7 +283,7 @@ fn render_no_footer_shows_empty_row() {
     terminal
         .draw(|frame| {
             let widget = SelectionWidget::new(&state);
-            widget.render(frame, frame.area());
+            widget.render(frame, compute_popup_rect(frame.area()));
         })
         .unwrap();
 
@@ -321,7 +321,7 @@ fn render_pads_empty_result_rows() {
     terminal
         .draw(|frame| {
             let widget = SelectionWidget::new(&state);
-            widget.render(frame, frame.area());
+            widget.render(frame, compute_popup_rect(frame.area()));
         })
         .unwrap();
 
@@ -385,7 +385,7 @@ fn render_clears_popup_background() {
     terminal
         .draw(|frame| {
             let widget = SelectionWidget::new(&state);
-            widget.render(frame, frame.area());
+            widget.render(frame, compute_popup_rect(frame.area()));
         })
         .unwrap();
 
@@ -426,7 +426,7 @@ fn render_positions_cursor_correctly() {
     terminal
         .draw(|frame| {
             let widget = SelectionWidget::new(&state);
-            widget.render(frame, frame.area());
+            widget.render(frame, compute_popup_rect(frame.area()));
         })
         .unwrap();
 
@@ -446,6 +446,95 @@ fn render_positions_cursor_correctly() {
         .cell((expected_cursor_x, expected_cursor_y))
         .expect("cursor cell");
     assert_eq!(cursor_cell.symbol(), "b");
+}
+
+#[rstest::rstest]
+fn widget_renders_into_the_rect_it_is_given() {
+    // Given a widget and an explicit popup rect that is not derived from the frame.
+    let state = SelectionState::with_items(make_items(&["test"]));
+    let (mut terminal, _) = setup_term(80, 24);
+    let popup = Rect::new(4, 2, 30, 10);
+
+    // When rendering into that rect.
+    terminal
+        .draw(|frame| {
+            let widget = SelectionWidget::new(&state);
+            widget.render(frame, popup);
+        })
+        .unwrap();
+
+    // Then the border is drawn on the supplied rect's top-left corner.
+    let buffer = terminal.backend().buffer().clone();
+    let top_left = buffer.cell((popup.x, popup.y)).expect("top-left cell");
+    assert_eq!(
+        top_left.symbol(),
+        "┌",
+        "border should sit on the supplied rect's corner"
+    );
+}
+
+#[rstest::rstest]
+#[case(80, 24)]
+#[case(120, 34)]
+#[case(200, 50)]
+#[case(40, 15)]
+fn the_drawn_picker_is_centered_on_the_terminal(#[case] width: u16, #[case] height: u16) {
+    // Given an open picker at this terminal size.
+    let state = SelectionState::with_items(make_items(&["alpha", "bravo"]));
+    let (mut terminal, _) = setup_term(width, height);
+
+    // When the render pass computes the popup rect and the widget draws into it.
+    terminal
+        .draw(|frame| {
+            let popup = compute_popup_rect(frame.area());
+            let widget = SelectionWidget::new(&state);
+            widget.render(frame, popup);
+        })
+        .unwrap();
+
+    // Then the drawn border's center matches the terminal's center on both axes.
+    let buffer = terminal.backend().buffer().clone();
+    let drawn = border_bounds(&buffer);
+    let popup_x_center = i32::from(drawn.x) + i32::from(drawn.width) / 2;
+    let term_x_center = i32::from(width) / 2;
+    assert!(
+        (popup_x_center - term_x_center).abs() <= 1,
+        "popup x center {popup_x_center} vs terminal {term_x_center} at {width}x{height}"
+    );
+
+    let popup_y_center = i32::from(drawn.y) + i32::from(drawn.height) / 2;
+    let term_y_center = i32::from(height) / 2;
+    assert!(
+        (popup_y_center - term_y_center).abs() <= 1,
+        "popup y center {popup_y_center} vs terminal {term_y_center} at {width}x{height}"
+    );
+}
+
+/// Measures the bounding box of the drawn border in `buffer`, so a test can
+/// assert against what was actually painted rather than what was requested.
+fn border_bounds(buffer: &ratatui::buffer::Buffer) -> ratatui::layout::Rect {
+    let mut min_x = u16::MAX;
+    let mut min_y = u16::MAX;
+    let mut max_x = 0;
+    let mut max_y = 0;
+    for y in 0..buffer.area.height {
+        for x in 0..buffer.area.width {
+            let Some(cell) = buffer.cell((x, y)) else {
+                continue;
+            };
+            if cell.symbol() == "┌" {
+                min_x = min_x.min(x);
+                min_y = min_y.min(y);
+            }
+            if cell.symbol() == "┐" {
+                max_x = max_x.max(x);
+            }
+            if cell.symbol() == "┘" {
+                max_y = max_y.max(y);
+            }
+        }
+    }
+    ratatui::layout::Rect::new(min_x, min_y, max_x - min_x + 1, max_y - min_y + 1)
 }
 
 #[rstest::rstest]
@@ -497,8 +586,8 @@ fn compute_popup_rect_centers_horizontally() {
     let popup = compute_popup_rect(area);
 
     // Then popup is horizontally centered (equal padding on both sides).
-    let left_pad = popup.x;
-    let right_pad = area.width - (popup.x + popup.width);
+    let left_pad = popup.x - area.x;
+    let right_pad = area.x + area.width - (popup.x + popup.width);
     // Allow off-by-one due to integer division.
     assert!(
         (i32::from(left_pad) - i32::from(right_pad)).unsigned_abs() <= 1,
@@ -507,20 +596,43 @@ fn compute_popup_rect_centers_horizontally() {
 }
 
 #[rstest::rstest]
-fn compute_popup_rect_biased_to_top_third() {
+fn compute_popup_rect_centers_vertically() {
     // Given a tall terminal.
     let area = Rect::new(0, 0, 80, 60);
 
     // When computing the popup rect.
     let popup = compute_popup_rect(area);
 
-    // Then popup is positioned in the top third (y < height / 3).
-    #[expect(clippy::integer_division, reason = "cell positions are integers")]
-    let area_third = area.height / 3;
+    // Then popup is vertically centered (equal padding above and below).
+    let top_pad = popup.y - area.y;
+    let bottom_pad = area.y + area.height - (popup.y + popup.height);
+    // Allow off-by-one due to integer division.
     assert!(
-        popup.y < area_third,
-        "popup y ({}) should be in the top third (below {})",
-        popup.y,
-        area_third
+        (i32::from(top_pad) - i32::from(bottom_pad)).unsigned_abs() <= 1,
+        "popup should be roughly centered: top_pad={top_pad}, bottom_pad={bottom_pad}"
+    );
+}
+
+#[rstest::rstest]
+fn compute_popup_rect_preserves_the_input_origin() {
+    // Given an overlay region that does not start at the terminal origin.
+    let area = Rect::new(10, 5, 80, 24);
+
+    // When computing the popup rect.
+    let popup = compute_popup_rect(area);
+
+    // Then the popup sits inside the given region, padded evenly from its edges.
+    let left_pad = popup.x - area.x;
+    let right_pad = area.x + area.width - (popup.x + popup.width);
+    let top_pad = popup.y - area.y;
+    let bottom_pad = area.y + area.height - (popup.y + popup.height);
+
+    assert!(
+        left_pad.abs_diff(right_pad) <= 1,
+        "popup should be centered in x: left_pad={left_pad}, right_pad={right_pad}"
+    );
+    assert!(
+        top_pad.abs_diff(bottom_pad) <= 1,
+        "popup should be centered in y: top_pad={top_pad}, bottom_pad={bottom_pad}"
     );
 }

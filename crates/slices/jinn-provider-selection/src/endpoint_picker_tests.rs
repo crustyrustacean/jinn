@@ -216,7 +216,9 @@ fn draw_frame(wired: &Wired, area: ratatui::layout::Rect) -> Vec<String> {
         jinn_slices::RenderFacts::new(wired.state.borrow().frontend.theme.clone(), &wired.slices);
     terminal
         .draw(|frame| {
-            crate::endpoint_picker_render::render_endpoint_picker(frame, area, &facts);
+            let popup = crate::endpoint_picker_render::endpoint_picker_overlay_rect(&area)
+                .expect("geometry fn yields a popup rect");
+            crate::endpoint_picker_render::render_endpoint_picker(frame, popup, &facts);
         })
         .expect("the draw closure must not panic");
     terminal

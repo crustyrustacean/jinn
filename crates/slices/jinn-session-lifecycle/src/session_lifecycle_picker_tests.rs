@@ -216,8 +216,13 @@ impl Wired {
             jinn_slices::RenderFacts::new(self.state.borrow().frontend.theme.clone(), &self.slices);
         terminal
             .draw(|frame| {
+                let popup =
+                    crate::session_lifecycle_picker_render::session_lifecycle_picker_overlay_rect(
+                        &area,
+                    )
+                    .expect("geometry fn yields a popup rect");
                 crate::session_lifecycle_picker_render::render_session_lifecycle_picker(
-                    frame, area, &facts,
+                    frame, popup, &facts,
                 );
             })
             .expect("draw");
