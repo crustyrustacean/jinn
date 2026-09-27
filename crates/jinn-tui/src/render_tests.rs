@@ -505,6 +505,79 @@ fn popup_border_rows(buffer: &ratatui::buffer::Buffer, popup: Rect) -> Vec<u16> 
         .collect()
 }
 
+/// The text a rect's cells hold, one `String` per row.
+///
+/// Reads columns left to right and stops at the region the caller names, so a
+/// caller can look at only the part of the screen two surfaces both claim.
+fn rows_of_text(buffer: &ratatui::buffer::Buffer, popup: Rect, chat_right: u16) -> Vec<String> {
+    (popup.y..popup.y.saturating_add(popup.height))
+        .map(|y| {
+            (popup.x..chat_right.min(popup.x.saturating_add(popup.width)))
+                .filter_map(|x| buffer.cell((x, y)).map(ratatui::buffer::Cell::symbol))
+                .collect::<String>()
+        })
+        .collect()
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn the_session_preview_paints_its_keybinds_over_the_chat_column() {
+    // Given a TuiApp with the sessions sidebar focused on a loaded session, a
+    // history long enough to fill the chat log, and a preview the worker has
+    // already answered, in a terminal wide enough for the popup to reach left
+    // across the chat column.
+    let mut app = render_test_app().await;
+    {
+        let (mut terminal, _area) = setup_term(100, 60);
+        terminal.draw(|frame| app.render(frame)).unwrap();
+    }
+    focus_sessions_on_loaded_session(&app);
+    grow_session_to_long_history(&app);
+    // A frame to measure the preview width and request at it.
+    {
+        let (mut terminal, _area) = setup_term(100, 60);
+        terminal.draw(|frame| app.render(frame)).unwrap();
+    }
+    fill_preview_cache(&app);
+
+    // When a frame renders.
+    let (mut terminal, _area) = setup_term(100, 60);
+    terminal.draw(|frame| app.render(frame)).unwrap();
+
+    // Then the popup's own keybinds are readable in the columns the chat log
+    // also paints, so the surface is on top of the column rather than under it.
+    let area = frame_area(100, 60);
+    let layout = AppLayout::new(area, 1, 30, 30);
+    let popup = preview_popup_rect_for_frame(&app, area, layout.sidebar);
+    let rows = rows_of_text(terminal.backend().buffer(), popup, layout.minimap.x);
+    assert!(
+        popup.x < layout.minimap.x,
+        "the popup must reach across the chat column for this to mean anything"
+    );
+    assert!(
+        rows.iter().any(|row| row.contains("x close")),
+        "the session preview's keybinds are not on screen over the chat column: {rows:?}"
+    );
+}
+
+/// The rect the session preview popup occupies in the current frame.
+///
+/// Asks the sidebar where the sessions cursor actually landed rather than
+/// assuming a row: the cursor moves with the section's own layout, so a
+/// fixed row silently measures the wrong rect as soon as the section's
+/// content changes.
+fn preview_popup_rect_for_frame(app: &crate::TuiApp, area: Rect, sidebar: Rect) -> Rect {
+    let state = app.core.state.read();
+    let cursor_y = jinn_sidebar::sections::layout::frame_row_of(
+        sidebar,
+        &state,
+        &app.services.config,
+        jinn_sidebar_msg::SidebarSectionId::Sessions,
+        0,
+    );
+    jinn_sidebar::sections::sessions::session_preview_popup_rect(area, cursor_y)
+}
+
 #[rstest::rstest]
 #[tokio::test]
 async fn the_popup_keeps_its_borders_where_they_are_as_content_grows() {
