@@ -3,8 +3,8 @@
 ## (development)
 
 - Todo tooling completely changed to reduce context tool block size and to more closely align with existing Claude + Codex tools.
-  - `todo_set_list`: rewrites the entire todo list
-  - `todo_set_phase`: rewrites a single phase
+  - `todo_set_list`: rewrites the entire todo list. Added a bunch of aliases for task states.
+  - `todo_set_phase`: rewrites a single phase. Added a bunch of aliases for task states.
   - `todo_get_list`: returns the entire todo list
 - Task loop skills reference `todo_*` tools generically instead of by exact name.
 - The `#approve-plan` prompt should produce more detailed todo lists.
@@ -42,7 +42,7 @@
 - Session archival operation is now visualized in the sidebar by a gray background and distinct spinner.
 - Added a new `--config` flag to load a specific `jinn.toml` file.
   - Passing `--config` to `jinn config init` will initialize the template to the provided path instead of `<config dir>/jinn`
-- Add new `goal` prompt that autonomously works towards the planned goal. Works similarly to the `plan` prompt.
+- Add new `goal` prompt that autonomously works towards the planned goal, working similarly to the `plan` prompt. See the README for usage instructions.
 - Dashboard changes:
   - Scrolling now pivots around the cursor
   - Actors are sorted by status and by notes
