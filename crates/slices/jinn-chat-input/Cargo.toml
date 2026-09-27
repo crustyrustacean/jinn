@@ -10,6 +10,7 @@ jinn-kernel = { workspace = true }
 jinn-config = { workspace = true }
 jinn-context = { workspace = true }
 jinn-context-curation-msg = { workspace = true }
+jinn-export-msg = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-session-msg = { workspace = true }
 jinn-preferences-config = { workspace = true }

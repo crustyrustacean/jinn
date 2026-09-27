@@ -15,6 +15,8 @@ pub enum SlashCommand {
     /// Compact all messages, ignoring the token reserve.
     /// Compact all messages, ignoring the token reserve.
     CompactAll,
+    /// Write the session to a single self-contained file.
+    Export,
 }
 
 /// A single entry for the slash command autocomplete popup.
@@ -39,6 +41,10 @@ impl SlashCommand {
                 description: "Compact all messages (ignores reserve)".to_owned(),
             },
             SlashCommandEntry {
+                name: "export".to_owned(),
+                description: "Write the session to a file".to_owned(),
+            },
+            SlashCommandEntry {
                 name: "new".to_owned(),
                 description: "Create a new session".to_owned(),
             },
@@ -50,6 +56,7 @@ impl SlashCommand {
         match name {
             "compact" => Some(Self::Compact),
             "compact-all" => Some(Self::CompactAll),
+            "export" => Some(Self::Export),
             "new" => Some(Self::New),
             _ => None,
         }
@@ -103,6 +110,22 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn every_advertised_name_is_executable() {
+        // Given the full command list.
+        let entries = SlashCommand::all_entries();
+
+        // When looking each advertised name up.
+        // Then every one resolves, so the popup and the executor agree.
+        for entry in &entries {
+            assert!(
+                SlashCommand::lookup(&entry.name).is_some(),
+                "advertised command `{}` does not resolve",
+                entry.name
+            );
+        }
+    }
+
+    #[rstest::rstest]
     fn all_entries_contains_all_commands() {
         // Given the full command list.
         let entries = SlashCommand::all_entries();
@@ -113,6 +136,7 @@ mod tests {
         // Then every command is advertised.
         assert!(names.contains(&"compact"));
         assert!(names.contains(&"compact-all"));
+        assert!(names.contains(&"export"));
         assert!(names.contains(&"new"));
     }
 }
