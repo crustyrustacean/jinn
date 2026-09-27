@@ -178,15 +178,17 @@ fn empty_history_shows_title_and_keybinds_only() {
 }
 
 #[rstest::rstest]
-fn last_five_entries_rendered() {
-    // Given a session with 8 entries.
+fn a_short_history_fills_the_content_area() {
+    // Given a session with 8 one-line entries — fewer messages than the content
+    // area has rows, which is the case that used to leave a gap at the top.
     let session = make_session_with_entries(8);
 
     // When rendering the preview with enough vertical space.
     let (buffer, popup_area) = render_preview(&session, 80, 40);
 
-    // Then the content shows entries from index 3 onward (last 5).
-    // Entry "message 3" through "message 7" should be visible.
+    // Then the content area is full: the newest entry is on the last row and
+    // there is no blank band above it. Bounding the window by message count
+    // showed only what fit in five messages and left the rest of the box empty.
     let content_start_y = popup_area.y + 1;
     let content_end_y = popup_area.y + popup_area.height - 2;
     let mut all_text = String::new();
@@ -198,12 +200,25 @@ fn last_five_entries_rendered() {
         "should contain the last entry 'message 7', got text: {all_text}"
     );
     assert!(
-        all_text.contains("message 3"),
-        "should contain 'message 3' (5th from end), got text: {all_text}"
+        !all_text.contains("message 0"),
+        "should NOT reach back past the preview's budget to 'message 0', got text: {all_text}"
     );
-    assert!(
-        !all_text.contains("message 2"),
-        "should NOT contain 'message 2' (6th from end), got text: {all_text}"
+
+    // And no row of the content area is an empty band. The popup is drawn
+    // bottom-anchored over a fixed height, so a preview that renders fewer lines
+    // than the area has rows leaves the surplus as blank rows above the text —
+    // the gap this is about. Every row here is a message or its padding, so
+    // there is nothing left over.
+    let blank_rows = (content_start_y..=content_end_y)
+        .filter(|y| {
+            buffer_row(&buffer, *y, popup_area.x + popup_area.width)
+                .trim()
+                .is_empty()
+        })
+        .count();
+    assert_eq!(
+        blank_rows, 0,
+        "the content area should be filled, but {blank_rows} of its rows are blank"
     );
 }
 

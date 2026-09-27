@@ -420,4 +420,153 @@ mod tests {
         // And the valid rule still enforces.
         assert_eq!(valid_hit, Some(("forbidden", "blocked")));
     }
+
+    /// The command policy a stock install runs with: the global rules read
+    /// straight out of the shipped `default_jinn.toml`, resolved through the
+    /// same path production uses. Reading the template rather than restating
+    /// its patterns means these cases cannot drift from what ships.
+    fn shipped_default_policy(cwd: &str) -> CompiledCommandPolicy {
+        let config = jinn_config::testutil::config_layer(jinn_preferences_config::DEFAULT_CONFIG);
+        CompiledCommandPolicy::compile(&resolve_rules(
+            &config,
+            Path::new(cwd),
+            Path::new("/nonexistent-home"),
+        ))
+    }
+
+    #[rstest::rstest]
+    // The four bare forms the guards exist for, with no trailing argument.
+    #[case("find /", "A bare `find /`")]
+    #[case("find ~", "A bare `find ~`")]
+    #[case("ls -R /", "Listing a bare `/`")]
+    #[case("ls -R ~", "Listing a bare `~`")]
+    // Flags and a trailing search expression, which is how agents
+    // actually spell these.
+    #[case("find / -name foo", "A bare `find /`")]
+    #[case("find ~ -type d -name which-key", "A bare `find ~`")]
+    // Trailing junk after the search path — the pattern only constrains
+    // the command word and the path, not the rest of the line.
+    #[case("find / more crap here", "A bare `find /`")]
+    #[case("ls -R / 2>/dev/null | head -50", "Listing a bare `/`")]
+    // Recursive `ls` wearing common disguises: a combined flag cluster with
+    // `R` anywhere in it, the long form, extra flags on either side of the
+    // recursive flag, and a quoted or tilde-suffixed path.
+    #[case("ls -lR /", "Listing a bare `/`")]
+    #[case("ls -1R /", "Listing a bare `/`")]
+    #[case("ls -lhR /", "Listing a bare `/`")]
+    #[case("ls -dR /", "Listing a bare `/`")]
+    #[case("ls -Rt /", "Listing a bare `/`")]
+    #[case("ls --recursive /", "Listing a bare `/`")]
+    #[case("ls --recursive ~", "Listing a bare `~`")]
+    #[case("ls -R -l /", "Listing a bare `/`")]
+    #[case("ls -l -R /", "Listing a bare `/`")]
+    #[case("ls -R --color=always /", "Listing a bare `/`")]
+    #[case("ls --color=always -R /", "Listing a bare `/`")]
+    #[case("ls -R \"$HOME\"", "Listing a bare `~`")]
+    #[case("ls -R ${HOME}", "Listing a bare `~`")]
+    #[case("ls -R ~/", "Listing a bare `~`")]
+    #[case("ls -R '~'", "Listing a bare `~`")]
+    // Globs that genuinely span the whole tree.
+    #[case("ls -R /*", "Listing a bare `/`")]
+    #[case("ls -R /**", "Listing a bare `/`")]
+    #[case("ls -R ~/*", "Listing a bare `~`")]
+    // Wrappers: subshell, prefix chain, env assignment, and a second
+    // command in a chain that also recurses a root.
+    #[case("(find / -name x)", "A bare `find /`")]
+    #[case("(ls -R ~)", "Listing a bare `~`")]
+    #[case("cd /x && ls -R /", "Listing a bare `/`")]
+    #[case("sudo ls -R /", "Listing a bare `/`")]
+    #[case("ls -R ~/code/x && ls -R /", "Listing a bare `/`")]
+    // A leading `cd ... &&` chain, the form agents produce when they scope
+    // a filesystem-wide search to a repo afterwards.
+    #[case(
+        "cd /mnt/zed/repos/jinn/esc-cancel && find / -path /proc -prune -o -type d -name \"ratatui-which-key-*\" -print 2>/dev/null | head -3",
+        "A bare `find /`"
+    )]
+    fn shipped_default_policy_blocks_whole_filesystem_searches(
+        #[case] command: &str,
+        #[case] expected_message_prefix: &str,
+    ) {
+        // Given the global policy a stock install boots with.
+        let policy = shipped_default_policy("/elsewhere");
+
+        // When matching an unbounded search command.
+        let matched = policy.matched_message(command);
+
+        // Then the command is blocked, and the message names the habit.
+        let message = matched
+            .map(|(_, msg)| msg)
+            .unwrap_or_else(|| panic!("not blocked: {command}"));
+        assert!(
+            message.starts_with(expected_message_prefix),
+            "command: {command}, message: {message}"
+        );
+    }
+
+    #[rstest::rstest]
+    // Bounded searches — the work the agent was actually trying to do.
+    #[case("find /mnt/zed/repos/jinn -maxdepth 2 -name '*which-key*' -type d")]
+    #[case("find ~/code/myapp -name 'foo*.rs'")]
+    #[case("ls -R ~/code/myapp/target")]
+    #[case("ls -R ~/src")]
+    #[case("ls -R /mnt/zed/repos")]
+    #[case("ls -R /usr")]
+    #[case("ls -R /mnt /etc")]
+    #[case("ls -R relative/dir")]
+    #[case("ls -R ./target")]
+    #[case("ls -R ../lib")]
+    #[case("ls -la /")]
+    // Recursive over a bounded path, however the flags are spelled — the
+    // guard is about the path, not the flag cluster.
+    #[case("ls -lR /usr")]
+    #[case("ls --recursive /etc")]
+    #[case("ls -Rt ~/code")]
+    #[case("ls -R --color=always ~/src")]
+    // Globs scoped to a subdirectory are not a whole-filesystem walk.
+    #[case("ls -R /tmp/*")]
+    #[case("ls -R ~/.*")]
+    #[case("ls -R /var/log/*")]
+    // A recursive flag on one command must not be read as covering a
+    // later, unrelated command in the same chain.
+    #[case("ls -R ~/code && cd /")]
+    #[case("ls -R ~/code && cd /home/x")]
+    #[case("ls -R ~/code; cd /")]
+    // Commands that merely mention a path, with no search verb.
+    #[case("cat /etc/hosts")]
+    #[case("ls ~")]
+    #[case("find .")]
+    #[case("find ./target")]
+    #[case("find /usr/bin")]
+    #[case("pwd")]
+    #[case("git log --oneline -n 5")]
+    fn shipped_default_policy_allows_bounded_searches(#[case] command: &str) {
+        // Given the global policy a stock install boots with.
+        let policy = shipped_default_policy("/elsewhere");
+
+        // When matching a bounded or unrelated command.
+        let matched = policy.matched_message(command);
+
+        // Then nothing blocks it.
+        assert!(matched.is_none(), "command: {command}");
+    }
+
+    /// Lowercase `ls -r` is `--reverse`, not `--recursive`: it flips sort
+    /// order within a single directory and dumps nothing. Blocking it would
+    /// refuse a harmless command, so the guard names uppercase `R` only —
+    /// which is also why the pattern carries no `(?i)`.
+    #[rstest::rstest]
+    #[case("ls -r /")]
+    #[case("ls -r ~")]
+    #[case("ls -1r /")]
+    #[case("ls -lr /")]
+    fn shipped_default_policy_allows_reverse_sorted_ls(#[case] command: &str) {
+        // Given the global policy a stock install boots with.
+        let policy = shipped_default_policy("/elsewhere");
+
+        // When matching an `ls` that only reverses sort order.
+        let matched = policy.matched_message(command);
+
+        // Then nothing blocks it.
+        assert!(matched.is_none(), "command: {command}");
+    }
 }

@@ -27,14 +27,15 @@
 
 #![expect(
     clippy::expect_used,
-    reason = "test code asserts with expect for clear failure messages"
+    clippy::panic,
+    reason = "test code asserts with expect/panic for clear failure messages"
 )]
 
 use jinn_common::template_check::collect_toml_key_paths;
 
 use crate::config_template::DEFAULT_CONFIG;
 use crate::registration::register_all_sections;
-use crate::schemas::{DiscordConfig, McpServersConfig};
+use crate::schemas::{CommandPolicyRule, DiscordConfig, McpServersConfig};
 
 /// The template with every `(uncomment below to activate)` region expanded.
 fn expanded_template() -> String {
@@ -155,6 +156,30 @@ const OWNED_KEYS: &[&str] = &[
     "session_lifecycle",
     "project",
 ];
+
+#[rstest::rstest]
+#[test]
+fn shipped_global_command_policy_rules_all_compile() {
+    // Given the global command policies exactly as the template ships them.
+    let config = jinn_config::testutil::config_layer(DEFAULT_CONFIG);
+
+    // When reading them back out of the config layer.
+    let rules = config.get_list::<CommandPolicyRule>();
+
+    // Then the list reads and every pattern compiles. An uncompilable
+    // pattern is inert at runtime (warned, never blocks), so a typo here
+    // would silently ship a rule that enforces nothing.
+    let Ok(rules) = rules else {
+        panic!("global command policy list does not read: {rules:?}");
+    };
+    for rule in &rules {
+        assert!(
+            regex::Regex::new(&rule.pattern).is_ok(),
+            "global command policy pattern does not compile: {:?}",
+            rule.pattern
+        );
+    }
+}
 
 /// `#[case]`-free guard: the two sections the template deliberately does
 /// not ship a block for still read as their defaults, so a stock

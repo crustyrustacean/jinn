@@ -2827,6 +2827,7 @@ dependencies = [
  "jinn-core-types",
  "jinn-slices",
  "parking_lot",
+ "regex",
  "rstest",
  "serde",
  "serde_json",
