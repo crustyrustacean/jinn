@@ -425,3 +425,131 @@ async fn a_cached_preview_is_not_requested_again_every_frame() {
         "the render pass kept re-requesting a preview it already holds"
     );
 }
+
+/// Fills the preview cache for the focused session with `text` per entry, so
+/// the next frame draws the *ready* popup rather than the loading one.
+///
+/// The real worker is not running in a render test, so the cache is filled with
+/// the lines it would have published. Without this the popup is in its loading
+/// state in both frames and the comparison proves nothing about content.
+fn fill_preview_cache(app: &crate::TuiApp) {
+    let state = app.core.state.write();
+    let id = state.active_session().session_id().clone();
+    let width = state
+        .frontend
+        .with_sections(|s| s.sessions.preview_content_width, || 0);
+    let signature = jinn_sidebar::sections::sessions::preview_load::preview_signature(
+        state.active_session().history(),
+        jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT,
+    );
+    let theme = state.frontend.theme.clone();
+    let ctx = jinn_chat_log_view::chat_log::RenderContext {
+        content_width: width,
+        is_selected: false,
+        is_expanded: false,
+        tool_entry_max_lines: 6,
+        theme,
+        paired_status: None,
+        is_streaming: false,
+        is_waiting_on_subagent: false,
+    };
+    let lines = jinn_chat_log_view::kernel_element::render_preview(
+        state.active_session().history(),
+        &ctx,
+        jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT,
+        jinn_chat_log_view_msg::PREVIEW_MAX_LINES,
+    );
+    let armed = state
+        .frontend
+        .update_sections(|s| s.sessions.preview.request(id.clone(), signature, width))
+        .expect("the sections cell is attached");
+    state.frontend.update_sections(|s| {
+        s.sessions
+            .preview
+            .complete(id, armed, signature, width, std::sync::Arc::new(lines));
+    });
+}
+
+/// The screen rows the session preview popup's own border glyphs sit on.
+///
+/// Scans for the popup's box-drawing characters rather than recomputing the
+/// rect, so this reports what the render pass actually drew.
+fn popup_border_rows(buffer: &ratatui::buffer::Buffer, popup: Rect) -> Vec<u16> {
+    let x = popup.x;
+    let width = popup.width;
+    (0..popup.height)
+        .map(|i| popup.y + i)
+        .filter(|y| {
+            (x..x + width).any(|c| {
+                buffer
+                    .cell((c, *y))
+                    .is_some_and(|cell| matches!(cell.symbol(), "┌" | "┐" | "└" | "┘" | "│"))
+            })
+        })
+        .collect()
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn the_popup_keeps_its_borders_where_they_are_as_content_grows() {
+    // Given a TuiApp with the sessions sidebar focused on a loaded session, in a
+    // frame tall enough for the popup at its full, unclamped height.
+    let mut app = render_test_app().await;
+    {
+        let (mut terminal, _area) = setup_term(100, 60);
+        terminal.draw(|frame| app.render(frame)).unwrap();
+    }
+    focus_sessions_on_loaded_session(&app);
+    {
+        let mut state = app.core.state.write();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("a short message"));
+    }
+    // A frame to measure the width and request at it.
+    {
+        let (mut terminal, _area) = setup_term(100, 60);
+        terminal.draw(|frame| app.render(frame)).unwrap();
+    }
+
+    // When the preview is short.
+    fill_preview_cache(&app);
+    let (mut terminal, _area) = setup_term(100, 60);
+    terminal.draw(|frame| app.render(frame)).unwrap();
+    let popup =
+        jinn_sidebar::sections::sessions::session_preview_popup_rect(frame_area(100, 60), 35);
+    let short_rows = popup_border_rows(terminal.backend().buffer(), popup);
+    let short_buffer = terminal.backend().buffer().clone();
+
+    // And the same session grows to a long history — the shape a streaming
+    // reply takes.
+    {
+        let mut state = app.core.state.write();
+        for i in 0..40 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::assistant(format!("reply {i}")));
+        }
+    }
+    fill_preview_cache(&app);
+    terminal.draw(|frame| app.render(frame)).unwrap();
+    let long_rows = popup_border_rows(terminal.backend().buffer(), popup);
+    let long_buffer = terminal.backend().buffer().clone();
+
+    // Then the popup's border rows are identical, so the surface does not
+    // resize under the cursor as a session's content changes.
+    assert!(
+        !short_rows.is_empty(),
+        "the session preview popup drew no borders of its own"
+    );
+    assert_eq!(
+        short_rows, long_rows,
+        "the popup's border rows moved as the session's content grew"
+    );
+    // And the two frames really did draw different content, so this is a
+    // comparison of two states rather than two identical pictures.
+    assert_ne!(
+        short_buffer, long_buffer,
+        "the two frames rendered identically, so nothing was compared"
+    );
+}
