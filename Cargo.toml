@@ -43,6 +43,10 @@ debug = 0
 
 [patch.crates-io]
 tiktoken = { path = "vendor/tiktoken" }
+# TEMPORARY: the actor runtime's lifecycle census message (`ActorLifecycle`)
+# is not on crates.io yet, so the dashboard consumes it from the local SDK
+# checkout. Remove this line once trouper ships a release carrying it.
+trouper = { path = "/mnt/zed/repos/trouper/trouper" }
 
 [lib]
 path = "src/lib.rs"

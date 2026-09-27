@@ -14,9 +14,9 @@ use serde::{Deserialize, Serialize};
 
 /// All actors have been spawned.
 ///
-/// Emitted after the wiring code finishes spawning every actor.
-/// The system-ready actor waits for this event before checking whether
-/// its running count of `ActorStarted` events matches the total.
+/// Emitted after the wiring code finishes spawning every actor. The
+/// system-ready actor waits for this event, then releases the oneshot
+/// that gates the TUI's first draw — it does no counting of its own.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
 #[schema(description = "All actors have been spawned; the system is ready.")]
 pub struct AllActorsSpawned;

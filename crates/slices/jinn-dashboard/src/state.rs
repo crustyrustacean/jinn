@@ -16,6 +16,13 @@ pub struct DashboardEntry {
     /// Free-form third column; the owning feature writes its connection or
     /// resolution status here via `ServiceStatusUpdate`.
     pub status_message: Option<String>,
+    /// Why the runtime stopped this actor, as a human-readable phrase.
+    ///
+    /// Rendered into the Notes column only while no feature status
+    /// message occupies it, and cleared the moment the actor is running
+    /// again — a stop reason describes a past state, so leaving one on a
+    /// live row would misreport the present.
+    pub stop_reason: Option<String>,
 }
 
 /// Owned by [`DashboardCanvasActor`](crate::canvas_actor::DashboardCanvasActor).
@@ -150,11 +157,10 @@ impl DashboardState {
     /// entries keep their description unless a new one is supplied.
     ///
     /// The lifecycle fold is a forward-only state machine: a `Starting`
-    /// report never pulls a `Running` or `Dead` row back. The two
-    /// lifecycle relays (one per event type) race each other across the
-    /// fabric, so a stale `ActorStarting` can land after its actor's
-    /// `ActorStarted`; an actor does not restart by itself, so a late
-    /// starting report is always that race, never a real transition.
+    /// report never pulls a `Running` or `Dead` row back, because a
+    /// `Starting` report only ever arrives from a feature that
+    /// anticipates its own actor, so a late one is a stale projection
+    /// rather than a real transition.
     pub fn mark_starting<S>(&mut self, name: S, description: Option<String>)
     where
         S: AsRef<str>,
@@ -177,6 +183,32 @@ impl DashboardState {
         self.upsert(name, description, ActorLifecycle::Running);
     }
 
+    /// Record that the runtime stopped an actor, and why.
+    ///
+    /// The reason is stored, not rendered, so the view can yield the
+    /// Notes column to a feature status message when one is present.
+    /// A `Running` report clears it: the reason describes a state the
+    /// actor has left, and a row that is live again must not keep
+    /// claiming otherwise.
+    pub fn mark_stopped<S>(&mut self, name: S, reason: impl Into<String>)
+    where
+        S: AsRef<str>,
+    {
+        let name = name.as_ref();
+        let Some(entry) = self.actors.get_mut(name) else {
+            // A stop for a path this dashboard never saw start: create
+            // the row rather than drop the fact, so the census stays
+            // complete even if a spawn announcement was missed.
+            self.upsert(name, None, ActorLifecycle::Dead);
+            if let Some(entry) = self.actors.get_mut(name) {
+                entry.stop_reason = Some(reason.into());
+            }
+            return;
+        };
+        entry.lifecycle = ActorLifecycle::Dead;
+        entry.stop_reason = Some(reason.into());
+    }
+
     /// Record that an actor has shut down (intentionally or via crash).
     pub fn mark_dead<S>(&mut self, name: S, description: Option<String>)
     where
@@ -188,9 +220,9 @@ impl DashboardState {
     /// Update only the free-form status message for an actor, leaving its
     /// lifecycle untouched.
     ///
-    /// Creates the entry (as `Starting`) if it does not already exist, so the
-    /// gateway can report a connection status before the corresponding
-    /// `ActorStarting` bus event arrives.
+    /// Creates the entry (as `Starting`) if it does not already exist, so a
+    /// feature can report a connection status before the runtime's spawn
+    /// announcement for its actor arrives.
     pub fn set_status_message<S>(&mut self, name: S, message: Option<String>)
     where
         S: AsRef<str>,
@@ -205,12 +237,36 @@ impl DashboardState {
                     description: None,
                     lifecycle: ActorLifecycle::Starting,
                     status_message: message,
+                    stop_reason: None,
                 },
             );
             return;
         }
         if let Some(entry) = self.actors.get_mut(name) {
             entry.status_message = message;
+        }
+    }
+
+    /// Update only the row's description, leaving lifecycle and status
+    /// message untouched.
+    ///
+    /// A feature describes its own row, independently of whether it also
+    /// has a lifecycle opinion this time round: the two are separate
+    /// optional fields of the same update and either may arrive alone.
+    /// Creates the entry (as `Starting`) if the row does not exist yet.
+    pub fn set_description<S>(&mut self, name: S, description: Option<String>)
+    where
+        S: AsRef<str>,
+    {
+        let name = name.as_ref();
+        if !self.actors.contains_key(name) {
+            self.upsert(name, description, ActorLifecycle::Starting);
+            return;
+        }
+        if let Some(entry) = self.actors.get_mut(name)
+            && description.is_some()
+        {
+            entry.description = description;
         }
     }
 
@@ -231,6 +287,7 @@ impl DashboardState {
                     description,
                     lifecycle,
                     status_message: None,
+                    stop_reason: None,
                 },
             );
             return;
@@ -239,6 +296,12 @@ impl DashboardState {
             entry.lifecycle = lifecycle;
             if description.is_some() {
                 entry.description = description;
+            }
+            // A row that is live again must not keep a stop reason: the
+            // reason describes a state the actor has left, so carrying it
+            // forward would misreport the present.
+            if lifecycle == ActorLifecycle::Running {
+                entry.stop_reason = None;
             }
         }
     }

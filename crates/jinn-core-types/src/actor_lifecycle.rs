@@ -1,20 +1,27 @@
 //! Generic actor lifecycle phase, applicable to every actor in the system.
 //!
-//! A pure value type: the dashboard folds bus lifecycle events
-//! (`ActorStarting`, `ActorStarted`, `ActorShutdownCompleted`) into it,
-//! and any consumer of actor status can compare against it without
-//! depending on `jinn-kernel`.
+//! A pure value type: the dashboard folds
+//! [`trouper::ActorLifecycle`](https://docs.rs/trouper) — the runtime's
+//! spawn and stop announcement — into it, and any consumer of actor
+//! status can compare against it without depending on `jinn-kernel`.
 
 /// The lifecycle phase of an actor.
 ///
-/// Driven by the existing bus events: `ActorStarting`, `ActorStarted`, and
-/// `ActorShutdownCompleted`.
+/// Driven by the runtime's own actor announcements: a spawn makes the
+/// actor `Running`, a stop makes it `Dead`.
+///
+/// `Starting` is a jinn-side projection rather than a runtime-reported
+/// state. A runtime spawn announcement means the actor is already live,
+/// so the runtime never reports `Starting`. A feature that expects its
+/// own actor to appear may declare it `Starting` up front via
+/// `ServiceStatusUpdate`, and the runtime's announcement promotes it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ActorLifecycle {
-    /// The actor is currently starting up.
+    /// The actor has been announced by a feature but not yet by the
+    /// runtime.
     Starting,
-    /// The actor has finished starting and is ready.
+    /// The actor has spawned and is ready.
     Running,
-    /// The actor has shut down (crashed or intentional).
+    /// The actor has stopped (normally, by passivation, or on crash).
     Dead,
 }

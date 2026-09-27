@@ -121,10 +121,21 @@ fn build_rows<'a>(actors: &[&'a DashboardEntry], theme: &Theme) -> Vec<Row<'a>> 
             let (state_str, state_color) = lifecycle_display(entry.lifecycle, theme);
             let state_cell = Cell::from(state_str).style(Style::default().fg(state_color));
 
-            let status_str = entry.status_message.as_deref().unwrap_or("");
-            let status_cell = Cell::from(status_str).style(Style::default().fg(theme.muted_text));
+            // ONE Notes cell, two possible sources. A feature's own
+            // status message wins when it has one: it is the more
+            // specific, more current statement about that row. The
+            // runtime's stop reason is the fallback, and is the only
+            // thing shown for the majority of rows — the census covers
+            // every actor on the fabric, most of which have no feature
+            // status to report.
+            let notes_str = entry
+                .status_message
+                .as_deref()
+                .or(entry.stop_reason.as_deref())
+                .unwrap_or("");
+            let notes_cell = Cell::from(notes_str).style(Style::default().fg(theme.muted_text));
 
-            Row::new(vec![name_cell, desc_cell, state_cell, status_cell])
+            Row::new(vec![name_cell, desc_cell, state_cell, notes_cell])
         })
         .collect()
 }
