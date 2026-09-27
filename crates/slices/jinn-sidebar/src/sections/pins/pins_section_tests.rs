@@ -13,7 +13,7 @@ use crate::sections::pins::pins_section::*;
 use crate::sections::section_trait::SidebarSection;
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::render_ctx::RenderCtx;
-use jinn_kernel::protocol::{ChangeSource, ChatEntry, PinPosition};
+use jinn_kernel::protocol::{ChangeSource, ChatEntry, ChatEntryId, PinPosition};
 
 fn state_with_pinned(count: usize) -> AppState {
     let mut state = AppState::default_with_scope_focus();
@@ -295,18 +295,29 @@ fn render_rows(
 
 #[rstest::rstest]
 fn render_empty_shows_header_with_zero_count() {
+    // Given an empty pins section and a default state.
     let mut section = PinsSection;
     let state = AppState::default_with_scope_focus();
+
+    // When rendering the section.
     let rows = render_rows(&mut section, &state, 40, 10);
+
+    // Then the header shows the section title and a zero count.
     assert!(rows[0].contains("Pinned Context"));
+    // And the count is zero.
     assert!(rows[0].contains('0'));
 }
 
 #[rstest::rstest]
 fn render_shows_pinned_entries() {
+    // Given a pins section and a state with two pinned entries.
     let mut section = PinsSection;
     let state = state_with_pinned(2);
+
+    // When rendering the section.
     let rows = render_rows(&mut section, &state, 60, 20);
+
+    // Then the first pinned entry's text is rendered.
     let combined = rows.join("\n");
     assert!(
         combined.contains("pinned message 0") || combined.contains("entry 0"),
@@ -339,14 +350,15 @@ fn consecutive_pinned_entries_are_adjacent_with_no_blank_between() {
 
 #[rstest::rstest]
 fn render_selected_entry_has_yellow_marker_when_sidebar_focused() {
+    // Given a pins section with two pinned entries and the pins scope focused.
     let mut section = PinsSection;
     let state = state_with_pinned(2);
-    // Sidebar must be focused for the indicator to be yellow.
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Pins.focus_scope());
-
     let (mut terminal, area) = setup_term(60, 20);
+
+    // When rendering the section.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -356,21 +368,25 @@ fn render_selected_entry_has_yellow_marker_when_sidebar_focused() {
         })
         .unwrap();
 
-    let buffer = terminal.backend().buffer();
-    // First entry at index 0 is selected by default.
+    // Then the selected entry's marker cell is a yellow block.
     // No bordered block in section render - content starts at row 0.
+    // First entry at index 0 is selected by default.
+    let buffer = terminal.backend().buffer();
     let cell0 = buffer.cell((0, 2)).expect("cell 0,2");
     assert_eq!(cell0.symbol(), "\u{2588}");
+    // And its foreground is yellow.
     assert_eq!(cell0.fg, Color::Yellow);
 }
 
 #[rstest::rstest]
 fn render_selected_entry_has_darkgray_marker_when_not_focused() {
+    // Given a pins section with two pinned entries and no sidebar scope focused
+    // (Normal scope is the default).
     let mut section = PinsSection;
     let state = state_with_pinned(2);
-    // Sidebar is NOT focused (Normal scope is the default).
-
     let (mut terminal, area) = setup_term(60, 20);
+
+    // When rendering the section.
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -380,8 +396,8 @@ fn render_selected_entry_has_darkgray_marker_when_not_focused() {
         })
         .unwrap();
 
+    // Then no selection indicator is drawn on the selected entry's row.
     let buffer = terminal.backend().buffer();
-    // When sidebar is not focused, no selection indicator is shown.
     let cell0 = buffer.cell((0, 2)).expect("cell 0,2");
     assert_eq!(cell0.symbol(), " ");
 }
@@ -500,8 +516,40 @@ fn session_new_works_when_not_in_sidebar() {
 
 #[rstest::rstest]
 fn sync_chat_log_cursor_sets_cursor_by_entry_id_with_visual_items() {
-    // Given a session with ignored entries (causing visual-item index != history index)
-    // and a pinned entry deep in history.
+    // Given a session with ignored entries (so the visual-item index differs
+    // from the history index), an expanded ignored block, and a pinned entry
+    // deep inside that block selected in the pins section.
+    let (mut state, pinned_id, first_entry_id) =
+        state_with_expanded_pinned_entry_inside_ignored_block();
+
+    // And the cursor does not already sit on the pinned entry.
+    assert_ne!(
+        state.active_session().selected_cursor_id(),
+        Some(pinned_id.clone()),
+        "precondition: cursor should not be on pinned entry"
+    );
+
+    // When sync_chat_log_cursor is called.
+    crate::sections::pins::pins_section::sync_chat_log_cursor(&mut state);
+
+    // Then the chat log cursor is set to the pinned entry by ID.
+    assert_eq!(
+        state.active_session().selected_cursor_id(),
+        Some(pinned_id.clone()),
+        "sync_chat_log_cursor should set cursor to pinned entry by ID"
+    );
+    // And it is no longer on the entry the cursor started on.
+    assert_ne!(
+        state.active_session().selected_cursor_id(),
+        Some(first_entry_id),
+        "sync_chat_log_cursor should move the cursor off the previous entry"
+    );
+}
+
+/// A session whose ignored block has been expanded so individual entries are
+/// visual items, with the entry at history index 12 pinned and selected in the
+/// pins section, and the chat log cursor parked on the first history entry.
+fn state_with_expanded_pinned_entry_inside_ignored_block() -> (AppState, ChatEntryId, ChatEntryId) {
     use jinn_chat_log_view_msg::{DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items};
 
     let mut state = AppState::default_with_scope_focus();
@@ -519,7 +567,6 @@ fn sync_chat_log_cursor_sets_cursor_by_entry_id_with_visual_items() {
     state.active_session_mut().push_entry(ChatEntry::user("b")); // hist 16
 
     // Pin the entry at history index 12 (inside the ignored block).
-    // When the block is expanded, this entry should be selectable.
     let pinned_id = state.active_session().history()[12].id.clone();
     state
         .active_session_mut()
@@ -545,26 +592,13 @@ fn sync_chat_log_cursor_sets_cursor_by_entry_id_with_visual_items() {
         .frontend
         .update_sections(|s| s.pins.select_by_id(pinned_id.clone()));
 
-    // Set cursor to something else first.
+    // Park the cursor on the first entry so the sync has something to move.
     let first_entry_id = state.active_session().history()[0].id.clone();
     state
         .active_session_mut()
-        .set_selected_cursor_id(first_entry_id);
-    assert_ne!(
-        state.active_session().selected_cursor_id(),
-        Some(pinned_id.clone()),
-        "precondition: cursor should not be on pinned entry"
-    );
+        .set_selected_cursor_id(first_entry_id.clone());
 
-    // When sync_chat_log_cursor is called.
-    crate::sections::pins::pins_section::sync_chat_log_cursor(&mut state);
-
-    // Then the chat log cursor is set to the pinned entry by ID.
-    assert_eq!(
-        state.active_session().selected_cursor_id(),
-        Some(pinned_id.clone()),
-        "sync_chat_log_cursor should set cursor to pinned entry by ID"
-    );
+    (state, pinned_id, first_entry_id)
 }
 
 #[rstest::rstest]
@@ -749,6 +783,8 @@ fn pins_non_skill_tool_result_unchanged() {
 #[rstest::rstest]
 fn truncate_to_width_returns_string_unchanged_when_it_fits() {
     // Given a string that fits within the budget.
+
+    // When truncating to the budget.
     let result = truncate_to_width("hello", 10);
 
     // Then it is returned unchanged.
@@ -758,6 +794,8 @@ fn truncate_to_width_returns_string_unchanged_when_it_fits() {
 #[rstest::rstest]
 fn truncate_to_width_truncates_ascii_and_appends_ellipsis() {
     // Given a string that exceeds the budget.
+
+    // When truncating to the budget.
     let result = truncate_to_width("hello world", 5);
 
     // Then it is truncated to fit with an ellipsis.
@@ -767,6 +805,8 @@ fn truncate_to_width_truncates_ascii_and_appends_ellipsis() {
 #[rstest::rstest]
 fn truncate_to_width_fits_double_wide_char_within_budget() {
     // Given a string with a double-wide char that fits.
+
+    // When truncating to the budget.
     let result = truncate_to_width("\u{2705} ok", 10);
 
     // Then it is returned unchanged (2+1+2=5 <= 10).
@@ -776,6 +816,8 @@ fn truncate_to_width_fits_double_wide_char_within_budget() {
 #[rstest::rstest]
 fn truncate_to_width_skips_wide_char_at_boundary() {
     // Given a string where a 2-cell char would overflow the budget.
+
+    // When truncating to the budget.
     let result = truncate_to_width("ab\u{2705}", 3);
 
     // Then the wide char is skipped and ellipsis is appended.
@@ -785,6 +827,8 @@ fn truncate_to_width_skips_wide_char_at_boundary() {
 #[rstest::rstest]
 fn truncate_to_width_fits_wide_char_exactly() {
     // Given a string where a wide char fills the budget exactly.
+
+    // When truncating to the budget.
     let result = truncate_to_width("a\u{2705}b", 4);
 
     // Then it is returned unchanged (1+2+1=4).
@@ -794,6 +838,8 @@ fn truncate_to_width_fits_wide_char_exactly() {
 #[rstest::rstest]
 fn truncate_to_width_only_wide_chars_budget_one() {
     // Given only wide chars with a budget of 1.
+
+    // When truncating to the budget.
     let result = truncate_to_width("\u{2705}\u{274c}", 1);
 
     // Then only the ellipsis fits.
@@ -803,6 +849,8 @@ fn truncate_to_width_only_wide_chars_budget_one() {
 #[rstest::rstest]
 fn truncate_to_width_empty_string_returns_empty() {
     // Given an empty string.
+
+    // When truncating to the budget.
     let result = truncate_to_width("", 5);
 
     // Then it is returned unchanged.
@@ -812,6 +860,8 @@ fn truncate_to_width_empty_string_returns_empty() {
 #[rstest::rstest]
 fn truncate_to_width_zero_budget_returns_empty() {
     // Given a non-empty string with zero budget.
+
+    // When truncating to the budget.
     let result = truncate_to_width("hello", 0);
 
     // Then an empty string is returned (no room for anything).
@@ -821,6 +871,8 @@ fn truncate_to_width_zero_budget_returns_empty() {
 #[rstest::rstest]
 fn truncate_str_strips_ansi_before_truncating() {
     // Given a string with ANSI escape codes.
+
+    // When truncating to the budget.
     let result = truncate_str("\x1b[31mhello\x1b[0m", 3);
 
     // Then ANSI is stripped and the plain text is truncated.

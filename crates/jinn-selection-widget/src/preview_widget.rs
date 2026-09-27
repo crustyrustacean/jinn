@@ -565,6 +565,7 @@ mod tests {
     fn vertical_split_used_on_wide_terminal() {
         // Given a wide popup rect (popup_width from 140-col terminal = 112).
         let area = Rect::new(0, 0, 140, 30);
+        // When computing the popup rect.
         let popup = compute_popup_rect(area);
 
         // Then the popup is wide enough for vertical split.
@@ -580,6 +581,7 @@ mod tests {
     fn horizontal_split_used_on_narrow_terminal() {
         // Given a narrow terminal.
         let area = Rect::new(0, 0, 60, 30);
+        // When computing the popup rect.
         let popup = compute_popup_rect(area);
 
         // Then the popup is too narrow for vertical split.

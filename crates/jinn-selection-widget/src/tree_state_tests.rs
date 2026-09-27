@@ -149,6 +149,7 @@ fn tree_connectors_recomputed_for_filtered_set() {
 fn orphaned_item_treated_as_root() {
     // Given: child C references non-existent parent X.
     let items = vec![item("a", None, "Alpha"), item("c", Some("x"), "Charlie")];
+    // When building the tree state.
     let state = TreePickerState::with_items(items);
 
     // Then C appears as a root (depth 0).
@@ -194,7 +195,7 @@ fn multiple_matches_in_different_subtrees() {
     // When filtering for "Bravo Delta" (matches B and D).
     state.insert_text("Bravo");
 
-    // After inserting "Bravo", only B matches (and its parent A).
+    // Then only B matches, together with its parent A.
     assert_eq!(state.filtered_count(), 2);
     assert_eq!(state.filtered_item(0).unwrap().id, "a");
     assert_eq!(state.filtered_item(1).unwrap().id, "b");
@@ -275,46 +276,61 @@ fn set_items_rebuilds_index() {
 #[rstest::rstest]
 #[test]
 fn tree_insert_char_appends_to_filter() {
+    // Given a tree state with one root item and an empty filter.
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
+    // When inserting a character.
     state.insert_char('x');
+    // Then the filter holds the inserted character.
     assert_eq!(state.filter(), "x");
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_insert_char_advances_cursor() {
+    // Given a tree state with one root item and an empty filter.
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
+    // When inserting a character.
     state.insert_char('x');
+    // Then the filter cursor advances one grapheme.
     assert_eq!(state.cursor_pos(), 1);
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_insert_char_resets_selection() {
+    // Given a tree state with a child selected.
     let items = vec![item("a", None, "Alpha"), item("b", Some("a"), "Bravo")];
     let mut state = TreePickerState::with_items(items);
     state.selection = 1;
+    // When inserting a character.
     state.insert_char('x');
+    // Then the selection resets to the first visible entry.
     assert_eq!(state.selection(), 0);
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_insert_char_resets_scroll_offset() {
+    // Given a tree state with a non-zero scroll offset.
     let items = vec![item("a", None, "Alpha")];
     let mut state = TreePickerState::with_items(items);
     state.scroll_offset = 5;
+    // When inserting a character.
     state.insert_char('x');
+    // Then the scroll offset resets to the top.
     assert_eq!(state.scroll_offset(), 0);
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_insert_char_at_cursor_middle() {
+    // Given a tree state with filter "abc" and the cursor after "a".
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
     state.filter = "abc".to_owned();
     state.cursor_pos = 1;
+    // When inserting a character at the cursor.
     state.insert_char('x');
+    // Then the character lands at the cursor and the cursor advances past it.
     assert_eq!(state.filter(), "axbc");
     assert_eq!(state.cursor_pos(), 2);
 }
@@ -322,26 +338,35 @@ fn tree_insert_char_at_cursor_middle() {
 #[rstest::rstest]
 #[test]
 fn tree_insert_text_strips_newlines_and_carriage_returns() {
+    // Given a tree state with an empty filter.
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
+    // When inserting text containing newlines and carriage returns.
     state.insert_text("he\nl\rl\no");
+    // Then the filter holds the text with those characters removed.
     assert_eq!(state.filter(), "hello");
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_insert_text_advances_cursor_by_grapheme_count() {
+    // Given a tree state with an empty filter.
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
+    // When inserting three characters as text.
     state.insert_text("abc");
+    // Then the cursor advances by the grapheme count.
     assert_eq!(state.cursor_pos(), 3);
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_insert_text_with_only_newlines_is_noop() {
+    // Given a tree state with filter "existing" and the cursor three graphemes in.
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
     state.filter = "existing".to_owned();
     state.cursor_pos = 3;
+    // When inserting text made only of newlines.
     state.insert_text("\n\r\n");
+    // Then the filter and cursor are left untouched.
     assert_eq!(state.filter(), "existing");
     assert_eq!(state.cursor_pos(), 3);
 }
@@ -349,11 +374,14 @@ fn tree_insert_text_with_only_newlines_is_noop() {
 #[rstest::rstest]
 #[test]
 fn tree_insert_text_resets_selection_and_scroll() {
+    // Given a tree state with a child selected and scrolled past the top.
     let items = vec![item("a", None, "Alpha"), item("b", Some("a"), "Bravo")];
     let mut state = TreePickerState::with_items(items);
     state.selection = 1;
     state.scroll_offset = 1;
+    // When inserting text into the filter.
     state.insert_text("x");
+    // Then the selection and scroll offset both reset.
     assert_eq!(state.selection(), 0);
     assert_eq!(state.scroll_offset(), 0);
 }
@@ -361,10 +389,13 @@ fn tree_insert_text_resets_selection_and_scroll() {
 #[rstest::rstest]
 #[test]
 fn tree_insert_text_at_cursor_middle() {
+    // Given a tree state with filter "ace" and the cursor after "a".
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
     state.filter = "ace".to_owned();
     state.cursor_pos = 1;
+    // When inserting text at the cursor.
     state.insert_text("bd");
+    // Then the text lands at the cursor and the cursor advances past it.
     assert_eq!(state.filter(), "abdce");
     assert_eq!(state.cursor_pos(), 3);
 }
@@ -372,10 +403,13 @@ fn tree_insert_text_at_cursor_middle() {
 #[rstest::rstest]
 #[test]
 fn tree_backspace_at_start_is_noop() {
+    // Given a tree state with filter "abc" and the cursor at the start.
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
     state.filter = "abc".to_owned();
     state.cursor_pos = 0;
+    // When deleting the grapheme before the cursor.
     state.backspace();
+    // Then the filter and cursor are left untouched.
     assert_eq!(state.filter(), "abc");
     assert_eq!(state.cursor_pos(), 0);
 }
@@ -383,10 +417,13 @@ fn tree_backspace_at_start_is_noop() {
 #[rstest::rstest]
 #[test]
 fn tree_backspace_removes_before_cursor() {
+    // Given a tree state with filter "abc" and the cursor after "ab".
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
     state.filter = "abc".to_owned();
     state.cursor_pos = 2;
+    // When deleting the grapheme before the cursor.
     state.backspace();
+    // Then that grapheme is removed and the cursor moves back.
     assert_eq!(state.filter(), "ac");
     assert_eq!(state.cursor_pos(), 1);
 }
@@ -394,10 +431,13 @@ fn tree_backspace_removes_before_cursor() {
 #[rstest::rstest]
 #[test]
 fn tree_backspace_at_end_removes_last() {
+    // Given a tree state with filter "ab" and the cursor at the end.
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
     state.filter = "ab".to_owned();
     state.cursor_pos = 2;
+    // When deleting the grapheme before the cursor.
     state.backspace();
+    // Then the last grapheme is removed and the cursor moves back.
     assert_eq!(state.filter(), "a");
     assert_eq!(state.cursor_pos(), 1);
 }
@@ -405,13 +445,16 @@ fn tree_backspace_at_end_removes_last() {
 #[rstest::rstest]
 #[test]
 fn tree_backspace_resets_selection_and_scroll() {
+    // Given a tree state with filter "ab", a child selected, and a non-zero scroll offset.
     let items = vec![item("a", None, "Alpha"), item("b", Some("a"), "Bravo")];
     let mut state = TreePickerState::with_items(items);
     state.filter = "ab".to_owned();
     state.cursor_pos = 2;
     state.selection = 1;
     state.scroll_offset = 1;
+    // When deleting the grapheme before the cursor.
     state.backspace();
+    // Then the selection and scroll offset both reset.
     assert_eq!(state.selection(), 0);
     assert_eq!(state.scroll_offset(), 0);
 }
@@ -419,55 +462,71 @@ fn tree_backspace_resets_selection_and_scroll() {
 #[rstest::rstest]
 #[test]
 fn tree_move_cursor_left_decrements() {
+    // Given a tree state whose filter cursor sits three graphemes in.
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
     state.cursor_pos = 3;
+    // When moving the filter cursor left.
     state.move_cursor_left();
+    // Then the cursor moves one grapheme earlier.
     assert_eq!(state.cursor_pos(), 2);
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_move_cursor_left_clamps_at_zero() {
+    // Given a tree state whose filter cursor is at the start.
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
     state.cursor_pos = 0;
+    // When moving the filter cursor left.
     state.move_cursor_left();
+    // Then the cursor stays at the start.
     assert_eq!(state.cursor_pos(), 0);
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_move_cursor_left_multiple_times() {
+    // Given a tree state whose filter cursor sits two graphemes in.
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
     state.cursor_pos = 2;
+    // When moving the filter cursor left three times.
     state.move_cursor_left();
     state.move_cursor_left();
     state.move_cursor_left(); // should clamp at 0
+    // Then the cursor stops at the start.
     assert_eq!(state.cursor_pos(), 0);
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_move_cursor_right_increments() {
+    // Given a tree state with filter "abc" and the cursor after "a".
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
     state.filter = "abc".to_owned();
     state.cursor_pos = 1;
+    // When moving the filter cursor right.
     state.move_cursor_right();
+    // Then the cursor moves one grapheme later.
     assert_eq!(state.cursor_pos(), 2);
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_move_cursor_right_clamps_at_end() {
+    // Given a tree state with filter "abc" and the cursor at the end.
     let mut state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
     state.filter = "abc".to_owned();
     state.cursor_pos = 3;
+    // When moving the filter cursor right.
     state.move_cursor_right();
+    // Then the cursor stays at the end.
     assert_eq!(state.cursor_pos(), 3);
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_move_up_decrements() {
+    // Given a tree of one root and two children with the selection on the last child.
     let items = vec![
         item("a", None, "Alpha"),
         item("b", Some("a"), "Bravo"),
@@ -475,30 +534,38 @@ fn tree_move_up_decrements() {
     ];
     let mut state = TreePickerState::with_items(items);
     state.selection = 2;
+    // When moving the selection up.
     state.move_up(5);
+    // Then the selection moves to the previous visible entry.
     assert_eq!(state.selection(), 1);
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_move_up_clamps_at_zero() {
+    // Given a tree state with the selection on the first entry.
     let items = vec![item("a", None, "Alpha")];
     let mut state = TreePickerState::with_items(items);
     state.selection = 0;
+    // When moving the selection up.
     state.move_up(5);
+    // Then the selection stays on the first entry.
     assert_eq!(state.selection(), 0);
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_move_up_adjusts_scroll_offset() {
+    // Given a tree of ten roots with the selection two entries below the scroll offset.
     let items: Vec<TestItem> = (0..10)
         .map(|i| item(&format!("{i}"), None, &format!("Item{i}")))
         .collect();
     let mut state = TreePickerState::with_items(items);
     state.selection = 2;
     state.scroll_offset = 2;
+    // When moving the selection up.
     state.move_up(5);
+    // Then the selection and the scroll offset both move up one.
     assert_eq!(state.selection(), 1);
     assert_eq!(state.scroll_offset(), 1);
 }
@@ -506,6 +573,7 @@ fn tree_move_up_adjusts_scroll_offset() {
 #[rstest::rstest]
 #[test]
 fn tree_move_down_increments() {
+    // Given a tree of three roots with the selection on the middle one.
     let items = vec![
         item("a", None, "Alpha"),
         item("b", None, "Bravo"),
@@ -513,38 +581,49 @@ fn tree_move_down_increments() {
     ];
     let mut state = TreePickerState::with_items(items);
     state.selection = 1;
+    // When moving the selection down.
     state.move_down(5);
+    // Then the selection moves to the next visible entry.
     assert_eq!(state.selection(), 2);
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_move_down_clamps_at_end() {
+    // Given a tree state whose only entry is selected.
     let items = vec![item("a", None, "Alpha")];
     let mut state = TreePickerState::with_items(items);
     state.selection = 0;
+    // When moving the selection down.
     state.move_down(5);
+    // Then the selection stays on the last entry.
     assert_eq!(state.selection(), 0);
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_move_down_clamps_when_empty() {
+    // Given a tree state with no items at all.
     let mut state = TreePickerState::<TestItem>::new();
+    // When moving the selection down.
     state.move_down(5);
+    // Then the selection stays at zero.
     assert_eq!(state.selection(), 0);
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_move_down_adjusts_scroll_offset() {
+    // Given a tree of ten roots with the selection on the last visible entry.
     let items: Vec<TestItem> = (0..10)
         .map(|i| item(&format!("{i}"), None, &format!("Item{i}")))
         .collect();
     let mut state = TreePickerState::with_items(items);
     state.selection = 4;
     state.scroll_offset = 0;
+    // When moving the selection down.
     state.move_down(5);
+    // Then the selection advances and the scroll offset follows it.
     assert_eq!(state.selection(), 5);
     assert_eq!(state.scroll_offset(), 1);
 }
@@ -642,61 +721,79 @@ fn tree_page_down_moves_at_least_one_when_viewport_small() {
 #[rstest::rstest]
 #[test]
 fn tree_ensure_visible_selection_above_view() {
+    // Given a tree state scrolled to entry 3 with entry 1 selected.
     let mut state = TreePickerState::<TestItem>::new();
     state.scroll_offset = 3;
     state.selection = 1;
+    // When making the selection visible in a five-row viewport.
     state.ensure_visible(5);
+    // Then the scroll offset moves up to the selection.
     assert_eq!(state.scroll_offset(), 1);
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_ensure_visible_selection_below_view() {
+    // Given a tree state scrolled to the top with entry 7 selected.
     let mut state = TreePickerState::<TestItem>::new();
     state.scroll_offset = 0;
     state.selection = 7;
+    // When making the selection visible in a five-row viewport.
     state.ensure_visible(5);
+    // Then the scroll offset scrolls down just far enough.
     assert_eq!(state.scroll_offset(), 3);
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_ensure_visible_selection_within_view() {
+    // Given a tree state scrolled to entry 2 with entry 3 selected.
     let mut state = TreePickerState::<TestItem>::new();
     state.scroll_offset = 2;
     state.selection = 3;
+    // When making the selection visible in a five-row viewport.
     state.ensure_visible(5);
+    // Then the scroll offset is left alone.
     assert_eq!(state.scroll_offset(), 2);
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_ensure_visible_selection_equal_to_scroll_offset() {
+    // Given a tree state scrolled to entry 5 with entry 5 selected.
     let mut state = TreePickerState::<TestItem>::new();
     state.scroll_offset = 5;
     state.selection = 5;
+    // When making the selection visible in a five-row viewport.
     state.ensure_visible(5);
+    // Then the scroll offset is left alone.
     assert_eq!(state.scroll_offset(), 5);
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_ensure_visible_selection_at_view_end() {
+    // Given a tree state scrolled to the top with entry 5 selected.
     let mut state = TreePickerState::<TestItem>::new();
     state.scroll_offset = 0;
     state.selection = 5; // scroll_offset + max_visible
+    // When making the selection visible in a five-row viewport.
     state.ensure_visible(5);
+    // Then the scroll offset scrolls down by one.
     assert_eq!(state.scroll_offset(), 1);
 }
 
 #[rstest::rstest]
 #[test]
 fn tree_ensure_visible_with_zero_max_visible_selection_below() {
+    // Given a tree state scrolled to entry 2 with entry 10 selected.
     let mut state = TreePickerState::<TestItem>::new();
     state.scroll_offset = 2;
     state.selection = 10;
+    // When making the selection visible in a zero-row viewport.
     state.ensure_visible(0);
-    // max_visible == 0 guard prevents scroll down.
+    // Then the scroll offset is left alone -- the max_visible == 0 guard
+    // prevents scrolling down at all.
     assert_eq!(state.scroll_offset(), 2);
 }
 
@@ -710,6 +807,7 @@ fn tree_dfs_multiple_roots_correct_last_child_flags() {
         item("c", None, "Charlie"),
         item("d", Some("c"), "Delta"),
     ];
+    // When building the visible entries depth-first.
     let state = TreePickerState::with_items(items);
 
     // Then: root A is not last child (C is the other root).

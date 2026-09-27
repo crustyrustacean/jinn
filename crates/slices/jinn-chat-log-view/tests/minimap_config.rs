@@ -8,9 +8,13 @@ use jinn_preferences_config::schemas::MinimapConfig;
 fn default_minimap_config_has_positive_token_bound() {
     // Given default minimap config.
     let config = MinimapConfig::default();
+
+    // When reading the band boundary.
+    let max_tokens = config.max_tokens;
+
     // Then the band boundary is a positive token count (not pinned to a
     // specific value — that's the Default impl's choice, not a contract).
-    assert!(config.max_tokens > 0);
+    assert!(max_tokens > 0);
 }
 
 #[rstest::rstest]

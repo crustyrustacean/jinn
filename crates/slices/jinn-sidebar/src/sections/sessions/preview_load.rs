@@ -239,6 +239,44 @@ mod preview_load_tests {
         });
     }
 
+    /// Arms a preview render for `id` and publishes its (empty) result, exactly
+    /// as the layout worker would once the job came back.
+    ///
+    /// Returns the signature and width the result was filed under, which is all
+    /// the render pass needs to look the preview up again.
+    fn complete_preview_render(state: &mut AppState, id: &SessionId) -> (u64, u16) {
+        let request = update_preview(state, id, jinn_slices::empty_config_layer())
+            .expect("a measured width must request");
+        let signature = request.signature;
+        let generation = request.generation;
+        let width = request.content_width;
+        state.frontend.update_sections(|s| {
+            s.sessions.preview.complete(
+                id.clone(),
+                generation,
+                signature,
+                width,
+                Arc::new(Vec::new()),
+            );
+        });
+        (signature, width)
+    }
+
+    /// App state whose only session holds no entries at all, with an empty
+    /// preview rendered and cached for it at width 46.
+    fn state_with_completed_empty_preview() -> (AppState, SessionId, u64, u16) {
+        let mut state = AppState::default_with_scope_focus();
+        let session = ChatSessionState::new();
+        let id = session.session_id().clone();
+        state.session.insert(session);
+        state.session.set_active(id.clone());
+        state
+            .frontend
+            .update_sections(|s| s.sessions.preview_content_width = 46);
+        let (signature, width) = complete_preview_render(&mut state, &id);
+        (state, id, signature, width)
+    }
+
     #[rstest::rstest]
     fn a_fresh_session_yields_a_preview_request() {
         // Given app state with a session whose preview has never been served.
@@ -384,7 +422,7 @@ mod preview_load_tests {
     }
 
     #[rstest::rstest]
-    fn a_completed_empty_preview_is_served_as_empty_not_loading() {
+    fn an_empty_preview_render_is_armed_for_a_session_with_no_entries() {
         // Given a session with no entries at all — a brand-new session, whose
         // chat view is already showing because there is nothing to load.
         let mut state = AppState::default_with_scope_focus();
@@ -396,21 +434,22 @@ mod preview_load_tests {
             .frontend
             .update_sections(|s| s.sessions.preview_content_width = 46);
 
-        // When a preview is requested and its (empty) result comes back.
-        let request = update_preview(&mut state, &id, jinn_slices::empty_config_layer())
-            .expect("an empty session still needs rendering to establish it is empty");
-        let signature = request.signature;
-        let generation = request.generation;
-        let width = request.content_width;
-        state.frontend.update_sections(|s| {
-            s.sessions.preview.complete(
-                id.clone(),
-                generation,
-                signature,
-                width,
-                Arc::new(Vec::new()),
-            );
-        });
+        // When a preview is requested.
+        let request = update_preview(&mut state, &id, jinn_slices::empty_config_layer());
+
+        // Then one is published: an empty session still needs rendering for the
+        // popup to know it is empty rather than still loading.
+        assert!(
+            request.is_some(),
+            "an empty session still needs rendering to establish it is empty"
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_completed_empty_preview_is_served_as_empty_not_loading() {
+        // Given a session with no entries whose empty preview has been rendered
+        // and cached.
+        let (state, id, signature, width) = state_with_completed_empty_preview();
 
         // When the render pass looks it up.
         let found = state.frontend.with_sections(
@@ -554,33 +593,18 @@ mod preview_load_tests {
 
     #[rstest::rstest]
     fn a_completed_preview_is_found_at_the_width_the_render_pass_derives() {
-        // Given a session, and the width the pre-render pass measured for the
-        // frame the render pass will draw.
+        // Given a session whose preview has been requested and filled in, and
+        // the frame area the render pass will draw.
         let (mut state, id) = state_with_session(3);
         let frame_area = ratatui::layout::Rect::new(0, 0, 100, 40);
         let measured = crate::sections::sessions::preview::preview_content_width(frame_area);
         state
             .frontend
             .update_sections(|s| s.sessions.preview_content_width = measured);
+        let (signature, request_width) = complete_preview_render(&mut state, &id);
 
-        // When a preview is requested and its result comes back.
-        let request = update_preview(&mut state, &id, jinn_slices::empty_config_layer())
-            .expect("a measured width must request");
-        let signature = request.signature;
-        let generation = request.generation;
-        let width = request.content_width;
-        state.frontend.update_sections(|s| {
-            s.sessions.preview.complete(
-                id.clone(),
-                generation,
-                signature,
-                width,
-                std::sync::Arc::new(Vec::new()),
-            );
-        });
-
-        // When the render pass then looks the preview up, at the width it
-        // derives from the same frame rather than reading back what was stored.
+        // When the render pass looks the preview up, at the width it derives
+        // from the same frame rather than reading back what was stored.
         let lookup_width = crate::sections::sessions::preview::preview_content_width(frame_area);
         let found = state.frontend.with_sections(
             |s| {
@@ -598,9 +622,8 @@ mod preview_load_tests {
         // and still reported a miss on every frame, spinning forever.
         assert!(
             found,
-            "a preview rendered at width {} was not found at the width the render pass \
-             looks up at ({lookup_width})",
-            request.content_width
+            "a preview rendered at width {request_width} was not found at the width the render \
+             pass looks up at ({lookup_width})",
         );
     }
 
@@ -705,20 +728,26 @@ mod preview_load_tests {
 
     #[rstest::rstest]
     fn the_signature_is_stable_for_unchanged_content() {
-        // Given the same content built twice.
+        // Given a helper that builds a session holding one assistant entry of
+        // the given text and signs it.
         let signature = |text: &str| {
             let mut session = ChatSessionState::new();
             session.push_entry(ChatEntry::assistant(text));
             preview_signature(session.history(), PREVIEW_ENTRY_COUNT)
         };
 
+        // When the same content is signed twice.
+        let first = signature("hello");
+        let second = signature("hello");
+
         // Then the signatures match.
-        assert_eq!(signature("hello"), signature("hello"));
+        assert_eq!(first, second);
     }
 
     #[rstest::rstest]
     fn the_signature_moves_when_the_history_grows() {
-        // Given signatures for one and two entries of the same total content.
+        // Given a helper that builds a session holding `count` assistant
+        // entries of the same text and signs it.
         let signature = |count: usize| {
             let mut session = ChatSessionState::new();
             for _ in 0..count {
@@ -727,7 +756,11 @@ mod preview_load_tests {
             preview_signature(session.history(), PREVIEW_ENTRY_COUNT)
         };
 
+        // When a one-entry and a two-entry history are signed.
+        let one_entry = signature(1);
+        let two_entries = signature(2);
+
         // Then they differ, so dropping an entry is not mistaken for a no-op.
-        assert_ne!(signature(1), signature(2));
+        assert_ne!(one_entry, two_entries);
     }
 }

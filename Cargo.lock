@@ -3226,6 +3226,7 @@ dependencies = [
  "jinn-turn-dispatch-msg",
  "parking_lot",
  "rstest",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",

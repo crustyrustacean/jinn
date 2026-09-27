@@ -19,6 +19,7 @@ use crate::sections::sidebar::{Sidebar, jump_to_section, navigate_sidebar};
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_kernel::protocol::ChatEntry;
+use jinn_kernel::protocol::ChatEntryId;
 use jinn_kernel::protocol::PinPosition;
 use jinn_session_state::ChatSessionState;
 
@@ -1111,9 +1112,9 @@ fn sidebar_leave_discards_saved_position() {
     assert!(!state.active_session().has_saved_history_position());
 }
 
-#[rstest::rstest]
-fn full_cycle_saves_and_restores() {
-    // Given persona focused with original scroll position.
+/// State on Persona with three pins below it and the chat log parked at scroll
+/// offset 42, entry 0.
+fn state_on_persona_above_three_pins() -> AppState {
     let mut state = state_with_pinned(3);
     state
         .frontend
@@ -1123,57 +1124,105 @@ fn full_cycle_saves_and_restores() {
         .update_sections(|s| s.persona.cursor = Some(0));
     state.active_session_mut().set_scroll_offset(Some(42));
     state.active_session_mut().set_selected_entry_index(0);
+    state
+}
 
-    // When navigating to Pins.
+/// Moves the sidebar cursor down one row, as a keypress would.
+fn navigate_down(state: &mut AppState) {
     let _ = navigate_sidebar(
         &SidebarIntent::MoveDown,
-        &mut state,
+        state,
         jinn_slices::empty_config_layer(),
     );
-    // Then position is saved.
+}
+
+#[rstest::rstest]
+fn full_cycle_saves_and_restores() {
+    // Given persona focused with original scroll position.
+    let mut state = state_on_persona_above_three_pins();
+
+    // When walking down through every pin and out of the section.
+    navigate_down(&mut state); // onto the first pin
+    navigate_down(&mut state); // onto the second pin
+    navigate_down(&mut state); // onto the third pin
+    navigate_down(&mut state); // off the end, back out to the sections above
+
+    // Then the position is saved on the way out and restored on the way back.
+    assert_eq!(state.active_session().scroll_offset(), Some(42));
+    assert_eq!(state.active_session().selected_entry_index(), Some(0));
+}
+
+#[rstest::rstest]
+fn navigating_onto_pins_saves_the_position_without_restoring_it() {
+    // Given persona focused with original scroll position.
+    let mut state = state_on_persona_above_three_pins();
+
+    // When navigating down onto the pins.
+    navigate_down(&mut state);
+
+    // Then the position is saved. Leaving persona parked the chat log where it
+    // was, and `sync_chat_log_cursor` moved the selected entry to the pin's
+    // history index (which may be 0 if the pin is the first entry) — the saved
+    // position survives that.
     assert!(state.active_session().has_saved_history_position());
-    // sync_chat_log_cursor changes selected_entry_index to the pin's history index
-    // (which may be 0 if the pin is the first entry).
+}
 
-    // When navigating within pins (second pin) - does NOT restore.
-    let _ = navigate_sidebar(
-        &SidebarIntent::MoveDown,
-        &mut state,
-        jinn_slices::empty_config_layer(),
-    );
+#[rstest::rstest]
+fn navigating_between_pins_leaves_the_saved_position_saved() {
+    // Given persona focused, with the position already saved and the cursor on
+    // the first pin.
+    let mut state = state_on_persona_above_three_pins();
+    navigate_down(&mut state);
+
+    // When navigating down within pins, to the second pin.
+    navigate_down(&mut state);
+
+    // Then the saved position is still there — moving within the section never
+    // restores it.
     assert!(state.active_session().has_saved_history_position());
+}
 
-    // When navigating within pins (third pin, last) - does NOT restore.
-    let _ = navigate_sidebar(
-        &SidebarIntent::MoveDown,
-        &mut state,
-        jinn_slices::empty_config_layer(),
-    );
+#[rstest::rstest]
+fn navigating_to_the_last_pin_leaves_the_saved_position_saved() {
+    // Given persona focused, with the position already saved and the cursor on
+    // the second pin.
+    let mut state = state_on_persona_above_three_pins();
+    navigate_down(&mut state);
+    navigate_down(&mut state);
+
+    // When navigating down within pins, to the third and last pin.
+    navigate_down(&mut state);
+
+    // Then the saved position is still there.
     assert!(state.active_session().has_saved_history_position());
+}
 
-    // When navigating to Sessions (exhausting pins).
-    let _ = navigate_sidebar(
+#[rstest::rstest]
+fn jump_roundtrip_saves_and_restores() {
+    // Given persona focused.
+    let mut state = state_on_persona_above_three_pins();
+
+    // When jumping to Pins and back to Persona.
+    let _ = jump_to_section(
         &SidebarIntent::MoveDown,
         &mut state,
         jinn_slices::empty_config_layer(),
     );
+    let _ = jump_to_section(
+        &SidebarIntent::MoveUp,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
+
     // Then position is restored.
     assert_eq!(state.active_session().scroll_offset(), Some(42));
     assert_eq!(state.active_session().selected_entry_index(), Some(0));
 }
 
 #[rstest::rstest]
-fn jump_roundtrip_saves_and_restores() {
+fn jump_to_pins_saves_the_position() {
     // Given persona focused.
-    let mut state = state_with_pinned(3);
-    state
-        .frontend
-        .scope_push(jinn_sidebar_msg::SidebarSectionId::Persona.focus_scope());
-    state
-        .frontend
-        .update_sections(|s| s.persona.cursor = Some(0));
-    state.active_session_mut().set_scroll_offset(Some(42));
-    state.active_session_mut().set_selected_entry_index(0);
+    let mut state = state_on_persona_above_three_pins();
 
     // When jumping to Pins.
     let _ = jump_to_section(
@@ -1181,18 +1230,9 @@ fn jump_roundtrip_saves_and_restores() {
         &mut state,
         jinn_slices::empty_config_layer(),
     );
+
     // Then position is saved (via receive_cursor fallback).
     assert!(state.active_session().has_saved_history_position());
-
-    // When jumping back to Persona.
-    let _ = jump_to_section(
-        &SidebarIntent::MoveUp,
-        &mut state,
-        jinn_slices::empty_config_layer(),
-    );
-    // Then position is restored.
-    assert_eq!(state.active_session().scroll_offset(), Some(42));
-    assert_eq!(state.active_session().selected_entry_index(), Some(0));
 }
 
 #[rstest::rstest]
@@ -1200,44 +1240,14 @@ fn jump_to_pins_with_retained_cursor_syncs_chat_log_cursor() {
     // Given pins focused with a retained cursor, then jumped away and back.
     // Use entries where the pinned entry is NOT the first, so the restore
     // puts the cursor on a different entry than the pin.
-    let mut state = AppState::default_with_scope_focus();
-    state.active_session_mut().push_entry(ChatEntry::user("a")); // hist 0
-    state.active_session_mut().push_entry(ChatEntry::user("b")); // hist 1 - will be pinned
-    state.active_session_mut().push_entry(ChatEntry::user("c")); // hist 2
-    let pinned_id = state.active_session().history()[1].id.clone();
-    state
-        .active_session_mut()
-        .pin_entry(&pinned_id, PinPosition::Top);
+    let (mut state, pinned_id, _away) = state_with_pins_focused_on_a_middle_pin();
 
-    state
-        .frontend
-        .scope_push(jinn_sidebar_msg::SidebarSectionId::Pins.focus_scope());
-    state
-        .frontend
-        .update_sections(|s| s.pins.select_by_id(pinned_id.clone()));
-    state.active_session_mut().set_selected_entry_index(2); // cursor on "c" before save
-    state.active_session_mut().save_history_position();
-    // Now sync cursor to pin.
-    crate::sections::pins::pins_section::sync_chat_log_cursor(&mut state);
-    assert_eq!(
-        state.active_session().selected_cursor_id(),
-        Some(pinned_id.clone()),
-        "precondition: cursor should be on pinned entry"
-    );
-
-    // Jump to Persona (away from pins) - restores cursor to "c".
+    // When jumping away to Persona and back.
     let _ = jump_to_section(
         &SidebarIntent::MoveUp,
         &mut state,
         jinn_slices::empty_config_layer(),
     );
-    assert_ne!(
-        state.active_session().selected_cursor_id(),
-        Some(pinned_id.clone()),
-        "cursor should be restored away from pin"
-    );
-
-    // Jump back to Pins (retained cursor on pinned entry).
     let _ = jump_to_section(
         &SidebarIntent::MoveDown,
         &mut state,
@@ -1250,6 +1260,61 @@ fn jump_to_pins_with_retained_cursor_syncs_chat_log_cursor() {
         Some(pinned_id),
         "chat log cursor should match the retained pin after jump back"
     );
+}
+
+#[rstest::rstest]
+fn jumping_away_from_pins_restores_the_cursor_off_the_pin() {
+    // Given pins focused with a retained cursor, synced to a pin that is not
+    // the first entry — so the restore moves the cursor elsewhere.
+    let (mut state, pinned_id, _away) = state_with_pins_focused_on_a_middle_pin();
+
+    // When jumping away to Persona.
+    let _ = jump_to_section(
+        &SidebarIntent::MoveUp,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
+
+    // Then the cursor is restored away from the pin.
+    assert_ne!(
+        state.active_session().selected_cursor_id(),
+        Some(pinned_id),
+        "cursor should be restored away from pin"
+    );
+}
+
+/// Pins focused with a saved position, the chat log cursor already synced to
+/// the pinned entry, and the pinned entry not first in history.
+///
+/// Returns the state, the pinned entry's id, and the id of the entry the
+/// restored cursor lands on instead.
+fn state_with_pins_focused_on_a_middle_pin() -> (AppState, ChatEntryId, ChatEntryId) {
+    let mut state = AppState::default_with_scope_focus();
+    state.active_session_mut().push_entry(ChatEntry::user("a")); // hist 0
+    state.active_session_mut().push_entry(ChatEntry::user("b")); // hist 1 - will be pinned
+    state.active_session_mut().push_entry(ChatEntry::user("c")); // hist 2
+    let pinned_id = state.active_session().history()[1].id.clone();
+    let away_id = state.active_session().history()[2].id.clone();
+    state
+        .active_session_mut()
+        .pin_entry(&pinned_id, PinPosition::Top);
+
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Pins.focus_scope());
+    state
+        .frontend
+        .update_sections(|s| s.pins.select_by_id(pinned_id.clone()));
+    state.active_session_mut().set_selected_entry_index(2); // cursor on "c" before save
+    state.active_session_mut().save_history_position();
+    crate::sections::pins::pins_section::sync_chat_log_cursor(&mut state);
+    assert_eq!(
+        state.active_session().selected_cursor_id(),
+        Some(pinned_id.clone()),
+        "precondition: cursor should be on pinned entry"
+    );
+
+    (state, pinned_id, away_id)
 }
 
 // ---------------------------------------------------------------------------

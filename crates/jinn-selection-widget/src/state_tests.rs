@@ -523,6 +523,7 @@ fn filter_sorts_by_score_then_original_index() {
 #[rstest::rstest]
 fn empty_filter_shows_all_items() {
     // Given a selection state with 3 items and no filter text.
+    // When constructing the selection state with no filter text.
     let state = SelectionState::with_items(make_items(&["apple", "banana", "cherry"]));
 
     // Then all items are visible.
@@ -547,6 +548,7 @@ fn no_match_returns_empty_filtered() {
 fn selected_item_returns_none_when_no_match() {
     // Given a selection state with items filtered to no matches.
     let mut state = SelectionState::with_items(make_items(&["apple", "banana"]));
+    // When filtering with 'z', which matches nothing.
     state.insert_char('z');
 
     // Then selected_item returns None.
@@ -557,6 +559,7 @@ fn selected_item_returns_none_when_no_match() {
 fn selected_item_returns_first_match_initially() {
     // Given a selection state with items and no filter.
     let items = make_items(&["apple", "banana", "cherry"]);
+    // When constructing the selection state.
     let state = SelectionState::with_items(items);
 
     // Then selected_item returns the first item.
@@ -568,6 +571,7 @@ fn selected_item_returns_first_match_initially() {
 fn filtered_item_returns_by_filtered_index() {
     // Given items ["a", "b", "c"], filtered to match "b" and "c".
     let mut state = SelectionState::with_items(make_items(&["alpha", "bravo", "charlie"]));
+    // When filtering with 'r' so only "bravo" and "charlie" match.
     state.insert_char('r');
 
     // Then filtered_item(0) is "bravo" and filtered_item(1) is "charlie".
@@ -635,10 +639,13 @@ fn reset_clears_filter_but_keeps_items() {
 
 #[rstest::rstest]
 fn no_clone_needed() {
+    // Given a non-Clone item type held in a selection state.
     // Compile-time proof: TestItem does not derive Clone,
     // yet SelectionState<TestItem> works fine.
     let mut state = SelectionState::<TestItem>::new();
+    // When setting the items on the state.
     state.set_items(vec![TestItem::new("test")]);
+    // Then the item is visible in the filtered list.
     assert_eq!(state.filtered_count(), 1);
 }
 
@@ -952,7 +959,7 @@ fn clear_filter_empties_filter_and_resets_state() {
         SelectionState::with_items(make_items(&["alpha", "bravo", "charlie", "delta", "echo"]));
     state.insert_text("bravo");
     state.move_down(5); // selection > 0
-    // Then assert the state is non-empty before clear.
+    // The filter is in place and matches exactly one item before the clear.
     assert_eq!(state.filter(), "bravo");
     assert_eq!(state.selection(), 0); // bravo matches the only item
     // (cursor_pos and scroll_offset are intentionally not asserted pre-clear

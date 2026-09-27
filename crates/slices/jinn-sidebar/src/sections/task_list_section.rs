@@ -446,32 +446,40 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn content_height_is_zero_when_empty() {
+        // Given a state whose task list is empty.
         let app = AppState::default_with_scope_focus();
         let mut section = TaskListSection;
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
-        assert_eq!(
-            section.content_height(&RenderCtx::new_with_default_config(
-                &app,
-                &slices,
-                &overlay_views
-            )),
-            0
-        );
-    }
 
-    #[rstest::rstest]
-    #[test]
-    fn content_height_is_nonzero_when_has_phases() {
-        let app = setup_with_tasks();
-        let mut section = TaskListSection;
-        let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_slices::OverlayViews::new();
+        // When asking the section for its content height.
         let height = section.content_height(&RenderCtx::new_with_default_config(
             &app,
             &slices,
             &overlay_views,
         ));
+
+        // Then it reserves nothing.
+        assert_eq!(height, 0);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn content_height_is_nonzero_when_has_phases() {
+        // Given a state whose task list has phases.
+        let app = setup_with_tasks();
+        let mut section = TaskListSection;
+        let slices = jinn_slices::Slices::new();
+        let overlay_views = jinn_slices::OverlayViews::new();
+
+        // When asking the section for its content height.
+        let height = section.content_height(&RenderCtx::new_with_default_config(
+            &app,
+            &slices,
+            &overlay_views,
+        ));
+
+        // Then it reserves rows.
         assert!(height > 0, "expected non-zero height, got {height}");
     }
 
@@ -526,18 +534,29 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn navigate_returns_exhausted_without_selection() {
+        // Given a state whose task list is empty.
         let mut app = AppState::default_with_scope_focus();
+
+        // When navigating down.
         let result = navigate(&SidebarIntent::MoveDown, &mut app);
+
+        // Then navigation is exhausted, since there is nowhere to move to.
         assert_eq!(result, SectionNavResult::Exhausted);
     }
 
     #[rstest::rstest]
     #[test]
     fn navigate_moves_down_within_bounds() {
+        // Given a task list focused on its first phase.
         let mut app = setup_with_tasks();
         setup_focused_on_phase(&mut app, 0);
+
+        // When navigating down.
         let result = navigate(&SidebarIntent::MoveDown, &mut app);
+
+        // Then the cursor moved.
         assert_eq!(result, SectionNavResult::Moved);
+        // And the selection landed on the next phase.
         assert_eq!(
             app.frontend
                 .with_sections(|s| s.task_list.selected_phase_index, || None),
@@ -548,10 +567,16 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn navigate_moves_up_within_bounds() {
+        // Given a task list focused on its last phase.
         let mut app = setup_with_tasks();
         setup_focused_on_phase(&mut app, 1);
+
+        // When navigating up.
         let result = navigate(&SidebarIntent::MoveUp, &mut app);
+
+        // Then the cursor moved.
         assert_eq!(result, SectionNavResult::Moved);
+        // And the selection landed on the previous phase.
         assert_eq!(
             app.frontend
                 .with_sections(|s| s.task_list.selected_phase_index, || None),
@@ -562,26 +587,41 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn navigate_exhausted_at_bottom() {
+        // Given a task list focused on its last phase.
         let mut app = setup_with_tasks();
-        setup_focused_on_phase(&mut app, 1); // last phase
+        setup_focused_on_phase(&mut app, 1);
+
+        // When navigating down.
         let result = navigate(&SidebarIntent::MoveDown, &mut app);
+
+        // Then navigation is exhausted at the bottom.
         assert_eq!(result, SectionNavResult::Exhausted);
     }
 
     #[rstest::rstest]
     #[test]
     fn navigate_exhausted_at_top() {
+        // Given a task list focused on its first phase.
         let mut app = setup_with_tasks();
-        setup_focused_on_phase(&mut app, 0); // first phase
+        setup_focused_on_phase(&mut app, 0);
+
+        // When navigating up.
         let result = navigate(&SidebarIntent::MoveUp, &mut app);
+
+        // Then navigation is exhausted at the top.
         assert_eq!(result, SectionNavResult::Exhausted);
     }
 
     #[rstest::rstest]
     #[test]
     fn receive_cursor_sets_first_phase_from_top() {
+        // Given a state with a populated task list.
         let mut app = setup_with_tasks();
+
+        // When the section receives the cursor entering from the top.
         receive_cursor(&mut app, EnterFrom::Top);
+
+        // Then the first phase is selected.
         assert_eq!(
             app.frontend
                 .with_sections(|s| s.task_list.selected_phase_index, || None),
@@ -592,8 +632,13 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn receive_cursor_sets_last_phase_from_bottom() {
+        // Given a state with a populated task list.
         let mut app = setup_with_tasks();
+
+        // When the section receives the cursor entering from the bottom.
         receive_cursor(&mut app, EnterFrom::Bottom);
+
+        // Then the last phase is selected.
         assert_eq!(
             app.frontend
                 .with_sections(|s| s.task_list.selected_phase_index, || None),
@@ -604,8 +649,13 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn receive_cursor_no_panic_on_empty_list() {
+        // Given a state whose task list is empty.
         let mut app = AppState::default_with_scope_focus();
+
+        // When the section receives the cursor entering from the top.
         receive_cursor(&mut app, EnterFrom::Top);
+
+        // Then nothing is selected.
         assert_eq!(
             app.frontend
                 .with_sections(|s| s.task_list.selected_phase_index, || None),
@@ -616,17 +666,25 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn id_returns_task_list() {
+        // Given a task list section.
         let mut section = TaskListSection;
+
+        // When asking the section for its id.
+        // Then it identifies itself as the task list section.
         assert_eq!(section.id(), jinn_sidebar_msg::SidebarSectionId::TaskList);
     }
 
     #[rstest::rstest]
     #[test]
     fn collapsed_rendering_shows_no_tasks() {
-        // When unfocused, task descriptions should NOT appear.
+        // Given a state with a populated task list, unfocused.
         let app = setup_with_tasks();
         let list = app.session.active_session().task_list().clone();
+
+        // When building render lines.
         let lines = build_render_lines(&list, &app);
+
+        // Then the phase headers appear.
         let combined = extract_text(&lines);
         assert!(
             combined.contains("Research"),
@@ -646,9 +704,14 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn collapsed_shows_collapse_indicator() {
+        // Given a state with a populated, unfocused task list.
         let app = setup_with_tasks();
         let list = app.session.active_session().task_list().clone();
+
+        // When building render lines.
         let lines = build_render_lines(&list, &app);
+
+        // Then the collapsed indicator is drawn.
         let combined = extract_text(&lines);
         assert!(
             combined.contains('\u{25B8}'),
@@ -659,10 +722,15 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn no_blank_lines_between_phases() {
+        // Given a state with a populated task list.
         let app = setup_with_tasks();
         let list = app.session.active_session().task_list().clone();
+
+        // When building render lines.
         let lines = build_render_lines(&list, &app);
-        // The last line is the section's trailing gap (mirrors Persona/Pins/McpServers),
+
+        // Then no phase row is blank. The last line is the section's trailing gap
+        // (mirrors Persona/Pins/McpServers),
         // and line index 1 is the header separator blank. Both are expected; every
         // line *between* phases should have content.
         let trailing_index = lines.len().saturating_sub(1);
@@ -681,11 +749,16 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn selected_phase_header_has_reversed_modifier() {
+        // Given a task list focused on its first phase.
         let mut app = setup_with_tasks();
         setup_focused_on_phase(&mut app, 0);
         let list = app.session.active_session().task_list().clone();
+
+        // When building render lines.
         let lines = build_render_lines(&list, &app);
-        // Find a line containing the first phase name.
+
+        // Then the selected phase's header is reversed. Find a line containing
+        // the first phase name.
         let has_reversed = lines.iter().any(|line| {
             let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
             text.contains("Research")
@@ -706,11 +779,15 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn focused_phase_shows_left_arrow_indicator() {
+        // Given a task list focused on its first phase.
         let mut app = setup_with_tasks();
         setup_focused_on_phase(&mut app, 0);
         let list = app.session.active_session().task_list().clone();
+
+        // When building render lines.
         let combined = extract_text(&build_render_lines(&list, &app));
 
+        // Then each phase carries an indicator.
         assert!(
             combined.contains('\u{25C2}'),
             "focused phase should show left-arrow indicator \u{25C2}"
