@@ -116,7 +116,7 @@ impl DashboardCanvasActor {
                 // reads Idle and keeps its own reason phrase: calling a
                 // dormant partition-set entity "Dead" reports a failure
                 // that did not happen.
-                LifecycleState::Passivated => s.mark_idle(name, idle_reason_text()),
+                LifecycleState::Passivated => s.mark_idle(name),
                 // Every terminal stop lands on Dead, with its reason
                 // distinguishing the causes.
                 LifecycleState::Normal
@@ -143,14 +143,6 @@ impl DashboardCanvasActor {
             DashboardNav::Last => s.select_last(),
         });
     }
-}
-
-/// The Notes-column phrase for a passivated (dormant) actor.
-///
-/// Says what is true — the actor is idle and will return — rather than
-/// restating the State column, which already reads "Idle".
-fn idle_reason_text() -> String {
-    "idle; re-spawns on next send".to_owned()
 }
 
 /// The Notes-column phrase for a TERMINALLY stopped actor.
@@ -216,7 +208,7 @@ fn apply_service_update(dashboard: &mut DashboardState, update: &ServiceStatusUp
                 dashboard.mark_running(&update.name, None);
             }
             ActorLifecycle::Idle => {
-                dashboard.mark_idle(&update.name, "idle");
+                dashboard.mark_idle(&update.name);
             }
             ActorLifecycle::Dead => {
                 dashboard.mark_dead(&update.name, None);
@@ -442,11 +434,12 @@ mod tests {
         .await;
     }
 
-    /// The Notes column for a dormant actor must not dress the passivation
-    /// up as a failure either.
+    /// Idle needs no note. The state word already says the actor is
+    /// dormant; "idle; re-spawns on next send" would restate the column
+    /// that should be reserved for reasons a reader cannot infer.
     #[rstest::rstest]
     #[tokio::test]
-    async fn a_passivated_actor_notes_that_it_will_return() {
+    async fn a_passivated_actor_has_no_note() {
         // Given a wired actor with a running row.
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
@@ -458,21 +451,39 @@ mod tests {
             .send_to_topic(stopped("idle-worker", LifecycleState::Passivated))
             .await;
 
-        // Then the note says it is idle and will come back, and does not
-        // read as a crash.
-        wait_for(|| {
-            row(&cell, "idle-worker")
-                .and_then(|r| r.reason)
-                .is_some_and(|r| r.contains("re-spawns"))
-        })
-        .await;
-        let reason = row(&cell, "idle-worker").unwrap().reason.unwrap();
-        for forbidden in ["crashed", "escalated", "shutdown", "passivated"] {
-            assert!(
-                !reason.contains(forbidden),
-                "an idle note must not read as a failure ({forbidden}): {reason}"
-            );
-        }
+        // Then the row is Idle with an empty Notes cell.
+        wait_for(|| row(&cell, "idle-worker").is_some_and(|r| r.lifecycle == ActorLifecycle::Idle))
+            .await;
+        let entry = row(&cell, "idle-worker").unwrap();
+        assert_eq!(entry.reason, None, "an idle row carries no reason");
+        assert_eq!(entry.status, None, "and no feature status message");
+    }
+
+    /// A passivation clears a reason left from an earlier terminal stop:
+    /// the row is no longer that stop, so the note would contradict the
+    /// state word beside it.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_passivation_clears_a_stale_terminal_stop_reason() {
+        // Given a wired actor whose row went Dead with a crash reason.
+        let fabric = TestFabric::new();
+        let cell = wire_actor(&fabric);
+        fabric.send_to_topic(running("flicker")).await;
+        wait_for(|| row(&cell, "flicker").is_some()).await;
+        fabric
+            .send_to_topic(stopped("flicker", LifecycleState::Crashed))
+            .await;
+        wait_for(|| row(&cell, "flicker").and_then(|r| r.reason).is_some()).await;
+
+        // When it is later passivated.
+        fabric
+            .send_to_topic(stopped("flicker", LifecycleState::Passivated))
+            .await;
+
+        // Then the crash reason is gone.
+        wait_for(|| row(&cell, "flicker").is_some_and(|r| r.lifecycle == ActorLifecycle::Idle))
+            .await;
+        assert_eq!(row(&cell, "flicker").unwrap().reason, None);
     }
 
     /// A dormant actor that wakes is Running again, with no stale note.

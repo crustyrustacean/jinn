@@ -191,24 +191,22 @@ impl DashboardState {
     /// dead would tell a reader the actor failed when it did exactly
     /// what it was configured to do.
     ///
-    /// Like [`Self::mark_stopped`], the reason is stored rather than
-    /// rendered, so the view can yield the Notes column to a feature
-    /// status message.
-    pub fn mark_idle<S>(&mut self, name: S, reason: impl Into<String>)
+    /// Unlike [`Self::mark_stopped`], this takes no reason and stores
+    /// none. An idle row needs no explanation — the state word already
+    /// says the actor is dormant, and "idle; re-spawns on next send"
+    /// just restates it in the column that should be reserved for
+    /// reasons a reader cannot already infer. Any reason left over from
+    /// a PREVIOUS terminal stop is cleared: that stop is no longer what
+    /// this row is, and keeping it would contradict the state word.
+    pub fn mark_idle<S>(&mut self, name: S)
     where
         S: AsRef<str>,
     {
         let name = name.as_ref();
-        let reason = reason.into();
-        let Some(entry) = self.actors.get_mut(name) else {
-            self.upsert(name, None, ActorLifecycle::Idle);
-            if let Some(entry) = self.actors.get_mut(name) {
-                entry.stop_reason = Some(reason);
-            }
-            return;
-        };
-        entry.lifecycle = ActorLifecycle::Idle;
-        entry.stop_reason = Some(reason);
+        self.upsert(name, None, ActorLifecycle::Idle);
+        if let Some(entry) = self.actors.get_mut(name) {
+            entry.stop_reason = None;
+        }
     }
 
     /// Record that the runtime stopped an actor, and why.

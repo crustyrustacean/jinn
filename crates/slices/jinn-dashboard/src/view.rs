@@ -164,10 +164,6 @@ fn overlay_selected_name(
     if width == 0 || y >= area.height {
         return;
     }
-    let para = Paragraph::new(Line::from(Span::styled(
-        entry.name.as_str(),
-        Style::default().fg(theme.primary_text),
-    )));
     let overlay_area = Rect {
         x: NAME_X,
         y,
@@ -178,6 +174,18 @@ fn overlay_selected_name(
     // erasing, the characters underneath (the rest of the name, then the
     // Notes cell) show through the gaps.
     frame.render_widget(Clear, overlay_area);
+
+    // `Clear` also resets styling, which would truncate the cursor row's
+    // highlight at the end of the name. Filling the row with
+    // highlight-styled padding keeps the selected row reading as one
+    // continuous bar rather than a highlighted stub with a dead tail.
+    let highlight = Style::default().fg(theme.focus_accent);
+    let pad = usize::from(width).saturating_sub(entry.name.width());
+    let mut spans = vec![Span::styled(entry.name.as_str(), highlight)];
+    if pad > 0 {
+        spans.push(Span::styled(" ".repeat(pad), highlight));
+    }
+    let para = Paragraph::new(Line::from(spans));
     frame.render_widget(para, overlay_area);
 }
 
@@ -314,7 +322,7 @@ mod tests {
     fn dashboard_view_renders_a_passivated_actor_as_idle() {
         // Given a dashboard slice whose only actor was passivated.
         let mut slice = DashboardState::new();
-        slice.mark_idle("jinn.discovery/abc", "idle; re-spawns on next send");
+        slice.mark_idle("jinn.discovery/abc");
         let theme = default_theme();
         let cx = ViewCx { theme: &theme };
 
@@ -740,6 +748,101 @@ mod layout_tests {
         assert_eq!(row_y(area, 2, 3), None);
         // And a row past the bottom of the viewport is out too.
         assert_eq!(row_y(area, 20, 0), None);
+    }
+
+    /// The overlay must be INVISIBLE as a seam: its text carries the same
+    /// foreground the table gives the selected row, so the revealed tail
+    /// reads as part of the highlighted cursor row.
+    #[rstest::rstest]
+    fn the_overlay_text_uses_the_cursor_row_highlight() {
+        // Given a selected long-named actor.
+        let mut slice = DashboardState::new();
+        let long = "jinn.discovery/0199a3b2-1234-7abc-8def-0123456789ab";
+        slice.mark_running(long, None);
+        slice.select_first();
+
+        // When rendering.
+        let theme = default_theme();
+        let cx = ViewCx { theme: &theme };
+        let (mut terminal, _area) = setup_term(WIDTH, 8);
+        terminal
+            .draw(|frame| {
+                let mut view = DashboardView::new();
+                view.render(frame, Rect::new(0, 0, WIDTH, 8), &cx, &slice);
+            })
+            .expect("render");
+
+        // Then a cell beyond the 40-column name limit — the revealed tail,
+        // which no table cell covers — carries the highlight colour, not
+        // the neutral name colour.
+        let buf = terminal.backend().buffer();
+        let y = 1; // the selected data row
+        let x = NAME_X + NAME_COL;
+        assert!(
+            x < WIDTH,
+            "the tail must be on screen for this to mean anything"
+        );
+        assert_eq!(buf[(x, y)].fg, theme.focus_accent, "tail is highlighted");
+        assert_ne!(
+            buf[(x, y)].fg,
+            theme.primary_text,
+            "the overlay must not use the neutral name colour"
+        );
+    }
+
+    /// The highlight bar must run to the end of the row. `Clear` resets
+    /// styling, so without explicit padding the row would look highlighted
+    /// only as far as the name.
+    #[rstest::rstest]
+    fn the_overlay_keeps_the_highlight_running_to_the_end_of_the_row() {
+        // Given a selected long-named actor.
+        let mut slice = DashboardState::new();
+        let long = "jinn.discovery/0199a3b2-1234-7abc-8def-0123456789ab";
+        slice.mark_running(long, None);
+        slice.select_first();
+
+        // When rendering.
+        let theme = default_theme();
+        let cx = ViewCx { theme: &theme };
+        let (mut terminal, _area) = setup_term(WIDTH, 8);
+        terminal
+            .draw(|frame| {
+                let mut view = DashboardView::new();
+                view.render(frame, Rect::new(0, 0, WIDTH, 8), &cx, &slice);
+            })
+            .expect("render");
+
+        // Then the last cell of the row is still highlighted, not reset.
+        let buf = terminal.backend().buffer();
+        let y = 1;
+        let last = WIDTH - 1;
+        assert_eq!(
+            buf[(last, y)].fg,
+            theme.focus_accent,
+            "the highlight bar reaches the row's end"
+        );
+    }
+
+    /// The overlay covers that row's Notes. That is the accepted cost of
+    /// breaking the column width, pinned so a future change to it is
+    /// deliberate.
+    #[rstest::rstest]
+    fn the_overlay_covers_the_selected_rows_own_notes() {
+        // Given a selected long-named row that has notes.
+        let mut slice = DashboardState::new();
+        let long = "jinn.discovery/0199a3b2-1234-7abc-8def-0123456789ab";
+        slice.mark_running(long, None);
+        slice.set_status_message(long, Some("a-note-that-should-be-covered".to_owned()));
+        slice.select_first();
+
+        // When rendering.
+        let buf = render(&slice, WIDTH, 8);
+
+        // Then the note is not visible under the overlay.
+        assert!(
+            !buf.contains("a-note-that-should-be-covered"),
+            "the overlay covers its own row's notes: {buf}"
+        );
     }
 
     #[rstest::rstest]
