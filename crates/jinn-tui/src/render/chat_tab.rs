@@ -1,5 +1,7 @@
 //! Chat tab rendering - dispatches to individual chat sub-components.
 
+#[cfg(test)]
+mod audit_popup_tests;
 pub mod border;
 pub mod chat_bottom_line;
 

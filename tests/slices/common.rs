@@ -12,8 +12,6 @@
 #![allow(clippy::expect_used, clippy::panic, reason = "test harness")]
 
 use jinn_kernel::AppCore;
-use jinn_sidebar::sections::register_sections;
-use jinn_sidebar::sections::sidebar::Sidebar;
 use jinn_tui::TuiApp;
 use jinn_tui::app::WhichKeyInstance;
 use jinn_tui::config::TuiConfig;
@@ -117,11 +115,6 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_kernel::Services)
         selectable_rects: SelectableRects::default(),
         pending_clipboard: false,
         config: TuiConfig::default(),
-        sidebar: {
-            let mut s = Sidebar::new();
-            register_sections(&mut s);
-            s
-        },
     }
 }
 

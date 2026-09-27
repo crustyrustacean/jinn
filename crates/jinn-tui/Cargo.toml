@@ -4,34 +4,19 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-jinn-inference = { workspace = true }
+jinn-core-types = { workspace = true }
 jinn-preferences-config = { workspace = true }
+jinn-session-lifecycle-msg = { workspace = true }
+jinn-term-msg = { workspace = true }
+jinn-inference = { workspace = true }
 jinn-chat-input = { workspace = true }
 jinn-chat-input-msg = { workspace = true }
 jinn-chat-log-view = { workspace = true }
 jinn-chat-log-view-msg = { workspace = true }
-jinn-cwd-msg = { workspace = true }
-jinn-persona-msg = { workspace = true }
-jinn-sidebar-msg = { workspace = true }
-jinn-status-bar-msg = { workspace = true }
 jinn-theme = { workspace = true }
-jinn-theme-msg = { workspace = true }
-jinn-token-count-msg = { workspace = true }
-jinn-mcp-msg = { workspace = true }
-jinn-project-msg = { workspace = true }
-jinn-mcp = { workspace = true }
 jinn-kernel = { workspace = true }
-jinn-sidebar = { workspace = true }
-jinn-cwd = { workspace = true }
 jinn-status-bar = { workspace = true }
-jinn-picker = { workspace = true }
 jinn-slices = { workspace = true }
-jinn-tools-msg = { workspace = true }
-jinn-session-store-msg = { workspace = true }
-jinn-core-types = { workspace = true }
-jinn-session-history-msg = { workspace = true }
-jinn-session-lifecycle-msg = { workspace = true }
-jinn-term-msg = { workspace = true }
 trouper = { workspace = true }
 
 wherror = { workspace = true }
@@ -50,17 +35,20 @@ arboard = { workspace = true }
 dirs = { workspace = true }
 tracing = { workspace = true }
 
-jinn-selection-widget = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
 jinn-provider-selection-msg = { workspace = true }
-jinn-provider-config = { workspace = true }
 
 [dev-dependencies]
-rstest = { workspace = true }
+jinn-cwd = { workspace = true }
+jinn-mcp-msg = { workspace = true }
+jinn-session-store-msg = { workspace = true }
+jinn-sidebar = { workspace = true }
+jinn-sidebar-msg = { workspace = true }
 jinn-testutil = { workspace = true }
+jinn-tools-msg = { workspace = true }
+rstest = { workspace = true }
 tempfile = { workspace = true }
-
 [lints]
 workspace = true

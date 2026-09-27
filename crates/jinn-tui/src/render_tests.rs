@@ -38,7 +38,7 @@ async fn render_test_app() -> crate::TuiApp {
 /// loudly here — the expected cell comes back blank — rather than
 /// silently, which is why these activations are explicit rather than
 /// left to the builder.
-fn activate_render_slices(app: &mut crate::TuiApp) {
+pub(crate) fn activate_render_slices(app: &mut crate::TuiApp) {
     let state = app.core.state.clone();
     let services = &mut app.services;
     let mut host = jinn_slices::SliceHost::new(

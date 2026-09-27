@@ -58,8 +58,12 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn separator_is_yellow_when_sidebar_focused() {
-        // Given a TuiApp rendered with Sidebar scope.
+        // Given a TuiApp rendered with Sidebar scope. The accent comes
+        // from the scope hint the sidebar registers at activation, so the
+        // slice's render wiring has to be live for the accent to be the
+        // one a real app draws.
         let mut app = crate::TuiApp::test_builder().build().await;
+        crate::render_tests::activate_render_slices(&mut app);
         app.core
             .state
             .write()
@@ -112,6 +116,10 @@ mod tests {
     async fn separator_is_green_when_resizing() {
         // Given a TuiApp rendered with the sidebar resize scope.
         let mut app = crate::TuiApp::test_builder().build().await;
+        // The accent comes from the scope hint the sidebar registers at
+        // activation, so the slice's render wiring has to be live for the
+        // border to draw the accent a real app draws.
+        crate::render_tests::activate_render_slices(&mut app);
         app.core
             .state
             .write()

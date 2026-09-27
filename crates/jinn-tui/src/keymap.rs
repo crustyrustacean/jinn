@@ -179,10 +179,26 @@ mod leak_check {
         use crate::app::WhichKeyInstance;
         use jinn_kernel::{Key, Modifiers};
 
-        // Given the default keymap with the sidebar's route rows bound.
+        // Given the default keymap with a slice's route row bound: a row
+        // that materializes in the Normal scope. The row is built here
+        // rather than taken from a slice, because what is under test is
+        // how a route row reaches a static scope, not what any one slice
+        // attaches.
         let mut keymap = init();
         let routes = jinn_slices::route::KeyRoutes::new();
-        jinn_sidebar::key_routes::attach_sidebar_rows(&routes);
+        routes.attach(jinn_slices::route::RouteRow {
+            route_id: jinn_slices::route::RouteId::new("test:load-subagent"),
+            scope: jinn_slices::slice_scope::SliceScopeId::new("test-slice", "sessions"),
+            key: "<enter>",
+            category: "general",
+            site: jinn_slices::route::BindSite::StaticScopes(&["Normal"]),
+            feature: "test",
+            outcome: jinn_slices::route::RouteOutcome::Action {
+                action: "load-subagent",
+                display: "open subagent session",
+                run: jinn_slices::route::ActionFn::new(|_| jinn_slices::RouteResult::empty()),
+            },
+        });
         crate::keymap_gen::bind_route_rows(&routes, &mut keymap);
         let mut wk = WhichKeyInstance::new(keymap, Scope::Normal);
 
@@ -193,7 +209,7 @@ mod leak_check {
         };
         let intent = wk.handle_key(enter);
 
-        // Then it resolves to the sidebar's load-subagent dynamic action.
+        // Then it resolves to the row's load-subagent dynamic action.
         assert!(
             matches!(
             intent,

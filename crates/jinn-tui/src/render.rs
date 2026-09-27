@@ -163,10 +163,6 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
 /// full-width dynamic tab: tab bar and the registered slice view only. The
 /// which-key popup renders separately, after overlays — see the `render`
 /// entry point.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "all inputs are single-use render pass params"
-)]
 fn render_base_layers(
     slices: &jinn_slices::Slices,
     viewport: &mut jinn_slices::view::Viewport,
