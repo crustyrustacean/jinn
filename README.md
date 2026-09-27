@@ -124,7 +124,24 @@ teardown_command = "fossil merge trunk --force && fossil addremove && fossil com
 
 The primary usage target for `jinn` is agentic coding, so it comes pre-packaged with prompts to help facilitate this.
 
-To create a new feature or project:
+### Goal-Based Feature Implementation
+
+Use this when you want an agent to arrive at a goal fully autonomously by giving it a rough idea of the end state. Goal-based implementation allows the agent to make detailed decisions on the way to the goal. Although the agent will decide how things get done, you can still configure what it should and shouldn't do before entering autonomous mode.
+
+1. Start a new session
+2. Type `#goal` followed by what you want to do. The agent will ask questions, gather context, and eventually propose a "contract" in the chat.
+
+- The contract is large and it's not meant for you to read the whole thing. Check the "**End State**" section and the "**Constraint**" sections to ensure they align with what you had in mind. Skim over the rest if you want to double check anything.
+
+3. If you want anything changed in the contract, tell the agent now.
+4. When the contract looks good, select the message and type `gcip` to isolate the message and then pin it. This gives you a fresh context with just the contract that can't be evicted from context.
+5. Tell the agent to begin.
+6. After the agent finishes, it will produce a report documenting any potential issues and if any followups are needed.
+7. You can optionally send a `#gap-analysis` prompt to double-check the agent's work.
+
+### Plan-Based Feature Implementation
+
+Use this when you want a discrete plan -> implement -> verify workflow. It's suitable when you want more control over the process and what gets generated. The agent will ask details about what you want done and _how_ to do it. For each thing you propose, the agent will evaluate it against the current code, point out any potential issues, and then offer solutions until it has enough information for an implementation plan.
 
 1. Start a new session
 2. Type `#plan` (to load the planning prompt) followed by what you want to do. The agent will ask questions to clarify things that are ambiguous, and then eventually propose a plan in the chat.
@@ -135,7 +152,7 @@ To create a new feature or project:
    - `simple-task-loop` verifies and commits after each phase. _It's recommended to use this for most features_.
    - `phased-task-loop` creates something similar to [ExecPlans](https://developers.openai.com/cookbook/articles/codex_exec_plans) for each phase as it implements. The agent will document how things diverged from the original plan, and then write the ExecPlan for the next phase accordingly. This will use more tokens and takes longer, but has a higher chance of success on more complex features. The ExecPlan gets generated based on the actual in-progress implementation at the start of each phase, so it can account for major changes that weren't anticipated in the initial plan. This _will_ burn through a ton of tokens!
    - You don't _have_ to use one of these skills to begin the coding loop, but it's recommended because they include instructions about periodically getting the latest code to reduce merge conflicts, and also how to properly manage the task list. The skills are SCM and language-agnostic and have been tested on `git`, `Fossil`, `Rust`, `Kotlin`, `Android`, and Shell scripts.
-5. After implementation is complete, submit a `#gap-analysis` message.
+5. After implementation is complete, you can optionally submit a `#gap-analysis` message.
    - Using the `#gap-analysis` prompt tells the agent to confirm that the implementation meets the acceptance criteria. It will produce a report explaining the acceptance criteria, if it was met, and potential resolutions for gaps.
 
 ## Configuration

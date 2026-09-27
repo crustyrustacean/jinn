@@ -9,8 +9,8 @@
 )]
 
 use crate::sections::sessions::preview::{
-    DEFAULT_TOOL_ENTRY_MAX_LINES, LOADING_CONTENT_ROWS, render_session_preview,
-    render_session_preview_loading, session_preview_popup_rect,
+    DEFAULT_TOOL_ENTRY_MAX_LINES, render_session_preview, render_session_preview_loading,
+    session_preview_popup_rect,
 };
 use jinn_chat_log_view::chat_log::RenderContext;
 use jinn_chat_log_view::kernel_element::render_preview as render_preview_lines;
@@ -21,7 +21,9 @@ use jinn_session_state::ChatSessionState;
 use jinn_testutil::{buffer_row, setup_term};
 use jinn_theme::default_theme;
 use jinn_tools_msg::{PhaseInput, TaskStatus};
+use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::text::Line;
 
 fn make_session_with_entries(n: usize) -> ChatSessionState {
     let mut session = ChatSessionState::new();
@@ -37,6 +39,76 @@ fn make_session_with_title(title: &str) -> ChatSessionState {
     session
 }
 
+/// A session whose trailing entries render to more lines than the budget allows.
+fn session_with_many_lines() -> ChatSessionState {
+    let mut session = ChatSessionState::new();
+    for i in 0..5 {
+        let text = (0..10)
+            .map(|j| format!("line {i}-{j}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        session.push_entry(ChatEntry::assistant(text));
+    }
+    session
+}
+
+/// A session with exactly one short entry — a preview much shorter than the
+/// content area, so there is room above it.
+fn session_with_one_short_entry() -> ChatSessionState {
+    make_session_with_entries(1)
+}
+
+/// The lines the worker would publish for `session`, at the popup's width.
+fn worker_lines_for(session: &ChatSessionState, popup_area: Rect) -> Vec<Line<'static>> {
+    let ctx = RenderContext {
+        content_width: popup_area.width.saturating_sub(2),
+        is_selected: false,
+        is_expanded: false,
+        tool_entry_max_lines: DEFAULT_TOOL_ENTRY_MAX_LINES,
+        theme: default_theme(),
+        paired_status: None,
+        is_streaming: false,
+        is_waiting_on_subagent: false,
+    };
+    render_preview_lines(
+        session.history(),
+        &ctx,
+        PREVIEW_ENTRY_COUNT,
+        PREVIEW_MAX_LINES,
+    )
+}
+
+/// Renders `session`'s preview into a frame whose cursor sits at `cursor_y`.
+///
+/// The lines come from the worker's own pipeline at the width the popup
+/// derives, so what is asserted is what production would draw.
+fn render_preview_at_cursor(
+    session: &ChatSessionState,
+    term_width: u16,
+    term_height: u16,
+    cursor_y: u16,
+) -> (Buffer, Rect) {
+    let theme = default_theme();
+    let frame_area = Rect::new(0, 0, term_width, term_height);
+    let popup_area = session_preview_popup_rect(frame_area, cursor_y);
+    let lines = worker_lines_for(session, popup_area);
+
+    let (mut terminal, _) = setup_term(term_width, term_height);
+    terminal
+        .draw(|frame| {
+            render_session_preview(frame, popup_area, session, &theme, &lines);
+        })
+        .unwrap();
+
+    let buffer = terminal.backend().buffer().clone();
+    (buffer, popup_area)
+}
+
+/// The row directly above the footer — the content area's last row.
+fn last_content_row(popup_area: Rect) -> u16 {
+    popup_area.y + popup_area.height - 2 - 3
+}
+
 fn render_preview(
     session: &ChatSessionState,
     term_width: u16,
@@ -46,7 +118,7 @@ fn render_preview(
     let frame_area = Rect::new(0, 0, term_width, term_height);
     // Simulate cursor at row 30 (sessions section starts at row 30, cursor on first item).
     let cursor_y = 30u16;
-    let popup_area = session_preview_popup_rect(frame_area, cursor_y, 20);
+    let popup_area = session_preview_popup_rect(frame_area, cursor_y);
 
     // The lines a worker would have published for this session, rendered the
     // same way the chat log renders them.
@@ -136,27 +208,40 @@ fn last_five_entries_rendered() {
 }
 
 #[rstest::rstest]
-fn lines_truncated_to_twenty() {
-    // Given a session with entries that produce many lines.
-    let mut session = ChatSessionState::new();
-    // 5 entries with 10 newlines each = 50+ lines total (plus padding).
-    for i in 0..5 {
-        let text = (0..10)
-            .map(|j| format!("line {i}-{j}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        session.push_entry(ChatEntry::assistant(text));
-    }
+fn the_workers_lines_fit_the_popups_content_area() {
+    // Given a session with entries that produce many more lines than the popup
+    // has rows for.
+    let session = session_with_many_lines();
 
     // When rendering the preview.
     let (_buffer, popup_area) = render_preview(&session, 80, 40);
+    let content_rows = content_rows_of(popup_area);
 
-    // Then the content area does not exceed the available height.
-    // The popup should have been capped to fit within the available space above the cursor.
-    assert!(
-        popup_area.height <= 28,
-        "popup height should be capped, got: {}",
-        popup_area.height
+    // Then the lines the worker produced fit the rows the popup offers. The
+    // box's own height is asserted separately — it is fixed, so it proves
+    // nothing about how much text the worker returned.
+    let lines = {
+        let ctx = RenderContext {
+            content_width: popup_area.width.saturating_sub(2),
+            is_selected: false,
+            is_expanded: false,
+            tool_entry_max_lines: DEFAULT_TOOL_ENTRY_MAX_LINES,
+            theme: default_theme(),
+            paired_status: None,
+            is_streaming: false,
+            is_waiting_on_subagent: false,
+        };
+        render_preview_lines(
+            session.history(),
+            &ctx,
+            PREVIEW_ENTRY_COUNT,
+            PREVIEW_MAX_LINES,
+        )
+    };
+    assert_eq!(
+        lines.len() as u16,
+        content_rows,
+        "the worker's line budget should match the popup's content rows"
     );
 }
 
@@ -417,22 +502,129 @@ fn badge_uses_streaming_color() {
 }
 
 // ---------------------------------------------------------------------------
-// Regression tests: cursor-relative positioning with 2-row gap
+// Placement: content is anchored to the bottom of the content area
 // ---------------------------------------------------------------------------
 
 #[rstest::rstest]
-#[case::normal(30, 5)]
-#[case::content_exceeds_space(30, 20)]
-#[case::cursor_near_top(10, 5)]
-fn popup_bottom_edge_sits_two_rows_above_cursor(
-    #[case] cursor_y: u16,
-    #[case] content_line_count: usize,
-) {
+fn a_short_preview_sits_on_the_last_content_row() {
+    // Given a session with one short entry, in a frame with a full-height popup.
+    let session = session_with_one_short_entry();
+
+    // When rendering the preview.
+    let (buffer, popup_area) = render_preview_at_cursor(&session, 100, 40, 35);
+
+    // Then the entry is on the content area's last row, directly above the
+    // keybinds bar, with the unused rows above it rather than below.
+    let last_row = buffer_row(
+        &buffer,
+        last_content_row(popup_area),
+        popup_area.x + popup_area.width,
+    );
+    assert!(
+        last_row.contains("message 0"),
+        "the newest line should sit on the last content row, got: {last_row}"
+    );
+}
+
+#[rstest::rstest]
+fn an_overflowing_preview_drops_its_oldest_lines() {
+    // Given a session whose preview overflows the content area.
+    let session = session_with_many_lines();
+
+    // When rendering the preview.
+    let (buffer, popup_area) = render_preview_at_cursor(&session, 100, 40, 35);
+    let content_rows = content_rows_of(popup_area);
+    let visible: String = (0..content_rows)
+        .map(|i| {
+            buffer_row(
+                &buffer,
+                popup_area.y + 1 + i,
+                popup_area.x + popup_area.width,
+            )
+        })
+        .collect();
+
+    // Then the newest entry is the last visible content row, and the oldest of
+    // the overflowing text is gone.
+    let last_row = buffer_row(
+        &buffer,
+        last_content_row(popup_area),
+        popup_area.x + popup_area.width,
+    );
+    assert!(
+        last_row.contains("line 4-9"),
+        "the newest line should be the last visible row, got: {last_row}"
+    );
+    assert!(
+        !visible.contains("line 0-0"),
+        "overflow should be dropped from the front, not the back"
+    );
+}
+
+#[rstest::rstest]
+fn the_newest_line_survives_a_clamped_popup() {
+    // Given a frame too short above the cursor for the full popup, with a
+    // preview that overflows even the clamped content area.
+    let session = session_with_many_lines();
+
+    // When rendering the preview.
+    let (buffer, popup_area) = render_preview_at_cursor(&session, 100, 40, 22);
+    let content_rows = content_rows_of(popup_area);
+
+    // Then the newest entry is still the last visible content row, directly
+    // above the footer. This is the case that top-anchoring gets wrong.
+    assert!(
+        content_rows < u16::try_from(PREVIEW_MAX_LINES).expect("budget fits a u16"),
+        "this cursor row was chosen so the popup is capped below the full height"
+    );
+    let last_row = buffer_row(
+        &buffer,
+        last_content_row(popup_area),
+        popup_area.x + popup_area.width,
+    );
+    assert!(
+        last_row.contains("line 4-9"),
+        "the newest line should stay on the last content row in a capped popup, \
+         got: {last_row}"
+    );
+}
+
+#[rstest::rstest]
+fn an_empty_history_gets_a_full_height_popup() {
+    // Given a session with no entries at all.
+    let session = make_session_with_title("empty");
+
+    // When rendering the preview.
+    let (_buffer, popup_area) = render_preview(&session, 100, 40);
+
+    // Then the box is the same height as one full of text, not collapsed onto
+    // its chrome — the surface does not appear and disappear with the content.
+    assert_eq!(
+        popup_area.height, 25,
+        "an empty history should still get the full-height popup"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Geometry: the popup is a fixed-height surface anchored to the cursor
+// ---------------------------------------------------------------------------
+
+/// The content rows inside a popup rect: its inner area less the three footer
+/// rows. Mirrors production so a test can name the rows content is drawn on.
+fn content_rows_of(popup_rect: Rect) -> u16 {
+    popup_rect.height.saturating_sub(2).saturating_sub(3)
+}
+
+#[rstest::rstest]
+#[case::normal(30)]
+#[case::near_top(10)]
+#[case::mid_screen(20)]
+fn popup_bottom_edge_sits_two_rows_above_cursor(#[case] cursor_y: u16) {
     // Given a frame area and a cursor position.
     let frame_area = Rect::new(0, 0, 80, 40);
 
     // When computing the popup rect.
-    let popup_rect = session_preview_popup_rect(frame_area, cursor_y, content_line_count);
+    let popup_rect = session_preview_popup_rect(frame_area, cursor_y);
 
     // Then the popup bottom edge + 2 = cursor_y, leaving a one-row gap.
     assert_eq!(
@@ -447,30 +639,75 @@ fn popup_bottom_edge_sits_two_rows_above_cursor(
 
 #[rstest::rstest]
 fn popup_follows_cursor_not_section_top() {
-    // Given two different cursor positions.
-    let frame_area = Rect::new(0, 0, 80, 40);
-    let content_lines = 5;
+    // Given two cursor positions, each with room for the full popup.
+    let frame_area = Rect::new(0, 0, 80, 60);
 
     // When computing popup rects for each cursor.
-    let rect_at_20 = session_preview_popup_rect(frame_area, 20, content_lines);
-    let rect_at_25 = session_preview_popup_rect(frame_area, 25, content_lines);
+    let rect_at_30 = session_preview_popup_rect(frame_area, 30);
+    let rect_at_35 = session_preview_popup_rect(frame_area, 35);
 
-    // Then each popup is anchored to its cursor (1-row gap invariant).
+    // Then each popup is anchored to its own cursor, not to a fixed section top.
+    // The height is constant, so the top row is what moves with the cursor.
     assert_eq!(
-        rect_at_20.y + rect_at_20.height + 2,
-        20,
-        "popup at cursor_y=20 should satisfy the gap invariant"
+        rect_at_30.height, rect_at_35.height,
+        "the popup height is fixed"
     );
     assert_eq!(
-        rect_at_25.y + rect_at_25.height + 2,
-        25,
-        "popup at cursor_y=25 should satisfy the gap invariant"
+        rect_at_30.y + rect_at_30.height + 2,
+        30,
+        "popup at cursor_y=30 should sit two rows above its cursor"
     );
+    assert_eq!(
+        rect_at_35.y + rect_at_35.height + 2,
+        35,
+        "popup at cursor_y=35 should sit two rows above its cursor"
+    );
+    assert_eq!(
+        rect_at_35.y,
+        rect_at_30.y + 5,
+        "moving the cursor down five rows should move the popup down five rows"
+    );
+}
 
-    // And the popup positions are different (cursor-relative, not fixed).
-    assert_ne!(
-        rect_at_20.y, rect_at_25.y,
-        "popup Y should change when cursor Y changes"
+#[rstest::rstest]
+fn popup_height_is_the_budget_plus_chrome() {
+    // Given a frame with ample room above the cursor.
+    let frame_area = Rect::new(0, 0, 80, 60);
+
+    // When computing the popup rect.
+    let popup_rect = session_preview_popup_rect(frame_area, 50);
+
+    // Then the content area is the preview's own line budget — the same constant
+    // the layout worker renders to, not a second number kept alongside it — and
+    // the box adds exactly the two borders and three footer rows around it.
+    assert_eq!(
+        content_rows_of(popup_rect),
+        u16::try_from(PREVIEW_MAX_LINES).expect("the budget fits a u16"),
+        "the popup's content area must be the preview line budget"
+    );
+    assert_eq!(
+        popup_rect.height, 25,
+        "20 content rows + 3 footer rows + 2 borders"
+    );
+}
+
+#[rstest::rstest]
+fn popup_height_does_not_depend_on_how_much_text_it_holds() {
+    // Given a frame with room for the full popup.
+    let frame_area = Rect::new(0, 0, 80, 60);
+    let cursor_y = 50;
+
+    // When computing rects for every amount of content the worker can return.
+    let heights: Vec<u16> = [0, 1, 5, 12, PREVIEW_MAX_LINES]
+        .iter()
+        .map(|_| session_preview_popup_rect(frame_area, cursor_y).height)
+        .collect();
+
+    // Then they are all the same, so the box does not resize as a reply grows
+    // or a session is selected.
+    assert!(
+        heights.windows(2).all(|w| w[0] == w[1]),
+        "the popup resized with its content: {heights:?}"
     );
 }
 
@@ -479,10 +716,9 @@ fn popup_height_capped_when_cursor_near_top() {
     // Given a cursor very near the top of the terminal.
     let frame_area = Rect::new(0, 0, 80, 40);
     let cursor_y = 7u16;
-    let content_line_count = 20;
 
     // When computing the popup rect.
-    let popup_rect = session_preview_popup_rect(frame_area, cursor_y, content_line_count);
+    let popup_rect = session_preview_popup_rect(frame_area, cursor_y);
 
     // Then the popup height is capped (max_height = 7 - 0 - 2 = 5).
     assert_eq!(
@@ -496,6 +732,30 @@ fn popup_height_capped_when_cursor_near_top() {
     assert!(
         popup_rect.y + popup_rect.height < cursor_y,
         "popup should not encroach on the gap above cursor"
+    );
+}
+
+#[rstest::rstest]
+fn popup_height_capped_below_the_full_height() {
+    // Given a cursor with more room than the cap but less than the full popup:
+    // 20 rows above the cursor, so the cap (20 - 2) bites below the full 25.
+    let frame_area = Rect::new(0, 0, 80, 40);
+    let cursor_y = 22u16;
+    let full_height = session_preview_popup_rect(frame_area, 40).height;
+
+    // When computing the popup rect.
+    let popup_rect = session_preview_popup_rect(frame_area, cursor_y);
+
+    // Then the cap genuinely binds — the box is shorter than the full height,
+    // which a test at cursor_y=7 could not tell apart from the floor.
+    assert_eq!(
+        popup_rect.height, 20,
+        "the cap should yield cursor_y - gap rows, got: {}",
+        popup_rect.height
+    );
+    assert!(
+        popup_rect.height < full_height,
+        "this cursor row was chosen so the cap binds below the full height"
     );
 }
 
@@ -517,18 +777,16 @@ mod loading_state {
 
     /// The popup drawn by the loading renderer, at the geometry production uses.
     ///
-    /// Sized from [`LOADING_CONTENT_ROWS`], the same constant the render pass
-    /// draws with. A hand-picked count here would let the test pass against
-    /// geometry production never uses — which is exactly how the spinner went
-    /// missing while this test stayed green.
+    /// Takes the same rect production computes, so a test cannot pass against a
+    /// geometry the render pass never draws with.
     fn draw_loading(
         session: &ChatSessionState,
         term_width: u16,
         term_height: u16,
-    ) -> ratatui::buffer::Buffer {
+    ) -> (Buffer, Rect) {
         let theme = default_theme();
         let frame_area = Rect::new(0, 0, term_width, term_height);
-        let popup_area = session_preview_popup_rect(frame_area, 30, LOADING_CONTENT_ROWS);
+        let popup_area = session_preview_popup_rect(frame_area, 30);
 
         let (mut terminal, _) = setup_term(term_width, term_height);
         terminal
@@ -536,7 +794,7 @@ mod loading_state {
                 render_session_preview_loading(frame, popup_area, session, &theme);
             })
             .expect("draw");
-        terminal.backend().buffer().clone()
+        (terminal.backend().buffer().clone(), popup_area)
     }
 
     /// The buffer as one string, for a whole-popup assertion.
@@ -563,20 +821,90 @@ mod loading_state {
 
     #[rstest::rstest]
     fn the_loading_popup_reserves_a_content_row() {
-        // Given a frame with room above the cursor for a small popup.
+        // Given a frame with room above the cursor for the full popup.
         let frame_area = Rect::new(0, 0, 100, 40);
 
         // When the loading popup's rect is computed the way production does.
-        let popup_area = session_preview_popup_rect(frame_area, 30, LOADING_CONTENT_ROWS);
+        let popup_area = session_preview_popup_rect(frame_area, 30);
 
         // Then rows remain for content once the borders and footer are taken.
-        // At the popup's 5-row floor this would be zero, and the content guard
-        // would drop the spinner line entirely.
-        let content_rows = popup_area.height.saturating_sub(2).saturating_sub(3);
+        // The height no longer depends on a line count, so the loading popup is
+        // the same box the ready popup draws and cannot lose its content area.
         assert!(
-            content_rows > 0,
-            "the loading popup must leave room for the spinner, got {content_rows} content rows in a {} row popup",
+            content_rows_of(popup_area) > 0,
+            "the loading popup must leave room for the spinner, got {} content rows in a {} row popup",
+            content_rows_of(popup_area),
             popup_area.height
+        );
+    }
+
+    #[rstest::rstest]
+    fn the_loading_and_ready_popups_are_the_same_size() {
+        // Given a frame with room for the full popup.
+        let frame_area = Rect::new(0, 0, 100, 40);
+
+        // When the rect is computed — which no longer takes a line count, so
+        // there is nothing for the loading state to size itself differently to.
+        let loading = session_preview_popup_rect(frame_area, 30);
+        let ready = session_preview_popup_rect(frame_area, 30);
+
+        // Then the box does not resize when the render comes back.
+        assert_eq!(
+            loading, ready,
+            "the popup must not change shape between loading and ready"
+        );
+    }
+
+    #[rstest::rstest]
+    fn the_loading_indicator_sits_on_the_last_content_row() {
+        // Given a session whose preview has not been rendered.
+        let session = make_session_with_title("busy");
+        let (buffer, popup_area) = draw_loading(&session, 100, 40);
+        let expected_row = last_content_row(popup_area);
+
+        // When reading every content row, looking for the spinner.
+        let row_with_spinner = (0..content_rows_of(popup_area))
+            .map(|i| popup_area.y + 1 + i)
+            .find(|y| {
+                let row = buffer_row(&buffer, *y, popup_area.x + popup_area.width);
+                any_spinner_glyph().iter().any(|g| row.contains(g))
+            });
+
+        // Then the spinner is on the content area's last row, where content will
+        // arrive, rather than floating at the top of an empty box.
+        assert_eq!(
+            row_with_spinner,
+            Some(expected_row),
+            "the loading indicator should be on the last content row (row {expected_row})"
+        );
+    }
+
+    #[rstest::rstest]
+    fn the_loading_indicator_is_centred_in_the_content_area() {
+        // Given a session whose preview has not been rendered.
+        let session = make_session_with_title("busy");
+        let (buffer, popup_area) = draw_loading(&session, 100, 40);
+        let row_y = last_content_row(popup_area);
+        let content_x = popup_area.x + 1;
+        let content_width = popup_area.width - 2;
+
+        // When the loading line's ink is measured on that row. The popup is
+        // right-aligned, so only the content area's own columns are read —
+        // measuring from column zero would count the screen's left margin.
+        let row: String = (content_x..content_x + content_width)
+            .filter_map(|x| buffer.cell((x, row_y)).map(|c| c.symbol().to_owned()))
+            .collect();
+        let indent = row.chars().take_while(|c| *c == ' ').count();
+        let ink = row.trim_end().len() - indent;
+        let left_slack = indent;
+        let right_slack = content_width as usize - indent - ink;
+
+        // Then the line is centred — the same slack either side, to within the
+        // one column an odd remainder cannot split.
+        assert!(
+            left_slack.abs_diff(right_slack) <= 1,
+            "the loading line is not centred: {left_slack} left, {right_slack} right, \
+             row: {row:?}"
         );
     }
 
@@ -584,7 +912,7 @@ mod loading_state {
     fn the_loading_state_shows_a_spinner() {
         // Given a session whose preview has not been rendered.
         let session = make_session_with_title("busy");
-        let buffer = draw_loading(&session, 100, 40);
+        let (buffer, _popup_area) = draw_loading(&session, 100, 40);
 
         // Then the content area carries a spinner glyph.
         let screen = buffer_to_string(&buffer);
@@ -599,7 +927,7 @@ mod loading_state {
         // Given a session whose entries carry distinctive text.
         let mut session = make_session_with_title("busy");
         session.push_entry(ChatEntry::user("SECRETENTRYTEXT"));
-        let buffer = draw_loading(&session, 100, 40);
+        let (buffer, _popup_area) = draw_loading(&session, 100, 40);
 
         // Then none of it is drawn, because the render has not come back.
         let screen = buffer_to_string(&buffer);
@@ -613,7 +941,7 @@ mod loading_state {
     fn the_loading_state_shows_the_session_title() {
         // Given a titled session whose preview has not been rendered.
         let session = make_session_with_title("busy");
-        let buffer = draw_loading(&session, 100, 40);
+        let (buffer, _popup_area) = draw_loading(&session, 100, 40);
 
         // Then the chrome is already drawn, so only the content waits.
         assert!(buffer_to_string(&buffer).contains("busy"));
@@ -623,7 +951,7 @@ mod loading_state {
     fn the_loading_state_shows_the_keybinds() {
         // Given a session whose preview has not been rendered.
         let session = make_session_with_title("busy");
-        let buffer = draw_loading(&session, 100, 40);
+        let (buffer, _popup_area) = draw_loading(&session, 100, 40);
 
         // Then the footer is present, matching the ready state.
         assert!(buffer_to_string(&buffer).contains("archive"));
@@ -635,7 +963,7 @@ mod loading_state {
         let session = make_session_with_title("busy");
         let theme = default_theme();
         let frame_area = Rect::new(0, 0, 100, 40);
-        let popup_area = session_preview_popup_rect(frame_area, 30, LOADING_CONTENT_ROWS);
+        let popup_area = session_preview_popup_rect(frame_area, 30);
 
         // When the loading renderer draws it.
         let (mut terminal, _) = setup_term(100, 40);
@@ -649,12 +977,18 @@ mod loading_state {
         // Then the label carries the theme's streaming color, the same one the
         // chat log's loading indicator uses, so "working" reads the same in both
         // places. Muted grey read as "nothing here" rather than "wait".
-        // Scanned for the *label's* cells only: the leftmost cell in this row is
-        // the border, which is a different color and would make the assertion
-        // pass or fail for reasons unrelated to the label.
-        let label_row = popup_area.y + 1;
-        let first_label_x = popup_area.x + 1;
-        let fg = (first_label_x..popup_area.x + popup_area.width)
+        // Scanned from the label's own first cell: the columns to its left are
+        // the centring indent and the leftmost cell of the row is the border,
+        // neither of which says anything about the label's color.
+        let label_row = last_content_row(popup_area);
+        let label_start = (popup_area.x + 1..popup_area.x + popup_area.width)
+            .find(|x| {
+                buffer
+                    .cell((*x, label_row))
+                    .is_some_and(|c| c.symbol() != " ")
+            })
+            .expect("the label row carries the label");
+        let fg = (label_start..popup_area.x + popup_area.width)
             .filter_map(|x| buffer.cell((x, label_row)))
             .map(|cell| cell.fg)
             .find(|fg| *fg != theme.border_unfocused)
@@ -674,7 +1008,7 @@ mod loading_state {
         // When the ready renderer draws it.
         let theme = default_theme();
         let frame_area = Rect::new(0, 0, 100, 40);
-        let popup_area = session_preview_popup_rect(frame_area, 30, 0);
+        let popup_area = session_preview_popup_rect(frame_area, 30);
         let (mut terminal, _) = setup_term(100, 40);
         terminal
             .draw(|frame| {
