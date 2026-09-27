@@ -103,11 +103,11 @@ When bootstrapping `.agents/RECORD.md`, the file's body is exactly the following
 
 A curated list of factual, scoped statements asserting the application's **current** state. Authoritative for the present, never the future.
 
-The planner consults this file before proposing a plan. If a feature **contradicts** an entry here, the contradiction is surfaced before the plan proceeds. If a feature **establishes a new high-level fact**, a verbatim entry is proposed for human approval as part of the plan.
+The planner consults this file before proposing a plan. If a feature **contradicts** an entry here, the contradiction is surfaced before the plan proceeds. If a feature **establishes a new high-level fact**, a verbatim entry is proposed for human approval as part of the plan. You may edit the RECORD, but only after presenting the changes to a human and getting human approval.
 
 ## Why This File Exists
 
-A planner reads this file *instead of* reading the code, so an entry earns its place only by being **expensive to re-derive** — a decision, a boundary, a user-visible behavior, or a fact whose only copy is scattered across several files.
+A planner reads this file _instead of_ reading the code, so an entry earns its place only by being **expensive to re-derive** — a decision, a boundary, a user-visible behavior, or a fact whose only copy is scattered across several files.
 
 If a reader could recover the fact from one grep or one file read, it does not belong here. Most things do not belong here. The list is expected to be short, and adding an entry is a claim that the fact is not already obvious from the code.
 

@@ -1,6 +1,6 @@
 +++
 name = "goal"
-description = "Establish the execution contract for a task: end state, invariants, decision rules, constraints, traps, and verification."
+description = "Begin a planning session for an autonomously achieved goal."
 +++
 
 <instructions>
@@ -99,7 +99,7 @@ proposed entries as markdown list lines.
 
 A curated list of factual, scoped statements asserting the application's **current** state. Authoritative for the present, never the future.
 
-This file is consulted before proposing work on a task. If a task **contradicts** an entry here, the contradiction is surfaced before work proceeds. If a task **establishes** a new high-level fact, a verbatim entry is proposed for human approval as part of that proposal.
+This file is consulted before proposing work on a task. If a task **contradicts** an entry here, the contradiction is surfaced before work proceeds. If a task **establishes** a new high-level fact, a verbatim entry is proposed for human approval as part of that proposal. You may edit the RECORD, but only after presenting the changes to a human and getting human approval.
 
 ## Why This File Exists
 
@@ -381,6 +381,9 @@ obvious from the task, ask.
 that needs none. Do not pad it with defaults — a wrong default is a constraint
 nobody chose.
 
+**ALWAYS** start the execution protocol with setting up the task/todo list.
+This is imperative as it keeps the agent on-track.
+
 ### 10. References — external material worth consulting
 
 Optional. Anything outside the repository the implementer should have in hand:
@@ -466,7 +469,8 @@ A **Task Contract**: brief in form, dense in content.
 - **References** — external material to consult. Omit entirely if there is none.
 - **Non-Goals** — what is deliberately excluded, even though it looks adjacent.
 - **Record Updates** — verbatim entries for `.agents/RECORD.md`, entries only,
-  never preamble changes. DO NOT EDIT THE RECORD now.
+  never preamble changes. DO NOT EDIT THE RECORD now. Record edits are applied
+  at the end of the task after completion.
 
 **The contract must contain no phases, no step-by-step instructions, and no
 code snippets.** Its job is to make the destination, the rules, and the judgement
