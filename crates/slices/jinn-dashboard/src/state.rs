@@ -183,6 +183,34 @@ impl DashboardState {
         self.upsert(name, description, ActorLifecycle::Running);
     }
 
+    /// Record that the runtime evicted an actor for idleness.
+    ///
+    /// The row reads [`ActorLifecycle::Idle`], NOT `Dead`: the actor is
+    /// dormant, not gone, and a partition-set entity passivated on an
+    /// idle window returns on the next send to its path. Reporting it as
+    /// dead would tell a reader the actor failed when it did exactly
+    /// what it was configured to do.
+    ///
+    /// Like [`Self::mark_stopped`], the reason is stored rather than
+    /// rendered, so the view can yield the Notes column to a feature
+    /// status message.
+    pub fn mark_idle<S>(&mut self, name: S, reason: impl Into<String>)
+    where
+        S: AsRef<str>,
+    {
+        let name = name.as_ref();
+        let reason = reason.into();
+        let Some(entry) = self.actors.get_mut(name) else {
+            self.upsert(name, None, ActorLifecycle::Idle);
+            if let Some(entry) = self.actors.get_mut(name) {
+                entry.stop_reason = Some(reason);
+            }
+            return;
+        };
+        entry.lifecycle = ActorLifecycle::Idle;
+        entry.stop_reason = Some(reason);
+    }
+
     /// Record that the runtime stopped an actor, and why.
     ///
     /// The reason is stored, not rendered, so the view can yield the

@@ -103,13 +103,26 @@ impl DashboardCanvasActor {
     fn apply_lifecycle(&self, msg: &trouper::ActorLifecycle) {
         self.cell.update(|s| {
             let name = msg.path.to_string();
+            // Exhaustive, deliberately. Every runtime state names the
+            // row it produces, so a new state added upstream fails to
+            // COMPILE here and forces an explicit decision about whether
+            // it means the actor is alive or gone. A catch-all arm would
+            // instead route it silently to `Dead` — which is exactly how
+            // passivation came to be reported as death here.
             match msg.state {
                 LifecycleState::Running => s.mark_running(name, None),
-                // Every stop state lands on the same `Dead` row, but
-                // each carries its own reason so the view can tell a
-                // passivation from a crash. `Passivated` in particular is
-                // NOT a failure: the actor re-spawns on the next send.
-                state => s.mark_stopped(name, stop_reason_text(state)),
+                // Passivation is NOT death. The runtime evicted an idle
+                // actor and will re-spawn it on the next send, so the row
+                // reads Idle and keeps its own reason phrase: calling a
+                // dormant partition-set entity "Dead" reports a failure
+                // that did not happen.
+                LifecycleState::Passivated => s.mark_idle(name, idle_reason_text()),
+                // Every terminal stop lands on Dead, with its reason
+                // distinguishing the causes.
+                LifecycleState::Normal
+                | LifecycleState::Crashed
+                | LifecycleState::Escalated
+                | LifecycleState::Shutdown => s.mark_stopped(name, stop_reason_text(msg.state)),
             }
         });
     }
@@ -132,18 +145,28 @@ impl DashboardCanvasActor {
     }
 }
 
-/// The Notes-column phrase for a stopped actor's runtime state.
+/// The Notes-column phrase for a passivated (dormant) actor.
 ///
-/// Every stop state gets a distinct, human-readable phrase, and none
-/// reuses the word "Dead" — the State column already says that, and
-/// repeating it here would waste the column that exists to say *why*.
+/// Says what is true — the actor is idle and will return — rather than
+/// restating the State column, which already reads "Idle".
+fn idle_reason_text() -> String {
+    "idle; re-spawns on next send".to_owned()
+}
+
+/// The Notes-column phrase for a TERMINALLY stopped actor.
+///
+/// Every terminal stop state gets a distinct, human-readable phrase,
+/// and none reuses the word "Dead" — the State column already says
+/// that, and repeating it here would waste the column that exists to
+/// say *why*.
 fn stop_reason_text(state: LifecycleState) -> String {
     match state {
-        LifecycleState::Running => "running".to_owned(),
+        LifecycleState::Running | LifecycleState::Passivated => {
+            unreachable!("Running and Passivated never reach a terminal stop")
+        }
         LifecycleState::Normal => "stopped normally".to_owned(),
         LifecycleState::Crashed => "crashed (supervisor declined restart)".to_owned(),
         LifecycleState::Escalated => "escalated (restart budget exhausted)".to_owned(),
-        LifecycleState::Passivated => "passivated (idle; re-spawns on next send)".to_owned(),
         LifecycleState::Shutdown => "stopped by shutdown".to_owned(),
     }
 }
@@ -191,6 +214,9 @@ fn apply_service_update(dashboard: &mut DashboardState, update: &ServiceStatusUp
             }
             ActorLifecycle::Running => {
                 dashboard.mark_running(&update.name, None);
+            }
+            ActorLifecycle::Idle => {
+                dashboard.mark_idle(&update.name, "idle");
             }
             ActorLifecycle::Dead => {
                 dashboard.mark_dead(&update.name, None);
@@ -391,12 +417,36 @@ mod tests {
         wait_for(|| row(&cell, "llm").is_some_and(|r| r.lifecycle == ActorLifecycle::Dead)).await;
     }
 
-    /// `Passivated` is not a failure: the runtime evicted an idle actor
-    /// and will re-spawn it on the next send. The Notes column must not
-    /// present it as a crash.
+    /// A passivated actor is DORMANT, not dead. Partition-set entities
+    /// (per-session discovery workers, for one) passivate on an idle
+    /// window and re-spawn on the next send, so a row reading "Dead"
+    /// reports a failure that did not happen — the bug this pins.
     #[rstest::rstest]
     #[tokio::test]
-    async fn a_passivated_stop_reads_as_idle_not_crashed() {
+    async fn a_passivated_actor_reads_as_idle_not_dead() {
+        // Given a wired actor with a running row.
+        let fabric = TestFabric::new();
+        let cell = wire_actor(&fabric);
+        fabric.send_to_topic(running("jinn.discovery/abc")).await;
+        wait_for(|| row(&cell, "jinn.discovery/abc").is_some()).await;
+
+        // When the runtime announces a passivation.
+        fabric
+            .send_to_topic(stopped("jinn.discovery/abc", LifecycleState::Passivated))
+            .await;
+
+        // Then the row reads Idle — the actor is dormant, not gone.
+        wait_for(|| {
+            row(&cell, "jinn.discovery/abc").is_some_and(|r| r.lifecycle == ActorLifecycle::Idle)
+        })
+        .await;
+    }
+
+    /// The Notes column for a dormant actor must not dress the passivation
+    /// up as a failure either.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_passivated_actor_notes_that_it_will_return() {
         // Given a wired actor with a running row.
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
@@ -408,28 +458,54 @@ mod tests {
             .send_to_topic(stopped("idle-worker", LifecycleState::Passivated))
             .await;
 
-        // Then the row is Dead with a passivation phrase, not a crash one.
+        // Then the note says it is idle and will come back, and does not
+        // read as a crash.
         wait_for(|| {
             row(&cell, "idle-worker")
                 .and_then(|r| r.reason)
-                .is_some_and(|r| r.contains("passivated"))
+                .is_some_and(|r| r.contains("re-spawns"))
         })
         .await;
         let reason = row(&cell, "idle-worker").unwrap().reason.unwrap();
-        assert!(
-            !reason.contains("crashed"),
-            "passivation must not read as a crash: {reason}"
-        );
+        for forbidden in ["crashed", "escalated", "shutdown", "passivated"] {
+            assert!(
+                !reason.contains(forbidden),
+                "an idle note must not read as a failure ({forbidden}): {reason}"
+            );
+        }
+    }
+
+    /// A dormant actor that wakes is Running again, with no stale note.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_passivated_actor_that_wakes_reads_as_running() {
+        // Given a wired actor whose row went Idle.
+        let fabric = TestFabric::new();
+        let cell = wire_actor(&fabric);
+        fabric.send_to_topic(running("wake-me")).await;
+        wait_for(|| row(&cell, "wake-me").is_some()).await;
+        fabric
+            .send_to_topic(stopped("wake-me", LifecycleState::Passivated))
+            .await;
+        wait_for(|| row(&cell, "wake-me").is_some_and(|r| r.lifecycle == ActorLifecycle::Idle))
+            .await;
+
+        // When the partition factory re-spawns it on the next send.
+        fabric.send_to_topic(running("wake-me")).await;
+
+        // Then the row is Running with its idleness note cleared.
+        wait_for(|| row(&cell, "wake-me").is_some_and(|r| r.lifecycle == ActorLifecycle::Running))
+            .await;
+        assert_eq!(row(&cell, "wake-me").unwrap().reason, None);
     }
 
     #[rstest::rstest]
     #[case(LifecycleState::Normal, "stopped normally")]
     #[case(LifecycleState::Crashed, "crashed")]
     #[case(LifecycleState::Escalated, "escalated")]
-    #[case(LifecycleState::Passivated, "passivated")]
     #[case(LifecycleState::Shutdown, "shutdown")]
     #[tokio::test]
-    async fn each_stop_state_renders_its_own_distinct_phrase(
+    async fn each_terminal_stop_state_renders_its_own_distinct_phrase(
         #[case] state: LifecycleState,
         #[case] expected: &str,
     ) {

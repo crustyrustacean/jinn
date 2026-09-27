@@ -145,6 +145,10 @@ fn lifecycle_display(lifecycle: ActorLifecycle, theme: &Theme) -> (&'static str,
     match lifecycle {
         ActorLifecycle::Starting => ("Starting", theme.warning),
         ActorLifecycle::Running => ("Running", theme.success),
+        // Muted, not the error color: a passivated actor is dormant and
+        // will return on the next send. Painting it like a failure is
+        // how a normal idle cycle reads as an incident.
+        ActorLifecycle::Idle => ("Idle", theme.muted_text),
         ActorLifecycle::Dead => ("Dead", theme.error_text),
     }
 }
@@ -198,6 +202,68 @@ mod tests {
         assert!(buf.contains("beta"), "second row renders");
         assert!(buf.contains('▸'), "selection marker renders");
         assert!(buf.contains("Running"), "lifecycle column renders");
+    }
+
+    /// A passivated row must read as dormant, not as a failure. The
+    /// rendered row is what a user actually sees, so the State column is
+    /// pinned here rather than only in the state fold's tests.
+    #[rstest::rstest]
+    #[test]
+    fn dashboard_view_renders_a_passivated_actor_as_idle() {
+        // Given a dashboard slice whose only actor was passivated.
+        let mut slice = DashboardState::new();
+        slice.mark_idle("jinn.discovery/abc", "idle; re-spawns on next send");
+        let theme = default_theme();
+        let cx = ViewCx { theme: &theme };
+
+        // When rendering through the view.
+        let (mut terminal, _area) = setup_term(80, 24);
+        terminal
+            .draw(|frame| {
+                let mut view = DashboardView::new();
+                let area = ratatui::layout::Rect::new(0, 0, 80, 24);
+                view.render(frame, area, &cx, &slice);
+            })
+            .expect("render");
+
+        // Then the row reads Idle, not Dead.
+        let buf = buffer_string(&terminal);
+        assert!(buf.contains("Idle"), "idle row renders: {buf}");
+        assert!(!buf.contains("Dead"), "a dormant actor is not dead: {buf}");
+    }
+
+    /// A feature's status message and the runtime's stop reason share one
+    /// Notes cell; the feature's wins when both are present.
+    #[rstest::rstest]
+    #[test]
+    fn dashboard_view_prefers_the_feature_status_over_the_stop_reason() {
+        // Given a stopped row that also carries a feature status.
+        let mut slice = DashboardState::new();
+        slice.mark_stopped("discord", "crashed (supervisor declined restart)");
+        slice.set_status_message("discord", Some("reconnecting".to_owned()));
+        let theme = default_theme();
+        let cx = ViewCx { theme: &theme };
+
+        // When rendering through the view.
+        let (mut terminal, _area) = setup_term(80, 24);
+        terminal
+            .draw(|frame| {
+                let mut view = DashboardView::new();
+                let area = ratatui::layout::Rect::new(0, 0, 80, 24);
+                view.render(frame, area, &cx, &slice);
+            })
+            .expect("render");
+
+        // Then the Notes cell carries the status message, not the reason.
+        let buf = buffer_string(&terminal);
+        assert!(
+            buf.contains("reconnecting"),
+            "status message renders: {buf}"
+        );
+        assert!(
+            !buf.contains("supervisor declined"),
+            "the stop reason yields to the feature status: {buf}"
+        );
     }
 
     #[rstest::rstest]

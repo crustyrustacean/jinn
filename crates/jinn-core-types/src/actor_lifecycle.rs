@@ -8,7 +8,7 @@
 /// The lifecycle phase of an actor.
 ///
 /// Driven by the runtime's own actor announcements: a spawn makes the
-/// actor `Running`, a stop makes it `Dead`.
+/// actor `Running`, a stop makes it `Dead` or `Idle`.
 ///
 /// `Starting` is a jinn-side projection rather than a runtime-reported
 /// state. A runtime spawn announcement means the actor is already live,
@@ -22,6 +22,14 @@ pub enum ActorLifecycle {
     Starting,
     /// The actor has spawned and is ready.
     Running,
-    /// The actor has stopped (normally, by passivation, or on crash).
+    /// The actor is dormant: the runtime evicted it for idleness, and it
+    /// will re-spawn on the next send to its path.
+    ///
+    /// Distinct from [`ActorLifecycle::Dead`] because the actor is not
+    /// gone. Partition-set entities (per-session workers, for instance)
+    /// passivate on an idle window and come straight back, so reporting
+    /// them as dead describes a failure that did not happen.
+    Idle,
+    /// The actor has stopped and will not come back on its own.
     Dead,
 }
