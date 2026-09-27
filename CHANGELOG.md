@@ -43,6 +43,8 @@
 - Added a new `--config` flag to load a specific `jinn.toml` file.
   - Passing `--config` to `jinn config init` will initialize the template to the provided path instead of `<config dir>/jinn`
 - Add new `goal` prompt that autonomously works towards the planned goal, working similarly to the `plan` prompt. See the README for usage instructions.
+- Add `/export [path]` command to export a chat.
+  - Formats supported: `html`, `md`
 - Dashboard changes:
   - Scrolling now pivots around the cursor
   - Actors are sorted by status and by notes
