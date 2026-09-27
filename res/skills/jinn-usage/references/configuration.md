@@ -54,11 +54,16 @@ prefer the command over hand-editing.
 
 ```toml
 [tools]
-disabled = ["web-search", "mcp__context7__lookup"]
+disabled = ["grep", "openrouter:web_search", "mcp__context7__lookup"]
 
 [skills]
 disabled = ["svg-creator"]
 ```
+
+Entries are **tool names**, not display labels: a builtin is its bare name
+(`bash`, `grep`, `write`, `task`, `skill`, …), a provider-side tool keeps its
+namespace (`openrouter:web_search`), and an MCP tool is its full namespaced
+name (`mcp__<server>__<tool>`). A name that matches nothing is simply inert.
 
 New sessions start with these disabled; per-session toggles (`<leader>st`,
 `<leader>sk`) override and persist in the session, never writing back here.
@@ -94,6 +99,25 @@ command policy that blocks bash commands by regex inside that project:
 path = "~/code/myapp"
 command_policy = [{ pattern = 'rm\s+-rf\s+/', message = "Never rm -rf from root here." }]
 ```
+
+**Global command policy** (blocks the same commands in every directory, in
+every session). Same shape as a project's policy, and evaluated *before* the
+project's rules with first-match-wins — so a project policy can only add
+blocks, never lift a global one:
+
+```toml
+[[tools.bash_command_policy]]
+pattern = 'git push\s+.*--force'
+message = 'Force-push main; open a PR instead.'
+```
+
+A match returns the `message` to the agent as a failed tool result and the
+command never runs. Use single-quoted patterns so regex metacharacters survive;
+use global rules for mistakes that are wrong everywhere, and the project
+`command_policy` for repo-specific habits. A pattern the regex engine cannot
+compile is inert (logged, no block), and there is no lookaround — `(?<!...)`
+and `(?=...)` do not work. Guards apply to the **bash tool only**; interactive
+terminals and MCP-provided tools are not policed.
 
 **MCP servers** — see `mcp-servers.md` for the full transport matrix:
 
@@ -133,19 +157,28 @@ min_age = 50
 Strategies include `edit_read`, `read_edit`, `double_edit`,
 `consecutive_reads`, `tool_age_window`, `trivial_assistant`,
 `anchored_assistant`, `broken_edit`, `todo`, and
-`regex` — all documented with comments in the default `jinn.toml`.
+`regex` — all documented with comments in the default `jinn.toml`. Each is a
+`[context_curation.auto_prune.<name>]` table taking `enabled` and `min_age`;
+the ones with extra tuning are listed under "Auto-prune per-strategy knobs"
+below. `[context_curation.auto_prune.broken_edit]`,
+`[context_curation.auto_prune.edit_read]`, and
+`[context_curation.auto_prune.tool_age_window]` have no further settings.
 
 **Web search tuning** (the provider-side `openrouter:web_search` tool):
 
 ```toml
 [provider.web_search]
 engine = "exa"          # "exa" | "firecrawl" | "parallel" | "native" | "auto"
-# max_results = 5       # per search (1-25)
+# max_results = 5       # per search (provider accepts 1-25)
 # max_total_results = 20        # cap across searches in one request
 # search_context_size = "medium"  # "low" | "medium" | "high"; unset = adaptive
 # allowed_domains = ["docs.example.com"]
 # excluded_domains = ["pinterest.com"]
 ```
+
+jinn passes these values straight through to the provider, so it validates
+none of them — a typo'd `engine` or an out-of-range `max_results` is forwarded
+as written and the provider decides what to do with it.
 
 **Interactive terminal** (see `terminal-overlay.md`):
 
@@ -194,11 +227,26 @@ authorized_users = []              # deny-by-default; empty authorizes nobody
 `min_age`; the ones with extra tuning):
 
 ```toml
-[context_curation.auto_prune.double_edit]       max_file_edits = 2   # writes kept per file
-[context_curation.auto_prune.consecutive_reads] keep_last = 5        # reads kept per file
-[context_curation.auto_prune.regex.rules]       keep_last = 2        # matching calls kept
-[context_curation.auto_prune.trivial_assistant] max_tokens = 80      # "trivial" size threshold
-[context_curation.auto_prune.anchored_assistant] radius = 20          # entries near anchors kept
+[context_curation.auto_prune.double_edit]
+max_file_edits = 2        # writes kept per file
+
+[context_curation.auto_prune.consecutive_reads]
+keep_last = 5             # reads kept per file
+
+[context_curation.auto_prune.read_edit]
+threshold = 2             # edits/writes before the earlier read goes stale
+
+[context_curation.auto_prune.regex.rules]
+keep_last = 2             # matching calls kept
+
+[context_curation.auto_prune.todo]
+protect_latest = true     # keep the most recent todo_* loop only
+
+[context_curation.auto_prune.trivial_assistant]
+max_tokens = 80           # "trivial" size threshold
+
+[context_curation.auto_prune.anchored_assistant]
+radius = 20               # entries near user-message anchors kept
 ```
 
 **Request retries:**
@@ -210,11 +258,31 @@ base_delay_secs = 2
 max_delay_secs = 60
 ```
 
+**Watchdogs** (turn health — these cancel a turn that has gone bad):
+
+```toml
+[watchdog.stall]
+timeout_secs = 60     # seconds of stream silence before a stalled turn retries
+max_restarts = 3      # consecutive silent-stall retries before the turn cancels
+
+[watchdog.tool_call]
+max_failures = 4      # tool failures before the turn cancels
+```
+
+`max_failures` uses a simple accumulator that rises on failure and falls on
+success, so the failures need not be consecutive.
+
 ## Coverage note
 
-Every key in the shipped default `jinn.toml` is represented above or in a
+Every section in the shipped default `jinn.toml` is represented above or in a
 linked reference (`mcp-servers.md`, `terminal-overlay.md`,
-`context-management.md`, `sessions-and-subagents.md`). When an ask touches a
+`context-management.md`, `sessions-and-subagents.md`). Section names are
+exact — `[term]`, not `[interactive_term]`; `[mcp.<name>]`, not
+`[[mcp_server]]`; `[context_curation.compaction]`, not `[compaction]`. A
+misspelled section is **silently ignored** (it reads as absent, not as an
+error), so a typo'd key will not announce itself.
+
+When an ask touches a
 key not shown here, tell the user the full commented reference ships in the
 auto-created `~/.config/jinn/jinn.toml` itself.
 

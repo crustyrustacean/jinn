@@ -10,6 +10,8 @@ automatically. All bindings below are normal mode unless stated.
 - `j` / `k` move the selection down / up the chat history.
 - Jumps: `]u`/`[u` (user messages), `]p`/`[p` (pinned), `]c`/`[c`
   (compaction summaries), `]s`/`[s` (Sources annotations), `gg`/`G` (top/bottom).
+  Each `]` jumps forward and its `[` partner jumps backward; the Sources jump
+  clamps at both ends rather than wrapping.
 
 ## Pinning an entry
 
@@ -79,14 +81,15 @@ jinn prunes stale detail automatically so context stays small and prefix-cache
 friendly; compaction (summarizing) exists only as a backstop and should almost
 never fire during coding. Related tuning lives in `jinn.toml`:
 
-- `[auto_prune.*]` — per-strategy rules (stale reads, repeated edits, old tool
-  output, trivial assistant chatter, regex rules...), each with `enabled`,
-  `min_age`, and per-strategy thresholds.
-- `[auto_prune] accumulation_threshold_tokens` — prune context-mutations are
-  batched until this token budget accumulates, protecting prefix-cache hits.
-- `[compaction]` — `threshold` (usage fraction that triggers compaction),
-  `reserve_tokens`, `fallback_context_window`, and an optional compaction
-  `model`.
+- `[context_curation.auto_prune.*]` — per-strategy rules (stale reads, repeated
+  edits, old tool output, trivial assistant chatter, regex rules...), each with
+  `enabled`, `min_age`, and per-strategy thresholds.
+- `[context_curation.auto_prune] accumulation_threshold_tokens` — prune
+  context-mutations are batched until this token budget accumulates, protecting
+  prefix-cache hits.
+- `[context_curation.compaction]` — `threshold` (usage fraction that triggers
+  compaction), `reserve_tokens`, `fallback_context_window`, and an optional
+  compaction `model`.
 
 See `configuration.md` for how to edit these and the restart caveat.
 

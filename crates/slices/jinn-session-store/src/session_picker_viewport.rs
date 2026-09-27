@@ -33,9 +33,12 @@ pub const FALLBACK_RESULTS_VIEWPORT: usize = 20;
 /// The rows reserved for the popup's border, filter, and footer.
 const CHROME_ROWS: u16 = 6;
 
-/// Measures the result rows available inside the popup.
+/// Measures the result rows available inside the popup rectangle.
+///
+/// `area` is the popup rectangle handed down by the render pass (see
+/// `jinn_selection_widget::compute_popup_rect`), not a terminal frame.
 #[must_use]
 pub fn results_viewport(area: &Rect) -> usize {
-    let inner = jinn_selection_widget::compute_popup_rect(*area).height;
+    let inner = area.height;
     usize::from(inner.saturating_sub(CHROME_ROWS)).max(1)
 }

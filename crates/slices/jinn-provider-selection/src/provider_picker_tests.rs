@@ -239,7 +239,9 @@ impl Wired {
             jinn_slices::RenderFacts::new(self.state.borrow().frontend.theme.clone(), &self.slices);
         terminal
             .draw(|frame| {
-                crate::provider_picker_render::render_provider_picker(frame, area, &facts);
+                let popup = crate::provider_picker_render::provider_picker_overlay_rect(&area)
+                    .expect("geometry fn yields a popup rect");
+                crate::provider_picker_render::render_provider_picker(frame, popup, &facts);
             })
             .expect("the draw closure must not panic");
         terminal
@@ -984,7 +986,9 @@ async fn render_measures_the_viewport_from_the_actual_frame() {
     // Then the measured viewport is what the popup's own geometry implies,
     // not the fallback the navigation keys would otherwise page by.
     let area = ratatui::layout::Rect::new(0, 0, 120, 34);
-    let expected = crate::provider_picker_viewport::results_viewport(&area);
+    let popup = crate::provider_picker_render::provider_picker_overlay_rect(&area)
+        .expect("geometry fn yields a popup rect");
+    let expected = crate::provider_picker_viewport::results_viewport(&popup);
     let actual = wired.cell().read().results_viewport;
     assert_eq!(actual, expected);
     // And it is a real measurement, distinct from the unmeasured fallback.

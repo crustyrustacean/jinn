@@ -74,6 +74,7 @@ Entries are added or amended **only with human approval**.
 - (pickers) Picker scopes are dynamic slice scopes, so the kernel holds no per-picker scope variant, picker kind, spec, or registry.
 - (pickers) A picker measures its own results viewport in its render pass and publishes it into its cell; the kernel measures nothing.
 - (pickers) A slice picker resets its per-open state — filter text, highlight, and rows — each time its dynamic scope is entered, so every opener shows the same fresh menu.
+- (pickers) A picker's popup rect is computed once per frame by its slice's overlay geometry function and centered on the terminal on both axes; the selection widgets render into the rect they are handed rather than recomputing it.
 - (keybinds) Picker keybinds are route rows owned by the slice that owns the picker.
 - (keybinds) Feature keybinds are route rows carrying scope and key; keymap bindings are generated from registered rows at launch; dynamic intents and scope ids are data-carried, so an unregistered slice leaves no keymap, scope, or intent residue.
 - (keybinds) The terminal overlay's keybinds are term-slice route rows binding the dynamic scopes term:view and term:control; no static terminal scope or terminal intent variants exist in the kernel.
@@ -98,7 +99,7 @@ Entries are added or amended **only with human approval**.
 - (keybinds) In the skill scope, `Tab` cannot disable a skill already loaded into context — disabling would imply an unload that does not happen (the body stays pinned until it is unpinned and pruned). `Tab` is a no-op for a loaded skill.
 - (keybinds) Leader-chord keybinds resolve multi-key sequences: `<leader>se` opens the persona picker, `<leader>sr` opens the reasoning-effort picker, and `<leader>[p]` jumps to pinned intents — chords that don't complete (e.g. `[c` in input scope) don't resolve.
 - (keybinds) Picker scopes bind `PgUp`/`PgDn` to page-up/page-down of the picker list; in the skill and task-list scopes these also scroll a preview pane (`Ctrl+D`/`Ctrl+U` for the skill preview).
-- (keybinds) The `p` prefix group in the sidebar does not drop the normal-scope pin binding (group bindings are scope-local and don't shadow cross-scope bindings).
+- (keybinds) The sidebar sessions scope has no `p` prefix group; the Normal-scope `p` pin binding is still guarded against Leaf→Branch keymap promotion by a dedicated regression test.
 - (keybinds) `Alt+Q` in input scope toggles input mode; `Alt+S` focuses the sidebar sessions section from both input and normal scopes.
 - (keybinds) `s` in the sidebar task-list section opens the task-list picker.
 - (keybinds) `gci` in normal scope isolates the highlighted entry's tool loop: it force-includes that loop and user-force-excludes every other non-pinned entry, leaving pins untouched.
@@ -236,6 +237,7 @@ Entries are added or amended **only with human approval**.
 - (pickers) The task-list picker browses phases and tasks as a tree, hides postponed tasks, and Enter is a no-op.
 - (skills) jinn ships a bundled `jinn-usage` agent skill whose body routes to per-topic reference files (keybindings, workflows, configuration) installed beside its SKILL.md.
 - (skills) Bundled skill content is compile-time embedded, so installed skill docs match the running jinn binary; refreshing them requires `jinn install --force`.
+- (skills) The jinn-usage reference files are checked against the keymap and slice route rows; no reference names a binding the code does not define, and every TOML section named in a reference matches a registered config key.
 - (slices) The sidebar's section focus is a dynamic scope per section (sidebar/<section>); FocusScope and the TUI Scope have no static sidebar variants.
 - (slices) A sidebar section is derived from the dynamic scope id's name; ScopeStack is_sidebar and sidebar_section match scope ids with the sidebar slice prefix.
 - (tools) interactive_term_send and interactive_term_kill carry the calling chat session id and act only on that session's own terminal; no model-facing terminal id argument exists.

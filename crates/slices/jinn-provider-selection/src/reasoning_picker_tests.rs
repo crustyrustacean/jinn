@@ -176,7 +176,9 @@ fn draw_frame(wired: &Wired, area: ratatui::layout::Rect) -> Vec<String> {
         jinn_slices::RenderFacts::new(wired.state.borrow().frontend.theme.clone(), &wired.slices);
     terminal
         .draw(|frame| {
-            crate::reasoning_picker_render::render_reasoning_picker(frame, area, &facts);
+            let popup = crate::reasoning_picker_render::reasoning_picker_overlay_rect(&area)
+                .expect("geometry fn yields a popup rect");
+            crate::reasoning_picker_render::render_reasoning_picker(frame, popup, &facts);
         })
         .expect("draw");
     terminal
@@ -390,7 +392,9 @@ async fn page_down_steps_by_the_rows_the_last_frame_actually_laid_out() {
     wired.open();
     let frame = ratatui::layout::Rect::new(0, 0, 100, 30);
     draw_frame(&wired, frame);
-    let on_screen = crate::reasoning_picker_viewport::results_viewport(frame);
+    let popup = crate::reasoning_picker_render::reasoning_picker_overlay_rect(&frame)
+        .expect("geometry fn yields a popup rect");
+    let on_screen = crate::reasoning_picker_viewport::results_viewport(popup);
 
     // When page down is pressed.
     wired.fire("page-reasoning-picker-down");

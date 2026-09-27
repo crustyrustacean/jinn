@@ -13,7 +13,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use std::sync::Arc;
 
 use crate::preview_content::{PreviewCache, PreviewContent};
-use crate::{PickerItem, SelectionColors, SelectionState, compute_popup_rect};
+use crate::{PickerItem, SelectionColors, SelectionState};
 
 /// Popup width threshold for vertical (side-by-side) split.
 /// Below this, the layout switches to horizontal (stacked) split.
@@ -135,9 +135,12 @@ where
         self
     }
 
-    /// Renders the preview selection popup within the given frame area.
+    /// Renders the preview selection popup into the given popup rectangle.
+    ///
+    /// The caller owns the geometry: `area` is the popup rectangle the slice's
+    /// overlay geometry function produced (see [`compute_popup_rect`]).
     pub fn render(self, frame: &mut Frame<'_>, area: Rect) {
-        let popup_area = compute_popup_rect(area);
+        let popup_area = area;
         frame.render_widget(Clear, popup_area);
 
         // Destructure self to take ownership of individual fields.
@@ -357,7 +360,7 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::SharedPreviewLines;
-    use crate::{PickerItem, SelectionState};
+    use crate::{PickerItem, SelectionState, compute_popup_rect};
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::text::Line;
@@ -403,11 +406,12 @@ mod tests {
         let mut terminal = Terminal::new(backend).expect("terminal should build");
         terminal
             .draw(|frame| {
+                let popup = compute_popup_rect(frame.area());
                 PreviewSelectionWidget::new(state)
                     .title(Line::from(" Skills "))
                     .colors(SelectionColors::default())
                     .preview_cache(cache)
-                    .render(frame, Rect::new(0, 0, 80, 24));
+                    .render(frame, popup);
             })
             .expect("draw should succeed");
         terminal
@@ -530,6 +534,31 @@ mod tests {
         assert_eq!(keys.len(), 2, "the new width is cached separately");
         assert_ne!(first.1, 17);
         assert!(keys.iter().any(|(_, w)| *w == 17));
+    }
+
+    #[rstest::rstest]
+    fn preview_widget_renders_into_the_rect_it_is_given() {
+        // Given a state and an explicit popup rect not derived from the frame.
+        let state = cached_state();
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("terminal should build");
+        let popup = Rect::new(4, 2, 30, 10);
+
+        // When rendering into that rect.
+        terminal
+            .draw(|frame| {
+                PreviewSelectionWidget::new(&state).render(frame, popup);
+            })
+            .expect("draw should succeed");
+
+        // Then the border is drawn on the supplied rect's top-left corner.
+        let buffer = terminal.backend().buffer().clone();
+        let top_left = buffer.cell((popup.x, popup.y)).expect("top-left cell");
+        assert_eq!(
+            top_left.symbol(),
+            "┌",
+            "border should sit on the supplied rect's corner"
+        );
     }
 
     #[rstest::rstest]

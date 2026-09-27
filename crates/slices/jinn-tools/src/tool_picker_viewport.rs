@@ -39,13 +39,12 @@ const CHROME_ROWS_LIST: u16 = 2;
 /// the keybind line.
 const FOOTER_ROWS: u16 = 2;
 
-/// The tool picker's result-row count for a frame of the given size.
+/// The tool picker's result-row count for the given popup rectangle.
 ///
 /// Mirrors the widget's own layout so the value tracks what the user can see.
 /// At least 1, so paging never windows against zero on a tiny terminal.
 #[must_use]
-pub fn results_viewport(frame_area: Rect) -> usize {
-    let popup = jinn_selection_widget::compute_popup_rect(frame_area);
+pub fn results_viewport(popup: Rect) -> usize {
     let inner = popup.height.saturating_sub(2); // both borders
     inner
         .saturating_sub(CHROME_ROWS_LIST)
@@ -68,11 +67,11 @@ mod tests {
         let frame = Rect::new(0, 0, 100, 30);
 
         // When measuring the picker's results.
-        let rows = results_viewport(frame);
+        let popup = jinn_selection_widget::compute_popup_rect(frame);
+        let rows = results_viewport(popup);
 
         // Then the rows are the popup's inner height less the borders, the
         // filter chrome, and the two footer rows.
-        let popup = jinn_selection_widget::compute_popup_rect(frame);
         let expected = popup
             .height
             .saturating_sub(2)
@@ -87,7 +86,8 @@ mod tests {
         let frame = Rect::new(0, 0, 8, 3);
 
         // When measuring the picker's results.
-        let rows = results_viewport(frame);
+        let popup = jinn_selection_widget::compute_popup_rect(frame);
+        let rows = results_viewport(popup);
 
         // Then paging has a non-zero window and cannot underflow.
         assert!(rows >= 1, "viewport must never be zero, got {rows}");

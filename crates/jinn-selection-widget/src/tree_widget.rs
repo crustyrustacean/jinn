@@ -15,7 +15,6 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use crate::tree_item::TreeItem;
 use crate::tree_state::{TreePickerState, VisibleEntry};
 use crate::widget::SelectionColors;
-use crate::widget::compute_popup_rect;
 
 /// Filter prompt displayed before the user's input text.
 pub(crate) const PROMPT: &str = "> ";
@@ -159,9 +158,12 @@ where
         self
     }
 
-    /// Renders the tree picker popup within the given frame area.
+    /// Renders the tree picker popup into the given popup rectangle.
+    ///
+    /// The caller owns the geometry: `area` is the popup rectangle the slice's
+    /// overlay geometry function produced (see [`compute_popup_rect`]).
     pub fn render(self, frame: &mut Frame<'_>, area: Rect) {
-        let popup_area = compute_popup_rect(area);
+        let popup_area = area;
 
         // Clear the popup area so content behind it doesn't show through.
         frame.render_widget(Clear, popup_area);

@@ -16,14 +16,17 @@ use ratatui::layout::Rect;
 /// side-by-side preview layout.
 const CHROME_ROWS_LIST: u16 = 2;
 
-/// The session-lifecycle picker's result-row count for a frame of the given size.
+/// The session-lifecycle picker's result-row count for the given popup rectangle.
+///
+///
+/// `popup` is the popup rectangle handed down by the render pass (see
+/// `jinn_selection_widget::compute_popup_rect`), not a terminal frame.
 ///
 /// Mirrors the preview widget's own split decision, so the value tracks what the
 /// user can see. At least 1, so paging never windows against zero on a tiny
 /// terminal.
 #[must_use]
-pub fn results_viewport(frame_area: Rect) -> usize {
-    let popup = jinn_selection_widget::compute_popup_rect(frame_area);
+pub fn results_viewport(popup: Rect) -> usize {
     let inner = popup.height.saturating_sub(2); // both borders
 
     if popup.width >= jinn_selection_widget::VERTICAL_SPLIT_MIN_WIDTH {
@@ -52,9 +55,11 @@ mod tests {
     #[case::narrow(Rect::new(0, 0, 80, 24))]
     #[case::tiny(Rect::new(0, 0, 20, 8))]
     fn the_viewport_is_never_zero(#[case] area: Rect) {
-        // Given a frame of this size.
+        // Given the popup rectangle this frame size produces.
+        let popup = jinn_selection_widget::compute_popup_rect(area);
+
         // When the result-row count is measured.
-        let rows = results_viewport(area);
+        let rows = results_viewport(popup);
 
         // Then it is at least 1, so paging never windows against nothing.
         assert!(rows >= 1, "viewport must never be zero, got {rows}");

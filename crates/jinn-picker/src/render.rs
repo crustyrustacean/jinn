@@ -298,6 +298,13 @@ mod tree_tests {
 
     use super::*;
     use crate::builder::PickerSpec;
+
+    /// The popup rect a geometry fn would hand the widget, for tests that
+    /// drive a render directly.
+    fn popup(area: Rect) -> Rect {
+        jinn_selection_widget::compute_popup_rect(area)
+    }
+
     use crate::id::PickerId;
     use crate::registry::PickerRegistry;
     use crate::test_host::FakeHost;
@@ -398,7 +405,7 @@ mod tree_tests {
         let mut drew = RenderOutcome::Drew;
         terminal
             .draw(|frame| {
-                drew = spec_handle.render(frame, frame.area(), host);
+                drew = spec_handle.render(frame, popup(frame.area()), host);
             })
             .expect("draw");
         assert_eq!(
@@ -522,7 +529,7 @@ mod tree_tests {
         let mut outcome = RenderOutcome::Drew;
         terminal
             .draw(|frame| {
-                outcome = spec.render(frame, frame.area(), &host);
+                outcome = spec.render(frame, popup(frame.area()), &host);
             })
             .expect("draw");
 
@@ -554,7 +561,7 @@ mod tree_tests {
         let mut outcome = RenderOutcome::NoCompatibleStorage;
         terminal
             .draw(|frame| {
-                outcome = spec.render(frame, frame.area(), &host);
+                outcome = spec.render(frame, popup(frame.area()), &host);
             })
             .expect("draw");
 

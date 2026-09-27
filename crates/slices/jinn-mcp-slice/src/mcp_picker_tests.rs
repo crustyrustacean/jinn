@@ -216,7 +216,11 @@ impl Wired {
         let mut terminal = Terminal::new(TestBackend::new(area.width, area.height))
             .expect("a test terminal allocates");
         terminal
-            .draw(|frame| crate::mcp_picker_render::render_mcp_picker(frame, area, &facts))
+            .draw(|frame| {
+                let popup = crate::mcp_picker_render::mcp_picker_overlay_rect(&area)
+                    .expect("geometry fn yields a popup rect");
+                crate::mcp_picker_render::render_mcp_picker(frame, popup, &facts);
+            })
             .expect("the inspector renders one frame");
         terminal
             .backend()
@@ -658,7 +662,10 @@ async fn the_measured_viewport_is_the_popup_height_minus_chrome() {
     let area = ratatui::layout::Rect::new(0, 0, 100, 40);
 
     // When measuring the result rows.
-    let rows = crate::mcp_picker_viewport::results_viewport(&area);
+    let rows = crate::mcp_picker_viewport::results_viewport(
+        &crate::mcp_picker_render::mcp_picker_overlay_rect(&area)
+            .expect("geometry fn yields a popup rect"),
+    );
 
     // Then it is a real measurement, well clear of the unmeasured fallback.
     assert!(
@@ -675,7 +682,10 @@ async fn a_tiny_popup_still_measures_at_least_one_row() {
     let area = ratatui::layout::Rect::new(0, 0, 20, 1);
 
     // When measuring.
-    let rows = crate::mcp_picker_viewport::results_viewport(&area);
+    let rows = crate::mcp_picker_viewport::results_viewport(
+        &crate::mcp_picker_render::mcp_picker_overlay_rect(&area)
+            .expect("geometry fn yields a popup rect"),
+    );
 
     // Then it never collapses to zero, which would freeze the highlight.
     assert!(rows >= 1);
@@ -696,7 +706,10 @@ async fn a_render_publishes_the_measured_viewport_into_the_cell() {
     let measured = wired.cell().read().results_viewport;
     assert_eq!(
         measured,
-        crate::mcp_picker_viewport::results_viewport(&area)
+        crate::mcp_picker_viewport::results_viewport(
+            &crate::mcp_picker_render::mcp_picker_overlay_rect(&area)
+                .expect("geometry fn yields a popup rect"),
+        )
     );
     assert_ne!(measured, 20);
 }
