@@ -295,13 +295,17 @@ pub fn handle_submit_message(
 
     // Check for slash command execution.
     if let Some(command_name) = input_text.strip_prefix('/') {
-        // Extract the first word after / (command name, ignoring arguments).
-        let cmd = command_name.split_whitespace().next().unwrap_or("");
+        // The first word is the command; the rest, verbatim, is its argument.
+        // Splitting on the first whitespace run only, so an argument with
+        // spaces inside it survives.
+        let mut parts = command_name.splitn(2, char::is_whitespace);
+        let cmd = parts.next().unwrap_or("");
+        let argument = parts.next().unwrap_or("").trim_start();
         if let Some(cmd) = SlashCommand::lookup(cmd) {
             state.update_active_input(ChatInputBoxState::reset);
             return with_mark_interacted(
                 session_id,
-                execute_slash_command(cmd, &input_text, state, config),
+                execute_slash_command(cmd, argument, state, config),
             );
         }
         // Unknown /command - fall through to normal message.
@@ -349,12 +353,16 @@ fn handle_submit_message_with_autocomplete(
         Some(AutocompleteTrigger::Slash) => {
             // Check for slash command execution after completion.
             if let Some(command_name) = display.strip_prefix('/') {
-                let cmd = command_name.split_whitespace().next().unwrap_or("");
+                // Same split as the non-autocomplete path, so `/export` behaves
+                // identically whether or not the popup happened to be open.
+                let mut parts = command_name.splitn(2, char::is_whitespace);
+                let cmd = parts.next().unwrap_or("");
+                let argument = parts.next().unwrap_or("").trim_start();
                 if let Some(cmd) = SlashCommand::lookup(cmd) {
                     state.update_active_input(ChatInputBoxState::reset);
                     return with_mark_interacted(
                         session_id,
-                        execute_slash_command(cmd, &display, state, config),
+                        execute_slash_command(cmd, argument, state, config),
                     );
                 }
             }
@@ -429,7 +437,7 @@ fn with_mark_interacted(session_id: SessionId, mut result: IntentResult) -> Inte
 /// Executes a slash command.
 fn execute_slash_command(
     command: SlashCommand,
-    _display: &str,
+    argument: &str,
     state: &mut AppState,
     config: &jinn_config::ConfigLayer,
 ) -> IntentResult {
@@ -444,6 +452,13 @@ fn execute_slash_command(
         }
         SlashCommand::New => {
             jinn_kernel::session_lifecycle::intent::handle_session_new(state, config)
+        }
+        SlashCommand::Export => {
+            let session_id = state.session.active_session_id().clone();
+            IntentResult::new_message(jinn_export_msg::ExportSessionToFile {
+                session_id,
+                path: std::path::PathBuf::from(argument),
+            })
         }
     }
 }
