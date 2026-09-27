@@ -5,7 +5,6 @@ use async_trait::async_trait;
 use error_stack::Report;
 use tokio::runtime::{Handle, Runtime};
 
-use jinn_session_state::{SessionStore, SessionStoreError, SessionStoreService};
 use jinn_core_types::SessionId;
 use jinn_preferences_config::{AppStateStorageService, InMemoryAppStateStorage};
 use jinn_provider_config::{
@@ -13,6 +12,7 @@ use jinn_provider_config::{
     LlmServiceFactoryService, ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
 use jinn_session_state::SessionSnapshot;
+use jinn_session_state::{SessionStore, SessionStoreError, SessionStoreService};
 use jinn_session_store_msg::SessionSummary;
 
 use super::Services;

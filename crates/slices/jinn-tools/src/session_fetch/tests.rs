@@ -16,11 +16,9 @@ use crate::tool_types::ToolContext;
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::{ToolCall, ToolResult};
 use jinn_domain::common::app_paths::AppPaths;
-use jinn_session_state::{
-    SessionStore, SessionStoreError, SessionStoreService,
-};
 use jinn_domain::protocol::{ChatEntry, ChatEntryId};
 use jinn_session_state::SessionSnapshot;
+use jinn_session_state::{SessionStore, SessionStoreError, SessionStoreService};
 use jinn_session_store_msg::{TranscriptEntry, TranscriptWindow};
 
 /// A stub store serving one canned transcript window, recording the last

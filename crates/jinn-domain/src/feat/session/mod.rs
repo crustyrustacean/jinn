@@ -17,9 +17,8 @@ pub mod validator;
 
 pub use jinn_core_types::SessionProfile;
 pub use jinn_session_state::{
-    FrozenTreeNode, SessionStore, SessionStoreError, SessionStoreService,
-    aggregate_session_stats, aggregate_tree_stats, find_tree_root, snapshot_frozen_node,
-    snapshot_frozen_node_from_snapshot,
+    FrozenTreeNode, SessionStore, SessionStoreError, SessionStoreService, aggregate_session_stats,
+    aggregate_tree_stats, find_tree_root, snapshot_frozen_node, snapshot_frozen_node_from_snapshot,
 };
 
 /// Returns a guidance message for when no API keys are found.

@@ -151,8 +151,7 @@ impl jinn_session_state::SessionStore for PopulatedFakeStore {
     async fn save(
         &self,
         snapshot: &jinn_session_state::SessionSnapshot,
-    ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>>
-    {
+    ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
         self.saved.lock().push(snapshot.clone());
         // Upsert into the readable sessions vec (the real store persists the
         // session so later reads — fork, load — see it).
@@ -199,8 +198,7 @@ impl jinn_session_state::SessionStore for PopulatedFakeStore {
     async fn delete(
         &self,
         _session_id: &jinn_core_types::SessionId,
-    ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>>
-    {
+    ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
         Ok(())
     }
 
@@ -257,8 +255,7 @@ impl jinn_session_state::SessionStore for PopulatedFakeStore {
         &self,
         session_id: &jinn_core_types::SessionId,
         archived: bool,
-    ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>>
-    {
+    ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
         if archived {
             self.archived.lock().push(session_id.clone());
         }
@@ -269,8 +266,7 @@ impl jinn_session_state::SessionStore for PopulatedFakeStore {
         &self,
         session_ids: &[jinn_core_types::SessionId],
         archived: bool,
-    ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>>
-    {
+    ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
         if archived {
             let mut archived = self.archived.lock();
             archived.extend(session_ids.iter().cloned());
@@ -300,19 +296,13 @@ impl jinn_session_state::SessionStore for PopulatedFakeStore {
         &self,
         _session_id: &jinn_core_types::SessionId,
         _max_entries: usize,
-    ) -> Result<
-        bool,
-        error_stack::Report<jinn_session_state::SessionStoreError>,
-    > {
+    ) -> Result<bool, error_stack::Report<jinn_session_state::SessionStoreError>> {
         Ok(true)
     }
 
     async fn pending_dirty_count(
         &self,
-    ) -> Result<
-        usize,
-        error_stack::Report<jinn_session_state::SessionStoreError>,
-    > {
+    ) -> Result<usize, error_stack::Report<jinn_session_state::SessionStoreError>> {
         Ok(0)
     }
 
