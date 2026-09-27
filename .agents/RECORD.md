@@ -47,7 +47,7 @@ Entries are added or amended **only with human approval**.
 - (slices) Slice activation crates and their paired `-msg` contract crates live under `crates/slices/`; shared and kernel-adjacent crates live under `crates/`.
 - (slices) A slice reads its `jinn.toml` section through the configuration layer via its own Configurable impl; defaults are supplied by the slice type, and an absent section reads as its Default.
 - (arch) The `IntentHandler` mutates `AppState` directly and returns commands; it never touches external services or emits events.
-- (arch) User input flows through a `Keymap` that produces an `Intent`; the `IntentHandler` handles intents synchronously as a single match block.
+- (arch) User input flows through a `Keymap` that produces an `Intent`; the `IntentHandler` handles intents synchronously, dispatching slice-owned dynamic intents to their registered route rows and its match block to the remaining kernel intents.
 - (arch) `AppState` is the shared state; the frontend writes user input, domain actors write their owned fields, and the TUI renderer reads it on each tick.
 - (context) jinn has no memory subsystem by decision: durable cross-session facts are carried by AGENTS.md/CLAUDE.md files, personas, and skills; cross-session recall is via the `session_search` and `session_fetch` tools; planning state is carried by pinned plan files.
 - (compaction) Compaction is gated by a context-size threshold: it skips when below, triggers when at or above, and uses a fallback context length when the model isn't in the cache.
@@ -304,3 +304,7 @@ Entries are added or amended **only with human approval**.
 - (preview) The session preview is keyed on the content of the entries it shows, not on the history's length, so a streaming session previews live text rather than the text the entry started with.
 - (session) Session activation is one command: the session store actor skips the disk read for a session already in memory and measures its chat log instead, so the sidebar, the session picker, and subagent entry all behave alike.
 - (ui) The spinner animation interval is a single shared constant, but the animation *state* is per widget: the three loading indicators render through `throbber-widgets-tui`'s stateful widget, and only the session preview derives its glyph from elapsed time, because it is a bare paragraph with no widget to hold state.
+- (slices) The chat input box is owned by the `jinn-chat-input` slice: its element, validation, autocomplete rendering, directory-lister actor, and keybinds.
+- (keybinds) Chat input keys are declared by the slice as route rows and a printable-character catch-all; the keymap generates them from the registered rows.
+- (arch) A slice with input capture binds a key hook on its own scope, and returns nothing for keys it does not own so they fall through to other binds.
+- (slices) A slice that draws a UI element exposes a `register` function that composition calls, because the kernel's element registry cannot reference slice crates.
