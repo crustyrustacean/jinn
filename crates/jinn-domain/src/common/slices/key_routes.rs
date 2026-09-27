@@ -53,13 +53,9 @@ impl SliceActionState for AppState {
 #[must_use]
 pub fn as_edit_intent(intent: &KernelIntent) -> Option<EditIntent> {
     match intent {
-        KernelIntent::InsertChar { ch } => Some(EditIntent::InsertChar(*ch)),
-        KernelIntent::DeleteGrapheme => Some(EditIntent::DeleteBackward),
-        KernelIntent::DeleteGraphemeForward => Some(EditIntent::DeleteForward),
-        KernelIntent::MoveCursorLeft => Some(EditIntent::CursorLeft),
-        KernelIntent::MoveCursorRight => Some(EditIntent::CursorRight),
-        KernelIntent::MoveCursorToStart => Some(EditIntent::CursorHome),
-        KernelIntent::MoveCursorToEnd => Some(EditIntent::CursorEnd),
+        // The chat input box is a slice with its own keys, so paste is the
+        // only editing intent the kernel still mints: it has no key, and
+        // arrives from the terminal's bracketed-paste event.
         KernelIntent::PasteText { text } => Some(EditIntent::Paste(text.clone())),
         _ => None,
     }

@@ -9,11 +9,11 @@
 //! by two spaces. When the content exceeds the visible area, it scrolls to keep the
 //! cursor visible.
 
-use crate::common::app_state::AppState;
-use crate::common::render_ctx::RenderCtx;
-use crate::common::ui_element::UiElement;
-use crate::protocol::Mode;
 use jinn_chat_input_msg::{InputMode, WrappedLine};
+use jinn_domain::AppState;
+use jinn_domain::RenderCtx;
+use jinn_domain::common::ui_element::UiElement;
+use jinn_domain::protocol::Mode;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};

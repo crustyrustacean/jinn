@@ -210,10 +210,7 @@ impl TuiApp {
             );
 
             // Cancel selection when mode changes away from Picker.
-            if matches!(
-                intent,
-                KernelIntent::EnterNormalMode | KernelIntent::NormalEscape
-            ) {
+            if matches!(intent, KernelIntent::NormalEscape) {
                 self.selection = mem::take(&mut self.selection).cancel();
             }
 

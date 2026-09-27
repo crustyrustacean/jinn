@@ -854,32 +854,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[test]
-    fn abandon_via_enter_normal_mode_clears_pending_creation() {
-        // Given a state with a pending session creation stashed from a
-        // project-picker confirm (midway through the lifecycle/args chain).
-        let mut state = AppState::default_with_scope_focus();
-        let active_cwd = state.active_session().cwd().to_path_buf();
-        state.frontend.pending_creation =
-            Some(crate::feat::ui::frontend_state::PendingSessionCreation {
-                project_dir: std::path::PathBuf::from("/tmp/project-a"),
-                starting_cwd: std::path::PathBuf::from("/tmp/project-a"),
-            });
-
-        // When abandoning the chain via ESC (EnterNormalMode).
-        let _result = crate::feat::chat_input::intent::handle_enter_normal_mode(
-            &mut state,
-            crate::common::render_ctx::empty_config_layer(),
-        );
-
-        // Then the stash is cleared so it never leaks into a future
-        // `n`/`N`.
-        assert!(state.frontend.pending_creation.is_none());
-        // And the active session's CWD is unchanged (no side-channel mutation).
-        assert_eq!(state.active_session().cwd(), active_cwd);
-    }
-
-    #[rstest::rstest]
     fn build_run_session_teardown_renders_command_with_args() {
         // Given a session with a lifecycle that has a teardown command.
         let mut state = AppState::default_with_scope_focus();

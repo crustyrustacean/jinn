@@ -13,38 +13,6 @@ pub use jinn_slices::cwd_root::CwdRoot;
 /// The keymap decides the intent; the `IntentHandler` decides what to do with it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum KernelIntent {
-    /// Insert a character at the cursor position.
-    InsertChar {
-        /// The character to insert.
-        ch: char,
-    },
-    /// Delete the grapheme before the cursor.
-    DeleteGrapheme,
-    /// Delete the grapheme after the cursor (forward delete).
-    DeleteGraphemeForward,
-    /// Submit the current input as a user message.
-    SubmitMessage,
-    /// Toggle the input submission mode between Queue and Steer.
-    ToggleInputMode,
-
-    /// Move the cursor one grapheme left.
-    MoveCursorLeft,
-    /// Move the cursor one grapheme right.
-    MoveCursorRight,
-    /// Move the cursor to the beginning of the input.
-    MoveCursorToStart,
-    /// Move the cursor to the end of the input.
-    MoveCursorToEnd,
-    /// Move the cursor one word left.
-    MoveCursorWordLeft,
-    /// Move the cursor one word right.
-    MoveCursorWordRight,
-    /// Move the cursor up one visual line.
-    MoveCursorUp,
-    /// Move the cursor down one visual line.
-    MoveCursorDown,
-    /// Confirm the autocomplete selection (Tab in Input scope).
-    AutocompleteConfirm,
     /// Paste text from the clipboard (bracketed paste).
     PasteText {
         /// The pasted text content.
@@ -79,10 +47,6 @@ pub enum KernelIntent {
     /// Universal ctrl-c clear/leave: clears the active text input; if the input
     /// is empty, leaves the active popup scope (equivalent to `<esc>` for popups).
     CtrlClear,
-    /// Enter Insert (Input) mode - the chat input box is active.
-    EnterInsertMode,
-    /// Enter Normal mode - cancel streams, clear picker, return to neutral.
-    EnterNormalMode,
     /// Toggle the which-key popup.
     ToggleWhichkey,
     /// Escape key in Normal mode: cancel selection.
@@ -211,20 +175,6 @@ impl trouper::envelope::PayloadValue for KernelIntent {
 impl std::fmt::Display for KernelIntent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            KernelIntent::InsertChar { ch } => write!(f, "insert '{ch}'"),
-            KernelIntent::DeleteGrapheme => write!(f, "delete"),
-            KernelIntent::DeleteGraphemeForward => write!(f, "forward delete"),
-            KernelIntent::SubmitMessage => write!(f, "submit message"),
-            KernelIntent::ToggleInputMode => write!(f, "toggle input mode"),
-            KernelIntent::MoveCursorLeft => write!(f, "cursor left"),
-            KernelIntent::MoveCursorRight => write!(f, "cursor right"),
-            KernelIntent::MoveCursorToStart => write!(f, "cursor home"),
-            KernelIntent::MoveCursorToEnd => write!(f, "cursor end"),
-            KernelIntent::MoveCursorWordLeft => write!(f, "cursor word left"),
-            KernelIntent::MoveCursorWordRight => write!(f, "cursor word right"),
-            KernelIntent::MoveCursorUp => write!(f, "cursor up"),
-            KernelIntent::MoveCursorDown => write!(f, "cursor down"),
-            KernelIntent::AutocompleteConfirm => write!(f, "autocomplete confirm"),
             KernelIntent::PasteText { text } => {
                 let line_count = text.lines().count();
                 write!(f, "paste ({line_count} lines)")
@@ -239,8 +189,6 @@ impl std::fmt::Display for KernelIntent {
             KernelIntent::Quit => write!(f, "quit"),
             KernelIntent::Interrupt { .. } => write!(f, "interrupt"),
             KernelIntent::CtrlClear => write!(f, "ctrl-c clear"),
-            KernelIntent::EnterInsertMode => write!(f, "enter insert mode"),
-            KernelIntent::EnterNormalMode => write!(f, "enter normal mode"),
             KernelIntent::ToggleWhichkey => write!(f, "toggle which-key"),
             KernelIntent::NormalEscape => write!(f, "escape"),
             KernelIntent::NoOp => write!(f, "no-op"),

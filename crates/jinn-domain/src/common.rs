@@ -35,7 +35,8 @@ pub type AppUiRegistry = ui_registry::UiRegistry;
 pub fn register_all_ui_elements(registry: &mut AppUiRegistry) {
     crate::feat::ui::chat_log::register(registry);
     crate::feat::provider::register(registry);
-    crate::feat::chat_input::register(registry);
+    // The chat input box is a slice; composition registers its element
+    // (the kernel's registry cannot reference slice crates).
 }
 
 #[cfg(test)]
@@ -81,23 +82,6 @@ mod tests {
             registry.iter_mut().count(),
             1,
             "provider::register should add the streaming indicator"
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn chat_input_register_adds_elements() {
-        // Given an empty registry.
-        let mut registry = AppUiRegistry::new();
-
-        // When registering chat_input UI elements.
-        crate::feat::chat_input::register(&mut registry);
-
-        // Then at least 1 element was added.
-        let count = registry.iter_mut().count();
-        assert!(
-            count > 0,
-            "chat_input::register should add at least 1 element"
         );
     }
 }

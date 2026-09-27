@@ -11,6 +11,7 @@
 
 use jinn_domain::Key;
 use jinn_domain::KeyEvent;
+use jinn_slices::DynamicIntent;
 use jinn_slices::SliceScopeId;
 use jinn_slices::route::BindSite;
 use jinn_slices::route::KeyRoutes;
@@ -263,40 +264,59 @@ pub fn bind_route_rows(
         }
     }
     // Typing carve-out: a slice with a registered *input* hook captures
-    // printable keystrokes in its own scope. The keymap synthesizes the
-    // generic editing intents — the char catch-all for printable keys,
-    // plus trunk-parity explicit binds for the six non-char editing
-    // keys (Backspace used to fall into the catch-all, resolve to
-    // nothing, and die in the which-key popup). The intent handler's
-    // hook consult (not a god-match arm) routes them to the slice's
-    // sync writer via `as_edit_intent`. Key-hook scopes are excluded:
-    // their catch-all encodes keys for the slice's own consumer.
+    // printable keystrokes in its own scope. The keymap synthesizes a
+    // dynamic intent per editing key — the char catch-all for printable
+    // keys, plus explicit binds for the six non-char editing keys
+    // (Backspace used to fall into the catch-all, resolve to nothing, and
+    // die in the which-key popup). The intent handler's hook consult (not
+    // a god-match arm) routes them to the slice's sync writer via
+    // `as_edit_intent`, which still speaks the `EditIntent` vocabulary —
+    // the kernel's own `InsertChar`/`DeleteGrapheme` variants are gone
+    // with the chat input box. Key-hook scopes are excluded: their
+    // catch-all encodes keys for the slice's own consumer.
     for hook in input_hooks {
-        keymap.scope(Scope::Dynamic(hook.clone()), |b| {
+        let scope = hook.clone();
+        let char_scope = scope.clone();
+        keymap.scope(Scope::Dynamic(hook.clone()), move |b| {
+            let scope = scope.clone();
             b.bind(
                 "<backspace>",
-                KernelIntent::DeleteGrapheme,
+                KernelIntent::Dynamic(edit_intent(&scope, "delete-backward")),
                 KeyCategory::Input,
             )
             .bind(
                 "<delete>",
-                KernelIntent::DeleteGraphemeForward,
+                KernelIntent::Dynamic(edit_intent(&scope, "delete-forward")),
                 KeyCategory::Input,
             )
-            .bind("<left>", KernelIntent::MoveCursorLeft, KeyCategory::Input)
-            .bind("<right>", KernelIntent::MoveCursorRight, KeyCategory::Input)
+            .bind(
+                "<left>",
+                KernelIntent::Dynamic(edit_intent(&scope, "move-cursor-left")),
+                KeyCategory::Input,
+            )
+            .bind(
+                "<right>",
+                KernelIntent::Dynamic(edit_intent(&scope, "move-cursor-right")),
+                KeyCategory::Input,
+            )
             .bind(
                 "<home>",
-                KernelIntent::MoveCursorToStart,
+                KernelIntent::Dynamic(edit_intent(&scope, "move-cursor-home")),
                 KeyCategory::Input,
             )
-            .bind("<end>", KernelIntent::MoveCursorToEnd, KeyCategory::Input)
-            .catch_all(|key: KeyEvent| {
+            .bind(
+                "<end>",
+                KernelIntent::Dynamic(edit_intent(&scope, "move-cursor-end")),
+                KeyCategory::Input,
+            )
+            .catch_all(move |key: KeyEvent| {
                 if let KeyEvent {
                     key: Key::Char(c), ..
                 } = &key
                 {
-                    Some(KernelIntent::InsertChar { ch: *c })
+                    Some(KernelIntent::Dynamic(
+                        edit_intent(&char_scope, "insert-char").with_char(*c),
+                    ))
                 } else {
                     None
                 }
@@ -316,4 +336,48 @@ pub fn bind_route_rows(
             b.catch_all(move |key: KeyEvent| hook_fn(&key).map(KernelIntent::Dynamic));
         });
     }
+}
+
+/// The dynamic intent a slice input hook's editing key dispatches to.
+///
+/// The hook consult in the intent handler matches on the action name and
+/// translates it into the shared `EditIntent` vocabulary, so a slice's
+/// filter keeps its existing hook implementation.
+fn edit_intent(scope: &jinn_slices::SliceScopeId, action: &'static str) -> DynamicIntent {
+    DynamicIntent::new(scope.clone(), action, action)
+}
+
+/// Carries a printable character in an edit intent's byte payload.
+trait EditIntentChar {
+    /// Returns the intent with `ch` encoded as its UTF-8 payload.
+    fn with_char(self, ch: char) -> Self;
+}
+
+impl EditIntentChar for DynamicIntent {
+    fn with_char(mut self, ch: char) -> Self {
+        let mut buf = [0_u8; 4];
+        self.bytes = ch.encode_utf8(&mut buf).as_bytes().to_vec();
+        self
+    }
+}
+
+/// Binds the chat input's printable-character catch-all in `Scope::Input`.
+///
+/// The box is a slice, so a typed character is no longer a static
+/// `KernelIntent::InsertChar`; it dispatches as a dynamic intent to the
+/// box's `insert-char` row, with the character carried in the intent's
+/// byte payload. Every other `Scope::Input` key — including all the other
+/// chat input keys — arrives through that slice's route rows instead.
+pub fn bind_chat_input_catch_all(keymap: &mut Keymap<KeyEvent, Scope, KernelIntent, KeyCategory>) {
+    keymap.scope(Scope::Input, |b| {
+        b.catch_all(|key: KeyEvent| match key.key {
+            Key::Char(c) => Some(KernelIntent::Dynamic(DynamicIntent::with_bytes(
+                jinn_chat_input_msg::chat_input_scope(),
+                "insert-char",
+                "type a character",
+                c.to_string().into_bytes(),
+            ))),
+            _ => None,
+        });
+    });
 }

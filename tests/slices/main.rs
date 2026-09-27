@@ -29,6 +29,7 @@
 mod common;
 
 mod boot;
+mod chat_input;
 mod composition;
 mod dashboard;
 mod discord;

@@ -211,6 +211,15 @@ fn keymap_at(scope: Scope) -> WhichKeyInstance {
     WhichKeyInstance::new(keymap::init(), scope)
 }
 
+/// A keymap with the chat input box's route rows bound (as launch.rs does).
+fn keymap_with_chat_input_rows_at(scope: Scope) -> WhichKeyInstance {
+    let mut km = keymap::init();
+    let routes = jinn_slices::route::KeyRoutes::new();
+    jinn_chat_input::routes::attach_chat_input_rows(&routes);
+    crate::keymap_gen::bind_route_rows(&routes, &mut km);
+    WhichKeyInstance::new(km, scope)
+}
+
 /// A keymap with the sidebar's route rows bound (as launch.rs does).
 fn keymap_with_routes_at(scope: Scope) -> WhichKeyInstance {
     let mut km = keymap::init();
@@ -257,8 +266,8 @@ fn s_outside_sidebar_task_list_does_not_open_task_list_picker(#[case] scope: Sco
 #[rstest::rstest]
 #[test]
 fn alt_q_in_input_scope_toggles_input_mode() {
-    // Given the keymap rooted at Input scope.
-    let mut wk = keymap_at(Scope::Input);
+    // Given the keymap (with the box's route rows) rooted at Input scope.
+    let mut wk = keymap_with_chat_input_rows_at(Scope::Input);
 
     // When pressing Alt+q (notation: `m-q`).
     let intent = wk.handle_key(key("m-q"));
