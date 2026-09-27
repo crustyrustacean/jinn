@@ -4,28 +4,14 @@
 //! runtime, builds shared [`Services`], and dispatches to the appropriate
 //! [`Runner`] variant (TUI or headless).
 
-use std::sync::Arc;
-
+use crate::bootstrap;
+use crate::bootstrap::config::LaunchServices;
 use error_stack::{Report, ResultExt};
 use jinn_cli::Cli;
-use jinn_kernel::ApiKeys;
-use jinn_kernel::ApiKeysService;
-use jinn_kernel::ConfigStorageService;
-use jinn_kernel::FilesystemConfigStorage;
-use jinn_kernel::LlmServiceFactoryService;
-use jinn_kernel::NoProvidersAvailableFactory;
-use jinn_kernel::ProviderRegistry;
-use jinn_kernel::ProviderRegistryService;
-use jinn_preferences_config::AppStateStorageService;
-use jinn_preferences_config::FilesystemAppStateStorage;
-use jinn_session_state::SessionStoreService;
-use jinn_session_store::sqlite::SqliteSessionStore;
-
 use tokio::runtime::Runtime;
 use wherror::Error;
 
 use crate::actor_wiring;
-use crate::config_path::{config_init_target, resolve_config_path};
 #[cfg(debug_assertions)]
 use crate::headless::HeadlessApp;
 use crate::runner::Runner;
@@ -129,236 +115,27 @@ impl App {
         #[cfg(debug_assertions)]
         use jinn_cli::cli::HeadlessCommands;
 
-        // Load config from providers.toml (auto-creates on first run).
-        let config_storage =
-            ConfigStorageService::new(Arc::new(FilesystemConfigStorage::default_path()));
-        // API keys are resolved by the env-init actor.
-        let resolved_api_keys = ApiKeysService::new(ApiKeys::new());
-
-        // Provider registry is populated by the provider-init actor.
-        // Start with an empty registry.
-        let provider_registry = ProviderRegistryService::new(
-            ProviderRegistry::from_config(jinn_kernel::ProvidersConfig {
-                providers: std::collections::BTreeMap::new(),
-                aliases: vec![],
-                default_provider: None,
-            })
-            .change_context(AppError)?,
-        );
-
-        // Initial factory is the no-provider sentinel until actors resolve the real one.
-        let llm_service = LlmServiceFactoryService::new(Arc::new(NoProvidersAvailableFactory));
-
-        // Dispatch `config` subcommands BEFORE the early preferences parse and
-        // before any DB wiring.
-        // `jinn config init` is the user's recovery tool for a missing or broken
-        // config, so it must not be guarded by load-time parsing (which itself
-        // auto-creates the file on first run) — and it needs no session store.
-        if let Some(Commands::Config { subcommand }) = &cli.command {
-            use jinn_cli::cli::ConfigCommands;
-            use jinn_preferences_config::{InitOutcome, init_default_config_to, preferences_path};
-
-            match subcommand {
-                ConfigCommands::Init { force } => {
-                    // Honor --config here: the user naming a path is asking
-                    // for the file to land there. Deliberately skips the
-                    // existence check the runtime resolver applies, since
-                    // creating the file is what this command is for.
-                    let path = config_init_target(cli.config.as_deref(), &preferences_path());
-                    let force = *force;
-                    match init_default_config_to(&path, force) {
-                        Ok(InitOutcome::Created) => {
-                            println!("Created {}", path.display());
-                        }
-                        Ok(InitOutcome::Overwritten) => {
-                            println!("Overwrote {}", path.display());
-                        }
-                        Err(report) => {
-                            eprintln!("{report:?}");
-                            return Err(report.change_context(AppError));
-                        }
-                    }
-                    return Ok(());
-                }
-                ConfigCommands::Providers { force } => {
-                    use jinn_kernel::{
-                        InitProvidersOutcome, config_path, init_default_providers_to,
-                    };
-
-                    let path = config_path();
-                    let force = *force;
-                    match init_default_providers_to(&path, force) {
-                        Ok(InitProvidersOutcome::Created) => {
-                            println!("Created {}", path.display());
-                        }
-                        Ok(InitProvidersOutcome::Overwritten) => {
-                            println!("Overwrote {}", path.display());
-                        }
-                        Err(report) => {
-                            eprintln!("{report:?}");
-                            return Err(report.change_context(AppError));
-                        }
-                    }
-                    return Ok(());
-                }
-            }
-        }
-
-        // `install` seeds default resources into user dirs. Like `config`, it
-        // must run before any actor wiring — and it needs no preferences/DB,
-        // so it dispatches before the session store is opened.
-        if let Some(Commands::Install { force }) = &cli.command {
-            use jinn_install::{
-                Destinations, InstallOutcome, InstallReport, JinnTomlOutcome, install_defaults_to,
+        // Read config and build every service the actors will hold. This
+        // also runs the recovery subcommands (`config init`,
+        // `config providers`, `install`), which return before the session
+        // store is opened — so those stay usable when the file they would
+        // repair is unreadable. See `bootstrap::config` for why the order
+        // there is behavioural.
+        let services =
+            match bootstrap::config::prepare(&cli, &self.runtime).change_context(AppError)? {
+                bootstrap::config::Prepared::Handled => return Ok(()),
+                bootstrap::config::Prepared::Ready(services) => services,
             };
-            use jinn_kernel::AppPaths;
-
-            let app_paths = AppPaths::default();
-            let config_path = jinn_config::FilesystemConfigStorage::default_path()
-                .path()
-                .to_path_buf();
-            let destinations = Destinations::new(
-                app_paths.themes_dir(),
-                app_paths.personas_dir(),
-                app_paths.prompts_dir(),
-                app_paths.skills_dir(),
-            );
-            match install_defaults_to(&destinations, *force, &config_path) {
-                Ok(report) => {
-                    let InstallReport {
-                        outcomes,
-                        jinn_toml,
-                    } = report;
-                    for outcome in outcomes {
-                        match &outcome {
-                            InstallOutcome::Created(path) => {
-                                println!("Installed {}", path.display());
-                            }
-                            InstallOutcome::Skipped(path) => {
-                                println!("Already present, skipped {}", path.display());
-                            }
-                            InstallOutcome::Overwritten(path) => {
-                                println!("Overwrote {}", path.display());
-                            }
-                        }
-                    }
-                    match &jinn_toml {
-                        JinnTomlOutcome::Created(path) => {
-                            println!("Created {}", path.display());
-                        }
-                        JinnTomlOutcome::Untouched(path) => {
-                            println!("Already present, skipped {}", path.display());
-                        }
-                    }
-                    return Ok(());
-                }
-                Err(report) => {
-                    eprintln!("error: failed to install defaults:");
-                    eprintln!("  {report:?}");
-                    return Err(report.change_context(AppError));
-                }
-            }
-        }
-
-        // Resolve which jinn.toml this run reads and writes, and seed the
-        // template when the default location is still missing.
-        //
-        // This runs AFTER the `config`/`install` early returns so neither
-        // recovery tool gets pre-seeded ahead of itself, and BEFORE the
-        // ConfigLayer load so the seeded file is what the layer reads.
-        let resolved_config = resolve_config_path(
-            cli.config.as_deref(),
-            &jinn_preferences_config::preferences_path(),
-        );
-        let config_path = match resolved_config {
-            Ok(resolved) => {
-                if resolved.seed_template {
-                    seed_config_template(&resolved.path);
-                }
-                resolved.path
-            }
-            Err(report) => {
-                eprintln!("error: failed to resolve the configuration path:");
-                eprintln!("  {report:?}");
-                std::process::exit(1);
-            }
-        };
-
-        // Create the session store - uses --db-path if provided, otherwise
-        // the platform default. Deferred until after the `config`/`install`
-        // early-returns so neither pays for DB open or migrations.
-        let (session_store, session_pool) = {
-            let store = self.runtime.block_on(async {
-                match cli.db_path_opt() {
-                    Some(path) => SqliteSessionStore::open_or_create(path).await,
-                    None => SqliteSessionStore::new().await,
-                }
-            });
-            let store = store.change_context(AppError)?;
-            let pool = store.pool().clone();
-            (SessionStoreService::new(Arc::new(store)), pool)
-        };
-
-        // Load the configuration layer early — fail-fast on a malformed
-        // jinn.toml BEFORE any actor wiring runs. The layer is the only
-        // reader of that document now; there is no separate aggregate
-        // struct to parse alongside it. Config subcommands have already
-        // dispatched above, so `jinn config` remains the recovery tool.
-        //
-        // The storage is built over the RESOLVED path, so `--config`
-        // redirects reads and writes alike — the layer stays a single
-        // coherent source of truth for the run.
-        let config = {
-            let backend = jinn_config::FilesystemConfigStorage::new(config_path.clone());
-            match jinn_config::ConfigLayer::load(Arc::new(backend)) {
-                Ok(layer) => layer,
-                Err(report) => {
-                    tracing::error!(path = %config_path.display(), "failed to load the jinn.toml configuration layer");
-                    eprintln!("error: failed to parse {}:", config_path.display());
-                    eprintln!("  {report:?}");
-                    std::process::exit(1);
-                }
-            }
-        };
-
-        // Fail-fast on a malformed section before any actor wiring runs.
-        // `validate` only walks sections registered on the layer, so the
-        // roster goes in first — an unregistered section is never checked
-        // and a malformed table would boot to a running app reading
-        // defaults. Registration must precede the check, and both must
-        // precede `ActorSystemBuilder::build` further down.
-        jinn_preferences_config::register_all_sections(&config);
-
-        if let Err(error) = config.validate() {
-            tracing::error!(%error, "jinn.toml section failed validation");
-            eprintln!("error: {error}");
-            std::process::exit(1);
-        }
-
-        // Load providers.toml early — fail-fast on a malformed file BEFORE
-        // any actor wiring runs, with a report naming the file and TOML detail.
-        // Config subcommands have already dispatched above, so `jinn config
-        // providers` remains usable as the recovery tool for a broken file.
-        if let Err(report) = providers_load_error_report(&config_storage) {
-            tracing::error!("failed to load providers config");
-            eprintln!("error: failed to load providers config:");
-            eprintln!("  {report:?}");
-            std::process::exit(1);
-        }
-
-        let app_state_storage = {
-            let backend =
-                FilesystemAppStateStorage::new(jinn_kernel::AppPaths::default().state_file_path());
-            let svc = AppStateStorageService::new(Arc::new(backend));
-            if let Err(report) = svc.reload() {
-                tracing::error!("failed to load app state");
-                eprintln!("error: failed to load app state:");
-                eprintln!("  {report:?}");
-                std::process::exit(1);
-            }
-            svc
-        };
-
+        let LaunchServices {
+            config_storage,
+            api_keys: resolved_api_keys,
+            provider_registry,
+            llm_service,
+            session_store,
+            session_pool,
+            config,
+            app_state_storage,
+        } = services;
         #[cfg(debug_assertions)]
         let _db_path = cli.db_path_opt().cloned();
         match cli.command.unwrap_or(Commands::Tui) {
@@ -375,23 +152,29 @@ impl App {
                     &jinn_kernel::AppPaths::default().system_prompts_dir(),
                 )
                 .change_context(AppError)?;
-                let (core, services, discord_activated) = self.runtime.block_on(async {
-                    actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
-                        handle: self.handle(),
-                        llm_service: llm_service.clone(),
-                        provider_registry: provider_registry.clone(),
-                        api_keys: resolved_api_keys.clone(),
-                        config_storage: config_storage.clone(),
-                        session_store: session_store.clone(),
-                        config: config.clone(),
-                        app_state_storage: app_state_storage.clone(),
-                        paths: jinn_kernel::AppPaths::default(),
-                        dump_requests: cli.dump_requests.clone(),
-                        compaction_prompt,
+                let (core, services, discord_activated) = self
+                    .runtime
+                    .block_on(async {
+                        actor_wiring::ActorSystemBuilder::new(
+                            actor_wiring::ActorSystemBuilderArgs {
+                                handle: self.handle(),
+                                llm_service: llm_service.clone(),
+                                provider_registry: provider_registry.clone(),
+                                api_keys: resolved_api_keys.clone(),
+                                config_storage: config_storage.clone(),
+                                session_store: session_store.clone(),
+                                config: config.clone(),
+                                app_state_storage: app_state_storage.clone(),
+                                paths: jinn_kernel::AppPaths::default(),
+                                dump_requests: cli.dump_requests.clone(),
+                                compaction_prompt,
+                            },
+                        )
+                        .build()
+                        .await
                     })
-                    .build()
-                    .await
-                });
+                    .change_context(AppError)
+                    .attach("slice activation failed")?;
 
                 // The discord frontend consumes the slice activation's
                 // parked channels + config; no-ops when disabled.
@@ -403,7 +186,8 @@ impl App {
                     discord_activated,
                 );
 
-                let app = jinn_tui::launch(core, services).change_context(AppError)?;
+                let app = jinn_tui::launch(core, services, bootstrap::ui::build_ui_registry())
+                    .change_context(AppError)?;
                 let runner = Runner::Tui(Box::new(app));
                 self.run_and_shutdown(runner, &session_store)?;
             }
@@ -415,23 +199,29 @@ impl App {
                     &jinn_kernel::AppPaths::default().system_prompts_dir(),
                 )
                 .change_context(AppError)?;
-                let (core, services, _discord_activated) = self.runtime.block_on(async {
-                    actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
-                        handle: self.handle(),
-                        llm_service: llm_service.clone(),
-                        provider_registry,
-                        api_keys: resolved_api_keys,
-                        config_storage,
-                        session_store,
-                        config: config.clone(),
-                        app_state_storage,
-                        paths: jinn_kernel::AppPaths::default(),
-                        dump_requests: cli.dump_requests.clone(),
-                        compaction_prompt,
+                let (core, services, _discord_activated) = self
+                    .runtime
+                    .block_on(async {
+                        actor_wiring::ActorSystemBuilder::new(
+                            actor_wiring::ActorSystemBuilderArgs {
+                                handle: self.handle(),
+                                llm_service: llm_service.clone(),
+                                provider_registry,
+                                api_keys: resolved_api_keys,
+                                config_storage,
+                                session_store,
+                                config: config.clone(),
+                                app_state_storage,
+                                paths: jinn_kernel::AppPaths::default(),
+                                dump_requests: cli.dump_requests.clone(),
+                                compaction_prompt,
+                            },
+                        )
+                        .build()
+                        .await
                     })
-                    .build()
-                    .await
-                });
+                    .change_context(AppError)
+                    .attach("slice activation failed")?;
 
                 jinn_tui::load_theme(
                     &core.state,
@@ -488,7 +278,7 @@ impl Default for App {
 /// with. Aborts the process on failure — a config file that cannot be
 /// written leaves the run with no coherent source of truth, which is not
 /// a state worth launching into.
-fn seed_config_template(path: &std::path::Path) {
+pub(crate) fn seed_config_template(path: &std::path::Path) {
     use jinn_preferences_config::create_default_preferences_to;
 
     if let Err(report) = create_default_preferences_to(path) {
@@ -503,22 +293,6 @@ fn seed_config_template(path: &std::path::Path) {
         eprintln!("  {report:?}");
         std::process::exit(1);
     }
-}
-
-/// Checks that `providers.toml` loads and parses, producing a fail-fast report.
-///
-/// A missing file is not an error here — the loader auto-creates the default
-/// template on first run. Only a load or parse failure produces an error, with
-/// the config path and the underlying TOML detail attached to the report.
-fn providers_load_error_report(storage: &ConfigStorageService) -> Result<(), Report<AppError>> {
-    if let Err(report) = storage.load() {
-        let path = jinn_kernel::config_path();
-        return Err(report.change_context(AppError).attach(format!(
-            "failed to load providers config at {}",
-            path.display()
-        )));
-    }
-    Ok(())
 }
 
 /// Fetches model metadata from models.dev and saves it to the user's cache directory.
@@ -609,6 +383,9 @@ mod tests {
     use jinn_kernel::{AppState, State};
     use jinn_tui::{load_compaction_prompt, load_theme};
     use std::path::{Path, PathBuf};
+    use std::sync::Arc;
+
+    use crate::config_path::{config_init_target, resolve_config_path};
 
     use super::*;
 
@@ -891,51 +668,6 @@ mod tests {
         assert!(
             rendered.contains(&override_path.display().to_string()),
             "fail-fast report should name the override path: {rendered}"
-        );
-    }
-
-    #[rstest::rstest]
-    fn providers_load_error_report_fails_with_parse_detail_on_malformed_file() {
-        // Given a config storage backed by a malformed providers.toml.
-        let dir = tempfile::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
-        std::fs::write(
-            &path,
-            "[providers.ollama]\nbackend = \"ollama\"\nmodels = [\"llama3\"\n",
-        )
-        .expect("write");
-        let storage = ConfigStorageService::new(Arc::new(FilesystemConfigStorage::new(path)));
-
-        // When checking the providers config.
-        let result = providers_load_error_report(&storage);
-
-        // Then the error render keeps the TOML detail attached upstream
-        // (attachments survive the change_context to AppError).
-        let report = result.expect_err("malformed providers.toml must fail");
-        let rendered = format!("{report:?}");
-        assert!(
-            rendered.contains("TOML parse error"),
-            "missing TOML parse detail: {rendered}"
-        );
-    }
-
-    #[rstest::rstest]
-    fn providers_load_error_report_ok_when_file_missing() {
-        // Given a config storage backed by a directory with no providers.toml.
-        let dir = tempfile::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
-        let storage =
-            ConfigStorageService::new(Arc::new(FilesystemConfigStorage::new(path.clone())));
-
-        // When checking the providers config.
-        let result = providers_load_error_report(&storage);
-
-        // Then the check passes (the loader auto-creates the default template).
-        assert!(result.is_ok(), "expected ok, got: {:?}", result.err());
-        // And the default file was created.
-        assert!(
-            path.exists(),
-            "first-run load should auto-create the config file"
         );
     }
 }

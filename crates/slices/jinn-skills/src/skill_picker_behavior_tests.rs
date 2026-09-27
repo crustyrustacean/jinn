@@ -79,7 +79,6 @@ async fn activated() -> (
     );
 
     crate::activate(&mut host);
-    host.finalize(&|_scope, _hook| ());
 
     let system: &'static jinn_kernel::Services = Box::leak(Box::new(services));
     (slices, key_routes, system)

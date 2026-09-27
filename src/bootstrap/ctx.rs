@@ -1,0 +1,210 @@
+//! Everything the boot list needs beyond the registries themselves.
+//!
+//! The [`Ctx`] carries the shared state, the services container, and the
+//! values a few slices cannot construct for themselves: the prune-worker
+//! list (built from the config layer, which the root reads), the
+//! compaction prompt, and the session actor's dependency bundle.
+//!
+//! It carries no producer state. The three values later activations read
+//! are resolved from the registry by slot key, so list order expresses
+//! the dependency rather than a field here.
+
+use jinn_kernel::Services;
+use jinn_kernel::State;
+
+/// The activation-time inputs composition owns.
+pub struct Ctx<'a> {
+    state: &'a State,
+    services: &'a mut Services,
+    compaction_prompt: String,
+    shell: String,
+    token_counter: jinn_llm_support::token_estimator::TiktokenCounter,
+    image_converter: jinn_llm_support::image_convert::ImageConverterService,
+}
+
+impl<'a> Ctx<'a> {
+    /// Assembles the context for one boot.
+    ///
+    /// `compaction_prompt` and `shell` are read here, at startup, and
+    /// carried on the struct: the environment is a global namespace and is
+    /// not consulted again after launch.
+    #[must_use]
+    pub fn new(
+        state: &'a State,
+        services: &'a mut Services,
+        compaction_prompt: String,
+        shell: String,
+    ) -> Self {
+        Self {
+            state,
+            services,
+            compaction_prompt,
+            shell,
+            token_counter: jinn_llm_support::token_estimator::TiktokenCounter::o200k_base(),
+            image_converter: jinn_llm_support::image_convert::ImageConverterService::system(),
+        }
+    }
+
+    /// The shared application state every actor writes through.
+    pub(crate) const fn state(&self) -> &State {
+        self.state
+    }
+
+    /// The services container, for slices that hand it to the actors they
+    /// spawn.
+    pub(crate) const fn services(&self) -> &Services {
+        self.services
+    }
+
+    /// The services container, mutably: two slices register a cell
+    /// through the raw container rather than the host.
+    pub(crate) fn services_mut(&mut self) -> &mut Services {
+        self.services
+    }
+
+    /// Assembles a host borrowing all five kernel registries.
+    ///
+    /// One borrow per activation: each statement gets a fresh host, so the
+    /// boot list reads as a list rather than as repeated plumbing. A `Vec`
+    /// of closures all borrowing one `&mut Ctx` would not compile, which
+    /// is why the per-slice wrapper functions this replaces existed.
+    #[must_use]
+    pub fn host(&mut self) -> jinn_slices::SliceHost<'_, jinn_slices::RenderFacts> {
+        jinn_slices::SliceHost::new(
+            &self.services.slices,
+            &mut self.services.viewport,
+            &self.services.overlay_views,
+            &self.services.key_routes,
+            &self.services.trouper_system,
+        )
+    }
+
+    /// Resolves a producer slice's cell by slot key, aborting if absent.
+    ///
+    /// The three producers at the top of the boot list register these
+    /// cells, so a missing one means a consumer ran before its producer —
+    /// a wiring bug, not a runtime condition.
+    pub(crate) fn cell<T>(&self, slot: jinn_slices::SlotKey) -> jinn_slices::cell::TypedCell<T>
+    where
+        T: Send + Sync + 'static,
+    {
+        match self.services.slices.reader::<T>(&slot) {
+            Some(cell) => cell,
+            None => {
+                panic!("cell not registered at boot: {slot}");
+            }
+        }
+    }
+
+    /// The user's login shell, read once at startup.
+    pub(crate) fn shell(&self) -> String {
+        self.shell.clone()
+    }
+
+    /// The prune-worker list context-curation runs.
+    ///
+    /// Every strategy is constructed unconditionally and reads its own
+    /// subsection inside `evaluate`. Gating here instead would make a
+    /// disabled strategy an ABSENT worker, and then a `reload` could only
+    /// ever turn a strategy ON — there would be no worker left to turn
+    /// off. Reading live makes enablement symmetric in both directions.
+    pub(crate) fn prune_workers(
+        &self,
+    ) -> Vec<Box<dyn jinn_context_curation::worker::HistoryWorker>> {
+        use jinn_context_curation::strategies::{
+            AnchoredAssistantAutoPruneWorker, BrokenEditAutoPruneWorker,
+            ConsecutiveReadsAutoPruneWorker, DoubleEditAutoPruneWorker, EditReadAutoPruneWorker,
+            ReadEditAutoPruneWorker, RegexAutoPruneWorker, TodoAutoPruneWorker,
+            ToolAgeWindowAutoPruneWorker, TrivialAssistantAutoPruneWorker,
+        };
+        use jinn_token_count_msg::HistoryWorkerChatEntryTokenCache;
+
+        let config = self.services.config.clone();
+        let entry_token_cache = HistoryWorkerChatEntryTokenCache::default();
+
+        vec![
+            Box::new(ReadEditAutoPruneWorker {
+                layer: config.clone(),
+                config: Default::default(),
+            }),
+            Box::new(EditReadAutoPruneWorker {
+                layer: config.clone(),
+                config: Default::default(),
+            }),
+            Box::new(BrokenEditAutoPruneWorker {
+                layer: config.clone(),
+                config: Default::default(),
+            }),
+            Box::new(DoubleEditAutoPruneWorker {
+                layer: config.clone(),
+                config: Default::default(),
+            }),
+            Box::new(ConsecutiveReadsAutoPruneWorker {
+                layer: config.clone(),
+                config: Default::default(),
+            }),
+            Box::new(ToolAgeWindowAutoPruneWorker {
+                layer: config.clone(),
+                config: Default::default(),
+            }),
+            Box::new(TodoAutoPruneWorker {
+                layer: config.clone(),
+                config: Default::default(),
+            }),
+            Box::new(TrivialAssistantAutoPruneWorker {
+                layer: config.clone(),
+                config: Default::default(),
+                token_cache: entry_token_cache.clone(),
+                counter: self.token_counter,
+            }),
+            Box::new(AnchoredAssistantAutoPruneWorker {
+                // The anchor radius and the trivial-assistant floor are
+                // both read live; this seed only describes the shape.
+                layer: config.clone(),
+                config: Default::default(),
+                token_cache: entry_token_cache,
+                counter: self.token_counter,
+            }),
+            Box::new(RegexAutoPruneWorker::new(config)),
+        ]
+    }
+
+    /// The compaction actor's dependencies.
+    pub(crate) fn compaction_deps(
+        &self,
+    ) -> jinn_context_curation::compaction_actor::CompactionActorDeps {
+        jinn_context_curation::compaction_actor::CompactionActorDeps {
+            services: self.services.clone(),
+            state: self.state.clone(),
+            handle: self.services.handle.clone(),
+            compaction_prompt: self.compaction_prompt.clone(),
+        }
+    }
+
+    /// The session-turn reducer's dependencies.
+    ///
+    /// The token cache is resolved from the cell `jinn_token_count`
+    /// registered in Block 1 of the boot list, by slot key — the actor
+    /// accumulates through the same instance the slice minted.
+    pub(crate) fn session_actor_deps(
+        &self,
+    ) -> jinn_session_turn::session_actor::SessionPersistenceActorDeps {
+        let token_cache = self
+            .services
+            .slices
+            .reader::<jinn_token_count_msg::HistoryWorkerChatEntryTokenCache>(
+            &jinn_token_count_msg::token_cache_slot(),
+        );
+        jinn_session_turn::session_actor::SessionPersistenceActorDeps {
+            deps: jinn_kernel::common::actor_deps::ActorDeps {
+                services: self.services.clone(),
+            },
+            state: self.state.clone(),
+            counter: self.token_counter,
+            token_cache: token_cache
+                .map(|cell| cell.read().clone())
+                .unwrap_or_default(),
+            image_converter: self.image_converter.clone(),
+        }
+    }
+}

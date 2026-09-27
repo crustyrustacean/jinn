@@ -47,9 +47,17 @@ pub struct LaunchError;
 ///
 /// Returns `Err` if the compaction prompt cannot be loaded (the application
 /// cannot run without it).
+/// Assembles the TUI around an already-wired actor system.
+///
+/// `ui_registry` is built by the composition root (see
+/// `bootstrap::ui::build_ui_registry`) and passed in: the four elements
+/// whose display widgets live in slice crates are registered there,
+/// because the kernel's registry cannot reference slice crates and this
+/// crate is the wrong place to know which slices exist.
 pub fn launch(
     core: AppCore,
     mut services: jinn_kernel::Services,
+    ui_registry: AppUiRegistry,
 ) -> Result<TuiApp, Report<LaunchError>> {
     let paths = &services.paths;
     load_compaction_prompt(&paths.prompts_dir(), &paths.system_prompts_dir())?;
@@ -63,19 +71,6 @@ pub fn launch(
     // via the same path. (The terminal control-toggle binding is a slice
     // route row — attached from `jinn_term::activate` during actor-system
     // bootstrap, not here.)
-
-    let mut ui_registry = AppUiRegistry::new();
-    jinn_kernel::register_all_ui_elements(&mut ui_registry);
-    // The status-bar slice's element (the slice's cell is minted in the
-    // actor-system bootstrap). Registered here because the kernel cannot
-    // reference slice crates, and jinn-tui's registry assembly is the
-    // composition point for display chrome.
-    // The chat log is a slice; its element is registered here because
-    // the kernel's registry cannot reference slice crates.
-    jinn_chat_log_view::register(&mut ui_registry);
-    jinn_inference::register(&mut ui_registry);
-    jinn_status_bar::register(&mut ui_registry);
-    jinn_chat_input::register(&mut ui_registry);
 
     // Generated keymap bindings from the slice route rows attached
     // during actor-system bootstrap (single keymap bootstrap site).

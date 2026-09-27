@@ -300,25 +300,24 @@ fn all_picker_routes() -> jinn_slices::KeyRoutes {
         .expect("fresh Slices never has this cell registered");
     jinn_provider_selection::activate_endpoint_picker(&mut host, &endpoint_cell);
     jinn_theme_slice::activate_picker(&mut host);
-    drop(host);
     routes
 }
 
-/// Every picker activation in `actor_wiring` is actually called.
+/// Every picker activation in the boot list is actually called.
 ///
 /// The reasoning-effort picker shipped broken because `activate_picker` was
 /// written, tested through the harness, and never wired. The harness test
 /// above cannot catch that — it composes the harness, not the production
-/// wiring file. This reads the wiring source and asserts each activation
+/// wiring file. This reads the boot list and asserts each activation
 /// function's name appears as a call.
 ///
 /// Source-level, deliberately: a behavioural test would need a full app boot,
 /// and the thing that broke was a missing line in a file no test executes.
 #[rstest::rstest]
 fn production_wiring_calls_every_picker_activation() {
-    // Given the production composition root.
-    let wiring = std::fs::read_to_string("src/actor_wiring.rs")
-        .expect("src/actor_wiring.rs is present in every checkout");
+    // Given the production boot list.
+    let wiring = std::fs::read_to_string("src/bootstrap/slices.rs")
+        .expect("src/bootstrap/slices.rs is present in every checkout");
 
     // When each slice-owned picker's activation function is looked for.
     for (label, needle) in [
@@ -348,7 +347,7 @@ fn production_wiring_calls_every_picker_activation() {
         // Then it is called in production.
         assert!(
             wiring.contains(needle),
-            "{label} picker is never activated in src/actor_wiring.rs: its keys do nothing"
+            "{label} picker is never activated in src/bootstrap/slices.rs: its keys do nothing"
         );
     }
 }

@@ -8,15 +8,18 @@
 pub mod session_actor;
 
 use session_actor::{SessionPersistenceActor, SessionPersistenceActorDeps};
-use trouper::actor::ActorPath;
 use trouper::system::ActorSystem;
 
 /// Activates the session-turn reducer at the shared static actor path.
+///
+/// The path is not returned: the actor is registered with the trouper
+/// system for the life of the process, and nothing in composition reads
+/// the address back.
 ///
 /// # Panics
 ///
 /// Panics if the reducer path is already occupied or its subscriptions fail.
 /// Either condition is a composition error and must abort launch.
-pub fn activate(system: &ActorSystem, deps: SessionPersistenceActorDeps) -> ActorPath {
-    SessionPersistenceActor::spawn(system, deps)
+pub fn activate(system: &ActorSystem, deps: SessionPersistenceActorDeps) {
+    let _session = SessionPersistenceActor::spawn(system, deps);
 }

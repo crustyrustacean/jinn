@@ -38,14 +38,13 @@ pub fn activate(
     host: &mut SliceHost<'_, jinn_slices::RenderFacts>,
     deps: ActorDeps,
     state: &State,
-) -> bool {
+) {
     let lister_deps = directory_lister_actor::DirectoryListerActorDeps {
         deps,
         state: state.clone(),
     };
     directory_lister_actor::DirectoryListerActor::spawn(host.system(), lister_deps);
     routes::attach_all(host.key_routes());
-    true
 }
 
 /// Registers the chat input box's element into the UI registry.

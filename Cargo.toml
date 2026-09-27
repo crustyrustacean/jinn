@@ -53,8 +53,12 @@ jinn-session-state = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-llm-support = { workspace = true }
 jinn-persona = { workspace = true }
+jinn-persona-msg = { workspace = true }
 jinn-provider-selection = { workspace = true }
+jinn-provider-selection-msg = { workspace = true }
 jinn-token-count = { workspace = true }
+jinn-token-count-msg = { workspace = true }
+jinn-session-store-msg = { workspace = true }
 jinn-context-curation = { workspace = true }
 jinn-context-curation-msg = { workspace = true }
 jinn-turn-dispatch = { workspace = true }
@@ -68,7 +72,6 @@ jinn-chat-log-view-msg = { workspace = true }
 jinn-boot = { workspace = true }
 jinn-boot-msg = { workspace = true }
 jinn-cwd-msg = { workspace = true }
-jinn-persona-msg = { workspace = true }
 jinn-sidebar-msg = { workspace = true }
 jinn-project-msg = { workspace = true }
 jinn-status-bar-msg = { workspace = true }
@@ -77,7 +80,6 @@ jinn-tools = { workspace = true }
 jinn-term-msg = { workspace = true }
 jinn-tools-msg = { workspace = true }
 jinn-theme-msg = { workspace = true }
-jinn-token-count-msg = { workspace = true }
 jinn-mcp-msg = { workspace = true }
 jinn-context-assembly = { workspace = true }
 jinn-theme-slice = { workspace = true }

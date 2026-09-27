@@ -21,13 +21,6 @@ use jinn_kernel::common::state::State;
 use jinn_session_lifecycle_msg::ArgInputState;
 use jinn_session_lifecycle_msg::BuiltinRegistry;
 use jinn_slices::SliceHost;
-use trouper::actor::ActorPath;
-
-/// Handles returned when the session-lifecycle slice is activated.
-pub struct SessionLifecycleHandles {
-    /// Path of the lifecycle-owned session actor.
-    pub lifecycle: ActorPath,
-}
 
 /// Activates the lifecycle actor over shared state and services.
 ///
@@ -41,7 +34,7 @@ pub fn activate(
     state: State,
     builtin_registry: BuiltinRegistry,
     shell: String,
-) -> SessionLifecycleHandles {
+) {
     #[expect(
         clippy::expect_used,
         reason = "composition must fail if the lifecycle argument slot is already occupied"
@@ -74,7 +67,7 @@ pub fn activate(
     arg_input::attach_rows(host.key_routes(), &cell);
     arg_input::register_input_hook(host.key_routes(), &cell);
 
-    let lifecycle = session_lifecycle_actor::SessionLifecycleActor::spawn(
+    let _lifecycle = session_lifecycle_actor::SessionLifecycleActor::spawn(
         host.system(),
         session_lifecycle_actor::SessionLifecycleActorDeps {
             state,
@@ -83,8 +76,6 @@ pub fn activate(
             shell,
         },
     );
-
-    SessionLifecycleHandles { lifecycle }
 }
 
 /// Registers the session-lifecycle picker: its cell, its overlay, its keys, and

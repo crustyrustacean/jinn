@@ -26,23 +26,11 @@ pub use nav::DashboardNav;
 pub use state::{DashboardEntry, DashboardState};
 pub use view::DashboardView;
 
+use jinn_slices::RenderFacts;
+use jinn_slices::SliceHost;
 use jinn_slices::SliceScopeId;
 use jinn_slices::SlotKey;
 use jinn_slices::SlotTaken;
-
-/// Services the dashboard's `activate` reads. Declared as parameters —
-/// never the kernel's `Services` — so this crate cannot grow a kernel
-/// dependency.
-pub struct SliceCtx<'a> {
-    /// The slices registry: cell + tab-scope registration.
-    pub slices: &'a jinn_slices::Slices,
-    /// The route table: row attachment.
-    pub key_routes: &'a jinn_slices::KeyRoutes,
-    /// The viewport: view registration.
-    pub viewport: &'a mut jinn_slices::view::Viewport,
-    /// The trouper system: actor spawning.
-    pub trouper_system: &'a trouper::system::ActorSystem,
-}
 
 /// Activates the dashboard slice: mints the cell, spawns the canvas
 /// actor (subscribe is the readiness point, so no lifecycle event from
@@ -53,30 +41,39 @@ pub struct SliceCtx<'a> {
 /// integration surface; commenting it out removes the slice with no
 /// other edits.
 ///
+/// The slice takes the shared [`SliceHost`] like every other slice. It
+/// stays free of a `jinn-kernel` dependency because the host itself
+/// lives in `jinn-slices` — the dashboard needs nothing beyond the
+/// registries it already had.
+///
 /// # Errors
 ///
 /// Returns [`SlotTaken`] if the dashboard cell is already registered —
 /// double activation is a wiring bug.
-pub fn activate(ctx: &mut SliceCtx<'_>) -> Result<TypedCellRef, ActivationError> {
+pub fn activate(host: &mut SliceHost<'_, RenderFacts>) -> Result<(), ActivationError> {
     // Mint the cell: the one write handle goes into the canvas actor;
     // renderer and intent router resolve read handles only.
-    let cell = ctx
-        .slices
-        .register(dashboard_slot(), DashboardState::new())?;
+    let cell = host
+        .register_cell(dashboard_slot(), DashboardState::new())
+        .map_err(ActivationError::SlotTaken)?;
 
     // Spawn FIRST — the dashboard must be subscribed to the census schema
     // before any other actor spawns, or the first rows would be missed
     // entirely. `.handles` registers the subscription synchronously, so
     // every announcement published after this point reaches the actor.
-    canvas_actor::DashboardCanvasActor::spawn(ctx.trouper_system, &cell);
+    canvas_actor::DashboardCanvasActor::spawn(host.system(), &cell);
 
-    // Route rows + view + tab declaration.
-    attach_dashboard_rows(ctx.key_routes);
-    let view_result = ctx.viewport.register(DashboardView::new(), ctx.slices);
+    // Route rows + view + tab declaration. `slices` is read before
+    // `viewport` is borrowed mutably — `SliceHost::viewport` hands out a
+    // mutable borrow, and `Viewport::register` needs the registry too.
+    attach_dashboard_rows(host.key_routes());
+    let view_result = {
+        let slices = host.slices();
+        host.viewport().register(DashboardView::new(), slices)
+    };
     view_result.map_err(ActivationError::ViewSlot)?;
-    ctx.slices
-        .register_tab_scope(dashboard_scope(), dashboard_slot());
-    Ok(TypedCellRef { cell })
+    host.register_tab_scope(dashboard_scope(), dashboard_slot());
+    Ok(())
 }
 
 /// Why a dashboard activation aborted.
@@ -90,14 +87,6 @@ pub enum ActivationError {
     /// abort launch, not render blank.
     #[error(debug)]
     ViewSlot(jinn_slices::view::ViewSlotError),
-}
-
-/// The cell handle `activate` hands back to composition (currently
-/// unused; the canvas actor holds the write handle).
-pub struct TypedCellRef {
-    /// The dashboard's minted cell.
-    #[expect(dead_code, reason = "activation proof; the actor owns the live handle")]
-    cell: jinn_slices::TypedCell<DashboardState>,
 }
 
 /// The dashboard slice's slot.
