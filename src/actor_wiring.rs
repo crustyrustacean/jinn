@@ -191,8 +191,11 @@ impl ActorSystemBuilder {
                 .reader::<jinn_persona_msg::Personas>(&jinn_persona_msg::personas_slot())
                 && !personas.read().entries.is_empty()
             {
+                // Clone the entries out before the await: the read guard
+                // must not be held across it.
+                let entries = personas.read().entries.clone();
                 bus.publish(jinn_persona_msg::PersonasLoaded {
-                    personas: personas.read().entries.clone(),
+                    personas: entries,
                     error: None,
                 })
                 .await;

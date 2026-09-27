@@ -29,7 +29,6 @@ use jinn_preferences_config::FilesystemAppStateStorage;
 use jinn_session_state::SessionStoreService;
 
 use crate::app::AppError;
-use crate::app::providers_load_error_report;
 use crate::app::seed_config_template;
 use crate::config_path::config_init_target;
 use crate::config_path::resolve_config_path;
@@ -218,6 +217,22 @@ fn run_recovery_subcommand(cli: &jinn_cli::cli::Cli) -> Result<Option<Prepared>,
     Ok(None)
 }
 
+/// Checks that `providers.toml` loads and parses, producing a fail-fast report.
+///
+/// A missing file is not an error here — the loader auto-creates the default
+/// template on first run. Only a load or parse failure produces an error, with
+/// the config path and the underlying TOML detail attached to the report.
+fn providers_load_error_report(storage: &ConfigStorageService) -> Result<(), Report<AppError>> {
+    if let Err(report) = storage.load() {
+        let path = jinn_kernel::config_path();
+        return Err(report.change_context(AppError).attach(format!(
+            "failed to load providers config at {}",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
 /// Resolves the config path, loads the layer, validates it, and reloads
 /// app state.
 type ConfigTriple = (
@@ -332,4 +347,59 @@ fn open_session_store(
     let store = store.change_context(AppError)?;
     let pool = store.pool().clone();
     Ok((SessionStoreService::new(Arc::new(store)), pool))
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, reason = "test code")]
+
+    use jinn_kernel::ConfigStorageService;
+    use jinn_kernel::FilesystemConfigStorage;
+    use std::sync::Arc;
+
+    use super::providers_load_error_report;
+    #[rstest::rstest]
+    fn providers_load_error_report_fails_with_parse_detail_on_malformed_file() {
+        // Given a config storage backed by a malformed providers.toml.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(
+            &path,
+            "[providers.ollama]\nbackend = \"ollama\"\nmodels = [\"llama3\"\n",
+        )
+        .expect("write");
+        let storage = ConfigStorageService::new(Arc::new(FilesystemConfigStorage::new(path)));
+
+        // When checking the providers config.
+        let result = providers_load_error_report(&storage);
+
+        // Then the error render keeps the TOML detail attached upstream
+        // (attachments survive the change_context to AppError).
+        let report = result.expect_err("malformed providers.toml must fail");
+        let rendered = format!("{report:?}");
+        assert!(
+            rendered.contains("TOML parse error"),
+            "missing TOML parse detail: {rendered}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn providers_load_error_report_ok_when_file_missing() {
+        // Given a config storage backed by a directory with no providers.toml.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        let storage =
+            ConfigStorageService::new(Arc::new(FilesystemConfigStorage::new(path.clone())));
+
+        // When checking the providers config.
+        let result = providers_load_error_report(&storage);
+
+        // Then the check passes (the loader auto-creates the default template).
+        assert!(result.is_ok(), "expected ok, got: {:?}", result.err());
+        // And the default file was created.
+        assert!(
+            path.exists(),
+            "first-run load should auto-create the config file"
+        );
+    }
 }

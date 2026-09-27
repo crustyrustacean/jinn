@@ -4,29 +4,14 @@
 //! runtime, builds shared [`Services`], and dispatches to the appropriate
 //! [`Runner`] variant (TUI or headless).
 
-use std::sync::Arc;
-
 use crate::bootstrap;
 use crate::bootstrap::config::LaunchServices;
 use error_stack::{Report, ResultExt};
 use jinn_cli::Cli;
-use jinn_kernel::ApiKeys;
-use jinn_kernel::ApiKeysService;
-use jinn_kernel::ConfigStorageService;
-use jinn_kernel::FilesystemConfigStorage;
-use jinn_kernel::LlmServiceFactoryService;
-use jinn_kernel::ProviderRegistry;
-use jinn_kernel::ProviderRegistryService;
-use jinn_preferences_config::AppStateStorageService;
-use jinn_preferences_config::FilesystemAppStateStorage;
-use jinn_session_state::SessionStoreService;
-use jinn_session_store::sqlite::SqliteSessionStore;
-
 use tokio::runtime::Runtime;
 use wherror::Error;
 
 use crate::actor_wiring;
-use crate::config_path::{config_init_target, resolve_config_path};
 #[cfg(debug_assertions)]
 use crate::headless::HeadlessApp;
 use crate::runner::Runner;
@@ -310,24 +295,6 @@ pub(crate) fn seed_config_template(path: &std::path::Path) {
     }
 }
 
-/// Checks that `providers.toml` loads and parses, producing a fail-fast report.
-///
-/// A missing file is not an error here — the loader auto-creates the default
-/// template on first run. Only a load or parse failure produces an error, with
-/// the config path and the underlying TOML detail attached to the report.
-pub(crate) fn providers_load_error_report(
-    storage: &ConfigStorageService,
-) -> Result<(), Report<AppError>> {
-    if let Err(report) = storage.load() {
-        let path = jinn_kernel::config_path();
-        return Err(report.change_context(AppError).attach(format!(
-            "failed to load providers config at {}",
-            path.display()
-        )));
-    }
-    Ok(())
-}
-
 /// Fetches model metadata from models.dev and saves it to the user's cache directory.
 ///
 /// Makes an HTTP GET request to `https://models.dev/api.json`, validates the
@@ -416,6 +383,9 @@ mod tests {
     use jinn_kernel::{AppState, State};
     use jinn_tui::{load_compaction_prompt, load_theme};
     use std::path::{Path, PathBuf};
+    use std::sync::Arc;
+
+    use crate::config_path::{config_init_target, resolve_config_path};
 
     use super::*;
 
@@ -698,51 +668,6 @@ mod tests {
         assert!(
             rendered.contains(&override_path.display().to_string()),
             "fail-fast report should name the override path: {rendered}"
-        );
-    }
-
-    #[rstest::rstest]
-    fn providers_load_error_report_fails_with_parse_detail_on_malformed_file() {
-        // Given a config storage backed by a malformed providers.toml.
-        let dir = tempfile::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
-        std::fs::write(
-            &path,
-            "[providers.ollama]\nbackend = \"ollama\"\nmodels = [\"llama3\"\n",
-        )
-        .expect("write");
-        let storage = ConfigStorageService::new(Arc::new(FilesystemConfigStorage::new(path)));
-
-        // When checking the providers config.
-        let result = providers_load_error_report(&storage);
-
-        // Then the error render keeps the TOML detail attached upstream
-        // (attachments survive the change_context to AppError).
-        let report = result.expect_err("malformed providers.toml must fail");
-        let rendered = format!("{report:?}");
-        assert!(
-            rendered.contains("TOML parse error"),
-            "missing TOML parse detail: {rendered}"
-        );
-    }
-
-    #[rstest::rstest]
-    fn providers_load_error_report_ok_when_file_missing() {
-        // Given a config storage backed by a directory with no providers.toml.
-        let dir = tempfile::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
-        let storage =
-            ConfigStorageService::new(Arc::new(FilesystemConfigStorage::new(path.clone())));
-
-        // When checking the providers config.
-        let result = providers_load_error_report(&storage);
-
-        // Then the check passes (the loader auto-creates the default template).
-        assert!(result.is_ok(), "expected ok, got: {:?}", result.err());
-        // And the default file was created.
-        assert!(
-            path.exists(),
-            "first-run load should auto-create the config file"
         );
     }
 }
