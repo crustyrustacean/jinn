@@ -226,11 +226,7 @@ fn keymap_with_chat_input_rows_at(scope: Scope) -> WhichKeyInstance {
 fn keymap_with_chat_input_at(scope: Scope) -> WhichKeyInstance {
     let mut km = keymap::init();
     let routes = jinn_slices::route::KeyRoutes::new();
-    jinn_chat_input::routes::attach_chat_input_rows(&routes);
-    jinn_chat_input::routes::attach_editing_rows(&routes);
-    jinn_chat_input::routes::attach_insert_char_row(&routes);
-    jinn_chat_input::routes::attach_paste_text_row(&routes);
-    jinn_chat_input::key_hook::register(&routes);
+    jinn_chat_input::routes::attach_all(&routes);
     crate::keymap_gen::bind_route_rows(&routes, &mut km);
     WhichKeyInstance::new(km, scope)
 }
@@ -390,5 +386,45 @@ fn ctrl_c_in_input_scope_still_reaches_its_kernel_bind() {
     assert!(
         !resolved.contains("type a character"),
         "ctrl-c must not be captured by the box, got {resolved}"
+    );
+}
+
+/// `i` in Normal scope enters the chat input box.
+///
+/// This is the box's only door from chat history into insert mode, so its
+/// absence is invisible until someone tries to type and nothing happens.
+/// Asserting the key directly — not "whatever rows got attached resolve" —
+/// is deliberate: a test that walks the attached rows cannot see a row that
+/// was never attached.
+#[rstest::rstest]
+#[test]
+fn i_in_normal_scope_enters_insert_mode() {
+    // Given the keymap with the box's rows and hook bound, at Normal scope.
+    let mut wk = keymap_with_chat_input_at(Scope::Normal);
+
+    // When pressing `i`.
+    let intent = wk.handle_key(key("i"));
+
+    // Then it resolves to the box's insert-mode action.
+    assert_eq!(
+        intent.map(|i| i.to_string()).as_deref(),
+        Some("type a message")
+    );
+}
+
+/// `<c-j>` in Normal scope enters the box, the alternate door.
+#[rstest::rstest]
+#[test]
+fn ctrl_j_in_normal_scope_enters_insert_mode() {
+    // Given the keymap with the box's rows and hook bound, at Normal scope.
+    let mut wk = keymap_with_chat_input_at(Scope::Normal);
+
+    // When pressing Ctrl+j.
+    let intent = wk.handle_key(key("c-j"));
+
+    // Then it resolves to the box's insert-mode action.
+    assert_eq!(
+        intent.map(|i| i.to_string()).as_deref(),
+        Some("type a message")
     );
 }

@@ -44,11 +44,7 @@ pub fn activate(
         state: state.clone(),
     };
     directory_lister_actor::DirectoryListerActor::spawn(host.system(), lister_deps);
-    routes::attach_chat_input_rows(host.key_routes());
-    routes::attach_editing_rows(host.key_routes());
-    routes::attach_insert_char_row(host.key_routes());
-    routes::attach_paste_text_row(host.key_routes());
-    key_hook::register(host.key_routes());
+    routes::attach_all(host.key_routes());
     true
 }
 

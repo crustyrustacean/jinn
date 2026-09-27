@@ -198,6 +198,25 @@ pub fn attach_enter_insert_row(routes: &KeyRoutes) {
     }
 }
 
+/// Attaches every keybind the box owns, and registers its key hook.
+///
+/// This is the slice's single entry point for keybinds. `activate` calls
+/// this and nothing else, so a row added to the box cannot be forgotten at
+/// activation: the one function that binds keys owns all of them.
+///
+/// Splitting this across several `attach_*` functions was a latent bug —
+/// one of them was never called, and the only way into the box (`i` /
+/// `<c-j>` in Normal) silently stopped working. Any further split must
+/// keep every piece reachable from here.
+pub fn attach_all(routes: &KeyRoutes) {
+    attach_chat_input_rows(routes);
+    attach_enter_insert_row(routes);
+    attach_editing_rows(routes);
+    attach_insert_char_row(routes);
+    attach_paste_text_row(routes);
+    crate::key_hook::register(routes);
+}
+
 /// Attaches every editing-key action the box owns.
 ///
 /// These carry the keys the kernel used to bind statically into
