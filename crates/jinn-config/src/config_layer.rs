@@ -54,23 +54,51 @@ impl std::fmt::Debug for ConfigInner {
 }
 
 /// One registered section, captured type-erased so `validate` can
-/// fail-fast on a malformed table without naming the type.
+/// fail-fast on a malformed section without naming the type.
 #[derive(Clone)]
 struct RegisteredSection {
     key: &'static str,
     type_name: &'static str,
+    shape: SectionShape,
     check: SectionCheck,
 }
 
-/// The type-erased "does this table deserialize" check a registered
+/// How a registered section is laid out in the document.
+///
+/// A section is either a table (the [`Configurable`] shape) or a bare
+/// array of tables (the [`ConfigList`] shape). `validate` resolves the
+/// section by its shape rather than guessing, so a list registered
+/// where a table was declared is a shape disagreement — reported, not
+/// silently read as absent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SectionShape {
+    /// A table at the section's key.
+    Table,
+    /// A bare array of tables at the section's key.
+    List,
+}
+
+/// The type-erased "does this section deserialize" check a registered
 /// section carries, so `validate` never has to name the section's type.
-type SectionCheck = Arc<dyn Fn(&toml::Table) -> Result<(), ConfigSectionError> + Send + Sync>;
+type SectionCheck = Arc<dyn Fn(SectionContent) -> Result<(), ConfigSectionError> + Send + Sync>;
+
+/// A registered section's content, tagged with the shape its section
+/// declared so a type-erased check can accept either without knowing
+/// which it is validating.
+#[derive(Debug)]
+enum SectionContent {
+    /// A table section's table.
+    Table(toml::Table),
+    /// A list section's entry tables.
+    List(Vec<toml::Table>),
+}
 
 impl std::fmt::Debug for RegisteredSection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RegisteredSection")
             .field("key", &self.key)
             .field("type_name", &self.type_name)
+            .field("shape", &self.shape)
             .finish_non_exhaustive()
     }
 }
@@ -276,10 +304,40 @@ impl ConfigLayer {
     /// section nobody registered is simply never validated — reads of it
     /// still fail loudly, just at the read rather than at launch.
     pub fn register<T: Configurable>(&self) -> &Self {
-        let check = |table: &toml::Table| T::from_table(table).map(|_| ());
+        let check = |content: SectionContent| match content {
+            SectionContent::Table(table) => T::from_table(&table).map(|_| ()),
+            // Unreachable: `validate` resolves by the section's declared
+            // shape, so a table section is only ever handed a table.
+            SectionContent::List(_) => Ok(()),
+        };
         self.inner.registry.write().push(RegisteredSection {
             key: T::KEY,
             type_name: std::any::type_name::<T>(),
+            shape: SectionShape::Table,
+            check: Arc::new(check),
+        });
+        self
+    }
+
+    /// Registers a list-of-tables section for launch-time fail-fast
+    /// validation.
+    ///
+    /// The companion to [`Self::register`] for the [`ConfigList`]
+    /// shape. A list section has no `Default` value to layer a check
+    /// over, which is why it needed its own path rather than a
+    /// `Configurable` wrapper: the wrapper would move the list inside
+    /// a table and change the document shape the user writes.
+    pub fn register_list<T: ConfigList>(&self) -> &Self {
+        let check = |content: SectionContent| match content {
+            SectionContent::List(tables) => deserialize_entries::<T>(T::KEY, tables).map(|_| ()),
+            // Unreachable: `validate` resolves by the section's declared
+            // shape, so a list section is only ever handed a list.
+            SectionContent::Table(_) => Ok(()),
+        };
+        self.inner.registry.write().push(RegisteredSection {
+            key: T::KEY,
+            type_name: std::any::type_name::<T>(),
+            shape: SectionShape::List,
             check: Arc::new(check),
         });
         self
@@ -456,8 +514,15 @@ impl ConfigLayer {
         let doc = self.inner.doc.read().clone();
         let registry = self.inner.registry.read().clone();
         for section in &registry {
-            if let Some(table) = section_table(&doc, section.key)? {
-                (section.check)(&table)?;
+            let content =
+                match section.shape {
+                    SectionShape::Table => section_table(&doc, section.key)
+                        .map(|table| table.map(SectionContent::Table)),
+                    SectionShape::List => section_arrays(&doc, section.key)
+                        .map(|tables| tables.map(SectionContent::List)),
+                }?;
+            if let Some(content) = content {
+                (section.check)(content)?;
             }
         }
         Ok(())
@@ -1339,6 +1404,117 @@ mod tests {
         // Then the other handle sees it without reloading.
         let value = second.get::<WatchdogCfg>().expect("section reads");
         assert_eq!(value.timeout_secs, 88, "handles share one snapshot");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn validate_accepts_a_registered_list_section() {
+        // Given a layer whose registered list section has well-formed entries.
+        let (layer, _storage) =
+            layer("[[project.entry]]\nname = \"a\"\n\n[[project.entry]]\nname = \"b\"\n");
+        layer.register_list::<ProjectEntry>();
+
+        // When validating.
+        let result = layer.validate();
+
+        // Then it passes.
+        assert_eq!(result, Ok(()));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn validate_rejects_a_malformed_registered_list_entry() {
+        // Given a layer whose registered list entry has a wrong-typed field.
+        let (layer, _storage) = layer("[[project.entry]]\nname = 7\n");
+        layer.register_list::<ProjectEntry>();
+
+        // When validating.
+        let result = layer.validate();
+
+        // Then the malformed section is reported.
+        assert!(matches!(
+            result,
+            Err(ConfigSectionError::Malformed {
+                key: "project.entry",
+                ..
+            })
+        ));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn validate_passes_a_layer_missing_its_registered_list_section() {
+        // Given a layer with no such list at all.
+        let (layer, _storage) = layer("[other]\nkey = 1\n");
+        layer.register_list::<ProjectEntry>();
+
+        // When validating.
+        let result = layer.validate();
+
+        // Then an absent list is not an error.
+        assert_eq!(result, Ok(()));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn validate_reports_a_list_section_declared_as_a_table() {
+        // Given a layer whose registered list section is a bare table.
+        let (layer, _storage) = layer("[project.entry]\nname = \"a\"\n");
+        layer.register_list::<ProjectEntry>();
+
+        // When validating.
+        let result = layer.validate();
+
+        // Then the shape disagreement is reported rather than read as absent.
+        assert!(matches!(
+            result,
+            Err(ConfigSectionError::NotATable {
+                key: "project.entry",
+                ..
+            })
+        ));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn validate_reports_a_table_section_declared_as_a_list() {
+        // Given a layer whose registered table section is a bare array.
+        let (layer, _storage) = layer("watchdog = [{ timeout_secs = 1 }]\n");
+        layer.register::<WatchdogCfg>();
+
+        // When validating.
+        let result = layer.validate();
+
+        // Then the shape disagreement is reported rather than read as absent.
+        assert!(matches!(
+            result,
+            Err(ConfigSectionError::NotATable {
+                key: "watchdog.stall",
+                ..
+            })
+        ));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn validate_checks_list_sections_in_registration_order() {
+        // Given a layer where both a table and a list section are malformed.
+        let (layer, _storage) =
+            layer("[watchdog.stall]\ntimeout_secs = \"soon\"\n[[project.entry]]\nname = 7\n");
+        layer.register::<WatchdogCfg>();
+        layer.register_list::<ProjectEntry>();
+
+        // When validating.
+        let result = layer.validate();
+
+        // Then the first-registered section is the one reported.
+        assert!(matches!(
+            result,
+            Err(ConfigSectionError::Malformed {
+                key: "watchdog.stall",
+                ..
+            })
+        ));
     }
 }
 
