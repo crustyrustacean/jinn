@@ -68,7 +68,11 @@ Entries are added or amended **only with human approval**.
 - (attachments) `@path` tokens in user entries are colored by resolution outcome in the chat render: green when attached as an image, red when degraded (missing file or not an image).
 - (context) `#name` prompt-template tokens in user text expand to the template body; both token kinds are consumed in a second expansion pass.
 - (context) `@path` tokens resolve to `file://` URIs against cwd/home when the file is a readable image; otherwise the token is left as literal text.
-- (dashboard) The dashboard tab tracks actor lifecycle (starting/running/dead) per wired actor.
+- (dashboard) The dashboard tab renders each actor's runtime lifecycle as its own State word (running/idle/escalated/crashed), removing the row on a `Normal` or `Shutdown` stop.
+- (dashboard) The runtime's actor-census announcement is the only writer of a dashboard row's State; a feature publishing `ServiceStatusUpdate` cannot set a lifecycle, so no feature can contradict the runtime's verdict on whether an actor is alive.
+- (dashboard) The dashboard's row order is sorted by lifecycle severity then note tone, worst first, and the cursor is a clamped positional index into that order.
+- (dashboard) The dashboard's scroll offset is derived per frame from the cursor and viewport height, placing the cursor at the viewport centre rather than nudging it into view.
+- (dashboard) The Notes column renders only the owning feature's status message; a feature colours it through `ServiceStatusUpdate::note_tone`, which the view maps to a theme token.
 - (slices) Render slices live in per-slice typed cells behind the `Slices` facade; the owning actor, renderer, and intent router share typed handles to the registered cell.
 - (pickers) Each picker is owned by the slice that owns its domain; the picker's state lives in a slice cell, not in AppState.
 - (pickers) Picker scopes are dynamic slice scopes, so the kernel holds no per-picker scope variant, picker kind, spec, or registry.
@@ -246,6 +250,7 @@ Entries are added or amended **only with human approval**.
 - (tools) The interactive_term tool guidance warns models not to append shell redirections, pipes, or grep (the tool returns the rendered screen, so piped output is silently lost) and advertises the no-argument interactive_term_send call as an anytime screen snapshot; the usage footer on every result repeats both.
 - (slices) The theme slice is a kernel-free crate loading theme files from the configured directories at activation into one cell; the theme picker and the app-state actor read the cell.
 - (theme) Themes load directly from disk at boot.
+- (theme) A passivated dashboard actor's State cell uses the `dormant_fg` theme token, distinct from the error colour.
 - (slices) The persona slice is a kernel-free crate parsing persona markdown from the configured directory at activation into one cell; composition publishes the kernel's PersonasLoaded event from that scan after actor spawn, and the session actor consumes it unchanged.
 - (persona) Personas parse from disk at boot.
 - (slices) The token-count slice is a crate owning the per-session entry token cache cell and both token actors (count fill, cache eviction); the session actor and the prune workers share the cache from the cell.

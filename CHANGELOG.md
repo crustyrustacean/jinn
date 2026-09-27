@@ -43,6 +43,10 @@
 - Added a new `--config` flag to load a specific `jinn.toml` file.
   - Passing `--config` to `jinn config init` will initialize the template to the provided path instead of `<config dir>/jinn`
 - Add new `goal` prompt that autonomously works towards the planned goal. Works similarly to the `plan` prompt.
+- Dashboard changes:
+  - Scrolling now pivots around the cursor
+  - Actors are sorted by status and by notes
+  - Notes are colorized based on severity
 
 - These plugins were moved into the core in preparation for 1.0 release. They are now unused and will remain on-disk unless you manually delete them. Please see the next section on plugin-related TOML configuration changes.
   - Deleted `persona-loader`

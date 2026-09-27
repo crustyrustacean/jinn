@@ -111,20 +111,59 @@ fn serialize_named_round_trip() {
 }
 
 #[cfg(test)]
-mod nord_light_loads {
+mod bundled_themes_load {
+    #![allow(clippy::expect_used, reason = "test assertions")]
+    use crate::default_theme;
     use crate::theme::ThemeFile;
 
+    /// Every theme shipped in `res/themes`, with its file contents.
+    ///
+    /// A new `Theme` field must not break a theme that predates it: the
+    /// resolver fills any omitted key from the default, so a bundled file
+    /// that simply lacks the new key still has to load. This is the guard
+    /// on that, across all of them at once rather than one at a time.
+    #[rstest::rstest]
+    #[case("default.toml", include_str!("../../../res/themes/default.toml"))]
+    #[case("catppuccin-mocha.toml", include_str!("../../../res/themes/catppuccin-mocha.toml"))]
+    #[case("gruvbox-dark.toml", include_str!("../../../res/themes/gruvbox-dark.toml"))]
+    #[case("nord-light.toml", include_str!("../../../res/themes/nord-light.toml"))]
+    #[case("sonokai.toml", include_str!("../../../res/themes/sonokai.toml"))]
+    fn every_bundled_theme_parses_and_resolves_every_colour(
+        #[case] name: &str,
+        #[case] contents: &str,
+    ) {
+        // Given a bundled theme file.
+        let file: ThemeFile = toml::from_str(contents).unwrap_or_else(|e| panic!("{name}: {e}"));
+
+        // When resolving it against the default.
+        let theme = file.resolve_with_fallback(&default_theme());
+
+        // Then the new key landed as a real colour rather than a Reset
+        // that would silently render as the terminal's own foreground.
+        // The four themes that predate the key fall back to the default
+        // and the one that sets it uses its own value — both must land
+        // on a concrete colour.
+        assert_ne!(
+            theme.dormant_fg,
+            ratatui::style::Color::Reset,
+            "{name}: dormant_fg resolved to Reset"
+        );
+    }
+
+    /// The new token's meaning is "dormant but healthy", so it must not
+    /// resolve to the error colour — that is the whole reason it exists
+    /// rather than reusing `error_text`.
     #[rstest::rstest]
     #[test]
-    fn bundled_nord_light_theme_parses() {
-        // Given the bundled nord-light theme file.
-        let contents = include_str!("../../../res/themes/nord-light.toml");
+    fn the_dormant_token_defaults_to_something_other_than_the_error_colour() {
+        // Given the default theme.
+        let theme = default_theme();
 
-        // When parsing it as a theme file.
-        let file: ThemeFile = toml::from_str(contents).expect("parse");
-
-        // Then it resolves without error.
-        let _theme = file.resolve();
+        // Then dormancy is not painted as a failure.
+        assert_ne!(
+            theme.dormant_fg, theme.error_text,
+            "a passivated actor must not read as an error"
+        );
     }
 }
 
@@ -141,7 +180,7 @@ mod style_map_integration_tests {
         // When building the style map.
         let map = theme.style_map();
         // Then it has one entry per Theme field.
-        assert_eq!(map.len(), 46, "style_map should cover all Theme fields");
+        assert_eq!(map.len(), 47, "style_map should cover all Theme fields");
     }
 
     #[rstest::rstest]

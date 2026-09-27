@@ -334,8 +334,8 @@ impl SearchIndexActor {
             .publish(jinn_slices::ServiceStatusUpdate {
                 name: SEARCH_INDEX_ROW_NAME.to_owned(),
                 description: None,
-                lifecycle: None,
                 status_message: Some(status),
+                note_tone: None,
             })
             .await;
     }
