@@ -86,7 +86,9 @@ trouper = { workspace = true }
 [dev-dependencies]
 jinn-context-assembly = { workspace = true }
 jinn-context-curation = { workspace = true }
-# Enables the schema crate's migration-chain helpers for migration tests.
+# Enables the schema crate's migration-chain helpers. The `testing` feature is
+# unified into `jinn-session-schema`'s own integration tests, which is why this
+# dev-dep cannot be dropped while those tests live in that crate.
 jinn-session-schema = { workspace = true, features = ["testing"] }
 wasm-encoder = { workspace = true }
 indoc = "2"
@@ -103,20 +105,6 @@ tracing-subscriber = { workspace = true }
 # the kernel, which is exactly what the slice-owned skill picker needs.
 jinn-skills = { workspace = true }
 
-
-[build-dependencies]
-# `build.rs` validates the session schema against a host-side SQLite database.
-rusqlite = { workspace = true }
-jinn-session-schema = { workspace = true }
-
-# The build script runs on the host, so this edge links the *system*
-# libsqlite3 on Linux/macOS — but Windows has no system SQLite import library,
-# which failed the host link with LNK1181 (sqlite3.lib). Enable rusqlite's
-# bundled build on Windows only so a from-source build needs no SQLite
-# installation there; the extra host amalgamation compile is cached and only
-# re-runs on cache-invalidating events (clean, toolchain/lockfile bumps).
-[target.'cfg(windows)'.build-dependencies]
-rusqlite = { workspace = true, features = ["bundled"] }
 
 [target.'cfg(windows)'.dependencies]
 # kill_tree provides Toolhelp32-based process-tree termination on Windows.

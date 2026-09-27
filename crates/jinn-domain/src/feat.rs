@@ -6,10 +6,8 @@ pub mod global;
 pub mod install;
 pub mod intent;
 pub mod navigation;
-pub mod project;
 pub mod provider;
 pub mod session;
 pub mod session_lifecycle;
-pub mod skills;
 
 pub mod ui;
