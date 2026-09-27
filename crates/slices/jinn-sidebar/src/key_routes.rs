@@ -330,14 +330,6 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         sync(sessions::handle_session_activate),
     ));
     routes.attach(row(
-        "session-new",
-        sessions_scope.clone(),
-        "n",
-        "general",
-        "new session",
-        sync(|_state| IntentResult::empty()),
-    ));
-    routes.attach(row(
         "session-rename",
         sessions_scope.clone(),
         "r",

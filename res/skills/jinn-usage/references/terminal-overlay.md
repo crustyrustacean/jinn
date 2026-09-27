@@ -37,7 +37,7 @@ The overlay has two modes:
 | toggle (default `<c-g>`) | view | **Take control** |
 | toggle (default `<c-g>`) | control | **Hand back** to the agent |
 
-The toggle key is configurable per user — check `[interactive_term]
+The toggle key is configurable per user — check `[term]
 control_toggle_key` in `jinn.toml` (see `configuration.md`) or just try
 `<c-g>`, the shipped default.
 
