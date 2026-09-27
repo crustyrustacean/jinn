@@ -19,10 +19,10 @@ use crate::sections::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
 use jinn_kernel::common::app_state::AppState;
-use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_mcp_msg::McpConnectionStatus;
 use jinn_preferences_config::schemas::mcp::McpServersConfig;
 use jinn_slices::ConfigLayer;
+use jinn_slices::DrawContext;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -167,8 +167,14 @@ impl SidebarSection for McpServersSection {
         jinn_sidebar_msg::SidebarSectionId::McpServers
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, skip_rows: u16, ctx: &RenderCtx) {
-        let state = ctx.state;
+    fn render(
+        &mut self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        skip_rows: u16,
+        ctx: &dyn DrawContext<jinn_kernel::common::app_state::AppState>,
+    ) {
+        let state = ctx.state();
         let sidebar_focused = state.frontend.is_sidebar();
         let section_focused = sidebar_focused
             && matches!(
@@ -190,12 +196,12 @@ impl SidebarSection for McpServersSection {
         let lines = {
             let enabled = state.active_session().enabled_mcp_servers().clone();
             let statuses = ctx
-                .slices
+                .slices()
                 .reader::<jinn_mcp_msg::McpRuntimeState>(&jinn_mcp_msg::mcp_runtime_slot())
                 .map(|runtime| runtime.read().statuses(state.active_session().session_id()))
                 .unwrap_or_default();
             // Only enabled servers are surfaced; disabled ones are omitted entirely.
-            let configured = ctx.config.get::<McpServersConfig>().unwrap_or_default();
+            let configured = ctx.config().get::<McpServersConfig>().unwrap_or_default();
             let servers: Vec<_> = configured
                 .iter()
                 .filter(|(name, _)| enabled.contains(name.as_str()))
@@ -244,12 +250,15 @@ impl SidebarSection for McpServersSection {
         frame.render_widget(widget, area);
     }
 
-    fn content_height(&mut self, ctx: &RenderCtx) -> u16 {
+    fn content_height(
+        &mut self,
+        ctx: &dyn DrawContext<jinn_kernel::common::app_state::AppState>,
+    ) -> u16 {
         // Collapsed to 0 when no servers are enabled for the active session,
         // matching the Pins/TaskList pattern so disabled servers waste no space.
-        let enabled = ctx.state.active_session().enabled_mcp_servers();
+        let enabled = ctx.state().active_session().enabled_mcp_servers();
         let count = ctx
-            .config
+            .config()
             .get::<McpServersConfig>()
             .unwrap_or_default()
             .iter()

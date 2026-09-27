@@ -216,3 +216,48 @@ async fn a_published_preview_request_is_rendered_and_cached() {
     })
     .await;
 }
+
+/// The sidebar column paints its sections.
+///
+/// This asserts the column reaches the screen at all. The sidebar is
+/// drawn by a draw function the slice registers at activation, so a
+/// missing or mis-registered column leaves the frame with an empty
+/// sidebar and every other sidebar test still passes — they read the
+/// sections cell, not the painted column.
+#[rstest::rstest]
+#[tokio::test]
+async fn the_sidebar_column_paints_its_sections() {
+    // Given a launched app with the sidebar slice active.
+    let app = test_app().await;
+    let (mut terminal, area) = jinn_testutil::setup_term(100, 30);
+
+    // When rendering a frame.
+    let mut app = app;
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .expect("terminal draw");
+
+    // Then a section header is present in the sidebar column.
+    let buffer = terminal.backend().buffer();
+    let sidebar_width = app.core.state.read().frontend.sidebar_width;
+    // The sidebar is the rightmost column; the chat column and its border
+    // occupy everything to its left.
+    let sidebar_x = area.width.saturating_sub(sidebar_width);
+    let mut painted = false;
+    for y in 0..area.height {
+        let row: String = (sidebar_x..area.width)
+            .filter_map(|x| buffer.cell((x, y)).map(|c| c.symbol().to_owned()))
+            .collect();
+        if row.contains("Sessions") {
+            painted = true;
+            break;
+        }
+    }
+    assert!(
+        painted,
+        "the sidebar column should paint its sections; no section header found \
+         in the {sidebar_width}-column sidebar"
+    );
+}

@@ -171,6 +171,40 @@ fn write_scroll_offset(
     Vec::new()
 }
 
+/// Builds the draw function the render pass calls for the sidebar column.
+///
+/// The column is the section list, and laying a section out mutates its
+/// own cursor and cache state, so drawing needs a `&mut Sidebar`. A
+/// registered draw function is a `Fn` and cannot hold that borrow across
+/// frames, so the container sits behind interior mutability: one process
+/// has one sidebar, so one instance is the right cardinality, and each
+/// section's state persists frame to frame exactly as it did when the
+/// container lived on `TuiApp`.
+///
+/// The late overlays ride along in the same call because they are
+/// anchored to the same rect and must paint after the main column.
+#[must_use]
+pub fn column_draw_fn() -> jinn_slices::DrawFn<AppState> {
+    let sidebar = parking_lot::Mutex::new({
+        let mut sidebar = crate::sections::sidebar::Sidebar::new();
+        crate::sections::register_sections(&mut sidebar);
+        sidebar
+    });
+    Arc::new(
+        move |frame: &mut Frame<'_>,
+              target: jinn_slices::DrawTarget,
+              ctx: &dyn DrawContext<AppState>,
+              rects: &mut Vec<Rect>| {
+            let rect = target.area;
+            sidebar.lock().render(frame, rect, ctx);
+            if let Some(select) = target.select {
+                rects.push(select);
+            }
+            draw_late_overlays(frame, rect, frame.area(), ctx);
+        },
+    )
+}
+
 /// The sidebar's late overlays: the archive-tree prompt, the
 /// close-session prompt, and the session preview popup.
 ///

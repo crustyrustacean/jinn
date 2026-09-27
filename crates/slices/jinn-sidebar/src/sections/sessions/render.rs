@@ -16,7 +16,6 @@ use std::time::Instant;
 use crate::sections::section_trait::{SidebarSection, SidebarSectionId};
 use crate::sections::sessions::state::{SessionEntry, SessionListKey, session_list_key};
 use jinn_kernel::common::app_state::AppState;
-use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_slices::DrawContext;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -137,7 +136,13 @@ impl SidebarSection for SessionsSection {
         jinn_sidebar_msg::SidebarSectionId::Sessions
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, skip_rows: u16, ctx: &RenderCtx) {
+    fn render(
+        &mut self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        skip_rows: u16,
+        ctx: &dyn DrawContext<jinn_kernel::common::app_state::AppState>,
+    ) {
         let state = ctx.state();
         let theme = &state.frontend.theme;
         // Read the throbber before borrowing the tree: `sessions_tree` memoizes
@@ -238,8 +243,11 @@ impl SidebarSection for SessionsSection {
         frame.render_widget(widget, area);
     }
 
-    fn content_height(&mut self, ctx: &RenderCtx) -> u16 {
-        let entry_count = self.sessions_tree(ctx.state).len() as u16;
+    fn content_height(
+        &mut self,
+        ctx: &dyn DrawContext<jinn_kernel::common::app_state::AppState>,
+    ) -> u16 {
+        let entry_count = self.sessions_tree(ctx.state()).len() as u16;
         // entries(N).max(1) + footer(1)
         entry_count.max(1) + 1 // max(1) for the no-sessions placeholder line
     }

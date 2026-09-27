@@ -39,6 +39,7 @@ jinn-picker = { workspace = true }
 error-stack = { workspace = true }
 serde_json = { workspace = true }
 wherror = { workspace = true }
+parking_lot = { workspace = true }
 ratatui = { workspace = true }
 textwrap = { workspace = true }
 throbber-widgets-tui = { workspace = true }

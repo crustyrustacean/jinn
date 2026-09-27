@@ -195,10 +195,14 @@ fn render_base_layers(
             // The sidebar column: the slice's sections plus the late
             // overlays it registers (archive-tree prompt, close-session
             // prompt, session preview, task-list preview).
+            // The column is mouse-selectable only while it holds focus,
+            // which is what `select` carries; the slice decides whether to
+            // register it, the layout decides whether to offer it.
+            let sidebar_select = ctx.state.frontend.is_sidebar().then_some(chat.sidebar);
             if let Some(draw) = slots.draw(jinn_slices::Region::Sidebar) {
                 draw(
                     frame,
-                    jinn_slices::DrawTarget::new(chat.sidebar),
+                    jinn_slices::DrawTarget::with_select(chat.sidebar, sidebar_select),
                     ctx,
                     rects,
                 );

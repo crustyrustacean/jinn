@@ -11,11 +11,11 @@ use jinn_chat_log_view::chat_log::strip_ansi;
 use jinn_core_types::SessionId;
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::app_state::pin_sort_key;
-use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_kernel::protocol::ToolResultStatus;
 use jinn_kernel::protocol::{ChatEntryId, ChatEntryKind, IntentResult, PinPosition};
 use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
 use jinn_skills::loaded_skill_summary_label;
+use jinn_slices::DrawContext;
 use jinn_theme::Theme;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -102,8 +102,14 @@ impl SidebarSection for PinsSection {
         jinn_sidebar_msg::SidebarSectionId::Pins
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, skip_rows: u16, ctx: &RenderCtx) {
-        let state = ctx.state;
+    fn render(
+        &mut self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        skip_rows: u16,
+        ctx: &dyn DrawContext<jinn_kernel::common::app_state::AppState>,
+    ) {
+        let state = ctx.state();
         let sorted_ids = state.sorted_pinned_ids();
         let mut pinned = state.active_session().pinned_entries();
         // Sort to match sorted_ids order (TOP → REL → BOT, stable by history).
@@ -151,8 +157,11 @@ impl SidebarSection for PinsSection {
         frame.render_widget(widget, area);
     }
 
-    fn content_height(&mut self, ctx: &RenderCtx) -> u16 {
-        let state = ctx.state;
+    fn content_height(
+        &mut self,
+        ctx: &dyn DrawContext<jinn_kernel::common::app_state::AppState>,
+    ) -> u16 {
+        let state = ctx.state();
         let count = state.active_session().pinned_entries().len();
         // Hide the section entirely when there are no pins.
         if count == 0 {

@@ -3298,6 +3298,7 @@ dependencies = [
  "jinn-theme",
  "jinn-tools",
  "jinn-tools-msg",
+ "parking_lot",
  "ratatui",
  "rstest",
  "serde_json",

@@ -12,8 +12,8 @@ use crate::sections::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
 use jinn_kernel::common::app_state::AppState;
-use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_kernel::protocol::IntentResult;
+use jinn_slices::DrawContext;
 use jinn_theme::Theme;
 use jinn_tools_msg::{Phase, PhaseId, TaskList};
 use ratatui::Frame;
@@ -145,8 +145,14 @@ impl SidebarSection for TaskListSection {
         jinn_sidebar_msg::SidebarSectionId::TaskList
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, skip_rows: u16, ctx: &RenderCtx) {
-        let state = ctx.state;
+    fn render(
+        &mut self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        skip_rows: u16,
+        ctx: &dyn DrawContext<jinn_kernel::common::app_state::AppState>,
+    ) {
+        let state = ctx.state();
         let list = state.active_session().task_list();
         if list.is_empty() {
             return;
@@ -157,8 +163,11 @@ impl SidebarSection for TaskListSection {
         frame.render_widget(widget, area);
     }
 
-    fn content_height(&mut self, ctx: &RenderCtx) -> u16 {
-        task_list_content_height(ctx.state)
+    fn content_height(
+        &mut self,
+        ctx: &dyn DrawContext<jinn_kernel::common::app_state::AppState>,
+    ) -> u16 {
+        task_list_content_height(ctx.state())
     }
 }
 

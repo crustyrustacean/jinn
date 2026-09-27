@@ -80,16 +80,7 @@ pub fn activate(
     if let Some(slots) = host.slices().render_slots::<AppState>() {
         slots.register(
             jinn_slices::Region::Sidebar,
-            std::sync::Arc::new(
-                |frame: &mut ratatui::Frame<'_>,
-                 target: jinn_slices::DrawTarget,
-                 ctx: &dyn jinn_slices::DrawContext<AppState>,
-                 _rects: &mut Vec<ratatui::layout::Rect>| {
-                    // `Frame::area()` is the whole frame; the sidebar rect
-                    // is the region this draw function was called with.
-                    render_wiring::draw_late_overlays(frame, target.area, frame.area(), ctx);
-                },
-            ),
+            render_wiring::column_draw_fn(),
         );
     }
 

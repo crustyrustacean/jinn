@@ -8,7 +8,7 @@ use crate::sections::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
 use jinn_kernel::common::app_state::AppState;
-use jinn_kernel::common::render_ctx::RenderCtx;
+use jinn_slices::DrawContext;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
@@ -51,8 +51,14 @@ impl SidebarSection for PersonaSection {
         jinn_sidebar_msg::SidebarSectionId::Persona
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, skip_rows: u16, ctx: &RenderCtx) {
-        let state = ctx.state;
+    fn render(
+        &mut self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        skip_rows: u16,
+        ctx: &dyn DrawContext<jinn_kernel::common::app_state::AppState>,
+    ) {
+        let state = ctx.state();
         let sidebar_focused = state.frontend.is_sidebar();
         let section_focused = sidebar_focused
             && matches!(
@@ -112,7 +118,10 @@ impl SidebarSection for PersonaSection {
         frame.render_widget(widget, area);
     }
 
-    fn content_height(&mut self, _ctx: &RenderCtx) -> u16 {
+    fn content_height(
+        &mut self,
+        _ctx: &dyn DrawContext<jinn_kernel::common::app_state::AppState>,
+    ) -> u16 {
         // Header(1) + blank(1) + entry(1) + trailing gap(1) = 4.
         4
     }

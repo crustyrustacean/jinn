@@ -6,10 +6,6 @@
 //! that the popup paints at the computed rect with the expected text
 //! and registers exactly one mouse-selectable region.
 #[cfg(test)]
-#[expect(
-    clippy::too_many_lines,
-    reason = "a shared render harness plus one test per popup row band"
-)]
 mod tests {
     #![allow(
         clippy::expect_used,
