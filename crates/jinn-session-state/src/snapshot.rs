@@ -312,18 +312,43 @@ impl SessionSnapshot {
     /// Reconstructs a complete live session from this coherent snapshot.
     ///
     /// The returned session has fresh runtime-only state and is not visible to
-    /// callers until their state container publishes it.
+    /// callers until their state container publishes it. Its capture counter
+    /// starts fresh, so a caller that re-saves a restored session must have
+    /// told storage what floor to resume above — see
+    /// [`Self::restore_live_above`].
     #[must_use]
     pub fn restore_live(self) -> crate::chat_session::ChatSessionState {
+        self.restore_live_above(SessionRevision::new(0))
+    }
+
+    /// Reconstructs a live session whose captures resume above `floor`.
+    ///
+    /// Storage refuses a write whose revision it has already accepted, and it
+    /// keeps that record for the whole process run. A session rebuilt from
+    /// storage therefore has to start its capture numbering above the last
+    /// revision written for it, or its next save is refused as stale and its
+    /// next archive fails outright.
+    #[must_use]
+    pub fn restore_live_above(
+        self,
+        floor: SessionRevision,
+    ) -> crate::chat_session::ChatSessionState {
         let mut session = crate::chat_session::ChatSessionState::default();
-        session.set_core(self.into_core());
+        session.set_core(self.into_core_resuming_after(floor));
         session
     }
 
     /// Reconstructs a live session core from this coherent snapshot.
     #[must_use]
     pub fn into_core(self) -> SessionCore {
+        self.into_core_resuming_after(SessionRevision::new(0))
+    }
+
+    /// Reconstructs a live session core whose captures resume above `floor`.
+    #[must_use]
+    pub fn into_core_resuming_after(self, floor: SessionRevision) -> SessionCore {
         let mut core = SessionCore::from(self.metadata);
+        core.resume_captures_after(floor);
         core.restore_history(self.entries);
         core.restore_token_ledger(self.token_ledger);
         core

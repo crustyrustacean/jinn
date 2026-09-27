@@ -757,6 +757,121 @@ async fn loaded_from_archive_appears_in_the_session_list() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn a_session_reloaded_from_storage_can_be_archived_again() {
+    // Given a session saved, archived, and then loaded back — the cycle a
+    // user reaches by picking the same session out of the picker twice.
+    let fixture = actor_fixture().await;
+    let session_id = SessionId::new();
+    let mut live = ChatSessionState::new();
+    live.set_session_id(session_id.clone());
+    live.set_title("lifecycle work".to_owned());
+    live.mark_interacted();
+    live.push_entry(jinn_core_types::ChatEntry::user("first pass"));
+    fixture.state.with_session(|view| {
+        view.session.map().insert(live.clone());
+    });
+    fixture
+        .store
+        .save(&live.capture_snapshot())
+        .await
+        .expect("save session");
+    fixture
+        .harness
+        .publish(ArchiveSession {
+            session_id: session_id.clone(),
+        })
+        .await;
+    let archived =
+        poll_until(|| async { !fixture.state.read().session.contains(&session_id) }).await;
+    assert!(archived, "the first archive should remove the session");
+    fixture
+        .harness
+        .publish(SessionLoadRequested {
+            session_id: session_id.clone(),
+            content_width: Some(60),
+        })
+        .await;
+    let reloaded = poll_until(|| async {
+        fixture
+            .state
+            .read()
+            .session
+            .get(&session_id)
+            .is_some_and(|session| session.session_state() == SessionState::Loaded)
+    })
+    .await;
+    assert!(reloaded, "the session should be live again after a reload");
+
+    // When it is archived a second time.
+    fixture
+        .harness
+        .publish(ArchiveSession {
+            session_id: session_id.clone(),
+        })
+        .await;
+
+    // Then the second archive lands, instead of being refused as a stale write.
+    let removed =
+        poll_until(|| async { !fixture.state.read().session.contains(&session_id) }).await;
+    assert!(removed, "a reloaded session must be archivable again");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn loading_a_session_persists_its_reactivation() {
+    // Given a session saved and left in the store, absent from the live map.
+    let fixture = actor_fixture().await;
+    let session_id = SessionId::new();
+    let mut stored = ChatSessionState::new();
+    stored.set_session_id(session_id.clone());
+    stored.set_title("reactivated".to_owned());
+    stored.mark_interacted();
+    stored.push_entry(jinn_core_types::ChatEntry::user("work"));
+    fixture
+        .store
+        .save(&stored.capture_snapshot())
+        .await
+        .expect("save session");
+    let before = fixture
+        .store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("stored session")
+        .metadata
+        .updated_at;
+
+    // When the session is loaded back. Loading writes to the store on its own:
+    // the reactivated session is stamped as touched, and the sidebar's recency
+    // order is driven by that stamp.
+    fixture
+        .harness
+        .publish(SessionLoadRequested {
+            session_id: session_id.clone(),
+            content_width: Some(60),
+        })
+        .await;
+
+    // Then the reactivation is written, instead of being dropped as stale.
+    let persisted = poll_until(|| async {
+        fixture
+            .store
+            .load_session(&session_id)
+            .await
+            .ok()
+            .flatten()
+            .is_some_and(|snapshot| snapshot.metadata.updated_at > before)
+    })
+    .await;
+
+    assert!(
+        persisted,
+        "a reloaded session's own save must not be silently skipped"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn persist_session_writes_interacted_session_to_store() {
     // Given a running store actor and an interacted session.
     let fixture = actor_fixture().await;
