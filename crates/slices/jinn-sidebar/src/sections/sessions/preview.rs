@@ -9,10 +9,12 @@
 //! active cwd and provider/model on the same line.
 //!
 //! The lines themselves are *not* built here. They arrive already rendered from
-//! the layout worker, keyed by content rather than by history length, so a frame
-//! costs a refcount bump and a draw. When nothing is cached for the exact
-//! session, width, and content the popup draws a spinner instead — see
-//! [`render_session_preview_loading`].
+//! the layout worker, keyed by the settled entries' content rather than by
+//! history length, so a frame costs a refcount bump and a draw. A lookup that
+//! misses — because the content or the width moved — falls back to the lines the
+//! session is already holding, so the popup is never replaced by a spinner over
+//! content it has drawn. Only a session that has never been drawn shows the
+//! loading indicator; see [`render_session_preview_loading`].
 
 use std::sync::Arc;
 
@@ -29,8 +31,10 @@ use crate::sections::sessions::state::sorted_open_sessions;
 use jinn_chat_log_view::chat_log::RenderContext;
 #[cfg(test)]
 use jinn_chat_log_view::kernel_element::render_preview as render_preview_lines;
+#[cfg(test)]
 use jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT;
 use jinn_chat_log_view_msg::PREVIEW_MAX_LINES;
+use jinn_chat_log_view_msg::PREVIEW_REQUEST_ENTRY_COUNT;
 use jinn_kernel::common::app_state::AppState;
 use jinn_session_state::ChatSessionState;
 use jinn_slices::DrawContext;
@@ -108,12 +112,20 @@ pub fn render_session_preview_for_state(
     // requested with — session, content, width — so a hit means the worker has
     // already wrapped exactly this text at exactly this width. The `cloned` is
     // an `Arc` refcount bump, not a copy of the rendered lines.
-    let signature = preview_signature(session.history(), PREVIEW_ENTRY_COUNT);
+    let signature = preview_signature(session.history(), PREVIEW_REQUEST_ENTRY_COUNT);
     let cached = state.frontend.with_sections(
         |s| {
             s.sessions
                 .preview
                 .cached(&entry.id, signature, inner_width)
+                // A miss on content or width falls back to whatever this session
+                // is already holding rather than to the spinner. Both happen
+                // routinely mid-turn: content moves on every streamed token and
+                // the width moves on a resize, and in each case the lines on
+                // screen are still the conversation the user is reading. Putting
+                // a spinner over them — and blanking the popup while a re-render
+                // is queued — is the flicker this fallback removes.
+                .or_else(|| s.sessions.preview.drawable(&entry.id))
                 .map(Arc::clone)
         },
         || None,
@@ -133,10 +145,10 @@ pub fn render_session_preview_for_state(
             "session preview has nothing cached and nothing in flight");
     }
     let Some(lines) = cached else {
-        // Nothing for this exact session, width, and content. `cached` returning
-        // `None` is what distinguishes loading from empty — an empty session
-        // renders zero lines but is still a cache hit, so it takes the branch
-        // below and shows the empty state rather than spinning forever.
+        // Nothing has ever been drawn for this session, at any content or width.
+        // `cached` returning `None` is what distinguishes loading from empty — an
+        // empty session renders zero lines but is still a cache hit, so it takes
+        // the branch below and shows the empty state rather than spinning forever.
         // The rect is the same one the ready path draws, so the box does not
         // resize when the lines land.
         let popup_rect = session_preview_popup_rect(frame_area, cursor_y);
@@ -686,20 +698,26 @@ mod worker_tests {
 
     #[rstest::rstest]
     fn the_worker_previews_only_the_trailing_entries() {
-        // Given a session with far more entries than the preview shows.
+        // Given a session with far more entries than the preview reaches back
+        // over.
         let session = session_with(50);
 
         // When the worker renders its preview.
         let text = preview_text(&session);
 
-        // Then the oldest entries are left out.
+        // Then the oldest entries are left out. The walk is bounded even though
+        // it is budget-driven: filling twenty rows does not license reading the
+        // whole history.
         assert!(
             !text.contains("message 0"),
             "the preview must not include the oldest entry"
         );
+        // The walk stops at the line budget long before the reach bound on a
+        // history of three-row messages, so the preview starts where twenty rows
+        // of tail ends rather than at the reach bound itself.
         assert!(
-            text.contains(&format!("message {}", 50 - PREVIEW_ENTRY_COUNT)),
-            "the preview must start at the first of the trailing entries"
+            !text.contains(&format!("message {}", 50 - PREVIEW_ENTRY_COUNT - 1)),
+            "the preview must stop once its budget is full, not walk the reach bound"
         );
     }
 

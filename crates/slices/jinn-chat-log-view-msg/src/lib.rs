@@ -15,8 +15,9 @@ pub use audit_popup_state::{AuditPopupState, audit_popup_slot};
 pub use chat_log_view_state::*;
 pub use layout::{
     ArmLayoutDeadline, ArmPreviewDeadline, ChatLogLayoutComputed, Escalated, LayoutChatSession,
-    LayoutDeadlineExpired, MeasuredEntryCount, PREVIEW_ENTRY_COUNT, PREVIEW_MAX_LINES,
-    PreviewDeadlineExpired, PreviewSessionRequested, SessionPreviewRendered,
+    LayoutDeadlineExpired, MeasuredEntryCount, PREVIEW_ENTRY_COUNT, PREVIEW_MARKER_COLUMNS,
+    PREVIEW_MARKER_MAX_ROWS, PREVIEW_MAX_LINES, PREVIEW_REQUEST_ENTRY_COUNT,
+    PreviewDeadlineExpired, PreviewSessionRequested, SessionPreviewRendered, entry_is_settled,
 };
 pub use line_count_cache::{
     CacheHit, CacheProbe, CachedEntryCount, ContentIdentity, EntryLineCache,
