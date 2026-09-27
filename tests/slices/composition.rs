@@ -680,3 +680,160 @@ async fn a_finished_turn_dismisses_the_cancel_stream_prompt() {
         result.message_names
     );
 }
+
+// ── The cancel-stream prompt must not outlive the keystroke that armed it ──
+//
+// The prompt is raised by the kernel, but not every keystroke reaches the
+// kernel. A key that opens or continues a which-key sequence resolves to no
+// intent at all, so the event loop returns before `IntentHandler` runs and
+// the prompt it would have dismissed stays on screen.
+
+/// A keypress parsed from notation.
+fn press(notation: &str) -> jinn_kernel::KeyEvent {
+    jinn_kernel::KeyEvent::parse_notation(notation).expect("notation should parse")
+}
+
+/// The real app, with the cancel prompt armed over a live turn.
+async fn app_with_cancel_prompt_armed() -> jinn_tui::TuiApp {
+    let app = test_app().await;
+    {
+        let mut state = app.core.state.write();
+        // Normal focus: the composed app starts in Input, where a character
+        // belongs to the chat box rather than to a which-key sequence.
+        state.frontend.scope_push(jinn_slices::FocusScope::Normal);
+        state.active_session_mut().begin_streaming();
+    }
+    jinn_kernel::feat::intent::IntentHandler::handle(
+        &jinn_kernel::KernelIntent::NormalEscape,
+        &mut app.core.state.write(),
+        &app.services.slices,
+        &app.services.key_routes,
+        &app.services.config,
+    );
+    assert!(
+        app.core.state.read().frontend.cancel_stream_prompt,
+        "the prompt must be armed before the dismissing key"
+    );
+    app
+}
+
+/// Presses a key through the app's real key-event path.
+///
+/// This is the seam the bug lives at: `Msg::Input` is what `run` feeds real
+/// terminal events to, so a key that resolves to no intent is only handled
+/// here, not by calling `handle_key` on a detached which-key instance.
+fn press_key(app: &mut jinn_tui::TuiApp, code: crossterm::event::KeyCode) {
+    app.handle_msg(jinn_tui::msg::Msg::Input(crossterm::event::Event::Key(
+        crossterm::event::KeyEvent::new(code, crossterm::event::KeyModifiers::NONE),
+    )));
+}
+
+/// Pressing the leader dismisses the prompt and opens which-key.
+///
+/// The leader has children in the real composition (every picker binds a
+/// leader-prefixed opener), so it resolves to a branch and mints no intent —
+/// which is exactly why it once slipped past the intent-level dismissal.
+#[rstest::rstest]
+#[tokio::test]
+async fn pressing_the_leader_dismisses_the_cancel_prompt_and_shows_which_key() {
+    // Given the armed prompt.
+    let mut app = app_with_cancel_prompt_armed().await;
+
+    // When the leader is pressed, as a real terminal event.
+    press_key(&mut app, crossterm::event::KeyCode::Char(' '));
+
+    // Then the which-key popup opens on a pending sequence.
+    assert!(
+        app.which_key.is_pending() && app.which_key.active,
+        "the leader must open a which-key sequence, got pending={} active={}",
+        app.which_key.is_pending(),
+        app.which_key.active
+    );
+    // And the prompt is hidden and disarmed by that keystroke.
+    assert!(
+        !app.core.state.read().frontend.cancel_stream_prompt,
+        "the leader must dismiss and disarm the cancel prompt"
+    );
+}
+
+/// Pressing a group prefix dismisses the prompt and opens which-key.
+#[rstest::rstest]
+#[tokio::test]
+async fn pressing_a_group_prefix_dismisses_the_cancel_prompt_and_shows_which_key() {
+    // Given the armed prompt.
+    let mut app = app_with_cancel_prompt_armed().await;
+
+    // When `g` is pressed, as a real terminal event.
+    press_key(&mut app, crossterm::event::KeyCode::Char('g'));
+
+    // Then the which-key popup opens on a pending sequence.
+    assert!(
+        app.which_key.is_pending() && app.which_key.active,
+        "`g` must open a which-key sequence, got pending={} active={}",
+        app.which_key.is_pending(),
+        app.which_key.active
+    );
+    // And the prompt is hidden and disarmed by that keystroke.
+    assert!(
+        !app.core.state.read().frontend.cancel_stream_prompt,
+        "`g` must dismiss and disarm the cancel prompt"
+    );
+}
+
+/// The prompt is suppressed once the session goes idle.
+///
+/// No keystroke is involved: the turn simply finishes while the prompt is
+/// up, and there is nothing left to abort.
+#[rstest::rstest]
+#[tokio::test]
+async fn an_idle_session_suppresses_the_cancel_prompt() {
+    // Given the armed prompt, with the turn now complete.
+    let mut app = app_with_cancel_prompt_armed().await;
+    {
+        let mut state = app.core.state.write();
+        state
+            .active_session_mut()
+            .finish_streaming(false, jiff::Timestamp::now());
+    }
+
+    // When the chat tab renders that frame.
+    //
+    // The bar is drawn from the frontend flag, so "displayed" is a rendering
+    // question: rendering is what proves the prompt is suppressed, where
+    // asserting the flag alone would not.
+    let rendered = render_chat_tab(&mut app);
+    let streaming = {
+        let mut a = app_with_cancel_prompt_armed().await;
+        render_chat_tab(&mut a)
+    };
+    assert!(
+        streaming.contains("Press ESC again to cancel"),
+        "sanity: while streaming the bar MUST render, else this test proves nothing"
+    );
+
+    // Then the cancel bar is absent.
+    assert!(
+        !rendered.contains("Press ESC again to cancel"),
+        "an idle session must not display the cancel prompt, got: {rendered}"
+    );
+}
+
+/// Renders one frame of the whole app and returns its visible text.
+fn render_chat_tab(app: &mut jinn_tui::TuiApp) -> String {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let mut terminal = Terminal::new(TestBackend::new(120, 40)).expect("test backend builds");
+    terminal
+        .draw(|frame| app.render(frame))
+        .expect("draw should succeed");
+    let buffer = terminal.backend().buffer().clone();
+    (0..buffer.area.height)
+        .map(|y| {
+            (0..buffer.area.width)
+                .filter_map(|x| buffer.cell((x, y)).map(|c| c.symbol().to_owned()))
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
