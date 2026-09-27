@@ -49,6 +49,9 @@ pub struct ControlledStartupStore {
     pub archived_only_ids: Mutex<Vec<SessionId>>,
     pub failed_summaries: AtomicBool,
     pub failed_session_ids: Mutex<HashSet<SessionId>>,
+    /// Writes refused on demand, so a caller can watch what a failed save
+    /// leaves behind.
+    pub failed_saves: AtomicBool,
     pub requested_session_ids: Mutex<Vec<SessionId>>,
     pub load_calls: AtomicUsize,
     pub save_calls: AtomicUsize,
@@ -87,6 +90,7 @@ impl ControlledStartupStore {
             archived_only_ids: Mutex::new(Vec::new()),
             failed_summaries: AtomicBool::new(false),
             failed_session_ids: Mutex::new(HashSet::new()),
+            failed_saves: AtomicBool::new(false),
             requested_session_ids: Mutex::new(Vec::new()),
             load_calls: AtomicUsize::new(0),
             save_calls: AtomicUsize::new(0),
@@ -97,6 +101,10 @@ impl ControlledStartupStore {
 
     pub fn fail_summaries(&self) {
         self.failed_summaries.store(true, Ordering::SeqCst);
+    }
+
+    pub fn fail_saves(&self) {
+        self.failed_saves.store(true, Ordering::SeqCst);
     }
 
     pub fn fail_session(&self, session_id: SessionId) {
@@ -153,6 +161,9 @@ impl SessionStore for ControlledStartupStore {
 
     async fn save(&self, _snapshot: &SessionSnapshot) -> Result<(), Report<SessionStoreError>> {
         self.save_calls.fetch_add(1, Ordering::SeqCst);
+        if self.failed_saves.load(Ordering::SeqCst) {
+            return Err(Report::new(SessionStoreError));
+        }
         Ok(())
     }
 

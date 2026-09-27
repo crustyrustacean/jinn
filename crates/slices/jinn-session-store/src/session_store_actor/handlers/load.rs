@@ -403,7 +403,24 @@ impl SessionStoreActor {
         }
     }
 
-    /// Persists the source, forks it in the store, then restores the child.
+    /// Forks the source and restores the child as the active session.
+    ///
+    /// The child is derived from the source's *live* history, not from a
+    /// second read of its stored snapshot. The source is on screen and in
+    /// memory by definition — the user forked from an entry they were looking
+    /// at — so an entry it has not written yet is still history the fork owes
+    /// the child, and only the live session knows about it.
+    ///
+    /// The guard is re-pointed at the child before its measurement is
+    /// dispatched, and released once the child is live. The chat log's loading
+    /// indication is driven by that guard, and a guard naming the source would
+    /// name a session nothing measures: the completion actor releases by id, so
+    /// it would find nothing to release and the indication would outlive the
+    /// fork. Releasing here rather than leaving it to the worker is what makes
+    /// the end of a fork independent of a layout worker existing; the next
+    /// frame falls back to measuring inline, which the child's inherited
+    /// entries make cheap — they carry the source's entry ids and content, so
+    /// the line cache the source warmed still answers for them.
     pub(crate) async fn on_session_fork_requested(
         &self,
         ctx: &mut MsgCtx<'_>,
@@ -416,35 +433,53 @@ impl SessionStoreActor {
         });
         self.save_active_session(&payload.source_session_id).await;
 
-        let new_id = match self
-            .services
-            .session_store
-            .fork(&payload.source_session_id, payload.at_ordinal)
-            .await
-        {
-            Ok(id) => id,
-            Err(error) => {
-                tracing::warn!(?error, "failed to fork session");
+        let child = {
+            let Some(source) = self.source_snapshot(&payload.source_session_id) else {
+                tracing::warn!(
+                    source_session_id = %payload.source_session_id,
+                    "cannot fork a session that is not in memory"
+                );
                 // The guard was armed for the session the user acted on, which
-                // is the fork's source — not the child that was never loaded.
+                // is the fork's source — not a child that was never created.
                 self.clear_load(&payload.source_session_id);
                 return;
-            }
+            };
+            source.forked_from(SessionId::new(), payload.at_ordinal)
         };
+        let child_id = child.session_id().clone();
 
-        match self.services.session_store.load_session(&new_id).await {
-            Ok(Some(session)) => {
-                self.restore_loaded_session(ctx, session).await;
-            }
-            Ok(None) => {
-                tracing::warn!("forked session not found after creation");
-                self.clear_load(&new_id);
-            }
-            Err(error) => {
-                tracing::warn!(?error, "failed to load forked session");
-                self.clear_load(&new_id);
-            }
+        if let Err(error) = self.services.session_store.save(&child).await {
+            tracing::warn!(?error, "failed to persist forked session");
+            self.clear_load(&payload.source_session_id);
+            return;
         }
+
+        self.begin_load(&child_id);
+        self.restore_loaded_session(ctx, child).await;
+        self.clear_load(&child_id);
+    }
+
+    /// Captures the source's snapshot from the live session map.
+    ///
+    /// Read under the state's own lock and returned by value: the snapshot
+    /// outlives this closure, and it cannot be cloned back out of a session
+    /// still borrowed by a caller on another thread.
+    fn source_snapshot(&self, source_session_id: &SessionId) -> Option<SessionSnapshot> {
+        self.state
+            .read()
+            .session
+            .get(source_session_id)
+            .map(ChatSessionState::capture_snapshot)
+    }
+
+    /// Arms the loading session's guard.
+    ///
+    /// One slot, last writer wins — a guard is only ever up for the session the
+    /// user is looking at, so re-pointing it at the session a hand-off is
+    /// about to measure is what keeps the indication attached to the work.
+    fn begin_load(&self, session_id: &SessionId) {
+        self.state
+            .with_session(|view| view.session.map().begin_load(session_id.clone()));
     }
 
     /// Releases the loading session's guard, if that session still holds it.

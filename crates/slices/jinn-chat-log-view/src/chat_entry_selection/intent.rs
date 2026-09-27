@@ -297,6 +297,10 @@ pub fn handle_fork_from_entry(state: &mut AppState) -> RouteResult {
         return RouteResult::empty();
     };
 
+    // Armed for the source, which is the session loading right now: it is
+    // about to be persisted and turned into a fork. The store actor re-points
+    // this at the child once it exists, so the indication is never left
+    // naming a session no measurement will cover.
     state.session.begin_load(source_session_id.clone());
 
     RouteResult::new_message(SessionForkRequested {

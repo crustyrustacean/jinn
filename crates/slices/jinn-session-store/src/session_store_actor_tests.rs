@@ -76,7 +76,11 @@ type ControlledFixture = (
     jinn_slices::cell::TypedCell<jinn_session_store_msg::SessionPickerState>,
 );
 
-async fn controlled_actor_fixture(store: Arc<ControlledStartupStore>) -> ControlledFixture {
+/// The controlled fixture, over any store implementation.
+///
+/// Most tests need `ControlledStartupStore`'s gating and counters; a test that
+/// has to provoke a particular store failure brings a store of its own.
+async fn controlled_actor_fixture(store: Arc<dyn SessionStore>) -> ControlledFixture {
     let harness = TestHarness::new().await;
     let mut services = harness.services().await;
     services.session_store = SessionStoreService::new(store);
@@ -1343,5 +1347,489 @@ mod activation_tests {
             !fixture.state.read().session.is_loading(),
             "an activation that found nothing must release the guard"
         );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Forking from a chat log entry
+// ---------------------------------------------------------------------------
+
+/// A fork hands the user a new session and has to leave nothing spinning.
+///
+/// The chat log's loading indication is the load guard, and a fork is the one
+/// load whose guard and its measurement do not name the same session: the guard
+/// is armed for the source, and what gets measured is the child the store actor
+/// creates. Nothing about that is visible from either side of the store, so
+/// these tests cross the whole boundary — a live source in the map, a real
+/// SQLite store behind it — and watch what the guard does.
+mod fork_tests {
+    #![allow(
+        unused_mut,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+    use super::*;
+    use error_stack::Report;
+    use jinn_session_state::{SessionSnapshot, SessionStoreError};
+    use jinn_session_store_msg::SessionForkRequested;
+    use std::sync::Mutex;
+
+    /// How long a fork may take before the user would call it hung. Far below
+    /// the layout deadline, which is the bound the fix is really about: a fork
+    /// that waited for that would leave the spinner up for half a minute.
+    const FORK_BUDGET: Duration = Duration::from_secs(2);
+
+    /// A live, active source session with `entry_count` entries in memory.
+    ///
+    /// Nothing is written to the store: the entries the user can see are the
+    /// only copy that exists, which is exactly the case a fork that re-read
+    /// storage would silently drop.
+    fn live_source(fixture: &ActorFixture, entry_count: usize) -> SessionId {
+        let source_id = SessionId::new();
+        let mut state = fixture.state.write();
+        let mut source = ChatSessionState::new();
+        source.set_session_id(source_id.clone());
+        source.set_model(jinn_core_types::ModelSelection::Single(
+            "ollama/llama3".to_owned(),
+        ));
+        for index in 0..entry_count {
+            source.push_entry(jinn_core_types::ChatEntry::user(format!("message {index}")));
+        }
+        state.session.remove(&source_id);
+        state.session.insert(source);
+        state.session.set_active(source_id.clone());
+        // The guard the route action arms for the session being acted on.
+        state.session.begin_load(source_id.clone());
+        source_id
+    }
+
+    /// The texts the source's history is displaying, in order.
+    fn source_texts(state: &AppState, id: &SessionId) -> Vec<String> {
+        state
+            .session
+            .get(id)
+            .expect("live source")
+            .history()
+            .iter()
+            .map(jinn_core_types::ChatEntry::text)
+            .collect()
+    }
+
+    /// A live source whose store is `store`, and whose route action has armed
+    /// the load guard.
+    fn live_source_in(state: &State, source_id: &SessionId, entry_count: usize) {
+        let mut guard = state.write();
+        let mut source = ChatSessionState::new();
+        source.set_session_id(source_id.clone());
+        for index in 0..entry_count {
+            source.push_entry(jinn_core_types::ChatEntry::user(format!("message {index}")));
+        }
+        guard.session.remove(source_id);
+        guard.session.insert(source);
+        guard.session.set_active(source_id.clone());
+        guard.session.begin_load(source_id.clone());
+    }
+
+    /// A store that records every write and every read it is asked for.
+    ///
+    /// A real fork writes the source, then the child, and reads neither back,
+    /// so a record of the traffic is the whole of what these tests need to
+    /// watch. A write refused on demand is the write failure.
+    struct ForkStore {
+        inner: ControlledStartupStore,
+        /// Every session this store was asked to write, with the id it was
+        /// asked to write it under.
+        stored: Mutex<Vec<(SessionId, SessionSnapshot)>>,
+    }
+
+    impl ForkStore {
+        fn new() -> Self {
+            Self {
+                inner: ControlledStartupStore::new(&[]),
+                stored: Mutex::new(Vec::new()),
+            }
+        }
+
+        /// The snapshots this store has been asked to write.
+        fn written(&self) -> Vec<(SessionId, SessionSnapshot)> {
+            self.stored.lock().expect("written snapshots").clone()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl SessionStore for ForkStore {
+        fn name(&self) -> &'static str {
+            "fork"
+        }
+
+        async fn save(&self, snapshot: &SessionSnapshot) -> Result<(), Report<SessionStoreError>> {
+            self.inner.save_calls.fetch_add(1, Ordering::SeqCst);
+            if self.inner.failed_saves.load(Ordering::SeqCst) {
+                return Err(Report::new(SessionStoreError));
+            }
+            self.stored
+                .lock()
+                .expect("written snapshots")
+                .push((snapshot.session_id().clone(), snapshot.clone()));
+            Ok(())
+        }
+
+        async fn load_session(
+            &self,
+            session_id: &SessionId,
+        ) -> Result<Option<SessionSnapshot>, Report<SessionStoreError>> {
+            self.inner.load_calls.fetch_add(1, Ordering::SeqCst);
+            self.inner
+                .requested_session_ids
+                .lock()
+                .expect("requested session IDs")
+                .push(session_id.clone());
+            Ok(self
+                .stored
+                .lock()
+                .expect("written snapshots")
+                .iter()
+                .find(|(id, _)| id == session_id)
+                .map(|(_, snapshot)| snapshot.clone()))
+        }
+
+        async fn load_summaries(
+            &self,
+        ) -> Result<Vec<jinn_session_store_msg::SessionSummary>, Report<SessionStoreError>>
+        {
+            Ok(Vec::new())
+        }
+
+        async fn delete(&self, _session_id: &SessionId) -> Result<(), Report<SessionStoreError>> {
+            Ok(())
+        }
+
+        async fn fork(
+            &self,
+            _source_session_id: &SessionId,
+            _at_ordinal: usize,
+        ) -> Result<SessionId, Report<SessionStoreError>> {
+            Ok(SessionId::new())
+        }
+
+        async fn set_archived(
+            &self,
+            _session_id: &SessionId,
+            _archived: bool,
+        ) -> Result<(), Report<SessionStoreError>> {
+            Ok(())
+        }
+
+        async fn set_archived_many(
+            &self,
+            _session_ids: &[SessionId],
+            _archived: bool,
+        ) -> Result<(), Report<SessionStoreError>> {
+            Ok(())
+        }
+
+        async fn load_unarchived_summaries(
+            &self,
+        ) -> Result<Vec<jinn_session_store_msg::SessionSummary>, Report<SessionStoreError>>
+        {
+            Ok(Vec::new())
+        }
+
+        async fn dirty_session_ids(&self) -> Result<Vec<SessionId>, Report<SessionStoreError>> {
+            Ok(Vec::new())
+        }
+
+        async fn reindex_session_chunk(
+            &self,
+            _session_id: &SessionId,
+            _max_entries: usize,
+        ) -> Result<bool, Report<SessionStoreError>> {
+            Ok(true)
+        }
+
+        async fn pending_dirty_count(&self) -> Result<usize, Report<SessionStoreError>> {
+            Ok(0)
+        }
+
+        async fn search(
+            &self,
+            _params: jinn_session_store_msg::SearchParams,
+        ) -> Result<jinn_session_store_msg::SearchOutcome, Report<SessionStoreError>> {
+            Ok(jinn_session_store_msg::SearchOutcome {
+                total_matches: 0,
+                per_session: Vec::new(),
+                hits: Vec::new(),
+            })
+        }
+
+        async fn fetch_window(
+            &self,
+            _session_id: &SessionId,
+            _anchor: &jinn_kernel::protocol::ChatEntryId,
+            _context: usize,
+        ) -> Result<Option<jinn_session_store_msg::TranscriptWindow>, Report<SessionStoreError>>
+        {
+            Ok(None)
+        }
+
+        async fn fetch_tail(
+            &self,
+            _session_id: &SessionId,
+            _limit: usize,
+        ) -> Result<Option<jinn_session_store_msg::TranscriptWindow>, Report<SessionStoreError>>
+        {
+            Ok(None)
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_fork_leaves_the_chat_log_loading_indication_behind() {
+        // Given a live source session the user is looking at, and the guard
+        // its route action armed.
+        let fixture = actor_fixture().await;
+        let source_id = live_source(&fixture, 3);
+
+        // When they fork from the last entry.
+        fixture
+            .harness
+            .publish(SessionForkRequested {
+                source_session_id: source_id.clone(),
+                at_ordinal: 2,
+            })
+            .await;
+
+        // Then the child is on screen and nothing is loading any more.
+        let arrived =
+            poll_until(|| async { fixture.state.read().session.active_session_id() != &source_id })
+                .await;
+        assert!(arrived, "the fork should switch to the child it created");
+        let released = poll_until(|| async { !fixture.state.read().session.is_loading() }).await;
+        assert!(
+            released,
+            "a completed fork must not leave the chat log's loading indication up"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_fork_settles_within_its_own_budget_not_the_layout_deadline() {
+        // Given a source session large enough that its measurement is worth
+        // handing off, and the full layout subsystem installed.
+        let fixture = actor_fixture().await;
+        jinn_chat_log_view::kernel_element::install_layout_actors(
+            fixture.harness.system(),
+            fixture.state.clone(),
+        );
+        let source_id = live_source(&fixture, 40);
+
+        // When they fork from the last entry.
+        let forked_at = std::time::Instant::now();
+        fixture
+            .harness
+            .publish(SessionForkRequested {
+                source_session_id: source_id.clone(),
+                at_ordinal: 39,
+            })
+            .await;
+        let released = poll_until(|| async { !fixture.state.read().session.is_loading() }).await;
+
+        // Then the indication is down, and it came down in seconds rather than
+        // at the thirty-second deadline that used to be the only backstop.
+        assert!(released, "the fork must not wait on a layout worker");
+        assert!(
+            forked_at.elapsed() < FORK_BUDGET,
+            "a fork must settle in {FORK_BUDGET:?}, not at the layout deadline"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_fork_does_not_read_the_source_back_from_the_store() {
+        // Given a live source session, and a store that records every read it
+        // is asked for.
+        let store = Arc::new(ForkStore::new());
+        let (harness, state, _picker) = controlled_actor_fixture(store.clone()).await;
+        let source_id = SessionId::new();
+        live_source_in(&state, &source_id, 3);
+
+        // When they fork from the last entry.
+        harness
+            .publish(SessionForkRequested {
+                source_session_id: source_id.clone(),
+                at_ordinal: 2,
+            })
+            .await;
+        let done =
+            poll_until(|| async { state.read().session.active_session_id() != &source_id }).await;
+        assert!(done, "the fork should complete");
+
+        // Then the source was never read from storage — the history it is
+        // showing is already in the process.
+        assert!(
+            !store
+                .inner
+                .requested_session_ids
+                .lock()
+                .expect("requested session IDs")
+                .contains(&source_id),
+            "a fork must not pay a disk read of a session it already has in memory"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_fork_carries_the_source_s_unsaved_entries_into_the_child() {
+        // Given a source with four entries on screen and nothing written.
+        let fixture = actor_fixture().await;
+        let source_id = live_source(&fixture, 4);
+
+        // When they fork from the third.
+        fixture
+            .harness
+            .publish(SessionForkRequested {
+                source_session_id: source_id.clone(),
+                at_ordinal: 2,
+            })
+            .await;
+        let arrived =
+            poll_until(|| async { fixture.state.read().session.active_session_id() != &source_id })
+                .await;
+        assert!(arrived, "the fork should switch to the child it created");
+
+        // Then the child holds the source's entries through the fork point.
+        let state = fixture.state.read();
+        let child_id = state.session.active_session_id().clone();
+        let child = state.session.get(&child_id).expect("live child");
+        let texts = child
+            .history()
+            .iter()
+            .map(jinn_core_types::ChatEntry::text)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            texts,
+            vec!["message 0", "message 1", "message 2"],
+            "an entry the user can see but has not saved is still history the child owes"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_fork_writes_the_child_it_persists_to_the_store() {
+        // Given a live source with three entries, and a store that records
+        // every write it is asked for.
+        let store = Arc::new(ForkStore::new());
+        let (harness, state, _picker) = controlled_actor_fixture(store.clone()).await;
+        let source_id = SessionId::new();
+        live_source_in(&state, &source_id, 3);
+
+        // When they fork from the second entry.
+        harness
+            .publish(SessionForkRequested {
+                source_session_id: source_id.clone(),
+                at_ordinal: 1,
+            })
+            .await;
+        let written = poll_until(|| async { !store.written().is_empty() }).await;
+        assert!(written, "the fork should write the child it created");
+
+        // Then what landed is the fork of the source it was taken from. The
+        // fork also writes the source itself, first, so the child is the one
+        // write that names this session as a parent.
+        let child = store
+            .written()
+            .into_iter()
+            .find(|(_, snapshot)| snapshot.parent_session() == &Some(source_id.clone()))
+            .map(|(_, snapshot)| snapshot)
+            .expect("the child write");
+        assert_eq!(child.fork_ordinal(), Some(1));
+        assert_eq!(child.entries.len(), 2);
+        assert_eq!(child.entries[1].text(), "message 1");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_fork_leaves_the_source_s_own_history_untouched() {
+        // Given a live source with three entries on screen.
+        let fixture = actor_fixture().await;
+        let source_id = live_source(&fixture, 3);
+        let before = source_texts(&fixture.state.read(), &source_id);
+
+        // When they fork from the second entry.
+        fixture
+            .harness
+            .publish(SessionForkRequested {
+                source_session_id: source_id.clone(),
+                at_ordinal: 1,
+            })
+            .await;
+        let arrived =
+            poll_until(|| async { fixture.state.read().session.active_session_id() != &source_id })
+                .await;
+        assert!(arrived, "the fork should switch to the child it created");
+
+        // Then the source still shows what it showed.
+        assert_eq!(source_texts(&fixture.state.read(), &source_id), before);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_fork_of_a_source_that_is_not_in_memory_leaves_the_loading_indication_down() {
+        // Given a load guard armed for a session that has since left the map.
+        let store = Arc::new(ForkStore::new());
+        let (harness, state, _picker) = controlled_actor_fixture(store.clone()).await;
+        let source_id = SessionId::new();
+        {
+            let mut guard = state.write();
+            guard.session.begin_load(source_id.clone());
+        }
+
+        // When they fork it.
+        harness
+            .publish(SessionForkRequested {
+                source_session_id: source_id.clone(),
+                at_ordinal: 0,
+            })
+            .await;
+        let released = poll_until(|| async { !state.read().session.is_loading() }).await;
+
+        // Then nothing is left spinning.
+        assert!(
+            released,
+            "a fork with nothing to fork must not strand the loading indication"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_fork_the_store_will_not_write_leaves_the_loading_indication_down() {
+        // Given a source session, and a store refusing every write.
+        let store = Arc::new(ForkStore::new());
+        store.inner.fail_saves();
+        let (harness, state, _picker) = controlled_actor_fixture(store.clone()).await;
+        let source_id = SessionId::new();
+        live_source_in(&state, &source_id, 1);
+
+        // When they fork.
+        harness
+            .publish(SessionForkRequested {
+                source_session_id: source_id.clone(),
+                at_ordinal: 0,
+            })
+            .await;
+        let attempted =
+            poll_until(|| async { store.inner.save_calls.load(Ordering::SeqCst) > 1 }).await;
+        assert!(attempted, "the fork should have tried to write the child");
+        let released = poll_until(|| async { !state.read().session.is_loading() }).await;
+
+        // Then nothing is left spinning, and the source is still on screen.
+        assert!(
+            released,
+            "a fork that could not be written must not strand the loading indication"
+        );
+        assert_eq!(state.read().session.active_session_id(), &source_id);
     }
 }
