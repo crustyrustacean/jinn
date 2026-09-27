@@ -846,7 +846,7 @@ mod tests {
     #[case("deferred")]
     #[test]
     fn set_list_rejects_postponed_status(#[case] status: &str) {
-        // Given a payload declaring the non-declarable status.
+        // Given a payload declaring a status jinn cannot represent.
         let (state, session_id) = setup_with_existing_list();
         let call = ToolCall {
             id: "call-1".to_owned(),
@@ -863,17 +863,125 @@ mod tests {
         let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
         let result = futures::executor::block_on(execute(call, ctx));
 
-        // Then the call fails with guidance.
+        // Then the call fails, naming the word and the accepted vocabulary.
         assert!(!result.success);
         assert!(
-            result.content.contains("not a declarable status"),
-            "expected guidance, got: {:?}",
+            result
+                .content
+                .contains(&format!("unknown status \"{status}\"")),
+            "got: {:?}",
+            result.content
+        );
+        assert!(
+            result
+                .content
+                .contains("expected pending, completed, or cancelled"),
+            "got: {:?}",
             result.content
         );
         // And the existing list is untouched (no partial write).
         let snapshot = state.read();
         let session = snapshot.session.get(&session_id).expect("session present");
         assert_eq!(session.task_list().phases()[0].description(), "Old Phase");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_list_accepts_model_status_vocabulary() {
+        // Given a payload using the status words a model trained on other
+        // task tooling reaches for.
+        let (state, session_id) = setup_with_existing_list();
+        let call = ToolCall {
+            id: "call-1".to_owned(),
+            name: "todo_set_list".to_owned(),
+            arguments: serde_json::json!({
+                "phases": [{ "description": "Build", "tasks": [
+                    { "description": "Running", "status": "in_progress" },
+                    { "description": "Finished", "status": "done" },
+                    { "description": "Dropped", "status": "skipped" }
+                ]}]
+            })
+            .to_string(),
+        };
+
+        // When executing the tool.
+        let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
+        let result = futures::executor::block_on(execute(call, ctx));
+        assert!(result.success, "expected success: {:?}", result.content);
+
+        // Then the call is written rather than failed, with each alias
+        // coerced to the declarable status it stands for.
+        let snapshot = state.read();
+        let session = snapshot.session.get(&session_id).expect("session present");
+        let tasks = &session.task_list().phases()[0].tasks;
+        assert_eq!(tasks[0].status, TaskStatus::Pending);
+        assert_eq!(tasks[1].status, TaskStatus::Completed);
+        assert_eq!(tasks[2].status, TaskStatus::Cancelled);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_list_alias_and_declared_statuses_return_identical_results() {
+        // Given the same list written twice, once with model vocabulary and
+        // once with the declared statuses.
+        let (alias_state, alias_session) = setup_with_existing_list();
+        let (declared_state, declared_session) = setup_with_existing_list();
+        let alias_call = set_list_call(serde_json::json!([
+            { "description": "Build", "tasks": [
+                { "description": "One", "status": "in_progress" },
+                { "description": "Two", "status": "done" },
+                { "description": "Three", "status": "skipped" }
+            ]}
+        ]));
+        let declared_call = set_list_call(serde_json::json!([
+            { "description": "Build", "tasks": [
+                { "description": "One", "status": "pending" },
+                { "description": "Two", "status": "completed" },
+                { "description": "Three", "status": "cancelled" }
+            ]}
+        ]));
+
+        // When executing both calls.
+        let alias_result = futures::executor::block_on(execute(
+            alias_call,
+            make_context(Some(alias_state.clone()), Some(alias_session.clone())),
+        ));
+        let declared_result = futures::executor::block_on(execute(
+            declared_call,
+            make_context(Some(declared_state), Some(declared_session)),
+        ));
+        assert!(
+            alias_result.success,
+            "alias call failed: {:?}",
+            alias_result.content
+        );
+
+        // Then the coercion leaves no trace in what the caller reads back.
+        assert_eq!(alias_result.content, declared_result.content);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn set_list_unknown_status_aborts_the_whole_write() {
+        // Given a payload whose phases are valid until one task's status is not.
+        let (state, session_id) = setup_with_existing_list();
+        let call = set_list_call(serde_json::json!([
+            { "description": "Research" },
+            { "description": "Build", "tasks": [
+                { "description": "Fine", "status": "done" },
+                { "description": "Bad", "status": "blocked" }
+            ]}
+        ]));
+
+        // When executing the tool.
+        let ctx = make_context(Some(state.clone()), Some(session_id.clone()));
+        let result = futures::executor::block_on(execute(call, ctx));
+
+        // Then the call fails and the valid phases are not committed.
+        assert!(!result.success);
+        let list = read_list(&state, &session_id);
+        assert_eq!(list.phases().len(), 1);
+        assert_eq!(list.phases()[0].description(), "Old Phase");
     }
 
     #[rstest::rstest]
