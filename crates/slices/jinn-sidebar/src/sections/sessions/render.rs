@@ -264,12 +264,12 @@ fn visible_window(entry_rows: u16, skip_rows: u16, visible_rows: u16) -> Range<u
     start..end
 }
 
-/// Renders the close-session confirmation prompt as a late overlay.
+/// Renders the close-session confirmation prompt as a floating surface.
 ///
-/// Called AFTER the main column has rendered (from `jinn-tui`'s render pass),
-/// so the banner may extend left over the input box. Anchored 1 row above the
-/// sidebar cursor row and right-aligned to the frame's right edge — the same
-/// geometry as the archive-tree prompt.
+/// Painted in the sidebar's floating-surface layer (`Region::FloatingSurfaces`),
+/// after every base column, so the banner may extend left over the input box.
+/// Anchored 1 row above the sidebar cursor row and right-aligned to the
+/// frame's right edge — the same geometry as the archive-tree prompt.
 pub fn render_close_session_prompt_for_state(
     frame: &mut Frame<'_>,
     sidebar_rect: Rect,
@@ -297,12 +297,12 @@ pub fn render_close_session_prompt_for_state(
     render_right_aligned_banner(frame, frame_area, prompt_y, text, Color::Yellow);
 }
 
-/// Renders the archive-tree confirmation prompt as a late overlay.
+/// Renders the archive-tree confirmation prompt as a floating surface.
 ///
-/// Called AFTER the main column has rendered (from `jinn-tui`'s render pass,
-/// right after the session preview), so the banner may extend left over the
-/// input box. Anchored 1 row above the sidebar cursor row and right-aligned to
-/// the frame's right edge, spanning whatever width it needs — it is an
+/// Painted in the sidebar's floating-surface layer (`Region::FloatingSurfaces`),
+/// after every base column, so the banner may extend left over the input box.
+/// Anchored 1 row above the sidebar cursor row and right-aligned to the
+/// frame's right edge, spanning whatever width it needs — it is a
 /// overlay, not a sidebar element. Yellow = armed confirm ("Press A/X again
 /// to archive/teardown-and-archive N sessions"); red = blocked (a member of
 /// the subtree is busy).

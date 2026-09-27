@@ -1,0 +1,31 @@
+[package]
+name = "jinn-export"
+version.workspace = true
+edition.workspace = true
+description = "The export slice: writes a session to a single self-contained file, choosing the format from the path extension."
+
+[dependencies]
+jinn-core-types = { workspace = true }
+jinn-export-msg = { workspace = true }
+jinn-kernel = { workspace = true }
+jinn-session-history-msg = { workspace = true }
+jinn-session-state = { workspace = true }
+jinn-slices = { workspace = true }
+# The trouper runtime: the export actor is a ServiceActor on the bus.
+trouper = { workspace = true }
+base64 = { workspace = true }
+error-stack = { workspace = true }
+jiff = { workspace = true }
+pulldown-cmark = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+wherror = { workspace = true }
+unicode-segmentation = { workspace = true }
+
+[dev-dependencies]
+jinn-testutil = { workspace = true }
+rstest = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

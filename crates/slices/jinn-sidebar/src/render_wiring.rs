@@ -10,10 +10,14 @@
 //! once, at activation. The chrome reads a registered hint instead of
 //! matching the string `"sidebar"` against a scope id.
 //!
-//! The three late overlays the sidebar paints over the chat column —
-//! the archive-tree prompt, the close-session prompt, and the session
-//! preview — register as one draw function against [`Region::Sidebar`]
-//! too, so the render pass has a single sidebar call site.
+//! The four surfaces that overflow the column — the archive-tree prompt,
+//! the close-session prompt, the session preview, and the task-list
+//! preview — register separately, against
+//! [`jinn_slices::Region::FloatingSurfaces`]. They reach left across the
+//! chat column, and the render pass draws the chat column *after* the
+//! sidebar, so painting them from the column's own draw call would put
+//! them underneath it. Their own layer is what makes the column's
+//! contents and the surfaces that overflow it two different draws.
 
 use std::sync::Arc;
 
@@ -181,8 +185,11 @@ fn write_scroll_offset(
 /// section's state persists frame to frame exactly as it did when the
 /// container lived on `TuiApp`.
 ///
-/// The late overlays ride along in the same call because they are
-/// anchored to the same rect and must paint after the main column.
+/// The column paints the column and nothing else. The surfaces that
+/// overflow it are a separate draw function, registered against
+/// [`jinn_slices::Region::FloatingSurfaces`], because a popup that reaches
+/// left across the chat column has to be painted after the chat column —
+/// and this call happens before it.
 #[must_use]
 pub fn column_draw_fn() -> jinn_slices::DrawFn<AppState> {
     let sidebar = parking_lot::Mutex::new({
@@ -200,19 +207,43 @@ pub fn column_draw_fn() -> jinn_slices::DrawFn<AppState> {
             if let Some(select) = target.select {
                 rects.push(select);
             }
-            draw_late_overlays(frame, rect, frame.area(), ctx);
         },
     )
 }
 
-/// The sidebar's late overlays: the archive-tree prompt, the
-/// close-session prompt, and the session preview popup.
+/// Builds the draw function for the sidebar's floating surfaces.
 ///
-/// These paint over the chat column *after* the main column has
-/// rendered, so a banner may extend left across the input box. They
-/// are anchored to the sidebar's own rect, which is why they belong
-/// to the sidebar and not to the chat layout that provides the space.
-pub fn draw_late_overlays(
+/// The layer exists so a surface wider than the sidebar can be painted
+/// after the columns it covers rather than under them. Each surface decides
+/// for itself whether it has anything to draw — a banner with no prompt
+/// pending and a preview with no cache entry both paint nothing — so the
+/// sequence below is unconditional and costs four cheap checks a frame.
+///
+/// The order is the stacking order, bottom first: a banner is a narrower
+/// strip that a preview, sitting under the user's cursor, may cover, and
+/// the task-list preview is the topmost surface the sidebar owns. When a
+/// second slice registers against [`jinn_slices::Region::FloatingSurfaces`],
+/// the order moves out of this sequence and onto the registrations, each
+/// carrying a `u16` priority that the layer sorts by with ties broken by
+/// call order.
+#[must_use]
+pub fn floating_surfaces_draw_fn() -> jinn_slices::DrawFn<AppState> {
+    Arc::new(
+        move |frame: &mut Frame<'_>,
+              target: jinn_slices::DrawTarget,
+              ctx: &dyn DrawContext<AppState>,
+              _rects: &mut Vec<Rect>| {
+            draw_floating_surfaces(frame, target.area, frame.area(), ctx);
+        },
+    )
+}
+
+/// Paints the sidebar's floating surfaces, bottom of the stack first.
+///
+/// Anchored to the sidebar's own rect, so a surface may extend left across
+/// the chat column, the input box, and the status bar. The order is the
+/// stacking order; see [`floating_surfaces_draw_fn`].
+pub fn draw_floating_surfaces(
     frame: &mut Frame<'_>,
     sidebar_rect: Rect,
     frame_area: Rect,

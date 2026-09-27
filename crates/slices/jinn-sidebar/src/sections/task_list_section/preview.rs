@@ -4,7 +4,8 @@
 //! list section is focused. Its right edge touches the sidebar's left edge and
 //! its top edge aligns with the top of the task list section (the row after the
 //! persona and pins sections). The popup overlays everything (chat log, minimap,
-//! border) with no layout changes — it is drawn after the base layers and uses a
+//! border) with no layout changes — it is painted in the sidebar's
+//! floating-surface layer, after the base columns, and uses a
 //! `Clear` widget to punch a hole in whatever was rendered beneath it.
 //!
 //! The popup is read-only: it only displays the selected phase's tasks. Scrolling
