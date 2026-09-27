@@ -95,7 +95,6 @@ pub use protocol::{
 
 // Re-export domain types from their canonical locations
 
-pub use jinn_provider::LlmMessage;
 pub use jinn_session_history_msg::PushChatEntry;
 pub use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
 pub use jinn_slices::fabric::{ActorShutdownCompleted, ActorStarted, ActorStarting};

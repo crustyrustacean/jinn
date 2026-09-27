@@ -15,8 +15,9 @@ use jinn_context::env_context::{
     context_files_section, cwd_section, date_section, persona_section,
 };
 use jinn_context_assembly_msg::AssemblyInputs;
+use jinn_core_types::LlmMessage;
 use jinn_core_types::ToolDefinition;
-use jinn_domain::protocol::{ChatEntry, LlmMessage, PinPosition, entries_to_messages};
+use jinn_domain::protocol::{ChatEntry, PinPosition, entries_to_messages};
 use jinn_llm_support::token_estimator::{IMAGE_ATTACHMENT_TOKENS, TokenCounter};
 use jinn_llm_support::tool_prompt::build_tool_context_block;
 use jinn_skills::format_skills_for_prompt;

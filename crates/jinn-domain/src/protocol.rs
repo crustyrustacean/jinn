@@ -25,7 +25,6 @@ pub use jinn_slices::{Key, KeyEvent, Mode, Modifiers};
 // Re-export domain types that are widely used as cross-cutting protocol concerns
 pub use jinn_session_init_msg::PromptTemplate;
 
-pub use jinn_provider::LlmMessage;
 pub use jinn_slices::picker_kind::PickerKind;
 
 // Re-export domain types used by the picker and UI
