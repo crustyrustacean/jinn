@@ -363,13 +363,15 @@ ritual it does not need. Choose each element because this task calls for it:
   unverified work is never committed. A long mechanical run may commit per phase;
   a short change may commit once.
 - **Replanning.** What triggers a change of approach rather than persistence, and
-  what gets logged when it happens.
+  what gets logged when it happens. Replanning is normal and expected during
+  autonomous operation, as long as it still adheres to the contract and end state.
 - **Divergence log.** The shape of the log, or an explicit instruction not to keep
   one. **If you require a log, you must specify its format here** — an
   implementer told to log divergences in a format the contract never describes
   will improvise, and you will get something you cannot read.
 - **Autonomy.** What the implementer may decide without asking, and — for a
   non-autonomous run — exactly when they are expected to stop and check in.
+  **The default disposition is that all runs are autonomous unless stated otherwise.**
 
 **Surface a protocol choice in the dialectic when it changes what the work
 looks like.** Cadence and checkpoint placement are not clerical: in a mass
@@ -381,7 +383,7 @@ obvious from the task, ask.
 that needs none. Do not pad it with defaults — a wrong default is a constraint
 nobody chose.
 
-**ALWAYS** start the execution protocol with setting up the task/todo list.
+**ALWAYS** begin the execution protocol with setting up the task/todo list.
 This is imperative as it keeps the agent on-track.
 
 ### 10. References — external material worth consulting
