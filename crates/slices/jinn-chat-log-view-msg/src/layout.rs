@@ -27,6 +27,63 @@ use serde::{Deserialize, Serialize};
 /// bounded no matter how large the session behind it is.
 pub const PREVIEW_ENTRY_COUNT: usize = 5;
 
+/// Trailing history entries a preview *request* carries.
+///
+/// More than [`PREVIEW_ENTRY_COUNT`] because a preview skips entries that are
+/// still accumulating tokens, and the requester has to hand the worker enough
+/// history to find the same settled window the requester itself found. Carrying
+/// only the trailing five would let a reply still in production push the
+/// settled entries out of the slice entirely, and the worker would render a
+/// shorter window than the one the key was computed over — the two sides would
+/// disagree by construction.
+///
+/// Bounded rather than unbounded: a whole long history copied per keystroke is
+/// the cost the trailing slice exists to avoid, and sixteen entries is far more
+/// than a five-entry window can ever need.
+pub const PREVIEW_REQUEST_ENTRY_COUNT: usize = 16;
+
+/// Rendered columns of an in-production entry's text a continuation marker
+/// shows.
+///
+/// A marker stands in for a reply that may be thousands of lines long. This is
+/// enough of its tail to recognize what it is saying and to see it is still
+/// going, in a popup whose whole content area is twenty rows.
+pub const PREVIEW_MARKER_COLUMNS: usize = 256;
+
+/// Rows a continuation marker may occupy.
+///
+/// The marker is a status line, not content. It takes a bounded share of the
+/// preview's rows and never more than the budget, so a long production reply
+/// cannot crowd the settled entries it is standing in for out of the popup.
+pub const PREVIEW_MARKER_MAX_ROWS: usize = 8;
+
+/// Whether an entry has stopped producing and can be previewed as settled.
+///
+/// The one definition of settledness, and it is deliberately a property of the
+/// entry alone: the request path computes the preview's key from it, the worker
+/// reads the same answer off the entries it was handed, and neither can drift
+/// from the other.
+///
+/// An entry is *not* settled while its `Streamed` timing has no `finished_at`.
+/// That covers a `Thinking`, `Assistant`, `Actor`, or `Transient` entry still
+/// receiving tokens, and it also covers a `ToolCall` still streaming its
+/// arguments: one is created with a `Streamed` timing and only has its
+/// `finished_at` set when the call is finalized, so the timing answers for the
+/// tool case without a second source of truth.
+///
+/// `Instant` entries — a user message, a system note, a settled tool result —
+/// are settled by construction, which is why this is not merely
+/// `finished_at().is_some()`.
+#[must_use]
+pub fn entry_is_settled(entry: &ChatEntry) -> bool {
+    match &entry.timing {
+        jinn_core_types::entry_timing::EntryTiming::Instant { .. } => true,
+        jinn_core_types::entry_timing::EntryTiming::Streamed { finished_at, .. } => {
+            finished_at.is_some()
+        }
+    }
+}
+
 /// Maximum rendered lines a session preview shows.
 ///
 /// The last entry is what the user is reading, so overflow is dropped from the

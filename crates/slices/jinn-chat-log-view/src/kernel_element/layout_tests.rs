@@ -601,3 +601,346 @@ fn render_preview_reads_at_most_max_entries() {
         "a preview is bounded to its trailing entries, not the whole history"
     );
 }
+
+/// An assistant entry still receiving tokens.
+///
+/// Unfinished by construction: a `Streamed` timing with no `finished_at`, which
+/// is what `ensure_assistant_entry` produces for every token of a live reply.
+/// There is no second notion of "in progress" to set up — the entry's own timing
+/// is the one the request path and this worker both read.
+fn streaming_assistant(text: &str) -> ChatEntry {
+    let mut entry = ChatEntry::assistant(text);
+    entry.timing = jinn_core_types::entry_timing::EntryTiming::streamed(jiff::Timestamp::now());
+    entry
+}
+
+#[rstest::rstest]
+fn an_entry_in_production_is_never_rendered() {
+    // Given a history whose newest entry is still accumulating tokens.
+    let mut entries = preview_entries(2);
+    entries.push(streaming_assistant("half a sentence that is still going"));
+
+    // When the worker renders its preview.
+    let lines = render_preview(&entries, &preview_ctx(120), 5, 100);
+
+    // Then no line is a *rendered* copy of that entry. A rendered entry goes
+    // through the markdown renderer and is padded out to the full content width;
+    // a marker is plain text at its own natural width. So the absence of any
+    // full-width line carrying the text is what proves the entry was never
+    // handed to the markdown render — the single thing that must not happen
+    // again on every token.
+    let rendered_copy = lines
+        .iter()
+        .any(|line| line_text(line).contains("half a sentence") && line.width() == 120);
+    assert!(
+        !rendered_copy,
+        "an entry in production must not be markdown-rendered, got {:?}",
+        lines.iter().map(line_text).collect::<Vec<_>>()
+    );
+}
+
+#[rstest::rstest]
+fn an_entry_in_production_is_shown_as_a_continuation_marker() {
+    // Given a history whose newest entry is still accumulating tokens.
+    let mut entries = preview_entries(2);
+    entries.push(streaming_assistant("half a sentence that is still going"));
+
+    // When the worker renders its preview.
+    let visible = visible_text(&render_preview(&entries, &preview_ctx(120), 5, 100));
+
+    // Then a marker stands at its position, carrying the tail of what it has
+    // produced so far, and the settled entries are still there beside it. Text
+    // short enough to fit the marker's column bound gets no ellipses — there is
+    // nothing cut to say.
+    assert_eq!(
+        visible,
+        vec!["entry 0", "entry 1", "half a sentence that is still going"],
+        "an in-production entry must be visible as a marker, not rendered or hidden"
+    );
+}
+
+#[rstest::rstest]
+fn a_marker_says_where_its_text_was_cut() {
+    // Given a reply long enough that its tail cannot fit the marker's column
+    // bound, so text is dropped from the front *and* the marker is cut short.
+    let entries = vec![streaming_assistant(&format!(
+        "BEGINNING {}",
+        "x".repeat(jinn_chat_log_view_msg::PREVIEW_MARKER_COLUMNS * 3)
+    ))];
+
+    // When the worker renders its preview.
+    let visible = visible_text(&render_preview(&entries, &preview_ctx(40), 5, 1000));
+
+    // Then the marker opens with `…`, saying the reply started earlier than this.
+    // Without it a marker would read as the whole reply rather than its tail.
+    assert!(
+        visible
+            .first()
+            .is_some_and(|line| line.starts_with('\u{2026}')),
+        "a marker that dropped text from the front must say so, got {:?}",
+        visible.first()
+    );
+}
+
+#[rstest::rstest]
+fn a_marker_with_no_text_yet_is_a_single_ellipsis() {
+    // Given a history whose newest entry has been created but has produced
+    // nothing — the window between `begin_streaming` and the first token.
+    let mut entries = preview_entries(1);
+    entries.push(streaming_assistant(""));
+
+    // When the worker renders its preview.
+    let visible = visible_text(&render_preview(&entries, &preview_ctx(120), 5, 100));
+
+    // Then the marker is one `…`. A zero-line marker would make an entry that
+    // exists completely invisible, and a session that has only just begun would
+    // preview as blank.
+    assert_eq!(
+        visible,
+        vec!["entry 0", "…"],
+        "an entry in production with no text must still show a marker"
+    );
+}
+
+#[rstest::rstest]
+fn a_marker_is_bounded_by_its_column_budget() {
+    // Given a reply far longer than the marker's column budget, at a content
+    // width wide enough that the column bound is reached before the row bound.
+    let entries = vec![streaming_assistant(&"x".repeat(100_000))];
+
+    // When the worker renders its preview.
+    let lines = render_preview(&entries, &preview_ctx(40), 5, 1000);
+
+    // Then the marker takes only the rows its own 256 columns wrap to at a width
+    // of 40 — not a row per 40 columns of a hundred-kilobyte reply, which is
+    // where the bound does its work.
+    let rows = jinn_chat_log_view_msg::PREVIEW_MARKER_COLUMNS.div_ceil(40);
+    assert_eq!(
+        lines.len(),
+        rows.min(jinn_chat_log_view_msg::PREVIEW_MARKER_MAX_ROWS),
+        "a marker must stop at whichever bound binds first, got {} rows",
+        lines.len()
+    );
+}
+
+#[rstest::rstest]
+fn a_marker_is_bounded_to_its_row_budget() {
+    // Given a reply far longer than the marker's column budget, at the narrowest
+    // content width a preview can have — where the column budget would wrap to
+    // more rows than the row budget allows.
+    let entries = vec![streaming_assistant(&"x".repeat(100_000))];
+
+    // When the worker renders its preview.
+    let lines = render_preview(&entries, &preview_ctx(28), 5, 1000);
+
+    // Then the row budget is what binds, so the marker never occupies more than
+    // its share of the popup. A reply in production must not be able to take the
+    // rows the settled entries need.
+    assert_eq!(
+        lines.len(),
+        jinn_chat_log_view_msg::PREVIEW_MARKER_MAX_ROWS,
+        "a marker must be bounded to its row budget, got {} rows",
+        lines.len()
+    );
+}
+
+#[rstest::rstest]
+fn a_marker_never_exceeds_the_preview_line_budget() {
+    // Given a long reply in a preview whose own budget is smaller than the
+    // marker's.
+    let entries = vec![streaming_assistant(&"x".repeat(100_000))];
+
+    // When the worker renders its preview.
+    let lines = render_preview(&entries, &preview_ctx(40), 5, 3);
+
+    // Then the result fits the budget, so the marker's rows can never be what
+    // pushes the popup past its height.
+    assert!(
+        lines.len() <= 3,
+        "preview returned {} lines over a budget of 3",
+        lines.len()
+    );
+}
+
+#[rstest::rstest]
+fn an_enormous_entry_renders_only_its_bounded_marker() {
+    // Given a request carrying a reply of a megabyte, still in production.
+    let request = jinn_chat_log_view_msg::PreviewSessionRequested {
+        session_id: jinn_core_types::SessionId::new(),
+        content_width: 40,
+        generation: 1,
+        entries: std::sync::Arc::from(vec![streaming_assistant(&"x".repeat(1_000_000))]),
+        tool_entry_max_lines: 6,
+        signature: 7,
+    };
+
+    // When it is turned into a job and rendered.
+    let job = super::layout_worker::PreviewJob::from(&request);
+    let lines = render_preview(&job.entries, &preview_ctx(28), 5, 1000);
+
+    // Then the rendered result is the bounded marker, not the reply. A megabyte
+    // of text and four kilobytes of it must render to the same eight rows,
+    // because the bound is what makes the render's cost independent of how much
+    // the model has written so far.
+    assert_eq!(
+        lines.len(),
+        jinn_chat_log_view_msg::PREVIEW_MARKER_MAX_ROWS,
+        "a megabyte entry must render as a bounded marker, got {} rows",
+        lines.len()
+    );
+    assert!(
+        job.entries[0].text().len() <= 4_096 + 4,
+        "the carried text must be bounded to 4096 bytes, got {}",
+        job.entries[0].text().len()
+    );
+}
+
+#[rstest::rstest]
+fn a_bounded_entry_keeps_the_tail_of_its_text() {
+    // Given an entry whose text is over the bound.
+    let text = format!("{}TAIL", "x".repeat(100_000));
+    let request = jinn_chat_log_view_msg::PreviewSessionRequested {
+        session_id: jinn_core_types::SessionId::new(),
+        content_width: 40,
+        generation: 1,
+        entries: std::sync::Arc::from(vec![ChatEntry::assistant(text)]),
+        tool_entry_max_lines: 6,
+        signature: 7,
+    };
+
+    // When a request for it is turned into a job.
+    let job = super::layout_worker::PreviewJob::from(&request);
+
+    // Then what survives is the *end* of the text, because the preview is
+    // bottom-anchored and the end is what the reader is looking for.
+    assert!(
+        job.entries[0].text().ends_with("TAIL"),
+        "the bound must keep the tail of the text"
+    );
+    assert!(
+        job.entries[0].text().len() < 5_000,
+        "the bound must actually bound, got {} bytes",
+        job.entries[0].text().len()
+    );
+}
+
+#[rstest::rstest]
+fn a_bound_lands_on_a_character_boundary() {
+    // Given multi-byte text long enough that a byte-wise cut would land inside a
+    // character.
+    let text = "é".repeat(10_000);
+    let request = jinn_chat_log_view_msg::PreviewSessionRequested {
+        session_id: jinn_core_types::SessionId::new(),
+        content_width: 40,
+        generation: 1,
+        entries: std::sync::Arc::from(vec![ChatEntry::assistant(text)]),
+        tool_entry_max_lines: 6,
+        signature: 7,
+    };
+
+    // When a request for it is turned into a job.
+    let job = super::layout_worker::PreviewJob::from(&request);
+
+    // Then the surviving text is still valid UTF-8 — it was sliced on a
+    // character boundary, and reading it back is what proves it. A `&str` cut at
+    // an arbitrary byte is not a `&str` at all, and a preview that panicked on a
+    // multi-byte reply would take the render with it.
+    assert_eq!(
+        job.entries[0].text(),
+        std::str::from_utf8(job.entries[0].text().as_bytes())
+            .expect("the bounded text must be valid UTF-8"),
+        "the bound must land on a character boundary"
+    );
+}
+
+#[rstest::rstest]
+fn a_settled_entry_is_still_rendered() {
+    // Given a history whose entries have all finished.
+    let entries = preview_entries(3);
+
+    // When the worker renders its preview.
+    let visible = visible_text(&render_preview(&entries, &preview_ctx(120), 5, 1000));
+
+    // Then every one of them is shown. Settledness excludes only what is still
+    // being produced; a preview is mostly settled messages.
+    assert_eq!(
+        visible,
+        vec!["entry 0", "entry 1", "entry 2"],
+        "settled entries must render normally"
+    );
+}
+
+#[rstest::rstest]
+fn an_in_production_entry_does_not_displace_settled_ones() {
+    // Given more than a window's worth of settled entries, with a reply still in
+    // production at the end.
+    let mut entries = preview_entries(10);
+    entries.push(streaming_assistant("still going"));
+
+    // When the worker renders its preview.
+    let visible = visible_text(&render_preview(&entries, &preview_ctx(120), 5, 1000));
+
+    // Then the window is the five most recent *settled* entries, and the
+    // in-production one is a marker beside them. Taking the trailing five and
+    // then filtering would have pushed four settled entries out of the preview.
+    assert_eq!(
+        visible,
+        vec![
+            "entry 5",
+            "entry 6",
+            "entry 7",
+            "entry 8",
+            "entry 9",
+            "still going",
+        ],
+        "an in-production entry must not shrink the settled window"
+    );
+}
+
+#[rstest::rstest]
+fn a_finished_reply_becomes_a_settled_entry() {
+    // Given a history whose reply was in production and has now finished.
+    let mut finished = streaming_assistant("all done now");
+    finished.timing.finish();
+    let entries = vec![finished];
+
+    // When the worker renders its preview.
+    let visible = visible_text(&render_preview(&entries, &preview_ctx(120), 5, 1000));
+
+    // Then it renders as itself. Settledness is read from the entry's own timing,
+    // so a finished reply needs no separate signal to come back.
+    assert_eq!(
+        visible,
+        vec!["all done now"],
+        "a finished reply must render as a settled entry"
+    );
+}
+
+#[rstest::rstest]
+fn a_streaming_tool_call_is_excluded_from_the_settled_set() {
+    // Given a tool call created by `begin_tool_call`: a `Streamed` timing with no
+    // `finished_at`, which is exactly the shape a tool call has while its
+    // arguments are still arriving.
+    let mut streaming = ChatEntry::tool_call("call-1", "grep", "{\"path\": \"/tm");
+    streaming.timing = jinn_core_types::entry_timing::EntryTiming::streamed(jiff::Timestamp::now());
+    let entries = vec![streaming];
+
+    // When the worker renders its preview.
+    let lines = render_preview(&entries, &preview_ctx(120), 5, 1000);
+
+    // Then it is a marker rather than a rendered tool call. A rendered tool call
+    // is padded out to the full content width and shows its tool name in the
+    // tool styling; a marker is plain text at its own natural width, so the
+    // absence of a full-width line is what proves the markdown/tool rendering
+    // path was never taken.
+    assert!(
+        !lines.iter().any(|line| line.width() == 120),
+        "a tool call streaming its arguments must not be rendered, got {:?}",
+        lines.iter().map(line_text).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        visible_text(&lines),
+        vec!["grep: {\"path\": \"/tm"],
+        "the marker must carry the arguments streamed so far"
+    );
+}

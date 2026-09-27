@@ -150,6 +150,30 @@ impl PreviewLoad {
             .map(|entry| &entry.lines)
     }
 
+    /// The lines this session is holding, whatever content and width they were
+    /// rendered at.
+    ///
+    /// The fallback for a lookup that [`Self::cached`] refused because the
+    /// content or the width moved. A preview that has been drawn once is always
+    /// better drawn slightly stale than replaced by a spinner: the lines on
+    /// screen are the conversation the user is looking at, and a spinner over
+    /// them is a regression the user sees as a flicker.
+    ///
+    /// This is not a second cache slot — it reads the session's existing one. A
+    /// separate slot per signature or width would double the cache's memory and
+    /// interact with the LRU cap in ways nothing currently covers.
+    ///
+    /// `None` means the session has never had a result, which is the only case
+    /// where the spinner is the right thing to draw: a first visit, the first
+    /// paint after a [`Self::reset`], or a render abandoned past its deadline.
+    #[must_use]
+    pub fn drawable(
+        &self,
+        session_id: &SessionId,
+    ) -> Option<&Arc<Vec<ratatui::text::Line<'static>>>> {
+        self.cache.get(session_id).map(|entry| &entry.lines)
+    }
+
     /// Marks a session as just-used, so it is not the next one evicted.
     ///
     /// Called from the keyboard path rather than from [`Self::cached`]: the
@@ -980,6 +1004,169 @@ mod preview_cache_bound_tests {
         assert!(
             load.cached(revisited, 7, 40).is_some(),
             "re-caching a session must replace its entry, not duplicate it"
+        );
+    }
+}
+
+#[cfg(test)]
+mod preview_sticky_draw_tests {
+    //! The popup's fallback: a lookup that misses on content or width draws the
+    //! lines the session is already holding rather than a spinner.
+    //!
+    //! The single most consequential behaviour here, because it is what turns a
+    //! key that moved — on every token, or on a resize — from a blank popup into
+    //! a momentarily stale one.
+
+    use super::preview_load_tests::lines;
+    use super::*;
+
+    /// A load with one session's preview rendered and cached at 40 columns.
+    fn load_with_served_preview() -> (PreviewLoad, SessionId) {
+        let session_id = SessionId::new();
+        let mut load = PreviewLoad::default();
+        let generation = load.request(session_id.clone(), 7, 40);
+        load.complete(session_id.clone(), generation, 7, 40, lines("hello"));
+        (load, session_id)
+    }
+
+    #[rstest::rstest]
+    fn a_served_preview_is_drawable_at_its_own_key() {
+        // Given a load holding a preview for a session.
+        let (load, id) = load_with_served_preview();
+
+        // When it is asked for under the key it was stored at.
+        let found = load.drawable(&id).is_some();
+
+        // Then it is drawable, matching what a keyed lookup would have found.
+        assert!(found, "a preview cached at its own key must be drawable");
+    }
+
+    #[rstest::rstest]
+    fn a_served_preview_is_drawable_after_its_content_moved() {
+        // Given a load holding a preview rendered against one content signature.
+        let (load, id) = load_with_served_preview();
+
+        // When the session's content moves on — as it does on every streamed
+        // token, under a key that no longer matches.
+        let keyed_hit = load.cached(&id, 99, 40).is_some();
+        let still_drawable = load.drawable(&id).is_some();
+
+        // Then the keyed lookup misses, but the session is still drawable. The
+        // popup keeps the lines it has rather than showing a spinner over them.
+        assert!(
+            !keyed_hit,
+            "the keyed lookup must miss for this case to matter"
+        );
+        assert!(
+            still_drawable,
+            "a session with a rendered preview must stay drawable when its content moves"
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_served_preview_is_drawable_after_its_width_moved() {
+        // Given a load holding a preview rendered at 40 columns.
+        let (load, id) = load_with_served_preview();
+
+        // When the popup is drawn at a different width, mid-re-wrap.
+        let keyed_hit = load.cached(&id, 7, 60).is_some();
+        let still_drawable = load.drawable(&id).is_some();
+
+        // Then the keyed lookup misses, but the session is still drawable — a
+        // resize must not blank a popup the user is reading.
+        assert!(
+            !keyed_hit,
+            "the keyed lookup must miss for this case to matter"
+        );
+        assert!(
+            still_drawable,
+            "a session with a rendered preview must stay drawable across a width change"
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_session_never_drawn_is_not_drawable() {
+        // Given a load that has never rendered anything for a session.
+        let load = PreviewLoad::default();
+
+        // When it is asked for that session.
+        let found = load.drawable(&SessionId::new());
+
+        // Then nothing is drawable. This is the case the spinner is *for*: a
+        // first visit, the first paint after a reset, or an abandoned render.
+        assert!(
+            found.is_none(),
+            "a session that has never been drawn must fall through to the loading state"
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_reset_leaves_nothing_drawable() {
+        // Given a load holding a rendered preview.
+        let (mut load, id) = load_with_served_preview();
+
+        // When the cache is reset, as a theme change does.
+        load.reset();
+
+        // Then nothing is drawable, because the lines that were held were
+        // rendered in a theme that no longer applies. The spinner is correct
+        // here — a stale-theme preview would be worse than a moment's wait.
+        assert!(
+            load.drawable(&id).is_none(),
+            "a reset must leave the session with nothing to draw"
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_second_request_replaces_the_first_rather_than_adding_to_it() {
+        // Given a request in flight for a session.
+        let id = SessionId::new();
+        let mut load = PreviewLoad::default();
+        load.request(id.clone(), 7, 40);
+
+        // When a second, newer request is made for the same session.
+        load.request(id.clone(), 8, 40);
+
+        // Then exactly one render is outstanding for that session. At most one
+        // preview render is in flight per session, so a token storm cannot queue
+        // a job per token on a pool that is already busy.
+        assert_eq!(
+            load.in_flight_len(),
+            1,
+            "a second request for a session must replace the first, not add to it"
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_superseded_result_leaves_the_live_request_outstanding() {
+        // Given two requests in flight for a session, the second superseding
+        // the first. The two numbers passed to `request` are content signatures;
+        // each request is identified by the generation it hands back.
+        let id = SessionId::new();
+        let mut load = PreviewLoad::default();
+        let stale = load.request(id.clone(), 7, 40);
+        let live = load.request(id.clone(), 8, 40);
+        assert_ne!(
+            stale, live,
+            "the second request must be a different request"
+        );
+
+        // When the *first* request's result arrives late.
+        let accepted = load.complete(id.clone(), stale, 7, 40, lines("stale"));
+
+        // Then it is refused — it was computed against content the newer request
+        // replaced — and the newer request is still the one outstanding. Dropping
+        // the result must not also cancel the render that is still running, or
+        // the popup would wait for a result that is never coming.
+        assert!(!accepted, "a superseded result must be dropped, not cached");
+        assert_eq!(
+            load.in_flight_len(),
+            1,
+            "a dropped result must leave exactly the live request outstanding"
+        );
+        assert!(
+            load.in_flight_matches(&id, 8, 40),
+            "the surviving request must be the newer one, not the superseded one"
         );
     }
 }

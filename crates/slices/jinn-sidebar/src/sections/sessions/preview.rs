@@ -9,10 +9,12 @@
 //! active cwd and provider/model on the same line.
 //!
 //! The lines themselves are *not* built here. They arrive already rendered from
-//! the layout worker, keyed by content rather than by history length, so a frame
-//! costs a refcount bump and a draw. When nothing is cached for the exact
-//! session, width, and content the popup draws a spinner instead — see
-//! [`render_session_preview_loading`].
+//! the layout worker, keyed by the settled entries' content rather than by
+//! history length, so a frame costs a refcount bump and a draw. A lookup that
+//! misses — because the content or the width moved — falls back to the lines the
+//! session is already holding, so the popup is never replaced by a spinner over
+//! content it has drawn. Only a session that has never been drawn shows the
+//! loading indicator; see [`render_session_preview_loading`].
 
 use std::sync::Arc;
 
@@ -114,6 +116,14 @@ pub fn render_session_preview_for_state(
             s.sessions
                 .preview
                 .cached(&entry.id, signature, inner_width)
+                // A miss on content or width falls back to whatever this session
+                // is already holding rather than to the spinner. Both happen
+                // routinely mid-turn: content moves on every streamed token and
+                // the width moves on a resize, and in each case the lines on
+                // screen are still the conversation the user is reading. Putting
+                // a spinner over them — and blanking the popup while a re-render
+                // is queued — is the flicker this fallback removes.
+                .or_else(|| s.sessions.preview.drawable(&entry.id))
                 .map(Arc::clone)
         },
         || None,
@@ -133,10 +143,10 @@ pub fn render_session_preview_for_state(
             "session preview has nothing cached and nothing in flight");
     }
     let Some(lines) = cached else {
-        // Nothing for this exact session, width, and content. `cached` returning
-        // `None` is what distinguishes loading from empty — an empty session
-        // renders zero lines but is still a cache hit, so it takes the branch
-        // below and shows the empty state rather than spinning forever.
+        // Nothing has ever been drawn for this session, at any content or width.
+        // `cached` returning `None` is what distinguishes loading from empty — an
+        // empty session renders zero lines but is still a cache hit, so it takes
+        // the branch below and shows the empty state rather than spinning forever.
         // The rect is the same one the ready path draws, so the box does not
         // resize when the lines land.
         let popup_rect = session_preview_popup_rect(frame_area, cursor_y);
