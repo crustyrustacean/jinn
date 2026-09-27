@@ -411,13 +411,8 @@ impl ActorSystemBuilder {
         // reindexes at most REINDEX_BATCH sessions per heartbeat,
         // publishing the remaining count after every session. The first
         // tick self-kicks after the spawn handshake (B7).
-        services
-            .bus
-            .publish(jinn_slices::fabric::ActorStarting {
-                name: jinn_session_store::search_index_actor::SEARCH_INDEX_ROW_NAME.to_owned(),
-                description: Some("SearchIndexActor".to_owned()),
-            })
-            .await;
+        // The dashboard learns this actor exists from the runtime's
+        // spawn announcement, not from a publish here.
         let _search_index = jinn_session_store::search_index_actor::SearchIndexActor::spawn(
             &services.trouper_system,
             jinn_session_store::search_index_actor::SearchIndexActorDeps {
@@ -426,13 +421,6 @@ impl ActorSystemBuilder {
                 batch: jinn_session_store::search_index_actor::REINDEX_BATCH,
             },
         );
-        services
-            .bus
-            .publish(jinn_slices::fabric::ActorStarted {
-                name: jinn_session_store::search_index_actor::SEARCH_INDEX_ROW_NAME.to_owned(),
-                description: Some("SearchIndexActor".to_owned()),
-            })
-            .await;
 
         // Context size actor: trouper, installed with the context-assembly
         // slice's install_actors call above.

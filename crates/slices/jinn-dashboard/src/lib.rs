@@ -12,7 +12,6 @@
 
 pub mod canvas_actor;
 pub mod contracts;
-pub mod fabric_events;
 pub mod key_routes;
 pub mod nav;
 pub mod state;
@@ -65,12 +64,10 @@ pub fn activate(ctx: &mut SliceCtx<'_>) -> Result<TypedCellRef, ActivationError>
         .slices
         .register(dashboard_slot(), DashboardState::new())?;
 
-    // Spawn FIRST — the dashboard must be subscribed to its topics
-    // before any other actor fires lifecycle events. `subscribe`
-    // registers the topic cursors synchronously, so events published
-    // after this point cannot be missed, leaving no entries stuck on
-    // "Starting". The forward relays (drained in composition) feed the
-    // topics from the fabric.
+    // Spawn FIRST — the dashboard must be subscribed to the census schema
+    // before any other actor spawns, or the first rows would be missed
+    // entirely. `.handles` registers the subscription synchronously, so
+    // every announcement published after this point reaches the actor.
     canvas_actor::DashboardCanvasActor::spawn(ctx.trouper_system, &cell);
 
     // Route rows + view + tab declaration.

@@ -1,11 +1,17 @@
 //! Crossing contracts: the messages the dashboard consumes across the
 //! fabric boundary.
 //!
-//! [`ServiceStatusUpdate`] is the kernel-surface vocabulary every feature
-//! publishes (it lives in `jinn-slices`, re-exported here). The lifecycle
-//! events are shared Rust types from `jinn_slices::fabric`, re-exported by
-//! [`crate::fabric_events`]: fabric delivery is by schema id, so
-//! wire-shape mirrors would silently drop every event — one type,
-//! imported by both sides.
+//! Two sources, deliberately asymmetric:
+//!
+//! - [`trouper::ActorLifecycle`] is the runtime's own announcement of
+//!   every actor spawn and stop. It is not a jinn type and nothing in
+//!   jinn publishes it — the dashboard folds it to decide which rows
+//!   exist and whether they are alive.
+//! - [`ServiceStatusUpdate`] is jinn's vocabulary, published by a
+//!   feature that wants to add a description and a status message to
+//!   its own row.
+//!
+//! A feature cannot bring an actor into being by publishing, and cannot
+//! contradict the runtime's verdict on whether it is alive.
 
 pub use jinn_slices::ServiceStatusUpdate;

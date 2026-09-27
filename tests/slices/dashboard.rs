@@ -15,6 +15,32 @@ use jinn_kernel::{Bridge, KernelIntent, Key, KeyEvent, Modifiers};
 use jinn_slices::TypedCell;
 use jinn_tui::Scope;
 
+/// A bare trouper service actor that handles and emits nothing.
+///
+/// Spawning one of these is how a test proves the dashboard's census
+/// covers actors with no jinn-side footprint whatsoever: the runtime
+/// announces its spawn, and nothing in jinn ever names it.
+struct CensusProbe;
+
+impl trouper::actor::ServiceActor for CensusProbe {
+    fn manifest() -> trouper::schema::ActorManifest {
+        trouper::schema::ActorManifest::new()
+    }
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
+        Ok(Self)
+    }
+}
+
+/// Spawns a [`CensusProbe`] at `name` and returns its path.
+async fn spawn_probe(system: &trouper::system::ActorSystem, name: &str) -> String {
+    let path = trouper::builder::spawn_service_builder::<CensusProbe>(system)
+        .at(trouper::actor::ActorPath::new(name))
+        .start();
+    path.to_string()
+}
+
 /// The composed keymap carries the terminal-overlay toggle in the
 /// dashboard's dynamic scope: registered slice scopes get the per-scope
 /// chrome too.
@@ -343,186 +369,151 @@ async fn dashboard_tab_has_no_em_dash_separator() {
     );
 }
 
-/// REGRESSION (slice migration): lifecycle events published by the
-/// kernel's `spawn_tracked!` (the **kernel** `ActorStarting`/
-/// `ActorStarted` types from `protocol::event`) must reach the
-/// dashboard actor's rows. The slice used to subscribe to
-/// schema-identical but distinct Rust types — trouper dispatches by
-/// `TypeId`, so every lifecycle event silently dropped and only
-/// `ServiceStatusUpdate` rows ever appeared.
+/// THE decisive test for the census migration. The dashboard used to
+/// learn about actors only from hand-written `ActorStarting` /
+/// `ActorStarted` publishes at a single spawn site, so it listed two of
+/// roughly forty-five live actors. Rows now come from the runtime's own
+/// spawn announcement, so a real actor spawned in the composed app must
+/// appear without any jinn-side publish naming it.
 #[rstest::rstest]
 #[tokio::test]
-async fn kernel_lifecycle_events_drive_the_dashboard_rows() {
-    // Given a composed app: the harness activated the dashboard slice,
-    // whose relays subscribe the bus for the kernel lifecycle types.
+async fn a_real_actor_appears_in_the_dashboard_without_any_feature_publish() {
+    // Given a composed app whose dashboard slice is active.
     let app = test_app().await;
     let slot = jinn_dashboard::dashboard_slot();
     let cell: TypedCell<jinn_dashboard::DashboardState> =
         app.services.slices.reader(&slot).expect("cell");
 
-    // When an ActorStarting publish rides the bus (the kernel path:
-    // `Bridge::publish_closure` → `bus.tell(Publish(msg))`).
-    let starting = jinn_slices::fabric::ActorStarting {
-        name: "test-actor".to_owned(),
-        description: Some("regression probe".to_owned()),
-    };
-    let _ = app.core.bridge.send(Bridge::publish_closure(starting));
-    wait_for("the row to appear as Starting", || {
-        cell.read().actors().iter().any(|e| {
-            e.name == "test-actor" && e.lifecycle == jinn_dashboard::ActorLifecycle::Starting
-        })
+    // When the runtime spawns an actor that publishes no jinn event.
+    let path = spawn_probe(&app.services.trouper_system, "census-probe").await;
+
+    // Then a row appears for it, keyed by the runtime's actor path.
+    wait_for("the spawned actor's row to appear", || {
+        cell.read().actors().iter().any(|e| e.name == path)
     })
     .await;
-
-    // And when the matching ActorStarted publish rides the bus.
-    let started = jinn_slices::fabric::ActorStarted {
-        name: "test-actor".to_owned(),
-        description: Some("regression probe".to_owned()),
-    };
-    let _ = app.core.bridge.send(Bridge::publish_closure(started));
-    wait_for("the row to be promoted to Running", || {
-        cell.read().actors().iter().any(|e| {
-            e.name == "test-actor" && e.lifecycle == jinn_dashboard::ActorLifecycle::Running
-        })
-    })
-    .await;
-
-    // Then the row exists and reports the running lifecycle.
     let row = {
         let reader = cell.read();
         reader
             .actors()
             .into_iter()
-            .find(|e| e.name == "test-actor")
+            .find(|e| e.name == path)
             .cloned()
-            .expect("lifecycle event created the row")
+            .expect("row exists")
     };
     assert_eq!(row.lifecycle, jinn_dashboard::ActorLifecycle::Running);
-    assert_eq!(row.description.as_deref(), Some("regression probe"));
 }
 
-/// REGRESSION (BestEffort drop): a startup-scale flood of lifecycle
-/// events (more than a small default mailbox) must arrive
-/// complete at the dashboard. The forward relays used to spawn with
-/// the default bounded mailbox, so the bus's BestEffort `try_send`
-/// silently dropped events under the burst and the affected actors
-/// froze at `Starting` — a different random set on every launch.
+/// The census is fed by the runtime announcement alone, so a row must
+/// exist with no description: the description column is populated only
+/// where a feature publishes a `ServiceStatusUpdate`, and most actors
+/// have none.
+#[rstest::rstest]
+#[tokio::test]
+async fn a_census_row_carries_no_description_without_a_feature_status_publish() {
+    // Given a composed app with a running census row.
+    let app = test_app().await;
+    let slot = jinn_dashboard::dashboard_slot();
+    let cell: TypedCell<jinn_dashboard::DashboardState> =
+        app.services.slices.reader(&slot).expect("cell");
+    let path = spawn_probe(&app.services.trouper_system, "undescribed-probe").await;
+    wait_for("the row to appear", || {
+        cell.read().actors().iter().any(|e| e.name == path)
+    })
+    .await;
+
+    // Then its description is empty — the runtime reports identity and
+    // liveness, never prose.
+    let row = {
+        let reader = cell.read();
+        reader
+            .actors()
+            .into_iter()
+            .find(|e| e.name == path)
+            .cloned()
+            .expect("row exists")
+    };
+    assert_eq!(row.description, None);
+}
+
+/// A feature's status message still populates the row it names. The
+/// census owns existence and liveness; the feature owns prose.
+#[rstest::rstest]
+#[tokio::test]
+async fn a_feature_status_message_populates_a_census_row() {
+    // Given a composed app and a row born from the runtime's census.
+    let app = test_app().await;
+    let slot = jinn_dashboard::dashboard_slot();
+    let cell: TypedCell<jinn_dashboard::DashboardState> =
+        app.services.slices.reader(&slot).expect("cell");
+    let update = jinn_slices::ServiceStatusUpdate {
+        name: "status-probe".to_owned(),
+        description: Some("probe service".to_owned()),
+        lifecycle: None,
+        status_message: Some("working".to_owned()),
+    };
+    let _ = app.core.bridge.send(Bridge::publish_closure(update));
+    wait_for("the status row to appear", || {
+        cell.read()
+            .actors()
+            .iter()
+            .any(|e| e.name == "status-probe" && e.description.as_deref() == Some("probe service"))
+    })
+    .await;
+
+    // Then the row keeps its status message.
+    let row = {
+        let reader = cell.read();
+        reader
+            .actors()
+            .into_iter()
+            .find(|e| e.name == "status-probe")
+            .cloned()
+            .expect("row exists")
+    };
+    assert_eq!(row.status_message.as_deref(), Some("working"));
+}
+
+/// A startup-scale burst of spawn announcements must arrive complete: a
+/// row lost to a full inbox is an actor silently missing from the census,
+/// and the missing set would differ on every launch.
 #[rstest::rstest]
 #[tokio::test]
 #[timeout(std::time::Duration::from_secs(30))]
-async fn lifecycle_flood_through_the_bridge_loses_no_events() {
-    // Given a composed app (dashboard relays subscribed, unbounded
-    // mailboxes) and its cell reader.
+async fn a_spawn_announcement_flood_loses_no_rows() {
+    // Given a composed app and its cell reader.
     let app = test_app().await;
     let slot = jinn_dashboard::dashboard_slot();
     let cell: TypedCell<jinn_dashboard::DashboardState> =
         app.services.slices.reader(&slot).expect("cell");
 
-    // When publishing 200 ActorStarting/ActorStarted pairs back to
-    // back through the bridge (the kernel path).
-    const PAIRS: usize = 200;
-    for i in 0..PAIRS {
-        let name = format!("flood-{i}");
-        let _ = app.core.bridge.send(Bridge::publish_closure(
-            jinn_slices::fabric::ActorStarting {
-                name: name.clone(),
-                description: None,
-            },
-        ));
-        let _ = app
-            .core
-            .bridge
-            .send(Bridge::publish_closure(jinn_slices::fabric::ActorStarted {
-                name,
-                description: None,
-            }));
+    // When 200 actors spawn back to back.
+    const SPAWNS: usize = 200;
+    let system = app.services.trouper_system.clone();
+    let mut handles = Vec::with_capacity(SPAWNS);
+    for i in 0..SPAWNS {
+        let system = system.clone();
+        handles.push(tokio::spawn(async move {
+            spawn_probe(&system, &format!("flood-{i}")).await;
+        }));
+    }
+    for handle in handles {
+        handle.await.expect("spawn task");
     }
 
-    // Then every flooded actor's row exists and reads Running.
-    wait_for_bounded("all flooded rows to reach Running", 20, || {
+    // Then every flooded actor has a row.
+    wait_for_bounded("all flooded rows to appear", 20, || {
         let reader = cell.read();
-        let missing: Vec<String> = (0..PAIRS)
+        let missing: Vec<String> = (0..SPAWNS)
             .filter(|i| {
-                !reader.actors().iter().any(|e| {
-                    e.name == format!("flood-{i}")
-                        && e.lifecycle == jinn_dashboard::ActorLifecycle::Running
-                })
+                !reader
+                    .actors()
+                    .iter()
+                    .any(|e| e.name == format!("flood-{i}"))
             })
             .map(|i| format!("flood-{i}"))
             .collect();
         missing.is_empty()
     })
     .await;
-}
-
-/// REGRESSION: a row born from a `ServiceStatusUpdate` without a
-/// lifecycle (the shared-type path — no mirror involved) shows up
-/// `Starting` and is promoted when the lifecycle event lands. Rows
-/// used to be stuck at `Starting` forever.
-#[rstest::rstest]
-#[tokio::test]
-async fn status_message_row_is_promoted_by_lifecycle_events() {
-    // Given a composed app and a ServiceStatusUpdate without a lifecycle.
-    let app = test_app().await;
-    let slot = jinn_dashboard::dashboard_slot();
-    let cell: TypedCell<jinn_dashboard::DashboardState> =
-        app.services.slices.reader(&slot).expect("cell");
-    let update = jinn_slices::ServiceStatusUpdate {
-        name: "svc-actor".to_owned(),
-        description: None,
-        lifecycle: None,
-        status_message: Some("working".to_owned()),
-    };
-    let _ = app.core.bridge.send(Bridge::publish_closure(update));
-
-    // Then the row is born as Starting.
-    wait_for("the svc-actor row to appear", || {
-        cell.read()
-            .actors()
-            .iter()
-            .any(|e| e.name == "svc-actor" && e.status_message.as_deref() == Some("working"))
-    })
-    .await;
-    let born = {
-        let reader = cell.read();
-        reader
-            .actors()
-            .into_iter()
-            .find(|e| e.name == "svc-actor")
-            .cloned()
-            .expect("row exists")
-    };
-    assert_eq!(
-        born.lifecycle,
-        jinn_dashboard::ActorLifecycle::Starting,
-        "status-born rows start as Starting"
-    );
-
-    // And when the kernel lifecycle event arrives, the row is promoted.
-    let started = jinn_slices::fabric::ActorStarted {
-        name: "svc-actor".to_owned(),
-        description: None,
-    };
-    let _ = app.core.bridge.send(Bridge::publish_closure(started));
-    wait_for("the svc-actor row to reach Running", || {
-        cell.read().actors().iter().any(|e| {
-            e.name == "svc-actor" && e.lifecycle == jinn_dashboard::ActorLifecycle::Running
-        })
-    })
-    .await;
-    // And the status message survived the promotion.
-    let promoted = {
-        let reader = cell.read();
-        reader
-            .actors()
-            .into_iter()
-            .find(|e| e.name == "svc-actor")
-            .cloned()
-            .expect("row exists")
-    };
-    assert_eq!(
-        promoted.status_message.as_deref(),
-        Some("working"),
-        "promotion preserves the status message"
-    );
 }
