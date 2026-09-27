@@ -147,7 +147,7 @@ mod tests {
     use jinn_domain::KernelIntent;
     use jinn_domain::common::app_state::AppState;
     use jinn_domain::common::render_ctx::RenderCtx;
-    use jinn_persona_msg::Persona;
+    use jinn_slices::Persona;
 
     #[rstest::rstest]
     fn section_id_is_persona() {

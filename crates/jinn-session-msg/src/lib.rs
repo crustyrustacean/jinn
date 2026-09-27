@@ -74,38 +74,6 @@ pub struct SessionPhaseChanged {
     pub new_phase: PhaseKind,
 }
 
-/// Setup command completed (success or failure).
-///
-/// Emitted by the session-lifecycle actor after running a lifecycle
-/// setup command. On success, `cwd` is the directory reported by the
-/// command. On failure, `cwd` is the default CWD and `error` contains
-/// the failure details.
-#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
-#[schema(description = "A session's setup command completed (success or failure).")]
-pub struct SessionSetupCompleted {
-    /// The session that was being set up.
-    pub session_id: SessionId,
-    /// The resulting CWD on success, or default CWD on failure.
-    pub cwd: PathBuf,
-    /// Error message if setup failed.
-    pub error: Option<String>,
-}
-
-/// Teardown command finished (success or failure).
-///
-/// Emitted by the session-lifecycle actor after running a lifecycle
-/// teardown command. On success, the session has already been removed
-/// from the sessions map. On failure, the session is still open and
-/// `error` describes the problem.
-#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
-#[schema(description = "A session's teardown command finished (success or failure).")]
-pub struct SessionTeardownFinished {
-    /// The session that was being torn down.
-    pub session_id: SessionId,
-    /// Error message if teardown failed.
-    pub error: Option<String>,
-}
-
 /// Session archived in persistent storage.
 ///
 /// Emitted by the session-store actor after marking a session as archived in
@@ -182,8 +150,6 @@ impl jinn_slices::BusMessage for RetryStalledSession {}
 impl jinn_slices::BusMessage for SessionClosed {}
 impl jinn_slices::BusMessage for SessionRemoved {}
 impl jinn_slices::BusMessage for SessionPhaseChanged {}
-impl jinn_slices::BusMessage for SessionSetupCompleted {}
-impl jinn_slices::BusMessage for SessionTeardownFinished {}
 impl jinn_slices::BusMessage for SessionArchived {}
 impl jinn_slices::BusMessage for SessionArchiveFailed {}
 impl jinn_slices::BusMessage for UserInteracted {}
@@ -200,11 +166,8 @@ mod tests {
     use super::SessionClosed;
     use super::SessionPhaseChanged;
     use super::SessionRemoved;
-    use super::SessionSetupCompleted;
-    use super::SessionTeardownFinished;
     use super::UserInteracted;
     use jinn_core_types::SessionId;
-    use std::path::PathBuf;
     use std::str::FromStr;
 
     #[rstest::rstest]
@@ -232,22 +195,13 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn session_events_roundtrip_through_json() {
-        // Given one of each moved event.
+        // Given the session events this crate owns.
         let id = jinn_core_types::SessionId::new();
         let events = (
             SessionPhaseChanged {
                 session_id: id.clone(),
                 old_phase: PhaseKind::Streaming,
                 new_phase: PhaseKind::Idle,
-            },
-            SessionSetupCompleted {
-                session_id: id.clone(),
-                cwd: PathBuf::from("/repo"),
-                error: Some("boom".to_owned()),
-            },
-            SessionTeardownFinished {
-                session_id: id.clone(),
-                error: None,
             },
             SessionArchived {
                 session_id: id.clone(),
@@ -260,22 +214,14 @@ mod tests {
 
         // When serializing and deserializing the tuple.
         let json = serde_json::to_string(&events).unwrap();
-        let round: (
-            SessionPhaseChanged,
-            SessionSetupCompleted,
-            SessionTeardownFinished,
-            SessionArchived,
-            SessionArchiveFailed,
-        ) = serde_json::from_str(&json).unwrap();
+        let round: (SessionPhaseChanged, SessionArchived, SessionArchiveFailed) =
+            serde_json::from_str(&json).unwrap();
 
         // Then every event survives with its fields intact.
         assert_eq!(round.0.new_phase, PhaseKind::Idle);
-        assert_eq!(round.1.cwd, PathBuf::from("/repo"));
-        assert_eq!(round.1.error.as_deref(), Some("boom"));
-        assert_eq!(round.2.error, None);
-        assert_eq!(round.3.session_id, round.0.session_id);
-        assert_eq!(round.4.session_id, round.0.session_id);
-        assert_eq!(round.4.error, "write failed");
+        assert_eq!(round.1.session_id, round.0.session_id);
+        assert_eq!(round.2.session_id, round.0.session_id);
+        assert_eq!(round.2.error, "write failed");
     }
 
     #[rstest::rstest]

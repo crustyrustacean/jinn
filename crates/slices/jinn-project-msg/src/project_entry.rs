@@ -3,7 +3,7 @@
 use jinn_selection_widget::PickerItem;
 use ratatui::text::{Line, Span};
 
-use jinn_cwd_msg::shorten_path;
+use jinn_common::shorten_path;
 use jinn_picker::picker_style::{active_marker, selected_style};
 use jinn_preferences_config::schemas::ProjectConfig;
 use jinn_theme::Theme;

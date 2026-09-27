@@ -7,7 +7,8 @@
 //! cell through a route-table input hook — the same pattern as the rename
 //! popup.
 
-use jinn_cwd_msg::{CwdInputState, CwdResolution, resolve_cwd_input, shorten_path};
+use jinn_common::shorten_path;
+use jinn_cwd_msg::{CwdInputState, CwdResolution, resolve_cwd_input};
 use jinn_slices::RouteResult as IntentResult;
 use jinn_slices::SliceScopeId;
 use jinn_slices::cell::TypedCell;

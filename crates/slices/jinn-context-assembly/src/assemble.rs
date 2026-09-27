@@ -1260,7 +1260,7 @@ mod tests {
                     .expect("persona cell attached")
             };
             let () = cell.update(|p| {
-                p.entries.push(jinn_persona_msg::Persona {
+                p.entries.push(jinn_slices::Persona {
                     name: "custom".to_owned(),
                     description: "Custom persona".to_owned(),
                     body: "You are a custom persona.".to_owned(),
@@ -1299,7 +1299,7 @@ mod tests {
                     .expect("persona cell attached")
             };
             let () = cell.update(|p| {
-                p.entries.push(jinn_persona_msg::Persona {
+                p.entries.push(jinn_slices::Persona {
                     name: "coding-assistant".to_owned(),
                     description: "Default".to_owned(),
                     body: "You are a coding assistant.".to_owned(),
@@ -1393,7 +1393,7 @@ mod tests {
                     .expect("persona cell attached")
             };
             let () = cell.update(|p| {
-                p.entries.push(jinn_persona_msg::Persona {
+                p.entries.push(jinn_slices::Persona {
                     name: "custom".to_owned(),
                     description: "Custom persona".to_owned(),
                     body: "ORDER-MARK-PERSONA".to_owned(),

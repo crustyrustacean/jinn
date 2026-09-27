@@ -2215,6 +2215,7 @@ dependencies = [
  "error-stack",
  "fuzzy-matcher",
  "jinn-persona-msg",
+ "jinn-slices",
  "regex",
  "rstest",
  "serde",
@@ -2259,7 +2260,6 @@ version = "0.118.0"
 dependencies = [
  "jinn-context",
  "jinn-core-types",
- "jinn-persona-msg",
  "jinn-skills-msg",
  "jinn-slices",
  "rstest",
@@ -2334,6 +2334,7 @@ version = "0.118.0"
 dependencies = [
  "dirs",
  "error-stack",
+ "jinn-common",
  "jinn-core-types",
  "jinn-cwd-msg",
  "jinn-slices",
@@ -2561,6 +2562,7 @@ dependencies = [
  "jinn-common",
  "jinn-preferences-config",
  "jinn-skills",
+ "jinn-slices",
  "rstest",
  "tempfile",
  "wherror",
@@ -2771,6 +2773,7 @@ dependencies = [
 name = "jinn-project"
 version = "0.118.0"
 dependencies = [
+ "jinn-common",
  "jinn-config",
  "jinn-core-types",
  "jinn-cwd-msg",
@@ -2795,6 +2798,7 @@ name = "jinn-project-msg"
 version = "0.118.0"
 dependencies = [
  "dirs",
+ "jinn-common",
  "jinn-cwd-msg",
  "jinn-picker",
  "jinn-preferences-config",
@@ -3047,7 +3051,6 @@ dependencies = [
  "jinn-picker",
  "jinn-preferences-config",
  "jinn-selection-widget",
- "jinn-session-msg",
  "jinn-session-store-msg",
  "jinn-slices",
  "jinn-theme",
@@ -3079,7 +3082,6 @@ version = "0.118.0"
 dependencies = [
  "jinn-config",
  "jinn-core-types",
- "jinn-mcp-msg",
  "jinn-preferences-config",
  "jinn-slices",
  "rstest",
@@ -3219,6 +3221,7 @@ dependencies = [
  "jinn-session-state",
  "jinn-session-store-msg",
  "jinn-skills-msg",
+ "jinn-slices",
  "jinn-testutil",
  "jinn-token-count-msg",
  "jinn-tools-msg",
@@ -3367,6 +3370,7 @@ version = "0.118.0"
 dependencies = [
  "dirs",
  "jiff",
+ "jinn-common",
  "jinn-core-types",
  "jinn-cwd-msg",
  "jinn-domain",

@@ -13,7 +13,10 @@
 
 pub mod app_info;
 pub mod app_paths;
+pub mod path_display;
 pub mod process_isolation;
+
+pub use path_display::shorten_path;
 pub mod process_kill;
 pub mod system_resource;
 pub mod template_check;

@@ -30,9 +30,8 @@ use jinn_discord_msg::{
 };
 use jinn_domain::common::state::State;
 use jinn_domain::protocol::ChatEntry;
-use jinn_session_msg::{
-    SessionArchived, SessionPhaseChanged, SessionSetupCompleted, SessionTeardownFinished,
-};
+use jinn_session_lifecycle_msg::{SessionSetupCompleted, SessionTeardownFinished};
+use jinn_session_msg::{SessionArchived, SessionPhaseChanged};
 use trouper::actor::ActorPath;
 use trouper::actor::{MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;

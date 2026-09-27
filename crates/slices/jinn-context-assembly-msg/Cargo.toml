@@ -7,7 +7,6 @@ description = "Context-assembly commands, events, and shared input vocabulary."
 [dependencies]
 jinn-core-types = { workspace = true }
 jinn-context = { workspace = true }
-jinn-persona-msg = { workspace = true }
 jinn-skills-msg = { workspace = true }
 jinn-slices = { workspace = true }
 serde = { workspace = true }

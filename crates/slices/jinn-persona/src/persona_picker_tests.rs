@@ -26,7 +26,8 @@
     reason = "test module, panics are acceptable"
 )]
 
-use jinn_persona_msg::{Persona, PersonaPickerState, persona_picker_scope, personas_slot};
+use jinn_persona_msg::{PersonaPickerState, persona_picker_scope, personas_slot};
+use jinn_slices::Persona;
 use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{EditIntent, RouteOutcome, ScopeSignal};
 use jinn_slices::{KeyRoutes, SliceHost, Slices};

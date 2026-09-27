@@ -9,7 +9,7 @@
 
 use std::path::Path;
 
-use jinn_persona_msg::Persona;
+use jinn_slices::Persona;
 use jinn_slices::SliceHost;
 
 pub mod parse;

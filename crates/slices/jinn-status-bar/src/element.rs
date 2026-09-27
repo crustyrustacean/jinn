@@ -4,8 +4,8 @@
 //! on line 2: strategy, pinned count, token stats, turn count, and model.
 //! The model shows `({provider})/{model}` when set, or "no model selected" otherwise.
 
+use jinn_common::shorten_path;
 use jinn_core_types::model_selection::ModelSelection;
-use jinn_cwd_msg::shorten_path;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::render_ctx::RenderCtx;
 use jinn_domain::common::ui_element::UiElement;

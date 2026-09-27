@@ -397,77 +397,77 @@ impl IntentHandler {
             }
 
             KernelIntent::ChatEntrySelectNext => {
-                feat::chat_entry_selection::intent::handle_select_next(state)
+                crate::chat_entry_selection::intent::handle_select_next(state)
             }
             KernelIntent::ChatEntrySelectPrev => {
-                feat::chat_entry_selection::intent::handle_select_prev(state)
+                crate::chat_entry_selection::intent::handle_select_prev(state)
             }
             KernelIntent::ChatEntryJumpNextCompaction => {
-                feat::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
+                crate::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
                     entry.is_compaction()
                 })
             }
             KernelIntent::ChatEntryJumpPrevCompaction => {
-                feat::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
+                crate::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
                     entry.is_compaction()
                 })
             }
             KernelIntent::ChatEntryJumpNextUserEntry => {
-                feat::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
+                crate::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
                     entry.is_user()
                 })
             }
             KernelIntent::ChatEntryJumpPrevUserEntry => {
-                feat::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
+                crate::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
                     entry.is_user()
                 })
             }
             KernelIntent::ChatEntryJumpNextPinned => {
-                feat::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
+                crate::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
                     entry.is_pinned()
                 })
             }
             KernelIntent::ChatEntryJumpPrevPinned => {
-                feat::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
+                crate::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
                     entry.is_pinned()
                 })
             }
             KernelIntent::ChatEntryJumpNextSources => {
-                feat::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
+                crate::chat_entry_selection::intent::handle_jump_next_entry(state, |entry| {
                     entry.is_annotation()
                 })
             }
             KernelIntent::ChatEntryJumpPrevSources => {
-                feat::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
+                crate::chat_entry_selection::intent::handle_jump_prev_entry(state, |entry| {
                     entry.is_annotation()
                 })
             }
             KernelIntent::ChatEntryPinSelected => {
-                feat::chat_entry_selection::intent::handle_pin_selected(state)
+                crate::chat_entry_selection::intent::handle_pin_selected(state)
             }
             KernelIntent::ExpandToolEntry => {
-                feat::chat_entry_selection::intent::handle_expand_tool_entry(state)
+                crate::chat_entry_selection::intent::handle_expand_tool_entry(state)
             }
             KernelIntent::ToggleIgnoredBlockVisibility => {
-                feat::chat_entry_selection::intent::handle_toggle_ignored_block(state)
+                crate::chat_entry_selection::intent::handle_toggle_ignored_block(state)
             }
             KernelIntent::ForkFromEntry => {
-                feat::chat_entry_selection::intent::handle_fork_from_entry(state)
+                crate::chat_entry_selection::intent::handle_fork_from_entry(state)
             }
             KernelIntent::NewSessionFromEntry => {
-                feat::chat_entry_selection::intent::handle_new_session_from_entry(state, config)
+                crate::chat_entry_selection::intent::handle_new_session_from_entry(state, config)
             }
             KernelIntent::YankSelectedEntry => {
-                feat::chat_entry_selection::intent::handle_yank_selected(state)
+                crate::chat_entry_selection::intent::handle_yank_selected(state)
             }
             KernelIntent::ChatEntryIgnoreSelected => {
-                feat::chat_entry_selection::intent::handle_ignore_selected(state)
+                crate::chat_entry_selection::intent::handle_ignore_selected(state)
             }
             KernelIntent::ChatEntryResetSelected => {
-                feat::chat_entry_selection::intent::handle_reset_selected(state)
+                crate::chat_entry_selection::intent::handle_reset_selected(state)
             }
             KernelIntent::ChatEntryIsolateSelected => {
-                feat::chat_entry_selection::isolate::handle_isolate_selected(state)
+                crate::chat_entry_selection::isolate::handle_isolate_selected(state)
             }
 
             KernelIntent::SessionLifecycleSetup {

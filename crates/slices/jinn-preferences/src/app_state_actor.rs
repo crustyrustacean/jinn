@@ -358,12 +358,12 @@ mod tests {
             .expect("test: persona cell seeded");
         cell.update(|selection| {
             selection.entries = vec![
-                jinn_persona_msg::Persona {
+                jinn_slices::Persona {
                     name: "coder".to_owned(),
                     description: String::new(),
                     body: String::new(),
                 },
-                jinn_persona_msg::Persona {
+                jinn_slices::Persona {
                     name: "writer".to_owned(),
                     description: String::new(),
                     body: String::new(),

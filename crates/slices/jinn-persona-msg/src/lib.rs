@@ -12,7 +12,7 @@ pub use persona_picker_scope::persona_picker_scope;
 pub use persona_picker_state::{
     PersonaPickerState, RESULTS_VIEWPORT_FALLBACK, persona_picker_slot,
 };
-pub use persona_state::*;
+pub use persona_state::{Personas, personas_slot};
 
 #[cfg(test)]
 mod tests {
