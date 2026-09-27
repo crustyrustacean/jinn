@@ -455,8 +455,8 @@ async fn a_feature_status_message_populates_a_census_row() {
     let update = jinn_slices::ServiceStatusUpdate {
         name: "status-probe".to_owned(),
         description: Some("probe service".to_owned()),
-        lifecycle: None,
         status_message: Some("working".to_owned()),
+        note_tone: None,
     };
     let _ = app.core.bridge.send(Bridge::publish_closure(update));
 

@@ -455,12 +455,13 @@ async fn drain_publishes_a_countdown_label_after_each_session() {
         ],
         "one label per completed session, then the idle state"
     );
-    // And every message targets the search-index row without touching the
-    // identity/lifecycle columns.
+    // And every message targets the search-index row, carrying only a
+    // label: the actor states nothing about its own liveness, which is
+    // the runtime's to announce.
     for m in &messages {
         assert_eq!(m.name, "search-index");
         assert_eq!(m.description, None);
-        assert_eq!(m.lifecycle, None);
+        assert_eq!(m.note_tone, None);
     }
 }
 

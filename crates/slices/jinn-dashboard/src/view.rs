@@ -16,6 +16,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::ActorLifecycle;
 use crate::DashboardEntry;
 use crate::DashboardState;
+use jinn_slices::NoteTone;
 use jinn_slices::SlotKey;
 use jinn_slices::view::SliceView;
 use jinn_slices::view::ViewCx;
@@ -76,12 +77,14 @@ impl SliceView for DashboardView {
             return;
         }
 
-        // Trunk parity: the scroll window is clamped per frame so the
-        // selection stays visible in whatever viewport this frame has.
-        // The slice actor owns the cell, so the clamp is the pure
-        // read-side form — no write handle reaches the render path.
+        // The scroll window is DERIVED, never stored: it is a pure
+        // function of the cursor and this frame's viewport, so the slice
+        // actor owns no scroll state and no write handle reaches the
+        // render path. The cursor sits at the viewport's vertical centre
+        // rather than being nudged into view, which is what makes a long
+        // list scroll steadily instead of lurching a row at a time.
         let content_height = area.height.saturating_sub(1); // header row
-        let offset = usize::from(slice.clamped_offset(content_height));
+        let offset = slice.offset_for_viewport(usize::from(content_height));
         let selected = slice.selected_index();
 
         let rows = build_rows(&actors, theme);
@@ -228,7 +231,8 @@ fn render_empty(frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
     frame.render_widget(para, area);
 }
 
-/// Builds the table rows from dashboard entries, applying per-lifecycle colors.
+/// Builds the table rows from dashboard entries, applying per-lifecycle
+/// colors.
 ///
 /// Three columns, in this order: State, Name, Notes. The Description
 /// column is gone — of roughly forty-five actors on the fabric, exactly
@@ -246,19 +250,13 @@ fn build_rows<'a>(actors: &[&'a DashboardEntry], theme: &Theme) -> Vec<Row<'a>> 
             let name_cell =
                 Cell::from(entry.name.as_str()).style(Style::default().fg(theme.primary_text));
 
-            // ONE Notes cell, two possible sources. A feature's own
-            // status message wins when it has one: it is the more
-            // specific, more current statement about that row. The
-            // runtime's stop reason is the fallback, and is the only
-            // thing shown for the majority of rows — the census covers
-            // every actor on the fabric, most of which have no feature
-            // status to report.
-            let notes_str = entry
-                .status_message
-                .as_deref()
-                .or(entry.stop_reason.as_deref())
-                .unwrap_or("");
-            let notes_cell = Cell::from(notes_str).style(Style::default().fg(theme.muted_text));
+            // The Notes column carries ONE thing: what the owning feature
+            // last said about itself. A row with no feature behind it has
+            // no note, and the empty cell is the honest rendering — a
+            // census covers every actor on the fabric, and most of them
+            // have nothing to report beyond their existence and state.
+            let notes_cell = Cell::from(entry.status_message.as_deref().unwrap_or(""))
+                .style(Style::default().fg(note_tone_color(entry.note_tone, theme)));
 
             Row::new(vec![state_cell, name_cell, notes_cell])
         })
@@ -266,27 +264,55 @@ fn build_rows<'a>(actors: &[&'a DashboardEntry], theme: &Theme) -> Vec<Row<'a>> 
 }
 
 /// Returns the display string and color for a lifecycle variant.
+///
+/// These four words are the runtime's verdicts, verbatim. There is no
+/// catch-all "Dead": an actor that finished cleanly or was torn down
+/// deliberately has no row at all, so every word on screen describes a
+/// state a reader should act on.
 fn lifecycle_display(lifecycle: ActorLifecycle, theme: &Theme) -> (&'static str, Color) {
     match lifecycle {
-        ActorLifecycle::Starting => ("Starting", theme.warning),
         ActorLifecycle::Running => ("Running", theme.success),
-        // Muted, not the error color: a passivated actor is dormant and
-        // will return on the next send. Painting it like a failure is
-        // how a normal idle cycle reads as an incident.
-        ActorLifecycle::Idle => ("Idle", theme.muted_text),
-        ActorLifecycle::Dead => ("Dead", theme.error_text),
+        // Dormant, not the error color: a passivated actor is evicted for
+        // idleness and returns on the next send. Painting it like a
+        // failure is how a normal idle cycle reads as an incident. Its
+        // own token rather than the generic muted one, because a
+        // deliberate dormancy is a specific state and the theme should be
+        // able to say so without borrowing a meaning meant for prose.
+        ActorLifecycle::Idle => ("Idle", theme.dormant_fg),
+        ActorLifecycle::Escalated => ("Escalated", theme.error_text),
+        ActorLifecycle::Crashed => ("Crashed", theme.error_text),
+    }
+}
+
+/// Maps a feature's note tone onto a theme token.
+///
+/// The view owns this mapping deliberately: a feature crossing the bus
+/// expresses intent (how loudly it wants to be read), never a colour, so
+/// no publisher can hardcode a value that fights the user's theme.
+fn note_tone_color(tone: NoteTone, theme: &Theme) -> Color {
+    match tone {
+        NoteTone::Muted => theme.muted_text,
+        NoteTone::Warning => theme.warning,
+        NoteTone::Error => theme.error_text,
     }
 }
 
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    use super::*;
     use crate::DashboardState;
     use crate::DashboardView;
+    use jinn_slices::NoteTone;
     use jinn_slices::view::SliceView;
     use jinn_slices::view::ViewCx;
     use jinn_testutil::setup_term;
     use jinn_theme::default_theme;
+
+    /// The x offset the State column starts at: the highlight symbol
+    /// (2 cells) plus the column spacing after it is accounted for by the
+    /// table itself, so the word begins at HIGHLIGHT.
+    const STATE_X: u16 = 2;
 
     /// Collects the entire terminal buffer into a single string for substring
     /// assertions.
@@ -298,6 +324,80 @@ mod tests {
             .iter()
             .map(ratatui::buffer::Cell::symbol)
             .collect()
+    }
+
+    /// Renders `slice` at the given geometry and returns the terminal.
+    fn render_at(
+        slice: &DashboardState,
+        width: u16,
+        height: u16,
+    ) -> ratatui::Terminal<ratatui::backend::TestBackend> {
+        let theme = default_theme();
+        let cx = ViewCx { theme: &theme };
+        let (mut terminal, _area) = setup_term(width, height);
+        terminal
+            .draw(|frame| {
+                let mut view = DashboardView::new();
+                let area = ratatui::layout::Rect::new(0, 0, width, height);
+                view.render(frame, area, &cx, slice);
+            })
+            .expect("render");
+        terminal
+    }
+
+    /// The text of one buffer row.
+    fn row_text(terminal: &ratatui::Terminal<ratatui::backend::TestBackend>, y: u16) -> String {
+        let buf = terminal.backend().buffer();
+        (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect()
+    }
+
+    /// The buffer row the `▸` cursor marker landed on.
+    fn cursor_row(terminal: &ratatui::Terminal<ratatui::backend::TestBackend>) -> Option<u16> {
+        let buf = terminal.backend().buffer();
+        (0..buf.area.height).find(|y| row_text(terminal, *y).contains('▸'))
+    }
+
+    /// The State word on a given buffer row, trimmed.
+    fn state_word_on(
+        terminal: &ratatui::Terminal<ratatui::backend::TestBackend>,
+        y: u16,
+    ) -> String {
+        let buf = terminal.backend().buffer();
+        (STATE_X..STATE_X + STATE_COL)
+            .map(|x| buf[(x, y)].symbol())
+            .collect::<String>()
+            .trim_end()
+            .trim()
+            .to_owned()
+    }
+
+    /// The foreground colour of the first cell of a buffer row's State
+    /// column.
+    fn state_colour_on(
+        terminal: &ratatui::Terminal<ratatui::backend::TestBackend>,
+        y: u16,
+    ) -> ratatui::style::Color {
+        terminal.backend().buffer()[(STATE_X, y)].fg
+    }
+
+    /// The foreground colour of a note, located by the note's own text.
+    ///
+    /// Only DATA rows are searched: the header row also contains the word
+    /// "Notes", and matching that would read a header cell instead of the
+    /// note being asked about.
+    fn note_colour(
+        terminal: &ratatui::Terminal<ratatui::backend::TestBackend>,
+        note: &str,
+    ) -> ratatui::style::Color {
+        let buf = terminal.backend().buffer();
+        let (y, text) = (1..buf.area.height)
+            .map(|y| (y, row_text(terminal, y)))
+            .find(|(_, text)| text.contains(note))
+            .unwrap_or_else(|| panic!("no data row carries the note {note}"));
+        // The note is ASCII in every test, so its byte offset in the row
+        // is its column offset.
+        let x = u16::try_from(text.find(note).expect("note present")).expect("x fits u16");
+        buf[(x, y)].fg
     }
 
     #[rstest::rstest]
@@ -338,57 +438,206 @@ mod tests {
         // Given a dashboard slice whose only actor was passivated.
         let mut slice = DashboardState::new();
         slice.mark_idle("jinn.discovery/abc");
-        let theme = default_theme();
-        let cx = ViewCx { theme: &theme };
 
         // When rendering through the view.
-        let (mut terminal, _area) = setup_term(80, 24);
-        terminal
-            .draw(|frame| {
-                let mut view = DashboardView::new();
-                let area = ratatui::layout::Rect::new(0, 0, 80, 24);
-                view.render(frame, area, &cx, &slice);
-            })
-            .expect("render");
+        let terminal = render_at(&slice, 80, 24);
 
-        // Then the row reads Idle, not Dead.
+        // Then the row reads Idle.
         let buf = buffer_string(&terminal);
         assert!(buf.contains("Idle"), "idle row renders: {buf}");
-        assert!(!buf.contains("Dead"), "a dormant actor is not dead: {buf}");
     }
 
-    /// A feature's status message and the runtime's stop reason share one
-    /// Notes cell; the feature's wins when both are present.
+    /// No row may ever read the old catch-all word: a failed actor has
+    /// its own named state, and a cleanly-stopped one has no row at all.
     #[rstest::rstest]
     #[test]
-    fn dashboard_view_prefers_the_feature_status_over_the_stop_reason() {
-        // Given a stopped row that also carries a feature status.
+    fn no_row_ever_reads_dead() {
+        // Given a dashboard holding one crashed actor.
         let mut slice = DashboardState::new();
-        slice.mark_stopped("discord", "crashed (supervisor declined restart)");
-        slice.set_status_message("discord", Some("reconnecting".to_owned()));
-        let theme = default_theme();
-        let cx = ViewCx { theme: &theme };
+        slice.mark_failed("broken", crate::ActorLifecycle::Crashed);
 
         // When rendering through the view.
-        let (mut terminal, _area) = setup_term(80, 24);
-        terminal
-            .draw(|frame| {
-                let mut view = DashboardView::new();
-                let area = ratatui::layout::Rect::new(0, 0, 80, 24);
-                view.render(frame, area, &cx, &slice);
-            })
-            .expect("render");
+        let terminal = render_at(&slice, 80, 24);
 
-        // Then the Notes cell carries the status message, not the reason.
+        // Then the word "Dead" appears nowhere on screen.
         let buf = buffer_string(&terminal);
-        assert!(
-            buf.contains("reconnecting"),
-            "status message renders: {buf}"
-        );
-        assert!(
-            !buf.contains("supervisor declined"),
-            "the stop reason yields to the feature status: {buf}"
-        );
+        assert!(!buf.contains("Dead"), "the word Dead is gone: {buf}");
+        // And the state cell names the actual failure.
+        assert_eq!(state_word_on(&terminal, 1), "Crashed");
+    }
+
+    /// A crash is drawn in the error colour, so a real failure is
+    /// visible at a glance rather than sitting among forty healthy rows.
+    #[rstest::rstest]
+    #[test]
+    fn a_crashed_row_is_drawn_in_the_error_colour() {
+        // Given a dashboard where a crashed actor is NOT the selected
+        // row. The selected row's foreground is the highlight colour,
+        // which overrides the cell's own, so reading the cursor row
+        // would measure the highlight instead of the state.
+        let mut slice = DashboardState::new();
+        slice.mark_failed("broken", crate::ActorLifecycle::Crashed);
+        slice.mark_running("healthy", None);
+        slice.select_last();
+        let theme = default_theme();
+
+        // When rendering through the view.
+        let terminal = render_at(&slice, 80, 24);
+
+        // Then the unselected crash row's State cell carries the error
+        // colour, and it is the top row because it sorted there.
+        assert_eq!(state_colour_on(&terminal, 1), theme.error_text);
+    }
+
+    /// Dormancy gets its own token precisely so it cannot be mistaken
+    /// for a failure.
+    #[rstest::rstest]
+    #[test]
+    fn an_idle_row_is_drawn_in_the_dormant_colour_not_the_error_colour() {
+        // Given a dashboard where a passivated actor is not selected.
+        let mut slice = DashboardState::new();
+        slice.mark_idle("dormant");
+        slice.mark_running("healthy", None);
+        slice.select_last();
+        let theme = default_theme();
+
+        // When rendering through the view.
+        let terminal = render_at(&slice, 80, 24);
+
+        // Then its State cell carries the dormant token, not the error
+        // colour a dormant actor must never borrow.
+        assert_eq!(state_colour_on(&terminal, 1), theme.dormant_fg);
+    }
+
+    /// Every lifecycle word has a colour and fits the column, and none of
+    /// them is a filler. Enumerating the enum here rather than in the
+    /// layout test means a new variant cannot slip through untested.
+    #[rstest::rstest]
+    fn every_lifecycle_has_a_named_word() {
+        // Given every lifecycle the runtime can report.
+        let theme = default_theme();
+
+        // When reading each one's display word.
+        let words: Vec<&str> = [
+            crate::ActorLifecycle::Running,
+            crate::ActorLifecycle::Idle,
+            crate::ActorLifecycle::Escalated,
+            crate::ActorLifecycle::Crashed,
+        ]
+        .into_iter()
+        .map(|l| lifecycle_display(l, &theme).0)
+        .collect();
+
+        // Then they are four distinct, non-empty names.
+        assert_eq!(words.len(), 4);
+        for word in &words {
+            assert!(!word.is_empty(), "every state names itself");
+        }
+        let mut sorted = words.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), 4, "no two states share a word: {words:?}");
+    }
+
+    /// The Notes column belongs to the owning feature. A row that no
+    /// feature has spoken for has an empty cell — the dashboard never
+    /// fills it with a lifecycle restatement, which is what made the
+    /// census read as a wall of prose about actors doing nothing.
+    #[rstest::rstest]
+    #[test]
+    fn a_runtime_failed_row_with_no_feature_note_shows_no_notes() {
+        // Given a crashed actor that no feature has published a note for.
+        let mut slice = DashboardState::new();
+        slice.mark_failed("worker", crate::ActorLifecycle::Crashed);
+
+        // When rendering through the view.
+        let terminal = render_at(&slice, 80, 24);
+
+        // Then the row's text is the state and the name, and nothing else.
+        let row = row_text(&terminal, 1);
+        assert!(row.contains("Crashed"), "state renders: {row}");
+        assert!(row.contains("worker"), "name renders: {row}");
+        // And the Notes column is empty: everything after the name
+        // column is padding, so the old stop-reason phrases cannot
+        // appear there. The state word itself is not the Notes column,
+        // hence the exact-column check rather than a substring search.
+        let buf = terminal.backend().buffer();
+        let notes_x = NAME_X + NAME_COL + COLUMN_SPACING;
+        let notes: String = (notes_x..buf.area.width)
+            .map(|x| buf[(x, 1)].symbol())
+            .collect();
+        assert_eq!(notes.trim(), "", "the Notes cell is empty: {notes:?}");
+    }
+
+    /// A feature's own status message is the one thing the Notes column
+    /// ever shows.
+    #[rstest::rstest]
+    #[test]
+    fn a_features_status_message_renders_in_the_notes_column() {
+        // Given a running actor with a feature note.
+        let mut slice = DashboardState::new();
+        slice.mark_running("discord", None);
+        slice.set_status_message("discord", Some("reconnecting".to_owned()));
+
+        // When rendering through the view.
+        let terminal = render_at(&slice, 80, 24);
+
+        // Then the note is on screen on that row.
+        assert!(row_text(&terminal, 1).contains("reconnecting"));
+    }
+
+    /// A feature colours its note by tone, and the tone resolves through
+    /// the theme rather than a hardcoded colour.
+    #[rstest::rstest]
+    #[case(NoteTone::Muted, "muted_text")]
+    #[case(NoteTone::Warning, "warning")]
+    #[case(NoteTone::Error, "error_text")]
+    fn each_note_tone_renders_in_its_theme_token(#[case] tone: NoteTone, #[case] token: &str) {
+        // Given an actor whose owning feature published a toned note,
+        // alongside a healthy row so the cursor is elsewhere.
+        let mut slice = DashboardState::new();
+        slice.mark_running("gateway", None);
+        slice.set_status_message("gateway", Some("401: invalid bot token".to_owned()));
+        slice.set_note_tone("gateway", tone);
+        slice.mark_running("healthy", None);
+        slice.select_last();
+        let theme = default_theme();
+        let expected = match token {
+            "muted_text" => theme.muted_text,
+            "warning" => theme.warning,
+            "error_text" => theme.error_text,
+            _ => unreachable!("unknown token"),
+        };
+
+        // When rendering through the view.
+        let terminal = render_at(&slice, 80, 24);
+
+        // Then the note carries that token's colour.
+        assert_eq!(note_colour(&terminal, "401:"), expected);
+    }
+
+    /// The tone must not leak into the State cell: a feature's opinion
+    /// about its own service says nothing about the runtime's verdict on
+    /// the actor.
+    #[rstest::rstest]
+    #[test]
+    fn an_error_toned_note_does_not_colour_the_state_cell() {
+        // Given a running actor whose feature reported an error, and the
+        // cursor parked on a different row so the state cell is readable.
+        let mut slice = DashboardState::new();
+        slice.mark_running("gateway", None);
+        slice.set_status_message("gateway", Some("401: invalid bot token".to_owned()));
+        slice.set_note_tone("gateway", NoteTone::Error);
+        slice.mark_running("healthy", None);
+        slice.select_last();
+        let theme = default_theme();
+
+        // When rendering through the view.
+        let terminal = render_at(&slice, 80, 24);
+
+        // Then the State cell still reads Running, in the success colour.
+        assert_eq!(state_word_on(&terminal, 1), "Running");
+        assert_eq!(state_colour_on(&terminal, 1), theme.success);
     }
 
     #[rstest::rstest]
@@ -413,63 +662,98 @@ mod tests {
         assert!(buffer_string(&terminal).contains("No services"));
     }
 
+    /// The window is derived from the cursor and the viewport, so a
+    /// reader holding only a read handle still draws the selected row
+    /// correctly — there is no stored offset left to fall out of date.
     #[rstest::rstest]
     #[test]
-    fn clamp_scroll_keeps_selected_visible() {
-        // Given a dashboard with 5 actors, selection at index 4, viewport 3.
-        let mut state = DashboardState::new();
-        for name in ["a", "b", "c", "d", "e"] {
-            state.mark_running(name, None);
-        }
-        state.select_last(); // index 4
-        assert_eq!(state.selected_index(), 4);
-
-        // When clamping with viewport 3.
-        state.clamp_scroll(3);
-
-        // Then scroll_offset puts index 4 within the visible window.
-        let visible_start = state.scroll_offset() as usize;
-        let visible_end = visible_start + 3;
-        assert!(
-            (visible_start..visible_end).contains(&4),
-            "selected index should be within visible window {visible_start}..{visible_end}"
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn render_clamps_the_offset_per_frame_without_mutating_the_slice() {
-        // Given 8 actors with the last selected and a stored offset of 0
-        // (no clamp has ever run on the cell).
+    fn the_selected_last_row_renders_without_any_stored_offset() {
+        // Given 8 actors with the last selected.
         let mut slice = DashboardState::new();
         for name in ["a", "b", "c", "d", "e", "f", "g", "h"] {
             slice.mark_running(name, None);
         }
         slice.select_last();
-        assert_eq!(slice.scroll_offset(), 0);
-        let theme = default_theme();
-        let cx = ViewCx { theme: &theme };
 
         // When rendering into a 5-row-tall viewport (1 header + 4 rows).
-        let (mut terminal, _area) = setup_term(80, 5);
-        terminal
-            .draw(|frame| {
-                let mut view = DashboardView::new();
-                let area = ratatui::layout::Rect::new(0, 0, 80, 5);
-                view.render(frame, area, &cx, &slice);
-            })
-            .expect("render");
+        let terminal = render_at(&slice, 80, 5);
 
-        // Then the selected last row is drawn despite offset 0, and the
-        // earliest rows scrolled out of the window.
+        // Then the selected last row is drawn, and the first is not.
         let buf = buffer_string(&terminal);
         assert!(buf.contains('h'), "selected last row renders: {buf}");
         assert!(
-            !buf.contains(" a ") && !buf.contains("\u{2502}a"),
-            "first row is scrolled out of the window: {buf}"
+            !row_text(&terminal, 1).contains('a'),
+            "first row is scrolled out of the window: {}",
+            row_text(&terminal, 1)
         );
-        // And the read path left the slice's own offset untouched.
-        assert_eq!(slice.scroll_offset(), 0, "render never mutates the slice");
+    }
+
+    /// The cursor renders at the vertical centre of the viewport. This is
+    /// the whole point of the derived offset: the reader always sees what
+    /// is above and below the row they are on, instead of the list
+    /// lurching a row at a time to keep up with `j`.
+    #[rstest::rstest]
+    #[test]
+    fn the_cursor_renders_at_the_vertical_centre_of_the_viewport() {
+        // Given 40 actors with the cursor well down the list.
+        let mut slice = DashboardState::new();
+        for i in 0..40 {
+            slice.mark_running(format!("actor-{i:02}"), None);
+        }
+        for _ in 0..20 {
+            slice.select_next();
+        }
+        assert_eq!(slice.selected_index(), 20);
+
+        // When rendering into a viewport with a header and nine data rows.
+        let terminal = render_at(&slice, 80, 10);
+
+        // Then the marker sits on data row five of nine — the middle.
+        let cursor = cursor_row(&terminal).expect("a cursor is drawn");
+        assert_eq!(cursor, 5, "cursor is centred, buffer row was {cursor}");
+        // And the row it landed on is the selected actor.
+        assert!(row_text(&terminal, cursor).contains("actor-20"));
+    }
+
+    /// At the end of a long list the window pins to the bottom rather
+    /// than leaving the cursor floating with empty rows beneath it.
+    #[rstest::rstest]
+    #[test]
+    fn the_end_of_the_list_pins_the_cursor_to_the_bottom_row() {
+        // Given 40 actors with the cursor on the last.
+        let mut slice = DashboardState::new();
+        for i in 0..40 {
+            slice.mark_running(format!("actor-{i:02}"), None);
+        }
+        slice.select_last();
+
+        // When rendering into a viewport with a header and nine data rows.
+        let terminal = render_at(&slice, 80, 10);
+
+        // Then the marker sits on the final visible row, and the final
+        // actor is on it.
+        let cursor = cursor_row(&terminal).expect("a cursor is drawn");
+        assert_eq!(cursor, 9, "cursor pinned to the last row, was {cursor}");
+        assert!(row_text(&terminal, cursor).contains("actor-39"));
+    }
+
+    /// A failed actor sorts to the top of the rendered list, so a reader
+    /// opening the tab sees it without scrolling.
+    #[rstest::rstest]
+    #[test]
+    fn a_crashed_actor_renders_at_the_top_of_the_list() {
+        // Given a dozen healthy actors and one that failed.
+        let mut slice = DashboardState::new();
+        for i in 0..12 {
+            slice.mark_running(format!("healthy-{i:02}"), None);
+        }
+        slice.mark_failed("broken", crate::ActorLifecycle::Crashed);
+
+        // When rendering through the view.
+        let terminal = render_at(&slice, 80, 24);
+
+        // Then it is the first data row, above every healthy one.
+        assert!(row_text(&terminal, 1).contains("broken"));
     }
 }
 
@@ -511,12 +795,16 @@ mod layout_tests {
     }
 
     /// The longest State word, which is what `STATE_COL` is fitted to.
+    ///
+    /// Enumerated exhaustively: this is the guard that a new lifecycle
+    /// variant gets a real column, and it only bites if the list here is
+    /// kept in step with the enum.
     fn longest_state_word() -> u16 {
         [
-            ActorLifecycle::Starting,
             ActorLifecycle::Running,
             ActorLifecycle::Idle,
-            ActorLifecycle::Dead,
+            ActorLifecycle::Escalated,
+            ActorLifecycle::Crashed,
         ]
         .into_iter()
         .map(|l| u16::try_from(lifecycle_display(l, &default_theme()).0.width()).unwrap())
@@ -575,8 +863,8 @@ mod layout_tests {
     /// not. Measuring bytes would get both wrong.
     #[rstest::rstest]
     fn truncation_is_measured_in_display_cells() {
-        // Given a 20-character name that is 40 cells wide, and one that is
-        // 42 cells wide.
+        // Given a 20-character name that is 40 cells wide, and one that
+        // is 42 cells wide.
         let wide = "間".repeat(20);
         let wider = "間".repeat(21);
 
@@ -717,7 +1005,7 @@ mod layout_tests {
     }
 
     #[rstest::rstest]
-    fn the_overlay_follows_the_scroll_offset() {
+    fn the_overlay_follows_the_derived_scroll_offset() {
         // Given many actors so the list scrolls, with the selected one
         // far down the list.
         let mut slice = DashboardState::new();

@@ -34,6 +34,11 @@ pub struct Theme {
     pub subagent_bg: Color,
     /// Error text color.
     pub error_text: Color,
+    /// Dormant-but-healthy state color (a passivated actor in the
+    /// dashboard's State column). Deliberately not `error_text`: the actor
+    /// is evicted for idleness and returns on the next send, so painting it
+    /// as a failure turns a normal idle cycle into an incident.
+    pub dormant_fg: Color,
 
     // Status
     /// Success/healthy status color (running actors, fresh data, active markers).
@@ -156,6 +161,7 @@ impl Theme {
         m.insert("subagent_fg", Style::default().fg(self.subagent_fg));
         m.insert("subagent_bg", Style::default().bg(self.subagent_bg));
         m.insert("error_text", Style::default().fg(self.error_text));
+        m.insert("dormant_fg", Style::default().fg(self.dormant_fg));
         m.insert("success", Style::default().fg(self.success));
         m.insert("warning", Style::default().fg(self.warning));
         m.insert("streaming", Style::default().fg(self.streaming));
@@ -264,6 +270,7 @@ pub struct ThemeFile {
     pub subagent_bg: Option<ThemeColor>,
     #[serde(default)]
     pub error_text: Option<ThemeColor>,
+    pub dormant_fg: Option<ThemeColor>,
 
     #[serde(default)]
     pub success: Option<ThemeColor>,
@@ -398,6 +405,9 @@ impl ThemeFile {
             error_text: self
                 .error_text
                 .map_or(fallback.error_text, crate::color::ThemeColor::inner),
+            dormant_fg: self
+                .dormant_fg
+                .map_or(fallback.dormant_fg, crate::color::ThemeColor::inner),
             success: self
                 .success
                 .map_or(fallback.success, crate::color::ThemeColor::inner),
@@ -544,6 +554,7 @@ impl ThemeFile {
             subagent_fg: Self::resolve_field(self.subagent_fg),
             subagent_bg: Self::resolve_field(self.subagent_bg),
             error_text: Self::resolve_field(self.error_text),
+            dormant_fg: Self::resolve_field(self.dormant_fg),
             success: Self::resolve_field(self.success),
             warning: Self::resolve_field(self.warning),
             streaming: Self::resolve_field(self.streaming),
@@ -608,6 +619,7 @@ mod tests {
             subagent_fg: None,
             subagent_bg: None,
             error_text: None,
+            dormant_fg: None,
             success: None,
             warning: None,
             streaming: None,
@@ -660,6 +672,7 @@ mod tests {
             subagent_fg: Some(ThemeColor(Color::Rgb(152, 128, 208))),
             subagent_bg: Some(ThemeColor(Color::Rgb(70, 58, 105))),
             error_text: Some(ThemeColor(Color::Red)),
+            dormant_fg: Some(ThemeColor(Color::Blue)),
             success: Some(ThemeColor(Color::Green)),
             warning: Some(ThemeColor(Color::Yellow)),
             streaming: Some(ThemeColor(Color::Cyan)),
