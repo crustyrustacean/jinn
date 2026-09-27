@@ -42,9 +42,14 @@ per-session.
 
 ## Compaction model
 
-`<leader>sc` picks the provider/model used for compaction summaries,
-independent of the session model (unset = compaction uses the session's
-model). Also settable in `jinn.toml` — see `configuration.md`.
+The summarizer model is configured in `jinn.toml` only — there is no picker:
+
+```toml
+[context_curation.compaction]
+# model = "openrouter/anthropic/claude-sonnet-4"
+```
+
+When unset, compaction summaries use the session's own model.
 
 ## Provider configuration (`providers.toml`)
 

@@ -98,7 +98,6 @@ Misc:
 | `<leader>sr` | Reasoning-effort picker          |
 | `<leader>sE` | OpenRouter endpoint picker       |
 | `<leader>sp` | Project picker                   |
-| `<leader>sc` | Compaction model picker          |
 | `<leader>sl` | Session lifecycle recipe picker  |
 | `<leader>cd` | CWD input (type a path directly) |
 
@@ -137,7 +136,6 @@ to every section:
 | `J` / `K`         | Next / previous section (wraps)                                |
 | `<esc>` / `<c-h>` | Leave the sidebar, back to chat                                |
 | `<c-w>`           | Enter sidebar resize mode (`h`/`l` widen/narrow, `<esc>` done) |
-| `i`               | Enter input mode                                               |
 | `q`, `<c-c>`, `?` | Quit / quit / which-key                                        |
 | `<M-t>`           | Toggle the terminal overlay                                    |
 
@@ -171,9 +169,7 @@ to every section:
 | `X`       | Tear down the session **and its whole subtree** (press again to confirm) |
 | `c`       | Continue: switch to the session and re-run its setup command             |
 | `s`       | Re-run the session's setup command                                       |
-| `n`       | New session                                                          |
 | `T`       | Toggle the terminal overlay for the selected session                     |
-| `p`       | Prefix group for session actions (see the which-key popup)               |
 
 ### Task-list section
 
@@ -196,7 +192,7 @@ Read-only navigation (status view). Manage servers via the MCP picker — see
 | `<up>` / `<down>`                    | Move selection        |
 | `<pgup>` / `<pgdn>`                  | Page the list         |
 | `<left>` / `<right>` / `<backspace>` | Edit the filter       |
-| `<c-n>`                              | New session           |
+| `<c-n>`                              | New session (all pickers except Model) |
 | any letter                           | Type into the filter  |
 
 ### Picker-specific keys
@@ -215,7 +211,7 @@ Read-only navigation (status view). Manage servers via the MCP picker — see
 | MCP server | `<Tab>`           | Enable/disable for this session                         |
 | MCP server | `<c-r>`           | Restart the selected server                             |
 | MCP server | `<c-t>`           | Toggle preview pane (status/log ↔ tool list)            |
-| Project    | `<c-n>`           | Register a new project directory                        |
+| Project    | `<c-n>`           | Start a new session (leaves the picker)              |
 | Project    | `<c-d>`           | Remove the highlighted project                          |
 | Project    | `<c-enter>`       | New session at the highlighted project with a lifecycle |
 | Task list  | —                 | Read-only browser                                       |
@@ -230,7 +226,6 @@ pruner-threshold input share a pattern:
 | `<enter>`                                     | Confirm                                           |
 | `<esc>`                                       | Cancel                                            |
 | letters / `<backspace>` / `<delete>` / arrows | Edit the text (numeric scopes accept digits only) |
-| `<c-j>`                                       | Insert a newline (multiline scopes)               |
 
 ## Terminal overlay
 
@@ -239,7 +234,6 @@ See `terminal-overlay.md` for the full workflow. Scope-specific keys:
 | Scope            | Key                                 | Action                                   |
 | ---------------- | ----------------------------------- | ---------------------------------------- |
 | Terminal view    | `<M-t>`                             | Close the overlay                        |
-| Terminal view    | `<tab>`                             | Cycle tabs                               |
 | Terminal view    | `y`                                 | Yank the visible screen to the clipboard |
 | Terminal view    | `I`                                 | Yank the screen and push it to the model |
 | Terminal view    | `T`                                 | Toggle overlay for the selected session  |

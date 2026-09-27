@@ -28,7 +28,7 @@ take positional arguments (jinn prompts for them).
 | `j` / `k` / `J` / `K`      | Move within / between sidebar sections                                    |
 | `<enter>`                  | Switch to the selected session (live preview while browsing)              |
 | `i`                        | Switch to the session and enter input mode                                |
-| `<leader>ss`               | Full-screen session browser (filter by name; shows date + project + tree) |
+| `<leader>ss`               | Session browser popup (filter by name; shows date + project + tree) |
 
 Sessions remember their own model, persona, cwd, enabled tools/skills, and
 context state. Switching is instant; work continues in the background.
@@ -93,8 +93,10 @@ enabled.
 Ask the agent to "spawn a subagent for X" — it calls the `task` tool, which
 creates a **regular session** linked as a child:
 
-- Fresh history; inherits your model, cwd, tools, skills, MCP servers, and a
-  snapshot of your task list (which then evolves independently).
+- Fresh history; inherits your model, cwd, tools, skills, and MCP servers. It
+  starts with an **empty task list** — your list is not copied, so the whole
+  assignment has to arrive in the prompt. Give a subagent the context it
+  needs; don't assume it can see what you were doing.
 - The parent's `task` tool call blocks until the child finishes and forwards
   the child's final message as the tool result.
 - While it runs you can steer it: switch to the child session in the sidebar

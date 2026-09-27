@@ -19,7 +19,6 @@ in the which-key popup (`?`).
 | `<leader>sr` | Reasoning effort | Model reasoning-effort level                          |
 | `<leader>sE` | Endpoint         | OpenRouter routing endpoint pin                       |
 | `<leader>sp` | Project          | Curated project dirs for quick session creation       |
-| `<leader>sc` | Compaction model | Model used for compaction summaries                   |
 | `<leader>sl` | Lifecycle        | Lifecycle recipes for new sessions                    |
 
 ## Inside a picker
@@ -34,7 +33,7 @@ Shared controls:
 | `<left>` / `<right>` / `<backspace>` | Edit the filter                                              |
 | `<enter>`                            | Confirm                                                      |
 | `<esc>`                              | Close                                                        |
-| `<c-n>`                              | New session from here                                        |
+| `<c-n>`                              | New session from here (all but Model)   |
 
 Picker-specific keys are shown in the picker's own which-key overlay — the
 highlights:
@@ -53,7 +52,7 @@ highlights:
   `mcp-servers.md`).
 - **Endpoint**: `<c-r>` re-fetches OpenRouter endpoint listings (see
   `models-and-providers.md`).
-- **Project**: `<c-n>` registers a new project directory, `<c-d>` removes the
+- **Project**: `<c-n>` starts a new session, `<c-d>` removes the
   highlighted one, `<c-enter>` starts a session there with a lifecycle recipe.
 
 ## Sidebar navigation doubles as picker preview
