@@ -43,9 +43,6 @@ debug = 0
 
 [patch.crates-io]
 tiktoken = { path = "vendor/tiktoken" }
-# Carries the `Keymap::unbind` that keybind overrides depend on, which
-# is not in the published 0.14.0. Drop this once a release includes it.
-ratatui-which-key = { path = "../../ratatui-which-key" }
 
 [lib]
 path = "src/lib.rs"
