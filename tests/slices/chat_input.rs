@@ -21,6 +21,7 @@ use jinn_chat_input::element::ChatInputBoxElement;
 use jinn_domain::AppState;
 use jinn_domain::RenderCtx;
 use jinn_domain::common::ui_element::UiElement;
+use jinn_domain::common::ui_registry::UiRegistry;
 use jinn_domain::protocol::ChatEntry;
 use jinn_slices::FocusScope;
 use jinn_theme::default_theme;
@@ -4860,5 +4861,26 @@ fn paste_text_inserts_into_the_buffer() {
             .active_session()
             .with_input(|i| i.text().to_owned(), String::new),
         "hello\nworld"
+    );
+}
+
+/// Composition's `register` puts the box in the registry under the name
+/// the renderer fetches it by.
+///
+/// The renderer looks the box up with `if let Some(..)`, so a missing
+/// `register` call does not panic — the box silently stops drawing. This
+/// pins the one link that catches that.
+#[rstest::rstest]
+fn register_puts_the_box_in_the_ui_registry() {
+    // Given an empty UI registry.
+    let mut registry = UiRegistry::new();
+
+    // When composition registers the slice's element.
+    jinn_chat_input::register(&mut registry);
+
+    // Then the box is fetchable under the name the renderer uses.
+    assert!(
+        registry.get_mut("chat-input-box").is_some(),
+        "the renderer fetches the box by this name; a missing register means it never draws",
     );
 }
