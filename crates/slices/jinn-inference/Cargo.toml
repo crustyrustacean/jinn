@@ -5,6 +5,9 @@ edition.workspace = true
 description = "The inference slice: the actor that drives LLM provider streams."
 
 [dependencies]
+throbber-widgets-tui = { workspace = true }
+ratatui = { workspace = true }
+jinn-session-msg = { workspace = true }
 jinn-inference-msg = { workspace = true }
 # The trouper runtime: ServiceActors, topics, schemas.
 trouper = { workspace = true }

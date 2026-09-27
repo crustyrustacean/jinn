@@ -18,6 +18,7 @@
 mod session;
 
 pub mod inference_actor;
+pub mod streaming_indicator;
 
 use jinn_slices::SliceHost;
 
@@ -35,4 +36,14 @@ pub fn activate(
     services: jinn_domain::Services,
 ) {
     let _path = inference_actor::InferenceActor::spawn(host.system(), services);
+}
+
+/// Register the streaming indicator element.
+///
+/// Called by composition in `jinn-tui`: the element is slice-owned, so the
+/// kernel's element registry cannot reference it.
+pub fn register(registry: &mut jinn_domain::common::AppUiRegistry) {
+    registry.register(Box::new(
+        streaming_indicator::StreamingIndicatorElement::new(),
+    ));
 }

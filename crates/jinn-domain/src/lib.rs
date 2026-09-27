@@ -83,10 +83,6 @@ pub use jinn_session_msg::PhaseKind;
 // long-standing `jinn_domain::ReasoningEffort` paths keep resolving.
 pub use jinn_provider_selection_msg::ReasoningEffort;
 pub use jinn_provider_selection_msg::resolve_effort;
-// Re-export install (default resource seeding).
-pub use feat::install::{
-    Destinations, InstallError, InstallOutcome, InstallReport, JinnTomlOutcome, install_defaults_to,
-};
 
 // Re-export services submodules
 

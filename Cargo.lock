@@ -1938,6 +1938,7 @@ dependencies = [
  "jinn-domain",
  "jinn-inference",
  "jinn-inference-msg",
+ "jinn-install",
  "jinn-llm-support",
  "jinn-mcp-msg",
  "jinn-mcp-slice",
@@ -2524,12 +2525,15 @@ dependencies = [
  "jinn-provider",
  "jinn-provider-config",
  "jinn-session-history-msg",
+ "jinn-session-msg",
  "jinn-slices",
  "jinn-testutil",
  "jinn-tools-msg",
+ "ratatui",
  "reasoning-parser",
  "rstest",
  "serde_json",
+ "throbber-widgets-tui",
  "tokio",
  "tracing",
  "trouper",
@@ -2547,6 +2551,19 @@ dependencies = [
  "serde_json",
  "tokio",
  "trouper",
+]
+
+[[package]]
+name = "jinn-install"
+version = "0.118.0"
+dependencies = [
+ "error-stack",
+ "jinn-common",
+ "jinn-preferences-config",
+ "jinn-skills",
+ "rstest",
+ "tempfile",
+ "wherror",
 ]
 
 [[package]]
@@ -3611,6 +3628,7 @@ dependencies = [
  "jinn-cwd",
  "jinn-cwd-msg",
  "jinn-domain",
+ "jinn-inference",
  "jinn-mcp",
  "jinn-mcp-msg",
  "jinn-persona-msg",

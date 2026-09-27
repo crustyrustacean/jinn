@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+jinn-inference = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-chat-input = { workspace = true }
 jinn-chat-input-msg = { workspace = true }

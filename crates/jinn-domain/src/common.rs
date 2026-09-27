@@ -29,8 +29,10 @@ pub type AppUiRegistry = ui_registry::UiRegistry;
 /// Called once during application startup. Slice-owned elements are
 /// registered by composition in `jinn-tui`, which can reference slice
 /// crates; the kernel cannot.
-pub fn register_all_ui_elements(registry: &mut AppUiRegistry) {
-    crate::feat::provider::register(registry);
+pub fn register_all_ui_elements(_registry: &mut AppUiRegistry) {
+    // Every display element is slice-owned now, so composition in `jinn-tui`
+    // registers them all. This function survives as the kernel's hook for
+    // elements it owns itself, of which there are currently none.
 }
 
 #[cfg(test)]
@@ -51,31 +53,17 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn register_all_ui_elements_populates_registry() {
+    fn register_all_ui_elements_registers_nothing_by_itself() {
         // Given an empty registry.
         let mut registry = AppUiRegistry::new();
 
-        // When registering all UI elements.
+        // When registering the kernel's own UI elements.
         register_all_ui_elements(&mut registry);
 
-        // Then the registry is not empty (has at least one element).
-        assert!(registry.iter_mut().count() > 0);
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn provider_register_adds_streaming_indicator() {
-        // Given an empty registry.
-        let mut registry = AppUiRegistry::new();
-
-        // When registering provider UI elements.
-        crate::feat::provider::register(&mut registry);
-
-        // Then exactly 1 element was added (the streaming indicator).
-        assert_eq!(
-            registry.iter_mut().count(),
-            1,
-            "provider::register should add the streaming indicator"
-        );
+        // Then it adds nothing: every display element is slice-owned, and
+        // composition in jinn-tui registers those. This is the assertion that
+        // keeps a slice element from being re-added here, which would render
+        // it twice.
+        assert_eq!(registry.iter_mut().count(), 0);
     }
 }

@@ -48,6 +48,7 @@ tiktoken = { path = "vendor/tiktoken" }
 path = "src/lib.rs"
 
 [dependencies]
+jinn-install = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-llm-support = { workspace = true }
 jinn-persona = { workspace = true }
@@ -174,6 +175,7 @@ crossterm = { workspace = true }
 
 # Internal
 jinn-domain = { path = "crates/jinn-domain" }
+jinn-install = { path = "crates/jinn-install" }
 jinn-discord = { path = "crates/slices/jinn-discord" }
 jinn-discord-msg = { path = "crates/slices/jinn-discord-msg" }
 jinn-common = { path = "crates/jinn-common" }

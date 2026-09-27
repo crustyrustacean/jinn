@@ -7,8 +7,8 @@
 
 use std::time::Instant;
 
-use crate::common::render_ctx::RenderCtx;
-use crate::common::ui_element::UiElement;
+use jinn_domain::common::render_ctx::RenderCtx;
+use jinn_domain::common::ui_element::UiElement;
 use jinn_session_msg::PhaseKind;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -94,7 +94,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use crate::AppState;
+    use jinn_domain::AppState;
 
     use super::*;
 
@@ -190,5 +190,38 @@ mod tests {
             row.contains("Working..."),
             "expected Working..., got: {row}"
         );
+    }
+}
+
+#[cfg(test)]
+mod registration_tests {
+    use super::StreamingIndicatorElement;
+    use jinn_domain::common::AppUiRegistry;
+    use jinn_domain::common::ui_element::UiElement;
+
+    #[rstest::rstest]
+    fn register_adds_streaming_indicator() {
+        // Given an empty registry.
+        let mut registry = AppUiRegistry::new();
+
+        // When registering the inference slice's UI elements.
+        crate::register(&mut registry);
+
+        // Then exactly 1 element was added (the streaming indicator).
+        assert_eq!(
+            registry.iter_mut().count(),
+            1,
+            "inference::register should add the streaming indicator"
+        );
+    }
+
+    #[rstest::rstest]
+    fn element_is_constructible() {
+        // Given nothing.
+        // When constructing the element.
+        let element = StreamingIndicatorElement::new();
+
+        // Then it is registered under its lookup name.
+        assert_eq!(element.name(), "streaming-indicator");
     }
 }

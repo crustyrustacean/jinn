@@ -92,6 +92,7 @@ impl TuiAppBuilder {
         // The chat log is a slice; its element is registered here because
         // the kernel's registry cannot reference slice crates.
         jinn_chat_log_view::register(&mut ui_registry);
+        jinn_inference::register(&mut ui_registry);
         jinn_chat_input::register(&mut ui_registry);
         jinn_status_bar::register(&mut ui_registry);
 

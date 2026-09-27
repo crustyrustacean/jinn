@@ -133,162 +133,152 @@ const BUNDLED: &[Bundled] = &[
     Bundled {
         kind: Kind::Theme,
         relative: "catppuccin-mocha.toml",
-        contents: include_str!("../../../../../res/themes/catppuccin-mocha.toml"),
+        contents: include_str!("../../../res/themes/catppuccin-mocha.toml"),
     },
     Bundled {
         kind: Kind::Theme,
         relative: "default.toml",
-        contents: include_str!("../../../../../res/themes/default.toml"),
+        contents: include_str!("../../../res/themes/default.toml"),
     },
     Bundled {
         kind: Kind::Theme,
         relative: "nord-light.toml",
-        contents: include_str!("../../../../../res/themes/nord-light.toml"),
+        contents: include_str!("../../../res/themes/nord-light.toml"),
     },
     Bundled {
         kind: Kind::Theme,
         relative: "gruvbox-dark.toml",
-        contents: include_str!("../../../../../res/themes/gruvbox-dark.toml"),
+        contents: include_str!("../../../res/themes/gruvbox-dark.toml"),
     },
     Bundled {
         kind: Kind::Theme,
         relative: "sonokai.toml",
-        contents: include_str!("../../../../../res/themes/sonokai.toml"),
+        contents: include_str!("../../../res/themes/sonokai.toml"),
     },
     // --- personas ---
     Bundled {
         kind: Kind::Persona,
         relative: "brainstorm.md",
-        contents: include_str!("../../../../../res/personas/brainstorm.md"),
+        contents: include_str!("../../../res/personas/brainstorm.md"),
     },
     Bundled {
         kind: Kind::Persona,
         relative: "coding-assistant.md",
-        contents: include_str!("../../../../../res/personas/coding-assistant.md"),
+        contents: include_str!("../../../res/personas/coding-assistant.md"),
     },
     Bundled {
         kind: Kind::Persona,
         relative: "general.md",
-        contents: include_str!("../../../../../res/personas/general.md"),
+        contents: include_str!("../../../res/personas/general.md"),
     },
     Bundled {
         kind: Kind::Persona,
         relative: "learning-tutor.md",
-        contents: include_str!("../../../../../res/personas/learning-tutor.md"),
+        contents: include_str!("../../../res/personas/learning-tutor.md"),
     },
     // --- prompts ---
     Bundled {
         kind: Kind::Prompt,
         relative: "approve-plan.md",
-        contents: include_str!("../../../../../res/prompts/approve-plan.md"),
+        contents: include_str!("../../../res/prompts/approve-plan.md"),
     },
     Bundled {
         kind: Kind::Prompt,
         relative: "_compaction.md",
-        contents: include_str!("../../../../../res/prompts/_compaction.md"),
+        contents: include_str!("../../../res/prompts/_compaction.md"),
     },
     Bundled {
         kind: Kind::Prompt,
         relative: "gap-analysis.md",
-        contents: include_str!("../../../../../res/prompts/gap-analysis.md"),
+        contents: include_str!("../../../res/prompts/gap-analysis.md"),
     },
     Bundled {
         kind: Kind::Prompt,
         relative: "generate-persona.md",
-        contents: include_str!("../../../../../res/prompts/generate-persona.md"),
+        contents: include_str!("../../../res/prompts/generate-persona.md"),
     },
     Bundled {
         kind: Kind::Prompt,
         relative: "meta-prompt.md",
-        contents: include_str!("../../../../../res/prompts/meta-prompt.md"),
+        contents: include_str!("../../../res/prompts/meta-prompt.md"),
     },
     Bundled {
         kind: Kind::Prompt,
         relative: "plan.md",
-        contents: include_str!("../../../../../res/prompts/plan.md"),
+        contents: include_str!("../../../res/prompts/plan.md"),
     },
     Bundled {
         kind: Kind::Prompt,
         relative: "research.md",
-        contents: include_str!("../../../../../res/prompts/research.md"),
+        contents: include_str!("../../../res/prompts/research.md"),
     },
     // --- skills (preserve nested subdir structure) ---
     Bundled {
         kind: Kind::Skill,
         relative: "phased-task-loop/SKILL.md",
-        contents: include_str!("../../../../../res/skills/phased-task-loop/SKILL.md"),
+        contents: include_str!("../../../res/skills/phased-task-loop/SKILL.md"),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "simple-task-loop/SKILL.md",
-        contents: include_str!("../../../../../res/skills/simple-task-loop/SKILL.md"),
+        contents: include_str!("../../../res/skills/simple-task-loop/SKILL.md"),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "micro-task-loop/SKILL.md",
-        contents: include_str!("../../../../../res/skills/micro-task-loop/SKILL.md"),
+        contents: include_str!("../../../res/skills/micro-task-loop/SKILL.md"),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/SKILL.md",
-        contents: include_str!("../../../../../res/skills/jinn-usage/SKILL.md"),
+        contents: include_str!("../../../res/skills/jinn-usage/SKILL.md"),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/references/keybindings.md",
-        contents: include_str!("../../../../../res/skills/jinn-usage/references/keybindings.md"),
+        contents: include_str!("../../../res/skills/jinn-usage/references/keybindings.md"),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/references/context-management.md",
-        contents: include_str!(
-            "../../../../../res/skills/jinn-usage/references/context-management.md"
-        ),
+        contents: include_str!("../../../res/skills/jinn-usage/references/context-management.md"),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/references/sessions-and-subagents.md",
         contents: include_str!(
-            "../../../../../res/skills/jinn-usage/references/sessions-and-subagents.md"
+            "../../../res/skills/jinn-usage/references/sessions-and-subagents.md"
         ),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/references/pickers-and-search.md",
-        contents: include_str!(
-            "../../../../../res/skills/jinn-usage/references/pickers-and-search.md"
-        ),
+        contents: include_str!("../../../res/skills/jinn-usage/references/pickers-and-search.md"),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/references/terminal-overlay.md",
-        contents: include_str!(
-            "../../../../../res/skills/jinn-usage/references/terminal-overlay.md"
-        ),
+        contents: include_str!("../../../res/skills/jinn-usage/references/terminal-overlay.md"),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/references/mcp-servers.md",
-        contents: include_str!("../../../../../res/skills/jinn-usage/references/mcp-servers.md"),
+        contents: include_str!("../../../res/skills/jinn-usage/references/mcp-servers.md"),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/references/chat-input-tokens.md",
-        contents: include_str!(
-            "../../../../../res/skills/jinn-usage/references/chat-input-tokens.md"
-        ),
+        contents: include_str!("../../../res/skills/jinn-usage/references/chat-input-tokens.md"),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/references/models-and-providers.md",
-        contents: include_str!(
-            "../../../../../res/skills/jinn-usage/references/models-and-providers.md"
-        ),
+        contents: include_str!("../../../res/skills/jinn-usage/references/models-and-providers.md"),
     },
     Bundled {
         kind: Kind::Skill,
         relative: "jinn-usage/references/configuration.md",
-        contents: include_str!("../../../../../res/skills/jinn-usage/references/configuration.md"),
+        contents: include_str!("../../../res/skills/jinn-usage/references/configuration.md"),
     },
 ];
 
