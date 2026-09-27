@@ -14,6 +14,7 @@ use jinn_kernel::AppState;
 use jinn_kernel::RenderCtx;
 use jinn_kernel::common::ui_element::UiElement;
 use jinn_kernel::protocol::Mode;
+use jinn_slices::DrawContext;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
@@ -26,115 +27,123 @@ use unicode_width::UnicodeWidthStr;
 #[derive(Debug)]
 pub struct ChatInputBoxElement;
 
+/// Paints the chat input box into `area`.
+///
+/// Registered as this slice's draw function for
+/// [`jinn_slices::Region::ChatInput`], so the chat layout asks the
+/// region who draws it rather than looking the element up by name.
+pub fn paint(frame: &mut Frame<'_>, area: Rect, ctx: &dyn DrawContext<AppState>) {
+    let state = ctx.state();
+    let input_mode = state.frontend.scope().mode() == Mode::Input;
+    let theme = &state.frontend.theme;
+
+    let prompt_style = if input_mode {
+        Style::default()
+            .fg(theme.focus_accent)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().add_modifier(Modifier::BOLD)
+    };
+
+    let text_style = Style::default();
+
+    let border_style = if input_mode {
+        Style::default().fg(theme.focus_accent)
+    } else {
+        Style::default().fg(theme.border_unfocused)
+    };
+
+    let badge_line = {
+        let mode = state.active_session().with_input(
+            jinn_chat_input_msg::ChatInputBoxState::input_mode,
+            Default::default,
+        );
+        let buffer_count = match mode {
+            InputMode::Queue => state.active_session().queue_len(),
+            InputMode::Steer => state.active_session().steering_buffer().len(),
+        };
+        // When the input box is focused: vivid per-mode colors + orange accent.
+        // When unfocused: everything muted so the badge reads as informational context.
+        let (word_color, accent) = if input_mode {
+            let wc = match mode {
+                InputMode::Queue => theme.input_mode_queue,
+                InputMode::Steer => theme.input_mode_steer,
+            };
+            (wc, theme.accent_action)
+        } else {
+            (theme.muted_text, theme.muted_text)
+        };
+        let rest = if buffer_count > 0 {
+            format!(":{} · {}]", mode.label(), buffer_count)
+        } else {
+            format!(":{}]", mode.label())
+        };
+        Line::from(vec![
+            Span::styled("[", Style::default().fg(word_color)),
+            Span::styled("Q", Style::default().fg(accent)),
+            Span::styled(rest, Style::default().fg(word_color)),
+        ])
+    };
+    let block = Block::default()
+        .borders(Borders::BOTTOM)
+        .border_style(border_style);
+    let inner = block.inner(area);
+    let max_visible_lines = inner.height as usize;
+
+    // Snapshot the render inputs ONCE through the facade (see
+    // `snapshot_render_inputs`) so the cell/fallback lock is never held
+    // across the drawing below.
+    let (wrapped, scroll_offset, cursor_row_col, display_text, grapheme_bounds) =
+        snapshot_render_inputs(state);
+    let wrapped = wrapped.as_slice();
+    let scroll_offset_for_indicators = scroll_offset;
+
+    let lines = build_wrapped_lines(
+        &display_text,
+        &grapheme_bounds,
+        wrapped,
+        scroll_offset,
+        max_visible_lines,
+        prompt_style,
+        text_style,
+    );
+
+    let input_widget = Paragraph::new(lines).block(block);
+    frame.render_widget(input_widget, area);
+
+    render_mode_badge(frame, area, badge_line);
+
+    // Render scroll position indicators if content overflows.
+    let total_lines = wrapped.len();
+    render_scroll_indicators(
+        frame,
+        inner,
+        total_lines,
+        scroll_offset_for_indicators,
+        max_visible_lines,
+        theme.age_fresh,
+        theme.scroll_indicator_bg,
+    );
+
+    // Position cursor when in input mode.
+    if input_mode {
+        let (row, col) = cursor_row_col;
+        let visual_row = row.saturating_sub(scroll_offset);
+        let prefix_width: usize = 2; // "> " = 2 columns
+        let display_col = compute_display_col(&display_text, &grapheme_bounds, wrapped, row, col);
+        let cursor_x = inner.x + (prefix_width + display_col) as u16;
+        let cursor_y = inner.y + visual_row as u16;
+        frame.set_cursor_position((cursor_x, cursor_y));
+    }
+}
+
 impl UiElement for ChatInputBoxElement {
     fn name(&self) -> String {
         "chat-input-box".to_owned()
     }
 
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
-        let state = ctx.state;
-        let input_mode = state.frontend.scope().mode() == Mode::Input;
-        let theme = &state.frontend.theme;
-
-        let prompt_style = if input_mode {
-            Style::default()
-                .fg(theme.focus_accent)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().add_modifier(Modifier::BOLD)
-        };
-
-        let text_style = Style::default();
-
-        let border_style = if input_mode {
-            Style::default().fg(theme.focus_accent)
-        } else {
-            Style::default().fg(theme.border_unfocused)
-        };
-
-        let badge_line = {
-            let mode = state.active_session().with_input(
-                jinn_chat_input_msg::ChatInputBoxState::input_mode,
-                Default::default,
-            );
-            let buffer_count = match mode {
-                InputMode::Queue => state.active_session().queue_len(),
-                InputMode::Steer => state.active_session().steering_buffer().len(),
-            };
-            // When the input box is focused: vivid per-mode colors + orange accent.
-            // When unfocused: everything muted so the badge reads as informational context.
-            let (word_color, accent) = if input_mode {
-                let wc = match mode {
-                    InputMode::Queue => theme.input_mode_queue,
-                    InputMode::Steer => theme.input_mode_steer,
-                };
-                (wc, theme.accent_action)
-            } else {
-                (theme.muted_text, theme.muted_text)
-            };
-            let rest = if buffer_count > 0 {
-                format!(":{} · {}]", mode.label(), buffer_count)
-            } else {
-                format!(":{}]", mode.label())
-            };
-            Line::from(vec![
-                Span::styled("[", Style::default().fg(word_color)),
-                Span::styled("Q", Style::default().fg(accent)),
-                Span::styled(rest, Style::default().fg(word_color)),
-            ])
-        };
-        let block = Block::default()
-            .borders(Borders::BOTTOM)
-            .border_style(border_style);
-        let inner = block.inner(area);
-        let max_visible_lines = inner.height as usize;
-
-        // Snapshot the render inputs ONCE through the facade (see
-        // `snapshot_render_inputs`) so the cell/fallback lock is never held
-        // across the drawing below.
-        let (wrapped, scroll_offset, cursor_row_col, display_text, grapheme_bounds) =
-            snapshot_render_inputs(state);
-        let wrapped = wrapped.as_slice();
-        let scroll_offset_for_indicators = scroll_offset;
-
-        let lines = build_wrapped_lines(
-            &display_text,
-            &grapheme_bounds,
-            wrapped,
-            scroll_offset,
-            max_visible_lines,
-            prompt_style,
-            text_style,
-        );
-
-        let input_widget = Paragraph::new(lines).block(block);
-        frame.render_widget(input_widget, area);
-
-        render_mode_badge(frame, area, badge_line);
-
-        // Render scroll position indicators if content overflows.
-        let total_lines = wrapped.len();
-        render_scroll_indicators(
-            frame,
-            inner,
-            total_lines,
-            scroll_offset_for_indicators,
-            max_visible_lines,
-            theme.age_fresh,
-            theme.scroll_indicator_bg,
-        );
-
-        // Position cursor when in input mode.
-        if input_mode {
-            let (row, col) = cursor_row_col;
-            let visual_row = row.saturating_sub(scroll_offset);
-            let prefix_width: usize = 2; // "> " = 2 columns
-            let display_col =
-                compute_display_col(&display_text, &grapheme_bounds, wrapped, row, col);
-            let cursor_x = inner.x + (prefix_width + display_col) as u16;
-            let cursor_y = inner.y + visual_row as u16;
-            frame.set_cursor_position((cursor_x, cursor_y));
-        }
+        paint(frame, area, ctx as &dyn DrawContext<AppState>);
     }
 }
 

@@ -74,5 +74,16 @@ pub fn activate(
     key_hook::register(&services.key_routes);
     overlay::register_views(&services.slices, &services.overlay_views);
 
+    // The pty is sized from the overlay's inner rect every frame while
+    // the overlay is open (WYSIWYG). Registering it as a pre-render hook
+    // keeps the sizing rule in this slice rather than in the TUI layer's
+    // frame path.
+    if let Some(hooks) = services
+        .slices
+        .pre_render_hooks::<jinn_kernel::common::app_state::AppState>()
+    {
+        hooks.push(std::sync::Arc::new(overlay::record_pty_layout));
+    }
+
     tracing::debug!("term slice activated");
 }

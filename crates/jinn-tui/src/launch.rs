@@ -10,8 +10,6 @@ use std::path::Path;
 use error_stack::{Report, ResultExt};
 use jinn_kernel::common::system_resource::load_system_resource;
 use jinn_kernel::{AppCore, AppUiRegistry, State};
-use jinn_sidebar::sections::register_sections;
-use jinn_sidebar::sections::sidebar::Sidebar;
 use wherror::Error;
 
 use crate::app::WhichKeyInstance;
@@ -91,11 +89,6 @@ pub fn launch(
         selectable_rects: SelectableRects::default(),
         pending_clipboard: false,
         config: tui_config,
-        sidebar: {
-            let mut s = Sidebar::new();
-            register_sections(&mut s);
-            s
-        },
     })
 }
 

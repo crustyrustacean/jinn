@@ -35,6 +35,45 @@ pub fn activate(
     host: &mut SliceHost<'_, jinn_slices::RenderFacts>,
     services: jinn_kernel::Services,
 ) {
+    // The streaming indicator's own screen region. The element holds
+    // throbber animation state, so the draw function keeps exactly one
+    // instance behind interior mutability.
+    if let Some(slots) = host
+        .slices()
+        .render_slots::<jinn_kernel::common::app_state::AppState>()
+    {
+        let element = std::sync::Mutex::new(streaming_indicator::StreamingIndicatorElement::new());
+        slots.register(
+            jinn_slices::Region::StreamingIndicator,
+            std::sync::Arc::new(
+                move |frame: &mut ratatui::Frame<'_>,
+                      target: jinn_slices::DrawTarget,
+                      ctx: &dyn jinn_slices::DrawContext<jinn_kernel::common::app_state::AppState>,
+                      _rects: &mut Vec<ratatui::layout::Rect>| {
+                    // A poisoned lock means a previous draw panicked
+                    // while holding it. Recovering the guard is correct
+                    // here: the element's only state is an animation
+                    // step, so a poisoned one is still a valid one to
+                    // draw with, and rendering nothing would silently
+                    // drop the indicator for the rest of the session.
+                    match element.lock() {
+                        Ok(mut guard) => {
+                            streaming_indicator::paint(&mut guard, frame, target.area, ctx);
+                        }
+                        Err(poisoned) => {
+                            streaming_indicator::paint(
+                                &mut poisoned.into_inner(),
+                                frame,
+                                target.area,
+                                ctx,
+                            );
+                        }
+                    }
+                },
+            ),
+        );
+    }
+
     let _path = inference_actor::InferenceActor::spawn(host.system(), services);
 }
 

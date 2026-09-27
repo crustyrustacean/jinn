@@ -50,6 +50,41 @@ pub fn register_views(
     }
 }
 
+/// Records the pty's `(rows, cols)` for the frame, publishing a resize
+/// only when the size actually changed.
+///
+/// Computed every frame while the overlay is open and deduped by the
+/// tab's mirror, so a settled terminal publishes once and then stays
+/// silent.
+pub fn record_pty_layout(
+    state: &mut jinn_kernel::common::app_state::AppState,
+    ctx: &jinn_slices::pre_render::PreRenderCtx<'_>,
+) -> Vec<jinn_slices::route::PublishClosure> {
+    if !matches!(
+        state.frontend.scope(),
+        jinn_slices::FocusScope::Dynamic(id) if jinn_term_msg::is_overlay_scope(&id)
+    ) {
+        return Vec::new();
+    }
+    let inner = jinn_term_msg::geometry::terminal_overlay_inner_rect(ctx.frame_area);
+    let (rows, cols) = (inner.height, inner.width);
+    let layout_changed = state.term_tabs().is_some_and(|cell| {
+        let mut changed = false;
+        cell.update(|t| changed = t.record_layout_size(rows, cols));
+        changed
+    });
+    if !layout_changed {
+        return Vec::new();
+    }
+    let request = jinn_term_msg::command::ResizeTerm {
+        chat_session_id: Some(state.session.active_session_id().clone()),
+        size: (rows, cols),
+    };
+    vec![jinn_kernel::common::bridge::Bridge::publish_closure(
+        request,
+    )]
+}
+
 /// Renders the active session's terminal screen into `area` (the bordered
 /// overlay rect).
 ///

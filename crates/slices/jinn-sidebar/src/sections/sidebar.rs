@@ -12,9 +12,9 @@ use super::section_trait::{
 };
 use super::{mcp_servers_section, persona_section, pins, sessions, task_list_section};
 use jinn_kernel::common::app_state::AppState;
-use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_kernel::protocol::IntentResult;
 use jinn_preferences_config::schemas::mcp::McpServersConfig;
+use jinn_slices::DrawContext;
 /// The sidebar container.
 ///
 /// Holds registered sections in order, manages focus, and handles
@@ -53,15 +53,23 @@ impl Sidebar {
     /// than the column scrolls instead of being silently dropped. Each section
     /// receives the slice of the column its span occupies, plus the number of
     /// its own leading rows scrolled above the column.
-    pub fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    pub fn render(
+        &mut self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        ctx: &dyn DrawContext<jinn_kernel::common::app_state::AppState>,
+    ) {
         // Clear sidebar area with dark gray background.
         let background =
-            Block::default().style(Style::default().bg(ctx.state.frontend.theme.gutter_bg));
+            Block::default().style(Style::default().bg(ctx.state().frontend.theme.gutter_bg));
         frame.render_widget(background, area);
 
         let document = {
             let ids: Vec<_> = self.sections.iter().map(|section| section.id()).collect();
-            layout::with_cursor(layout::document_for(ctx.state, ctx.config, &ids), ctx.state)
+            layout::with_cursor(
+                layout::document_for(ctx.state(), ctx.config(), &ids),
+                ctx.state(),
+            )
         };
         // The offset normally follows the focused section's cursor. While the
         // chat pane holds focus there is no sidebar section, so the document
@@ -69,7 +77,7 @@ impl Sidebar {
         // while the sidebar was focused, so the column does not jump when
         // focus comes and goes. The write-back happens in the pre-render
         // pass (`write_scroll_offset`), keeping `render` read-only.
-        let offset = layout::scroll_offset(ctx.state, ctx.config, area.height);
+        let offset = layout::scroll_offset(ctx.state(), ctx.config(), area.height);
         // When the document is shorter than the column, leave the unused rows
         // *between* the last two sections rather than pushing the whole
         // document down: the leading sections stay at the top of the column,
@@ -99,7 +107,7 @@ impl Sidebar {
             area,
             offset,
             document.total_rows,
-            &ctx.state.frontend.theme,
+            &ctx.state().frontend.theme,
         );
     }
 }

@@ -3,8 +3,8 @@
 pub mod app_layout;
 pub mod chat_tab;
 pub mod clipboard;
+pub mod region_dispatch;
 pub mod selection_highlight;
-pub mod status_bar;
 pub mod tab_bar;
 
 pub mod too_small;
@@ -12,8 +12,8 @@ pub mod which_key;
 
 pub use app_layout::{AppFrameLayout, AppLayout, MIN_HEIGHT, MIN_WIDTH, TabLayout};
 
-use jinn_kernel::{AppUiRegistry, FocusScope, Mode, RenderCtx};
-use jinn_sidebar::sections::Sidebar;
+use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::{FocusScope, Mode, RenderCtx};
 use ratatui::{Frame, layout::Rect};
 
 use crate::TuiApp;
@@ -50,24 +50,29 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         state.frontend.sidebar_width,
         is_full_width_tab(&app.services.slices, &state.frontend.scope_base()),
     );
-    let sidebar_focused = state.frontend.is_sidebar();
     let active_scope = state.frontend.with_scope(
         |s| s.stack.current().clone(),
         || jinn_slices::FocusScope::Input,
     );
     let active_scope_ref = &active_scope;
 
+    // The slice-owned draw registry, resolved at the application state
+    // type. Each slice registered its regions at activation; an
+    // unregistered region paints nothing.
+    let slots = app
+        .services
+        .slices
+        .render_slots::<AppState>()
+        .unwrap_or_default();
+
     let mut rects = vec![];
     render_base_layers(
         &app.services.slices,
         &mut app.services.viewport,
-        &mut app.sidebar,
-        &mut app.ui_registry,
+        &slots,
         frame,
         &ctx,
         &layout,
-        area,
-        sidebar_focused,
         &mut rects,
     );
     if let Some(rect) = render_active_overlay(frame, area, &ctx, active_scope_ref) {
@@ -85,6 +90,14 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
 }
 
 /// Sets wrap width and scroll offset before layout, using a write lock.
+///
+/// The slices' own bookkeeping is not called here. Each slice that has
+/// per-frame work to do registers a hook at activation; this pass takes
+/// the write lock once and runs the registered hooks under it, then
+/// sends whatever they asked to publish. The composition layer's own
+/// work — the input's wrap width and cursor scroll — stays inline,
+/// because the input box is a region it lays out rather than a slice
+/// it reaches into.
 fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
     let mut wstate = app.core.state.write();
 
@@ -101,62 +114,32 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
         wstate.frontend.sidebar_width,
         full_width,
     );
-    // The session preview wraps its lines at a width derived from the frame, and
-    // the keyboard path asks for those lines by name. Both sides must name the
-    // same width or the rendered lines can never match the lookup and the
-    // preview spins forever. It is recorded here, in the one place that runs
-    // every frame with the true area and no early return — recording it from
-    // the preview's own render pass would leave the window between a cursor
-    // move and the next frame asking for a stale width.
-    let preview_width = jinn_sidebar::sections::sessions::preview::preview_content_width(area);
-    wstate
-        .frontend
-        .update_sections(|s| s.sessions.preview_content_width = preview_width);
 
-    // The popup's cache is not driven by the cursor alone: a session can load
-    // into the list, or the width can be measured, long after the last key. A
-    // cache miss with nothing in flight is a request nobody made, so this pass
-    // makes it — the same shape as the terminal resize below, which detects a
-    // change in its cell and publishes only when it fires. `update_preview`
-    // dedupes against the cache and against in-flight renders, so a settled
-    // cursor publishes once and then stays silent.
-    if let Some(request) = jinn_sidebar::sections::sessions::preview_load::request_preview_if_needed(
-        &mut wstate,
-        &app.services.config,
-    ) {
-        // The request and its deadline travel together, exactly as the keyboard
-        // path sends them: a render nobody watches is a spinner with nothing to
-        // end it.
-        for closure in
-            jinn_sidebar::sections::sessions::navigate::preview_messages(request).messages
-        {
+    // The registered slice hooks, in the order their slices wired them.
+    // The publish closures they return travel in the same order, so a
+    // request and the deadline that bounds it stay paired.
+    let hook_ctx = jinn_slices::pre_render::PreRenderCtx {
+        frame_area: area,
+        chat: match &pre_layout {
+            AppFrameLayout::Chat(chat) => Some(jinn_slices::pre_render::ChatRects {
+                main: chat.main,
+                sidebar: chat.sidebar,
+                input: chat.input,
+            }),
+            AppFrameLayout::Tab(_) => None,
+        },
+        config: &app.services.config,
+    };
+    if let Some(hooks) = app
+        .services
+        .slices
+        .pre_render_hooks::<jinn_kernel::common::app_state::AppState>()
+    {
+        for closure in hooks.run(&mut wstate, &hook_ctx) {
             let _ = app.core.bridge.send(closure);
         }
     }
 
-    // The terminal overlay's inner rect sizes the pty (WYSIWYG). Computed
-    // every frame while open; deduped by the mirror, sent through the bridge.
-    if matches!(
-        wstate.frontend.scope(),
-        jinn_slices::FocusScope::Dynamic(id) if jinn_term_msg::is_overlay_scope(&id)
-    ) {
-        let inner = jinn_term_msg::geometry::terminal_overlay_inner_rect(area);
-        let (rows, cols) = (inner.height, inner.width);
-        let layout_changed = wstate.term_tabs().is_some_and(|cell| {
-            let mut changed = false;
-            cell.update(|t| changed = t.record_layout_size(rows, cols));
-            changed
-        });
-        if layout_changed {
-            let closure = jinn_kernel::common::bridge::Bridge::publish_closure(
-                jinn_term_msg::command::ResizeTerm {
-                    chat_session_id: Some(wstate.session.active_session_id().clone()),
-                    size: (rows, cols),
-                },
-            );
-            let _ = app.core.bridge.send(closure);
-        }
-    }
     match &pre_layout {
         // The dashboard slice lives outside AppState; its scroll clamp is
         // the actor's concern (ratatui re-derives visibility per frame).
@@ -172,17 +155,6 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
                     .active_session()
                     .update_input(|i| i.scroll_to_cursor(inner_height));
             }
-            jinn_sidebar::sections::task_list_section::preview::write_preview_geometry(
-                &mut wstate,
-                &app.services.config,
-                area,
-                chat.sidebar,
-            );
-            jinn_sidebar::sections::layout::write_scroll_offset(
-                &mut wstate,
-                &app.services.config,
-                chat.sidebar.height,
-            );
         }
     }
 }
@@ -191,20 +163,13 @@ fn apply_pre_render_mutation(app: &mut TuiApp, area: Rect) {
 /// full-width dynamic tab: tab bar and the registered slice view only. The
 /// which-key popup renders separately, after overlays — see the `render`
 /// entry point.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "all inputs are single-use render pass params"
-)]
 fn render_base_layers(
     slices: &jinn_slices::Slices,
     viewport: &mut jinn_slices::view::Viewport,
-    sidebar: &mut Sidebar,
-    ui_registry: &mut AppUiRegistry,
+    slots: &jinn_slices::RenderSlots<AppState>,
     frame: &mut Frame<'_>,
     ctx: &RenderCtx<'_>,
     layout: &AppFrameLayout,
-    frame_area: Rect,
-    sidebar_focused: bool,
     rects: &mut Vec<Rect>,
 ) {
     match layout {
@@ -227,40 +192,31 @@ fn render_base_layers(
         AppFrameLayout::Chat(chat) => {
             tab_bar::render_tab_bar(frame, chat.tab_bar, ctx);
             chat_tab::border::render_border(frame, chat.border, ctx);
-            chat_tab::sidebar::render_sidebar(
-                sidebar,
+            // The sidebar column: the slice's sections plus the late
+            // overlays it registers (archive-tree prompt, close-session
+            // prompt, session preview, task-list preview).
+            // The column is mouse-selectable only while it holds focus,
+            // which is what `select` carries; the slice decides whether to
+            // register it, the layout decides whether to offer it.
+            let sidebar_select = ctx.state.frontend.is_sidebar().then_some(chat.sidebar);
+            if let Some(draw) = slots.draw(jinn_slices::Region::Sidebar) {
+                draw(
+                    frame,
+                    jinn_slices::DrawTarget::with_select(chat.sidebar, sidebar_select),
+                    ctx,
+                    rects,
+                );
+            }
+            chat_tab::render_chat_tab(slots, frame, chat, ctx, rects);
+            // The status bar is a slice-owned region too.
+            region_dispatch::draw_region(
+                slots,
+                jinn_slices::Region::StatusBar,
                 frame,
-                chat.sidebar,
-                sidebar_focused,
+                jinn_slices::DrawTarget::new(chat.status_bar),
                 ctx,
                 rects,
             );
-            chat_tab::render_chat_tab(ui_registry, frame, chat, ctx, rects);
-            jinn_sidebar::sections::sessions::render_archive_tree_prompt_for_state(
-                frame,
-                chat.sidebar,
-                frame_area,
-                ctx,
-            );
-            jinn_sidebar::sections::sessions::render_close_session_prompt_for_state(
-                frame,
-                chat.sidebar,
-                frame_area,
-                ctx,
-            );
-            jinn_sidebar::sections::sessions::render_session_preview_for_state(
-                frame,
-                chat.sidebar,
-                frame_area,
-                ctx,
-            );
-            jinn_sidebar::sections::task_list_section::preview::render_task_list_preview_for_state(
-                frame,
-                chat.sidebar,
-                frame_area,
-                ctx,
-            );
-            status_bar::render_status_bar(ui_registry, frame, chat.status_bar, ctx);
         }
     }
 }

@@ -27,14 +27,18 @@ async fn render_test_app() -> crate::TuiApp {
         .services(services)
         .build()
         .await;
-    activate_sidebar(&mut app);
+    activate_render_slices(&mut app);
     app
 }
 
-/// Activates the sidebar slice, which registers the sections cell the preview
-/// state lives in. Without it `update_sections` is a no-op and every sidebar
-/// assertion silently passes against an empty cell.
-fn activate_sidebar(app: &mut crate::TuiApp) {
+/// Activates the slices whose screen regions the render tests assert on.
+///
+/// `TuiApp::test_builder` does not run slice activation, so a region
+/// whose draw function was never registered renders nothing. That fails
+/// loudly here — the expected cell comes back blank — rather than
+/// silently, which is why these activations are explicit rather than
+/// left to the builder.
+pub(crate) fn activate_render_slices(app: &mut crate::TuiApp) {
     let state = app.core.state.clone();
     let services = &mut app.services;
     let mut host = jinn_slices::SliceHost::new(
@@ -44,7 +48,19 @@ fn activate_sidebar(app: &mut crate::TuiApp) {
         &services.key_routes,
         &services.trouper_system,
     );
+    // The sidebar owns its sections cell and the previews these tests read.
     jinn_sidebar::activate(&mut host, state);
+    // The chat log's own screen regions. Its `activate` cannot run here:
+    // the test builder already registers the cells it mints, so a second
+    // activation would abort on a taken slot. Registering the draw
+    // functions is the part the builder does not do, and it is the part
+    // these tests assert on.
+    if let Some(slots) = services
+        .slices
+        .render_slots::<jinn_kernel::common::app_state::AppState>()
+    {
+        jinn_chat_log_view::render_regions::register(&slots);
+    }
 }
 
 #[rstest::rstest]

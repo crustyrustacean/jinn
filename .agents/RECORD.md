@@ -334,7 +334,10 @@ Entries are added or amended **only with human approval**.
 - (arch) No crate outside the kernel names a jinn_kernel feature path; the kernel's feature modules are reached only from within the kernel.
 - (slices) A message crate never depends on another message crate; a type two message crates both need is shared vocabulary and lives in a common or kernel crate.
 - (testing) The bus test harness lives in jinn-testutil and is available to every crate without a feature flag.
-- (arch) Displayed UI elements are registered by composition in jinn-tui, because the kernel's element registry cannot reference slice crates.
+- (arch) Displayed UI elements are registered by composition in `jinn_tui::ui_elements::build_ui_registry`, because the kernel's element registry cannot reference slice crates; the binary's bootstrap re-exports it, and the TUI test builder calls the same function so an element registered for the app is registered for its tests.
+- (slices) A slice's draw function and per-frame bookkeeping reach the screen through registries the slice populates at activation; the TUI layer calls no slice implementation on a frame path.
+- (slices) A slice declares its per-scope render hints (chrome accent, overlay suppression) at activation; the TUI chrome reads those hints instead of matching a slice's scope name.
+- (arch) A per-frame write pass acquires the shared state write-lock once and invokes the registered slice hooks under it.
 - (slices) The chat-log slice owns the chat log's user actions as route rows — scrolling, cursor selection, pinning, forking, yanking, entry context toggles, and the audit popup — with the kernel holding no chat-log intent variant.
 - (slices) The audit popup's visibility is a chat-log slice cell, not a frontend state field.
 - (keybinds) Mouse-wheel scrolling of the chat log resolves through the kernel's crossterm mouse handler, which the route table cannot express.

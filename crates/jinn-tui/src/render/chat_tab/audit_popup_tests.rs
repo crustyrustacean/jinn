@@ -1,96 +1,10 @@
-//! Audit popup overlay - renders the context-change history of the
-//! currently-selected chat entry.
+//! Render-level tests for the chat log's audit popup overlay.
 //!
-//! Activated by pressing `a` in Normal mode, which toggles the
-//! chat-log slice's `AuditPopupState` cell. The popup is right-aligned to the
-//! chat-log area and vertically anchored to the top of the selected entry.
-//! It tracks the cursor live as the user navigates.
-
-use jinn_chat_log_view::chat_log::{audit_popup_rect, format_audit_lines};
-use jinn_kernel::RenderCtx;
-use jinn_slices::FocusScope;
-use ratatui::Frame;
-use ratatui::layout::Rect;
-use ratatui::style::Style;
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
-
-/// Render the audit popup, if it should be visible.
-///
-/// Conditions for visibility:
-/// - the chat-log slice's audit-popup cell reads as visible
-/// - No higher-priority overlay is active
-/// - An entry is selected
-///
-/// `chat_log_area` is the chat-log content area (right-aligned anchor and
-// bottom-edge clamp).
-pub(super) fn render_audit_popup(
-    frame: &mut Frame<'_>,
-    chat_log_area: Rect,
-    ctx: &RenderCtx,
-    rects: &mut Vec<Rect>,
-) {
-    if !jinn_chat_log_view::audit_popup::is_visible(ctx.slices) {
-        return;
-    }
-
-    // Suppress when a higher-priority overlay is active.
-    if overlay_active(ctx) {
-        return;
-    }
-
-    let Some(entry) = ctx.state.active_session().selected_entry() else {
-        return;
-    };
-
-    let lines = format_audit_lines(entry, &ctx.state.frontend.theme);
-
-    // Resolve the screen Y of the selected entry's top edge.
-    // Returns None until the render pipeline has populated cached fields for
-    // this frame; in that case we simply skip rendering for this frame.
-    let Some(entry_top_y) = ctx
-        .state
-        .active_session()
-        .selected_entry_screen_y(chat_log_area.y)
-    else {
-        return;
-    };
-
-    let rect = audit_popup_rect(chat_log_area, entry_top_y, lines.len());
-
-    // Clear underlying buffer so the popup is opaque.
-    frame.render_widget(Clear, rect);
-
-    // Render the popup body. The block draws a full rounded rectangle around
-    // the popup; the header line is the first body line (so it scrolls with content).
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .style(
-            Style::default()
-                .bg(ctx.state.frontend.theme.infopopup_bg)
-                .fg(ctx.state.frontend.theme.infopopup_border),
-        );
-    let paragraph = Paragraph::new(lines).style(
-        Style::default()
-            .bg(ctx.state.frontend.theme.infopopup_bg)
-            .fg(ctx.state.frontend.theme.infopopup_fg),
-    );
-    frame.render_widget(paragraph.block(block), rect);
-
-    rects.push(rect);
-}
-
-/// Returns true if a higher-priority overlay is currently active.
-fn overlay_active(ctx: &RenderCtx) -> bool {
-    match ctx.state.frontend.scope() {
-        FocusScope::Picker { .. } => true,
-        FocusScope::Dynamic(id) => {
-            id.slice() == "sidebar" && (id.name() == "sessions" || id.name() == "rename")
-        }
-        _ => false,
-    }
-}
-
+//! These tests need a `TuiApp`, so they stay with the composition
+//! layer (Rule E) and call the slice's draw function directly rather
+//! than reaching it through a registered slot. They pin the contract
+//! that the popup paints at the computed rect with the expected text
+//! and registers exactly one mouse-selectable region.
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -121,7 +35,7 @@ mod tests {
     use jinn_testutil::setup_term;
     use ratatui::layout::Rect;
 
-    use super::render_audit_popup;
+    use jinn_chat_log_view::render_regions::render_audit_popup;
 
     /// Build an app with one user entry that has one audit event, with the
     /// audit popup toggle ON.
@@ -417,7 +331,9 @@ mod tests {
             .state
             .write()
             .frontend
-            .scope_push(FocusScope::Dynamic(jinn_project_msg::project_picker_scope()));
+            .scope_push(FocusScope::Picker {
+                kind: jinn_slices::picker_kind::PickerKind::Project,
+            });
         let (mut terminal, _area) = setup_term(80, 24);
 
         // When rendering.

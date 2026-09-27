@@ -7,6 +7,7 @@
 //! `KernelIntent` variant, and no handler arm: everything the box does is
 //! reached through the rows this slice registers.
 
+pub mod autocomplete;
 pub mod autocomplete_render;
 pub mod directory_lister_actor;
 pub mod element;
@@ -45,6 +46,29 @@ pub fn activate(
     };
     directory_lister_actor::DirectoryListerActor::spawn(host.system(), lister_deps);
     routes::attach_all(host.key_routes());
+
+    // The chat input box's own screen region. The element is stateless, so
+    // the draw function needs no interior mutability.
+    if let Some(slots) = host
+        .slices()
+        .render_slots::<jinn_kernel::common::app_state::AppState>()
+    {
+        slots.register(
+            jinn_slices::Region::ChatInput,
+            std::sync::Arc::new(
+                |frame: &mut ratatui::Frame<'_>,
+                 target: jinn_slices::DrawTarget,
+                 ctx: &dyn jinn_slices::DrawContext<jinn_kernel::common::app_state::AppState>,
+                 _rects: &mut Vec<ratatui::layout::Rect>| {
+                    element::paint(frame, target.area, ctx);
+                    // The autocomplete popup is drawn by the same slice, so
+                    // it is part of this region rather than a second draw
+                    // the composition layer has to know to issue.
+                    crate::autocomplete::paint_autocomplete(frame, target.area, ctx);
+                },
+            ),
+        );
+    }
 }
 
 /// Registers the chat input box's element into the UI registry.

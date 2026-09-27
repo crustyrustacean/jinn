@@ -15,6 +15,24 @@ use jinn_slices::OverlayViews;
 use jinn_slices::Slices;
 use jinn_slices::render_facts::RenderFacts as SliceFacts;
 
+impl jinn_slices::DrawContext<AppState> for RenderCtx<'_> {
+    fn state(&self) -> &AppState {
+        self.state
+    }
+
+    fn slices(&self) -> &Slices {
+        self.slices
+    }
+
+    fn overlay_views(&self) -> &OverlayViews<SliceFacts> {
+        self.overlay_views
+    }
+
+    fn config(&self) -> &jinn_config::ConfigLayer {
+        self.config
+    }
+}
+
 /// Render context passed to every render function.
 ///
 /// Contains read-only access to application state and the slice

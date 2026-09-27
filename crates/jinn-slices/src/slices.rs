@@ -173,6 +173,35 @@ impl Slices {
         Ok(cell)
     }
 
+    /// Returns the cell under `key`, registering `initial` first when the
+    /// slot is unclaimed.
+    ///
+    /// The idempotent sibling of [`register`](Self::register): a second
+    /// activation of the same slice resolves the *same* handle instead of
+    /// failing, which is what an infrastructure slot (the draw registry,
+    /// the pre-render hook list) wants — several slices push into one
+    /// shared list, and each of them asks for that list by name.
+    ///
+    /// Returns `None` if the slot is already claimed by a different
+    /// payload type, which is a wiring bug rather than a runtime
+    /// condition: two call sites are asking one key for two types.
+    #[must_use]
+    pub fn get_or_register<T>(&self, key: &SlotKey, initial: T) -> Option<crate::cell::TypedCell<T>>
+    where
+        T: Any + Send + Sync,
+    {
+        if let Some(existing) = self.reader::<T>(key) {
+            return Some(existing);
+        }
+        if self.cells.read().contains_key(key) {
+            return None;
+        }
+        match self.register(key.clone(), initial) {
+            Ok(cell) => Some(cell),
+            Err(_taken) => self.reader::<T>(key),
+        }
+    }
+
     /// Returns a read handle to the cell registered under `key`, if its
     /// payload type is `T`.
     ///
@@ -300,6 +329,50 @@ impl Slices {
     pub fn register_overlay_selectable(&self, scope: &SliceScopeId) {
         self.overlay_selectable.write().insert(scope.clone(), true);
     }
+
+    /// The slice-owned draw registry, resolved at draw context `C`.
+    ///
+    /// The render pass instantiates this at the kernel's `RenderCtx`,
+    /// which carries the application state; a slice instantiates it at
+    /// whatever context its own draw function needs. A slice that
+    /// resolves it at a different `C` than the render pass does gets a
+    /// fresh, empty registry for that type — which is the wiring-bug
+    /// surface, not a runtime condition.
+    #[must_use]
+    pub fn render_slots<S: Send + Sync + 'static>(
+        &self,
+    ) -> Option<crate::render_slot::RenderSlots<S>> {
+        self.get_or_register(
+            &render_slots_slot(),
+            crate::render_slot::RenderSlots::<S>::new(),
+        )
+        .map(|cell| {
+            let slots = cell.read();
+            slots.clone()
+        })
+    }
+
+    /// The per-scope render-hint registry.
+    #[must_use]
+    pub fn scope_hints(&self) -> Option<crate::scope_hints::ScopeHints> {
+        self.get_or_register(&scope_hints_slot(), crate::scope_hints::ScopeHints::new())
+            .map(|cell| {
+                let hints = cell.read();
+                hints.clone()
+            })
+    }
+}
+
+/// The slot key the shared draw registry is stored under.
+#[must_use]
+pub fn render_slots_slot() -> SlotKey {
+    SlotKey::builtin("jinn", "render-slots")
+}
+
+/// The slot key the shared scope-hint registry is stored under.
+#[must_use]
+pub fn scope_hints_slot() -> SlotKey {
+    SlotKey::builtin("jinn", "scope-hints")
 }
 
 #[cfg(test)]
@@ -373,6 +446,47 @@ mod tests {
 
         // Then both keys are present, sorted.
         assert_eq!(slots, vec![a, b]);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn get_or_register_resolves_the_same_cell_on_a_second_call() {
+        // Given an unclaimed slot.
+        let slices = Slices::new();
+        let key = SlotKey::builtin("test", "shared");
+
+        // When resolving it twice.
+        let first = slices
+            .get_or_register(&key, Payload::default())
+            .expect("first resolve registers");
+        let second = slices
+            .get_or_register(&key, Payload::default())
+            .expect("second resolve reuses");
+
+        // Then a write through the first handle is visible on the second.
+        first.update(|p| {
+            p.value = 5;
+        });
+        assert_eq!(second.read().value, 5);
+        // And the slot is registered exactly once.
+        assert_eq!(slices.slots(), vec![key]);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn get_or_register_resolves_none_for_a_type_mismatch() {
+        // Given a slot already claimed by a `Payload`.
+        let slices = Slices::new();
+        let key = SlotKey::builtin("test", "claimed");
+        let _ = slices
+            .get_or_register(&key, Payload::default())
+            .expect("registers");
+
+        // When asking for the same key under a different type.
+        let wrong = slices.get_or_register(&key, vec![1u8, 2, 3]);
+
+        // Then resolution fails, rather than silently replacing the cell.
+        assert!(wrong.is_none());
     }
 
     #[rstest::rstest]

@@ -11,7 +11,6 @@ use jinn_kernel::AppCore;
 use jinn_kernel::AppUiRegistry;
 use jinn_kernel::IntentHandler;
 use jinn_kernel::{FocusScope, KernelIntent};
-use jinn_sidebar::sections::Sidebar;
 use ratatui::Frame;
 use ratatui_which_key::{CrosstermKeymapExt as _, WhichKeyState};
 
@@ -60,8 +59,6 @@ pub struct TuiApp {
     pub pending_clipboard: bool,
     /// TUI configuration (mouse capture, etc.).
     pub config: TuiConfig,
-    /// Sidebar container with registered sections.
-    pub sidebar: Sidebar,
 }
 
 impl TuiApp {

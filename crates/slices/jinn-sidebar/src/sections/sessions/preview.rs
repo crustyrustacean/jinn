@@ -31,8 +31,9 @@ use jinn_chat_log_view::chat_log::RenderContext;
 use jinn_chat_log_view::kernel_element::render_preview as render_preview_lines;
 use jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT;
 use jinn_chat_log_view_msg::PREVIEW_MAX_LINES;
-use jinn_kernel::common::render_ctx::RenderCtx;
+use jinn_kernel::common::app_state::AppState;
 use jinn_session_state::ChatSessionState;
+use jinn_slices::DrawContext;
 use jinn_theme::Theme;
 
 /// Default max lines for tool entries when no preference is set.
@@ -63,9 +64,9 @@ pub fn render_session_preview_for_state(
     frame: &mut Frame<'_>,
     sidebar_rect: Rect,
     frame_area: Rect,
-    ctx: &RenderCtx,
+    ctx: &dyn DrawContext<AppState>,
 ) {
-    let state = ctx.state;
+    let state = ctx.state();
 
     if state.frontend.sidebar_section() != Some(jinn_sidebar_msg::SidebarSectionId::Sessions) {
         return;
@@ -92,7 +93,7 @@ pub fn render_session_preview_for_state(
     let cursor_y = crate::sections::layout::frame_row_of(
         sidebar_rect,
         state,
-        ctx.config,
+        ctx.config(),
         jinn_sidebar_msg::SidebarSectionId::Sessions,
         u16::try_from(idx).unwrap_or(u16::MAX),
     );

@@ -16,7 +16,7 @@ use std::time::Instant;
 use crate::sections::section_trait::{SidebarSection, SidebarSectionId};
 use crate::sections::sessions::state::{SessionEntry, SessionListKey, session_list_key};
 use jinn_kernel::common::app_state::AppState;
-use jinn_kernel::common::render_ctx::RenderCtx;
+use jinn_slices::DrawContext;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -136,8 +136,14 @@ impl SidebarSection for SessionsSection {
         jinn_sidebar_msg::SidebarSectionId::Sessions
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, skip_rows: u16, ctx: &RenderCtx) {
-        let state = ctx.state;
+    fn render(
+        &mut self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        skip_rows: u16,
+        ctx: &dyn DrawContext<jinn_kernel::common::app_state::AppState>,
+    ) {
+        let state = ctx.state();
         let theme = &state.frontend.theme;
         // Read the throbber before borrowing the tree: `sessions_tree` memoizes
         // through `&mut self`, so the cached tree cannot be held while `self` is
@@ -237,8 +243,11 @@ impl SidebarSection for SessionsSection {
         frame.render_widget(widget, area);
     }
 
-    fn content_height(&mut self, ctx: &RenderCtx) -> u16 {
-        let entry_count = self.sessions_tree(ctx.state).len() as u16;
+    fn content_height(
+        &mut self,
+        ctx: &dyn DrawContext<jinn_kernel::common::app_state::AppState>,
+    ) -> u16 {
+        let entry_count = self.sessions_tree(ctx.state()).len() as u16;
         // entries(N).max(1) + footer(1)
         entry_count.max(1) + 1 // max(1) for the no-sessions placeholder line
     }
@@ -265,9 +274,9 @@ pub fn render_close_session_prompt_for_state(
     frame: &mut Frame<'_>,
     sidebar_rect: Rect,
     frame_area: Rect,
-    ctx: &RenderCtx,
+    ctx: &dyn DrawContext<AppState>,
 ) {
-    let state = ctx.state;
+    let state = ctx.state();
     if !state.frontend.close_session_prompt
         || !state.frontend.is_sidebar()
         || state.frontend.sidebar_section() != Some(jinn_sidebar_msg::SidebarSectionId::Sessions)
@@ -283,7 +292,7 @@ pub fn render_close_session_prompt_for_state(
 
     // Shared cursor-row math: see `render_sessions_cursor_y`.
     let prompt_y =
-        render_sessions_cursor_y(sidebar_rect, state, ctx.config).saturating_sub(BANNER_GAP);
+        render_sessions_cursor_y(sidebar_rect, state, ctx.config()).saturating_sub(BANNER_GAP);
     let text = " Press x again to teardown and archive 1 session ";
     render_right_aligned_banner(frame, frame_area, prompt_y, text, Color::Yellow);
 }
@@ -301,9 +310,9 @@ pub fn render_archive_tree_prompt_for_state(
     frame: &mut Frame<'_>,
     sidebar_rect: Rect,
     frame_area: Rect,
-    ctx: &RenderCtx,
+    ctx: &dyn DrawContext<AppState>,
 ) {
-    let state = ctx.state;
+    let state = ctx.state();
     let Some(prompt) = &state.frontend.archive_tree_prompt else {
         return;
     };
@@ -321,7 +330,7 @@ pub fn render_archive_tree_prompt_for_state(
 
     // Shared cursor-row math: see `render_sessions_cursor_y`.
     let prompt_y =
-        render_sessions_cursor_y(sidebar_rect, state, ctx.config).saturating_sub(BANNER_GAP);
+        render_sessions_cursor_y(sidebar_rect, state, ctx.config()).saturating_sub(BANNER_GAP);
 
     let (text, bg) = match prompt {
         ArchiveTreePrompt::Confirm { count, action } => {

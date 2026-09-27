@@ -14,6 +14,7 @@ use jinn_provider_config::InputModalities;
 use jinn_provider_config::ModelCache;
 use jinn_provider_config::ModelInfo;
 use jinn_session_state::aggregate_tree_stats;
+use jinn_slices::DrawContext;
 use jinn_theme::Theme;
 use jinn_token_count_msg::TokenStats;
 use ratatui::Frame;
@@ -90,6 +91,26 @@ fn resolve_modalities(
     active_model: &str,
 ) -> Option<InputModalities> {
     resolve_model_info(model_cache, active_model).map(|m| m.input_modalities)
+}
+
+/// Paints the status bar into `area`.
+///
+/// Registered as this slice's draw function for
+/// [`jinn_slices::Region::StatusBar`], so the composition layer asks
+/// the region who draws it rather than naming this function.
+pub fn paint(frame: &mut Frame<'_>, area: Rect, ctx: &dyn DrawContext<AppState>) {
+    let state = ctx.state();
+    {
+        // Split area into cwd line + info line.
+        let [cwd_area, info_area] =
+            Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(area);
+
+        let style = Style::default().fg(state.frontend.theme.muted_text);
+
+        render_cwd_line(frame, cwd_area, state, style);
+        render_tree_aggregate(frame, cwd_area, state, style);
+        render_token_info_line(frame, info_area, state, ctx, style);
+    }
 }
 
 impl UiElement for StatusBarElement {
@@ -169,7 +190,7 @@ fn render_token_info_line(
     frame: &mut Frame<'_>,
     area: Rect,
     state: &AppState,
-    ctx: &RenderCtx,
+    ctx: &dyn DrawContext<AppState>,
     style: Style,
 ) {
     let active_model = state.active_session().profile().model.clone();
@@ -208,7 +229,7 @@ fn render_token_info_line(
     // notice rather than ambient info. The hint lives in the slice's cell —
     // absent cell (slice not activated) means no hint, model shows.
     let hint = ctx
-        .slices
+        .slices()
         .reader::<StatusBarState>(&status_bar_slot())
         .and_then(|cell| cell.read().hint.clone());
     let right_side = if let Some(hint) = hint {

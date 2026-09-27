@@ -7,19 +7,27 @@ use ratatui::style::Style;
 
 /// Draws the vertical border line (`│`) between the main column and sidebar.
 ///
-/// The color reflects sidebar focus state and resize mode.
+/// Which accent it draws with is the focused scope's registered render
+/// hint, so a slice claims its own accent at activation rather than
+/// being special-cased here by name.
 pub fn render_border(frame: &mut Frame<'_>, border: Rect, ctx: &RenderCtx) {
     let focus_scope = ctx.state.frontend.scope();
     let theme = &ctx.state.frontend.theme;
 
-    let border_color = match focus_scope {
-        jinn_slices::FocusScope::Dynamic(id)
-            if id.slice() == "sidebar" && id.name() == "resize" =>
-        {
-            theme.sidebar_resize_accent
-        }
-        jinn_slices::FocusScope::Dynamic(id) if id.slice() == "sidebar" => theme.focus_accent,
-        _ => theme.border_unfocused,
+    let accent = match focus_scope {
+        jinn_slices::FocusScope::Normal => jinn_slices::scope_hints::Accent::Focused,
+        jinn_slices::FocusScope::Dynamic(id) => ctx
+            .slices
+            .scope_hints()
+            .map_or(jinn_slices::scope_hints::Accent::Unfocused, |hints| {
+                hints.hint(&id).accent
+            }),
+        _ => jinn_slices::scope_hints::Accent::Unfocused,
+    };
+    let border_color = match accent {
+        jinn_slices::scope_hints::Accent::Focused => theme.focus_accent,
+        jinn_slices::scope_hints::Accent::Acting => theme.sidebar_resize_accent,
+        jinn_slices::scope_hints::Accent::Unfocused => theme.border_unfocused,
     };
     let border_style = Style::default().fg(border_color);
     for y in border.y..(border.y + border.height) {
@@ -50,8 +58,12 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn separator_is_yellow_when_sidebar_focused() {
-        // Given a TuiApp rendered with Sidebar scope.
+        // Given a TuiApp rendered with Sidebar scope. The accent comes
+        // from the scope hint the sidebar registers at activation, so the
+        // slice's render wiring has to be live for the accent to be the
+        // one a real app draws.
         let mut app = crate::TuiApp::test_builder().build().await;
+        crate::render_tests::activate_render_slices(&mut app);
         app.core
             .state
             .write()
@@ -104,6 +116,10 @@ mod tests {
     async fn separator_is_green_when_resizing() {
         // Given a TuiApp rendered with the sidebar resize scope.
         let mut app = crate::TuiApp::test_builder().build().await;
+        // The accent comes from the scope hint the sidebar registers at
+        // activation, so the slice's render wiring has to be live for the
+        // border to draw the accent a real app draws.
+        crate::render_tests::activate_render_slices(&mut app);
         app.core
             .state
             .write()

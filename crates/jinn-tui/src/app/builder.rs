@@ -10,8 +10,6 @@ use crate::keymap;
 use crate::selection::{SelectableRects, SelectionState};
 use crate::suspend::Suspend;
 use crate::{AppStatus, MsgHandler};
-use jinn_sidebar::sections::register_sections;
-use jinn_sidebar::sections::sidebar::Sidebar;
 
 /// Builder for constructing a [`TuiApp`] with sensible defaults for tests.
 ///
@@ -92,17 +90,11 @@ impl TuiAppBuilder {
             bridge: services.bridge.clone(),
         };
 
-        let mut ui_registry = jinn_kernel::AppUiRegistry::new();
-        jinn_kernel::register_all_ui_elements(&mut ui_registry);
-        // Slice-owned elements the kernel registry cannot reference. The
-        // chat input box is fetched with `if let Some(..)`, so a missing
-        // call here fails silently — the box just never draws.
-        // The chat log is a slice; its element is registered here because
-        // the kernel's registry cannot reference slice crates.
-        jinn_chat_log_view::register(&mut ui_registry);
-        jinn_inference::register(&mut ui_registry);
-        jinn_chat_input::register(&mut ui_registry);
-        jinn_status_bar::register(&mut ui_registry);
+        // The same element list the app runs with, so a test app draws
+        // every element a real app draws. The chat input box is fetched
+        // with `if let Some(..)`, so a missing registration would fail
+        // silently — the box just never draws.
+        let ui_registry = crate::ui_elements::build_ui_registry();
 
         let keymap = keymap::init();
         let initial_scope = scope_for_focus(&core.state.read().frontend.scope());
@@ -120,11 +112,6 @@ impl TuiAppBuilder {
             selectable_rects: SelectableRects::default(),
             pending_clipboard: false,
             config: TuiConfig::default(),
-            sidebar: {
-                let mut s = Sidebar::new();
-                register_sections(&mut s);
-                s
-            },
         }
     }
 }

@@ -37,6 +37,7 @@ use jinn_kernel::protocol::ToolResultStatus;
 use jinn_kernel::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 use jinn_session_msg::PhaseKind;
 use jinn_session_state::ChatSessionState;
+use jinn_slices::DrawContext;
 use jinn_theme::Theme;
 use jinn_tools_msg::TASK_TOOL_NAME;
 use ratatui::Frame;
@@ -192,7 +193,22 @@ impl UiElement for ChatLogElement {
     }
 
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
-        let state = ctx.state;
+        self.paint(frame, area, ctx as &dyn DrawContext<AppState>);
+    }
+}
+
+impl ChatLogElement {
+    /// Paints the conversation history into `area`.
+    ///
+    /// The registered draw function calls this against the slice's one
+    /// element instance, so the loading throbber's animation state
+    /// advances across frames rather than being rebuilt per frame.
+    ///
+    /// Takes the draw context as a trait object: the registry is keyed
+    /// on the state type so it can live in a `'static` cell, and this
+    /// is the only context the render pass builds.
+    pub fn paint(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &dyn DrawContext<AppState>) {
+        let state = ctx.state();
         if state.session.is_loading() {
             render_loading(
                 frame,
@@ -204,7 +220,7 @@ impl UiElement for ChatLogElement {
             return;
         }
 
-        let mut render = HistoryRender::new(state, area, ctx.config);
+        let mut render = HistoryRender::new(state, area, ctx.config());
         render.compute_visual_items();
         render.build_tool_result_map();
         {
