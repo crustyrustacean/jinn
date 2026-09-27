@@ -2402,7 +2402,6 @@ version = "0.118.0"
 dependencies = [
  "error-stack",
  "jinn-core-types",
- "jinn-kernel",
  "jinn-mcp-msg",
  "jinn-sidebar-msg",
  "jinn-slices",
