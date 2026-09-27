@@ -58,6 +58,22 @@ pub enum Region {
     AuditPopup,
     /// The autocomplete popup anchored to the input box.
     Autocomplete,
+    /// Surfaces that overflow the region that anchors them, painted in a
+    /// top layer so no column drawn later can cover them.
+    ///
+    /// A popup wider than the sidebar it hangs off reaches left across the
+    /// chat column, so it cannot paint from inside that column's draw call:
+    /// the render pass draws the chat log after it, and chat would win. The
+    /// layer is a separate region dispatched after the base columns for
+    /// exactly that reason.
+    ///
+    /// The order *within* the layer is a call sequence in the registering
+    /// slice, not a number here. When a second slice registers against this
+    /// region, the numbers arrive with that registration: each registrant
+    /// carries a `u16` priority, the layer sorts by it, and ties break by
+    /// call order. Until then there is one registrant and the sequence is
+    /// the whole of the ordering.
+    FloatingSurfaces,
 }
 
 impl Region {
@@ -74,6 +90,7 @@ impl Region {
             Region::Sidebar,
             Region::AuditPopup,
             Region::Autocomplete,
+            Region::FloatingSurfaces,
         ]
     }
 }
@@ -89,6 +106,7 @@ impl fmt::Display for Region {
             Region::Sidebar => "sidebar",
             Region::AuditPopup => "audit-popup",
             Region::Autocomplete => "autocomplete",
+            Region::FloatingSurfaces => "floating-surfaces",
         };
         f.write_str(name)
     }
