@@ -146,7 +146,7 @@ pub struct ChatLogViewUi {
     /// - `instant`: timestamp of the last `x` press in this sweep
     /// - `override`: the `ContextOverride` to apply to subsequent entries
     ///
-    /// Cleared by: >100ms gap, or any non-`ChatEntryIgnoreSelected` intent.
+    /// Cleared by: >100ms gap, or any action other than `ignore-selected`.
     pub ignore_sweep: Option<(std::time::Instant, ContextOverride)>,
     /// How many times `visual_items` was actually replaced.
     ///

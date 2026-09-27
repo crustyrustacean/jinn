@@ -160,7 +160,7 @@ pub fn attach_endpoint_picker_rows(routes: &KeyRoutes, cell: &EndpointPickerCell
 
     // The detail pane scrolls independently of the list: PageUp/PageDown page
     // the rows, so the pane needs its own keys. Trunk drove both from one
-    // ScrollUp/ScrollDown intent; here the list has dedicated paging, so the
+    // chat log's scroll action; here the list has dedicated paging, so the
     // pane takes Ctrl+U/Ctrl+D.
     routes.attach(row(
         "endpoint-preview-up",

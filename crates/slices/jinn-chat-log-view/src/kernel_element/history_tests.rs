@@ -1222,7 +1222,7 @@ fn render_auto_scrolls_jumped_compaction_into_view() {
     // Given a history taller than a 6-line viewport, with a compaction as the
     // FIRST entry and many user entries below it. The default viewport shows the
     // bottom (newest) entries, so the compaction is scrolled off the top.
-    use jinn_kernel::chat_entry_selection::intent::handle_jump_prev_entry;
+    use crate::chat_entry_selection::intent::handle_jump_prev_entry;
 
     let mut element = ChatLogElement::new();
     let mut state = normal_state();

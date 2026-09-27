@@ -15,6 +15,7 @@
 //! - [`provider_selection`] — provider switch / model discovery / picker load
 //! - [`session_init`] — the discovery chain (kernel → trouper →
 //!   keyed worker → per-resource Loaded events)
+//! - [`chat_log`] — the chat log's rows in the composed keymap
 //! - [`composition`] — the shared seam (every slice's rows attached)
 //!
 //! Coverage split:
@@ -26,6 +27,7 @@
 
 #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
+mod chat_log;
 mod common;
 
 mod boot;

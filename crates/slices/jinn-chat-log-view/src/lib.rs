@@ -1,25 +1,33 @@
-//! The chat-log-view slice — per-session chat log display state.
+//! The chat-log-view slice — the chat log's display state and actions.
 //!
-//! Owns one cell ([`chat_log_views_slot`]) holding
-//! [`jinn_chat_log_view_msg::ChatLogViews`]: each session's scroll intent and render
-//! caches, cursor selection, expand/ignore sets, saved pins position, and
-//! ignore-sweep. The kernel's exempt IntentHandler writes through
-//! `ChatSession`'s semantic methods (a facade over the cell), and the chat
-//! log renderer publishes its per-frame caches through the same methods.
-//! There is no actor and no route row: the writers are the exempt sync
-//! handler and the render pass.
+//! Owns two cells: [`chat_log_views_slot`] holds each session's scroll
+//! intent and render caches, cursor selection, expand/ignore sets,
+//! saved pins position, and ignore-sweep; the audit popup's visibility
+//! is a cell of its own because it is a global toggle rather than a
+//! per-session one. The log's keys are [`routes`] rows attached at
+//! activation — the kernel binds none of them and holds no chat-log
+//! intent variant.
+//!
+//! The view cell's writers are the log's own route actions, reaching it
+//! through `ChatSessionState`'s semantic methods (a facade over the
+//! cell), and the chat log renderer publishing its per-frame caches
+//! through the same methods. There is no actor.
 
+pub mod audit_popup;
+pub mod chat_entry_selection;
 pub mod chat_log;
 pub mod kernel_element;
+pub mod routes;
 pub mod vertical_minimap;
 
 pub use jinn_chat_log_view_msg::ChatLogViewUi;
+pub use jinn_chat_log_view_msg::chat_log_scope;
 pub use jinn_chat_log_view_msg::chat_log_views_slot;
 
 use jinn_slices::SliceHost;
 
-/// Activates the slice: mints the chat-log-views cell. No routes, no
-/// actors, no view.
+/// Activates the slice: mints the chat-log-views and audit-popup cells
+/// and attaches the log's route rows. No actors, no view.
 ///
 /// # Panics
 ///
@@ -36,6 +44,13 @@ pub fn activate(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
             jinn_chat_log_view_msg::ChatLogViews::new(),
         )
         .expect("chat-log-view slot is registered exactly once at wiring");
+    let _audit_cell = host
+        .register_cell(
+            jinn_chat_log_view_msg::audit_popup_slot(),
+            jinn_chat_log_view_msg::AuditPopupState::default(),
+        )
+        .expect("audit-popup slot is registered exactly once at wiring");
+    routes::attach_all(host.key_routes());
 }
 
 /// Register the chat log UI element.

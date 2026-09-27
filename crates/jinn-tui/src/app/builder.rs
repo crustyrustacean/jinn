@@ -76,6 +76,14 @@ impl TuiAppBuilder {
                 jinn_provider_selection_msg::provider_state_slot(),
                 jinn_provider_selection_msg::ProviderCell::default(),
             );
+            // The chat log's audit-popup cell. Production registers it in
+            // `jinn_chat_log_view::activate` during actor wiring, which does
+            // not run here — so without this the popup is unreachable in a
+            // test app and every popup-render test silently no-ops.
+            let _ = slices.register(
+                jinn_chat_log_view_msg::audit_popup_slot(),
+                jinn_chat_log_view_msg::AuditPopupState::default(),
+            );
             state.frontend.attach_slices(slices);
         }
 

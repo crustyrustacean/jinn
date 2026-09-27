@@ -1,8 +1,8 @@
 //! Audit popup overlay - renders the context-change history of the
 //! currently-selected chat entry.
 //!
-//! Activated by pressing `a` in Normal mode (toggles
-//! `FrontendState::audit_popup_visible`). The popup is right-aligned to the
+//! Activated by pressing `a` in Normal mode, which toggles the
+//! chat-log slice's `AuditPopupState` cell. The popup is right-aligned to the
 //! chat-log area and vertically anchored to the top of the selected entry.
 //! It tracks the cursor live as the user navigates.
 
@@ -17,7 +17,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 /// Render the audit popup, if it should be visible.
 ///
 /// Conditions for visibility:
-/// - `audit_popup_visible` is true
+/// - the chat-log slice's audit-popup cell reads as visible
 /// - No higher-priority overlay is active
 /// - An entry is selected
 ///
@@ -29,7 +29,7 @@ pub(super) fn render_audit_popup(
     ctx: &RenderCtx,
     rects: &mut Vec<Rect>,
 ) {
-    if !ctx.state.frontend.audit_popup_visible {
+    if !jinn_chat_log_view::audit_popup::is_visible(ctx.slices) {
         return;
     }
 
@@ -129,7 +129,7 @@ mod tests {
         let app = crate::TuiApp::test_builder().build().await;
         let mut entry = ChatEntry::user("hello");
         entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
-        app.core.state.write().frontend.audit_popup_visible = true;
+        let _ = jinn_chat_log_view::audit_popup::toggle(&app.services.slices);
         app.core
             .state
             .write()
@@ -189,9 +189,11 @@ mod tests {
         terminal
             .draw(|frame| {
                 let guard = app.core.state.read();
-                let slices = jinn_slices::Slices::new();
+                // The app's own registry, not a throwaway one: the popup's
+                // visibility is a chat-log cell, and an empty registry
+                // would read as hidden and make these tests vacuous.
                 let views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new_with_default_config(&guard, &slices, &views);
+                let ctx = RenderCtx::new_with_default_config(&guard, &app.services.slices, &views);
                 render_audit_popup(frame, chat_log_area, &ctx, &mut rects);
             })
             .unwrap();
@@ -293,9 +295,11 @@ mod tests {
         terminal
             .draw(|frame| {
                 let guard = app.core.state.read();
-                let slices = jinn_slices::Slices::new();
+                // The app's own registry, not a throwaway one: the popup's
+                // visibility is a chat-log cell, and an empty registry
+                // would read as hidden and make these tests vacuous.
                 let views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new_with_default_config(&guard, &slices, &views);
+                let ctx = RenderCtx::new_with_default_config(&guard, &app.services.slices, &views);
                 render_audit_popup(frame, chat_log_area, &ctx, &mut rects);
             })
             .unwrap();
@@ -372,7 +376,7 @@ mod tests {
         let mut app = crate::TuiApp::test_builder().build().await;
         let mut entry = ChatEntry::user("hello");
         entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
-        // audit_popup_visible stays at default (false)
+        // the audit-popup cell stays at its default (hidden)
         app.core
             .state
             .write()
