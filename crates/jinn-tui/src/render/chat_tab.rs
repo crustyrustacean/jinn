@@ -122,7 +122,17 @@ pub(super) fn render_chat_tab(
     // Cancel stream prompt - overlay at bottom of chat log area. This is
     // composition's own chrome: it is a global confirmation bound to a
     // frontend flag, not any slice's content.
-    if ctx.state.frontend.cancel_stream_prompt {
+    //
+    // Shown only while a turn is actually in flight. The flag can outlive the
+    // turn that armed it — nothing clears it when a stream simply finishes,
+    // and no keystroke is involved when that happens — so the bar would sit
+    // there offering to cancel a turn that has already ended. Deriving the
+    // condition here, at the one place the prompt is consumed, keeps the
+    // kernel the only writer of the flag.
+    let session = ctx.state.active_session();
+    let turn_in_flight =
+        session.is_busy() || !matches!(session.phase(), jinn_kernel::PhaseKind::Idle);
+    if ctx.state.frontend.cancel_stream_prompt && turn_in_flight {
         let prompt_area = Rect {
             x: chat_log_area.x,
             y: chat_log_area.y + chat_log_area.height.saturating_sub(1),
