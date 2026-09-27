@@ -170,7 +170,7 @@ const AT_LOADING: &str = "<loading…>";
 /// Text shown when a directory listing is empty/unreadable.
 const AT_EMPTY: &str = "<empty>";
 
-/// Renders the `@path` file popup from `frontend.file_picker`.
+/// Renders the `@path` file popup from the file-picker cell.
 ///
 /// Dirs render with a trailing `/`; files render plain. While a listing is
 /// in flight, shows `<loading…>`; when the listing is empty, shows `<empty>`.
@@ -194,7 +194,9 @@ fn render_at_popup(
     ) else {
         return;
     };
-    let picker = &state.frontend.file_picker;
+    let Some(picker) = state.frontend.with_file_picker(|picker| picker.clone()) else {
+        return;
+    };
 
     // Build the display rows. The `@` popup narrows by the last path segment
     // of the current filter (what the user is typing), so render and confirm

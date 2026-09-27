@@ -20,7 +20,7 @@ pub struct DirectoryListerActorDeps {
 }
 
 /// Lists directories on `ListDirectory` commands and writes results to
-/// `frontend.file_picker`.
+/// the `@path` popup's file-picker cell.
 pub struct DirectoryListerActor {
     /// Bus service.
     bus: BusService,
@@ -95,9 +95,10 @@ impl MsgHandler<ListDirectory> for DirectoryListerActor {
         let result = tokio::task::spawn_blocking(move || list_dir_blocking(&path)).await;
         let entries = result.unwrap_or_default();
 
-        // Staleness guard: write only if this reply is still the expected one.
-        self.state.with_file_picker(|ops| {
-            let picker = ops.file_picker();
+        // Staleness guard: write only if this reply is still the expected
+        // one. A newer request has bumped the expected id, and this reply
+        // is stale — dropping it leaves the newer request's spinner alone.
+        self.state.with_file_picker(|picker| {
             if picker.expected_request_id == request_id {
                 picker.entries = entries;
                 picker.loading = false;

@@ -124,6 +124,15 @@ impl AppState {
         {
             // Same re-seed intent as scope-focus above.
         }
+        if slices
+            .register(
+                jinn_chat_input_msg::file_picker_slot(),
+                jinn_chat_input_msg::FilePickerState::default(),
+            )
+            .is_err()
+        {
+            // Same re-seed intent as scope-focus above.
+        }
         state.frontend.attach_slices(slices.clone());
         state.session.attach_slices(slices);
         state

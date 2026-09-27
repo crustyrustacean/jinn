@@ -40,6 +40,16 @@ pub fn activate(
     deps: ActorDeps,
     state: &State,
 ) {
+    // The `@path` popup's own cell. The TUI test app builder does not run
+    // slice activation, so it registers this too — without one of the two
+    // the popup renders empty while every test around it stays green.
+    let _picker_cell = host
+        .register_cell(
+            jinn_chat_input_msg::file_picker_slot(),
+            jinn_chat_input_msg::FilePickerState::default(),
+        )
+        .ok();
+
     let lister_deps = directory_lister_actor::DirectoryListerActorDeps {
         deps,
         state: state.clone(),

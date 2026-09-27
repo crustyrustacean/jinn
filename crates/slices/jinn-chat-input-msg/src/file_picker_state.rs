@@ -2,6 +2,19 @@
 
 use std::path::PathBuf;
 
+use jinn_slices::SlotKey;
+
+/// The slot the `@path` file popup's state is stored under.
+///
+/// The popup state is a cell rather than a `FrontendState` field: it has
+/// one production writer (the directory lister), the rest of its readers
+/// are the render pass, and the cell mechanism already carries exactly
+/// that shape. The key lives beside the payload it names.
+#[must_use]
+pub fn file_picker_slot() -> SlotKey {
+    SlotKey::builtin("jinn-chat-input", "file-picker")
+}
+
 /// One entry in a directory listing.
 ///
 /// Name is the bare entry name (no path prefix). `is_dir` is true for
@@ -15,7 +28,8 @@ pub struct FileEntry {
     pub is_dir: bool,
 }
 
-/// State for the `@path` file popup, stored on `FrontendState`.
+/// State for the `@path` file popup, stored in the
+/// [`file_picker_slot`] cell.
 ///
 /// `entries` and `loading` are written by `DirectoryListerActor`; the
 /// `selected_index` lives in [`AutocompleteState`](crate::chat_input_state::AutocompleteState)

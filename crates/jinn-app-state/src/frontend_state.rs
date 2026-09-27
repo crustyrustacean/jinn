@@ -117,10 +117,6 @@ pub struct FrontendState {
 
     pub sidebar_width: u16,
 
-    /// `@path` file popup state.
-    /// OWNER: DirectoryListerActor (entries, loading, expected_request_id).
-    pub file_picker: FilePickerState,
-
     /// Late-attached handle to the slice registry, carrying the
     /// scope-focus cell (the focus stack, TUI signals, and quit latch).
     /// Attached once at wiring, before any intent can fire; a clone of
@@ -146,7 +142,6 @@ impl Default for FrontendState {
             pending_creation: None,
 
             sidebar_width: 30,
-            file_picker: FilePickerState::default(),
         }
     }
 }
@@ -214,6 +209,48 @@ impl FrontendState {
             }
             None => default(),
         }
+    }
+
+    /// Resolves the `@path` file popup's cell, if the handle is attached
+    /// and the chat-input slice's `activate()` minted it.
+    fn file_picker_cell(&self) -> Option<jinn_slices::cell::TypedCell<FilePickerState>> {
+        let slices = self.scope_focus.get()?;
+        slices.reader::<FilePickerState>(&jinn_chat_input_msg::file_picker_slot())
+    }
+
+    /// Runs `f` against the `@path` file popup's state, returning its result.
+    ///
+    /// A no-op returning `None` when the cell is absent (the slice was
+    /// never activated) — writes are silently dropped, matching the
+    /// no-slice configuration.
+    ///
+    /// OWNER: DirectoryListerActor (entries, loading); IntentHandler
+    /// stamps `expected_request_id` and `loading` when it emits a
+    /// listing request (exempt as the synchronous frontend mutator).
+    pub fn update_file_picker<F, R>(&self, f: F) -> Option<R>
+    where
+        R: Sized,
+        F: FnOnce(&mut FilePickerState) -> R,
+    {
+        let cell = self.file_picker_cell()?;
+        Some(cell.update(f))
+    }
+
+    /// Reads the `@path` file popup's state through `f`, returning
+    /// `None` when the cell is absent (the slice was never activated).
+    ///
+    /// A caller that needs a value either way passes a fallback, as
+    /// [`Self::with_sections`] does; this pair reports absence so a
+    /// caller that seeds the cell can tell an empty popup from an
+    /// unactivated slice.
+    #[must_use]
+    pub fn with_file_picker<R, F>(&self, f: F) -> Option<R>
+    where
+        F: FnOnce(&FilePickerState) -> R,
+    {
+        let cell = self.file_picker_cell()?;
+        let guard = cell.read();
+        Some(f(&guard))
     }
 
     /// Resolves the theme slice's entries cell, if the handle is attached

@@ -510,16 +510,16 @@ fn confirm_at_popup(state: &mut AppState) -> IntentResult {
         );
         // Select from the SAME filtered set the popup renders, so a stale or
         // out-of-range index never inserts an entry the user cannot see.
-        let Some(entry) = state
-            .frontend
-            .file_picker
-            .visible_entries(&filter)
-            .get(selected_index)
-            .copied()
-        else {
+        let entry = state.frontend.with_file_picker(|picker| {
+            picker
+                .visible_entries(&filter)
+                .get(selected_index)
+                .map(|e| (e.name.clone(), e.is_dir))
+        });
+        let Some((name, is_dir)) = entry.flatten() else {
             return IntentResult::empty();
         };
-        (entry.name.clone(), entry.is_dir)
+        (name, is_dir)
     };
     state.update_active_input(|i| {
         i.complete_at_entry(&name, is_dir);
@@ -971,7 +971,7 @@ fn try_reactivate_autocomplete(state: &mut AppState) {
 /// region.
 ///
 /// On success, emits a [`ListDirectory`] command so the actor lists the dir for
-/// the current filter (the popup reads `frontend.file_picker`).
+/// the current filter (the popup reads the file-picker cell).
 fn try_reactivate_at_autocomplete(state: &mut AppState) -> Option<ListDirectory> {
     if state.with_active_input(|i| i.autocomplete().is_some(), || false) {
         return None;
@@ -992,14 +992,18 @@ fn emit_list_directory(state: &mut AppState, filter: &str) -> ListDirectory {
     let cwd = session.cwd().to_path_buf();
     let home = home_dir();
     let dir = resolve_list_dir(filter, &cwd, &home);
-    // Bump the expected request id so stale replies are dropped.
+    // Bump the expected request id so stale replies are dropped, and show
+    // the spinner until the reply the id now names lands. This is the
+    // IntentHandler's half of the staleness rule; the actor's is the
+    // matching check before it writes.
     let request_id = state
         .frontend
-        .file_picker
-        .expected_request_id
-        .wrapping_add(1);
-    state.frontend.file_picker.expected_request_id = request_id;
-    state.frontend.file_picker.loading = true;
+        .with_file_picker(|picker| picker.expected_request_id.wrapping_add(1))
+        .unwrap_or_default();
+    state.frontend.update_file_picker(|picker| {
+        picker.expected_request_id = request_id;
+        picker.loading = true;
+    });
     let session_id = state.session.active_session_id().clone();
     ListDirectory {
         session_id,
@@ -1034,5 +1038,8 @@ fn at_visible_count(state: &AppState) -> usize {
     let filter = state
         .with_active_input(ChatInputBoxState::autocomplete_filter, || None)
         .unwrap_or_default();
-    state.frontend.file_picker.visible_entries(&filter).len()
+    state
+        .frontend
+        .with_file_picker(|picker| picker.visible_entries(&filter).len())
+        .unwrap_or_default()
 }

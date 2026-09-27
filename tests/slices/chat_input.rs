@@ -3125,23 +3125,39 @@ fn ctrl_clear_input_empty_is_noop_via_handler() {
 // `@path` popup state tests.
 //
 // The user types `@` to open the file popup. The popup's entries live in
-// `frontend.file_picker` (populated by `DirectoryListerActor`), and the
+// the file-picker cell (populated by `DirectoryListerActor`), and the
 // selection lives in `AutocompleteState`. These tests exercise the popup's
 // state transitions directly through the intent handlers: trigger activation,
 // slash-descent, backspace, cursor moves, and confirm (dir vs file).
 //
-// Because the popup reads `frontend.file_picker` (async actor output), tests
-// that need populated entries set them manually via the helper below.
+// Because the popup reads the cell (async actor output), tests that need
+// populated entries set them manually via the helper below.
 // =============================================================================
 
+/// Seeds the file-picker cell with `entries` and clears the spinner.
+fn seed_file_picker(state: &AppState, entries: Vec<FileEntry>) {
+    state.frontend.update_file_picker(|picker| {
+        *picker = FilePickerState::with_entries(entries);
+        picker.loading = false;
+    });
+}
+
+/// Reads the file-picker cell's `entries`, or an empty list when the cell
+/// is unregistered.
+fn file_picker_entries(state: &AppState) -> Vec<FileEntry> {
+    state
+        .frontend
+        .with_file_picker(|picker| picker.entries.clone())
+        .unwrap_or_default()
+}
+
 /// Activates the `@` popup at the cursor and optionally seeds
-// `frontend.file_picker` with a listing. Returns the AppState for chaining.
+// the file-picker cell with a listing. Returns the AppState for chaining.
 fn at_popup_with_entries(entries: Vec<FileEntry>) -> AppState {
     let mut state = AppState::default_with_scope_focus();
     // Type `@` at the start of the buffer to activate the popup.
     let _ = jinn_chat_input::intent::handle_insert_char('@', &mut state);
-    state.frontend.file_picker = FilePickerState::with_entries(entries);
-    state.frontend.file_picker.loading = false;
+    seed_file_picker(&state, entries);
     state
 }
 
@@ -3153,8 +3169,7 @@ fn at_popup_with_filter_and_entries(filter: &str, entries: Vec<FileEntry>) -> Ap
     for ch in filter.chars() {
         let _ = jinn_chat_input::intent::handle_insert_char(ch, &mut state);
     }
-    state.frontend.file_picker = FilePickerState::with_entries(entries);
-    state.frontend.file_picker.loading = false;
+    seed_file_picker(&state, entries);
     state
 }
 
@@ -3498,8 +3513,7 @@ fn cursor_left_past_token_start_deactivates_popup() {
     let mut state = AppState::default_with_scope_focus();
     state.update_active_input(|i| i.insert_text("x "));
     let _ = jinn_chat_input::intent::handle_insert_char('@', &mut state);
-    state.frontend.file_picker = FilePickerState::with_entries(vec![dir_entry("foo")]);
-    state.frontend.file_picker.loading = false;
+    seed_file_picker(&state, vec![dir_entry("foo")]);
     for ch in "foo".chars() {
         let _ = jinn_chat_input::intent::handle_insert_char(ch, &mut state);
     }
@@ -3547,8 +3561,7 @@ fn cursor_right_within_token_keeps_popup_active() {
 fn file_popup_deactivated_by_trailing_bar() -> jinn_kernel::AppState {
     let mut state = AppState::default_with_scope_focus();
     let _ = jinn_chat_input::intent::handle_insert_char('@', &mut state);
-    state.frontend.file_picker = FilePickerState::with_entries(vec![dir_entry("foo")]);
-    state.frontend.file_picker.loading = false;
+    seed_file_picker(&state, vec![dir_entry("foo")]);
     for ch in "foo".chars() {
         let _ = jinn_chat_input::intent::handle_insert_char(ch, &mut state);
     }
@@ -4652,7 +4665,11 @@ use jinn_chat_input::directory_lister_actor::{DirectoryListerActor, DirectoryLis
 
 async fn create_harness() -> (TestHarness, State, ActorDeps) {
     let harness = TestHarness::new().await;
-    let state = State::new(AppState::default());
+    // `default_with_scope_focus`, not `default`: the `@path` popup's state
+    // is a cell, and a bare `default` attaches no slice registry, so the
+    // actor's write would reach nothing and the popup would stay empty
+    // while every assertion around it stayed green.
+    let state = State::new(AppState::default_with_scope_focus());
     let mut services = TestServices::builder()
         .paths(AppPaths::new_in(std::path::Path::new("")))
         .build();
@@ -4680,7 +4697,12 @@ async fn wait_for_list_complete(state: &State) {
     // The actor clears `loading` when it finishes (success or error).
     // Poll until that happens, with a timeout.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-    while state.read().frontend.file_picker.loading {
+    while state
+        .read()
+        .frontend
+        .with_file_picker(|picker| picker.loading)
+        .unwrap_or(false)
+    {
         assert!(
             std::time::Instant::now() <= deadline,
             "timed out waiting for DirectoryListerActor to finish"
@@ -4711,9 +4733,9 @@ async fn actor_reads_directory_entries_into_file_picker() {
     let _actor = spawn_actor(&deps, &state).await;
 
     // Set the expected request id and mark loading.
-    state.with_file_picker(|ops| {
-        ops.file_picker().expected_request_id = 1;
-        ops.file_picker().loading = true;
+    state.with_file_picker(|picker| {
+        picker.expected_request_id = 1;
+        picker.loading = true;
     });
 
     // When the actor lists the directory.
@@ -4728,8 +4750,12 @@ async fn actor_reads_directory_entries_into_file_picker() {
     wait_for_list_complete(&state).await;
 
     // Then the file picker is populated and loading is cleared.
-    let entries = state.read().frontend.file_picker.entries.clone();
-    let loading = state.read().frontend.file_picker.loading;
+    let entries = file_picker_entries(&state.read());
+    let loading = state
+        .read()
+        .frontend
+        .with_file_picker(|picker| picker.loading)
+        .unwrap_or(false);
     assert!(
         !loading,
         "loading should be cleared after a successful read"
@@ -4753,9 +4779,9 @@ async fn actor_drops_stale_reply_when_request_id_mismatches() {
     let _actor = spawn_actor(&deps, &state).await;
 
     // The expected id is 5, but we send a request with id 1 (stale).
-    state.with_file_picker(|ops| {
-        ops.file_picker().expected_request_id = 5;
-        ops.file_picker().loading = true;
+    state.with_file_picker(|picker| {
+        picker.expected_request_id = 5;
+        picker.loading = true;
     });
 
     // When the actor processes a request whose id does not match.
@@ -4771,8 +4797,12 @@ async fn actor_drops_stale_reply_when_request_id_mismatches() {
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     // Then the stale reply is dropped: entries stay empty, loading unchanged.
-    let entries = state.read().frontend.file_picker.entries.clone();
-    let loading = state.read().frontend.file_picker.loading;
+    let entries = file_picker_entries(&state.read());
+    let loading = state
+        .read()
+        .frontend
+        .with_file_picker(|picker| picker.loading)
+        .unwrap_or(false);
     assert!(entries.is_empty(), "stale reply must not populate entries");
     assert!(loading, "stale reply must not clear loading");
 }
@@ -4783,9 +4813,9 @@ async fn actor_returns_empty_for_nonexistent_directory() {
     // Given an actor and a path that does not exist.
     let (harness, state, deps) = create_harness().await;
     let _actor = spawn_actor(&deps, &state).await;
-    state.with_file_picker(|ops| {
-        ops.file_picker().expected_request_id = 1;
-        ops.file_picker().loading = true;
+    state.with_file_picker(|picker| {
+        picker.expected_request_id = 1;
+        picker.loading = true;
     });
     let bogus = PathBuf::from("/this/path/does/not/exist/jinn-test");
 
@@ -4801,8 +4831,12 @@ async fn actor_returns_empty_for_nonexistent_directory() {
     wait_for_list_complete(&state).await;
 
     // Then the entries are empty (not an error), loading cleared.
-    let entries = state.read().frontend.file_picker.entries.clone();
-    let loading = state.read().frontend.file_picker.loading;
+    let entries = file_picker_entries(&state.read());
+    let loading = state
+        .read()
+        .frontend
+        .with_file_picker(|picker| picker.loading)
+        .unwrap_or(false);
     assert!(entries.is_empty(), "nonexistent dir yields empty entries");
     assert!(!loading, "loading should be cleared even on read error");
 }
@@ -4814,9 +4848,9 @@ async fn actor_lists_hidden_files() {
     let dir = make_temp_dir(&[(".hidden", false), ("visible.txt", false)]);
     let (harness, state, deps) = create_harness().await;
     let _actor = spawn_actor(&deps, &state).await;
-    state.with_file_picker(|ops| {
-        ops.file_picker().expected_request_id = 1;
-        ops.file_picker().loading = true;
+    state.with_file_picker(|picker| {
+        picker.expected_request_id = 1;
+        picker.loading = true;
     });
 
     // When the actor lists the directory.
@@ -4831,7 +4865,7 @@ async fn actor_lists_hidden_files() {
     wait_for_list_complete(&state).await;
 
     // Then the dotfile appears in the listing (hidden files shown).
-    let entries = state.read().frontend.file_picker.entries.clone();
+    let entries = file_picker_entries(&state.read());
     assert!(
         entries.iter().any(|e| e.name == ".hidden"),
         "hidden files should be listed: {entries:?}"

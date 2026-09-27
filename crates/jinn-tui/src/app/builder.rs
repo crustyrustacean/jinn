@@ -82,6 +82,14 @@ impl TuiAppBuilder {
                 jinn_chat_log_view_msg::audit_popup_slot(),
                 jinn_chat_log_view_msg::AuditPopupState::default(),
             );
+            // The `@path` file popup's cell, for the same reason: the
+            // chat-input slice's `activate` mints it in production and does
+            // not run here. Without it the popup renders no rows while the
+            // tests around it stay green.
+            let _ = slices.register(
+                jinn_chat_input_msg::file_picker_slot(),
+                jinn_chat_input_msg::FilePickerState::default(),
+            );
             state.frontend.attach_slices(slices);
         }
 
