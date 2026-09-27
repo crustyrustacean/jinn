@@ -1,8 +1,8 @@
 //! The chat input box — the kernel's unit tests, now exercising the
 //! slice through its public surface.
 //!
-//! These were the `jinn_domain::feat::chat_input` and
-//! `jinn_domain::feat::file_lister` unit tests. They live here because the
+//! These were the the chat input slice's and
+//! file_lister unit tests. They live here because the
 //! implementation is a slice now: the box's handlers, element, validator,
 //! autocomplete render, and directory-lister actor are reached through
 //! `jinn_chat_input`'s public API rather than through kernel-internal

@@ -13,10 +13,10 @@ use jinn_core_types::SessionId;
 use jinn_domain::common::app_state::AppState;
 use jinn_domain::common::bus::HarnessServices;
 use jinn_domain::common::state::State;
-use jinn_domain::feat::session::{SessionStore, SessionStoreService};
 use jinn_provider_config::ProvidersConfig;
 use jinn_session_msg::{SessionArchiveFailed, SessionArchived, SessionClosed};
 use jinn_session_state::ChatSessionState;
+use jinn_session_state::{SessionStore, SessionStoreService};
 use jinn_session_store_msg::{
     ArchiveSession, ArchiveSessionTree, LoadSessionPickerEntries, PersistSession,
     SessionLoadCompleted, SessionLoadRequested, SessionState,

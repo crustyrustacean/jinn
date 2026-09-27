@@ -355,9 +355,7 @@ pub(crate) async fn test_actor_with_store_recording(
     let store = std::sync::Arc::new(PopulatedFakeStore::new(&sessions));
     let (bus, audit) = jinn_domain::common::services::BusService::new_recording();
     let services = jinn_domain::TestServices::builder()
-        .session_store(jinn_domain::feat::session::SessionStoreService::new(
-            store.clone(),
-        ))
+        .session_store(jinn_session_state::SessionStoreService::new(store.clone()))
         .with_bus(bus)
         .build();
     (

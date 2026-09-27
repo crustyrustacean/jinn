@@ -16,9 +16,9 @@ use jinn_domain::LlmServiceFactoryService;
 use jinn_domain::NoProvidersAvailableFactory;
 use jinn_domain::ProviderRegistry;
 use jinn_domain::ProviderRegistryService;
-use jinn_domain::SessionStoreService;
 use jinn_preferences_config::AppStateStorageService;
 use jinn_preferences_config::FilesystemAppStateStorage;
+use jinn_session_state::SessionStoreService;
 use jinn_session_store::sqlite::SqliteSessionStore;
 
 use tokio::runtime::Runtime;
@@ -79,7 +79,7 @@ impl App {
     fn run_and_shutdown(
         &self,
         runner: crate::runner::Runner,
-        store: &jinn_domain::SessionStoreService,
+        store: &jinn_session_state::SessionStoreService,
     ) -> Result<(), Report<AppError>> {
         // Extract the trouper system handle before the runner is consumed,
         // so the graceful shutdown sweep can run after the event loop exits.

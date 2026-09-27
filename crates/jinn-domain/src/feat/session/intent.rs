@@ -5,12 +5,7 @@ use crate::RescanPromptTemplates;
 use crate::common::app_state::AppState;
 use crate::protocol::{ChatEntry, IntentResult};
 
-use super::validator;
-
-/// Creates a new chat session, delegating to the blank lifecycle setup.
-pub fn handle_session_new(state: &mut AppState, config: &jinn_config::ConfigLayer) -> IntentResult {
-    crate::session_lifecycle::intent::handle_session_new(state, config)
-}
+use crate::session_lifecycle::validator;
 
 /// Refreshes the model list from the active provider.
 pub fn handle_refresh_models(state: &mut AppState) -> IntentResult {
@@ -65,8 +60,10 @@ mod tests {
             .push_entry(ChatEntry::user("old"));
 
         // When handling SessionNew.
-        let _result =
-            handle_session_new(&mut state, crate::common::render_ctx::empty_config_layer());
+        let _result = crate::session_lifecycle::intent::handle_session_new(
+            &mut state,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then a new session is created.
         assert_ne!(*state.session.active_session_id(), old_id);
@@ -86,8 +83,10 @@ mod tests {
         let old_id = state.session.active_session_id().clone();
 
         // When handling SessionNew.
-        let _result =
-            handle_session_new(&mut state, crate::common::render_ctx::empty_config_layer());
+        let _result = crate::session_lifecycle::intent::handle_session_new(
+            &mut state,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then a new session is created.
         assert_ne!(*state.session.active_session_id(), old_id);
@@ -179,8 +178,10 @@ mod tests {
         assert_ne!(state.active_session().cwd(), state.session.default_cwd());
 
         // When handling SessionNew.
-        let _result =
-            handle_session_new(&mut state, crate::common::render_ctx::empty_config_layer());
+        let _result = crate::session_lifecycle::intent::handle_session_new(
+            &mut state,
+            crate::common::render_ctx::empty_config_layer(),
+        );
 
         // Then the new session inherited the active session's CWD.
         assert_eq!(state.active_session().cwd(), inherited_cwd);

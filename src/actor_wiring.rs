@@ -19,9 +19,9 @@ use jinn_domain::ConfigStorageService;
 use jinn_domain::LlmServiceFactoryService;
 use jinn_domain::ProviderRegistryService;
 use jinn_domain::Services;
-use jinn_domain::SessionStoreService;
 use jinn_provider_selection;
 use jinn_quake_bar;
+use jinn_session_state::SessionStoreService;
 use jinn_slices;
 
 use jinn_domain::common::actor_deps::ActorDeps;

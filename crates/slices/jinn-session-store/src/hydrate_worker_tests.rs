@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use jinn_core_types::SessionId;
 use jinn_domain::common::bus::HarnessServices;
-use jinn_domain::feat::session::SessionStoreService;
+use jinn_session_state::SessionStoreService;
 use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 
 use crate::hydrate::{HydrateCompleted, HydrateSession};

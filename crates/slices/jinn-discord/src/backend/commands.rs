@@ -14,7 +14,6 @@ use crate::authorize;
 use jinn_context::PromptTemplateStore;
 use jinn_core_types::SessionId;
 use jinn_domain::Bridge;
-use jinn_domain::protocol::KernelIntent;
 use jinn_session_store_msg::ArchiveSession;
 use poise::serenity_prelude as serenity;
 
@@ -119,14 +118,11 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
                 project_dir: chosen.path.clone(),
                 starting_cwd: chosen.path.clone(),
             });
-        let result = jinn_domain::feat::intent::IntentHandler::handle(
-            &KernelIntent::SessionLifecycleSetup {
-                lifecycle_name: lifecycle.clone(),
-                args: args.clone(),
-            },
+        let result = jinn_domain::session_lifecycle::intent::handle_session_lifecycle_setup(
             &mut state,
-            &data.services.slices,
-            &data.services.key_routes,
+            &lifecycle,
+            &args,
+            None,
             &data.services.config,
         );
         for closure in result.messages {

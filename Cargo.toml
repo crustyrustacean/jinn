@@ -49,6 +49,7 @@ path = "src/lib.rs"
 
 [dependencies]
 jinn-install = { workspace = true }
+jinn-session-state = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-llm-support = { workspace = true }
 jinn-persona = { workspace = true }

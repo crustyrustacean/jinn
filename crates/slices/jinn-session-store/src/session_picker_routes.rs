@@ -247,7 +247,7 @@ fn new_session(ctx: &mut ActionCtx<'_>, _cell: &SessionPickerCell) -> IntentResu
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    jinn_domain::feat::session::intent::handle_session_new(state, config)
+    jinn_domain::session_lifecycle::intent::handle_session_new(state, config)
 }
 
 /// Ctrl-C: clear the filter, or close when it is already empty.

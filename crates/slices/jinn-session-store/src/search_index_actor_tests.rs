@@ -8,8 +8,8 @@ use crate::search_index_actor::{REINDEX_INTERVAL, SearchIndexActorDeps};
 use crate::sqlite::SqliteSessionStore;
 use jinn_core_types::SessionId;
 use jinn_domain::common::bus::HarnessServices;
-use jinn_domain::feat::session::SessionStoreService;
 use jinn_session_state::SessionSnapshot;
+use jinn_session_state::SessionStoreService;
 use jinn_testutil::bus_harness::TestHarness;
 
 /// Builds actor deps whose session store is a real SQLite store in a temp

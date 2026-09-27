@@ -147,7 +147,7 @@ pub fn attach_project_picker_rows(routes: &KeyRoutes, cell: &ProjectPickerCell) 
             let Some(state) = app(ctx) else {
                 return IntentResult::empty();
             };
-            jinn_domain::feat::session::intent::handle_session_new(state, config)
+            jinn_domain::session_lifecycle::intent::handle_session_new(state, config)
         }),
     ));
     routes.attach(row(

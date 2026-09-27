@@ -9,8 +9,8 @@
 use crate::sqlite::SqliteSessionStore;
 use jinn_core_types::ToolResultStatus;
 use jinn_core_types::{ChatEntry, ChatEntryKind, EntryTiming, SessionId};
-use jinn_domain::feat::session::SessionStore;
 use jinn_session_state::ChatSessionState;
+use jinn_session_state::SessionStore;
 use tempfile::TempDir;
 
 /// Creates a minimal `ChatSessionState` for testing.
@@ -2239,7 +2239,7 @@ fn make_two_entry_session(id: &SessionId, title: &str) -> ChatSessionState {
 /// reporting belong to the actor and are covered there.
 async fn drain(
     store: &SqliteSessionStore,
-) -> Result<usize, error_stack::Report<jinn_domain::feat::session::SessionStoreError>> {
+) -> Result<usize, error_stack::Report<jinn_session_state::SessionStoreError>> {
     // Oversized chunks: store tests exercise single-shot rebuilds; chunked
     // resume semantics belong to the actor tests. Repeats while partial
     // chunks remain, counting sessions that reached their final chunk.

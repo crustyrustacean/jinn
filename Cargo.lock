@@ -3371,6 +3371,7 @@ dependencies = [
  "jinn-cwd-msg",
  "jinn-domain",
  "jinn-provider-config",
+ "jinn-session-state",
  "jinn-slices",
  "jinn-status-bar-msg",
  "jinn-testutil",

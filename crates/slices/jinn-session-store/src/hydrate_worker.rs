@@ -17,8 +17,8 @@
 
 use error_stack::Report;
 use jinn_core_types::SessionId;
-use jinn_domain::feat::session::SessionStoreService;
 use jinn_session_state::SessionSnapshot;
+use jinn_session_state::SessionStoreService;
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;

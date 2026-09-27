@@ -454,7 +454,7 @@ fn session_new_works_when_sidebar_sessions_focused() {
     let _old_id = state.session.active_session_id().clone();
 
     // When handling SessionNew via IntentHandler.
-    let result = jinn_domain::feat::intent::IntentHandler::handle(
+    let result = jinn_domain::IntentHandler::handle(
         &jinn_domain::KernelIntent::SessionNew,
         &mut state,
         &empty_slices(),
@@ -486,7 +486,7 @@ fn session_new_works_when_not_in_sidebar() {
     let old_id = state.session.active_session_id().clone();
 
     // When handling SessionNew via IntentHandler.
-    let _result = jinn_domain::feat::intent::IntentHandler::handle(
+    let _result = jinn_domain::IntentHandler::handle(
         &jinn_domain::KernelIntent::SessionNew,
         &mut state,
         &empty_slices(),

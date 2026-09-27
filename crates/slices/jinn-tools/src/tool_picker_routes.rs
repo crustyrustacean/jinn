@@ -366,7 +366,7 @@ fn new_session(ctx: &mut ActionCtx<'_>, _cell: &ToolPickerCell) -> IntentResult 
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    jinn_domain::feat::session::intent::handle_session_new(state, config)
+    jinn_domain::session_lifecycle::intent::handle_session_new(state, config)
 }
 
 /// Clears a non-empty filter, or closes the picker when the filter is empty.

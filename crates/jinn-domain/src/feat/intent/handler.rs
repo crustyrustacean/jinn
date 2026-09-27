@@ -388,7 +388,9 @@ impl IntentHandler {
                     result
                 }
             }
-            KernelIntent::SessionNew => feat::session::intent::handle_session_new(state, config),
+            KernelIntent::SessionNew => {
+                crate::session_lifecycle::intent::handle_session_new(state, config)
+            }
             KernelIntent::RefreshModels => feat::session::intent::handle_refresh_models(state),
             KernelIntent::RescanPromptTemplates => {
                 feat::session::intent::handle_rescan_prompt_templates(state)

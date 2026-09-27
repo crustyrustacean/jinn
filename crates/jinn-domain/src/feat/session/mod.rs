@@ -8,36 +8,12 @@
 //! the picker.
 
 pub mod intent;
-pub mod validator;
 
 pub use jinn_core_types::SessionProfile;
 pub use jinn_session_state::{
     FrozenTreeNode, SessionStore, SessionStoreError, SessionStoreService, aggregate_session_stats,
     aggregate_tree_stats, find_tree_root, snapshot_frozen_node, snapshot_frozen_node_from_snapshot,
 };
-
-/// Returns a guidance message for when no API keys are found.
-///
-/// Instructs the user to create a `.env` file and shows the path to
-/// `providers.toml` for reference. Uses [`crate::protocol::ChatEntry::info`]
-/// so the message is excluded from LLM context.
-pub fn no_api_keys_msg() -> crate::protocol::ChatEntry {
-    let config_path = jinn_provider_config::config_path()
-        .to_string_lossy()
-        .into_owned();
-
-    let content = format!(
-        "\
-**No API keys found**
-
-\
-Create a `.env` file in your working directory with your API keys.
-\
-See `{config_path}` for available environment variables."
-    );
-
-    crate::protocol::ChatEntry::transient(content)
-}
 
 #[cfg(test)]
 mod startup_msg_tests {
@@ -50,28 +26,4 @@ mod startup_msg_tests {
     )]
     use super::*;
     use crate::protocol::ChatEntryKind;
-
-    #[rstest::rstest]
-    fn no_api_keys_msg_is_transient_entry() {
-        // When creating the no-api-keys message.
-        let entry = no_api_keys_msg();
-
-        // Then it is a Transient entry.
-        assert!(matches!(entry.kind, ChatEntryKind::Transient(_)));
-    }
-
-    #[rstest::rstest]
-    fn no_api_keys_msg_contains_guidance() {
-        // When creating the no-api-keys message.
-        let entry = no_api_keys_msg();
-
-        // Then it mentions guidance keywords.
-        let text = entry.text();
-        assert!(text.contains("No API keys found"), "should mention header");
-        assert!(text.contains(".env"), "should mention .env");
-        assert!(
-            text.contains("providers.toml"),
-            "should mention providers.toml"
-        );
-    }
 }

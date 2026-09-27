@@ -442,7 +442,9 @@ fn execute_slash_command(
                 compact_all,
             })
         }
-        SlashCommand::New => jinn_domain::feat::session::intent::handle_session_new(state, config),
+        SlashCommand::New => {
+            jinn_domain::session_lifecycle::intent::handle_session_new(state, config)
+        }
     }
 }
 

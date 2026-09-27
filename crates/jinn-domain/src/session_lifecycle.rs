@@ -6,3 +6,4 @@
 //! means the slice never has to depend on the kernel to be reachable from it.
 
 pub mod intent;
+pub mod validator;
