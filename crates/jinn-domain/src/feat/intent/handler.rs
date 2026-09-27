@@ -471,7 +471,7 @@ impl IntentHandler {
             KernelIntent::SessionLifecycleSetup {
                 lifecycle_name,
                 args,
-            } => feat::session_lifecycle::intent::handle_session_lifecycle_setup(
+            } => crate::session_lifecycle::intent::handle_session_lifecycle_setup(
                 state,
                 lifecycle_name,
                 args,
@@ -479,7 +479,7 @@ impl IntentHandler {
                 config,
             ),
             KernelIntent::SessionClose => {
-                feat::session_lifecycle::intent::handle_session_close(state)
+                crate::session_lifecycle::intent::handle_session_close(state)
             }
             KernelIntent::Dynamic(_) => {
                 // Unregistered dynamic intents are inert by construction:

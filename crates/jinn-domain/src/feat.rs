@@ -8,4 +8,3 @@ pub mod intent;
 pub mod navigation;
 pub mod provider;
 pub mod session;
-pub mod session_lifecycle;

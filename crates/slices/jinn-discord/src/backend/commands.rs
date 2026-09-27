@@ -217,7 +217,7 @@ fn build_teardown_publish(
     session_id: &SessionId,
     config: &jinn_config::ConfigLayer,
 ) -> Option<jinn_domain::BridgeClosure> {
-    let msg = jinn_domain::feat::session_lifecycle::intent::build_run_session_teardown(
+    let msg = jinn_domain::session_lifecycle::intent::build_run_session_teardown(
         state, session_id, config,
     )?;
     Some(Bridge::publish_closure(msg))

@@ -347,7 +347,7 @@ fn confirm_session_lifecycle_picker(
     // No args - proceed directly. The setup function owns the scope
     // transition (clear overlays, push input), so this outcome carries no
     // close signal.
-    jinn_domain::feat::session_lifecycle::intent::handle_session_lifecycle_setup(
+    jinn_domain::session_lifecycle::intent::handle_session_lifecycle_setup(
         state,
         &name,
         &[],

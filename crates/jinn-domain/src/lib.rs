@@ -28,6 +28,7 @@ fn install_rustls_provider_for_tests() {
 
 pub mod common;
 pub mod feat;
+pub mod session_lifecycle;
 pub mod state;
 
 // Kernel-side protocol vocabulary: intents, keys, and system events.

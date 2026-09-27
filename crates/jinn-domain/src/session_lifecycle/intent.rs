@@ -3,6 +3,13 @@
 //! These handlers bridge the Intent-driven architecture with the session lifecycle
 //! system. The IntentHandler calls these functions directly; they mutate `AppState`
 //! and return `IntentResult` with commands for the actor system.
+//!
+//! This is kernel work, not slice work: the handlers are synchronous AppState
+//! mutation that ends in a published message, which is exactly what the
+//! IntentHandler does everywhere else. The lifecycle slice owns the actors that
+//! act on those messages. Thirteen call sites across the slices need this
+//! function, so it is shared vocabulary rather than any one slice's content —
+//! and a slice cannot own it without depending on the kernel that calls it.
 
 use crate::common::app_state::AppState;
 use crate::protocol::IntentResult;
@@ -624,7 +631,7 @@ mod tests {
             .push_entry(ChatEntry::user("old"));
 
         // When handling SessionNew (delegates to blank lifecycle setup).
-        let result = crate::feat::session::intent::handle_session_new(
+        let result = crate::session_lifecycle::intent::handle_session_new(
             &mut state,
             crate::common::render_ctx::empty_config_layer(),
         );
@@ -930,4 +937,12 @@ mod tests {
         let msg = msg.expect("teardown command should be built");
         assert_eq!(msg.command, "cleanup.sh feature-x");
     }
+}
+
+/// Handle `Intent::SessionNew`: a blank lifecycle setup.
+///
+/// The new-session intent is a lifecycle setup with no name, no args, and
+/// no explicit cwd, so it delegates rather than duplicating the setup path.
+pub fn handle_session_new(state: &mut AppState, config: &ConfigLayer) -> IntentResult {
+    handle_session_lifecycle_setup(state, "", &[], None, config)
 }

@@ -339,7 +339,7 @@ pub fn handle_new_session_from_entry(
     };
 
     // Create a fresh empty session (inherits model/persona/CWD).
-    let result = crate::feat::session_lifecycle::intent::handle_session_lifecycle_setup(
+    let result = crate::session_lifecycle::intent::handle_session_lifecycle_setup(
         state,
         "",
         &[],

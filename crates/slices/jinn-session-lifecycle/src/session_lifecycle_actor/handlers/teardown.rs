@@ -240,10 +240,7 @@ impl SessionLifecycleActor {
             .get(session_id)?
             .lifecycle_name()?
             .to_owned();
-        jinn_domain::feat::session_lifecycle::intent::lifecycle_teardown(
-            &self.services.config,
-            &name,
-        )
+        jinn_domain::session_lifecycle::intent::lifecycle_teardown(&self.services.config, &name)
     }
 
     async fn guarded_tree_closure(&self, root: &SessionId) -> Option<Vec<SessionId>> {

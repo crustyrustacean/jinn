@@ -310,7 +310,7 @@ fn confirm_project_picker(ctx: &mut ActionCtx<'_>, cell: &ProjectPickerCell) -> 
         starting_cwd: path,
     });
     state.frontend.scope_pop();
-    let result = jinn_domain::feat::session_lifecycle::intent::handle_session_lifecycle_setup(
+    let result = jinn_domain::session_lifecycle::intent::handle_session_lifecycle_setup(
         state,
         "",
         &[],
