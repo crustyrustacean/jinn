@@ -262,8 +262,14 @@ mod tests {
 
     #[rstest::rstest]
     fn sidebar_focus_sessions_requests_the_landed_on_preview() {
-        // Given default app state, which holds a session under the cursor.
+        // Given default app state holding a session under the cursor, with a
+        // frame already measured. A preview is wrapped at a width taken from
+        // the frame, and before one has been measured there is no width to ask
+        // for — so the pre-render pass runs first, as it does on every frame.
         let mut state = AppState::default_with_scope_focus();
+        state
+            .frontend
+            .update_sections(|s| s.sessions.preview_content_width = 46);
 
         // When handling sidebar focus sessions.
         let result = handle_sidebar_focus_sessions(&mut state, jinn_slices::empty_config_layer());
@@ -272,6 +278,24 @@ mod tests {
         assert!(
             result.message_names.contains(&"PreviewSessionRequested"),
             "expected a preview request, got {:?}",
+            result.message_names
+        );
+    }
+
+    #[rstest::rstest]
+    fn sidebar_focus_sessions_asks_for_no_preview_before_a_frame_is_measured() {
+        // Given default app state that no frame has been measured for, so
+        // there is no width to wrap a preview at.
+        let mut state = AppState::default_with_scope_focus();
+
+        // When handling sidebar focus sessions.
+        let result = handle_sidebar_focus_sessions(&mut state, jinn_slices::empty_config_layer());
+
+        // Then no render is asked for. Requesting at an unmeasured width
+        // produces lines no lookup can match, and the popup spins forever.
+        assert!(
+            !result.message_names.contains(&"PreviewSessionRequested"),
+            "expected no preview request before a width is measured, got {:?}",
             result.message_names
         );
     }

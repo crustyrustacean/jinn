@@ -8,8 +8,11 @@
 
 #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
+use std::sync::Arc;
 use std::time::Duration;
 
+use jinn_chat_log_view_msg::PreviewSessionRequested;
+use jinn_core_types::ChatEntry;
 use jinn_domain::common::bridge::Bridge;
 use jinn_session_msg::SessionRemoved;
 use jinn_session_state::ChatSessionState;
@@ -81,4 +84,135 @@ async fn session_closed_crosses_to_sidebar_and_clamps_cursor() {
     })
     .await;
     assert_eq!(clamped, 1);
+}
+
+/// The preview deadline actually reaches the layout supervisor.
+///
+/// The sidebar state actor arms a deadline for every preview it handles, and the
+/// supervisor owns the timer that stops a stuck render from spinning forever.
+/// That crossing is invisible to every unit test: the actor's handler is
+/// exercised directly, and the supervisor's handler likewise, so both pass while
+/// the message between them is dropped by the bus's flush gate — the actor never
+/// declaring it emits. The observable consequence is a preview that spins
+/// forever once a render is genuinely lost.
+#[rstest::rstest]
+#[tokio::test]
+// The preview deadline is 5s of real time, so the test's own wait has to
+// outlast it. The `#[timeout]` above rstest's default of 10s must be raised to
+// match, or the harness kills the test mid-wait.
+#[timeout(Duration::from_secs(20))]
+async fn a_preview_request_reaches_the_layout_supervisor_as_a_deadline() {
+    // Given a composed app with a session whose preview is being requested.
+    let app = test_app().await;
+    let session_id = {
+        let state = app.core.state.read();
+        state.session.active_session_id().clone()
+    };
+
+    // When the preview request crosses the bus.
+    let generation = {
+        let state = app.core.state.read();
+        state
+            .frontend
+            .update_sections(|s| s.sessions.preview.request(session_id.clone(), 7, 103))
+            .expect("the sections cell is attached")
+    };
+    let _ = app
+        .core
+        .bridge
+        .send(Bridge::publish_closure(PreviewSessionRequested {
+            session_id: session_id.clone(),
+            content_width: 103,
+            generation,
+            entries: Arc::from(Vec::<ChatEntry>::new()),
+            tool_entry_max_lines: 6,
+            signature: 7,
+        }));
+
+    // Then the request is abandoned on its deadline, which can only happen if
+    // the actor emitted `ArmPreviewDeadline` and the supervisor handled it.
+    let abandoned = await_condition(Duration::from_secs(20), || {
+        let state = app.core.state.read();
+        (!state.frontend.with_sections(
+            |s| s.sessions.preview.is_in_flight_for(&session_id),
+            || false,
+        ))
+        .then_some(true)
+    })
+    .await;
+    assert!(
+        abandoned,
+        "the preview deadline must fire and abandon the in-flight request (in_flight at start: {})",
+        app.core.state.read().frontend.with_sections(
+            |s| s.sessions.preview.is_in_flight_for(&session_id),
+            || false,
+        ),
+    );
+}
+
+/// A published preview request must reach a worker and be cached.
+///
+/// `PreviewSessionRequested` is a command, so trouper routes it to exactly one
+/// handler by round-robin over the actors that declare it. A second handler
+/// that only wanted a side effect — arming a timer, say — competes with the
+/// workers and eats its share of requests without rendering anything, so those
+/// popups spin on work that was thrown away. The fix is that only the preview
+/// workers declare the command; this test pins the behaviour that the command
+/// renders when it is published.
+///
+/// Scope, honestly stated: the composed harness does not reproduce the
+/// interception (the workers win every draw there), so this test guards the
+/// request-to-cache crossing rather than the routing choice itself. The routing
+/// guard is structural — a handler for `PreviewSessionRequested` on any actor
+/// that does not render is a compile-time mistake to make deliberately, and the
+/// reasoning is recorded at the declaration site in `sidebar_state_actor.rs`.
+#[rstest::rstest]
+#[tokio::test]
+#[timeout(Duration::from_secs(20))]
+async fn a_published_preview_request_is_rendered_and_cached() {
+    // Given a composed app with a session carrying text worth previewing.
+    let app = test_app().await;
+    let session_id = {
+        let mut state = app.core.state.write();
+        let mut session = ChatSessionState::new();
+        session.push_entry(ChatEntry::user("a line the preview must wrap"));
+        let id = session.session_id().clone();
+        state.session.insert(session);
+        id
+    };
+
+    // And an armed in-flight entry, as the keyboard path does.
+    let generation = {
+        let state = app.core.state.read();
+        state
+            .frontend
+            .update_sections(|s| s.sessions.preview.request(session_id.clone(), 7, 103))
+            .expect("the sections cell is attached")
+    };
+
+    // When the request crosses the bus, the way the keyboard path sends it.
+    let _ = app
+        .core
+        .bridge
+        .send(Bridge::publish_closure(PreviewSessionRequested {
+            session_id: session_id.clone(),
+            content_width: 103,
+            generation,
+            entries: Arc::from(vec![ChatEntry::user("a line the preview must wrap")]),
+            tool_entry_max_lines: 6,
+            signature: 7,
+        }));
+
+    // Then the rendered lines arrive and are cached for that session.
+    await_condition(Duration::from_secs(15), || {
+        let state = app.core.state.read();
+        state
+            .frontend
+            .with_sections(
+                |s| s.sessions.preview.cached(&session_id, 7, 103).is_some(),
+                || false,
+            )
+            .then_some(true)
+    })
+    .await;
 }
