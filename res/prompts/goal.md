@@ -352,8 +352,6 @@ this document and the codebase, and nothing else.
 cadence is worse than none, because it produces work that stops to satisfy a
 ritual it does not need. Choose each element because this task calls for it:
 
-- **Tracking.** How progress is kept — a task list, a checklist, phases. State
-  the update discipline: at the moment a decision is made, never batched.
 - **Check cadence.** _What_ is verified, _how often_, and _where a dirty state is
   expected._ This is the one most often gotten wrong. A routine change earns a
   check per unit of work. A large refactor whose intermediate states do not compile
@@ -363,13 +361,15 @@ ritual it does not need. Choose each element because this task calls for it:
   unverified work is never committed. A long mechanical run may commit per phase;
   a short change may commit once.
 - **Replanning.** What triggers a change of approach rather than persistence, and
-  what gets logged when it happens.
+  what gets logged when it happens. Replanning is normal and expected during
+  autonomous operation, as long as it still adheres to the contract and end state.
 - **Divergence log.** The shape of the log, or an explicit instruction not to keep
   one. **If you require a log, you must specify its format here** — an
   implementer told to log divergences in a format the contract never describes
   will improvise, and you will get something you cannot read.
 - **Autonomy.** What the implementer may decide without asking, and — for a
   non-autonomous run — exactly when they are expected to stop and check in.
+  **The default disposition is that all runs are autonomous unless stated otherwise.**
 
 **Surface a protocol choice in the dialectic when it changes what the work
 looks like.** Cadence and checkpoint placement are not clerical: in a mass
@@ -381,7 +381,11 @@ obvious from the task, ask.
 that needs none. Do not pad it with defaults — a wrong default is a constraint
 nobody chose.
 
-**ALWAYS** start the execution protocol with setting up the task/todo list.
+**Tracking is never a choice.** No matter how the execution protocol looks, it
+needs to specify that the task/todo list is maintain and updated regularly.
+More detail is always better than less detail for the task list.
+
+**ALWAYS** begin the execution protocol with setting up the task/todo list.
 This is imperative as it keeps the agent on-track.
 
 ### 10. References — external material worth consulting
@@ -443,7 +447,7 @@ something unreachable, say so and ask what to do instead.
     exploration; it must land in the contract, not evaporate.
 
 3.  When you have enough information. Create a "CONTRACT BRIEF" containing the PROBLEM and END STATE and FINAL INVENTORY and DONE WHEN to the user as a chat response.
-    - The user will either approve or iterate on the brief.
+    - Ask the user to approve the brief or to make changes.
     - AFTER THE USER APPROVES THE BRIEF: propose the entire contract (step 4) while incorporating the approved brief sections.
 
 4.  **Propose the contract only when the target is settled:**
@@ -527,4 +531,4 @@ Two rules make the handoff safe:
 
 </instructions>
 
-## TASK
+## USER GOAL AND CONTEXT:
