@@ -19,6 +19,7 @@ jinn-slices = { workspace = true }
 jinn-token-count-msg = { workspace = true }
 jinn-tools-msg = { workspace = true }
 jinn-turn-dispatch-msg = { workspace = true }
+async-trait = { workspace = true }
 error-stack = { workspace = true }
 jiff = { workspace = true }
 parking_lot = { workspace = true }

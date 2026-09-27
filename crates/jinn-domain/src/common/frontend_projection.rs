@@ -4,7 +4,7 @@
 //! lock while exposing the existing operation wrappers for its domain.
 
 use crate::common::state::State;
-use crate::feat::ui::frontend_state::FrontendState;
+use crate::state::frontend_state::FrontendState;
 use jinn_chat_input_msg::FilePickerState;
 use jinn_preferences_config::app_state_file::AppStateFile;
 

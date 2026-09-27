@@ -97,8 +97,8 @@ use super::*;
 use crate::session::SessionState;
 use test_fakes::{ErroringLlmFactory, HangingLlmFactory};
 
-use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
 use jinn_provider::FakeLlmServiceFactory;
+use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 
 /// Actor over its own private fake bus — for tests that only inspect
 /// actor fields (no publish observability needed).

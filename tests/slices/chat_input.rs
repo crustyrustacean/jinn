@@ -1,8 +1,8 @@
 //! The chat input box — the kernel's unit tests, now exercising the
 //! slice through its public surface.
 //!
-//! These were the `jinn_domain::feat::chat_input` and
-//! `jinn_domain::feat::file_lister` unit tests. They live here because the
+//! These were the the chat input slice's and
+//! file_lister unit tests. They live here because the
 //! implementation is a slice now: the box's handlers, element, validator,
 //! autocomplete render, and directory-lister actor are reached through
 //! `jinn_chat_input`'s public API rather than through kernel-internal
@@ -28,8 +28,8 @@ use jinn_theme::default_theme;
 use jinn_turn_dispatch_msg::QueueItem;
 
 use jinn_domain::IntentHandler;
-use jinn_domain::feat::ui::frontend_state::PendingSessionCreation;
 use jinn_domain::protocol::KernelIntent;
+use jinn_domain::state::frontend_state::PendingSessionCreation;
 use jinn_testutil::setup_term;
 use ratatui::layout::Position;
 
@@ -1838,12 +1838,11 @@ fn enter_normal_mode_returns_to_normal_scope() {
 fn enter_normal_mode_clears_pending_creation() {
     // Given a state with a stale pending session creation stash.
     let mut state = AppState::default_with_scope_focus();
-    state.frontend.pending_creation = Some(
-        jinn_domain::feat::ui::frontend_state::PendingSessionCreation {
+    state.frontend.pending_creation =
+        Some(jinn_domain::state::frontend_state::PendingSessionCreation {
             project_dir: std::path::PathBuf::from("/tmp/stale"),
             starting_cwd: std::path::PathBuf::from("/tmp/stale"),
-        },
-    );
+        });
 
     // When handling EnterNormalMode (ESC from the project/lifecycle chain).
     let _ = jinn_chat_input::intent::handle_enter_normal_mode(
@@ -4621,9 +4620,9 @@ use jinn_chat_input_msg::ListDirectory;
 use jinn_core_types::SessionId;
 use jinn_domain::common::actor_deps::ActorDeps;
 use jinn_domain::common::app_paths::AppPaths;
-use jinn_domain::common::bus::test_harness::TestHarness;
 use jinn_domain::common::services::test_services::TestServices;
 use jinn_domain::common::state::State;
+use jinn_testutil::bus_harness::TestHarness;
 
 use jinn_chat_input::directory_lister_actor::{DirectoryListerActor, DirectoryListerActorDeps};
 

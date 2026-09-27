@@ -1938,6 +1938,7 @@ dependencies = [
  "jinn-domain",
  "jinn-inference",
  "jinn-inference-msg",
+ "jinn-install",
  "jinn-llm-support",
  "jinn-mcp-msg",
  "jinn-mcp-slice",
@@ -2023,6 +2024,7 @@ dependencies = [
  "jinn-provider-selection-msg",
  "jinn-session-history-msg",
  "jinn-slices",
+ "jinn-testutil",
  "kanal",
  "rstest",
  "tempfile",
@@ -2086,22 +2088,40 @@ dependencies = [
 name = "jinn-chat-log-view"
 version = "0.118.0"
 dependencies = [
+ "async-trait",
+ "error-stack",
  "jiff",
  "jinn-chat-log-view-msg",
+ "jinn-config",
  "jinn-core-types",
  "jinn-domain",
+ "jinn-inference-msg",
+ "jinn-preferences-config",
  "jinn-provider",
+ "jinn-session-history-msg",
+ "jinn-session-msg",
+ "jinn-session-state",
+ "jinn-session-store-msg",
+ "jinn-sidebar-msg",
  "jinn-skills-msg",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-theme",
  "jinn-tools-msg",
+ "jinn-turn-dispatch-msg",
+ "parking_lot",
  "ratatui",
  "ratatui-markdown",
  "rstest",
  "serde_json",
  "strip-ansi-escapes",
+ "throbber-widgets-tui",
  "tokio",
+ "tracing",
+ "trouper",
  "unicode-segmentation",
+ "unicode-width 0.2.2",
+ "wherror",
 ]
 
 [[package]]
@@ -2129,6 +2149,7 @@ dependencies = [
  "jinn-inference-msg",
  "jinn-session-history-msg",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-tools-msg",
  "rstest",
  "serde_json",
@@ -2145,7 +2166,6 @@ dependencies = [
  "clap-verbosity-flag",
  "clap_complete",
  "error-stack",
- "jinn-domain",
  "rstest",
  "serde_json",
  "tokio",
@@ -2160,11 +2180,13 @@ version = "0.118.0"
 dependencies = [
  "dirs",
  "error-stack",
+ "kill_tree",
  "libc",
  "rstest",
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
  "toml",
  "toml_edit 0.22.27",
  "wherror",
@@ -2193,6 +2215,7 @@ dependencies = [
  "error-stack",
  "fuzzy-matcher",
  "jinn-persona-msg",
+ "jinn-slices",
  "regex",
  "rstest",
  "serde",
@@ -2237,7 +2260,6 @@ version = "0.118.0"
 dependencies = [
  "jinn-context",
  "jinn-core-types",
- "jinn-persona-msg",
  "jinn-skills-msg",
  "jinn-slices",
  "rstest",
@@ -2312,6 +2334,7 @@ version = "0.118.0"
 dependencies = [
  "dirs",
  "error-stack",
+ "jinn-common",
  "jinn-core-types",
  "jinn-cwd-msg",
  "jinn-slices",
@@ -2421,7 +2444,6 @@ dependencies = [
  "indoc",
  "jiff",
  "jinn-chat-input-msg",
- "jinn-chat-log-view",
  "jinn-chat-log-view-msg",
  "jinn-common",
  "jinn-config",
@@ -2431,7 +2453,6 @@ dependencies = [
  "jinn-context-curation",
  "jinn-context-curation-msg",
  "jinn-core-types",
- "jinn-cwd-msg",
  "jinn-inference-msg",
  "jinn-llm-support",
  "jinn-mcp",
@@ -2443,7 +2464,6 @@ dependencies = [
  "jinn-provider",
  "jinn-provider-config",
  "jinn-provider-selection-msg",
- "jinn-selection-widget",
  "jinn-session-history",
  "jinn-session-history-msg",
  "jinn-session-init-msg",
@@ -2454,16 +2474,13 @@ dependencies = [
  "jinn-session-store-msg",
  "jinn-sidebar-msg",
  "jinn-skills",
- "jinn-skills-msg",
  "jinn-slices",
  "jinn-status-bar-msg",
  "jinn-term-msg",
  "jinn-testutil",
  "jinn-theme",
  "jinn-theme-msg",
- "jinn-token-count-msg",
  "jinn-tools-msg",
- "jinn-turn-dispatch-msg",
  "kanal",
  "kill_tree",
  "libc",
@@ -2472,7 +2489,6 @@ dependencies = [
  "ratatui",
  "ratatui-which-key",
  "rstest",
- "rusqlite",
  "rustls 0.23.45",
  "serde",
  "serde_json",
@@ -2505,11 +2521,15 @@ dependencies = [
  "jinn-provider",
  "jinn-provider-config",
  "jinn-session-history-msg",
+ "jinn-session-msg",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-tools-msg",
+ "ratatui",
  "reasoning-parser",
  "rstest",
  "serde_json",
+ "throbber-widgets-tui",
  "tokio",
  "tracing",
  "trouper",
@@ -2527,6 +2547,20 @@ dependencies = [
  "serde_json",
  "tokio",
  "trouper",
+]
+
+[[package]]
+name = "jinn-install"
+version = "0.118.0"
+dependencies = [
+ "error-stack",
+ "jinn-common",
+ "jinn-preferences-config",
+ "jinn-skills",
+ "jinn-slices",
+ "rstest",
+ "tempfile",
+ "wherror",
 ]
 
 [[package]]
@@ -2611,6 +2645,7 @@ dependencies = [
  "jinn-session-state",
  "jinn-session-store-msg",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-theme",
  "jinn-tools",
  "jinn-tools-msg",
@@ -2733,6 +2768,7 @@ dependencies = [
 name = "jinn-project"
 version = "0.118.0"
 dependencies = [
+ "jinn-common",
  "jinn-config",
  "jinn-core-types",
  "jinn-cwd-msg",
@@ -2757,6 +2793,7 @@ name = "jinn-project-msg"
 version = "0.118.0"
 dependencies = [
  "dirs",
+ "jinn-common",
  "jinn-cwd-msg",
  "jinn-picker",
  "jinn-preferences-config",
@@ -2831,6 +2868,7 @@ dependencies = [
  "jinn-session-msg",
  "jinn-session-state",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-theme",
  "ratatui",
  "rstest",
@@ -2886,7 +2924,6 @@ dependencies = [
 name = "jinn-scope-focus"
 version = "0.118.0"
 dependencies = [
- "jinn-domain",
  "jinn-slices",
  "rstest",
  "tokio",
@@ -2908,6 +2945,10 @@ name = "jinn-session-history"
 version = "0.118.0"
 dependencies = [
  "jinn-core-types",
+ "jinn-domain",
+ "jinn-llm-support",
+ "jinn-session-state",
+ "rand 0.9.5",
  "rstest",
  "tracing",
 ]
@@ -3005,7 +3046,6 @@ dependencies = [
  "jinn-picker",
  "jinn-preferences-config",
  "jinn-selection-widget",
- "jinn-session-msg",
  "jinn-session-store-msg",
  "jinn-slices",
  "jinn-theme",
@@ -3037,7 +3077,6 @@ version = "0.118.0"
 dependencies = [
  "jinn-config",
  "jinn-core-types",
- "jinn-mcp-msg",
  "jinn-preferences-config",
  "jinn-slices",
  "rstest",
@@ -3065,6 +3104,7 @@ dependencies = [
 name = "jinn-session-state"
 version = "0.118.0"
 dependencies = [
+ "async-trait",
  "error-stack",
  "jiff",
  "jinn-chat-input-msg",
@@ -3099,6 +3139,7 @@ dependencies = [
  "jiff",
  "jinn-boot-msg",
  "jinn-chat-input-msg",
+ "jinn-chat-log-view",
  "jinn-chat-log-view-msg",
  "jinn-common",
  "jinn-core-types",
@@ -3115,6 +3156,7 @@ dependencies = [
  "jinn-session-state",
  "jinn-session-store-msg",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-theme",
  "jinn-token-count-msg",
  "jinn-tools-msg",
@@ -3174,6 +3216,8 @@ dependencies = [
  "jinn-session-state",
  "jinn-session-store-msg",
  "jinn-skills-msg",
+ "jinn-slices",
+ "jinn-testutil",
  "jinn-token-count-msg",
  "jinn-tools-msg",
  "jinn-turn-dispatch-msg",
@@ -3306,6 +3350,8 @@ dependencies = [
  "tempfile",
  "throbber-widgets-tui",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
  "trouper",
  "unicode-segmentation",
  "unicode-width 0.2.2",
@@ -3319,10 +3365,12 @@ version = "0.118.0"
 dependencies = [
  "dirs",
  "jiff",
+ "jinn-common",
  "jinn-core-types",
  "jinn-cwd-msg",
  "jinn-domain",
  "jinn-provider-config",
+ "jinn-session-state",
  "jinn-slices",
  "jinn-status-bar-msg",
  "jinn-testutil",
@@ -3361,6 +3409,7 @@ dependencies = [
  "jinn-slices",
  "jinn-status-bar-msg",
  "jinn-term-msg",
+ "jinn-testutil",
  "jinn-theme",
  "jinn-tools-msg",
  "parking_lot",
@@ -3396,7 +3445,9 @@ dependencies = [
 name = "jinn-testutil"
 version = "0.118.0"
 dependencies = [
+ "error-stack",
  "jinn-slices",
+ "parking_lot",
  "ratatui",
  "serde",
  "serde_json",
@@ -3438,6 +3489,7 @@ version = "0.118.0"
 dependencies = [
  "error-stack",
  "jinn-chat-log-view",
+ "jinn-chat-log-view-msg",
  "jinn-core-types",
  "jinn-domain",
  "jinn-picker",
@@ -3520,6 +3572,7 @@ dependencies = [
  "jinn-skills-msg",
  "jinn-slices",
  "jinn-term-msg",
+ "jinn-testutil",
  "jinn-theme",
  "jinn-token-count-msg",
  "jinn-tools-msg",
@@ -3579,6 +3632,7 @@ dependencies = [
  "jinn-cwd",
  "jinn-cwd-msg",
  "jinn-domain",
+ "jinn-inference",
  "jinn-mcp",
  "jinn-mcp-msg",
  "jinn-persona-msg",

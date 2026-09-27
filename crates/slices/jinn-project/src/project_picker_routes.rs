@@ -13,7 +13,7 @@
 
 use std::sync::Arc;
 
-use jinn_domain::feat::ui::frontend_state::PendingSessionCreation;
+use jinn_domain::state::frontend_state::PendingSessionCreation;
 use jinn_preferences_config::schemas::ProjectConfig;
 use jinn_project_msg::ProjectPickerState;
 use jinn_slices::KeyRoutes;
@@ -147,7 +147,7 @@ pub fn attach_project_picker_rows(routes: &KeyRoutes, cell: &ProjectPickerCell) 
             let Some(state) = app(ctx) else {
                 return IntentResult::empty();
             };
-            jinn_domain::feat::session::intent::handle_session_new(state, config)
+            jinn_domain::session_lifecycle::intent::handle_session_new(state, config)
         }),
     ));
     routes.attach(row(
@@ -310,7 +310,7 @@ fn confirm_project_picker(ctx: &mut ActionCtx<'_>, cell: &ProjectPickerCell) -> 
         starting_cwd: path,
     });
     state.frontend.scope_pop();
-    let result = jinn_domain::feat::session_lifecycle::intent::handle_session_lifecycle_setup(
+    let result = jinn_domain::session_lifecycle::intent::handle_session_lifecycle_setup(
         state,
         "",
         &[],

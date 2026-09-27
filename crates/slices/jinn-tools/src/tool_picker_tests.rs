@@ -979,7 +979,7 @@ fn the_picker_state_lives_only_in_its_slice_cell() {
     // The tool picker's state is reachable from exactly one place: the slice
     // cell. A second copy in the kernel would let the menu show one store while
     // a different one is written.
-    let kernel_source = include_str!("../../../jinn-domain/src/feat/ui/frontend_state.rs");
+    let kernel_source = include_str!("../../../jinn-domain/src/state/frontend_state.rs");
     assert!(
         !kernel_source.contains("tool_picker"),
         "the kernel must not hold tool picker state; the slice cell is the only home"
@@ -994,7 +994,7 @@ fn the_kernel_names_no_tool_picker_at_all() {
     for (label, source) in [
         (
             "jinn-domain frontend state",
-            include_str!("../../../jinn-domain/src/feat/ui/frontend_state.rs"),
+            include_str!("../../../jinn-domain/src/state/frontend_state.rs"),
         ),
         (
             "jinn-domain intent handler",

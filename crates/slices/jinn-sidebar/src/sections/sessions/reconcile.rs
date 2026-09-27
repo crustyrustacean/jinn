@@ -12,7 +12,7 @@ pub fn reconcile_after_session_removal(state: &mut AppState) {
 /// Split-borrow reconciliation used by the sidebar state actor.
 pub fn reconcile_split(
     session: &mut jinn_session_state::SessionMap,
-    frontend: &mut jinn_domain::feat::ui::frontend_state::FrontendState,
+    frontend: &mut jinn_domain::state::frontend_state::FrontendState,
 ) {
     let sessions = sorted_open_sessions_split(session, frontend);
     if sessions.is_empty() {

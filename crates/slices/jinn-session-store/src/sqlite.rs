@@ -37,7 +37,7 @@ use jinn_session_store_msg::{SessionState, SessionSummary};
 use jinn_token_count_msg::TokenRecord;
 
 use super::migrator;
-use jinn_domain::feat::session::{SessionStore, SessionStoreError};
+use jinn_session_state::{SessionStore, SessionStoreError};
 
 /// Configuration for the SQLite connection pool.
 ///

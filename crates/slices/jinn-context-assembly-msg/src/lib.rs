@@ -8,9 +8,9 @@ use std::path::PathBuf;
 
 use jinn_context::ContextFile;
 use jinn_core_types::{ChatEntry, SessionId, ToolDefinition};
-use jinn_persona_msg::Persona;
 use jinn_skills_msg::Skill;
 use jinn_slices::AssembledPrompt;
+use jinn_slices::Persona;
 use serde::{Deserialize, Serialize};
 
 /// Everything assembly needs, provided by the caller.

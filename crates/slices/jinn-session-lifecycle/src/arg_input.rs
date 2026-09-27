@@ -133,7 +133,7 @@ fn confirm_arg_input(ctx: &mut ActionCtx<'_>, cell: &ArgInputCell) -> IntentResu
         return IntentResult::empty();
     };
 
-    jinn_domain::feat::session_lifecycle::intent::handle_session_lifecycle_setup(
+    jinn_domain::session_lifecycle::intent::handle_session_lifecycle_setup(
         app_state,
         &lifecycle_name,
         &args,

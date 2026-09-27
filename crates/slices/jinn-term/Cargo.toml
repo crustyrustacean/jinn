@@ -36,5 +36,8 @@ trouper = { workspace = true }
 wherror = { workspace = true }
 
 [dev-dependencies]
+jinn-testutil = { workspace = true }
+
 jinn-domain = { workspace = true }
 rstest = { workspace = true }
+

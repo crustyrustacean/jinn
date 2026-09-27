@@ -185,7 +185,7 @@ pub fn attach_skill_picker_rows(routes: &KeyRoutes, cell: &SkillPickerCell) {
             let Some(state) = app(ctx) else {
                 return IntentResult::empty();
             };
-            jinn_domain::feat::session::intent::handle_session_new(state, config)
+            jinn_domain::session_lifecycle::intent::handle_session_new(state, config)
         }),
     ));
     routes.attach(row(

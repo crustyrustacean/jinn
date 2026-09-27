@@ -33,8 +33,8 @@ use trouper::system::ActorSystem;
 use jinn_core_types::SessionId;
 use jinn_domain::common::state::State;
 use jinn_session_init_msg::{RescanPromptTemplates, ScanContextFiles};
+use jinn_session_lifecycle_msg::SessionSetupCompleted;
 use jinn_session_lifecycle_msg::{SessionCreated, SessionCwdChanged};
-use jinn_session_msg::SessionSetupCompleted;
 use jinn_session_store_msg::SessionLoadCompleted;
 use jinn_skills_msg::ScanSkills;
 

@@ -127,7 +127,7 @@ impl ProviderInitActor {
             let session_id = self.state.read().session.active_session_id().clone();
             self.publish(PushChatEntry {
                 session_id,
-                entry: jinn_domain::feat::session::no_api_keys_msg(),
+                entry: crate::no_api_keys::no_api_keys_msg(),
             })
             .await;
         }

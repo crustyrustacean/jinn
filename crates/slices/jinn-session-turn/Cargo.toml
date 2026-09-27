@@ -4,10 +4,8 @@ version.workspace = true
 edition.workspace = true
 description = "The session-turn slice: one coordinated reducer for session history, streaming, tools, retries, and turn persistence."
 
-[features]
-test-harness = ["jinn-domain/test-harness"]
-
 [dependencies]
+jinn-slices = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-chat-input-msg = { workspace = true }
 jinn-domain = { workspace = true }
@@ -39,10 +37,13 @@ tracing = { workspace = true }
 trouper = { workspace = true }
 
 [dev-dependencies]
+jinn-testutil = { workspace = true }
+
 rstest = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
-jinn-domain = { workspace = true, features = ["test-harness"] }
+jinn-domain = { workspace = true }
 
 [lints]
 workspace = true
+

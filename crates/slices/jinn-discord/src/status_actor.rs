@@ -272,7 +272,8 @@ mod tests {
                 },
             )
             .expect("fresh registry");
-        let harness = jinn_domain::common::bus::test_harness::TestHarness::new().await;
+        use jinn_domain::common::bus::HarnessServices;
+        let harness = jinn_testutil::bus_harness::TestHarness::new().await;
         let services = harness.services().await;
         let (tx, rx) = kanal::bounded::<DiscordStatusUpdate>(8);
         let fabric = jinn_testutil::TestFabric::new();

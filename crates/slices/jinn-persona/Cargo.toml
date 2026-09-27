@@ -10,7 +10,7 @@ jinn-slices = { workspace = true }
 jinn-picker = { workspace = true }
 jinn-selection-widget = { workspace = true }
 jinn-theme = { workspace = true }
-jinn-domain = { workspace = true, features = ["test-harness"] }
+jinn-domain = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-session-msg = { workspace = true }
 ratatui = { workspace = true }

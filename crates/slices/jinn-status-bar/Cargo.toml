@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+jinn-common = { workspace = true }
+jinn-session-state = { workspace = true }
 jinn-status-bar-msg = { workspace = true }
 jinn-cwd-msg = { workspace = true }
 jinn-core-types = { workspace = true }

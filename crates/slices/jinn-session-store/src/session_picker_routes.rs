@@ -232,7 +232,7 @@ fn confirm_session_picker(ctx: &mut ActionCtx<'_>, cell: &SessionPickerCell) -> 
     // The same activation the sidebar and subagent entry use: the store actor
     // then decides whether the highlighted session needs reading from disk or
     // only measuring, which a caller cannot know.
-    jinn_domain::feat::ui::chat_log::activate_session(
+    jinn_chat_log_view::kernel_element::activate_session(
         state,
         session_id,
         IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(
@@ -247,7 +247,7 @@ fn new_session(ctx: &mut ActionCtx<'_>, _cell: &SessionPickerCell) -> IntentResu
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    jinn_domain::feat::session::intent::handle_session_new(state, config)
+    jinn_domain::session_lifecycle::intent::handle_session_new(state, config)
 }
 
 /// Ctrl-C: clear the filter, or close when it is already empty.

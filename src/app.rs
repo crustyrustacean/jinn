@@ -16,9 +16,9 @@ use jinn_domain::LlmServiceFactoryService;
 use jinn_domain::NoProvidersAvailableFactory;
 use jinn_domain::ProviderRegistry;
 use jinn_domain::ProviderRegistryService;
-use jinn_domain::SessionStoreService;
 use jinn_preferences_config::AppStateStorageService;
 use jinn_preferences_config::FilesystemAppStateStorage;
+use jinn_session_state::SessionStoreService;
 use jinn_session_store::sqlite::SqliteSessionStore;
 
 use tokio::runtime::Runtime;
@@ -79,7 +79,7 @@ impl App {
     fn run_and_shutdown(
         &self,
         runner: crate::runner::Runner,
-        store: &jinn_domain::SessionStoreService,
+        store: &jinn_session_state::SessionStoreService,
     ) -> Result<(), Report<AppError>> {
         // Extract the trouper system handle before the runner is consumed,
         // so the graceful shutdown sweep can run after the event loop exits.
@@ -208,9 +208,9 @@ impl App {
         // must run before any actor wiring — and it needs no preferences/DB,
         // so it dispatches before the session store is opened.
         if let Some(Commands::Install { force }) = &cli.command {
-            use jinn_domain::{
-                AppPaths, Destinations, InstallOutcome, InstallReport, JinnTomlOutcome,
-                install_defaults_to,
+            use jinn_domain::AppPaths;
+            use jinn_install::{
+                Destinations, InstallOutcome, InstallReport, JinnTomlOutcome, install_defaults_to,
             };
 
             let app_paths = AppPaths::default();

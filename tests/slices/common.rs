@@ -93,7 +93,7 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_domain::Services)
         // `actor_wiring::build`; without them here, nothing in the composed test
         // app can ever time a preview out, so any test of that path would hang
         // for reasons that have nothing to do with the code under test.
-        jinn_domain::feat::ui::chat_log::install_layout_actors(
+        jinn_chat_log_view::kernel_element::install_layout_actors(
             &services.trouper_system,
             core.state.clone(),
         );

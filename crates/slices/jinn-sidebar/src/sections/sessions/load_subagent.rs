@@ -1,8 +1,8 @@
 //! Opens the child subagent session linked to the selected `task` entry.
 
+use jinn_chat_log_view::kernel_element::activate_session;
 use jinn_core_types::{ChatEntryKind, SessionId};
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::feat::ui::chat_log::activate_session;
 use jinn_domain::protocol::IntentResult;
 use jinn_tools_msg::TASK_TOOL_NAME;
 

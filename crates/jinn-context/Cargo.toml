@@ -6,6 +6,7 @@ publish.workspace = true
 description = "Portable prompt-template, attachment-path, and project-context models and loaders."
 
 [dependencies]
+jinn-slices = { workspace = true }
 jinn-persona-msg = { workspace = true }
 error-stack = { workspace = true }
 fuzzy-matcher = { workspace = true }

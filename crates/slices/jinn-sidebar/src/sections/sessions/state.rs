@@ -114,7 +114,7 @@ pub fn session_list_key(state: &AppState) -> Vec<SessionListKey> {
 /// Split-borrow variant used by sidebar actors and other slice-owned adapters.
 pub fn sorted_open_sessions_split(
     session: &jinn_session_state::SessionMap,
-    frontend: &jinn_domain::feat::ui::frontend_state::FrontendState,
+    frontend: &jinn_domain::state::frontend_state::FrontendState,
 ) -> Vec<SessionEntry> {
     let active_id = session.active_session_id();
     let entries = session
@@ -166,7 +166,7 @@ pub fn mark_in_flight(state: &AppState, ids: &[SessionId]) {
 
 /// Clears the in-flight mark for a session whose disposal has concluded.
 pub fn clear_in_flight(
-    frontend: &jinn_domain::feat::ui::frontend_state::FrontendState,
+    frontend: &jinn_domain::state::frontend_state::FrontendState,
     id: &SessionId,
 ) {
     frontend.update_sections(|sections| sections.sessions.end_in_flight(id));
@@ -174,7 +174,7 @@ pub fn clear_in_flight(
 
 /// Whether a session currently has a disposal operation in flight.
 pub fn is_in_flight(
-    frontend: &jinn_domain::feat::ui::frontend_state::FrontendState,
+    frontend: &jinn_domain::state::frontend_state::FrontendState,
     id: &SessionId,
 ) -> bool {
     frontend.with_sections(|sections| sections.sessions.is_in_flight(id), || false)
@@ -191,7 +191,7 @@ pub fn update_visual_parents_on_removal(
 /// Split-borrow variant of [`update_visual_parents_on_removal`].
 pub fn update_visual_parents_on_removal_split(
     session: &mut jinn_session_state::SessionMap,
-    frontend: &mut jinn_domain::feat::ui::frontend_state::FrontendState,
+    frontend: &mut jinn_domain::state::frontend_state::FrontendState,
     removed_id: &jinn_core_types::SessionId,
 ) {
     let (removed_parent, loaded_ids, direct_child_ids) = {
@@ -225,7 +225,7 @@ pub fn update_visual_parents_on_removal_split(
 /// Repairs visual parents after a removed row is no longer in the session map.
 pub fn repair_visual_parents_after_removal(
     session: &jinn_session_state::SessionMap,
-    frontend: &mut jinn_domain::feat::ui::frontend_state::FrontendState,
+    frontend: &mut jinn_domain::state::frontend_state::FrontendState,
     removed_id: &jinn_core_types::SessionId,
     removed_parent: Option<&jinn_core_types::SessionId>,
 ) {
@@ -260,7 +260,7 @@ pub fn clear_visual_parents_on_load(state: &mut AppState, loaded_id: &jinn_core_
 
 /// Split-borrow variant of [`clear_visual_parents_on_load`].
 pub fn clear_visual_parents_on_load_split(
-    frontend: &mut jinn_domain::feat::ui::frontend_state::FrontendState,
+    frontend: &mut jinn_domain::state::frontend_state::FrontendState,
     loaded_id: &jinn_core_types::SessionId,
 ) {
     frontend.update_sections(|sections| {

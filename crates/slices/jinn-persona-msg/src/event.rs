@@ -1,7 +1,7 @@
 //! Persona slice events that cross the actor bus.
 
-use crate::Persona;
 use jinn_slices::BusMessage;
+use jinn_slices::Persona;
 use serde::{Deserialize, Serialize};
 
 /// Emitted when personas have been scanned and loaded from disk.

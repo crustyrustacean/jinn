@@ -1,9 +1,7 @@
-//! Shared infrastructure - actor framework, services, core coordination, state.
+//! Shared infrastructure - services, core coordination, state, and projections.
 
 // Re-export shared infra that now lives in the `jinn-common` leaf crate.
-pub use jinn_common::{app_info, app_paths, toml_patch};
-
-pub mod actor;
+pub use jinn_common::{app_info, app_paths, process_kill, system_resource, toml_patch};
 
 pub mod actor_deps;
 pub mod app_state;
@@ -13,14 +11,12 @@ pub mod bridge;
 pub mod bus;
 pub mod core;
 pub mod frontend_projection;
-pub mod process_kill;
 pub mod render_ctx;
 pub mod request_dump;
 pub mod services;
 pub mod session_projection;
 pub mod slices;
 pub mod state;
-pub mod system_resource;
 pub mod ui_element;
 pub mod ui_element_fake;
 pub mod ui_registry;
@@ -28,15 +24,15 @@ pub mod ui_registry;
 /// Standard UI registry type for the jinn application.
 pub type AppUiRegistry = ui_registry::UiRegistry;
 
-/// Register all UI elements from every feature module.
+/// Register the UI elements the kernel itself owns.
 ///
-/// Called once during application startup. Each feature module that provides
-/// UI elements exposes a `register()` function that adds its elements to the registry.
-pub fn register_all_ui_elements(registry: &mut AppUiRegistry) {
-    crate::feat::ui::chat_log::register(registry);
-    crate::feat::provider::register(registry);
-    // The chat input box is a slice; composition registers its element
-    // (the kernel's registry cannot reference slice crates).
+/// Called once during application startup. Slice-owned elements are
+/// registered by composition in `jinn-tui`, which can reference slice
+/// crates; the kernel cannot.
+pub fn register_all_ui_elements(_registry: &mut AppUiRegistry) {
+    // Every display element is slice-owned now, so composition in `jinn-tui`
+    // registers them all. This function survives as the kernel's hook for
+    // elements it owns itself, of which there are currently none.
 }
 
 #[cfg(test)]
@@ -57,31 +53,17 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn register_all_ui_elements_populates_registry() {
+    fn register_all_ui_elements_registers_nothing_by_itself() {
         // Given an empty registry.
         let mut registry = AppUiRegistry::new();
 
-        // When registering all UI elements.
+        // When registering the kernel's own UI elements.
         register_all_ui_elements(&mut registry);
 
-        // Then the registry is not empty (has at least one element).
-        assert!(registry.iter_mut().count() > 0);
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn provider_register_adds_streaming_indicator() {
-        // Given an empty registry.
-        let mut registry = AppUiRegistry::new();
-
-        // When registering provider UI elements.
-        crate::feat::provider::register(&mut registry);
-
-        // Then exactly 1 element was added (the streaming indicator).
-        assert_eq!(
-            registry.iter_mut().count(),
-            1,
-            "provider::register should add the streaming indicator"
-        );
+        // Then it adds nothing: every display element is slice-owned, and
+        // composition in jinn-tui registers those. This is the assertion that
+        // keeps a slice element from being re-added here, which would render
+        // it twice.
+        assert_eq!(registry.iter_mut().count(), 0);
     }
 }

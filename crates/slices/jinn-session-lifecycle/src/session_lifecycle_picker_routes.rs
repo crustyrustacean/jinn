@@ -347,7 +347,7 @@ fn confirm_session_lifecycle_picker(
     // No args - proceed directly. The setup function owns the scope
     // transition (clear overlays, push input), so this outcome carries no
     // close signal.
-    jinn_domain::feat::session_lifecycle::intent::handle_session_lifecycle_setup(
+    jinn_domain::session_lifecycle::intent::handle_session_lifecycle_setup(
         state,
         &name,
         &[],
@@ -370,7 +370,7 @@ fn new_session(ctx: &mut ActionCtx<'_>, _cell: &LifecyclePickerCell) -> IntentRe
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    jinn_domain::feat::session::intent::handle_session_new(state, config)
+    jinn_domain::session_lifecycle::intent::handle_session_new(state, config)
 }
 
 /// Ctrl-C: clear the filter, or close when it is already empty.

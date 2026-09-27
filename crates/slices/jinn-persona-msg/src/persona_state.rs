@@ -8,18 +8,8 @@
 //! markdown scan — lives in the slice crate. Both import this one type;
 //! neither depends on the other.
 
+use jinn_slices::Persona;
 use jinn_slices::SlotKey;
-
-/// A parsed persona ready for use in the system prompt.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct Persona {
-    /// Unique persona name (from frontmatter).
-    pub name: String,
-    /// Short description for the picker UI.
-    pub description: String,
-    /// The persona body - the actual system prompt text.
-    pub body: String,
-}
 
 /// The persona slice's cell payload.
 ///

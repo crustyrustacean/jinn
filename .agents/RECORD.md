@@ -271,7 +271,7 @@ Entries are added or amended **only with human approval**.
 - (mcp) MCP server config nouns (McpServerConfig, TransportKind, and header-value expansion) live in jinn-mcp-msg; the MCP slice and the preferences config crate consume them from there.
 - (slices) The entry token cache was pruned-family vocabulary misfiled under auto_prune_worker; it lives in jinn-slices and the prune family consumes it from the token-count slice's cell.
 - (slices) The mcp slice is a crate owning both MCP actors (coordinator and per-connection); its wire contracts live in jinn-mcp-msg and the kernel reaches the coordinator through the McpCoordinatorHandle trait.
-- (slices) Slice vocabulary lives in per-family -msg crates under crates/slices; jinn-slices holds only shared infrastructure and multi-party vocabulary such as the cell registry, routes, focus, and render facts.
+- (slices) Slice vocabulary lives in per-family -msg crates under crates/slices; jinn-slices holds only shared infrastructure and multi-party vocabulary such as the cell registry, routes, focus, render facts, and the persona record.
 - (slices) Cell slot keys are declared beside their payload types in the family's msg crate and registered by the owning slice at activation; the registry resolves them at runtime by name, namespace, and version.
 - (slices) The context-assembly slice is a crate hosting a stateless trouper service at the context-assembly path; callers pass an AssemblyInputs snapshot and receive the assembled prompt as the reply.
 - (slices) Context assembly never reads AppState; the kernel's queue and session-enqueue dispatch paths build the inputs snapshot from their own state guards before asking the service.
@@ -316,3 +316,10 @@ Entries are added or amended **only with human approval**.
 - (keybinds) Chat input keys are declared by the slice as route rows and a printable-character catch-all; the keymap generates them from the registered rows.
 - (arch) A slice with input capture binds a key hook on its own scope, and returns nothing for keys it does not own so they fall through to other binds.
 - (slices) A slice that draws a UI element exposes a `register` function that composition calls, because the kernel's element registry cannot reference slice crates.
+- (arch) The kernel crate holds shared cross-slice vocabulary only; each feature component lives in the slice that owns it, and a component whose only callers are kernel dispatch code stays in the kernel as a top-level module.
+- (arch) A slice-owned feature whose actors are reached only by the kernel stays in the kernel's top-level module tree rather than moving to its slice, because the slice would otherwise need a kernel dependency to be reachable.
+- (arch) AppState is composed of a session map and a frontend state struct defined outside any feature module, so the shared state carries no dependency on a standalone UI component.
+- (arch) No crate outside the kernel names a jinn_domain feature path; the kernel's feature modules are reached only from within the kernel.
+- (slices) A message crate never depends on another message crate; a type two message crates both need is shared vocabulary and lives in a common or kernel crate.
+- (testing) The bus test harness lives in jinn-testutil and is available to every crate without a feature flag.
+- (arch) Displayed UI elements are registered by composition in jinn-tui, because the kernel's element registry cannot reference slice crates.

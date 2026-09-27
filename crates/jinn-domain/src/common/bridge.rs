@@ -9,7 +9,7 @@
 
 use jinn_slices::PublishSink;
 
-use crate::common::services::bus_service::BusService;
+use jinn_slices::bus::BusService;
 
 /// A closure that publishes a typed message to the fabric's publish sink.
 pub type BridgeClosure = Box<dyn FnOnce(&dyn PublishSink) + Send + 'static>;
@@ -58,7 +58,7 @@ impl Bridge {
     /// declarant subscriber) matches every other emitter.
     #[must_use]
     pub fn with_system(
-        bus: &crate::common::services::bus_service::BusService,
+        bus: &jinn_slices::bus::BusService,
         handle: &tokio::runtime::Handle,
     ) -> Self {
         Self::with_handle(bus.clone(), handle)
@@ -78,7 +78,6 @@ impl Bridge {
     }
 
     /// Creates a minimal bridge for tests that don't need actual bus delivery.
-    #[cfg(any(test, feature = "test-harness"))]
     #[must_use]
     pub fn new_for_test() -> Self {
         let (bus, _audit) = BusService::new_recording();
@@ -116,29 +115,6 @@ impl Bridge {
     }
 }
 
-/// Implements the slice-facing publish surface over the kernel bus.
-///
-/// The closure hands over the JSON payload already serialized; the
-/// broadcast fans out by schema id to every declarant subscriber —
-/// identical delivery to a typed [`BusService::publish`], only the
-/// serialization timing differs.
-impl PublishSink for BusService {
-    fn publish_schema(
-        &self,
-        schema_id: trouper::schema::SchemaId,
-        payload: serde_json::Value,
-        name: &'static str,
-    ) {
-        tracing::debug!(message = name, "bridge publish");
-        let system = self.system_ref().clone();
-        tokio::spawn(async move {
-            system
-                .deliver_schema_value(schema_id, trouper::json::Json::from(payload))
-                .await;
-        });
-    }
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -151,8 +127,8 @@ mod tests {
 
     use super::*;
 
-    use crate::common::bus::test_harness::TestHarness;
     use jinn_slices::BusMessage;
+    use jinn_testutil::bus_harness::TestHarness;
 
     /// A single message type for testing: small, schema'd, serde-roundtrippable.
     #[derive(
@@ -183,7 +159,7 @@ mod tests {
             bridge.send(closure).expect("send");
 
             // Then the recorder eventually receives the message.
-            let received = crate::common::bus::test_harness::await_recorded::<BridgeTestMsg>(
+            let received = jinn_testutil::bus_harness::await_recorded::<BridgeTestMsg>(
                 &recorder,
                 1,
                 std::time::Duration::from_secs(2),

@@ -25,6 +25,7 @@
 )]
 
 pub mod assembled_prompt;
+pub mod bus;
 pub mod cell;
 pub mod cwd_root;
 pub mod fabric;
@@ -34,6 +35,7 @@ pub mod key;
 pub mod line_input;
 pub mod mode;
 pub mod overlay;
+pub mod persona;
 pub mod picker_kind;
 pub mod render_facts;
 pub mod route;
@@ -59,6 +61,7 @@ pub use line_input::LineInput;
 pub use mode::Mode;
 pub use overlay::OverlayViewFn;
 pub use overlay::OverlayViews;
+pub use persona::Persona;
 pub use picker_kind::PickerKind;
 pub use render_facts::AppFact;
 pub use render_facts::RenderFacts;

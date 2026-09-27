@@ -18,23 +18,29 @@ use derive_more::Debug;
 
 use jinn_preferences_config::{AppStateStorageService, InMemoryAppStateStorage};
 
-use crate::feat::session::SessionStoreService;
 pub use jinn_provider_config;
 use jinn_provider_config::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
+use jinn_session_state::SessionStoreService;
 use tokio::runtime::Handle;
 
 use crate::common::request_dump::RequestDumpService;
 
 pub mod test_services;
 
-pub mod bus_service;
-pub use bus_service::BusService;
+/// Re-export of the bus service, which now lives in `jinn-slices`.
+///
+/// `BusService` is shared actor-fabric vocabulary consumed by every slice, so it
+/// is no longer kernel-owned. This module is a path alias only; the
+/// implementation is `jinn_slices::bus`.
+pub mod bus_service {
+    pub use jinn_slices::bus::{BusAudit, BusService, RecordedMessage};
+}
 
-#[cfg(any(test, feature = "test-harness"))]
-pub use bus_service::{BusAudit, RecordedMessage};
+pub use jinn_slices::bus::BusService;
+pub use jinn_slices::bus::{BusAudit, RecordedMessage};
 
 /// Runtime services shared across the application.
 ///
@@ -241,7 +247,6 @@ impl Services {
     ///
     /// Panics if the embedded temp dir, provider registry, or storage
     /// reloads fail — test infrastructure initialization must abort.
-    #[cfg(any(test, feature = "test-harness"))]
     #[expect(clippy::expect_used, reason = "test infrastructure initialization")]
     #[expect(
         clippy::unused_async_trait_impl,

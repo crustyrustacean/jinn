@@ -243,7 +243,7 @@ async fn resolve_sessions(
     scope: Scope,
     explicit: Option<String>,
     current: Option<&SessionId>,
-    store: &jinn_domain::feat::session::session_store::SessionStoreService,
+    store: &jinn_session_state::SessionStoreService,
 ) -> Result<ResolvedSessions, String> {
     if let Some(id) = explicit {
         return {

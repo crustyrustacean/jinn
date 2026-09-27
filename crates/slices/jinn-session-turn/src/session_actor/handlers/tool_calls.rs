@@ -4,11 +4,11 @@
 //! execution tracking, result collection, and batch completion routing.
 
 use jinn_context_assembly::inputs::build_assembly_inputs;
+use jinn_context_assembly::inputs_snapshot::assemble_via_service;
 use jinn_context_assembly_msg::ContextOverrideChanged;
 use jinn_core_types::PinPosition;
 use jinn_core_types::model_selection::ModelSelection;
 use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::feat::context::snapshot::assemble_via_service;
 use jinn_inference_msg::SendToLlmProvider;
 use jinn_session_msg::PhaseKind;
 use jinn_token_count_msg::TokenRecord;
@@ -412,10 +412,11 @@ mod tests {
         // Given a spawned session actor with a tool-call entry in its history.
         use crate::session_actor::{SessionPersistenceActor, SessionPersistenceActorDeps};
         use jinn_domain::common::app_state::AppState;
-        use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+        use jinn_domain::common::bus::HarnessServices;
         use jinn_domain::common::state::State;
         use jinn_inference_msg::SendToLlmProvider;
         use jinn_llm_support::token_estimator::TiktokenCounter;
+        use jinn_testutil::bus_harness::{TestHarness, await_recorded};
         use std::time::Duration;
 
         let harness = TestHarness::new().await;
@@ -481,12 +482,13 @@ mod tests {
         use jinn_core_types::ChatEntry;
         use jinn_core_types::tool_types::ToolResult;
         use jinn_domain::common::app_state::AppState;
-        use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+        use jinn_domain::common::bus::HarnessServices;
         use jinn_domain::common::state::State;
         use jinn_inference_msg::SendToLlmProvider;
         use jinn_inference_msg::{StreamCompleted, StreamCompletedReason};
         use jinn_llm_support::token_estimator::TiktokenCounter;
         use jinn_session_msg::PhaseKind;
+        use jinn_testutil::bus_harness::{TestHarness, await_recorded};
         use jinn_tools_msg::ToolBatchCompleted;
         use std::time::Duration;
 
@@ -633,11 +635,12 @@ mod tests {
         // ensures the wiring stays correct and the burst path stays livelock-free.
         use crate::session_actor::{SessionPersistenceActor, SessionPersistenceActorDeps};
         use jinn_domain::common::app_state::AppState;
-        use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+        use jinn_domain::common::bus::HarnessServices;
         use jinn_domain::common::state::State;
         use jinn_inference_msg::SendToLlmProvider;
         use jinn_inference_msg::StreamToken;
         use jinn_llm_support::token_estimator::TiktokenCounter;
+        use jinn_testutil::bus_harness::{TestHarness, await_recorded};
         use std::time::Duration;
 
         let harness = TestHarness::new_best_effort().await;

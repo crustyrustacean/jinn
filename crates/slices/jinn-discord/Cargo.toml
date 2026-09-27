@@ -15,7 +15,7 @@ jinn-discord-msg = { workspace = true }
 # family) into the gateway channels; the session slices have not
 # graduated to crates yet, so shared `State` still lives in jinn-domain.
 # This edge survives the cut (slice → domain is the legal direction).
-jinn-domain = { workspace = true, features = ["test-harness"] }
+jinn-domain = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-session-msg = { workspace = true }
 jinn-session-lifecycle-msg = { workspace = true }

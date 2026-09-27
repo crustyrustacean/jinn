@@ -13,6 +13,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }
+tokio = { workspace = true }
 
 [features]
 default = []
@@ -24,6 +25,12 @@ testing = []
 [dev-dependencies]
 tempfile = { workspace = true }
 rstest = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+# Toolhelp32-based process-tree termination, the Windows counterpart to
+# Unix's process-group kill. Only the default `blocking` feature is needed:
+# kill-on-drop runs synchronously from a `Drop` impl (no async runtime).
+kill_tree = "0.2"
 
 [lints]
 workspace = true

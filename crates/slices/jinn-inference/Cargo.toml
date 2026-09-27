@@ -4,10 +4,10 @@ version.workspace = true
 edition.workspace = true
 description = "The inference slice: the actor that drives LLM provider streams."
 
-[features]
-test-harness = ["jinn-domain/test-harness"]
-
 [dependencies]
+throbber-widgets-tui = { workspace = true }
+ratatui = { workspace = true }
+jinn-session-msg = { workspace = true }
 jinn-inference-msg = { workspace = true }
 # The trouper runtime: ServiceActors, topics, schemas.
 trouper = { workspace = true }
@@ -34,9 +34,12 @@ reasoning-parser = { workspace = true }
 async-trait = { workspace = true }
 
 [dev-dependencies]
+jinn-testutil = { workspace = true }
+
 rstest = { workspace = true }
 serde_json = { workspace = true }
-jinn-domain = { workspace = true, features = ["test-harness"] }
+jinn-domain = { workspace = true }
 
 [lints]
 workspace = true
+

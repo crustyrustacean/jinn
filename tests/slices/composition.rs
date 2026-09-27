@@ -101,7 +101,7 @@ fn the_central_crates_name_no_picker() {
         ),
         (
             "jinn-domain frontend state",
-            include_str!("../../crates/jinn-domain/src/feat/ui/frontend_state.rs"),
+            include_str!("../../crates/jinn-domain/src/state/frontend_state.rs"),
         ),
         (
             "jinn-tui scope table",

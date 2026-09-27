@@ -7,20 +7,21 @@ use std::time::Duration;
 
 use error_stack::Report;
 use jinn_domain::AppState;
-use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+use jinn_domain::common::bus::HarnessServices;
 use jinn_domain::common::state::State;
 use jinn_preferences_config::schemas::{BuiltinId, LifecycleCommand};
 use jinn_session_lifecycle_msg::CloseSession;
+use jinn_session_lifecycle_msg::SessionTeardownFinished;
 use jinn_session_lifecycle_msg::TeardownSessionTree;
 use jinn_session_lifecycle_msg::builtin::{BuiltinHandler, BuiltinHandlerError, BuiltinRegistry};
 use jinn_session_lifecycle_msg::{
     CancelLifecycleCommand, RunSessionSetup, SessionCwdChanged, SessionSetupCompleted,
     SetSessionCwd,
 };
-use jinn_session_msg::SessionTeardownFinished;
 use jinn_session_state::ChatSessionState;
 use jinn_session_store_msg::ArchiveSession;
 use jinn_session_store_msg::ArchiveSessionTree;
+use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 
 use crate::session_lifecycle_actor::{SessionLifecycleActor, SessionLifecycleActorDeps};
 

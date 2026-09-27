@@ -39,9 +39,9 @@ use jinn_mcp_msg::{McpServerLog, McpServerStatus};
 use jinn_preferences_config::schemas::mcp::McpServerConfig;
 use jinn_preferences_config::schemas::mcp::McpServersConfig;
 use jinn_session_lifecycle_msg::SessionCreated;
+use jinn_session_lifecycle_msg::SessionTeardownFinished;
 use jinn_session_msg::SessionArchived;
 use jinn_session_msg::SessionClosed;
-use jinn_session_msg::SessionTeardownFinished;
 use jinn_session_store_msg::SessionLoadCompleted;
 use jinn_slices::TypedCell;
 
@@ -509,10 +509,11 @@ mod lifecycle_tests {
 
     use jinn_core_types::SessionId;
     use jinn_domain::common::actor_deps::ActorDeps;
-    use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+    use jinn_domain::common::bus::HarnessServices;
     use jinn_mcp_msg::{McpConnectionStatus, McpServerStatus};
     use jinn_preferences_config::schemas::mcp::McpServerConfig;
     use jinn_preferences_config::schemas::mcp::McpServersConfig;
+    use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 
     use super::{McpCoordinatorActor, McpCoordinatorActorDeps};
     use jinn_mcp_msg::McpEnablementChanged;
@@ -953,12 +954,14 @@ mod status_tests {
     use jinn_core_types::SessionId;
     use jinn_domain::common::actor_deps::ActorDeps;
     use jinn_domain::common::app_state::AppState;
-    use jinn_domain::common::bus::test_harness::TestHarness;
+    use jinn_domain::common::bus::HarnessServices;
     use jinn_domain::common::state::State;
     use jinn_mcp_msg::{McpConnectionStatus, McpRuntimeState, McpServerLog, McpServerStatus};
-    use jinn_session_msg::{SessionArchived, SessionClosed, SessionTeardownFinished};
+    use jinn_session_lifecycle_msg::SessionTeardownFinished;
+    use jinn_session_msg::{SessionArchived, SessionClosed};
     use jinn_session_store_msg::SessionLoadCompleted;
     use jinn_slices::TypedCell;
+    use jinn_testutil::bus_harness::TestHarness;
 
     use super::McpCoordinatorActor;
     use crate::coordinator::McpCoordinatorActorDeps;

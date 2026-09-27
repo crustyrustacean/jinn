@@ -13,6 +13,7 @@
 //! [`install_actors`] returns the handles the tail needs.
 
 pub mod env_init_actor;
+pub mod no_api_keys;
 pub mod provider_init_actor;
 pub mod system_ready_actor;
 

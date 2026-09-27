@@ -185,7 +185,8 @@ mod tests {
         EnvInitActor, EnvInitActorDeps, EnvironmentConfigReply, EnvironmentLoaded,
         GetEnvironmentConfig,
     };
-    use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+    use jinn_domain::common::bus::HarnessServices;
+    use jinn_testutil::bus_harness::{TestHarness, await_recorded};
     use std::sync::Arc;
 
     use jinn_preferences_config::schemas::mcp::McpServerConfig;

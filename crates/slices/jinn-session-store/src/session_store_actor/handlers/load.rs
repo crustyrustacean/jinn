@@ -3,12 +3,14 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use jinn_chat_log_view::kernel_element::layout_supervisor::{
+    LAYOUT_DEADLINE, LAYOUT_SUPERVISOR_PATH,
+};
 use jinn_chat_log_view_msg::{ArmLayoutDeadline, DEFAULT_MIN_COLLAPSE_COUNT, LayoutChatSession};
 use jinn_core_types::{ChatEntry, ChatEntryId, SessionId};
 use jinn_domain::common::actor_deps::BusPublish;
-use jinn_domain::feat::session::SessionStoreService;
-use jinn_domain::feat::ui::chat_log::layout_supervisor::{LAYOUT_DEADLINE, LAYOUT_SUPERVISOR_PATH};
 use jinn_domain::protocol::system::ActiveSessionChanged;
+use jinn_session_state::SessionStoreService;
 use jinn_session_state::{ChatSessionState, SessionSnapshot, snapshot_frozen_node_from_snapshot};
 use jinn_session_store_msg::SessionForkRequested;
 use jinn_session_store_msg::{SessionLoadCompleted, SessionLoadRequested, SessionState};

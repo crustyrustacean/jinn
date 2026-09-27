@@ -143,7 +143,7 @@ impl PopulatedFakeStore {
 
 #[cfg(test)]
 #[async_trait::async_trait]
-impl jinn_domain::feat::session::session_store::SessionStore for PopulatedFakeStore {
+impl jinn_session_state::SessionStore for PopulatedFakeStore {
     fn name(&self) -> &'static str {
         "populated-fake"
     }
@@ -151,8 +151,7 @@ impl jinn_domain::feat::session::session_store::SessionStore for PopulatedFakeSt
     async fn save(
         &self,
         snapshot: &jinn_session_state::SessionSnapshot,
-    ) -> Result<(), error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>>
-    {
+    ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
         self.saved.lock().push(snapshot.clone());
         // Upsert into the readable sessions vec (the real store persists the
         // session so later reads — fork, load — see it).
@@ -171,11 +170,11 @@ impl jinn_domain::feat::session::session_store::SessionStore for PopulatedFakeSt
         &self,
     ) -> Result<
         Vec<jinn_session_store_msg::SessionSummary>,
-        error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>,
+        error_stack::Report<jinn_session_state::SessionStoreError>,
     > {
         if *self.fail_load_summaries.lock() {
             return Err(error_stack::Report::new(
-                jinn_domain::feat::session::session_store::SessionStoreError,
+                jinn_session_state::SessionStoreError,
             ));
         }
         Ok(self.summaries.lock().clone())
@@ -186,7 +185,7 @@ impl jinn_domain::feat::session::session_store::SessionStore for PopulatedFakeSt
         session_id: &jinn_core_types::SessionId,
     ) -> Result<
         Option<jinn_session_state::SessionSnapshot>,
-        error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>,
+        error_stack::Report<jinn_session_state::SessionStoreError>,
     > {
         Ok(self
             .sessions
@@ -199,8 +198,7 @@ impl jinn_domain::feat::session::session_store::SessionStore for PopulatedFakeSt
     async fn delete(
         &self,
         _session_id: &jinn_core_types::SessionId,
-    ) -> Result<(), error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>>
-    {
+    ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
         Ok(())
     }
 
@@ -210,7 +208,7 @@ impl jinn_domain::feat::session::session_store::SessionStore for PopulatedFakeSt
         at_ordinal: usize,
     ) -> Result<
         jinn_core_types::SessionId,
-        error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>,
+        error_stack::Report<jinn_session_state::SessionStoreError>,
     > {
         // Mirror the SQL fork's contract: error when the source is not in the
         // store, otherwise copy entries up to and including `at_ordinal` into
@@ -222,7 +220,7 @@ impl jinn_domain::feat::session::session_store::SessionStore for PopulatedFakeSt
             .cloned()
         else {
             return Err(error_stack::Report::new(
-                jinn_domain::feat::session::session_store::SessionStoreError,
+                jinn_session_state::SessionStoreError,
             ));
         };
         drop(sessions);
@@ -257,8 +255,7 @@ impl jinn_domain::feat::session::session_store::SessionStore for PopulatedFakeSt
         &self,
         session_id: &jinn_core_types::SessionId,
         archived: bool,
-    ) -> Result<(), error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>>
-    {
+    ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
         if archived {
             self.archived.lock().push(session_id.clone());
         }
@@ -269,8 +266,7 @@ impl jinn_domain::feat::session::session_store::SessionStore for PopulatedFakeSt
         &self,
         session_ids: &[jinn_core_types::SessionId],
         archived: bool,
-    ) -> Result<(), error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>>
-    {
+    ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
         if archived {
             let mut archived = self.archived.lock();
             archived.extend(session_ids.iter().cloned());
@@ -282,7 +278,7 @@ impl jinn_domain::feat::session::session_store::SessionStore for PopulatedFakeSt
         &self,
     ) -> Result<
         Vec<jinn_session_store_msg::SessionSummary>,
-        error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>,
+        error_stack::Report<jinn_session_state::SessionStoreError>,
     > {
         Ok(self.summaries.lock().clone())
     }
@@ -291,7 +287,7 @@ impl jinn_domain::feat::session::session_store::SessionStore for PopulatedFakeSt
         &self,
     ) -> Result<
         Vec<jinn_core_types::SessionId>,
-        error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>,
+        error_stack::Report<jinn_session_state::SessionStoreError>,
     > {
         Ok(Vec::new())
     }
@@ -300,19 +296,13 @@ impl jinn_domain::feat::session::session_store::SessionStore for PopulatedFakeSt
         &self,
         _session_id: &jinn_core_types::SessionId,
         _max_entries: usize,
-    ) -> Result<
-        bool,
-        error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>,
-    > {
+    ) -> Result<bool, error_stack::Report<jinn_session_state::SessionStoreError>> {
         Ok(true)
     }
 
     async fn pending_dirty_count(
         &self,
-    ) -> Result<
-        usize,
-        error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>,
-    > {
+    ) -> Result<usize, error_stack::Report<jinn_session_state::SessionStoreError>> {
         Ok(0)
     }
 
@@ -321,7 +311,7 @@ impl jinn_domain::feat::session::session_store::SessionStore for PopulatedFakeSt
         _params: jinn_session_store_msg::SearchParams,
     ) -> Result<
         jinn_session_store_msg::SearchOutcome,
-        error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>,
+        error_stack::Report<jinn_session_state::SessionStoreError>,
     > {
         Ok(jinn_session_store_msg::SearchOutcome {
             total_matches: 0,
@@ -337,7 +327,7 @@ impl jinn_domain::feat::session::session_store::SessionStore for PopulatedFakeSt
         _context: usize,
     ) -> Result<
         Option<jinn_session_store_msg::TranscriptWindow>,
-        error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>,
+        error_stack::Report<jinn_session_state::SessionStoreError>,
     > {
         Ok(None)
     }
@@ -348,7 +338,7 @@ impl jinn_domain::feat::session::session_store::SessionStore for PopulatedFakeSt
         _limit: usize,
     ) -> Result<
         Option<jinn_session_store_msg::TranscriptWindow>,
-        error_stack::Report<jinn_domain::feat::session::session_store::SessionStoreError>,
+        error_stack::Report<jinn_session_state::SessionStoreError>,
     > {
         Ok(None)
     }
@@ -365,9 +355,7 @@ pub(crate) async fn test_actor_with_store_recording(
     let store = std::sync::Arc::new(PopulatedFakeStore::new(&sessions));
     let (bus, audit) = jinn_domain::common::services::BusService::new_recording();
     let services = jinn_domain::TestServices::builder()
-        .session_store(jinn_domain::feat::session::SessionStoreService::new(
-            store.clone(),
-        ))
+        .session_store(jinn_session_state::SessionStoreService::new(store.clone()))
         .with_bus(bus)
         .build();
     (

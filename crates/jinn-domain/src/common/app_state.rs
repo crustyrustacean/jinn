@@ -9,7 +9,7 @@
 //! code review. Each group struct carries `/// OWNER:` documentation on the struct
 //! and on each field.
 
-pub use crate::feat::ui::frontend_state::{FrontendCaches, FrontendState};
+pub use crate::state::frontend_state::{FrontendCaches, FrontendState};
 
 use crate::protocol::{ChatEntryId, PinPosition};
 use jinn_core_types::SessionId;

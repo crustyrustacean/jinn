@@ -249,10 +249,11 @@ mod tests {
     use std::time::Duration;
 
     use jinn_domain::AppState;
-    use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+    use jinn_domain::common::bus::HarnessServices;
     use jinn_domain::common::state::State;
     use jinn_provider_selection_msg::ModelsRefreshed;
     use jinn_provider_selection_msg::RefreshModels;
+    use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 
     use super::{DISCOVER_ACTOR_PATH, DiscoverActor, DiscoverActorDeps};
     use trouper::actor::ActorPath;

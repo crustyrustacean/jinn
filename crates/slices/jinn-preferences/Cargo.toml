@@ -11,7 +11,7 @@ jinn-config = { workspace = true }
 # theme cell resolution in the app-state sync, and the project-picker
 # reload after a preference save. See AGENTS.md §3 "one boundary = one
 # actor": these are the authoritative writers for those fields.
-jinn-domain = { workspace = true, features = ["test-harness"] }
+jinn-domain = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-project = { workspace = true }
 jinn-project-msg = { workspace = true }

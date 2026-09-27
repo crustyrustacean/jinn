@@ -68,7 +68,7 @@ pub struct ToolContext {
     /// tools, which read persisted history across all sessions. Resolved
     /// from `services.session_store` at dispatch time. `None` in tests that
     /// build a bare `ToolContext`.
-    pub session_store: Option<jinn_domain::feat::session::session_store::SessionStoreService>,
+    pub session_store: Option<jinn_session_state::SessionStoreService>,
     /// The trouper fabric — `Some` only for the `task` tool, which spawns
     /// its phase/settle listeners onto it. Resolved from
     /// `services.trouper_system` at dispatch time. `None` in tests that

@@ -26,7 +26,8 @@
     reason = "test module, panics are acceptable"
 )]
 
-use jinn_persona_msg::{Persona, PersonaPickerState, persona_picker_scope, personas_slot};
+use jinn_persona_msg::{PersonaPickerState, persona_picker_scope, personas_slot};
+use jinn_slices::Persona;
 use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{EditIntent, RouteOutcome, ScopeSignal};
 use jinn_slices::{KeyRoutes, SliceHost, Slices};
@@ -519,7 +520,7 @@ fn the_picker_state_lives_only_in_its_slice_cell() {
     // slice cell. A second copy in the kernel would let the menu show one
     // store while a different one is written — the defect that left the
     // skills menu blank.
-    let kernel_source = include_str!("../../../jinn-domain/src/feat/ui/frontend_state.rs");
+    let kernel_source = include_str!("../../../jinn-domain/src/state/frontend_state.rs");
     assert!(
         !kernel_source.contains("persona_picker"),
         "the kernel must not hold persona picker state; the slice cell is the only home"
@@ -534,7 +535,7 @@ fn the_kernel_names_no_persona_picker_at_all() {
     for (label, source) in [
         (
             "jinn-domain frontend state",
-            include_str!("../../../jinn-domain/src/feat/ui/frontend_state.rs"),
+            include_str!("../../../jinn-domain/src/state/frontend_state.rs"),
         ),
         (
             "jinn-domain intent handler",

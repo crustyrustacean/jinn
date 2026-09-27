@@ -11,16 +11,17 @@ use jinn_boot_msg::EnvironmentLoaded;
 use jinn_chat_log_view_msg::LayoutChatSession;
 use jinn_core_types::SessionId;
 use jinn_domain::common::app_state::AppState;
-use jinn_domain::common::bus::test_harness::{Recorder, TestHarness, await_recorded};
+use jinn_domain::common::bus::HarnessServices;
 use jinn_domain::common::state::State;
-use jinn_domain::feat::session::{SessionStore, SessionStoreService};
 use jinn_provider_config::ProvidersConfig;
 use jinn_session_msg::{SessionArchiveFailed, SessionArchived, SessionClosed};
 use jinn_session_state::ChatSessionState;
+use jinn_session_state::{SessionStore, SessionStoreService};
 use jinn_session_store_msg::{
     ArchiveSession, ArchiveSessionTree, LoadSessionPickerEntries, PersistSession,
     SessionLoadCompleted, SessionLoadRequested, SessionState,
 };
+use jinn_testutil::bus_harness::{Recorder, TestHarness, await_recorded};
 
 use crate::session_store_actor::{SessionStoreActor, SessionStoreActorDeps};
 use crate::session_store_tests_support::{ControlledStartupStore, poll_until};
@@ -1064,7 +1065,7 @@ async fn measuring_an_in_memory_session_never_reads_it_from_the_store() {
 async fn a_measured_request_clears_the_load_guard_end_to_end() {
     // Given the full layout subsystem, and an in-memory session to measure.
     let fixture = actor_fixture().await;
-    jinn_domain::feat::ui::chat_log::install_layout_actors(
+    jinn_chat_log_view::kernel_element::install_layout_actors(
         fixture.harness.system(),
         fixture.state.clone(),
     );
@@ -1105,7 +1106,7 @@ async fn a_measured_request_clears_the_load_guard_end_to_end() {
 async fn measuring_after_the_frontend_switched_measures_at_a_usable_width() {
     // Given the full layout subsystem and an in-memory session.
     let fixture = actor_fixture().await;
-    jinn_domain::feat::ui::chat_log::install_layout_actors(
+    jinn_chat_log_view::kernel_element::install_layout_actors(
         fixture.harness.system(),
         fixture.state.clone(),
     );

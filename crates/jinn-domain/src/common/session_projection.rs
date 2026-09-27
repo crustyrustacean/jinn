@@ -4,7 +4,7 @@
 //! keeping each mutation closure inside one application-state write lock.
 
 use crate::common::state::State;
-use crate::feat::ui::frontend_state::FrontendState;
+use crate::state::frontend_state::FrontendState;
 use jinn_session_state::SessionMap;
 
 /// Narrow write handle to the session collection.
@@ -17,7 +17,7 @@ impl SessionOps<'_> {
     }
 
     /// Store an archived session's immutable tree snapshot.
-    pub fn insert_frozen_node(&mut self, node: crate::feat::session::FrozenTreeNode) {
+    pub fn insert_frozen_node(&mut self, node: jinn_session_state::FrozenTreeNode) {
         self.0.insert_frozen_node(node);
     }
 }

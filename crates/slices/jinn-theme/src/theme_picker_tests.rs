@@ -134,7 +134,7 @@ impl Wired {
             .write()
             .insert(
                 &jinn_core_types::ChatEntry::user("seeded"),
-                jinn_chat_log_view::chat_log::ContentIdentity {
+                jinn_chat_log_view_msg::ContentIdentity {
                     signature: 1,
                     fingerprint: 1,
                 },
@@ -859,7 +859,7 @@ fn the_picker_state_lives_only_in_its_slice_cell() {
     // cell. A second copy in the kernel would let the menu show one store
     // while a different one is written — the defect that left the skills
     // menu blank.
-    let kernel_source = include_str!("../../../jinn-domain/src/feat/ui/frontend_state.rs");
+    let kernel_source = include_str!("../../../jinn-domain/src/state/frontend_state.rs");
     assert!(
         !kernel_source.contains("theme_picker"),
         "the kernel must not hold theme picker state; the slice cell is the only home"
@@ -874,7 +874,7 @@ fn the_kernel_names_no_theme_picker_at_all() {
     for (label, source) in [
         (
             "jinn-domain frontend state",
-            include_str!("../../../jinn-domain/src/feat/ui/frontend_state.rs"),
+            include_str!("../../../jinn-domain/src/state/frontend_state.rs"),
         ),
         (
             "jinn-domain intent handler",

@@ -14,9 +14,9 @@ use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
 use crate::inputs::build_assembly_inputs;
+use crate::inputs_snapshot::assemble_via_service;
 use jinn_context_assembly_msg::ContextOverrideChanged;
 use jinn_domain::common::state::State;
-use jinn_domain::feat::context::snapshot::assemble_via_service;
 use jinn_domain::protocol::system::ActiveSessionChanged;
 use jinn_session_history_msg::ChatEntryPinChanged;
 use jinn_session_history_msg::HistoryAppended;

@@ -14,11 +14,12 @@ use jinn_boot::install_actors;
 use jinn_boot_msg::{
     AllActorsSpawned, EnvironmentConfigReply, EnvironmentLoaded, GetEnvironmentConfig,
 };
-use jinn_domain::common::bus::test_harness::{TestHarness, await_recorded};
+use jinn_domain::common::bus::HarnessServices;
 use jinn_domain::common::services::Services;
 use jinn_domain::common::services::bus_service::BusService;
 use jinn_provider_config::ProviderEntry;
 use jinn_provider_config::{ConfigStorageService, InMemoryConfigStorage};
+use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 
 /// A sample single-provider config (the provider-init tests' fixture shape).
 fn sample_config() -> jinn_provider_config::ProvidersConfig {

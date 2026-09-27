@@ -20,8 +20,9 @@
 //! what the caller needs to turn into messages — they never reach session
 //! state themselves, which is what keeps the picker inside its slice.
 
-use jinn_persona_msg::{Persona, PersonaEntry, PersonaPickerState, persona_row};
+use jinn_persona_msg::{PersonaEntry, PersonaPickerState, persona_row};
 use jinn_picker::make_items_with_hooks;
+use jinn_slices::Persona;
 use jinn_theme::Theme;
 
 /// Builds the picker's rows from the scanned personas.

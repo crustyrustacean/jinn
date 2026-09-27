@@ -526,7 +526,7 @@ mod tests {
 
     /// Screen wiring writing into a throwaway state (no bus subscribers).
     async fn wiring() -> ScreenWiring {
-        let harness = jinn_domain::common::bus::test_harness::TestHarness::new().await;
+        let harness = jinn_testutil::bus_harness::TestHarness::new().await;
         let state = jinn_domain::common::state::State::new(
             jinn_domain::common::app_state::AppState::default_with_scope_focus(),
         );

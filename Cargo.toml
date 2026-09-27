@@ -8,7 +8,7 @@ repository = "https://github.com/jayson-lennon/jinn"
 
 [features]
 default = []
-syntax-all = ["jinn-domain/syntax-all"]
+syntax-all = ["jinn-chat-log-view/syntax-all"]
 
 # cargo-binstall artifact discovery. The binary is built locally and
 # pushed to GitHub releases (see `just build-release-tarball` / `just release`).
@@ -48,6 +48,8 @@ tiktoken = { path = "vendor/tiktoken" }
 path = "src/lib.rs"
 
 [dependencies]
+jinn-install = { workspace = true }
+jinn-session-state = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-llm-support = { workspace = true }
 jinn-persona = { workspace = true }
@@ -157,7 +159,6 @@ jinn-session-state = { workspace = true }
 jinn-session-store-msg = { workspace = true }
 jinn-turn-dispatch = { workspace = true }
 jinn-session-history-msg = { workspace = true }
-jinn-watchdog = { workspace = true, features = ["test-harness"] }
 jinn-provider = { workspace = true }
 jinn-chat-input = { workspace = true }
 jinn-chat-log-view = { workspace = true }
@@ -175,6 +176,7 @@ crossterm = { workspace = true }
 
 # Internal
 jinn-domain = { path = "crates/jinn-domain" }
+jinn-install = { path = "crates/jinn-install" }
 jinn-discord = { path = "crates/slices/jinn-discord" }
 jinn-discord-msg = { path = "crates/slices/jinn-discord-msg" }
 jinn-common = { path = "crates/jinn-common" }

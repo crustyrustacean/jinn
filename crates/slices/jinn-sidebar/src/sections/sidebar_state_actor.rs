@@ -23,7 +23,8 @@ use trouper::system::ActorSystem;
 use crate::sections::sessions;
 use jinn_chat_log_view_msg::{ArmPreviewDeadline, SessionPreviewRendered};
 use jinn_domain::common::state::State;
-use jinn_session_msg::{SessionArchiveFailed, SessionRemoved, SessionTeardownFinished};
+use jinn_session_lifecycle_msg::SessionTeardownFinished;
+use jinn_session_msg::{SessionArchiveFailed, SessionRemoved};
 
 /// The sidebar state actor's static trouper path.
 pub const SIDEBAR_STATE_PATH: &str = "sidebar-state";

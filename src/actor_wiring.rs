@@ -19,9 +19,9 @@ use jinn_domain::ConfigStorageService;
 use jinn_domain::LlmServiceFactoryService;
 use jinn_domain::ProviderRegistryService;
 use jinn_domain::Services;
-use jinn_domain::SessionStoreService;
 use jinn_provider_selection;
 use jinn_quake_bar;
+use jinn_session_state::SessionStoreService;
 use jinn_slices;
 
 use jinn_domain::common::actor_deps::ActorDeps;
@@ -413,7 +413,7 @@ impl ActorSystemBuilder {
         // tick self-kicks after the spawn handshake (B7).
         services
             .bus
-            .publish(jinn_domain::common::actor::protocol::event::ActorStarting {
+            .publish(jinn_slices::fabric::ActorStarting {
                 name: jinn_session_store::search_index_actor::SEARCH_INDEX_ROW_NAME.to_owned(),
                 description: Some("SearchIndexActor".to_owned()),
             })
@@ -428,7 +428,7 @@ impl ActorSystemBuilder {
         );
         services
             .bus
-            .publish(jinn_domain::common::actor::protocol::event::ActorStarted {
+            .publish(jinn_slices::fabric::ActorStarted {
                 name: jinn_session_store::search_index_actor::SEARCH_INDEX_ROW_NAME.to_owned(),
                 description: Some("SearchIndexActor".to_owned()),
             })
@@ -563,7 +563,10 @@ fn jinn_chat_log_view_activate(services: &mut Services, state: &jinn_domain::Sta
     // The layout worker pool and the actor that ends a session load once the
     // chat log has been measured. Spawned here so their subscriptions are
     // live before the first session can be loaded.
-    jinn_domain::feat::ui::chat_log::install_layout_actors(&services.trouper_system, state.clone());
+    jinn_chat_log_view::kernel_element::install_layout_actors(
+        &services.trouper_system,
+        state.clone(),
+    );
 }
 
 /// Activates the chat-input slice: its state cell only. No routes, no

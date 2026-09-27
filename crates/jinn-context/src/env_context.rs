@@ -8,7 +8,7 @@
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
-use jinn_persona_msg::Persona;
+use jinn_slices::Persona;
 
 /// Candidates for project context files, checked in order.
 const CONTEXT_FILE_CANDIDATES: &[&str] = &["AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];

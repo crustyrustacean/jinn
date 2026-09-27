@@ -314,7 +314,7 @@ fn refresh_models(ctx: &mut ActionCtx<'_>, _cell: &ProviderPickerCell) -> Intent
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    if jinn_domain::feat::session::validator::validate_refresh_models(state).is_err() {
+    if jinn_domain::session_lifecycle::validator::validate_refresh_models(state).is_err() {
         return IntentResult::empty();
     }
     state

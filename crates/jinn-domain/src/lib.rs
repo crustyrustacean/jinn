@@ -26,14 +26,16 @@ fn install_rustls_provider_for_tests() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 }
 
+pub mod chat_entry_selection;
 pub mod common;
 pub mod feat;
+pub mod session_lifecycle;
+pub mod state;
 
 // Kernel-side protocol vocabulary: intents, keys, and system events.
 pub mod protocol;
 
 // Re-export actor types that are still in use
-pub use common::actor::{ActorCounter, ActorName};
 // Re-export component types (state, UI)
 pub use common::app_paths::{AppPaths, BrowserProfileMode};
 pub use common::app_state::pin_sort_key;
@@ -69,11 +71,9 @@ pub use jinn_provider_config::{
 // Re-export context types
 
 // Re-export session types
-pub use feat::session::SessionStoreService;
 // The SQLite implementation moved to the jinn-session-store slice crate —
 // import it from there (`jinn_session_store::sqlite::SqliteSessionStore`).
 
-pub use feat::session::no_api_keys_msg;
 pub use jinn_session_msg::PhaseKind;
 
 // Re-export reasoning types
@@ -82,10 +82,6 @@ pub use jinn_session_msg::PhaseKind;
 // long-standing `jinn_domain::ReasoningEffort` paths keep resolving.
 pub use jinn_provider_selection_msg::ReasoningEffort;
 pub use jinn_provider_selection_msg::resolve_effort;
-// Re-export install (default resource seeding).
-pub use feat::install::{
-    Destinations, InstallError, InstallOutcome, InstallReport, JinnTomlOutcome, install_defaults_to,
-};
 
 // Re-export services submodules
 
@@ -98,11 +94,10 @@ pub use protocol::{
 };
 
 // Re-export domain types from their canonical locations
-pub use common::actor::protocol::command::ProceedWithShutdown;
-pub use common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting};
-pub use jinn_provider::LlmMessage;
+
 pub use jinn_session_history_msg::PushChatEntry;
 pub use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
+pub use jinn_slices::fabric::{ActorShutdownCompleted, ActorStarted, ActorStarting};
 // The curation contracts are owned by the context-curation slice's msg
 // crate (kernel→msg direction, same as the stream contracts); re-exported
 // here so the long-standing `jinn_domain::TriggerCompaction` path keeps

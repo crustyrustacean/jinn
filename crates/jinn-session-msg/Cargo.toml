@@ -13,7 +13,6 @@ trouper = { workspace = true }
 wherror = { workspace = true }
 
 jinn-config = { workspace = true }
-jinn-mcp-msg = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }

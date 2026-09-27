@@ -670,7 +670,8 @@ mod tests {
             .map(|c| c.read().live_terms.contains(chat))
             .unwrap_or(false)
     }
-    use jinn_domain::common::bus::test_harness::TestHarness;
+    use jinn_domain::common::bus::HarnessServices;
+    use jinn_testutil::bus_harness::TestHarness;
 
     const QUIET: Duration = Duration::from_millis(150);
     const CAP: Duration = Duration::from_secs(2);

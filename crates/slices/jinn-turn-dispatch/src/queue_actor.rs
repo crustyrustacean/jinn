@@ -57,12 +57,12 @@ use trouper::system::ActorSystem;
 
 use jinn_chat_input_msg::ChatEntrySubmitted;
 use jinn_context_assembly::inputs::build_assembly_inputs;
+use jinn_context_assembly::inputs_snapshot::assemble_via_service;
 use jinn_core_types::{ChatEntry, ChatEntryKind, ReasoningEffort, SessionId};
 use jinn_domain::common::actor_deps::BusPublish;
 use jinn_domain::common::services::Services;
 use jinn_domain::common::services::bus_service::BusService;
 use jinn_domain::common::state::State;
-use jinn_domain::feat::context::snapshot::assemble_via_service;
 use jinn_inference_msg::{SendToLlmProvider, StreamOrigin};
 use jinn_provider_selection::attachment_gate::evaluate_attachment_gate;
 use jinn_provider_selection_msg::resolve_effort;

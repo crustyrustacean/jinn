@@ -2326,7 +2326,7 @@ fn archive_tree_members_rejected_when_wrong_section() {
 // Archive tree - intent flow (arm, confirm, dismiss, busy flip)
 // ---------------------------------------------------------------------------
 
-use jinn_domain::feat::intent::IntentHandler;
+use jinn_domain::IntentHandler;
 use jinn_domain::protocol::KernelIntent;
 
 #[rstest::rstest]

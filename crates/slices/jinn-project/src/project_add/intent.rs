@@ -154,7 +154,7 @@ pub(super) fn open_project_add(
     state: &mut dyn jinn_slices::SliceActionState,
     cell: &ProjectAddCell,
 ) -> IntentResult {
-    let seeded = jinn_cwd_msg::shorten_path(&state.active_session_cwd());
+    let seeded = jinn_common::shorten_path(&state.active_session_cwd());
     cell.update(|s| {
         let mut text = jinn_slices::LineInput::new();
         text.set(seeded);

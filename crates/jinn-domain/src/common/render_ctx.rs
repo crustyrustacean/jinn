@@ -161,7 +161,6 @@ impl<'a> RenderCtx<'a> {
 /// Panics if the shared empty layer cannot be constructed. That can only
 /// fail if an empty document stops parsing, which is a build-time
 /// invariant of the layer rather than anything a caller can cause.
-#[cfg(any(test, feature = "test-harness"))]
 #[must_use]
 #[expect(
     clippy::expect_used,

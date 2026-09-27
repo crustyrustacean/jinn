@@ -167,7 +167,7 @@ mod tests {
     use jinn_domain::common::services::BusAudit;
     use jinn_domain::common::state::State;
     use jinn_domain::protocol::{ChatEntryId, PinPosition};
-    use jinn_persona_msg::Persona;
+    use jinn_slices::Persona;
 
     fn make_persona(name: &str) -> Persona {
         Persona {

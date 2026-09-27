@@ -17,6 +17,10 @@ pub mod lifecycle_script_state;
 pub mod picker_entry;
 pub mod picker_scope;
 pub mod picker_state;
+use std::path::PathBuf;
+
+use jinn_core_types::SessionId;
+use serde::{Deserialize, Serialize};
 
 pub use arg_input::{ArgInputState, arg_input_scope, arg_input_slot};
 pub use builtin::{BuiltinHandler, BuiltinHandlerError, BuiltinRegistry};
@@ -26,7 +30,6 @@ pub use command::{
 };
 pub use command_template::CommandTemplate;
 pub use event::{SessionCreated, SessionCwdChanged};
-pub use jinn_session_msg::{SessionSetupCompleted, SessionTeardownFinished};
 pub use lifecycle_script_state::LifecycleScriptState;
 pub use picker_entry::{SessionLifecycleEntry, lifecycle_row};
 pub use picker_scope::session_lifecycle_picker_scope;
@@ -41,4 +44,76 @@ pub use picker_state::{
 #[must_use]
 pub fn setup_running_msg() -> jinn_core_types::ChatEntry {
     jinn_core_types::ChatEntry::system("⚙️ Running setup script...")
+}
+
+/// Setup command completed (success or failure).
+///
+/// Emitted by the session-lifecycle actor after running a lifecycle
+/// setup command. On success, `cwd` is the directory reported by the
+/// command. On failure, `cwd` is the default CWD and `error` contains
+/// the failure details.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A session's setup command completed (success or failure).")]
+pub struct SessionSetupCompleted {
+    /// The session that was being set up.
+    pub session_id: SessionId,
+    /// The resulting CWD on success, or default CWD on failure.
+    pub cwd: PathBuf,
+    /// Error message if setup failed.
+    pub error: Option<String>,
+}
+
+/// Teardown command finished (success or failure).
+///
+/// Emitted by the session-lifecycle actor after running a lifecycle
+/// teardown command. On success, the session has already been removed
+/// from the sessions map. On failure, the session is still open and
+/// `error` describes the problem.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A session's teardown command finished (success or failure).")]
+pub struct SessionTeardownFinished {
+    /// The session that was being torn down.
+    pub session_id: SessionId,
+    /// Error message if teardown failed.
+    pub error: Option<String>,
+}
+
+impl jinn_slices::BusMessage for SessionSetupCompleted {}
+impl jinn_slices::BusMessage for SessionTeardownFinished {}
+
+#[cfg(test)]
+mod tests {
+    use super::{SessionSetupCompleted, SessionTeardownFinished};
+    use jinn_core_types::SessionId;
+    use std::path::PathBuf;
+
+    #[rstest::rstest]
+    #[test]
+    fn lifecycle_events_roundtrip_through_json() {
+        // Given one of each lifecycle event.
+        let id = SessionId::new();
+        let events = (
+            SessionSetupCompleted {
+                session_id: id.clone(),
+                cwd: PathBuf::from("/repo"),
+                error: Some("boom".to_owned()),
+            },
+            SessionTeardownFinished {
+                session_id: id.clone(),
+                error: None,
+            },
+        );
+
+        // When serializing and deserializing the tuple.
+        let json = serde_json::to_string(&events).unwrap();
+        let round: (SessionSetupCompleted, SessionTeardownFinished) =
+            serde_json::from_str(&json).unwrap();
+
+        // Then both survive with their fields intact.
+        assert_eq!(round.0.session_id, id);
+        assert_eq!(round.0.cwd, PathBuf::from("/repo"));
+        assert_eq!(round.0.error.as_deref(), Some("boom"));
+        assert_eq!(round.1.session_id, id);
+        assert_eq!(round.1.error, None);
+    }
 }

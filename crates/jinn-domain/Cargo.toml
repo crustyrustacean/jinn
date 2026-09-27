@@ -3,26 +3,15 @@ name = "jinn-domain"
 version.workspace = true
 edition.workspace = true
 
-[features]
-# Opt-in: compiles the full 36-grammar tree-sitter set for markdown code-block
-# highlighting instead of the curated default set (see root Cargo.toml).
-syntax-all = ["jinn-chat-log-view/syntax-all"]
-# Opt-in: exposes the bus test harness (in-crate tests enable it via
-# `cfg(test)`; downstream slice-crate tests opt in by feature).
-test-harness = []
-
 [dependencies]
 jinn-chat-input-msg = { workspace = true }
-jinn-chat-log-view = { workspace = true }
 jinn-chat-log-view-msg = { workspace = true }
-jinn-cwd-msg = { workspace = true }
 jinn-persona-msg = { workspace = true }
 jinn-project-msg = { workspace = true }
 jinn-sidebar-msg = { workspace = true }
 jinn-status-bar-msg = { workspace = true }
+jinn-theme = { workspace = true }
 jinn-theme-msg = { workspace = true }
-jinn-token-count-msg = { workspace = true }
-jinn-turn-dispatch-msg = { workspace = true }
 jinn-inference-msg = { workspace = true }
 jinn-provider-selection-msg = { workspace = true }
 jinn-session-init-msg = { workspace = true }
@@ -30,28 +19,26 @@ jinn-session-lifecycle-msg = { workspace = true }
 jinn-session-store-msg = { workspace = true }
 jinn-mcp-msg = { workspace = true }
 # Internal deps
-jinn-provider = { workspace = true }
 jinn-common = { workspace = true }
-jinn-context = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-llm-support = { workspace = true }
 jinn-session-history = { workspace = true }
 jinn-session-history-msg = { workspace = true }
+jinn-context = { workspace = true }
+jinn-picker = { workspace = true }
 jinn-context-curation-msg = { workspace = true }
 jinn-context-assembly-msg = { workspace = true }
-jinn-skills-msg = { workspace = true }
 jinn-tools-msg = { workspace = true }
 jinn-slices = { workspace = true }
+jinn-testutil = { workspace = true }
 jinn-term-msg = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-config = { workspace = true }
 jinn-session-msg = { workspace = true }
 jinn-session-state = { workspace = true }
+jinn-provider = { workspace = true }
 jinn-provider-config = { workspace = true }
-jinn-selection-widget = { workspace = true }
-jinn-picker = { workspace = true }
 
-jinn-theme = { workspace = true }
 
 # External deps
 serde = { workspace = true }
@@ -86,12 +73,13 @@ trouper = { workspace = true }
 [dev-dependencies]
 jinn-context-assembly = { workspace = true }
 jinn-context-curation = { workspace = true }
-# Enables the schema crate's migration-chain helpers for migration tests.
+# Enables the schema crate's migration-chain helpers. The `testing` feature is
+# unified into `jinn-session-schema`'s own integration tests, which is why this
+# dev-dep cannot be dropped while those tests live in that crate.
 jinn-session-schema = { workspace = true, features = ["testing"] }
 wasm-encoder = { workspace = true }
 indoc = "2"
 rstest = { workspace = true }
-jinn-testutil = { workspace = true }
 jinn-mcp = { workspace = true, features = ["testkit", "server-testkit"] }
 tokio = { workspace = true, features = ["test-util"] }
 jinn-common = { workspace = true, features = ["testing"] }
@@ -103,20 +91,6 @@ tracing-subscriber = { workspace = true }
 # the kernel, which is exactly what the slice-owned skill picker needs.
 jinn-skills = { workspace = true }
 
-
-[build-dependencies]
-# `build.rs` validates the session schema against a host-side SQLite database.
-rusqlite = { workspace = true }
-jinn-session-schema = { workspace = true }
-
-# The build script runs on the host, so this edge links the *system*
-# libsqlite3 on Linux/macOS — but Windows has no system SQLite import library,
-# which failed the host link with LNK1181 (sqlite3.lib). Enable rusqlite's
-# bundled build on Windows only so a from-source build needs no SQLite
-# installation there; the extra host amalgamation compile is cached and only
-# re-runs on cache-invalidating events (clean, toolchain/lockfile bumps).
-[target.'cfg(windows)'.build-dependencies]
-rusqlite = { workspace = true, features = ["bundled"] }
 
 [target.'cfg(windows)'.dependencies]
 # kill_tree provides Toolhelp32-based process-tree termination on Windows.

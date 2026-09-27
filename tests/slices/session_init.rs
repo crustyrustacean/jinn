@@ -13,10 +13,10 @@ use std::time::Duration;
 
 use jinn_core_types::SessionId;
 use jinn_domain::common::bridge::Bridge;
-use jinn_domain::common::bus::test_harness::{Recorder, await_recorded};
 use jinn_session_init_msg::{ContextFilesLoaded, PromptTemplatesLoaded};
 use jinn_session_lifecycle_msg::SessionCreated;
 use jinn_session_state::ChatSessionState;
+use jinn_testutil::bus_harness::{Recorder, await_recorded};
 use jinn_tui::TuiApp;
 
 use crate::common::test_app;
@@ -65,7 +65,7 @@ where
         + serde::de::DeserializeOwned
         + trouper::envelope::PayloadValue,
 {
-    jinn_domain::common::bus::test_harness::TestHarness::from_parts(
+    jinn_testutil::bus_harness::TestHarness::from_parts(
         app.services.bus.clone(),
         app.services.trouper_system.clone(),
     )

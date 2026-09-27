@@ -4,9 +4,6 @@ version.workspace = true
 edition.workspace = true
 description = "The watchdog slice: always-on behavioral supervision of in-flight turns (stall + tool-call watchdogs)."
 
-[features]
-test-harness = ["jinn-domain/test-harness"]
-
 [dependencies]
 jinn-core-types = { workspace = true }
 jinn-inference-msg = { workspace = true }
@@ -29,7 +26,7 @@ tokio = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
-jinn-domain = { workspace = true, features = ["test-harness"] }
+jinn-domain = { workspace = true }
 
 [lints]
 workspace = true

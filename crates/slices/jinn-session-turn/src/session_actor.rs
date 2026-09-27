@@ -64,7 +64,7 @@ pub const SESSION_MAILBOX_CAPACITY: usize = 65_536;
 ///
 /// The cache type lives in a msg crate `jinn-tools` does not depend on;
 /// this constructor spares cross-crate test wiring.
-#[cfg(any(test, feature = "test-harness"))]
+#[cfg(test)]
 pub fn default_token_cache() -> jinn_token_count_msg::HistoryWorkerChatEntryTokenCache {
     jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default()
 }
