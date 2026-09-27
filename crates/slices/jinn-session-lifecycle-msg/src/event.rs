@@ -13,9 +13,10 @@ use jinn_slices::BusMessage;
 
 /// A new chat session was created.
 ///
-/// Emitted by the intent handler when `handle_session_lifecycle_setup()` inserts
-/// a new session into the sessions map. Other actors subscribe to this event
-/// to run side effects (e.g., lifecycle scripts).
+/// Emitted when a session is created from a lifecycle — the shared state
+/// layer's `handle_session_lifecycle_setup()` inserts the new session into the
+/// sessions map and publishes this alongside it. Other actors subscribe to
+/// this event to run side effects (e.g., lifecycle scripts).
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
 #[schema(description = "A new chat session was created.")]
 pub struct SessionCreated {

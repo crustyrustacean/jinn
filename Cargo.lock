@@ -2009,6 +2009,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-app-state"
+version = "0.118.0"
+dependencies = [
+ "jinn-chat-input-msg",
+ "jinn-chat-log-view-msg",
+ "jinn-config",
+ "jinn-core-types",
+ "jinn-mcp-msg",
+ "jinn-persona-msg",
+ "jinn-preferences-config",
+ "jinn-project-msg",
+ "jinn-provider-selection-msg",
+ "jinn-session-history-msg",
+ "jinn-session-lifecycle-msg",
+ "jinn-session-msg",
+ "jinn-session-state",
+ "jinn-session-store-msg",
+ "jinn-sidebar-msg",
+ "jinn-slices",
+ "jinn-term-msg",
+ "jinn-theme",
+ "jinn-theme-msg",
+ "jinn-tools-msg",
+ "parking_lot",
+ "rstest",
+ "serde_json",
+ "tokio",
+ "wherror",
+]
+
+[[package]]
 name = "jinn-boot"
 version = "0.118.0"
 dependencies = [
@@ -2367,7 +2398,6 @@ version = "0.118.0"
 dependencies = [
  "error-stack",
  "jinn-core-types",
- "jinn-kernel",
  "jinn-mcp-msg",
  "jinn-sidebar-msg",
  "jinn-slices",
@@ -2503,6 +2533,7 @@ dependencies = [
  "error-stack",
  "indoc",
  "jiff",
+ "jinn-app-state",
  "jinn-chat-input-msg",
  "jinn-chat-log-view-msg",
  "jinn-common",
@@ -2524,7 +2555,6 @@ dependencies = [
  "jinn-provider",
  "jinn-provider-config",
  "jinn-provider-selection-msg",
- "jinn-session-history",
  "jinn-session-history-msg",
  "jinn-session-init-msg",
  "jinn-session-lifecycle-msg",
@@ -2670,6 +2700,7 @@ name = "jinn-persona"
 version = "0.118.0"
 dependencies = [
  "error-stack",
+ "jinn-app-state",
  "jinn-kernel",
  "jinn-persona-msg",
  "jinn-picker",
@@ -3492,6 +3523,7 @@ name = "jinn-theme-slice"
 version = "0.118.0"
 dependencies = [
  "error-stack",
+ "jinn-app-state",
  "jinn-chat-log-view",
  "jinn-chat-log-view-msg",
  "jinn-core-types",

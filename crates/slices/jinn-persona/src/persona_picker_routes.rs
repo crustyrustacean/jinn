@@ -64,10 +64,10 @@ pub const PERSONA_PICKER_BINDINGS: &[(&str, &str)] = &[("<enter>", "apply"), ("<
 /// This is the established slice-side seam; when the state is not the kernel's
 /// (a test double), the caller gets `None` and the action declines rather than
 /// panicking.
-fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_kernel::AppState> {
+fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_app_state::AppState> {
     ctx.state
         .as_any_mut()?
-        .downcast_mut::<jinn_kernel::AppState>()
+        .downcast_mut::<jinn_app_state::AppState>()
 }
 
 /// Wraps a picker action in an [`ActionFn`], handing it both the dispatch
@@ -240,10 +240,10 @@ pub fn register_persona_picker_input_hook(routes: &KeyRoutes, cell: &PersonaPick
 /// render pass fills the rows from the personas cell, so a caller needs no
 /// picker registry and no knowledge of the picker's contents.
 #[must_use]
-pub fn open_from_scope(state: &mut jinn_kernel::AppState) -> IntentResult {
+pub fn open_from_scope(state: &mut jinn_app_state::AppState) -> IntentResult {
     state
         .frontend
-        .scope_push(jinn_kernel::FocusScope::Dynamic(persona_picker_scope()));
+        .scope_push(jinn_slices::FocusScope::Dynamic(persona_picker_scope()));
     IntentResult::empty()
 }
 
@@ -272,7 +272,7 @@ fn open_persona_picker(ctx: &mut ActionCtx<'_>, cell: &PersonaPickerCell) -> Int
 
     state
         .frontend
-        .scope_push(jinn_kernel::FocusScope::Dynamic(persona_picker_scope()));
+        .scope_push(jinn_slices::FocusScope::Dynamic(persona_picker_scope()));
     IntentResult::empty()
 }
 
@@ -328,7 +328,7 @@ fn new_session(ctx: &mut ActionCtx<'_>, _cell: &PersonaPickerCell) -> IntentResu
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    jinn_kernel::session_lifecycle::intent::handle_session_new(state, config)
+    jinn_app_state::session_creation::intent::handle_session_new(state, config)
 }
 
 /// Clears a non-empty filter, or closes the picker when the filter is empty.

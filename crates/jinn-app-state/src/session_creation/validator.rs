@@ -2,7 +2,7 @@
 //!
 //! Validators for model refresh, prompt template rescan, and session creation.
 
-use crate::common::app_state::AppState;
+use crate::app_state::AppState;
 use wherror::Error;
 
 /// Errors from validating a RefreshModels intent.

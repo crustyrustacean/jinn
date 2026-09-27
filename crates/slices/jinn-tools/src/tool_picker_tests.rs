@@ -977,18 +977,18 @@ fn bound_through_an_action(wired: &Wired, key: &str) -> bool {
 #[rstest::rstest]
 fn the_picker_state_lives_only_in_its_slice_cell() {
     // The tool picker's state is reachable from exactly one place: the slice
-    // cell. A second copy in the kernel would let the menu show one store while
-    // a different one is written.
+    // cell. A second copy in the shared state layer would let the menu show
+    // one store while a different one is written.
 
-    // Given the kernel's frontend state source.
-    let kernel_source = include_str!("../../../jinn-kernel/src/state/frontend_state.rs");
+    // Given the shared frontend state source.
+    let state_source = include_str!("../../../jinn-app-state/src/frontend_state.rs");
 
     // When scanning it for picker state.
-    // Then the kernel must not hold tool picker state; the slice cell is the
-    // only home.
+    // Then the shared state layer holds no tool picker state; the slice cell
+    // is the only home.
     assert!(
-        !kernel_source.contains("tool_picker"),
-        "the kernel must not hold tool picker state; the slice cell is the only home"
+        !state_source.contains("tool_picker"),
+        "the shared state layer must not hold tool picker state; the slice cell is the only home"
     );
 }
 
@@ -1001,8 +1001,8 @@ fn the_kernel_names_no_tool_picker_at_all() {
     // Given the kernel and TUI sources that could name the picker.
     for (label, source) in [
         (
-            "jinn-kernel frontend state",
-            include_str!("../../../jinn-kernel/src/state/frontend_state.rs"),
+            "shared frontend state",
+            include_str!("../../../jinn-app-state/src/frontend_state.rs"),
         ),
         (
             "jinn-kernel intent handler",

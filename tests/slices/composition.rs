@@ -68,7 +68,7 @@ fn every_picker_scope() -> [(&'static str, jinn_slices::SliceScopeId); 12] {
     ]
 }
 
-/// The central crates whose sources the picker-decoupling guard reads.
+/// The central and shared crates whose sources the picker-decoupling guard reads.
 fn central_crate_sources() -> [(&'static str, &'static str); 6] {
     [
         (
@@ -80,8 +80,8 @@ fn central_crate_sources() -> [(&'static str, &'static str); 6] {
             include_str!("../../crates/jinn-kernel/src/protocol/intent.rs"),
         ),
         (
-            "jinn-kernel frontend state",
-            include_str!("../../crates/jinn-kernel/src/state/frontend_state.rs"),
+            "shared frontend state",
+            include_str!("../../crates/jinn-app-state/src/frontend_state.rs"),
         ),
         (
             "jinn-tui scope table",

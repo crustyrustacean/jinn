@@ -516,17 +516,17 @@ fn attached_key(wired: &Wired, key: &str) -> bool {
 
 #[rstest::rstest]
 fn the_picker_state_lives_only_in_its_slice_cell() {
-    // Given the kernel's frontend state, which must hold no persona picker
+    // Given the shared frontend state, which must hold no persona picker
     // state: the slice cell is the only home. A second copy there would let
     // the menu show one store while a different one is written — the defect
     // that left the skills menu blank.
-    let kernel_source = include_str!("../../../jinn-kernel/src/state/frontend_state.rs");
+    let state_source = include_str!("../../../jinn-app-state/src/frontend_state.rs");
 
     // When scanning it for the picker's vocabulary.
-    // Then no persona picker state is held in the kernel.
+    // Then no persona picker state is held in the shared state layer.
     assert!(
-        !kernel_source.contains("persona_picker"),
-        "the kernel must not hold persona picker state; the slice cell is the only home"
+        !state_source.contains("persona_picker"),
+        "the shared state layer must not hold persona picker state; the slice cell is the only home"
     );
 }
 
@@ -537,8 +537,8 @@ fn the_kernel_names_no_persona_picker_at_all() {
     // makes adding a picker a folder-local change.
     for (label, source) in [
         (
-            "jinn-kernel frontend state",
-            include_str!("../../../jinn-kernel/src/state/frontend_state.rs"),
+            "shared frontend state",
+            include_str!("../../../jinn-app-state/src/frontend_state.rs"),
         ),
         (
             "jinn-kernel intent handler",

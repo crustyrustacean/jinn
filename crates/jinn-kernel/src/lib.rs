@@ -16,6 +16,13 @@
 //! - **Common** (`common/`) - shared infrastructure (bus, services, app paths,
 //!   TOML patching), most of which is re-exported from the `jinn-common` crate.
 //!
+//! The shared application state and the session-creation operations that
+//! mutate it are **not** defined here: they live in `jinn-app-state`, a crate
+//! beneath the kernel, so a slice can reach the state without depending on the
+//! kernel. [`AppState`] and [`session_lifecycle`] below re-export those
+//! definitions, which keeps every existing `jinn_kernel::…` path resolving
+//! while leaving the dependency pointing one way.
+//!
 //! Foundational types are re-exported at the crate root for convenience.
 
 /// Installs the process-wide rustls crypto provider (ring) in this crate's
@@ -41,13 +48,16 @@ pub mod protocol;
 // Re-export actor types that are still in use
 // Re-export component types (state, UI)
 pub use common::app_paths::{AppPaths, BrowserProfileMode};
-pub use common::app_state::pin_sort_key;
-pub use common::app_state::{AppState, FrontendState, SessionState};
+// The shared state is defined in `jinn-app-state`; these keep the long-standing
+// `jinn_kernel::AppState` paths resolving without duplicating the type.
 pub use common::bridge::{Bridge, BridgeClosure};
 pub use common::bus::BusMessage;
 pub use common::render_ctx::RenderCtx;
 pub use common::state::{State, StateReadGuard, StateWriteGuard};
 pub use common::{AppUiRegistry, register_all_ui_elements};
+pub use jinn_app_state::app_state::pin_sort_key;
+pub use jinn_app_state::app_state::{AppState, SessionState};
+pub use jinn_app_state::frontend_state::{FrontendState, PendingSessionCreation};
 pub use jinn_context::PromptTemplateStore;
 pub use jinn_core_types::NO_PROVIDER_ID;
 pub use jinn_slices::{FocusScope, ScopeStack, TuiSignals};
