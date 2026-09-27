@@ -310,6 +310,9 @@ Entries are added or amended **only with human approval**.
 - (preview) The session preview cache is keyed by session, so moving the cursor between sessions serves a preview from memory rather than re-rendering it.
 - (preview) A session preview render is abandoned on its deadline but a late result is still cached; a result is discarded only when a newer request for the same session supersedes it.
 - (preview) A preview request identical to one already in flight is not republished.
+- (preview) The session preview popup has a fixed height, derived from the preview's line budget rather than from how many lines its content happens to render to.
+- (preview) Session preview content is anchored to the bottom of the popup's content area, with overflow dropped from the front, so the newest entry is always the last visible row.
+- (preview) The session preview popup draws its loading indicator on the last row of its content area, horizontally centred, matching the chat log's session-load line.
 - (session) Session activation is one command: the session store actor skips the disk read for a session already in memory and measures its chat log instead, so the sidebar, the session picker, and subagent entry all behave alike.
 - (ui) The spinner animation interval is a single shared constant, but the animation *state* is per widget: the three loading indicators render through `throbber-widgets-tui`'s stateful widget, and only the session preview derives its glyph from elapsed time, because it is a bare paragraph with no widget to hold state.
 - (slices) The chat input box is owned by the `jinn-chat-input` slice: its element, validation, autocomplete rendering, directory-lister actor, and keybinds.
@@ -323,3 +326,10 @@ Entries are added or amended **only with human approval**.
 - (slices) A message crate never depends on another message crate; a type two message crates both need is shared vocabulary and lives in a common or kernel crate.
 - (testing) The bus test harness lives in jinn-testutil and is available to every crate without a feature flag.
 - (arch) Displayed UI elements are registered by composition in jinn-tui, because the kernel's element registry cannot reference slice crates.
+- (slices) The chat-log slice owns the chat log's user actions as route rows — scrolling, cursor selection, pinning, forking, yanking, entry context toggles, and the audit popup — with the kernel holding no chat-log intent variant.
+- (slices) The audit popup's visibility is a chat-log slice cell, not a frontend state field.
+- (keybinds) Mouse-wheel scrolling of the chat log resolves through the kernel's crossterm mouse handler, which the route table cannot express.
+- (keybinds) The Normal-scope p pin binding remains guarded against Leaf-to-Branch keymap promotion by a composition-level test over the chat log's rows.
+- (keybinds) Which-key group labels belong to the keymap, not to route rows: a chord prefix derived from a slice-owned row is labeled with that slice's feature string rather than a human label, so a chord's wording is declared where the chords are declared and only its leaves migrate into the slice.
+- (slices) A kernel-side dispatcher that must recognize a specific slice action compares the action name from that family's -msg crate rather than calling into the slice, because the kernel may not name a slice implementation symbol.
+- (testing) The TUI test app builder does not run slice activation, so a cell that a TUI render adapter reads must also be registered in the builder or the adapter silently renders nothing while its tests still pass green.

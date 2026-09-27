@@ -58,13 +58,11 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             // Input - enter input mode. The `i` and `<c-j>` keys for this
             // are the chat input slice's own row (bound in the `Normal`
             // static scope), not a kernel bind.
-            // Navigation - scrolling and tab switching
-            .bind("k", KernelIntent::ChatEntrySelectPrev, KeyCategory::Navigation)
-            .bind("j", KernelIntent::ChatEntrySelectNext, KeyCategory::Navigation)
+            // Navigation - tab switching. The chat log's own keys (cursor,
+            // scroll, pin, fork, yank, jump chords) are route rows the log
+            // slice attaches; they bind into this scope after these static
+            // binds, so the keymap resolves them to `Intent::Dynamic`.
             .bind("<Tab>", KernelIntent::SwitchTab, KeyCategory::Navigation)
-
-            .bind("<c-u>", KernelIntent::ScrollUp, KeyCategory::Navigation)
-            .bind("<c-d>", KernelIntent::ScrollDown, KeyCategory::Navigation)
             // Change CWD - search from session CWD
             .bind("<M-c>", KernelIntent::ChangeCwd { root: CwdRoot::Session }, KeyCategory::Navigation)
             // Change CWD - search from home directory
@@ -74,42 +72,12 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             .describe_group_with_category("gm", "model", KeyCategory::Model)
             .describe_group_with_category("gc", "context", KeyCategory::Context)
             .describe_group_with_category("<leader>c", "change", KeyCategory::General)
-            .bind("gg", KernelIntent::ScrollToTop, KeyCategory::Navigation)
-            .bind("G", KernelIntent::ScrollToBottom, KeyCategory::Navigation)
             .bind("gmr", KernelIntent::RefreshModels, KeyCategory::Model)
             .bind("gcr", KernelIntent::RescanPromptTemplates, KeyCategory::Context)
-            // Isolate selected entry: force-include its tool loop, force-exclude the rest
-            .bind("gci", KernelIntent::ChatEntryIsolateSelected, KeyCategory::Context)
-            // Minimap navigation
-            // Pin selected entry
-            .bind("p", KernelIntent::ChatEntryPinSelected, KeyCategory::ChatHistory)
-            .bind("x", KernelIntent::ChatEntryIgnoreSelected, KeyCategory::ChatHistory)
-            // Reset selected entry to default context
-            .bind("r", KernelIntent::ChatEntryResetSelected, KeyCategory::ChatHistory)
-            // Expand/collapse tool entry
-            .bind("e", KernelIntent::ExpandToolEntry, KeyCategory::ChatHistory)
-            // Toggle audit popup for the selected entry
-            .bind("a", KernelIntent::ToggleAuditPopup, KeyCategory::ChatHistory)
-            // Toggle ignored block visibility
-            .bind("h", KernelIntent::ToggleIgnoredBlockVisibility, KeyCategory::ChatHistory)
-            // Fork session from selected entry
-            .bind("f", KernelIntent::ForkFromEntry, KeyCategory::ChatHistory)
-            // New session seeded with selected entry (no inherited history)
-            .bind("F", KernelIntent::NewSessionFromEntry, KeyCategory::ChatHistory)
-            // Yank (copy) selected entry to clipboard
-            .bind("y", KernelIntent::YankSelectedEntry, KeyCategory::ChatHistory)
-            // Jump to next/previous compaction summary entry
+            // Jump chords the log binds as rows keep their group labels here;
+            // the rows supply the leaves.
             .describe_group_with_category("]", "next", KeyCategory::ChatHistory)
             .describe_group_with_category("[", "previous", KeyCategory::ChatHistory)
-            .bind("]c", KernelIntent::ChatEntryJumpNextCompaction, KeyCategory::ChatHistory)
-            .bind("[c", KernelIntent::ChatEntryJumpPrevCompaction, KeyCategory::ChatHistory)
-            .bind("]u", KernelIntent::ChatEntryJumpNextUserEntry, KeyCategory::ChatHistory)
-            .bind("[u", KernelIntent::ChatEntryJumpPrevUserEntry, KeyCategory::ChatHistory)
-            .bind("]p", KernelIntent::ChatEntryJumpNextPinned, KeyCategory::ChatHistory)
-            .bind("[p", KernelIntent::ChatEntryJumpPrevPinned, KeyCategory::ChatHistory)
-            // Jump to next/previous Sources (annotation) entry
-            .bind("]s", KernelIntent::ChatEntryJumpNextSources, KeyCategory::ChatHistory)
-            .bind("[s", KernelIntent::ChatEntryJumpPrevSources, KeyCategory::ChatHistory)
             // Session creation
             .bind("n", KernelIntent::SessionNew, KeyCategory::General)
             // Escape: cancel selection
@@ -148,9 +116,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, KernelIntent, KeyCategory> {
             .bind("<M-c>", KernelIntent::ChangeCwd { root: CwdRoot::Session }, KeyCategory::Navigation)
             // Change CWD - search from home directory
             .bind("<M-d>", KernelIntent::ChangeCwd { root: CwdRoot::Home }, KeyCategory::Navigation)
-            .bind("<f1>", KernelIntent::ToggleWhichkey, KeyCategory::General)
-            .bind("<c-u>", KernelIntent::ScrollUp, KeyCategory::Navigation)
-            .bind("<c-d>", KernelIntent::ScrollDown, KeyCategory::Navigation);
+            .bind("<f1>", KernelIntent::ToggleWhichkey, KeyCategory::General);
         });
 
     // The chat input box's printable-character catch-all. It lives here,
@@ -177,37 +143,6 @@ mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
     use super::*;
 
-    /// Regression test for ratatui-which-key v0.12.1: when a key is bound as a
-    /// leaf in one scope (Normal) and used as a describe_group prefix in
-    /// another scope (the sidebar sessions scope), the leaf must survive the
-    /// Leaf→Branch promotion. Before the fix, the library dropped the
-    /// existing binding and the catch-all fired instead.
-    #[rstest::rstest]
-    #[test]
-    fn p_prefix_group_in_sidebar_does_not_drop_normal_pin_binding() {
-        use crate::app::WhichKeyInstance;
-        use jinn_kernel::{Key, Modifiers};
-
-        // Given a fresh keymap with no custom bindings.
-        let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::Normal);
-
-        // When pressing 'p' alone.
-        let intent = wk.handle_key(jinn_kernel::KeyEvent {
-            key: Key::Char('p'),
-            modifiers: Modifiers::none(),
-        });
-
-        // Then it fires ChatEntryPinSelected (not a chord prefix).
-        assert!(
-            matches!(
-                intent,
-                Some(jinn_kernel::KernelIntent::ChatEntryPinSelected)
-            ),
-            "'p' in Normal scope should fire ChatEntryPinSelected; got {intent:?}",
-        );
-    }
-
     #[rstest::rstest]
     fn the_kernel_defines_no_static_scope_for_the_reasoning_picker() {
         // The reasoning picker is slice-owned: its own scope is a
@@ -220,216 +155,6 @@ mod tests {
              reasoning picker"
         );
     }
-
-    #[rstest::rstest]
-    fn bracket_c_chord_resolves_to_jump_compaction_intents() {
-        // Given the default keymap.
-        use jinn_kernel::{Key, KeyEvent, Modifiers};
-        use ratatui_which_key::NodeResult;
-        let keymap = init();
-
-        // When navigating ]c (next compaction) in Normal scope.
-        let next_path = [
-            KeyEvent {
-                key: Key::Char(']'),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('c'),
-                modifiers: Modifiers::none(),
-            },
-        ];
-        let next_result = keymap
-            .navigate(&next_path, &Scope::Normal)
-            .expect("]c path exists");
-
-        // Then it resolves to ChatEntryJumpNextCompaction.
-        match next_result {
-            NodeResult::Leaf { action } => assert!(
-                matches!(action, KernelIntent::ChatEntryJumpNextCompaction),
-                "]c must resolve to ChatEntryJumpNextCompaction; got {action:?}",
-            ),
-            other => panic!("]c must be a leaf, got branch: {other:?}"),
-        }
-
-        // When navigating [c (previous compaction) in Normal scope.
-        let prev_path = [
-            KeyEvent {
-                key: Key::Char('['),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('c'),
-                modifiers: Modifiers::none(),
-            },
-        ];
-        let prev_result = keymap
-            .navigate(&prev_path, &Scope::Normal)
-            .expect("[c path exists");
-
-        // Then it resolves to ChatEntryJumpPrevCompaction.
-        match prev_result {
-            NodeResult::Leaf { action } => assert!(
-                matches!(action, KernelIntent::ChatEntryJumpPrevCompaction),
-                "[c must resolve to ChatEntryJumpPrevCompaction; got {action:?}",
-            ),
-            other => panic!("[c must be a leaf, got branch: {other:?}"),
-        }
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn bracket_c_chord_does_not_resolve_in_input_scope() {
-        // Given the default keymap queried in Input scope.
-        // Input scope has a catch-all that turns every Char into InsertChar,
-        // so the `]c` / `[c` jump chords (bound only in Normal) must never fire here.
-        use crate::app::WhichKeyInstance;
-        use jinn_kernel::{Key, KeyEvent, Modifiers};
-
-        let keymap = init();
-        let mut wk = WhichKeyInstance::new(keymap, Scope::Input);
-
-        let bracket = KeyEvent {
-            key: Key::Char(']'),
-            modifiers: Modifiers::none(),
-        };
-
-        // When pressing `]` in Input scope.
-        let intent = wk.handle_key(bracket);
-
-        // Then it resolves to the chat input's `insert-char` action, not
-        // the jump chord prefix. The `]c` jump intents are therefore
-        // unreachable in Input scope.
-        let intent = intent.expect("] in Input scope must fire an intent (catch-all)");
-        match intent {
-            KernelIntent::Dynamic(dynamic) => {
-                assert_eq!(
-                    dynamic.action, "insert-char",
-                    "] in Input scope must insert a literal ], not start the jump chord; got {dynamic:?}",
-                );
-                assert_eq!(
-                    String::from_utf8(dynamic.bytes).ok().as_deref(),
-                    Some("]"),
-                    "the typed character travels in the intent payload",
-                );
-            }
-            other => panic!(
-                "] in Input scope must insert a literal ], not start the jump chord; got {other:?}"
-            ),
-        }
-    }
-
-    #[rstest::rstest]
-    fn bracket_p_chord_resolves_to_jump_pinned_intents() {
-        // Given the default keymap.
-        use jinn_kernel::{Key, KeyEvent, Modifiers};
-        use ratatui_which_key::NodeResult;
-        let keymap = init();
-
-        // When navigating ]p (next pinned) in Normal scope.
-        let next_path = [
-            KeyEvent {
-                key: Key::Char(']'),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('p'),
-                modifiers: Modifiers::none(),
-            },
-        ];
-        let next_result = keymap
-            .navigate(&next_path, &Scope::Normal)
-            .expect("]p path exists");
-
-        // Then it resolves to ChatEntryJumpNextPinned.
-        match next_result {
-            NodeResult::Leaf { action } => assert!(
-                matches!(action, KernelIntent::ChatEntryJumpNextPinned),
-                "]p must resolve to ChatEntryJumpNextPinned; got {action:?}",
-            ),
-            other => panic!("]p must be a leaf, got branch: {other:?}"),
-        }
-
-        // When navigating [p (previous pinned) in Normal scope.
-        let prev_path = [
-            KeyEvent {
-                key: Key::Char('['),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('p'),
-                modifiers: Modifiers::none(),
-            },
-        ];
-        let prev_result = keymap
-            .navigate(&prev_path, &Scope::Normal)
-            .expect("[p path exists");
-
-        // Then it resolves to ChatEntryJumpPrevPinned.
-        match prev_result {
-            NodeResult::Leaf { action } => assert!(
-                matches!(action, KernelIntent::ChatEntryJumpPrevPinned),
-                "[p must resolve to ChatEntryJumpPrevPinned; got {action:?}",
-            ),
-            other => panic!("[p must be a leaf, got branch: {other:?}"),
-        }
-    }
-
-    #[rstest::rstest]
-    fn bracket_s_chord_resolves_to_jump_sources_intents() {
-        // Given the default keymap.
-        use jinn_kernel::{Key, KeyEvent, Modifiers};
-        use ratatui_which_key::NodeResult;
-        let keymap = init();
-
-        // When navigating ]s (next sources) in Normal scope.
-        let next_path = [
-            KeyEvent {
-                key: Key::Char(']'),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('s'),
-                modifiers: Modifiers::none(),
-            },
-        ];
-        let next_result = keymap
-            .navigate(&next_path, &Scope::Normal)
-            .expect("]s path exists");
-
-        // Then it resolves to ChatEntryJumpNextSources.
-        match next_result {
-            NodeResult::Leaf { action } => assert!(
-                matches!(action, KernelIntent::ChatEntryJumpNextSources),
-                "]s must resolve to ChatEntryJumpNextSources; got {action:?}",
-            ),
-            other => panic!("]s must be a leaf, got branch: {other:?}"),
-        }
-
-        // When navigating [s (previous sources) in Normal scope.
-        let prev_path = [
-            KeyEvent {
-                key: Key::Char('['),
-                modifiers: Modifiers::none(),
-            },
-            KeyEvent {
-                key: Key::Char('s'),
-                modifiers: Modifiers::none(),
-            },
-        ];
-        let prev_result = keymap
-            .navigate(&prev_path, &Scope::Normal)
-            .expect("[s path exists");
-
-        // Then it resolves to ChatEntryJumpPrevSources.
-        match prev_result {
-            NodeResult::Leaf { action } => assert!(
-                matches!(action, KernelIntent::ChatEntryJumpPrevSources),
-                "[s must resolve to ChatEntryJumpPrevSources; got {action:?}",
-            ),
-            other => panic!("[s must be a leaf, got branch: {other:?}"),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -437,35 +162,6 @@ mod leak_check {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
     use crate::keymap::init;
     use crate::scope::Scope;
-    use ratatui_which_key::Keymap as WKKeymap;
-
-    #[rstest::rstest]
-    #[test]
-    fn normal_scope_still_shows_chathistory_and_sidebar_groups() {
-        // Regression: the library fix must not remove ChatHistory groups from
-        // Normal scope where they legitimately belong. The `p` key in Normal
-        // scope is a leaf (ChatEntryPinSelected → "pin entry"), not the
-        // sessions branch, so we only assert the bracket groups here.
-        let keymap: WKKeymap<
-            jinn_kernel::KeyEvent,
-            Scope,
-            jinn_kernel::KernelIntent,
-            crate::keymap::KeyCategory,
-        > = init();
-        let groups = keymap.bindings_for_scope(Scope::Normal);
-        let all_desc: Vec<&str> = groups
-            .iter()
-            .flat_map(|g| g.bindings.iter().map(|b| b.description.as_str()))
-            .collect();
-        assert!(
-            all_desc.iter().any(|d| d.contains("next")),
-            "next group should appear in Normal scope; got {all_desc:?}"
-        );
-        assert!(
-            all_desc.iter().any(|d| d.contains("previous")),
-            "previous group should appear in Normal scope; got {all_desc:?}"
-        );
-    }
 
     /// Normal-mode <enter> opens the selected task call's subagent session.
     /// Also guards against accidental rebinding: nothing else may claim

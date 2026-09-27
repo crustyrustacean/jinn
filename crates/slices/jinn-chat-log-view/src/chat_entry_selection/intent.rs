@@ -1,21 +1,22 @@
 //! Chat entry selection intent handlers - navigate and pin entries.
 
-use crate::ChatEntry;
-use crate::ChatEntryKind;
-use crate::common::app_state::AppState;
-use crate::protocol::{IntentResult, PinPosition};
 use jinn_chat_log_view_msg::VisualItem;
+use jinn_core_types::ChatEntry;
+use jinn_core_types::ChatEntryKind;
+use jinn_core_types::PinPosition;
+use jinn_kernel::AppState;
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
 use jinn_session_state::ChatSessionState;
 use jinn_session_store_msg::SessionForkRequested;
+use jinn_slices::RouteResult;
 
 use super::validator;
 
 /// Advances the selection cursor by one entry, paging the viewport if needed.
 ///
 /// Returns `false` if already at the last entry (no-op).
-pub(crate) fn advance_selection_one(session: &mut ChatSessionState) -> bool {
+pub fn advance_selection_one(session: &mut ChatSessionState) -> bool {
     let visible = session.visible_entry_range();
     let current = session.selected_entry_index();
     let items = session.visual_items_snapshot();
@@ -56,10 +57,10 @@ pub(crate) fn advance_selection_one(session: &mut ChatSessionState) -> bool {
 /// If the cursor is on the last visible entry, pages the viewport down first,
 /// then advances the cursor by exactly 1 (not jump to first visible in new viewport).
 /// Clamps at the last entry in history - no wrapping.
-pub fn handle_select_next(state: &mut AppState) -> IntentResult {
+pub fn handle_select_next(state: &mut AppState) -> RouteResult {
     validator::validate_chat_entry_select_next(state);
     advance_selection_one(state.active_session_mut());
-    IntentResult::empty()
+    RouteResult::empty()
 }
 
 /// Selects the previous chat entry in the active session.
@@ -70,7 +71,7 @@ pub fn handle_select_next(state: &mut AppState) -> IntentResult {
     clippy::else_if_without_else,
     reason = "no-op on fallthrough is intentional"
 )]
-pub fn handle_select_prev(state: &mut AppState) -> IntentResult {
+pub fn handle_select_prev(state: &mut AppState) -> RouteResult {
     validator::validate_chat_entry_select_prev(state);
     let session = state.active_session_mut();
     let visible = session.visible_entry_range();
@@ -79,7 +80,7 @@ pub fn handle_select_prev(state: &mut AppState) -> IntentResult {
     if let Some(cur) = current {
         if cur == 0 {
             // Already at first entry - no-op.
-            return IntentResult::empty();
+            return RouteResult::empty();
         }
         // Check if cursor is at first visible entry.
         let first_visible = if visible.is_empty() {
@@ -98,7 +99,7 @@ pub fn handle_select_prev(state: &mut AppState) -> IntentResult {
     } else if !session.history().is_empty() {
         session.select_prev_entry();
     }
-    IntentResult::empty()
+    RouteResult::empty()
 }
 
 /// Resolve the anchor history index for a compaction jump.
@@ -138,14 +139,14 @@ fn jump_anchor(session: &ChatSessionState) -> Option<usize> {
 /// Scans forward — exclusive of the anchor — for the first compaction entry.
 /// Clamps (no wrap): a silent no-op if no compaction exists beyond the
 /// anchor. The viewport auto-follows the new cursor.
-pub fn handle_jump_next_entry<F>(state: &mut AppState, cb: F) -> IntentResult
+pub fn handle_jump_next_entry<F>(state: &mut AppState, cb: F) -> RouteResult
 where
     F: Fn(&ChatEntry) -> bool,
 {
     let target_id = {
         let session = state.active_session();
         let Some(anchor) = jump_anchor(session) else {
-            return IntentResult::empty();
+            return RouteResult::empty();
         };
         session
             .history()
@@ -157,7 +158,7 @@ where
     if let Some(id) = target_id {
         state.active_session_mut().set_selected_cursor_id(id);
     }
-    IntentResult::empty()
+    RouteResult::empty()
 }
 
 /// Jump the cursor to the previous (older) compaction summary entry.
@@ -167,14 +168,14 @@ where
 /// Scans backward — exclusive of the anchor — for the first compaction entry.
 /// Clamps (no wrap): a silent no-op if no compaction exists beyond the
 /// anchor. The viewport auto-follows the new cursor.
-pub fn handle_jump_prev_entry<F>(state: &mut AppState, cb: F) -> IntentResult
+pub fn handle_jump_prev_entry<F>(state: &mut AppState, cb: F) -> RouteResult
 where
     F: Fn(&ChatEntry) -> bool,
 {
     let target_id = {
         let session = state.active_session();
         let Some(anchor) = jump_anchor(session) else {
-            return IntentResult::empty();
+            return RouteResult::empty();
         };
         session
             .history()
@@ -186,34 +187,34 @@ where
     if let Some(id) = target_id {
         state.active_session_mut().set_selected_cursor_id(id);
     }
-    IntentResult::empty()
+    RouteResult::empty()
 }
 
 /// Toggles the pin state of the currently selected chat entry.
 ///
 /// If the entry is pinned, sends an `UnpinChatEntry` command.
 /// If the entry is not pinned, sends a `PinChatEntry` command with `Relative` position.
-pub fn handle_pin_selected(state: &mut AppState) -> IntentResult {
+pub fn handle_pin_selected(state: &mut AppState) -> RouteResult {
     tracing::debug!("handle_pin_selected called");
-    if validator::validate_chat_entry_pin_selected(state).is_err() {
+    if validator::validate_pin_selected(state).is_err() {
         tracing::debug!("validation failed");
-        return IntentResult::empty();
+        return RouteResult::empty();
     }
 
     let session_id = state.session.active_session_id().clone();
     let Some(selected) = state.active_session().selected_entry() else {
         tracing::debug!("active session doesnt match session id");
-        return IntentResult::empty();
+        return RouteResult::empty();
     };
     let entry_id = selected.id.clone();
 
     if selected.is_pinned() {
-        IntentResult::new_message(UnpinChatEntry {
+        RouteResult::new_message(UnpinChatEntry {
             session_id,
             entry_id,
         })
     } else {
-        IntentResult::new_message(PinChatEntry {
+        RouteResult::new_message(PinChatEntry {
             session_id,
             entry_id,
             position: PinPosition::Relative,
@@ -222,17 +223,17 @@ pub fn handle_pin_selected(state: &mut AppState) -> IntentResult {
 }
 
 /// Toggles expand/collapse of the selected tool entry (tool call, tool result, or annotation).
-pub fn handle_expand_tool_entry(state: &mut AppState) -> IntentResult {
+pub fn handle_expand_tool_entry(state: &mut AppState) -> RouteResult {
     if validator::validate_expand_tool_entry(state).is_err() {
-        return IntentResult::empty();
+        return RouteResult::empty();
     }
 
     let Some(entry_id) = state.active_session().selected_entry_id().cloned() else {
-        return IntentResult::empty();
+        return RouteResult::empty();
     };
 
     state.active_session_mut().toggle_expand_entry(entry_id);
-    IntentResult::empty()
+    RouteResult::empty()
 }
 
 /// Toggles visibility of ignored entries in the selected visual item's block.
@@ -241,10 +242,10 @@ pub fn handle_expand_tool_entry(state: &mut AppState) -> IntentResult {
 /// - If the selected item is an ignored entry in an expanded block → collapse the block.
 /// - If the selected item is a non-ignored entry → no-op.
 /// - If nothing is selected → no-op.
-pub fn handle_toggle_ignored_block(state: &mut AppState) -> IntentResult {
+pub fn handle_toggle_ignored_block(state: &mut AppState) -> RouteResult {
     let session = state.active_session();
     let Some(vi_idx) = session.selected_entry_index() else {
-        return IntentResult::empty();
+        return RouteResult::empty();
     };
 
     let history = session.history();
@@ -254,28 +255,28 @@ pub fn handle_toggle_ignored_block(state: &mut AppState) -> IntentResult {
         Some(VisualItem::CollapsedIgnoredBlock { start, .. }) => {
             // Block is collapsed → expand it.
             let Some(entry) = history.get(*start) else {
-                return IntentResult::empty();
+                return RouteResult::empty();
             };
             entry.id.clone()
         }
         Some(VisualItem::Entry(hist_idx)) => {
             // Entry might be in an expanded ignored block → collapse it.
             let Some(entry) = history.get(*hist_idx) else {
-                return IntentResult::empty();
+                return RouteResult::empty();
             };
             if entry.is_in_context() {
-                return IntentResult::empty();
+                return RouteResult::empty();
             }
             entry.id.clone()
         }
-        None => return IntentResult::empty(),
+        None => return RouteResult::empty(),
     };
 
     drop(items);
     state
         .active_session_mut()
         .toggle_ignored_block_visibility(&entry_id);
-    IntentResult::empty()
+    RouteResult::empty()
 }
 
 /// Forks the session at the currently selected chat entry.
@@ -284,21 +285,21 @@ pub fn handle_toggle_ignored_block(state: &mut AppState) -> IntentResult {
 /// selected entry's index in the history. The session actor handles the
 /// actual fork in SQLite and loads the new session.
 ///
-/// No longer panics — returns `IntentResult::empty()` if the selected
+/// No longer panics — returns `RouteResult::empty()` if the selected
 /// entry cannot be resolved after validation.
-pub fn handle_fork_from_entry(state: &mut AppState) -> IntentResult {
+pub fn handle_fork_from_entry(state: &mut AppState) -> RouteResult {
     if super::validator::validate_fork_from_entry(state).is_err() {
-        return IntentResult::empty();
+        return RouteResult::empty();
     }
 
     let source_session_id = state.session.active_session_id().clone();
     let Some(at_ordinal) = state.active_session().selected_history_index() else {
-        return IntentResult::empty();
+        return RouteResult::empty();
     };
 
     state.session.begin_load(source_session_id.clone());
 
-    IntentResult::new_message(SessionForkRequested {
+    RouteResult::new_message(SessionForkRequested {
         source_session_id,
         at_ordinal,
     })
@@ -321,16 +322,44 @@ pub fn handle_fork_from_entry(state: &mut AppState) -> IntentResult {
 pub fn handle_new_session_from_entry(
     state: &mut AppState,
     config: &jinn_config::ConfigLayer,
-) -> IntentResult {
+) -> RouteResult {
+    seed_new_session_with_entry(state, config, |state| {
+        jinn_kernel::session_lifecycle::intent::handle_session_lifecycle_setup(
+            state,
+            "",
+            &[],
+            None,
+            config,
+        )
+    })
+}
+
+/// Creates a fresh session with `create` and seeds it with the selected
+/// entry's text.
+///
+/// The session is created through `create` rather than here, so the
+/// route action stays the one place that names the kernel's
+/// lifecycle entry point while this function keeps the order that
+/// matters: validate, capture the source text, *then* create. Creating
+/// first would leave an empty session behind whenever the validator
+/// rejects.
+pub fn seed_new_session_with_entry<C>(
+    state: &mut AppState,
+    _config: &jinn_config::ConfigLayer,
+    create: C,
+) -> RouteResult
+where
+    C: FnOnce(&mut AppState) -> RouteResult,
+{
     if super::validator::validate_new_session_from_entry(state).is_err() {
-        return IntentResult::empty();
+        return RouteResult::empty();
     }
 
     // Capture the source entry's text and kind BEFORE the active session
-    // changes — the lifecycle setup switches the active session to the new one.
+    // changes — creating the session switches the active session to the new one.
     let (text, is_assistant) = {
         let Some(entry) = state.active_session().selected_entry() else {
-            return IntentResult::empty();
+            return RouteResult::empty();
         };
         (
             entry.text(),
@@ -339,22 +368,16 @@ pub fn handle_new_session_from_entry(
     };
 
     // Create a fresh empty session (inherits model/persona/CWD).
-    let result = crate::session_lifecycle::intent::handle_session_lifecycle_setup(
-        state,
-        "",
-        &[],
-        None,
-        config,
-    );
+    let created = create(state);
 
-    // After setup, the active session is the new one.
+    // After creation, the active session is the new one.
     let new_session_id = state.session.active_session_id().clone();
     // Build a fresh seed entry preserving kind (new id/timing).
     let seed = build_seed_entry(text, is_assistant);
 
     // Chain PushChatEntry; the session actor pushes and persists. Do NOT push
     // in-memory — that would double-push against the actor's push_entry.
-    result.with_message(PushChatEntry {
+    created.with_message(PushChatEntry {
         session_id: new_session_id,
         entry: seed,
     })
@@ -378,18 +401,18 @@ fn build_seed_entry(text: String, is_assistant: bool) -> ChatEntry {
 /// results yield untruncated output without the tool-name prefix, tool calls
 /// yield the raw JSON arguments — and stashes it in [`TuiSignals::yank_text`]
 /// for the TUI layer to write to the system clipboard.
-pub fn handle_yank_selected(state: &mut AppState) -> IntentResult {
+pub fn handle_yank_selected(state: &mut AppState) -> RouteResult {
     if validator::validate_yank_selected(state).is_err() {
-        return IntentResult::empty();
+        return RouteResult::empty();
     }
     let Some(entry) = state.active_session().selected_entry() else {
-        return IntentResult::empty();
+        return RouteResult::empty();
     };
     let text = entry.yank_text();
     state
         .frontend
         .update_scope(|s| s.signals.yank_text = Some(text));
-    IntentResult::empty()
+    RouteResult::empty()
 }
 
 /// Toggle the `ignored` flag on the currently selected chat entry, with
@@ -403,11 +426,11 @@ pub fn handle_yank_selected(state: &mut AppState) -> IntentResult {
 /// the sweep timestamp. Pinned entries are skipped during the sweep.
 ///
 /// The sweep state is cleared by either a >100ms gap or any non-
-/// `ChatEntryIgnoreSelected` intent.
+/// `ignore-selected` route action.
 ///
 /// Returns gracefully if the selected entry cannot be resolved after
 /// validation (e.g. collapsed ignored block).
-pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
+pub fn handle_ignore_selected(state: &mut AppState) -> RouteResult {
     if let Some(target) = state.active_session_mut().take_ignore_sweep() {
         return super::ignore_sweep::run_sweep(state, target);
     }
@@ -416,7 +439,7 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
 
 /// Fresh press of `x`: validate, toggle the entry, capture sweep state,
 /// propagate shown blocks, advance cursor.
-fn handle_fresh_toggle(state: &mut AppState) -> IntentResult {
+fn handle_fresh_toggle(state: &mut AppState) -> RouteResult {
     use jinn_context_assembly_msg::ContextOverrideChanged;
     use jinn_session_store_msg::PersistSession;
 
@@ -424,11 +447,11 @@ fn handle_fresh_toggle(state: &mut AppState) -> IntentResult {
     // Validation calls selected_entry() which returns None for collapsed blocks.
     if state.active_session().is_selected_collapsed_block() {
         advance_selection_one(state.active_session_mut());
-        return IntentResult::empty();
+        return RouteResult::empty();
     }
 
     if validator::validate_chat_entry_ignore_selected(state).is_err() {
-        return IntentResult::empty();
+        return RouteResult::empty();
     }
 
     // Toggle the entry's ignore state.
@@ -436,7 +459,7 @@ fn handle_fresh_toggle(state: &mut AppState) -> IntentResult {
 
     // Capture the resulting state on the toggled entry.
     let Some(selected) = state.active_session().selected_entry() else {
-        return IntentResult::empty();
+        return RouteResult::empty();
     };
     let captured = selected.context_override();
     let entry_id = selected.id.clone();
@@ -455,7 +478,7 @@ fn handle_fresh_toggle(state: &mut AppState) -> IntentResult {
 
     let session_id = state.active_session().session_id().clone();
 
-    let mut result = IntentResult::empty().with_message(PersistSession {
+    let mut result = RouteResult::empty().with_message(PersistSession {
         session_id: session_id.clone(),
     });
 
@@ -478,10 +501,10 @@ fn handle_fresh_toggle(state: &mut AppState) -> IntentResult {
 ///
 /// Returns gracefully if the selected entry cannot be resolved after
 /// validation (e.g. collapsed ignored block).
-pub fn handle_reset_selected(state: &mut AppState) -> IntentResult {
-    use crate::protocol::ChatEntry;
-    use crate::protocol::ContextOverride;
+pub fn handle_reset_selected(state: &mut AppState) -> RouteResult {
     use jinn_context_assembly_msg::ContextOverrideChanged;
+    use jinn_core_types::ChatEntry;
+    use jinn_core_types::ContextOverride;
     use jinn_session_store_msg::PersistSession;
 
     // Skip past obstacles before validation, mirroring the x-sweep
@@ -492,11 +515,11 @@ pub fn handle_reset_selected(state: &mut AppState) -> IntentResult {
         || session.selected_entry().is_some_and(ChatEntry::is_pinned);
     if on_obstacle {
         advance_selection_one(state.active_session_mut());
-        return IntentResult::empty();
+        return RouteResult::empty();
     }
 
     if validator::validate_chat_entry_reset_selected(state).is_err() {
-        return IntentResult::empty();
+        return RouteResult::empty();
     }
 
     // Reset the entry's override to Default.
@@ -515,11 +538,11 @@ pub fn handle_reset_selected(state: &mut AppState) -> IntentResult {
 
     // No change means no persistence or override events.
     let Some(id) = maybe_entry_id else {
-        return IntentResult::empty();
+        return RouteResult::empty();
     };
 
     let session_id = state.active_session().session_id().clone();
-    IntentResult::empty()
+    RouteResult::empty()
         .with_message(PersistSession {
             session_id: session_id.clone(),
         })
@@ -538,10 +561,10 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use crate::common::app_state::AppState;
-    use crate::protocol::ChangeSource;
-    use crate::protocol::ToolResultStatus;
-    use crate::protocol::{ChatEntry, ContextOverride, PinPosition};
+    use jinn_core_types::ChangeSource;
+    use jinn_core_types::ToolResultStatus;
+    use jinn_core_types::{ChatEntry, ContextOverride, PinPosition};
+    use jinn_kernel::AppState;
 
     use super::*;
 
@@ -1115,7 +1138,7 @@ mod tests {
         for _ in 0..15 {
             let mut entry = ChatEntry::user("ignored");
             entry.apply_context_override(
-                crate::protocol::ContextOverride::ForcedExclude,
+                jinn_core_types::ContextOverride::ForcedExclude,
                 ChangeSource::Internal {
                     label: "test".into(),
                 },
@@ -1175,7 +1198,7 @@ mod tests {
         for _ in 0..15 {
             let mut entry = ChatEntry::user("ignored");
             entry.apply_context_override(
-                crate::protocol::ContextOverride::ForcedExclude,
+                jinn_core_types::ContextOverride::ForcedExclude,
                 ChangeSource::Internal {
                     label: "test".into(),
                 },
@@ -1436,9 +1459,9 @@ mod tests {
         // Given a state with a selected compaction entry.
         let mut state = AppState::default_with_scope_focus();
         state.active_session_mut().push_entry(ChatEntry {
-            id: crate::protocol::ChatEntryId::new(),
-            timing: crate::protocol::EntryTiming::instant_now(),
-            kind: crate::protocol::ChatEntryKind::Compaction {
+            id: jinn_core_types::ChatEntryId::new(),
+            timing: jinn_core_types::EntryTiming::instant_now(),
+            kind: jinn_core_types::ChatEntryKind::Compaction {
                 summary: "summary".to_owned(),
                 tokens_before: 100,
                 tokens_after: 50,
@@ -1446,7 +1469,7 @@ mod tests {
                 model_used: "test/model".to_owned(),
             },
             pin_position: None,
-            context_override: crate::protocol::ContextOverride::Default,
+            context_override: jinn_core_types::ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
         });
@@ -2436,10 +2459,10 @@ mod jump_compaction_tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use crate::common::app_state::AppState;
-    use crate::protocol::ContextOverride;
-    use crate::protocol::EntryTiming;
-    use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
+    use jinn_core_types::ContextOverride;
+    use jinn_core_types::EntryTiming;
+    use jinn_core_types::{ChatEntry, ChatEntryId, ChatEntryKind};
+    use jinn_kernel::AppState;
 
     use super::*;
 
@@ -2493,7 +2516,7 @@ mod jump_compaction_tests {
         assert_eq!(state.active_session().selected_cursor_id(), Some(a_id));
 
         // When handling jump to next compaction.
-        let _result = handle_jump_next_entry(&mut state, crate::protocol::ChatEntry::is_compaction);
+        let _result = handle_jump_next_entry(&mut state, jinn_core_types::ChatEntry::is_compaction);
 
         // Then the cursor moves to compaction B.
         assert_eq!(state.active_session().selected_cursor_id(), Some(b_id));
@@ -2508,7 +2531,7 @@ mod jump_compaction_tests {
         assert_eq!(state.active_session().selected_cursor_id(), Some(b_id));
 
         // When handling jump to previous compaction.
-        let _result = handle_jump_prev_entry(&mut state, crate::protocol::ChatEntry::is_compaction);
+        let _result = handle_jump_prev_entry(&mut state, jinn_core_types::ChatEntry::is_compaction);
 
         // Then the cursor moves to compaction A.
         assert_eq!(state.active_session().selected_cursor_id(), Some(a_id));
@@ -2522,7 +2545,7 @@ mod jump_compaction_tests {
         select_at(&mut state, 3);
 
         // When handling jump to next compaction.
-        let result = handle_jump_next_entry(&mut state, crate::protocol::ChatEntry::is_compaction);
+        let result = handle_jump_next_entry(&mut state, jinn_core_types::ChatEntry::is_compaction);
 
         // Then the cursor is unchanged (no wrap) and no commands emitted.
         assert_eq!(state.active_session().selected_cursor_id(), Some(b_id));
@@ -2537,7 +2560,7 @@ mod jump_compaction_tests {
         select_at(&mut state, 1);
 
         // When handling jump to previous compaction.
-        let result = handle_jump_prev_entry(&mut state, crate::protocol::ChatEntry::is_compaction);
+        let result = handle_jump_prev_entry(&mut state, jinn_core_types::ChatEntry::is_compaction);
 
         // Then the cursor is unchanged (no wrap) and no commands emitted.
         assert_eq!(state.active_session().selected_cursor_id(), Some(a_id));
@@ -2553,7 +2576,7 @@ mod jump_compaction_tests {
         assert!(state.active_session().selected_cursor_id().is_none());
 
         // When handling jump to next compaction (anchor = last entry).
-        let result = handle_jump_next_entry(&mut state, crate::protocol::ChatEntry::is_compaction);
+        let result = handle_jump_next_entry(&mut state, jinn_core_types::ChatEntry::is_compaction);
 
         // Then it is a no-op: nothing newer than the last entry exists.
         assert!(state.active_session().selected_cursor_id().is_none());
@@ -2569,7 +2592,7 @@ mod jump_compaction_tests {
         assert!(state.active_session().selected_cursor_id().is_none());
 
         // When handling jump to previous compaction.
-        let _result = handle_jump_prev_entry(&mut state, crate::protocol::ChatEntry::is_compaction);
+        let _result = handle_jump_prev_entry(&mut state, jinn_core_types::ChatEntry::is_compaction);
 
         // Then the anchor is the last entry, so [c lands on compaction B.
         assert_eq!(state.active_session().selected_cursor_id(), Some(b_id));
@@ -2587,7 +2610,7 @@ mod jump_compaction_tests {
         let before = state.active_session().selected_cursor_id();
 
         // When handling jump to next compaction.
-        let result = handle_jump_next_entry(&mut state, crate::protocol::ChatEntry::is_compaction);
+        let result = handle_jump_next_entry(&mut state, jinn_core_types::ChatEntry::is_compaction);
 
         // Then it is a no-op.
         assert_eq!(state.active_session().selected_cursor_id(), before);
@@ -2606,7 +2629,7 @@ mod jump_compaction_tests {
         let before = state.active_session().selected_cursor_id();
 
         // When handling jump to previous compaction.
-        let result = handle_jump_prev_entry(&mut state, crate::protocol::ChatEntry::is_compaction);
+        let result = handle_jump_prev_entry(&mut state, jinn_core_types::ChatEntry::is_compaction);
 
         // Then it is a no-op.
         assert_eq!(state.active_session().selected_cursor_id(), before);
@@ -2619,7 +2642,7 @@ mod jump_compaction_tests {
         let mut state = AppState::default_with_scope_focus();
 
         // When handling jump to next compaction.
-        let result = handle_jump_next_entry(&mut state, crate::protocol::ChatEntry::is_compaction);
+        let result = handle_jump_next_entry(&mut state, jinn_core_types::ChatEntry::is_compaction);
 
         // Then it is a no-op without panic.
         assert!(state.active_session().selected_cursor_id().is_none());
@@ -2632,7 +2655,7 @@ mod jump_compaction_tests {
         let mut state = AppState::default_with_scope_focus();
 
         // When handling jump to previous compaction.
-        let result = handle_jump_prev_entry(&mut state, crate::protocol::ChatEntry::is_compaction);
+        let result = handle_jump_prev_entry(&mut state, jinn_core_types::ChatEntry::is_compaction);
 
         // Then it is a no-op without panic.
         assert!(state.active_session().selected_cursor_id().is_none());
@@ -2667,7 +2690,7 @@ mod jump_compaction_tests {
         assert_eq!(state.active_session().selected_cursor_id(), Some(a_id));
 
         // When handling jump to next pinned entry.
-        let _result = handle_jump_next_entry(&mut state, crate::protocol::ChatEntry::is_pinned);
+        let _result = handle_jump_next_entry(&mut state, jinn_core_types::ChatEntry::is_pinned);
 
         // Then the cursor moves to pinned entry B.
         assert_eq!(state.active_session().selected_cursor_id(), Some(b_id));
@@ -2682,7 +2705,7 @@ mod jump_compaction_tests {
         assert_eq!(state.active_session().selected_cursor_id(), Some(b_id));
 
         // When handling jump to previous pinned entry.
-        let _result = handle_jump_prev_entry(&mut state, crate::protocol::ChatEntry::is_pinned);
+        let _result = handle_jump_prev_entry(&mut state, jinn_core_types::ChatEntry::is_pinned);
 
         // Then the cursor moves to pinned entry A.
         assert_eq!(state.active_session().selected_cursor_id(), Some(a_id));
@@ -2696,7 +2719,7 @@ mod jump_compaction_tests {
         select_at(&mut state, 3);
 
         // When handling jump to next pinned entry.
-        let result = handle_jump_next_entry(&mut state, crate::protocol::ChatEntry::is_pinned);
+        let result = handle_jump_next_entry(&mut state, jinn_core_types::ChatEntry::is_pinned);
 
         // Then the cursor is unchanged (no wrap) and no commands emitted.
         assert_eq!(state.active_session().selected_cursor_id(), Some(b_id));
@@ -2711,7 +2734,7 @@ mod jump_compaction_tests {
         select_at(&mut state, 1);
 
         // When handling jump to previous pinned entry.
-        let result = handle_jump_prev_entry(&mut state, crate::protocol::ChatEntry::is_pinned);
+        let result = handle_jump_prev_entry(&mut state, jinn_core_types::ChatEntry::is_pinned);
 
         // Then the cursor is unchanged (no wrap) and no commands emitted.
         assert_eq!(state.active_session().selected_cursor_id(), Some(a_id));
@@ -2730,7 +2753,7 @@ mod jump_compaction_tests {
         let before = state.active_session().selected_cursor_id();
 
         // When handling jump to next pinned entry.
-        let result = handle_jump_next_entry(&mut state, crate::protocol::ChatEntry::is_pinned);
+        let result = handle_jump_next_entry(&mut state, jinn_core_types::ChatEntry::is_pinned);
 
         // Then it is a no-op.
         assert_eq!(state.active_session().selected_cursor_id(), before);
@@ -2749,7 +2772,7 @@ mod jump_compaction_tests {
         let before = state.active_session().selected_cursor_id();
 
         // When handling jump to previous pinned entry.
-        let result = handle_jump_prev_entry(&mut state, crate::protocol::ChatEntry::is_pinned);
+        let result = handle_jump_prev_entry(&mut state, jinn_core_types::ChatEntry::is_pinned);
 
         // Then it is a no-op.
         assert_eq!(state.active_session().selected_cursor_id(), before);
@@ -2765,7 +2788,7 @@ mod jump_compaction_tests {
         assert!(state.active_session().selected_cursor_id().is_none());
 
         // When handling jump to previous pinned entry.
-        let _result = handle_jump_prev_entry(&mut state, crate::protocol::ChatEntry::is_pinned);
+        let _result = handle_jump_prev_entry(&mut state, jinn_core_types::ChatEntry::is_pinned);
 
         // Then the anchor is the last entry, so [p lands on pinned entry B.
         assert_eq!(state.active_session().selected_cursor_id(), Some(b_id));
@@ -2777,7 +2800,7 @@ mod jump_compaction_tests {
         let mut state = AppState::default_with_scope_focus();
 
         // When handling jump to next pinned entry.
-        let result = handle_jump_next_entry(&mut state, crate::protocol::ChatEntry::is_pinned);
+        let result = handle_jump_next_entry(&mut state, jinn_core_types::ChatEntry::is_pinned);
 
         // Then it is a no-op without panic.
         assert!(state.active_session().selected_cursor_id().is_none());
@@ -2830,7 +2853,7 @@ mod jump_compaction_tests {
         assert_eq!(state.active_session().selected_cursor_id(), Some(a_id));
 
         // When handling jump to next annotation entry.
-        let _result = handle_jump_next_entry(&mut state, crate::protocol::ChatEntry::is_annotation);
+        let _result = handle_jump_next_entry(&mut state, jinn_core_types::ChatEntry::is_annotation);
 
         // Then the cursor moves to annotation entry B.
         assert_eq!(state.active_session().selected_cursor_id(), Some(b_id));
@@ -2845,7 +2868,7 @@ mod jump_compaction_tests {
         assert_eq!(state.active_session().selected_cursor_id(), Some(b_id));
 
         // When handling jump to previous annotation entry.
-        let _result = handle_jump_prev_entry(&mut state, crate::protocol::ChatEntry::is_annotation);
+        let _result = handle_jump_prev_entry(&mut state, jinn_core_types::ChatEntry::is_annotation);
 
         // Then the cursor moves to annotation entry A.
         assert_eq!(state.active_session().selected_cursor_id(), Some(a_id));
@@ -2859,7 +2882,7 @@ mod jump_compaction_tests {
         select_at(&mut state, 3);
 
         // When handling jump to next annotation entry.
-        let result = handle_jump_next_entry(&mut state, crate::protocol::ChatEntry::is_annotation);
+        let result = handle_jump_next_entry(&mut state, jinn_core_types::ChatEntry::is_annotation);
 
         // Then the cursor is unchanged (no wrap) and no commands emitted.
         assert_eq!(state.active_session().selected_cursor_id(), Some(b_id));
@@ -2874,7 +2897,7 @@ mod jump_compaction_tests {
         select_at(&mut state, 1);
 
         // When handling jump to previous annotation entry.
-        let result = handle_jump_prev_entry(&mut state, crate::protocol::ChatEntry::is_annotation);
+        let result = handle_jump_prev_entry(&mut state, jinn_core_types::ChatEntry::is_annotation);
 
         // Then the cursor is unchanged (no wrap) and no commands emitted.
         assert_eq!(state.active_session().selected_cursor_id(), Some(a_id));
@@ -2887,7 +2910,7 @@ mod jump_compaction_tests {
         let mut state = AppState::default_with_scope_focus();
 
         // When handling jump to next annotation entry.
-        let result = handle_jump_next_entry(&mut state, crate::protocol::ChatEntry::is_annotation);
+        let result = handle_jump_next_entry(&mut state, jinn_core_types::ChatEntry::is_annotation);
 
         // Then it is a no-op without panic.
         assert!(state.active_session().selected_cursor_id().is_none());
@@ -2900,7 +2923,7 @@ mod jump_compaction_tests {
         let mut state = AppState::default_with_scope_focus();
 
         // When handling jump to previous annotation entry.
-        let result = handle_jump_prev_entry(&mut state, crate::protocol::ChatEntry::is_annotation);
+        let result = handle_jump_prev_entry(&mut state, jinn_core_types::ChatEntry::is_annotation);
 
         // Then it is a no-op without panic.
         assert!(state.active_session().selected_cursor_id().is_none());
@@ -2915,7 +2938,7 @@ mod jump_compaction_tests {
         select_at(&mut state, 1);
 
         // When handling jump to next compaction.
-        let result = handle_jump_next_entry(&mut state, crate::protocol::ChatEntry::is_compaction);
+        let result = handle_jump_next_entry(&mut state, jinn_core_types::ChatEntry::is_compaction);
 
         // Then no commands or events are emitted.
         assert!(result.message_names.is_empty());
@@ -2929,7 +2952,7 @@ mod jump_compaction_tests {
         select_at(&mut state, 3);
 
         // When handling jump to previous compaction.
-        let result = handle_jump_prev_entry(&mut state, crate::protocol::ChatEntry::is_compaction);
+        let result = handle_jump_prev_entry(&mut state, jinn_core_types::ChatEntry::is_compaction);
 
         // Then no commands or events are emitted.
         assert!(result.message_names.is_empty());
@@ -2950,10 +2973,10 @@ mod jump_compaction_tests {
     fn build_collapsed_block_between_compactions(
         state: &mut AppState,
     ) -> (ChatEntryId, ChatEntryId, usize) {
-        use crate::protocol::ChangeSource;
         use jinn_chat_log_view_msg::{
             DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
         };
+        use jinn_core_types::ChangeSource;
 
         state
             .active_session_mut()
@@ -2965,7 +2988,7 @@ mod jump_compaction_tests {
         for _ in 0..DEFAULT_MIN_COLLAPSE_COUNT + 2 {
             let mut entry = ChatEntry::user("ignored");
             entry.apply_context_override(
-                crate::protocol::ContextOverride::ForcedExclude,
+                jinn_core_types::ContextOverride::ForcedExclude,
                 ChangeSource::Internal {
                     label: "test".into(),
                 },
@@ -3020,7 +3043,7 @@ mod jump_compaction_tests {
         );
 
         // When handling jump to next compaction.
-        let _result = handle_jump_next_entry(&mut state, crate::protocol::ChatEntry::is_compaction);
+        let _result = handle_jump_next_entry(&mut state, jinn_core_types::ChatEntry::is_compaction);
 
         // Then the cursor lands on compaction B (the newer one), not a no-op.
         assert_eq!(
@@ -3044,7 +3067,7 @@ mod jump_compaction_tests {
         );
 
         // When handling jump to previous compaction.
-        let _result = handle_jump_prev_entry(&mut state, crate::protocol::ChatEntry::is_compaction);
+        let _result = handle_jump_prev_entry(&mut state, jinn_core_types::ChatEntry::is_compaction);
 
         // Then the cursor lands on compaction A (the older one), NOT compaction B.
         assert_eq!(
@@ -3069,8 +3092,8 @@ mod new_session_from_entry_tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use crate::common::app_state::AppState;
-    use crate::protocol::ChatEntry;
+    use jinn_core_types::ChatEntry;
+    use jinn_kernel::AppState;
 
     use super::*;
 
@@ -3087,7 +3110,7 @@ mod new_session_from_entry_tests {
         // When handling new session from entry.
         let _result = handle_new_session_from_entry(
             &mut state,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
         );
 
         // Then the active session switched to a new one.
@@ -3106,7 +3129,7 @@ mod new_session_from_entry_tests {
         // When handling new session from entry.
         let result = handle_new_session_from_entry(
             &mut state,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
         );
 
         // Then a PushChatEntry command is returned.
@@ -3132,7 +3155,7 @@ mod new_session_from_entry_tests {
         // When handling new session from entry.
         let result = handle_new_session_from_entry(
             &mut state,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
         );
 
         // Then a SessionCreated event is returned (from the lifecycle setup).
@@ -3158,7 +3181,7 @@ mod new_session_from_entry_tests {
         // When handling new session from entry.
         let result = handle_new_session_from_entry(
             &mut state,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
         );
 
         // Then no dispatch command is emitted.
@@ -3185,7 +3208,7 @@ mod new_session_from_entry_tests {
         // When handling new session from entry.
         let _result = handle_new_session_from_entry(
             &mut state,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
         );
 
         // Then the old session is still present in the sessions map.
@@ -3206,7 +3229,7 @@ mod new_session_from_entry_tests {
         // When handling new session from entry.
         let _result = handle_new_session_from_entry(
             &mut state,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
         );
 
         // Then the new session inherited the old active session's CWD.
@@ -3226,7 +3249,7 @@ mod new_session_from_entry_tests {
         // When handling new session from entry.
         let result = handle_new_session_from_entry(
             &mut state,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
         );
 
         // Then the result is empty and the active session is unchanged.
@@ -3247,7 +3270,7 @@ mod new_session_from_entry_tests {
         // When handling new session from entry.
         let result = handle_new_session_from_entry(
             &mut state,
-            crate::common::render_ctx::empty_config_layer(),
+            jinn_kernel::common::render_ctx::empty_config_layer(),
         );
 
         // Then the result is empty and the active session is unchanged.

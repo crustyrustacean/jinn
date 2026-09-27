@@ -12,11 +12,12 @@
 //! selected entry), or a pinned highlighted entry (validator rejection).
 
 use super::validator;
-use crate::common::app_state::AppState;
-use crate::protocol::{ChatEntryId, ContextOverride, IntentResult};
 use jinn_context_assembly_msg::ContextOverrideChanged;
+use jinn_core_types::{ChatEntryId, ContextOverride};
+use jinn_kernel::AppState;
 use jinn_session_history::history_editor::tool_group_end;
 use jinn_session_store_msg::PersistSession;
+use jinn_slices::RouteResult;
 
 /// Walk the history chunk by chunk and set each chunk's context override:
 /// [`ContextOverride::ForcedInclude`] for the chunk containing
@@ -66,11 +67,11 @@ fn isolate_all_but_highlighted_chunk(
 
 /// Force-include the highlighted chunk and user-force-exclude every other
 /// non-pinned chunk, then persist and emit one event per changed entry.
-pub fn handle_isolate_selected(state: &mut AppState) -> IntentResult {
+pub fn handle_isolate_selected(state: &mut AppState) -> RouteResult {
     // Validate: empty history, cursor on a collapsed block, or a pinned
     // highlight all no-op.
     if validator::validate_chat_entry_isolate_selected(state).is_err() {
-        return IntentResult::empty();
+        return RouteResult::empty();
     }
 
     let session_id = state.active_session().session_id().clone();
@@ -81,11 +82,11 @@ pub fn handle_isolate_selected(state: &mut AppState) -> IntentResult {
     // selection; the graceful returns only guard a cursor resting on a
     // collapsed block, which resolves to no entry/index.
     let Some(selected) = state.active_session().selected_entry() else {
-        return IntentResult::empty();
+        return RouteResult::empty();
     };
     let highlight_id = selected.id.clone();
     let Some(highlight_idx) = state.active_session().selected_history_index() else {
-        return IntentResult::empty();
+        return RouteResult::empty();
     };
     let history_len = state.active_session().history().len();
 
@@ -103,7 +104,7 @@ pub fn handle_isolate_selected(state: &mut AppState) -> IntentResult {
 
     // Nothing changed (e.g. second press): silent no-op, like reset.
     if changed_ids.is_empty() {
-        return IntentResult::empty();
+        return RouteResult::empty();
     }
 
     // Persist once and emit one event per changed entry (context-size and
@@ -112,7 +113,7 @@ pub fn handle_isolate_selected(state: &mut AppState) -> IntentResult {
         session_id: session_id.clone(),
         entry_id: id,
     });
-    IntentResult::new_message(PersistSession {
+    RouteResult::new_message(PersistSession {
         session_id: session_id.clone(),
     })
     .with_messages(events)
@@ -127,10 +128,10 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use crate::common::app_state::AppState;
-    use crate::protocol::PinPosition;
-    use crate::protocol::ToolResultStatus;
-    use crate::protocol::{ChatEntry, ContextOverride};
+    use jinn_core_types::PinPosition;
+    use jinn_core_types::ToolResultStatus;
+    use jinn_core_types::{ChatEntry, ContextOverride};
+    use jinn_kernel::AppState;
 
     use super::*;
 
@@ -157,7 +158,7 @@ mod tests {
             .active_session()
             .history()
             .iter()
-            .map(crate::protocol::ChatEntry::context_override)
+            .map(jinn_core_types::ChatEntry::context_override)
             .collect()
     }
 

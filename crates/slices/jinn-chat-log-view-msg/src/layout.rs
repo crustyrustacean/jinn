@@ -30,8 +30,9 @@ pub const PREVIEW_ENTRY_COUNT: usize = 5;
 /// Maximum rendered lines a session preview shows.
 ///
 /// The last entry is what the user is reading, so overflow is dropped from the
-/// front — the popup is sized from the surviving lines, which keeps its height
-/// honest about what is actually on screen.
+/// front. This is also the session preview popup's content height, so the box
+/// is exactly as tall as the preview it was sized for and the worker cannot
+/// hand back more than the popup will show.
 pub const PREVIEW_MAX_LINES: usize = 20;
 
 /// Measure one session's chat log off the render thread.

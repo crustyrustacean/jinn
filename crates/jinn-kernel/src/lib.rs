@@ -30,7 +30,6 @@ fn install_rustls_provider_for_tests() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 }
 
-pub mod chat_entry_selection;
 pub mod common;
 pub mod feat;
 pub mod session_lifecycle;
