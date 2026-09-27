@@ -14,6 +14,7 @@ muted_text = [116, 116, 116]
 subagent_fg = [152, 128, 208]
 subagent_bg = [70, 58, 105]
 error_text = "red"
+dormant_fg = [140, 140, 140]
 
 # Status
 success = "green"

@@ -10,15 +10,17 @@
 //!   to know the dashboard exists.
 //! - **Generic service status** — receives [`ServiceStatusUpdate`]
 //!   published by whichever feature owns a service, adding a
-//!   human-written description and status message to that row.
+//!   human-written description, status message, and note tone to that row.
 //! - **Keyboard navigation** — receives [`DashboardNav`], bridged from
 //!   the dashboard feature's keybind rows.
 //!
-//! The two sources are deliberately asymmetric: the runtime decides
-//! *whether a row exists and whether it is alive*, a feature decides
-//! *what its row says*. A feature can never bring an actor into being
-//! by announcing it, and can never contradict the runtime's verdict on
-//! whether it is alive.
+//! The two sources are deliberately asymmetric, and the asymmetry is
+//! structural rather than promised: the runtime decides *whether a row
+//! exists and whether it is alive*, a feature decides *what its row
+//! says*. [`ServiceStatusUpdate`] carries no lifecycle field at all, so
+//! a feature cannot contradict the runtime's verdict on whether its
+//! actor is alive — the dashboard's fold is the sole writer of that
+//! state.
 //!
 //! This actor is a feature-agnostic sink: features translate their own
 //! state into the generic event, so no feature-specific type appears
@@ -100,36 +102,44 @@ impl DashboardCanvasActor {
     }
 
     /// Folds a runtime lifecycle announcement into the cell.
+    ///
+    /// The ONLY writer of an entry's lifecycle. A feature cannot reach
+    /// this field: `ServiceStatusUpdate` carries no lifecycle, so the
+    /// runtime's announcement is the sole source of a row's state.
     fn apply_lifecycle(&self, msg: &trouper::ActorLifecycle) {
         self.cell.update(|s| {
             let name = msg.path.to_string();
-            // Exhaustive, deliberately. Every runtime state names the
-            // row it produces, so a new state added upstream fails to
-            // COMPILE here and forces an explicit decision about whether
-            // it means the actor is alive or gone. A catch-all arm would
-            // instead route it silently to `Dead` — which is exactly how
+            // Exhaustive, deliberately, and with no catch-all arm. Every
+            // runtime state names what it does to the row it concerns, so
+            // a new state added upstream fails to COMPILE here and forces
+            // an explicit decision. A catch-all would instead route it
+            // silently somewhere harmless-looking — which is exactly how
             // passivation came to be reported as death here.
             match msg.state {
                 LifecycleState::Running => s.mark_running(name, None),
                 // Passivation is NOT death. The runtime evicted an idle
                 // actor and will re-spawn it on the next send, so the row
-                // reads Idle and keeps its own reason phrase: calling a
-                // dormant partition-set entity "Dead" reports a failure
-                // that did not happen.
+                // reads Idle: calling a dormant partition-set entity
+                // "Crashed" reports a failure that did not happen.
                 LifecycleState::Passivated => s.mark_idle(name),
-                // Every terminal stop lands on Dead, with its reason
-                // distinguishing the causes.
-                LifecycleState::Normal
-                | LifecycleState::Crashed
-                | LifecycleState::Escalated
-                | LifecycleState::Shutdown => s.mark_stopped(name, stop_reason_text(msg.state)),
+                // A failure is the one stop worth keeping on screen. The
+                // actor will not re-announce itself — there is nothing
+                // left to announce — so dropping the row would erase the
+                // evidence that it broke.
+                LifecycleState::Crashed => s.mark_failed(name, ActorLifecycle::Crashed),
+                LifecycleState::Escalated => s.mark_failed(name, ActorLifecycle::Escalated),
+                // The two SANCTIONED stops. The actor finished on its own
+                // or was torn down by the shutdown sweep; either way it is
+                // not a failure, and retaining the row would grow the list
+                // without bound and report a clean ending as an incident.
+                LifecycleState::Normal | LifecycleState::Shutdown => s.remove(name),
             }
         });
     }
 
     /// Folds a [`ServiceStatusUpdate`] into the cell: the owning
-    /// feature's projection onto its row (optional lifecycle, optional
-    /// description, optional status message).
+    /// feature's projection onto its row (optional description, optional
+    /// status message, optional note tone).
     fn apply_service_status(&self, msg: &ServiceStatusUpdate) {
         self.cell.update(|s| apply_service_update(s, msg));
     }
@@ -142,24 +152,6 @@ impl DashboardCanvasActor {
             DashboardNav::First => s.select_first(),
             DashboardNav::Last => s.select_last(),
         });
-    }
-}
-
-/// The Notes-column phrase for a TERMINALLY stopped actor.
-///
-/// Every terminal stop state gets a distinct, human-readable phrase,
-/// and none reuses the word "Dead" — the State column already says
-/// that, and repeating it here would waste the column that exists to
-/// say *why*.
-fn stop_reason_text(state: LifecycleState) -> String {
-    match state {
-        LifecycleState::Running | LifecycleState::Passivated => {
-            unreachable!("Running and Passivated never reach a terminal stop")
-        }
-        LifecycleState::Normal => "stopped normally".to_owned(),
-        LifecycleState::Crashed => "crashed (supervisor declined restart)".to_owned(),
-        LifecycleState::Escalated => "escalated (restart budget exhausted)".to_owned(),
-        LifecycleState::Shutdown => "stopped by shutdown".to_owned(),
     }
 }
 
@@ -186,37 +178,22 @@ impl MsgHandler<DashboardNav> for DashboardCanvasActor {
 /// The dashboard is a feature-agnostic sink: the owning feature
 /// translates its own state and publishes this projection; the fold
 /// applies whichever optional fields the event carries (`None`
-/// lifecycle leaves the row's phase untouched; `None` description
-/// preserves the existing one).
+/// description preserves the existing one, `None` tone leaves the row
+/// where the feature last placed it).
+///
+/// There is deliberately no lifecycle arm. A feature describes its own
+/// service; whether the actor behind it is alive is the runtime's to
+/// announce, and letting a feature answer that question is how a
+/// handshake failure ended up painted as a dead actor.
 fn apply_service_update(dashboard: &mut DashboardState, update: &ServiceStatusUpdate) {
-    // The description applies INDEPENDENTLY of the lifecycle. It used to
-    // be a by-product of the lifecycle arm, so a `None` lifecycle
-    // silently dropped the description — and both real publishers
-    // (discord) legitimately send `None` lifecycle on some transitions
-    // while still meaning to describe the row. Losing a description
-    // because a publisher omitted an unrelated optional field is a
-    // coupling that has no reason to exist.
-    if update.description.is_some() {
-        dashboard.set_description(&update.name, update.description.clone());
+    if let Some(description) = &update.description {
+        dashboard.set_description(&update.name, Some(description.clone()));
     }
-    if let Some(lifecycle) = update.lifecycle {
-        match lifecycle {
-            ActorLifecycle::Starting => {
-                dashboard.mark_starting(&update.name, None);
-            }
-            ActorLifecycle::Running => {
-                dashboard.mark_running(&update.name, None);
-            }
-            ActorLifecycle::Idle => {
-                dashboard.mark_idle(&update.name);
-            }
-            ActorLifecycle::Dead => {
-                dashboard.mark_dead(&update.name, None);
-            }
-        }
+    if let Some(message) = &update.status_message {
+        dashboard.set_status_message(&update.name, Some(message.clone()));
     }
-    if update.status_message.is_some() {
-        dashboard.set_status_message(&update.name, update.status_message.clone());
+    if let Some(tone) = update.note_tone {
+        dashboard.set_note_tone(&update.name, tone);
     }
 }
 
@@ -234,6 +211,7 @@ mod tests {
     use crate::dashboard_slot;
     use crate::nav::DashboardNav;
     use crate::state::DashboardState;
+    use jinn_slices::NoteTone;
     use jinn_slices::Slices;
     use jinn_slices::TypedCell;
     use jinn_testutil::TestFabric;
@@ -261,7 +239,7 @@ mod tests {
         lifecycle: ActorLifecycle,
         status: Option<String>,
         description: Option<String>,
-        reason: Option<String>,
+        tone: NoteTone,
     }
 
     /// Reads the named row out of the dashboard cell.
@@ -271,8 +249,17 @@ mod tests {
             lifecycle: e.lifecycle,
             status: e.status_message.clone(),
             description: e.description.clone(),
-            reason: e.stop_reason.clone(),
+            tone: e.note_tone,
         })
+    }
+
+    /// The names of every row currently in the cell, in display order.
+    fn row_names(cell: &TypedCell<DashboardState>) -> Vec<String> {
+        cell.read()
+            .actors()
+            .into_iter()
+            .map(|entry| entry.name.clone())
+            .collect()
     }
 
     /// Wires one dashboard cell + canvas actor onto the test fabric.
@@ -344,8 +331,8 @@ mod tests {
 
     /// THE decisive test: a row appears for an actor that publishes no
     /// jinn-level event of any kind. The dashboard used to learn about
-    /// actors only from hand-written `ActorStarting` publishes at two
-    /// spawn sites, so it listed two of roughly forty-five live actors.
+    /// actors only from hand-written publishes at two spawn sites, so it
+    /// listed two of roughly forty-five live actors.
     #[rstest::rstest]
     #[tokio::test]
     async fn an_actor_that_publishes_nothing_gets_a_row() {
@@ -383,39 +370,19 @@ mod tests {
 
         // Then every row exists, keyed by the runtime's own path.
         wait_for(|| {
-            let s = cell.read();
-            paths
-                .iter()
-                .all(|p| s.actors().iter().any(|e| e.name == *p))
+            let names = row_names(&cell);
+            paths.iter().all(|p| names.contains(p))
         })
         .await;
     }
 
+    /// A passivated actor is DORMANT, not a failure. Partition-set
+    /// entities (per-session discovery workers, for one) passivate on an
+    /// idle window and re-spawn on the next send, so a row reading
+    /// "Crashed" reports a failure that did not happen.
     #[rstest::rstest]
     #[tokio::test]
-    async fn a_stop_announcement_marks_the_row_dead() {
-        // Given a wired actor with a running row.
-        let fabric = TestFabric::new();
-        let cell = wire_actor(&fabric);
-        fabric.send_to_topic(running("llm")).await;
-        wait_for(|| row(&cell, "llm").is_some()).await;
-
-        // When a stop announcement arrives.
-        fabric
-            .send_to_topic(stopped("llm", LifecycleState::Normal))
-            .await;
-
-        // Then the row reads Dead.
-        wait_for(|| row(&cell, "llm").is_some_and(|r| r.lifecycle == ActorLifecycle::Dead)).await;
-    }
-
-    /// A passivated actor is DORMANT, not dead. Partition-set entities
-    /// (per-session discovery workers, for one) passivate on an idle
-    /// window and re-spawn on the next send, so a row reading "Dead"
-    /// reports a failure that did not happen — the bug this pins.
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn a_passivated_actor_reads_as_idle_not_dead() {
+    async fn a_passivated_actor_reads_as_idle() {
         // Given a wired actor with a running row.
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
@@ -455,38 +422,11 @@ mod tests {
         wait_for(|| row(&cell, "idle-worker").is_some_and(|r| r.lifecycle == ActorLifecycle::Idle))
             .await;
         let entry = row(&cell, "idle-worker").unwrap();
-        assert_eq!(entry.reason, None, "an idle row carries no reason");
         assert_eq!(entry.status, None, "and no feature status message");
     }
 
-    /// A passivation clears a reason left from an earlier terminal stop:
-    /// the row is no longer that stop, so the note would contradict the
-    /// state word beside it.
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn a_passivation_clears_a_stale_terminal_stop_reason() {
-        // Given a wired actor whose row went Dead with a crash reason.
-        let fabric = TestFabric::new();
-        let cell = wire_actor(&fabric);
-        fabric.send_to_topic(running("flicker")).await;
-        wait_for(|| row(&cell, "flicker").is_some()).await;
-        fabric
-            .send_to_topic(stopped("flicker", LifecycleState::Crashed))
-            .await;
-        wait_for(|| row(&cell, "flicker").and_then(|r| r.reason).is_some()).await;
-
-        // When it is later passivated.
-        fabric
-            .send_to_topic(stopped("flicker", LifecycleState::Passivated))
-            .await;
-
-        // Then the crash reason is gone.
-        wait_for(|| row(&cell, "flicker").is_some_and(|r| r.lifecycle == ActorLifecycle::Idle))
-            .await;
-        assert_eq!(row(&cell, "flicker").unwrap().reason, None);
-    }
-
-    /// A dormant actor that wakes is Running again, with no stale note.
+    /// A dormant actor that wakes is Running again: the row is live, and
+    /// a stale failure would misreport the present.
     #[rstest::rstest]
     #[tokio::test]
     async fn a_passivated_actor_that_wakes_reads_as_running() {
@@ -504,46 +444,164 @@ mod tests {
         // When the partition factory re-spawns it on the next send.
         fabric.send_to_topic(running("wake-me")).await;
 
-        // Then the row is Running with its idleness note cleared.
+        // Then the row is Running.
         wait_for(|| row(&cell, "wake-me").is_some_and(|r| r.lifecycle == ActorLifecycle::Running))
             .await;
-        assert_eq!(row(&cell, "wake-me").unwrap().reason, None);
     }
 
+    /// A crash keeps its row. The actor will never re-announce itself —
+    /// there is nothing left to announce — so dropping the row would erase
+    /// the only evidence that it broke.
     #[rstest::rstest]
-    #[case(LifecycleState::Normal, "stopped normally")]
-    #[case(LifecycleState::Crashed, "crashed")]
-    #[case(LifecycleState::Escalated, "escalated")]
-    #[case(LifecycleState::Shutdown, "shutdown")]
     #[tokio::test]
-    async fn each_terminal_stop_state_renders_its_own_distinct_phrase(
-        #[case] state: LifecycleState,
-        #[case] expected: &str,
-    ) {
+    async fn a_crashed_actor_keeps_its_row_reading_crashed() {
         // Given a wired actor with a running row.
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
-        fabric.send_to_topic(running("subject")).await;
-        wait_for(|| row(&cell, "subject").is_some()).await;
+        fabric.send_to_topic(running("worker")).await;
+        wait_for(|| row(&cell, "worker").is_some()).await;
 
-        // When the runtime announces that stop state.
-        fabric.send_to_topic(stopped("subject", state)).await;
+        // When the runtime announces a crash.
+        fabric
+            .send_to_topic(stopped("worker", LifecycleState::Crashed))
+            .await;
 
-        // Then the row carries that state's own phrase.
-        wait_for(|| {
-            row(&cell, "subject")
-                .and_then(|r| r.reason)
-                .is_some_and(|r| r.contains(expected))
-        })
-        .await;
+        // Then the row survives, reading Crashed.
+        wait_for(|| row(&cell, "worker").is_some_and(|r| r.lifecycle == ActorLifecycle::Crashed))
+            .await;
     }
 
-    /// One row, one Notes cell. A feature's status message is the more
-    /// specific statement, so it wins; the stop reason shows only when
-    /// the feature has nothing to say.
+    /// Escalation is a worse outcome than a crash, and the State column
+    /// must name which of the two happened.
     #[rstest::rstest]
     #[tokio::test]
-    async fn a_stop_reason_is_stored_alongside_a_feature_status_message() {
+    async fn an_escalated_actor_reads_as_escalated_not_crashed() {
+        // Given a wired actor with a running row.
+        let fabric = TestFabric::new();
+        let cell = wire_actor(&fabric);
+        fabric.send_to_topic(running("worker")).await;
+        wait_for(|| row(&cell, "worker").is_some()).await;
+
+        // When the runtime escalates it.
+        fabric
+            .send_to_topic(stopped("worker", LifecycleState::Escalated))
+            .await;
+
+        // Then the row reads Escalated.
+        wait_for(|| row(&cell, "worker").is_some_and(|r| r.lifecycle == ActorLifecycle::Escalated))
+            .await;
+    }
+
+    /// THE bug this change exists for. Every session archive tears down
+    /// that session's MCP connection actors, and every subagent teardown
+    /// retires its listener actors — all of them sanctioned stops. Retaining
+    /// those rows turned the dashboard into a wall of red entries that
+    /// grew with every archive and never came back down.
+    #[rstest::rstest]
+    #[case(LifecycleState::Normal)]
+    #[case(LifecycleState::Shutdown)]
+    #[tokio::test]
+    async fn a_sanitized_stop_removes_the_row(#[case] state: LifecycleState) {
+        // Given a wired actor with a running row.
+        let fabric = TestFabric::new();
+        let cell = wire_actor(&fabric);
+        fabric
+            .send_to_topic(running("jinn.mcp.connection.abc"))
+            .await;
+        wait_for(|| row(&cell, "jinn.mcp.connection.abc").is_some()).await;
+
+        // When the runtime announces the sanctioned stop.
+        fabric
+            .send_to_topic(stopped("jinn.mcp.connection.abc", state))
+            .await;
+
+        // Then the row is gone from the list entirely.
+        wait_for(|| !row_names(&cell).contains(&"jinn.mcp.connection.abc".to_owned())).await;
+    }
+
+    /// Repeated teardowns leave the list flat rather than growing one
+    /// row per archived session.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn repeated_sanitized_stops_do_not_accumulate_rows() {
+        // Given a wired actor and a surviving long-lived row.
+        let fabric = TestFabric::new();
+        let cell = wire_actor(&fabric);
+        fabric.send_to_topic(running("long-lived")).await;
+        wait_for(|| row(&cell, "long-lived").is_some()).await;
+        // The census also lists the dashboard actor itself, so this
+        // pins the transient rows' absence rather than a total count.
+        let transient: Vec<String> = (0..5)
+            .map(|i| format!("jinn.tools.task-settle-listener.{i}"))
+            .collect();
+
+        // When five transient actors each start and then stop cleanly.
+        for name in &transient {
+            fabric.send_to_topic(running(name)).await;
+            wait_for(|| row(&cell, name).is_some()).await;
+            fabric
+                .send_to_topic(stopped(name, LifecycleState::Normal))
+                .await;
+        }
+
+        // Then every one of them is gone, leaving the list no taller
+        // than it was.
+        wait_for(|| {
+            let names = row_names(&cell);
+            transient.iter().all(|name| !names.contains(name))
+        })
+        .await;
+        assert!(row_names(&cell).contains(&"long-lived".to_owned()));
+    }
+
+    /// A failure for a path the dashboard never saw start still produces
+    /// a row, or a missed spawn announcement would drop the failure.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_failure_for_an_unseen_actor_still_creates_its_row() {
+        // Given a wired actor with no row for this path.
+        let fabric = TestFabric::new();
+        let cell = wire_actor(&fabric);
+
+        // When a crash announcement arrives for an actor it never saw.
+        fabric
+            .send_to_topic(stopped("vanished", LifecycleState::Crashed))
+            .await;
+
+        // Then the row exists and reads Crashed.
+        wait_for(|| row(&cell, "vanished").is_some_and(|r| r.lifecycle == ActorLifecycle::Crashed))
+            .await;
+    }
+
+    /// A stop for an unseen actor is nothing to report, so it leaves no
+    /// row: the sanitized path does not resurrect what it also deletes.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_sanitized_stop_for_an_unseen_actor_creates_no_row() {
+        // Given a wired actor with no row for this path.
+        let fabric = TestFabric::new();
+        let cell = wire_actor(&fabric);
+
+        // When a shutdown announcement arrives for an actor it never saw.
+        fabric
+            .send_to_topic(stopped("vanished", LifecycleState::Shutdown))
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Then no row was conjured up for it.
+        assert!(
+            !row_names(&cell).contains(&"vanished".to_owned()),
+            "a clean stop has nothing to report: {:?}",
+            row_names(&cell)
+        );
+    }
+
+    /// A crash does not erase the owning feature's last word on the row:
+    /// the note is the only column carrying detail about what the actor
+    /// was doing.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_failure_preserves_the_features_status_message() {
         // Given a wired actor whose row carries a feature status message.
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
@@ -553,8 +611,8 @@ mod tests {
             .send_to_topic(ServiceStatusUpdate {
                 name: "discord".to_owned(),
                 description: Some("Discord gateway".to_owned()),
-                lifecycle: None,
                 status_message: Some("connected".to_owned()),
+                note_tone: None,
             })
             .await;
         wait_for(|| {
@@ -562,33 +620,25 @@ mod tests {
         })
         .await;
 
-        // When the actor stops.
+        // When the actor crashes.
         fabric
-            .send_to_topic(stopped("discord", LifecycleState::Normal))
+            .send_to_topic(stopped("discord", LifecycleState::Crashed))
             .await;
 
-        // Then the row is Dead, the feature message is intact, and the
-        // stop reason is held for the view to fall back to.
-        wait_for(|| row(&cell, "discord").is_some_and(|r| r.lifecycle == ActorLifecycle::Dead))
+        // Then the row survives with its feature message and description.
+        wait_for(|| row(&cell, "discord").is_some_and(|r| r.lifecycle == ActorLifecycle::Crashed))
             .await;
         let row = row(&cell, "discord").unwrap();
         assert_eq!(row.status.as_deref(), Some("connected"));
         assert_eq!(row.description.as_deref(), Some("Discord gateway"));
-        assert!(
-            row.reason
-                .as_ref()
-                .is_some_and(|r| r.contains("stopped normally")),
-            "the stop reason is retained: {:?}",
-            row.reason
-        );
     }
 
-    /// A stop reason describes a state the actor has LEFT. A row that is
-    /// live again must not keep claiming it is stopped.
+    /// A respawn clears the failure: the row is live again, and keeping
+    /// the old verdict would misreport the present.
     #[rstest::rstest]
     #[tokio::test]
-    async fn a_respawn_clears_the_stale_stop_reason() {
-        // Given a wired actor whose row was stopped.
+    async fn a_respawn_clears_a_prior_failure() {
+        // Given a wired actor whose row went Crashed.
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric.send_to_topic(running("flaky")).await;
@@ -596,40 +646,42 @@ mod tests {
         fabric
             .send_to_topic(stopped("flaky", LifecycleState::Crashed))
             .await;
-        wait_for(|| row(&cell, "flaky").is_some_and(|r| r.reason.is_some())).await;
+        wait_for(|| row(&cell, "flaky").is_some_and(|r| r.lifecycle == ActorLifecycle::Crashed))
+            .await;
 
         // When the runtime announces it running again — which is exactly
         // what a supervised restart does, indistinguishably.
         fabric.send_to_topic(running("flaky")).await;
 
-        // Then the stale reason is gone.
+        // Then the row reads Running again.
         wait_for(|| row(&cell, "flaky").is_some_and(|r| r.lifecycle == ActorLifecycle::Running))
             .await;
-        assert_eq!(
-            row(&cell, "flaky").unwrap().reason,
-            None,
-            "a live row must not carry a stop reason"
-        );
     }
 
-    /// A stop announcement for a path the dashboard never saw start must
-    /// still produce a row, or a missed spawn announcement would silently
-    /// drop the actor from the census forever.
+    /// A failure sorts to the top of the dashboard, above every healthy
+    /// actor — the whole point of ordering by brokenness.
     #[rstest::rstest]
     #[tokio::test]
-    async fn a_stop_for_an_unseen_actor_still_creates_its_row() {
-        // Given a wired actor with no row for this path.
+    async fn a_failed_actor_sorts_to_the_top() {
+        // Given a wired actor with several healthy rows and one failure.
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
-
-        // When a stop announcement arrives for an actor it never saw.
+        for name in ["a", "b", "c"] {
+            fabric.send_to_topic(running(name)).await;
+        }
+        wait_for(|| {
+            let names = row_names(&cell);
+            ["a", "b", "c"]
+                .iter()
+                .all(|n| names.contains(&(*n).to_owned()))
+        })
+        .await;
         fabric
-            .send_to_topic(stopped("vanished", LifecycleState::Shutdown))
+            .send_to_topic(stopped("b", LifecycleState::Crashed))
             .await;
 
-        // Then the row exists and reads Dead.
-        wait_for(|| row(&cell, "vanished").is_some_and(|r| r.lifecycle == ActorLifecycle::Dead))
-            .await;
+        // When reading the display order.
+        wait_for(|| row_names(&cell).first() == Some(&"b".to_owned())).await;
     }
 
     /// The dashboard folds the runtime's OWN type. Delivery is by schema
@@ -669,8 +721,8 @@ mod tests {
             .send_to_topic(ServiceStatusUpdate {
                 name: "sample-actor".to_owned(),
                 description: None,
-                lifecycle: None,
                 status_message: Some("3 urls verified".to_owned()),
+                note_tone: None,
             })
             .await;
 
@@ -682,37 +734,37 @@ mod tests {
         .await;
     }
 
-    /// A description must not depend on a lifecycle opinion. The
-    /// discord publisher sends `None` lifecycle on its `Disconnected`
-    /// transition while still supplying a description, and the fold used
-    /// to apply the description only inside the lifecycle arm — so that
-    /// row silently lost its description.
+    /// A feature colours its own note without touching the row's state:
+    /// the note tone lands, and the lifecycle the runtime last announced
+    /// is untouched.
     #[rstest::rstest]
     #[tokio::test]
-    async fn a_description_applies_even_without_a_lifecycle_opinion() {
+    async fn a_feature_note_tone_does_not_change_the_row_state() {
         // Given a wired actor with a running row.
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric.send_to_topic(running("gateway")).await;
         wait_for(|| row(&cell, "gateway").is_some()).await;
 
-        // When a status update carries a description but no lifecycle.
+        // When the owning feature reports a failure with an error tone.
         fabric
             .send_to_topic(ServiceStatusUpdate {
                 name: "gateway".to_owned(),
-                description: Some("Discord gateway".to_owned()),
-                lifecycle: None,
-                status_message: Some("disconnected".to_owned()),
+                description: None,
+                status_message: Some("401: invalid bot token".to_owned()),
+                note_tone: Some(NoteTone::Error),
             })
             .await;
 
-        // Then the description lands.
-        wait_for(|| {
-            row(&cell, "gateway")
-                .and_then(|r| r.description)
-                .is_some_and(|d| d == "Discord gateway")
-        })
-        .await;
+        // Then the tone lands on the row.
+        wait_for(|| row(&cell, "gateway").is_some_and(|r| r.tone == NoteTone::Error)).await;
+        // And the State cell still reports what the runtime last said.
+        let row = row(&cell, "gateway").unwrap();
+        assert_eq!(
+            row.lifecycle,
+            ActorLifecycle::Running,
+            "a feature cannot declare its own actor dead"
+        );
     }
 
     #[rstest::rstest]
@@ -727,10 +779,10 @@ mod tests {
             fabric.send_to_topic(running(name)).await;
         }
         wait_for(|| {
-            let s = cell.read();
+            let names = row_names(&cell);
             ["a", "b", "c"]
                 .iter()
-                .all(|n| s.actors().iter().any(|e| e.name == *n))
+                .all(|n| names.contains(&(*n).to_owned()))
         })
         .await;
 
@@ -740,5 +792,56 @@ mod tests {
 
         // Then the cursor advances twice.
         wait_for(|| cell.read().selected_index() == 2).await;
+    }
+
+    /// The cursor addresses a position, so a row that sorts away from
+    /// under it leaves the cursor where it is — the alternative (following
+    /// the row) makes `j` jump to wherever the target happened to land.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_re_sort_leaves_the_cursor_where_it_is() {
+        // Given a wired actor with rows the cursor sits past the start of.
+        let fabric = TestFabric::new();
+        let cell = wire_actor(&fabric);
+        for name in ["a", "b", "c", "d"] {
+            fabric.send_to_topic(running(name)).await;
+        }
+        wait_for(|| {
+            let names = row_names(&cell);
+            ["a", "b", "c", "d"]
+                .iter()
+                .all(|n| names.contains(&(*n).to_owned()))
+        })
+        .await;
+        for _ in 0..2 {
+            fabric.send_to_topic(DashboardNav::Down).await;
+        }
+        wait_for(|| cell.read().selected_index() == 2).await;
+        let before = row_names(&cell)[2].clone();
+
+        // When a later-announced actor fails and sorts to the top.
+        fabric.send_to_topic(running("e")).await;
+        wait_for(|| row(&cell, "e").is_some()).await;
+        fabric
+            .send_to_topic(stopped("e", LifecycleState::Crashed))
+            .await;
+        wait_for(|| row_names(&cell).first() == Some(&"e".to_owned())).await;
+
+        // Then the cursor still holds its POSITION, and that position
+        // now addresses a different actor — the failed row slid to the
+        // top and everything under it shifted down by one.
+        assert_eq!(cell.read().selected_index(), 2);
+        let after = row_names(&cell);
+        assert_ne!(
+            after[2], before,
+            "the row that slid away must not drag the cursor with it"
+        );
+        // And the row the cursor used to address is still present, one
+        // position further down: it moved, the cursor did not follow.
+        let moved_to = after
+            .iter()
+            .position(|name| *name == before)
+            .expect("the previously-selected row survives");
+        assert_eq!(moved_to, 3, "it shifted down by exactly one row");
     }
 }

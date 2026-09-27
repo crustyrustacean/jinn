@@ -5,31 +5,31 @@
 //! spawn and stop announcement — into it, and any consumer of actor
 //! status can compare against it without depending on `jinn-kernel`.
 
-/// The lifecycle phase of an actor.
+/// The lifecycle phase of an actor, as the runtime reports it.
 ///
-/// Driven by the runtime's own actor announcements: a spawn makes the
-/// actor `Running`, a stop makes it `Dead` or `Idle`.
+/// Every variant mirrors a state the runtime can actually announce; there
+/// is no jinn-side projection variant. A feature cannot write this value:
+/// the dashboard's fold is its only writer, so the enum is the runtime's
+/// vocabulary rather than a shared opinion about it.
 ///
-/// `Starting` is a jinn-side projection rather than a runtime-reported
-/// state. A runtime spawn announcement means the actor is already live,
-/// so the runtime never reports `Starting`. A feature that expects its
-/// own actor to appear may declare it `Starting` up front via
-/// `ServiceStatusUpdate`, and the runtime's announcement promotes it.
+/// The two sanctioned stops are absent by design. A runtime `Normal` or
+/// `Shutdown` stop means the actor finished or was torn down deliberately,
+/// so the dashboard removes its row rather than keeping a row that reports
+/// a clean ending as a failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ActorLifecycle {
-    /// The actor has been announced by a feature but not yet by the
-    /// runtime.
-    Starting,
     /// The actor has spawned and is ready.
     Running,
     /// The actor is dormant: the runtime evicted it for idleness, and it
     /// will re-spawn on the next send to its path.
     ///
-    /// Distinct from [`ActorLifecycle::Dead`] because the actor is not
-    /// gone. Partition-set entities (per-session workers, for instance)
-    /// passivate on an idle window and come straight back, so reporting
-    /// them as dead describes a failure that did not happen.
+    /// Distinct from a failure because the actor is not gone.
+    /// Partition-set entities (per-session workers, for instance)
+    /// passivate on an idle window and come straight back.
     Idle,
-    /// The actor has stopped and will not come back on its own.
-    Dead,
+    /// The restart budget was exhausted and the failure was escalated to
+    /// the parent — the worst outcome the runtime can report.
+    Escalated,
+    /// A handler panicked and the supervisor declined to restart the actor.
+    Crashed,
 }

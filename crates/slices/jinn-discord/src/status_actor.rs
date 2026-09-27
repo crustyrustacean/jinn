@@ -15,6 +15,7 @@
 //! actor path doubles as the readiness point.
 
 use jinn_discord_msg::DiscordStatusUpdate;
+use jinn_slices::NoteTone;
 use jinn_slices::ServiceStatusUpdate;
 use jinn_slices::TypedCell;
 use trouper::actor::ServiceActor;
@@ -43,19 +44,24 @@ pub fn discord_connection_slot() -> jinn_slices::SlotKey {
 }
 
 /// The dashboard-facing projection of a status update.
+///
+/// Carries no lifecycle: whether the gateway actor is alive is the
+/// runtime's to announce, and an auth failure is not a dead actor. A
+/// failure is expressed as an error-toned note on a row that still reads
+/// whatever the runtime last reported.
 #[must_use]
 pub fn to_service_update(update: &DiscordStatusUpdate) -> ServiceStatusUpdate {
-    let (lifecycle, with_description) = match update {
-        DiscordStatusUpdate::Connecting => (Some(jinn_core_types::ActorLifecycle::Starting), true),
-        DiscordStatusUpdate::Connected => (Some(jinn_core_types::ActorLifecycle::Running), true),
-        DiscordStatusUpdate::Error { .. } => (Some(jinn_core_types::ActorLifecycle::Dead), true),
+    let (note_tone, with_description) = match update {
+        DiscordStatusUpdate::Connecting => (None, true),
+        DiscordStatusUpdate::Connected => (None, true),
+        DiscordStatusUpdate::Error { .. } => (Some(NoteTone::Error), true),
         DiscordStatusUpdate::Disconnected => (None, false),
     };
     ServiceStatusUpdate {
         name: update.entry_name().to_owned(),
         description: with_description.then(|| update.entry_description().to_owned()),
-        lifecycle,
         status_message: Some(update.full_message()),
+        note_tone,
     }
 }
 
@@ -169,8 +175,8 @@ mod tests {
     use super::DiscordStatusActorDeps;
     use super::fold_connection;
     use super::to_service_update;
-    use jinn_core_types::ActorLifecycle;
     use jinn_discord_msg::DiscordStatusUpdate;
+    use jinn_slices::NoteTone;
     use jinn_slices::Slices;
     use std::future::Future;
     use std::pin::Pin;
@@ -215,6 +221,34 @@ mod tests {
         assert_eq!(state.detail.as_deref(), Some("401: invalid bot token"));
     }
 
+    /// Discord does not get to say whether its actor is alive. An auth
+    /// failure is a failed handshake, not a dead actor, so the projection
+    /// carries no lifecycle and says so through the note instead.
+    #[rstest::rstest]
+    #[test]
+    fn an_error_projects_as_an_error_tone_not_a_dead_actor() {
+        // Given a fatal auth Error update.
+        let update = DiscordStatusUpdate::Error {
+            message: "401: invalid bot token".to_owned(),
+        };
+
+        // When projecting into the dashboard vocabulary.
+        let projection = to_service_update(&update);
+
+        // Then the note is toned as an error and no lifecycle is claimed.
+        assert_eq!(projection.note_tone, Some(NoteTone::Error));
+        assert!(
+            projection
+                .status_message
+                .as_deref()
+                .is_some_and(|m| m.contains("401: invalid bot token")),
+            "the message carries the reason: {:?}",
+            projection.status_message
+        );
+    }
+
+    /// An ordinary connection is not a warning, so it publishes no tone
+    /// at all and the row reads with the default.
     #[rstest::rstest]
     #[test]
     fn connected_maps_to_running_for_the_dashboard() {
@@ -224,8 +258,8 @@ mod tests {
         // When projecting into the dashboard vocabulary.
         let projection = to_service_update(&update);
 
-        // Then the row is Running with the Connected message.
-        assert_eq!(projection.lifecycle, Some(ActorLifecycle::Running));
+        // Then the row carries the Connected message with no tone opinion.
+        assert_eq!(projection.note_tone, None);
         assert_eq!(projection.status_message.as_deref(), Some("Connected"));
         assert_eq!(projection.name, "discord");
     }
