@@ -63,6 +63,40 @@ impl SessionStoreActor {
             })
             .await;
         }
+        self.raise_archive_failed_hint(members, error);
+    }
+
+    /// Tells the user which session failed to archive, and why.
+    ///
+    /// A failed archive used to be a silent no-op: the only listener of
+    /// `SessionArchiveFailed` cleared the row's in-flight tint, so the keypress
+    /// looked like it had done nothing. The hint is the first place the cause
+    /// reaches the screen, and it names the session because a tree archive can
+    /// fail on any one of its members.
+    fn raise_archive_failed_hint(&self, members: &[SessionId], error: &str) {
+        let Some(status) = self
+            .services
+            .slices
+            .reader::<jinn_status_bar_msg::StatusBarState>(&jinn_status_bar_msg::status_bar_slot())
+        else {
+            // The status bar is not activated in every host (a headless test
+            // app, a plugin runtime). A hint with nowhere to land must not be
+            // an error of its own.
+            tracing::debug!(%error, "no status bar to report a failed archive to");
+            return;
+        };
+        let session = members
+            .first()
+            .map_or_else(String::new, ToString::to_string);
+        let message = if members.len() == 1 {
+            format!("could not archive session {session}: {error}")
+        } else {
+            format!(
+                "could not archive {} sessions from {session}: {error}",
+                members.len()
+            )
+        };
+        status.update(|state| state.hint = Some(message));
     }
 
     /// Resolves a root's subtree across loaded sessions and store summaries.

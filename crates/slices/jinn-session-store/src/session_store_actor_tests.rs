@@ -32,6 +32,13 @@ struct ActorFixture {
     harness: TestHarness,
     state: State,
     store: Arc<SqliteSessionStore>,
+    /// The status bar's cell, taken from the *same* `Slices` the actor holds.
+    ///
+    /// `HarnessServices::services` mints a fresh `Services` — and so a fresh
+    /// registry — on every call, so a test cannot reach the actor's cells
+    /// through the harness. The cell is registered on the actor's own
+    /// `Services` before the spawn and carried out here for reading.
+    status_bar: jinn_slices::cell::TypedCell<jinn_status_bar_msg::StatusBarState>,
 }
 
 async fn actor_fixture() -> ActorFixture {
@@ -53,6 +60,16 @@ async fn actor_fixture() -> ActorFixture {
             jinn_session_store_msg::SessionPickerState::default(),
         )
         .expect("session picker slot is free in a fresh harness");
+    // Production registers this at status-bar activation, which slice
+    // activation in a test harness does not run. Registering it here keeps a
+    // hint assertion from passing vacuously against a missing cell.
+    let status_bar = services
+        .slices
+        .register(
+            jinn_status_bar_msg::status_bar_slot(),
+            jinn_status_bar_msg::StatusBarState::default(),
+        )
+        .expect("status-bar slot is free in a fresh harness");
     let state = State::new(AppState::default());
     let _actor = SessionStoreActor::spawn(
         harness.system(),
@@ -67,6 +84,7 @@ async fn actor_fixture() -> ActorFixture {
         harness,
         state,
         store,
+        status_bar,
     }
 }
 
@@ -919,6 +937,48 @@ async fn archiving_a_tree_archives_a_member_that_is_not_live() {
     assert!(
         archived,
         "a tree member absent from the live map must still be archived"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_failed_archive_raises_a_hint_naming_the_session() {
+    // Given an active session and a store whose archive transaction will fail,
+    // with the status bar's cell registered by the fixture — the slice is not
+    // activated in this harness, and an unregistered cell would drop the hint
+    // silently and make this assertion vacuous.
+    let fixture = actor_fixture().await;
+    let session_id = {
+        let mut state = fixture.state.write();
+        state.active_session_mut().mark_interacted();
+        state
+            .active_session_mut()
+            .push_entry(jinn_core_types::ChatEntry::user("keep me"));
+        state.session.active_session_id().clone()
+    };
+    fixture
+        .store
+        .pool()
+        .execute("DROP TABLE token_ledger", vec![])
+        .await
+        .expect("drop token ledger");
+
+    // When archiving the session.
+    fixture
+        .harness
+        .publish(ArchiveSession {
+            session_id: session_id.clone(),
+        })
+        .await;
+    let hinted = poll_until(|| async { fixture.status_bar.read().hint.is_some() }).await;
+
+    // Then the failure is on screen, naming the session that would not archive.
+    let hint = fixture.status_bar.read().hint.clone();
+    assert!(hinted, "a failed archive must raise a status hint");
+    assert!(
+        hint.as_deref()
+            .is_some_and(|hint| hint.contains(&session_id.to_string())),
+        "the hint must name the session that failed to archive, got {hint:?}"
     );
 }
 

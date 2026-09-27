@@ -3192,6 +3192,7 @@ dependencies = [
  "jinn-session-state",
  "jinn-session-store-msg",
  "jinn-slices",
+ "jinn-status-bar-msg",
  "jinn-testutil",
  "jinn-theme",
  "jinn-token-count-msg",
