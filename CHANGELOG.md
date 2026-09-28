@@ -1,6 +1,6 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Do not make edits)**
 
-## (development)
+## 2026-09-27 v1.1.1
 
 - Todo tooling completely changed to reduce context tool block size and to more closely align with existing Claude + Codex tools.
   - `todo_set_list`: rewrites the entire todo list. Added a bunch of aliases for task states.
