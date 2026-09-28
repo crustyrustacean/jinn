@@ -1,5 +1,10 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Do not make edits)**
 
+## 2026-09-27 v1.1.2
+
+- Add a new "extending jinn" document. You should now be able to ask `jinn` to configure and extend itself.
+  - There isn't a large customization surface, but the agent should be able to guide you to a solution.
+
 ## 2026-09-27 v1.1.1
 
 - Todo tooling completely changed to reduce context tool block size and to more closely align with existing Claude + Codex tools.
