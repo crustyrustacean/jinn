@@ -283,9 +283,6 @@ jinn-context-assembly-msg = { path = "crates/slices/jinn-context-assembly-msg" }
 jinn-context-assembly = { path = "crates/slices/jinn-context-assembly" }
 wasm-encoder = "=0.252.0"
 wasmparser = "=0.252.0"
-wasmtime = { version = "47", features = ["component-model-async", "cache"] }
-wasmtime-wasi = { version = "47", features = ["p3"] }
-wasmtime-wasi-http = { version = "47", features = ["p3"] }
 
 # Error handling
 wherror = "2.3.1"
@@ -326,7 +323,6 @@ throbber-widgets-tui = "0.11"
 
 # State
 parking_lot = "0.12"
-arc-swap = "1"
 
 # Binary discovery
 which = "7"
@@ -358,13 +354,10 @@ textwrap = "0.16"
 tree-sitter = "0.26"
 tree-sitter-python = "0.25"
 fuzzy-matcher = "0.3"
-url = "2"
 form_urlencoded = "1"
 async-trait = "0.1"
 dialoguer = "0.12"
 arboard = "3"
-sha2 = "0.10"
-glob = "0.3"
 libc = "0.2"
 rand = "0.9"
 reasoning-parser = "1.2"
@@ -376,17 +369,11 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls-no-p
 # default provider instead. ring is already in the graph for serenity and
 # headless_chrome, so this adds no new compilation.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
-scraper = "0.27"
 anstyle-lossy = "1"
 anstyle = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 nu-ansi-term = "0.50"
-
-# Proc-macro
-syn = { version = "2", features = ["full"] }
-quote = "1"
-proc-macro2 = "1"
 
 # UUID
 uuid = { version = "1.23.1", features = ["v4", "v5", "v7", "serde"] }
@@ -399,11 +386,7 @@ base64 = "0.22"
 # would otherwise pull a CLI-only crate into the library graph.
 pulldown-cmark = { version = "0.9", default-features = false }
 regex = "1"
-petgraph = "0.7"
 tokio-util = "0.7"
-csv = "1"
-ctrlc = "3"
-comfy-table = "7"
 # Database
 daow = "0.2.0"
 # `bundled` is deliberately NOT in this spec for the host-side graph: host
