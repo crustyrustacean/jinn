@@ -1918,6 +1918,7 @@ dependencies = [
  "jiff",
  "jinn-boot",
  "jinn-boot-msg",
+ "jinn-cell-catalog",
  "jinn-chat-input",
  "jinn-chat-input-msg",
  "jinn-chat-log-view",
@@ -2014,6 +2015,7 @@ dependencies = [
 name = "jinn-app-state"
 version = "1.1.1"
 dependencies = [
+ "jinn-cell-catalog",
  "jinn-chat-input-msg",
  "jinn-chat-log-view-msg",
  "jinn-config",
@@ -2078,6 +2080,33 @@ dependencies = [
  "serde",
  "serde_json",
  "trouper",
+]
+
+[[package]]
+name = "jinn-cell-catalog"
+version = "1.1.1"
+dependencies = [
+ "jinn-chat-input-msg",
+ "jinn-chat-log-view-msg",
+ "jinn-cwd-msg",
+ "jinn-dashboard",
+ "jinn-discord-msg",
+ "jinn-mcp-msg",
+ "jinn-persona-msg",
+ "jinn-preferences-msg",
+ "jinn-project-msg",
+ "jinn-provider-selection-msg",
+ "jinn-quake-bar",
+ "jinn-session-lifecycle-msg",
+ "jinn-session-store-msg",
+ "jinn-sidebar-msg",
+ "jinn-skills-msg",
+ "jinn-slices",
+ "jinn-status-bar-msg",
+ "jinn-term-msg",
+ "jinn-theme-msg",
+ "jinn-token-count-msg",
+ "jinn-tools-msg",
 ]
 
 [[package]]
@@ -2427,6 +2456,7 @@ dependencies = [
  "daow",
  "derive_more",
  "error-stack",
+ "jinn-cell-catalog",
  "jinn-chat-input-msg",
  "jinn-config",
  "jinn-context",
@@ -2574,6 +2604,7 @@ dependencies = [
  "indoc",
  "jiff",
  "jinn-app-state",
+ "jinn-cell-catalog",
  "jinn-chat-input-msg",
  "jinn-chat-log-view-msg",
  "jinn-common",
@@ -2705,6 +2736,7 @@ dependencies = [
  "ctor",
  "error-stack",
  "jiff",
+ "jinn-cell-catalog",
  "jinn-config",
  "jinn-core-types",
  "jinn-kernel",
@@ -2741,6 +2773,7 @@ version = "1.1.1"
 dependencies = [
  "error-stack",
  "jinn-app-state",
+ "jinn-cell-catalog",
  "jinn-kernel",
  "jinn-persona-msg",
  "jinn-picker",
@@ -2800,6 +2833,7 @@ dependencies = [
  "jinn-kernel",
  "jinn-persona-msg",
  "jinn-preferences-config",
+ "jinn-preferences-msg",
  "jinn-project",
  "jinn-project-msg",
  "jinn-selection-widget",
@@ -2837,6 +2871,13 @@ dependencies = [
  "tracing",
  "trouper",
  "wherror",
+]
+
+[[package]]
+name = "jinn-preferences-msg"
+version = "1.1.1"
+dependencies = [
+ "jinn-slices",
 ]
 
 [[package]]
@@ -2932,6 +2973,7 @@ dependencies = [
  "error-stack",
  "humantime",
  "jiff",
+ "jinn-cell-catalog",
  "jinn-core-types",
  "jinn-kernel",
  "jinn-picker",
@@ -3084,6 +3126,7 @@ name = "jinn-session-lifecycle"
 version = "1.1.1"
 dependencies = [
  "error-stack",
+ "jinn-cell-catalog",
  "jinn-chat-input-msg",
  "jinn-common",
  "jinn-config",
@@ -3373,6 +3416,7 @@ name = "jinn-skills"
 version = "1.1.1"
 dependencies = [
  "error-stack",
+ "jinn-cell-catalog",
  "jinn-chat-log-view",
  "jinn-core-types",
  "jinn-kernel",
@@ -3567,6 +3611,7 @@ version = "1.1.1"
 dependencies = [
  "error-stack",
  "jinn-app-state",
+ "jinn-cell-catalog",
  "jinn-chat-log-view",
  "jinn-chat-log-view-msg",
  "jinn-core-types",
@@ -3589,6 +3634,7 @@ name = "jinn-token-count"
 version = "1.1.1"
 dependencies = [
  "error-stack",
+ "jinn-cell-catalog",
  "jinn-core-types",
  "jinn-kernel",
  "jinn-llm-support",
@@ -3628,6 +3674,7 @@ dependencies = [
  "error-stack",
  "futures",
  "jiff",
+ "jinn-cell-catalog",
  "jinn-chat-input-msg",
  "jinn-common",
  "jinn-config",
@@ -3703,6 +3750,7 @@ dependencies = [
  "dirs",
  "error-stack",
  "futures",
+ "jinn-cell-catalog",
  "jinn-chat-input",
  "jinn-chat-input-msg",
  "jinn-chat-log-view",

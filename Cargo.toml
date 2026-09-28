@@ -49,6 +49,7 @@ path = "src/lib.rs"
 
 [dependencies]
 jinn-install = { workspace = true }
+jinn-cell-catalog = { workspace = true }
 jinn-session-state = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-llm-support = { workspace = true }
@@ -185,6 +186,7 @@ jinn-install = { path = "crates/jinn-install" }
 jinn-discord = { path = "crates/slices/jinn-discord" }
 jinn-discord-msg = { path = "crates/slices/jinn-discord-msg" }
 jinn-common = { path = "crates/jinn-common" }
+jinn-cell-catalog = { path = "crates/jinn-cell-catalog" }
 jinn-config = { path = "crates/jinn-config" }
 jinn-context = { path = "crates/jinn-context" }
 jinn-core-types = { path = "crates/jinn-core-types" }
@@ -214,6 +216,7 @@ jinn-session-lifecycle = { path = "crates/slices/jinn-session-lifecycle" }
 jinn-session-schema = { path = "crates/jinn-session-schema" }
 jinn-provider-config = { path = "crates/jinn-provider-config" }
 jinn-preferences-config = { path = "crates/jinn-preferences-config" }
+jinn-preferences-msg = { path = "crates/slices/jinn-preferences-msg" }
 jinn-preferences = { path = "crates/slices/jinn-preferences" }
 jinn-project = { path = "crates/slices/jinn-project" }
 jinn-project-msg = { path = "crates/slices/jinn-project-msg" }

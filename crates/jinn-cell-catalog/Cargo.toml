@@ -1,0 +1,36 @@
+[package]
+name = "jinn-cell-catalog"
+version.workspace = true
+edition.workspace = true
+description = "The one place every slice cell is registered, shared by production boot and every test harness."
+
+[dependencies]
+jinn-slices = { workspace = true }
+# Every dependency here is a slice's *message* crate (its slot key and
+# payload) or a light implementation crate that owns no cell of its own.
+# Nothing pulls in `jinn-kernel` or `jinn-app-state`, so the catalog sits
+# strictly below the layer that calls it — a cycle here would break the
+# test harnesses in `jinn-app-state` and `jinn-kernel`.
+jinn-chat-input-msg = { workspace = true }
+jinn-chat-log-view-msg = { workspace = true }
+jinn-cwd-msg = { workspace = true }
+jinn-dashboard = { workspace = true }
+jinn-discord-msg = { workspace = true }
+jinn-mcp-msg = { workspace = true }
+jinn-persona-msg = { workspace = true }
+jinn-preferences-msg = { workspace = true }
+jinn-project-msg = { workspace = true }
+jinn-provider-selection-msg = { workspace = true }
+jinn-quake-bar = { workspace = true }
+jinn-session-lifecycle-msg = { workspace = true }
+jinn-session-store-msg = { workspace = true }
+jinn-sidebar-msg = { workspace = true }
+jinn-skills-msg = { workspace = true }
+jinn-status-bar-msg = { workspace = true }
+jinn-term-msg = { workspace = true }
+jinn-theme-msg = { workspace = true }
+jinn-token-count-msg = { workspace = true }
+jinn-tools-msg = { workspace = true }
+
+[lints]
+workspace = true

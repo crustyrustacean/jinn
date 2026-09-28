@@ -12,6 +12,10 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+pub mod connection_state;
+
+pub use connection_state::{ConnectionState, discord_connection_slot};
+
 /// The Discord session id (a string) tied to a jinn [`SessionId`].
 ///
 /// Kept as a plain `String` because Discord ids arrive as strings from

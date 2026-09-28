@@ -104,6 +104,9 @@ mod tests {
     /// An activated skills slice whose picker cell holds one `web-coder` item.
     async fn slices_with_one_skill() -> jinn_slices::Slices {
         let slices = jinn_slices::Slices::new();
+        // Production boot seeds every slice cell before any slice activates;
+        // `activate` resolves the picker's cell by slot key.
+        jinn_cell_catalog::register_all_cells(&slices);
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = OverlayViews::new();
         let key_routes = jinn_slices::KeyRoutes::new();
@@ -182,6 +185,7 @@ mod tests {
     async fn registered_overlay_resolves_by_scope_identity() {
         // Given an activated skills slice.
         let slices = jinn_slices::Slices::new();
+        jinn_cell_catalog::register_all_cells(&slices);
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = OverlayViews::new();
         let key_routes = jinn_slices::KeyRoutes::new();

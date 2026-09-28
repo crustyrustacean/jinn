@@ -31,9 +31,14 @@ pub fn quake_overlay_scope() -> SliceScopeId {
     quake_scope()
 }
 
-/// Activates the quake bar: mint the cell, spawn the canvas actor on
+/// Activates the quake bar: resolve the cell, spawn the canvas actor on
 /// the trouper fabric, stage the forward route, attach the rows, and
 /// register the overlay geometry + slot + renderer.
+///
+/// The cell is not minted here: the shared cell catalog
+/// (`jinn_cell_catalog::register_all_cells`) registers every slice cell in
+/// one place, before any slice activates, so this resolves the handle the
+/// same way every other consumer does.
 ///
 /// The forward route is staged here because this slice owns the
 /// crossing command's Rust type; composition drains the staged set
@@ -41,17 +46,17 @@ pub fn quake_overlay_scope() -> SliceScopeId {
 ///
 /// # Panics
 ///
-/// Panics if the overlay renderer registration races another
-/// registration for the same scope — impossible at today's call
-/// pattern (one activation per launch).
+/// Panics if the catalog has not run — the rows and input hook would be
+/// wired to an absent cell, and the overlay would render nothing.
+#[expect(
+    clippy::expect_used,
+    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
+)]
 pub fn activate(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
-    #[expect(
-        clippy::expect_used,
-        reason = "bootstrap assertion: a duplicate cell registration is broken wiring"
-    )]
     let cell = host
-        .register_cell(quake_bar_slot(), QuakeBarState::default())
-        .expect("quake-bar slot is registered exactly once at wiring");
+        .slices()
+        .reader::<QuakeBarState>(&quake_bar_slot())
+        .expect("the cell catalog registers the quake-bar slot before any slice activates");
     canvas_actor::QuakeBarCanvasActor::spawn(host.system(), &cell);
     intent::attach_quake_bar_rows(host.key_routes(), &cell);
     intent::register_quake_input_hook(host.key_routes(), &cell);

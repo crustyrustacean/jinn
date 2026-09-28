@@ -216,22 +216,7 @@ impl Services {
             interactive_term: Arc::new(std::sync::OnceLock::new()),
             request_dump: RequestDumpService::default(),
             task_spawns: jinn_tools_msg::TaskSpawnRegistry::default(),
-            slices: {
-                let slices = jinn_slices::Slices::new();
-                let _ = slices.register(
-                    jinn_persona_msg::personas_slot(),
-                    jinn_persona_msg::Personas::default(),
-                );
-                let _ = slices.register(
-                    jinn_tools_msg::tools_registry_slot(),
-                    jinn_tools_msg::ToolRegistry::default(),
-                );
-                let _ = slices.register(
-                    jinn_term_msg::term_tabs_slot(),
-                    jinn_term_msg::TerminalTabState::default(),
-                );
-                slices
-            },
+            slices: seeded_slices(),
             key_routes: jinn_slices::route::KeyRoutes::new(),
             viewport: jinn_slices::view::Viewport::new(),
             overlay_views: jinn_slices::OverlayViews::<jinn_slices::RenderFacts>::new(),
@@ -297,22 +282,7 @@ impl Services {
             interactive_term: Arc::new(std::sync::OnceLock::new()),
             request_dump: RequestDumpService::default(),
             task_spawns: jinn_tools_msg::TaskSpawnRegistry::default(),
-            slices: {
-                let slices = jinn_slices::Slices::new();
-                let _ = slices.register(
-                    jinn_persona_msg::personas_slot(),
-                    jinn_persona_msg::Personas::default(),
-                );
-                let _ = slices.register(
-                    jinn_tools_msg::tools_registry_slot(),
-                    jinn_tools_msg::ToolRegistry::default(),
-                );
-                let _ = slices.register(
-                    jinn_term_msg::term_tabs_slot(),
-                    jinn_term_msg::TerminalTabState::default(),
-                );
-                slices
-            },
+            slices: seeded_slices(),
             key_routes: jinn_slices::route::KeyRoutes::new(),
             viewport: jinn_slices::view::Viewport::new(),
             overlay_views: jinn_slices::OverlayViews::<jinn_slices::RenderFacts>::new(),
@@ -337,4 +307,15 @@ impl Services {
     pub async fn spawn_context_assembly_for_test(&mut self) {
         let _ = jinn_context_assembly::service::spawn(&self.trouper_system);
     }
+}
+
+/// A test registry with every slice cell registered.
+///
+/// The same catalog production boot uses: a fake that seeded a private
+/// subset diverged from the real wiring, and a test relying on a cell it
+/// happened not to seed failed only by rendering nothing.
+fn seeded_slices() -> jinn_slices::Slices {
+    let slices = jinn_slices::Slices::new();
+    jinn_cell_catalog::register_all_cells(&slices);
+    slices
 }

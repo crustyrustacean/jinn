@@ -50,6 +50,9 @@ jinn-session-turn = { workspace = true }
 jinn-session-init-msg = { workspace = true }
 
 [dev-dependencies]
+# `activate_picker` resolves the picker cells the catalog owns, so the test
+# harnesses seed their registry through the same list production boot uses.
+jinn-cell-catalog = { workspace = true }
 jinn-testutil = { workspace = true }
 
 toml = { workspace = true }

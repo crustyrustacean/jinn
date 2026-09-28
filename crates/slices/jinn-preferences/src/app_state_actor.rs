@@ -239,13 +239,13 @@ mod tests {
         // Given an app-state actor with a skills picker whose preview cache
         // holds lines rendered in the previous theme.
         let (mut actor, services) = create_actor().await;
+        // `Services::new_fake` seeds its registry through the shared cell
+        // catalog, which already owns the skills picker cell this test
+        // inspects; it only needs a handle to it.
         let cell = services
             .slices
-            .register(
-                jinn_skills_msg::skill_picker_slot(),
-                jinn_skills_msg::SkillPickerState::default(),
-            )
-            .expect("skill picker slot is free in a fresh registry");
+            .reader::<jinn_skills_msg::SkillPickerState>(&jinn_skills_msg::skill_picker_slot())
+            .expect("the catalog registers the skills picker cell");
         cell.update(|picker| {
             picker.preview_cache.insert(
                 "12345".to_owned(),
@@ -413,19 +413,20 @@ mod tests {
         let (actor, _services) = create_actor().await;
         let mut contributed = jinn_theme::default_theme();
         contributed.focus_accent = ratatui::style::Color::Red;
+        // `Services::new_fake` seeds its registry through the shared cell
+        // catalog, which already owns the theme entries cell; seed the
+        // scanned entry through it rather than minting a second cell.
         actor
             .services
             .slices
-            .register(
-                jinn_theme_msg::theme_entries_slot(),
-                jinn_theme_msg::ThemeEntries {
-                    entries: vec![jinn_theme_msg::NamedTheme {
-                        name: "dracula".to_owned(),
-                        theme: contributed.clone(),
-                    }],
-                },
-            )
-            .expect("theme cell minted once");
+            .reader::<jinn_theme_msg::ThemeEntries>(&jinn_theme_msg::theme_entries_slot())
+            .expect("the catalog registers the theme entries cell")
+            .update(|entries| {
+                entries.entries = vec![jinn_theme_msg::NamedTheme {
+                    name: "dracula".to_owned(),
+                    theme: contributed.clone(),
+                }];
+            });
 
         // When syncing AppStateFile with theme_name = Some("dracula").
         let app_state = AppStateFile {

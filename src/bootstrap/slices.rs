@@ -4,7 +4,13 @@
 //! order". Each entry is one activation call. Adding a slice is one line
 //! here.
 //!
-//! # The two blocks
+//! # The three blocks
+//!
+//! **Block 0 — the cell catalog.** Every slice cell in the workspace is
+//! registered by one function, [`jinn_cell_catalog::register_all_cells`].
+//! It runs before any slice activates, because every activation below
+//! resolves its own cell by slot key — a slice that activated against an
+//! unregistered cell would render nothing and panic.
 //!
 //! **Block 1 — producers.** These three register cells that later
 //! activations resolve by slot key. They run first so a consumer can
@@ -16,8 +22,10 @@
 //!
 //! # The ordering constraints that are behavioural
 //!
-//! Five orderings are load-bearing rather than cosmetic:
+//! Six orderings are load-bearing rather than cosmetic:
 //!
+//! 0. The cell catalog runs before every activation. Not an optimisation:
+//!    it is the precondition for the whole list.
 //! 1. The dashboard is first, always. Its canvas actor is subscribed to
 //!    the actor-census schema, and `subscribe` is the readiness point —
 //!    any actor spawned before it would be missing from the census
@@ -58,6 +66,13 @@ pub struct Activated {
 /// launch: a slice that cannot register its cell is a broken wiring, not
 /// a degraded mode to run in.
 pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError> {
+    // ── Block 0: the cell catalog ────────────────────────────────────
+    // Every slice cell, registered in one place. No slice registers its
+    // own cell from `activate()` — the activations below all resolve
+    // their handles from the registry by slot key, which is why this
+    // must run before any of them. See constraint 0.
+    jinn_cell_catalog::register_all_cells(&ctx.services().slices);
+
     // ── Block 1: producers ───────────────────────────────────────────
     // These three register cells that later activations read by slot key.
     // They run before the consumers below resolve their cells.
@@ -132,19 +147,22 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
     jinn_session_init::activate(&services_snapshot, state_snapshot)
         .map_err(|_report| ActivateError::SessionInit(jinn_session_init::SliceActivateError))?;
 
-    // The term slice registers its tab-mirrors cell; the interactive-term
-    // coordinator that owns the PTYs is spawned below with the MCP
-    // coordinator, since both share that lifecycle shape.
+    // The term slice installs its overlay and key rows; its tab-mirrors
+    // cell came from the catalog. The interactive-term coordinator that
+    // owns the PTYs is spawned below with the MCP coordinator, since both
+    // share that lifecycle shape.
     let state_snapshot = ctx.state().clone();
     jinn_term::activate(ctx.services_mut(), &state_snapshot);
 
-    // Tools mints the registry cell the tool picker seeds from, so the
-    // orchestrator spawn (below) and the picker (next) both come after it.
+    // Tools has no per-activation work: its registry cell came from the
+    // catalog. The orchestrator spawn (below) and the picker (next) both
+    // read that cell.
     let state_snapshot = ctx.state().clone();
     jinn_tools::activate(ctx.services_mut(), &state_snapshot);
 
-    // The theme slice scans the theme directories; its picker is
-    // registered by the same slice, after discovery.
+    // The theme slice scans the theme directories and writes the result
+    // through the cell the catalog registered; its picker is registered by
+    // the same slice, after discovery.
     let services_snapshot = ctx.services().clone();
     jinn_theme_slice::activate(
         &mut ctx.host(),
@@ -153,7 +171,8 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
     );
     jinn_theme_slice::activate_picker(&mut ctx.host());
 
-    // The persona slice scans the persona directories; its picker is
+    // The persona slice scans the persona directories and writes the
+    // result through the cell the catalog registered; its picker is
     // registered by the same slice, after discovery. The scanned set is
     // resolved from the personas cell at the `PersonasLoaded` publish,
     // once every actor is spawned.
@@ -237,7 +256,7 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
 
     // The MCP coordinator. Its cell is registered first so no status or
     // log event can arrive before there is a writer — see constraint 3.
-    let mcp_runtime = jinn_mcp_slice::activate_runtime(&ctx.services().slices)?;
+    let mcp_runtime = jinn_mcp_slice::activate_runtime(&ctx.services().slices);
     let mcp_coordinator_path = jinn_mcp_slice::coordinator::McpCoordinatorActor::spawn(
         &ctx.services().trouper_system,
         jinn_mcp_slice::coordinator::McpCoordinatorActorDeps {
@@ -348,9 +367,6 @@ pub enum ActivateError {
     /// The session-init partition set failed to install.
     #[error(debug)]
     SessionInit(jinn_session_init::SliceActivateError),
-    /// The MCP runtime cell was already taken.
-    #[error(debug)]
-    McpRuntime(#[from] jinn_slices::SlotTaken),
     /// The discord section was present but malformed.
     #[error(debug)]
     Discord(#[from] jinn_config::ConfigSectionError),

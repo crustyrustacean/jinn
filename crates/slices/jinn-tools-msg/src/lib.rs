@@ -14,6 +14,7 @@ pub mod event;
 pub mod notices;
 pub mod task_list_entry;
 pub mod task_list_picker_state;
+pub mod task_list_state;
 pub mod task_registry;
 pub mod todo_list;
 pub mod tool_entry;
@@ -32,6 +33,7 @@ pub use task_list_picker_state::{
     RESULTS_VIEWPORT_FALLBACK as TASK_LIST_PICKER_RESULTS_VIEWPORT_FALLBACK, TaskListPickerState,
     task_list_picker_scope, task_list_picker_slot,
 };
+pub use task_list_state::{TaskLists, task_lists_slot};
 pub use task_registry::*;
 pub use todo_list::*;
 pub use tool_entry::ToolEntry;

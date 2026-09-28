@@ -67,17 +67,18 @@ pub use tool_picker_routes::open_from_scope as open_tool_picker_from_scope;
 use jinn_kernel::common::services::Services;
 use jinn_kernel::common::state::State;
 
-/// Activates the tools slice over the kernel's services: registers the
-/// `tools/registry` cell (idempotent — re-registering over an existing cell
-/// is a no-op error we ignore deliberately, matching the term-slice
-/// precedent). The cell publishes MCP tool definitions to the TUI; the
-/// orchestrator actor itself is spawned by actor wiring (it needs the
-/// announce supervisor and explicit spawn ordering vs. the MCP coordinator).
+/// Installs the tools slice's overlay wiring over the kernel's services.
+///
+/// The `tools/registry` cell is registered by the shared cell catalog
+/// (`jinn_cell_catalog::register_all_cells`), not here. The cell publishes
+/// MCP tool definitions to the TUI; the orchestrator actor itself is
+/// spawned by composition (it needs the announce supervisor and explicit
+/// spawn ordering vs. the MCP coordinator).
 pub fn activate(services: &mut Services, _state: &State) {
-    let _ = services.slices.register(
-        jinn_tools_msg::tools_registry_slot(),
-        jinn_tools_msg::ToolRegistry::default(),
-    );
+    // Nothing to install: every tools cell comes from the catalog, and
+    // every overlay, route row, and actor spawn is wired by `activate_picker`
+    // and by composition.
+    let _ = services;
 }
 
 /// Registers the tool picker: its cell, its overlay, its keys, and its filter
@@ -113,19 +114,17 @@ pub fn task_list_picker_opener() -> jinn_slices::route::ActionFn {
 ///
 /// # Panics
 ///
-/// Panics if a picker slot is already registered - double activation is a
-/// wiring bug.
+/// Panics if the cell catalog has not run - the picker would render against
+/// an absent cell and paint nothing.
 #[expect(
     clippy::expect_used,
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
 )]
 pub fn activate_picker(host: &mut jinn_slices::SliceHost<'_, jinn_slices::RenderFacts>) {
     let cell = host
-        .register_cell(
-            jinn_tools_msg::tool_picker_slot(),
-            jinn_tools_msg::ToolPickerState::default(),
-        )
-        .expect("tool picker slot is registered exactly once at wiring");
+        .slices()
+        .reader::<jinn_tools_msg::ToolPickerState>(&jinn_tools_msg::tool_picker_slot())
+        .expect("the cell catalog registers the tool picker slot before any slice activates");
 
     let scope = tool_picker_scope();
     host.register_overlay(
@@ -154,19 +153,17 @@ pub fn activate_picker(host: &mut jinn_slices::SliceHost<'_, jinn_slices::Render
 ///
 /// # Panics
 ///
-/// Panics if the task-list slot is already registered — double activation is
-/// a wiring bug.
+/// Panics if the cell catalog has not run - the picker would render against
+/// an absent cell and paint nothing.
 #[expect(
     clippy::expect_used,
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
 )]
 pub fn activate_task_list_picker(host: &mut jinn_slices::SliceHost<'_, jinn_slices::RenderFacts>) {
     let cell = host
-        .register_cell(
-            jinn_tools_msg::task_list_picker_slot(),
-            jinn_tools_msg::TaskListPickerState::default(),
-        )
-        .expect("task-list picker slot is registered exactly once at wiring");
+        .slices()
+        .reader::<jinn_tools_msg::TaskListPickerState>(&jinn_tools_msg::task_list_picker_slot())
+        .expect("the cell catalog registers the task-list picker slot before any slice activates");
 
     let scope = jinn_tools_msg::task_list_picker_scope();
     host.register_overlay(

@@ -26,8 +26,14 @@ pub use jinn_theme_msg::theme_entries_slot;
 pub use jinn_theme_msg::theme_picker_scope;
 pub use theme_picker_routes::open_from_scope as open_theme_picker_from_scope;
 
-/// Activates the slice: scans both theme directories and mints the
-/// theme-entries cell with the ordered results.
+/// Activates the slice: scans both theme directories and re-seeds the
+/// catalog-registered theme-entries cell with the ordered results.
+///
+/// The cell itself belongs to the shared cell catalog
+/// (`jinn_cell_catalog::register_all_cells`), which registers it with the
+/// empty set so every harness has one; the scan is this slice's job, so it
+/// writes the scanned value through the resolved handle rather than
+/// minting a second cell nobody else can see.
 ///
 /// The built-in default is pinned first; a scanned theme named "default"
 /// replaces the built-in's look while keeping its reserved slot; the rest
@@ -36,8 +42,8 @@ pub use theme_picker_routes::open_from_scope as open_theme_picker_from_scope;
 ///
 /// # Panics
 ///
-/// Panics if the slot is already registered — double activation is a
-/// wiring bug.
+/// Panics if the catalog has not run — the picker and the app-state actor
+/// would then resolve no entries at all.
 #[expect(
     clippy::expect_used,
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
@@ -48,34 +54,37 @@ pub fn activate(
     system_themes_dir: &Path,
 ) {
     let entries = scan(themes_dir, system_themes_dir);
-    let _cell = host
-        .register_cell(theme_entries_slot(), entries)
-        .expect("theme-entries slot is registered exactly once at wiring");
+    let cell = host
+        .slices()
+        .reader::<ThemeEntries>(&theme_entries_slot())
+        .expect("the cell catalog registers the theme-entries slot before any slice activates");
+    cell.update(|slot| *slot = entries);
 }
 
-/// Registers the theme picker: its cell, its overlay, its keys, and its
+/// Registers the theme picker: its overlay, its keys, and its
 /// filter hook.
 ///
 /// Split from [`activate`] because the picker needs the same host but is not
 /// part of theme discovery. Called from composition right after `activate`,
 /// so the picker's rows are seeded from the entries cell `activate` just
-/// minted.
+/// re-seeded.
+///
+/// Like [`activate`], the picker's cell belongs to the shared catalog, so
+/// this resolves the handle rather than minting one.
 ///
 /// # Panics
 ///
-/// Panics if the picker slot is already registered — double activation is a
-/// wiring bug.
+/// Panics if the catalog has not run — the menu would otherwise render
+/// against an absent cell and paint nothing.
 #[expect(
     clippy::expect_used,
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
 )]
 pub fn activate_picker(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
     let cell = host
-        .register_cell(
-            jinn_theme_msg::theme_picker_slot(),
-            jinn_theme_msg::ThemePickerState::default(),
-        )
-        .expect("theme picker slot is registered exactly once at wiring");
+        .slices()
+        .reader::<jinn_theme_msg::ThemePickerState>(&jinn_theme_msg::theme_picker_slot())
+        .expect("the cell catalog registers the theme-picker slot before any slice activates");
 
     let scope = theme_picker_scope();
     host.register_overlay(
