@@ -61,36 +61,22 @@ impl TuiAppBuilder {
         };
         let state = self.state.unwrap_or_default();
 
-        // Scope-focus cell: activate + attach so the FrontendState
-        // facade reads/writes real storage (kernel-free: the cell is
-        // minted through the shared Slices registry directly).
+        // Every slice cell the render pass reads, registered by the same
+        // catalog production boot uses, then attached so the FrontendState
+        // facades read and write real storage. This builder runs no slice
+        // activation, so before the catalog a popup whose cell it happened
+        // not to name rendered nothing while the tests around it stayed
+        // green.
         {
             let slices = services.slices.clone();
-            let _ = slices.register(
-                jinn_slices::scope_focus_slot(),
-                jinn_slices::ScopeFocusState::default(),
-            );
-            let _ = slices.register(
-                jinn_provider_selection_msg::provider_state_slot(),
-                jinn_provider_selection_msg::ProviderCell::default(),
-            );
-            // The chat log's audit-popup cell. Production registers it in
-            // `jinn_chat_log_view::activate` during actor wiring, which does
-            // not run here — so without this the popup is unreachable in a
-            // test app and every popup-render test silently no-ops.
-            let _ = slices.register(
-                jinn_chat_log_view_msg::audit_popup_slot(),
-                jinn_chat_log_view_msg::AuditPopupState::default(),
-            );
-            // The `@path` file popup's cell, for the same reason: the
-            // chat-input slice's `activate` mints it in production and does
-            // not run here. Without it the popup renders no rows while the
-            // tests around it stay green.
-            let _ = slices.register(
-                jinn_chat_input_msg::file_picker_slot(),
-                jinn_chat_input_msg::FilePickerState::default(),
-            );
-            state.frontend.attach_slices(slices);
+            jinn_cell_catalog::register_all_cells(&slices);
+            // Both halves, from the same registry: a chat-input draft is
+            // written through the session facade and read through the
+            // frontend one, and `attach_slices` writes a `OnceLock`, so
+            // attaching only one half means the write and its read resolve
+            // different registries. Production wiring attaches both.
+            state.frontend.attach_slices(slices.clone());
+            state.session.attach_slices(slices);
         }
 
         let core = AppCore {

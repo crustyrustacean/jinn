@@ -53,23 +53,22 @@ async fn actor_fixture() -> ActorFixture {
     services.session_store = SessionStoreService::new(store.clone());
     // The picker cell production's `activate` mints before the spawn; a
     // fixture that skipped it would fail at construction, not at use.
+    // The harness seeds the registry through the shared cell catalog, so
+    // the picker cell already exists; resolve it rather than minting a
+    // second one over the top.
     let session_picker_cell = services
         .slices
-        .register(
-            jinn_session_store_msg::session_picker_slot(),
-            jinn_session_store_msg::SessionPickerState::default(),
+        .reader::<jinn_session_store_msg::SessionPickerState>(
+            &jinn_session_store_msg::session_picker_slot(),
         )
-        .expect("session picker slot is free in a fresh harness");
-    // Production registers this at status-bar activation, which slice
-    // activation in a test harness does not run. Registering it here keeps a
-    // hint assertion from passing vacuously against a missing cell.
+        .expect("the cell catalog registers the session picker slot");
+    // The harness seeds the registry through the shared cell catalog, so the
+    // status-bar cell already exists; resolve it so the hint assertion
+    // below cannot pass vacuously against a missing cell.
     let status_bar = services
         .slices
-        .register(
-            jinn_status_bar_msg::status_bar_slot(),
-            jinn_status_bar_msg::StatusBarState::default(),
-        )
-        .expect("status-bar slot is free in a fresh harness");
+        .reader::<jinn_status_bar_msg::StatusBarState>(&jinn_status_bar_msg::status_bar_slot())
+        .expect("the cell catalog registers the status-bar slot");
     let state = State::new(AppState::default());
     let _actor = SessionStoreActor::spawn(
         harness.system(),
@@ -102,13 +101,15 @@ async fn controlled_actor_fixture(store: Arc<dyn SessionStore>) -> ControlledFix
     let harness = TestHarness::new().await;
     let mut services = harness.services().await;
     services.session_store = SessionStoreService::new(store);
+    // The harness seeds the registry through the shared cell catalog, so the
+    // picker cell already exists; resolve it rather than minting a second
+    // one over the top (which the catalog would report as `SlotTaken`).
     let session_picker_cell = services
         .slices
-        .register(
-            jinn_session_store_msg::session_picker_slot(),
-            jinn_session_store_msg::SessionPickerState::default(),
+        .reader::<jinn_session_store_msg::SessionPickerState>(
+            &jinn_session_store_msg::session_picker_slot(),
         )
-        .expect("session picker slot is free in a fresh harness");
+        .expect("the cell catalog registers the session picker slot");
     let state = State::new(AppState::default());
     let _actor = SessionStoreActor::spawn(
         harness.system(),

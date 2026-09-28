@@ -24,25 +24,20 @@ pub use element::StatusBarElement;
 pub use jinn_status_bar_msg::StatusBarState;
 pub use jinn_status_bar_msg::status_bar_slot;
 
-/// Activates the status bar slice: registers the hint cell.
+/// Activates the status bar slice.
 ///
-/// Kernel-free of feature state, the slice needs exactly one
-/// registration — everything else it renders is read-only kernel state
-/// resolved through [`RenderCtx`](jinn_kernel::common::render_ctx::RenderCtx).
+/// Kernel-free of feature state, the slice needs no registration of its
+/// own — everything it renders is read-only kernel state resolved through
+/// [`RenderCtx`](jinn_kernel::common::render_ctx::RenderCtx). The hint
+/// cell is registered by the shared cell catalog
+/// (`jinn_cell_catalog::register_all_cells`) before any slice activates;
+/// the element resolves it read-only at render time.
 ///
 /// # Panics
 ///
-/// Panics if the cell registration races another registration for the
-/// same slot — impossible at today's call pattern (one activation per
-/// launch).
+/// Never panics: the element falls back to the model display when the
+/// hint cell has not been registered.
 pub fn activate(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
-    #[expect(
-        clippy::expect_used,
-        reason = "bootstrap assertion: a duplicate cell registration is broken wiring"
-    )]
-    host.register_cell(status_bar_slot(), StatusBarState::default())
-        .expect("status-bar slot is registered exactly once at wiring");
-
     // The status bar's own screen region. The element holds no animation
     // state, so the draw function needs no interior mutability.
     host.slices()
@@ -80,11 +75,27 @@ mod activation_tests {
 
     use jinn_slices::SliceHost;
 
+    /// Registers the hint cell the catalog owns.
+    ///
+    /// The catalog is the production registrar; this test exercises the
+    /// cell itself, so it seeds the same entry locally rather than depend
+    /// on the catalog (which would be a cycle through `jinn-quake-bar`
+    /// and `jinn-dashboard`).
+    fn seed_status_bar_cell(slices: &jinn_slices::Slices) {
+        slices
+            .register(
+                jinn_status_bar_msg::status_bar_slot(),
+                jinn_status_bar_msg::StatusBarState::default(),
+            )
+            .expect("the status-bar slot is free in a fresh registry");
+    }
+
     #[rstest::rstest]
     #[tokio::test]
     async fn activate_registers_the_status_bar_cell() {
-        // Given a host over an empty slice registry.
+        // Given a host over a registry holding the catalog's status-bar cell.
         let slices = jinn_slices::Slices::new();
+        seed_status_bar_cell(&slices);
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let key_routes = jinn_slices::KeyRoutes::new();

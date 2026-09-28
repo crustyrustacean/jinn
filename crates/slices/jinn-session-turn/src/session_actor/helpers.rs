@@ -76,7 +76,7 @@ pub(crate) async fn test_actor_recording() -> (
 
     (
         super::SessionPersistenceActor {
-            state: State::new(AppState::default()),
+            state: State::new(AppState::default_with_scope_focus()),
             services,
             counter: TiktokenCounter::o200k_base(),
             token_cache: HistoryWorkerChatEntryTokenCache::default(),

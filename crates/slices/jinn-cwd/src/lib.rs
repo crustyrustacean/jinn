@@ -19,21 +19,26 @@ pub use render::cwd_input_popup_rect;
 
 use jinn_slices::SliceHost;
 
-/// Activates the slice: mints the cwd cell, registers the overlay, attaches
-/// the route rows and the input hook. No actor.
+/// Installs the slice's overlay and key bindings. No actor.
+///
+/// The cwd cell is not minted here: the shared cell catalog
+/// (`jinn_cell_catalog::register_all_cells`) registers every slice cell in
+/// one place, so this resolves the handle the same way every other
+/// consumer does.
 ///
 /// # Panics
 ///
-/// Panics if the slot is already registered — double activation is a wiring
-/// bug.
+/// Panics if the catalog has not run — the overlay would otherwise render
+/// against an absent cell and paint nothing.
 #[expect(
     clippy::expect_used,
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
 )]
 pub fn activate(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
     let cell = host
-        .register_cell(cwds_slot(), jinn_cwd_msg::CwdInputState::default())
-        .expect("cwd slot is registered exactly once at wiring");
+        .slices()
+        .reader::<jinn_cwd_msg::CwdInputState>(&cwds_slot())
+        .expect("the cell catalog registers the cwd slot before any slice activates");
     host.register_overlay(
         intent::cwd_scope(),
         std::sync::Arc::new(render::cwd_overlay_rect),

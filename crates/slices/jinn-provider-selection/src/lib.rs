@@ -52,13 +52,13 @@ pub use reasoning_picker_routes::open_from_scope as open_reasoning_picker_from_s
 
 /// The handles `activate` returns to composition.
 pub struct ProviderSelectionHandles {
-    /// The provider cell this slice minted. Wiring threads it to the
+    /// The provider cell this slice resolved. Wiring threads it to the
     /// boot slice (its provider-init actor writes the disk-loaded
     /// model cache through the same cell).
     pub provider_cell: jinn_slices::TypedCell<ProviderCell>,
-    /// The endpoint picker's cell. `activate` mints it before the provider
-    /// actor spawns (that actor publishes fetches into it) and composition
-    /// hands it back to `activate_endpoint_picker` to finish wiring.
+    /// The endpoint picker's cell. The provider actor publishes each
+    /// completed fetch into it and composition hands the handle back to
+    /// `activate_endpoint_picker` to finish wiring.
     /// The model picker's cell, so the provider actor's loads land in the menu
     /// that shows them.
     pub provider_picker_cell:
@@ -72,53 +72,49 @@ pub struct ProviderSelectionHandles {
 }
 
 #[expect(
-    clippy::panic,
-    reason = "bootstrap assertion: a double activation must abort launch, not run degraded"
+    clippy::expect_used,
+    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
 )]
-/// Activates the slice over a composition-owned [`SliceHost`]: mints
-/// the provider cell, spawns the discover + provider actors (in that
-/// order — the wiring order the kernel spawn block used), and returns
-/// the handles.
+/// Activates the slice over a composition-owned [`SliceHost`]: resolves
+/// the three cells its actors publish into, spawns the discover + provider
+/// actors (in that order — the wiring order the kernel spawn block used),
+/// and returns the handles.
+///
+/// No cell is minted here: the shared cell catalog
+/// (`jinn_cell_catalog::register_all_cells`) registers every slice cell in
+/// one place, so this resolves the handles the same way every other
+/// consumer does.
 ///
 /// # Panics
 ///
-/// Panics if the cell slot is already taken or an actor spawn fails —
-/// both mean a composition bug (double activation).
+/// Panics if the catalog has not run, or an actor spawn fails — the
+/// former means the picker actors would publish into absent cells, the
+/// latter that composition is wired wrong.
 pub fn activate(
     host: &mut jinn_slices::SliceHost<'_, jinn_slices::RenderFacts>,
     services: &Services,
     state: State,
 ) -> ProviderSelectionHandles {
     let provider_cell = host
-        .register_cell(
-            jinn_provider_selection_msg::provider_state_slot(),
-            ProviderCell::default(),
-        )
-        .unwrap_or_else(|e| panic!("provider-selection activate: provider cell slot taken: {e:?}"));
+        .slices()
+        .reader::<ProviderCell>(&jinn_provider_selection_msg::provider_state_slot())
+        .expect("the cell catalog registers the provider-state slot before any slice activates");
 
-    // Registered here, before the provider actor spawns, because that actor
-    // publishes each completed fetch into this cell. Registration order is
-    // load-bearing: a cell must exist before a handle to it is handed out.
+    // The provider actor publishes each completed fetch and each model load
+    // into these two cells, so it must hold handles to the catalog's cells —
+    // a clone shares the catalog's own payload.
     let endpoint_picker_cell = host
-        .register_cell(
-            jinn_provider_selection_msg::endpoint::endpoint_picker_slot(),
-            jinn_provider_selection_msg::endpoint::EndpointPickerState::default(),
+        .slices()
+        .reader::<jinn_provider_selection_msg::endpoint::EndpointPickerState>(
+            &jinn_provider_selection_msg::endpoint::endpoint_picker_slot(),
         )
-        .unwrap_or_else(|e| {
-            panic!("provider-selection activate: endpoint picker cell slot taken: {e:?}")
-        });
-
-    // The model picker's cell, registered for the same reason as the endpoint
-    // picker's: the provider actor publishes each load into it, so the cell
-    // must exist before the actor is handed a handle.
+        .expect("the cell catalog registers the endpoint-picker slot before any slice activates");
     let provider_picker_cell = host
-        .register_cell(
-            jinn_provider_selection_msg::provider_picker_slot(),
-            jinn_provider_selection_msg::ProviderPickerState::default(),
+        .slices()
+        .reader::<jinn_provider_selection_msg::ProviderPickerState>(
+            &jinn_provider_selection_msg::provider_picker_slot(),
         )
-        .unwrap_or_else(|e| {
-            panic!("provider-selection activate: provider picker cell slot taken: {e:?}")
-        });
+        .expect("the cell catalog registers the provider-picker slot before any slice activates");
 
     let deps = jinn_kernel::common::actor_deps::ActorDeps {
         services: services.clone(),
@@ -152,10 +148,9 @@ pub fn activate(
 
 /// Registers the model picker: its overlay, its keys, and its filter hook.
 ///
-/// The cell itself was registered by [`activate`], which had to mint it
-/// earlier so the provider actor could hold a handle and publish each load
-/// into it. Registering a slot twice is a wiring error, so this takes the
-/// handle rather than minting one.
+/// The cell itself belongs to the shared catalog; [`activate`] resolved
+/// its handle so the provider actor could hold one and publish each load
+/// into it, and composition threads the same handle here.
 ///
 /// No services, no actor: the menu is pure slice state plus a bus message.
 pub fn activate_provider_picker(
@@ -182,29 +177,30 @@ pub fn activate_provider_picker(
     provider_picker_routes::register_provider_picker_input_hook(host.key_routes(), &cell);
 }
 
-/// Registers the reasoning-effort picker: its cell, its overlay, its keys,
+/// Registers the reasoning-effort picker: its overlay, its keys,
 /// and its filter hook.
 ///
 /// Split from [`activate`] because the picker is a menu, not a service: it
 /// spawns no actor and needs no services, so composition calls this from the
 /// same slice host right after `activate` (or in its own activation step, if
-/// this slice's other pickers move in later).
+/// this slice's other pickers move in later). Its cell belongs to the shared
+/// catalog, so this resolves the handle rather than minting one.
 ///
 /// # Panics
 ///
-/// Panics if the picker slot is already registered — double activation is a
-/// wiring bug.
+/// Panics if the catalog has not run — the menu's rows and render would
+/// otherwise act on an absent cell and paint nothing.
 #[expect(
     clippy::expect_used,
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
 )]
 pub fn activate_picker(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
     let cell = host
-        .register_cell(
-            jinn_provider_selection_msg::reasoning::reasoning_picker_slot(),
-            jinn_provider_selection_msg::ReasoningPickerState::default(),
+        .slices()
+        .reader::<jinn_provider_selection_msg::ReasoningPickerState>(
+            &jinn_provider_selection_msg::reasoning::reasoning_picker_slot(),
         )
-        .expect("reasoning picker slot is registered exactly once at wiring");
+        .expect("the cell catalog registers the reasoning-picker slot before any slice activates");
 
     let scope = reasoning_picker_scope();
     host.register_overlay(
@@ -229,10 +225,9 @@ pub fn activate_picker(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
 /// Registers the OpenRouter endpoint picker: its overlay, its keys, and its
 /// filter hook.
 ///
-/// The cell itself was registered by [`activate`], which had to mint it
-/// earlier so the provider actor could hold a handle and publish each
-/// completed fetch into it. Registering a slot twice is a wiring error, so
-/// this function takes the cell it is given rather than minting its own.
+/// The cell itself belongs to the shared catalog; [`activate`] resolved
+/// its handle so the provider actor could hold one and publish each
+/// completed fetch into it, and composition threads the same handle here.
 ///
 /// Each picker owns a distinct scope, cell, and key set, and none of them
 /// knows another exists.

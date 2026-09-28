@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 jinn-core-types = { workspace = true }
+jinn-cell-catalog = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-session-lifecycle-msg = { workspace = true }
 jinn-term-msg = { workspace = true }

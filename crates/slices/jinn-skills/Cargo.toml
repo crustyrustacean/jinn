@@ -22,6 +22,9 @@ error-stack = { workspace = true }
 trouper = { workspace = true }
 
 [dev-dependencies]
+# `activate` resolves the skill picker cell the catalog owns, so the tests
+# seed their registry through the same list production boot uses.
+jinn-cell-catalog = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }

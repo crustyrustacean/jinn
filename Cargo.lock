@@ -1438,8 +1438,6 @@ dependencies = [
  "allocator-api2",
  "equivalent",
  "foldhash",
- "serde",
- "serde_core",
 ]
 
 [[package]]
@@ -1918,6 +1916,7 @@ dependencies = [
  "jiff",
  "jinn-boot",
  "jinn-boot-msg",
+ "jinn-cell-catalog",
  "jinn-chat-input",
  "jinn-chat-input-msg",
  "jinn-chat-log-view",
@@ -2014,6 +2013,7 @@ dependencies = [
 name = "jinn-app-state"
 version = "1.1.1"
 dependencies = [
+ "jinn-cell-catalog",
  "jinn-chat-input-msg",
  "jinn-chat-log-view-msg",
  "jinn-config",
@@ -2078,6 +2078,33 @@ dependencies = [
  "serde",
  "serde_json",
  "trouper",
+]
+
+[[package]]
+name = "jinn-cell-catalog"
+version = "1.1.1"
+dependencies = [
+ "jinn-chat-input-msg",
+ "jinn-chat-log-view-msg",
+ "jinn-cwd-msg",
+ "jinn-dashboard-msg",
+ "jinn-discord-msg",
+ "jinn-mcp-msg",
+ "jinn-persona-msg",
+ "jinn-preferences-msg",
+ "jinn-project-msg",
+ "jinn-provider-selection-msg",
+ "jinn-quake-bar-msg",
+ "jinn-session-lifecycle-msg",
+ "jinn-session-store-msg",
+ "jinn-sidebar-msg",
+ "jinn-skills-msg",
+ "jinn-slices",
+ "jinn-status-bar-msg",
+ "jinn-term-msg",
+ "jinn-theme-msg",
+ "jinn-token-count-msg",
+ "jinn-tools-msg",
 ]
 
 [[package]]
@@ -2206,7 +2233,6 @@ dependencies = [
  "serde_json",
  "tokio",
  "toml",
- "wasmparser",
  "wherror",
 ]
 
@@ -2402,6 +2428,7 @@ version = "1.1.1"
 dependencies = [
  "error-stack",
  "jinn-core-types",
+ "jinn-dashboard-msg",
  "jinn-mcp-msg",
  "jinn-sidebar-msg",
  "jinn-slices",
@@ -2420,6 +2447,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-dashboard-msg"
+version = "1.1.1"
+dependencies = [
+ "jinn-core-types",
+ "jinn-slices",
+ "rstest",
+]
+
+[[package]]
 name = "jinn-discord"
 version = "1.1.1"
 dependencies = [
@@ -2427,6 +2463,7 @@ dependencies = [
  "daow",
  "derive_more",
  "error-stack",
+ "jinn-cell-catalog",
  "jinn-chat-input-msg",
  "jinn-config",
  "jinn-context",
@@ -2574,6 +2611,7 @@ dependencies = [
  "indoc",
  "jiff",
  "jinn-app-state",
+ "jinn-cell-catalog",
  "jinn-chat-input-msg",
  "jinn-chat-log-view-msg",
  "jinn-common",
@@ -2632,7 +2670,6 @@ dependencies = [
  "unicode-segmentation",
  "unicode-width 0.2.2",
  "uuid",
- "wasm-encoder",
  "wherror",
 ]
 
@@ -2705,6 +2742,7 @@ dependencies = [
  "ctor",
  "error-stack",
  "jiff",
+ "jinn-cell-catalog",
  "jinn-config",
  "jinn-core-types",
  "jinn-kernel",
@@ -2741,6 +2779,7 @@ version = "1.1.1"
 dependencies = [
  "error-stack",
  "jinn-app-state",
+ "jinn-cell-catalog",
  "jinn-kernel",
  "jinn-persona-msg",
  "jinn-picker",
@@ -2795,11 +2834,13 @@ version = "1.1.1"
 dependencies = [
  "dirs",
  "error-stack",
+ "jinn-chat-log-view-msg",
  "jinn-config",
  "jinn-core-types",
  "jinn-kernel",
  "jinn-persona-msg",
  "jinn-preferences-config",
+ "jinn-preferences-msg",
  "jinn-project",
  "jinn-project-msg",
  "jinn-selection-widget",
@@ -2837,6 +2878,13 @@ dependencies = [
  "tracing",
  "trouper",
  "wherror",
+]
+
+[[package]]
+name = "jinn-preferences-msg"
+version = "1.1.1"
+dependencies = [
+ "jinn-slices",
 ]
 
 [[package]]
@@ -2932,6 +2980,7 @@ dependencies = [
  "error-stack",
  "humantime",
  "jiff",
+ "jinn-cell-catalog",
  "jinn-core-types",
  "jinn-kernel",
  "jinn-picker",
@@ -2983,6 +3032,7 @@ dependencies = [
  "error-stack",
  "jiff",
  "jinn-core-types",
+ "jinn-quake-bar-msg",
  "jinn-slices",
  "jinn-testutil",
  "jinn-theme",
@@ -2993,6 +3043,15 @@ dependencies = [
  "tokio",
  "trouper",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "jinn-quake-bar-msg"
+version = "1.1.1"
+dependencies = [
+ "jinn-slices",
+ "rstest",
+ "serde",
 ]
 
 [[package]]
@@ -3084,6 +3143,7 @@ name = "jinn-session-lifecycle"
 version = "1.1.1"
 dependencies = [
  "error-stack",
+ "jinn-cell-catalog",
  "jinn-chat-input-msg",
  "jinn-common",
  "jinn-config",
@@ -3182,6 +3242,7 @@ dependencies = [
  "async-trait",
  "error-stack",
  "jiff",
+ "jinn-cell-catalog",
  "jinn-chat-input-msg",
  "jinn-chat-log-view-msg",
  "jinn-context",
@@ -3373,6 +3434,7 @@ name = "jinn-skills"
 version = "1.1.1"
 dependencies = [
  "error-stack",
+ "jinn-cell-catalog",
  "jinn-chat-log-view",
  "jinn-core-types",
  "jinn-kernel",
@@ -3567,6 +3629,7 @@ version = "1.1.1"
 dependencies = [
  "error-stack",
  "jinn-app-state",
+ "jinn-cell-catalog",
  "jinn-chat-log-view",
  "jinn-chat-log-view-msg",
  "jinn-core-types",
@@ -3589,6 +3652,7 @@ name = "jinn-token-count"
 version = "1.1.1"
 dependencies = [
  "error-stack",
+ "jinn-cell-catalog",
  "jinn-core-types",
  "jinn-kernel",
  "jinn-llm-support",
@@ -3628,6 +3692,7 @@ dependencies = [
  "error-stack",
  "futures",
  "jiff",
+ "jinn-cell-catalog",
  "jinn-chat-input-msg",
  "jinn-common",
  "jinn-config",
@@ -3703,6 +3768,7 @@ dependencies = [
  "dirs",
  "error-stack",
  "futures",
+ "jinn-cell-catalog",
  "jinn-chat-input",
  "jinn-chat-input-msg",
  "jinn-chat-log-view",
@@ -3889,12 +3955,6 @@ name = "lazycell"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
-
-[[package]]
-name = "leb128fmt"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
 name = "libc"
@@ -7306,16 +7366,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wasm-encoder"
-version = "0.252.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8185ae345fa5687c054626ff9a50e7089797a343d9904d1dc9820eb4c4d3196f"
-dependencies = [
- "leb128fmt",
- "wasmparser",
-]
-
-[[package]]
 name = "wasm-streams"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7339,19 +7389,6 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
-]
-
-[[package]]
-name = "wasmparser"
-version = "0.252.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3eb099dcadcde5be9eef55e3a337128efd4e44b4c93122487e4d2e4e1c6627c"
-dependencies = [
- "bitflags 2.13.2",
- "hashbrown 0.17.1",
- "indexmap",
- "semver",
- "serde",
 ]
 
 [[package]]

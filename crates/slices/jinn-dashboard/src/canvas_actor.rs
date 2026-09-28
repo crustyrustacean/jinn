@@ -207,10 +207,10 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+    use crate::DashboardState;
     use crate::contracts::ServiceStatusUpdate;
     use crate::dashboard_slot;
     use crate::nav::DashboardNav;
-    use crate::state::DashboardState;
     use jinn_slices::NoteTone;
     use jinn_slices::Slices;
     use jinn_slices::TypedCell;

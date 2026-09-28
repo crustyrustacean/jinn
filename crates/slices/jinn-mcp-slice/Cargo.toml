@@ -34,6 +34,9 @@ parking_lot = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
+# `activate_picker` resolves the inspector's cell the catalog owns, so the
+# tests seed their registry through the same list production boot uses.
+jinn-cell-catalog = { workspace = true }
 jinn-testutil = { workspace = true }
 
 jinn-config = { workspace = true }

@@ -38,6 +38,9 @@ tracing = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
+# Activation resolves the provider cells from the shared catalog, so the
+# tests seed their registry through it rather than through the slice.
+jinn-cell-catalog = { workspace = true }
 jinn-testutil = { workspace = true }
 
 serde_json = { workspace = true }

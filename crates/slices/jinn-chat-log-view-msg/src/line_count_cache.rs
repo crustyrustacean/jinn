@@ -10,8 +10,9 @@
 //! render-variant changes (status-derived look that alters the rendered lines
 //! without touching the entry's content — e.g. a paired tool result landing
 //! or a subagent's running state flipping).
-//! Theme changes are handled centrally by [`FrontendCaches::invalidate_all`]
-//! which calls [`EntryLineCache::clear`] directly.
+//! Theme changes are handled by whoever clears the owning cell, which calls
+//! [`EntryLineCache::clear`] — see
+//! [`entry_line_cache_slot`](crate::entry_line_cache_slot).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -114,14 +115,14 @@ pub struct MeasuredLineCount {
 
 /// Cache mapping entry IDs to their cached wrapped line counts and rendered lines.
 ///
-/// Owned by [`FrontendCaches`] - populated during the render pass, used
-/// to determine which entries overlap the viewport without re-rendering
-/// the entire history.
+/// Stored in the `chat-log-view:line-cache@v1` cell - populated during the
+/// render pass, used to determine which entries overlap the viewport without
+/// re-rendering the entire history.
 ///
 /// # Invalidation
 ///
 /// - **Content width change:** clears all entries.
-/// - **Theme change:** cleared by [`FrontendCaches::invalidate_all`].
+/// - **Theme change:** cleared through the owning cell.
 /// - **Streaming (content change):** detected by fingerprint mismatch → automatic miss.
 /// - **Expand/collapse:** detected by `is_expanded` mismatch → automatic miss.
 /// - **New entry:** no cache entry exists → automatic miss.

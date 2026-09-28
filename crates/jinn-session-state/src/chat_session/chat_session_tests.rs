@@ -221,7 +221,7 @@ fn begin_streaming_sets_is_streaming() {
 #[rstest::rstest]
 fn append_stream_token_appends_to_assistant_entry() {
     // Given a session that is streaming.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
 
     // When appending a token.
@@ -242,7 +242,7 @@ fn append_stream_token_appends_to_assistant_entry() {
 #[rstest::rstest]
 fn finish_streaming_clears_streaming_state() {
     // Given a session that is streaming with some tokens.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session
         .append_stream_token("Hi", jiff::Timestamp::now())
@@ -262,7 +262,7 @@ fn finish_streaming_clears_streaming_state() {
 #[rstest::rstest]
 fn cancel_streaming_keeps_partial_text() {
     // Given a session that is streaming with partial tokens.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session
         .append_stream_token("Partial", jiff::Timestamp::now())
@@ -282,7 +282,7 @@ fn cancel_streaming_keeps_partial_text() {
 #[rstest::rstest]
 fn begin_streaming_twice_is_noop() {
     // Given a session that is already streaming.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
 
     // When calling begin_streaming again.
@@ -309,7 +309,7 @@ fn push_entry_bumps_last_history_activity_at() {
 #[rstest::rstest]
 fn append_stream_token_bumps_last_history_activity_at() {
     // Given a streaming session with a stale activity timestamp.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session.core.identity.last_history_activity_at = jiff::Timestamp::UNIX_EPOCH;
 
@@ -703,7 +703,7 @@ fn begin_sending_is_noop_when_already_sending() {
 #[rstest::rstest]
 fn begin_sending_is_noop_when_streaming() {
     // Given a session that is streaming.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
 
     // When calling begin_sending.
@@ -763,7 +763,7 @@ fn is_idle_false_when_sending() {
 #[rstest::rstest]
 fn is_idle_false_when_streaming() {
     // Given a session that has begun streaming.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
 
     // When its phase is inspected.
@@ -830,7 +830,7 @@ fn finish_streaming_returns_to_idle() {
 #[rstest::rstest]
 fn begin_tool_call_creates_entry_with_empty_arguments() {
     // Given a streaming session.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
 
     // When beginning a tool call.
@@ -856,7 +856,7 @@ fn begin_tool_call_creates_entry_with_empty_arguments() {
 #[rstest::rstest]
 fn append_tool_call_delta_accumulates_arguments() {
     // Given a streaming session with a tool call entry.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session.begin_tool_call(0, "call_1", "echo", jiff::Timestamp::now());
 
@@ -883,7 +883,7 @@ fn append_tool_call_delta_accumulates_arguments() {
 #[rstest::rstest]
 fn finalize_tool_call_overwrites_arguments() {
     // Given a streaming session with a tool call that has partial arguments.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session.begin_tool_call(0, "call_1", "echo", jiff::Timestamp::now());
     session
@@ -908,7 +908,7 @@ fn finalize_tool_call_overwrites_arguments() {
 #[rstest::rstest]
 fn finalize_tool_call_pushes_new_entry_when_not_found() {
     // Given a streaming session with no tool call entry for the given ID.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
 
     // When finalizing a tool call that was never started (shouldn't happen normally).
@@ -930,7 +930,7 @@ fn finalize_tool_call_pushes_new_entry_when_not_found() {
 #[rstest::rstest]
 fn first_tool_call_tracks_arguments() {
     // Given a streaming session.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
 
     // When beginning a tool call and appending a delta.
@@ -952,7 +952,7 @@ fn first_tool_call_tracks_arguments() {
 #[rstest::rstest]
 fn second_tool_call_tracks_independent_arguments() {
     // Given a streaming session with one tool call already started.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session.begin_tool_call(0, "call_1", "echo", jiff::Timestamp::now());
     session.append_tool_call_delta(0, r#"{"a":1}"#).expect("ok");
@@ -976,7 +976,7 @@ fn second_tool_call_tracks_independent_arguments() {
 #[rstest::rstest]
 fn finish_streaming_clears_tool_call_indices() {
     // Given a streaming session with a tool call entry.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session.begin_tool_call(0, "call_1", "echo", jiff::Timestamp::now());
 
@@ -991,7 +991,7 @@ fn finish_streaming_clears_tool_call_indices() {
 #[rstest::rstest]
 fn cancel_streaming_clears_tool_call_indices() {
     // Given a streaming session with a tool call entry.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session.begin_tool_call(0, "call_1", "echo", jiff::Timestamp::now());
 
@@ -1761,7 +1761,7 @@ fn cancel_streaming_preserves_partial_thinking() {
 #[rstest::rstest]
 fn finish_streaming_without_preserve_skips_assistant_entry() {
     // Given a session that is streaming with no tokens received.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
 
     // When finishing streaming without preserving assistant.
@@ -1775,7 +1775,7 @@ fn finish_streaming_without_preserve_skips_assistant_entry() {
 #[rstest::rstest]
 fn finish_streaming_with_preserve_creates_assistant_entry() {
     // Given a session that is streaming with no tokens received.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
 
     // When finishing streaming with preserving assistant.
@@ -1790,7 +1790,7 @@ fn finish_streaming_with_preserve_creates_assistant_entry() {
 #[rstest::rstest]
 fn finish_streaming_without_preserve_keeps_existing_assistant() {
     // Given a session that is streaming and has received tokens.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session
         .append_stream_token("Hello", jiff::Timestamp::now())
@@ -2952,7 +2952,7 @@ fn is_tool_call_streaming_returns_false_for_non_streaming_entry() {
 #[rstest::rstest]
 fn is_tool_call_streaming_returns_true_for_active_streaming_entry() {
     // Given a streaming session with an active tool call.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session.begin_tool_call(0, "tc-1", "write", jiff::Timestamp::now());
 
@@ -2969,7 +2969,7 @@ fn is_tool_call_streaming_returns_true_for_active_streaming_entry() {
 #[rstest::rstest]
 fn is_tool_call_streaming_returns_false_after_finish_streaming() {
     // Given a streaming session with a tool call that has been finalized.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session.begin_tool_call(0, "tc-1", "write", jiff::Timestamp::now());
     let entry_id = session.history()[1].id.clone();
@@ -3718,7 +3718,7 @@ fn force_exclude_no_tool_calls_is_noop() {
 #[rstest::rstest]
 fn cancel_stream_and_drain_puts_user_display_text_in_input() {
     // Given a streaming session with queued user messages.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session.enqueue(jinn_turn_dispatch_msg::QueueItem::UserMessage(Box::new(
         ChatEntry::user("hello world"),
@@ -3738,7 +3738,7 @@ fn cancel_stream_and_drain_puts_user_display_text_in_input() {
 #[rstest::rstest]
 fn cancel_stream_and_drain_discards_non_user_items() {
     // Given a streaming session with mixed queue items.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session.enqueue(jinn_turn_dispatch_msg::QueueItem::ToolContinuation);
     session.enqueue(jinn_turn_dispatch_msg::QueueItem::UserMessage(Box::new(
@@ -3756,7 +3756,7 @@ fn cancel_stream_and_drain_discards_non_user_items() {
 #[rstest::rstest]
 fn cancel_stream_and_drain_with_empty_queue_leaves_input_empty() {
     // Given a streaming session with an empty queue.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     assert_eq!(session.queue_len(), 0);
 
@@ -3770,7 +3770,7 @@ fn cancel_stream_and_drain_with_empty_queue_leaves_input_empty() {
 #[rstest::rstest]
 fn cancel_stream_and_drain_skips_tool_continuation() {
     // Given a streaming session with a tool continuation in the queue.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session.enqueue(jinn_turn_dispatch_msg::QueueItem::ToolContinuation);
 
@@ -3791,7 +3791,7 @@ fn cancel_stream_and_drain_uses_display_not_expanded() {
     {
         *expanded = "short\nwith\nextra\nlines".to_owned();
     }
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session.enqueue(jinn_turn_dispatch_msg::QueueItem::UserMessage(Box::new(
         entry,
@@ -3808,7 +3808,7 @@ fn cancel_stream_and_drain_uses_display_not_expanded() {
 #[rstest::rstest]
 fn cancel_stream_and_drain_puts_steering_in_input() {
     // Given a streaming session with two steering fragments.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session
         .steering_buffer_mut()
@@ -3828,7 +3828,7 @@ fn cancel_stream_and_drain_puts_steering_in_input() {
 #[rstest::rstest]
 fn cancel_stream_and_drain_single_steering_fragment_no_separator() {
     // Given a streaming session with one steering fragment.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session
         .steering_buffer_mut()
@@ -3845,7 +3845,7 @@ fn cancel_stream_and_drain_single_steering_fragment_no_separator() {
 #[rstest::rstest]
 fn cancel_stream_and_drain_clears_steering_buffer() {
     // Given a streaming session with a steering fragment.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session
         .steering_buffer_mut()
@@ -3864,7 +3864,7 @@ fn cancel_stream_and_drain_clears_steering_buffer() {
 #[rstest::rstest]
 fn cancel_stream_and_drain_flattens_steering_and_queue() {
     // Given a streaming session with two steering fragments and two queued messages.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session.steering_buffer_mut().push_fragment("s1".to_owned());
     session.steering_buffer_mut().push_fragment("s2".to_owned());
@@ -3886,7 +3886,7 @@ fn cancel_stream_and_drain_flattens_steering_and_queue() {
 #[rstest::rstest]
 fn cancel_stream_and_drain_both_empty_leaves_input_unchanged() {
     // Given a streaming session with a pre-filled input box and empty buffers.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session.update_input(|i| i.replace_all("pre-existing".to_owned()));
     assert_eq!(session.queue_len(), 0);
@@ -3903,7 +3903,7 @@ fn cancel_stream_and_drain_both_empty_leaves_input_unchanged() {
 #[rstest::rstest]
 fn cancel_stream_and_drain_single_queue_message_no_separator() {
     // Given a streaming session with one queued user message.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session.enqueue(jinn_turn_dispatch_msg::QueueItem::UserMessage(Box::new(
         ChatEntry::user("keep this"),
@@ -3920,7 +3920,7 @@ fn cancel_stream_and_drain_single_queue_message_no_separator() {
 #[rstest::rstest]
 fn cancel_stream_and_drain_steering_with_only_tool_continuation() {
     // Given a streaming session with a steering fragment and a ToolContinuation in the queue.
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session
         .steering_buffer_mut()
@@ -5311,6 +5311,19 @@ fn loaded_skills_returns_only_valid_pinned_skill_names() {
 
 use jinn_core_types::HistoryMutation;
 
+/// A session with the whole cell catalog registered and attached, so the
+/// chat-input draft has a real cell to live in.
+///
+/// Tests that write a draft through the facade need this: the draft is a
+/// `jinn-chat-input` cell, and an unattached session has nowhere to put one.
+fn attached_session() -> ChatSessionState {
+    let session = ChatSessionState::new();
+    let slices = jinn_slices::Slices::new();
+    jinn_cell_catalog::register_all_cells(&slices);
+    session.attach_slices(slices);
+    session
+}
+
 fn session_with_excluded_entry(
     source: jinn_core_types::ChangeSource,
 ) -> (super::ChatSessionState, ChatEntryId) {
@@ -5497,7 +5510,7 @@ fn apply_mutations_existing_forced_include_guard_still_works() {
 // ─── EntryTiming integration tests ────────────────────────────────
 
 fn streaming_session() -> ChatSessionState {
-    let mut session = ChatSessionState::new();
+    let mut session = attached_session();
     session.begin_streaming();
     session
 }
@@ -5960,9 +5973,9 @@ fn attached_view_writes_land_in_the_cell() {
 }
 
 #[rstest::rstest]
-fn input_writes_roundtrip_without_the_cell() {
-    // Given an unattached session (no slice registry handle).
-    let session = ChatSessionState::new();
+fn input_writes_roundtrip_through_the_cell() {
+    // Given a session wired like production, with the chat-input cell.
+    let session = attached_session();
 
     // When performing input mutations through the facade.
     session.update_input(|i| {
@@ -5970,7 +5983,7 @@ fn input_writes_roundtrip_without_the_cell() {
         i.move_cursor_to_start();
     });
 
-    // Then writes land on the in-struct fallback and reads round-trip.
+    // Then the writes land in the cell and reads round-trip.
     assert_eq!(
         session.with_input(|i| i.text().to_owned(), String::new),
         "draft text"
@@ -5981,6 +5994,22 @@ fn input_writes_roundtrip_without_the_cell() {
             Default::default
         ),
         0
+    );
+}
+
+#[rstest::rstest]
+fn input_writes_are_a_no_op_without_the_cell() {
+    // Given an unattached session (no slice registry handle).
+    let session = ChatSessionState::new();
+
+    // When performing input mutations through the facade.
+    session.update_input(|i| i.insert_text("draft text"));
+
+    // Then there is no draft anywhere: the cell is the only storage, so an
+    // absent one means the write had nothing to land in.
+    assert_eq!(
+        session.with_input(|i| i.text().to_owned(), String::new),
+        String::new()
     );
 }
 

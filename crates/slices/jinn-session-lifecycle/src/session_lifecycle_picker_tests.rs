@@ -65,9 +65,10 @@ struct Wired {
 
 impl Wired {
     /// Builds the picker over `lifecycles`, with the argument popup's cell
-    /// registered as `activate` does.
+    /// registered by the catalog as `activate` finds it.
     async fn new(lifecycles: Vec<SessionLifecycle>) -> Self {
         let slices = Slices::new();
+        jinn_cell_catalog::register_all_cells(&slices);
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let routes = KeyRoutes::new();
@@ -80,12 +81,6 @@ impl Wired {
                 &routes,
                 &services.trouper_system,
             );
-            slices
-                .register(
-                    jinn_session_lifecycle_msg::arg_input_slot(),
-                    jinn_session_lifecycle_msg::ArgInputState::empty(),
-                )
-                .expect("fresh registry has the argument slot free");
             crate::activate_picker(&mut host);
         }
         // `default_with_scope_focus`, not `default`: a scope push is a no-op
@@ -105,7 +100,7 @@ impl Wired {
     fn cell(&self) -> TypedCell<SessionLifecyclePickerState> {
         self.slices
             .reader(&jinn_session_lifecycle_msg::session_lifecycle_picker_slot())
-            .expect("the picker registers its cell at activation")
+            .expect("the catalog registers the picker cell before activation")
     }
 
     /// The names the filter currently shows, in display order.
@@ -557,7 +552,7 @@ async fn confirming_a_parametrized_lifecycle_seeds_the_argument_cell() {
         .reader::<jinn_session_lifecycle_msg::ArgInputState>(
             &jinn_session_lifecycle_msg::arg_input_slot(),
         )
-        .expect("the argument slot is registered at activation");
+        .expect("the catalog registers the argument slot before activation");
     let guard = cell.read();
     assert_eq!(
         guard.lifecycle_name, "deploy",

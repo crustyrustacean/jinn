@@ -62,13 +62,18 @@ pub struct ActivatedDiscord {
 
 /// Activates the discord slice through the host verbs.
 ///
-/// Mint the connection cell, spawn the status actor on trouper (always
-/// — it is the connection authority regardless of bridge enablement),
-/// read + validate the `[discord]` section (fail-fast when present),
-/// set the slice's feature flag from it, create all three gateway kanal
-/// channels unconditionally, spawn the bridge subscriber only when
-/// enabled, and attach the route rows. Returns the gateway-facing
-/// halves + the config for the frontend spawn.
+/// Spawn the status actor on trouper (always — it is the connection
+/// authority regardless of bridge enablement), read + validate the
+/// `[discord]` section (fail-fast when present), set the slice's feature
+/// flag from it, create all three gateway kanal channels
+/// unconditionally, spawn the bridge subscriber only when enabled, and
+/// attach the route rows. Returns the gateway-facing halves + the config
+/// for the frontend spawn.
+///
+/// The connection cell is not minted here: the shared cell catalog
+/// (`jinn_cell_catalog::register_all_cells`) registers every slice cell in
+/// one place, so this resolves the handle the same way every other
+/// consumer does.
 ///
 /// The `resolve` closure is the kernel's document lookup; it is
 /// applied to the staged sections **inside** activation so the
@@ -84,6 +89,16 @@ pub struct ActivatedDiscord {
 ///
 /// Returns [`SliceConfigError`] when the `[discord]` section is
 /// present but malformed — activation is the fail-fast gate.
+///
+/// # Panics
+///
+/// Panics if the catalog has not run — the status actor would then have
+/// no cell to fold into and every feature gate reading the connection
+/// state would see nothing at all.
+#[expect(
+    clippy::expect_used,
+    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
+)]
 pub async fn activate(
     host: &mut jinn_slices::AppSliceHost<'_>,
     services: &jinn_kernel::Services,
@@ -112,14 +127,11 @@ pub async fn activate(
     status_actor::DiscordStatusActor::spawn(DiscordStatusActorDeps {
         status_rx: status_rx.to_async(),
         cell: host
-            .register_cell(
-                discord_connection_slot(),
-                ConnectionState {
-                    connected: false,
-                    detail: None,
-                },
-            )
-            .expect("discord connection slot is registered exactly once at wiring"),
+            .slices()
+            .reader::<ConnectionState>(&discord_connection_slot())
+            .expect(
+                "the cell catalog registers the discord-connection slot before any slice activates",
+            ),
         bus: services.bus.clone(),
         system,
     });
@@ -153,6 +165,7 @@ mod activate_tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
     use super::activate;
+    use jinn_cell_catalog::register_all_cells;
     use jinn_slices::KeyRoutes;
     use jinn_slices::OverlayViews;
     use jinn_slices::Slices;
@@ -175,12 +188,21 @@ mod activate_tests {
         services
     }
 
+    /// A host over a registry the cell catalog has seeded, as production
+    /// boot builds it: activation resolves the connection cell rather than
+    /// minting it.
+    fn catalog_seeded_slices() -> jinn_slices::Slices {
+        let slices = Slices::new();
+        register_all_cells(&slices);
+        slices
+    }
+
     #[rstest::rstest]
     #[tokio::test]
     async fn activation_resolves_the_config_section_before_reading_it() {
         // Given a fresh slice host and a document sink whose [discord]
         // section enables the bridge.
-        let slices = Slices::new();
+        let slices = catalog_seeded_slices();
         let key_routes = KeyRoutes::new();
         let mut viewport = Viewport::new();
         let overlay_views = OverlayViews::<jinn_slices::RenderFacts>::new();
@@ -211,7 +233,7 @@ mod activate_tests {
     #[tokio::test]
     async fn absent_discord_section_activates_disabled() {
         // Given a document with no [discord] section — a stock install.
-        let slices = Slices::new();
+        let slices = catalog_seeded_slices();
         let key_routes = KeyRoutes::new();
         let mut viewport = Viewport::new();
         let overlay_views = OverlayViews::<jinn_slices::RenderFacts>::new();
@@ -242,7 +264,7 @@ mod activate_tests {
     #[tokio::test]
     async fn activation_fails_fast_on_a_malformed_section() {
         // Given a document sink whose [discord] table is malformed.
-        let slices = Slices::new();
+        let slices = catalog_seeded_slices();
         let key_routes = KeyRoutes::new();
         let mut viewport = Viewport::new();
         let overlay_views = OverlayViews::<jinn_slices::RenderFacts>::new();

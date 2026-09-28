@@ -182,12 +182,11 @@ impl LayoutCompletionActor {
                 wrapped_count: count.wrapped_count,
             })
             .collect();
-        state
-            .frontend
-            .caches
-            .entry_line_cache
-            .write()
-            .insert_counts(&measured, computed.content_width);
+        if let Some(cell) = state.frontend.line_cache_cell() {
+            cell.update(|cache| {
+                cache.insert_counts(&measured, computed.content_width);
+            });
+        }
     }
 }
 

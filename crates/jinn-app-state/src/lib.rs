@@ -26,4 +26,4 @@ pub mod slice_action;
 
 pub use app_state::pin_sort_key;
 pub use app_state::{AppState, SessionState};
-pub use frontend_state::{FrontendCaches, FrontendState, PendingSessionCreation};
+pub use frontend_state::{FrontendState, PendingSessionCreation};

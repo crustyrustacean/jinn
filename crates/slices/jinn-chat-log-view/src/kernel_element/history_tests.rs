@@ -999,7 +999,12 @@ fn virtualization_populates_cache_after_render() {
 
     // Then the cache has entries for all 30 entries.
     assert_eq!(
-        state.frontend.caches.entry_line_cache.read().len(),
+        state
+            .frontend
+            .line_cache_cell()
+            .expect("catalog registered the line-cache cell")
+            .read()
+            .len(),
         30,
         "cache should have entries for all 30 entries after render"
     );
@@ -1116,7 +1121,12 @@ fn resize_clears_cache_and_rerenders() {
 
     // Then the cache is still populated (re-populated at new width).
     assert_eq!(
-        state.frontend.caches.entry_line_cache.read().len(),
+        state
+            .frontend
+            .line_cache_cell()
+            .expect("catalog registered the line-cache cell")
+            .read()
+            .len(),
         5,
         "cache should be re-populated after resize"
     );
@@ -1165,7 +1175,12 @@ fn initial_stream_render_populates_one_cache_entry() {
 
     // Then the cache holds the single streamed entry.
     assert_eq!(
-        state.frontend.caches.entry_line_cache.read().len(),
+        state
+            .frontend
+            .line_cache_cell()
+            .expect("catalog registered the line-cache cell")
+            .read()
+            .len(),
         1,
         "cache should have 1 entry"
     );
@@ -1202,7 +1217,12 @@ fn streaming_token_append_keeps_one_cache_entry() {
 
     // Then the cache still has 1 entry (re-computed with new fingerprint).
     assert_eq!(
-        state.frontend.caches.entry_line_cache.read().len(),
+        state
+            .frontend
+            .line_cache_cell()
+            .expect("catalog registered the line-cache cell")
+            .read()
+            .len(),
         1,
         "cache should have 1 entry after streaming token append"
     );
@@ -2075,8 +2095,8 @@ fn large_session_frame_does_not_refingerprint_unchanged_entries() {
 
     let after_warmup = state
         .frontend
-        .caches
-        .entry_line_cache
+        .line_cache_cell()
+        .expect("catalog registered the line-cache cell")
         .read()
         .fingerprint_computations();
 
@@ -2095,8 +2115,8 @@ fn large_session_frame_does_not_refingerprint_unchanged_entries() {
     // Then no further full content fingerprints were computed.
     let after_redraws = state
         .frontend
-        .caches
-        .entry_line_cache
+        .line_cache_cell()
+        .expect("catalog registered the line-cache cell")
         .read()
         .fingerprint_computations();
     assert_eq!(
@@ -2790,13 +2810,14 @@ fn measured_state(count: usize, content_width: u16) -> AppState {
 
 /// Whether a frame of the given width would find the session fully measured.
 fn coverage_at(state: &AppState, content_width: u16) -> bool {
-    let mut cache = state.frontend.caches.entry_line_cache.write();
-    crate::kernel_element::is_session_measured(
-        &mut cache,
-        state,
-        &state.active_session().session_id().clone(),
-        content_width,
-    )
+    let session_id = state.active_session().session_id().clone();
+    state
+        .frontend
+        .line_cache_cell()
+        .expect("catalog registered the line-cache cell")
+        .update(|cache| {
+            crate::kernel_element::is_session_measured(cache, state, &session_id, content_width)
+        })
 }
 
 /// Renders one frame, filling the cache the way a real frame would.
@@ -2843,7 +2864,12 @@ fn a_session_measured_at_a_width_reports_covered() {
     assert!(
         covered,
         "a measured session needs no further measurement, cache holds {}",
-        state.frontend.caches.entry_line_cache.read().len()
+        state
+            .frontend
+            .line_cache_cell()
+            .expect("catalog registered the line-cache cell")
+            .read()
+            .len()
     );
 }
 

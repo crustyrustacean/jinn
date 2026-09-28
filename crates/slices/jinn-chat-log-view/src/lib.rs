@@ -27,30 +27,18 @@ pub use jinn_chat_log_view_msg::chat_log_views_slot;
 
 use jinn_slices::SliceHost;
 
-/// Activates the slice: mints the chat-log-views and audit-popup cells
-/// and attaches the log's route rows. No actors, no view.
+/// Activates the slice: attaches the log's route rows. No actors, no
+/// view.
+///
+/// Neither cell is minted here: the shared cell catalog
+/// (`jinn_cell_catalog::register_all_cells`) registers every slice cell in
+/// one place, before any slice activates.
 ///
 /// # Panics
 ///
-/// Panics if the slot is already registered — double activation is a
-/// wiring bug.
-#[expect(
-    clippy::expect_used,
-    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
-)]
+/// Panics if the catalog has not run — the route rows and render regions
+/// would otherwise act on absent cells and paint nothing.
 pub fn activate(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
-    let _cell = host
-        .register_cell(
-            chat_log_views_slot(),
-            jinn_chat_log_view_msg::ChatLogViews::new(),
-        )
-        .expect("chat-log-view slot is registered exactly once at wiring");
-    let _audit_cell = host
-        .register_cell(
-            jinn_chat_log_view_msg::audit_popup_slot(),
-            jinn_chat_log_view_msg::AuditPopupState::default(),
-        )
-        .expect("audit-popup slot is registered exactly once at wiring");
     routes::attach_all(host.key_routes());
     // The chat log's own screen regions: the history itself, the
     // minimap column, and the audit popup.
@@ -71,11 +59,33 @@ mod activation_tests {
 
     use jinn_slices::SliceHost;
 
+    /// Registers the cells the catalog owns for this slice.
+    ///
+    /// The catalog is the production registrar; these tests exercise the
+    /// cells themselves, so they seed the same two entries locally rather
+    /// than depend on the catalog (which would be a cycle through
+    /// `jinn-quake-bar` and `jinn-dashboard`).
+    fn seed_chat_log_cells(slices: &jinn_slices::Slices) {
+        slices
+            .register(
+                crate::chat_log_views_slot(),
+                jinn_chat_log_view_msg::ChatLogViews::new(),
+            )
+            .expect("the chat-log-views slot is free in a fresh registry");
+        slices
+            .register(
+                jinn_chat_log_view_msg::audit_popup_slot(),
+                jinn_chat_log_view_msg::AuditPopupState::default(),
+            )
+            .expect("the audit-popup slot is free in a fresh registry");
+    }
+
     #[rstest::rstest]
     #[tokio::test]
     async fn activate_registers_the_chat_log_views_cell() {
-        // Given a host over an empty slice registry.
+        // Given a host over a registry holding the catalog's chat-log cells.
         let slices = jinn_slices::Slices::new();
+        seed_chat_log_cells(&slices);
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let key_routes = jinn_slices::KeyRoutes::new();
@@ -111,6 +121,7 @@ mod activation_tests {
     async fn per_session_entries_are_isolated() {
         // Given an activated slice with two sessions in the cell.
         let slices = jinn_slices::Slices::new();
+        seed_chat_log_cells(&slices);
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let key_routes = jinn_slices::KeyRoutes::new();

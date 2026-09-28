@@ -51,6 +51,7 @@ impl Wired {
     /// persona loader.
     async fn new(personas: Vec<(&str, &str)>) -> Self {
         let slices = Slices::new();
+        jinn_cell_catalog::register_all_cells(&slices);
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let routes = KeyRoutes::new();
@@ -64,15 +65,16 @@ impl Wired {
                 &services.trouper_system,
             );
             // An empty personas dir: the scan runs for real (so the personas
-            // cell exists and is owned by `activate`), but the tests seed the
-            // entries they need rather than depending on the loader.
+            // cell the catalog seeded is re-seeded with the scan's result),
+            // but the tests seed the entries they need rather than depending
+            // on the loader.
             let dir = std::path::PathBuf::from("/nonexistent-personas-dir");
             crate::activate(&mut host, &dir);
             crate::activate_picker(&mut host);
         }
         slices
             .reader::<jinn_persona_msg::Personas>(&personas_slot())
-            .expect("personas cell is registered at activation")
+            .expect("the catalog registers the personas cell before activation")
             .update(|p: &mut jinn_persona_msg::Personas| {
                 p.entries = personas
                     .into_iter()
