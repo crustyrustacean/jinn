@@ -70,7 +70,13 @@ impl TuiAppBuilder {
         {
             let slices = services.slices.clone();
             jinn_cell_catalog::register_all_cells(&slices);
-            state.frontend.attach_slices(slices);
+            // Both halves, from the same registry: a chat-input draft is
+            // written through the session facade and read through the
+            // frontend one, and `attach_slices` writes a `OnceLock`, so
+            // attaching only one half means the write and its read resolve
+            // different registries. Production wiring attaches both.
+            state.frontend.attach_slices(slices.clone());
+            state.session.attach_slices(slices);
         }
 
         let core = AppCore {

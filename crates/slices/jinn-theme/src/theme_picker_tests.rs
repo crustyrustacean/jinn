@@ -129,22 +129,23 @@ impl Wired {
     /// lines moved into the sidebar slice's cell and are reset there instead.
     fn seed_theme_cache(&self) {
         self.state
-            .borrow_mut()
+            .borrow()
             .frontend
-            .caches
-            .entry_line_cache
-            .write()
-            .insert(
-                &jinn_core_types::ChatEntry::user("seeded"),
-                jinn_chat_log_view_msg::ContentIdentity {
-                    signature: 1,
-                    fingerprint: 1,
-                },
-                false,
-                0,
-                80,
-                1,
-            );
+            .line_cache_cell()
+            .expect("catalog registered the line-cache cell")
+            .update(|cache| {
+                cache.insert(
+                    &jinn_core_types::ChatEntry::user("seeded"),
+                    jinn_chat_log_view_msg::ContentIdentity {
+                        signature: 1,
+                        fingerprint: 1,
+                    },
+                    false,
+                    0,
+                    80,
+                    1,
+                );
+            });
     }
 
     /// How many entries the theme-sensitive cache holds.
@@ -152,10 +153,9 @@ impl Wired {
         self.state
             .borrow()
             .frontend
-            .caches
-            .entry_line_cache
-            .read()
-            .len()
+            .line_cache_cell()
+            .expect("catalog registered the line-cache cell")
+            .update(|cache| cache.len())
     }
 
     /// Opens the picker through its real `open` route action.

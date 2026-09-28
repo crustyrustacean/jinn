@@ -110,10 +110,19 @@ impl AppStateActor {
             frontend.theme = new_theme.clone();
         });
 
-        // Invalidate theme caches at the frontend level.
-        self.state.with_frontend_state(|ops| {
-            ops.frontend().caches.invalidate_all();
-        });
+        // The chat log's cached lines embed the old theme's colours, so a
+        // theme switch must drop them. The cache is a jinn-chat-log-view
+        // cell, so the clear goes through the cell rather than a kernel-level
+        // sweep of every cache.
+        if let Some(cell) = self
+            .services
+            .slices
+            .reader::<jinn_chat_log_view_msg::EntryLineCache>(
+                &jinn_chat_log_view_msg::entry_line_cache_slot(),
+            )
+        {
+            cell.update(jinn_chat_log_view_msg::EntryLineCache::clear);
+        }
 
         // Sync active_persona when persona_name changes (persona
         // selection lives in the persona slice's cell).
@@ -135,7 +144,7 @@ impl AppStateActor {
         // old theme's colors, so a theme switch must drop them or the open
         // menu keeps showing stale text. The cache lives in the skills slice's
         // cell now, so the clear happens there rather than in the kernel's
-        // `invalidate_all` — a slice owns its own cached rendering.
+        // a slice's own cell — a slice owns its own cached rendering.
         if let Some(cell) = self
             .services
             .slices
@@ -146,7 +155,7 @@ impl AppStateActor {
 
         // The session preview holds rendered lines, not just counts, so the same
         // reasoning applies: they carry the old theme's colors. It lives in the
-        // sidebar's cell, outside `invalidate_all`'s reach, and is cleared here.
+        // sidebar's cell, and is cleared here alongside the others.
         //
         // Reset to `Idle` rather than to `Ready`-with-nothing: the next cursor
         // move then requests a re-render in the new theme, and until one arrives

@@ -24,6 +24,10 @@ jinn-persona-msg = { workspace = true }
 # The skills picker's cell: a theme change must drop the preview lines it has
 # already rendered in the old palette, and the cache now lives with the picker.
 jinn-skills-msg = { workspace = true }
+# The chat log's line cache, on the same reasoning: a theme change must drop
+# the lines already rendered in the old palette, so the clear goes to the cell
+# that owns them.
+jinn-chat-log-view-msg = { workspace = true }
 jinn-selection-widget = { workspace = true }
 # The trouper runtime: ServiceActors, topics, schemas.
 trouper = { workspace = true }

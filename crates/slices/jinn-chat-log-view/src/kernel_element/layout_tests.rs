@@ -36,10 +36,21 @@ fn state_with_entries(count: usize, content_width: u16) -> (State, SessionId) {
     for index in 0..count {
         session.push_entry(ChatEntry::user(format!("message {index}")));
     }
-    session.set_content_width(content_width);
-    let mut state = AppState::default();
+    // Attached: the line cache is a jinn-chat-log-view cell, and this test
+    // asserts on the counts it stores.
+    let mut state = AppState::default_with_scope_focus();
     state.session.insert(session);
     state.session.set_active(session_id.clone());
+    // Set after insertion: the view cell is keyed by session id, so a width
+    // written to the session before it joins the map would land in the
+    // pre-attach fallback and read back as zero.
+    // `get` attaches the registry to the session as a side effect, so the
+    // write below lands in the cell the rest of the test reads.
+    state
+        .session
+        .get(&session_id)
+        .expect("just inserted")
+        .set_content_width(content_width);
     (State::new(state), session_id)
 }
 
@@ -361,18 +372,23 @@ fn a_stored_layout_survives_the_first_render_without_re_measuring() {
     let session = state.read();
     let active = session.session.get(&session_id).expect("active session");
     let history: Vec<_> = active.history().to_vec();
-    let mut cache = session.frontend.caches.entry_line_cache.write();
-    let hits = history
-        .iter()
-        .zip(keys.iter())
-        .map(|(entry, (is_expanded, variant, wrapped_count))| {
-            cache
-                .get(entry, *is_expanded, *variant, 40)
-                .map(|hit| hit.wrapped_count)
-                == Some(*wrapped_count)
-        })
-        .collect::<Vec<_>>();
-    drop(cache);
+    let hits = {
+        let cache = session
+            .frontend
+            .line_cache_cell()
+            .expect("catalog registered the line-cache cell");
+        history
+            .iter()
+            .zip(keys.iter())
+            .map(|(entry, (is_expanded, variant, wrapped_count))| {
+                cache.update(|cache| {
+                    cache
+                        .get(entry, *is_expanded, *variant, 40)
+                        .map(|hit| hit.wrapped_count)
+                }) == Some(*wrapped_count)
+            })
+            .collect::<Vec<_>>()
+    };
     drop(session);
 
     // Then every entry is already counted — the frame does no work.
@@ -393,8 +409,8 @@ fn fingerprint_computations(state: &State) -> u64 {
     state
         .read()
         .frontend
-        .caches
-        .entry_line_cache
+        .line_cache_cell()
+        .expect("catalog registered the line-cache cell")
         .read()
         .fingerprint_computations()
 }

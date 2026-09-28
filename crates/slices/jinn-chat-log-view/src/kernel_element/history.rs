@@ -223,31 +223,32 @@ impl ChatLogElement {
         let mut render = HistoryRender::new(state, area, ctx.config());
         render.compute_visual_items();
         render.build_tool_result_map();
-        {
-            let mut cache = state.frontend.caches.entry_line_cache.write();
-            render.compute_line_ranges(&mut cache);
-            render.compute_scroll();
+        if let Some(cell) = state.frontend.line_cache_cell() {
+            cell.update(|cache| {
+                render.compute_line_ranges(cache);
+                render.compute_scroll();
 
-            {
-                let session = state.active_session();
-                session.set_last_max_offset(render.scroll.max_offset);
-                session.set_entry_line_ranges_if_changed(&render.entry_line_ranges);
-                session.set_viewport_height(area.height);
-                session.set_blank_count(render.scroll.blank_count as u32);
-                session.set_rendered_scroll_offset(render.scroll.clamped);
-                // Published so a session loaded later measures at the width
-                // this frame used, instead of being measured at a guessed
-                // width and thrown away as stale.
-                session.set_content_width(render.content_width);
-                // The same arrangement for the collapse threshold: the
-                // coverage probe runs off the render thread and must build
-                // the same visual items this frame built.
-                session.set_min_collapse_count(render.min_collapse_count);
-            }
+                {
+                    let session = state.active_session();
+                    session.set_last_max_offset(render.scroll.max_offset);
+                    session.set_entry_line_ranges_if_changed(&render.entry_line_ranges);
+                    session.set_viewport_height(area.height);
+                    session.set_blank_count(render.scroll.blank_count as u32);
+                    session.set_rendered_scroll_offset(render.scroll.clamped);
+                    // Published so a session loaded later measures at the width
+                    // this frame used, instead of being measured at a guessed
+                    // width and thrown away as stale.
+                    session.set_content_width(render.content_width);
+                    // The same arrangement for the collapse threshold: the
+                    // coverage probe runs off the render thread and must build
+                    // the same visual items this frame built.
+                    session.set_min_collapse_count(render.min_collapse_count);
+                }
 
-            render.find_visible_indices();
-            render.build_blank_lines();
-            render.render_visible_entries(&mut cache);
+                render.find_visible_indices();
+                render.build_blank_lines();
+                render.render_visible_entries(cache);
+            });
         }
         render.paint(frame);
     }

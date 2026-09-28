@@ -9,7 +9,7 @@
 //! code review. Each group struct carries `/// OWNER:` documentation on the struct
 //! and on each field.
 
-pub use crate::frontend_state::{FrontendCaches, FrontendState, PendingSessionCreation};
+pub use crate::frontend_state::{FrontendState, PendingSessionCreation};
 
 use jinn_core_types::ChatEntryId;
 use jinn_core_types::PinPosition;
@@ -26,6 +26,13 @@ use jinn_session_state::SessionMap;
 pub type SessionState = SessionMap;
 
 /// A snapshot of everything the application is doing right now.
+///
+/// `Default` builds a state with **no** slice registry attached. That is a
+/// real configuration — a test harness that mints its own cells attaches it
+/// afterwards, and `attach_slices` writes a `OnceLock`, so a registry set
+/// here could never be replaced. Use
+/// [`Self::default_with_scope_focus`] for a state that should behave like
+/// production wiring.
 #[derive(Debug, Default)]
 pub struct AppState {
     /// Session lifecycle state - owned by session-actor.
@@ -35,14 +42,16 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// TEST-ONLY: an `AppState` whose slice cells are registered and
-    /// attached, so facade writes and reads behave like production wiring.
+    /// An `AppState` whose slice cells are registered and attached, so
+    /// facade writes and reads behave like production wiring.
     ///
     /// The cells come from the shared catalog
     /// ([`jinn_cell_catalog::register_all_cells`]) — the same function
     /// production boot calls. Seeding a private subset here is what let a
     /// test render nothing while every assertion stayed green.
+    ///
     #[doc(hidden)]
+    #[must_use]
     pub fn default_with_scope_focus() -> Self {
         let state = Self::default();
         let slices = jinn_slices::Slices::new();
@@ -196,8 +205,15 @@ impl AppState {
     }
 
     /// Invalidate all theme-sensitive caches. Called when the active theme changes.
+    ///
+    /// The caches are slice-owned cells, so each slice clears its own; the
+    /// chat log's line cache is the one whose cached lines embed palette
+    /// colours. An absent cell means the slice never ran, and there is
+    /// nothing cached to invalidate.
     pub fn invalidate_theme_caches(&self) {
-        self.frontend.caches.invalidate_all();
+        if let Some(cache) = self.frontend.line_cache_cell() {
+            cache.update(jinn_chat_log_view_msg::EntryLineCache::clear);
+        }
     }
 }
 

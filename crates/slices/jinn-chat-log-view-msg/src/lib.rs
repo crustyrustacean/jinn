@@ -20,7 +20,7 @@ pub use layout::{
     PREVIEW_MARKER_MAX_ROWS, PREVIEW_MAX_LINES, PREVIEW_REQUEST_ENTRY_COUNT,
     PreviewDeadlineExpired, PreviewSessionRequested, SessionPreviewRendered, entry_is_settled,
 };
-pub use line_cache_cell::{ChatLogLineCache, entry_line_cache_slot};
+pub use line_cache_cell::entry_line_cache_slot;
 pub use line_count_cache::{
     CacheHit, CacheProbe, CachedEntryCount, ContentIdentity, EntryLineCache,
     MAX_CACHED_RENDERED_ENTRIES, MeasuredLineCount,

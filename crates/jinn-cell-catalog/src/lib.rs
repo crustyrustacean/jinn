@@ -54,10 +54,6 @@ use jinn_slices::Slices;
 /// Panics (in debug builds only) if the number of registered slots
 /// differs from [`EXPECTED_CELL_COUNT`], which means an entry above was
 /// added, dropped, or duplicated.
-#[expect(
-    clippy::expect_used,
-    reason = "a count mismatch is a wiring bug, not a runtime condition"
-)]
 pub fn register_all_cells(slices: &Slices) {
     let entries = register_catalog(slices);
 
@@ -105,6 +101,10 @@ macro_rules! register {
 /// *entries in the table*, not the number of slots the registry happens
 /// to hold — a pre-existing cell registered by an earlier caller must
 /// not make the assertion pass by coincidence.
+#[expect(
+    clippy::too_many_lines,
+    reason = "the catalog is a flat table; one line per slot is the readable form"
+)]
 fn register_catalog(slices: &Slices) -> usize {
     let mut count = 0;
 
@@ -134,7 +134,7 @@ fn register_catalog(slices: &Slices) -> usize {
         slices,
         count,
         jinn_chat_log_view_msg::entry_line_cache_slot(),
-        jinn_chat_log_view_msg::ChatLogLineCache::new()
+        jinn_chat_log_view_msg::EntryLineCache::default()
     );
 
     // jinn-chat-input — the per-session input draft and the `@path` popup.

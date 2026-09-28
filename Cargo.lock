@@ -2828,6 +2828,7 @@ version = "1.1.1"
 dependencies = [
  "dirs",
  "error-stack",
+ "jinn-chat-log-view-msg",
  "jinn-config",
  "jinn-core-types",
  "jinn-kernel",
@@ -3225,6 +3226,7 @@ dependencies = [
  "async-trait",
  "error-stack",
  "jiff",
+ "jinn-cell-catalog",
  "jinn-chat-input-msg",
  "jinn-chat-log-view-msg",
  "jinn-context",
