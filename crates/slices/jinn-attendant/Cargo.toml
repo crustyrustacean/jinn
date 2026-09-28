@@ -1,0 +1,25 @@
+[package]
+name = "jinn-attendant"
+version.workspace = true
+edition.workspace = true
+description = "The attendant slice — fires attendants on parent turn completion and re-runs them."
+
+[dependencies]
+jinn-attendant-msg = { workspace = true }
+jinn-app-state = { workspace = true }
+jinn-kernel = { workspace = true }
+jinn-session-msg = { workspace = true }
+jinn-session-state = { workspace = true }
+jinn-slices = { workspace = true }
+error-stack = { workspace = true }
+tracing = { workspace = true }
+trouper = { workspace = true }
+
+[dev-dependencies]
+jinn-core-types = { workspace = true }
+jinn-testutil = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

@@ -5,9 +5,11 @@
 //! what it does to its context beforehand, and what it has concluded so far.
 
 mod activation;
+mod properties;
 mod report;
 
 pub use crate::activation::{AttendantActivation, AttendantTrigger};
+pub use crate::properties::{AttendantPropertiesState, attendant_properties_slot};
 pub use crate::report::AttendantReport;
 
 #[cfg(test)]

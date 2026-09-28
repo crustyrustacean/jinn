@@ -76,7 +76,7 @@ pub fn register_all_cells(slices: &Slices) {
 /// The `jinn-slices` infrastructure slots are not counted: they are
 /// registered lazily by the first caller that resolves one, and a harness
 /// that never renders never creates them.
-const EXPECTED_CELL_COUNT: usize = 34;
+const EXPECTED_CELL_COUNT: usize = 35;
 
 // ── The catalog ─────────────────────────────────────────────────────
 //
@@ -159,6 +159,14 @@ fn register_catalog(slices: &Slices) -> usize {
         count,
         jinn_cwd_msg::cwds_slot(),
         jinn_cwd_msg::CwdInputState::default()
+    );
+
+    // jinn-attendant — the attendant properties popup.
+    register!(
+        slices,
+        count,
+        jinn_attendant_msg::attendant_properties_slot(),
+        jinn_attendant_msg::AttendantPropertiesState::default()
     );
 
     // jinn-dashboard — the actor census.

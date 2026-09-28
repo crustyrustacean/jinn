@@ -6,7 +6,6 @@ description = "The attendant slice's contracts: run parameters, activation modes
 
 [dependencies]
 jinn-core-types = { workspace = true }
-jinn-session-msg = { workspace = true }
 jinn-slices = { workspace = true }
 jiff = { workspace = true }
 serde = { workspace = true }

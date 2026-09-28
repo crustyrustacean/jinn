@@ -14,6 +14,7 @@ jinn-slices = { workspace = true }
 jinn-chat-input-msg = { workspace = true }
 jinn-chat-log-view-msg = { workspace = true }
 jinn-cwd-msg = { workspace = true }
+jinn-attendant-msg = { workspace = true }
 jinn-dashboard-msg = { workspace = true }
 jinn-discord-msg = { workspace = true }
 jinn-mcp-msg = { workspace = true }

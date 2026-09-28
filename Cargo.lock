@@ -1914,6 +1914,7 @@ dependencies = [
  "dotenvy",
  "error-stack",
  "jiff",
+ "jinn-attendant",
  "jinn-boot",
  "jinn-boot-msg",
  "jinn-cell-catalog",
@@ -2042,12 +2043,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-attendant"
+version = "1.1.2"
+dependencies = [
+ "error-stack",
+ "jinn-app-state",
+ "jinn-attendant-msg",
+ "jinn-core-types",
+ "jinn-kernel",
+ "jinn-session-msg",
+ "jinn-session-state",
+ "jinn-slices",
+ "jinn-testutil",
+ "serde",
+ "tokio",
+ "tracing",
+ "trouper",
+]
+
+[[package]]
 name = "jinn-attendant-msg"
 version = "1.1.2"
 dependencies = [
  "jiff",
  "jinn-core-types",
- "jinn-session-msg",
  "jinn-slices",
  "rstest",
  "serde",
@@ -2097,6 +2116,7 @@ dependencies = [
 name = "jinn-cell-catalog"
 version = "1.1.2"
 dependencies = [
+ "jinn-attendant-msg",
  "jinn-chat-input-msg",
  "jinn-chat-log-view-msg",
  "jinn-cwd-msg",

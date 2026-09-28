@@ -91,6 +91,7 @@ jinn-chat-log-view = { workspace = true }
 jinn-scope-focus = { workspace = true }
 jinn-sidebar = { workspace = true }
 jinn-cwd = { workspace = true }
+jinn-attendant = { workspace = true }
 jinn-skills = { workspace = true }
 jinn-tui = { workspace = true }
 jinn-kernel = { workspace = true }
@@ -211,6 +212,7 @@ jinn-session-state = { path = "crates/jinn-session-state" }
 jinn-boot = { path = "crates/slices/jinn-boot" }
 jinn-boot-msg = { path = "crates/slices/jinn-boot-msg" }
 jinn-attendant-msg = { path = "crates/slices/jinn-attendant-msg" }
+jinn-attendant = { path = "crates/slices/jinn-attendant" }
 jinn-session-store = { path = "crates/slices/jinn-session-store" }
 jinn-session-turn = { path = "crates/slices/jinn-session-turn" }
 jinn-session-store-msg = { path = "crates/slices/jinn-session-store-msg" }
