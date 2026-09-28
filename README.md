@@ -143,7 +143,7 @@ Use this when you want an agent to arrive at a goal fully autonomously by giving
 
 ### Plan-Based Feature Implementation
 
-Use this when you want a discrete plan -> implement -> verify workflow. It's suitable when you want more control over the process and what gets generated. The agent will ask details about what you want done and _how_ to do it. For each thing you propose, the agent will evaluate it against the current code, point out any potential issues, and then offer solutions until it has enough information for an implementation plan.
+Use this when you want a `plan` -> `implement` -> `verify` workflow with control over the implementation details. The agent will surface potential issues with your plan, offer alternatives, and it won't finalize a plan until all blockers have been resolved.
 
 1. Start a new session
 2. Type `#plan` (to load the planning prompt) followed by what you want to do. The agent will ask questions to clarify things that are ambiguous, and then eventually propose a plan in the chat.
