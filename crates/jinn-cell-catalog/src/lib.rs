@@ -76,7 +76,7 @@ pub fn register_all_cells(slices: &Slices) {
 /// The `jinn-slices` infrastructure slots are not counted: they are
 /// registered lazily by the first caller that resolves one, and a harness
 /// that never renders never creates them.
-const EXPECTED_CELL_COUNT: usize = 36;
+const EXPECTED_CELL_COUNT: usize = 34;
 
 // ── The catalog ─────────────────────────────────────────────────────
 //
@@ -338,12 +338,6 @@ fn register_catalog(slices: &Slices) -> usize {
         jinn_token_count_msg::token_cache_slot(),
         jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::new()
     );
-    register!(
-        slices,
-        count,
-        jinn_token_count_msg::token_ledgers_slot(),
-        jinn_token_count_msg::TokenLedgers::new()
-    );
 
     // jinn-tools — the tool registry, both pickers, and the per-session
     // task list.
@@ -364,12 +358,6 @@ fn register_catalog(slices: &Slices) -> usize {
         count,
         jinn_tools_msg::task_list_picker_slot(),
         jinn_tools_msg::TaskListPickerState::default()
-    );
-    register!(
-        slices,
-        count,
-        jinn_tools_msg::task_lists_slot(),
-        jinn_tools_msg::TaskLists::new()
     );
 
     count
