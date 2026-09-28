@@ -32,11 +32,13 @@
 //!
 //! # Why it sits below the kernel
 //!
-//! The catalog depends only on slice *message* crates plus two light
-//! implementation crates (`jinn-dashboard`, `jinn-quake-bar`) that own a
-//! cell but reach neither `jinn-kernel` nor `jinn-app-state`. That keeps
-//! it usable from `AppState`'s test seeding and from `Services::new_fake`
-//! — the two harnesses that live *inside* the layer the slices depend on.
+//! The catalog depends only on slice *message* crates. Every cell payload
+//! lives in the family's `-msg` crate beside its slot key, so naming a slot
+//! never pulls in the actor, renderer, or routes that go with the slice.
+//! That is what keeps the catalog usable from `AppState`'s test seeding and
+//! from `Services::new_fake` — the two harnesses that live *inside* the
+//! layer the slices depend on, and which a slice implementation could never
+//! be introduced into without a cycle.
 
 use jinn_slices::Slices;
 
@@ -163,8 +165,8 @@ fn register_catalog(slices: &Slices) -> usize {
     register!(
         slices,
         count,
-        jinn_dashboard::dashboard_slot(),
-        jinn_dashboard::DashboardState::new()
+        jinn_dashboard_msg::dashboard_slot(),
+        jinn_dashboard_msg::DashboardState::new()
     );
 
     // jinn-discord — the gateway connection fact.
@@ -256,8 +258,8 @@ fn register_catalog(slices: &Slices) -> usize {
     register!(
         slices,
         count,
-        jinn_quake_bar::quake_bar_slot(),
-        jinn_quake_bar::QuakeBarState::default()
+        jinn_quake_bar_msg::quake_bar_slot(),
+        jinn_quake_bar_msg::QuakeBarState::default()
     );
 
     // jinn-session-lifecycle — the argument input and the picker.

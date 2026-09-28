@@ -14,22 +14,21 @@ pub mod canvas_actor;
 pub mod contracts;
 pub mod key_routes;
 pub mod nav;
-pub mod state;
 pub mod view;
 
 pub use canvas_actor::DashboardCanvasActor;
 pub use contracts::ServiceStatusUpdate;
 pub use jinn_core_types::ActorLifecycle;
+pub use jinn_dashboard_msg::dashboard_slot;
+pub use jinn_dashboard_msg::{DashboardEntry, DashboardState};
 pub use key_routes::attach_dashboard_rows;
 pub use key_routes::dashboard_scope;
 pub use nav::DashboardNav;
-pub use state::{DashboardEntry, DashboardState};
 pub use view::DashboardView;
 
 use jinn_slices::RenderFacts;
 use jinn_slices::SliceHost;
 use jinn_slices::SliceScopeId;
-use jinn_slices::SlotKey;
 
 /// Activates the dashboard slice: spawns the canvas actor (subscribe is the
 /// readiness point, so no lifecycle event from subsequently spawned actors
@@ -99,15 +98,6 @@ pub enum ActivationError {
     /// abort launch, not render blank.
     #[error(debug)]
     ViewSlot(jinn_slices::view::ViewSlotError),
-}
-
-/// The dashboard slice's slot.
-///
-/// Canonical key shared by composition (which activates), the renderer
-/// (which resolves a read handle), and tests.
-#[must_use]
-pub fn dashboard_slot() -> SlotKey {
-    SlotKey::builtin("dashboard", "status")
 }
 
 /// The dashboard tab's dynamic scope id.

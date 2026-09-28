@@ -9,15 +9,13 @@ pub mod canvas_actor;
 pub mod command;
 pub mod intent;
 pub mod render;
-pub mod state;
-
 pub use canvas_actor::QuakeBarCanvasActor;
 pub use command::SubmitQuakeBarCommand;
 pub use intent::attach_quake_bar_rows;
 pub use intent::register_quake_input_hook;
-pub use state::QuakeBarState;
-pub use state::quake_bar_slot;
-pub use state::quake_scope;
+pub use jinn_quake_bar_msg::QuakeBarState;
+pub use jinn_quake_bar_msg::quake_bar_slot;
+pub use jinn_quake_bar_msg::quake_scope;
 
 use jinn_slices::SliceHost;
 use jinn_slices::SliceScopeId;

@@ -192,10 +192,12 @@ jinn-context = { path = "crates/jinn-context" }
 jinn-core-types = { path = "crates/jinn-core-types" }
 jinn-llm-support = { path = "crates/jinn-llm-support" }
 jinn-dashboard = { path = "crates/slices/jinn-dashboard" }
+jinn-dashboard-msg = { path = "crates/slices/jinn-dashboard-msg" }
 jinn-theme-slice = { path = "crates/slices/jinn-theme" }
 jinn-persona = { path = "crates/slices/jinn-persona" }
 jinn-token-count = { path = "crates/slices/jinn-token-count" }
 jinn-quake-bar = { path = "crates/slices/jinn-quake-bar" }
+jinn-quake-bar-msg = { path = "crates/slices/jinn-quake-bar-msg" }
 jinn-session-init = { path = "crates/slices/jinn-session-init" }
 jinn-chat-input = { path = "crates/slices/jinn-chat-input" }
 jinn-chat-log-view = { path = "crates/slices/jinn-chat-log-view" }

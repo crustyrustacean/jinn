@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use jinn_core_types::ActorLifecycle;
 use jinn_slices::NoteTone;
+use jinn_slices::SlotKey;
 
 /// A single actor's display data in the dashboard.
 #[derive(Debug, Clone)]
@@ -19,10 +20,9 @@ pub struct DashboardEntry {
     pub description: Option<String>,
     /// The runtime's verdict on this actor, as last announced.
     ///
-    /// Written only by the census fold in
-    /// [`DashboardCanvasActor`](crate::canvas_actor::DashboardCanvasActor);
-    /// no other code path assigns it, and a feature publishing a
-    /// [`ServiceStatusUpdate`](crate::ServiceStatusUpdate) cannot reach it.
+    /// Written only by the census fold in the dashboard's canvas actor; no
+    /// other code path assigns it, and a feature publishing a
+    /// `ServiceStatusUpdate` cannot reach it.
     pub lifecycle: ActorLifecycle,
     /// Free-form third column; the owning feature writes its connection or
     /// resolution status here via `ServiceStatusUpdate`.
@@ -35,8 +35,8 @@ pub struct DashboardEntry {
     pub note_tone: NoteTone,
 }
 
-/// Owned by [`DashboardCanvasActor`](crate::canvas_actor::DashboardCanvasActor).
-/// The actor owns this field; the renderer resolves a read handle.
+/// Owned by the dashboard slice's canvas actor, which is its sole writer;
+/// the renderer resolves a read handle.
 ///
 /// Holds no scroll position: the offset is a pure function of the cursor
 /// and the viewport, so there is nothing to remember and nothing for a
@@ -230,7 +230,7 @@ impl DashboardState {
     {
         let name = name.as_ref();
         if !self.actors.contains_key(name) {
-            let mut entry = self.new_entry(name, None, ActorLifecycle::Running);
+            let mut entry = Self::new_entry(name, None, ActorLifecycle::Running);
             entry.status_message = message;
             self.insert_entry(entry);
             return;
@@ -253,7 +253,7 @@ impl DashboardState {
     {
         let name = name.as_ref();
         if !self.actors.contains_key(name) {
-            self.insert_entry(self.new_entry(name, description, ActorLifecycle::Running));
+            self.insert_entry(Self::new_entry(name, description, ActorLifecycle::Running));
             return;
         }
         if let Some(entry) = self.actors.get_mut(name)
@@ -272,7 +272,7 @@ impl DashboardState {
     {
         let name = name.as_ref();
         if !self.actors.contains_key(name) {
-            let mut entry = self.new_entry(name, None, ActorLifecycle::Running);
+            let mut entry = Self::new_entry(name, None, ActorLifecycle::Running);
             entry.note_tone = tone;
             self.insert_entry(entry);
             return;
@@ -284,7 +284,6 @@ impl DashboardState {
 
     /// A blank entry for an actor the dashboard has not seen announced.
     fn new_entry(
-        &self,
         name: &str,
         description: Option<String>,
         lifecycle: ActorLifecycle,
@@ -317,7 +316,7 @@ impl DashboardState {
     {
         let name = name.as_ref();
         if !self.actors.contains_key(name) {
-            self.insert_entry(self.new_entry(name, description, lifecycle));
+            self.insert_entry(Self::new_entry(name, description, lifecycle));
             return;
         }
         if let Some(entry) = self.actors.get_mut(name) {
@@ -337,6 +336,16 @@ impl DashboardState {
         let last = self.order.len().saturating_sub(1);
         self.selected_index = self.selected_index.min(last);
     }
+}
+
+/// The dashboard slice's slot.
+///
+/// Canonical key shared by the cell catalog (which mints the cell),
+/// composition (which activates), the renderer (which resolves a read
+/// handle), and tests.
+#[must_use]
+pub fn dashboard_slot() -> SlotKey {
+    SlotKey::builtin("dashboard", "status")
 }
 
 #[cfg(test)]

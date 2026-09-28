@@ -2089,14 +2089,14 @@ dependencies = [
  "jinn-chat-input-msg",
  "jinn-chat-log-view-msg",
  "jinn-cwd-msg",
- "jinn-dashboard",
+ "jinn-dashboard-msg",
  "jinn-discord-msg",
  "jinn-mcp-msg",
  "jinn-persona-msg",
  "jinn-preferences-msg",
  "jinn-project-msg",
  "jinn-provider-selection-msg",
- "jinn-quake-bar",
+ "jinn-quake-bar-msg",
  "jinn-session-lifecycle-msg",
  "jinn-session-store-msg",
  "jinn-sidebar-msg",
@@ -2431,6 +2431,7 @@ version = "1.1.1"
 dependencies = [
  "error-stack",
  "jinn-core-types",
+ "jinn-dashboard-msg",
  "jinn-mcp-msg",
  "jinn-sidebar-msg",
  "jinn-slices",
@@ -2446,6 +2447,15 @@ dependencies = [
  "trouper",
  "unicode-width 0.2.2",
  "wherror",
+]
+
+[[package]]
+name = "jinn-dashboard-msg"
+version = "1.1.1"
+dependencies = [
+ "jinn-core-types",
+ "jinn-slices",
+ "rstest",
 ]
 
 [[package]]
@@ -3026,6 +3036,7 @@ dependencies = [
  "error-stack",
  "jiff",
  "jinn-core-types",
+ "jinn-quake-bar-msg",
  "jinn-slices",
  "jinn-testutil",
  "jinn-theme",
@@ -3036,6 +3047,15 @@ dependencies = [
  "tokio",
  "trouper",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "jinn-quake-bar-msg"
+version = "1.1.1"
+dependencies = [
+ "jinn-slices",
+ "rstest",
+ "serde",
 ]
 
 [[package]]
