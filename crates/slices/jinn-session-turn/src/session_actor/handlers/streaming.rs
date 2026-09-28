@@ -15,6 +15,8 @@ use jinn_kernel::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 use jinn_llm_support::token_estimator::{TiktokenCounter, TokenCounter};
 use jinn_session_history_msg::CitationsReceived;
 use jinn_session_msg::SessionPhaseChanged;
+use jinn_session_msg::TurnCompleted;
+use jinn_session_msg::TurnOutcome;
 use jinn_session_state::ChatSessionState;
 use jinn_turn_dispatch_msg::QueueItem;
 
@@ -58,6 +60,20 @@ impl SessionPersistenceActor {
                 }
             }
         });
+    }
+
+    /// Handles `TurnCompleted`, which this actor itself publishes.
+    ///
+    /// The actor subscribes to its own event so the outcome is visible to any
+    /// in-actor follow-up work without a second derivation. Currently a
+    /// log-only sink; the attendant slice runs its own subscriber for the
+    /// re-run trigger.
+    pub(in crate::session_actor) async fn on_turn_completed(&self, event: &TurnCompleted) {
+        tracing::debug!(
+            session_id = %event.session_id,
+            outcome = ?event.outcome,
+            "turn completed"
+        );
     }
 
     /// Marks the session's stream as finished, records output tokens, and drains
@@ -121,6 +137,40 @@ impl SessionPersistenceActor {
                     session_id: event.session_id.clone(),
                     old_phase: PhaseKind::Idle,
                     new_phase: PhaseKind::Idle,
+                })
+                .await;
+        }
+
+        // Publish the turn outcome. Exactly once per dispatched turn:
+        // a ToolUse completion transitions to `Sending` (the tool loop
+        // continues), so it fails the gate and publishes nothing. The
+        // `Idle → Idle` cancel race resolves to `Canceled` — the user
+        // already ended the turn before this completion landed, and a
+        // turn the user cancelled must never look like a success.
+        let outcome: Option<TurnOutcome> =
+            if state_change.old_phase == PhaseKind::Idle
+                && state_change.new_phase == PhaseKind::Idle
+            {
+                Some(TurnOutcome::Canceled)
+            } else if state_change.new_phase != PhaseKind::Idle {
+                // Still busy (tool loop). Not a turn end.
+                None
+            } else {
+                let last_entry = self.state.with_session(|view| {
+                    view.session
+                        .map()
+                        .get_or_create(&event.session_id)
+                        .history()
+                        .last()
+                        .cloned()
+                });
+                Some(outcome_from_history(last_entry))
+            };
+        if let Some(outcome) = outcome {
+            self.bus()
+                .publish(TurnCompleted {
+                    session_id: event.session_id.clone(),
+                    outcome,
                 })
                 .await;
         }
@@ -419,6 +469,32 @@ fn apply_completion_entries(
     }
 }
 
+/// Derives a turn's outcome from the session's last history entry.
+///
+/// The session actor pushes the terminal entries before this runs, so history
+/// discriminates every outcome:
+///
+/// - `Error("Cancelled")` — pushed by [`apply_completion_entries`] on a cancel —
+///   means the turn was cancelled.
+/// - Any other error entry — pushed by the LLM actor before
+///   `StreamCompleted(Error)` — means the turn failed.
+/// - Anything else (an assistant entry, or no history at all) means the turn
+///   succeeded.
+///
+/// Pure and side-effect-free so it can be unit-tested in isolation. Every
+/// consumer of [`TurnCompleted`] shares this one derivation instead of
+/// re-deriving the policy from transport reasons.
+///
+/// Note the `Cancelled` check must precede the general error check: a plain
+/// error match would swallow the cancel.
+fn outcome_from_history(last_entry: Option<ChatEntry>) -> TurnOutcome {
+    match last_entry.map(|entry| entry.kind) {
+        Some(ChatEntryKind::Error(text)) if text == "Cancelled" => TurnOutcome::Canceled,
+        Some(ChatEntryKind::Error(_)) => TurnOutcome::Error,
+        Some(_) | None => TurnOutcome::Succeeded,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -439,6 +515,7 @@ mod tests {
     use jinn_token_count_msg::TokenRecord;
 
     use super::SessionPersistenceActor;
+    use super::outcome_from_history;
 
     /// Builds the `StreamCompleted` event a provider emits when a turn ends.
     fn stream_completed(
@@ -2331,5 +2408,195 @@ mod tests {
             !audit.contains_name("SendToLlmProvider"),
             "ToolUse completion without a buffered batch must not dispatch a continuation"
         );
+    }
+
+    #[rstest::rstest]
+    #[case(ChatEntryKind::Error("Cancelled".to_owned()), jinn_session_msg::TurnOutcome::Canceled)]
+    #[case(ChatEntryKind::Error("provider unreachable".to_owned()), jinn_session_msg::TurnOutcome::Error)]
+    #[case(ChatEntryKind::Assistant("done".to_owned()), jinn_session_msg::TurnOutcome::Succeeded)]
+    #[case(ChatEntryKind::System("note".to_owned()), jinn_session_msg::TurnOutcome::Succeeded)]
+    fn outcome_from_history_reads_the_last_entry(
+        #[case] last_kind: ChatEntryKind,
+        #[case] expected: jinn_session_msg::TurnOutcome,
+    ) {
+        // Given a history whose last entry carries the terminal kind.
+        let entry = ChatEntry {
+            kind: last_kind,
+            ..ChatEntry::assistant("base")
+        };
+
+        // When the outcome is derived from that entry.
+        let outcome = outcome_from_history(Some(entry));
+
+        // Then it matches the policy: the literal "Cancelled" is a cancel,
+        // any other error is a failure, everything else succeeded.
+        assert_eq!(outcome, expected);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn outcome_from_empty_history_is_success() {
+        // Given a session with no entries at all.
+
+        // When the outcome is derived.
+        let outcome = outcome_from_history(None);
+
+        // Then the turn counts as succeeded — no error means no failure.
+        assert_eq!(outcome, jinn_session_msg::TurnOutcome::Succeeded);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn finished_turn_publishes_succeeded_turn_completed() {
+        // Given a streaming session holding a user entry.
+        let (actor, audit) = test_actor_recording().await;
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When the stream finishes.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Finished,
+            Some("all done"),
+            None,
+            None,
+            None,
+        );
+        actor.on_stream_completed(&event).await;
+
+        // Then exactly one TurnCompleted is published, as Succeeded.
+        let completions = audit.of_type::<jinn_session_msg::TurnCompleted>();
+        assert_eq!(completions.len(), 1, "one event per dispatched turn");
+        assert_eq!(completions[0].outcome, jinn_session_msg::TurnOutcome::Succeeded);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn errored_turn_publishes_error_turn_completed() {
+        // Given a streaming session holding a user entry and a pushed error.
+        let (actor, audit) = test_actor_recording().await;
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.push_entry(ChatEntry::error("provider unreachable"));
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When the stream completes with an error.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Error,
+            None,
+            None,
+            None,
+            None,
+        );
+        actor.on_stream_completed(&event).await;
+
+        // Then the published outcome is Error.
+        let completions = audit.of_type::<jinn_session_msg::TurnCompleted>();
+        assert_eq!(completions.len(), 1);
+        assert_eq!(completions[0].outcome, jinn_session_msg::TurnOutcome::Error);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn canceled_turn_publishes_canceled_turn_completed() {
+        // Given a streaming session holding a user entry.
+        let (actor, audit) = test_actor_recording().await;
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When the stream completes because it was canceled.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Canceled,
+            None,
+            None,
+            None,
+            None,
+        );
+        actor.on_stream_completed(&event).await;
+
+        // Then the published outcome is Canceled — the "Cancelled" error
+        // entry applied before derivation resolves it.
+        let completions = audit.of_type::<jinn_session_msg::TurnCompleted>();
+        assert_eq!(completions.len(), 1);
+        assert_eq!(completions[0].outcome, jinn_session_msg::TurnOutcome::Canceled);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn tool_use_completion_publishes_no_turn_completed() {
+        // Given a streaming session holding a user entry.
+        let (actor, audit) = test_actor_recording().await;
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When the stream completes because the model requested tools.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::ToolUse,
+            Some("let me check"),
+            Some(vec![tool_call("t1", "read", "{}")]),
+            None,
+            None,
+        );
+        actor.on_stream_completed(&event).await;
+
+        // Then no TurnCompleted is published — the tool loop continues, and
+        // the turn has not ended.
+        assert!(
+            audit.of_type::<jinn_session_msg::TurnCompleted>().is_empty(),
+            "a ToolUse completion is not a turn end"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn completion_landing_after_sync_cancel_resolves_as_canceled() {
+        // Given a session whose phase the frontend already drove to Idle
+        // (the synchronous ESC-cancel path).
+        let (actor, audit) = test_actor_recording().await;
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            state.session.active_session_id().clone()
+        };
+
+        // When the late `Finished` completion lands with the phase already Idle.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Finished,
+            Some("late result"),
+            None,
+            None,
+            None,
+        );
+        actor.on_stream_completed(&event).await;
+
+        // Then the outcome resolves as Canceled, not Succeeded — a turn the
+        // user cancelled must never look like a success.
+        let completions = audit.of_type::<jinn_session_msg::TurnCompleted>();
+        assert_eq!(completions.len(), 1);
+        assert_eq!(completions[0].outcome, jinn_session_msg::TurnOutcome::Canceled);
     }
 }

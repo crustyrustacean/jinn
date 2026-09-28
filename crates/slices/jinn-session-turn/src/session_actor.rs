@@ -41,7 +41,7 @@ use jinn_session_history_msg::CitationsReceived;
 use jinn_session_history_msg::SubmitHistoryMutations;
 use jinn_session_history_msg::TaskListUpdated;
 use jinn_session_history_msg::{ChatEntryPinChanged, PinChatEntry, PushChatEntry, UnpinChatEntry};
-use jinn_session_msg::{MarkSessionInteracted, RetryStalledSession};
+use jinn_session_msg::{MarkSessionInteracted, RetryStalledSession, TurnCompleted};
 use jinn_skills_msg::SkillsLoaded;
 use jinn_tools_msg::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
@@ -173,6 +173,7 @@ impl SessionPersistenceActor {
             // schemas reaches this actor, whatever slice emitted it).
             .handles::<StreamToken>()
             .handles::<StreamCompleted>()
+            .handles::<TurnCompleted>()
             .handles::<ToolUseStarted>()
             .handles::<ToolCallReceived>()
             .handles::<ToolCallStreaming>()
@@ -273,6 +274,12 @@ impl MsgHandler<StreamToken> for SessionPersistenceActor {
 impl MsgHandler<StreamCompleted> for SessionPersistenceActor {
     async fn handle(&mut self, msg: &StreamCompleted, _ctx: &mut MsgCtx<'_>) {
         self.on_stream_completed(msg).await;
+    }
+}
+
+impl MsgHandler<TurnCompleted> for SessionPersistenceActor {
+    async fn handle(&mut self, msg: &TurnCompleted, _ctx: &mut MsgCtx<'_>) {
+        self.on_turn_completed(msg).await;
     }
 }
 

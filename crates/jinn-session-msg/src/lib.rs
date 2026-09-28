@@ -73,8 +73,40 @@ pub struct SessionPhaseChanged {
     pub new_phase: PhaseKind,
 }
 
-/// Session archived in persistent storage.
+/// A session's turn has ended, with the outcome read from its history.
 ///
+/// Emitted by the session actor after the terminal entries are applied, so a
+/// subscriber sees history that already discriminates the outcome. Unlike
+/// [`SessionPhaseChanged`], which fires on every transition and is a no-op on
+/// equal phases, this fires exactly once per dispatched turn — a tool-loop
+/// continuation publishes nothing.
+///
+/// The outcome is derived from the session's last history entry, not from the
+/// transport-level completion reason: every consumer agrees on the policy by
+/// construction instead of re-deriving it.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A session's turn completed, with its outcome.")]
+pub struct TurnCompleted {
+    /// The session whose turn ended.
+    pub session_id: SessionId,
+    /// How the turn ended.
+    pub outcome: TurnOutcome,
+}
+
+/// How a completed turn ended, as read from the session's history.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TurnOutcome {
+    /// The turn ran to completion without an error entry.
+    #[default]
+    Succeeded,
+    /// The last history entry is an error.
+    Error,
+    /// The turn was cancelled by the user.
+    Canceled,
+}
+
+/// Session archived in persistent storage.
 /// Emitted by the session-store actor after marking a session as archived in
 /// SQLite. Emitted before the session-closed event so consumers can distinguish
 /// archived closes from empty-session closes.
@@ -149,6 +181,7 @@ impl jinn_slices::BusMessage for RetryStalledSession {}
 impl jinn_slices::BusMessage for SessionClosed {}
 impl jinn_slices::BusMessage for SessionRemoved {}
 impl jinn_slices::BusMessage for SessionPhaseChanged {}
+impl jinn_slices::BusMessage for TurnCompleted {}
 impl jinn_slices::BusMessage for SessionArchived {}
 impl jinn_slices::BusMessage for SessionArchiveFailed {}
 impl jinn_slices::BusMessage for UserInteracted {}
