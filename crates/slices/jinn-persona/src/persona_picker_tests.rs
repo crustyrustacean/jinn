@@ -19,6 +19,12 @@
 //! picker that registered its cell but forgot its rows or its input hook fails
 //! loudly rather than passing against a hand-built stand-in. Tests that assert
 //! *behavior* drive the picker's public entry points.
+//!
+//! `Wired::open` dispatches the picker's own `<leader>se` action and applies
+//! the scope signal it returns, exactly as the kernel's `apply_scope_signal`
+//! does — including firing the scope-enter hook that seeds the menu. Tests
+//! that care about *which* opener ran drive `Wired::enter` instead, which is
+//! the path a non-picker opener (the sidebar's persona key) takes.
 
 #![allow(
     clippy::expect_used,
@@ -127,9 +133,58 @@ impl Wired {
         self.cell().read().selection.filter().to_owned()
     }
 
-    /// Opens the picker through its real `open` route action.
+    /// Opens the picker the way the kernel does: dispatch the open action,
+    /// then apply the scope signal it requested, which fires the picker's
+    /// scope-enter hook.
+    ///
+    /// The hook is what seeds the rows and clears the filter, so a test that
+    /// only fired the action would exercise a picker that never opened.
     fn open(&self) -> jinn_slices::RouteResult {
-        self.fire("open-persona-picker")
+        let result = self.fire("open-persona-picker");
+        self.apply_signal(
+            result
+                .scope_signal
+                .clone()
+                .expect("the open action requests a push"),
+        );
+        result
+    }
+
+    /// Enters the picker's scope the way the kernel's `apply_scope_signal`
+    /// does, so a scope-enter hook fires exactly as it does in the app.
+    ///
+    /// This is the path any *other* opener takes: the sidebar's persona key
+    /// requests this same transition, so driving it here proves the hook — not
+    /// the particular opener — is what builds the menu.
+    fn enter(&self) {
+        self.apply_signal(ScopeSignal::Push(persona_picker_scope()));
+    }
+
+    /// Applies a scope signal the way the kernel does, so the picker's
+    /// scope-enter hook fires on a push.
+    fn apply_signal(&self, signal: ScopeSignal) {
+        let mut state = self.state.borrow_mut();
+        match signal {
+            ScopeSignal::Push(id) => {
+                state
+                    .frontend
+                    .scope_push(jinn_slices::FocusScope::Dynamic(id.clone()));
+                if let Some(hook) = self.routes.scope_enter_hook(&id) {
+                    hook(jinn_slices::ActionCtx {
+                        state: &mut *state,
+                        slices: &self.slices,
+                        config: jinn_slices::empty_config_layer(),
+                        key_bytes: Vec::new(),
+                    });
+                }
+            }
+            ScopeSignal::PopIf(id) => {
+                if matches!(&state.frontend.scope(), jinn_slices::FocusScope::Dynamic(cur) if *cur == id)
+                {
+                    state.frontend.scope_pop();
+                }
+            }
+        }
     }
 
     /// Dispatches one of the picker's actions by its route action name.
@@ -223,7 +278,128 @@ async fn the_picker_marks_the_active_persona() {
     assert_eq!(wired.all_names().len(), 2);
 }
 
-// ── 2. The filter narrows ───────────────────────────────────────────────
+// ── 2. Every opener lands on the same fresh menu ────────────────────────
+
+#[rstest::rstest]
+#[tokio::test]
+async fn the_picker_registers_a_scope_enter_hook() {
+    // Given a slice activated the way composition activates it.
+    let wired = Wired::new(vec![("coder", "a")]).await;
+
+    // When the registered scope-enter hooks are read.
+    let hook = wired.routes.scope_enter_hook(&persona_picker_scope());
+
+    // Then the picker has one, so entering the scope always seeds the menu.
+    assert!(
+        hook.is_some(),
+        "the persona picker must seed itself on scope entry, or a second opener shows an empty menu"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn the_open_action_asks_the_handler_to_push_the_picker_scope() {
+    // Given a wired slice.
+    let wired = Wired::new(vec![("coder", "a")]).await;
+
+    // When the open action runs.
+    let result = wired.fire("open-persona-picker");
+
+    // Then it requests the transition rather than performing it.
+    assert_eq!(
+        result.scope_signal,
+        Some(ScopeSignal::Push(persona_picker_scope()))
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn the_open_action_alone_seeds_no_rows() {
+    // Given a wired slice that has never been entered.
+    let wired = Wired::new(vec![("coder", "a"), ("tutor", "b")]).await;
+
+    // When the open action runs without the handler applying its signal.
+    wired.fire("open-persona-picker");
+
+    // Then nothing is shown yet: the scope stack has one writer, and the rows
+    // come from the scope-enter hook the kernel fires on the push.
+    assert!(wired.all_names().is_empty());
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn entering_the_picker_scope_shows_the_scanned_personas() {
+    // Given a slice whose personas cell holds two personas, never opened.
+    let wired = Wired::new(vec![
+        ("coding-assistant", "writes code"),
+        ("tutor", "teaches"),
+    ])
+    .await;
+
+    // When the scope is entered — the path an opener other than the picker's
+    // own row takes, such as the sidebar's persona key.
+    wired.enter();
+
+    // Then its rows name both personas.
+    assert_eq!(wired.visible_names(), vec!["coding-assistant", "tutor"]);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn entering_the_picker_scope_copies_the_live_theme() {
+    // Given a slice whose frontend theme differs from the default.
+    let wired = Wired::new(vec![("coder", "a")]).await;
+    wired.state.borrow_mut().frontend.theme.focus_accent = ratatui::style::Color::LightRed;
+
+    // When the scope is entered.
+    wired.enter();
+
+    // Then the picker paints with the app's theme, not a stale one.
+    assert_eq!(
+        wired.cell().read().theme.focus_accent,
+        ratatui::style::Color::LightRed
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_second_open_clears_the_filter_left_by_the_first() {
+    // Given a picker whose filter text was typed and highlight moved.
+    let wired = Wired::new(vec![("coder", "a"), ("tutor", "b")]).await;
+    wired.open();
+    for ch in "cod".chars() {
+        wired.edit(&EditIntent::InsertChar(ch));
+    }
+    wired.fire("move-persona-picker-down");
+    assert_eq!(wired.filter(), "cod");
+
+    // When the scope is entered again through a different opener.
+    wired.apply_signal(ScopeSignal::PopIf(persona_picker_scope()));
+    wired.enter();
+
+    // Then the filter is empty and both rows are back.
+    assert_eq!(wired.filter(), "");
+    assert_eq!(wired.visible_names(), vec!["coder", "tutor"]);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_second_open_puts_the_highlight_back_at_the_top() {
+    // Given a picker whose highlight was moved off the first row.
+    let wired = Wired::new(vec![("coder", "a"), ("tutor", "b")]).await;
+    wired.open();
+    wired.fire("move-persona-picker-down");
+    assert_eq!(wired.highlighted(), 1);
+
+    // When the scope is entered again.
+    wired.apply_signal(ScopeSignal::PopIf(persona_picker_scope()));
+    wired.enter();
+
+    // Then the highlight is back on the first row.
+    assert_eq!(wired.highlighted(), 0);
+}
+
+// ── 3. The filter narrows ───────────────────────────────────────────────
 
 #[rstest::rstest]
 #[tokio::test]
@@ -261,7 +437,7 @@ async fn backspace_shortens_the_filter() {
     assert_eq!(wired.visible_names(), vec!["coder"]);
 }
 
-// ── 3. Navigation ───────────────────────────────────────────────────────
+// ── 4. Navigation ───────────────────────────────────────────────────────
 
 #[rstest::rstest]
 #[tokio::test]
@@ -325,7 +501,7 @@ async fn page_down_steps_by_the_rows_the_last_frame_actually_laid_out() {
     assert_eq!(wired.highlighted(), (on_screen / 2).max(1));
 }
 
-// ── 4. Confirm ──────────────────────────────────────────────────────────
+// ── 5. Confirm ──────────────────────────────────────────────────────────
 
 #[rstest::rstest]
 #[tokio::test]
@@ -363,7 +539,7 @@ async fn confirming_asks_the_scope_stack_to_pop_the_picker() {
     );
 }
 
-// ── 5. Escape ───────────────────────────────────────────────────────────
+// ── 6. Escape ───────────────────────────────────────────────────────────
 
 #[rstest::rstest]
 #[tokio::test]
@@ -444,7 +620,7 @@ async fn clear_control_key_clears_a_non_empty_filter_instead_of_closing() {
     );
 }
 
-// ── 6. Every advertised key is bound ────────────────────────────────────
+// ── 7. Every advertised key is bound ────────────────────────────────────
 
 #[rstest::rstest]
 #[tokio::test]
@@ -512,7 +688,7 @@ fn attached_key(wired: &Wired, key: &str) -> bool {
     })
 }
 
-// ── 7. One owner ────────────────────────────────────────────────────────
+// ── 8. One owner ────────────────────────────────────────────────────────
 
 #[rstest::rstest]
 fn the_picker_state_lives_only_in_its_slice_cell() {

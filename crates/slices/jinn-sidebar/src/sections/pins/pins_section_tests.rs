@@ -14,6 +14,7 @@ use crate::sections::section_trait::SidebarSection;
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_kernel::protocol::{ChangeSource, ChatEntry, ChatEntryId, PinPosition};
+use jinn_slices::route::ScopeSignal;
 
 fn state_with_pinned(count: usize) -> AppState {
     let mut state = AppState::default_with_scope_focus();
@@ -37,7 +38,7 @@ fn state_with_pinned(count: usize) -> AppState {
 }
 
 #[rstest::rstest]
-fn sidebar_persona_edit_opens_picker_when_persona_focused() {
+fn sidebar_persona_edit_requests_the_persona_picker_scope_when_persona_focused() {
     // Given a state with persona section focused and sidebar scope.
     let mut state = AppState::default_with_scope_focus();
     state
@@ -48,13 +49,15 @@ fn sidebar_persona_edit_opens_picker_when_persona_focused() {
         .scope_set_sidebar_section(jinn_sidebar_msg::SidebarSectionId::Persona);
 
     // When handling sidebar persona edit.
-    let result = handle_sidebar_persona_edit(&mut state, jinn_slices::empty_config_layer());
+    let result = handle_sidebar_persona_edit(&mut state);
 
-    // Then the persona picker's scope is on top of the stack.
+    // Then the result requests the persona picker's scope, and the sidebar
+    // itself leaves the scope stack alone for the handler to apply.
     assert_eq!(
-        state.frontend.scope(),
-        jinn_kernel::FocusScope::Dynamic(jinn_persona_msg::persona_picker_scope())
+        result.scope_signal,
+        Some(ScopeSignal::Push(jinn_persona_msg::persona_picker_scope()))
     );
+    assert!(!state.frontend.is_picker());
     // And no loader command is needed: the picker seeds itself from the slice.
     assert!(result.message_names.is_empty());
 }
@@ -71,10 +74,11 @@ fn sidebar_persona_edit_noop_when_pins_focused() {
         .scope_set_sidebar_section(jinn_sidebar_msg::SidebarSectionId::Pins);
 
     // When handling sidebar persona edit.
-    let result = handle_sidebar_persona_edit(&mut state, jinn_slices::empty_config_layer());
+    let result = handle_sidebar_persona_edit(&mut state);
 
     // Then nothing changed.
     assert!(!state.frontend.is_picker());
+    assert!(result.scope_signal.is_none());
     assert!(result.message_names.is_empty());
 }
 
