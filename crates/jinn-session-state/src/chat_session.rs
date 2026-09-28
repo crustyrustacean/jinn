@@ -2998,6 +2998,14 @@ impl ChatSessionState {
         self.core.identity.fork_ordinal = Some(ordinal);
     }
 
+    /// Set the session origin for construction paths that decide the kind
+    /// after building the session (forks built from snapshots, test
+    /// fixtures). Construction paths that know the kind up front use a
+    /// dedicated constructor (`new_child`, `new_attendant`) instead.
+    pub fn set_origin(&mut self, origin: SessionOrigin) {
+        self.core.identity.origin = origin;
+    }
+
     /// Set the parent session.
     pub fn set_parent_session(&mut self, parent: SessionId) {
         self.core.identity.parent_session = Some(parent);

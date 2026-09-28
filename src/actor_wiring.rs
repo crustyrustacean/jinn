@@ -106,6 +106,13 @@ impl ActorSystemBuilder {
         // Shared State FIRST — injected into multiple actors.
         let state = State::new(AppState::default());
 
+        // The in-flight subagent registry: one handle shared by the tool
+        // orchestrator (writer) and the app state the intent handler reads
+        // (the confirmed-cancel cascade). Stamped before any actor spawns,
+        // so a `task` call racing an early cancel cannot miss the pair.
+        let task_spawns = jinn_tools_msg::TaskSpawnRegistry::default();
+        state.write().task_spawns = task_spawns.clone();
+
         {
             let app_state = app_state_storage.read();
             let mut guard = state.write();
@@ -152,7 +159,7 @@ impl ActorSystemBuilder {
             mcp_coordinator: std::sync::Arc::new(std::sync::OnceLock::new()),
             interactive_term: std::sync::Arc::new(std::sync::OnceLock::new()),
             request_dump: jinn_kernel::common::request_dump::RequestDumpService::new(dump_requests),
-            task_spawns: jinn_tools_msg::TaskSpawnRegistry::default(),
+            task_spawns,
             slices: jinn_slices::Slices::new(),
             key_routes: jinn_slices::route::KeyRoutes::new(),
             viewport: jinn_slices::view::Viewport::new(),

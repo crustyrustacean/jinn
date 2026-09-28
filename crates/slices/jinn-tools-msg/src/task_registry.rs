@@ -3,9 +3,8 @@
 //!
 //! The `task` tool registers each parent→child pair when it spawns the child
 //! and removes the pair when the call resolves (success, failure, or abort).
-//! The stall watchdog reads the registry to skip sessions that are healthy
-//! but suspended waiting on a subagent — without this, a long-running child
-//! would make its waiting parent look stalled.
+//! The confirmed-cancel cascade reads the registry to find the running
+//! subagents a cancel must stop.
 
 #![allow(
     clippy::expect_used,
@@ -20,7 +19,8 @@ use jinn_core_types::SessionId;
 /// Shared map of parent session → set of in-flight child sessions.
 ///
 /// Cheap to clone (all clones share the same inner map). Written only by the
-/// `task` tool through its [`TaskSpawnGuard`]; read by the stall watchdog.
+/// `task` tool through its [`TaskSpawnGuard`]; read by the confirmed-cancel
+/// cascade.
 #[derive(Debug, Clone, Default)]
 pub struct TaskSpawnRegistry {
     inner: Arc<Mutex<HashMap<SessionId, HashSet<SessionId>>>>,
@@ -67,6 +67,24 @@ impl TaskSpawnRegistry {
             .lock()
             .expect("task spawn registry poisoned")
             .contains_key(parent)
+    }
+
+    /// The child sessions currently running under `parent`.
+    ///
+    /// Presence in this map *means* the call is in flight: the guard's
+    /// `Drop` unregisters, so a completed call's child never appears. The
+    /// empty result therefore reads "no running subagents", not "unknown".
+    ///
+    /// # Panics
+    ///
+    /// Panics if the registry lock is poisoned.
+    pub fn children_of(&self, parent: &SessionId) -> Vec<SessionId> {
+        self.inner
+            .lock()
+            .expect("task spawn registry poisoned")
+            .get(parent)
+            .map(|children| children.iter().cloned().collect())
+            .unwrap_or_default()
     }
 }
 
