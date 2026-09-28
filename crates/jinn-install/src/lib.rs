@@ -280,6 +280,11 @@ const BUNDLED: &[Bundled] = &[
         relative: "jinn-usage/references/configuration.md",
         contents: include_str!("../../../res/skills/jinn-usage/references/configuration.md"),
     },
+    Bundled {
+        kind: Kind::Skill,
+        relative: "jinn-usage/references/extending-jinn.md",
+        contents: include_str!("../../../res/skills/jinn-usage/references/extending-jinn.md"),
+    },
 ];
 
 /// Installs every bundled default resource into the given destinations.
@@ -878,10 +883,10 @@ mod tests {
                 "{relative} exists on disk but is not registered in BUNDLED"
             );
         }
-        // And the directory holds the expected set (router + 9 references).
+        // And the directory holds the expected set (router + 10 references).
         assert_eq!(
             disk_files.len(),
-            10,
+            11,
             "unexpected file count under res/skills/jinn-usage: {disk_files:?}"
         );
     }
