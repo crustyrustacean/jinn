@@ -40,16 +40,9 @@ pub fn activate(
     deps: ActorDeps,
     state: &State,
 ) {
-    // The `@path` popup's own cell. The TUI test app builder does not run
-    // slice activation, so it registers this too — without one of the two
-    // the popup renders empty while every test around it stays green.
-    let _picker_cell = host
-        .register_cell(
-            jinn_chat_input_msg::file_picker_slot(),
-            jinn_chat_input_msg::FilePickerState::default(),
-        )
-        .ok();
-
+    // The `@path` popup's own cell is not minted here: the shared cell
+    // catalog (`jinn_cell_catalog::register_all_cells`) registers it in one
+    // place, covering the production boot path and every test harness alike.
     let lister_deps = directory_lister_actor::DirectoryListerActorDeps {
         deps,
         state: state.clone(),
@@ -62,8 +55,8 @@ pub fn activate(
 
 /// The chat input box's own screen region registration, split out of
 /// `activate` so a composition path that cannot run activation (the TUI
-/// test app) can still register the draw function. Activation mints the
-/// cells; this only claims the region.
+/// test app) can still register the draw function. Activation claims the
+/// routes and spawns the actor; this only claims the region.
 pub mod render_regions {
     use jinn_kernel::common::app_state::AppState;
     use jinn_slices::DrawContext;

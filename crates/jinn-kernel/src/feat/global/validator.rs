@@ -55,7 +55,7 @@ mod tests {
     #[rstest::rstest]
     fn interrupt_succeeds_with_non_empty_buffer() {
         // Given a state with text in the input buffer and idle session.
-        let mut state = AppState::default();
+        let mut state = AppState::default_with_scope_focus();
         state.update_active_input(|i| i.insert_grapheme_at_cursor('h'));
 
         // When validating interrupt.
@@ -68,7 +68,7 @@ mod tests {
     #[rstest::rstest]
     fn interrupt_succeeds_with_active_stream() {
         // Given a state with empty buffer but an active stream.
-        let mut state = AppState::default();
+        let mut state = AppState::default_with_scope_focus();
         state.active_session_mut().begin_streaming();
 
         // When validating interrupt.
@@ -81,7 +81,7 @@ mod tests {
     #[rstest::rstest]
     fn interrupt_fails_with_empty_buffer_and_idle_session() {
         // Given a state with empty buffer and idle session.
-        let state = AppState::default();
+        let state = AppState::default_with_scope_focus();
 
         // When validating interrupt.
         let result = validate_interrupt(&state);

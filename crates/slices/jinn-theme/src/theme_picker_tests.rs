@@ -44,6 +44,7 @@ impl Wired {
     /// the theme loader.
     async fn new(themes: Vec<(&str, &str)>) -> Self {
         let slices = Slices::new();
+        jinn_cell_catalog::register_all_cells(&slices);
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let routes = KeyRoutes::new();
@@ -57,8 +58,9 @@ impl Wired {
                 &services.trouper_system,
             );
             // An empty themes dir: the scan runs for real (so the entries cell
-            // exists and is owned by `activate`), but the tests seed the
-            // entries they need rather than depending on the loader.
+            // the catalog seeded is re-seeded with the scan's result), but the
+            // tests seed the entries they need rather than depending on the
+            // loader.
             let dir = std::path::PathBuf::from("/nonexistent-themes-dir");
             let system = std::path::PathBuf::from("/nonexistent-system-themes-dir");
             crate::activate(&mut host, &dir, &system);
@@ -66,7 +68,7 @@ impl Wired {
         }
         slices
             .reader::<jinn_theme_msg::ThemeEntries>(&theme_entries_slot())
-            .expect("theme-entries cell is registered at activation")
+            .expect("the catalog registers the theme-entries cell before activation")
             .update(|cell: &mut jinn_theme_msg::ThemeEntries| {
                 cell.entries = themes
                     .into_iter()
@@ -127,22 +129,23 @@ impl Wired {
     /// lines moved into the sidebar slice's cell and are reset there instead.
     fn seed_theme_cache(&self) {
         self.state
-            .borrow_mut()
+            .borrow()
             .frontend
-            .caches
-            .entry_line_cache
-            .write()
-            .insert(
-                &jinn_core_types::ChatEntry::user("seeded"),
-                jinn_chat_log_view_msg::ContentIdentity {
-                    signature: 1,
-                    fingerprint: 1,
-                },
-                false,
-                0,
-                80,
-                1,
-            );
+            .line_cache_cell()
+            .expect("catalog registered the line-cache cell")
+            .update(|cache| {
+                cache.insert(
+                    &jinn_core_types::ChatEntry::user("seeded"),
+                    jinn_chat_log_view_msg::ContentIdentity {
+                        signature: 1,
+                        fingerprint: 1,
+                    },
+                    false,
+                    0,
+                    80,
+                    1,
+                );
+            });
     }
 
     /// How many entries the theme-sensitive cache holds.
@@ -150,10 +153,9 @@ impl Wired {
         self.state
             .borrow()
             .frontend
-            .caches
-            .entry_line_cache
-            .read()
-            .len()
+            .line_cache_cell()
+            .expect("catalog registered the line-cache cell")
+            .update(|cache| cache.len())
     }
 
     /// Opens the picker through its real `open` route action.

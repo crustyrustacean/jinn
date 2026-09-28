@@ -33,6 +33,15 @@ use jinn_preferences_config::schemas::term::InteractiveTermPrefs;
 /// and this runs exactly once per launch over a bounded set of config
 /// values, so the leaked allocation is deliberate and bounded.
 ///
+/// Installs the interactive-term overlay, its key rows, and the per-frame
+/// PTY-layout hook. No actor: the coordinator that owns the PTYs is
+/// spawned by composition alongside the MCP coordinator, since both share
+/// that lifecycle shape.
+///
+/// The tab-mirrors cell is not minted here — the shared cell catalog
+/// (`jinn_cell_catalog::register_all_cells`) registers every slice cell in
+/// one place.
+///
 /// Does **not** mint the shared control registry
 /// ([`jinn_term_msg::TERM_CONTROLS`]): actor wiring owns that
 /// set-once static so it can share the minted registry with the
@@ -41,14 +50,6 @@ pub fn activate(
     services: &mut jinn_kernel::common::services::Services,
     _state: &jinn_kernel::common::state::State,
 ) {
-    // The cell is registered by composition today (actor_wiring) so the
-    // spawn order matches the tools-registry cell; re-registering is a
-    // no-op error we ignore deliberately.
-    let _ = services.slices.register(
-        jinn_term_msg::term_tabs_slot(),
-        jinn_term_msg::TerminalTabState::default(),
-    );
-
     // The configured control-toggle binding, validated by the same parser
     // the keymap binds through (falls back to the default, loudly).
     let configured = services

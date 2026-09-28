@@ -68,8 +68,7 @@ async fn spawn_coordinator(
         ))
         .expect("seed the mcp.server section");
     let state = State::new(AppState::default());
-    let runtime = crate::activate_runtime(&services.slices)
-        .expect("MCP runtime cell is registered exactly once");
+    let runtime = crate::activate_runtime(&services.slices);
     let path = McpCoordinatorActor::spawn(
         &services.trouper_system,
         McpCoordinatorActorDeps {

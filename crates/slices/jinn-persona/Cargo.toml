@@ -21,6 +21,9 @@ wherror = { workspace = true }
 error-stack = { workspace = true }
 
 [dev-dependencies]
+# Activation resolves the personas cells from the shared catalog, so the
+# tests seed their registry through it rather than through the slice.
+jinn-cell-catalog = { workspace = true }
 # The picker tests wire the slice the way composition does, which needs the
 # kernel's Services. Production code reaches the state through jinn-app-state
 # and never touches the kernel, which is what keeps this slice kernel-free.

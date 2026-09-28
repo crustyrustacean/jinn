@@ -24,21 +24,24 @@ pub use scope_resolver::ProjectScopeResolver;
 /// Activates the project slice, registering the project-add popup and the
 /// project picker.
 ///
+/// Neither cell is minted here: the shared cell catalog
+/// (`jinn_cell_catalog::register_all_cells`) registers every slice cell in
+/// one place, so this resolves the handles the same way every other
+/// consumer does.
+///
 /// # Panics
 ///
-/// Panics if either slot is already registered. Double activation is a
-/// composition wiring error.
+/// Panics if the catalog has not run — the overlays would otherwise
+/// render against absent cells and paint nothing.
 #[expect(
     clippy::expect_used,
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
 )]
 pub fn activate(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) -> ProjectCells {
     let cell = host
-        .register_cell(
-            project_add_slot(),
-            jinn_project_msg::ProjectAddInputState::default(),
-        )
-        .expect("project-add slot is registered exactly once at wiring");
+        .slices()
+        .reader::<jinn_project_msg::ProjectAddInputState>(&project_add_slot())
+        .expect("the cell catalog registers the project-add slot before any slice activates");
     host.register_overlay(
         project_add_scope(),
         std::sync::Arc::new(project_add::render::project_add_overlay_rect),
@@ -53,11 +56,9 @@ pub fn activate(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) -> ProjectCe
     project_add::intent::register_project_add_input_hook(host.key_routes(), &cell);
 
     let picker = host
-        .register_cell(
-            project_picker_slot(),
-            jinn_project_msg::ProjectPickerState::default(),
-        )
-        .expect("project picker slot is registered exactly once at wiring");
+        .slices()
+        .reader::<jinn_project_msg::ProjectPickerState>(&project_picker_slot())
+        .expect("the cell catalog registers the project-picker slot before any slice activates");
     host.register_overlay(
         project_picker_scope(),
         std::sync::Arc::new(project_picker_render::project_picker_overlay_rect),

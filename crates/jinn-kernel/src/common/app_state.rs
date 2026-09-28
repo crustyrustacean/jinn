@@ -7,4 +7,4 @@
 //! `jinn_app_state::AppState` name the same type.
 
 pub use jinn_app_state::app_state::{AppState, SessionState, pin_sort_key};
-pub use jinn_app_state::frontend_state::{FrontendCaches, FrontendState, PendingSessionCreation};
+pub use jinn_app_state::frontend_state::{FrontendState, PendingSessionCreation};

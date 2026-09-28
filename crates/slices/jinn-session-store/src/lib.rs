@@ -40,36 +40,39 @@ pub struct SessionStoreHandles {
 
 /// Activates the session-store actor over the shared application state.
 ///
-/// Mints the session picker's cell, so the cell is registered on the host
-/// rather than through a raw `Slices` handle — every cell a slice mints
-/// goes through one registration verb.
+/// The session picker's cell is not minted here: the shared cell catalog
+/// (`jinn_cell_catalog::register_all_cells`) registers every slice cell in
+/// one place, and `activate` resolves the handle the actor's history read
+/// publishes into.
 ///
 /// The actor's typed subscriptions are installed by the spawn call before it
 /// returns, so messages published after activation cannot race actor startup.
 ///
 /// # Panics
 ///
-/// Panics if actor spawn fails, or if the session picker slot is already
-/// taken. Both are composition errors — a double activation, or a slice
-/// registered twice — and must abort launch rather than run with sessions
-/// silently unpersisted.
+/// Panics if actor spawn fails, or if the catalog has not run. A failed
+/// spawn is a composition error and must abort launch rather than run with
+/// sessions silently unpersisted; an absent cell would drop every history
+/// read the actor publishes.
+///
+/// The returned [`SessionStoreHandles`] carries the session-store actor path.
 #[expect(
     clippy::expect_used,
-    reason = "bootstrap assertion: a double activation must abort launch, not run degraded"
+    reason = "bootstrap assertion: a broken harness must abort launch, not run degraded"
 )]
 pub fn activate(
     host: &mut SliceHost<'_, jinn_slices::RenderFacts>,
     services: &Services,
     state: State,
 ) -> SessionStoreHandles {
-    // The picker's cell is minted before the actor spawn: the actor's history
-    // read publishes loaded rows into it, so it needs a handle at construction.
+    // The actor's history read publishes loaded rows into this cell, so it
+    // needs a handle at construction.
     let session_picker_cell = host
-        .register_cell(
-            jinn_session_store_msg::session_picker_slot(),
-            jinn_session_store_msg::SessionPickerState::default(),
+        .slices()
+        .reader::<jinn_session_store_msg::SessionPickerState>(
+            &jinn_session_store_msg::session_picker_slot(),
         )
-        .expect("session picker slot is registered exactly once at wiring");
+        .expect("the cell catalog registers the session-picker slot before any slice activates");
 
     let session_store = session_store_actor::SessionStoreActor::spawn(
         host.system(),
@@ -85,9 +88,9 @@ pub fn activate(
 
 /// Attaches the session picker's overlay, keys, and filter hook.
 ///
-/// Split from [`activate`]: the cell is minted there (the store actor's
-/// history read publishes into it) while the overlay, renderer, and key rows
-/// need a [`SliceHost`], which composition owns.
+/// Split from [`activate`]: the actor that publishes into the cell is
+/// spawned there while the overlay, renderer, and key rows need a
+/// [`SliceHost`], which composition owns.
 ///
 /// # Panics
 ///

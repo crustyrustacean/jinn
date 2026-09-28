@@ -103,10 +103,6 @@ pub struct ChatSessionState {
     /// Ignored entirely once the handle is attached.
     #[serde(skip)]
     view_fallback: parking_lot::RwLock<jinn_chat_log_view_msg::ChatLogViewUi>,
-    /// In-struct stand-in for this session's input draft while `slices`
-    /// is unattached. Same contract as [`Self::view_fallback`].
-    #[serde(skip)]
-    input_fallback: parking_lot::RwLock<jinn_chat_input_msg::ChatInputBoxState>,
 }
 
 impl Clone for ChatSessionState {
@@ -120,7 +116,6 @@ impl Clone for ChatSessionState {
             // test-constructed sessions in the pre-slice configuration.
             slices: std::sync::OnceLock::new(),
             view_fallback: parking_lot::RwLock::new(self.view_fallback.read().clone()),
-            input_fallback: parking_lot::RwLock::new(self.input_fallback.read().clone()),
         }
     }
 }
@@ -136,7 +131,6 @@ impl ChatSessionState {
             view_fallback: parking_lot::RwLock::new(
                 jinn_chat_log_view_msg::ChatLogViewUi::default(),
             ),
-            input_fallback: parking_lot::RwLock::new(jinn_chat_input_msg::ChatInputBoxState::new()),
         }
     }
 
@@ -174,47 +168,39 @@ impl ChatSessionState {
 
     /// Runs `f` against this session's input draft (buffer, cursor, wrap
     /// cache, submission mode, autocomplete), keyed by the session id.
-    /// Writers get-or-insert their session's entry; falls back to the
-    /// in-struct draft when the cell is absent (handle unattached or slice
-    /// not activated).
+    /// Writers get-or-insert their session's entry.
+    ///
+    /// A no-op when the cell is absent (handle unattached, or the catalog
+    /// never ran). The draft the cell holds for this session is the only
+    /// copy — there is no second one on the session struct to fall back to,
+    /// so a missing cell means there is no draft to write.
     pub fn update_input<F>(&self, f: F)
     where
         F: FnOnce(&mut jinn_chat_input_msg::ChatInputBoxState),
     {
-        match self.input_cell() {
-            Some(cell) => {
-                let id = self.session_id().clone();
-                cell.update(|inputs| f(inputs.entry(id).or_default()));
-            }
-            None => {
-                let mut input = self.input_fallback.write();
-                f(&mut input);
-            }
+        if let Some(cell) = self.input_cell() {
+            let id = self.session_id().clone();
+            cell.update(|inputs| f(inputs.entry(id).or_default()));
         }
     }
 
     /// Reads this session's input draft through `f`, falling back to
-    /// `default` when the cell is absent (handle unattached or slice not
-    /// activated). Readers never grow the map: a session with no entry
-    /// reads as its default draft.
+    /// `default` when the cell is absent (handle unattached, or the catalog
+    /// never ran) or when the session has no entry. Readers never grow the
+    /// map: a session with no entry reads as its default draft.
     pub fn with_input<R, F, D>(&self, f: F, default: D) -> R
     where
         F: FnOnce(&jinn_chat_input_msg::ChatInputBoxState) -> R,
         D: FnOnce() -> R,
     {
-        match self.input_cell() {
-            Some(cell) => {
-                let inputs = cell.read();
-                let id = self.session_id();
-                match inputs.get(id) {
-                    Some(input) => f(input),
-                    None => default(),
-                }
-            }
-            None => {
-                let input = self.input_fallback.read();
-                f(&input)
-            }
+        let Some(cell) = self.input_cell() else {
+            return default();
+        };
+        let inputs = cell.read();
+        let id = self.session_id();
+        match inputs.get(id) {
+            Some(input) => f(input),
+            None => default(),
         }
     }
 
@@ -371,7 +357,6 @@ impl ChatSessionState {
             view_fallback: parking_lot::RwLock::new(
                 jinn_chat_log_view_msg::ChatLogViewUi::default(),
             ),
-            input_fallback: parking_lot::RwLock::new(jinn_chat_input_msg::ChatInputBoxState::new()),
         }
     }
 
@@ -397,7 +382,6 @@ impl ChatSessionState {
             view_fallback: parking_lot::RwLock::new(
                 jinn_chat_log_view_msg::ChatLogViewUi::default(),
             ),
-            input_fallback: parking_lot::RwLock::new(jinn_chat_input_msg::ChatInputBoxState::new()),
         }
     }
 

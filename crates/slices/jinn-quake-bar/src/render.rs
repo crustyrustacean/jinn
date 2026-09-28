@@ -28,7 +28,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Clear, Paragraph};
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::state::QuakeBarState;
+use jinn_quake_bar_msg::QuakeBarState;
 
 /// How much to lighten `quake_bar_bg` for the bright divider lines.
 ///
@@ -72,7 +72,7 @@ pub fn render_quake_bar(frame: &mut Frame<'_>, area: Rect, ctx: &RenderFacts) {
     )]
     let quake = ctx
         .slices
-        .reader::<QuakeBarState>(&crate::state::quake_bar_slot())
+        .reader::<QuakeBarState>(&jinn_quake_bar_msg::quake_bar_slot())
         .expect("quake-bar overlay renders only when its cell is registered");
     let quake = quake.read();
 
@@ -308,7 +308,10 @@ mod tests {
     fn quake_ctx_with(lines: &[&str], input: &str) -> (Slices, TypedCell<QuakeBarState>) {
         let slices = Slices::new();
         let cell = slices
-            .register(crate::state::quake_bar_slot(), QuakeBarState::default())
+            .register(
+                jinn_quake_bar_msg::quake_bar_slot(),
+                QuakeBarState::default(),
+            )
             .expect("fresh registry");
         cell.update(|s| {
             for line in lines {
@@ -670,7 +673,7 @@ mod tests {
         // When scrolling up once.
         {
             let cell = slices
-                .reader::<QuakeBarState>(&crate::state::quake_bar_slot())
+                .reader::<QuakeBarState>(&jinn_quake_bar_msg::quake_bar_slot())
                 .expect("seeded");
             cell.update(|s| s.log.scroll_up());
         }

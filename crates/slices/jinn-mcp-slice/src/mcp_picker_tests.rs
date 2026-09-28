@@ -44,6 +44,10 @@ impl Wired {
     /// Builds the slice with the inspector registered.
     async fn new() -> Self {
         let slices = Slices::new();
+        // Production boot seeds every slice cell before any slice activates;
+        // `activate_picker` resolves the inspector's cell by slot key, so
+        // the harness seeds the same registry the app would.
+        jinn_cell_catalog::register_all_cells(&slices);
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let routes = KeyRoutes::new();
@@ -58,12 +62,8 @@ impl Wired {
             );
             crate::activate_picker(&mut host);
         }
-        // Mirror `jinn_tui::app::builder`: seed the scope-focus slot on *this*
-        // registry, then attach that same registry.
-        let _ = slices.register(
-            jinn_slices::scope_focus_slot(),
-            jinn_slices::ScopeFocusState::default(),
-        );
+        // Mirror `jinn_tui::app::builder`: the catalog already seeded the
+        // scope-focus slot on *this* registry, so this is a plain attach.
         let state = jinn_kernel::AppState::default();
         state.frontend.attach_slices(slices.clone());
         Self {
@@ -78,7 +78,7 @@ impl Wired {
     fn cell(&self) -> TypedCell<McpPickerState> {
         self.slices
             .reader(&mcp_picker_slot())
-            .expect("the inspector registers its cell at activation")
+            .expect("the catalog registers the inspector cell the activation wires")
     }
 
     /// Configures `servers` in the app state and enables `enabled` of them on

@@ -47,7 +47,7 @@ pub mod mcp_picker_routes;
 pub mod mcp_picker_viewport;
 
 use jinn_mcp_msg::{McpCoordinatorHandle, McpRuntimeState, mcp_runtime_slot};
-use jinn_slices::{Slices, SlotTaken, TypedCell};
+use jinn_slices::{Slices, TypedCell};
 use std::sync::Arc;
 
 /// Debug name for the minted handle (service-trait convention).
@@ -61,9 +61,25 @@ const RESTART_ASK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(
 /// runtime's own lease deadline.
 const RESTART_INNER_ASK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(75);
 
-/// Registers and returns the MCP runtime-state write cell.
-pub fn activate_runtime(slices: &Slices) -> Result<TypedCell<McpRuntimeState>, SlotTaken> {
-    slices.register(mcp_runtime_slot(), McpRuntimeState::default())
+/// Resolves the MCP runtime-state write cell.
+///
+/// The cell is registered by the shared cell catalog
+/// (`jinn_cell_catalog::register_all_cells`); this hands the coordinator
+/// its handle at spawn time.
+///
+/// # Panics
+///
+/// Panics if the catalog has not run — the coordinator would otherwise
+/// have no writer for the status and log events it consumes, and the
+/// render pass would resolve `None` for every MCP reader.
+#[expect(
+    clippy::expect_used,
+    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
+)]
+pub fn activate_runtime(slices: &Slices) -> TypedCell<McpRuntimeState> {
+    slices
+        .reader::<McpRuntimeState>(&mcp_runtime_slot())
+        .expect("the cell catalog registers the mcp runtime slot before any slice activates")
 }
 
 /// Mint the kernel-side handle from the spawned coordinator actor.
@@ -132,28 +148,26 @@ pub fn mcp_coordinator_handle(
     Arc::new(Impl(system, actor_path))
 }
 
-/// Registers the MCP server inspector: its cell, its overlay, its keys, and
-/// its filter hook.
+/// Registers the MCP server inspector: its overlay, its keys, and its
+/// filter hook.
 ///
 /// Split from [`activate_runtime`] because the inspector is a menu, not a
-/// service: it spawns no actor and needs no services. Registering a slot
-/// twice is a wiring error, so this mints the cell itself.
+/// service: it spawns no actor and needs no services. Its cell comes from
+/// the shared catalog, resolved here by slot key.
 ///
 /// # Panics
 ///
-/// Panics if the slot is already registered — double activation is a wiring
-/// bug.
+/// Panics if the cell catalog has not run - the picker would render against
+/// an absent cell and paint nothing.
 #[expect(
     clippy::expect_used,
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
 )]
 pub fn activate_picker(host: &mut jinn_slices::SliceHost<'_, jinn_slices::RenderFacts>) {
     let cell = host
-        .register_cell(
-            jinn_mcp_msg::mcp_picker_slot(),
-            jinn_mcp_msg::McpPickerState::default(),
-        )
-        .expect("MCP picker slot is registered exactly once at wiring");
+        .slices()
+        .reader::<jinn_mcp_msg::McpPickerState>(&jinn_mcp_msg::mcp_picker_slot())
+        .expect("the cell catalog registers the mcp picker slot before any slice activates");
 
     let scope = jinn_mcp_msg::mcp_picker_scope();
     host.register_overlay(

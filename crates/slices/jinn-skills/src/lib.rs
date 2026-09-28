@@ -38,24 +38,27 @@ pub use skill_picker_routes::{register_skill_picker_input_hook, republish_from_d
 pub use skill_picker_scope::skill_picker_scope;
 pub use skill_preview::render_skill_preview;
 
-/// Activates the slice: mints the skill picker's cell, registers its overlay,
-/// and attaches its route rows. No actor.
+/// Activates the slice: registers the picker's overlay, attaches its route
+/// rows, and spawns its republisher actor.
+///
+/// The picker's cell is not minted here: the shared cell catalog
+/// (`jinn_cell_catalog::register_all_cells`) registers every slice cell in
+/// one place, before any slice activates, so this resolves the handle the
+/// same way every other consumer does.
 ///
 /// # Panics
 ///
-/// Panics if the slot is already registered — double activation is a wiring
-/// bug.
+/// Panics if the catalog has not run — the overlay would resolve no state
+/// and render nothing, and the input hook would swallow keystrokes.
 #[expect(
     clippy::expect_used,
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
 )]
 pub fn activate(host: &mut jinn_slices::SliceHost<'_, jinn_slices::RenderFacts>) {
     let cell = host
-        .register_cell(
-            jinn_skills_msg::skill_picker_slot(),
-            jinn_skills_msg::SkillPickerState::default(),
-        )
-        .expect("skill picker slot is registered exactly once at wiring");
+        .slices()
+        .reader::<jinn_skills_msg::SkillPickerState>(&jinn_skills_msg::skill_picker_slot())
+        .expect("the cell catalog registers the skill picker slot before any slice activates");
     let scope = skill_picker_scope();
     host.register_overlay(
         scope.clone(),
@@ -70,8 +73,8 @@ pub fn activate(host: &mut jinn_slices::SliceHost<'_, jinn_slices::RenderFacts>)
     register_skill_picker_input_hook(host.key_routes(), &cell);
 
     // Repaint the picker when a discovery scan reports new skills. Spawned here
-    // because the cell only exists here, and before any scan is published so no
-    // result can slip past the subscription.
+    // because this is the slice that owns the picker, and before any scan is
+    // published so no result can slip past the subscription.
     //
     // Built with the explicit builder rather than `host.spawn_service`, which
     // omits `.handles(...)`: the actor would spawn and stay subscribed to
@@ -103,13 +106,15 @@ mod activation_tests {
     )]
     use jinn_slices::SliceHost;
 
-    /// The picker is slice-owned, so activation must mint its cell. Without
-    /// this the picker's scope would resolve no state and render nothing.
+    /// The picker is slice-owned, so activation must resolve the cell the
+    /// catalog registered. Without this the picker's scope would resolve no
+    /// state and render nothing.
     #[rstest::rstest]
     #[tokio::test]
-    async fn activate_registers_the_skill_picker_cell() {
-        // Given a host over an empty slice registry.
+    async fn activate_wires_the_catalog_registered_skill_picker_cell() {
+        // Given a host over a registry the catalog has seeded.
         let slices = jinn_slices::Slices::new();
+        jinn_cell_catalog::register_all_cells(&slices);
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let key_routes = jinn_slices::KeyRoutes::new();
@@ -125,10 +130,10 @@ mod activation_tests {
         // When activating the skills slice.
         crate::activate(&mut host);
 
-        // Then the skill picker's cell is registered and readable.
+        // Then the skill picker's cell resolves and is readable.
         let cell = slices
             .reader(&jinn_skills_msg::skill_picker_slot())
-            .expect("skill picker cell registered at activation");
+            .expect("the catalog registers the skill picker cell activation wires");
         // And it holds the picker's own state type.
         let guard = cell.read();
         let _state: &jinn_skills_msg::SkillPickerState = &guard;

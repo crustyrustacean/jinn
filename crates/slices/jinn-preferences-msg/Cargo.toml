@@ -1,0 +1,8 @@
+[package]
+name = "jinn-preferences-msg"
+version.workspace = true
+edition.workspace = true
+description = "The preferences slice's shared cell vocabulary: the pruner accumulation threshold input."
+
+[dependencies]
+jinn-slices = { workspace = true }

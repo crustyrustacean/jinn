@@ -46,6 +46,7 @@ impl Wired {
     /// describe the picker, not the provider machinery.
     async fn new() -> Self {
         let slices = Slices::new();
+        jinn_cell_catalog::register_all_cells(&slices);
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let routes = KeyRoutes::new();

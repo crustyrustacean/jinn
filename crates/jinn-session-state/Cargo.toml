@@ -16,6 +16,10 @@ jinn-session-lifecycle-msg = { workspace = true }
 jinn-session-msg = { workspace = true }
 jinn-session-store-msg = { workspace = true }
 jinn-slices = { workspace = true }
+# Test-only, in dev-dependencies terms: a session test that writes a chat-input
+# draft needs the cell that holds it, and the catalog is the only thing that
+# registers one.
+jinn-cell-catalog = { workspace = true }
 jinn-token-count-msg = { workspace = true }
 jinn-tools-msg = { workspace = true }
 jinn-turn-dispatch-msg = { workspace = true }

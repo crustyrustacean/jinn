@@ -3,7 +3,6 @@
 use jinn_slices::LineInput;
 use jinn_slices::RouteResult;
 use jinn_slices::SliceScopeId;
-use jinn_slices::SlotKey;
 use jinn_slices::TypedCell;
 use jinn_slices::route::{
     ActionCtx, ActionFn, BindSite, EditIntent, InputHook, RouteId, RouteOutcome, RouteRow,
@@ -21,10 +20,7 @@ pub fn pruner_accumulation_scope() -> SliceScopeId {
 }
 
 /// The slot containing the popup's editable threshold state.
-#[must_use]
-pub fn pruner_accumulation_slot() -> SlotKey {
-    SlotKey::builtin("preferences", "pruner_accumulation_input")
-}
+pub use jinn_preferences_msg::pruner_accumulation_slot;
 
 type PrunerCell = TypedCell<PrunerAccumulationInputState>;
 

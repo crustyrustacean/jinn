@@ -8,12 +8,12 @@
 
 use jinn_chat_input_msg::FilePickerState;
 use jinn_sidebar_msg::SidebarScopeExt;
-use parking_lot::RwLock;
 
 use jinn_preferences_config::app_state_file::AppStateFile;
 use jinn_sidebar_msg::SidebarSectionId;
 use jinn_slices::FocusScope;
 use jinn_slices::TuiSignals;
+use jinn_slices::cell::TypedCell;
 
 pub use jinn_sidebar_msg::McpServersSectionState;
 pub use jinn_sidebar_msg::PersonaSectionState;
@@ -22,34 +22,6 @@ pub use jinn_sidebar_msg::SessionsSectionState;
 pub use jinn_sidebar_msg::SidebarSections;
 pub use jinn_sidebar_msg::TaskListSectionState;
 use jinn_theme::Theme;
-
-/// Theme-sensitive caches owned by the frontend.
-///
-/// All caches that store pre-rendered styled data (which embeds theme colors)
-/// live here so they can be invalidated in one call when the theme changes.
-///
-/// Each cache is either a `RwLock` (render code borrows mutably while
-/// holding shared references to the rest of `AppState`) or an `Arc` of an
-/// interior-mutable cache that is also lent to spec-driven pickers through
-/// the [`jinn_picker::PickerHost`](jinn_picker::PickerHost) seam.
-///
-/// The session preview's rendered lines are deliberately *not* cached here.
-/// They live in the sidebar slice's own cell as `PreviewLoad`'s per-session
-/// cache, which the render pass reads and a theme change resets through the
-/// slice's actor — the same arrangement the skills preview uses. A cache here
-/// would be a second copy of the same lines under a second invalidation rule.
-#[derive(Debug, Default)]
-pub struct FrontendCaches {
-    /// Cached wrapped line counts and rendered lines per chat entry.
-    pub entry_line_cache: RwLock<jinn_chat_log_view_msg::EntryLineCache>,
-}
-
-impl FrontendCaches {
-    /// Invalidate all caches. Called when the active theme changes.
-    pub fn invalidate_all(&self) {
-        self.entry_line_cache.write().clear();
-    }
-}
 
 /// Session creation in flight from the projects UI, stashed across the
 /// project-picker → lifecycle-picker → arg-input chain.
@@ -85,10 +57,6 @@ pub struct FrontendState {
     /// The current resolved theme (colors for the render pipeline).
     /// OWNER: IntentHandler (theme picker preview, exempt), AppStateActor (authoritative, on state.toml change).
     pub theme: Theme,
-
-    /// Theme-sensitive caches. Invalidated when `theme` changes.
-    /// OWNER: IntentHandler (cleared on theme change).
-    pub caches: FrontendCaches,
 
     /// Whether the "Press ESC again to cancel" prompt is showing.
     /// OWNER: IntentHandler (set on first ESC in Normal/Sidebar with active stream,
@@ -135,7 +103,6 @@ impl Default for FrontendState {
             scope_focus: std::sync::OnceLock::new(),
             app_state: AppStateFile::default(),
             theme: jinn_theme::default_theme(),
-            caches: FrontendCaches::default(),
             cancel_stream_prompt: false,
             close_session_prompt: false,
             archive_tree_prompt: None,
@@ -167,6 +134,20 @@ impl FrontendState {
     fn scope_cell(&self) -> Option<jinn_slices::cell::TypedCell<jinn_slices::ScopeFocusState>> {
         let slices = self.scope_focus.get()?;
         slices.reader::<jinn_slices::ScopeFocusState>(&jinn_slices::scope_focus_slot())
+    }
+
+    /// Resolves the chat log's line-cache cell, if the handle is attached and
+    /// the cell catalog registered it.
+    ///
+    /// The cache is a `jinn-chat-log-view` cell rather than a field on this
+    /// struct: it is written only by that slice's render and layout paths, and
+    /// a theme change has to clear it — which is a fact about the slice, not
+    /// about every piece of frontend state.
+    pub fn line_cache_cell(&self) -> Option<TypedCell<jinn_chat_log_view_msg::EntryLineCache>> {
+        let slices = self.scope_focus.get()?;
+        slices.reader::<jinn_chat_log_view_msg::EntryLineCache>(
+            &jinn_chat_log_view_msg::entry_line_cache_slot(),
+        )
     }
 
     /// Resolves the sidebar sections cell, if the handle is attached and

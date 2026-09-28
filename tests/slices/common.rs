@@ -528,8 +528,6 @@ pub fn activate_preferences(services: &mut jinn_kernel::Services) {
 /// a slot twice is a wiring error, so each registration is attempted once and
 /// the picker activated only when the registration succeeded.
 pub fn activate_every_picker(services: &mut jinn_kernel::Services) {
-    use jinn_slices::cell::TypedCell;
-
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
         &mut services.viewport,
@@ -538,64 +536,28 @@ pub fn activate_every_picker(services: &mut jinn_kernel::Services) {
         &services.trouper_system,
     );
 
-    if slot_is_free::<jinn_persona_msg::PersonaPickerState>(
-        &services.slices,
-        &jinn_persona_msg::persona_picker_slot(),
-    ) {
-        jinn_persona::activate_picker(&mut host);
-    }
+    // Every picker below is activated unconditionally. It used to be guarded
+    // by "is the slot still free?", a dance that existed only because each
+    // picker minted its own cell and more than one activation path could
+    // reach it. The shared cell catalog registers all of them first, so the
+    // cell is always present and the guard had become a silent way to skip
+    // attaching a picker's rows entirely — which is exactly the failure
+    // `every_picker_scope_owns_rows_in_the_test_composition` exists to catch.
+    jinn_persona::activate_picker(&mut host);
 
-    let session_cell: Option<TypedCell<jinn_session_store_msg::SessionPickerState>> = services
+    let session_cell = services
         .slices
-        .register(
-            jinn_session_store_msg::session_picker_slot(),
-            jinn_session_store_msg::SessionPickerState::default(),
+        .reader::<jinn_session_store_msg::SessionPickerState>(
+            &jinn_session_store_msg::session_picker_slot(),
         )
-        .ok();
-    if let Some(session_cell) = session_cell {
-        jinn_session_store::activate_session_picker(&mut host, &session_cell);
-    }
+        .expect("the cell catalog registers the session picker slot");
+    jinn_session_store::activate_session_picker(&mut host, &session_cell);
 
-    // These three mint their own cells inside `activate`, so they are
-    // attempted only when the slot is still free.
-    if slot_is_free::<jinn_tools_msg::ToolPickerState>(
-        &services.slices,
-        &jinn_tools_msg::tool_picker_slot(),
-    ) {
-        // Also activates the task-list picker this slice owns.
-        jinn_tools::activate_picker(&mut host);
-    }
-
-    if slot_is_free::<jinn_skills_msg::SkillPickerState>(
-        &services.slices,
-        &jinn_skills_msg::skill_picker_slot(),
-    ) {
-        jinn_skills::activate(&mut host);
-    }
-    if slot_is_free::<jinn_mcp_msg::McpPickerState>(
-        &services.slices,
-        &jinn_mcp_msg::mcp_picker_slot(),
-    ) {
-        jinn_mcp_slice::activate_picker(&mut host);
-    }
-    if slot_is_free::<jinn_session_lifecycle_msg::SessionLifecyclePickerState>(
-        &services.slices,
-        &jinn_session_lifecycle_msg::session_lifecycle_picker_slot(),
-    ) {
-        jinn_session_lifecycle::activate_picker(&mut host);
-    }
-}
-
-/// Whether `slot` holds no cell of type `T` yet.
-///
-/// Several pickers mint their cell inside `activate`, and more than one
-/// activation path calls in. Registering a taken slot is a wiring error, so
-/// each such picker is activated only when its slot is still free.
-fn slot_is_free<T>(slices: &jinn_slices::Slices, slot: &jinn_slices::SlotKey) -> bool
-where
-    T: Send + Sync + 'static,
-{
-    slices.reader::<T>(slot).is_none()
+    // Also activates the task-list picker this slice owns.
+    jinn_tools::activate_picker(&mut host);
+    jinn_skills::activate(&mut host);
+    jinn_mcp_slice::activate_picker(&mut host);
+    jinn_session_lifecycle::activate_picker(&mut host);
 }
 
 #[cfg(test)]

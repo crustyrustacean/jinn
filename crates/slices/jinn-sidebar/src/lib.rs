@@ -20,15 +20,20 @@ pub use jinn_sidebar_msg::sidebar_sections_slot;
 use jinn_kernel::common::app_state::AppState;
 use jinn_slices::SliceHost;
 
-/// Activates the slice: mints the sidebar sections cell, attaches
+/// Activates the slice: resolves the sidebar sections cell, attaches
 /// the sidebar's keybind rows plus the rename input hook, and spawns
 /// the sessions-cursor clamp actor on trouper (its `.subscribe`
 /// declaration of `SessionClosed` is the readiness point).
 ///
+/// The sections cell is not minted here: the shared cell catalog
+/// (`jinn_cell_catalog::register_all_cells`) registers every slice cell in
+/// one place, before any slice activates, so this resolves the handle the
+/// same way every other consumer does.
+///
 /// # Panics
 ///
-/// Panics if the slot is already registered — double activation is a
-/// wiring bug.
+/// Panics if the catalog has not run — the rename input hook would
+/// otherwise be wired to nothing and the popup would swallow input.
 #[expect(
     clippy::expect_used,
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
@@ -38,11 +43,9 @@ pub fn activate(
     state: jinn_kernel::common::state::State,
 ) {
     let cell = host
-        .register_cell(
-            sidebar_sections_slot(),
-            jinn_sidebar_msg::SidebarSections::default(),
-        )
-        .expect("sidebar slot is registered exactly once at wiring");
+        .slices()
+        .reader::<jinn_sidebar_msg::SidebarSections>(&sidebar_sections_slot())
+        .expect("the cell catalog registers the sidebar slot before any slice activates");
     key_routes::attach_sidebar_rows(host.key_routes());
     key_routes::register_rename_input_hook(host.key_routes(), &cell);
     // The rename popup renders through the overlay registry keyed on its

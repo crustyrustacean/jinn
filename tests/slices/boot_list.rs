@@ -123,7 +123,8 @@ fn every_activation_line_is_a_call() {
         assert!(
             func.starts_with("activate")
                 || func.starts_with("install_actors")
-                || func.starts_with("install_layout_actors"),
+                || func.starts_with("install_layout_actors")
+                || func.starts_with("register_all_cells"),
             "{module}::{func} is wired but is not an activation entry point"
         );
     }
@@ -164,6 +165,104 @@ fn slice_activations_are_not_called_outside_the_boot_list() {
     }
 }
 
+/// The cell catalog is the only place a slice cell is registered.
+///
+/// Four hand-maintained seeding lists used to exist — the boot list, the
+/// TUI test app builder, `AppState`'s test seeding, and
+/// `Services::new_fake` — and they had already drifted. The failure they
+/// produced was silent: a harness that omitted a cell rendered nothing
+/// while every assertion stayed green.
+///
+/// A behavioural test for this needs a full app boot and a seeded
+/// registry, which is exactly the thing that was drifting. Reading the
+/// sources does not, and holds even while the tree does not compile.
+#[rstest::rstest]
+fn cell_registration_happens_only_in_the_catalog() {
+    // Given every slice-crate source outside the catalog crate.
+    let mut offenders = Vec::new();
+    for path in slice_sources() {
+        if path.contains("jinn-cell-catalog") || is_test_only(&path) {
+            continue;
+        }
+        let Ok(source) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        // Everything from the first `#[cfg(test)]` onward is test code: a
+        // unit test that seeds the one cell it asserts on is testing that
+        // cell, not maintaining a second production list.
+        let production = source
+            .split_once("#[cfg(test)]")
+            .map_or(source.as_str(), |(before, _)| before);
+
+        // A registration is judged per *statement*, not per line.
+        // `registry.register(\n    cwds_slot(),\n)` puts the verb and its
+        // slot key on separate lines, and a line-local match sees neither
+        // the pair nor either half of it.
+        for stmt in production.split(';') {
+            // Comments are stripped before matching. A doc comment rides
+            // along with the statement it documents, so the collapsed
+            // buffer legitimately begins with `///` — and a buffer that
+            // starts with `//` would otherwise be skipped, letting every
+            // documented registration hide behind its own doc comment.
+            let collapsed = collapse_whitespace(&strip_comments(stmt));
+
+            // Both halves are required. The verb alone also matches the
+            // view registry, the overlay views and the task tree, which
+            // each have an unrelated `register` method; the slot key alone
+            // matches the `*_slot()` constructors themselves.
+            let is_registration = collapsed.contains("register_cell(")
+                || (collapsed.contains(".register(") && collapsed.contains("_slot("));
+            if !is_registration {
+                continue;
+            }
+            let offset = stmt.as_ptr() as usize - production.as_ptr() as usize;
+            let line_no = production[..offset].lines().count();
+            offenders.push(format!("{path}:{line_no}: {collapsed}"));
+        }
+    }
+
+    // Then no slice registers a cell outside the catalog.
+    assert!(
+        offenders.is_empty(),
+        "a cell is registered outside the catalog; the catalog must be the only \
+         registration path:\n{}",
+        offenders.join("\n")
+    );
+}
+
+/// The catalog registers more than one cell, and says how many.
+///
+/// A catalog that silently registered a single cell would satisfy the
+/// structural test above while reintroducing the exact problem: one list,
+/// but an incomplete one.
+#[rstest::rstest]
+fn the_catalog_is_the_full_list() {
+    // Given the catalog's source.
+    let source = std::fs::read_to_string("crates/jinn-cell-catalog/src/lib.rs")
+        .expect("the catalog is in every checkout");
+
+    // When its entries are counted.
+    let entries = source.lines().filter(|l| l.trim() == "register!(").count();
+
+    // Then the count matches the constant the function asserts against.
+    let declared = source
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("const EXPECTED_CELL_COUNT: usize = "))
+        .and_then(|l| l.trim_end_matches(';').parse::<usize>().ok())
+        .expect("the catalog declares its expected cell count");
+
+    assert_eq!(
+        entries, declared,
+        "the catalog registers {entries} cells but declares {declared}; the assertion \
+         would either always pass or always fire"
+    );
+    assert!(
+        entries > 1,
+        "the catalog registers {entries} cell — one list that is still incomplete is the \
+         failure this crate exists to end"
+    );
+}
+
 fn boot_list() -> String {
     std::fs::read_to_string("src/bootstrap/slices.rs").expect("the boot list is in every checkout")
 }
@@ -180,6 +279,66 @@ fn activation_line_containing(list: &str, needle: &str) -> String {
 fn production_sources() -> Vec<String> {
     let mut out = Vec::new();
     let mut stack = vec!["src".to_owned()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path.display().to_string());
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                out.push(path.display().to_string());
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// A source file that exists only to be compiled under `cfg(test)`.
+///
+/// The slices declare their test modules two ways: a `#[cfg(test)] mod
+/// tests` inline, and a separate `*_tests.rs` pulled in from the crate
+/// root. Both are test code. A unit test that seeds the one cell it
+/// asserts on is exercising that cell, not maintaining a second
+/// production list.
+fn is_test_only(path: &str) -> bool {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    name.ends_with("_tests.rs") || name == "tests.rs" || name == "test.rs"
+}
+
+/// Removes `//` and `///` comment lines from a chunk of source.
+///
+/// Without this, a statement and the doc comment above it collapse into one
+/// buffer that starts with `///` — and a guard that skips comment-looking
+/// buffers then skips every documented registration, which is most of them.
+fn strip_comments(text: &str) -> String {
+    text.lines()
+        .filter(|line| !line.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Collapses every run of whitespace to a single space, so a statement
+/// split across lines reads as one line for matching.
+fn collapse_whitespace(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Every `.rs` file under `crates/slices`, plus the catalog crate.
+///
+/// The slices are where cell registration used to hide, so the scan
+/// covers them; `crates/jinn-slices` is excluded because its three
+/// infrastructure slots are registered through a private
+/// `get_or_register` path by design, and its resolvers are private so no
+/// catalog could mint a second handle to them.
+fn slice_sources() -> Vec<String> {
+    let mut out = Vec::new();
+    let mut stack = vec![
+        "crates/slices".to_owned(),
+        "crates/jinn-cell-catalog".to_owned(),
+    ];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;

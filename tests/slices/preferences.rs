@@ -11,8 +11,10 @@ use ratatui_which_key::NodeResult;
 #[rstest::rstest]
 #[tokio::test]
 async fn activation_registers_pruner_popup_and_normal_mode_opener() {
-    // Given fresh shared registries and a preferences slice host.
+    // Given shared registries seeded by the cell catalog, as production
+    // boot does, and a preferences slice host.
     let slices = jinn_slices::Slices::new();
+    jinn_cell_catalog::register_all_cells(&slices);
     let mut viewport = Viewport::new();
     let overlay_views = OverlayViews::new();
     let routes = jinn_slices::KeyRoutes::new();

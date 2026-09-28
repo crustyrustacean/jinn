@@ -60,6 +60,10 @@ impl Harness {
     /// that shipped in an earlier picker.
     async fn new() -> Self {
         let slices = jinn_slices::Slices::new();
+        // Production boot seeds every slice cell before any slice activates;
+        // `activate_picker` resolves both pickers' cells by slot key, so the
+        // harness seeds the same registry the app would.
+        jinn_cell_catalog::register_all_cells(&slices);
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let routes = jinn_slices::KeyRoutes::new();
@@ -77,12 +81,6 @@ impl Harness {
             // not separately wired.
             crate::activate_picker(&mut host);
         }
-        slices
-            .register(
-                jinn_slices::scope_focus_slot(),
-                jinn_slices::ScopeFocusState::default(),
-            )
-            .expect("scope-focus cell is not registered yet");
         // `AppState::default()` (not `default_with_scope_focus`) so the
         // `attach_slices` below is the first and only attachment: the facade
         // handle is a `OnceLock`, and the harness already minted the cells on
