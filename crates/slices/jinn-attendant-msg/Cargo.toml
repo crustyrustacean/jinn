@@ -1,0 +1,19 @@
+[package]
+name = "jinn-attendant-msg"
+version.workspace = true
+edition.workspace = true
+description = "The attendant slice's contracts: run parameters, activation modes, and the report log."
+
+[dependencies]
+jinn-core-types = { workspace = true }
+jinn-session-msg = { workspace = true }
+jinn-slices = { workspace = true }
+jiff = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

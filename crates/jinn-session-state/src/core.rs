@@ -8,8 +8,8 @@ use jinn_token_count_msg::TokenRecord;
 use serde::{Deserialize, Serialize};
 
 use crate::fields::{
-    SessionHistoryWorkFields, SessionIdentityMetadataFields, SessionIntegrationFields,
-    SessionLifecycleLocationFields, SessionStorageFields,
+    SessionAttendantFields, SessionHistoryWorkFields, SessionIdentityMetadataFields,
+    SessionIntegrationFields, SessionLifecycleLocationFields, SessionStorageFields,
 };
 use crate::runtime::SessionCoreEphemeral;
 
@@ -35,6 +35,9 @@ pub struct SessionCore {
     /// Storage state and policy.
     #[serde(flatten)]
     pub storage: SessionStorageFields,
+    /// Attendant run parameters and report log.
+    #[serde(flatten)]
+    pub attendant: SessionAttendantFields,
     /// Runtime-only turn and discovery state.
     #[serde(skip)]
     pub ephemeral: SessionCoreEphemeral,
@@ -87,6 +90,7 @@ impl Default for SessionCore {
             history_work: SessionHistoryWorkFields::default(),
             integrations: SessionIntegrationFields::default(),
             storage: SessionStorageFields::default(),
+            attendant: SessionAttendantFields::default(),
             ephemeral: SessionCoreEphemeral::default(),
             capture_counter: Arc::new(AtomicU64::new(0)),
         }

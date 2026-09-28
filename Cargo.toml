@@ -210,6 +210,7 @@ jinn-session-msg = { path = "crates/jinn-session-msg" }
 jinn-session-state = { path = "crates/jinn-session-state" }
 jinn-boot = { path = "crates/slices/jinn-boot" }
 jinn-boot-msg = { path = "crates/slices/jinn-boot-msg" }
+jinn-attendant-msg = { path = "crates/slices/jinn-attendant-msg" }
 jinn-session-store = { path = "crates/slices/jinn-session-store" }
 jinn-session-turn = { path = "crates/slices/jinn-session-turn" }
 jinn-session-store-msg = { path = "crates/slices/jinn-session-store-msg" }

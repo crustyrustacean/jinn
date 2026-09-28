@@ -6171,3 +6171,195 @@ fn tool_age_window_exclude_refused_on_included_todo_pair() {
         ContextOverride::ForcedInclude
     );
 }
+
+#[rstest::rstest]
+#[test]
+fn new_attendant_links_parent_without_inheriting_conversation() {
+    // Given a parent session with a project stamp, cwd, home, and MCP servers.
+    let mut parent = ChatSessionState::new();
+    parent.set_project(Some(PathBuf::from("/tmp/demo-project")));
+    parent.set_cwd(PathBuf::from("/tmp/demo-cwd"));
+    parent.set_home(PathBuf::from("/tmp/demo-home"));
+    parent.set_enabled_mcp_servers(std::collections::BTreeSet::from([
+        "filesystem".to_owned(),
+    ]));
+    parent.push_entry(ChatEntry::user("parent conversation"));
+
+    // When creating an attendant of that parent.
+    let attendant = ChatSessionState::new_attendant(&parent, true);
+
+    // Then the attendant references the parent.
+    // And it is an attendant by origin.
+    // And its history is empty — environment is inherited, never conversation.
+    assert_eq!(
+        attendant.parent_session().as_ref(),
+        Some(parent.session_id())
+    );
+    assert!(attendant.is_attendant());
+    assert!(attendant.is_empty());
+}
+
+#[rstest::rstest]
+#[test]
+fn new_attendant_copies_parent_environment() {
+    // Given a parent session with environment values set.
+    let mut parent = ChatSessionState::new();
+    parent.set_project(Some(PathBuf::from("/tmp/demo-project")));
+    parent.set_cwd(PathBuf::from("/tmp/demo-cwd"));
+    parent.set_home(PathBuf::from("/tmp/demo-home"));
+    parent.set_enabled_mcp_servers(std::collections::BTreeSet::from([
+        "filesystem".to_owned(),
+    ]));
+
+    // When creating an attendant of that parent.
+    let attendant = ChatSessionState::new_attendant(&parent, true);
+
+    // Then every environment field matches the parent.
+    assert_eq!(
+        attendant.project(),
+        parent.project(),
+        "project association follows the parent"
+    );
+    assert_eq!(attendant.cwd(), parent.cwd(), "cwd follows the parent");
+    assert_eq!(
+        attendant.enabled_mcp_servers(),
+        parent.enabled_mcp_servers(),
+        "MCP enablement follows the parent"
+    );
+    assert_eq!(
+        attendant.profile().persona_name,
+        parent.profile().persona_name,
+        "persona follows the parent"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn new_attendant_starts_in_seed_activation_with_manual_trigger() {
+    // Given a parent session.
+
+    // When creating an attendant of that parent.
+    let attendant = ChatSessionState::new_attendant(&parent_of_new_session(), true);
+
+    // Then activation is seed — the user is still composing its instructions.
+    // And the trigger is manual — it fires for no one until configured.
+    assert_eq!(
+        attendant.attendant_activation(),
+        jinn_attendant_msg::AttendantActivation::Seed
+    );
+    assert_eq!(
+        attendant.attendant_trigger(),
+        jinn_attendant_msg::AttendantTrigger::Manual
+    );
+}
+
+fn parent_of_new_session() -> ChatSessionState {
+    ChatSessionState::new()
+}
+
+#[rstest::rstest]
+#[test]
+fn new_attendant_preserves_persistence_argument() {
+    // Given a parent session and an explicit persistence policy.
+
+    // When creating an attendant with that policy.
+    let attendant = ChatSessionState::new_attendant(&ChatSessionState::new(), false);
+
+    // Then the attendant preserves that exact policy.
+    assert!(!attendant.persist());
+}
+
+#[rstest::rstest]
+#[test]
+fn attendant_reports_append_in_run_order() {
+    // Given a fresh attendant.
+    let mut session = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
+
+    // When the attendant publishes two reports.
+    session.append_attendant_report("first finding".to_owned());
+    session.append_attendant_report("second finding".to_owned());
+
+    // Then the log holds both, oldest first, with run numbers from one.
+    let reports = session.attendant_reports();
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0].run, 1);
+    assert_eq!(reports[1].run, 2);
+    assert_eq!(reports[0].body, "first finding");
+    assert_eq!(reports[1].body, "second finding");
+}
+
+#[rstest::rstest]
+#[test]
+fn latest_attendant_report_is_none_before_the_first_report() {
+    // Given an attendant that has never reported.
+
+    // When the latest report is read.
+    let latest = ChatSessionState::new_attendant(&ChatSessionState::new(), true)
+        .latest_attendant_report()
+        .cloned();
+
+    // Then there is nothing to seed the next run from.
+    assert!(latest.is_none());
+}
+
+#[rstest::rstest]
+#[test]
+fn session_fields_round_trip_through_serialization() {
+    // Given an attendant with activation, trigger, template, and reports.
+    let mut session = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
+    session.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+    session.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+    session.set_seed_template("custom template".to_owned());
+    session.append_attendant_report("prior finding".to_owned());
+
+    // When the whole state survives a serialization round trip.
+    let json = serde_json::to_string(&session.core).expect("serialize");
+    let restored: SessionCore = serde_json::from_str(&json).expect("deserialize");
+
+    // Then every attendant field is preserved.
+    assert_eq!(restored.attendant.activation, jinn_attendant_msg::AttendantActivation::Reset);
+    assert_eq!(restored.attendant.trigger, jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+    assert_eq!(restored.attendant.seed_template, "custom template");
+    assert_eq!(restored.attendant.reports.len(), 1);
+    assert_eq!(restored.attendant.reports[0].body, "prior finding");
+}
+
+#[rstest::rstest]
+#[test]
+fn attendant_fields_default_when_absent_from_persisted_blob() {
+    // Given a serialized session core written before attendants existed.
+    let legacy = r#"{
+        "session_id": "019912ac-0000-7000-8000-000000000001",
+        "updated_at": "2026-01-01T00:00:00Z",
+        "created_at": "2026-01-01T00:00:00Z",
+        "cwd": ".",
+        "history": [],
+        "profile": { "model": { "single": "__no_provider__" } },
+        "blobs": {},
+        "lifecycle_args": [],
+        "lifecycle_script_state": "nothing_ran",
+        "token_ledger": [],
+        "session_state": "loaded",
+        "persist": true,
+        "has_interacted": false,
+        "origin": "user"
+    }"#;
+
+    // When that blob is deserialized.
+    let core: SessionCore = serde_json::from_str(legacy).expect("deserialize legacy blob");
+
+    // Then the attendant group takes its defaults — no migration needed.
+    assert_eq!(
+        core.attendant.activation,
+        jinn_attendant_msg::AttendantActivation::Seed
+    );
+    assert_eq!(
+        core.attendant.trigger,
+        jinn_attendant_msg::AttendantTrigger::Manual
+    );
+    assert!(core.attendant.reports.is_empty());
+    assert_eq!(
+        core.attendant.seed_template,
+        jinn_attendant_msg::default_seed_template()
+    );
+}

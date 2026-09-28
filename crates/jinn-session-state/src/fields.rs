@@ -7,6 +7,9 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 
 use jiff::Timestamp;
+use jinn_attendant_msg::{
+    AttendantActivation, AttendantReport, AttendantTrigger, default_seed_template,
+};
 use jinn_core_types::{ChatHistory, SessionId};
 use jinn_session_lifecycle_msg::LifecycleScriptState;
 use jinn_session_msg::SessionOrigin;
@@ -157,6 +160,37 @@ impl Default for SessionStorageFields {
         Self {
             session_state: SessionState::Loaded,
             persist: true,
+        }
+    }
+}
+
+/// Attendant run parameters and the report log.
+///
+/// Every field carries `#[serde(default)]`, so a session written before
+/// attendants existed deserializes without a migration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionAttendantFields {
+    /// How this session's context is prepared when it runs.
+    #[serde(default)]
+    pub activation: AttendantActivation,
+    /// The condition that causes an automatic re-run.
+    #[serde(default)]
+    pub trigger: AttendantTrigger,
+    /// User-editable text used to inject the prior report at activation.
+    #[serde(default = "default_seed_template")]
+    pub seed_template: String,
+    /// Append-only; the harness never removes or edits a report.
+    #[serde(default)]
+    pub reports: Vec<AttendantReport>,
+}
+
+impl Default for SessionAttendantFields {
+    fn default() -> Self {
+        Self {
+            activation: AttendantActivation::default(),
+            trigger: AttendantTrigger::default(),
+            seed_template: default_seed_template(),
+            reports: Vec::new(),
         }
     }
 }

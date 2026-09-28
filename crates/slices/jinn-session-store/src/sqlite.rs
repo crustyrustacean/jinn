@@ -22,6 +22,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
 use daow::Param;
+use jinn_attendant_msg::{
+    AttendantActivation, AttendantReport, AttendantTrigger, default_seed_template,
+};
 use jinn_core_types::SessionProfile;
 use jinn_core_types::{ChatEntry, ChatEntryKind};
 use jinn_core_types::{ChatEntryId, ContextOverride, EntryTiming, SessionId};
@@ -580,6 +583,19 @@ pub(crate) struct PersistableCore {
     /// Defaults to true for blobs written by older versions.
     #[serde(default = "default_persist")]
     persist: bool,
+    /// How an attendant prepares its context when it runs.
+    /// Defaults to seed (composing) for blobs written by older versions.
+    #[serde(default)]
+    activation: AttendantActivation,
+    /// The condition that causes an automatic attendant re-run.
+    #[serde(default)]
+    trigger: AttendantTrigger,
+    /// User-editable seed text used to inject the prior report.
+    #[serde(default = "default_seed_template")]
+    seed_template: String,
+    /// The attendant's append-only report log.
+    #[serde(default)]
+    reports: Vec<AttendantReport>,
 }
 
 impl From<&SessionSnapshotMetadata> for PersistableCore {
@@ -602,6 +618,10 @@ impl From<&SessionSnapshotMetadata> for PersistableCore {
             task_list: metadata.task_list.clone(),
             enabled_mcp_servers: metadata.enabled_mcp_servers.clone(),
             persist: metadata.persist,
+            activation: metadata.activation,
+            trigger: metadata.trigger,
+            seed_template: metadata.seed_template.clone(),
+            reports: metadata.reports.clone(),
         }
     }
 }
@@ -626,6 +646,10 @@ impl From<PersistableCore> for SessionSnapshotMetadata {
             task_list: core.task_list,
             enabled_mcp_servers: core.enabled_mcp_servers,
             persist: core.persist,
+            activation: core.activation,
+            trigger: core.trigger,
+            seed_template: core.seed_template,
+            reports: core.reports,
             session_state: SessionState::Loaded,
         }
     }

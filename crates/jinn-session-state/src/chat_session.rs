@@ -13,6 +13,7 @@ use std::ops::Range;
 use std::sync::atomic::Ordering;
 
 use jiff::Timestamp;
+use jinn_attendant_msg::{AttendantActivation, AttendantReport, AttendantTrigger};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
@@ -383,6 +384,110 @@ impl ChatSessionState {
                 jinn_chat_log_view_msg::ChatLogViewUi::default(),
             ),
         }
+    }
+
+    /// Create an attendant session: a peer that references a parent without
+    /// inheriting its conversation.
+    ///
+    /// Copies the parent's environment — profile, cwd, project, home, and
+    /// enabled MCP servers — and links via `parent_session`. History starts
+    /// empty and activation starts in [`AttendantActivation::Seed`], so the
+    /// user can compose its instructions before anything dispatches.
+    ///
+    /// Does not reuse [`new_child`](Self::new_child): that constructor
+    /// hard-codes the `Subagent` origin, and an attendant is a different
+    /// creation path.
+    #[must_use]
+    pub fn new_attendant(parent: &Self, persist: bool) -> Self {
+        {
+            let mut attendant = Self {
+                core: SessionCore::default(),
+                ui: SessionUi::default(),
+                slices: std::sync::OnceLock::new(),
+                view_fallback: parking_lot::RwLock::new(
+                    jinn_chat_log_view_msg::ChatLogViewUi::default(),
+                ),
+            };
+            let attendant_core = &mut attendant.core;
+            attendant_core.identity.parent_session = Some(parent.core.identity.session_id.clone());
+            attendant_core.identity.origin = SessionOrigin::Attendant;
+            attendant_core.identity.project = parent.core.identity.project.clone();
+            attendant_core.storage.persist = persist;
+            attendant_core.integrations.profile = parent.core.integrations.profile.clone();
+            attendant_core.lifecycle.cwd = parent.core.lifecycle.cwd.clone();
+            attendant_core.lifecycle.home = parent.core.lifecycle.home.clone();
+            attendant_core.integrations.enabled_mcp_servers =
+                parent.core.integrations.enabled_mcp_servers.clone();
+            attendant
+        }
+    }
+
+    /// Whether this session is an attendant of another session.
+    #[must_use]
+    pub fn is_attendant(&self) -> bool {
+        self.core.identity.origin == SessionOrigin::Attendant
+    }
+
+    /// How this session's context is prepared when it runs.
+    #[must_use]
+    pub fn attendant_activation(&self) -> AttendantActivation {
+        self.core.attendant.activation
+    }
+
+    /// Set how this session's context is prepared when it runs.
+    pub fn set_attendant_activation(&mut self, activation: AttendantActivation) {
+        self.core.attendant.activation = activation;
+    }
+
+    /// The condition that causes an automatic re-run.
+    #[must_use]
+    pub fn attendant_trigger(&self) -> AttendantTrigger {
+        self.core.attendant.trigger
+    }
+
+    /// Set the condition that causes an automatic re-run.
+    pub fn set_attendant_trigger(&mut self, trigger: AttendantTrigger) {
+        self.core.attendant.trigger = trigger;
+    }
+
+    /// The user-editable seed text injected ahead of the prior report.
+    #[must_use]
+    pub fn seed_template(&self) -> &str {
+        &self.core.attendant.seed_template
+    }
+
+    /// Set the user-editable seed text injected ahead of the prior report.
+    pub fn set_seed_template(&mut self, template: String) {
+        self.core.attendant.seed_template = template;
+    }
+
+    /// The attendant's append-only report log, oldest first.
+    #[must_use]
+    pub fn attendant_reports(&self) -> &[AttendantReport] {
+        &self.core.attendant.reports
+    }
+
+    /// Append one report to this attendant's log.
+    ///
+    /// Append-only by design: the harness never removes or edits a report,
+    /// and the next run is seeded from the most recent entry.
+    pub fn append_attendant_report(&mut self, body: String) -> &AttendantReport {
+        {
+            let reports = &mut self.core.attendant.reports;
+            let report = AttendantReport {
+                run: reports.len() + 1,
+                published_at: Timestamp::now(),
+                body,
+            };
+            reports.push(report);
+            reports.last().expect("just pushed")
+        }
+    }
+
+    /// The most recent report, if this attendant has ever reported.
+    #[must_use]
+    pub fn latest_attendant_report(&self) -> Option<&AttendantReport> {
+        self.core.attendant.reports.last()
     }
 
     /// Immutable access to this session's steering buffer.

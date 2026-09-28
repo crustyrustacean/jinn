@@ -1732,7 +1732,10 @@ fn metadata_blob_is_unchanged_by_group_composition() {
     .expect("serialize metadata");
 
     // Then the legacy flat JSON shape is unchanged, with runtime-only home and
-    // row-backed session state still absent.
+    // row-backed session state still absent. The attendant group appends four
+    // defaulted keys (activation, trigger, seed_template, reports) — flat, as
+    // with every group; a blob written before attendants lacks them and
+    // deserializes to the same defaults.
     assert_eq!(
         blob,
         concat!(
@@ -1744,7 +1747,10 @@ fn metadata_blob_is_unchanged_by_group_composition() {
             r#""parent_session":null,"fork_ordinal":null,"origin":"user","project":null,"#,
             r#""blobs":{},"lifecycle_name":"dev","lifecycle_args":["--fast"],"#,
             r#""lifecycle_script_state":"setup_ran","task_list":{"phases":[]},"#,
-            r#""enabled_mcp_servers":[],"persist":false}"#
+            r#""enabled_mcp_servers":[],"persist":false,"#,
+            r#""activation":"seed","trigger":"manual","#,
+            r#""seed_template":"Your previous run reported: <prior report>. Confirm or refute this against the current code.","#,
+            r#""reports":[]}"#
         )
     );
 }
@@ -3218,4 +3224,44 @@ async fn fts_and_map_counts(pool: &daow::Pool, session_id: &str) -> (i64, i64) {
     })
     .await
     .expect("fts/map counts")
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn attendant_fields_round_trip_through_save_and_load() {
+    // Given a store with an attendant session carrying activation, trigger,
+    // seed template, and a report.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
+    session.set_session_id(session_id.clone());
+    session.set_title("Judge".to_owned());
+    session.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+    session.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+    session.set_seed_template("check: <prior report>".to_owned());
+    session.append_attendant_report("the build was actually green".to_owned());
+
+    // When saving and loading.
+    store.save(&session.capture_snapshot()).await.expect("save");
+    let snapshot = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then every attendant field is preserved.
+    let metadata = &snapshot.metadata;
+    assert!(metadata.origin == jinn_session_msg::SessionOrigin::Attendant);
+    assert_eq!(
+        metadata.activation,
+        jinn_attendant_msg::AttendantActivation::Reset
+    );
+    assert_eq!(
+        metadata.trigger,
+        jinn_attendant_msg::AttendantTrigger::ParentCompleted
+    );
+    assert_eq!(metadata.seed_template, "check: <prior report>");
+    assert_eq!(metadata.reports.len(), 1);
+    assert_eq!(metadata.reports[0].body, "the build was actually green");
+    assert_eq!(metadata.reports[0].run, 1);
 }

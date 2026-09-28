@@ -2042,6 +2042,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-attendant-msg"
+version = "1.1.2"
+dependencies = [
+ "jiff",
+ "jinn-core-types",
+ "jinn-session-msg",
+ "jinn-slices",
+ "rstest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "jinn-boot"
 version = "1.1.2"
 dependencies = [
@@ -3242,6 +3255,7 @@ dependencies = [
  "async-trait",
  "error-stack",
  "jiff",
+ "jinn-attendant-msg",
  "jinn-cell-catalog",
  "jinn-chat-input-msg",
  "jinn-chat-log-view-msg",
@@ -3273,6 +3287,7 @@ dependencies = [
  "daow",
  "error-stack",
  "jiff",
+ "jinn-attendant-msg",
  "jinn-boot-msg",
  "jinn-chat-input-msg",
  "jinn-chat-log-view",

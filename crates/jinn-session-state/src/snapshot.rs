@@ -7,6 +7,9 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
+use jinn_attendant_msg::{
+    AttendantActivation, AttendantReport, AttendantTrigger, default_seed_template,
+};
 use jinn_core_types::{ChatEntry, ChatEntryKind, SessionId, SessionProfile};
 use jinn_session_lifecycle_msg::LifecycleScriptState;
 use jinn_session_msg::SessionOrigin;
@@ -105,6 +108,18 @@ pub struct SessionSnapshotMetadata {
     /// Loaded/archived state, reconstructed from the sessions table.
     #[serde(skip, default)]
     pub session_state: SessionState,
+    /// How an attendant prepares its context when it runs.
+    #[serde(default)]
+    pub activation: AttendantActivation,
+    /// The condition that causes an automatic attendant re-run.
+    #[serde(default)]
+    pub trigger: AttendantTrigger,
+    /// User-editable seed text used to inject the prior report.
+    #[serde(default = "default_seed_template")]
+    pub seed_template: String,
+    /// The attendant's append-only report log.
+    #[serde(default)]
+    pub reports: Vec<AttendantReport>,
 }
 
 impl From<&SessionCore> for SessionSnapshotMetadata {
@@ -128,6 +143,10 @@ impl From<&SessionCore> for SessionSnapshotMetadata {
             enabled_mcp_servers: core.integrations.enabled_mcp_servers.clone(),
             persist: core.storage.persist,
             session_state: core.storage.session_state,
+            activation: core.attendant.activation,
+            trigger: core.attendant.trigger,
+            seed_template: core.attendant.seed_template.clone(),
+            reports: core.attendant.reports.clone(),
         }
     }
 }
@@ -153,6 +172,10 @@ impl From<SessionSnapshotMetadata> for SessionCore {
         core.integrations.enabled_mcp_servers = metadata.enabled_mcp_servers;
         core.storage.persist = metadata.persist;
         core.storage.session_state = metadata.session_state;
+        core.attendant.activation = metadata.activation;
+        core.attendant.trigger = metadata.trigger;
+        core.attendant.seed_template = metadata.seed_template;
+        core.attendant.reports = metadata.reports;
         core
     }
 }
