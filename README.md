@@ -126,7 +126,7 @@ The primary usage target for `jinn` is agentic coding, so it comes pre-packaged 
 
 ### Goal-Based Feature Implementation
 
-Use this when you want an agent to arrive at a goal fully autonomously by giving it a rough idea of the end state. Goal-based implementation allows the agent to make detailed decisions on the way to the goal. Although the agent will decide how things get done, you can still configure what it should and shouldn't do before entering autonomous mode.
+Use this when you want an agent to arrive at a goal fully autonomously by giving it a rough idea of the end state. The agent will handle the details and is specifically instructed to replan as needed to reach the goal. Although the agent will ultimately decide how things get done, you can still configure what it should and shouldn't do before entering autonomous mode.
 
 1. Start a new session
 2. Type `#goal` followed by what you want to do. The agent will ask questions, gather context, and eventually propose a "_Contract Brief_" in the chat.
