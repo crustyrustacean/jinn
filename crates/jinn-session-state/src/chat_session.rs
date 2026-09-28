@@ -3328,6 +3328,26 @@ impl ChatSessionState {
         self.core.ephemeral.pending_tool_batch.is_some()
     }
 
+    /// Marks this session's current turn as started by automation.
+    ///
+    /// While set, a `TurnCompleted` for this session does not fire its own
+    /// attendants — the suppression that keeps a notify loop from spinning
+    /// unattended.
+    pub fn mark_turn_automated(&mut self) {
+        self.core.ephemeral.turn_started_automatically = true;
+    }
+
+    /// Whether this session's current turn was started by automation.
+    #[must_use]
+    pub fn is_turn_automated(&self) -> bool {
+        self.core.ephemeral.turn_started_automatically
+    }
+
+    /// Clears the automation marker once the turn's outcome is published.
+    pub fn clear_turn_automated(&mut self) {
+        self.core.ephemeral.turn_started_automatically = false;
+    }
+
     /// Return the number of deferred history-mutation batches.
     #[must_use]
     pub fn pending_mutation_count(&self) -> usize {

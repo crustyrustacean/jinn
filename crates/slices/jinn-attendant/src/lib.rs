@@ -6,7 +6,15 @@
 //! `ParentCompleted` pointing at it re-runs — and the seed/reset/re-run
 //! behaviors that shape each run.
 
+pub mod activation;
+pub mod rerun;
 pub mod trigger_actor;
+
+#[cfg(test)]
+mod activation_tests;
+
+#[cfg(test)]
+mod rerun_tests;
 
 #[cfg(test)]
 mod trigger_actor_tests;

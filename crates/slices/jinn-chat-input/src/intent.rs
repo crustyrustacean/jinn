@@ -25,10 +25,14 @@ use jinn_chat_input_msg::{
 };
 use jinn_context::PromptTemplateStore;
 use jinn_core_types::SessionId;
+use jinn_core_types::PinPosition;
 use jinn_kernel::AppState;
 use jinn_kernel::protocol::{ChatEntry, IntentResult};
+use jinn_session_history_msg::{PinChatEntry, PushChatEntry};
+use jinn_session_msg::ClearTurnAutomation;
 use jinn_session_msg::MarkSessionInteracted;
 use jinn_session_msg::PhaseKind;
+use jinn_session_store_msg::PersistSession;
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use super::validator;
@@ -394,6 +398,16 @@ fn route_to_enqueue_or_steer(
     session_id: &SessionId,
     display: String,
 ) -> IntentResult {
+    // Seed-mode attendants are being composed, not run. A submission lands in
+    // the attendant's context as a *pinned* entry and dispatches nothing.
+    //
+    // Pinning is not cosmetic: a reset run force-excludes every non-pinned
+    // entry, so a seed that is not pinned is deleted from context by the very
+    // next fire. This branch is what makes seeded instructions survive.
+    if let Some(result) = seed_mode_submission(state, session_id, display.clone()) {
+        return result;
+    }
+
     let mode = state.with_active_input(ChatInputBoxState::input_mode, Default::default);
     let phase = state.active_session().phase();
     match (mode, phase) {
@@ -404,6 +418,19 @@ fn route_to_enqueue_or_steer(
                 phase = ?phase,
                 "submit routed to enqueue"
             );
+            // A user submission supersedes whatever automation mark the
+            // session carried from its previous turn, so the next completed
+            // turn fires this session's attendants again.
+            if let Some(session) = state.session.get(session_id) {
+                if session.is_turn_automated() {
+                    return IntentResult::empty()
+                        .with_message(ClearTurnAutomation { session_id: session_id.clone() })
+                        .with_message(EnqueueUserMessage {
+                            session_id: session_id.clone(),
+                            entry: ChatEntry::user(display),
+                        });
+                }
+            }
             IntentResult::empty().with_message(EnqueueUserMessage {
                 session_id: session_id.clone(),
                 entry: ChatEntry::user(display),
@@ -422,6 +449,40 @@ fn route_to_enqueue_or_steer(
             })
         }
     }
+}
+
+/// Pins a submission into a seed-mode attendant's context without dispatching.
+///
+/// Returns `None` for any session that is not an attendant in `Seed`
+/// activation, so the caller falls through to the normal routing.
+fn seed_mode_submission(
+    state: &AppState,
+    session_id: &SessionId,
+    display: String,
+) -> Option<IntentResult> {
+    use jinn_attendant_msg::AttendantActivation;
+
+    let session = state.session.get(session_id)?;
+    if !session.is_attendant() || session.attendant_activation() != AttendantActivation::Seed {
+        return None;
+    }
+    let entry = ChatEntry::user(display);
+    let entry_id = entry.id.clone();
+    Some(
+        IntentResult::empty()
+            .with_message(PushChatEntry {
+                session_id: session_id.clone(),
+                entry,
+            })
+            .with_message(PinChatEntry {
+                session_id: session_id.clone(),
+                entry_id,
+                position: PinPosition::Relative,
+            })
+            .with_message(PersistSession {
+                session_id: session_id.clone(),
+            }),
+    )
 }
 
 /// Prepends a `MarkSessionInteracted` message to the result.

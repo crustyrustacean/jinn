@@ -162,6 +162,7 @@ jinn-provider-selection-msg = { workspace = true }
 jinn-provider-selection = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-session-state = { workspace = true }
+jinn-attendant-msg = { workspace = true }
 jinn-session-store-msg = { workspace = true }
 jinn-turn-dispatch = { workspace = true }
 jinn-session-history-msg = { workspace = true }

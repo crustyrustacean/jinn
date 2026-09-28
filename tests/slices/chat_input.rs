@@ -5073,3 +5073,82 @@ fn register_puts_the_box_in_the_ui_registry() {
         "the renderer fetches the box by this name; a missing register means it never draws",
     );
 }
+
+#[rstest::rstest]
+fn seed_mode_submission_pins_and_does_not_dispatch() {
+    // Given a seed-mode attendant as the active session.
+    let mut state = AppState::default_with_scope_focus();
+    {
+        let session = state.active_session_mut();
+        let parent = jinn_session_state::ChatSessionState::new();
+        *session = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
+        // Attendant defaults to Seed activation.
+    }
+    state.update_active_input(|i| i.insert_text("judge this repo"));
+
+    // When the message is submitted.
+    let result = jinn_chat_input::intent::handle_submit_message(
+        &mut state,
+        jinn_kernel::common::render_ctx::empty_config_layer(),
+    );
+
+    // Then the entry is pushed and pinned, persisted — and nothing dispatches.
+    let names = &result.message_names;
+    assert!(
+        names.iter().any(|n| n.contains("PushChatEntry")),
+        "expected PushChatEntry, got {names:?}"
+    );
+    assert!(
+        names.iter().any(|n| n.contains("PinChatEntry")),
+        "expected PinChatEntry, got {names:?}"
+    );
+    assert!(
+        names.iter().any(|n| n.contains("PersistSession")),
+        "expected PersistSession, got {names:?}"
+    );
+    assert!(
+        !names.iter().any(|n| n.contains("EnqueueUserMessage")),
+        "seed mode must not dispatch, got {names:?}"
+    );
+}
+
+#[rstest::rstest]
+fn seed_mode_submission_leaves_normal_sessions_dispatching() {
+    // Given a plain user session with text in the buffer.
+    let mut state = AppState::default_with_scope_focus();
+    state.update_active_input(|i| i.insert_text("hello"));
+
+    // When the message is submitted.
+    let result = jinn_chat_input::intent::handle_submit_message(
+        &mut state,
+        jinn_kernel::common::render_ctx::empty_config_layer(),
+    );
+
+    // Then the normal enqueue path runs — no pin, no push.
+    assert!(result.message_names.iter().any(|n| n.contains("EnqueueUserMessage")));
+    assert!(!result.message_names.iter().any(|n| n.contains("PinChatEntry")));
+}
+
+#[rstest::rstest]
+fn reset_mode_attendant_submissions_dispatch_normally() {
+    // Given a reset-mode attendant (armed and firing) as the active session.
+    let mut state = AppState::default_with_scope_focus();
+    {
+        let session = state.active_session_mut();
+        let parent = jinn_session_state::ChatSessionState::new();
+        let mut attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
+        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        *session = attendant;
+    }
+    state.update_active_input(|i| i.insert_text("go"));
+
+    // When the message is submitted.
+    let result = jinn_chat_input::intent::handle_submit_message(
+        &mut state,
+        jinn_kernel::common::render_ctx::empty_config_layer(),
+    );
+
+    // Then the normal enqueue path runs — only Seed mode pins without
+    // dispatching.
+    assert!(result.message_names.iter().any(|n| n.contains("EnqueueUserMessage")));
+}

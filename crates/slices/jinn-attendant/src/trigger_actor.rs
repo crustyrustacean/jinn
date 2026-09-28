@@ -1,13 +1,17 @@
 //! The trigger actor — fires attendants when a parent's turn completes.
 
+use jinn_attendant_msg::AttendantTrigger;
+use jinn_chat_input_msg::EnqueueUserMessage;
+use jinn_inference_msg::CancelStream;
 use jinn_kernel::Services;
 use jinn_kernel::common::state::State;
-use jinn_session_msg::TurnCompleted;
-use jinn_session_msg::TurnOutcome;
+use jinn_session_msg::{PhaseKind, TurnCompleted, TurnOutcome};
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
+
+use crate::activation;
 
 /// Where the trigger actor lives on the trouper system.
 const ATTENDANT_TRIGGER_PATH: &str = "jinn.domain/attendant-trigger";
@@ -23,9 +27,7 @@ pub struct AttendantTriggerActorDeps {
 
 /// Fires attendants when their parent's turn completes successfully.
 pub struct AttendantTriggerActor {
-    #[allow(dead_code, reason = "Phase 4 consumes both; the skeleton subscribes only")]
     services: Services,
-    #[allow(dead_code, reason = "Phase 4 consumes both; the skeleton subscribes only")]
     state: State,
 }
 
@@ -36,6 +38,14 @@ impl ServiceActor for AttendantTriggerActor {
         Err(error_stack::Report::new(RegistryError::InvalidSpec)
             .attach("AttendantTriggerActor is spawned via start_with"))
     }
+}
+
+/// The messages firing one attendant produces.
+struct Fired {
+    /// Cancel the attendant's in-flight turn, if it was busy.
+    cancel: Option<CancelStream>,
+    /// Dispatch the attendant's run.
+    dispatch: Option<EnqueueUserMessage>,
 }
 
 impl AttendantTriggerActor {
@@ -71,16 +81,127 @@ impl AttendantTriggerActor {
     /// Runs the trigger for one completed turn.
     ///
     /// Only a `Succeeded` outcome fires attendants — an errored or cancelled
-    /// turn is not something to verify against. See Phase 4 for the full
-    /// fire sequence.
+    /// turn is not something to verify against, and silently not firing is
+    /// the visible-conservatism the design leans on. The query runs only on
+    /// a live event, so an attendant created after its parent completed
+    /// never fires retroactively.
+    ///
+    /// A turn that was itself started by automation does **not** fire the
+    /// completing session's own attendants. That suppression is what stops
+    /// an attendant that notified its parent from bouncing a mutually
+    /// triggering exchange back and forth unattended: the child's dispatch
+    /// marks the child automated, and when the child's turn finishes the
+    /// child must not wake anything of its own. The marker is set at
+    /// dispatch and stays set until the *next* turn begins, so it is
+    /// observable at the moment the outcome is decided.
     fn on_turn_completed(&self, event: &TurnCompleted) {
         if event.outcome != TurnOutcome::Succeeded {
             return;
         }
-        tracing::debug!(
-            session_id = %event.session_id,
-            "attendant trigger observed a succeeded turn"
-        );
+        if self.was_automated(&event.session_id) {
+            return;
+        }
+        let attendants = self.attendants_of(&event.session_id);
+        for attendant_id in attendants {
+            if let Some(fired) = self.fire(&attendant_id) {
+                if let Some(cancel) = fired.cancel {
+                    self.publish(cancel);
+                }
+                if let Some(dispatch) = fired.dispatch {
+                    self.publish(dispatch);
+                }
+            }
+        }
+    }
+
+    /// Whether the session's just-finished turn was started by automation.
+    fn was_automated(&self, session_id: &jinn_core_types::SessionId) -> bool {
+        {
+            let state = self.state.read();
+            state
+                .session
+                .get(session_id)
+                .is_some_and(jinn_session_state::ChatSessionState::is_turn_automated)
+        }
+    }
+
+    /// Every loaded attendant watching `parent`, by live query.
+    ///
+    /// A child references its parent; the parent holds no list. Creation
+    /// order is irrelevant — this is why an attendant created after its
+    /// parent finished still shows up the *next* time the parent completes,
+    /// and why nothing fires for it in between.
+    fn attendants_of(&self, parent: &jinn_core_types::SessionId) -> Vec<jinn_core_types::SessionId> {
+        {
+            let state = self.state.read();
+            state
+                .session
+                .iter()
+                .filter(|(_, session)| {
+                    session.is_attendant()
+                        && session.attendant_trigger() == AttendantTrigger::ParentCompleted
+                        && session.parent_session().as_ref() == Some(parent)
+                })
+                .map(|(id, _)| id.clone())
+                .collect()
+        }
+    }
+
+    /// Prepares one attendant for a run.
+    ///
+    /// The sequence, in order:
+    ///
+    /// 1. `Seed` activation is inert — the user is still composing its
+    ///    instructions, and firing against half-written pins is the exact
+    ///    failure the mode exists to prevent.
+    /// 2. A busy attendant's own turn is cancelled. That is a single-session
+    ///    cancel: a re-trigger supersedes *this* attendant's work, and its
+    ///    descendants still answer a question this attendant exists to read.
+    ///    It is not the confirmed-cancel cascade — that belongs to the user.
+    /// 3. `Reset` activation rebuilds context from the pins alone.
+    /// 4. A prior report is injected through the seed template, and the
+    ///    resulting entry is dispatched as a fresh user turn.
+    fn fire(&self, attendant_id: &jinn_core_types::SessionId) -> Option<Fired> {
+        {
+            let mut state = self.state.write();
+            let Some(session) = state.session.get_mut(attendant_id) else {
+                return None;
+            };
+            if !session.attendant_activation().is_dispatchable() {
+                return None;
+            }
+
+            let cancel = (session.phase() != PhaseKind::Idle).then(|| CancelStream {
+                session_id: attendant_id.clone(),
+            });
+
+            let dispatch = activation::prepare_run(session).map(|entry| {
+                session.mark_turn_automated();
+                EnqueueUserMessage {
+                    session_id: attendant_id.clone(),
+                    entry,
+                }
+            });
+
+            Some(Fired { cancel, dispatch })
+        }
+    }
+
+    /// Publishes one message onto the bus.
+    fn publish<M>(&self, message: M)
+    where
+        M: jinn_slices::BusMessage
+            + trouper::schema::Schema
+            + serde::Serialize
+            + Clone
+            + Send
+            + Sync
+            + trouper::envelope::PayloadValue,
+    {
+        let bus = self.services.bus.clone();
+        tokio::spawn(async move {
+            bus.publish(message).await;
+        });
     }
 }
 
