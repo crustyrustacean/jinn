@@ -77,7 +77,6 @@ jinn-context-curation = { workspace = true }
 # unified into `jinn-session-schema`'s own integration tests, which is why this
 # dev-dep cannot be dropped while those tests live in that crate.
 jinn-session-schema = { workspace = true, features = ["testing"] }
-wasm-encoder = { workspace = true }
 indoc = "2"
 rstest = { workspace = true }
 jinn-mcp = { workspace = true, features = ["testkit", "server-testkit"] }
