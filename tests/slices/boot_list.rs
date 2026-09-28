@@ -193,17 +193,31 @@ fn cell_registration_happens_only_in_the_catalog() {
         let production = source
             .split_once("#[cfg(test)]")
             .map_or(source.as_str(), |(before, _)| before);
-        for (n, line) in production.lines().enumerate() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("//") {
+
+        // A registration is judged per *statement*, not per line.
+        // `registry.register(\n    cwds_slot(),\n)` puts the verb and its
+        // slot key on separate lines, and a line-local match sees neither
+        // the pair nor either half of it.
+        for stmt in production.split(';') {
+            // Comments are stripped before matching. A doc comment rides
+            // along with the statement it documents, so the collapsed
+            // buffer legitimately begins with `///` — and a buffer that
+            // starts with `//` would otherwise be skipped, letting every
+            // documented registration hide behind its own doc comment.
+            let collapsed = collapse_whitespace(&strip_comments(stmt));
+
+            // Both halves are required. The verb alone also matches the
+            // view registry, the overlay views and the task tree, which
+            // each have an unrelated `register` method; the slot key alone
+            // matches the `*_slot()` constructors themselves.
+            let is_registration = collapsed.contains("register_cell(")
+                || (collapsed.contains(".register(") && collapsed.contains("_slot("));
+            if !is_registration {
                 continue;
             }
-            // `register_cell` is the slice-facing verb; `.register(` on a
-            // `Slices` is the raw form three slices used to reach for.
-            if !(trimmed.contains("register_cell(") || trimmed.contains("slices.register(")) {
-                continue;
-            }
-            offenders.push(format!("{path}:{}: {}", n + 1, trimmed));
+            let offset = stmt.as_ptr() as usize - production.as_ptr() as usize;
+            let line_no = production[..offset].lines().count();
+            offenders.push(format!("{path}:{line_no}: {collapsed}"));
         }
     }
 
@@ -292,6 +306,24 @@ fn production_sources() -> Vec<String> {
 fn is_test_only(path: &str) -> bool {
     let name = path.rsplit('/').next().unwrap_or(path);
     name.ends_with("_tests.rs") || name == "tests.rs" || name == "test.rs"
+}
+
+/// Removes `//` and `///` comment lines from a chunk of source.
+///
+/// Without this, a statement and the doc comment above it collapse into one
+/// buffer that starts with `///` — and a guard that skips comment-looking
+/// buffers then skips every documented registration, which is most of them.
+fn strip_comments(text: &str) -> String {
+    text.lines()
+        .filter(|line| !line.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Collapses every run of whitespace to a single space, so a statement
+/// split across lines reads as one line for matching.
+fn collapse_whitespace(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Every `.rs` file under `crates/slices`, plus the catalog crate.
