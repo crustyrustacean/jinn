@@ -1,0 +1,14 @@
+[package]
+name = "jinn-quake-bar-msg"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+jinn-slices = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+
+[lints]
+workspace = true

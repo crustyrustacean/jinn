@@ -39,11 +39,12 @@ use crate::skill_picker_actions;
 use crate::skill_picker_routes::{self, SKILL_PICKER_BINDINGS};
 use crate::skill_picker_scope::skill_picker_scope;
 
-/// A picker cell wired to a fresh route table, as activation wires it.
+/// A picker cell wired to a fresh route table.
 ///
-/// Built through the real constructor — [`Slices::register`] — so the tests
-/// exercise the same registration path activation does. Used by tests that
-/// exercise picker *behavior* directly, where the wiring is incidental.
+/// The cell is minted locally on its own registry — the catalog owns the
+/// production registration — because these tests exercise picker
+/// *behavior* directly, where the registration path is incidental. Tests
+/// that assert *wiring* use [`activated`] instead.
 fn wired() -> (TypedCell<SkillPickerState>, KeyRoutes) {
     let routes = KeyRoutes::new();
     let cell = jinn_slices::Slices::new()
@@ -66,6 +67,10 @@ async fn activated() -> (
     &'static jinn_kernel::Services,
 ) {
     let slices = jinn_slices::Slices::new();
+    // Production boot seeds every slice cell before any slice activates;
+    // `activate` resolves the picker's cell by slot key, so the harness
+    // seeds the same registry the app would.
+    jinn_cell_catalog::register_all_cells(&slices);
     let key_routes = KeyRoutes::new();
     let mut viewport = jinn_slices::view::Viewport::new();
     let overlay_views = jinn_slices::OverlayViews::new();

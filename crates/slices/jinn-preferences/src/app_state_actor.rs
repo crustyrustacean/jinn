@@ -110,10 +110,19 @@ impl AppStateActor {
             frontend.theme = new_theme.clone();
         });
 
-        // Invalidate theme caches at the frontend level.
-        self.state.with_frontend_state(|ops| {
-            ops.frontend().caches.invalidate_all();
-        });
+        // The chat log's cached lines embed the old theme's colours, so a
+        // theme switch must drop them. The cache is a jinn-chat-log-view
+        // cell, so the clear goes through the cell rather than a kernel-level
+        // sweep of every cache.
+        if let Some(cell) = self
+            .services
+            .slices
+            .reader::<jinn_chat_log_view_msg::EntryLineCache>(
+                &jinn_chat_log_view_msg::entry_line_cache_slot(),
+            )
+        {
+            cell.update(jinn_chat_log_view_msg::EntryLineCache::clear);
+        }
 
         // Sync active_persona when persona_name changes (persona
         // selection lives in the persona slice's cell).
@@ -135,7 +144,7 @@ impl AppStateActor {
         // old theme's colors, so a theme switch must drop them or the open
         // menu keeps showing stale text. The cache lives in the skills slice's
         // cell now, so the clear happens there rather than in the kernel's
-        // `invalidate_all` — a slice owns its own cached rendering.
+        // a slice's own cell — a slice owns its own cached rendering.
         if let Some(cell) = self
             .services
             .slices
@@ -146,7 +155,7 @@ impl AppStateActor {
 
         // The session preview holds rendered lines, not just counts, so the same
         // reasoning applies: they carry the old theme's colors. It lives in the
-        // sidebar's cell, outside `invalidate_all`'s reach, and is cleared here.
+        // sidebar's cell, and is cleared here alongside the others.
         //
         // Reset to `Idle` rather than to `Ready`-with-nothing: the next cursor
         // move then requests a re-render in the new theme, and until one arrives
@@ -239,13 +248,13 @@ mod tests {
         // Given an app-state actor with a skills picker whose preview cache
         // holds lines rendered in the previous theme.
         let (mut actor, services) = create_actor().await;
+        // `Services::new_fake` seeds its registry through the shared cell
+        // catalog, which already owns the skills picker cell this test
+        // inspects; it only needs a handle to it.
         let cell = services
             .slices
-            .register(
-                jinn_skills_msg::skill_picker_slot(),
-                jinn_skills_msg::SkillPickerState::default(),
-            )
-            .expect("skill picker slot is free in a fresh registry");
+            .reader::<jinn_skills_msg::SkillPickerState>(&jinn_skills_msg::skill_picker_slot())
+            .expect("the catalog registers the skills picker cell");
         cell.update(|picker| {
             picker.preview_cache.insert(
                 "12345".to_owned(),
@@ -413,19 +422,20 @@ mod tests {
         let (actor, _services) = create_actor().await;
         let mut contributed = jinn_theme::default_theme();
         contributed.focus_accent = ratatui::style::Color::Red;
+        // `Services::new_fake` seeds its registry through the shared cell
+        // catalog, which already owns the theme entries cell; seed the
+        // scanned entry through it rather than minting a second cell.
         actor
             .services
             .slices
-            .register(
-                jinn_theme_msg::theme_entries_slot(),
-                jinn_theme_msg::ThemeEntries {
-                    entries: vec![jinn_theme_msg::NamedTheme {
-                        name: "dracula".to_owned(),
-                        theme: contributed.clone(),
-                    }],
-                },
-            )
-            .expect("theme cell minted once");
+            .reader::<jinn_theme_msg::ThemeEntries>(&jinn_theme_msg::theme_entries_slot())
+            .expect("the catalog registers the theme entries cell")
+            .update(|entries| {
+                entries.entries = vec![jinn_theme_msg::NamedTheme {
+                    name: "dracula".to_owned(),
+                    theme: contributed.clone(),
+                }];
+            });
 
         // When syncing AppStateFile with theme_name = Some("dracula").
         let app_state = AppStateFile {

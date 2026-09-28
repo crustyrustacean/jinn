@@ -4395,7 +4395,7 @@ fn state_with_autocomplete(
     token_start: usize,
     matches: Vec<AutocompleteMatch>,
 ) -> AppState {
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state.update_active_input(|i| i.replace_all(buffer_text.to_owned()));
     // Position cursor after the buffer text.
     // Note: cursor must be at the end for autocomplete to be consistent.
@@ -4652,7 +4652,7 @@ fn render_autocomplete_popup_width_based_on_content() {
 fn render_autocomplete_popup_does_not_render_when_inactive() {
     // Given an AppState with autocomplete inactive.
 
-    let state = AppState::default();
+    let state = AppState::default_with_scope_focus();
 
     let (mut terminal, _area) = setup_term(80, 24);
     let input_area = Rect::new(0, 20, 80, 4);
@@ -4682,7 +4682,7 @@ fn render_slash_command_popup_shows_commands() {
         name: "new".to_owned(),
         description: "Create a new session".to_owned(),
     }];
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state.update_active_input(|i| i.replace_all("/".to_owned()));
     state.update_active_input(|i| i.activate_autocomplete(0, AutocompleteTrigger::Slash, matches));
 
@@ -4713,7 +4713,7 @@ fn render_slash_command_popup_shows_commands() {
 #[rstest::rstest]
 fn render_slash_command_popup_shows_no_commands_message() {
     // Given an AppState with slash autocomplete active but 0 matches.
-    let mut state = AppState::default();
+    let mut state = AppState::default_with_scope_focus();
     state.update_active_input(|i| i.replace_all("/xyz".to_owned()));
     state.update_active_input(|i| i.activate_autocomplete(0, AutocompleteTrigger::Slash, vec![]));
 

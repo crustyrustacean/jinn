@@ -13,19 +13,13 @@ pub use jinn_slices::scope_focus_slot;
 
 use jinn_slices::SliceHost;
 
-/// Activates the slice: mints the scope-focus cell. No routes, no
-/// actors, no view.
+/// Activates the slice. No routes, no actors, no view.
+///
+/// The scope-focus cell is not minted here: the shared cell catalog
+/// (`jinn_cell_catalog::register_all_cells`) registers every slice cell in
+/// one place, before any slice activates.
 ///
 /// # Panics
 ///
-/// Panics if the slot is already registered — double activation is a
-/// wiring bug.
-#[expect(
-    clippy::expect_used,
-    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
-)]
-pub fn activate(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
-    let _cell = host
-        .register_cell(scope_focus_slot(), ScopeFocusState::default())
-        .expect("scope-focus slot is registered exactly once at wiring");
-}
+/// Never panics: nothing is registered, so there is nothing to assert.
+pub fn activate(_host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {}

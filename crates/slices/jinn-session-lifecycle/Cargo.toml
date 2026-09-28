@@ -28,6 +28,9 @@ wherror = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]
+# Activation resolves the lifecycle cells from the shared catalog, so the
+# tests seed their registry through it rather than through the slice.
+jinn-cell-catalog = { workspace = true }
 jinn-config = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }

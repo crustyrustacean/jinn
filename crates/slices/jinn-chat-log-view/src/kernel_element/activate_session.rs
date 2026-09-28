@@ -37,9 +37,13 @@ pub fn activate_session(
     // last used, not the incoming session's: it has never rendered, so its own
     // width is stale.
     let content_width = state.session.active_session().content_width();
-    let needs_measurement = {
-        let mut cache = state.frontend.caches.entry_line_cache.write();
-        !super::history::is_session_measured(&mut cache, state, &target_id, content_width)
+    let needs_measurement = match state.frontend.line_cache_cell() {
+        Some(cell) => cell.update(|cache| {
+            !super::history::is_session_measured(cache, state, &target_id, content_width)
+        }),
+        // No cell means the catalog never ran, so nothing was ever cached and
+        // the session is unmeasured.
+        None => true,
     };
 
     if needs_measurement {

@@ -27,9 +27,16 @@ pub use parse::PersonaParseError;
 pub use parse::parse_persona_content;
 pub use parse::parse_persona_file;
 
-/// Activates the slice: scans both persona directories, mints the
-/// personas cell, and returns the scanned set for composition to publish
-/// as `PersonasLoaded` after the session actor has subscribed.
+/// Activates the slice: scans both persona directories, re-seeds the
+/// catalog-registered personas cell with the result, and returns the
+/// scanned set for composition to publish as `PersonasLoaded` after the
+/// session actor has subscribed.
+///
+/// The cell itself belongs to the shared cell catalog
+/// (`jinn_cell_catalog::register_all_cells`), which registers it with an
+/// empty set so every harness has one; the scan is this slice's job, so it
+/// writes the scanned value through the resolved handle rather than
+/// minting a second cell nobody else can see.
 ///
 /// Scan semantics (the retired plugin's): `.md` files only, one
 /// unparseable file is noted on stderr and skipped — a single bad file
@@ -38,8 +45,8 @@ pub use parse::parse_persona_file;
 ///
 /// # Panics
 ///
-/// Panics if the slot is already registered — double activation is a
-/// wiring bug.
+/// Panics if the catalog has not run — the picker and the session actor's
+/// consumers would then read an empty persona set forever.
 #[expect(
     clippy::expect_used,
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
@@ -53,33 +60,36 @@ pub fn activate(
         entries,
         ..Default::default()
     };
-    let _cell = host
-        .register_cell(personas_slot(), scanned.clone())
-        .expect("personas slot is registered exactly once at wiring");
+    let cell = host
+        .slices()
+        .reader::<Personas>(&personas_slot())
+        .expect("the cell catalog registers the personas slot before any slice activates");
+    cell.update(|slot| *slot = scanned.clone());
     scanned
 }
 
-/// Registers the persona picker: its cell, its overlay, its keys, and its
+/// Registers the persona picker: its overlay, its keys, and its
 /// filter hook, and the scope-enter hook that seeds the menu.
 ///
 /// Split from [`activate`] because the picker needs the same host but is not
 /// part of persona discovery. Called from composition right after `activate`.
 ///
+/// Like [`activate`], the picker's cell belongs to the shared catalog, so
+/// this resolves the handle rather than minting one.
+///
 /// # Panics
 ///
-/// Panics if the picker slot is already registered — double activation is a
-/// wiring bug.
+/// Panics if the catalog has not run — the menu would otherwise render
+/// against an absent cell and paint nothing.
 #[expect(
     clippy::expect_used,
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
 )]
 pub fn activate_picker(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
     let cell = host
-        .register_cell(
-            jinn_persona_msg::persona_picker_slot(),
-            jinn_persona_msg::PersonaPickerState::default(),
-        )
-        .expect("persona picker slot is registered exactly once at wiring");
+        .slices()
+        .reader::<jinn_persona_msg::PersonaPickerState>(&jinn_persona_msg::persona_picker_slot())
+        .expect("the cell catalog registers the persona-picker slot before any slice activates");
 
     let scope = persona_picker_scope();
     host.register_overlay(

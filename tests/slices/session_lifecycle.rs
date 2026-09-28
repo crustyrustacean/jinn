@@ -12,6 +12,8 @@ use jinn_slices::view::Viewport;
 async fn activation_registers_argument_popup_surfaces() {
     // Given fresh shared slice registries and lifecycle state.
     let slices = jinn_slices::Slices::new();
+    // Production boot seeds every slice cell here, before any activation.
+    jinn_cell_catalog::register_all_cells(&slices);
     let mut viewport = Viewport::new();
     let overlay_views = jinn_slices::OverlayViews::new();
     let routes = jinn_slices::KeyRoutes::new();
@@ -51,12 +53,11 @@ async fn activation_registers_argument_popup_surfaces() {
 fn registered_argument_hook_dispatches_through_dynamic_intent() {
     // Given a popup cell and a shared route table carrying lifecycle actions.
     let slices = jinn_slices::Slices::new();
+    // Production boot seeds every slice cell here, before any activation.
+    jinn_cell_catalog::register_all_cells(&slices);
     let cell = slices
-        .register(
-            arg_input_slot(),
-            jinn_session_lifecycle_msg::ArgInputState::empty(),
-        )
-        .expect("fresh registry has the lifecycle argument slot free");
+        .reader::<jinn_session_lifecycle_msg::ArgInputState>(&arg_input_slot())
+        .expect("the cell catalog registers the lifecycle argument slot");
     let routes = jinn_slices::KeyRoutes::new();
     jinn_session_lifecycle::arg_input::attach_rows(&routes, &cell);
     jinn_session_lifecycle::arg_input::register_input_hook(&routes, &cell);
@@ -102,6 +103,8 @@ impl CrossSlice {
     /// project picker already open and a row highlighted.
     async fn new() -> Self {
         let slices = jinn_slices::Slices::new();
+        // Production boot seeds every slice cell here, before any activation.
+        jinn_cell_catalog::register_all_cells(&slices);
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let routes = jinn_slices::KeyRoutes::new();

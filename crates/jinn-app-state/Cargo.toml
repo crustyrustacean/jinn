@@ -6,6 +6,7 @@ description = "The shared application state layer: AppState, FrontendState, and 
 
 [dependencies]
 jinn-chat-input-msg = { workspace = true }
+jinn-cell-catalog = { workspace = true }
 jinn-chat-log-view-msg = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-persona-msg = { workspace = true }

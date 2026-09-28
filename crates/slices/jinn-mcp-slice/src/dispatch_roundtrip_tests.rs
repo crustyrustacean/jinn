@@ -525,7 +525,7 @@ async fn live_disable_cycle_call_succeeds_before_teardown() {
         .expect("session")
         .enable_mcp_server("stub");
     let services = harness.services().await;
-    let runtime = crate::activate_runtime(&services.slices).expect("MCP runtime cell");
+    let runtime = crate::activate_runtime(&services.slices);
     runtime.update(|runtime| {
         runtime.set_status(&session_id, "stub", McpConnectionStatus::Running);
     });
@@ -578,7 +578,7 @@ async fn disable_cycle_calls_fail_fast_after_teardown() {
         .expect("session")
         .enable_mcp_server("stub");
     let services = harness.services().await;
-    let runtime = crate::activate_runtime(&services.slices).expect("MCP runtime cell");
+    let runtime = crate::activate_runtime(&services.slices);
     runtime.update(|runtime| {
         runtime.set_status(&session_id, "stub", McpConnectionStatus::Running);
     });

@@ -49,6 +49,7 @@ path = "src/lib.rs"
 
 [dependencies]
 jinn-install = { workspace = true }
+jinn-cell-catalog = { workspace = true }
 jinn-session-state = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-llm-support = { workspace = true }
@@ -185,15 +186,18 @@ jinn-install = { path = "crates/jinn-install" }
 jinn-discord = { path = "crates/slices/jinn-discord" }
 jinn-discord-msg = { path = "crates/slices/jinn-discord-msg" }
 jinn-common = { path = "crates/jinn-common" }
+jinn-cell-catalog = { path = "crates/jinn-cell-catalog" }
 jinn-config = { path = "crates/jinn-config" }
 jinn-context = { path = "crates/jinn-context" }
 jinn-core-types = { path = "crates/jinn-core-types" }
 jinn-llm-support = { path = "crates/jinn-llm-support" }
 jinn-dashboard = { path = "crates/slices/jinn-dashboard" }
+jinn-dashboard-msg = { path = "crates/slices/jinn-dashboard-msg" }
 jinn-theme-slice = { path = "crates/slices/jinn-theme" }
 jinn-persona = { path = "crates/slices/jinn-persona" }
 jinn-token-count = { path = "crates/slices/jinn-token-count" }
 jinn-quake-bar = { path = "crates/slices/jinn-quake-bar" }
+jinn-quake-bar-msg = { path = "crates/slices/jinn-quake-bar-msg" }
 jinn-session-init = { path = "crates/slices/jinn-session-init" }
 jinn-chat-input = { path = "crates/slices/jinn-chat-input" }
 jinn-chat-log-view = { path = "crates/slices/jinn-chat-log-view" }
@@ -214,6 +218,7 @@ jinn-session-lifecycle = { path = "crates/slices/jinn-session-lifecycle" }
 jinn-session-schema = { path = "crates/jinn-session-schema" }
 jinn-provider-config = { path = "crates/jinn-provider-config" }
 jinn-preferences-config = { path = "crates/jinn-preferences-config" }
+jinn-preferences-msg = { path = "crates/slices/jinn-preferences-msg" }
 jinn-preferences = { path = "crates/slices/jinn-preferences" }
 jinn-project = { path = "crates/slices/jinn-project" }
 jinn-project-msg = { path = "crates/slices/jinn-project-msg" }

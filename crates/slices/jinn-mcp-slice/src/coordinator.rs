@@ -563,8 +563,7 @@ mod lifecycle_tests {
         let state = jinn_kernel::common::state::State::new(
             jinn_kernel::common::app_state::AppState::default(),
         );
-        let runtime = crate::activate_runtime(&services.slices)
-            .expect("MCP runtime cell is registered exactly once");
+        let runtime = crate::activate_runtime(&services.slices);
         let path = McpCoordinatorActor::spawn(
             &services.trouper_system,
             McpCoordinatorActorDeps {
@@ -971,8 +970,7 @@ mod status_tests {
         let services = harness.services().await;
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
-        let runtime = crate::activate_runtime(&services.slices)
-            .expect("MCP runtime cell is registered exactly once");
+        let runtime = crate::activate_runtime(&services.slices);
         let _path = McpCoordinatorActor::spawn(
             &services.trouper_system,
             McpCoordinatorActorDeps {

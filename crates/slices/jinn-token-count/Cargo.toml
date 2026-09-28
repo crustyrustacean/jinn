@@ -26,6 +26,10 @@ tracing = { workspace = true }
 rstest = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+# The test seeds its registry through the same catalog production boot
+# uses, so `activate` is exercised against the real wiring rather than a
+# hand-built cell.
+jinn-cell-catalog = { workspace = true }
 
 [lints]
 workspace = true

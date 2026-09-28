@@ -16,7 +16,7 @@ use trouper::system::ActorSystem;
 use jinn_slices::TypedCell;
 
 use crate::command::SubmitQuakeBarCommand;
-use crate::state::QuakeBarState;
+use jinn_quake_bar_msg::QuakeBarState;
 
 /// The quake bar actor on the canvas runtime.
 ///
@@ -87,8 +87,8 @@ mod tests {
     )]
 
     use crate::command::SubmitQuakeBarCommand;
-    use crate::state::QuakeBarState;
-    use crate::state::quake_bar_slot;
+    use jinn_quake_bar_msg::QuakeBarState;
+    use jinn_quake_bar_msg::quake_bar_slot;
     use jinn_slices::Slices;
 
     use super::QuakeBarCanvasActor;

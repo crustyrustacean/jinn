@@ -7,9 +7,7 @@
 //! them at the paths the kernel's own callers already use.
 
 pub mod frontend_state {
-    pub use jinn_app_state::frontend_state::{
-        FrontendCaches, FrontendState, PendingSessionCreation,
-    };
+    pub use jinn_app_state::frontend_state::{FrontendState, PendingSessionCreation};
 }
 
-pub use jinn_app_state::{FrontendCaches, FrontendState, PendingSessionCreation};
+pub use jinn_app_state::{FrontendState, PendingSessionCreation};

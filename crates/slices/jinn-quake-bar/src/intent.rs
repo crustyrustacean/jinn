@@ -20,9 +20,9 @@
 use jinn_slices::TypedCell;
 
 use crate::command::SubmitQuakeBarCommand;
-use crate::state::QuakeBarInput;
-use crate::state::QuakeBarState;
-use crate::state::quake_scope;
+use jinn_quake_bar_msg::QuakeBarInput;
+use jinn_quake_bar_msg::QuakeBarState;
+use jinn_quake_bar_msg::quake_scope;
 use jinn_slices::route::ActionCtx;
 use jinn_slices::route::ActionFn;
 use jinn_slices::route::BindSite;
@@ -300,7 +300,7 @@ mod tests {
     use jinn_slices::ScopeSignal;
     use jinn_slices::Slices;
 
-    use crate::state::quake_bar_slot;
+    use jinn_quake_bar_msg::quake_bar_slot;
 
     fn wired() -> (KeyRoutes, jinn_slices::TypedCell<QuakeBarState>) {
         let slices = Slices::new();

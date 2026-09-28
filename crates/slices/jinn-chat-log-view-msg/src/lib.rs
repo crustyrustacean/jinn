@@ -7,6 +7,7 @@
 pub mod audit_popup_state;
 pub mod chat_log_view_state;
 pub mod layout;
+pub mod line_cache_cell;
 pub mod line_count_cache;
 pub mod scope;
 pub mod visual_item;
@@ -19,6 +20,7 @@ pub use layout::{
     PREVIEW_MARKER_MAX_ROWS, PREVIEW_MAX_LINES, PREVIEW_REQUEST_ENTRY_COUNT,
     PreviewDeadlineExpired, PreviewSessionRequested, SessionPreviewRendered, entry_is_settled,
 };
+pub use line_cache_cell::entry_line_cache_slot;
 pub use line_count_cache::{
     CacheHit, CacheProbe, CachedEntryCount, ContentIdentity, EntryLineCache,
     MAX_CACHED_RENDERED_ENTRIES, MeasuredLineCount,

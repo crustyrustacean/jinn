@@ -43,7 +43,7 @@ Entries are added or amended **only with human approval**.
 
 - (context) Outgoing context assembly converts history entries to messages directly; a final tripwire validator drops any invalid tool loop with a tracing warning instead of sending invalid sequencing.
 - (arch) All actors run on the trouper runtime, and schema-id-tagged messages route through BusService on trouper topics without bridge relays.
-- (slices) Slice integration uses each slice's activation function from composition, with activation owning the slice's actors, cells, routes, and views.
+- (slices) Slice integration uses each slice's activation function from composition, with activation owning the slice's actors, routes, and views.
 - (slices) Slice activation crates and their paired `-msg` contract crates live under `crates/slices/`; shared and kernel-adjacent crates live under `crates/`.
 - (slices) A slice reads its `jinn.toml` section through the configuration layer via its own Configurable impl; defaults are supplied by the slice type, and an absent section reads as its Default.
 - (arch) The `IntentHandler` mutates `AppState` directly and returns commands; it never touches external services or emits events.
@@ -279,7 +279,7 @@ Entries are added or amended **only with human approval**.
 - (slices) The entry token cache was pruned-family vocabulary misfiled under auto_prune_worker; it lives in jinn-slices and the prune family consumes it from the token-count slice's cell.
 - (slices) The mcp slice is a crate owning both MCP actors (coordinator and per-connection); its wire contracts live in jinn-mcp-msg and the kernel reaches the coordinator through the McpCoordinatorHandle trait.
 - (slices) Slice vocabulary lives in per-family -msg crates under crates/slices; jinn-slices holds only shared infrastructure and multi-party vocabulary such as the cell registry, routes, focus, render facts, and the persona record.
-- (slices) Cell slot keys are declared beside their payload types in the family's msg crate and registered by the owning slice at activation; the registry resolves them at runtime by name, namespace, and version.
+- (slices) Cell slot keys are declared beside their payload types in the family's msg crate and registered by the shared cell catalog before any slice activates; the registry resolves them at runtime by name, namespace, and version.
 - (slices) The context-assembly slice is a crate hosting a stateless trouper service at the context-assembly path; callers pass an AssemblyInputs snapshot and receive the assembled prompt as the reply.
 - (slices) Context assembly never reads AppState; the kernel's queue and session-enqueue dispatch paths build the inputs snapshot from their own state guards before asking the service.
 - (slices) The tools registry cell is owned by the jinn-tools slice, which mints it at activation; kernel dispatch snapshots, the session actor, and the TUI read it.
@@ -352,7 +352,11 @@ Entries are added or amended **only with human approval**.
 - (testing) The TUI test app builder does not run slice activation, so a cell that a TUI render adapter reads must also be registered in the builder or the adapter silently renders nothing while its tests still pass green.
 - (slices) The slice registries the render pass reads — draw functions, per-scope render hints, and pre-render hooks — are cell payloads whose collections are guarded by the cell alone, reached through Slices methods rather than through a handle a caller can hold.
 - (slices) The @path file popup's directory listing is a jinn-chat-input cell, written only by the directory-lister actor and by the request-id stamp the intent handler emits.
-- (slices) A cell that the TUI renders from is registered by the slice that owns it and by the TUI test app builder, because the builder does not run slice activation.
+- (slices) A cell that the TUI renders from is registered by the shared cell catalog, which both production boot and the TUI test app builder call, so a rendered cell cannot exist in one and not the other.
 - (storage) A session's snapshot revision is seeded from the store's per-session last-accepted revision when the session is loaded, so post-reload writes are never refused as stale; a core rebuilt from storage otherwise restarts its capture counter at zero.
 - (storage) The store's stale-write guard refuses a save by skipping it and refuses an archive by returning an error, so a failed archive surfaces a status-bar hint naming the session.
 - (session) An archive-tree action archives members that are persisted but absent from the live session map, numbering each one above the store's last-accepted revision rather than a fixed 1.
+- (slices) Cell registration happens in one catalog function shared by production boot and every test harness; a slice's activation registers no cell itself.
+- (slices) The chat input draft for a session is served from the chat-input slice's cell rather than from the session struct.
+- (chat-log-view) The chat log's per-entry line cache lives in a jinn-chat-log-view cell, invalidated when the theme changes.
+- (slices) A cell's payload type lives in the slice's `-msg` crate, so a catalog depending on it pulls in no slice implementation.

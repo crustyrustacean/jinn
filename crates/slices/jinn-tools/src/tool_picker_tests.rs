@@ -86,6 +86,10 @@ impl Wired {
     /// orchestrator.
     async fn new(defs: Vec<Def>) -> Self {
         let slices = Slices::new();
+        // Production boot seeds every slice cell before any slice activates;
+        // `activate_picker` resolves the pickers' cells by slot key, so the
+        // harness seeds the same registry the app would.
+        jinn_cell_catalog::register_all_cells(&slices);
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();
         let routes = KeyRoutes::new();
@@ -100,25 +104,12 @@ impl Wired {
             );
             crate::activate_picker(&mut host);
         }
-        // The picker pushes a real scope, so the app state needs the
-        // scope-focus cell its facade writes through.
-        slices
-            .register(
-                jinn_slices::scope_focus_slot(),
-                jinn_slices::ScopeFocusState::default(),
-            )
-            .expect("scope-focus cell is not registered yet");
         // The tools registry cell is what the picker reads its rows from;
-        // `activate` is the only thing that normally registers it.
-        slices
-            .register(
-                jinn_tools_msg::tools_registry_slot(),
-                jinn_tools_msg::ToolRegistry::default(),
-            )
-            .expect("tools registry cell is not registered yet");
+        // the catalog registers it before any slice activates, so the
+        // harness seeds its entries through the catalog's cell.
         slices
             .reader::<jinn_tools_msg::ToolRegistry>(&jinn_tools_msg::tools_registry_slot())
-            .expect("tools registry cell is registered")
+            .expect("the catalog registers the tools registry cell")
             .update(|registry| {
                 for def in &defs {
                     registry
@@ -150,7 +141,7 @@ impl Wired {
     fn cell(&self) -> TypedCell<ToolPickerState> {
         self.slices
             .reader(&jinn_tools_msg::tool_picker_slot())
-            .expect("the picker registers its cell at activation")
+            .expect("the catalog registers the picker cell the activation wires")
     }
 
     /// The names the filter currently shows, in display order.

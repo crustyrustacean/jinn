@@ -24,10 +24,21 @@ use jinn_slices::SliceHost;
 
 /// Activates the lifecycle actor over shared state and services.
 ///
+/// The argument input's cell is not minted here: the shared cell catalog
+/// (`jinn_cell_catalog::register_all_cells`) registers every slice cell in
+/// one place, so this resolves the handle the same way every other
+/// consumer does.
+///
 /// # Panics
 ///
-/// Panics if actor spawn fails. A failed spawn is a composition error and must
-/// abort launch rather than run without lifecycle handling.
+/// Panics if actor spawn fails, or if the catalog has not run. A failed
+/// spawn is a composition error and must abort launch rather than run
+/// without lifecycle handling; an absent cell would leave the argument
+/// overlay rendering nothing.
+#[expect(
+    clippy::expect_used,
+    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
+)]
 pub fn activate(
     host: &mut SliceHost<'_, jinn_slices::RenderFacts>,
     services: &Services,
@@ -35,16 +46,12 @@ pub fn activate(
     builtin_registry: BuiltinRegistry,
     shell: String,
 ) {
-    #[expect(
-        clippy::expect_used,
-        reason = "composition must fail if the lifecycle argument slot is already occupied"
-    )]
     let cell = host
-        .register_cell(
-            jinn_session_lifecycle_msg::arg_input_slot(),
-            ArgInputState::empty(),
-        )
-        .expect("lifecycle argument slot is registered exactly once at wiring");
+        .slices()
+        .reader::<ArgInputState>(&jinn_session_lifecycle_msg::arg_input_slot())
+        .expect(
+            "the cell catalog registers the lifecycle arg-input slot before any slice activates",
+        );
     let geometry_cell = cell.clone();
     host.register_overlay(
         jinn_session_lifecycle_msg::arg_input_scope(),
@@ -78,28 +85,31 @@ pub fn activate(
     );
 }
 
-/// Registers the session-lifecycle picker: its cell, its overlay, its keys, and
+/// Registers the session-lifecycle picker: its overlay, its keys, and
 /// its filter hook.
 ///
 /// Split from [`activate`] because the picker is a menu over configured
 /// lifecycles while `activate` owns the actor that runs setup and teardown.
 /// Called from composition right after `activate`.
 ///
+/// Like [`activate`], the picker's cell is not minted here: the shared cell
+/// catalog registers it in one place.
+///
 /// # Panics
 ///
-/// Panics if the picker slot is already registered — double activation is a
-/// wiring bug.
+/// Panics if the catalog has not run — the overlay would otherwise render
+/// against an absent cell and paint nothing.
 #[expect(
     clippy::expect_used,
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
 )]
 pub fn activate_picker(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
     let cell = host
-        .register_cell(
-            jinn_session_lifecycle_msg::session_lifecycle_picker_slot(),
-            jinn_session_lifecycle_msg::SessionLifecyclePickerState::default(),
+        .slices()
+        .reader::<jinn_session_lifecycle_msg::SessionLifecyclePickerState>(
+            &jinn_session_lifecycle_msg::session_lifecycle_picker_slot(),
         )
-        .expect("session lifecycle picker slot is registered exactly once at wiring");
+        .expect("the cell catalog registers the lifecycle picker slot before any slice activates");
 
     let scope = jinn_session_lifecycle_msg::session_lifecycle_picker_scope();
     host.register_overlay(

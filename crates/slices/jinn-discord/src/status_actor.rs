@@ -21,27 +21,11 @@ use jinn_slices::TypedCell;
 use trouper::actor::ServiceActor;
 use trouper::system::ActorSystem;
 
-/// Discord's own connection fact, folded by [`DiscordStatusActor`].
-///
-/// The single source of truth for "is the bot connected": feature gates
-/// (e.g. thread creation) read this cell instead of greping the
-/// dashboard's actor table. One writer — the status actor's fold.
-#[derive(Debug, Clone)]
-pub struct ConnectionState {
-    /// Whether the gateway considers the bot online.
-    pub connected: bool,
-    /// Optional detail (e.g. the error message while disconnected).
-    pub detail: Option<String>,
-}
-
-/// Discord's connection cell slot in the slices registry.
-///
-/// Canonical key shared by wiring (which mints the cell), the status
-/// actor (which folds it), and feature gates (which read it).
-#[must_use]
-pub fn discord_connection_slot() -> jinn_slices::SlotKey {
-    jinn_slices::SlotKey::builtin("discord", "connection")
-}
+// The connection cell's payload and slot key live in `jinn-discord-msg`
+// so the shared cell catalog can register the slot without depending on
+// this crate, which depends on the kernel. Re-exported here so the
+// slice's own modules keep reading them from one path.
+pub use jinn_discord_msg::{ConnectionState, discord_connection_slot};
 
 /// The dashboard-facing projection of a status update.
 ///

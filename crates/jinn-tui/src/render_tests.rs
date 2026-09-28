@@ -16,13 +16,6 @@ use ratatui::style::Color;
 ///
 async fn render_test_app() -> crate::TuiApp {
     let services = jinn_kernel::Services::new_fake().await;
-    services
-        .slices
-        .register(
-            jinn_mcp_msg::mcp_runtime_slot(),
-            jinn_mcp_msg::McpRuntimeState::default(),
-        )
-        .expect("MCP runtime cell is registered exactly once");
     let mut app = crate::TuiApp::test_builder()
         .services(services)
         .build()

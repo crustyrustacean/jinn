@@ -1491,13 +1491,12 @@ mod mcp_dispatch_gate_tests {
     ) -> (TestHarness, jinn_kernel::common::services::Services) {
         let harness = TestHarness::new().await;
         let services = harness.services().await;
+        // `Services::new_fake` seeds its registry through the shared cell
+        // catalog, which owns the MCP runtime cell the orchestrator gates on.
         let _runtime = services
             .slices
-            .register(
-                jinn_mcp_msg::mcp_runtime_slot(),
-                jinn_mcp_msg::McpRuntimeState::default(),
-            )
-            .expect("MCP runtime cell is registered exactly once");
+            .reader::<jinn_mcp_msg::McpRuntimeState>(&jinn_mcp_msg::mcp_runtime_slot())
+            .expect("the catalog registers the MCP runtime cell");
         ToolOrchestratorActor::spawn(
             &services.trouper_system.clone(),
             ToolOrchestratorActorDeps {

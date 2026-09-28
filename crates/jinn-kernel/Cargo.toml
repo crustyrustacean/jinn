@@ -20,6 +20,7 @@ jinn-session-store-msg = { workspace = true }
 jinn-mcp-msg = { workspace = true }
 # Internal deps
 jinn-common = { workspace = true }
+jinn-cell-catalog = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-llm-support = { workspace = true }
 jinn-app-state = { workspace = true }

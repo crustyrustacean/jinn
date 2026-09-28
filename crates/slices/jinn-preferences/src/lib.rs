@@ -14,8 +14,8 @@ pub mod app_state_actor;
 pub mod pruner_accumulation_input;
 
 pub use app_state_actor::AppStateActor;
+pub use jinn_preferences_msg::pruner_accumulation_slot;
 pub use pruner_accumulation_input::intent::pruner_accumulation_scope;
-pub use pruner_accumulation_input::intent::pruner_accumulation_slot;
 
 use jinn_kernel::common::state::State;
 use jinn_slices::SliceHost;
@@ -23,14 +23,19 @@ use jinn_slices::SliceHost;
 /// Activates the preferences slice's pruner-accumulation popup and two
 /// persistence actors on the system's trouper runtime.
 ///
+/// The pruner-accumulation cell is not minted here: the shared cell
+/// catalog (`jinn_cell_catalog::register_all_cells`) registers every slice
+/// cell in one place, so this resolves the handle the same way every other
+/// consumer does.
+///
 /// The actor spawn is the readiness point: this function must complete
 /// before anything publishes `EnvironmentLoaded`, whose handlers may emit
 /// `UpdateAppState` during first boot.
 ///
 /// # Panics
 ///
-/// Panics if the pruner-accumulation slot is already registered. Double
-/// activation is a wiring error.
+/// Panics if the catalog has not run — the popup's rows and render would
+/// otherwise act on an absent cell and paint nothing.
 #[expect(
     clippy::expect_used,
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
@@ -42,11 +47,13 @@ pub fn activate(
     state: State,
 ) {
     let pruner_cell = host
-        .register_cell(
-            pruner_accumulation_slot(),
-            pruner_accumulation_input::state::PrunerAccumulationInputState::default(),
+        .slices()
+        .reader::<pruner_accumulation_input::state::PrunerAccumulationInputState>(
+            &pruner_accumulation_slot(),
         )
-        .expect("pruner accumulation slot is registered exactly once at wiring");
+        .expect(
+            "the cell catalog registers the pruner-accumulation slot before any slice activates",
+        );
     host.register_overlay(
         pruner_accumulation_scope(),
         std::sync::Arc::new(pruner_accumulation_input::render::pruner_accumulation_overlay_rect),

@@ -142,6 +142,8 @@ fn picker_identities_in(source: &str) -> Vec<&str> {
 fn every_picker_is_a_slice_registered_overlay() {
     // Given a freshly composed slices registry.
     let slices = jinn_slices::Slices::new();
+    // Production boot seeds every slice cell here, before any activation.
+    jinn_cell_catalog::register_all_cells(&slices);
 
     // When each slice registers its picker overlay.
     let _ = slices;
@@ -264,6 +266,8 @@ async fn every_picker_opener_key_has_exactly_one_claimant() {
 /// production binds rather than a hand-built imitation.
 fn all_picker_routes() -> jinn_slices::KeyRoutes {
     let slices = jinn_slices::Slices::new();
+    // Production boot seeds every slice cell here, before any activation.
+    jinn_cell_catalog::register_all_cells(&slices);
     let mut viewport = jinn_slices::view::Viewport::new();
     let overlay_views = jinn_slices::OverlayViews::new();
     let routes = jinn_slices::KeyRoutes::new();
@@ -275,29 +279,26 @@ fn all_picker_routes() -> jinn_slices::KeyRoutes {
     jinn_persona::activate_picker(&mut host);
     jinn_tools::activate_picker(&mut host);
     let session_cell = slices
-        .register(
-            jinn_session_store_msg::session_picker_slot(),
-            jinn_session_store_msg::SessionPickerState::default(),
+        .reader::<jinn_session_store_msg::SessionPickerState>(
+            &jinn_session_store_msg::session_picker_slot(),
         )
-        .expect("fresh Slices never has this cell registered");
+        .expect("the cell catalog registers the session picker slot");
     jinn_session_store::activate_session_picker(&mut host, &session_cell);
     jinn_mcp_slice::activate_picker(&mut host);
     jinn_project::activate(&mut host);
     jinn_session_lifecycle::activate_picker(&mut host);
     jinn_provider_selection::activate_picker(&mut host);
     let provider_cell = slices
-        .register(
-            jinn_provider_selection_msg::provider_picker_slot(),
-            jinn_provider_selection_msg::ProviderPickerState::default(),
+        .reader::<jinn_provider_selection_msg::ProviderPickerState>(
+            &jinn_provider_selection_msg::provider_picker_slot(),
         )
-        .expect("fresh Slices never has this cell registered");
+        .expect("the cell catalog registers the provider picker slot");
     jinn_provider_selection::activate_provider_picker(&mut host, &provider_cell);
     let endpoint_cell = slices
-        .register(
-            jinn_provider_selection_msg::endpoint_picker_slot(),
-            jinn_provider_selection_msg::endpoint::EndpointPickerState::default(),
+        .reader::<jinn_provider_selection_msg::endpoint::EndpointPickerState>(
+            &jinn_provider_selection_msg::endpoint_picker_slot(),
         )
-        .expect("fresh Slices never has this cell registered");
+        .expect("the cell catalog registers the endpoint picker slot");
     jinn_provider_selection::activate_endpoint_picker(&mut host, &endpoint_cell);
     jinn_theme_slice::activate_picker(&mut host);
     routes
