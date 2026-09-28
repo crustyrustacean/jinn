@@ -16,6 +16,7 @@ use jinn_kernel::protocol::{ChatEntryId, ChatEntryKind, IntentResult, PinPositio
 use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
 use jinn_skills::loaded_skill_summary_label;
 use jinn_slices::DrawContext;
+use jinn_slices::route::ScopeSignal;
 use jinn_theme::Theme;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -194,23 +195,23 @@ pub fn pins_section_content_height(state: &AppState) -> u16 {
 // Intent handler functions (called by IntentHandler)
 // ---------------------------------------------------------------------------
 
-/// Handles the persona edit key - opens the persona picker when the persona section is focused.
+/// Handles the persona edit key - requests the persona picker when the persona
+/// section is focused.
 ///
-/// No-op if the pins section is focused.
-pub fn handle_sidebar_persona_edit(
-    state: &mut AppState,
-    config: &jinn_slices::ConfigLayer,
-) -> IntentResult {
+/// No-op if the pins section is focused. The persona picker is slice-owned and
+/// seeds itself from the personas cell on scope entry, so the sidebar names the
+/// picker only by its scope id and returns a signal rather than pushing the
+/// scope itself: the scope stack has exactly one writer.
+#[must_use]
+pub fn handle_sidebar_persona_edit(state: &mut AppState) -> IntentResult {
     if !matches!(
         state.frontend.sidebar_section(),
         Some(jinn_sidebar_msg::SidebarSectionId::Persona)
     ) {
         return IntentResult::empty();
     }
-    // The persona picker is slice-owned: push its scope and let the render
-    // pass fill the rows. The sidebar names the picker only by its scope id.
-    let _ = config;
-    jinn_persona::open_persona_picker_from_scope(state)
+    IntentResult::empty()
+        .with_scope_signal(ScopeSignal::Push(jinn_persona_msg::persona_picker_scope()))
 }
 
 /// Handles `PinsUnpin`.

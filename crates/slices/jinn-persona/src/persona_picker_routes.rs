@@ -44,7 +44,8 @@ use jinn_slices::RouteId;
 use jinn_slices::RouteResult as IntentResult;
 use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{
-    ActionCtx, ActionFn, BindSite, EditIntent, InputHook, RouteOutcome, RouteRow, ScopeSignal,
+    ActionCtx, ActionFn, BindSite, EditIntent, InputHook, RouteOutcome, RouteRow, ScopeEnterHook,
+    ScopeSignal,
 };
 
 use crate::persona_picker_actions;
@@ -231,49 +232,51 @@ pub fn register_persona_picker_input_hook(routes: &KeyRoutes, cell: &PersonaPick
     routes.register_input_hook(&persona_picker_scope(), hook);
 }
 
-// ── Actions ─────────────────────────────────────────────────────────────
-
-/// Opens the persona picker from anywhere in the app.
+/// Registers the picker's scope-enter hook: the one place its per-open
+/// state is built.
 ///
-/// Other surfaces open this menu too — the sidebar's persona section does — and
-/// they should not have to know how it works. Pushing the scope is enough: the
-/// render pass fills the rows from the personas cell, so a caller needs no
-/// picker registry and no knowledge of the picker's contents.
-#[must_use]
-pub fn open_from_scope(state: &mut jinn_app_state::AppState) -> IntentResult {
-    state
-        .frontend
-        .scope_push(jinn_slices::FocusScope::Dynamic(persona_picker_scope()));
-    IntentResult::empty()
+/// Every opener — this slice's `<leader>se` row and the sidebar's persona
+/// section key — does nothing but request the transition, so both land on the
+/// same fresh menu: filter cleared, highlight back at the top, rows rebuilt
+/// from the personas cell. The rows come from the personas this slice already
+/// owns, so entering needs no loader command and no kernel involvement.
+pub fn register_persona_picker_enter_hook(routes: &KeyRoutes, cell: &PersonaPickerCell) {
+    // The hook outlives this call, so it owns the cell rather than borrowing it.
+    let owned = cell.clone();
+    let hook: ScopeEnterHook = Arc::new(move |mut ctx: ActionCtx<'_>| {
+        // Only the theme falls back when the state is not the kernel's (a test
+        // double); the rows must be seeded either way.
+        let theme = app(&mut ctx).map_or_else(jinn_theme::default_theme, |state| {
+            state.frontend.theme.clone()
+        });
+        // Snapshot the personas into an owned list before touching the picker:
+        // the personas cell's guard and the picker's guard must not overlap.
+        let (entries, active) = ctx
+            .slices
+            .reader::<jinn_persona_msg::Personas>(&personas_slot())
+            .map_or_else(
+                || (Vec::new(), None),
+                |personas| {
+                    let guard = personas.read();
+                    (guard.entries.clone(), guard.active.clone())
+                },
+            );
+        owned.update(|picker| {
+            persona_picker_actions::open(picker, &entries, active.as_deref(), &theme);
+        });
+    });
+    routes.register_scope_enter_hook(&persona_picker_scope(), hook);
 }
 
-/// Opens the picker: seed the rows from the persona slice's own cell, then
-/// push the picker's scope.
+// ── Actions ─────────────────────────────────────────────────────────────
+
+/// Opens the picker from anywhere in the app.
 ///
-/// The rows come from the personas cell this slice already owns, so opening
-/// needs no loader command and no kernel involvement.
-fn open_persona_picker(ctx: &mut ActionCtx<'_>, cell: &PersonaPickerCell) -> IntentResult {
-    let Some(state) = app(ctx) else {
-        return IntentResult::empty();
-    };
-    let Some(slices) = state.frontend.slices() else {
-        return IntentResult::empty();
-    };
-    let Some(personas) = slices.reader::<jinn_persona_msg::Personas>(&personas_slot()) else {
-        return IntentResult::empty();
-    };
-    let (entries, active) = {
-        let guard = personas.read();
-        (guard.entries.clone(), guard.active.clone())
-    };
-    let theme = state.frontend.theme.clone();
-
-    cell.update(|picker| persona_picker_actions::open(picker, &entries, active.as_deref(), &theme));
-
-    state
-        .frontend
-        .scope_push(jinn_slices::FocusScope::Dynamic(persona_picker_scope()));
-    IntentResult::empty()
+/// Requesting the transition is all an opener does: the picker's scope-enter
+/// hook builds the rows and clears the filter, so every opener shows the same
+/// fresh menu.
+fn open_persona_picker(_ctx: &mut ActionCtx<'_>, _cell: &PersonaPickerCell) -> IntentResult {
+    IntentResult::empty().with_scope_signal(ScopeSignal::Push(persona_picker_scope()))
 }
 
 /// Enter: set the active persona, bind it to the session, persist, and close.

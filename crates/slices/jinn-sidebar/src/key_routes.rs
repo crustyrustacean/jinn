@@ -222,10 +222,7 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "c",
         "general",
         "change persona",
-        ActionFn::new(|mut ctx| {
-            let config = ctx.config;
-            pins::handle_sidebar_persona_edit(app(&mut ctx), config)
-        }),
+        sync(pins::handle_sidebar_persona_edit),
     ));
 
     // ---- Pins section ----
