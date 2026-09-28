@@ -15,7 +15,12 @@
 
 pub use jinn_tools_msg::BoxedToolFuture;
 
+pub mod attendant_tools;
 pub mod bash;
+
+#[cfg(test)]
+mod attendant_tools_tests;
+
 pub mod command_policy;
 pub mod edit;
 pub mod get_time;

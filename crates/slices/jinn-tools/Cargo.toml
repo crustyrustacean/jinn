@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 jinn-config = { workspace = true }
 jinn-chat-input-msg = { workspace = true }
+jinn-attendant-msg = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-skills-msg = { workspace = true }
 jinn-skills = { workspace = true }

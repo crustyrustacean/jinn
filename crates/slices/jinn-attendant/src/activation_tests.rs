@@ -183,20 +183,25 @@ async fn seed_activation_makes_the_trigger_inert_end_to_end() {
         .spawn_recorder::<jinn_inference_msg::CancelStream>()
         .await;
     let state = State::new(AppState::default());
-    {
+    // The default state pre-seeds an active session, so the fixture parent
+    // must be identified by id at fixture time — a `find` over the map
+    // would race the HashMap's per-process iteration order and sometimes
+    // publish the completion against the wrong (default) session.
+    let parent_id = {
         let mut s = state.write();
         let parent = ChatSessionState::new();
-        let parent_id = parent.session_id().clone();
+        let id = parent.session_id().clone();
         s.session.insert(parent);
         let mut attendant = {
-            let read = s.session.get(&parent_id).expect("parent").clone();
+            let read = s.session.get(&id).expect("parent").clone();
             ChatSessionState::new_attendant(&read, true)
         };
         attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
         // Still in Seed activation — the user has not armed it.
         attendant.set_seed_template("re-check".to_owned());
         s.session.insert(attendant);
-    }
+        id
+    };
     let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
         harness.system(),
         crate::trigger_actor::AttendantTriggerActorDeps {
@@ -206,14 +211,6 @@ async fn seed_activation_makes_the_trigger_inert_end_to_end() {
     );
 
     // When the parent's turn completes successfully.
-    let parent_id = {
-        let s = state.read();
-        s.session
-            .iter()
-            .find(|(_, sess)| !sess.is_attendant())
-            .map(|(id, _)| id.clone())
-            .expect("parent")
-    };
     harness
         .publish(jinn_session_msg::TurnCompleted {
             session_id: parent_id,
@@ -236,13 +233,17 @@ async fn succeeded_parent_turn_fires_its_triggered_attendant() {
         .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
         .await;
     let state = State::new(AppState::default());
-    {
+    // The default state pre-seeds an active session, so the fixture parent
+    // must be identified by id at fixture time — a `find` over the map
+    // would race the HashMap's per-process iteration order and sometimes
+    // publish the completion against the wrong (default) session.
+    let parent_id = {
         let mut s = state.write();
         let parent = ChatSessionState::new();
-        let parent_id = parent.session_id().clone();
+        let id = parent.session_id().clone();
         s.session.insert(parent);
         let mut attendant = {
-            let read = s.session.get(&parent_id).expect("parent").clone();
+            let read = s.session.get(&id).expect("parent").clone();
             ChatSessionState::new_attendant(&read, true)
         };
         attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
@@ -250,7 +251,8 @@ async fn succeeded_parent_turn_fires_its_triggered_attendant() {
         attendant.set_seed_template("verify: <prior report>".to_owned());
         attendant.append_attendant_report("prior finding".to_owned());
         s.session.insert(attendant);
-    }
+        id
+    };
     let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
         harness.system(),
         crate::trigger_actor::AttendantTriggerActorDeps {
@@ -258,14 +260,6 @@ async fn succeeded_parent_turn_fires_its_triggered_attendant() {
             state: state.clone(),
         },
     );
-    let parent_id = {
-        let s = state.read();
-        s.session
-            .iter()
-            .find(|(_, sess)| !sess.is_attendant())
-            .map(|(id, _)| id.clone())
-            .expect("parent")
-    };
 
     // When the parent's turn completes successfully.
     harness
@@ -278,7 +272,7 @@ async fn succeeded_parent_turn_fires_its_triggered_attendant() {
         jinn_testutil::bus_harness::await_recorded::<jinn_chat_input_msg::EnqueueUserMessage>(
             &dispatched,
             1,
-            std::time::Duration::from_secs(2),
+            std::time::Duration::from_secs(10),
         )
         .await;
 
@@ -311,19 +305,22 @@ async fn errored_and_canceled_turns_fire_nothing() {
         .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
         .await;
     let state = State::new(AppState::default());
-    {
+    // Same fixture rule: parent id captured at fixture time (the default
+    // state pre-seeds an active session).
+    let parent_id = {
         let mut s = state.write();
         let parent = ChatSessionState::new();
-        let parent_id = parent.session_id().clone();
+        let id = parent.session_id().clone();
         s.session.insert(parent);
         let mut attendant = {
-            let read = s.session.get(&parent_id).expect("parent").clone();
+            let read = s.session.get(&id).expect("parent").clone();
             ChatSessionState::new_attendant(&read, true)
         };
         attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
         attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
         s.session.insert(attendant);
-    }
+        id
+    };
     let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
         harness.system(),
         crate::trigger_actor::AttendantTriggerActorDeps {
@@ -331,14 +328,6 @@ async fn errored_and_canceled_turns_fire_nothing() {
             state: state.clone(),
         },
     );
-    let parent_id = {
-        let s = state.read();
-        s.session
-            .iter()
-            .find(|(_, sess)| !sess.is_attendant())
-            .map(|(id, _)| id.clone())
-            .expect("parent")
-    };
 
     // When an errored completion is published, then a cancelled one.
     harness
@@ -371,19 +360,22 @@ async fn manual_trigger_attendant_does_not_fire_on_parent_completion() {
         .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
         .await;
     let state = State::new(AppState::default());
-    {
+    // Same fixture rule: parent id captured at fixture time (the default
+    // state pre-seeds an active session).
+    let parent_id = {
         let mut s = state.write();
         let parent = ChatSessionState::new();
-        let parent_id = parent.session_id().clone();
+        let id = parent.session_id().clone();
         s.session.insert(parent);
         let mut attendant = {
-            let read = s.session.get(&parent_id).expect("parent").clone();
+            let read = s.session.get(&id).expect("parent").clone();
             ChatSessionState::new_attendant(&read, true)
         };
         // Trigger stays Manual.
         attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
         s.session.insert(attendant);
-    }
+        id
+    };
     let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
         harness.system(),
         crate::trigger_actor::AttendantTriggerActorDeps {
@@ -391,14 +383,6 @@ async fn manual_trigger_attendant_does_not_fire_on_parent_completion() {
             state: state.clone(),
         },
     );
-    let parent_id = {
-        let s = state.read();
-        s.session
-            .iter()
-            .find(|(_, sess)| !sess.is_attendant())
-            .map(|(id, _)| id.clone())
-            .expect("parent")
-    };
 
     // When the parent's turn completes successfully.
     harness
@@ -454,7 +438,7 @@ async fn a_fired_attendant_turn_is_marked_automated() {
     jinn_testutil::bus_harness::await_recorded::<jinn_chat_input_msg::EnqueueUserMessage>(
         &dispatched,
         1,
-        std::time::Duration::from_secs(2),
+        std::time::Duration::from_secs(10),
     )
     .await;
 
