@@ -104,6 +104,7 @@ fn row(
 pub fn attach_sidebar_rows(routes: &KeyRoutes) {
     let persona = jinn_sidebar_msg::SidebarSectionId::Persona.scope_id();
     let pins_scope = jinn_sidebar_msg::SidebarSectionId::Pins.scope_id();
+    let attendant_scope = jinn_sidebar_msg::SidebarSectionId::Attendant.scope_id();
     let task_list_scope = jinn_sidebar_msg::SidebarSectionId::TaskList.scope_id();
     let sessions_scope = jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id();
     let mcp = jinn_sidebar_msg::SidebarSectionId::McpServers.scope_id();
@@ -111,6 +112,7 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
     let sections = [
         persona.clone(),
         pins_scope.clone(),
+        attendant_scope.clone(),
         task_list_scope.clone(),
         sessions_scope.clone(),
         mcp.clone(),

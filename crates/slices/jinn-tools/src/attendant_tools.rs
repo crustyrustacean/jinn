@@ -50,7 +50,8 @@ pub fn notify_parent_definition() -> ToolDefinition {
         name: "notify_parent".to_owned(),
         description: "Start a turn in the session you attend. Use only when the parent needs \
                       to act on what you found. Does not record a report — call `report` for \
-                      that.".to_owned(),
+                      that."
+            .to_owned(),
         prompt_snippet: None,
         prompt_guidelines: vec![
             "Prefer `report` alone. Call `notify_parent` only when the parent must act; \
@@ -120,7 +121,10 @@ pub fn notify_parent_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFutur
             return failed(call, "notify_parent is unavailable without shared state");
         };
         let Some(session_id) = ctx.session_id.clone() else {
-            return failed(call, "notify_parent is unavailable without a session context");
+            return failed(
+                call,
+                "notify_parent is unavailable without a session context",
+            );
         };
         let Some(bus) = ctx.bus.clone() else {
             return failed(call, "notify_parent is unavailable without a bus");
@@ -139,7 +143,10 @@ pub fn notify_parent_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFutur
             let Some(parent_id) = caller.parent_session().clone() else {
                 return failed(call, "calling attendant has no parent session");
             };
-            (parent_id, caller.attendant_trigger() == AttendantTrigger::ParentCompleted)
+            (
+                parent_id,
+                caller.attendant_trigger() == AttendantTrigger::ParentCompleted,
+            )
         };
 
         // Mutate the parent: mark interacted (persistence gate) and mark the

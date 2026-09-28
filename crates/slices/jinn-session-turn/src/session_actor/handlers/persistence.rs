@@ -89,7 +89,10 @@ impl SessionPersistenceActor {
     /// turn's outcome is published so an automated turn does not fire the
     /// session's own attendants. A user submission supersedes that mark, so
     /// the *next* completed turn fires normally again.
-    pub(in crate::session_actor) fn handle_clear_turn_automation(&self, payload: &ClearTurnAutomation) {
+    pub(in crate::session_actor) fn handle_clear_turn_automation(
+        &self,
+        payload: &ClearTurnAutomation,
+    ) {
         self.state.with_session(|view| {
             if let Some(session) = view.session.map().get_mut(&payload.session_id) {
                 session.clear_turn_automated();

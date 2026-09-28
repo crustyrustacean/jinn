@@ -5125,8 +5125,18 @@ fn seed_mode_submission_leaves_normal_sessions_dispatching() {
     );
 
     // Then the normal enqueue path runs — no pin, no push.
-    assert!(result.message_names.iter().any(|n| n.contains("EnqueueUserMessage")));
-    assert!(!result.message_names.iter().any(|n| n.contains("PinChatEntry")));
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("EnqueueUserMessage"))
+    );
+    assert!(
+        !result
+            .message_names
+            .iter()
+            .any(|n| n.contains("PinChatEntry"))
+    );
 }
 
 #[rstest::rstest]
@@ -5150,5 +5160,10 @@ fn reset_mode_attendant_submissions_dispatch_normally() {
 
     // Then the normal enqueue path runs — only Seed mode pins without
     // dispatching.
-    assert!(result.message_names.iter().any(|n| n.contains("EnqueueUserMessage")));
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("EnqueueUserMessage"))
+    );
 }

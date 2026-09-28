@@ -49,6 +49,8 @@ pub struct SidebarSections {
     pub task_list: TaskListSectionState,
     /// MCP servers section cursor state.
     pub mcp_servers: McpServersSectionState,
+    /// Attendants section cursor state.
+    pub attendant: AttendantSectionState,
     /// In-progress text for the rename-session popup.
     pub rename_input: RenameSessionInputState,
     /// The sidebar column's scroll offset from the last frame that had a
@@ -495,5 +497,13 @@ pub struct TaskListSectionState {
 #[derive(Debug, Clone, Default)]
 pub struct McpServersSectionState {
     /// Index into the configured MCP servers list.
+    pub selected_index: Option<usize>,
+}
+
+/// Attendants-section cursor state: an index into the loaded-attendants
+/// list (sorted by name). `None` means no cursor (section not focused).
+#[derive(Debug, Clone, Default)]
+pub struct AttendantSectionState {
+    /// Index into the attendants list.
     pub selected_index: Option<usize>,
 }

@@ -44,6 +44,7 @@ fn tree_entry(
         is_last_child,
         is_subagent,
         has_live_term: false,
+        is_attendant: false,
         is_in_flight: false,
     }
 }
@@ -196,6 +197,7 @@ fn assembled_line_includes_tree_prefix_for_non_root() {
         ancestor_continuations: vec![true],
         is_last_child: true,
         is_subagent: false,
+        is_attendant: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -228,6 +230,7 @@ fn assembled_line_has_no_tree_prefix_for_root() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent: false,
+        is_attendant: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -261,6 +264,7 @@ fn assembled_line_has_tree_prefix_span_for_child() {
         ancestor_continuations: vec![true],
         is_last_child: false,
         is_subagent: false,
+        is_attendant: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -298,6 +302,7 @@ fn title_is_truncated_more_at_higher_depth() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent: false,
+        is_attendant: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -314,6 +319,7 @@ fn title_is_truncated_more_at_higher_depth() {
         ancestor_continuations: vec![true, true, true],
         is_last_child: true,
         is_subagent: false,
+        is_attendant: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -355,6 +361,7 @@ fn active_arrow_shows_at_depth_greater_than_zero() {
         ancestor_continuations: vec![true, true],
         is_last_child: true,
         is_subagent: false,
+        is_attendant: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -392,6 +399,7 @@ fn tree_prefix_uses_muted_text_color() {
         ancestor_continuations: vec![true],
         is_last_child: true,
         is_subagent: false,
+        is_attendant: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -459,6 +467,7 @@ fn sidebar_marks_child_with_symbol() {
         ancestor_continuations: vec![true],
         is_last_child: true,
         is_subagent: true,
+        is_attendant: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -505,6 +514,7 @@ fn sidebar_omits_symbol_for_regular_session() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent: false,
+        is_attendant: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -537,6 +547,7 @@ fn sidebar_shows_live_term_symbol_for_session_with_terminal() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent: false,
+        is_attendant: false,
         has_live_term: true,
         is_in_flight: false,
     };
@@ -570,6 +581,7 @@ fn sidebar_omits_live_term_symbol_for_session_without_terminal() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent: false,
+        is_attendant: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -602,6 +614,7 @@ fn sidebar_live_term_symbol_consumes_truncation_budget() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent,
+        is_attendant: false,
         has_live_term: true,
         is_in_flight: false,
     };
@@ -654,6 +667,7 @@ fn sidebar_symbol_consumes_truncation_budget() {
         is_last_child: true,
         is_subagent,
         has_live_term: false,
+        is_attendant: false,
         is_in_flight: false,
     };
     let plain = make(false);

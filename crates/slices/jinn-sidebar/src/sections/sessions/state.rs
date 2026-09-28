@@ -30,6 +30,7 @@ pub struct SessionListKey {
     last_entry_is_error: bool,
     parent_id: Option<SessionId>,
     is_subagent: bool,
+    is_attendant: bool,
     has_live_term: bool,
     is_in_flight: bool,
 }
@@ -67,6 +68,7 @@ impl SessionListKey {
             }),
             parent_id: session.parent_session().clone(),
             is_subagent: session.origin() == SessionOrigin::Subagent,
+            is_attendant: session.is_attendant(),
             has_live_term,
             is_in_flight,
         }
@@ -137,6 +139,7 @@ pub fn sorted_open_sessions_split(
             ancestor_continuations: vec![],
             is_last_child: false,
             is_subagent: session.origin() == SessionOrigin::Subagent,
+            is_attendant: session.is_attendant(),
             has_live_term: frontend
                 .slices()
                 .and_then(|slices| {

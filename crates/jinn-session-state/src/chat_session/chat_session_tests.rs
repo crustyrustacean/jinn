@@ -6180,9 +6180,7 @@ fn new_attendant_links_parent_without_inheriting_conversation() {
     parent.set_project(Some(PathBuf::from("/tmp/demo-project")));
     parent.set_cwd(PathBuf::from("/tmp/demo-cwd"));
     parent.set_home(PathBuf::from("/tmp/demo-home"));
-    parent.set_enabled_mcp_servers(std::collections::BTreeSet::from([
-        "filesystem".to_owned(),
-    ]));
+    parent.set_enabled_mcp_servers(std::collections::BTreeSet::from(["filesystem".to_owned()]));
     parent.push_entry(ChatEntry::user("parent conversation"));
 
     // When creating an attendant of that parent.
@@ -6207,9 +6205,7 @@ fn new_attendant_copies_parent_environment() {
     parent.set_project(Some(PathBuf::from("/tmp/demo-project")));
     parent.set_cwd(PathBuf::from("/tmp/demo-cwd"));
     parent.set_home(PathBuf::from("/tmp/demo-home"));
-    parent.set_enabled_mcp_servers(std::collections::BTreeSet::from([
-        "filesystem".to_owned(),
-    ]));
+    parent.set_enabled_mcp_servers(std::collections::BTreeSet::from(["filesystem".to_owned()]));
 
     // When creating an attendant of that parent.
     let attendant = ChatSessionState::new_attendant(&parent, true);
@@ -6317,8 +6313,14 @@ fn session_fields_round_trip_through_serialization() {
     let restored: SessionCore = serde_json::from_str(&json).expect("deserialize");
 
     // Then every attendant field is preserved.
-    assert_eq!(restored.attendant.activation, jinn_attendant_msg::AttendantActivation::Reset);
-    assert_eq!(restored.attendant.trigger, jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+    assert_eq!(
+        restored.attendant.activation,
+        jinn_attendant_msg::AttendantActivation::Reset
+    );
+    assert_eq!(
+        restored.attendant.trigger,
+        jinn_attendant_msg::AttendantTrigger::ParentCompleted
+    );
     assert_eq!(restored.attendant.seed_template, "custom template");
     assert_eq!(restored.attendant.reports.len(), 1);
     assert_eq!(restored.attendant.reports[0].body, "prior finding");

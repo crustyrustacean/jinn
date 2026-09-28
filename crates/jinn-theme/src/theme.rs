@@ -32,6 +32,10 @@ pub struct Theme {
     /// sessions apart from user-initiated ones.
     pub subagent_fg: Color,
     pub subagent_bg: Color,
+    /// Attendant session rows in the session tree — distinct from the error
+    /// colour and from the subagent pair.
+    pub attendant_fg: Color,
+    pub attendant_bg: Color,
     /// Error text color.
     pub error_text: Color,
     /// Dormant-but-healthy state color (a passivated actor in the
@@ -160,6 +164,8 @@ impl Theme {
         m.insert("muted_text", Style::default().fg(self.muted_text));
         m.insert("subagent_fg", Style::default().fg(self.subagent_fg));
         m.insert("subagent_bg", Style::default().bg(self.subagent_bg));
+        m.insert("attendant_fg", Style::default().fg(self.attendant_fg));
+        m.insert("attendant_bg", Style::default().bg(self.attendant_bg));
         m.insert("error_text", Style::default().fg(self.error_text));
         m.insert("dormant_fg", Style::default().fg(self.dormant_fg));
         m.insert("success", Style::default().fg(self.success));
@@ -268,6 +274,12 @@ pub struct ThemeFile {
     /// Subagent block background shown on `task` tool calls and their results.
     #[serde(default)]
     pub subagent_bg: Option<ThemeColor>,
+    /// Attendant session rows in the session tree.
+    #[serde(default)]
+    pub attendant_fg: Option<ThemeColor>,
+    /// Attendant row background, paired with `attendant_fg`.
+    #[serde(default)]
+    pub attendant_bg: Option<ThemeColor>,
     #[serde(default)]
     pub error_text: Option<ThemeColor>,
     pub dormant_fg: Option<ThemeColor>,
@@ -402,6 +414,12 @@ impl ThemeFile {
             subagent_bg: self
                 .subagent_bg
                 .map_or(fallback.subagent_bg, crate::color::ThemeColor::inner),
+            attendant_fg: self
+                .attendant_fg
+                .map_or(fallback.attendant_fg, crate::color::ThemeColor::inner),
+            attendant_bg: self
+                .attendant_bg
+                .map_or(fallback.attendant_bg, crate::color::ThemeColor::inner),
             error_text: self
                 .error_text
                 .map_or(fallback.error_text, crate::color::ThemeColor::inner),
@@ -553,6 +571,8 @@ impl ThemeFile {
             muted_text: Self::resolve_field(self.muted_text),
             subagent_fg: Self::resolve_field(self.subagent_fg),
             subagent_bg: Self::resolve_field(self.subagent_bg),
+            attendant_fg: Self::resolve_field(self.attendant_fg),
+            attendant_bg: Self::resolve_field(self.attendant_bg),
             error_text: Self::resolve_field(self.error_text),
             dormant_fg: Self::resolve_field(self.dormant_fg),
             success: Self::resolve_field(self.success),
@@ -618,6 +638,8 @@ mod tests {
             muted_text: None,
             subagent_fg: None,
             subagent_bg: None,
+            attendant_fg: None,
+            attendant_bg: None,
             error_text: None,
             dormant_fg: None,
             success: None,
@@ -671,6 +693,8 @@ mod tests {
             muted_text: Some(ThemeColor(Color::DarkGray)),
             subagent_fg: Some(ThemeColor(Color::Rgb(152, 128, 208))),
             subagent_bg: Some(ThemeColor(Color::Rgb(70, 58, 105))),
+            attendant_fg: Some(ThemeColor(Color::Rgb(208, 168, 96))),
+            attendant_bg: Some(ThemeColor(Color::Rgb(96, 76, 44))),
             error_text: Some(ThemeColor(Color::Red)),
             dormant_fg: Some(ThemeColor(Color::Blue)),
             success: Some(ThemeColor(Color::Green)),

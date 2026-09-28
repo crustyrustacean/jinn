@@ -24,8 +24,8 @@ use jinn_chat_input_msg::{
     resolve_list_dir,
 };
 use jinn_context::PromptTemplateStore;
-use jinn_core_types::SessionId;
 use jinn_core_types::PinPosition;
+use jinn_core_types::SessionId;
 use jinn_kernel::AppState;
 use jinn_kernel::protocol::{ChatEntry, IntentResult};
 use jinn_session_history_msg::{PinChatEntry, PushChatEntry};
@@ -421,15 +421,19 @@ fn route_to_enqueue_or_steer(
             // A user submission supersedes whatever automation mark the
             // session carried from its previous turn, so the next completed
             // turn fires this session's attendants again.
-            if let Some(session) = state.session.get(session_id) {
-                if session.is_turn_automated() {
-                    return IntentResult::empty()
-                        .with_message(ClearTurnAutomation { session_id: session_id.clone() })
-                        .with_message(EnqueueUserMessage {
-                            session_id: session_id.clone(),
-                            entry: ChatEntry::user(display),
-                        });
-                }
+            let supersedes = state
+                .session
+                .get(session_id)
+                .is_some_and(jinn_kernel::ChatSessionState::is_turn_automated);
+            if supersedes {
+                return IntentResult::empty()
+                    .with_message(ClearTurnAutomation {
+                        session_id: session_id.clone(),
+                    })
+                    .with_message(EnqueueUserMessage {
+                        session_id: session_id.clone(),
+                        entry: ChatEntry::user(display),
+                    });
             }
             IntentResult::empty().with_message(EnqueueUserMessage {
                 session_id: session_id.clone(),

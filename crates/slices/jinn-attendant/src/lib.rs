@@ -26,7 +26,11 @@ use jinn_slices::SliceHost;
 ///
 /// The actor's `TurnCompleted` subscription is the readiness point — after
 /// this call resolves, a published completion cannot be missed.
-pub fn activate(host: &mut SliceHost<'_, jinn_slices::RenderFacts>, state: State, services: jinn_kernel::Services) {
+pub fn activate(
+    host: &mut SliceHost<'_, jinn_slices::RenderFacts>,
+    state: State,
+    services: jinn_kernel::Services,
+) {
     trigger_actor::AttendantTriggerActor::spawn(
         host.system(),
         trigger_actor::AttendantTriggerActorDeps { services, state },

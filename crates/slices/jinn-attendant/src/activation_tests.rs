@@ -1,6 +1,11 @@
 //! Tests for the pure run-preparation helpers.
 
-#![allow(clippy::expect_used, reason = "test code")]
+#![allow(
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    reason = "test code"
+)]
 
 use jinn_attendant_msg::{PRIOR_REPORT_PLACEHOLDER, default_seed_template};
 use jinn_core_types::chat_entry::ChatEntry;
@@ -14,8 +19,16 @@ use jinn_session_state::ChatSessionState;
 use crate::activation::{prepare_run, render_seed_text, reset_context};
 
 #[rstest::rstest]
-#[case("check: <prior report>", Some("the build was green"), "check: the build was green")]
-#[case("fixed prompt", Some("the build was green"), "fixed prompt\n\nthe build was green")]
+#[case(
+    "check: <prior report>",
+    Some("the build was green"),
+    "check: the build was green"
+)]
+#[case(
+    "fixed prompt",
+    Some("the build was green"),
+    "fixed prompt\n\nthe build was green"
+)]
 #[case("check: <prior report>", None, "check: <prior report>")]
 #[case("fixed prompt", None, "fixed prompt")]
 fn seed_rendering_substitutes_or_appends(
@@ -61,7 +74,11 @@ fn default_template_carries_the_placeholder() {
 
 /// Builds a session with one pinned and two unpinned entries, returning
 /// (session, pinned_id, unpinned_ids).
-fn session_with_pins() -> (ChatSessionState, jinn_core_types::ChatEntryId, Vec<jinn_core_types::ChatEntryId>) {
+fn session_with_pins() -> (
+    ChatSessionState,
+    jinn_core_types::ChatEntryId,
+    Vec<jinn_core_types::ChatEntryId>,
+) {
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("pinned instructions"));
     let pinned_id = session.history()[0].id.clone();
@@ -95,8 +112,14 @@ fn reset_context_excludes_every_non_pinned_entry() {
         ContextOverride::ForcedExclude,
         "the pinned entry must survive the reset"
     );
-    assert_eq!(history[1].context_override(), ContextOverride::ForcedExclude);
-    assert_eq!(history[2].context_override(), ContextOverride::ForcedExclude);
+    assert_eq!(
+        history[1].context_override(),
+        ContextOverride::ForcedExclude
+    );
+    assert_eq!(
+        history[2].context_override(),
+        ContextOverride::ForcedExclude
+    );
     assert_eq!(history[0].id, pinned_id);
 }
 
@@ -105,7 +128,7 @@ fn reset_context_excludes_every_non_pinned_entry() {
 fn reset_context_is_idempotent() {
     // Given a session whose context has already been reset once.
     let (mut session, _pinned, _unpinned) = session_with_pins();
-    reset_context(&mut session);
+    let _changed = reset_context(&mut session);
 
     // When the context is reset again.
     let changed = reset_context(&mut session);
@@ -118,7 +141,7 @@ fn reset_context_is_idempotent() {
 #[test]
 fn continue_activation_prepares_no_entry() {
     // Given a reset attendant with a prior report, switched to continue mode.
-    let mut parent = ChatSessionState::new();
+    let parent = ChatSessionState::new();
     let mut session = ChatSessionState::new_attendant(&parent, true);
     session.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Continue);
     session.append_attendant_report("a finding".to_owned());
@@ -134,7 +157,7 @@ fn continue_activation_prepares_no_entry() {
 #[test]
 fn reset_run_seeds_through_the_template_with_the_prior_report() {
     // Given a reset attendant that reported once.
-    let mut parent = ChatSessionState::new();
+    let parent = ChatSessionState::new();
     let mut session = ChatSessionState::new_attendant(&parent, true);
     session.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
     session.append_attendant_report("the tests were actually passing".to_owned());
@@ -268,13 +291,10 @@ async fn succeeded_parent_turn_fires_its_triggered_attendant() {
             outcome: jinn_session_msg::TurnOutcome::Succeeded,
         })
         .await;
-    let dispatches =
-        jinn_testutil::bus_harness::await_recorded::<jinn_chat_input_msg::EnqueueUserMessage>(
-            &dispatched,
-            1,
-            std::time::Duration::from_secs(10),
-        )
-        .await;
+    let dispatches = jinn_testutil::bus_harness::await_recorded::<
+        jinn_chat_input_msg::EnqueueUserMessage,
+    >(&dispatched, 1, std::time::Duration::from_secs(10))
+    .await;
 
     // Then exactly one dispatch went to the attendant, seeded through the
     // template with the prior report.

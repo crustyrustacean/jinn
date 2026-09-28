@@ -32,7 +32,13 @@ pub struct AttendantTriggerActor {
 }
 
 impl ServiceActor for AttendantTriggerActor {
-    async fn start(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "ServiceActor::start is async by trait contract"
+    )]
+    async fn start(
+        _args: &trouper::json::Json,
+    ) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the deps via `start_with`
         // (Services carries typed handles that cannot ride JSON args).
         Err(error_stack::Report::new(RegistryError::InvalidSpec)
@@ -131,7 +137,10 @@ impl AttendantTriggerActor {
     /// order is irrelevant — this is why an attendant created after its
     /// parent finished still shows up the *next* time the parent completes,
     /// and why nothing fires for it in between.
-    fn attendants_of(&self, parent: &jinn_core_types::SessionId) -> Vec<jinn_core_types::SessionId> {
+    fn attendants_of(
+        &self,
+        parent: &jinn_core_types::SessionId,
+    ) -> Vec<jinn_core_types::SessionId> {
         {
             let state = self.state.read();
             state
@@ -164,9 +173,7 @@ impl AttendantTriggerActor {
     fn fire(&self, attendant_id: &jinn_core_types::SessionId) -> Option<Fired> {
         {
             let mut state = self.state.write();
-            let Some(session) = state.session.get_mut(attendant_id) else {
-                return None;
-            };
+            let session = state.session.get_mut(attendant_id)?;
             if !session.attendant_activation().is_dispatchable() {
                 return None;
             }

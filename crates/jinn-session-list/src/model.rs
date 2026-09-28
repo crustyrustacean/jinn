@@ -36,6 +36,8 @@ pub struct SessionEntry {
     pub is_last_child: bool,
     /// Whether this session is a task-tool subagent.
     pub is_subagent: bool,
+    /// Whether this session is an attendant of another session.
+    pub is_attendant: bool,
     /// Whether the session currently owns a live interactive terminal.
     pub has_live_term: bool,
     /// Whether a disposal operation for this session has been dispatched and

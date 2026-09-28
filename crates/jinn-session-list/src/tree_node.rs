@@ -37,6 +37,7 @@ pub fn visible_session_at(
             ancestor_continuations: vec![],
             is_last_child: false,
             is_subagent: false,
+            is_attendant: false,
             has_live_term: false,
             is_in_flight: false,
         })

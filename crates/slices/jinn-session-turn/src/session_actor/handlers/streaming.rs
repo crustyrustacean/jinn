@@ -68,6 +68,10 @@ impl SessionPersistenceActor {
     /// in-actor follow-up work without a second derivation. Currently a
     /// log-only sink; the attendant slice runs its own subscriber for the
     /// re-run trigger.
+    #[expect(
+        clippy::unused_async,
+        reason = "handler keeps the actor-method signature used by the subscription table"
+    )]
     pub(in crate::session_actor) async fn on_turn_completed(&self, event: &TurnCompleted) {
         tracing::debug!(
             session_id = %event.session_id,
@@ -147,25 +151,24 @@ impl SessionPersistenceActor {
         // `Idle → Idle` cancel race resolves to `Canceled` — the user
         // already ended the turn before this completion landed, and a
         // turn the user cancelled must never look like a success.
-        let outcome: Option<TurnOutcome> =
-            if state_change.old_phase == PhaseKind::Idle
-                && state_change.new_phase == PhaseKind::Idle
-            {
-                Some(TurnOutcome::Canceled)
-            } else if state_change.new_phase != PhaseKind::Idle {
-                // Still busy (tool loop). Not a turn end.
-                None
-            } else {
-                let last_entry = self.state.with_session(|view| {
-                    view.session
-                        .map()
-                        .get_or_create(&event.session_id)
-                        .history()
-                        .last()
-                        .cloned()
-                });
-                Some(outcome_from_history(last_entry))
-            };
+        let outcome: Option<TurnOutcome> = if state_change.old_phase == PhaseKind::Idle
+            && state_change.new_phase == PhaseKind::Idle
+        {
+            Some(TurnOutcome::Canceled)
+        } else if state_change.new_phase != PhaseKind::Idle {
+            // Still busy (tool loop). Not a turn end.
+            None
+        } else {
+            let last_entry = self.state.with_session(|view| {
+                view.session
+                    .map()
+                    .get_or_create(&event.session_id)
+                    .history()
+                    .last()
+                    .cloned()
+            });
+            Some(outcome_from_history(last_entry))
+        };
         if let Some(outcome) = outcome {
             // The automation marker is deliberately NOT cleared here. It has
             // to still be readable when the trigger actor sees this event,
@@ -2477,7 +2480,10 @@ mod tests {
         // Then exactly one TurnCompleted is published, as Succeeded.
         let completions = audit.of_type::<jinn_session_msg::TurnCompleted>();
         assert_eq!(completions.len(), 1, "one event per dispatched turn");
-        assert_eq!(completions[0].outcome, jinn_session_msg::TurnOutcome::Succeeded);
+        assert_eq!(
+            completions[0].outcome,
+            jinn_session_msg::TurnOutcome::Succeeded
+        );
     }
 
     #[rstest::rstest]
@@ -2539,7 +2545,10 @@ mod tests {
         // entry applied before derivation resolves it.
         let completions = audit.of_type::<jinn_session_msg::TurnCompleted>();
         assert_eq!(completions.len(), 1);
-        assert_eq!(completions[0].outcome, jinn_session_msg::TurnOutcome::Canceled);
+        assert_eq!(
+            completions[0].outcome,
+            jinn_session_msg::TurnOutcome::Canceled
+        );
     }
 
     #[rstest::rstest]
@@ -2569,7 +2578,9 @@ mod tests {
         // Then no TurnCompleted is published — the tool loop continues, and
         // the turn has not ended.
         assert!(
-            audit.of_type::<jinn_session_msg::TurnCompleted>().is_empty(),
+            audit
+                .of_type::<jinn_session_msg::TurnCompleted>()
+                .is_empty(),
             "a ToolUse completion is not a turn end"
         );
     }
@@ -2602,6 +2613,9 @@ mod tests {
         // user cancelled must never look like a success.
         let completions = audit.of_type::<jinn_session_msg::TurnCompleted>();
         assert_eq!(completions.len(), 1);
-        assert_eq!(completions[0].outcome, jinn_session_msg::TurnOutcome::Canceled);
+        assert_eq!(
+            completions[0].outcome,
+            jinn_session_msg::TurnOutcome::Canceled
+        );
     }
 }

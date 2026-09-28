@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod tests {
+mod attendant_msg_tests {
     #![allow(clippy::unwrap_used, reason = "test code")]
 
     use jiff::Timestamp;

@@ -3251,7 +3251,7 @@ async fn attendant_fields_round_trip_through_save_and_load() {
 
     // Then every attendant field is preserved.
     let metadata = &snapshot.metadata;
-    assert!(metadata.origin == jinn_session_msg::SessionOrigin::Attendant);
+    assert_eq!(metadata.origin, jinn_session_msg::SessionOrigin::Attendant);
     assert_eq!(
         metadata.activation,
         jinn_attendant_msg::AttendantActivation::Reset

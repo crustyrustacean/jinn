@@ -1,0 +1,272 @@
+//! The Attendants sidebar section — sessions watching another session.
+//!
+//! One row per loaded attendant session: line 1 is the session's name (its
+//! identity — an attendant has no separate label), line 2 is the body of its
+//! most recent `report` call. A report that predates the parent's latest
+//! activity renders muted (stale); an attendant that has never reported shows
+//! a distinct marker instead of an empty second line.
+
+use crate::sections::section_trait::{EnterFrom, SectionNavResult, SidebarIntent};
+use jinn_kernel::AppState;
+use jinn_sidebar_msg::AttendantSectionState;
+
+/// The marker an attendant that has never reported shows on line 2.
+pub(crate) const NEVER_REPORTED_MARKER: &str = "· no reports yet";
+
+/// Cursor indicator, matching the other sections' glyph.
+const SELECTED_INDICATOR: &str = "\u{2588}";
+
+/// The unselected cursor column (blank, keeps alignment).
+const UNSELECTED_BORDER: &str = " ";
+
+/// One attendant row: the session id, its display name, and its latest report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AttendantRow {
+    /// The attendant session's id.
+    pub session_id: jinn_core_types::SessionId,
+    /// The session name — the attendant's identity in the UI.
+    pub name: String,
+    /// The most recent report body, if the attendant has ever reported.
+    pub latest_report: Option<String>,
+    /// Whether the latest report predates the parent's latest activity.
+    pub is_stale: bool,
+}
+
+/// Every loaded attendant, sorted by name, with report and staleness data.
+///
+/// Staleness: a report is stale when the parent session has been interacted
+/// (resumed) after the report was published. The comparison is per-attendant,
+/// so one attendant's fresh report never clears a sibling's stale one.
+pub(crate) fn attendant_rows(state: &AppState) -> Vec<AttendantRow> {
+    let mut rows: Vec<AttendantRow> = state
+        .session
+        .iter()
+        .filter(|(_, session)| {
+            session.is_attendant()
+                && session.session_state() == jinn_session_store_msg::SessionState::Loaded
+        })
+        .map(|(id, attendant)| {
+            let latest = attendant.latest_attendant_report();
+            // A report is stale when the parent has produced history since
+            // the report was published — that is the parent resuming work.
+            // The comparison is per-attendant, so one attendant's fresh
+            // report never clears a sibling's stale one.
+            let parent_activity = attendant
+                .parent_session()
+                .as_ref()
+                .and_then(|parent_id| state.session.get(parent_id))
+                .map(|parent| *parent.last_history_activity_at());
+            let is_stale = match (latest, parent_activity) {
+                (Some(report), Some(activity)) => report.published_at < activity,
+                _ => false,
+            };
+            AttendantRow {
+                session_id: id.clone(),
+                name: attendant.title().unwrap_or("Untitled Session").to_owned(),
+                latest_report: latest.map(|report| report.body.clone()),
+                is_stale,
+            }
+        })
+        .collect();
+    rows.sort_by(|a, b| a.name.cmp(&b.name));
+    rows
+}
+
+/// Whether the section has any rows — an empty section collapses.
+pub(crate) fn has_content(state: &AppState) -> bool {
+    !attendant_rows(state).is_empty()
+}
+
+/// The section's rendered row count (rows + header + separator).
+pub(crate) fn rows(state: &AppState) -> u16 {
+    if !has_content(state) {
+        return 0;
+    }
+    // Header + blank separator + one line per attendant + one report line
+    // per attendant.
+    let count = attendant_rows(state).len() as u16;
+    2u16.saturating_add(count.saturating_mul(2))
+}
+
+/// The cursor row relative to the section's first rendered row.
+pub(crate) fn cursor_row(state: &AppState) -> Option<u16> {
+    let index = selected_index(state)?;
+    let row = attendant_rows(state).get(index).map_or(0, row_index_of);
+    Some(2u16.saturating_add(row))
+}
+
+/// The section-relative row of one attendant's first line.
+fn row_index_of(_row: &AttendantRow) -> u16 {
+    0
+}
+
+fn selected_index(state: &AppState) -> Option<usize> {
+    state.frontend.with_sections(
+        |sections: &jinn_sidebar_msg::SidebarSections| sections.attendant.selected_index,
+        || None,
+    )
+}
+
+/// Place the cursor on this section from a given direction.
+pub(crate) fn receive_cursor(state: &mut AppState, enter_from: EnterFrom) {
+    let count = attendant_rows(state).len();
+    if count == 0 {
+        return;
+    }
+    let index = match enter_from {
+        EnterFrom::Top => 0,
+        EnterFrom::Bottom => count - 1,
+    };
+    state
+        .frontend
+        .update_sections(|s: &mut jinn_sidebar_msg::SidebarSections| {
+            s.attendant = AttendantSectionState {
+                selected_index: Some(index),
+            };
+        });
+}
+
+/// Navigate the section's cursor, reporting exhaustion at the edges.
+pub(crate) fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResult {
+    let count = attendant_rows(state).len();
+    if count == 0 {
+        return SectionNavResult::Exhausted;
+    }
+    let max_index = count - 1;
+    let current = selected_index(state).unwrap_or(0);
+    match intent {
+        SidebarIntent::MoveDown => {
+            if current >= max_index {
+                SectionNavResult::Exhausted
+            } else {
+                state
+                    .frontend
+                    .update_sections(|s| s.attendant.selected_index = Some(current + 1));
+                SectionNavResult::Moved
+            }
+        }
+        SidebarIntent::MoveUp => {
+            if current == 0 {
+                SectionNavResult::Exhausted
+            } else {
+                state
+                    .frontend
+                    .update_sections(|s| s.attendant.selected_index = Some(current - 1));
+                SectionNavResult::Moved
+            }
+        }
+        SidebarIntent::Action(_) => SectionNavResult::Moved,
+    }
+}
+
+/// The Attendants sidebar section.
+///
+/// Renders a header, then two lines per attendant: the session name (the
+/// attendant's identity — there is no separate label), then the latest
+/// report body, muted when stale, or a never-reported marker.
+#[derive(Debug)]
+pub struct AttendantsSection;
+
+impl crate::sections::section_trait::SidebarSection for AttendantsSection {
+    fn id(&self) -> jinn_sidebar_msg::SidebarSectionId {
+        jinn_sidebar_msg::SidebarSectionId::Attendant
+    }
+
+    fn render(
+        &mut self,
+        frame: &mut ratatui::Frame<'_>,
+        area: ratatui::layout::Rect,
+        skip_rows: u16,
+        ctx: &dyn jinn_slices::DrawContext<jinn_kernel::common::app_state::AppState>,
+    ) {
+        use ratatui::style::{Modifier, Style};
+        use ratatui::text::{Line, Span};
+        use ratatui::widgets::{Block, Paragraph};
+
+        let state = ctx.state();
+        let sidebar_focused = state.frontend.is_sidebar();
+        let section_focused = sidebar_focused
+            && state.frontend.sidebar_section()
+                == Some(jinn_sidebar_msg::SidebarSectionId::Attendant);
+        let cursor = selected_index(state);
+        let theme = &state.frontend.theme;
+
+        let indicator_color = if sidebar_focused {
+            theme.focus_accent
+        } else {
+            theme.border_unfocused
+        };
+
+        let mut lines = Vec::new();
+        lines.push(Line::from(vec![Span::styled(
+            " Attendants",
+            Style::default()
+                .fg(theme.primary_text)
+                .add_modifier(Modifier::BOLD),
+        )]));
+        lines.push(Line::from(""));
+
+        for (index, row) in attendant_rows(state).into_iter().enumerate() {
+            let is_selected = section_focused && cursor == Some(index);
+            let indicator = if is_selected {
+                Span::styled(SELECTED_INDICATOR, Style::default().fg(indicator_color))
+            } else {
+                Span::raw(UNSELECTED_BORDER)
+            };
+            let name_style = if is_selected {
+                Style::default()
+                    .fg(theme.attendant_fg)
+                    .add_modifier(Modifier::REVERSED)
+            } else {
+                Style::default().fg(theme.attendant_fg)
+            };
+            lines.push(Line::from(vec![
+                indicator,
+                Span::styled(format!(" {}", row.name), name_style),
+            ]));
+
+            let report_line = match &row.latest_report {
+                Some(body) => {
+                    let style = if row.is_stale {
+                        Style::default().fg(theme.muted_text)
+                    } else {
+                        Style::default().fg(theme.primary_text)
+                    };
+                    Span::styled(truncate_report(body), style)
+                }
+                None => Span::styled(NEVER_REPORTED_MARKER, Style::default().fg(theme.dormant_fg)),
+            };
+            lines.push(Line::from(vec![Span::raw("   "), report_line]));
+        }
+
+        let widget = Paragraph::new(lines)
+            .block(Block::default().borders(ratatui::widgets::Borders::NONE))
+            .scroll((skip_rows, 0));
+        frame.render_widget(widget, area);
+    }
+
+    fn content_height(
+        &mut self,
+        ctx: &dyn jinn_slices::DrawContext<jinn_kernel::common::app_state::AppState>,
+    ) -> u16 {
+        let state = ctx.state();
+        if !has_content(state) {
+            return 0;
+        }
+        // header(1) + blank(1) + two lines per attendant + trailing gap(1).
+        let count = u16::try_from(attendant_rows(state).len()).unwrap_or(u16::MAX);
+        count.saturating_mul(2).saturating_add(3)
+    }
+}
+
+/// Truncates a report body to one display line.
+fn truncate_report(body: &str) -> String {
+    const MAX: usize = 48;
+    let first_line = body.lines().next().unwrap_or("");
+    if first_line.chars().count() <= MAX {
+        return first_line.to_owned();
+    }
+    let mut cut: String = first_line.chars().take(MAX.saturating_sub(1)).collect();
+    cut.push('…');
+    cut
+}

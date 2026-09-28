@@ -10,9 +10,7 @@ use jinn_common::app_paths::AppPaths;
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::ToolCall;
 use jinn_kernel::common::app_state::AppState;
-use jinn_kernel::common::bus::HarnessServices;
 use jinn_kernel::common::state::State;
-use jinn_session_msg::SessionOrigin;
 use jinn_session_state::ChatSessionState;
 use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 
@@ -32,7 +30,6 @@ fn call(name: &str, arguments: &str) -> ToolCall {
 
 /// Builds a tool context wired to the harness bus and shared state.
 async fn ctx(harness: &TestHarness, state: &State, session_id: SessionId) -> ToolContext {
-    let services = harness.services().await;
     ToolContext {
         cwd: std::path::PathBuf::from("/tmp"),
         command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
@@ -58,7 +55,7 @@ fn attendant_fixture() -> (State, SessionId, SessionId) {
     let state = State::new(AppState::default_with_scope_focus());
     let parent = ChatSessionState::new();
     let parent_id = parent.session_id().clone();
-    let mut attendant = ChatSessionState::new_attendant(&parent, true);
+    let attendant = ChatSessionState::new_attendant(&parent, true);
     let attendant_id = attendant.session_id().clone();
     {
         let mut guard = state.write();
@@ -68,6 +65,7 @@ fn attendant_fixture() -> (State, SessionId, SessionId) {
     (state, attendant_id, parent_id)
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn report_appends_to_the_callers_own_log() {
     // Given an attendant session.
@@ -91,6 +89,7 @@ async fn report_appends_to_the_callers_own_log() {
     assert_eq!(session.attendant_reports()[0].run, 1);
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn report_does_not_wake_the_parent() {
     // Given an attendant with a live parent, on a bus with a recorder for
@@ -109,6 +108,7 @@ async fn report_does_not_wake_the_parent() {
     assert!(enqueues.is_empty(), "report must not wake any session");
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn report_persists_the_session() {
     // Given an attendant on a bus with a recorder for the persist command.
@@ -134,6 +134,7 @@ async fn report_persists_the_session() {
     assert_eq!(persisted[0].session_id, attendant_id);
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn notify_parent_enqueues_a_user_message_into_the_parent() {
     // Given an attendant with a live parent.
@@ -143,14 +144,15 @@ async fn notify_parent_enqueues_a_user_message_into_the_parent() {
     let tool_ctx = ctx(&harness, &state, attendant_id).await;
 
     // When the notify tool runs.
-    let result =
-        notify_parent_execute(call("notify_parent", r#"{"message":"look at this"}"#), tool_ctx)
-            .await;
+    let result = notify_parent_execute(
+        call("notify_parent", r#"{"message":"look at this"}"#),
+        tool_ctx,
+    )
+    .await;
 
     // Then the parent receives a User-kind enqueue.
     assert!(result.success, "notify must succeed: {}", result.content);
-    let wakes =
-        await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
+    let wakes = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
     assert_eq!(wakes.len(), 1);
     assert_eq!(wakes[0].session_id, parent_id);
     let jinn_core_types::chat_entry::ChatEntryKind::User { display, .. } = &wakes[0].entry.kind
@@ -160,6 +162,7 @@ async fn notify_parent_enqueues_a_user_message_into_the_parent() {
     assert_eq!(display, "look at this");
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn notify_parent_marks_the_parent_interacted_and_automated() {
     // Given an attendant with a ParentCompleted trigger and a fresh parent.
@@ -187,9 +190,13 @@ async fn notify_parent_marks_the_parent_interacted_and_automated() {
     let guard = state.read();
     let parent = guard.session.get(&parent_id).expect("parent");
     assert!(parent.has_interacted(), "parent must be persistable");
-    assert!(parent.is_turn_automated(), "parent's turn must be automated");
+    assert!(
+        parent.is_turn_automated(),
+        "parent's turn must be automated"
+    );
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn notify_parent_fails_for_a_non_attendant() {
     // Given a plain user session (no parent link).
@@ -214,6 +221,7 @@ async fn notify_parent_fails_for_a_non_attendant() {
     assert!(enqueues.is_empty());
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn neither_tool_exposes_a_read_path_for_reports() {
     // Given the two tools' definitions.
@@ -237,6 +245,7 @@ async fn neither_tool_exposes_a_read_path_for_reports() {
     assert_eq!(names, vec!["body".to_owned(), "message".to_owned()]);
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn report_fails_cleanly_with_a_missing_body() {
     // Given an attendant and a call whose arguments lack `body`.

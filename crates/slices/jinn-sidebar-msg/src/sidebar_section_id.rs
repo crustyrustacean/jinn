@@ -9,6 +9,9 @@ pub enum SidebarSectionId {
     Pins,
     /// The active persona display section.
     Persona,
+    /// The attendants section: sessions watching a parent, with their
+    /// latest reports.
+    Attendant,
     /// The task list section (collapsible phases, expandable when focused).
     TaskList,
     /// The open sessions section.
@@ -22,6 +25,7 @@ impl std::fmt::Display for SidebarSectionId {
         match self {
             Self::Pins => write!(f, "Pins"),
             Self::Persona => write!(f, "Persona"),
+            Self::Attendant => write!(f, "Attendants"),
             Self::TaskList => write!(f, "TaskList"),
             Self::Sessions => write!(f, "Sessions"),
             Self::McpServers => write!(f, "McpServers"),
@@ -45,6 +49,7 @@ impl SidebarSectionId {
         match name {
             "pins" => Some(Self::Pins),
             "persona" => Some(Self::Persona),
+            "attendants" => Some(Self::Attendant),
             "task-list" => Some(Self::TaskList),
             "sessions" => Some(Self::Sessions),
             "mcp-servers" => Some(Self::McpServers),
@@ -62,6 +67,7 @@ impl SidebarSectionId {
             match self {
                 Self::Pins => "pins",
                 Self::Persona => "persona",
+                Self::Attendant => "attendants",
                 Self::TaskList => "task-list",
                 Self::Sessions => "sessions",
                 Self::McpServers => "mcp-servers",

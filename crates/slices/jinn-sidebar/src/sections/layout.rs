@@ -227,9 +227,10 @@ pub fn sessions_rows(state: &AppState) -> u16 {
 /// The `SidebarSectionId` enum declares a different order; this list is
 /// authoritative because `Sidebar` stores sections in registration order and
 /// renders them top-down. Sessions must stay last — it is the document tail.
-pub const REGISTRATION_ORDER: [SidebarSectionId; 5] = [
+pub const REGISTRATION_ORDER: [SidebarSectionId; 6] = [
     SidebarSectionId::Persona,
     SidebarSectionId::Pins,
+    SidebarSectionId::Attendant,
     SidebarSectionId::TaskList,
     SidebarSectionId::McpServers,
     SidebarSectionId::Sessions,
@@ -241,6 +242,7 @@ pub fn content_height_of(state: &AppState, config: &ConfigLayer, id: SidebarSect
     match id {
         SidebarSectionId::Persona => persona_rows(state),
         SidebarSectionId::Pins => pins_rows(state),
+        SidebarSectionId::Attendant => super::attendants_section::rows(state),
         SidebarSectionId::TaskList => task_list_rows(state),
         SidebarSectionId::McpServers => mcp_servers_rows(state, config),
         SidebarSectionId::Sessions => sessions_rows(state),
@@ -365,6 +367,7 @@ pub fn cursor_row_in_section(state: &AppState, id: SidebarSectionId) -> Option<u
     match id {
         SidebarSectionId::Persona => persona_cursor_row(state),
         SidebarSectionId::Pins => pins_cursor_row(state),
+        SidebarSectionId::Attendant => super::attendants_section::cursor_row(state),
         SidebarSectionId::TaskList => task_list_cursor_row(state),
         SidebarSectionId::McpServers => mcp_servers_cursor_row(state),
         SidebarSectionId::Sessions => sessions_cursor_row(state),

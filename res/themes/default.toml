@@ -13,6 +13,8 @@ primary_text = [220, 220, 220]
 muted_text = [116, 116, 116]
 subagent_fg = [152, 128, 208]
 subagent_bg = [70, 58, 105]
+attendant_fg = [208, 168, 96]
+attendant_bg = [96, 76, 44]
 error_text = "red"
 dormant_fg = [140, 140, 140]
 

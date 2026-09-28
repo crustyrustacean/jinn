@@ -411,13 +411,24 @@ impl ChatSessionState {
             let attendant_core = &mut attendant.core;
             attendant_core.identity.parent_session = Some(parent.core.identity.session_id.clone());
             attendant_core.identity.origin = SessionOrigin::Attendant;
-            attendant_core.identity.project = parent.core.identity.project.clone();
+            attendant_core
+                .identity
+                .project
+                .clone_from(&parent.core.identity.project);
             attendant_core.storage.persist = persist;
             attendant_core.integrations.profile = parent.core.integrations.profile.clone();
-            attendant_core.lifecycle.cwd = parent.core.lifecycle.cwd.clone();
-            attendant_core.lifecycle.home = parent.core.lifecycle.home.clone();
-            attendant_core.integrations.enabled_mcp_servers =
-                parent.core.integrations.enabled_mcp_servers.clone();
+            attendant_core
+                .lifecycle
+                .cwd
+                .clone_from(&parent.core.lifecycle.cwd);
+            attendant_core
+                .lifecycle
+                .home
+                .clone_from(&parent.core.lifecycle.home);
+            attendant_core
+                .integrations
+                .enabled_mcp_servers
+                .clone_from(&parent.core.integrations.enabled_mcp_servers);
             attendant
         }
     }
@@ -471,17 +482,15 @@ impl ChatSessionState {
     ///
     /// Append-only by design: the harness never removes or edits a report,
     /// and the next run is seeded from the most recent entry.
-    pub fn append_attendant_report(&mut self, body: String) -> &AttendantReport {
-        {
-            let reports = &mut self.core.attendant.reports;
-            let report = AttendantReport {
-                run: reports.len() + 1,
-                published_at: Timestamp::now(),
-                body,
-            };
-            reports.push(report);
-            reports.last().expect("just pushed")
-        }
+    pub fn append_attendant_report(&mut self, body: String) -> AttendantReport {
+        let reports = &mut self.core.attendant.reports;
+        let report = AttendantReport {
+            run: reports.len() + 1,
+            published_at: Timestamp::now(),
+            body,
+        };
+        reports.push(report.clone());
+        report
     }
 
     /// The most recent report, if this attendant has ever reported.

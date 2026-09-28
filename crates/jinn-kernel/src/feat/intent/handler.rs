@@ -520,8 +520,13 @@ fn try_handle_cancel_stream_prompt(
     let registry = state.task_spawns.clone();
     let mut visited = std::collections::HashSet::new();
     visited.insert(state.session.active_session_id().clone());
-    result = cascade_descendants(state, state.session.active_session_id(), &registry, &mut visited)
-        .merge(result);
+    result = cascade_descendants(
+        state,
+        state.session.active_session_id(),
+        &registry,
+        &mut visited,
+    )
+    .merge(result);
 
     Some(result)
 }
@@ -566,8 +571,10 @@ fn cascade_descendants(
             // The child's result is only valid in the context of the parent
             // turn that asked the question — stop it and follow its own
             // subtree.
-            Some(jinn_session_msg::SessionOrigin::Subagent)
-            | Some(jinn_session_msg::SessionOrigin::Attendant) => {
+            Some(
+                jinn_session_msg::SessionOrigin::Subagent
+                | jinn_session_msg::SessionOrigin::Attendant,
+            ) => {
                 result = result
                     .with_message(jinn_inference_msg::CancelStream {
                         session_id: child_id.clone(),
@@ -575,10 +582,11 @@ fn cascade_descendants(
                     .merge(cascade_descendants(state, &child_id, registry, visited));
             }
             // A fork is an independent thread: its own descendants are out
-            // of scope. The walk stops here, deliberately.
-            Some(jinn_session_msg::SessionOrigin::Fork) => {}
-            // A user-created child is not the cancel's to stop.
-            Some(jinn_session_msg::SessionOrigin::User) | None => {}
+            // of scope. The walk stops here, deliberately. A user-created
+            // child is not the cancel's to stop either.
+            None
+            | Some(jinn_session_msg::SessionOrigin::Fork | jinn_session_msg::SessionOrigin::User) =>
+                {}
         }
     }
 
@@ -1627,7 +1635,7 @@ mod tests {
     /// Links `child` under `parent` with the given origin and inserts both.
     fn link_child(state: &mut AppState, parent_id: &SessionId, origin: SessionOrigin) -> SessionId {
         let parent = state.session.get(parent_id).expect("parent").clone();
-        let mut child = match origin {
+        let child = match origin {
             SessionOrigin::Attendant => ChatSessionState::new_attendant(&parent, false),
             _ => {
                 let mut child = ChatSessionState::new_child(parent_id, false);
@@ -1647,7 +1655,7 @@ mod tests {
         let mut state = AppState::default_with_scope_focus();
         let parent_id = state.session.active_session_id().clone();
         let subagent = link_child(&mut state, &parent_id, SessionOrigin::Subagent);
-        let attendant = link_child(&mut state, &parent_id, SessionOrigin::Attendant);
+        let _attendant = link_child(&mut state, &parent_id, SessionOrigin::Attendant);
         state
             .task_spawns
             .register(parent_id.clone(), subagent.clone());
@@ -1706,7 +1714,9 @@ mod tests {
         let root_id = state.session.active_session_id().clone();
         let fork = link_child(&mut state, &root_id, SessionOrigin::Fork);
         let fork_subagent = link_child(&mut state, &fork, SessionOrigin::Subagent);
-        state.task_spawns.register(fork.clone(), fork_subagent.clone());
+        state
+            .task_spawns
+            .register(fork.clone(), fork_subagent.clone());
 
         // When the confirmed cancel runs at the root.
         let _result = confirmed_cancel(&mut state);

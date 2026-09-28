@@ -1,8 +1,8 @@
 //! Preparing an attendant's context and dispatching its run.
 
-use jinn_attendant_msg::{PRIOR_REPORT_PLACEHOLDER, AttendantActivation};
-use jinn_core_types::chat_entry::ChatEntry;
+use jinn_attendant_msg::{AttendantActivation, PRIOR_REPORT_PLACEHOLDER};
 use jinn_core_types::ContextOverride;
+use jinn_core_types::chat_entry::ChatEntry;
 use jinn_session_state::ChatSessionState;
 
 /// Builds the seed text for a run, from the seed template and the prior report.

@@ -1,6 +1,6 @@
 //! Tests for the manual rerun action.
 
-#![allow(clippy::expect_used, reason = "test code")]
+#![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
 use jinn_attendant_msg::AttendantActivation;
 use jinn_kernel::common::app_state::AppState;
@@ -69,7 +69,10 @@ fn rerun_on_a_busy_attendant_cancels_its_own_turn_only() {
     // And the session phase was observed, not mutated — the cancel is a
     // bus command the session actor applies.
     let guard = state.read();
-    assert_eq!(guard.session.get(&id).expect("attendant").phase(), PhaseKind::Streaming);
+    assert_eq!(
+        guard.session.get(&id).expect("attendant").phase(),
+        PhaseKind::Streaming
+    );
 }
 
 #[rstest::rstest]

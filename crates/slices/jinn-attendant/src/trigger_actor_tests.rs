@@ -3,6 +3,7 @@
 #![allow(
     clippy::expect_used,
     clippy::unwrap_used,
+    clippy::indexing_slicing,
     reason = "test code"
 )]
 
@@ -46,6 +47,7 @@ impl TriggerBusActor {
     }
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn trigger_actor_receives_turn_completed_through_the_bus() {
     // Given the trigger actor spawned on a test bus with a recorder listening
@@ -72,6 +74,7 @@ async fn trigger_actor_receives_turn_completed_through_the_bus() {
     assert_eq!(events[0].session_id, session_id);
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn trigger_actor_is_reachable_at_its_static_path() {
     // Given a harness with the trigger actor spawned.
