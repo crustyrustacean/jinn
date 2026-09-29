@@ -5,7 +5,7 @@ use jinn_chat_input_msg::EnqueueUserMessage;
 use jinn_inference_msg::CancelStream;
 use jinn_kernel::Services;
 use jinn_kernel::common::state::State;
-use jinn_session_msg::{PhaseKind, TurnCompleted, TurnOutcome};
+use jinn_session_msg::{TurnCompleted, TurnOutcome};
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
@@ -224,9 +224,22 @@ impl AttendantTriggerActor {
                 return None;
             }
 
-            let cancel = (session.phase() != PhaseKind::Idle).then(|| CancelStream {
-                session_id: attendant_id.clone(),
-            });
+            // A busy attendant is NOT superseded by a trigger: its in-flight
+            // turn is real work the user is waiting on, and nothing in a
+            // parent-completed fire asks for it to be thrown away. The
+            // enqueue handler queues anything arriving while a session is
+            // Sending/Streaming, so the seeded entry below waits its turn and
+            // runs when the current one finishes.
+            //
+            // Publishing `CancelStream` here instead produced two visible
+            // faults: the running turn was aborted, leaving a "Cancelled"
+            // entry in the attendant's history, and the seeded turn sat in the
+            // queue where a later cancel drained it into the input box as a
+            // templated draft the user never sent.
+            //
+            // `R` is the opposite case and does cancel: there the user asked
+            // for this question to be asked again.
+            let cancel: Option<CancelStream> = None;
 
             // A trigger respects the mode: it seeds for `Seed`/`Reset` and
             // carries the existing context for `Preserve`, so an unattended

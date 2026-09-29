@@ -10,6 +10,7 @@
 use jinn_attendant_msg::{NO_PRIOR_REPORT_TEXT, PRIOR_REPORT_PLACEHOLDER, default_seed_template};
 use jinn_core_types::chat_entry::ChatEntry;
 use jinn_core_types::{ContextOverride, PinPosition};
+use jinn_kernel::common::actor_deps::ActorDeps;
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::bus::HarnessServices;
 use jinn_kernel::common::state::State;
@@ -816,5 +817,317 @@ async fn a_cyclic_parent_link_does_not_hang_the_trigger_walk() {
         seen.iter().filter(|id| **id == first_id).count(),
         1,
         "a cyclic parent link must not fire an attendant twice; dispatched to {seen:?}"
+    );
+}
+
+/// Builds state plus a live session-turn actor, so an `EnqueueUserMessage`
+/// actually lands in a session's history rather than stopping at the bus.
+///
+/// Without the session actor a test can only count published dispatches,
+/// which is exactly the assertion that missed this bug: a dispatch can be
+/// published and still never reach its own session.
+async fn harness_with_session_actor() -> (jinn_testutil::bus_harness::TestHarness, State) {
+    let harness = jinn_testutil::bus_harness::TestHarness::new().await;
+    let state = State::new(AppState::default());
+    let deps = ActorDeps {
+        services: {
+            let mut services =
+                jinn_kernel::common::services::test_services::TestServices::builder()
+                    .paths(jinn_kernel::common::app_paths::AppPaths::new_in(
+                        std::path::Path::new(""),
+                    ))
+                    .build();
+            services.bus = harness.bus();
+            services.trouper_system = harness.system().clone();
+            services
+        },
+    };
+    let system = deps.services.trouper_system.clone();
+    drop(jinn_context_assembly::service::ensure_spawned(&system));
+    jinn_session_turn::activate(
+        &system,
+        jinn_session_turn::session_actor::SessionPersistenceActorDeps {
+            deps,
+            state: state.clone(),
+            counter: jinn_llm_support::token_estimator::TiktokenCounter::o200k_base(),
+            token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
+            image_converter: jinn_llm_support::image_convert::ImageConverterService::system(),
+        },
+    );
+    (harness, state)
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn every_sibling_attendant_lands_its_own_seeded_entry() {
+    // Given a parent watched by five dispatchable parent-completed
+    // attendants, with the session-turn actor live on the same state.
+    let (harness, state) = harness_with_session_actor().await;
+    let landed = harness
+        .spawn_recorder::<jinn_chat_input_msg::ChatEntrySubmitted>()
+        .await;
+    let (parent_id, sibling_ids) = {
+        let mut s = state.write();
+        let parent = ChatSessionState::new();
+        let parent_id = parent.session_id().clone();
+        s.session.insert(parent.clone());
+        let mut ids = Vec::new();
+        for index in 0..5 {
+            let mut attendant = ChatSessionState::new_attendant(&parent, true);
+            attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+            attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+            attendant.set_seed_template(format!("check-{index}: <prior report>"));
+            attendant.append_attendant_report("prior finding".to_owned());
+            ids.push(attendant.session_id().clone());
+            s.session.insert(attendant);
+        }
+        (parent_id, ids)
+    };
+    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+        harness.system(),
+        crate::trigger_actor::AttendantTriggerActorDeps {
+            services: harness.services().await,
+            state: state.clone(),
+        },
+    );
+
+    // When the parent's turn completes successfully.
+    harness
+        .publish(jinn_session_msg::TurnCompleted {
+            session_id: parent_id,
+            outcome: jinn_session_msg::TurnOutcome::Succeeded,
+        })
+        .await;
+
+    let submissions = jinn_testutil::bus_harness::await_recorded::<
+        jinn_chat_input_msg::ChatEntrySubmitted,
+    >(&landed, 5, std::time::Duration::from_secs(15))
+    .await;
+
+    // Then all five seeded entries landed, one per session. A published
+    // dispatch is not a landed entry, and the difference is invisible
+    // everywhere except here: the attendant simply sits idle.
+    let mut got: Vec<String> = submissions
+        .iter()
+        .map(|s| s.session_id.to_string())
+        .collect();
+    got.sort();
+    let mut want: Vec<String> = sibling_ids
+        .iter()
+        .map(jinn_core_types::SessionId::to_string)
+        .collect();
+    want.sort();
+    assert_eq!(
+        got, want,
+        "every attendant must land its own seeded entry, not just the first"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_second_attendant_built_the_way_the_ui_builds_one_still_fires() {
+    // Given two attendants constructed exactly as `N` constructs them —
+    // `new_attendant` and nothing else — with the user having since flipped
+    // the *first* out of seed, but not the second.
+    let (harness, state) = harness_with_session_actor().await;
+    let landed = harness
+        .spawn_recorder::<jinn_chat_input_msg::ChatEntrySubmitted>()
+        .await;
+    let (parent_id, first_id, second_id) = {
+        let mut s = state.write();
+        let parent = ChatSessionState::new();
+        let parent_id = parent.session_id().clone();
+        s.session.insert(parent.clone());
+        let mut first = ChatSessionState::new_attendant(&parent, true);
+        first.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+        // The user configured this one and left seed.
+        first.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        first.set_seed_template("first: <prior report>".to_owned());
+        first.append_attendant_report("prior".to_owned());
+        let first_id = first.session_id().clone();
+        s.session.insert(first);
+        let mut second = ChatSessionState::new_attendant(&parent, true);
+        second.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+        second.set_seed_template("second: <prior report>".to_owned());
+        let second_id = second.session_id().clone();
+        s.session.insert(second);
+        (parent_id, first_id, second_id)
+    };
+    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+        harness.system(),
+        crate::trigger_actor::AttendantTriggerActorDeps {
+            services: harness.services().await,
+            state: state.clone(),
+        },
+    );
+
+    // When the parent's turn completes.
+    harness
+        .publish(jinn_session_msg::TurnCompleted {
+            session_id: parent_id,
+            outcome: jinn_session_msg::TurnOutcome::Succeeded,
+        })
+        .await;
+    let submissions = jinn_testutil::bus_harness::await_recorded::<
+        jinn_chat_input_msg::ChatEntrySubmitted,
+    >(&landed, 1, std::time::Duration::from_secs(10))
+    .await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // Then the configured attendant fired, and the still-seeded one is
+    // reported as *skipped by mode* rather than silently swallowed.
+    let fired: Vec<String> = submissions
+        .iter()
+        .map(|x| x.session_id.to_string())
+        .collect();
+    assert_eq!(
+        fired,
+        vec![first_id.to_string()],
+        "the configured attendant must fire; a seed-mode attendant is inert by design"
+    );
+    // And the seed-mode attendant's inertness is visible, not invisible: it
+    // is reported so the user can see why its peer ran and it did not.
+    let guard = state.read();
+    let second_texts: Vec<String> = guard
+        .session
+        .get(&second_id)
+        .expect("second exists")
+        .history()
+        .iter()
+        .map(|e| e.text().clone())
+        .collect();
+    assert!(
+        second_texts.is_empty(),
+        "a seed-mode attendant must not dispatch: {second_texts:?}"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_trigger_does_not_cancel_an_attendant_that_is_already_running() {
+    // Given a Streaming parent-completed attendant.
+    let harness = jinn_testutil::bus_harness::TestHarness::new().await;
+    let state = State::new(AppState::default());
+    let (attendant_id, parent_id) = {
+        let mut s = state.write();
+        let parent = ChatSessionState::new();
+        let parent_id = parent.session_id().clone();
+        s.session.insert(parent.clone());
+        let mut attendant = ChatSessionState::new_attendant(&parent, true);
+        attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        attendant.set_seed_template("seeded: <prior report>".to_owned());
+        attendant.append_attendant_report("prior".to_owned());
+        let id = attendant.session_id().clone();
+        s.session.insert(attendant);
+        {
+            let session = s.session.get_mut(&id).expect("just inserted");
+            session.push_entry(ChatEntry::user("in flight"));
+            session.begin_streaming();
+        }
+        (id, parent_id)
+    };
+    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+        harness.system(),
+        crate::trigger_actor::AttendantTriggerActorDeps {
+            services: harness.services().await,
+            state: state.clone(),
+        },
+    );
+
+    // When the parent's turn completes and the trigger fires the busy
+    // attendant.
+    harness
+        .publish(jinn_session_msg::TurnCompleted {
+            session_id: parent_id,
+            outcome: jinn_session_msg::TurnOutcome::Succeeded,
+        })
+        .await;
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+
+    // Then the running turn is untouched. A trigger answers a parent's
+    // completion; it is not a user asking for this work to be abandoned, so
+    // it has no business cancelling a turn already in flight.
+    let guard = state.read();
+    let session = guard.session.get(&attendant_id).expect("exists");
+    assert_eq!(
+        session.phase(),
+        jinn_session_msg::PhaseKind::Streaming,
+        "a trigger must not cancel an attendant that is already running"
+    );
+    // And the running turn is not recorded as cancelled.
+    let texts: Vec<String> = session.history().iter().map(|e| e.text().clone()).collect();
+    assert!(
+        !texts.iter().any(|t| t == "Cancelled"),
+        "a superseded turn must not leave a Cancelled entry behind: {texts:?}"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_trigger_on_a_busy_attendant_queues_its_seeded_turn_for_after_the_current_one() {
+    // Given a Streaming parent-completed attendant, with the session-turn
+    // actor live so the enqueue is handled the way it is in production.
+    let (harness, state) = harness_with_session_actor().await;
+    let (attendant_id, parent_id) = {
+        let mut s = state.write();
+        let parent = ChatSessionState::new();
+        let parent_id = parent.session_id().clone();
+        s.session.insert(parent.clone());
+        let mut attendant = ChatSessionState::new_attendant(&parent, true);
+        attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        attendant.set_seed_template("seeded: <prior report>".to_owned());
+        attendant.append_attendant_report("prior".to_owned());
+        let id = attendant.session_id().clone();
+        s.session.insert(attendant);
+        {
+            let session = s.session.get_mut(&id).expect("just inserted");
+            session.push_entry(ChatEntry::user("in flight"));
+            session.begin_streaming();
+        }
+        (id, parent_id)
+    };
+    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+        harness.system(),
+        crate::trigger_actor::AttendantTriggerActorDeps {
+            services: harness.services().await,
+            state: state.clone(),
+        },
+    );
+
+    // When the parent's turn completes.
+    harness
+        .publish(jinn_session_msg::TurnCompleted {
+            session_id: parent_id,
+            outcome: jinn_session_msg::TurnOutcome::Succeeded,
+        })
+        .await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // Then the seeded turn is held in the session's queue, not in the input
+    // box and not lost. The enqueue handler queues anything arriving while
+    // a session is Sending/Streaming, and that is the correct outcome: the
+    // attendant is mid-answer, so its new question runs next.
+    let guard = state.read();
+    let session = guard.session.get(&attendant_id).expect("exists");
+    let queued: Vec<String> = session
+        .queue()
+        .iter()
+        .map(|item| match item {
+            jinn_turn_dispatch_msg::QueueItem::UserMessage(entry) => entry.text().clone(),
+            jinn_turn_dispatch_msg::QueueItem::ToolContinuation => "tool-continuation".to_owned(),
+        })
+        .collect();
+    assert_eq!(
+        queued,
+        vec!["seeded: prior".to_owned()],
+        "the seeded turn must wait in the queue behind the running one"
+    );
+    // And nothing put it in the input box.
+    let draft = session.with_input(|i| i.text().to_owned(), String::new);
+    assert!(
+        draft.is_empty(),
+        "a trigger must never put its seeded turn in the input box: {draft:?}"
     );
 }

@@ -6365,3 +6365,75 @@ fn attendant_fields_default_when_absent_from_persisted_blob() {
         jinn_attendant_msg::default_seed_template()
     );
 }
+
+#[rstest::rstest]
+fn cancel_streaming_leaves_the_input_draft_where_the_user_typed_it() {
+    // Given a streaming session attached to a registry holding the
+    // chat-input cell, with a draft the user typed.
+    let slices = jinn_slices::Slices::new();
+    slices
+        .register(
+            jinn_chat_input_msg::chat_inputs_slot(),
+            jinn_chat_input_msg::ChatInputs::new(),
+        )
+        .expect("fresh registry");
+    let mut session = ChatSessionState::new();
+    session.attach_slices(slices.clone());
+    session.update_input(|i| i.replace_all("draft the user typed".to_owned()));
+    session.push_entry(ChatEntry::user("in flight"));
+    session.begin_streaming();
+
+    // When the turn is cancelled the way a trigger supersedes one — the
+    // plain phase transition, not the Esc drain.
+    session.cancel_streaming(jiff::Timestamp::now());
+
+    // Then the session is Idle, so the enqueue that follows dispatches
+    // rather than queueing behind a still-hot phase.
+    assert_eq!(session.phase(), jinn_session_msg::PhaseKind::Idle);
+    // And the draft is untouched: draining into the input box is an Esc
+    // affordance for recovering text, and a caller that has no use for the
+    // abandoned fragment must not put it where the user can see it.
+    assert_eq!(
+        session.with_input(|i| i.text().to_owned(), String::new),
+        "draft the user typed",
+        "cancel_streaming must not steer the abandoned fragment into the input box"
+    );
+}
+
+#[rstest::rstest]
+fn a_queued_message_is_handed_back_to_the_user_as_an_editable_draft() {
+    // Given a streaming session attached to the chat-input cell, with a
+    // seeded turn already sitting in the queue. This is the state a trigger
+    // produces when it publishes `CancelStream` without also dropping the
+    // phase: the enqueue sees a hot session and queues instead of
+    // dispatching.
+    let slices = jinn_slices::Slices::new();
+    slices
+        .register(
+            jinn_chat_input_msg::chat_inputs_slot(),
+            jinn_chat_input_msg::ChatInputs::new(),
+        )
+        .expect("fresh registry");
+    let mut session = ChatSessionState::new();
+    session.attach_slices(slices.clone());
+    session.push_entry(ChatEntry::user("in flight"));
+    session.begin_streaming();
+    session.enqueue(jinn_turn_dispatch_msg::QueueItem::UserMessage(Box::new(
+        ChatEntry::user("seeded: prior report"),
+    )));
+
+    // When a cancel drains the session the way the Esc path does.
+    session.cancel_stream_and_drain();
+
+    // Then the seeded turn surfaces as editable draft text instead of
+    // having run. This is what a user sees when an attendant is triggered
+    // while busy: a templated prompt they never sent, sitting in the input
+    // box. The fix is upstream — the trigger must drop the phase so the
+    // enqueue dispatches — and this test exists to keep the cost of getting
+    // that wrong visible.
+    assert_eq!(
+        session.with_input(|i| i.text().to_owned(), String::new),
+        "seeded: prior report",
+        "a queued message is recovered as draft text by design"
+    );
+}

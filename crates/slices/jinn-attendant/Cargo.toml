@@ -31,6 +31,11 @@ trouper = { workspace = true }
 
 [dev-dependencies]
 jinn-chat-input-msg = { workspace = true }
+jinn-turn-dispatch-msg = { workspace = true }
+jinn-context-assembly = { workspace = true }
+jinn-session-turn = { workspace = true }
+jinn-llm-support = { workspace = true }
+jinn-token-count-msg = { workspace = true }
 jinn-inference-msg = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-testutil = { workspace = true }
