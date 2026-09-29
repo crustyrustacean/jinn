@@ -58,7 +58,9 @@ pub fn handle_new_attendant(state: &mut AppState, config: &ConfigLayer) -> Inten
         let Some(parent) = state.session.get(&parent_id).cloned() else {
             return IntentResult::empty();
         };
-        let mut attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, false);
+        // An attendant is an ordinary session: it is saved on creation and
+        // again once a turn lands, exactly like a subagent's child.
+        let mut attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
         {
             let p = attendant.profile_mut();
             p.disabled_tools.clone_from(&seed.disabled_tools);
@@ -75,8 +77,8 @@ pub fn handle_new_attendant(state: &mut AppState, config: &ConfigLayer) -> Inten
     state.frontend.scope_push(jinn_slices::FocusScope::Input);
 
     // The attendant is meaningfully created even though no keystroke has
-    // landed in it; without this it vanishes from disk on archive (the
-    // `task` tool's `build_child` marks its child for the same reason).
+    // landed in it, so it survives a save that runs before its first turn
+    // (the `task` tool's `build_child` marks its child for the same reason).
     if let Some(a) = state.session.get_mut(&attendant_id) {
         a.mark_interacted();
     }

@@ -51,6 +51,7 @@ unicode-width = { workspace = true }
 rstest = { workspace = true }
 
 [dev-dependencies]
+async-trait = { workspace = true }
 jinn-config = { workspace = true }
 jinn-kernel = { workspace = true }
 jinn-testutil = { workspace = true }

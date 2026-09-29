@@ -23,6 +23,8 @@ pub mod state;
 pub mod teardown;
 
 #[cfg(test)]
+mod attendant_actions_tests;
+#[cfg(test)]
 mod preview_tests;
 
 // ---------------------------------------------------------------------------
