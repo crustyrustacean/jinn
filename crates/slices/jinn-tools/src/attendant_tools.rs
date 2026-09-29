@@ -20,22 +20,19 @@ use super::BoxedToolFuture;
 pub fn report_definition() -> ToolDefinition {
     ToolDefinition {
         name: "report".to_owned(),
-        description: "Record what you concluded, for the user to read. Appends to your own \
-                      report log; the most recent report seeds your next run. The parent \
-                      session is NOT woken by this tool."
+        description: "Record what you concluded, for the user to read. ONLY ONE LINE OF TEXT, MAX 10 WORDS."
             .to_owned(),
         prompt_snippet: None,
         prompt_guidelines: vec![
-            "Use `report` to leave your verdict or findings; keep each report self-contained."
+            "Use `report` to leave your verdict or findings; keep each report self-contained. IT MUST BE ONE LINE OF TEXT, MAX 10 WORDS."
                 .to_owned(),
         ],
         parameters: serde_json::json!({
             "type": "object",
             "properties": {
-                "body": {
+                "headline": {
                     "type": "string",
-                    "description": "The report text. Self-contained: confirm or refute the \
-                                    question you were asked, with evidence."
+                    "description": "The report headline. Must be ONE LINE ONLY and MAX 10 WORDS."
                 }
             },
             "required": ["body"]
@@ -49,13 +46,11 @@ pub fn notify_parent_definition() -> ToolDefinition {
     ToolDefinition {
         name: "notify_parent".to_owned(),
         description: "Start a turn in the session you attend. Use only when the parent needs \
-                      to act on what you found. Does not record a report — call `report` for \
-                      that."
+                      to act on what you found."
             .to_owned(),
         prompt_snippet: None,
         prompt_guidelines: vec![
-            "Prefer `report` alone. Call `notify_parent` only when the parent must act; \
-             stopping without it ends the loop."
+            "Call `notify_parent` to send a message to the parent session. This should only be called if your attending rules indicate that you are supposed to interact with your parent."
                 .to_owned(),
         ],
         parameters: serde_json::json!({

@@ -16,6 +16,21 @@ pub use crate::properties::{
     attendant_seed_template_scope, pick_activation, pick_trigger,
 };
 pub use crate::report::AttendantReport;
+
+/// The built-in tools that exist only inside an attendant.
+///
+/// An attendant reports its conclusions and wakes its parent; neither
+/// action means anything for an ordinary session, so the definitions are
+/// filtered out of every non-attendant session's tool list rather than
+/// being offered and refused at call time.
+pub const ATTENDANT_TOOL_NAMES: &[&str] = &["report", "notify_parent"];
+
+/// Whether a tool name belongs to the attendant-only family.
+#[must_use]
+pub fn is_attendant_tool(name: &str) -> bool {
+    ATTENDANT_TOOL_NAMES.contains(&name)
+}
+
 pub use crate::report_picker::{
     AttendantReportPickerState, attendant_report_picker_scope, attendant_report_picker_slot,
 };

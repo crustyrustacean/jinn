@@ -37,6 +37,10 @@ pub struct AssemblySessionProjection {
     pub loaded_skills: HashSet<String>,
     /// Project context files discovered for the session.
     pub context_files: Vec<ContextFile>,
+
+    /// Whether this session is an attendant, which decides whether it is
+    /// offered the attendant-only tools.
+    pub is_attendant: bool,
 }
 
 impl AssemblySessionProjection {
@@ -54,6 +58,7 @@ impl AssemblySessionProjection {
             disabled_skills: session.disabled_skills().clone(),
             loaded_skills: session.loaded_skills(),
             context_files: session.discovered_context_files().to_vec(),
+            is_attendant: session.is_attendant(),
         }
     }
 }

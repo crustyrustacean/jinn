@@ -2351,6 +2351,7 @@ name = "jinn-context-assembly"
 version = "1.1.2"
 dependencies = [
  "error-stack",
+ "jinn-attendant-msg",
  "jinn-context",
  "jinn-context-assembly-msg",
  "jinn-core-types",
