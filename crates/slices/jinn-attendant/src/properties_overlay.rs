@@ -21,6 +21,7 @@ use jinn_slices::route::{
 };
 use jinn_slices::{KeyRoutes, RenderFacts, RouteResult as IntentResult};
 
+use jinn_theme::contrast;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -36,8 +37,11 @@ type AttendantPropertiesCell = TypedCell<AttendantPropertiesState>;
 const POPUP_H_PAD_FRAC: f32 = 0.20;
 /// Minimum popup width in cells.
 const POPUP_MIN_WIDTH: u16 = 44;
-/// Popup content height: three field rows, one hint line, one footer line.
-const POPUP_CONTENT_ROWS: u16 = 5;
+/// Popup content height: three field rows, one footer line.
+///
+/// The help text is an overlay rather than a row in the form, so moving the
+/// cursor no longer reflows the popup and this is a constant.
+const POPUP_CONTENT_ROWS: u16 = 4;
 
 /// Computes the centered properties popup rectangle: title, three field
 /// rows, one hint line, and a keybind footer.
@@ -81,6 +85,17 @@ pub fn render_attendant_properties(frame: &mut Frame<'_>, area: Rect, ctx: &Rend
         Paragraph::new(properties_view(&popup, theme, &layout)),
         inner,
     );
+    // The help overlay is terminal-bound, so it is positioned against the
+    // cursor's own coordinates rather than any row inside the form. When
+    // the form cursor is on a field that does not own the terminal cursor
+    // the popup's top row stands in for it, which is the row the help is
+    // read against.
+    if let Some((help_area, help_lines)) =
+        help_overlay(&popup, theme, area, inner, (inner.x, inner.y))
+    {
+        frame.render_widget(Clear, help_area);
+        frame.render_widget(Paragraph::new(help_lines), help_area);
+    }
     // Navigation-only scope: the properties view never sets the terminal
     // cursor. The template draft edits in the editor popup, which owns it.
 }
@@ -210,11 +225,9 @@ struct PropertiesLayout {
 /// each field before the template contributes its own row, plus one more
 /// when it is focused (its hint line).
 fn properties_layout(popup: &AttendantPropertiesState, inner: Rect) -> PropertiesLayout {
-    let rows_above = {
-        let hint_lines = u16::from(popup.focus != PropertyField::SeedTemplate);
-        // Trigger row + activation row, plus their hint lines.
-        2 + u16::from(popup.focus == PropertyField::Trigger) + hint_lines
-    };
+    // The trigger and activation rows always sit above the template row, so
+    // this no longer moves with the cursor.
+    let rows_above = 2;
     // The value starts at the label's end, and one cell is reserved so the
     // cursor can rest just past the last visible grapheme. The focused
     // marker is wide, so the window is one narrower than an unfocused row's.
@@ -284,9 +297,6 @@ fn properties_view<'a>(
         PropertyField::SeedTemplate,
     ] {
         lines.push(field_line(popup, field, theme, layout));
-        if popup.focus == field {
-            lines.push(hint_line(field, theme));
-        }
     }
     lines.push(footer_line(popup.focus, theme));
     lines
@@ -319,7 +329,40 @@ fn field_line<'a>(
             spans.push(template_value(popup, theme, layout));
         }
     }
+    // The focused row carries the attendant background across its whole
+    // width, so the cursor reads as a selected row rather than a tinted
+    // label. Each span's own foreground is checked against it: a theme
+    // that picks a light background would otherwise leave the label
+    // unreadable.
+    if focused {
+        return focused_field_line(spans, theme);
+    }
     Line::from(spans)
+}
+
+/// Re-styles each span for the focused row: the row's background behind
+/// the whole line, and every foreground re-checked against it.
+///
+/// A theme that picks a background close to a span's own foreground would
+/// otherwise leave that span unreadable, so each one is run through the
+/// contrast helper the picker uses for its own selected rows.
+fn focused_field_line<'a>(spans: Vec<Span<'a>>, theme: &'a jinn_theme::Theme) -> Line<'a> {
+    let row = focused_row_style(theme);
+    let background = row.bg.unwrap_or(theme.attendant_bg);
+    let spans = spans
+        .into_iter()
+        .map(|span| {
+            let foreground =
+                contrast::ensure_contrast(span.style.fg.unwrap_or(theme.primary_text), background);
+            Span::styled(span.content, span.style.fg(foreground).bg(background))
+        })
+        .collect::<Vec<Span<'a>>>();
+    Line::from(spans).style(row)
+}
+
+/// The focused row's background: the attendant's own background color.
+fn focused_row_style(theme: &jinn_theme::Theme) -> Style {
+    Style::default().bg(theme.attendant_bg)
 }
 
 /// The focused-field marker: `▸` when focused, blank otherwise.
@@ -417,27 +460,98 @@ fn clip_to_columns(text: &str, max_columns: u16) -> String {
 }
 
 /// The hint line under the focused field.
-fn hint_line(field: PropertyField, theme: &jinn_theme::Theme) -> Line<'static> {
-    let hint = match field {
+/// The help text for the focused field, wrapped to `width`.
+fn help_text(field: PropertyField) -> &'static str {
+    match field {
         PropertyField::Trigger => "does this attendant re-run when its parent's turn completes?",
         PropertyField::Activation => {
             "seed pins without dispatching · reset keeps only pins · preserve appends"
         }
         PropertyField::SeedTemplate => "the text injected ahead of each run's prior report",
+    }
+}
+
+/// Wraps `text` to `width`, breaking on whitespace.
+///
+/// The help is a single sentence, so a word that cannot fit a row of its
+/// own is placed on the next row rather than split mid-word.
+fn wrap_help(text: &str, width: u16) -> Vec<String> {
+    let width = usize::from(width.max(1));
+    let mut rows: Vec<String> = Vec::new();
+    let mut current = String::new();
+    for word in text.split_whitespace() {
+        if current.is_empty() {
+            current.push_str(word);
+        } else if current.chars().count() + 1 + word.chars().count() <= width {
+            current.push(' ');
+            current.push_str(word);
+        } else {
+            rows.push(std::mem::take(&mut current));
+            current.push_str(word);
+        }
+    }
+    if !current.is_empty() {
+        rows.push(current);
+    }
+    if rows.is_empty() {
+        rows.push(String::new());
+    }
+    rows
+}
+
+/// The help overlay for the focused field, or `None` when it is not showing.
+///
+/// The overlay sits directly above the terminal cursor and is free to extend
+/// past the popup's own top edge and bottom — it is an overlay on the
+/// terminal, not a row inside the form — but its width is the popup's, and
+/// the text wraps at that width. Its height therefore has to be measured
+/// before it can be placed.
+fn help_overlay(
+    popup: &AttendantPropertiesState,
+    theme: &jinn_theme::Theme,
+    popup_rect: Rect,
+    inner: Rect,
+    cursor: (u16, u16),
+) -> Option<(Rect, Vec<Line<'static>>)> {
+    // The template editor owns the terminal cursor while it is open; the
+    // help would sit on top of the draft the user is typing into.
+    if !popup.help_visible || popup.editor_original.is_some() {
+        return None;
+    }
+    let rows = wrap_help(help_text(popup.focus), inner.width);
+    let height = rows.len() as u16;
+    // Above the cursor. The y is terminal-bound, so this is allowed to go
+    // off the top of the screen — an overlay is something laid over what is
+    // there, not a region carved out of the popup.
+    let y = cursor.1.saturating_sub(height);
+    let area = Rect {
+        x: inner.x,
+        y,
+        width: inner.width,
+        height,
     };
-    Line::from(Span::styled(
-        format!("    {hint}"),
-        Style::default().fg(theme.muted_text),
-    ))
+    let lines = rows
+        .into_iter()
+        .map(|row| {
+            Line::from(Span::styled(
+                format!(" {row}"),
+                Style::default().fg(theme.muted_text),
+            ))
+        })
+        .collect();
+    // The popup is only used for its width here; kept in the signature so
+    // the clamp to the popup's column is explicit at the call site.
+    let _ = popup_rect;
+    Some((area, lines))
 }
 
 /// The footer: the keys that work on the focused field.
 fn footer_line(focus: PropertyField, theme: &jinn_theme::Theme) -> Line<'static> {
     let keys = match focus {
         PropertyField::Trigger | PropertyField::Activation => {
-            "h/l pick · j/k field · <enter> apply · <esc> cancel"
+            "h/l pick · j/k field · ? help · <enter> apply · <esc> cancel"
         }
-        PropertyField::SeedTemplate => "i edit · j/k field · <enter> apply · <esc> cancel",
+        PropertyField::SeedTemplate => "i edit · j/k field · ? help · <enter> apply · <esc> cancel",
     };
     Line::from(Span::styled(keys, Style::default().fg(theme.muted_text)))
 }
@@ -561,6 +675,17 @@ pub fn attach_properties_rows(routes: &KeyRoutes, cell: &AttendantPropertiesCell
         "previous field",
         action(cell, |_, cell| {
             cell.update(AttendantPropertiesState::focus_previous);
+            IntentResult::empty()
+        }),
+    ));
+    routes.attach(row(
+        "attendant-properties-help",
+        properties_scope.clone(),
+        "?",
+        "general",
+        "show the help overlay",
+        action(cell, |_, cell| {
+            cell.update(|popup| popup.help_visible = !popup.help_visible);
             IntentResult::empty()
         }),
     ));

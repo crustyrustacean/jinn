@@ -220,6 +220,8 @@ pub(crate) fn assemble_entry_line(
 const SUBAGENT_SYMBOL: &str = "⋄ ";
 /// Marks a session with a live `interactive_term` terminal.
 pub(crate) const LIVE_TERM_SYMBOL: &str = "◼ ";
+/// Marks an attendant in seed mode, which will not dispatch a turn.
+const ATTENDANT_PAUSED_SYMBOL: &str = "⏸ ";
 
 /// Renders a session entry line (indicator + arrow + tree + styled title).
 fn assemble_session_line(
@@ -246,8 +248,17 @@ fn assemble_session_line(
     } else {
         ""
     };
-    let symbol_len =
-        (subagent_symbol.graphemes(true).count()) + term_symbol.graphemes(true).count();
+    // Like the subagent symbol, this sits beside the title rather than
+    // inside it: the title is what a rename replaces, and a mode marker
+    // must not be reachable by the rename key.
+    let paused_symbol = if entry.is_attendant_paused {
+        ATTENDANT_PAUSED_SYMBOL
+    } else {
+        ""
+    };
+    let symbol_len = (subagent_symbol.graphemes(true).count())
+        + term_symbol.graphemes(true).count()
+        + paused_symbol.graphemes(true).count();
     let budget = max_title_len.saturating_sub(tree_len);
     let display_title = {
         let title_budget = budget.saturating_sub(symbol_len);
@@ -261,6 +272,12 @@ fn assemble_session_line(
         spans.push(Span::styled(
             subagent_symbol.to_owned(),
             Style::default().fg(theme.subagent_fg),
+        ));
+    }
+    if !paused_symbol.is_empty() {
+        spans.push(Span::styled(
+            paused_symbol.to_owned(),
+            Style::default().fg(theme.attendant_paused),
         ));
     }
     if !term_symbol.is_empty() {

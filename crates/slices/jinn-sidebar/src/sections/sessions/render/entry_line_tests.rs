@@ -45,6 +45,7 @@ fn tree_entry(
         is_subagent,
         has_live_term: false,
         is_attendant: false,
+        is_attendant_paused: false,
         is_in_flight: false,
     }
 }
@@ -198,6 +199,7 @@ fn assembled_line_includes_tree_prefix_for_non_root() {
         is_last_child: true,
         is_subagent: false,
         is_attendant: false,
+        is_attendant_paused: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -231,6 +233,7 @@ fn assembled_line_has_no_tree_prefix_for_root() {
         is_last_child: true,
         is_subagent: false,
         is_attendant: false,
+        is_attendant_paused: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -265,6 +268,7 @@ fn assembled_line_has_tree_prefix_span_for_child() {
         is_last_child: false,
         is_subagent: false,
         is_attendant: false,
+        is_attendant_paused: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -303,6 +307,7 @@ fn title_is_truncated_more_at_higher_depth() {
         is_last_child: true,
         is_subagent: false,
         is_attendant: false,
+        is_attendant_paused: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -320,6 +325,7 @@ fn title_is_truncated_more_at_higher_depth() {
         is_last_child: true,
         is_subagent: false,
         is_attendant: false,
+        is_attendant_paused: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -351,6 +357,7 @@ fn attendant_row_uses_the_attendant_theme_token() {
     let theme = default_theme();
     let entry = SessionEntry {
         is_attendant: true,
+        is_attendant_paused: false,
         is_active: false,
         ..tree_entry(0, vec![], true, false)
     };
@@ -370,6 +377,7 @@ fn non_attendant_row_does_not_use_the_attendant_theme_token() {
     let theme = default_theme();
     let entry = SessionEntry {
         is_attendant: false,
+        is_attendant_paused: false,
         is_active: false,
         ..tree_entry(0, vec![], true, false)
     };
@@ -404,6 +412,7 @@ fn active_arrow_shows_at_depth_greater_than_zero() {
         is_last_child: true,
         is_subagent: false,
         is_attendant: false,
+        is_attendant_paused: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -442,6 +451,7 @@ fn tree_prefix_uses_muted_text_color() {
         is_last_child: true,
         is_subagent: false,
         is_attendant: false,
+        is_attendant_paused: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -510,6 +520,7 @@ fn sidebar_marks_child_with_symbol() {
         is_last_child: true,
         is_subagent: true,
         is_attendant: false,
+        is_attendant_paused: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -557,6 +568,7 @@ fn sidebar_omits_symbol_for_regular_session() {
         is_last_child: true,
         is_subagent: false,
         is_attendant: false,
+        is_attendant_paused: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -590,6 +602,7 @@ fn sidebar_shows_live_term_symbol_for_session_with_terminal() {
         is_last_child: true,
         is_subagent: false,
         is_attendant: false,
+        is_attendant_paused: false,
         has_live_term: true,
         is_in_flight: false,
     };
@@ -624,6 +637,7 @@ fn sidebar_omits_live_term_symbol_for_session_without_terminal() {
         is_last_child: true,
         is_subagent: false,
         is_attendant: false,
+        is_attendant_paused: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -657,6 +671,7 @@ fn sidebar_live_term_symbol_consumes_truncation_budget() {
         is_last_child: true,
         is_subagent,
         is_attendant: false,
+        is_attendant_paused: false,
         has_live_term: true,
         is_in_flight: false,
     };
@@ -710,6 +725,7 @@ fn sidebar_symbol_consumes_truncation_budget() {
         is_subagent,
         has_live_term: false,
         is_attendant: false,
+        is_attendant_paused: false,
         is_in_flight: false,
     };
     let plain = make(false);
@@ -932,5 +948,97 @@ fn selected_in_flight_row_text_contrasts_with_its_background() {
         title.style.fg,
         Some(theme.in_flight_fg),
         "light text on a light selection background would be invisible"
+    );
+}
+
+/// A seed-mode attendant row carries the pause marker beside its title.
+#[rstest::rstest]
+#[test]
+fn a_seed_mode_attendant_row_shows_the_pause_marker() {
+    // Given an attendant in seed mode.
+    let mut entry = tree_entry(0, vec![], true, false);
+    entry.is_attendant = true;
+    entry.is_attendant_paused = true;
+
+    // When the row is rendered.
+    let line = crate::sections::sessions::render::entry_line::assemble_entry_line(
+        &entry,
+        false,
+        40,
+        &idle_throbber(),
+        &default_theme(),
+    );
+    let text: String = line
+        .spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect();
+
+    // Then the marker appears beside the title.
+    assert!(
+        text.contains('\u{23F8}'),
+        "a seed attendant must be marked: {text:?}"
+    );
+}
+
+/// A reset-mode attendant is not marked — it still dispatches.
+#[rstest::rstest]
+#[test]
+fn a_dispatching_attendant_row_has_no_pause_marker() {
+    // Given an attendant that is not in seed mode.
+    let mut entry = tree_entry(0, vec![], true, false);
+    entry.is_attendant = true;
+    entry.is_attendant_paused = false;
+
+    // When the row is rendered.
+    let line = crate::sections::sessions::render::entry_line::assemble_entry_line(
+        &entry,
+        false,
+        40,
+        &idle_throbber(),
+        &default_theme(),
+    );
+    let text: String = line
+        .spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect();
+
+    // Then no pause marker is drawn.
+    assert!(
+        !text.contains('\u{23F8}'),
+        "a dispatching attendant must not be marked: {text:?}"
+    );
+}
+
+/// The marker is outside the title, so a rename can never replace it.
+#[rstest::rstest]
+#[test]
+fn the_pause_marker_sits_outside_the_title() {
+    // Given a seed-mode attendant whose title does not contain the glyph.
+    let mut entry = tree_entry(0, vec![], true, false);
+    entry.is_attendant = true;
+    entry.is_attendant_paused = true;
+    entry.title = "reviewer".to_owned();
+
+    // When the row is rendered.
+    let line = crate::sections::sessions::render::entry_line::assemble_entry_line(
+        &entry,
+        false,
+        40,
+        &idle_throbber(),
+        &default_theme(),
+    );
+
+    // Then the title span itself is the name alone, with the marker in a
+    // span of its own — the property a rename replaces.
+    let title_span = line
+        .spans
+        .iter()
+        .find(|span| span.content.as_ref() == "reviewer");
+    assert!(
+        title_span.is_some(),
+        "the title must remain its own span: {:?}",
+        line.spans
     );
 }

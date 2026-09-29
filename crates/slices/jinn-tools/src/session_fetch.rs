@@ -55,7 +55,7 @@ pub fn definition() -> ToolDefinition {
             "properties": {
                 "session_id": {
                     "type": "string",
-                    "description": "Session to read. Omits to the current session."
+                    "description": "Session to read. Defaults to the current session."
                 },
                 "entry_id": {
                     "type": "string",

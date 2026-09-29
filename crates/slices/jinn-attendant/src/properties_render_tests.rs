@@ -57,9 +57,18 @@ fn render_editor(popup: AttendantPropertiesState) -> Terminal<TestBackend> {
 
 /// Renders the properties view into a backend and returns the buffer cells.
 fn render_properties(popup: AttendantPropertiesState) -> ratatui::buffer::Buffer {
+    render_properties_in(popup, 100, 30)
+}
+
+/// Renders the properties view at an explicit terminal size.
+fn render_properties_in(
+    popup: AttendantPropertiesState,
+    width: u16,
+    height: u16,
+) -> ratatui::buffer::Buffer {
     let (slices, _cell) = slices_with_popup(popup);
     let facts = RenderFacts::new(jinn_theme::default_theme(), &slices);
-    let area = Rect::new(0, 0, 100, 30);
+    let area = Rect::new(0, 0, width, height);
     let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
     terminal
         .draw(|frame| {
@@ -68,6 +77,23 @@ fn render_properties(popup: AttendantPropertiesState) -> ratatui::buffer::Buffer
         })
         .expect("draw");
     terminal.backend().buffer().clone()
+}
+
+/// The background color at a buffer position.
+fn bg_at(buffer: &ratatui::buffer::Buffer, x: u16, y: u16) -> Color {
+    buffer[(x, y)].bg
+}
+
+/// The whole buffer as text, one string per row.
+fn all_text(buffer: &ratatui::buffer::Buffer) -> String {
+    let mut text = String::new();
+    for y in buffer.area.y..buffer.area.height {
+        for x in buffer.area.x..buffer.area.width {
+            text.push_str(&symbol_at(buffer, x, y));
+        }
+        text.push('\n');
+    }
+    text
 }
 
 /// The character at a buffer position.
@@ -193,18 +219,48 @@ fn focused_row_marker_and_label_are_yellow_only() {
 
 #[rstest::rstest]
 #[test]
+fn the_focused_row_carries_the_attendant_background() {
+    // Given a popup focused on the activation row.
+    let buffer = render_properties(popup_focused(PropertyField::Activation));
+    // The activation field is the second body row; the rows are adjacent
+    // because the help is an overlay rather than a row of its own.
+    let row = body_top(&buffer) + 1;
+
+    // When reading a cell on that row.
+    let label_x = find_in_row(&buffer, row, "activation:").expect("activation label");
+
+    // Then the row is backed by the attendant's background color, so the
+    // cursor reads as a selected row rather than a tinted label.
+    let background = bg_at(&buffer, label_x, row);
+    assert_ne!(background, Color::Reset, "the focused row must be tinted");
+    // And the label stays readable on it.
+    let foreground = fg_at(&buffer, label_x, row);
+    assert_ne!(
+        foreground, background,
+        "the label must not vanish into the row background"
+    );
+}
+
+#[rstest::rstest]
+#[test]
 fn unfocused_row_marker_and_label_are_plain() {
     // Given a popup focused on the trigger row.
     let buffer = render_properties(popup_focused(PropertyField::Trigger));
     let top = body_top(&buffer);
 
-    // When locating the unfocused activation row (the trigger's hint line
-    // sits between them).
-    let activation_y = top + 2;
+    // When locating the unfocused activation row. The rows are adjacent:
+    // the help is an overlay, so it no longer sits between them.
+    let activation_y = top + 1;
     let label_x = find_in_row(&buffer, activation_y, "activation:").expect("activation label");
 
     // Then the label is plain text, not the focus accent.
     assert_eq!(fg_at(&buffer, label_x, activation_y), PRIMARY_TEXT);
+    // And the row carries no background — only the focused row is tinted.
+    assert_eq!(
+        bg_at(&buffer, label_x, activation_y),
+        Color::Reset,
+        "an unfocused row must not be tinted"
+    );
 }
 
 #[rstest::rstest]
@@ -230,33 +286,88 @@ fn selected_choice_uses_the_new_green_key() {
 
 #[rstest::rstest]
 #[test]
-fn hint_line_renders_only_under_the_focused_row() {
-    // Given a popup focused on the activation row.
+fn help_overlay_is_hidden_until_question_mark_is_pressed() {
+    // Given a popup focused on the activation row, with help not toggled.
     let buffer = render_properties(popup_focused(PropertyField::Activation));
-    let all_text = |buffer: &ratatui::buffer::Buffer| {
-        let mut text = String::new();
-        for y in buffer.area.y..buffer.area.height {
-            for x in buffer.area.x..buffer.area.width {
-                text.push_str(&symbol_at(buffer, x, y));
-            }
-            text.push('\n');
-        }
-        text
-    };
 
     // When reading the rendered popup.
     let rendered = all_text(&buffer);
 
-    // Then the activation hint appears once (under its focused row)…
-    assert_eq!(rendered.matches("seed pins without dispatching").count(), 1);
-    // …and no other field's hint renders.
+    // Then no help text is on screen. The help is an overlay, not a row in
+    // the form, so it costs the popup nothing until it is asked for.
     assert!(
-        !rendered.contains("does this attendant re-run"),
-        "unfocused hints must not render"
+        !rendered.contains("seed pins without dispatching"),
+        "help must not render before `?`: {rendered}"
     );
+}
+
+#[rstest::rstest]
+#[case::trigger(PropertyField::Trigger, "does this attendant re-run")]
+#[case::activation(PropertyField::Activation, "seed pins without dispatching")]
+#[case::template(PropertyField::SeedTemplate, "the text injected ahead")]
+#[test]
+fn help_overlay_shows_the_focused_field_when_toggled(
+    #[case] field: PropertyField,
+    #[case] needle: &str,
+) {
+    // Given a popup on `field` with the help overlay toggled on.
+    let mut popup = popup_focused(field);
+    popup.help_visible = true;
+
+    // When the popup is rendered.
+    let buffer = render_properties(popup);
+
+    // Then that field's help is on screen.
+    let rendered = all_text(&buffer);
     assert!(
-        !rendered.contains("injected ahead of each run"),
-        "unfocused hints must not render"
+        rendered.contains(needle),
+        "the focused field's help must render: {rendered}"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn help_overlay_is_suppressed_while_the_template_editor_is_open() {
+    // Given a popup on the template field with help toggled on, and the
+    // editor capturing the terminal cursor.
+    let mut popup = popup_focused(PropertyField::SeedTemplate);
+    popup.help_visible = true;
+    popup.begin_template_edit();
+
+    // When the popup is rendered.
+    let buffer = render_properties(popup);
+
+    // Then the help is not drawn over the draft being typed into.
+    let rendered = all_text(&buffer);
+    assert!(
+        !rendered.contains("the text injected ahead"),
+        "help must not cover the editor's draft: {rendered}"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn help_overlay_wraps_at_the_popup_width() {
+    // Given a narrow popup with the help overlay toggled on.
+    let mut popup = popup_focused(PropertyField::Activation);
+    popup.help_visible = true;
+    let buffer = render_properties_in(popup, 30, 12);
+
+    // When reading the rendered screen.
+    let rendered = all_text(&buffer);
+
+    // Then the whole help is present, split across rows by the wrap. The
+    // needle sits in the middle of the sentence rather than at its start,
+    // so the assertion holds wherever the wrap happens to fall.
+    assert!(
+        rendered.contains("dispatching") && rendered.contains("only pins"),
+        "the whole help must be present, wrapped rather than cut: {rendered}"
+    );
+    // And the popup's own rows still render below it — the overlay is
+    // laid over the terminal, not carved out of the form.
+    assert!(
+        rendered.contains("activation:"),
+        "the form must still be drawn: {rendered}"
     );
 }
 
@@ -403,7 +514,9 @@ fn editor_view_places_the_cursor_in_the_draft() {
     // third body row (trigger, activation, template) — and exactly one
     // cell past the draft's last grapheme.
     let cursor = terminal.get_cursor_position().expect("cursor");
-    let template_y = 7 + 1 + 2; // top border 7, body rows 8.., template is body row 2
+    // Derived rather than hardcoded: the template row is the third body
+    // row, and the popup's own position moves with its height.
+    let template_y = body_top(terminal.backend().buffer()) + 2;
     assert_eq!(cursor.y, template_y, "cursor rests on the template row");
     let buffer = terminal.backend().buffer();
     assert_eq!(
@@ -442,7 +555,9 @@ fn editor_window_follows_the_cursor_in_a_long_draft(
     let mut terminal = render_editor(popup);
     let cursor = terminal.get_cursor_position().expect("cursor");
     let buffer = terminal.backend().buffer();
-    let template_y = 7 + 1 + 2;
+    // Derived from the render rather than hardcoded: the popup's position
+    // and width both move with its height and the terminal size.
+    let template_y = body_top(buffer) + 2;
 
     // Then the cursor rests immediately after a visible draft grapheme —
     // never floating over the blank tail of the row, which is what a

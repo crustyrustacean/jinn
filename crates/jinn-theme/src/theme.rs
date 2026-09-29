@@ -35,6 +35,12 @@ pub struct Theme {
     /// Attendant session rows in the session tree — distinct from the error
     /// colour and from the subagent pair.
     pub attendant_fg: Color,
+    /// Marker for an attendant that will not dispatch on this run.
+    ///
+    /// Carries the streaming color's meaning — a session with no messages
+    /// moving through it — without sharing the key, because a session can
+    /// be both a stream's target and paused on its own row.
+    pub attendant_paused: Color,
     pub attendant_bg: Color,
     /// Error text color.
     pub error_text: Color,
@@ -171,6 +177,10 @@ impl Theme {
         m.insert("subagent_fg", Style::default().fg(self.subagent_fg));
         m.insert("subagent_bg", Style::default().bg(self.subagent_bg));
         m.insert("attendant_fg", Style::default().fg(self.attendant_fg));
+        m.insert(
+            "attendant_paused",
+            Style::default().fg(self.attendant_paused),
+        );
         m.insert("attendant_bg", Style::default().bg(self.attendant_bg));
         m.insert("error_text", Style::default().fg(self.error_text));
         m.insert("dormant_fg", Style::default().fg(self.dormant_fg));
@@ -287,6 +297,8 @@ pub struct ThemeFile {
     /// Attendant session rows in the session tree.
     #[serde(default)]
     pub attendant_fg: Option<ThemeColor>,
+    #[serde(default)]
+    pub attendant_paused: Option<ThemeColor>,
     /// Attendant row background, paired with `attendant_fg`.
     #[serde(default)]
     pub attendant_bg: Option<ThemeColor>,
@@ -429,6 +441,9 @@ impl ThemeFile {
             attendant_fg: self
                 .attendant_fg
                 .map_or(fallback.attendant_fg, crate::color::ThemeColor::inner),
+            attendant_paused: self
+                .attendant_paused
+                .map_or(fallback.attendant_paused, crate::color::ThemeColor::inner),
             attendant_bg: self
                 .attendant_bg
                 .map_or(fallback.attendant_bg, crate::color::ThemeColor::inner),
@@ -588,6 +603,7 @@ impl ThemeFile {
             subagent_fg: Self::resolve_field(self.subagent_fg),
             subagent_bg: Self::resolve_field(self.subagent_bg),
             attendant_fg: Self::resolve_field(self.attendant_fg),
+            attendant_paused: Self::resolve_field(self.attendant_paused),
             attendant_bg: Self::resolve_field(self.attendant_bg),
             error_text: Self::resolve_field(self.error_text),
             dormant_fg: Self::resolve_field(self.dormant_fg),
@@ -656,6 +672,7 @@ mod tests {
             subagent_fg: None,
             subagent_bg: None,
             attendant_fg: None,
+            attendant_paused: None,
             attendant_bg: None,
             error_text: None,
             dormant_fg: None,
@@ -711,8 +728,9 @@ mod tests {
             muted_text: Some(ThemeColor(Color::DarkGray)),
             subagent_fg: Some(ThemeColor(Color::Rgb(152, 128, 208))),
             subagent_bg: Some(ThemeColor(Color::Rgb(70, 58, 105))),
-            attendant_fg: Some(ThemeColor(Color::Rgb(208, 168, 96))),
-            attendant_bg: Some(ThemeColor(Color::Rgb(96, 76, 44))),
+            attendant_fg: Some(ThemeColor(Color::Rgb(200, 140, 190))),
+            attendant_bg: Some(ThemeColor(Color::Rgb(56, 48, 17))),
+            attendant_paused: Some(ThemeColor(Color::Rgb(128, 132, 144))),
             error_text: Some(ThemeColor(Color::Red)),
             dormant_fg: Some(ThemeColor(Color::Blue)),
             success: Some(ThemeColor(Color::Green)),

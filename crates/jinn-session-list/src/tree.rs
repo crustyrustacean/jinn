@@ -202,6 +202,7 @@ mod tests {
             is_last_child: false,
             is_subagent: false,
             is_attendant: false,
+            is_attendant_paused: false,
             has_live_term: false,
             is_in_flight: false,
         }

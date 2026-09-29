@@ -20,6 +20,9 @@ const SELECTED_INDICATOR: &str = "\u{2588}";
 /// The unselected cursor column (blank, keeps alignment).
 const UNSELECTED_BORDER: &str = " ";
 
+/// Marks an attendant in seed mode, matching the sessions section's glyph.
+const ATTENDANT_PAUSED_SYMBOL: &str = "⏸ ";
+
 /// Whether the section has any rows — an empty section collapses.
 pub(crate) fn has_content(state: &AppState) -> bool {
     !attendant_rows(state).is_empty()
@@ -170,9 +173,21 @@ impl crate::sections::section_trait::SidebarSection for AttendantsSection {
             } else {
                 Style::default().fg(theme.attendant_fg)
             };
+            // Beside the name, not inside it: the name is what a rename
+            // replaces, so a mode marker must stay out of its reach. The
+            // sessions section renders the same marker the same way.
+            let paused = if row.is_seed {
+                Span::styled(
+                    ATTENDANT_PAUSED_SYMBOL,
+                    Style::default().fg(theme.attendant_paused),
+                )
+            } else {
+                Span::raw("")
+            };
             lines.push(Line::from(vec![
                 indicator,
                 Span::styled(format!(" {}", row.name), name_style),
+                paused,
             ]));
 
             let report_line = match &row.latest_report {

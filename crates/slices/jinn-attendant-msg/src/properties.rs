@@ -187,6 +187,9 @@ pub struct AttendantPropertiesState {
     /// The template text captured when `i` opened the editor; `<esc>` in
     /// the editor restores it. `None` while the editor is closed.
     pub editor_original: Option<String>,
+    /// Whether the help overlay is showing. Toggled with `?`; it targets
+    /// whichever field the form cursor is on, so it is never stale.
+    pub help_visible: bool,
 }
 
 impl AttendantPropertiesState {
