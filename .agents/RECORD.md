@@ -365,7 +365,7 @@ Entries are added or amended **only with human approval**.
 - (attendant) An attendant is a session that references a parent without inheriting its conversation; it re-runs when the parent's turn completes successfully.
 - (attendant) An attendant's run parameters and its append-only report log persist in the session metadata blob, so adding them required no schema migration.
 - (attendant) An attendant in seed activation has user submissions pinned into its context without dispatching them, and its trigger is inert.
-- (attendant) Attendant activation is three-state: seed composes without firing, reset rebuilds context from pins alone, continue appends.
+- (attendant) Attendant activation is three-state: seed composes without firing, reset rebuilds context from pins alone, preserve appends.
 - (attendant) An attendant reaches its parent through two separate tools: `report` records for the user, `notify_parent` starts a parent turn.
 - (attendant) The harness places no bound on how often an attendant may notify its parent; loop termination is the agent's decision.
 - (attendant) An attendant's report goes stale when its parent resumes work and clears only on that attendant's own next report.
@@ -380,3 +380,12 @@ Entries are added or amended **only with human approval**.
 - (attendant) An attendant properties edit applies every pending value together on enter and discards them on escape or ctrl-c.
 - (attendant) The seed template edits through a rename-style popup sharing the rename popup's capabilities — enter keeps, escape restores, ctrl-c clears or leaves.
 - (ui) The selected option in an attendant properties choice row uses a dedicated attendant-option theme key, distinct from the focus accent.
+- (attendant) An attendant is an ordinary session for storage: `new_attendant` takes a persist flag, and `is_persistable` checks it before every other clause, so a false there is terminal for the session's life.
+- (attendant) SqliteSessionStore::save returns Ok for a non-persistable snapshot, so a swallowed save is indistinguishable from success — proof that a session reached a store must assert on store contents, never on the return value.
+- (attendant) The manual re-run (R) and the trigger fire are separate run preparations, not one function with a mode flag: R always seeds through the template and cascades a cancel, while a trigger respects the mode and cancels only the attendant's own turn.
+- (attendant) A manual re-run must drive its own session phase to Idle before dispatching, because the enqueue handler queues any user message arriving while a session is Sending or Streaming.
+- (attendant) A manual re-run cancels via cancel_streaming rather than cancel_stream_and_drain, because the drain would steer the aborted partial into the input box.
+- (attendant) A reset-mode run writes its forced-exclusions to the store; without that, a restarted attendant would silently regain its full history.
+- (attendant) The seed template's prior-report placeholder is replaced with a first-run sentence when no report exists, so no run ever dispatches a raw template token.
+- (attendant) The attendants sidebar section is scoped to the active session's parent context, so a parent shows its own attendants and an attendant shows its siblings.
+- (attendant) Field movement in the properties popup clamps at both ends rather than wrapping, so the cursor never silently teleports to the opposite edge.
