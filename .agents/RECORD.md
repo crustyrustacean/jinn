@@ -171,7 +171,7 @@ Entries are added or amended **only with human approval**.
 - (ui) Scope transitions are driven by keybinds that emit routing intents; leaving a scope pops back to the prior one (e.g. picker/skill/task-list scopes return to normal on `Esc`).
 - (ui) The TUI tracks focus as a scope stack (`FocusScope`); keys resolve differently per scope, and the active scope determines which bindings are available (e.g. the dashboard scope has no chat-history or sidebar bindings).
 - (ui) The chat input popup narrows rows by typed prefix and renders directory entries with trailing slashes, plus empty/loading states.
-- (ui) The sidebar has five sections — Persona, Pins, TaskList, McpServers, Sessions — with cyclic navigation.
+- (ui) The sidebar has six sections — Persona, Pins, Attendants, TaskList, McpServers, Sessions — with cyclic navigation.
 - (citations) Citable web sources detected in tool calls and results render as a Sources footer when a turn reaches a final assistant answer.
 - (workflow) Commits use `just commit '<message>'`, which runs `fossil addremove --dotfiles` so dot-directories like `.agents/` are included.
 - (workflow) The workspace is checked with `just check` (compile), `just test` (tests), and `just lint` (lints); all tests must pass before committing.
@@ -182,7 +182,7 @@ Entries are added or amended **only with human approval**.
 - (subagents) The `task` tool blocks until the child session reaches Idle and forwards the child's last chat entry as its tool result; cancellations forward the cancel entry as a failure.
 - (subagents) Subagent spawn stamps the `task` tool into the child's per-session `disabled_tools`, so it suppresses like any user-disabled tool and the tool picker reflects it; re-enabling it via the tool picker lets a subagent spawn subagents, and a session spawned by a re-enabled subagent starts suppressed again.
 - (subagents) Forking strips the `task` tool from the fork's `disabled_tools`, so a fork of a subagent session always has the `task` tool enabled.
-- (session) Sessions carry no automation flag; identity is a persisted origin enum (user, fork, subagent), and tree structure is linked via `parent_session`.
+- (session) Sessions carry no automation flag; identity is a persisted origin enum (user, fork, subagent, attendant), and tree structure is linked via `parent_session`.
 - (subagents) A spawned subagent's first dispatch waits for its discovery settle gate (project context files, skills, enabled MCP servers), bounded by an internal settle budget, so the first prompt includes MCP tools and project context; the message is sent regardless once the budget expires.
 - (subagents) The sidebar's subagent marking reflects the session's origin, not the parent link; forks always get fork origin — even forks of subagent sessions.
 - (subagents) A `task` tool-call entry carries an optional persisted link to the child session it spawned.
@@ -360,3 +360,18 @@ Entries are added or amended **only with human approval**.
 - (slices) The chat input draft for a session is served from the chat-input slice's cell rather than from the session struct.
 - (chat-log-view) The chat log's per-entry line cache lives in a jinn-chat-log-view cell, invalidated when the theme changes.
 - (slices) A cell's payload type lives in the slice's `-msg` crate, so a catalog depending on it pulls in no slice implementation.
+
+- (attendant) An attendant is a session that references a parent without inheriting its conversation; it re-runs when the parent's turn completes successfully.
+- (attendant) An attendant's run parameters and its append-only report log persist in the session metadata blob, so adding them required no schema migration.
+- (attendant) An attendant in seed activation has user submissions pinned into its context without dispatching them, and its trigger is inert.
+- (attendant) Attendant activation is three-state: seed composes without firing, reset rebuilds context from pins alone, continue appends.
+- (attendant) An attendant reaches its parent through two separate tools: `report` records for the user, `notify_parent` starts a parent turn.
+- (attendant) The harness places no bound on how often an attendant may notify its parent; loop termination is the agent's decision.
+- (attendant) An attendant's report goes stale when its parent resumes work and clears only on that attendant's own next report.
+- (attendant) An attendant's identity in the sidebar is its session name; it has no separate label field.
+- (attendant) Turn completion is published as `TurnCompleted`, with its outcome derived from the session's last history entry rather than the provider's stop reason.
+- (attendant) A turn that completes after the user already cancelled resolves as cancelled, so a cancelled turn never fires an attendant.
+- (attendant) Attendant rows in the session tree use a dedicated theme token distinct from the error colour.
+- (tools) Cancelling a turn stops every subagent or attendant beneath it, recursively; a fork is a boundary whose own descendants are never cancelled.
+- (tools) A single Escape cancels nothing — it arms the cancel confirmation; the cascade rides the confirmed second Escape.
+- (tools) The in-flight task-spawn registry exposes both a presence check and a child-list reader, and is the only live source of a session's running subagents.
