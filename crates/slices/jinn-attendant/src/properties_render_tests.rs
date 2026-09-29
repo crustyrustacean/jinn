@@ -123,6 +123,26 @@ fn row_from_border(buffer: &ratatui::buffer::Buffer, y: u16) -> String {
         .collect()
 }
 
+/// The card row `y`'s text, with the card's own border characters trimmed
+/// off both ends.
+///
+/// The card is drawn one cell right of the popup and framed by its own
+/// border, so a card row is neither measured from the popup's border the
+/// way a form row is, nor read whole: the `│` that frames it is furniture,
+/// and a row holding only the frame is a blank card row.
+fn card_row_from_border(buffer: &ratatui::buffer::Buffer, y: u16) -> String {
+    let start = inner_left() + 1;
+    let row: String = (start..buffer.area.width)
+        .map(|x| symbol_at(buffer, x, y))
+        .collect();
+    // The frame is a `│` on each side of a card row and a run of box-drawing
+    // on its top and bottom, so the text is what is between them.
+    row.trim_matches([
+        '\u{2502}', '\u{250c}', '\u{2510}', '\u{2514}', '\u{2518}', ' ', '-', '+', '|',
+    ])
+    .to_owned()
+}
+
 /// The x of the popup's left border: the centered rect's own x, not a scan
 /// (row text can contain `│` of its own).
 fn inner_left() -> u16 {
@@ -301,17 +321,12 @@ fn help_overlay_is_hidden_until_question_mark_is_pressed() {
     );
 }
 
-/// Whether a row carries the help card's surface.
+/// Whether a row is one the help card drew.
 ///
-/// The card has no border of its own and is drawn at the popup's own width,
-/// so the row is a card row when the surface runs from the popup's left cell
-/// across most of its width.
+/// The card is bounded by its own pink edge, and it sits one cell right of
+/// the popup, so a card row is one whose left border cell is the card's.
 fn row_is_card(buffer: &ratatui::buffer::Buffer, y: u16) -> bool {
-    let theme = jinn_theme::default_theme();
-    let card_cells = (inner_left()..inner_left() + 30)
-        .filter(|&x| bg_at(buffer, x, y) == theme.user_block_bg)
-        .count();
-    card_cells > 25
+    fg_at(buffer, inner_left() + 1, y) == jinn_theme::default_theme().attendant_fg
 }
 
 #[rstest::rstest]
@@ -733,12 +748,36 @@ fn the_tooltip_is_never_positioned_off_screen() {
     // When rendering at that minimum size.
     let buffer = render_properties_in(popup, 40, 15);
 
-    // Then the tooltip still lands on screen, inside the terminal.
-    let (top, bottom) = tooltip_rows(&buffer);
+    // Then the card's frame is on screen and inside the terminal. A card
+    // taller than the room below the popup is drawn from the terminal's own
+    // top and cut by its bottom edge — the one outcome available when
+    // neither side can hold it — but it is never drawn past the terminal,
+    // and never starts level with the popup it is describing.
+    let form = attendant_properties_overlay_rect(&buffer.area).expect("popup rect");
+    let card_rows: Vec<u16> = (0..buffer.area.height)
+        .filter(|&y| {
+            (0..buffer.area.width)
+                .any(|x| fg_at(&buffer, x, y) == jinn_theme::default_theme().attendant_fg)
+        })
+        .collect();
+    let (top, bottom) = match (card_rows.first(), card_rows.last()) {
+        (Some(t), Some(b)) => (*t, *b),
+        _ => panic!(
+            "the card must be drawn at all in a {}-row terminal",
+            buffer.area.height
+        ),
+    };
     assert!(
-        bottom < buffer.area.height && top < bottom,
-        "the tooltip (y={top}..{bottom}) must render inside a {}-row terminal",
+        bottom < buffer.area.height,
+        "the card (y={top}..{bottom}) must not run past a {}-row terminal",
         buffer.area.height
+    );
+    assert!(
+        top < form.y + form.height,
+        "a card that cannot fit below is drawn from the top, not from the \
+         middle of the popup it describes (card y={top}, popup y={}..{})",
+        form.y,
+        form.y + form.height - 1
     );
 }
 
@@ -800,8 +839,11 @@ fn the_help_card_names_the_field_in_the_focus_accent() {
     // Then the card's header is the field's own label in the focus accent,
     // so the card is tied to the row it answers for.
     let (top, _) = tooltip_rows(&buffer);
-    let x = find_in_row(&buffer, top, "activation").expect("the header");
-    assert_eq!(fg_at(&buffer, x, top), theme.focus_accent);
+    let header = (top + 1..=top + 3)
+        .find(|&y| find_in_row(&buffer, y, "activation").is_some())
+        .expect("the header, inside the card's border");
+    let x = find_in_row(&buffer, header, "activation").expect("the header");
+    assert_eq!(fg_at(&buffer, x, header), theme.focus_accent);
 }
 
 #[rstest::rstest]
@@ -861,53 +903,6 @@ fn the_popup_rows_do_not_move_with_the_cursor(#[case] field: PropertyField, #[ca
     );
 }
 
-/// The tooltip's top and bottom rows: the rows carrying the help card's
-/// light background, wherever the overlay landed. The tooltip is laid over
-/// the terminal — including over the popup's own upper rows for a lower
-/// field — so its position cannot be assumed; it is read by color.
-/// Every row carrying the help card's surface, top to bottom.
-///
-/// The card is read by its background: the focused field's row inside the
-/// popup shares the same surface, so a card row is one that is not the
-/// popup's own row.
-fn card_row_numbers(buffer: &ratatui::buffer::Buffer) -> Vec<u16> {
-    let theme = jinn_theme::default_theme();
-    let form = attendant_properties_overlay_rect(&buffer.area).expect("popup rect");
-    (0..buffer.area.height)
-        .filter(|&y| {
-            let on_form = y >= form.y && y < form.y + form.height;
-            let surface = (inner_left()..buffer.area.width)
-                .any(|x| bg_at(buffer, x, y) == theme.user_block_bg);
-            surface && !on_form
-        })
-        .collect()
-}
-
-/// The help card's first and last row.
-fn tooltip_rows(buffer: &ratatui::buffer::Buffer) -> (u16, u16) {
-    let rows: Vec<u16> = card_row_numbers(buffer);
-    match (rows.first(), rows.last()) {
-        (Some(top), Some(bottom)) => (*top, *bottom),
-        _ => panic!("no tooltip row carrying the help card's background"),
-    }
-}
-
-/// The row the highlighted field occupies, derived from the label the
-/// focused field renders.
-fn highlighted_row_of(buffer: &ratatui::buffer::Buffer, field: PropertyField) -> u16 {
-    let label = match field {
-        PropertyField::Trigger => "trigger:",
-        PropertyField::Activation => "activation:",
-        PropertyField::SeedTemplate => "seed template:",
-    };
-    for y in body_top(buffer)..buffer.area.height {
-        if find_in_row(buffer, y, label).is_some() {
-            return y;
-        }
-    }
-    panic!("no row for {field:?}");
-}
-
 #[rstest::rstest]
 #[test]
 fn the_status_line_carries_the_outcome_in_the_themes_status_color() {
@@ -954,9 +949,9 @@ fn the_status_line_shows_the_overwrite_prompt() {
 }
 
 #[rstest::rstest]
-#[case::trigger(PropertyField::Trigger, "parent-completed")]
-#[case::activation(PropertyField::Activation, "preserve")]
-#[case::template(PropertyField::SeedTemplate, "prior report")]
+#[case::trigger(PropertyField::Trigger, "parent-completed:")]
+#[case::activation(PropertyField::Activation, "seed:")]
+#[case::template(PropertyField::SeedTemplate, "<prior report>:")]
 #[test]
 fn the_help_card_keeps_the_blank_line_between_its_lead_and_its_list(
     #[case] field: PropertyField,
@@ -974,15 +969,19 @@ fn the_help_card_keeps_the_blank_line_between_its_lead_and_its_list(
     // help is a list is unreadable as one wrapped sentence.
     let (top, bottom) = tooltip_rows(&buffer);
     // The card's own blank row: the one after its header, where the lead
-    // sentence ends and the list begins. The list may wrap over several
-    // rows, so it is located by its first line rather than its last.
+    // sentence ends and the list begins. Rows are read from the card's own
+    // text, because a listed choice also appears in the form above it.
+    // The needle carries the colon that introduces a description, so a
+    // choice's name is matched as a listed item and not as a word that
+    // happens to appear in the lead sentence.
     let first_list_row = (top..=bottom)
-        .find(|&y| find_in_row(&buffer, y, needle).is_some())
+        .find(|&y| card_row_from_border(&buffer, y).contains(needle))
         .expect("the listed choice");
-    let header = find_in_row(&buffer, top, field.label()).map(|_| top);
+    let header =
+        (top + 1..=bottom).find(|&y| card_row_from_border(&buffer, y).contains(field.label()));
     assert!(header.is_some(), "the card names the field it describes");
-    let blank = (top + 1..first_list_row)
-        .find(|&y| row_from_border(&buffer, y).trim().is_empty() && row_is_card(&buffer, y));
+    let blank =
+        (top + 1..first_list_row).find(|&y| card_row_from_border(&buffer, y).trim().is_empty());
     assert!(
         blank.is_some(),
         "a blank card row must separate the lead from the list starting at \
@@ -1011,11 +1010,13 @@ fn every_field_has_a_help_card_even_on_a_short_terminal(#[case] field: PropertyF
         top <= bottom && bottom < buffer.area.height,
         "the card must land inside a 22-row terminal, got y={top}..{bottom}"
     );
-    let text = row_from_border(&buffer, top);
-    assert!(
-        text.contains(field.label()),
-        "the card names the field it describes: {text}"
-    );
+    // The card's first row is its top border; the header is the first row
+    // inside it.
+    let header = (top + 1..=bottom)
+        .map(|y| row_from_border(&buffer, y))
+        .find(|row| row.contains(field.label()))
+        .unwrap_or_else(|| panic!("the card (y={top}..{bottom}) must name the field it describes"));
+    assert!(header.contains(field.label()));
 }
 
 #[rstest::rstest]
@@ -1046,4 +1047,123 @@ fn a_listed_choice_is_introduced_by_a_colon(#[case] field: PropertyField, #[case
         "the choice must be followed by a colon, got {:?}",
         after.chars().take(12).collect::<String>()
     );
+}
+/// The tooltip's top and bottom rows: the rows carrying the help card's
+/// light background, wherever the overlay landed. The tooltip is laid over
+/// the terminal — including over the popup's own upper rows for a lower
+/// field — so its position cannot be assumed; it is read by color.
+/// The card's own left and right border columns, read from its bottom edge.
+fn card_columns(buffer: &ratatui::buffer::Buffer, bottom: u16) -> (u16, u16) {
+    let theme = jinn_theme::default_theme();
+    let pink: Vec<u16> = (0..buffer.area.width)
+        .filter(|&x| fg_at(buffer, x, bottom) == theme.attendant_fg)
+        .collect();
+    match (pink.first(), pink.last()) {
+        (Some(left), Some(right)) => (*left, *right),
+        _ => panic!("the card's bottom border must be the attendant's pink"),
+    }
+}
+
+/// The card's own left border column.
+fn card_left(buffer: &ratatui::buffer::Buffer) -> u16 {
+    card_columns(buffer, tooltip_rows(buffer).1).0
+}
+
+/// Every row carrying the help card's surface, top to bottom.
+///
+/// The card is read by its background: the focused field's row inside the
+/// popup shares the same surface, so a card row is one that is not the
+/// popup's own row.
+fn card_row_numbers(buffer: &ratatui::buffer::Buffer) -> Vec<u16> {
+    let form = attendant_properties_overlay_rect(&buffer.area).expect("popup rect");
+    (0..buffer.area.height)
+        .filter(|&y| {
+            let on_form = y >= form.y && y < form.y + form.height;
+            !on_form && row_is_card(buffer, y)
+        })
+        .collect()
+}
+
+/// The help card's first and last row.
+fn tooltip_rows(buffer: &ratatui::buffer::Buffer) -> (u16, u16) {
+    let rows: Vec<u16> = card_row_numbers(buffer);
+    match (rows.first(), rows.last()) {
+        (Some(top), Some(bottom)) => (*top, *bottom),
+        _ => panic!("no tooltip row carrying the help card's background"),
+    }
+}
+
+/// The row the highlighted field occupies, derived from the label the
+/// focused field renders.
+fn highlighted_row_of(buffer: &ratatui::buffer::Buffer, field: PropertyField) -> u16 {
+    let label = match field {
+        PropertyField::Trigger => "trigger:",
+        PropertyField::Activation => "activation:",
+        PropertyField::SeedTemplate => "seed template:",
+    };
+    for y in body_top(buffer)..buffer.area.height {
+        if find_in_row(buffer, y, label).is_some() {
+            return y;
+        }
+    }
+    panic!("no row for {field:?}");
+}
+
+#[rstest::rstest]
+#[case::trigger(PropertyField::Trigger)]
+#[case::activation(PropertyField::Activation)]
+#[case::template(PropertyField::SeedTemplate)]
+#[test]
+fn the_help_card_is_framed_in_the_attendants_own_pink(#[case] field: PropertyField) {
+    // Given a popup with the help card toggled on.
+    let theme = jinn_theme::default_theme();
+    let mut popup = popup_focused(field);
+    popup.help_visible = true;
+
+    // When rendering.
+    let buffer = render_properties(popup);
+
+    // Then all four edges are the attendant's own color. The border is the
+    // card's identity — it says "this is about the attendant's settings"
+    // before a word of it is read.
+    let (top, bottom) = tooltip_rows(&buffer);
+    let (left, right) = card_columns(&buffer, bottom);
+    for (x, y, edge) in [
+        (left, top, "top-left"),
+        (right, top, "top-right"),
+        (left, bottom, "bottom-left"),
+        (right, bottom, "bottom-right"),
+    ] {
+        assert_eq!(
+            fg_at(&buffer, x, y),
+            theme.attendant_fg,
+            "the card's {edge} corner must be the attendant's pink"
+        );
+    }
+}
+
+#[rstest::rstest]
+#[test]
+fn the_card_border_leaves_no_room_the_text_runs_out_of() {
+    // Given the card at a width narrow enough to wrap its help.
+    let mut popup = popup_focused(PropertyField::Trigger);
+    popup.help_visible = true;
+
+    // When rendering.
+    let buffer = render_properties_in(popup, 46, 34);
+
+    // Then every line of the card sits inside the border: a card shorter
+    // than its own text runs off the bottom edge and reads as a rendering
+    // fault, and wrapping at the card's width rather than the text's leaves
+    // a line flush against the right border.
+    let (top, bottom) = tooltip_rows(&buffer);
+    let (_, right) = card_columns(&buffer, bottom);
+    for y in (top + 1)..bottom {
+        let row = card_row_from_border(&buffer, y);
+        let reaches_border = row.chars().count() as u16 + card_left(&buffer) + 1 >= right;
+        assert!(
+            !reaches_border || row.trim().is_empty(),
+            "card row {y} runs into the right border: {row}"
+        );
+    }
 }

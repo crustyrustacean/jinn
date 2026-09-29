@@ -90,17 +90,12 @@ pub fn render_attendant_properties(frame: &mut Frame<'_>, area: Rect, ctx: &Rend
     // The help overlay is anchored to the highlighted row, not to a
     // terminal cursor: this popup is navigation-only and owns no cursor of
     // its own, so its position follows the row the user is reading.
-    if let Some((help_area, help_lines)) = help_overlay(&popup, area, inner, frame.area(), theme) {
-        frame.render_widget(Clear, help_area);
-        // The card's surface, painted across its whole area first: a
-        // `Paragraph` paints only the cells a line's text covers, so a card
-        // with a blank row in it would otherwise show a hole in its own
-        // background rather than a blank row of card.
-        frame.render_widget(
-            Block::default().style(Style::default().bg(theme.user_block_bg)),
-            help_area,
-        );
-        frame.render_widget(Paragraph::new(help_lines), help_area);
+    if let Some(help) = help_overlay(&popup, area, inner, frame.area(), theme) {
+        frame.render_widget(Clear, help.area);
+        // The frame first — it draws the border and paints the card's
+        // surface — then the text into the area the frame leaves.
+        frame.render_widget(help.card, help.area);
+        frame.render_widget(Paragraph::new(help.lines), help.text);
     }
 }
 
@@ -565,7 +560,11 @@ fn help_body(field: PropertyField, theme: &jinn_theme::Theme) -> Vec<Line<'stati
     }
 }
 
-/// The help card, styled: a header naming the field, then its body lines.
+/// The cells the help card's border takes off its own width: one on each
+/// side. The text is drawn inside them.
+const HELP_CARD_BORDER_CELLS: u16 = 2;
+
+/// The help card's text: a header naming the field, then its body lines.
 ///
 /// Every row carries the card's own background, and its foreground is
 /// chosen by the row's *role* — header, body — so adding emphasis means
@@ -573,14 +572,12 @@ fn help_body(field: PropertyField, theme: &jinn_theme::Theme) -> Vec<Line<'stati
 /// lines are wrapped here rather than handed to the `Paragraph`, because the
 /// card sizes itself to its content and must know its height before it can
 /// be placed.
-fn help_paragraph(
+fn help_body_lines(
     field: PropertyField,
     inner_width: u16,
     theme: &jinn_theme::Theme,
-) -> (Vec<Line<'static>>, u16) {
-    // One cell of the popup's width is the card's own left margin, so the
-    // text wraps a cell narrower than the row it is drawn into.
-    let text_width = inner_width.saturating_sub(1).max(1);
+) -> Vec<Line<'static>> {
+    let text_width = inner_width.max(1);
     let mut lines = vec![Line::from(Span::styled(
         // The label as the form shows it, minus the colon padding: the
         // card is a description of the field, not a copy of its row.
@@ -598,9 +595,31 @@ fn help_paragraph(
     );
     // A blank line in the authored body is the author's own spacing and is
     // kept as authored; the card adds no pad of its own, so its height is
-    // its content.
-    let height = u16::try_from(lines.len()).unwrap_or(u16::MAX);
-    (lines, height.max(2))
+    // exactly its text.
+    lines
+}
+
+/// The help card's frame: the attendant's own pink around its text.
+///
+/// The border is the card's identity — it says *this box is about the
+/// attendant's settings* the moment it appears, before a word of it is
+/// read, and it keeps the card from bleeding into whatever the chat log
+/// happened to have behind it. It is [`attendant_fg`] rather than a new
+/// color because that pink is already the app's word for "attendant".
+///
+/// The block carries the card's surface as well as its edge, for the same
+/// reason the rows do: a `Paragraph` paints only the cells a line's text
+/// covers, and a card with a blank row in it would otherwise show a hole
+/// in its own background rather than a blank row of card.
+fn help_card(theme: &jinn_theme::Theme) -> Block<'static> {
+    Block::default()
+        .borders(Borders::ALL)
+        .border_style(
+            Style::default()
+                .fg(theme.attendant_fg)
+                .bg(theme.user_block_bg),
+        )
+        .style(Style::default().bg(theme.user_block_bg))
 }
 
 /// Wraps one help line to `width`, breaking on whitespace, and returns the
@@ -669,19 +688,33 @@ fn wrap_line(line: Line<'static>, width: u16) -> Vec<Line<'static>> {
 /// text wrapped to it. It is an overlay on the terminal rather than a row
 /// inside the form, and it sizes itself to its content, so its height is
 /// measured before it is placed.
-fn help_overlay(
+fn help_overlay<'a>(
     popup: &AttendantPropertiesState,
     popup_area: Rect,
     inner: Rect,
     terminal: Rect,
-    theme: &jinn_theme::Theme,
-) -> Option<(Rect, Vec<Line<'static>>)> {
+    theme: &'a jinn_theme::Theme,
+) -> Option<HelpCard<'a>> {
     // The template editor owns the terminal cursor while it is open; the
     // help would sit on top of the draft the user is typing into.
     if !popup.help_visible || popup.editor_original.is_some() {
         return None;
     }
-    let (lines, height) = help_paragraph(popup.focus, inner.width, theme);
+    let card = help_card(theme);
+    // The text is drawn inside the border, so it wraps a card narrower and
+    // rows shorter than the card. Wrapping at the card's own width instead
+    // would under-count the rows, and a card that is shorter than its text
+    // runs off its own bottom border.
+    let text_width = inner.width.saturating_sub(HELP_CARD_BORDER_CELLS);
+    let lines = help_body_lines(popup.focus, text_width, theme);
+    // The card is a border around its text, so its height is the text's
+    // plus the two border rows — measured here rather than left to the
+    // `Block`, because the card is placed before it is drawn and a height
+    // that is only known at draw time is a height that cannot be placed.
+    let height = u16::try_from(lines.len())
+        .unwrap_or(u16::MAX)
+        .saturating_add(2)
+        .max(2);
     let y = place_help(HelpPlacementInput {
         height,
         // The card is kept off the popup *including its border*, not just
@@ -697,7 +730,26 @@ fn help_overlay(
         width: inner.width,
         height,
     };
-    Some((area, lines))
+    let text = card.inner(area);
+    Some(HelpCard {
+        area,
+        text,
+        card,
+        lines,
+    })
+}
+
+/// The help card, placed: the area it occupies, the text area inside its
+/// border, the frame that draws the border, and the lines the text is.
+struct HelpCard<'a> {
+    /// The card's whole area, border included.
+    area: Rect,
+    /// The area inside the border, where the text goes.
+    text: Rect,
+    /// The card's frame.
+    card: Block<'a>,
+    /// The card's text, already wrapped to `text`'s width.
+    lines: Vec<Line<'static>>,
 }
 
 /// Where the help card goes: its height, and the bounds it must fit in.
@@ -731,6 +783,11 @@ fn place_help(input: HelpPlacementInput) -> u16 {
     if below.saturating_add(input.height) <= input.terminal_bottom {
         below
     } else {
+        // No room below. The card is drawn from the top of the terminal and
+        // the terminal cuts it, rather than from the top of the room below
+        // the popup: a card that starts above the popup covers the form it
+        // is describing, and a card that starts level with it sits on the
+        // popup's own border. Neither reads as an overlay.
         input.terminal_top
     }
 }
