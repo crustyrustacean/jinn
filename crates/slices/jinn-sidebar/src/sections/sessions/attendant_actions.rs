@@ -83,6 +83,18 @@ pub fn handle_new_attendant(state: &mut AppState, config: &ConfigLayer) -> Inten
         a.mark_interacted();
     }
 
+    // The parent earns the same mark. A brand new session is not written
+    // when it is created — it stays in memory until something makes it
+    // worth keeping — and the store discards any snapshot for a session it
+    // does not consider persistable, so asking to save an unwritten parent
+    // achieves nothing on its own. Attaching an attendant is that
+    // something: the child names the parent in its own row, so a parent
+    // that is never saved is an attendant pointing at a session the store
+    // has never heard of.
+    if let Some(p) = state.session.get_mut(&parent_id) {
+        p.mark_interacted();
+    }
+
     let mut result = IntentResult::empty()
         // The parent first. A brand new session is not written when it is
         // created, so it exists only in memory until something forces it

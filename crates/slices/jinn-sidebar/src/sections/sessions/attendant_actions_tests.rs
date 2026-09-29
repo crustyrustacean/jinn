@@ -48,6 +48,10 @@ impl SessionStore for RecordingStore {
     }
 
     async fn save(&self, snapshot: &SessionSnapshot) -> Result<(), Report<SessionStoreError>> {
+        // Mirrors the store's own gate. The store actor applies a second
+        // one — it drops a session that is not persistable — before the
+        // snapshot is ever built, which the test that exercises the real
+        // handler covers end to end.
         if !snapshot.metadata.persist {
             return Ok(());
         }
@@ -278,6 +282,38 @@ impl jinn_slices::route_publish::PublishSink for PersistedCollector {
             self.ids.lock().expect("collector lock").push(id);
         }
     }
+}
+
+#[rstest::rstest]
+#[test]
+fn creating_an_attendant_makes_its_parent_worth_saving() {
+    // Given a brand new session that has never been persisted. A fresh
+    // session is not written on creation, so it exists only in memory —
+    // and that is the state every new session starts in.
+    let mut state = state_with_selected_session();
+    let parent_id = {
+        let parent = jinn_session_state::ChatSessionState::new();
+        let parent_id = parent.session_id().clone();
+        state.session.insert(parent);
+        state.session.set_active(parent_id.clone());
+        parent_id
+    };
+
+    // When an attendant is created from it.
+    handle_new_attendant(&mut state, &empty_config());
+
+    // Then the parent is worth saving. The store drops any snapshot for a
+    // session it does not consider persistable, so a request to save an
+    // unwritten parent is discarded before it reaches the database — the
+    // request is not enough on its own.
+    let parent = state
+        .session
+        .get(&parent_id)
+        .expect("the parent still exists");
+    assert!(
+        parent.is_persistable(),
+        "a session with an attendant is no longer an empty draft"
+    );
 }
 
 #[rstest::rstest]
