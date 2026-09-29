@@ -623,3 +623,201 @@ async fn a_fired_attendant_turn_is_marked_automated() {
         "a fired attendant's turn must be marked automated"
     );
 }
+
+#[rstest::rstest]
+#[tokio::test]
+async fn every_sibling_attendant_fires_when_the_parent_turn_succeeds() {
+    // Given a parent watched by three sibling attendants, all dispatchable
+    // and all on the parent-completed trigger.
+    let harness = jinn_testutil::bus_harness::TestHarness::new().await;
+    let dispatched = harness
+        .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
+        .await;
+    let state = State::new(AppState::default());
+    let parent_id = {
+        let mut s = state.write();
+        let parent = ChatSessionState::new();
+        let id = parent.session_id().clone();
+        s.session.insert(parent);
+        for index in 0..3 {
+            let mut attendant = {
+                let read = s.session.get(&id).expect("parent").clone();
+                ChatSessionState::new_attendant(&read, true)
+            };
+            attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+            attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+            attendant.set_seed_template(format!("check-{index}: <prior report>"));
+            attendant.append_attendant_report("prior finding".to_owned());
+            s.session.insert(attendant);
+        }
+        id
+    };
+    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+        harness.system(),
+        crate::trigger_actor::AttendantTriggerActorDeps {
+            services: harness.services().await,
+            state: state.clone(),
+        },
+    );
+
+    // When the parent's turn completes successfully.
+    harness
+        .publish(jinn_session_msg::TurnCompleted {
+            session_id: parent_id,
+            outcome: jinn_session_msg::TurnOutcome::Succeeded,
+        })
+        .await;
+    let dispatches = jinn_testutil::bus_harness::await_recorded::<
+        jinn_chat_input_msg::EnqueueUserMessage,
+    >(&dispatched, 3, std::time::Duration::from_secs(10))
+    .await;
+
+    // Then every sibling fired. One firing per parent completion is the
+    // whole contract: a parent with three watchers runs all three, or the
+    // user is silently left waiting on the two that never start.
+    assert_eq!(dispatches.len(), 3);
+    // And each sibling got its own seeded prompt, not a repeat of one.
+    let mut seeded: Vec<String> = dispatches
+        .iter()
+        .map(|d| d.entry.text().to_owned())
+        .collect();
+    seeded.sort();
+    assert_eq!(
+        seeded,
+        vec![
+            "check-0: prior finding".to_owned(),
+            "check-1: prior finding".to_owned(),
+            "check-2: prior finding".to_owned(),
+        ]
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn an_attendant_nested_under_another_attendant_does_not_fire_from_the_parents_completion() {
+    // Given a root session with two dispatchable parent-completed
+    // attendants, and a third attendant nested under the first one.
+    let harness = jinn_testutil::bus_harness::TestHarness::new().await;
+    let dispatched = harness
+        .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
+        .await;
+    let state = State::new(AppState::default());
+    // Each attendant is built from an already-cloned parent, so no read
+    // guard is ever taken while the write guard below is held.
+    let arm = |parent: &ChatSessionState| {
+        let mut attendant = ChatSessionState::new_attendant(parent, true);
+        attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        attendant.set_seed_template("check".to_owned());
+        attendant.append_attendant_report("prior finding".to_owned());
+        attendant
+    };
+    let (root_id, nested_id) = {
+        let mut s = state.write();
+        let root = ChatSessionState::new();
+        let root_id = root.session_id().clone();
+        s.session.insert(root.clone());
+        let first = arm(&root);
+        let nested = arm(&first);
+        s.session.insert(first);
+        s.session.insert(arm(&root));
+        let nested_id = nested.session_id().clone();
+        s.session.insert(nested);
+        (root_id, nested_id)
+    };
+    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+        harness.system(),
+        crate::trigger_actor::AttendantTriggerActorDeps {
+            services: harness.services().await,
+            state: state.clone(),
+        },
+    );
+
+    // When the root's turn completes successfully.
+    harness
+        .publish(jinn_session_msg::TurnCompleted {
+            session_id: root_id,
+            outcome: jinn_session_msg::TurnOutcome::Succeeded,
+        })
+        .await;
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    // Then the nested attendant fires too. "Everything under this session"
+    // is the contract; it is not one hop.
+    let seen: Vec<jinn_core_types::SessionId> = dispatched
+        .drain()
+        .iter()
+        .map(|d| d.session_id.clone())
+        .collect();
+    assert!(
+        seen.contains(&nested_id),
+        "an attendant nested under another attendant must fire from the root's completion; dispatched to {seen:?}"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_cyclic_parent_link_does_not_hang_the_trigger_walk() {
+    // Given two attendants that each claim the other as their parent, both
+    // dispatchable and parent-completed.
+    let harness = jinn_testutil::bus_harness::TestHarness::new().await;
+    let dispatched = harness
+        .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
+        .await;
+    let state = State::new(AppState::default());
+    let (root_id, first_id) = {
+        let mut s = state.write();
+        let root = ChatSessionState::new();
+        let root_id = root.session_id().clone();
+        s.session.insert(root.clone());
+        let arm = |parent: &ChatSessionState| {
+            let mut attendant = ChatSessionState::new_attendant(parent, true);
+            attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+            attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+            attendant.set_seed_template("check".to_owned());
+            attendant.append_attendant_report("prior finding".to_owned());
+            attendant
+        };
+        let first = arm(&root);
+        let first_id = first.session_id().clone();
+        s.session.insert(first);
+        // A second attendant under the root, then re-point the first's
+        // parent at it so the chain loops.
+        let second = arm(&root);
+        let second_id = second.session_id().clone();
+        s.session.insert(second);
+        if let Some(a) = s.session.get_mut(&first_id) {
+            a.set_parent_session(second_id);
+        }
+        (root_id, first_id)
+    };
+    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+        harness.system(),
+        crate::trigger_actor::AttendantTriggerActorDeps {
+            services: harness.services().await,
+            state: state.clone(),
+        },
+    );
+
+    // When the root's turn completes.
+    harness
+        .publish(jinn_session_msg::TurnCompleted {
+            session_id: root_id,
+            outcome: jinn_session_msg::TurnOutcome::Succeeded,
+        })
+        .await;
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    // Then the walk terminated and each attendant fired exactly once. A
+    // cycle is a corrupt tree, not a reason to stop serving the rest.
+    let seen: Vec<jinn_core_types::SessionId> = dispatched
+        .drain()
+        .iter()
+        .map(|d| d.session_id.clone())
+        .collect();
+    assert_eq!(
+        seen.iter().filter(|id| **id == first_id).count(),
+        1,
+        "a cyclic parent link must not fire an attendant twice; dispatched to {seen:?}"
+    );
+}

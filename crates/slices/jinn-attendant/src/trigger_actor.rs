@@ -139,28 +139,63 @@ impl AttendantTriggerActor {
         }
     }
 
-    /// Every loaded attendant watching `parent`, by live query.
+    /// Every loaded attendant in the subtree rooted at `parent`, by live query.
     ///
     /// A child references its parent; the parent holds no list. Creation
     /// order is irrelevant — this is why an attendant created after its
     /// parent finished still shows up the *next* time the parent completes,
     /// and why nothing fires for it in between.
+    ///
+    /// The walk is recursive, not one hop: an attendant created under another
+    /// attendant is still under the parent it reports to, so the root's
+    /// completion is what the user's question completed. Fork and user
+    /// sessions are boundaries — they are not attendants, and nothing hangs
+    /// off them by this rule.
     fn attendants_of(
         &self,
         parent: &jinn_core_types::SessionId,
     ) -> Vec<jinn_core_types::SessionId> {
-        {
+        let mut found = Vec::new();
+        // Seeded with the completed session: a child that links back up to
+        // it must be recognised as already walked, or a cyclic
+        // `parent_session` chain recurses forever.
+        let mut visited = std::collections::HashSet::new();
+        visited.insert(parent.clone());
+        self.collect_attendants_under(parent, &mut visited, &mut found);
+        found
+    }
+
+    /// Appends every attendant beneath `session`, depth first, skipping any
+    /// session already walked.
+    ///
+    /// The `visited` set is seeded by the caller with the completed session,
+    /// so a cycle in `parent_session` links terminates instead of recursing
+    /// until the stack gives out.
+    fn collect_attendants_under(
+        &self,
+        session: &jinn_core_types::SessionId,
+        visited: &mut std::collections::HashSet<jinn_core_types::SessionId>,
+        found: &mut Vec<jinn_core_types::SessionId>,
+    ) {
+        let children: Vec<jinn_core_types::SessionId> = {
             let state = self.state.read();
             state
                 .session
                 .iter()
-                .filter(|(_, session)| {
-                    session.is_attendant()
-                        && session.attendant_trigger() == AttendantTrigger::ParentCompleted
-                        && session.parent_session().as_ref() == Some(parent)
+                .filter(|(_, candidate)| {
+                    candidate.is_attendant()
+                        && candidate.attendant_trigger() == AttendantTrigger::ParentCompleted
+                        && candidate.parent_session().as_ref() == Some(session)
                 })
                 .map(|(id, _)| id.clone())
                 .collect()
+        };
+        for child in children {
+            if !visited.insert(child.clone()) {
+                continue;
+            }
+            found.push(child.clone());
+            self.collect_attendants_under(&child, visited, found);
         }
     }
 
