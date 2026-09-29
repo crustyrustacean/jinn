@@ -116,11 +116,15 @@ pub(crate) fn entry_title_style(entry: &SessionEntry, is_selected: bool, theme: 
     }
     let base = if entry.is_subagent {
         theme.subagent_fg
+    } else if entry.is_attendant {
+        theme.attendant_fg
     } else {
         theme.muted_text
     };
     let active = if entry.is_subagent {
         theme.subagent_fg
+    } else if entry.is_attendant {
+        theme.attendant_fg
     } else {
         theme.primary_text
     };

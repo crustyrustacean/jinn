@@ -342,6 +342,48 @@ fn title_is_truncated_more_at_higher_depth() {
 }
 
 // ---------------------------------------------------------------------------
+// attendant rows render in the attendant theme token
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
+fn attendant_row_uses_the_attendant_theme_token() {
+    // Given an attendant entry, not selected, not active.
+    let theme = default_theme();
+    let entry = SessionEntry {
+        is_attendant: true,
+        is_active: false,
+        ..tree_entry(0, vec![], true, false)
+    };
+
+    // When the entry's title style is computed.
+    let style =
+        crate::sections::sessions::render::entry_line::entry_title_style(&entry, false, &theme);
+
+    // Then the row is tinted with the attendant token, not the subagent or
+    // error token.
+    assert_eq!(style.fg, Some(theme.attendant_fg));
+}
+
+#[rstest::rstest]
+fn non_attendant_row_does_not_use_the_attendant_theme_token() {
+    // Given a plain user session entry, not selected, not active.
+    let theme = default_theme();
+    let entry = SessionEntry {
+        is_attendant: false,
+        is_active: false,
+        ..tree_entry(0, vec![], true, false)
+    };
+
+    // When the entry's title style is computed.
+    let style =
+        crate::sections::sessions::render::entry_line::entry_title_style(&entry, false, &theme);
+
+    // Then the row keeps the muted base, and the attendant token is nowhere.
+    assert_eq!(style.fg, Some(theme.muted_text));
+    assert_ne!(style.fg, Some(theme.attendant_fg));
+}
+
+// ---------------------------------------------------------------------------
 // assemble_entry_line - active arrow at depth > 0
 // ---------------------------------------------------------------------------
 

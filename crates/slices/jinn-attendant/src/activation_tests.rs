@@ -373,6 +373,92 @@ async fn errored_and_canceled_turns_fire_nothing() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn an_attendant_created_after_the_parent_completed_never_fires_retroactively() {
+    // Given a parent whose turn already completed successfully — with no
+    // attendant existing at that moment — and an attendant added afterward
+    // with a ParentCompleted trigger.
+    let harness = jinn_testutil::bus_harness::TestHarness::new().await;
+    let dispatched = harness
+        .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
+        .await;
+    let state = State::new(AppState::default());
+    let _parent_id = {
+        let mut s = state.write();
+        let parent = ChatSessionState::new();
+        let id = parent.session_id().clone();
+        s.session.insert(parent);
+        id
+    };
+    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+        harness.system(),
+        crate::trigger_actor::AttendantTriggerActorDeps {
+            services: harness.services().await,
+            state: state.clone(),
+        },
+    );
+
+    // When the parent's completion is published (nothing was listening for
+    // this attendant — it does not exist yet), and only *then* is the
+    // attendant created with a fired trigger.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    {
+        let mut s = state.write();
+        let parent_read = s
+            .session
+            .iter()
+            .next()
+            .map(|(_, p)| p.clone())
+            .expect("parent");
+        let mut attendant = ChatSessionState::new_attendant(&parent_read, true);
+        attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        s.session.insert(attendant);
+    }
+
+    // Then no dispatch ever happens: the trigger query only runs on a live
+    // `TurnCompleted`, never against the session map's current shape.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let dispatches = dispatched.drain();
+    assert!(
+        dispatches.is_empty(),
+        "an attendant created after the fact must not fire, got {dispatches:?}"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn manual_rerun_runs_a_late_attendant_even_though_its_trigger_never_fired() {
+    // Given an attendant created after its parent completed.
+    let state = State::new(AppState::default());
+    let attendant_id = {
+        let mut s = state.write();
+        let parent = ChatSessionState::new();
+        let mut attendant = ChatSessionState::new_attendant(&parent, true);
+        attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        attendant.append_attendant_report("late finding".to_owned());
+        attendant.set_seed_template("verify: <prior report>".to_owned());
+        let id = attendant.session_id().clone();
+        s.session.insert(attendant);
+        id
+    };
+
+    // When the user re-runs it with `R`.
+    let (cancel, dispatch) = crate::rerun::rerun(&state, &attendant_id).expect("rerun allowed");
+
+    // Then the run dispatches the seeded turn regardless of the trigger's
+    // history — manual re-run has no trigger condition.
+    assert!(cancel.is_none());
+    let dispatch = dispatch.expect("reset mode dispatches");
+    let jinn_core_types::chat_entry::ChatEntryKind::User { display, .. } = &dispatch.entry.kind
+    else {
+        panic!("seed must be a user entry");
+    };
+    assert_eq!(display, "verify: late finding");
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn manual_trigger_attendant_does_not_fire_on_parent_completion() {
     // Given a parent with a reset-activated but Manual-trigger attendant.
     let harness = jinn_testutil::bus_harness::TestHarness::new().await;
