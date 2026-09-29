@@ -475,9 +475,9 @@ fn template_truncation_never_splits_a_grapheme() {
 
 #[rstest::rstest]
 #[test]
-fn properties_view_sets_no_terminal_cursor() {
-    // Given the properties scope's view over an open popup.
-    let (slices, _cell) = slices_with_popup(popup_focused(PropertyField::SeedTemplate));
+fn the_properties_view_places_the_cursor_on_the_focused_row() {
+    // Given the properties scope's view, focused on the activation row.
+    let (slices, _cell) = slices_with_popup(popup_focused(PropertyField::Activation));
     let facts = RenderFacts::new(jinn_theme::default_theme(), &slices);
     let area = Rect::new(0, 0, 100, 30);
     let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
@@ -490,11 +490,51 @@ fn properties_view_sets_no_terminal_cursor() {
         })
         .expect("draw");
 
-    // Then no cursor position was set.
+    // Then the cursor sits on the focused row. The help is a tooltip
+    // anchored to this cursor, so the form has to own one — without it the
+    // tooltip has nothing to float above.
+    let cursor = terminal.get_cursor_position().expect("cursor");
+    let body = body_top(terminal.backend().buffer());
     assert_eq!(
-        terminal.get_cursor_position().expect("cursor"),
-        Position::ORIGIN,
-        "the navigation-only form must not show a text cursor"
+        cursor.y,
+        body + 1,
+        "the cursor must rest on the focused row"
+    );
+}
+
+#[rstest::rstest]
+fn the_help_tooltip_is_drawn_above_the_cursor() {
+    // Given a popup focused on the trigger row with the help toggled on.
+    let mut popup = popup_focused(PropertyField::Trigger);
+    popup.help_visible = true;
+    let (slices, _cell) = slices_with_popup(popup);
+    let facts = RenderFacts::new(jinn_theme::default_theme(), &slices);
+    let area = Rect::new(0, 0, 100, 30);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let rect = attendant_properties_overlay_rect(&area).expect("geometry");
+            render_attendant_properties(frame, rect, &facts);
+        })
+        .expect("draw");
+
+    // Then the cursor is anchored on the focused row, and the help is
+    // strictly above it — the tooltip floats, it does not take the row.
+    let cursor = terminal.get_cursor_position().expect("cursor");
+    let buffer = terminal.backend().buffer();
+    let body = body_top(buffer);
+    assert_eq!(cursor.y, body, "the cursor rests on the focused row");
+
+    let rendered = all_text(buffer);
+    let help_y = rendered
+        .lines()
+        .position(|line| line.contains("does this attendant re-run"))
+        .expect("the help is on screen");
+    assert!(
+        help_y < usize::from(body),
+        "the help must render above the cursor, not below it: {rendered}"
     );
 }
 
@@ -674,4 +714,21 @@ fn theme_key_defaults_to_the_age_fresh_green() {
 
     // Then they match by default.
     assert_eq!(fresh, option);
+}
+
+#[rstest::rstest]
+#[test]
+#[ignore = "visual inspection aid; asserts the tooltip sits above the cursor row"]
+fn zz_visual_dump() {
+    let mut popup = popup_focused(PropertyField::Activation);
+    popup.help_visible = true;
+    let buffer = render_properties(popup);
+    let mut out = String::new();
+    for y in 0..24 {
+        let row: String = (0..60)
+            .map(|x| buffer[(x, y)].symbol().to_owned())
+            .collect();
+        out.push_str(&format!("VISUAL {y:2}|{row}\n"));
+    }
+    panic!("{out}");
 }

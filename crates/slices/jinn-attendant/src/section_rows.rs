@@ -25,9 +25,9 @@ pub struct AttendantRow {
     pub latest_report: Option<String>,
     /// Whether the latest report predates the parent's latest activity.
     pub is_stale: bool,
-    /// Whether the attendant is in seed mode, which will not dispatch a
-    /// turn. Rendered beside the name, never inside it, so a rename can
-    /// never reach the marker.
+    /// Whether the attendant will not run on its own — because its trigger
+    /// never fires, or because its mode sends nothing. Rendered beside the
+    /// name, never inside it, so a rename can never reach the marker.
     pub is_seed: bool,
 }
 
@@ -81,8 +81,10 @@ pub fn attendant_rows(state: &AppState) -> Vec<AttendantRow> {
                 name: attendant.title().unwrap_or("Untitled Session").to_owned(),
                 latest_report: latest.map(|report: &AttendantReport| report.body.clone()),
                 is_stale,
-                is_seed: attendant.attendant_context_policy()
-                    == jinn_attendant_msg::AttendantContextPolicy::Pin,
+                is_seed: jinn_attendant_msg::AttendantTrigger::is_paused(
+                    attendant.attendant_activation(),
+                    attendant.attendant_trigger(),
+                ),
             }
         })
         .collect();

@@ -8,7 +8,8 @@
 )]
 
 use jinn_attendant_msg::{
-    NO_PARENT_SESSION_TEXT, NO_PRIOR_REPORT_TEXT, PRIOR_REPORT_PLACEHOLDER, default_seed_template,
+    AttendantActivation, AttendantTrigger, NO_PARENT_SESSION_TEXT, NO_PRIOR_REPORT_TEXT,
+    PRIOR_REPORT_PLACEHOLDER, default_seed_template,
 };
 use jinn_core_types::chat_entry::ChatEntry;
 use jinn_core_types::{ContextOverride, PinPosition};
@@ -1238,4 +1239,36 @@ fn a_seed_prompt_names_a_missing_parent_as_unavailable() {
             .ends_with("The parent session's id is unavailable"),
         "the parent line must still read as a sentence"
     );
+}
+
+#[rstest::rstest]
+#[case::seed_and_manual(AttendantActivation::Seed, AttendantTrigger::Manual)]
+#[case::seed_and_parent(AttendantActivation::Seed, AttendantTrigger::ParentCompleted)]
+#[case::preserve_and_manual(AttendantActivation::Preserve, AttendantTrigger::Manual)]
+#[test]
+fn an_attendant_that_will_not_fire_on_its_own_is_paused(
+    #[case] mode: AttendantActivation,
+    #[case] trigger: AttendantTrigger,
+) {
+    // When asking whether the attendant runs unattended.
+    let paused = AttendantTrigger::is_paused(mode, trigger);
+
+    // Then it is paused. Either reason is enough: a trigger that never
+    // fires, or a mode that sends nothing.
+    assert!(paused, "{mode:?} + {trigger:?} must read as paused");
+}
+
+#[rstest::rstest]
+#[case::reset_and_parent(AttendantActivation::Reset, AttendantTrigger::ParentCompleted)]
+#[case::preserve_and_parent(AttendantActivation::Preserve, AttendantTrigger::ParentCompleted)]
+#[test]
+fn a_dispatching_attendant_is_not_paused(
+    #[case] mode: AttendantActivation,
+    #[case] trigger: AttendantTrigger,
+) {
+    // When asking whether the attendant runs unattended.
+    let paused = AttendantTrigger::is_paused(mode, trigger);
+
+    // Then it is not marked — it will fire on its own.
+    assert!(!paused, "{mode:?} + {trigger:?} must not read as paused");
 }

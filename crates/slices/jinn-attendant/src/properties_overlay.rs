@@ -85,19 +85,23 @@ pub fn render_attendant_properties(frame: &mut Frame<'_>, area: Rect, ctx: &Rend
         Paragraph::new(properties_view(&popup, theme, &layout)),
         inner,
     );
-    // The help overlay is terminal-bound, so it is positioned against the
-    // cursor's own coordinates rather than any row inside the form. When
-    // the form cursor is on a field that does not own the terminal cursor
-    // the popup's top row stands in for it, which is the row the help is
-    // read against.
-    if let Some((help_area, help_lines)) =
-        help_overlay(&popup, theme, area, inner, (inner.x, inner.y))
-    {
+    // The help is a tooltip: it is anchored to the terminal cursor and
+    // floats above it, so the form needs a real cursor to anchor to. It
+    // rests at the start of the focused row's value — the same column the
+    // draft editor puts its cursor in — which is where the eye already is
+    // when the row is picked.
+    let cursor = (
+        inner.x.saturating_add(layout.value_x_offset()),
+        inner.y.saturating_add(layout.focused_row()),
+    );
+    frame.set_cursor_position(cursor);
+    if let Some((help_area, help_lines)) = help_overlay(&popup, theme, area, inner, cursor) {
         frame.render_widget(Clear, help_area);
-        frame.render_widget(Paragraph::new(help_lines), help_area);
+        frame.render_widget(
+            Paragraph::new(help_lines).style(tooltip_style(theme)),
+            help_area,
+        );
     }
-    // Navigation-only scope: the properties view never sets the terminal
-    // cursor. The template draft edits in the editor popup, which owns it.
 }
 
 /// The overlay view for the seed-template editor scope: the same form plus
@@ -217,6 +221,8 @@ struct PropertiesLayout {
     /// The cursor's column within the row, measured from the window's start
     /// (the draft is left-aligned in its window, so the two are equal).
     cursor_offset: u16,
+    /// The body row the form cursor is on, relative to the inner top.
+    focused_row: u16,
 }
 
 /// Computes the draft window and cursor column for `popup` inside `inner`.
@@ -241,7 +247,13 @@ fn properties_layout(popup: &AttendantPropertiesState, inner: Rect) -> Propertie
         .get(..draft.cursor_pos)
         .map_or(total, |before| before.graphemes(true).count());
     let window_start = window_start(total, cursor_index, window_width);
+    let focused_row = match popup.focus {
+        PropertyField::Trigger => 0,
+        PropertyField::Activation => 1,
+        PropertyField::SeedTemplate => 2,
+    };
     PropertiesLayout {
+        focused_row,
         template_y: inner.y.saturating_add(rows_above),
         window_width,
         window_start,
@@ -358,6 +370,33 @@ fn focused_field_line<'a>(spans: Vec<Span<'a>>, theme: &'a jinn_theme::Theme) ->
         })
         .collect::<Vec<Span<'a>>>();
     Line::from(spans).style(row)
+}
+
+/// The focused field's row, measured from the popup's inner top.
+impl PropertiesLayout {
+    /// The body row the form cursor is on: the fields are fixed rows, so
+    /// this is the field's index in display order.
+    fn focused_row(&self) -> u16 {
+        self.focused_row
+    }
+
+    /// The value column the cursor rests at, relative to the inner left.
+    fn value_x_offset(&self) -> u16 {
+        self.value_x
+    }
+}
+
+/// The tooltip's own background, so it reads as a tooltip rather than as
+/// more of the popup.
+///
+/// A tooltip that shares the popup's surface blends into it, and one that
+/// shares the popup's text color is no harder to read than the keybind
+/// footer it sits next to. It gets the most opaque surface the theme has
+/// and the brightest text, and the help text is bold on top of that.
+fn tooltip_style(theme: &jinn_theme::Theme) -> Style {
+    Style::default()
+        .fg(theme.primary_text)
+        .bg(theme.infopopup_bg)
 }
 
 /// The focused row's background: the attendant's own background color.
@@ -535,7 +574,13 @@ fn help_overlay(
         .map(|row| {
             Line::from(Span::styled(
                 format!(" {row}"),
-                Style::default().fg(theme.muted_text),
+                // Bold and in the bright text color: the tooltip is read
+                // against the popup it is floating over, so it needs to
+                // out-weigh the muted footer it can land next to.
+                Style::default()
+                    .fg(theme.primary_text)
+                    .bg(theme.infopopup_bg)
+                    .add_modifier(ratatui::style::Modifier::BOLD),
             ))
         })
         .collect();

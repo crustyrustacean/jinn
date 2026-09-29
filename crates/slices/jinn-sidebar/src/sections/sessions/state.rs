@@ -141,8 +141,10 @@ pub fn sorted_open_sessions_split(
             is_subagent: session.origin() == SessionOrigin::Subagent,
             is_attendant: session.is_attendant(),
             is_attendant_paused: session.is_attendant()
-                && session.attendant_context_policy()
-                    == jinn_attendant_msg::AttendantContextPolicy::Pin,
+                && jinn_attendant_msg::AttendantTrigger::is_paused(
+                    session.attendant_activation(),
+                    session.attendant_trigger(),
+                ),
             has_live_term: frontend
                 .slices()
                 .and_then(|slices| {

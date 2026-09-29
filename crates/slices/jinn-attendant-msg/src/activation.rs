@@ -82,4 +82,15 @@ impl AttendantTrigger {
             Self::ParentCompleted => !matches!(mode, AttendantActivation::Seed),
         }
     }
+
+    /// Whether this attendant will not run on its own.
+    ///
+    /// The two ways to be inert: a trigger that never fires, and a mode that
+    /// sends nothing. Either alone is enough, so the sidebar marks the row
+    /// on whichever holds — a seed attendant that is also manual-only is
+    /// still just paused, and one row reads better than two reasons.
+    #[must_use]
+    pub fn is_paused(mode: AttendantActivation, trigger: AttendantTrigger) -> bool {
+        !trigger.is_enabled_for(mode)
+    }
 }
