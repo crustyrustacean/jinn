@@ -230,10 +230,11 @@ impl<'a> TaskListView<'a> {
 
     /// Available text width for a phase header's wrapped description.
     ///
-    /// Accounts for the phase indent and the collapse/expand indicator's display width.
+    /// Accounts for the gutter column, the phase indent, and the
+    /// collapse/expand indicator's display width.
     fn phase_text_width(&self) -> usize {
         self.sidebar_width
-            .saturating_sub(PHASE_INDENT + PHASE_INDICATOR_WIDTH)
+            .saturating_sub(1 + PHASE_INDENT + PHASE_INDICATOR_WIDTH)
     }
 
     /// True when the phase at `index` is the selected one — the row the
@@ -278,9 +279,10 @@ impl<'a> TaskListView<'a> {
         )])
     }
 
-    /// Phase header lines: the two-space indent on the first wrapped
-    /// segment, continuation lines indented beneath the description.
-    /// Selected rows take the shared full-width band.
+    /// Phase header lines: the gutter column, then the indent and indicator
+    /// on the first wrapped segment, continuation lines indented beneath the
+    /// description. Selected rows take the shared full-width band, with a
+    /// band pad so it reaches the row's last cell.
     fn phase_header_lines(
         &self,
         phase: &Phase,
@@ -301,34 +303,44 @@ impl<'a> TaskListView<'a> {
         } else {
             self.phase_header_style(phase, active_phase_id)
         };
+        let width = usize::from(self.sidebar_width);
         let wrapped = wrap_description(phase.description(), self.phase_text_width());
         wrapped
             .iter()
             .enumerate()
             .map(|(i, segment)| {
-                // The row keeps its 2-space indent on every line — the layout
-                // is unchanged, and the full-row band is the only selection
-                // signal.
-                let line = if i == 0 {
-                    Line::from(Span::styled(
-                        format!("{PHASE_INDENT}{indicator}{segment}"),
-                        style,
-                    ))
+                // Gutter(1) + indent(2) + indicator-slot(2) ahead of every
+                // segment: the gutter column shifts the whole row right of
+                // the header, and the slot is fixed-width so the wrap budget
+                // and row count are unchanged. The spaces are built with
+                // `.repeat`, not a `{PHASE_INDENT}` format capture — that
+                // interpolates the constant's *value*, which is where the
+                // literal `2▸` came from.
+                let slot = if i == 0 {
+                    indicator.to_owned()
                 } else {
-                    Line::from(Span::styled(
-                        format!(
-                            "{PHASE_INDENT}{}{segment}",
-                            " ".repeat(PHASE_INDICATOR_WIDTH)
-                        ),
-                        style,
-                    ))
+                    " ".repeat(PHASE_INDICATOR_WIDTH)
                 };
+                let used = 1 + PHASE_INDENT + PHASE_INDICATOR_WIDTH + segment.chars().count();
+                let mut spans = vec![
+                    crate::sections::session_row_style::gutter_span(self.theme),
+                    Span::styled(
+                        format!("{}{slot}{segment}", " ".repeat(PHASE_INDENT)),
+                        style,
+                    ),
+                ];
                 if selected {
-                    line.style(crate::sections::session_row_style::selected_row_style(
+                    // The pad carries the band to the row's last cell —
+                    // `Paragraph` does not extend a line's style past the
+                    // last grapheme.
+                    spans.push(crate::sections::session_row_style::band_pad(
+                        used, width, self.theme,
+                    ));
+                    Line::from(spans).style(crate::sections::session_row_style::selected_row_style(
                         self.theme,
                     ))
                 } else {
-                    line
+                    Line::from(spans)
                 }
             })
             .collect()
@@ -872,7 +884,8 @@ mod tests {
                 let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
                 text.contains(phase_name)
             })
-            .and_then(|line| line.spans.first().map(|s| s.style.fg))
+            // The text span is the second span — the first is the gutter.
+            .and_then(|line| line.spans.get(1).map(|s| s.style.fg))
             .flatten()
     }
 

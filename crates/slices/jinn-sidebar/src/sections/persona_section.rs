@@ -83,14 +83,15 @@ impl SidebarSection for PersonaSection {
             )]));
             // Blank separator.
             lines.push(Line::from(""));
-            // Entry line. The gutter column is kept: one dark cell, then the
-            // name — one dark gutter column, unchanged. Selection
-            // is the shared full-width band; the pad carries the band to the
-            // row's last cell, since `Paragraph` does not extend a line's
-            // style past the last grapheme.
+            // Entry line. Content is shifted one column right of the header:
+            // gutter(1), gap(1), then the name. Selection is the shared
+            // full-width band; the pad carries the band to the row's last
+            // cell, since `Paragraph` does not extend a line's style past
+            // the last grapheme.
             let entry_line = {
-                let content_width = 2 + persona_name.chars().count();
+                let content_width = 3 + persona_name.chars().count();
                 let mut spans = vec![
+                    crate::sections::session_row_style::gutter_span(theme),
                     crate::sections::session_row_style::gutter_span(theme),
                     Span::raw(persona_name),
                 ];

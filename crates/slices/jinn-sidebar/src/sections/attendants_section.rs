@@ -180,11 +180,12 @@ impl crate::sections::section_trait::SidebarSection for AttendantsSection {
                     Style::default().fg(theme.attendant_paused),
                 )
             };
-            // The gutter column is kept: one dark cell ahead of the content,
-            // as always.
+            // Content is shifted one column right of the header: gutter(1),
+            // gap(1), then the marker and name.
             let content_width =
-                1 + if row.is_paused { 2 } else { 0 } + 1 + row.name.chars().count();
+                2 + if row.is_paused { 2 } else { 0 } + 1 + row.name.chars().count();
             let mut row_spans = vec![
+                crate::sections::session_row_style::gutter_span(theme),
                 crate::sections::session_row_style::gutter_span(theme),
                 paused,
                 Span::styled(format!(" {}", row.name), name_style),
@@ -220,7 +221,14 @@ impl crate::sections::section_trait::SidebarSection for AttendantsSection {
                 }
                 None => Span::styled(NEVER_REPORTED_MARKER, Style::default().fg(theme.dormant_fg)),
             };
-            lines.push(Line::from(vec![Span::raw("   "), report_line]));
+            // The report preview sits under the name, aligned with it — the
+            // same gutter(1) + gap(1) shift, then enough spaces to clear the
+            // marker column.
+            lines.push(Line::from(vec![
+                crate::sections::session_row_style::gutter_span(theme),
+                Span::raw("   "),
+                report_line,
+            ]));
         }
 
         // Trailing gap — the blank line that keeps the last report off the
