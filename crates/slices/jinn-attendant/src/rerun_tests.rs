@@ -118,7 +118,33 @@ fn reset_run_excludes_non_pinned_entries_before_dispatching() {
 }
 
 #[rstest::rstest]
-#[test]
+#[case(AttendantActivation::Reset)]
+#[case(AttendantActivation::Preserve)]
+fn an_attendants_run_is_persistable_in_every_dispatchable_mode(#[case] mode: AttendantActivation) {
+    // Given an attendant in the given mode.
+    let (state, id) = state_with_attendant(mode);
+
+    // When it is re-run.
+    let (_, dispatch, _) = rerun(&state, &id).expect("rerun allowed");
+
+    // Then the session is persistable, so the turn the run starts reaches
+    // disk. An attendant that forgets its run on restart cannot be re-run
+    // again, which is the whole feature.
+    //
+    // Persistability comes from the constructor rather than from the run, so
+    // this is the property a mode switch has to preserve: editing the
+    // activation in the properties popup must not drop the session out of
+    // storage.
+    let guard = state.read();
+    assert!(
+        guard.session.get(&id).expect("attendant").is_persistable(),
+        "an attendant must stay persistable in {mode:?}"
+    );
+    // And the run was dispatched with the seeded prompt.
+    assert!(dispatch.is_some(), "{mode:?} must dispatch a seeded run");
+}
+
+#[rstest::rstest]
 fn reset_exclusions_survive_a_restart() {
     // Given a reset attendant that has been re-run once, so its context
     // was excluded in memory only.
@@ -183,9 +209,9 @@ fn rerun_on_a_preserve_attendant_seeds_through_the_template() {
     // Given a preserve-mode attendant with a prior report and a template.
     //
     // `R` is the user saying "ask again", so it goes through the template
-    // and inserts the seeded message in every mode. Continue mode governs
-    // what the `c` key does — resume the context as-is — not what a manual
-    // re-run does.
+    // and inserts the seeded message in every mode. Preserve mode governs
+    // what an unattended trigger fire does — carry the context as-is — not
+    // what a manual re-run does.
     let (state, id) = state_with_attendant(AttendantActivation::Preserve);
     {
         let mut guard = state.write();
