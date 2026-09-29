@@ -105,15 +105,18 @@ fn opener_returns_none_when_the_section_has_no_cursor() {
 #[rstest::rstest]
 #[test]
 fn section_rows_exclude_non_attendant_sessions() {
-    // Given a plain user session and an attendant.
+    // Given a parent with one attendant alongside it, viewing the parent.
     let state = State::new(AppState::default());
     {
         let mut guard = state.write();
-        guard.session.insert(ChatSessionState::new());
+        let parent = ChatSessionState::new();
+        let parent_id = parent.session_id().clone();
+        guard.session.insert(parent);
         guard.session.insert(ChatSessionState::new_attendant(
-            &ChatSessionState::new(),
+            &guard.session.get(&parent_id).expect("parent").clone(),
             true,
         ));
+        guard.session.set_active(parent_id);
     }
 
     // When the section's rows are built.

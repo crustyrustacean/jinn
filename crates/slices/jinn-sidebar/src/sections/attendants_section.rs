@@ -218,3 +218,102 @@ fn truncate_report(body: &str) -> String {
     cut.push('…');
     cut
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::unwrap_used, reason = "test code")]
+
+    use super::has_content;
+    use jinn_kernel::AppState;
+
+    /// State whose active session is `active`, holding `attendant` as its
+    /// child, plus an unrelated attendant under some other parent.
+    fn state_with(
+        active: jinn_session_state::ChatSessionState,
+        attendant: jinn_session_state::ChatSessionState,
+    ) -> AppState {
+        let mut state = AppState::default();
+        let active_id = active.session_id().clone();
+        state.session.insert(active);
+        state.session.insert(attendant);
+        state.session.set_active(active_id);
+        state
+    }
+
+    /// A plain user session.
+    fn user_session() -> jinn_session_state::ChatSessionState {
+        jinn_session_state::ChatSessionState::new()
+    }
+
+    /// An attendant of `parent`.
+    fn attendant_of(
+        parent: &jinn_session_state::ChatSessionState,
+    ) -> jinn_session_state::ChatSessionState {
+        jinn_session_state::ChatSessionState::new_attendant(parent, true)
+    }
+
+    #[rstest::rstest]
+    fn the_section_shows_on_a_parent_that_has_an_attendant() {
+        // Given a parent session with one attendant, and the parent active.
+        let parent = user_session();
+        let state = state_with(parent.clone(), attendant_of(&parent));
+
+        // When the section asks whether it has content.
+        let content = has_content(&state);
+
+        // Then it does — this is the screen the user is on.
+        assert!(content);
+    }
+
+    #[rstest::rstest]
+    fn the_section_shows_from_inside_an_attendant() {
+        // Given an attendant with a sibling under the same parent, and the
+        // first attendant active.
+        let parent = user_session();
+        let active = attendant_of(&parent);
+        let mut state = state_with(active.clone(), active.clone());
+        let sibling = attendant_of(&parent);
+        let sibling_id = sibling.session_id().clone();
+        state.session.insert(sibling);
+        state.session.set_active(active.session_id().clone());
+
+        // When the section asks whether it has content.
+        let content = has_content(&state);
+
+        // Then it does. An attendant is read in its parent's context, so its
+        // siblings — the other reports on the same question — are what the
+        // user is looking at.
+        assert!(content);
+        // And the sibling is the row that shows.
+        let rows = jinn_attendant::section_rows::attendant_rows(&state);
+        assert_eq!(rows.len(), 2, "both siblings belong to this context");
+        assert!(rows.iter().any(|row| row.session_id == sibling_id));
+    }
+
+    #[rstest::rstest]
+    fn the_section_hides_on_a_session_that_has_no_attendants() {
+        // Given a bystander session with no attendant of its own, sitting
+        // alongside another parent that does have one.
+        let bystander = user_session();
+        let elsewhere = user_session();
+        let other_attendant = attendant_of(&elsewhere);
+        let other_id = other_attendant.session_id().clone();
+        let mut state = state_with(bystander.clone(), other_attendant);
+        state.session.set_active(bystander.session_id().clone());
+
+        // When the section asks whether it has content.
+        let content = has_content(&state);
+
+        // Then it does not. The other parent's attendant is loaded and
+        // visible in the store, but it belongs to a different context, and
+        // listing it here would answer a question the user did not ask.
+        assert!(!content);
+        // And no row leaks through.
+        let rows = jinn_attendant::section_rows::attendant_rows(&state);
+        assert!(rows.is_empty(), "leaked the attendant of another parent");
+        assert!(
+            !rows.iter().any(|row| row.session_id == other_id),
+            "another parent's attendant must not appear here"
+        );
+    }
+}

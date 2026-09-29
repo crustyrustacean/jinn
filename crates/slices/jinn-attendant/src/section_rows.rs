@@ -27,14 +27,40 @@ pub struct AttendantRow {
     pub is_stale: bool,
 }
 
-/// Every loaded attendant, sorted by name, with report and staleness data.
+/// The session whose attendants the sidebar section is showing.
+///
+/// An attendant is read in the context of the parent it reports to, so
+/// viewing one resolves to that parent — which is also what makes an
+/// attendant's siblings visible from inside a sibling.
+#[must_use]
+pub fn attendant_context_of(state: &AppState) -> Option<jinn_core_types::SessionId> {
+    let active = state.active_session();
+    match active.parent_session() {
+        Some(parent) => Some(parent.clone()),
+        None => Some(active.session_id().clone()),
+    }
+}
+
+/// Every attendant in the active session's context, sorted by name, with
+/// report and staleness data.
+///
+/// The section shows the attendants *belonging to the session being read*:
+/// sitting on a parent shows that parent's attendants, and sitting on one of
+/// its attendants shows the whole set — the same list, because the attendant
+/// has no attendants of its own and its siblings are the relevant context.
+/// A section that listed every attendant in the store would answer a
+/// question the user did not ask from a screen they are not on.
 #[must_use]
 pub fn attendant_rows(state: &AppState) -> Vec<AttendantRow> {
+    let Some(context) = attendant_context_of(state) else {
+        return Vec::new();
+    };
     let mut rows: Vec<AttendantRow> = state
         .session
         .iter()
         .filter(|(_, session)| {
             session.is_attendant()
+                && session.parent_session().as_ref() == Some(&context)
                 && session.session_state() == jinn_session_store_msg::SessionState::Loaded
         })
         .map(|(id, attendant)| {
@@ -84,6 +110,21 @@ pub fn highlighted_reports(state: &AppState) -> Option<Vec<jinn_attendant_msg::A
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
+    /// Builds state with `parent` active and `attendants` installed under it.
+    ///
+    /// The section is scoped to the active session's context, so every
+    /// fixture has to say which session the user is reading.
+    fn state_viewing(parent: ChatSessionState, attendants: Vec<ChatSessionState>) -> AppState {
+        let mut state = AppState::default_with_scope_focus();
+        let parent_id = parent.session_id().clone();
+        state.session.insert(parent);
+        for attendant in attendants {
+            state.session.insert(attendant);
+        }
+        state.session.set_active(parent_id);
+        state
+    }
+
     use super::*;
     use jinn_app_state::AppState;
     use jinn_session_state::ChatSessionState;
@@ -92,7 +133,6 @@ mod tests {
     #[test]
     fn a_report_goes_stale_when_the_parent_resumes() {
         // Given an attendant whose report predates the parent's history.
-        let mut state = AppState::default_with_scope_focus();
         let mut parent = ChatSessionState::new();
         let mut attendant = ChatSessionState::new_attendant(&parent, true);
         // The report is published before the parent resumes.
@@ -101,8 +141,7 @@ mod tests {
         parent.push_entry(jinn_core_types::chat_entry::ChatEntry::user(
             "parent resumed",
         ));
-        state.session.insert(parent);
-        state.session.insert(attendant);
+        let state = state_viewing(parent, vec![attendant]);
 
         // When the section rows are built.
         let rows = attendant_rows(&state);
@@ -119,13 +158,11 @@ mod tests {
     #[test]
     fn a_fresh_report_is_not_stale() {
         // Given an attendant whose report postdates the parent's history.
-        let mut state = AppState::default_with_scope_focus();
         let mut parent = ChatSessionState::new();
         let entry = jinn_core_types::chat_entry::ChatEntry::user("parent worked");
         parent.push_entry(entry);
         let attendant = ChatSessionState::new_attendant(&parent, true);
-        state.session.insert(parent);
-        state.session.insert(attendant);
+        let state = state_viewing(parent, vec![attendant]);
 
         // When the section rows are built.
         let rows = attendant_rows(&state);
@@ -140,7 +177,6 @@ mod tests {
     fn a_sibling_fresh_report_never_clears_another_attendants_stale_one() {
         // Given two attendants of the same parent: one reported before the
         // parent resumed, one after.
-        let mut state = AppState::default_with_scope_focus();
         let mut parent = ChatSessionState::new();
         parent.push_entry(jinn_core_types::chat_entry::ChatEntry::user("first work"));
         let parent_id = parent.session_id().clone();
@@ -162,9 +198,7 @@ mod tests {
         // The late attendant reports after the resume.
         late.append_attendant_report("late finding".to_owned());
 
-        state.session.insert(parent);
-        state.session.insert(early);
-        state.session.insert(late);
+        let state = state_viewing(parent, vec![early, late]);
 
         // When the section rows are built.
         let rows = attendant_rows(&state);
@@ -181,12 +215,11 @@ mod tests {
     #[test]
     fn renaming_an_attendant_updates_its_row_name() {
         // Given an attendant with a name.
-        let mut state = AppState::default_with_scope_focus();
         let parent = ChatSessionState::new();
         let mut attendant = ChatSessionState::new_attendant(&parent, true);
         attendant.set_title("before".to_owned());
         let id = attendant.session_id().clone();
-        state.session.insert(attendant);
+        let mut state = state_viewing(parent, vec![attendant]);
 
         // When the attendant is renamed.
         state
@@ -204,11 +237,11 @@ mod tests {
     #[test]
     fn an_attendant_that_never_reported_has_no_latest_report() {
         // Given an attendant with no reports.
-        let mut state = AppState::default_with_scope_focus();
-        state.session.insert(ChatSessionState::new_attendant(
-            &ChatSessionState::new(),
-            true,
-        ));
+        let parent = ChatSessionState::new();
+        let state = state_viewing(
+            parent.clone(),
+            vec![ChatSessionState::new_attendant(&parent, true)],
+        );
 
         // When the section rows are built.
         let rows = attendant_rows(&state);
@@ -225,14 +258,10 @@ mod tests {
     fn a_triggered_attendant_with_no_report_is_distinct_from_no_attendant() {
         // Given a parent with one attendant that has a trigger but no
         // report, and no other attendants.
-        let mut state = AppState::default_with_scope_focus();
         let parent = ChatSessionState::new();
-        let parent_id = parent.session_id().clone();
         let mut attendant = ChatSessionState::new_attendant(&parent, true);
-        attendant.set_parent_session(parent_id);
         attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        state.session.insert(parent);
-        state.session.insert(attendant);
+        let state = state_viewing(parent, vec![attendant]);
 
         // When the section rows are built.
         let rows = attendant_rows(&state);
