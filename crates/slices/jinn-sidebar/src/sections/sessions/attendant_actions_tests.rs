@@ -257,6 +257,70 @@ async fn created_attendant_reaches_the_store() {
     );
 }
 
+/// A sink that records the session ids of every `PersistSession` published.
+#[derive(Default)]
+struct PersistedCollector {
+    ids: std::sync::Mutex<Vec<String>>,
+}
+
+impl jinn_slices::route_publish::PublishSink for PersistedCollector {
+    fn publish_schema(
+        &self,
+        _schema_id: trouper::schema::SchemaId,
+        payload: serde_json::Value,
+        name: &'static str,
+    ) {
+        if name.ends_with("PersistSession") {
+            let id = payload["session_id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned();
+            self.ids.lock().expect("collector lock").push(id);
+        }
+    }
+}
+
+#[rstest::rstest]
+#[test]
+fn creating_an_attendant_also_saves_a_parent_that_was_never_saved() {
+    // Given a sink recording what the handler publishes.
+    let collector = PersistedCollector::default();
+
+    // Given a brand new session that has never been persisted. A fresh
+    // session is not written on creation, so it exists only in memory —
+    // and that is the state every new session starts in.
+    let mut state = state_with_selected_session();
+    let parent_id = {
+        let parent = jinn_session_state::ChatSessionState::new();
+        let parent_id = parent.session_id().clone();
+        state.session.insert(parent);
+        state.session.set_active(parent_id.clone());
+        parent_id
+    };
+
+    // When an attendant is created from it.
+    let result = handle_new_attendant(&mut state, &empty_config());
+    let attendant_id = state.session.active_session_id().clone();
+    for message in result.messages {
+        message(&collector as &dyn jinn_slices::route_publish::PublishSink);
+    }
+
+    // Then the parent is saved alongside the child. The child names the
+    // parent in its own row, so writing the child while the parent is
+    // unwritten is an attendant pointing at a session that does not exist:
+    // a tree with a hole where the trunk should be, invisible until
+    // something walks up to the parent.
+    let saved = collector.ids.lock().expect("collector lock").clone();
+    assert!(
+        saved.contains(&attendant_id.to_string()),
+        "the attendant itself must still be saved: {saved:?}"
+    );
+    assert!(
+        saved.contains(&parent_id.to_string()),
+        "the parent must be saved too, or the child is orphaned: {saved:?}"
+    );
+}
+
 #[rstest::rstest]
 #[test]
 fn rerun_cancels_the_attendants_busy_descendants() {

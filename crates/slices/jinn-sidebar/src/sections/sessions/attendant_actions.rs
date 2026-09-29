@@ -84,6 +84,16 @@ pub fn handle_new_attendant(state: &mut AppState, config: &ConfigLayer) -> Inten
     }
 
     let mut result = IntentResult::empty()
+        // The parent first. A brand new session is not written when it is
+        // created, so it exists only in memory until something forces it
+        // out. The attendant's own row names the parent, so saving the
+        // child while the parent is unwritten is an attendant pointing at
+        // a session the store has never heard of — a tree with a hole
+        // where the trunk should be. Saving the parent is idempotent, and
+        // a no-op for the ordinary case where it was already written.
+        .with_message(PersistSession {
+            session_id: parent_id.clone(),
+        })
         .with_message(PersistSession {
             session_id: attendant_id.clone(),
         })
