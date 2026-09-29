@@ -237,7 +237,7 @@ impl<'a> TaskListView<'a> {
     }
 
     /// True when the phase at `index` is the selected one — the row the
-    /// cursor is on, which wears the selection chip and the band.
+    /// cursor is on, which wears the full-width selection band.
     fn is_expanded(&self, index: usize) -> bool {
         self.expanded == Some(index)
     }
@@ -278,9 +278,9 @@ impl<'a> TaskListView<'a> {
         )])
     }
 
-    /// Phase header lines: the selection chip riding the existing indent on
-    /// the first wrapped segment, continuation lines indented beneath the
-    /// description. Selected rows take the shared full-width band.
+    /// Phase header lines: the two-space indent on the first wrapped
+    /// segment, continuation lines indented beneath the description.
+    /// Selected rows take the shared full-width band.
     fn phase_header_lines(
         &self,
         phase: &Phase,
@@ -293,7 +293,6 @@ impl<'a> TaskListView<'a> {
             "\u{25B8} " // ▸ collapsed
         };
         let selected = self.is_expanded(index);
-        let chip = crate::sections::session_row_style::chip_span(selected, true, self.theme);
         // A selected row is the band, so its spans carry no style of their
         // own and the band's text color shows through — the phase's state
         // color is for unselected rows, like every sidebar state color.
@@ -307,17 +306,20 @@ impl<'a> TaskListView<'a> {
             .iter()
             .enumerate()
             .map(|(i, segment)| {
-                // The chip rides the 2-space indent: `█ ◂ text` selected,
-                // `  ◂ text` not. Width-neutral, so the wrap budget and the
-                // row count are unchanged.
+                // The row keeps its 2-space indent on every line — the layout
+                // is unchanged, and the full-row band is the only selection
+                // signal.
                 let line = if i == 0 {
-                    Line::from(vec![
-                        chip.clone(),
-                        Span::styled(format!("{indicator}{segment}"), style),
-                    ])
+                    Line::from(Span::styled(
+                        format!("{PHASE_INDENT}{indicator}{segment}"),
+                        style,
+                    ))
                 } else {
                     Line::from(Span::styled(
-                        format!("    {}{segment}", " ".repeat(PHASE_INDICATOR_WIDTH)),
+                        format!(
+                            "{PHASE_INDENT}{}{segment}",
+                            " ".repeat(PHASE_INDICATOR_WIDTH)
+                        ),
                         style,
                     ))
                 };
@@ -345,7 +347,8 @@ impl<'a> TaskListView<'a> {
 /// Builds the render lines for a task list.
 ///
 /// Renders only phase headers — the selected phase shows a `◂` indicator pointing
-/// at the preview popup to its left, plus the shared selection chip and band.
+/// at the preview popup to its left. Selected rows take the shared
+/// full-width band.
 /// Task contents are shown in the preview popup (see `preview.rs`), never inline.
 fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
     let view = TaskListView::from_state(state);
@@ -861,7 +864,7 @@ mod tests {
     }
 
     /// Helper: find a line containing `phase_name` and return the text span's
-    /// foreground color — the first span after the selection chip.
+    /// foreground color — the line's only span.
     fn phase_header_fg(lines: &[Line<'static>], phase_name: &str) -> Option<ratatui::style::Color> {
         lines
             .iter()
@@ -869,7 +872,7 @@ mod tests {
                 let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
                 text.contains(phase_name)
             })
-            .and_then(|line| line.spans.get(1).map(|s| s.style.fg))
+            .and_then(|line| line.spans.first().map(|s| s.style.fg))
             .flatten()
     }
 

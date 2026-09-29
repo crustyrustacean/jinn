@@ -66,8 +66,6 @@ impl SidebarSection for PersonaSection {
             && state
                 .frontend
                 .with_sections(|s| s.persona.cursor.is_some(), || false);
-        let indicator =
-            crate::sections::session_row_style::chip_span(is_selected, sidebar_focused, theme);
 
         // Read persona from the active session, not the global default.
         // This ensures the sidebar reflects the current session's persona
@@ -85,15 +83,15 @@ impl SidebarSection for PersonaSection {
             )]));
             // Blank separator.
             lines.push(Line::from(""));
-            // Entry line. Selection is the shared full-width band; the name's
-            // own style answers only the unselected state. The pad carries
-            // the band to the row's last cell, since `Paragraph` does not
-            // extend a line's style past the last grapheme.
+            // Entry line. The gutter column is kept: one dark cell, then the
+            // name — one dark gutter column, unchanged. Selection
+            // is the shared full-width band; the pad carries the band to the
+            // row's last cell, since `Paragraph` does not extend a line's
+            // style past the last grapheme.
             let entry_line = {
-                let content_width = 3 + persona_name.chars().count();
+                let content_width = 2 + persona_name.chars().count();
                 let mut spans = vec![
-                    indicator,
-                    crate::sections::session_row_style::chip_gap(theme),
+                    crate::sections::session_row_style::gutter_span(theme),
                     Span::raw(persona_name),
                 ];
                 if is_selected {

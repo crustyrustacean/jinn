@@ -134,8 +134,7 @@ impl SidebarSection for PinsSection {
                     .add_modifier(Modifier::BOLD),
             )])]
         } else {
-            let sidebar_focused = state.frontend.is_sidebar();
-            let section_focused = sidebar_focused
+            let section_focused = state.frontend.is_sidebar()
                 && matches!(
                     state.frontend.sidebar_section(),
                     Some(jinn_sidebar_msg::SidebarSectionId::Pins)
@@ -144,7 +143,6 @@ impl SidebarSection for PinsSection {
                 &pinned,
                 selected_index,
                 area.width,
-                sidebar_focused,
                 section_focused,
                 &state.frontend.theme,
             )
@@ -430,7 +428,6 @@ fn build_entry_list(
     pinned: &[&jinn_kernel::protocol::ChatEntry],
     selected_index: usize,
     area_width: u16,
-    sidebar_focused: bool,
     section_focused: bool,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
@@ -445,15 +442,12 @@ fn build_entry_list(
     )]));
     lines.push(Line::from(""));
 
-    // Fixed overhead per entry line: border(1) + gap(2) + badge(" [TOP] " = 7) = 10 cells.
-    let fixed_overhead: u16 = 10;
+    // Fixed overhead per entry line: gutter(1) + gap(1) + badge(" [TOP] " = 7) = 9 cells.
+    let fixed_overhead: u16 = 9;
     let content_budget = area_width.saturating_sub(fixed_overhead) as usize;
 
     for (i, entry) in pinned.iter().enumerate() {
         let is_selected = section_focused && i == selected_index;
-
-        let border =
-            crate::sections::session_row_style::chip_span(is_selected, sidebar_focused, theme);
 
         let (badge_text, badge_color) =
             position_badge(entry.pin_position.unwrap_or(PinPosition::Relative));
@@ -472,10 +466,12 @@ fn build_entry_list(
         } else {
             Span::styled(format!(" {badge_text} "), Style::default().fg(badge_color))
         };
-        let content_width = 3 + 1 + badge_text.chars().count() + 1;
+        // The gutter column is kept: one dark cell, then a gap cell, then the
+        // badge.
+        let content_width = 2 + 1 + badge_text.chars().count() + 1;
         let mut spans = vec![
-            border,
-            crate::sections::session_row_style::chip_gap(theme),
+            crate::sections::session_row_style::gutter_span(theme),
+            crate::sections::session_row_style::gutter_span(theme),
             badge,
             Span::raw(capped_content),
         ];

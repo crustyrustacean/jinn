@@ -10,10 +10,9 @@
 //! stays pink until it is selected, and selection is the only thing that
 //! overrides it.
 //!
-//! Sections that lead with a chip (`█`) get their chip from
-//! [`chip_span`], whose explicit dark background keeps the glyph crisp
-//! against the band; [`chip_gap`] is the unstyled cell between chip and
-//! content that the band visibly stops short of.
+//! [`gutter_span`] is the fixed-width gutter cell every section's content
+//! rows are indented by — one dark column between the row's edge and the
+//! content, on selected and unselected rows alike.
 
 use jinn_theme::Theme;
 use ratatui::style::Style;
@@ -36,35 +35,14 @@ pub fn is_selected_row_style(style: Style, theme: &Theme) -> bool {
         && style.add_modifier.is_empty()
 }
 
-/// The section's leading chip cell.
+/// The single dark gutter cell ahead of a section's content rows.
 ///
-/// `█` in the focus accent when the section has focus, the unfocused border
-/// color when it does not; a blank when the row is not selected. Both cells
-/// carry the dark sidebar background so the chip stays crisp against the
-/// selection band and the column reads as a gutter even unselected.
+/// The sidebar's content is indented one column from its edge on every row,
+/// selected or not; the dark background keeps the column visible against the
+/// selection band.
 #[must_use]
-pub fn chip_span(selected: bool, focused: bool, theme: &Theme) -> Span<'static> {
-    // The glyph's color follows the *section's* focus, not the row's
-    // selection: an unfocused sidebar's cursor is dimmer on every row.
-    let color = if focused {
-        theme.focus_accent
-    } else {
-        theme.border_unfocused
-    };
-    Span::styled(
-        if selected { "█" } else { " " },
-        Style::default().fg(color).bg(theme.gutter_bg),
-    )
-}
-
-/// The dark cells between the chip and the row's content.
-///
-/// Carries the sidebar background explicitly: the selection band would
-/// otherwise paint through the unstyled spaces and run straight into the
-/// content, erasing the gap on exactly the rows it highlights.
-#[must_use]
-pub fn chip_gap(theme: &Theme) -> Span<'static> {
-    Span::styled("  ", Style::default().bg(theme.gutter_bg))
+pub fn gutter_span(theme: &Theme) -> Span<'static> {
+    Span::styled(" ", Style::default().bg(theme.gutter_bg))
 }
 
 /// Extends a selected row's band to the row's full width.
@@ -125,63 +103,16 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn a_selected_chip_is_the_block_in_the_focus_accent_on_the_dark_background() {
-        // Given the default theme and a selected row in a focused section.
-        let theme = jinn_theme::default_theme();
-
-        // When the chip span is built.
-        let chip = chip_span(true, true, &theme);
-
-        // Then the glyph is the block in the focus accent...
-        assert_eq!(chip.content, "█");
-        assert_eq!(chip.style.fg, Some(theme.focus_accent));
-        // And its background is the dark sidebar background, so the chip
-        // stays crisp against the selection band.
-        assert_eq!(chip.style.bg, Some(theme.gutter_bg));
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn a_selected_chip_in_an_unfocused_section_uses_the_unfocused_border_color() {
-        // Given the default theme and a selected row in an unfocused sidebar.
-        let theme = jinn_theme::default_theme();
-
-        // When the chip span is built.
-        let chip = chip_span(true, false, &theme);
-
-        // Then the glyph is the block in the unfocused border color.
-        assert_eq!(chip.content, "█");
-        assert_eq!(chip.style.fg, Some(theme.border_unfocused));
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn an_unselected_chip_is_a_dark_blank() {
-        // Given the default theme and an unselected row.
-        let theme = jinn_theme::default_theme();
-
-        // When the chip span is built.
-        let chip = chip_span(false, true, &theme);
-
-        // Then the cell is a blank on the dark sidebar background, keeping
-        // the gutter column aligned.
-        assert_eq!(chip.content, " ");
-        assert_eq!(chip.style.bg, Some(theme.gutter_bg));
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn the_gap_cell_is_two_spaces_on_the_dark_background() {
+    fn the_gutter_is_a_dark_blank() {
         // Given the default theme.
         let theme = jinn_theme::default_theme();
 
-        // When the gap span is built.
-        let gap = chip_gap(&theme);
+        // When the gutter span is built.
+        let gutter = gutter_span(&theme);
 
-        // Then it is two spaces whose background is the sidebar's — dark even
-        // on a selected row, so the band visibly stops short of the chip and
-        // a real gap separates chip from content.
-        assert_eq!(gap.content, "  ");
-        assert_eq!(gap.style.bg, Some(theme.gutter_bg));
+        // Then it is a single blank on the dark sidebar background — one
+        // column of separation that stays dark even on a selected row.
+        assert_eq!(gutter.content, " ");
+        assert_eq!(gutter.style.bg, Some(theme.gutter_bg));
     }
 }

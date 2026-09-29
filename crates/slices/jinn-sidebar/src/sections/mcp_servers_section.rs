@@ -213,12 +213,6 @@ impl SidebarSection for McpServersSection {
                 let is_selected = section_focused && cursor == Some(index);
                 let row_state = ServerRowState::derive(statuses.get(name.as_str()).copied());
 
-                let indicator = crate::sections::session_row_style::chip_span(
-                    is_selected,
-                    sidebar_focused,
-                    theme,
-                );
-                let gap = crate::sections::session_row_style::chip_gap(theme);
                 // The status label keeps its own color unselected — the state
                 // signal — and yields to the band when the row is selected.
                 let status = if is_selected {
@@ -227,11 +221,13 @@ impl SidebarSection for McpServersSection {
                     Span::styled(row_state.label(), Style::default().fg(row_state.color()))
                 };
 
+                // The gutter column is kept: one dark cell, then a gap cell,
+                // then the name.
                 let content_width =
-                    3 + name.chars().count() + 1 + row_state.label().chars().count();
+                    2 + name.chars().count() + 1 + row_state.label().chars().count();
                 let mut spans = vec![
-                    indicator,
-                    gap,
+                    crate::sections::session_row_style::gutter_span(theme),
+                    crate::sections::session_row_style::gutter_span(theme),
                     Span::raw(name.clone()),
                     Span::raw(" "),
                     status,
@@ -610,7 +606,7 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn a_selected_mcp_row_bands_the_full_width_with_a_dark_chip() {
+    fn a_selected_mcp_row_bands_the_full_width_with_a_dark_gutter() {
         // Given an enabled server and the section's cursor on it.
         let (mut state, config) = state_with_servers(&[server("excalimate")]);
         state.active_session_mut().enable_mcp_server("excalimate");
@@ -648,11 +644,11 @@ mod tests {
             Some(width.saturating_sub(1)),
             "the band must reach the row's last cell"
         );
-        // And the chip cell at column 0 stays on the dark sidebar background,
-        // so the chip reads against the band.
-        let chip = buffer.cell((0, band_y)).expect("chip cell");
-        assert_eq!(chip.bg, theme.gutter_bg, "the chip cell stays dark");
-        assert_eq!(chip.symbol(), "\u{2588}", "the chip glyph is the block");
+        // And the gutter cell at column 0 stays on the dark sidebar
+        // background.
+        let gutter = buffer.cell((0, band_y)).expect("gutter cell");
+        assert_eq!(gutter.bg, theme.gutter_bg, "the gutter cell stays dark");
+        assert_eq!(gutter.symbol(), " ", "the gutter is a blank");
     }
 
     #[rstest::rstest]

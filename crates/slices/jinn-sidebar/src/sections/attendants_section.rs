@@ -157,8 +157,6 @@ impl crate::sections::section_trait::SidebarSection for AttendantsSection {
 
         for (index, row) in attendant_rows(state).into_iter().enumerate() {
             let is_selected = section_focused && cursor == Some(index);
-            let indicator =
-                crate::sections::session_row_style::chip_span(is_selected, sidebar_focused, theme);
             // The name carries no style of its own when selected: a span with
             // a hard foreground would defeat the band, and a selected row is
             // the band. Unselected, the pink marks the row as an attendant.
@@ -182,11 +180,12 @@ impl crate::sections::section_trait::SidebarSection for AttendantsSection {
                     Style::default().fg(theme.attendant_paused),
                 )
             };
+            // The gutter column is kept: one dark cell ahead of the content,
+            // as always.
             let content_width =
-                3 + if row.is_paused { 2 } else { 0 } + 1 + row.name.chars().count();
+                1 + if row.is_paused { 2 } else { 0 } + 1 + row.name.chars().count();
             let mut row_spans = vec![
-                indicator,
-                crate::sections::session_row_style::chip_gap(theme),
+                crate::sections::session_row_style::gutter_span(theme),
                 paused,
                 Span::styled(format!(" {}", row.name), name_style),
             ];
@@ -507,9 +506,9 @@ mod tests {
             .expect("name cell");
         assert_eq!(name_cell.fg, theme.gutter_bg);
         assert_ne!(name_cell.fg, theme.attendant_fg);
-        // And the chip cell stays dark against the band.
-        let chip = buffer.cell((0, band_y)).expect("chip cell");
-        assert_eq!(chip.bg, theme.gutter_bg);
+        // And the gutter cell stays dark against the band.
+        let gutter = buffer.cell((0, band_y)).expect("gutter cell");
+        assert_eq!(gutter.bg, theme.gutter_bg);
     }
 
     /// Renders the section into a buffer of the given width.
