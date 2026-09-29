@@ -21,10 +21,9 @@ use jinn_slices::route::{
 };
 use jinn_slices::{KeyRoutes, RenderFacts, RouteResult as IntentResult};
 
-use jinn_theme::contrast;
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::Style;
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use unicode_segmentation::UnicodeSegmentation;
@@ -42,6 +41,15 @@ const POPUP_MIN_WIDTH: u16 = 44;
 /// The help text is an overlay rather than a row in the form, so moving the
 /// cursor no longer reflows the popup and this is a constant.
 const POPUP_CONTENT_ROWS: u16 = 4;
+
+/// The help card's surface: a light panel that reads as an overlay on top
+/// of the terminal rather than part of the form inside it.
+///
+/// A constant rather than a theme key — the tooltip is popup furniture, and
+/// a help box is the same light card whatever the theme around it is.
+const TOOLTIP_BG: Color = Color::Rgb(240, 240, 240);
+/// The help card's text, dark against [`TOOLTIP_BG`].
+const TOOLTIP_FG: Color = Color::Rgb(26, 26, 26);
 
 /// Computes the centered properties popup rectangle: title, three field
 /// rows, one hint line, and a keybind footer.
@@ -85,22 +93,12 @@ pub fn render_attendant_properties(frame: &mut Frame<'_>, area: Rect, ctx: &Rend
         Paragraph::new(properties_view(&popup, theme, &layout)),
         inner,
     );
-    // The help is a tooltip: it is anchored to the terminal cursor and
-    // floats above it, so the form needs a real cursor to anchor to. It
-    // rests at the start of the focused row's value — the same column the
-    // draft editor puts its cursor in — which is where the eye already is
-    // when the row is picked.
-    let cursor = (
-        inner.x.saturating_add(layout.value_x_offset()),
-        inner.y.saturating_add(layout.focused_row()),
-    );
-    frame.set_cursor_position(cursor);
-    if let Some((help_area, help_lines)) = help_overlay(&popup, theme, area, inner, cursor) {
+    // The help overlay is anchored to the highlighted row, not to a
+    // terminal cursor: this popup is navigation-only and owns no cursor of
+    // its own, so its position follows the row the user is reading.
+    if let Some((help_area, help_lines)) = help_overlay(&popup, inner) {
         frame.render_widget(Clear, help_area);
-        frame.render_widget(
-            Paragraph::new(help_lines).style(tooltip_style(theme)),
-            help_area,
-        );
+        frame.render_widget(Paragraph::new(help_lines), help_area);
     }
 }
 
@@ -341,67 +339,22 @@ fn field_line<'a>(
             spans.push(template_value(popup, theme, layout));
         }
     }
-    // The focused row carries the attendant background across its whole
+    // The focused row carries the user-message background across its whole
     // width, so the cursor reads as a selected row rather than a tinted
-    // label. Each span's own foreground is checked against it: a theme
-    // that picks a light background would otherwise leave the label
-    // unreadable.
+    // label. Every span keeps the foreground it would have had unfocused —
+    // the selected choice stays green beside plain text, and a background
+    // is not a licence to rewrite the colors that distinction depends on.
     if focused {
-        return focused_field_line(spans, theme);
+        return Line::from(spans).style(focused_row_style(theme));
     }
     Line::from(spans)
 }
 
-/// Re-styles each span for the focused row: the row's background behind
-/// the whole line, and every foreground re-checked against it.
-///
-/// A theme that picks a background close to a span's own foreground would
-/// otherwise leave that span unreadable, so each one is run through the
-/// contrast helper the picker uses for its own selected rows.
-fn focused_field_line<'a>(spans: Vec<Span<'a>>, theme: &'a jinn_theme::Theme) -> Line<'a> {
-    let row = focused_row_style(theme);
-    let background = row.bg.unwrap_or(theme.attendant_bg);
-    let spans = spans
-        .into_iter()
-        .map(|span| {
-            let foreground =
-                contrast::ensure_contrast(span.style.fg.unwrap_or(theme.primary_text), background);
-            Span::styled(span.content, span.style.fg(foreground).bg(background))
-        })
-        .collect::<Vec<Span<'a>>>();
-    Line::from(spans).style(row)
-}
-
-/// The focused field's row, measured from the popup's inner top.
-impl PropertiesLayout {
-    /// The body row the form cursor is on: the fields are fixed rows, so
-    /// this is the field's index in display order.
-    fn focused_row(&self) -> u16 {
-        self.focused_row
-    }
-
-    /// The value column the cursor rests at, relative to the inner left.
-    fn value_x_offset(&self) -> u16 {
-        self.value_x
-    }
-}
-
-/// The tooltip's own background, so it reads as a tooltip rather than as
-/// more of the popup.
-///
-/// A tooltip that shares the popup's surface blends into it, and one that
-/// shares the popup's text color is no harder to read than the keybind
-/// footer it sits next to. It gets the most opaque surface the theme has
-/// and the brightest text, and the help text is bold on top of that.
-fn tooltip_style(theme: &jinn_theme::Theme) -> Style {
-    Style::default()
-        .fg(theme.primary_text)
-        .bg(theme.infopopup_bg)
-}
-
-/// The focused row's background: the attendant's own background color.
+/// The focused row's background: the user-message block, so the row reads
+/// as a selection against a surface the user already knows rather than as a
+/// new color introduced by this popup.
 fn focused_row_style(theme: &jinn_theme::Theme) -> Style {
-    Style::default().bg(theme.attendant_bg)
+    Style::default().bg(theme.user_block_bg)
 }
 
 /// The focused-field marker: `▸` when focused, blank otherwise.
@@ -538,19 +491,30 @@ fn wrap_help(text: &str, width: u16) -> Vec<String> {
     rows
 }
 
+/// The row a field occupies inside the popup's body, measured from the first
+/// body row.
+///
+/// The fields are fixed rows in the order [`properties_view`] lays them out,
+/// so a field's row is a lookup rather than a running sum — and because the
+/// help is an overlay rather than a row, nothing about it moves the answer.
+fn focused_row_offset(focus: PropertyField) -> u16 {
+    match focus {
+        PropertyField::Trigger => 0,
+        PropertyField::Activation => 1,
+        PropertyField::SeedTemplate => 2,
+    }
+}
+
 /// The help overlay for the focused field, or `None` when it is not showing.
 ///
-/// The overlay sits directly above the terminal cursor and is free to extend
-/// past the popup's own top edge and bottom — it is an overlay on the
-/// terminal, not a row inside the form — but its width is the popup's, and
-/// the text wraps at that width. Its height therefore has to be measured
-/// before it can be placed.
+/// The overlay sits one row above the highlighted field, free to extend past
+/// the popup's own top edge and bottom — it is an overlay on the terminal,
+/// not a row inside the form — but its width is the popup's, and the text
+/// wraps at that width. Its height therefore has to be measured before it can
+/// be placed.
 fn help_overlay(
     popup: &AttendantPropertiesState,
-    theme: &jinn_theme::Theme,
-    popup_rect: Rect,
     inner: Rect,
-    cursor: (u16, u16),
 ) -> Option<(Rect, Vec<Line<'static>>)> {
     // The template editor owns the terminal cursor while it is open; the
     // help would sit on top of the draft the user is typing into.
@@ -559,10 +523,13 @@ fn help_overlay(
     }
     let rows = wrap_help(help_text(popup.focus), inner.width);
     let height = rows.len() as u16;
-    // Above the cursor. The y is terminal-bound, so this is allowed to go
-    // off the top of the screen — an overlay is something laid over what is
-    // there, not a region carved out of the popup.
-    let y = cursor.1.saturating_sub(height);
+    // Above the highlighted row, with one blank row between. The terminal
+    // is guaranteed taller than the popup plus its help, so this clamp is
+    // the only rule: when there is no room, the help lands at the top row
+    // and draws over whatever the sidebar left there. An overlay is laid
+    // over the screen, not carved out of it.
+    let highlighted_y = inner.y.saturating_add(focused_row_offset(popup.focus));
+    let y = highlighted_y.saturating_sub(height + 1);
     let area = Rect {
         x: inner.x,
         y,
@@ -574,19 +541,10 @@ fn help_overlay(
         .map(|row| {
             Line::from(Span::styled(
                 format!(" {row}"),
-                // Bold and in the bright text color: the tooltip is read
-                // against the popup it is floating over, so it needs to
-                // out-weigh the muted footer it can land next to.
-                Style::default()
-                    .fg(theme.primary_text)
-                    .bg(theme.infopopup_bg)
-                    .add_modifier(ratatui::style::Modifier::BOLD),
+                Style::default().fg(TOOLTIP_FG).bg(TOOLTIP_BG),
             ))
         })
         .collect();
-    // The popup is only used for its width here; kept in the signature so
-    // the clamp to the popup's column is explicit at the call site.
-    let _ = popup_rect;
     Some((area, lines))
 }
 

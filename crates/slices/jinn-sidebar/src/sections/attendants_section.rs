@@ -173,10 +173,11 @@ impl crate::sections::section_trait::SidebarSection for AttendantsSection {
             } else {
                 Style::default().fg(theme.attendant_fg)
             };
-            // Beside the name, not inside it: the name is what a rename
-            // replaces, so a mode marker must stay out of its reach. The
-            // sessions section renders the same marker the same way.
-            let paused = if row.is_seed {
+            // Ahead of the name, where the sessions section puts the same
+            // marker: the eye reads the marker before the title. And beside
+            // the name rather than inside it — the name is what a rename
+            // replaces, so the marker must stay out of its reach.
+            let paused = if row.is_paused {
                 Span::styled(
                     ATTENDANT_PAUSED_SYMBOL,
                     Style::default().fg(theme.attendant_paused),
@@ -186,8 +187,8 @@ impl crate::sections::section_trait::SidebarSection for AttendantsSection {
             };
             lines.push(Line::from(vec![
                 indicator,
-                Span::styled(format!(" {}", row.name), name_style),
                 paused,
+                Span::styled(format!(" {}", row.name), name_style),
             ]));
 
             let report_line = match &row.latest_report {
@@ -241,7 +242,8 @@ fn truncate_report(body: &str) -> String {
 mod tests {
     #![allow(clippy::expect_used, clippy::unwrap_used, reason = "test code")]
 
-    use super::has_content;
+    use super::{AttendantsSection, has_content};
+    use crate::sections::section_trait::SidebarSection;
     use jinn_kernel::AppState;
 
     /// State whose active session is `active`, holding `attendant` as its
@@ -332,6 +334,105 @@ mod tests {
         assert!(
             !rows.iter().any(|row| row.session_id == other_id),
             "another parent's attendant must not appear here"
+        );
+    }
+
+    /// Renders the section over `state` and returns the buffer, so a test
+    /// can read the cells the user actually sees.
+    fn render_section(state: &AppState) -> ratatui::buffer::Buffer {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let mut terminal = Terminal::new(TestBackend::new(40, 20)).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let slices = jinn_slices::Slices::new();
+                let overlays = jinn_slices::OverlayViews::new();
+                let ctx = jinn_kernel::common::render_ctx::RenderCtx::new_with_default_config(
+                    state, &slices, &overlays,
+                );
+                AttendantsSection.render(frame, ratatui::layout::Rect::new(0, 0, 40, 20), 0, &ctx);
+            })
+            .expect("draw");
+        terminal.backend().buffer().clone()
+    }
+
+    /// The rendered screen as text, one string per row.
+    fn screen_text(buffer: &ratatui::buffer::Buffer) -> String {
+        (0..buffer.area.height)
+            .map(|y| {
+                (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<String>>()
+            .join("\n")
+    }
+
+    /// A parent with one paused attendant of the given configuration.
+    fn state_with_paused_attendant(
+        activation: jinn_attendant_msg::AttendantActivation,
+        trigger: jinn_attendant_msg::AttendantTrigger,
+    ) -> AppState {
+        let parent = user_session();
+        let mut attendant = attendant_of(&parent);
+        attendant.set_title("reviewer".to_owned());
+        attendant.set_attendant_activation(activation);
+        attendant.set_attendant_trigger(trigger);
+        state_with(parent, attendant)
+    }
+
+    #[rstest::rstest]
+    fn a_paused_attendant_row_shows_the_marker_before_the_title() {
+        // Given a paused attendant under an active parent.
+        let state = state_with_paused_attendant(
+            jinn_attendant_msg::AttendantActivation::Seed,
+            jinn_attendant_msg::AttendantTrigger::Manual,
+        );
+
+        // When the section is rendered.
+        let buffer = render_section(&state);
+
+        // Then the marker leads the name, matching the sessions section —
+        // the eye reads the marker before the title.
+        let text = screen_text(&buffer);
+        let line = text
+            .lines()
+            .find(|line| line.contains('\u{23F8}'))
+            .unwrap_or_else(|| panic!("no pause marker rendered: {text:?}"));
+        let marker = line.find('\u{23F8}').expect("marker column");
+        let name = line.find("reviewer").expect("attendant name");
+        assert!(marker < name, "the marker must precede the name: {line:?}");
+    }
+
+    #[rstest::rstest]
+    fn the_pause_marker_sits_outside_the_title() {
+        // Given a paused attendant.
+        let state = state_with_paused_attendant(
+            jinn_attendant_msg::AttendantActivation::Seed,
+            jinn_attendant_msg::AttendantTrigger::Manual,
+        );
+
+        // When the section is rendered.
+        let buffer = render_section(&state);
+
+        // Then the name's own cells carry the name alone — no marker glued
+        // to it. The name is what a rename replaces, so the marker must
+        // live in a span the rename cannot reach.
+        let text = screen_text(&buffer);
+        let line = text
+            .lines()
+            .find(|line| line.contains("reviewer"))
+            .unwrap_or_else(|| panic!("no attendant row rendered: {text:?}"));
+        let name = line.find("reviewer").expect("attendant name");
+        let marked = line
+            .chars()
+            .skip(name)
+            .take("reviewer".len())
+            .any(|c| c == '\u{23F8}');
+        assert!(
+            !marked,
+            "the name's own cells must be the name alone: {line:?}"
         );
     }
 }

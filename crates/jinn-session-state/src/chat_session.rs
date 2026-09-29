@@ -456,6 +456,21 @@ impl ChatSessionState {
         self.attendant_activation().context_policy()
     }
 
+    /// Whether this attendant will run on its own.
+    ///
+    /// Two configurations prevent a dispatch, and both are the user's
+    /// attention: a trigger that waits to be asked, and a session still
+    /// being composed, whose pins are half-written. Anything else fires
+    /// when its parent finishes.
+    ///
+    /// Only meaningful for an attendant — an ordinary session carries the
+    /// same default fields and would answer `true`.
+    #[must_use]
+    pub fn attendant_is_paused(&self) -> bool {
+        self.attendant_trigger() == AttendantTrigger::Manual
+            || self.attendant_activation() == AttendantActivation::Seed
+    }
+
     /// Set how this session's context is prepared when it runs.
     pub fn set_attendant_activation(&mut self, activation: AttendantActivation) {
         self.core.attendant.activation = activation;

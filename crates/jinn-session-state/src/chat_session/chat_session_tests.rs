@@ -6437,3 +6437,77 @@ fn a_queued_message_is_handed_back_to_the_user_as_an_editable_draft() {
         "a queued message is recovered as draft text by design"
     );
 }
+
+/// An attendant configured with the given activation and trigger.
+fn attendant_configured(
+    activation: jinn_attendant_msg::AttendantActivation,
+    trigger: jinn_attendant_msg::AttendantTrigger,
+) -> ChatSessionState {
+    let mut attendant = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
+    attendant.set_attendant_activation(activation);
+    attendant.set_attendant_trigger(trigger);
+    attendant
+}
+
+#[rstest::rstest]
+#[case(jinn_attendant_msg::AttendantActivation::Seed)]
+#[case(jinn_attendant_msg::AttendantActivation::Reset)]
+#[case(jinn_attendant_msg::AttendantActivation::Preserve)]
+fn a_manual_trigger_attendant_is_paused(
+    #[case] activation: jinn_attendant_msg::AttendantActivation,
+) {
+    // Given an attendant that waits for the user to run it.
+    let session = attendant_configured(activation, jinn_attendant_msg::AttendantTrigger::Manual);
+
+    // When asking whether it will run on its own.
+    let paused = session.attendant_is_paused();
+
+    // Then it is paused — nothing dispatches without the user asking.
+    assert!(paused);
+}
+
+#[rstest::rstest]
+#[case(jinn_attendant_msg::AttendantTrigger::Manual)]
+#[case(jinn_attendant_msg::AttendantTrigger::ParentCompleted)]
+fn a_seed_attendant_is_paused(#[case] trigger: jinn_attendant_msg::AttendantTrigger) {
+    // Given an attendant still being composed.
+    let session = attendant_configured(jinn_attendant_msg::AttendantActivation::Seed, trigger);
+
+    // When asking whether it will run on its own.
+    let paused = session.attendant_is_paused();
+
+    // Then it is paused — its pins are half-written, so nothing dispatches.
+    assert!(paused);
+}
+
+#[rstest::rstest]
+#[case(jinn_attendant_msg::AttendantActivation::Reset)]
+#[case(jinn_attendant_msg::AttendantActivation::Preserve)]
+fn a_dispatching_attendant_is_not_paused(
+    #[case] activation: jinn_attendant_msg::AttendantActivation,
+) {
+    // Given a composed attendant on the trigger that fires it.
+    let session = attendant_configured(
+        activation,
+        jinn_attendant_msg::AttendantTrigger::ParentCompleted,
+    );
+
+    // When asking whether it will run on its own.
+    let paused = session.attendant_is_paused();
+
+    // Then it is not paused — the parent's turn completes and it runs.
+    assert!(!paused);
+}
+
+#[rstest::rstest]
+fn an_ordinary_session_is_never_paused() {
+    // Given a plain user session, which carries the default attendant
+    // fields (manual trigger, seed activation) without being an attendant.
+    let session = ChatSessionState::new();
+
+    // When asking whether it will run on its own.
+    let paused = session.is_attendant() && session.attendant_is_paused();
+
+    // Then it is not paused — the predicate is meaningless off an attendant.
+    assert!(!paused);
+}

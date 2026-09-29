@@ -475,71 +475,6 @@ fn template_truncation_never_splits_a_grapheme() {
 
 #[rstest::rstest]
 #[test]
-fn the_properties_view_places_the_cursor_on_the_focused_row() {
-    // Given the properties scope's view, focused on the activation row.
-    let (slices, _cell) = slices_with_popup(popup_focused(PropertyField::Activation));
-    let facts = RenderFacts::new(jinn_theme::default_theme(), &slices);
-    let area = Rect::new(0, 0, 100, 30);
-    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let rect = attendant_properties_overlay_rect(&area).expect("geometry");
-            render_attendant_properties(frame, rect, &facts);
-        })
-        .expect("draw");
-
-    // Then the cursor sits on the focused row. The help is a tooltip
-    // anchored to this cursor, so the form has to own one — without it the
-    // tooltip has nothing to float above.
-    let cursor = terminal.get_cursor_position().expect("cursor");
-    let body = body_top(terminal.backend().buffer());
-    assert_eq!(
-        cursor.y,
-        body + 1,
-        "the cursor must rest on the focused row"
-    );
-}
-
-#[rstest::rstest]
-fn the_help_tooltip_is_drawn_above_the_cursor() {
-    // Given a popup focused on the trigger row with the help toggled on.
-    let mut popup = popup_focused(PropertyField::Trigger);
-    popup.help_visible = true;
-    let (slices, _cell) = slices_with_popup(popup);
-    let facts = RenderFacts::new(jinn_theme::default_theme(), &slices);
-    let area = Rect::new(0, 0, 100, 30);
-    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let rect = attendant_properties_overlay_rect(&area).expect("geometry");
-            render_attendant_properties(frame, rect, &facts);
-        })
-        .expect("draw");
-
-    // Then the cursor is anchored on the focused row, and the help is
-    // strictly above it — the tooltip floats, it does not take the row.
-    let cursor = terminal.get_cursor_position().expect("cursor");
-    let buffer = terminal.backend().buffer();
-    let body = body_top(buffer);
-    assert_eq!(cursor.y, body, "the cursor rests on the focused row");
-
-    let rendered = all_text(buffer);
-    let help_y = rendered
-        .lines()
-        .position(|line| line.contains("does this attendant re-run"))
-        .expect("the help is on screen");
-    assert!(
-        help_y < usize::from(body),
-        "the help must render above the cursor, not below it: {rendered}"
-    );
-}
-
-#[rstest::rstest]
-#[test]
 fn editor_view_places_the_cursor_in_the_draft() {
     // Given the editor scope's view over a popup whose draft is "draft",
     // with the cursor at its end.
@@ -716,19 +651,156 @@ fn theme_key_defaults_to_the_age_fresh_green() {
     assert_eq!(fresh, option);
 }
 
+/// The tooltip's light surface, which is popup furniture rather than a
+/// themeable color: a help box is the same light card in every theme.
+const TOOLTIP_BG: Color = Color::Rgb(240, 240, 240);
+/// The tooltip's text, dark against `TOOLTIP_BG`.
+const TOOLTIP_FG: Color = Color::Rgb(26, 26, 26);
+
+#[rstest::rstest]
+#[case::trigger(PropertyField::Trigger)]
+#[case::activation(PropertyField::Activation)]
+#[case::template(PropertyField::SeedTemplate)]
+#[test]
+fn the_tooltip_sits_one_cell_above_the_highlighted_row(#[case] field: PropertyField) {
+    // Given a popup focused on `field` with the help overlay toggled on.
+    let mut popup = popup_focused(field);
+    popup.help_visible = true;
+
+    // When rendering.
+    let buffer = render_properties(popup);
+
+    // Then the tooltip's bottom row leaves exactly one blank row between
+    // itself and the highlighted row — a gap, not a flush edge.
+    let (top, bottom) = tooltip_rows(&buffer);
+    let highlighted = highlighted_row_of(&buffer, field);
+    assert_eq!(
+        highlighted.saturating_sub(bottom),
+        2,
+        "one blank row must separate the tooltip (y={top}..{bottom}) from \
+         the highlighted row at y={highlighted}"
+    );
+}
+
 #[rstest::rstest]
 #[test]
-#[ignore = "visual inspection aid; asserts the tooltip sits above the cursor row"]
-fn zz_visual_dump() {
+fn the_tooltip_is_never_positioned_off_screen() {
+    // Given the smallest terminal the app supports, with help toggled on.
+    let mut popup = popup_focused(PropertyField::Trigger);
+    popup.help_visible = true;
+
+    // When rendering at that minimum size.
+    let buffer = render_properties_in(popup, 40, 15);
+
+    // Then the tooltip still lands on screen, inside the terminal.
+    let (top, bottom) = tooltip_rows(&buffer);
+    assert!(
+        bottom < buffer.area.height && top < bottom,
+        "the tooltip (y={top}..{bottom}) must render inside a {}-row terminal",
+        buffer.area.height
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn the_tooltip_uses_a_light_background_with_dark_text() {
+    // Given a popup with the help overlay toggled on.
     let mut popup = popup_focused(PropertyField::Activation);
     popup.help_visible = true;
+
+    // When rendering.
     let buffer = render_properties(popup);
-    let mut out = String::new();
-    for y in 0..24 {
-        let row: String = (0..60)
-            .map(|x| buffer[(x, y)].symbol().to_owned())
-            .collect();
-        out.push_str(&format!("VISUAL {y:2}|{row}\n"));
+
+    // Then the tooltip is a light card with dark text on it.
+    let (top, _) = tooltip_rows(&buffer);
+    let x = find_in_row(&buffer, top, "seed pins").expect("help text");
+    assert_eq!(bg_at(&buffer, x, top), TOOLTIP_BG);
+    assert_eq!(fg_at(&buffer, x, top), TOOLTIP_FG);
+}
+
+#[rstest::rstest]
+#[test]
+fn the_focused_row_uses_the_user_message_background() {
+    // Given a popup focused on the activation row.
+    let buffer = render_properties(popup_focused(PropertyField::Activation));
+    let row = highlighted_row_of(&buffer, PropertyField::Activation);
+
+    // When reading the background behind the label.
+    let label_x = find_in_row(&buffer, row, "activation:").expect("activation label");
+
+    // Then it is the user-message background, not the attendant's own.
+    assert_eq!(
+        bg_at(&buffer, label_x, row),
+        jinn_theme::default_theme().user_block_bg,
+        "the focused row must borrow the user-message background"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn the_selected_choice_stays_green_on_the_focused_row() {
+    // Given a popup focused on the trigger row.
+    let buffer = render_properties(popup_focused(PropertyField::Trigger));
+    let row = highlighted_row_of(&buffer, PropertyField::Trigger);
+
+    // When reading the selected choice's foreground.
+    let choice_x = find_in_row(&buffer, row, "parent-completed").expect("trigger value");
+
+    // Then it is still the active green — the row background must not
+    // rewrite the colors it has to keep distinct.
+    assert_eq!(
+        fg_at(&buffer, choice_x, row),
+        Color::LightGreen,
+        "the selected choice stays green on the focused row"
+    );
+}
+
+#[rstest::rstest]
+#[case::trigger(PropertyField::Trigger, "trigger:")]
+#[case::activation(PropertyField::Activation, "activation:")]
+#[case::template(PropertyField::SeedTemplate, "seed template:")]
+#[test]
+fn the_popup_rows_do_not_move_with_the_cursor(#[case] field: PropertyField, #[case] label: &str) {
+    // Given a popup focused on the trigger row.
+    let reference = render_properties(popup_focused(PropertyField::Trigger));
+
+    // When rendering with the cursor elsewhere.
+    let moved = render_properties(popup_focused(field));
+
+    // Then each field is still on the body row it started on.
+    assert_eq!(
+        highlighted_row_of(&moved, field),
+        highlighted_row_of(&reference, field),
+        "{label} must not move when focus changes to {field:?}"
+    );
+}
+
+/// The tooltip's top and bottom rows: the rows carrying the help card's
+/// light background, wherever the overlay landed. The tooltip is laid over
+/// the terminal — including over the popup's own upper rows for a lower
+/// field — so its position cannot be assumed; it is read by color.
+fn tooltip_rows(buffer: &ratatui::buffer::Buffer) -> (u16, u16) {
+    let rows: Vec<u16> = (0..buffer.area.height)
+        .filter(|&y| (inner_left()..buffer.area.width).any(|x| bg_at(buffer, x, y) == TOOLTIP_BG))
+        .collect();
+    match (rows.first(), rows.last()) {
+        (Some(top), Some(bottom)) => (*top, *bottom),
+        _ => panic!("no tooltip row carrying the help card's background"),
     }
-    panic!("{out}");
+}
+
+/// The row the highlighted field occupies, derived from the label the
+/// focused field renders.
+fn highlighted_row_of(buffer: &ratatui::buffer::Buffer, field: PropertyField) -> u16 {
+    let label = match field {
+        PropertyField::Trigger => "trigger:",
+        PropertyField::Activation => "activation:",
+        PropertyField::SeedTemplate => "seed template:",
+    };
+    for y in body_top(buffer)..buffer.area.height {
+        if find_in_row(buffer, y, label).is_some() {
+            return y;
+        }
+    }
+    panic!("no row for {field:?}");
 }
