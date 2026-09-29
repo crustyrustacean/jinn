@@ -115,7 +115,7 @@ mod attendant_tool_visibility_tests {
             guard.session.insert(session);
             let cell = guard.tool_registry().expect("registry cell attached");
             cell.update(|r| {
-                r.global.insert("report".to_owned(), tool("report"));
+                r.global.insert("conclude".to_owned(), tool("conclude"));
                 r.global
                     .insert("notify_parent".to_owned(), tool("notify_parent"));
                 r.global.insert("read".to_owned(), tool("read"));

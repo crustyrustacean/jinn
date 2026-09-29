@@ -15,7 +15,7 @@ use jinn_session_state::ChatSessionState;
 use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 
 use crate::attendant_tools::{
-    notify_parent_definition, notify_parent_execute, report_definition, report_execute,
+    conclude_definition, conclude_execute, notify_parent_definition, notify_parent_execute,
 };
 use crate::tool_types::ToolContext;
 
@@ -67,15 +67,15 @@ fn attendant_fixture() -> (State, SessionId, SessionId) {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn report_appends_to_the_callers_own_log() {
+async fn conclude_appends_to_the_callers_own_log() {
     // Given an attendant session.
     let harness = TestHarness::new().await;
     let (state, attendant_id, _parent) = attendant_fixture();
     let tool_ctx = ctx(&harness, &state, attendant_id.clone()).await;
 
     // When the report tool runs.
-    let result = report_execute(
-        call("report", r#"{"body":"the build was green"}"#),
+    let result = conclude_execute(
+        call("conclude", r#"{"body":"the build was green"}"#),
         tool_ctx,
     )
     .await;
@@ -100,7 +100,7 @@ async fn report_does_not_wake_the_parent() {
     let tool_ctx = ctx(&harness, &state, attendant_id).await;
 
     // When the report tool runs.
-    let result = report_execute(call("report", r#"{"body":"a finding"}"#), tool_ctx).await;
+    let result = conclude_execute(call("conclude", r#"{"body":"a finding"}"#), tool_ctx).await;
 
     // Then nothing is enqueued anywhere — report is terminal.
     assert!(result.success);
@@ -110,7 +110,7 @@ async fn report_does_not_wake_the_parent() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn report_persists_the_session() {
+async fn conclude_persists_the_session() {
     // Given an attendant on a bus with a recorder for the persist command.
     let harness = TestHarness::new().await;
     let persists = harness
@@ -120,7 +120,7 @@ async fn report_persists_the_session() {
     let tool_ctx = ctx(&harness, &state, attendant_id.clone()).await;
 
     // When the report tool runs.
-    let result = report_execute(call("report", r#"{"body":"a finding"}"#), tool_ctx).await;
+    let result = conclude_execute(call("conclude", r#"{"body":"a finding"}"#), tool_ctx).await;
 
     // Then the calling session is queued for persistence.
     assert!(result.success);
@@ -223,9 +223,9 @@ async fn notify_parent_fails_for_a_non_attendant() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn neither_tool_exposes_a_read_path_for_reports() {
+async fn neither_tool_exposes_a_read_path_for_conclusions() {
     // Given the two tools' definitions.
-    let definitions = [report_definition(), notify_parent_definition()];
+    let definitions = [conclude_definition(), notify_parent_definition()];
 
     // When their parameter names are collected.
     let mut names = Vec::new();
@@ -239,7 +239,7 @@ async fn neither_tool_exposes_a_read_path_for_reports() {
     // Then the only parameters are the two bodies — no session, target, or
     // read parameter exists, so the only way to see a report is the session
     // that wrote it.
-    assert_eq!(definitions[0].name, "report");
+    assert_eq!(definitions[0].name, "conclude");
     assert_eq!(definitions[1].name, "notify_parent");
     names.sort();
     assert_eq!(names, vec!["body".to_owned(), "message".to_owned()]);
@@ -247,16 +247,59 @@ async fn neither_tool_exposes_a_read_path_for_reports() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn report_fails_cleanly_with_a_missing_body() {
+async fn conclude_fails_cleanly_with_a_missing_body() {
     // Given an attendant and a call whose arguments lack `body`.
     let harness = TestHarness::new().await;
     let (state, attendant_id, _parent) = attendant_fixture();
     let tool_ctx = ctx(&harness, &state, attendant_id).await;
 
     // When the report tool runs.
-    let result = report_execute(call("report", r#"{}"#), tool_ctx).await;
+    let result = conclude_execute(call("conclude", r#"{}"#), tool_ctx).await;
 
     // Then the call fails with the missing slot named.
     assert!(!result.success);
     assert!(result.content.contains("body"));
+}
+
+#[rstest::rstest]
+fn every_declared_parameter_is_one_the_executor_reads() {
+    // Given the conclude tool's schema.
+    let def = conclude_definition();
+    let declared = def.parameters["properties"]
+        .as_object()
+        .expect("a properties object")
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+
+    // Then it declares exactly the argument the executor requires.
+    // A schema that names a property the executor never reads accepts a
+    // perfectly valid-looking call and then rejects it for a missing
+    // argument, which reads to the agent as the tool being broken.
+    let required = def.parameters["required"]
+        .as_array()
+        .expect("a required array");
+    assert_eq!(
+        declared,
+        vec!["body".to_owned()],
+        "declared parameters must be exactly what the executor reads"
+    );
+    // And the required list names the same one field, not a stale name.
+    assert_eq!(required.len(), 1, "conclude takes exactly one argument");
+    assert_eq!(required[0].as_str(), Some("body"));
+}
+
+#[rstest::rstest]
+fn the_conclude_description_states_the_length_bound() {
+    // Given the conclude tool's description.
+    let def = conclude_definition();
+
+    // Then it states the bound. The name carries the once-per-run idea;
+    // the length limit is the one thing prose has to say, and an agent
+    // that ignored the example format still reads this.
+    assert!(
+        def.description.contains("10 WORDS"),
+        "the description must state the word bound: {}",
+        def.description
+    );
 }

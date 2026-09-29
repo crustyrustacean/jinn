@@ -23,7 +23,7 @@ pub use crate::report::AttendantReport;
 /// action means anything for an ordinary session, so the definitions are
 /// filtered out of every non-attendant session's tool list rather than
 /// being offered and refused at call time.
-pub const ATTENDANT_TOOL_NAMES: &[&str] = &["report", "notify_parent"];
+pub const ATTENDANT_TOOL_NAMES: &[&str] = &["conclude", "notify_parent"];
 
 /// Whether a tool name belongs to the attendant-only family.
 #[must_use]

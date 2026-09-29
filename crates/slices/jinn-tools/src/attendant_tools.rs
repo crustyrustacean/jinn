@@ -1,4 +1,4 @@
-//! Attendant built-in tools — `report` and `notify_parent`.
+//! Attendant built-in tools — `conclude` and `notify_parent`.
 //!
 //! Two direction-named, single-purpose tools. `report` records what the
 //! attendant concluded, for the user; `notify_parent` starts a turn in the
@@ -16,23 +16,27 @@ use jinn_session_store_msg::PersistSession;
 
 use super::BoxedToolFuture;
 
-/// The `report` tool definition: append to the calling attendant's log.
-pub fn report_definition() -> ToolDefinition {
+/// The `conclude` tool definition: append to the calling attendant's log.
+///
+/// Named for the act rather than the artifact. A run concludes once, which
+/// is why the name is terminal: it rules out calling this repeatedly to
+/// build a wall of text, without spending a line of description saying so.
+pub fn conclude_definition() -> ToolDefinition {
     ToolDefinition {
-        name: "report".to_owned(),
+        name: "conclude".to_owned(),
         description: "Record what you concluded, for the user to read. ONLY ONE LINE OF TEXT, MAX 10 WORDS."
             .to_owned(),
         prompt_snippet: None,
         prompt_guidelines: vec![
-            "Use `report` to leave your verdict or findings; keep each report self-contained. IT MUST BE ONE LINE OF TEXT, MAX 10 WORDS."
+            "Use `conclude` to leave your verdict or findings; keep each conclusion self-contained. IT MUST BE ONE LINE OF TEXT, MAX 10 WORDS."
                 .to_owned(),
         ],
         parameters: serde_json::json!({
             "type": "object",
             "properties": {
-                "headline": {
+                "body": {
                     "type": "string",
-                    "description": "The report headline. Must be ONE LINE ONLY and MAX 10 WORDS."
+                    "description": "Your conclusion. ONE LINE, MAX 10 WORDS."
                 }
             },
             "required": ["body"]
@@ -71,16 +75,16 @@ pub fn notify_parent_definition() -> ToolDefinition {
 ///
 /// Terminal by design — no message reaches the parent. The append happens
 /// under the state write lock; the follow-up persist is published on the bus.
-pub fn report_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
+pub fn conclude_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
         let Some(body) = argument(&call, "body") else {
             return missing_argument(call, "body");
         };
         let Some(state) = ctx.state.clone() else {
-            return failed(call, "report is unavailable without shared state");
+            return failed(call, "conclude is unavailable without shared state");
         };
         let Some(session_id) = ctx.session_id.clone() else {
-            return failed(call, "report is unavailable without a session context");
+            return failed(call, "conclude is unavailable without a session context");
         };
 
         {
@@ -91,12 +95,12 @@ pub fn report_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             session.append_attendant_report(body);
         }
 
-        // Persist so the report survives the process.
+        // Persist so the conclusion survives the process.
         if let Some(bus) = ctx.bus.clone() {
             bus.publish(PersistSession { session_id }).await;
         }
 
-        succeeded(call, "Report recorded.")
+        succeeded(call, "Conclusion recorded.")
     })
 }
 

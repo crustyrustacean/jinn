@@ -87,8 +87,8 @@ pub fn builtin_tools(default_timeout_secs: u64) -> Vec<BuiltinToolEntry> {
             false,
         ),
         (
-            attendant_tools::report_definition(),
-            attendant_tools::report_execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            attendant_tools::conclude_definition(),
+            attendant_tools::conclude_execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
             false,
         ),
         (
