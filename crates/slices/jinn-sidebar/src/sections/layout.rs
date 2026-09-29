@@ -229,8 +229,8 @@ pub fn sessions_rows(state: &AppState) -> u16 {
 /// renders them top-down. Sessions must stay last — it is the document tail.
 pub const REGISTRATION_ORDER: [SidebarSectionId; 6] = [
     SidebarSectionId::Persona,
-    SidebarSectionId::Pins,
     SidebarSectionId::Attendant,
+    SidebarSectionId::Pins,
     SidebarSectionId::TaskList,
     SidebarSectionId::McpServers,
     SidebarSectionId::Sessions,

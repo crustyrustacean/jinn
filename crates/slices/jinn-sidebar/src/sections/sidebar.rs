@@ -48,6 +48,16 @@ impl Sidebar {
         self.sections.len()
     }
 
+    /// The registered section ids, in the order they are drawn.
+    ///
+    /// The draw order is the registration order, and it is the order
+    /// navigation must follow: a cursor that steps to a section drawn
+    /// somewhere else on screen is a cursor the user cannot follow.
+    #[must_use]
+    pub fn section_ids(&self) -> Vec<SidebarSectionId> {
+        self.sections.iter().map(|section| section.id()).collect()
+    }
+
     /// Renders all sections within the given area.
     ///
     /// Sections form one document whose rows are windowed by a single offset
@@ -209,15 +219,20 @@ fn dispatch_navigate(
     }
 }
 
+/// The section drawn directly below `id`.
+///
+/// The chain is the registration order, because that is the order the
+/// sections appear on screen. A cursor that steps to a section drawn
+/// elsewhere in the column is a cursor the user cannot follow.
 fn next_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
     match id {
         jinn_sidebar_msg::SidebarSectionId::Persona => {
-            Some(jinn_sidebar_msg::SidebarSectionId::Pins)
-        }
-        jinn_sidebar_msg::SidebarSectionId::Pins => {
             Some(jinn_sidebar_msg::SidebarSectionId::Attendant)
         }
         jinn_sidebar_msg::SidebarSectionId::Attendant => {
+            Some(jinn_sidebar_msg::SidebarSectionId::Pins)
+        }
+        jinn_sidebar_msg::SidebarSectionId::Pins => {
             Some(jinn_sidebar_msg::SidebarSectionId::TaskList)
         }
         jinn_sidebar_msg::SidebarSectionId::TaskList => {
@@ -230,16 +245,18 @@ fn next_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
     }
 }
 
+/// The section drawn directly above `id`; the exact inverse of
+/// [`next_section`].
 fn prev_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
     match id {
         jinn_sidebar_msg::SidebarSectionId::Persona => None,
-        jinn_sidebar_msg::SidebarSectionId::Pins => {
+        jinn_sidebar_msg::SidebarSectionId::Attendant => {
             Some(jinn_sidebar_msg::SidebarSectionId::Persona)
         }
-        jinn_sidebar_msg::SidebarSectionId::TaskList => {
+        jinn_sidebar_msg::SidebarSectionId::Pins => {
             Some(jinn_sidebar_msg::SidebarSectionId::Attendant)
         }
-        jinn_sidebar_msg::SidebarSectionId::Attendant => {
+        jinn_sidebar_msg::SidebarSectionId::TaskList => {
             Some(jinn_sidebar_msg::SidebarSectionId::Pins)
         }
         jinn_sidebar_msg::SidebarSectionId::McpServers => {

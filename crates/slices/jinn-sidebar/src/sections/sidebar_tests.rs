@@ -524,7 +524,7 @@ fn jump_to_sessions_retains_cursor_and_adjusts_scroll() {
 /// Creates a sidebar with all built-in sections registered.
 fn sidebar_with_all_sections() -> Sidebar {
     let mut sidebar = Sidebar::new();
-    crate::sections::register_sections(&mut sidebar);
+    super::register_sections(&mut sidebar);
     sidebar
 }
 
@@ -1497,5 +1497,135 @@ fn the_selected_pin_is_the_one_drawn() {
     assert!(
         highlighted.len() == 1,
         "the selected pin should be drawn exactly once, got rows {highlighted:?}"
+    );
+}
+
+/// A state where every sidebar section has something to draw.
+///
+/// Navigation skips sections with nothing to show, so comparing the nav
+/// chain against the draw order only means anything when nothing is
+/// skipped for emptiness.
+fn state_with_every_section_populated() -> AppState {
+    let mut state = AppState::default_with_scope_focus();
+    // Pins.
+    let entry = ChatEntry::user("pinned");
+    let entry_id = entry.id.clone();
+    state.active_session_mut().push_entry(entry);
+    state
+        .active_session_mut()
+        .pin_entry(&entry_id, PinPosition::Top);
+    // Attendants: one beneath the *active* session, marked loaded so the
+    // section's row filter admits it.
+    {
+        let parent = state.active_session().clone();
+        let mut attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
+        attendant.append_attendant_report("a finding".to_owned());
+        attendant.set_session_state(jinn_session_store_msg::SessionState::Loaded);
+        let attendant_id = attendant.session_id().clone();
+        *state.session_mut_or_create(&attendant_id) = attendant;
+    }
+    // Task list.
+    state
+        .active_session_mut()
+        .task_list_mut()
+        .set_from_inputs(&[jinn_tools_msg::PhaseInput {
+            description: "Research".to_owned(),
+            tasks: vec![(
+                "Read the docs".to_owned(),
+                jinn_tools_msg::TaskStatus::Pending,
+            )],
+        }]);
+    // MCP: the session must enable a server the config declares.
+    state.active_session_mut().enable_mcp_server("probe");
+    // Sessions: the active session itself is enough.
+    state
+}
+
+#[rstest::rstest]
+fn move_up_from_the_attendants_section_enters_persona() {
+    // Given the attendants section focused, with the parent session and an
+    // attendant beneath it so the section actually has content.
+    let mut state = state_with_pinned(2);
+    {
+        let parent = jinn_session_state::ChatSessionState::new();
+        let id = parent.session_id().clone();
+        let mut attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
+        attendant.append_attendant_report("a finding".to_owned());
+        *state.session_mut_or_create(&id) = attendant;
+    }
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Attendant.focus_scope());
+
+    // When navigating up.
+    let _ = navigate_sidebar(
+        &SidebarIntent::MoveUp,
+        &mut state,
+        jinn_slices::empty_config_layer(),
+    );
+
+    // Then focus lands on Persona. The attendants section renders directly
+    // under Persona, so anything else sends the cursor backwards past a
+    // section that is drawn below it.
+    assert_eq!(
+        state
+            .frontend
+            .sidebar_section()
+            .unwrap_or(jinn_sidebar_msg::SidebarSectionId::Persona),
+        jinn_sidebar_msg::SidebarSectionId::Persona
+    );
+}
+
+#[rstest::rstest]
+fn the_sidebar_section_order_is_the_same_everywhere() {
+    // Given the order the sections are registered in, which is the order
+    // they are drawn in.
+    let mut sidebar = Sidebar::new();
+    super::register_sections(&mut sidebar);
+    let registered = sidebar.section_ids();
+
+    // Given a state where every section has something to show, so
+    // navigation stops skipping over the empty ones.
+    let mut state = state_with_every_section_populated();
+
+    // When walking the navigation chain downward from the first section,
+    // through the public entry point a key press actually takes.
+    let mut walked = vec![registered[0]];
+    state.frontend.scope_push(registered[0].focus_scope());
+    for _ in 0..(registered.len() * 2) {
+        let before = state.frontend.sidebar_section();
+        let _ = navigate_sidebar(
+            &SidebarIntent::MoveDown,
+            &mut state,
+            jinn_slices::empty_config_layer(),
+        );
+        let after = state.frontend.sidebar_section();
+        if after == before {
+            break;
+        }
+        if let Some(id) = after {
+            walked.push(id);
+        }
+    }
+
+    // Then the chain visits the populated sections in draw order, and
+    // nothing between them is out of place. Empty sections are skipped by
+    // design, so MCP (which needs a configured server) is absent here;
+    // what this pins is the *relative* order, which is what drifted.
+    let populated: Vec<jinn_sidebar_msg::SidebarSectionId> = registered
+        .iter()
+        .copied()
+        .filter(|id| walked.contains(id))
+        .collect();
+    assert_eq!(
+        walked, populated,
+        "navigation visits sections in an order the sidebar does not draw them in"
+    );
+    // And the layout's own copy agrees with the live registration, since
+    // overlay anchors are computed from it rather than from the sidebar.
+    assert_eq!(
+        super::layout::REGISTRATION_ORDER.to_vec(),
+        registered,
+        "the layout's section order has drifted from the registration order"
     );
 }
