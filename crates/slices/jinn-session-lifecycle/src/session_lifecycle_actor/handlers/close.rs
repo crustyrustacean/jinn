@@ -74,6 +74,7 @@ impl SessionLifecycleActor {
             self.publish(PushChatEntry {
                 session_id: payload.session_id.clone(),
                 entry: jinn_core_types::ChatEntry::error(format!("Teardown failed: {error}")),
+                pin: None,
             })
             .await;
             self.publish(SessionTeardownFinished {
@@ -90,6 +91,7 @@ impl SessionLifecycleActor {
                 self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
                     entry: teardown_success_msg(),
+                    pin: None,
                 })
                 .await;
                 self.publish(SessionTeardownFinished {

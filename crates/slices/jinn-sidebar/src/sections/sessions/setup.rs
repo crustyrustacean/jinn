@@ -48,6 +48,7 @@ pub fn handle_session_rerun_setup(
         .with_message(PushChatEntry {
             session_id: target_id.clone(),
             entry: setup_running_msg(),
+            pin: None,
         })
         .with_message(RunSessionSetup {
             session_id: target_id,

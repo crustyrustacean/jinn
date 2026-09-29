@@ -97,6 +97,7 @@ pub fn handle_new_attendant(state: &mut AppState, config: &ConfigLayer) -> Inten
                 "🛰️ Attendant created in seed mode — compose its instructions, \
                  then flip activation to fire.",
             ),
+            pin: None,
         });
 
     if seed.has_auto_enabled_mcp() {
@@ -127,6 +128,7 @@ pub fn handle_rerun_attendant(state: &mut AppState) -> IntentResult {
             return IntentResult::empty().with_message(jinn_session_history_msg::PushChatEntry {
                 session_id,
                 entry: ChatEntry::system(format!("⚠️ Cannot re-run: {reason}")),
+                pin: None,
             });
         }
         return IntentResult::empty();

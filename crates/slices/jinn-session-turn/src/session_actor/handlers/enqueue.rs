@@ -393,7 +393,13 @@ impl SessionPersistenceActor {
         );
         self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&payload.session_id);
+            let entry_id = payload.entry.id.clone();
             session.push_entry(payload.entry.clone());
+            // The pin rides along with the push, so it can never race ahead
+            // of the entry it names.
+            if let Some(position) = payload.pin {
+                session.pin_entry(&entry_id, position);
+            }
         });
 
         self.publish(ChatEntrySubmitted {
@@ -584,6 +590,7 @@ mod tests {
             .handle_push_chat_entry(&PushChatEntry {
                 session_id: session_id.clone(),
                 entry: entry.clone(),
+                pin: None,
             })
             .await;
 

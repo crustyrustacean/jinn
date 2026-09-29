@@ -146,6 +146,7 @@ pub fn handle_session_lifecycle_setup(
             .with_message(PushChatEntry {
                 session_id: new_id.clone(),
                 entry: setup_running_msg(),
+                pin: None,
             })
             .with_message(RunSessionSetup {
                 session_id: new_id.clone(),

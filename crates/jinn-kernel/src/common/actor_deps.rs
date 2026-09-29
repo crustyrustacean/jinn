@@ -70,6 +70,8 @@ impl ActorDeps {
 ///
 /// Then inside any handler:
 /// ```ignore
+/// self.publish(PushChatEntry { ...,
+/// self.publish(PushChatEntry { ...     pin: None,
 /// self.publish(PushChatEntry { ... }).await;
 /// ```
 pub trait BusPublish {

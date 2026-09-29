@@ -358,6 +358,7 @@ fn restart_mcp_server(ctx: &mut ActionCtx<'_>, cell: &McpPickerCell) -> IntentRe
     .with_message(jinn_kernel::PushChatEntry {
         session_id,
         entry: jinn_kernel::ChatEntry::transient("Restarting MCP server"),
+        pin: None,
     })
 }
 

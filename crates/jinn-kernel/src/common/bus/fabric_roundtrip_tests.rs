@@ -202,6 +202,7 @@ async fn recording_mode_captures_published_messages() {
     let msg = PushChatEntry {
         session_id: session.clone(),
         entry,
+        pin: None,
     };
 
     // When publishing it.

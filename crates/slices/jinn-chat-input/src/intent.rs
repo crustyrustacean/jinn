@@ -28,7 +28,7 @@ use jinn_core_types::PinPosition;
 use jinn_core_types::SessionId;
 use jinn_kernel::AppState;
 use jinn_kernel::protocol::{ChatEntry, IntentResult};
-use jinn_session_history_msg::{PinChatEntry, PushChatEntry};
+use jinn_session_history_msg::PushChatEntry;
 use jinn_session_msg::ClearTurnAutomation;
 use jinn_session_msg::MarkSessionInteracted;
 use jinn_session_msg::PhaseKind;
@@ -471,17 +471,15 @@ fn seed_mode_submission(
         return None;
     }
     let entry = ChatEntry::user(display);
-    let entry_id = entry.id.clone();
     Some(
         IntentResult::empty()
+            // The pin travels with the push rather than as a second
+            // message: two messages race, and a pin that loses finds no
+            // entry to attach to and is dropped without a word.
             .with_message(PushChatEntry {
                 session_id: session_id.clone(),
                 entry,
-            })
-            .with_message(PinChatEntry {
-                session_id: session_id.clone(),
-                entry_id,
-                position: PinPosition::Relative,
+                pin: Some(PinPosition::Relative),
             })
             .with_message(PersistSession {
                 session_id: session_id.clone(),

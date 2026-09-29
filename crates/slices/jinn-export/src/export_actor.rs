@@ -175,6 +175,7 @@ impl ExportActor {
         ctx.publish(PushChatEntry {
             session_id: session_id.clone(),
             entry: ChatEntry::transient(written_notice(path)),
+            pin: None,
         });
     }
 
@@ -184,6 +185,7 @@ impl ExportActor {
         ctx.publish(PushChatEntry {
             session_id: session_id.clone(),
             entry: ChatEntry::error(format!("Export failed: {reason}")),
+            pin: None,
         });
     }
 }

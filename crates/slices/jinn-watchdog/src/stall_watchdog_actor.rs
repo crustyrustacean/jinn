@@ -240,6 +240,7 @@ impl StallWatchdogActor {
                         .publish(PushChatEntry {
                             session_id,
                             entry: jinn_core_types::ChatEntry::system(text),
+                            pin: None,
                         })
                         .await;
                 }

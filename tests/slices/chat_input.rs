@@ -5092,15 +5092,18 @@ fn seed_mode_submission_pins_and_does_not_dispatch() {
         jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
-    // Then the entry is pushed and pinned, persisted — and nothing dispatches.
+    // Then the entry is pushed already pinned, persisted — and nothing
+    // dispatches. The pin rides on the push rather than following it as a
+    // separate `PinChatEntry`, because two messages race and a pin that
+    // arrives first finds no entry and is dropped.
     let names = &result.message_names;
     assert!(
         names.iter().any(|n| n.contains("PushChatEntry")),
         "expected PushChatEntry, got {names:?}"
     );
     assert!(
-        names.iter().any(|n| n.contains("PinChatEntry")),
-        "expected PinChatEntry, got {names:?}"
+        !names.iter().any(|n| n.contains("PinChatEntry")),
+        "the pin must travel with the push, not as a racing second message; got {names:?}"
     );
     assert!(
         names.iter().any(|n| n.contains("PersistSession")),
@@ -5165,5 +5168,78 @@ fn reset_mode_attendant_submissions_dispatch_normally() {
             .message_names
             .iter()
             .any(|n| n.contains("EnqueueUserMessage"))
+    );
+}
+
+/// A seed-mode attendant's submission must leave a PINNED entry in the
+/// session's own history.
+///
+/// The intent emits `PushChatEntry` then `PinChatEntry` in that order, but
+/// each message is published through its own spawned task, so the order the
+/// user wrote in is not the order the session actor sees. When the pin wins
+/// that race it finds no entry to attach to and is dropped. A current-thread
+/// runtime hides this by running the spawns in issue order, so this test
+/// drives the real bridge on a multi-thread runtime.
+#[rstest::rstest]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn seed_mode_submission_leaves_the_entry_pinned_in_the_session() {
+    // Given a seed-mode attendant as the active session, with the
+    // session-turn actor live on that same state so the push lands.
+    let (harness, state, deps) = create_harness().await;
+    let session_id = {
+        let mut guard = state.write();
+        let parent = jinn_session_state::ChatSessionState::new();
+        let attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
+        // Inserted under its own id and made active: writing through
+        // `active_session_mut` would leave the map keyed by the old id
+        // while the session carried a new one.
+        let id = attendant.session_id().clone();
+        guard.session.insert(attendant);
+        guard.session.set_active(id.clone());
+        id
+    };
+    // The context-assembly service answers the queue actor's assemble ask.
+    let system = deps.services.trouper_system.clone();
+    jinn_context_assembly::service::ensure_spawned(&system);
+    jinn_session_turn::activate(
+        &system,
+        jinn_session_turn::session_actor::SessionPersistenceActorDeps {
+            deps,
+            state: state.clone(),
+            counter: jinn_llm_support::token_estimator::TiktokenCounter::o200k_base(),
+            token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
+            image_converter: jinn_llm_support::image_convert::ImageConverterService::system(),
+        },
+    );
+    state
+        .write()
+        .update_active_input(|i| i.insert_text("judge this repo"));
+
+    // When the message is submitted and the emitted messages are published
+    // the way the bridge publishes them.
+    let mut guard = state.write();
+    let result = jinn_chat_input::intent::handle_submit_message(
+        &mut guard,
+        jinn_kernel::common::render_ctx::empty_config_layer(),
+    );
+    drop(guard);
+    for closure in result.messages {
+        closure(&harness.bus());
+    }
+    // Given the session actor a moment to drain the two messages.
+    tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+
+    // Then the entry is in the attendant's history, pinned. Unpinned, it
+    // would be dropped from the very context the mode exists to preserve.
+    let guard = state.read();
+    let session = guard.session.get(&session_id).expect("attendant");
+    let entry = session
+        .history()
+        .iter()
+        .find(|e| e.text() == "judge this repo")
+        .expect("the submission is in the attendant's history");
+    assert!(
+        entry.is_pinned(),
+        "a seed-mode submission must be pinned into the attendant's context"
     );
 }
