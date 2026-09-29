@@ -631,3 +631,19 @@ trigger = "parent-completed"
         "the log names the unreadable list, got: {logged:?}"
     );
 }
+
+#[rstest::rstest]
+#[test]
+fn the_footer_calls_enter_an_attach() {
+    // Given the picker's advertised bindings.
+    let bindings = crate::saved_picker_routes::SAVED_PICKER_BINDINGS;
+
+    // Then <enter> says "attach": the picker grafts a saved attendant
+    // onto the session you are on, it does not spawn a new one.
+    let enter = bindings
+        .iter()
+        .find(|(key, _)| *key == "<enter>")
+        .map(|(_, label)| *label)
+        .expect("enter is bound");
+    assert_eq!(enter, "attach");
+}

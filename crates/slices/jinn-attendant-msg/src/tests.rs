@@ -394,4 +394,18 @@ mod properties_tests {
         // And the editor is closed.
         assert!(popup.editor_original.is_none());
     }
+
+    #[rstest::rstest]
+    fn clearing_the_status_withdraws_the_armed_overwrite() {
+        // Given a popup armed to overwrite a saved attendant.
+        let mut popup = AttendantPropertiesState::default();
+        popup.arm_save();
+
+        // When any keystroke clears the status line.
+        popup.clear_status();
+
+        // Then the arm goes with it: a save the user was never told about
+        // must not be one keystroke away.
+        assert!(!popup.save_armed);
+    }
 }

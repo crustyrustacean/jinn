@@ -323,13 +323,23 @@ impl AttendantPropertiesState {
         self.status = Some(status);
     }
 
-    /// Clears the status line.
+    /// Clears the status line, and disarms an armed overwrite.
     ///
     /// Called on every keystroke that is not itself a status-producing one:
     /// the line describes the most recent key, so a message about an armed
     /// overwrite must not still be claiming the next `<c-s>` is waiting
     /// after the user has moved on.
+    ///
+    /// The arm goes with the message. Hiding the prompt while leaving the
+    /// save armed is the one sequence that silently destroys an entry: the
+    /// user presses some other key, the "Overwrite …?" line disappears, and
+    /// the `<c-s>` they press next — the one they were told to press to
+    /// confirm — overwrites with no confirmation ever having been on
+    /// screen. The prompt and the arm are one piece of state: the save
+    /// that follows an arming is the save the user was shown, so
+    /// everything that hides the prompt also withdraws the offer.
     pub fn clear_status(&mut self) {
         self.status = None;
+        self.save_armed = false;
     }
 }

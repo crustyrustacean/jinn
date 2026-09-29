@@ -605,3 +605,42 @@ trigger = "parent-completed"
         .get_list::<jinn_preferences_config::schemas::AttendantEntryConfig>();
     assert!(after.is_err(), "the document is left as the user wrote it");
 }
+
+#[rstest::rstest]
+#[test]
+fn a_keystroke_between_the_two_presses_withdraws_the_confirmation() {
+    // Given a popup armed against an existing entry, with the overwrite
+    // prompt on its status line.
+    let mut fx = SaveFixture::new(Some("nightly"));
+    fx.open();
+    fx.config
+        .put_list::<AttendantEntryConfig>(&[AttendantEntryConfig {
+            name: "nightly".to_owned(),
+            seed_template: "the original".to_owned(),
+            ..AttendantEntryConfig::default()
+        }])
+        .expect("seed writes");
+    fx.press("attendant-properties-save");
+    assert!(fx.cell.read().save_armed);
+
+    // When the user presses some other key — moving the field focus, say.
+    fx.press("attendant-properties-field-next");
+
+    // Then the arm is withdrawn along with the prompt that offered it, so
+    // the save key that follows is an ordinary first press, not a
+    // confirmation of something the user was never shown.
+    assert!(
+        !fx.cell.read().save_armed,
+        "the offer to overwrite is withdrawn with the prompt that displayed it"
+    );
+    assert!(fx.cell.read().status.is_none());
+
+    // And pressing the save key again re-arms rather than overwriting.
+    fx.press("attendant-properties-save");
+    let saved = fx.saved();
+    assert_eq!(
+        saved[0].seed_template, "the original",
+        "nothing was replaced"
+    );
+    assert!(fx.cell.read().save_armed, "the press re-arms the prompt");
+}

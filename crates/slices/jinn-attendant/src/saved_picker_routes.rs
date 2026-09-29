@@ -29,7 +29,7 @@ type SavedPickerCell = TypedCell<AttendantSavedPickerState>;
 ///
 /// The footer renders from this, so it cannot advertise a dead key.
 pub const SAVED_PICKER_BINDINGS: &[(&str, &str)] = &[
-    ("<enter>", "create"),
+    ("<enter>", "attach"),
     ("<esc>", "close"),
     ("<c-c>", "clear filter or close"),
 ];
@@ -93,14 +93,14 @@ pub fn attach_saved_picker_rows(routes: &KeyRoutes, cell: &SavedPickerCell) {
         "confirm-attendant-saved-picker",
         "<enter>",
         "general",
-        "create this attendant on the active session",
+        "attach this attendant to the active session",
         action(cell, confirm_saved_picker),
     ));
     routes.attach(row(
         "cancel-attendant-saved-picker",
         "<esc>",
         "general",
-        "close without creating an attendant",
+        "close without attaching an attendant",
         action(cell, cancel_saved_picker),
     ));
     routes.attach(row(

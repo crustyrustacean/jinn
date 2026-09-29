@@ -696,6 +696,24 @@ where
     })
 }
 
+/// Like [`action`], but the wrapped function runs before the status line
+/// is cleared.
+///
+/// Only the save needs this. Every other keystroke withdraws an armed
+/// overwrite — see [`AttendantPropertiesState::clear_status`] — but the
+/// save is the keystroke the arming was *for*: clearing first would disarm
+/// the confirmation press and the second `<c-s>` would silently start the
+/// whole two-press dance again. The save is also the one action whose
+/// outcome it writes itself, so the clear that follows takes away nothing
+/// it needs.
+fn action_preserving_arm<F>(cell: &AttendantPropertiesCell, f: F) -> ActionFn
+where
+    F: Fn(&mut ActionCtx<'_>, &AttendantPropertiesCell) -> IntentResult + Send + Sync + 'static,
+{
+    let cell = cell.clone();
+    ActionFn::new(move |mut ctx| f(&mut ctx, &cell))
+}
+
 /// Builds an own-scope row for one of the popup's scopes.
 fn row(
     route_id: &'static str,
@@ -806,7 +824,7 @@ pub fn attach_properties_rows(routes: &KeyRoutes, cell: &AttendantPropertiesCell
         "<c-s>",
         "general",
         "save this attendant to jinn.toml",
-        action(cell, save_attendant),
+        action_preserving_arm(cell, save_attendant),
     ));
     routes.attach(row(
         "attendant-properties-apply",
