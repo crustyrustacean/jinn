@@ -27,6 +27,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 /// The typed cell the popup reads and writes.
 type AttendantPropertiesCell = TypedCell<AttendantPropertiesState>;
@@ -73,11 +74,11 @@ pub fn render_attendant_properties(frame: &mut Frame<'_>, area: Rect, ctx: &Rend
     if inner.width == 0 || inner.height == 0 {
         return;
     }
-    // The template row shows "> " plus the draft; the draft gets what's
-    // left, minus one cell so the cursor can rest past the last grapheme.
-    let template_width = inner.width.saturating_sub(2 + 1);
+    // The popup's geometry and draft window are shared by the two phases,
+    // so the form and the cursor can never disagree about what is visible.
+    let layout = properties_layout(&popup, inner);
     frame.render_widget(
-        Paragraph::new(properties_view(&popup, theme, template_width)),
+        Paragraph::new(properties_view(&popup, theme, &layout)),
         inner,
     );
     // Navigation-only scope: the properties view never sets the terminal
@@ -104,14 +105,14 @@ pub fn render_attendant_seed_template(frame: &mut Frame<'_>, area: Rect, ctx: &R
     if inner.width == 0 || inner.height == 0 {
         return;
     }
-    // The template row shows "> " plus the draft; the draft gets what's
-    // left, minus one cell so the cursor can rest past the last grapheme.
-    let template_width = inner.width.saturating_sub(2 + 1);
+    // The popup's geometry and draft window are shared by the two phases,
+    // so the form and the cursor can never disagree about what is visible.
+    let layout = properties_layout(&popup, inner);
     frame.render_widget(
-        Paragraph::new(properties_view(&popup, theme, template_width)),
+        Paragraph::new(properties_view(&popup, theme, &layout)),
         inner,
     );
-    render_template_cursor(frame, inner, &popup);
+    render_template_cursor(frame, inner, &layout);
 }
 
 /// Reads the popup's cell from the render facts.
@@ -154,28 +155,113 @@ fn inner_rect(area: Rect) -> Rect {
     }
 }
 
-/// Places the terminal cursor inside the template text, grapheme-safe.
+/// The marker span: `▸ ` when focused, `  ` otherwise.
+fn marker_text(focused: bool) -> &'static str {
+    if focused { "▸ " } else { "  " }
+}
+
+/// The field label span: the label, then the `:  ` that closes it.
+fn field_label(field: PropertyField) -> String {
+    format!("{}:  ", field.label())
+}
+
+/// The column the seed-template value starts at, in screen cells.
 ///
-/// The draft's row depends on which fields rendered a hint line above it —
-/// the same layout [`properties_view`] assembles: each field before the
-/// template contributes its own row, plus one more when it is focused
-/// (its hint line).
-fn render_template_cursor(frame: &mut Frame<'_>, inner: Rect, popup: &AttendantPropertiesState) {
-    let prefix_len = 2u16;
-    let grapheme_count = popup
-        .seed_template
-        .input
-        .get(..popup.seed_template.cursor_pos)
-        .map_or(0, |s| s.graphemes(true).count()) as u16;
-    let cursor_x = (prefix_len + grapheme_count).min(inner.width.saturating_sub(1));
+/// Measured from the very spans [`field_line`] puts before it — the marker
+/// and the label — so the window, the text, and the cursor cannot disagree.
+/// It must be a *cell* count, not a character count: `▸` is an East Asian
+/// Wide glyph occupying two cells, so the focused row's value starts one
+/// cell later than the unfocused row's.
+fn value_column(field: PropertyField, focused: bool) -> u16 {
+    let marker = u16::try_from(UnicodeWidthStr::width(marker_text(focused))).unwrap_or(2);
+    let label =
+        u16::try_from(UnicodeWidthStr::width(field_label(field).as_str())).unwrap_or(u16::MAX);
+    marker.saturating_add(label)
+}
+
+/// Where the seed-template draft sits in the popup, and which slice of it
+/// is visible.
+///
+/// A draft longer than the row cannot be drawn in full, so the row shows a
+/// **window** of it. The window starts at the first grapheme that still
+/// fits, advancing as the cursor moves right so the cursor is always on
+/// screen; when it moves back to the start the window follows it. The
+/// rendered text and the cursor column both come from here, so they cannot
+/// disagree.
+#[derive(Debug, Clone, Copy)]
+struct PropertiesLayout {
+    /// The template draft's row, in screen coordinates.
+    template_y: u16,
+    /// How many draft graphemes the row can show.
+    window_width: u16,
+    /// The draft grapheme index the window starts at.
+    window_start: usize,
+    /// The draft's value column: the first cell of the window, in screen
+    /// coordinates.
+    value_x: u16,
+    /// The cursor's column within the row, measured from the window's start
+    /// (the draft is left-aligned in its window, so the two are equal).
+    cursor_offset: u16,
+}
+
+/// Computes the draft window and cursor column for `popup` inside `inner`.
+///
+/// The draft's row depends on which fields rendered a hint line above it:
+/// each field before the template contributes its own row, plus one more
+/// when it is focused (its hint line).
+fn properties_layout(popup: &AttendantPropertiesState, inner: Rect) -> PropertiesLayout {
     let rows_above = {
         let hint_lines = u16::from(popup.focus != PropertyField::SeedTemplate);
         // Trigger row + activation row, plus their hint lines.
         2 + u16::from(popup.focus == PropertyField::Trigger) + hint_lines
     };
-    let template_y = inner.y.saturating_add(rows_above);
-    if template_y < inner.y + inner.height {
-        frame.set_cursor_position((inner.x.saturating_add(cursor_x), template_y));
+    // The value starts at the label's end, and one cell is reserved so the
+    // cursor can rest just past the last visible grapheme. The focused
+    // marker is wide, so the window is one narrower than an unfocused row's.
+    let focused = popup.focus == PropertyField::SeedTemplate;
+    let value_col = value_column(PropertyField::SeedTemplate, focused);
+    let window_width = inner.width.saturating_sub(value_col + 1);
+    let draft = &popup.seed_template;
+    let total = grapheme_count(&draft.input);
+    let cursor_index = draft
+        .input
+        .get(..draft.cursor_pos)
+        .map_or(total, |before| before.graphemes(true).count());
+    let window_start = window_start(total, cursor_index, window_width);
+    PropertiesLayout {
+        template_y: inner.y.saturating_add(rows_above),
+        window_width,
+        window_start,
+        value_x: inner.x.saturating_add(value_col),
+        cursor_offset: cursor_index.saturating_sub(window_start) as u16,
+    }
+}
+
+/// The window start that keeps `cursor_index` visible in a
+/// `window_width`-grapheme row: the last full window that ends at or after
+/// the cursor, and zero when the whole draft fits.
+fn window_start(total: usize, cursor_index: usize, window_width: u16) -> usize {
+    let width = usize::from(window_width);
+    if width == 0 || total <= width {
+        return 0;
+    }
+    total.saturating_sub(width).min(cursor_index)
+}
+
+/// The number of grapheme clusters in `text`; `0` for a byte range that is
+/// not a valid char boundary.
+fn grapheme_count(text: &str) -> usize {
+    text.graphemes(true).count()
+}
+
+/// Places the terminal cursor inside the visible template draft.
+fn render_template_cursor(frame: &mut Frame<'_>, inner: Rect, layout: &PropertiesLayout) {
+    let cursor_x = layout
+        .value_x
+        .saturating_add(layout.cursor_offset)
+        .min(inner.x.saturating_add(inner.width).saturating_sub(1));
+    if layout.template_y < inner.y + inner.height {
+        frame.set_cursor_position((cursor_x, layout.template_y));
     }
 }
 
@@ -184,12 +270,12 @@ fn render_template_cursor(frame: &mut Frame<'_>, inner: Rect, popup: &AttendantP
 /// One line per field: marker + label (yellow iff focused), then the
 /// field's value spans. A hint line renders only under the focused field,
 /// and the footer names the keys that work on the focused field. The
-/// template draft truncates to `template_width` display columns,
-/// grapheme-safe.
+/// template draft shows the window [`properties_layout`] computed, so the
+/// visible text and the cursor always agree.
 fn properties_view<'a>(
     popup: &'a AttendantPropertiesState,
     theme: &'a jinn_theme::Theme,
-    template_width: u16,
+    layout: &PropertiesLayout,
 ) -> Vec<Line<'a>> {
     let mut lines = vec![];
     for field in [
@@ -197,7 +283,7 @@ fn properties_view<'a>(
         PropertyField::Activation,
         PropertyField::SeedTemplate,
     ] {
-        lines.push(field_line(popup, field, theme, template_width));
+        lines.push(field_line(popup, field, theme, layout));
         if popup.focus == field {
             lines.push(hint_line(field, theme));
         }
@@ -211,7 +297,7 @@ fn field_line<'a>(
     popup: &AttendantPropertiesState,
     field: PropertyField,
     theme: &'a jinn_theme::Theme,
-    template_width: u16,
+    layout: &PropertiesLayout,
 ) -> Line<'a> {
     let focused = popup.focus == field;
     let mut spans = vec![
@@ -230,17 +316,16 @@ fn field_line<'a>(
             theme,
         )),
         PropertyField::SeedTemplate => {
-            spans.push(template_value(popup, theme, template_width));
+            spans.push(template_value(popup, theme, layout));
         }
     }
     Line::from(spans)
 }
 
-/// The focused-field marker: `▸` when focused, a space otherwise.
+/// The focused-field marker: `▸` when focused, blank otherwise.
 fn field_marker(focused: bool, theme: &jinn_theme::Theme) -> Span<'static> {
-    let marker = if focused { "▸ " } else { "  " };
     Span::styled(
-        marker.to_owned(),
+        marker_text(focused).to_owned(),
         Style::default().fg(if focused {
             theme.focus_accent
         } else {
@@ -252,7 +337,7 @@ fn field_marker(focused: bool, theme: &jinn_theme::Theme) -> Span<'static> {
 /// The field's label, yellow only while its row is focused.
 fn field_name(field: PropertyField, focused: bool, theme: &jinn_theme::Theme) -> Span<'static> {
     Span::styled(
-        format!("{}:  ", field.label()),
+        field_label(field),
         Style::default().fg(if focused {
             theme.focus_accent
         } else {
@@ -286,21 +371,49 @@ where
     spans
 }
 
-/// The template text span: the live draft, in plain text color, truncated
-/// to `max_width` display columns by grapheme (never by byte or char).
+/// The template text span: the live draft's visible window, in plain text
+/// color, cut by grapheme (never by byte or char) at both edges so a long
+/// draft scrolls with the cursor instead of showing only its head.
 fn template_value<'a>(
     popup: &AttendantPropertiesState,
     theme: &'a jinn_theme::Theme,
-    max_width: u16,
+    layout: &PropertiesLayout,
 ) -> Span<'a> {
-    let max_graphemes = usize::from(max_width);
-    let truncated: String = popup
+    let window: String = popup
         .seed_template
         .input
         .graphemes(true)
-        .take(max_graphemes)
+        .skip(layout.window_start)
+        .take(usize::from(layout.window_width))
         .collect();
-    Span::styled(truncated, Style::default().fg(theme.primary_text))
+    // The window is sized in *columns*; wide graphemes (CJK, emoji) take
+    // two, so clip the rendered text to the window's column budget.
+    Span::styled(
+        clip_to_columns(&window, layout.window_width),
+        Style::default().fg(theme.primary_text),
+    )
+}
+
+/// The screen width of one grapheme cluster, in columns: two for East
+/// Asian Wide and Fullwidth characters, one otherwise.
+fn grapheme_width(grapheme: &str) -> u16 {
+    u16::try_from(UnicodeWidthStr::width(grapheme)).unwrap_or(u16::MAX)
+}
+
+/// `text` cut to at most `max_columns` screen columns, never splitting a
+/// grapheme cluster.
+fn clip_to_columns(text: &str, max_columns: u16) -> String {
+    let mut used: u16 = 0;
+    let mut out = String::new();
+    for grapheme in text.graphemes(true) {
+        let width = grapheme_width(grapheme);
+        if used.saturating_add(width) > max_columns {
+            break;
+        }
+        used += width;
+        out.push_str(grapheme);
+    }
+    out
 }
 
 /// The hint line under the focused field.

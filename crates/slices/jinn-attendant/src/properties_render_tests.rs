@@ -3,6 +3,10 @@
 //! popup phases. Rendered through `TestBackend` with a real `RenderFacts`.
 
 #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+#![allow(
+    clippy::used_underscore_binding,
+    reason = "rstest case labels document intent"
+)]
 
 use jinn_attendant_msg::{
     AttendantActivation, AttendantPropertiesState, AttendantTrigger, PropertyField,
@@ -14,6 +18,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::layout::{Position, Rect};
 use ratatui::style::Color;
+use unicode_segmentation::UnicodeSegmentation;
 
 /// The default theme's plain-text color.
 const PRIMARY_TEXT: Color = Color::Rgb(220, 220, 220);
@@ -32,6 +37,22 @@ fn slices_with_popup(
         .register(attendant_properties_slot(), popup)
         .expect("unclaimed slot");
     (slices, cell)
+}
+
+/// Renders the seed-template editor view (the form plus the text cursor)
+/// and returns the terminal, so a test can read where the cursor landed.
+fn render_editor(popup: AttendantPropertiesState) -> Terminal<TestBackend> {
+    let (slices, _cell) = slices_with_popup(popup);
+    let facts = RenderFacts::new(jinn_theme::default_theme(), &slices);
+    let area = Rect::new(0, 0, 100, 30);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
+    terminal
+        .draw(|frame| {
+            let rect = attendant_properties_overlay_rect(&area).expect("geometry");
+            render_attendant_seed_template(frame, rect, &facts);
+        })
+        .expect("draw");
+    terminal
 }
 
 /// Renders the properties view into a backend and returns the buffer cells.
@@ -61,15 +82,28 @@ fn fg_at(buffer: &ratatui::buffer::Buffer, x: u16, y: u16) -> Color {
 
 /// Finds the x position of the first occurrence of `needle` in row `y`.
 fn find_in_row(buffer: &ratatui::buffer::Buffer, y: u16, needle: &str) -> Option<u16> {
-    let width = buffer.area.width;
-    let mut line = String::new();
-    for x in 0..width {
-        line.push_str(&symbol_at(buffer, x, y));
-    }
-    // Positions are cell indices; the popup is one-cell bordered so the
-    // first body row is y+1.
+    // Positions are cell indices measured from the popup's left border, so
+    // the row is cut there (not at x=0) to keep offsets screen-aligned.
+    let line = row_from_border(buffer, y);
     let byte_index = line.find(needle)?;
-    Some(u16::try_from(byte_index).expect("row fits u16"))
+    Some(inner_left() + u16::try_from(byte_index).expect("row fits u16"))
+}
+
+/// The popup row `y` as text, starting at its left border cell.
+fn row_from_border(buffer: &ratatui::buffer::Buffer, y: u16) -> String {
+    let start = inner_left();
+    (start..buffer.area.width)
+        .map(|x| symbol_at(buffer, x, y))
+        .collect()
+}
+
+/// The x of the popup's left border: the centered rect's own x, not a scan
+/// (row text can contain `│` of its own).
+fn inner_left() -> u16 {
+    let area = Rect::new(0, 0, 100, 30);
+    attendant_properties_overlay_rect(&area)
+        .expect("geometry")
+        .x
 }
 
 /// The popup's first body row inside the border, found by scanning for the
@@ -275,14 +309,13 @@ fn template_row_shows_truncated_pending_text() {
     let buffer = render_properties(popup);
     let template_y = template_row_y(&buffer);
 
-    // Then the draft is truncated to the popup's inner width: the row is
-    // filled to the border and the text stops before the border column.
+    // Then the draft is cut to the popup's inner width: the text stops
+    // before the border column.
     let right_border_x = right_border_x(&buffer, template_y);
     let fill_end = find_last_non_space_before(&buffer, template_y, right_border_x);
-    assert_eq!(
-        fill_end,
-        right_border_x - 1,
-        "the truncated draft fills the row up to the border"
+    assert!(
+        fill_end < right_border_x,
+        "the truncated draft stops inside the border (fill ended at {fill_end}, border at {right_border_x})"
     );
     // And the draft did not spill outside the popup: the border column
     // holds a border glyph down to the bottom corner.
@@ -357,30 +390,140 @@ fn properties_view_sets_no_terminal_cursor() {
 #[rstest::rstest]
 #[test]
 fn editor_view_places_the_cursor_in_the_draft() {
-    // Given the editor scope's view over a popup whose draft is "draft".
-    let (slices, _cell) = slices_with_popup(popup_focused(PropertyField::SeedTemplate));
-    let facts = RenderFacts::new(jinn_theme::default_theme(), &slices);
-    let area = Rect::new(0, 0, 100, 30);
-    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
+    // Given the editor scope's view over a popup whose draft is "draft",
+    // with the cursor at its end.
+    let mut popup = popup_focused(PropertyField::SeedTemplate);
+    popup.seed_template.cursor_pos = popup.seed_template.input.len();
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let rect = attendant_properties_overlay_rect(&area).expect("geometry");
-            render_attendant_seed_template(frame, rect, &facts);
-        })
-        .expect("draw");
+    let mut terminal = render_editor(popup);
 
     // Then the cursor sits on the template row — with focus on the seed
     // template field, no hint line renders above it, so the draft is the
-    // third body row (trigger, activation, template).
+    // third body row (trigger, activation, template) — and exactly one
+    // cell past the draft's last grapheme.
     let cursor = terminal.get_cursor_position().expect("cursor");
     let template_y = 7 + 1 + 2; // top border 7, body rows 8.., template is body row 2
     assert_eq!(cursor.y, template_y, "cursor rests on the template row");
+    let buffer = terminal.backend().buffer();
+    assert_eq!(
+        symbol_at(buffer, cursor.x.saturating_sub(1), template_y),
+        "t",
+        "the cell before the cursor is the draft's last grapheme"
+    );
+    // And the marker and label precede the value on the same row.
     assert!(
-        cursor.x > 6,
-        "cursor sits past the prefix and the draft, at x={}",
+        find_in_row(buffer, template_y, "▸ seed template:  draft").is_some(),
+        "the value follows the marker and label"
+    );
+}
+
+/// A draft longer than the row scrolls so the cursor stays on screen.
+#[rstest::rstest]
+#[case(0, "the draft's tail: the window ends at the cursor")]
+#[case(1, "mid-draft: the window follows the cursor left")]
+#[case(6, "the draft's start: the window returns to the head")]
+fn editor_window_follows_the_cursor_in_a_long_draft(
+    #[case] cursor_from_end: usize,
+    #[case] _about: &str,
+) {
+    // Given a 60-grapheme draft in a row that shows far fewer.
+    let mut popup = popup_focused(PropertyField::SeedTemplate);
+    let long = "abcdefghij".repeat(6); // 60 graphemes
+    popup.seed_template.input = long.clone();
+    // Place the cursor `cursor_from_end` graphemes before the end.
+    let cursor_index = long.graphemes(true).count() - cursor_from_end;
+    popup.seed_template.cursor_pos = {
+        let before_cursor = long.graphemes(true).take(cursor_index).collect::<String>();
+        before_cursor.len()
+    };
+
+    // When rendering.
+    let mut terminal = render_editor(popup);
+    let cursor = terminal.get_cursor_position().expect("cursor");
+    let buffer = terminal.backend().buffer();
+    let template_y = 7 + 1 + 2;
+
+    // Then the cursor rests immediately after a visible draft grapheme —
+    // never floating over the blank tail of the row, which is what a
+    // truncated draft drawn from its head and an un-scrolled cursor
+    // together produced.
+    let before_cursor = symbol_at(buffer, cursor.x.saturating_sub(1), template_y);
+    assert!(
+        before_cursor.chars().all(|c| c.is_ascii_alphanumeric()),
+        "the cell before the cursor holds draft text, not blank space (got {before_cursor:?})"
+    );
+}
+
+/// A wide (double-cell) draft keeps the cursor glued to its own text.
+#[rstest::rstest]
+#[case(0, "the cursor at the end of the draft")]
+#[case(3, "the cursor partway back into the draft")]
+fn wide_graphemes_keep_the_cursor_on_its_own_text(
+    #[case] cursor_from_end: usize,
+    #[case] _about: &str,
+) {
+    // Given a CJK draft — every grapheme two cells wide, so the row holds
+    // half as many graphemes as cells — with the cursor set back from the end.
+    let mut popup = popup_focused(PropertyField::SeedTemplate);
+    let cjk = ".attendant.report".repeat(20);
+    popup.seed_template.input = cjk.clone();
+    let cursor_index = cjk.graphemes(true).count() - cursor_from_end;
+    popup.seed_template.cursor_pos = {
+        let before = cjk.graphemes(true).take(cursor_index).collect::<String>();
+        before.len()
+    };
+
+    // When rendering.
+    let mut terminal = render_editor(popup);
+    let cursor = terminal.get_cursor_position().expect("cursor");
+    let buffer = terminal.backend().buffer();
+    let template_y = 7 + 1 + 2;
+
+    // Then the cell under the cursor is a real (blank) cursor cell within
+    // the popup, and the text before it ends where the cursor is.
+    let right_border_x = right_border_x(buffer, template_y);
+    assert!(
+        cursor.x < right_border_x,
+        "the cursor stays inside the popup (cursor x={}, border x={right_border_x})",
         cursor.x
+    );
+    // And the cell just left of the cursor holds a draft grapheme, never
+    // the border or a stray space mid-draft.
+    let before_cursor = symbol_at(buffer, cursor.x.saturating_sub(1), template_y);
+    assert_ne!(before_cursor, "│", "the cursor is not on top of the border");
+}
+
+/// A draft far wider than the row never spills past the popup border.
+#[rstest::rstest]
+#[case(PropertyField::SeedTemplate, "the focused row's wide marker")]
+#[case(PropertyField::Activation, "an unfocused row's plain marker")]
+fn template_window_never_overwrites_the_popup_border(
+    #[case] focus: PropertyField,
+    #[case] _about: &str,
+) {
+    // Given a draft much longer than the row, on a focused and an
+    // unfocused template row.
+    let mut popup = popup_focused(focus);
+    popup.seed_template.input = "x".repeat(400);
+    popup.seed_template.cursor_pos = popup.seed_template.input.len();
+
+    // When rendering.
+    let buffer = render_properties(popup);
+    let template_y = template_row_y(&buffer);
+
+    // Then the row's last cells are the border and the cell the cursor may
+    // rest on — the window is clipped to the row, not the popup.
+    let right_border_x = right_border_x(&buffer, template_y);
+    assert_eq!(
+        symbol_at(&buffer, right_border_x, template_y),
+        "│",
+        "the right border survives a draft wider than the row"
+    );
+    assert_eq!(
+        symbol_at(&buffer, right_border_x.saturating_sub(1), template_y),
+        " ",
+        "the cell before the border is left for the cursor"
     );
 }
 

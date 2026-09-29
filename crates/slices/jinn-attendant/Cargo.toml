@@ -23,6 +23,7 @@ jinn-slices = { workspace = true }
 error-stack = { workspace = true }
 ratatui = { workspace = true }
 unicode-segmentation = { workspace = true }
+unicode-width = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

@@ -2071,6 +2071,7 @@ dependencies = [
  "tracing",
  "trouper",
  "unicode-segmentation",
+ "unicode-width 0.2.2",
 ]
 
 [[package]]
