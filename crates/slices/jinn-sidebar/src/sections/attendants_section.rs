@@ -25,15 +25,17 @@ pub(crate) fn has_content(state: &AppState) -> bool {
     !attendant_rows(state).is_empty()
 }
 
-/// The section's rendered row count (rows + header + separator).
+/// The section's rendered row count (header + separator + rows + gap).
 pub(crate) fn rows(state: &AppState) -> u16 {
     if !has_content(state) {
         return 0;
     }
-    // Header + blank separator + one line per attendant + one report line
-    // per attendant.
-    let count = attendant_rows(state).len() as u16;
-    2u16.saturating_add(count.saturating_mul(2))
+    // Header + blank separator + two lines per attendant + a trailing blank
+    // so the section does not run straight into the one below it. The
+    // render emits the same lines, and `content_height` defers here, so the
+    // three cannot disagree about where the next section starts.
+    let count = u16::try_from(attendant_rows(state).len()).unwrap_or(u16::MAX);
+    count.saturating_mul(2).saturating_add(3)
 }
 
 /// The cursor row relative to the section's first rendered row.
@@ -187,6 +189,11 @@ impl crate::sections::section_trait::SidebarSection for AttendantsSection {
             lines.push(Line::from(vec![Span::raw("   "), report_line]));
         }
 
+        // Trailing gap — the blank line that keeps the last report off the
+        // next section's header. Counted by `rows`, like every sibling
+        // section's gap.
+        lines.push(Line::from(""));
+
         let widget = Paragraph::new(lines)
             .block(Block::default().borders(ratatui::widgets::Borders::NONE))
             .scroll((skip_rows, 0));
@@ -197,13 +204,9 @@ impl crate::sections::section_trait::SidebarSection for AttendantsSection {
         &mut self,
         ctx: &dyn jinn_slices::DrawContext<jinn_kernel::common::app_state::AppState>,
     ) -> u16 {
-        let state = ctx.state();
-        if !has_content(state) {
-            return 0;
-        }
-        // header(1) + blank(1) + two lines per attendant + trailing gap(1).
-        let count = u16::try_from(attendant_rows(state).len()).unwrap_or(u16::MAX);
-        count.saturating_mul(2).saturating_add(3)
+        // Defers to `rows` so the height the layout reserves and the lines
+        // the render draws stay one number, gap included.
+        rows(ctx.state())
     }
 }
 
