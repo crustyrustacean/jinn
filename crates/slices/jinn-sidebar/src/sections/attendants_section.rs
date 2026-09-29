@@ -183,7 +183,7 @@ impl crate::sections::section_trait::SidebarSection for AttendantsSection {
                 )
             };
             let content_width =
-                2 + if row.is_paused { 2 } else { 0 } + 1 + row.name.chars().count();
+                3 + if row.is_paused { 2 } else { 0 } + 1 + row.name.chars().count();
             let mut row_spans = vec![
                 indicator,
                 crate::sections::session_row_style::chip_gap(),
@@ -479,7 +479,7 @@ mod tests {
                 (0..buffer.area().width).any(|x| {
                     buffer
                         .cell((x, y))
-                        .is_some_and(|cell| cell.bg == theme.selection_bg)
+                        .is_some_and(|cell| cell.bg == theme.selection_fg)
                 })
             })
             .unwrap_or_else(|| panic!("no selection band rendered"));
@@ -488,7 +488,7 @@ mod tests {
             .filter(|&x| {
                 buffer
                     .cell((x, band_y))
-                    .is_some_and(|cell| cell.bg == theme.selection_bg)
+                    .is_some_and(|cell| cell.bg == theme.selection_fg)
             })
             .max();
         assert_eq!(

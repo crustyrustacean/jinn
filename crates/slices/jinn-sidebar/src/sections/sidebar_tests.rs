@@ -1363,7 +1363,7 @@ fn selected_row(terminal: &Terminal<TestBackend>, width: u16, height: u16) -> Op
         (0..width).any(|x| {
             buffer
                 .cell((x, y))
-                .is_some_and(|cell| cell.bg == theme.selection_bg)
+                .is_some_and(|cell| cell.bg == theme.selection_fg)
         })
     })
 }

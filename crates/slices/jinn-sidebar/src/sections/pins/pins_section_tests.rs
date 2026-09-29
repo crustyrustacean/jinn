@@ -962,7 +962,7 @@ fn a_selected_pin_row_bands_the_full_width_with_a_dark_chip_and_banded_badge() {
             (0..width).any(|x| {
                 buffer
                     .cell((x, y))
-                    .is_some_and(|cell| cell.bg == theme.selection_bg)
+                    .is_some_and(|cell| cell.bg == theme.selection_fg)
             })
         })
         .unwrap_or_else(|| panic!("no selection band rendered"));
@@ -970,7 +970,7 @@ fn a_selected_pin_row_bands_the_full_width_with_a_dark_chip_and_banded_badge() {
         .filter(|&x| {
             buffer
                 .cell((x, band_y))
-                .is_some_and(|cell| cell.bg == theme.selection_bg)
+                .is_some_and(|cell| cell.bg == theme.selection_fg)
         })
         .max();
     assert_eq!(
@@ -990,6 +990,6 @@ fn a_selected_pin_row_bands_the_full_width_with_a_dark_chip_and_banded_badge() {
     let badge_cell = buffer
         .cell((u16::try_from(badge_at).unwrap_or(0), band_y))
         .expect("badge cell");
-    assert_eq!(badge_cell.bg, theme.selection_bg);
+    assert_eq!(badge_cell.bg, theme.selection_fg);
     assert_eq!(badge_cell.fg, theme.gutter_bg);
 }

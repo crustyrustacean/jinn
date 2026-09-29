@@ -3865,7 +3865,7 @@ fn a_selected_session_row_bands_the_full_width() {
         (0..width).any(|x| {
             buffer
                 .cell((x, y))
-                .is_some_and(|cell| cell.bg == theme.selection_bg)
+                .is_some_and(|cell| cell.bg == theme.selection_fg)
         })
     });
     let Some(y) = selected_y else {
@@ -3876,7 +3876,7 @@ fn a_selected_session_row_bands_the_full_width() {
         .filter(|&x| {
             buffer
                 .cell((x, y))
-                .is_some_and(|cell| cell.bg == theme.selection_bg)
+                .is_some_and(|cell| cell.bg == theme.selection_fg)
         })
         .max();
     assert_eq!(
@@ -4020,7 +4020,7 @@ fn a_selected_error_row_takes_the_selection_band_not_red() {
             (0..width).any(|x| {
                 buffer
                     .cell((x, y))
-                    .is_some_and(|cell| cell.bg == theme.selection_bg)
+                    .is_some_and(|cell| cell.bg == theme.selection_fg)
             })
         })
         .unwrap_or_else(|| panic!("no selection band rendered"));

@@ -228,7 +228,7 @@ impl SidebarSection for McpServersSection {
                 };
 
                 let content_width =
-                    2 + name.chars().count() + 1 + row_state.label().chars().count();
+                    3 + name.chars().count() + 1 + row_state.label().chars().count();
                 let mut spans = vec![
                     indicator,
                     gap,
@@ -632,7 +632,7 @@ mod tests {
                 (0..width).any(|x| {
                     buffer
                         .cell((x, y))
-                        .is_some_and(|cell| cell.bg == theme.selection_bg)
+                        .is_some_and(|cell| cell.bg == theme.selection_fg)
                 })
             })
             .unwrap_or_else(|| panic!("no selection band rendered"));
@@ -640,7 +640,7 @@ mod tests {
             .filter(|&x| {
                 buffer
                     .cell((x, band_y))
-                    .is_some_and(|cell| cell.bg == theme.selection_bg)
+                    .is_some_and(|cell| cell.bg == theme.selection_fg)
             })
             .max();
         assert_eq!(
@@ -699,7 +699,7 @@ mod tests {
                 (0..width).any(|x| {
                     buffer
                         .cell((x, y))
-                        .is_some_and(|cell| cell.bg == theme.selection_bg)
+                        .is_some_and(|cell| cell.bg == theme.selection_fg)
                 })
             })
             .unwrap_or_else(|| panic!("no selection band rendered"));
@@ -710,7 +710,7 @@ mod tests {
         let label_cell = buffer
             .cell((u16::try_from(label_at).unwrap_or(0), band_y))
             .expect("label cell");
-        assert_eq!(label_cell.bg, theme.selection_bg);
+        assert_eq!(label_cell.bg, theme.selection_fg);
         // And the label's text is the band's text color, not the state color.
         assert_eq!(label_cell.fg, theme.gutter_bg);
     }

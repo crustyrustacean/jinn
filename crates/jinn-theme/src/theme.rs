@@ -165,109 +165,71 @@ impl Theme {
     /// This is the single source of truth for the badge style vocabulary.
     #[must_use]
     pub fn style_map(&self) -> HashMap<&'static str, Style> {
+        /// One `m.insert` per theme field, `fg` by default.
+        macro_rules! insert_style {
+            ($m:ident, fg: { $($name:literal => $field:ident),* $(,)? }
+                    bg: { $($bname:literal => $bfield:ident),* $(,)? }) => {
+                $( $m.insert($name, Style::default().fg(self.$field)); )*
+                $( $m.insert($bname, Style::default().bg(self.$bfield)); )*
+            };
+        }
         let mut m = HashMap::new();
-        m.insert("focus_accent", Style::default().fg(self.focus_accent));
-        m.insert(
-            "border_unfocused",
-            Style::default().fg(self.border_unfocused),
-        );
-        m.insert("popup_title", Style::default().fg(self.popup_title));
-        m.insert("primary_text", Style::default().fg(self.primary_text));
-        m.insert("muted_text", Style::default().fg(self.muted_text));
-        m.insert("subagent_fg", Style::default().fg(self.subagent_fg));
-        m.insert("subagent_bg", Style::default().bg(self.subagent_bg));
-        m.insert("attendant_fg", Style::default().fg(self.attendant_fg));
-        m.insert(
-            "attendant_paused",
-            Style::default().fg(self.attendant_paused),
-        );
-        m.insert("attendant_bg", Style::default().bg(self.attendant_bg));
-        m.insert("error_text", Style::default().fg(self.error_text));
-        m.insert("dormant_fg", Style::default().fg(self.dormant_fg));
-        m.insert("success", Style::default().fg(self.success));
-        m.insert("warning", Style::default().fg(self.warning));
-        m.insert("streaming", Style::default().fg(self.streaming));
-        m.insert("gutter_bg", Style::default().fg(self.gutter_bg));
-        m.insert(
-            "gutter_context_included",
-            Style::default().fg(self.gutter_context_included),
-        );
-        m.insert("user_block_bg", Style::default().fg(self.user_block_bg));
-        m.insert("tool_fg", Style::default().fg(self.tool_fg));
-        m.insert("tool_success_bg", Style::default().fg(self.tool_success_bg));
-        m.insert("tool_failure_bg", Style::default().fg(self.tool_failure_bg));
-        m.insert("tool_pending_bg", Style::default().fg(self.tool_pending_bg));
-        m.insert(
-            "challenge_alert_bg",
-            Style::default().fg(self.challenge_alert_bg),
-        );
-        m.insert(
-            "challenge_alert_fg",
-            Style::default().fg(self.challenge_alert_fg),
-        );
-        m.insert(
-            "compaction_block_bg",
-            Style::default().fg(self.compaction_block_bg),
-        );
-        m.insert(
-            "sources_header_bg",
-            Style::default().fg(self.sources_header_bg),
-        );
-        m.insert(
-            "sources_header_fg",
-            Style::default().fg(self.sources_header_fg),
-        );
-        m.insert("truncation_fg", Style::default().fg(self.truncation_fg));
-        m.insert(
-            "picker_active_marker",
-            Style::default().fg(self.picker_active_marker),
-        );
-        m.insert(
-            "picker_selected_bg",
-            Style::default().fg(self.picker_selected_bg),
-        );
-        m.insert(
-            "picker_highlight_bg",
-            Style::default().fg(self.picker_highlight_bg),
-        );
-        m.insert("tab_active_fg", Style::default().fg(self.tab_active_fg));
-        m.insert("tab_active_bg", Style::default().fg(self.tab_active_bg));
-        m.insert("tab_inactive_fg", Style::default().fg(self.tab_inactive_fg));
-        m.insert("selection_fg", Style::default().fg(self.selection_fg));
-        m.insert("selection_bg", Style::default().fg(self.selection_bg));
-        m.insert("in_flight_bg", Style::default().fg(self.in_flight_bg));
-        m.insert("in_flight_fg", Style::default().fg(self.in_flight_fg));
-        m.insert("accent_action", Style::default().fg(self.accent_action));
-        m.insert("age_fresh", Style::default().fg(self.age_fresh));
-        m.insert("age_stale", Style::default().fg(self.age_stale));
-        m.insert(
-            "attendant_option_active",
-            Style::default().fg(self.attendant_option_active),
-        );
-        m.insert(
-            "scroll_indicator_bg",
-            Style::default().fg(self.scroll_indicator_bg),
-        );
-        m.insert(
-            "sidebar_resize_accent",
-            Style::default().fg(self.sidebar_resize_accent),
-        );
-        m.insert(
-            "input_mode_queue",
-            Style::default().fg(self.input_mode_queue),
-        );
-        m.insert(
-            "input_mode_steer",
-            Style::default().fg(self.input_mode_steer),
-        );
-        m.insert("infopopup_bg", Style::default().fg(self.infopopup_bg));
-        m.insert("infopopup_title", Style::default().fg(self.infopopup_title));
-        m.insert(
-            "infopopup_border",
-            Style::default().fg(self.infopopup_border),
-        );
-        m.insert("infopopup_fg", Style::default().fg(self.infopopup_fg));
-        m.insert("quake_bar_bg", Style::default().bg(self.quake_bar_bg));
+        insert_style! {
+            m, fg: {
+            "focus_accent" => focus_accent,
+            "border_unfocused" => border_unfocused,
+            "popup_title" => popup_title,
+            "primary_text" => primary_text,
+            "muted_text" => muted_text,
+            "subagent_fg" => subagent_fg,
+            "attendant_fg" => attendant_fg,
+            "attendant_paused" => attendant_paused,
+            "error_text" => error_text,
+            "dormant_fg" => dormant_fg,
+            "success" => success,
+            "warning" => warning,
+            "streaming" => streaming,
+            "gutter_bg" => gutter_bg,
+            "gutter_context_included" => gutter_context_included,
+            "user_block_bg" => user_block_bg,
+            "tool_fg" => tool_fg,
+            "tool_success_bg" => tool_success_bg,
+            "tool_failure_bg" => tool_failure_bg,
+            "tool_pending_bg" => tool_pending_bg,
+            "challenge_alert_bg" => challenge_alert_bg,
+            "challenge_alert_fg" => challenge_alert_fg,
+            "compaction_block_bg" => compaction_block_bg,
+            "sources_header_bg" => sources_header_bg,
+            "sources_header_fg" => sources_header_fg,
+            "truncation_fg" => truncation_fg,
+            "picker_active_marker" => picker_active_marker,
+            "picker_selected_bg" => picker_selected_bg,
+            "picker_highlight_bg" => picker_highlight_bg,
+            "tab_active_fg" => tab_active_fg,
+            "tab_active_bg" => tab_active_bg,
+            "tab_inactive_fg" => tab_inactive_fg,
+            "selection_fg" => selection_fg,
+            "selection_bg" => selection_bg,
+            "in_flight_bg" => in_flight_bg,
+            "in_flight_fg" => in_flight_fg,
+            "accent_action" => accent_action,
+            "age_fresh" => age_fresh,
+            "age_stale" => age_stale,
+            "attendant_option_active" => attendant_option_active,
+            "scroll_indicator_bg" => scroll_indicator_bg,
+            "sidebar_resize_accent" => sidebar_resize_accent,
+            "input_mode_queue" => input_mode_queue,
+            "input_mode_steer" => input_mode_steer,
+            "infopopup_bg" => infopopup_bg,
+            "infopopup_title" => infopopup_title,
+            "infopopup_border" => infopopup_border,
+            "infopopup_fg" => infopopup_fg,
+            } bg: {
+            "subagent_bg" => subagent_bg,
+            "attendant_bg" => attendant_bg,
+            "quake_bar_bg" => quake_bar_bg,
+            }
+        }
         m
     }
 }

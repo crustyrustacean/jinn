@@ -90,7 +90,7 @@ impl SidebarSection for PersonaSection {
             // the band to the row's last cell, since `Paragraph` does not
             // extend a line's style past the last grapheme.
             let entry_line = {
-                let content_width = 2 + persona_name.chars().count();
+                let content_width = 3 + persona_name.chars().count();
                 let mut spans = vec![
                     indicator,
                     crate::sections::session_row_style::chip_gap(),

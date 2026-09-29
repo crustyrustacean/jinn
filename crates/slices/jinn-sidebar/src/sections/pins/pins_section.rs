@@ -445,8 +445,8 @@ fn build_entry_list(
     )]));
     lines.push(Line::from(""));
 
-    // Fixed overhead per entry line: border(1) + gap(1) + badge(" [TOP] " = 7) = 9 cells.
-    let fixed_overhead: u16 = 9;
+    // Fixed overhead per entry line: border(1) + gap(2) + badge(" [TOP] " = 7) = 10 cells.
+    let fixed_overhead: u16 = 10;
     let content_budget = area_width.saturating_sub(fixed_overhead) as usize;
 
     for (i, entry) in pinned.iter().enumerate() {
@@ -472,7 +472,7 @@ fn build_entry_list(
         } else {
             Span::styled(format!(" {badge_text} "), Style::default().fg(badge_color))
         };
-        let content_width = 2 + 1 + badge_text.chars().count() + 1;
+        let content_width = 3 + 1 + badge_text.chars().count() + 1;
         let mut spans = vec![
             border,
             crate::sections::session_row_style::chip_gap(),

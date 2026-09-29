@@ -879,7 +879,7 @@ fn selected_in_flight_row_uses_selection_background() {
     let unselected = line
         .spans
         .iter()
-        .filter(|span| span.style.bg != Some(theme.selection_bg))
+        .filter(|span| span.style.bg != Some(theme.selection_fg))
         .count();
     assert_eq!(
         unselected, 0,
@@ -900,7 +900,7 @@ fn selected_in_flight_row_differs_from_unselected_in_flight_row() {
     // Then the two rows are told apart by their background.
     let selected_bg = selected.spans.last().expect("spans").style.bg;
     let unselected_bg = unselected.spans.last().expect("spans").style.bg;
-    assert_eq!(selected_bg, Some(theme.selection_bg));
+    assert_eq!(selected_bg, Some(theme.selection_fg));
     assert_eq!(unselected_bg, Some(theme.in_flight_bg));
     assert_ne!(
         selected_bg, unselected_bg,
@@ -931,7 +931,7 @@ fn selected_in_flight_row_keeps_the_spinner_visible() {
 fn selected_in_flight_row_text_contrasts_with_its_background() {
     // Given a light theme whose selection background is lighter than the tint's text.
     let mut theme = default_theme();
-    theme.selection_bg = ratatui::style::Color::Rgb(216, 222, 233);
+    theme.selection_fg = ratatui::style::Color::Rgb(216, 222, 233);
     theme.in_flight_bg = ratatui::style::Color::Rgb(76, 86, 106);
     theme.in_flight_fg = ratatui::style::Color::Rgb(236, 239, 244);
     let entry = entry_with_in_flight(true);

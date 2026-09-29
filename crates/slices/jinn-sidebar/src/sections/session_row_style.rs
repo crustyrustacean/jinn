@@ -1,12 +1,14 @@
 //! Shared selection idiom for every sidebar section.
 //!
 //! A selected row is a full-width band, not a terminal inversion: the line
-//! carries `bg(selection_bg)` and ratatui paints the style across the whole
-//! row before its spans, so the band covers trailing empty cells too. The
-//! band's text is [`gutter_bg`](jinn_theme::Theme::gutter_bg) — the sidebar's
-//! own background — so a selected row is a literal inversion of the panel it
-//! sits on. State colors are untouched by selection: an attendant stays pink
-//! until it is selected, and selection is the only thing that overrides it.
+//! carries `bg(selection_fg)` — the theme's *bright* selection color — and a
+//! trailing band-styled pad extends it past the last grapheme, because
+//! `Paragraph` never extends a line's style into the cells after its content.
+//! The band's text is [`gutter_bg`](jinn_theme::Theme::gutter_bg), the
+//! sidebar's own background, so a selected row is a literal inversion of the
+//! panel it sits on. State colors are untouched by selection: an attendant
+//! stays pink until it is selected, and selection is the only thing that
+//! overrides it.
 //!
 //! Sections that lead with a chip (`█`) get their chip from
 //! [`chip_span`], whose explicit dark background keeps the glyph crisp
@@ -18,16 +20,19 @@ use ratatui::style::Style;
 use ratatui::text::Span;
 
 /// The style every selected sidebar row reduces to.
+///
+/// Bright selection background with dark text — the sidebar's own background —
+/// so a selected row is a literal inversion of the panel it sits on.
 #[must_use]
 pub fn selected_row_style(theme: &Theme) -> Style {
-    Style::default().fg(theme.gutter_bg).bg(theme.selection_bg)
+    Style::default().fg(theme.gutter_bg).bg(theme.selection_fg)
 }
 
 /// Whether the row the cursor is on renders in this exact style.
 #[must_use]
 pub fn is_selected_row_style(style: Style, theme: &Theme) -> bool {
     style.fg == Some(theme.gutter_bg)
-        && style.bg == Some(theme.selection_bg)
+        && style.bg == Some(theme.selection_fg)
         && style.add_modifier.is_empty()
 }
 
@@ -59,7 +64,7 @@ pub fn chip_span(selected: bool, focused: bool, theme: &Theme) -> Span<'static> 
 /// read as a chip.
 #[must_use]
 pub fn chip_gap() -> Span<'static> {
-    Span::raw(" ")
+    Span::raw("  ")
 }
 
 /// Extends a selected row's band to the row's full width.
@@ -90,16 +95,17 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn selected_row_style_pairs_gutter_text_on_selection_background() {
+    fn selected_row_style_pairs_dark_text_on_bright_selection_background() {
         // Given the default theme.
         let theme = jinn_theme::default_theme();
 
         // When the selection style is built.
         let style = selected_row_style(&theme);
 
-        // Then it is sidebar-background text on the selection background.
+        // Then it is the sidebar background as text on the bright selection
+        // background — a literal inversion of the panel.
         assert_eq!(style.fg, Some(theme.gutter_bg));
-        assert_eq!(style.bg, Some(theme.selection_bg));
+        assert_eq!(style.bg, Some(theme.selection_fg));
     }
 
     #[rstest::rstest]
@@ -170,8 +176,9 @@ mod tests {
         let gap = chip_gap();
 
         // Then it is a plain space with no style, so the selection band
-        // paints through it.
-        assert_eq!(gap.content, " ");
+        // paints through it — two cells, keeping a visible gap on both the
+        // dark gutter and the bright band.
+        assert_eq!(gap.content, "  ");
         assert_eq!(gap.style, Style::default());
     }
 }
