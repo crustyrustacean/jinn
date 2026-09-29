@@ -677,10 +677,7 @@ async fn every_sibling_attendant_fires_when_the_parent_turn_succeeds() {
     // user is silently left waiting on the two that never start.
     assert_eq!(dispatches.len(), 3);
     // And each sibling got its own seeded prompt, not a repeat of one.
-    let mut seeded: Vec<String> = dispatches
-        .iter()
-        .map(|d| d.entry.text().to_owned())
-        .collect();
+    let mut seeded: Vec<String> = dispatches.iter().map(|d| d.entry.text().clone()).collect();
     seeded.sort();
     assert_eq!(
         seeded,

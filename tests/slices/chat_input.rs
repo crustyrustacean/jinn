@@ -5198,9 +5198,10 @@ async fn seed_mode_submission_leaves_the_entry_pinned_in_the_session() {
         guard.session.set_active(id.clone());
         id
     };
-    // The context-assembly service answers the queue actor's assemble ask.
+    // The context-assembly service answers the queue actor's assemble ask;
+    // the handle is dropped here, but the service stays spawned.
     let system = deps.services.trouper_system.clone();
-    jinn_context_assembly::service::ensure_spawned(&system);
+    drop(jinn_context_assembly::service::ensure_spawned(&system));
     jinn_session_turn::activate(
         &system,
         jinn_session_turn::session_actor::SessionPersistenceActorDeps {
