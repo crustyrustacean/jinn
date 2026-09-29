@@ -159,6 +159,15 @@ impl PopupFixture {
             ));
     }
 
+    /// Opens the popup and walks the cursor down to the seed-template field.
+    fn open_on_the_template_field(&mut self) {
+        self.open();
+        for _ in 0..2 {
+            self.press("attendant-properties-field-next");
+        }
+        assert_eq!(self.cell.read().focus, PropertyField::SeedTemplate);
+    }
+
     /// Reads the attendant session's current values.
     fn session_values(&self) -> (AttendantTrigger, AttendantActivation, String) {
         let session = self
@@ -192,20 +201,26 @@ impl PopupFixture {
 
 #[rstest::rstest]
 #[test]
-fn j_and_k_move_field_focus_with_wraparound() {
-    // Given an open popup focused on the seed template.
+fn j_and_k_stop_at_the_ends_of_the_form() {
+    // Given an open popup, focused on the first field.
     let mut fx = PopupFixture::new();
     fx.open();
-    assert_eq!(fx.cell.read().focus, PropertyField::SeedTemplate);
+    assert_eq!(fx.cell.read().focus, PropertyField::Trigger);
 
-    // When pressing j three times.
-    for _ in 0..3 {
+    // When pressing k at the top of the form.
+    fx.press("attendant-properties-field-previous");
+
+    // Then the cursor stays on the first field rather than wrapping to the
+    // bottom. Silently teleporting the cursor is how a user loses track of
+    // which row they are about to change.
+    assert_eq!(fx.cell.read().focus, PropertyField::Trigger);
+
+    // And when pressing j repeatedly past the bottom, it stops there too.
+    for _ in 0..5 {
         fx.press("attendant-properties-field-next");
     }
-
-    // Then the cursor wrapped back to the seed template.
     assert_eq!(fx.cell.read().focus, PropertyField::SeedTemplate);
-    // And one step up from there is the activation.
+    // And one step up from the bottom is the activation.
     fx.press("attendant-properties-field-previous");
     assert_eq!(fx.cell.read().focus, PropertyField::Activation);
 }
@@ -217,7 +232,6 @@ fn h_and_l_pick_choices_in_place() {
     // is the rightmost choice (a fresh attendant's `manual`).
     let mut fx = PopupFixture::new();
     fx.open();
-    fx.press("attendant-properties-field-next");
     assert_eq!(fx.cell.read().focus, PropertyField::Trigger);
     assert_eq!(fx.cell.read().pending_trigger, AttendantTrigger::Manual);
 
@@ -278,12 +292,11 @@ fn enter_applies_all_fields_and_persists_once() {
     // left; the activation starts at `seed` (leftmost), so it goes right.
     let mut fx = PopupFixture::new();
     fx.open();
-    fx.press("attendant-properties-field-next"); // template -> trigger
     fx.press("attendant-properties-pick-left"); // trigger -> parent-completed
     fx.press("attendant-properties-field-next"); // trigger -> activation
     fx.cell.update(|p| {
         p.pick(PickDirection::Right);
-        p.pick(PickDirection::Right); // seed -> continue
+        p.pick(PickDirection::Right); // seed -> preserve
         p.seed_template.input = "edited template".to_owned();
     });
 
@@ -421,7 +434,7 @@ fn ctrl_c_cancels_like_escape_on_properties() {
 fn i_on_template_field_pushes_the_editor_scope() {
     // Given an open popup focused on the seed template.
     let mut fx = PopupFixture::new();
-    fx.open();
+    fx.open_on_the_template_field();
 
     // When pressing i.
     fx.press("attendant-properties-edit-template");
@@ -443,10 +456,12 @@ fn i_on_template_field_pushes_the_editor_scope() {
 #[rstest::rstest]
 #[test]
 fn i_off_the_template_field_is_a_noop() {
-    // Given an open popup focused on the trigger row.
+    // Given an open popup focused on the activation row — a choice row, not
+    // the template row.
     let mut fx = PopupFixture::new();
     fx.open();
     fx.press("attendant-properties-field-next");
+    assert_eq!(fx.cell.read().focus, PropertyField::Activation);
 
     // When pressing i.
     fx.press("attendant-properties-edit-template");
@@ -490,7 +505,7 @@ fn editor_enter_keeps_text_and_pops() {
 fn editor_escape_restores_pre_editor_text() {
     // Given an open editor whose draft changed.
     let mut fx = PopupFixture::new();
-    fx.open();
+    fx.open_on_the_template_field();
     fx.cell
         .update(|p| p.seed_template.input = "before".to_owned());
     fx.press("attendant-properties-edit-template");
@@ -514,7 +529,7 @@ fn editor_escape_restores_pre_editor_text() {
 fn editor_ctrl_c_clears_then_leaves_when_empty() {
     // Given an open editor with text.
     let mut fx = PopupFixture::new();
-    fx.open();
+    fx.open_on_the_template_field();
     fx.cell
         .update(|p| p.seed_template.input = "text".to_owned());
     fx.press("attendant-properties-edit-template");

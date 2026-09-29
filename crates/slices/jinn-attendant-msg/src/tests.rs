@@ -102,14 +102,16 @@ mod properties_tests {
     };
 
     #[rstest::rstest]
-    fn form_focus_defaults_to_the_seed_template_field() {
+    fn form_focus_defaults_to_the_first_field() {
         // Given a fresh popup state.
 
         // When reading its field focus.
         let focus = AttendantPropertiesState::default().focus;
 
-        // Then the cursor rests on the seed template.
-        assert_eq!(focus, PropertyField::SeedTemplate);
+        // Then the cursor rests on the trigger, the first field in display
+        // order. Field movement clamps, so a default on the last field would
+        // be a dead end — `j` could not leave it.
+        assert_eq!(focus, PropertyField::Trigger);
     }
 
     #[rstest::rstest]
@@ -203,25 +205,58 @@ mod properties_tests {
     }
 
     #[rstest::rstest]
-    fn focus_next_wraps_through_all_three_fields() {
-        // Given the form cursor on the seed template.
+    fn field_movement_stops_at_the_last_field() {
+        // Given a popup whose cursor is on the last field.
 
-        // When moving to the next field.
-        let next = PropertyField::SeedTemplate.next();
+        // When moving forward.
+        let mut popup = AttendantPropertiesState {
+            focus: PropertyField::SeedTemplate,
+            ..AttendantPropertiesState::default()
+        };
+        popup.focus_next();
 
-        // Then the cursor wraps to the trigger.
-        assert_eq!(next, PropertyField::Trigger);
+        // Then the cursor stays put. Wrapping would hide the boundary — a
+        // user pressing `j` at the bottom of a form needs to know they are
+        // at the bottom, and the choices here already clamp at their ends.
+        assert_eq!(popup.focus, PropertyField::SeedTemplate);
     }
 
     #[rstest::rstest]
-    fn focus_previous_wraps_back_to_the_last_field() {
-        // Given the form cursor on the trigger.
+    fn field_movement_stops_at_the_first_field() {
+        // Given a popup whose cursor is on the first field.
 
-        // When moving to the previous field.
-        let previous = PropertyField::Trigger.previous();
+        // When moving backward.
+        let mut popup = AttendantPropertiesState {
+            focus: PropertyField::Trigger,
+            ..AttendantPropertiesState::default()
+        };
+        popup.focus_previous();
 
-        // Then the cursor wraps to the seed template.
-        assert_eq!(previous, PropertyField::SeedTemplate);
+        // Then the cursor stays put.
+        assert_eq!(popup.focus, PropertyField::Trigger);
+    }
+
+    #[rstest::rstest]
+    fn every_field_is_reachable_by_moving_down_from_the_first() {
+        // Given a popup opened on its first field.
+
+        // When moving down once per press, three times.
+        let mut popup = AttendantPropertiesState::default();
+        let mut visited = vec![popup.focus];
+        for _ in 0..2 {
+            popup.focus_next();
+            visited.push(popup.focus);
+        }
+
+        // Then all three fields were visited in display order.
+        assert_eq!(
+            visited,
+            vec![
+                PropertyField::Trigger,
+                PropertyField::Activation,
+                PropertyField::SeedTemplate,
+            ]
+        );
     }
 
     #[rstest::rstest]

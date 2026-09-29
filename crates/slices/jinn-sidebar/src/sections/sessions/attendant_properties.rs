@@ -59,7 +59,8 @@ pub fn handle_open_attendant_properties(state: &mut AppState) -> IntentResult {
             activation: session.attendant_activation(),
             template,
         }),
-        // The form cursor rests on the template field by default.
+        // The form cursor rests on the trigger, the first field, so that
+        // `j` reaches every field below it.
         ..AttendantPropertiesState::default()
     };
     // The popup state rides its cell (registered by the cell catalog); the

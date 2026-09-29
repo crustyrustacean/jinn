@@ -62,30 +62,30 @@ pub const ACTIVATION_CHOICES: &[(AttendantActivation, &str)] = &[
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum PropertyField {
     /// When the attendant re-runs. A choice field (`h`/`l`).
+    #[default]
     Trigger,
     /// How the attendant's context is prepared per run. A choice field.
     Activation,
     /// The seed text, edited through the template editor (`i`).
-    #[default]
     SeedTemplate,
 }
 
 impl PropertyField {
-    /// The next field in display order, wrapping to the first.
+    /// The next field in display order, stopping at the last.
     #[must_use]
     pub fn next(self) -> Self {
         match self {
             Self::Trigger => Self::Activation,
             Self::Activation => Self::SeedTemplate,
-            Self::SeedTemplate => Self::Trigger,
+            Self::SeedTemplate => Self::SeedTemplate,
         }
     }
 
-    /// The previous field in display order, wrapping to the last.
+    /// The previous field in display order, stopping at the first.
     #[must_use]
     pub fn previous(self) -> Self {
         match self {
-            Self::Trigger => Self::SeedTemplate,
+            Self::Trigger => Self::Trigger,
             Self::Activation => Self::Trigger,
             Self::SeedTemplate => Self::Activation,
         }
@@ -192,12 +192,12 @@ pub struct AttendantPropertiesState {
 }
 
 impl AttendantPropertiesState {
-    /// Moves the form cursor to the next field, wrapping to the first.
+    /// Moves the form cursor to the next field, stopping at the last.
     pub fn focus_next(&mut self) {
         self.focus = self.focus.next();
     }
 
-    /// Moves the form cursor to the previous field, wrapping to the last.
+    /// Moves the form cursor to the previous field, stopping at the first.
     pub fn focus_previous(&mut self) {
         self.focus = self.focus.previous();
     }
