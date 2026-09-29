@@ -119,6 +119,12 @@ pub struct Theme {
     /// Stale data age color.
     pub age_stale: Color,
 
+    // Attendant properties popup
+    /// The selected choice in an attendant properties row. Mirrors
+    /// `age_fresh` by default but is an independent key, so the two can
+    /// diverge without a theme-file breaking change.
+    pub attendant_option_active: Color,
+
     // Scroll indicator
     /// Scroll indicator background.
     pub scroll_indicator_bg: Color,
@@ -224,6 +230,10 @@ impl Theme {
         m.insert("accent_action", Style::default().fg(self.accent_action));
         m.insert("age_fresh", Style::default().fg(self.age_fresh));
         m.insert("age_stale", Style::default().fg(self.age_stale));
+        m.insert(
+            "attendant_option_active",
+            Style::default().fg(self.attendant_option_active),
+        );
         m.insert(
             "scroll_indicator_bg",
             Style::default().fg(self.scroll_indicator_bg),
@@ -350,6 +360,8 @@ pub struct ThemeFile {
     pub age_fresh: Option<ThemeColor>,
     #[serde(default)]
     pub age_stale: Option<ThemeColor>,
+    #[serde(default)]
+    pub attendant_option_active: Option<ThemeColor>,
 
     #[serde(default)]
     pub scroll_indicator_bg: Option<ThemeColor>,
@@ -518,6 +530,10 @@ impl ThemeFile {
             age_stale: self
                 .age_stale
                 .map_or(fallback.age_stale, crate::color::ThemeColor::inner),
+            attendant_option_active: self.attendant_option_active.map_or(
+                fallback.attendant_option_active,
+                crate::color::ThemeColor::inner,
+            ),
             scroll_indicator_bg: self.scroll_indicator_bg.map_or(
                 fallback.scroll_indicator_bg,
                 crate::color::ThemeColor::inner,
@@ -605,6 +621,7 @@ impl ThemeFile {
             accent_action: Self::resolve_field(self.accent_action),
             age_fresh: Self::resolve_field(self.age_fresh),
             age_stale: Self::resolve_field(self.age_stale),
+            attendant_option_active: Self::resolve_field(self.attendant_option_active),
             scroll_indicator_bg: Self::resolve_field(self.scroll_indicator_bg),
             sidebar_resize_accent: Self::resolve_field(self.sidebar_resize_accent),
             infopopup_bg: Self::resolve_field(self.infopopup_bg),
@@ -672,6 +689,7 @@ mod tests {
             accent_action: None,
             age_fresh: None,
             age_stale: None,
+            attendant_option_active: None,
             scroll_indicator_bg: None,
             sidebar_resize_accent: None,
             input_mode_queue: None,
@@ -727,6 +745,7 @@ mod tests {
             accent_action: Some(ThemeColor(Color::Rgb(255, 165, 0))),
             age_fresh: Some(ThemeColor(Color::LightGreen)),
             age_stale: Some(ThemeColor(Color::Red)),
+            attendant_option_active: Some(ThemeColor(Color::LightGreen)),
             scroll_indicator_bg: Some(ThemeColor(Color::Black)),
             sidebar_resize_accent: Some(ThemeColor(Color::Green)),
             infopopup_bg: Some(ThemeColor(Color::Rgb(40, 44, 52))),

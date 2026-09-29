@@ -60,6 +60,7 @@ in_flight_fg = [200, 200, 200]
 # Provider picker
 accent_action = [255, 165, 0]
 age_fresh = "lightgreen"
+attendant_option_active = "lightgreen"
 age_stale = "red"
 
 # Scroll indicator

@@ -73,3 +73,251 @@ mod attendant_msg_tests {
         assert_eq!(restored, report);
     }
 }
+
+#[cfg(test)]
+mod properties_tests {
+    use crate::{
+        ACTIVATION_CHOICES, AttendantActivation, AttendantPropertiesState, AttendantTrigger,
+        OriginalValues, PickDirection, PropertyField, TRIGGER_CHOICES, attendant_properties_scope,
+        attendant_seed_template_scope, pick_activation, pick_trigger,
+    };
+
+    #[rstest::rstest]
+    fn form_focus_defaults_to_the_seed_template_field() {
+        // Given a fresh popup state.
+
+        // When reading its field focus.
+        let focus = AttendantPropertiesState::default().focus;
+
+        // Then the cursor rests on the seed template.
+        assert_eq!(focus, PropertyField::SeedTemplate);
+    }
+
+    #[rstest::rstest]
+    fn trigger_choices_are_ordered_parent_completed_then_manual() {
+        // Given the trigger choice row.
+
+        // When reading its values in display order.
+        let values: Vec<_> = TRIGGER_CHOICES.iter().map(|(v, _)| *v).collect();
+
+        // Then parent-completed is leftmost and manual is rightmost.
+        assert_eq!(
+            values,
+            vec![AttendantTrigger::ParentCompleted, AttendantTrigger::Manual]
+        );
+    }
+
+    #[rstest::rstest]
+    fn activation_choices_are_ordered_seed_reset_continue() {
+        // Given the activation choice row.
+
+        // When reading its values in display order.
+        let values: Vec<_> = ACTIVATION_CHOICES.iter().map(|(v, _)| *v).collect();
+
+        // Then the row reads seed, reset, continue.
+        assert_eq!(
+            values,
+            vec![
+                AttendantActivation::Seed,
+                AttendantActivation::Reset,
+                AttendantActivation::Continue
+            ]
+        );
+    }
+
+    #[rstest::rstest]
+    fn picking_left_from_the_first_choice_clamps() {
+        // Given the leftmost trigger choice.
+
+        // When picking left.
+        let picked = pick_trigger(AttendantTrigger::ParentCompleted, PickDirection::Left);
+
+        // Then the choice does not move.
+        assert_eq!(picked, AttendantTrigger::ParentCompleted);
+    }
+
+    #[rstest::rstest]
+    fn picking_right_from_the_last_choice_clamps() {
+        // Given the rightmost activation choice.
+
+        // When picking right.
+        let picked = pick_activation(AttendantActivation::Continue, PickDirection::Right);
+
+        // Then the choice does not move.
+        assert_eq!(picked, AttendantActivation::Continue);
+    }
+
+    #[rstest::rstest]
+    fn picking_moves_one_choice_per_key() {
+        // Given a mid-row activation choice.
+
+        // When picking in each direction.
+        let left = pick_activation(AttendantActivation::Reset, PickDirection::Left);
+        let right = pick_activation(AttendantActivation::Reset, PickDirection::Right);
+
+        // Then each pick lands on the adjacent choice.
+        assert_eq!(left, AttendantActivation::Seed);
+        assert_eq!(right, AttendantActivation::Continue);
+    }
+
+    #[rstest::rstest]
+    fn properties_scope_is_navigation_only() {
+        // Given the properties popup's scope.
+
+        // When checking whether it captures text input.
+        let captures = attendant_properties_scope().captures_input();
+
+        // Then it does not: typed characters never land on the form.
+        assert!(!captures);
+    }
+
+    #[rstest::rstest]
+    fn seed_template_scope_captures_input() {
+        // Given the seed-template editor's scope.
+
+        // When checking whether it captures text input.
+        let captures = attendant_seed_template_scope().captures_input();
+
+        // Then it does: the editor needs the editing keys and the
+        // printable catch-all.
+        assert!(captures);
+    }
+
+    #[rstest::rstest]
+    fn focus_next_wraps_through_all_three_fields() {
+        // Given the form cursor on the seed template.
+
+        // When moving to the next field.
+        let next = PropertyField::SeedTemplate.next();
+
+        // Then the cursor wraps to the trigger.
+        assert_eq!(next, PropertyField::Trigger);
+    }
+
+    #[rstest::rstest]
+    fn focus_previous_wraps_back_to_the_last_field() {
+        // Given the form cursor on the trigger.
+
+        // When moving to the previous field.
+        let previous = PropertyField::Trigger.previous();
+
+        // Then the cursor wraps to the seed template.
+        assert_eq!(previous, PropertyField::SeedTemplate);
+    }
+
+    #[rstest::rstest]
+    fn pick_moves_the_focused_choice_row_only() {
+        // Given a popup focused on the trigger with pending edits on both
+        // rows.
+        let mut popup = AttendantPropertiesState {
+            focus: PropertyField::Trigger,
+            pending_activation: AttendantActivation::Seed,
+            pending_trigger: AttendantTrigger::ParentCompleted,
+            ..AttendantPropertiesState::default()
+        };
+
+        // When picking left.
+        popup.pick(PickDirection::Left);
+
+        // Then the trigger moved to its leftmost choice.
+        assert_eq!(popup.pending_trigger, AttendantTrigger::ParentCompleted);
+        // And the activation did not move.
+        assert_eq!(popup.pending_activation, AttendantActivation::Seed);
+
+        // Given the same popup refocused on the activation.
+        popup.focus = PropertyField::Activation;
+
+        // When picking right.
+        popup.pick(PickDirection::Right);
+
+        // Then the activation moved one choice right.
+        assert_eq!(popup.pending_activation, AttendantActivation::Reset);
+        // And the trigger did not move.
+        assert_eq!(popup.pending_trigger, AttendantTrigger::ParentCompleted);
+    }
+
+    #[rstest::rstest]
+    fn pick_is_a_noop_on_the_seed_template_field() {
+        // Given a popup focused on the seed template.
+        let mut popup = AttendantPropertiesState::default();
+
+        // When picking in either direction.
+        popup.pick(PickDirection::Left);
+        popup.pick(PickDirection::Right);
+
+        // Then nothing changed: the template is not a choice row.
+        assert_eq!(popup.pending_trigger, AttendantTrigger::Manual);
+        assert_eq!(popup.pending_activation, AttendantActivation::Seed);
+    }
+
+    #[rstest::rstest]
+    fn restore_original_restores_every_field_from_the_snapshot() {
+        // Given a popup opened on specific values and edited since.
+        let mut popup = AttendantPropertiesState {
+            original: Some(OriginalValues {
+                trigger: AttendantTrigger::ParentCompleted,
+                activation: AttendantActivation::Continue,
+                template: "original".to_owned(),
+            }),
+            pending_trigger: AttendantTrigger::Manual,
+            pending_activation: AttendantActivation::Seed,
+            ..AttendantPropertiesState::default()
+        };
+        popup.seed_template.input = "edited".to_owned();
+
+        // When restoring the original values.
+        popup.restore_original();
+
+        // Then every field is back to its open-time value.
+        assert_eq!(popup.pending_trigger, AttendantTrigger::ParentCompleted);
+        assert_eq!(popup.pending_activation, AttendantActivation::Continue);
+        assert_eq!(popup.seed_template.input, "original");
+    }
+
+    #[rstest::rstest]
+    fn restore_original_is_a_noop_without_a_snapshot() {
+        // Given a popup that was never opened.
+        let mut popup = AttendantPropertiesState::default();
+
+        // When restoring the original values.
+        popup.restore_original();
+
+        // Then the defaults stand.
+        assert_eq!(popup.pending_trigger, AttendantTrigger::Manual);
+        assert_eq!(popup.seed_template.input, "");
+    }
+
+    #[rstest::rstest]
+    fn cancel_template_edit_restores_the_pre_editor_text() {
+        // Given a popup whose editor captured a pre-edit text and whose
+        // template has since changed.
+        let mut popup = AttendantPropertiesState::default();
+        popup.seed_template.input = "before".to_owned();
+        popup.begin_template_edit();
+        popup.seed_template.input = "during".to_owned();
+
+        // When cancelling the editor.
+        popup.cancel_template_edit();
+
+        // Then the template is back to the pre-editor text.
+        assert_eq!(popup.seed_template.input, "before");
+        // And the editor is closed.
+        assert!(popup.editor_original.is_none());
+    }
+
+    #[rstest::rstest]
+    fn keep_template_edit_accepts_the_text_and_closes_the_editor() {
+        // Given a popup whose editor changed the template text.
+        let mut popup = AttendantPropertiesState::default();
+        popup.begin_template_edit();
+        popup.seed_template.input = "new text".to_owned();
+
+        // When keeping the edit.
+        popup.keep_template_edit();
+
+        // Then the edited text stands.
+        assert_eq!(popup.seed_template.input, "new text");
+        // And the editor is closed.
+        assert!(popup.editor_original.is_none());
+    }
+}

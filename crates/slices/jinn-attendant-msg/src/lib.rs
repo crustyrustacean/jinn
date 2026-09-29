@@ -11,7 +11,9 @@ mod report_picker;
 
 pub use crate::activation::{AttendantActivation, AttendantTrigger};
 pub use crate::properties::{
-    AttendantPropertiesState, attendant_properties_scope, attendant_properties_slot,
+    ACTIVATION_CHOICES, AttendantPropertiesState, OriginalValues, PickDirection, PropertyField,
+    TRIGGER_CHOICES, attendant_properties_scope, attendant_properties_slot,
+    attendant_seed_template_scope, pick_activation, pick_trigger,
 };
 pub use crate::report::AttendantReport;
 pub use crate::report_picker::{

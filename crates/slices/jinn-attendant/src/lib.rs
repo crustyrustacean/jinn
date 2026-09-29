@@ -20,6 +20,12 @@ pub mod trigger_actor;
 mod activation_tests;
 
 #[cfg(test)]
+mod properties_overlay_tests;
+
+#[cfg(test)]
+mod properties_render_tests;
+
+#[cfg(test)]
 mod report_picker_tests;
 
 #[cfg(test)]
@@ -96,13 +102,18 @@ pub fn activate_report_picker(host: &mut SliceHost<'_, jinn_slices::RenderFacts>
     report_picker_routes::register_report_picker_input_hook(host.key_routes(), &cell);
 }
 
-/// Registers the properties popup: overlay geometry, view, slot, and the
-/// input hook that routes typed keys into the seed-template editor.
+/// Registers the properties popup: overlay geometry, views, slot, rows, and
+/// the template editor's input hook.
 ///
-/// The keybind rows (`P` open, confirm, leave) attach with the sidebar's
-/// rows, in the sessions scope; the popup's own scope holds only the input
-/// hook and the editing keys, so the popup cannot be opened from anywhere
-/// the sidebar does not offer it.
+/// Two scopes share the one cell: the navigation-only properties form and
+/// the capturing seed-template editor pushed by the form's `i` row. Both
+/// scopes get overlay geometry, a selectable view (only the top scope's
+/// overlay draws, so both views assemble the full form), and their own
+/// rows; the input hook registers on the editor scope only, because the
+/// form captures no input.
+///
+/// The `P` opener attaches with the sidebar's rows, in the sessions scope;
+/// the popup cannot be opened from anywhere the sidebar does not offer it.
 ///
 /// # Panics
 ///
@@ -122,20 +133,28 @@ pub fn activate_properties(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
             "the cell catalog registers the attendant properties slot before any slice activates",
         );
 
-    let scope = jinn_attendant_msg::attendant_properties_scope();
-    host.register_overlay(
-        scope.clone(),
-        std::sync::Arc::new(properties_overlay::attendant_properties_overlay_rect),
-    );
-    host.register_overlay_selectable(&scope);
-    host.register_overlay_slot(
-        scope.clone(),
-        jinn_attendant_msg::attendant_properties_slot(),
-    );
+    let properties_scope = jinn_attendant_msg::attendant_properties_scope();
+    let editor_scope = jinn_attendant_msg::attendant_seed_template_scope();
+    for scope in [&properties_scope, &editor_scope] {
+        host.register_overlay(
+            scope.clone(),
+            std::sync::Arc::new(properties_overlay::attendant_properties_overlay_rect),
+        );
+        host.register_overlay_selectable(scope);
+        host.register_overlay_slot(
+            scope.clone(),
+            jinn_attendant_msg::attendant_properties_slot(),
+        );
+    }
     host.register_overlay_view(
-        scope,
+        properties_scope,
         std::sync::Arc::new(properties_overlay::render_attendant_properties),
     );
+    host.register_overlay_view(
+        editor_scope,
+        std::sync::Arc::new(properties_overlay::render_attendant_seed_template),
+    );
     properties_overlay::attach_properties_rows(host.key_routes(), &cell);
-    properties_overlay::register_properties_input_hook(host.key_routes(), &cell);
+    properties_overlay::attach_seed_template_rows(host.key_routes(), &cell);
+    properties_overlay::register_seed_template_input_hook(host.key_routes(), &cell);
 }

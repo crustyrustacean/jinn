@@ -376,3 +376,7 @@ Entries are added or amended **only with human approval**.
 - (tools) Cancelling a turn stops every subagent or attendant beneath it, recursively; a fork is a boundary whose own descendants are never cancelled.
 - (tools) A single Escape cancels nothing — it arms the cancel confirmation; the cascade rides the confirmed second Escape.
 - (tools) The in-flight task-spawn registry exposes both a presence check and a child-list reader, and is the only live source of a session's running subagents.
+- (attendant) The attendant properties popup navigates vim-style: j/k moves between fields and h/l picks a choice in place, with no per-field confirm.
+- (attendant) An attendant properties edit applies every pending value together on enter and discards them on escape or ctrl-c.
+- (attendant) The seed template edits through a rename-style popup sharing the rename popup's capabilities — enter keeps, escape restores, ctrl-c clears or leaves.
+- (ui) The selected option in an attendant properties choice row uses a dedicated attendant-option theme key, distinct from the focus accent.

@@ -35,7 +35,7 @@ async fn attendant_activation_survives_the_real_cell_catalog() {
     jinn_tui::keymap_gen::bind_route_rows(&routes, &mut keymap);
     assert!(
         routes
-            .input_hook(&jinn_attendant_msg::attendant_properties_scope())
+            .input_hook(&jinn_attendant_msg::attendant_seed_template_scope())
             .is_some()
     );
     assert!(
@@ -43,4 +43,32 @@ async fn attendant_activation_survives_the_real_cell_catalog() {
             .input_hook(&jinn_attendant_msg::attendant_report_picker_scope())
             .is_some()
     );
+    // The properties form is navigation-only: no input hook, but its rows
+    // (and the editor's) bound.
+    assert!(
+        routes
+            .input_hook(&jinn_attendant_msg::attendant_properties_scope())
+            .is_none()
+    );
+    for action in [
+        "attendant-properties-field-next",
+        "attendant-properties-field-previous",
+        "attendant-properties-pick-left",
+        "attendant-properties-pick-right",
+        "attendant-properties-edit-template",
+        "attendant-properties-apply",
+        "attendant-properties-leave",
+        "attendant-properties-cancel",
+        "attendant-template-keep",
+        "attendant-template-restore",
+        "attendant-template-clear-or-leave",
+    ] {
+        let bound = routes.rows().iter().any(|row| {
+            matches!(
+                &row.outcome,
+                jinn_slices::route::RouteOutcome::Action { action: name, .. } if *name == action
+            )
+        });
+        assert!(bound, "route row {action:?} must bind at boot");
+    }
 }

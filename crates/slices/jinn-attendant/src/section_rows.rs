@@ -85,7 +85,6 @@ mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
     use super::*;
-    use jiff::Timestamp;
     use jinn_app_state::AppState;
     use jinn_session_state::ChatSessionState;
 

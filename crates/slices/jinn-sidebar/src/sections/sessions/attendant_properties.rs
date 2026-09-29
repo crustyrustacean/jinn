@@ -11,7 +11,7 @@
 //! access) and stays near the sidebar because that is where the user is.
 
 use jinn_attendant_msg::{
-    AttendantPropertiesState, attendant_properties_scope, attendant_properties_slot,
+    AttendantPropertiesState, OriginalValues, attendant_properties_scope, attendant_properties_slot,
 };
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::protocol::IntentResult;
@@ -23,7 +23,9 @@ use super::sorted_open_sessions;
 ///
 /// Validates that the highlighted session *is* an attendant — the popup has
 /// nothing to edit on a user session, fork, or subagent — seeds the popup's
-/// cell with the session's current values, and pushes the popup scope.
+/// cell with the session's current values (as both the pending edits and
+/// the open-time snapshot that leaving restores), and pushes the popup
+/// scope.
 pub fn handle_open_attendant_properties(state: &mut AppState) -> IntentResult {
     let Some(index) = state
         .frontend
@@ -47,13 +49,18 @@ pub fn handle_open_attendant_properties(state: &mut AppState) -> IntentResult {
     let popup = AttendantPropertiesState {
         session_id: Some(entry.id.clone()),
         seed_template: jinn_slices::LineInput {
-            input: template,
+            input: template.clone(),
             cursor_pos,
         },
-        trigger_focus: false,
-        activation_focus: false,
-        current_activation: session.attendant_activation(),
-        current_trigger: session.attendant_trigger(),
+        pending_activation: session.attendant_activation(),
+        pending_trigger: session.attendant_trigger(),
+        original: Some(OriginalValues {
+            trigger: session.attendant_trigger(),
+            activation: session.attendant_activation(),
+            template,
+        }),
+        // The form cursor rests on the template field by default.
+        ..AttendantPropertiesState::default()
     };
     // The popup state rides its cell (registered by the cell catalog); the
     // synchronous write here is the sanctioned carve-out — the same one the

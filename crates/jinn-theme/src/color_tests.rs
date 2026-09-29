@@ -180,7 +180,7 @@ mod style_map_integration_tests {
         // When building the style map.
         let map = theme.style_map();
         // Then it has one entry per Theme field.
-        assert_eq!(map.len(), 49, "style_map should cover all Theme fields");
+        assert_eq!(map.len(), 50, "style_map should cover all Theme fields");
     }
 
     #[rstest::rstest]
