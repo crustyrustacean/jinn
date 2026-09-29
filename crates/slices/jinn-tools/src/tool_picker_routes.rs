@@ -45,6 +45,7 @@ use jinn_slices::route::{
 use jinn_tools_msg::{ToolPickerState, tool_picker_scope};
 
 use crate::tool_picker_actions::{self, ToolRow};
+use jinn_attendant_msg::is_attendant_tool_definition;
 
 /// The picker's cell — the single home for everything it shows.
 type ToolPickerCell = TypedCell<ToolPickerState>;
@@ -296,6 +297,13 @@ fn seed_from_session(state: &jinn_kernel::AppState) -> Seed {
     let session_id = state.session.active_session_id().clone();
     let theme = state.frontend.theme.clone();
 
+    // Two filters, both "may this session use this tool": the provider
+    // gate for server tools, and the attendant gate for the tools that
+    // only exist inside an attendant. A row the session cannot use is not
+    // something to toggle — offering it invites a toggle that changes
+    // nothing, and its absence in the prompt while it sits in this list is
+    // exactly the disagreement this filter exists to prevent.
+    let is_attendant = active_session.is_attendant();
     let mut rows: Vec<ToolRow> = state
         .tool_registry()
         .map(|registry| {
@@ -304,6 +312,7 @@ fn seed_from_session(state: &jinn_kernel::AppState) -> Seed {
                 .tools_for_session(&session_id)
                 .into_iter()
                 .filter(|def| def.available_for_provider(&provider_name))
+                .filter(|def| is_attendant_tool_definition(def) == is_attendant)
                 .map(|def| ToolRow {
                     name: def.name,
                     description: def.description,
@@ -383,4 +392,100 @@ fn clear_filter_or_leave(ctx: &mut ActionCtx<'_>, cell: &ToolPickerCell) -> Inte
         return cancel_tool_picker(ctx, cell);
     }
     IntentResult::empty()
+}
+
+#[cfg(test)]
+mod attendant_tool_picker_tests {
+    #![allow(clippy::expect_used, clippy::unwrap_used, reason = "test module")]
+
+    use super::*;
+    use jinn_attendant_msg::ATTENDANT_TOOL_NAMES;
+    use jinn_core_types::tool_types::ToolDefinition;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::common::state::State;
+    use jinn_session_state::ChatSessionState;
+
+    #[rstest::rstest]
+    fn an_ordinary_session_is_offered_no_attendant_tool_row() {
+        // Given a plain user session with the built-ins registered.
+        let state = state_with_session(ChatSessionState::new());
+
+        // When the picker seeds its rows.
+        let names = row_names(&state);
+
+        // Then no attendant tool is listed. A row the session cannot use
+        // is a toggle that changes nothing, and the prompt already omits
+        // these — a list that shows what the prompt hides reads as a bug
+        // in one of the two.
+        for name in ATTENDANT_TOOL_NAMES {
+            assert!(
+                !names.iter().any(|n| n == name),
+                "{name} must not appear in the picker for a non-attendant"
+            );
+        }
+        assert!(names.iter().any(|n| n == "read"));
+    }
+
+    #[rstest::rstest]
+    fn an_attendant_is_offered_its_own_tool_rows() {
+        // Given an attendant session.
+        let parent = ChatSessionState::new();
+        let state = state_with_session(ChatSessionState::new_attendant(&parent, true));
+
+        // When the picker seeds its rows.
+        let names = row_names(&state);
+
+        // Then both attendant tools are listed — an attendant that cannot
+        // toggle its own tools is as broken as one that cannot call them.
+        for name in ATTENDANT_TOOL_NAMES {
+            assert!(
+                names.iter().any(|n| n == name),
+                "{name} must appear in the picker for an attendant"
+            );
+        }
+    }
+
+    /// A state whose active session is `session`, with the attendant
+    /// built-ins and one ordinary tool registered.
+    fn state_with_session(session: ChatSessionState) -> State {
+        let state = State::new(AppState::default_with_scope_focus());
+        let session_id = session.session_id().clone();
+        {
+            let mut guard = state.write();
+            guard.session.insert(session);
+            // The picker seeds from the *active* session, so a fixture that
+            // inserts without activating tests the default session instead
+            // of the one it meant to build.
+            guard.session.set_active(session_id.clone());
+            let cell = guard.tool_registry().expect("registry cell attached");
+            cell.update(|r| {
+                for name in ["conclude", "notify_parent", "read"] {
+                    r.global.insert(name.to_owned(), tool(name));
+                }
+            });
+        }
+        state
+    }
+
+    /// The tool names the picker's rows would carry for the active session.
+    fn row_names(state: &State) -> Vec<String> {
+        let guard = state.read();
+        seed_from_session(&guard)
+            .rows
+            .into_iter()
+            .map(|r| r.name)
+            .collect()
+    }
+
+    /// A minimal tool definition under `name`.
+    fn tool(name: &str) -> ToolDefinition {
+        ToolDefinition {
+            name: name.to_owned(),
+            description: String::new(),
+            parameters: serde_json::json!({ "type": "object" }),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+            server_tool_type: None,
+        }
+    }
 }

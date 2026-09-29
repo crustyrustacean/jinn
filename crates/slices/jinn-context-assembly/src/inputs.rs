@@ -1,6 +1,6 @@
 //! State capture for the stateless context-assembly service.
 
-use jinn_attendant_msg::is_attendant_tool;
+use jinn_attendant_msg::is_attendant_tool_definition;
 use jinn_context_assembly_msg::AssemblyInputs;
 use jinn_core_types::{DEFAULT_PERSONA_NAME, SessionId};
 use jinn_kernel::common::app_state::AppState;
@@ -33,7 +33,7 @@ pub fn build_assembly_inputs(state: &AppState, session_id: &SessionId) -> Assemb
         .map(|cell| cell.read().tools_for_session(session_id))
         .unwrap_or_default()
         .into_iter()
-        .filter(|def| !is_attendant_tool(&def.name) || session.is_attendant)
+        .filter(|def| is_attendant_tool_definition(def) == session.is_attendant)
         .collect();
 
     AssemblyInputs {

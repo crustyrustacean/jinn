@@ -31,6 +31,16 @@ pub fn is_attendant_tool(name: &str) -> bool {
     ATTENDANT_TOOL_NAMES.contains(&name)
 }
 
+/// Whether `def` belongs to the attendant-only family.
+///
+/// Takes the whole definition rather than a bare name so every reader —
+/// the prompt assembler, the tool picker — asks the same question of the
+/// same value, instead of one filtering by name and the other forgetting.
+#[must_use]
+pub fn is_attendant_tool_definition(def: &jinn_core_types::ToolDefinition) -> bool {
+    is_attendant_tool(&def.name)
+}
+
 pub use crate::report_picker::{
     AttendantReportPickerState, attendant_report_picker_scope, attendant_report_picker_slot,
 };
