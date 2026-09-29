@@ -9,7 +9,7 @@ mod properties;
 mod report;
 mod report_picker;
 
-pub use crate::activation::{AttendantActivation, AttendantTrigger};
+pub use crate::activation::{AttendantActivation, AttendantContextPolicy, AttendantTrigger};
 pub use crate::properties::{
     ACTIVATION_CHOICES, AttendantPropertiesState, OriginalValues, PickDirection, PropertyField,
     TRIGGER_CHOICES, attendant_properties_scope, attendant_properties_slot,

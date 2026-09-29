@@ -31,13 +31,17 @@ fn state_with_attendant(activation: AttendantActivation) -> (State, jinn_core_ty
 }
 
 /// The parent id an attendant built by [`state_with_attendant`] reports to.
-fn parent_id_of(state: &State) -> String {
+///
+/// Read off the attendant's own link rather than by scanning the map: the
+/// map holds both sessions and a wrong guess here fails as a confusing
+/// assertion about the prompt text rather than about this helper.
+fn parent_id_of(state: &State, attendant: &jinn_core_types::SessionId) -> String {
     let guard = state.read();
     guard
         .session
-        .iter()
-        .find(|(_, s)| !s.is_attendant())
-        .map_or_else(String::new, |(_, s)| s.session_id().to_string())
+        .get(attendant)
+        .and_then(|s| s.parent_session().clone())
+        .map_or_else(String::new, |id| id.to_string())
 }
 
 #[rstest::rstest]
@@ -68,7 +72,7 @@ fn rerun_on_a_reset_attendant_dispatches_the_seeded_run() {
         "the seeded prompt leads with the user's template: {display:?}"
     );
     assert!(
-        display.contains(&parent_id_of(&state)),
+        display.contains(&parent_id_of(&state, &id)),
         "the seeded prompt names the parent session: {display:?}"
     );
 }
@@ -253,7 +257,7 @@ fn rerun_on_a_preserve_attendant_seeds_through_the_template() {
         "the seeded prompt leads with the user's template: {display:?}"
     );
     assert!(
-        display.contains(&parent_id_of(&state)),
+        display.contains(&parent_id_of(&state, &id)),
         "the seeded prompt names the parent session: {display:?}"
     );
 }

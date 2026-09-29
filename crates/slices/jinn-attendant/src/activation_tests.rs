@@ -7,7 +7,9 @@
     reason = "test code"
 )]
 
-use jinn_attendant_msg::{NO_PRIOR_REPORT_TEXT, PRIOR_REPORT_PLACEHOLDER, default_seed_template};
+use jinn_attendant_msg::{
+    NO_PARENT_SESSION_TEXT, NO_PRIOR_REPORT_TEXT, PRIOR_REPORT_PLACEHOLDER, default_seed_template,
+};
 use jinn_core_types::chat_entry::ChatEntry;
 use jinn_core_types::{ContextOverride, PinPosition};
 use jinn_kernel::common::actor_deps::ActorDeps;
@@ -213,18 +215,27 @@ fn reset_context_is_idempotent() {
 
 #[rstest::rstest]
 #[test]
-fn preserve_activation_prepares_no_entry() {
+fn preserve_activation_dispatches_the_template_without_resetting_context() {
     // Given a preserve-mode attendant with a prior report.
     let parent = ChatSessionState::new();
     let mut session = ChatSessionState::new_attendant(&parent, true);
     session.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Preserve);
     session.append_attendant_report("a finding".to_owned());
+    session.set_seed_template("carry on".to_owned());
 
     // When the run's seed entry is prepared.
-    let (seed, _reset) = prepare_trigger_run(&mut session);
+    let (seed, reset) = prepare_trigger_run(&mut session);
 
-    // Then nothing is injected — the existing conversation carries the run.
-    assert!(seed.is_none());
+    // Then the template is dispatched. The earlier design returned nothing
+    // here, which left every parent-completed preserve attendant inert.
+    let seed = seed.expect("preserve must still dispatch the template");
+    assert!(
+        seed.text().starts_with("carry on"),
+        "the run leads with the user's template: {:?}",
+        seed.text()
+    );
+    // And nothing was force-excluded — preserving context is the whole mode.
+    assert!(reset.is_empty(), "preserve must not force-exclude anything");
 }
 
 #[rstest::rstest]
@@ -1211,24 +1222,20 @@ fn the_parent_session_id_is_appended_rather_than_substituted_into_the_users_temp
 }
 
 #[rstest::rstest]
-fn a_seed_prompt_says_the_parent_id_is_unavailable_when_there_is_no_parent() {
-    // Given a session with a seed template but no parent on record.
-    let mut session = ChatSessionState::new();
-    session.set_seed_template("Summarise the work.".to_owned());
+fn a_seed_prompt_names_a_missing_parent_as_unavailable() {
+    // Given a template and no parent id to report.
+    let template = "Summarise the work.";
 
-    // When the seed prompt is built.
-    let (entry, _) = prepare_trigger_run(&mut session);
-    let entry = entry.expect("a seed entry");
+    // When the prompt is rendered for a session that has no parent link.
+    let rendered = render_seed_text(template, None, NO_PARENT_SESSION_TEXT);
 
-    // Then the parent line reads as a finished sentence. A prompt ending
-    // "The parent session's id is" with nothing after it is one the model
-    // will try to interpret; the word tells it plainly that there is no
-    // id here to search by.
+    // Then the parent line still reads as a finished sentence. A prompt
+    // trailing off after "is" is one the model tries to interpret; the word
+    // says plainly that there is no id here to search by.
     assert!(
-        entry
-            .text()
+        rendered
+            .expect("a rendered prompt")
             .ends_with("The parent session's id is unavailable"),
-        "the parent line must still read as a sentence: {:?}",
-        entry.text()
+        "the parent line must still read as a sentence"
     );
 }

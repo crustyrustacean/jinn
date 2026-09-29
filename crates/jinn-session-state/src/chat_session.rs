@@ -13,7 +13,9 @@ use std::ops::Range;
 use std::sync::atomic::Ordering;
 
 use jiff::Timestamp;
-use jinn_attendant_msg::{AttendantActivation, AttendantReport, AttendantTrigger};
+use jinn_attendant_msg::{
+    AttendantActivation, AttendantContextPolicy, AttendantReport, AttendantTrigger,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
@@ -443,6 +445,15 @@ impl ChatSessionState {
     #[must_use]
     pub fn attendant_activation(&self) -> AttendantActivation {
         self.core.attendant.activation
+    }
+
+    /// How this attendant prepares its context when it runs.
+    ///
+    /// The one question to ask before dispatching: the answer says what the
+    /// run sees, never whether it may run.
+    #[must_use]
+    pub fn attendant_context_policy(&self) -> AttendantContextPolicy {
+        self.attendant_activation().context_policy()
     }
 
     /// Set how this session's context is prepared when it runs.

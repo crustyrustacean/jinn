@@ -1,7 +1,7 @@
 //! Preparing an attendant's context and dispatching its run.
 
 use jinn_attendant_msg::{
-    AttendantActivation, NO_PARENT_SESSION_TEXT, NO_PRIOR_REPORT_TEXT, PARENT_SESSION_HEADER,
+    AttendantContextPolicy, NO_PARENT_SESSION_TEXT, NO_PRIOR_REPORT_TEXT, PARENT_SESSION_HEADER,
     PRIOR_REPORT_PLACEHOLDER,
 };
 use jinn_core_types::chat_entry::ChatEntry;
@@ -90,7 +90,7 @@ pub fn reset_context(session: &mut ChatSessionState) -> Vec<jinn_core_types::Cha
 /// governs what an unattended trigger fire does, not this.
 #[must_use]
 pub fn prepare_manual_run(session: &mut ChatSessionState) -> (Option<ChatEntry>, Vec<ChatEntryId>) {
-    let reset = if session.attendant_activation() == AttendantActivation::Reset {
+    let reset = if session.attendant_context_policy() == AttendantContextPolicy::Reset {
         reset_context(session)
     } else {
         Vec::new()
@@ -99,23 +99,35 @@ pub fn prepare_manual_run(session: &mut ChatSessionState) -> (Option<ChatEntry>,
 }
 
 /// Resets the session's context if it is in `Reset` mode, then builds the
-/// seeded run prompt for a *trigger* fire, which respects the mode.
+/// seeded run prompt for a *trigger* fire.
 ///
-/// In `Preserve` mode nothing is injected: the existing conversation carries
-/// an unattended fire, because the user did not ask for a new message this
-/// time. The manual path ([`prepare_manual_run`]) has no such reservation.
+/// The mode governs *context*, never *dispatch*. Every mode allowed to run
+/// sends a message; what differs is what the run sees. `Preserve` runs on
+/// the context as it stands, and still dispatches the template — the
+/// standing instructions that describe what this attendant is for. It folds
+/// the prior report in like every other mode: the report is the attendant's
+/// own record of what it found last time, and preserving context means not
+/// forgetting it. The difference from `Reset` is what happens to the
+/// *history*, not what the prompt says.
+///
+/// The earlier design returned `None` here for `Preserve`, on the reasoning
+/// that an unattended fire "never injects a message the user did not ask
+/// for". That is what a template *is*: the user wrote it, and it is the only
+/// statement of the attendant's purpose. Suppressing it left a
+/// `ParentCompleted` + `Preserve` attendant permanently inert with nothing
+/// on screen saying why.
 #[must_use]
 pub fn prepare_trigger_run(
     session: &mut ChatSessionState,
 ) -> (Option<ChatEntry>, Vec<ChatEntryId>) {
-    let reset = if session.attendant_activation() == AttendantActivation::Reset {
+    let reset = if session.attendant_context_policy() == AttendantContextPolicy::Reset {
         reset_context(session)
     } else {
         Vec::new()
     };
-    let seed = match session.attendant_activation() {
-        AttendantActivation::Preserve => None,
-        AttendantActivation::Seed | AttendantActivation::Reset => seed_entry(session),
+    let seed = match session.attendant_context_policy() {
+        AttendantContextPolicy::Pin => None,
+        AttendantContextPolicy::Reset | AttendantContextPolicy::Preserve => seed_entry(session),
     };
     (seed, reset)
 }

@@ -4,8 +4,10 @@ mod attendant_msg_tests {
 
     use jiff::Timestamp;
 
-    use crate::{AttendantActivation, AttendantReport, AttendantTrigger, PRIOR_REPORT_PLACEHOLDER};
-
+    use crate::{
+        AttendantActivation, AttendantContextPolicy, AttendantReport, AttendantTrigger,
+        PRIOR_REPORT_PLACEHOLDER,
+    };
     #[rstest::rstest]
     fn the_preserve_mode_is_named_preserve_on_disk() {
         // Given the mode that keeps the prior conversation intact.
@@ -51,17 +53,35 @@ mod attendant_msg_tests {
     #[case(AttendantActivation::Seed, false)]
     #[case(AttendantActivation::Reset, true)]
     #[case(AttendantActivation::Preserve, true)]
-    fn seed_activation_is_not_dispatchable(
+    fn a_parent_completed_trigger_is_enabled_for_every_mode_but_seed(
         #[case] activation: AttendantActivation,
         #[case] expected: bool,
     ) {
         // Given an activation mode.
 
-        // When checking whether a run may dispatch.
-        let dispatchable = activation.is_dispatchable();
+        // When checking whether a parent-completed fire is configured.
+        let enabled = AttendantTrigger::ParentCompleted.is_enabled_for(activation);
 
-        // Then only the composing mode is blocked.
-        assert_eq!(dispatchable, expected);
+        // Then only the composing mode is blocked. Preserve is as runnable
+        // as Reset — it is a mode, not a veto.
+        assert_eq!(enabled, expected);
+    }
+
+    #[rstest::rstest]
+    #[case(AttendantActivation::Seed, AttendantContextPolicy::Pin)]
+    #[case(AttendantActivation::Reset, AttendantContextPolicy::Reset)]
+    #[case(AttendantActivation::Preserve, AttendantContextPolicy::Preserve)]
+    fn each_activation_mode_answers_exactly_what_it_does_to_context(
+        #[case] activation: AttendantActivation,
+        #[case] expected: AttendantContextPolicy,
+    ) {
+        // Given an activation mode.
+
+        // When asking how it prepares context.
+        let policy = activation.context_policy();
+
+        // Then the mode answers only that, and every mode has an answer.
+        assert_eq!(policy, expected);
     }
 
     #[rstest::rstest]

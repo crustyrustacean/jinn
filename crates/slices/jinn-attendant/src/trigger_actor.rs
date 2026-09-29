@@ -220,7 +220,12 @@ impl AttendantTriggerActor {
         {
             let mut state = self.state.write();
             let session = state.session.get_mut(attendant_id)?;
-            if !session.attendant_activation().is_dispatchable() {
+            // Whether a fire is configured to run at all. Seed is the
+            // attendant being composed, so nothing dispatches for it yet.
+            if !session
+                .attendant_trigger()
+                .is_enabled_for(session.attendant_activation())
+            {
                 return None;
             }
 
@@ -241,9 +246,8 @@ impl AttendantTriggerActor {
             // for this question to be asked again.
             let cancel: Option<CancelStream> = None;
 
-            // A trigger respects the mode: it seeds for `Seed`/`Reset` and
-            // carries the existing context for `Preserve`, so an unattended
-            // fire never injects a message the user did not ask for.
+            // The mode decides what the run sees, not whether it happens.
+            // Every mode that got past the guard above sends the template.
             let (entry, reset) = activation::prepare_trigger_run(session);
             let dispatch = entry.map(|entry| {
                 session.mark_turn_automated();
