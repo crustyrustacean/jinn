@@ -363,8 +363,7 @@ fn attendant_row_uses_the_attendant_theme_token() {
     };
 
     // When the entry's title style is computed.
-    let style =
-        crate::sections::sessions::render::entry_line::entry_title_style(&entry, false, &theme);
+    let style = crate::sections::sessions::render::entry_line::entry_title_style(&entry, &theme);
 
     // Then the row is tinted with the attendant token, not the subagent or
     // error token.
@@ -383,8 +382,7 @@ fn non_attendant_row_does_not_use_the_attendant_theme_token() {
     };
 
     // When the entry's title style is computed.
-    let style =
-        crate::sections::sessions::render::entry_line::entry_title_style(&entry, false, &theme);
+    let style = crate::sections::sessions::render::entry_line::entry_title_style(&entry, &theme);
 
     // Then the row keeps the muted base, and the attendant token is nowhere.
     assert_eq!(style.fg, Some(theme.muted_text));
@@ -806,24 +804,23 @@ fn idle_row_is_not_tinted() {
 }
 
 #[rstest::rstest]
-fn selected_and_in_flight_row_is_not_reversed() {
+fn selected_and_in_flight_row_takes_the_selection_band() {
     // Given a session that is both cursor-selected and in flight.
     let entry = entry_with_in_flight(true);
     let theme = default_theme();
+    let band = crate::sections::session_row_style::selected_row_style(&theme);
 
     // When assembling its line.
     let line = assemble_entry_line(&entry, true, 40, &idle_throbber(), &theme);
 
-    // Then no span is reversed, which would invert the wash into a light one.
-    let reversed = line.spans.iter().any(|span| {
-        span.style
-            .add_modifier
-            .contains(ratatui::style::Modifier::REVERSED)
-    });
-    assert!(
-        !reversed,
-        "REVERSED would invert the in-flight wash instead of showing it"
-    );
+    // Then the line carries the band: selection overrides the wash, and no
+    // span keeps the tint's background for itself.
+    assert_eq!(line.style, band, "the band is line-level");
+    let tinted = line
+        .spans
+        .iter()
+        .any(|span| span.style.bg == Some(theme.in_flight_bg));
+    assert!(!tinted, "selection overrides the in-flight wash");
 }
 
 #[rstest::rstest]

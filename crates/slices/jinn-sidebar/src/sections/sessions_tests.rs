@@ -875,11 +875,14 @@ fn render_session_title_is_red_when_last_entry_is_error() {
         })
         .unwrap();
 
-    // Then the title text on row 0 (first entry row) has red foreground.
+    // Then the title text on row 0 (first entry row) is a red block:
+    // red background with the sidebar background as the text color.
     let buffer = terminal.backend().buffer();
     // The title starts after indicator(1) + space(1) + prefix(2) = column 4.
     let title_cell = buffer.cell((4, 0)).expect("title cell should exist");
-    assert_eq!(title_cell.style().fg, Some(Color::Red));
+    let theme = &state.frontend.theme;
+    assert_eq!(title_cell.style().bg, Some(Color::Red));
+    assert_eq!(title_cell.style().fg, Some(theme.gutter_bg));
 }
 
 #[rstest::rstest]
@@ -1107,7 +1110,6 @@ use crate::sections::sessions::render::entry_line::{
     arrow_span, entry_title_style, indicator_span,
 };
 use crate::sections::sessions::render::truncate::truncate_str;
-use ratatui::style::Modifier;
 use throbber_widgets_tui::ThrobberState;
 
 fn default_theme() -> jinn_theme::Theme {
@@ -1141,43 +1143,34 @@ fn style_entry(
 }
 
 #[rstest::rstest]
-fn title_style_is_red_reversed_when_error_and_selected() {
-    // Given an entry with error and selected.
+fn title_style_is_a_red_block_when_error() {
+    // Given an entry whose last entry is an error.
     let theme = default_theme();
     let entry = style_entry(false, true, false);
 
     // When computing title style.
-    let style = entry_title_style(&entry, true, &theme);
+    let style = entry_title_style(&entry, &theme);
 
-    // Then the style is red + reversed.
-    assert_eq!(style.fg, Some(Color::Red));
-    assert!(style.add_modifier.contains(Modifier::REVERSED));
+    // Then the style is a red block: sidebar-background text on red.
+    assert_eq!(style.fg, Some(theme.gutter_bg));
+    assert_eq!(style.bg, Some(Color::Red));
+    // And no terminal inversion — the block is a real background.
+    assert!(style.add_modifier.is_empty());
 }
 
 #[rstest::rstest]
-fn title_style_is_red_when_error_not_selected() {
-    // Given an entry with error but not selected.
-    let theme = default_theme();
-
-    // When computing title style.
-    let style = entry_title_style(&style_entry(false, true, false), false, &theme);
-
-    // Then the style is red, no reversed.
-    assert_eq!(style.fg, Some(Color::Red));
-    assert!(!style.add_modifier.contains(Modifier::REVERSED));
-}
-
-#[rstest::rstest]
-fn title_style_is_reversed_when_selected_no_error() {
+fn title_style_is_state_only_selection_is_the_lines_business() {
     // Given a selected entry without error.
     let theme = default_theme();
 
     // When computing title style.
-    let style = entry_title_style(&style_entry(false, false, false), true, &theme);
+    let style = entry_title_style(&style_entry(false, false, false), &theme);
 
-    // Then the style is reversed, no specific fg.
-    assert!(style.add_modifier.contains(Modifier::REVERSED));
-    assert_eq!(style.fg, None);
+    // Then the style is the plain muted base: selection is the line's band,
+    // never a property of the title.
+    assert_eq!(style.fg, Some(theme.muted_text));
+    assert_eq!(style.bg, None);
+    assert!(style.add_modifier.is_empty());
 }
 
 #[rstest::rstest]
@@ -1186,7 +1179,7 @@ fn title_style_is_primary_text_when_active_not_selected() {
     let theme = default_theme();
 
     // When computing title style.
-    let style = entry_title_style(&style_entry(true, false, false), false, &theme);
+    let style = entry_title_style(&style_entry(true, false, false), &theme);
 
     // Then the style has primary text fg.
     assert_eq!(style.fg, Some(theme.primary_text));
@@ -1198,7 +1191,7 @@ fn title_style_is_muted_text_when_inactive_not_selected() {
     let theme = default_theme();
 
     // When computing title style.
-    let style = entry_title_style(&style_entry(false, false, false), false, &theme);
+    let style = entry_title_style(&style_entry(false, false, false), &theme);
 
     // Then the style has muted text fg.
     assert_eq!(style.fg, Some(theme.muted_text));
@@ -1210,7 +1203,7 @@ fn title_style_uses_subagent_fg_for_subagent_when_inactive_not_selected() {
     let theme = default_theme();
 
     // When computing title style.
-    let style = entry_title_style(&style_entry(false, false, true), false, &theme);
+    let style = entry_title_style(&style_entry(false, false, true), &theme);
 
     // Then the style has the subagent fg.
     assert_eq!(style.fg, Some(theme.subagent_fg));
@@ -1224,7 +1217,7 @@ fn title_style_uses_subagent_fg_for_active_subagent_not_selected() {
     let theme = default_theme();
 
     // When computing title style.
-    let style = entry_title_style(&style_entry(true, false, true), false, &theme);
+    let style = entry_title_style(&style_entry(true, false, true), &theme);
 
     // Then the style has the subagent fg rather than primary text.
     assert_eq!(style.fg, Some(theme.subagent_fg));
@@ -1236,10 +1229,11 @@ fn title_style_stays_red_for_errored_subagent() {
     let theme = default_theme();
 
     // When computing title style.
-    let style = entry_title_style(&style_entry(false, true, true), false, &theme);
+    let style = entry_title_style(&style_entry(false, true, true), &theme);
 
-    // Then error red outranks the subagent color.
-    assert_eq!(style.fg, Some(Color::Red));
+    // Then error red outranks the subagent color: a red block, not red text.
+    assert_eq!(style.bg, Some(Color::Red));
+    assert_eq!(style.fg, Some(theme.gutter_bg));
 }
 
 #[rstest::rstest]
@@ -3209,6 +3203,109 @@ fn an_unchanged_frame_rebuilds_the_tree_only_once() {
     );
 }
 
+/// State holding a parent session and an attendant whose trigger decides
+/// whether the paused marker shows.
+///
+/// An attendant is born paused (`Manual` trigger, `Seed` activation), so the
+/// not-paused configuration is set explicitly.
+fn state_with_attendant_on_trigger(trigger: jinn_attendant_msg::AttendantTrigger) -> AppState {
+    let mut state = AppState::default_with_scope_focus();
+    let parent = state.session.active_session().clone();
+    let mut attendant = ChatSessionState::new_attendant(&parent, true);
+    attendant.set_title("reviewer".to_owned());
+    attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+    attendant.set_attendant_trigger(trigger);
+    state.session.insert(attendant);
+    state
+}
+
+/// The id of the attendant in `state`, whichever trigger it carries.
+fn attendant_id(state: &AppState) -> jinn_core_types::SessionId {
+    state
+        .session
+        .iter()
+        .find(|(_, session)| session.is_attendant())
+        .map(|(id, _)| id.clone())
+        .expect("an attendant session")
+}
+
+/// Whether the sessions tree marks any attendant as paused.
+fn any_attendant_paused(state: &AppState) -> bool {
+    sorted_open_sessions(state)
+        .iter()
+        .any(|entry| entry.is_attendant_paused)
+}
+
+#[rstest::rstest]
+fn changing_an_attendant_trigger_refreshes_the_sessions_tree() {
+    // Given a section that has already rendered a frame with an attendant
+    // set to trigger on its own, so no paused marker is owed.
+    let mut section = SessionsSection::new();
+    let mut state =
+        state_with_attendant_on_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+    {
+        let slices = jinn_slices::Slices::new();
+        let overlay_views = jinn_slices::OverlayViews::new();
+        section.content_height(&RenderCtx::new_with_default_config(
+            &state,
+            &slices,
+            &overlay_views,
+        ));
+    }
+    let after_first = section.rebuilds();
+    assert!(
+        !any_attendant_paused(&state),
+        "an auto-triggered attendant is not paused"
+    );
+
+    // When the trigger is committed and the section asks for its height again.
+    let id = attendant_id(&state);
+    state
+        .session
+        .get_mut(&id)
+        .expect("the attendant")
+        .set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::Manual);
+    {
+        let slices = jinn_slices::Slices::new();
+        let overlay_views = jinn_slices::OverlayViews::new();
+        section.content_height(&RenderCtx::new_with_default_config(
+            &state,
+            &slices,
+            &overlay_views,
+        ));
+    }
+
+    // Then the tree is rebuilt, because the key summarises the paused flag.
+    assert!(
+        section.rebuilds() > after_first,
+        "a trigger change must invalidate the memoized tree"
+    );
+    // And the tree the section is now caching marks the attendant paused.
+    assert!(
+        any_attendant_paused(&state),
+        "a manually triggered attendant is paused"
+    );
+}
+
+#[rstest::rstest]
+fn the_sessions_list_key_summarizes_the_paused_flag() {
+    // Given a state whose attendant is set to trigger on its own.
+    let running =
+        state_with_attendant_on_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+    let running_key = crate::sections::sessions::state::session_list_key(&running);
+
+    // When the same attendant's trigger is committed as manual.
+    let mut paused = state_with_attendant_on_trigger(jinn_attendant_msg::AttendantTrigger::Manual);
+    let paused_key = crate::sections::sessions::state::session_list_key(&paused);
+
+    // Then the two keys differ, so a pause-state change can never be a
+    // cache hit and leave the marker stale.
+    assert_ne!(
+        running_key, paused_key,
+        "the memo key must summarize the flag the tree reads"
+    );
+}
+
 #[rstest::rstest]
 fn height_and_render_agree_on_the_session_count() {
     // Given a sessions section and state with several sessions.
@@ -3734,4 +3831,210 @@ mod navigation_preview_requests {
             emitted.message_names
         );
     }
+}
+
+#[rstest::rstest]
+fn a_selected_session_row_bands_the_full_width() {
+    // Given the sessions section focused on its first row.
+    let mut section = SessionsSection::new();
+    let mut state = state_with_sessions(1);
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+    state
+        .frontend
+        .update_sections(|s| s.sessions.selected_index = Some(0));
+    let theme = state.frontend.theme.clone();
+
+    // When rendering into a wide terminal.
+    let width = 60u16;
+    let height = 10u16;
+    let (mut terminal, area) = setup_term(width, height);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            section.render(frame, area, 0, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer();
+
+    // Then the selected row carries the selection background...
+    let selected_y = (0..height).find(|&y| {
+        (0..width).any(|x| {
+            buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.bg == theme.selection_bg)
+        })
+    });
+    let Some(y) = selected_y else {
+        panic!("no selected row with a selection band rendered");
+    };
+    // ...across the full width, including cells past the last character.
+    let last_banded_x = (0..width)
+        .filter(|&x| {
+            buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.bg == theme.selection_bg)
+        })
+        .max();
+    assert_eq!(
+        last_banded_x,
+        Some(width.saturating_sub(1)),
+        "the band must reach the row's last cell"
+    );
+    // And the band's text is the sidebar background.
+    let text_cell = buffer.cell((4, y)).expect("a text cell on the band");
+    assert_eq!(text_cell.fg, theme.gutter_bg);
+}
+
+#[rstest::rstest]
+fn no_sidebar_session_row_carries_the_reversed_modifier() {
+    // Given the sessions section focused on its first row — the only
+    // selection state there is.
+    let mut section = SessionsSection::new();
+    let mut state = state_with_sessions(1);
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+    state
+        .frontend
+        .update_sections(|s| s.sessions.selected_index = Some(0));
+
+    // When rendering.
+    let width = 40u16;
+    let height = 10u16;
+    let (mut terminal, area) = setup_term(width, height);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            section.render(frame, area, 0, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer();
+
+    // Then no cell in the whole section carries the terminal inversion.
+    let reversed = (0..height).any(|y| {
+        (0..width).any(|x| {
+            buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.modifier.contains(ratatui::style::Modifier::REVERSED))
+        })
+    });
+    assert!(!reversed, "selection is a color band, never REVERSED");
+}
+
+/// A state with one session whose last entry is an error.
+///
+/// The error goes into the *default* active session so the row's title stays
+/// the default's, keeping the test's expectations about which row carries
+/// the error simple.
+fn state_with_errored_session() -> AppState {
+    let mut state = state_with_sessions(1);
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::error("it broke"));
+    state
+}
+
+#[rstest::rstest]
+fn an_unselected_error_row_is_a_red_block() {
+    // Given an errored session with no cursor on the sessions list.
+    let mut section = SessionsSection::new();
+    let state = state_with_errored_session();
+    let theme = state.frontend.theme.clone();
+
+    // When rendering.
+    let width = 40u16;
+    let height = 10u16;
+    let (mut terminal, area) = setup_term(width, height);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            section.render(frame, area, 0, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer();
+
+    // Then the errored row renders as a red block: red background with the
+    // sidebar background as the text color — an inversion of the panel, not
+    // red text on dark.
+    let error_y = (0..height)
+        .find(|&y| {
+            (0..width).any(|x| {
+                buffer
+                    .cell((x, y))
+                    .is_some_and(|cell| cell.bg == Color::Red)
+            })
+        })
+        .unwrap_or_else(|| panic!("no red block rendered"));
+    let text: String = (0..width)
+        .filter_map(|x| buffer.cell((x, error_y)).map(ratatui::buffer::Cell::symbol))
+        .collect();
+    let title_at = text
+        .find("Untitled Session")
+        .expect("error row title visible");
+    let title_cell = buffer
+        .cell((u16::try_from(title_at).unwrap_or(0), error_y))
+        .expect("title cell");
+    assert_eq!(title_cell.fg, theme.gutter_bg);
+    assert_eq!(title_cell.bg, Color::Red);
+}
+
+#[rstest::rstest]
+fn a_selected_error_row_takes_the_selection_band_not_red() {
+    // Given the sessions cursor on the errored session — the one session.
+    let mut section = SessionsSection::new();
+    let mut state = state_with_errored_session();
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+    state
+        .frontend
+        .update_sections(|s| s.sessions.selected_index = Some(0));
+    let theme = state.frontend.theme.clone();
+
+    // When rendering.
+    let width = 40u16;
+    let height = 10u16;
+    let (mut terminal, area) = setup_term(width, height);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            section.render(frame, area, 0, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer();
+
+    // Then the selected errored row is the selection band — selection
+    // overrides the error block, whose red background is nowhere on the row.
+    let band_y = (0..height)
+        .find(|&y| {
+            (0..width).any(|x| {
+                buffer
+                    .cell((x, y))
+                    .is_some_and(|cell| cell.bg == theme.selection_bg)
+            })
+        })
+        .unwrap_or_else(|| panic!("no selection band rendered"));
+    let red_on_band = (0..width).any(|x| {
+        buffer
+            .cell((x, band_y))
+            .is_some_and(|cell| cell.bg == Color::Red)
+    });
+    assert!(!red_on_band, "selection overrides the error red block");
+    let text: String = (0..width)
+        .filter_map(|x| buffer.cell((x, band_y)).map(ratatui::buffer::Cell::symbol))
+        .collect();
+    assert!(
+        text.contains("Untitled Session"),
+        "the selected band row is the errored session: {text}"
+    );
 }

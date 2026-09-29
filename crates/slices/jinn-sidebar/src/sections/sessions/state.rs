@@ -31,6 +31,7 @@ pub struct SessionListKey {
     parent_id: Option<SessionId>,
     is_subagent: bool,
     is_attendant: bool,
+    is_attendant_paused: bool,
     has_live_term: bool,
     is_in_flight: bool,
 }
@@ -69,6 +70,9 @@ impl SessionListKey {
             parent_id: session.parent_session().clone(),
             is_subagent: session.origin() == SessionOrigin::Subagent,
             is_attendant: session.is_attendant(),
+            // Same expression the tree build uses, so the key and the tree
+            // cannot disagree about whether the paused marker should render.
+            is_attendant_paused: session.is_attendant() && session.attendant_is_paused(),
             has_live_term,
             is_in_flight,
         }

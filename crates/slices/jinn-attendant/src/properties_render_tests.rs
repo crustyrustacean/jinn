@@ -16,7 +16,7 @@ use jinn_slices::RenderFacts;
 use jinn_slices::cell::TypedCell;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
-use ratatui::layout::{Position, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::Color;
 use unicode_segmentation::UnicodeSegmentation;
 

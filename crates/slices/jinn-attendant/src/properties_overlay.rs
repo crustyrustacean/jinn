@@ -219,8 +219,6 @@ struct PropertiesLayout {
     /// The cursor's column within the row, measured from the window's start
     /// (the draft is left-aligned in its window, so the two are equal).
     cursor_offset: u16,
-    /// The body row the form cursor is on, relative to the inner top.
-    focused_row: u16,
 }
 
 /// Computes the draft window and cursor column for `popup` inside `inner`.
@@ -245,13 +243,7 @@ fn properties_layout(popup: &AttendantPropertiesState, inner: Rect) -> Propertie
         .get(..draft.cursor_pos)
         .map_or(total, |before| before.graphemes(true).count());
     let window_start = window_start(total, cursor_index, window_width);
-    let focused_row = match popup.focus {
-        PropertyField::Trigger => 0,
-        PropertyField::Activation => 1,
-        PropertyField::SeedTemplate => 2,
-    };
     PropertiesLayout {
-        focused_row,
         template_y: inner.y.saturating_add(rows_above),
         window_width,
         window_start,

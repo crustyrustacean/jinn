@@ -927,3 +927,69 @@ fn long_content_is_truncated_to_fit_area_width() {
         "long content should be truncated with ellipsis: {combined}"
     );
 }
+
+#[rstest::rstest]
+fn a_selected_pin_row_bands_the_full_width_with_a_dark_chip_and_banded_badge() {
+    // Given a pinned entry with the section's cursor on it, sidebar focused
+    // on Pins.
+    let state = state_with_pinned(1);
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Pins.focus_scope());
+    state
+        .frontend
+        .scope_set_sidebar_section(jinn_sidebar_msg::SidebarSectionId::Pins);
+    let theme = state.frontend.theme.clone();
+
+    // When rendering wide.
+    let mut section = PinsSection;
+    let width = 50u16;
+    let height = 10u16;
+    let (mut terminal, area) = setup_term(width, height);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            section.render(frame, area, 0, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer();
+
+    // Then the selected row carries the band...
+    let band_y = (0..height)
+        .find(|&y| {
+            (0..width).any(|x| {
+                buffer
+                    .cell((x, y))
+                    .is_some_and(|cell| cell.bg == theme.selection_bg)
+            })
+        })
+        .unwrap_or_else(|| panic!("no selection band rendered"));
+    let last_banded_x = (0..width)
+        .filter(|&x| {
+            buffer
+                .cell((x, band_y))
+                .is_some_and(|cell| cell.bg == theme.selection_bg)
+        })
+        .max();
+    assert_eq!(
+        last_banded_x,
+        Some(width.saturating_sub(1)),
+        "the band must reach the row's last cell"
+    );
+    // And the chip cell at column 0 stays on the dark sidebar background.
+    let chip = buffer.cell((0, band_y)).expect("chip cell");
+    assert_eq!(chip.bg, theme.gutter_bg, "the chip cell stays dark");
+    assert_eq!(chip.symbol(), "\u{2588}", "the chip glyph is the block");
+    // And the badge inside the row takes the band rather than its own color.
+    let text: String = (0..width)
+        .filter_map(|x| buffer.cell((x, band_y)).map(ratatui::buffer::Cell::symbol))
+        .collect();
+    let badge_at = text.find("[TOP]").expect("badge visible");
+    let badge_cell = buffer
+        .cell((u16::try_from(badge_at).unwrap_or(0), band_y))
+        .expect("badge cell");
+    assert_eq!(badge_cell.bg, theme.selection_bg);
+    assert_eq!(badge_cell.fg, theme.gutter_bg);
+}

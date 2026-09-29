@@ -18,6 +18,7 @@ pub mod pins;
 pub mod rename_input;
 pub mod resize;
 pub mod section_trait;
+pub mod session_row_style;
 pub mod sessions;
 pub mod sidebar;
 pub mod sidebar_state_actor;

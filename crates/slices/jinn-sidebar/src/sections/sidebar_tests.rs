@@ -1352,14 +1352,18 @@ fn render_sidebar_rows(
         .collect()
 }
 
-/// The row index of the reversed (selected) entry line, if the sidebar drew one.
+/// The row index of the selected entry line, if the sidebar drew one.
+///
+/// Finds the row by its selection band — the shared `selected_row_style`
+/// background — because that band is what selection *is* now.
 fn selected_row(terminal: &Terminal<TestBackend>, width: u16, height: u16) -> Option<u16> {
     let buffer = terminal.backend().buffer();
+    let theme = jinn_theme::default_theme();
     (0..height).find(|&y| {
         (0..width).any(|x| {
             buffer
                 .cell((x, y))
-                .is_some_and(|cell| cell.modifier.contains(ratatui::style::Modifier::REVERSED))
+                .is_some_and(|cell| cell.bg == theme.selection_bg)
         })
     })
 }
