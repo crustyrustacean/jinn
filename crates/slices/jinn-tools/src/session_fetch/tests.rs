@@ -11,7 +11,7 @@ use std::sync::Mutex;
 
 use error_stack::Report;
 
-use crate::session_fetch::{definition, execute};
+use crate::session_fetch::{FetchMode, definition, execute, parse_args};
 use crate::tool_types::ToolContext;
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::{ToolCall, ToolResult};
@@ -264,8 +264,10 @@ async fn transcript_renders_header_and_positioned_lines() {
         content.contains("session \"migrate auth flow\" (0199aaaa-0000-7000-8000-000000000009) — entries 408–409 of 1204"),
         "{content}"
     );
-    assert!(content.contains("[408] user:"), "{content}");
-    assert!(content.contains("[409] assistant:"), "{content}");
+    assert!(content.contains("#408 ("), "{content}");
+    assert!(content.contains("user:"), "{content}");
+    assert!(content.contains("#409 ("), "{content}");
+    assert!(content.contains("assistant:"), "{content}");
 }
 
 #[rstest::rstest]
@@ -314,7 +316,7 @@ async fn excluded_entry_is_flagged() {
     assert!(
         result
             .content
-            .contains("[412] tool_result [excluded from context]:"),
+            .contains("tool_result [excluded from context]:"),
         "{}",
         result.content
     );
@@ -346,7 +348,7 @@ async fn oversized_entry_text_is_elided_with_note() {
     let line = result
         .content
         .lines()
-        .find(|l| l.starts_with("[1] assistant:"))
+        .find(|l| l.starts_with("#1 (") && l.contains("assistant:"))
         .expect("entry line");
     assert!(line.len() < 2_100, "line len {}", line.len());
 }
@@ -466,9 +468,40 @@ async fn outer_truncated_result_carries_full_content() {
 
     // And the untruncated transcript is carried in full_content.
     let full = result.full_content.expect("full content");
-    assert!(full.contains("[80] user:"), "full content has the tail");
+    assert!(full.contains("#80 ("), "full content has the tail");
+    assert!(full.contains("user:"), "full content has the tail line");
     assert!(
-        !result.content.contains("[80] user:"),
+        !result.content.contains("#80 ("),
         "clipped content does not"
     );
+}
+
+#[rstest::rstest]
+fn a_positional_label_is_rejected_rather_than_resolved_as_an_entry_id() {
+    // Given the bracketed position label the output prints, e.g. "[0] user: hi".
+    let args = r#"{"entry_id": "0", "session_id": "s-1"}"#;
+
+    // When the arguments are parsed.
+    let parsed = parse_args(args);
+
+    // Then parsing refuses, because that label is a rendered position and
+    // positions shift as a session grows. Silently looking one up turns a
+    // readable position into a wrong entry in some other session, which is
+    // the exact confusion the label invites.
+    assert!(
+        parsed.is_err(),
+        "a bare position must not be accepted as an entry id"
+    );
+}
+
+#[rstest::rstest]
+fn a_search_hit_anchor_is_accepted() {
+    // Given an entry id copied verbatim from a session_search hit.
+    let args = r#"{"entry_id": "e-7f3a0000-0000-7000-8000-000000000001"}"#;
+
+    // When the arguments are parsed.
+    let parsed = parse_args(args);
+
+    // Then it parses as an anchored read.
+    assert!(matches!(parsed, Ok((_, FetchMode::Anchored { .. }))));
 }
