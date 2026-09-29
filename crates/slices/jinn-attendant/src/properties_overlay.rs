@@ -12,7 +12,8 @@
 //! cursor. The shared row assembly lives in [`properties_view`].
 
 use jinn_attendant_msg::{
-    AttendantPropertiesState, PickDirection, PropertyField, attendant_seed_template_scope,
+    AttendantPropertiesState, PickDirection, PopupStatus, PropertyField,
+    attendant_seed_template_scope,
 };
 use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{
@@ -36,11 +37,13 @@ type AttendantPropertiesCell = TypedCell<AttendantPropertiesState>;
 const POPUP_H_PAD_FRAC: f32 = 0.20;
 /// Minimum popup width in cells.
 const POPUP_MIN_WIDTH: u16 = 44;
-/// Popup content height: three field rows, one footer line.
+/// Popup content height: three field rows, the status line, one footer line.
 ///
 /// The help text is an overlay rather than a row in the form, so moving the
-/// cursor no longer reflows the popup and this is a constant.
-const POPUP_CONTENT_ROWS: u16 = 4;
+/// cursor no longer reflows the popup and this is a constant. The status
+/// line is a row: it holds a message, and a message that reflowed the form
+/// would move the fields out from under the cursor as it typed.
+const POPUP_CONTENT_ROWS: u16 = 5;
 
 /// The help card's surface: a light panel that reads as an overlay on top
 /// of the terminal rather than part of the form inside it.
@@ -300,8 +303,80 @@ fn properties_view<'a>(
     ] {
         lines.push(field_line(popup, field, theme, layout));
     }
-    lines.push(footer_line(popup.focus, popup.save_armed, theme));
+    lines.push(status_line(popup, theme));
+    lines.push(footer_line(popup.focus, theme));
     lines
+}
+
+/// The status line: what the last key did, in the tone that fits.
+///
+/// The line is always rendered, empty when there is nothing to say, so the
+/// popup's fields never move up or down as messages come and go.
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "the status line is read directly by the slice's tests"
+    )
+)]
+pub(crate) fn status_line(
+    popup: &AttendantPropertiesState,
+    theme: &jinn_theme::Theme,
+) -> Line<'static> {
+    let (text, color) = match &popup.status {
+        None => (String::new(), theme.muted_text),
+        Some(jinn_attendant_msg::PopupStatus::OverwriteArmed { name }) => (
+            format!("Overwrite “{name}”? Press ctrl-s again to replace it."),
+            theme.warning,
+        ),
+        Some(jinn_attendant_msg::PopupStatus::Saved { name }) => {
+            (format!("Saved “{name}”."), theme.success)
+        }
+        Some(jinn_attendant_msg::PopupStatus::SaveFailed { reason }) => {
+            (reason.clone(), theme.error_text)
+        }
+    };
+    Line::from(Span::styled(text, Style::default().fg(color)))
+}
+
+/// One hint as (key, description) — the keys the focused field responds to.
+fn hints(focus: PropertyField) -> Vec<(&'static str, &'static str)> {
+    let mut hints = match focus {
+        PropertyField::Trigger | PropertyField::Activation => {
+            vec![("h/l", "pick"), ("j/k", "field")]
+        }
+        PropertyField::SeedTemplate => vec![("i", "edit"), ("j/k", "field")],
+    };
+    hints.push(("?", "help"));
+    // The save hint is only true while the name is savable, and the popup
+    // is what tells the user an attendant has no name yet — so the key is
+    // advertised on the form and the status line explains the one case
+    // where pressing it will not save.
+    hints.push(("<c-s>", "save"));
+    hints
+}
+
+/// The footer: the keys that work on the focused field.
+///
+/// Key glyphs carry the theme's `accent_action` — the hotkey accent every
+/// other panel's hints use — and the descriptions stay muted, so the key a
+/// user is about to press is the part that stands out.
+fn footer_line(focus: PropertyField, theme: &jinn_theme::Theme) -> Line<'static> {
+    let key_style = Style::default().fg(theme.accent_action);
+    let text_style = Style::default().fg(theme.muted_text);
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let entries = hints(focus)
+        .into_iter()
+        .chain([("<enter>", "apply"), ("<esc>", "cancel")])
+        .collect::<Vec<_>>();
+    for (index, (key, label)) in entries.into_iter().enumerate() {
+        if index > 0 {
+            spans.push(Span::styled(" · ".to_owned(), text_style));
+        }
+        spans.push(Span::styled(key.to_owned(), key_style));
+        spans.push(Span::styled(format!(" {label}"), text_style));
+    }
+    Line::from(spans)
 }
 
 /// One field row: focused marker + yellow label, then the value spans.
@@ -540,25 +615,6 @@ fn help_overlay(
     Some((area, lines))
 }
 
-/// The footer: the keys that work on the focused field.
-fn footer_line(focus: PropertyField, armed: bool, theme: &jinn_theme::Theme) -> Line<'static> {
-    let mut keys = match focus {
-        PropertyField::Trigger | PropertyField::Activation => {
-            "h/l pick · j/k field · ? help".to_owned()
-        }
-        PropertyField::SeedTemplate => "i edit · j/k field · ? help".to_owned(),
-    };
-    // An armed overwrite is the one state the user must be told about: the
-    // next `<c-s>` destroys the entry under this name, and the footer is
-    // the only place that says so before they press it.
-    keys.push_str(if armed {
-        " · <c-s> OVERWRITE? press again to replace"
-    } else {
-        " · <c-s> save · <enter> apply · <esc> cancel"
-    });
-    Line::from(Span::styled(keys, Style::default().fg(theme.muted_text)))
-}
-
 /// Builds the popup's input hook: typed keys edit the seed template draft.
 ///
 /// Registered against the seed-template editor's scope (the properties
@@ -568,6 +624,10 @@ pub fn attendant_properties_input_hook(cell: &AttendantPropertiesCell) -> InputH
     let cell = cell.clone();
     std::sync::Arc::new(move |intent: &EditIntent| {
         let cell = cell.clone();
+        // Typing is a keystroke like any other; the status line describes
+        // the last one, and an armed-overwrite message must not outlive
+        // the keystroke that was supposed to follow it.
+        cell.update(AttendantPropertiesState::clear_status);
         match intent {
             EditIntent::InsertChar(ch) => {
                 cell.update(|s| s.seed_template.insert_char(*ch));
@@ -618,12 +678,22 @@ fn app<'a>(ctx: &'a mut ActionCtx<'_>) -> Option<&'a mut jinn_kernel::AppState> 
 }
 
 /// Wraps a popup action in an [`ActionFn`], handing it the cell.
+///
+/// Every row's action starts by clearing the status line, so the line
+/// always describes the most recent keystroke and nothing else. Doing it
+/// here rather than in each action is what makes that true: a row added
+/// later inherits the rule instead of having to remember it, and an action
+/// that reports — the save — writes its message after the clear and keeps
+/// it.
 fn action<F>(cell: &AttendantPropertiesCell, f: F) -> ActionFn
 where
     F: Fn(&mut ActionCtx<'_>, &AttendantPropertiesCell) -> IntentResult + Send + Sync + 'static,
 {
     let cell = cell.clone();
-    ActionFn::new(move |mut ctx| f(&mut ctx, &cell))
+    ActionFn::new(move |mut ctx| {
+        cell.update(AttendantPropertiesState::clear_status);
+        f(&mut ctx, &cell)
+    })
 }
 
 /// Builds an own-scope row for one of the popup's scopes.
@@ -774,9 +844,11 @@ pub fn attach_properties_rows(routes: &KeyRoutes, cell: &AttendantPropertiesCell
 /// single stray key should not be able to replace it.
 ///
 /// A session with no title cannot be saved: the title *is* the entry's
-/// identity, and a session that never received a submission has none. The
-/// refusal is surfaced in the attendant's own log — a silent no-op would
-/// read as a broken key.
+/// identity, and a session that never received a submission has none.
+///
+/// Every outcome is reported on the popup's status line, including the
+/// refusals. A key that does nothing looks like a broken key, and the
+/// popup is the surface the user is looking at when they press one.
 fn save_attendant(ctx: &mut ActionCtx<'_>, cell: &AttendantPropertiesCell) -> IntentResult {
     let popup = cell.read().clone();
     let Some(attendant_id) = popup.session_id.clone() else {
@@ -796,47 +868,94 @@ fn save_attendant(ctx: &mut ActionCtx<'_>, cell: &AttendantPropertiesCell) -> In
         .filter(|t| !t.is_empty())
         .map(str::to_owned)
     else {
-        return refuse_save(attendant_id);
+        return refuse_save(attendant_id, cell);
     };
 
     // The layer reads the live document, so a name collision is a property
     // of what is on disk rather than of anything this popup cached.
-    let mut entries = config
-        .get_list::<jinn_preferences_config::schemas::AttendantEntryConfig>()
-        .unwrap_or_default();
-    if entries.iter().any(|existing| existing.name == name) && !popup.save_armed {
-        cell.update(|p| p.arm_save());
+    // A malformed list is not an empty list: saving on top of it would
+    // replace the user's entries with just this one, and the collision
+    // check would have seen nothing. Read failures refuse the save.
+    let mut entries =
+        match config.get_list::<jinn_preferences_config::schemas::AttendantEntryConfig>() {
+            Ok(entries) => entries,
+            Err(error) => {
+                tracing::warn!(err = ?error, "failed to read the saved attendants");
+                cell.update(|p| {
+                    p.report(PopupStatus::SaveFailed {
+                        reason: "Cannot save: jinn.toml's saved attendants could not be read."
+                            .to_owned(),
+                    });
+                });
+                return IntentResult::empty();
+            }
+        };
+    let collides = entries.iter().any(|existing| existing.name == name);
+    if collides && !popup.save_armed {
+        let armed = name.clone();
+        cell.update(|p| {
+            p.arm_save();
+            p.report(PopupStatus::OverwriteArmed { name: armed });
+        });
         return IntentResult::empty();
     }
 
-    let entry = crate::saved_entry::entry_for_session(name, session);
+    let entry = crate::saved_entry::entry_for_session(name.clone(), session);
     entries.retain(|existing| existing.name != entry.name);
     entries.push(entry);
     if let Err(error) =
         config.put_list::<jinn_preferences_config::schemas::AttendantEntryConfig>(&entries)
     {
         tracing::warn!(err = ?error, "failed to save the attendant to jinn.toml");
+        let reason = format!("Could not save “{name}” — {}", describe_write_error(&error));
+        cell.update(|p| p.report(PopupStatus::SaveFailed { reason }));
         return IntentResult::empty();
     }
 
     // Committed: the arm has served its purpose, and a saved attendant is
     // unarmed whether or not the popup closes.
-    cell.update(|p| p.disarm_save());
+    let saved = name;
+    cell.update(|p| {
+        p.disarm_save();
+        p.report(PopupStatus::Saved { name: saved });
+    });
     IntentResult::empty()
 }
 
-/// Tells the attendant why it was not saved, in its own chat log.
+/// The user-facing half of a config write failure.
+///
+/// The report's own chain carries the path and the cause for a log reader;
+/// the popup has room for one clause, and "the file could not be written"
+/// is the part a user can act on.
+fn describe_write_error(error: &error_stack::Report<jinn_config::ConfigError>) -> String {
+    match error.current_context() {
+        jinn_config::ConfigError::Storage { .. } => "jinn.toml could not be written.".to_owned(),
+        _ => "jinn.toml could not be updated.".to_owned(),
+    }
+}
+
+/// Tells the attendant why it was not saved, in its own chat log, and says
+/// the same thing on the popup's status line.
 ///
 /// The popup targets a highlighted session that is not necessarily the
-/// active one, so the line goes to the attendant itself — a refusal
+/// active one, so the chat line goes to the attendant itself — a refusal
 /// written into some other session's log would be both invisible and
-/// misleading.
-fn refuse_save(attendant_id: jinn_core_types::SessionId) -> IntentResult {
+/// misleading. The status line is here because the popup covers the chat
+/// log while it is open, and the user pressing `<c-s>` is looking at the
+/// popup, not behind it.
+fn refuse_save(
+    attendant_id: jinn_core_types::SessionId,
+    cell: &AttendantPropertiesCell,
+) -> IntentResult {
+    const REASON: &str = "This attendant has no name yet — send it a message first.";
+    cell.update(|p| {
+        p.report(PopupStatus::SaveFailed {
+            reason: format!("Cannot save: {REASON}"),
+        });
+    });
     IntentResult::empty().with_message(jinn_session_history_msg::PushChatEntry {
         session_id: attendant_id,
-        entry: jinn_core_types::ChatEntry::error(
-            "Cannot save: this attendant has no title yet — send it a message first.",
-        ),
+        entry: jinn_core_types::ChatEntry::error(format!("Cannot save: {REASON}")),
         pin: None,
     })
 }

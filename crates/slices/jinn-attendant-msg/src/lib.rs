@@ -12,8 +12,8 @@ mod saved_picker;
 
 pub use crate::activation::{AttendantActivation, AttendantContextPolicy, AttendantTrigger};
 pub use crate::properties::{
-    ACTIVATION_CHOICES, AttendantPropertiesState, OriginalValues, PickDirection, PropertyField,
-    TRIGGER_CHOICES, attendant_properties_scope, attendant_properties_slot,
+    ACTIVATION_CHOICES, AttendantPropertiesState, OriginalValues, PickDirection, PopupStatus,
+    PropertyField, TRIGGER_CHOICES, attendant_properties_scope, attendant_properties_slot,
     attendant_seed_template_scope, pick_activation, pick_trigger,
 };
 pub use crate::report::AttendantReport;

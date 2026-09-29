@@ -13,9 +13,10 @@ use std::sync::Arc;
 
 use jinn_app_state::AppState;
 use jinn_attendant_msg::{
-    AttendantPropertiesState, OriginalValues, attendant_properties_scope, attendant_properties_slot,
+    AttendantPropertiesState, OriginalValues, PopupStatus, attendant_properties_scope,
+    attendant_properties_slot,
 };
-use jinn_config::{ConfigLayer, ConfigList, InMemoryConfigStorage};
+use jinn_config::{ConfigLayer, InMemoryConfigStorage};
 use jinn_core_types::{ChatEntry, PinPosition, SessionId};
 use jinn_preferences_config::schemas::AttendantEntryConfig;
 use jinn_session_state::ChatSessionState;
@@ -67,6 +68,8 @@ impl SaveFixture {
             .expect("unclaimed slot");
         let routes = KeyRoutes::new();
         attach_properties_rows(&routes, &cell);
+        crate::properties_overlay::attach_seed_template_rows(&routes, &cell);
+        crate::properties_overlay::register_seed_template_input_hook(&routes, &cell);
         attach_seed_template_rows(&routes, &cell);
         Self {
             state,
@@ -129,6 +132,22 @@ impl SaveFixture {
             self.state.frontend.scope_pop();
         }
         result
+    }
+
+    /// Seeds the document with an entry already saved under `name`, as a
+    /// previous run of this attendant would have left it.
+    fn presaved(&mut self, name: &str) {
+        let mut session = self
+            .state
+            .session
+            .get(&self.attendant_id)
+            .expect("attendant")
+            .clone();
+        session.set_title(name.to_owned());
+        let entry = crate::saved_entry::entry_for_session(name.to_owned(), &session);
+        self.config
+            .put_list::<AttendantEntryConfig>(&[entry])
+            .expect("the fixture document is always writable");
     }
 
     /// The saved entries, read back from the document.
@@ -406,4 +425,183 @@ fn the_save_key_binds_on_the_properties_scope_only() {
         1,
         "the save key must bind once in the popup: {keys:?}"
     );
+}
+
+// ── The status line ────────────────────────────────────────────────
+
+#[rstest::rstest]
+#[test]
+fn an_armed_overwrite_is_announced_on_the_status_line() {
+    // Given an open popup over a saved attendant, with the same name
+    // already in the document.
+    let mut fx = SaveFixture::new(Some("nightly"));
+    fx.presaved("nightly");
+    fx.open();
+
+    // When saving onto the existing entry.
+    fx.press("attendant-properties-save");
+
+    // Then the status line asks before replacing it.
+    assert_eq!(
+        fx.cell.read().status,
+        Some(PopupStatus::OverwriteArmed {
+            name: "nightly".to_owned()
+        })
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn a_committed_save_is_announced_on_the_status_line() {
+    // Given an open popup over a new attendant.
+    let mut fx = SaveFixture::new(Some("nightly"));
+    fx.open();
+
+    // When saving.
+    fx.press("attendant-properties-save");
+
+    // Then the status line says it saved.
+    assert_eq!(
+        fx.cell.read().status,
+        Some(PopupStatus::Saved {
+            name: "nightly".to_owned()
+        })
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn an_untitled_refusal_is_announced_on_the_status_line() {
+    // Given an open popup over an attendant with no title.
+    let mut fx = SaveFixture::new(None);
+    fx.open();
+
+    // When saving.
+    fx.press("attendant-properties-save");
+
+    // Then the status line says why nothing was saved.
+    match fx.cell.read().status.clone() {
+        Some(PopupStatus::SaveFailed { reason }) => {
+            assert!(
+                reason.contains("no name"),
+                "the reason is legible: {reason}"
+            );
+        }
+        other => panic!("the line reports a refusal: {other:?}"),
+    }
+}
+
+#[rstest::rstest]
+#[test]
+fn a_moving_the_cursor_clears_the_status_line() {
+    // Given a popup whose last key armed an overwrite.
+    let mut fx = SaveFixture::new(Some("nightly"));
+    fx.open();
+    fx.press("attendant-properties-save");
+    assert!(fx.cell.read().status.is_some());
+
+    // When moving to the next field.
+    fx.press("attendant-properties-field-next");
+
+    // Then the line is empty — it described the last key, not the popup.
+    assert_eq!(fx.cell.read().status, None);
+}
+
+#[rstest::rstest]
+#[test]
+fn typing_in_the_template_editor_clears_the_status_line() {
+    // Given a popup whose last key armed an overwrite, with the editor
+    // open over the seed template.
+    let mut fx = SaveFixture::new(Some("nightly"));
+    fx.open();
+    fx.press("attendant-properties-save");
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-edit-template");
+    fx.press("attendant-properties-save");
+    assert!(fx.cell.read().status.is_some());
+
+    // When typing in the editor.
+    let hook = crate::properties_overlay::attendant_properties_input_hook(&fx.cell);
+    hook(&jinn_slices::EditIntent::InsertChar('x'));
+
+    // Then the line is empty.
+    assert_eq!(fx.cell.read().status, None);
+}
+
+#[rstest::rstest]
+#[test]
+fn the_status_line_uses_the_tone_that_matches_the_outcome() {
+    // Given a popup, a theme, and one state per outcome.
+    let theme = jinn_theme::default_theme();
+    let armed = AttendantPropertiesState {
+        status: Some(PopupStatus::OverwriteArmed {
+            name: "nightly".to_owned(),
+        }),
+        ..AttendantPropertiesState::default()
+    };
+    let saved = AttendantPropertiesState {
+        status: Some(PopupStatus::Saved {
+            name: "nightly".to_owned(),
+        }),
+        ..AttendantPropertiesState::default()
+    };
+    let refused = AttendantPropertiesState {
+        status: Some(PopupStatus::SaveFailed {
+            reason: "no".to_owned(),
+        }),
+        ..AttendantPropertiesState::default()
+    };
+
+    // When rendering each line.
+    let line =
+        |popup: &AttendantPropertiesState| crate::properties_overlay::status_line(popup, &theme);
+
+    // Then each is in its outcome's theme color.
+    let color = |popup: &AttendantPropertiesState| {
+        line(popup)
+            .spans
+            .first()
+            .and_then(|span| span.style.fg)
+            .expect("the line is styled as one span")
+    };
+    assert_eq!(color(&armed), theme.warning);
+    assert_eq!(color(&saved), theme.success);
+    assert_eq!(color(&refused), theme.error_text);
+}
+
+#[rstest::rstest]
+#[test]
+fn a_malformed_document_refuses_the_save_rather_than_replacing_the_list() {
+    // Given a document whose entry names a trigger variant that does not
+    // exist, so the list cannot be read back.
+    let malformed = r#"
+[[attendant.entry]]
+name = "nightly"
+trigger = "parent-completed"
+"#;
+    let doc = format!("# user's own comment\n{malformed}")
+        .parse()
+        .expect("parses");
+    let mut fx = SaveFixture::new(Some("nightly"));
+    fx.config = ConfigLayer::load(Arc::new(InMemoryConfigStorage::new(doc))).expect("loads");
+    fx.open();
+
+    // When pressing the save key.
+    fx.press("attendant-properties-save");
+
+    // Then the popup says the save failed, rather than reporting
+    // success for a write that would have replaced the unreadable
+    // entries with just this one.
+    assert!(
+        matches!(fx.cell.read().status, Some(PopupStatus::SaveFailed { .. })),
+        "the popup reports the failed save, got {:?}",
+        fx.cell.read().status
+    );
+    // And the document still holds the entry the save must not have
+    // clobbered.
+    let after = fx
+        .config
+        .get_list::<jinn_preferences_config::schemas::AttendantEntryConfig>();
+    assert!(after.is_err(), "the document is left as the user wrote it");
 }

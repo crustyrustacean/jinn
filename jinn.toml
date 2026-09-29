@@ -346,6 +346,52 @@ settle_quiet_ms = 400
 # > like `htop` that may update more frequently than the settle_quiet_ms.
 settle_max_wait_ms = 3000
 
+[attendant]
+
+[[attendant.entry]]
+activation = "reset"
+disabled_skills = ["phased-task-loop"]
+disabled_tools = ["bash", "edit", "get_time", "grep", "interactive_term", "interactive_term_kill", "interactive_term_send", "openrouter:web_search", "read", "restart_mcp_server", "save_plan", "skill", "task", "todo_get_list", "todo_set_list", "todo_set_phase", "write"]
+name = "count hellos"
+pins = [{ context_history = [], context_override = "default", id = "01a0eefb-b6c8-71a1-80e4-a9554506614d", kind = { User = { display = """
+count the number of hellos in the parent session. use the `report` tool to indicate how many hellos. format for `report`:
+```
+hellos: <count>
+```""", expanded = """
+count the number of hellos in the parent session. use the `report` tool to indicate how many hellos. format for `report`:
+```
+hellos: <count>
+```""" } }, pin_position = "Relative", timing = { Instant = { at = "2026-09-29T07:18:22.551522849Z" } }, token_count = 39 }, { context_history = [], context_override = "default", id = "01a0eefb-b6cd-7502-a075-2c236526dec3", kind = { User = { display = "sup", expanded = "sup" } }, pin_position = "Relative", timing = { Instant = { at = "2026-09-29T19:20:35.449046392Z" } }, token_count = 1 }]
+reasoning_effort = "high"
+seed_template = "The previous run of this attendant reported: <prior report>."
+trigger = "parent_completed"
+
+[attendant.entry.model]
+single = "openrouter/stealth/space-bunny-alpha"
+
+[[attendant.entry]]
+activation = "seed"
+disabled_skills = ["phased-task-loop"]
+disabled_tools = ["bash", "edit", "get_time", "grep", "interactive_term", "interactive_term_kill", "interactive_term_send", "openrouter:web_search", "read", "restart_mcp_server", "save_plan", "skill", "task", "todo_get_list", "todo_set_list", "todo_set_phase", "write"]
+name = "count hello"
+pins = [{ context_history = [], context_override = "default", id = "01a0ec07-6457-7052-a1f9-a4f9539b44bf", kind = { User = { display = """
+count the number of hellos in the parent session. use the `report` tool to indicate how many hellos. format for `report`:
+```
+hellos: <count>
+```""", expanded = """
+count the number of hellos in the parent session. use the `report` tool to indicate how many hellos. format for `report`:
+```
+hellos: <count>
+```""" } }, pin_position = "Relative", timing = { Instant = { at = "2026-09-29T07:18:22.551522849Z" } }, token_count = 39 }, { context_history = [], context_override = "default", id = "01a0ee9c-9979-7224-ba94-38443d2ec09a", kind = { User = { display = "sup", expanded = "sup" } }, pin_position = "Relative", timing = { Instant = { at = "2026-09-29T19:20:35.449046392Z" } }, token_count = 1 }]
+reasoning_effort = "high"
+seed_template = "The previous run of this attendant reported: <prior report>."
+trigger = "manual"
+
+[attendant.entry.model]
+single = "openrouter/stealth/space-bunny-alpha"
+
+[entry]
+
 # ###########################################################################
 # Context curation
 # ###########################################################################

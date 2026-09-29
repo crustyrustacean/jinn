@@ -19,7 +19,7 @@ use jinn_attendant_msg::{
     AttendantActivation, AttendantSavedPickerState, AttendantTrigger, attendant_saved_picker_scope,
     attendant_saved_picker_slot,
 };
-use jinn_config::{ConfigLayer, ConfigList, InMemoryConfigStorage};
+use jinn_config::{ConfigLayer, InMemoryConfigStorage};
 use jinn_core_types::{ChatEntry, PinPosition, SessionId};
 use jinn_preferences_config::schemas::AttendantEntryConfig;
 use jinn_session_state::ChatSessionState;
@@ -503,4 +503,131 @@ fn no_other_saved_picker_key_collides_with_the_opener() {
     // Then the opener is the only one — two rows on one key makes which
     // stroke win depend on attach order.
     assert_eq!(collisions, 1);
+}
+
+// ── What the picker shows ──────────────────────────────────────────
+
+#[rstest::rstest]
+#[test]
+fn a_row_shows_only_the_saved_attendants_name() {
+    // Given a document whose entry carries a full run configuration.
+    let mut fx = PickerFixture::new(vec![configured_entry("nightly")]);
+    fx.open();
+
+    // When rendering the highlighted row.
+    let row = actions::saved_row(
+        &actions::summaries_of(&[configured_entry("nightly")])[0],
+        &jinn_picker::RowCtx::flat(true, &[]),
+    );
+
+    // Then the row is the name and nothing else — no activation, trigger,
+    // or pin count to read past.
+    assert_eq!(row.spans.len(), 1);
+    assert_eq!(row.spans[0].content, "nightly");
+}
+
+#[rstest::rstest]
+#[test]
+fn a_row_leaves_the_text_color_to_the_widget() {
+    // Given a saved attendant and a row context.
+    let entry = actions::summaries_of(&[configured_entry("nightly")]);
+
+    // When rendering its row, unselected and selected.
+    let contexts = [
+        jinn_picker::RowCtx::flat(false, &[]),
+        jinn_picker::RowCtx::flat(true, &[]),
+    ];
+    let colors: Vec<_> = contexts
+        .iter()
+        .map(|ctx| actions::saved_row(&entry[0], ctx).spans[0].style.fg)
+        .collect();
+
+    // Then neither sets a foreground — the widget's own colors apply, and
+    // only the selection's reverse-video marker is added.
+    assert_eq!(colors, vec![None, None]);
+}
+
+#[rstest::rstest]
+#[test]
+fn the_status_line_counts_every_saved_attendant() {
+    // Given a document holding two saved attendants.
+    let mut fx = PickerFixture::new(vec![
+        configured_entry("nightly"),
+        configured_entry("watcher"),
+    ]);
+    fx.open();
+    let theme = jinn_theme::default_theme();
+
+    // When reading the status line.
+    let line = crate::saved_picker_render::saved_status(&fx.cell.read(), &theme);
+
+    // Then it counts them.
+    assert_eq!(line.spans[0].content, "2 saved attendants");
+}
+
+#[rstest::rstest]
+#[test]
+fn the_status_line_ignores_the_filter() {
+    // Given a picker over two saved attendants.
+    let mut fx = PickerFixture::new(vec![
+        configured_entry("nightly"),
+        configured_entry("watcher"),
+    ]);
+    fx.open();
+
+    // When typing a filter that matches only one of them.
+    let hook = crate::saved_picker_routes::filter_input_hook(&fx.cell);
+    for ch in "watch".chars() {
+        hook(&jinn_slices::EditIntent::InsertChar(ch));
+    }
+    assert_eq!(fx.cell.read().selection.filtered_count(), 1);
+
+    // Then the count still reads the document's total, not the matches.
+    let theme = jinn_theme::default_theme();
+    let line = crate::saved_picker_render::saved_status(&fx.cell.read(), &theme);
+    assert_eq!(line.spans[0].content, "2 saved attendants");
+}
+
+#[rstest::rstest]
+#[test]
+fn the_picker_binds_its_keys_in_the_hotkey_accent() {
+    // Given the picker's palette under the default theme.
+    let theme = jinn_theme::default_theme();
+    let palette = crate::saved_picker_render::saved_picker_palette(&theme);
+
+    // Then the key glyphs carry the theme's keybind accent, not the
+    // attendant's own color.
+    assert_eq!(palette.accent_action, theme.accent_action);
+}
+
+#[rstest::rstest]
+#[test]
+fn a_malformed_document_says_so_instead_of_looking_empty() {
+    // Given a document whose entry names a trigger variant that does not
+    // exist — the entries are hand-editable, so a typo is likely.
+    let malformed = r#"
+[[attendant.entry]]
+name = "nightly"
+activation = "reset"
+trigger = "parent-completed"
+"#;
+    let doc = format!("# user's own comment\n{malformed}")
+        .parse()
+        .expect("parses");
+    let config = ConfigLayer::load(Arc::new(InMemoryConfigStorage::new(doc))).expect("loads");
+    let mut fx = PickerFixture::new(vec![]);
+    fx.config = config;
+
+    // When opening the picker.
+    fx.open();
+
+    // Then the session's log says the list could not be parsed, so an
+    // empty picker is not mistaken for having nothing saved.
+    let logged = fx.active().history();
+    assert!(
+        logged
+            .iter()
+            .any(|entry| entry.text().contains("could not be parsed")),
+        "the log names the unreadable list, got: {logged:?}"
+    );
 }

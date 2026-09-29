@@ -29,7 +29,9 @@ pub fn saved_picker_palette(theme: &jinn_theme::Theme) -> jinn_picker::Palette {
         footer: ratatui::style::Color::DarkGray,
         highlight_bg: ratatui::style::Color::DarkGray,
         muted_text: theme.muted_text,
-        accent_action: theme.attendant_fg,
+        // The hotkey accent, as every other picker's keybind line uses:
+        // the key glyphs are keys, not attendant content.
+        accent_action: theme.accent_action,
         popup_title: theme.popup_title,
         primary_text: theme.primary_text,
     }
@@ -84,16 +86,21 @@ pub fn render_saved_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFact
     widget.render(frame, area);
 }
 
-/// The picker's status line: how many saved attendants the document holds.
-fn saved_status(state: &AttendantSavedPickerState, theme: &jinn_theme::Theme) -> Line<'static> {
-    let total = state.selection.filtered_count();
-    if total == 0 {
-        return Line::from(
-            "no saved attendants — press <c-s> in an attendant's properties to save one",
-        )
-        .style(Style::default().fg(theme.muted_text));
-    }
-    let index = state.selection.selection().saturating_add(1);
-    Line::from(format!("{index} of {total} saved attendants"))
-        .style(Style::default().fg(theme.muted_text))
+/// The picker's status line: how many attendants the document holds.
+///
+/// The total is deliberately the unfiltered count — how many attendants
+/// exist is a property of `jinn.toml`, not of the half-typed filter, and a
+/// count that shrinks as you type reads as attendants being deleted.
+/// Where the highlight sits is already the list widget's own business.
+pub(crate) fn saved_status(
+    state: &AttendantSavedPickerState,
+    theme: &jinn_theme::Theme,
+) -> Line<'static> {
+    let total = state.selection.items().len();
+    let noun = if total == 1 {
+        "attendant"
+    } else {
+        "attendants"
+    };
+    Line::from(format!("{total} saved {noun}")).style(Style::default().fg(theme.muted_text))
 }

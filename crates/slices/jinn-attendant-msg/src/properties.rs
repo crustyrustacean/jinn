@@ -201,6 +201,37 @@ pub struct AttendantPropertiesState {
     /// `<c-c>`, a committed save), so an armed popup can never leak an
     /// armed state into the next one.
     pub save_armed: bool,
+    /// The popup's one-line status, shown under the form.
+    ///
+    /// Holds what the last key did: a save that wrote, a save that was
+    /// refused, an overwrite waiting on its second stroke. The form has no
+    /// other way to answer a key — the session is only written by
+    /// `<enter>`, and a save that armed would otherwise be invisible.
+    ///
+    /// Cleared by the next keystroke, so the line always describes the most
+    /// recent thing that happened rather than accumulating a history of
+    /// things that did.
+    pub status: Option<PopupStatus>,
+}
+
+/// What the popup's status line reports.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PopupStatus {
+    /// An overwrite is armed; the next `<c-s>` replaces the entry.
+    OverwriteArmed {
+        /// The name whose entry is about to be replaced.
+        name: String,
+    },
+    /// A save wrote the attendant to `jinn.toml`.
+    Saved {
+        /// The name the attendant was saved under.
+        name: String,
+    },
+    /// A save did not happen, and this is why.
+    SaveFailed {
+        /// The reason, in the user's terms.
+        reason: String,
+    },
 }
 
 impl AttendantPropertiesState {
@@ -285,5 +316,20 @@ impl AttendantPropertiesState {
     /// Disarms the overwrite, after a committed save.
     pub fn disarm_save(&mut self) {
         self.save_armed = false;
+    }
+
+    /// Replaces the status line's message.
+    pub fn report(&mut self, status: PopupStatus) {
+        self.status = Some(status);
+    }
+
+    /// Clears the status line.
+    ///
+    /// Called on every keystroke that is not itself a status-producing one:
+    /// the line describes the most recent key, so a message about an armed
+    /// overwrite must not still be claiming the next `<c-s>` is waiting
+    /// after the user has moved on.
+    pub fn clear_status(&mut self) {
+        self.status = None;
     }
 }

@@ -9,9 +9,7 @@
 
 use std::sync::Arc;
 
-use jinn_attendant_msg::{
-    AttendantSavedPickerState, SavedAttendantSummary, attendant_saved_picker_scope,
-};
+use jinn_attendant_msg::{AttendantSavedPickerState, attendant_saved_picker_scope};
 use jinn_preferences_config::schemas::AttendantEntryConfig;
 use jinn_slices::KeyRoutes;
 use jinn_slices::RouteId;
@@ -19,6 +17,7 @@ use jinn_slices::RouteResult as IntentResult;
 use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{
     ActionCtx, ActionFn, BindSite, EditIntent, InputHook, RouteOutcome, RouteRow, ScopeSignal,
+    SliceActionState,
 };
 
 use crate::saved_picker_actions;
@@ -181,6 +180,12 @@ enum Nav {
 /// The composition keymap turns this registration into the scope's
 /// printable-character catch-all plus the editing keys.
 pub fn register_saved_picker_input_hook(routes: &KeyRoutes, cell: &SavedPickerCell) {
+    routes.register_input_hook(&attendant_saved_picker_scope(), filter_input_hook(cell));
+}
+
+/// The filter's editing hook, exposed so a test can type into the filter
+/// without going through a keymap.
+pub(crate) fn filter_input_hook(cell: &SavedPickerCell) -> InputHook {
     let owned = cell.clone();
     let hook: InputHook = Arc::new(move |intent: &EditIntent| {
         owned.update(|picker| match intent {
@@ -196,7 +201,7 @@ pub fn register_saved_picker_input_hook(routes: &KeyRoutes, cell: &SavedPickerCe
         });
         Some(IntentResult::empty())
     });
-    routes.register_input_hook(&attendant_saved_picker_scope(), hook);
+    hook
 }
 
 /// Opens the picker over whatever `jinn.toml` holds *now*.
@@ -204,24 +209,28 @@ pub fn register_saved_picker_input_hook(routes: &KeyRoutes, cell: &SavedPickerCe
 /// The read happens here, at open, rather than at activation: a hand edit
 /// to the document must show up on the next `<leader>sa` without a
 /// restart, and a cell that cached its entries at boot could not.
+///
+/// A document this slice cannot parse opens an empty picker *and says so
+/// in the session's log*. The entries are hand-editable, so a typo is
+/// likely, and an empty list is indistinguishable from "you have not saved
+/// any" — a silent read failure would have the user hunting for a save
+/// that happened.
 fn open_saved_picker(ctx: &mut ActionCtx<'_>, cell: &SavedPickerCell) -> IntentResult {
-    let entries = ctx
-        .config
-        .get_list::<AttendantEntryConfig>()
-        .unwrap_or_default();
-    let summaries = entries.iter().map(summary_of).collect();
+    let entries = match ctx.config.get_list::<AttendantEntryConfig>() {
+        Ok(entries) => entries,
+        Err(error) => {
+            tracing::warn!(err = ?error, "failed to read the saved attendants");
+            if let Some(state) = app(ctx) {
+                state.push_session_error(
+                    "Could not read saved attendants from jinn.toml — the [[attendant.entry]] list could not be parsed. See the log for the offending entry.",
+                );
+            }
+            Vec::new()
+        }
+    };
+    let summaries = saved_picker_actions::summaries_of(&entries);
     cell.update(|picker| saved_picker_actions::open(picker, summaries));
     IntentResult::empty().with_scope_signal(ScopeSignal::Push(attendant_saved_picker_scope()))
-}
-
-/// The picker's view of one config entry.
-fn summary_of(entry: &AttendantEntryConfig) -> SavedAttendantSummary {
-    SavedAttendantSummary {
-        name: entry.name.clone(),
-        activation: entry.activation,
-        trigger_label: crate::saved_entry::trigger_label(entry.trigger),
-        pin_count: entry.pins.len(),
-    }
 }
 
 /// `<enter>`: create the highlighted saved attendant on the active session.
@@ -237,13 +246,22 @@ fn confirm_saved_picker(ctx: &mut ActionCtx<'_>, cell: &SavedPickerCell) -> Inte
     // The entry is re-read from the live document rather than carried in
     // the cell: the cell holds a display summary, and creating from a
     // summary would be creating from a rendering.
-    let Some(entry) = ctx
-        .config
-        .get_list::<AttendantEntryConfig>()
-        .unwrap_or_default()
-        .into_iter()
-        .find(|entry| entry.name == name)
-    else {
+    // The re-read reports like the open does: an entry that listed fine a
+    // moment ago and does not now was edited under the popup, and creating
+    // nothing without a word would look like the picker is broken.
+    let entries = match ctx.config.get_list::<AttendantEntryConfig>() {
+        Ok(entries) => entries,
+        Err(error) => {
+            tracing::warn!(err = ?error, "failed to re-read the saved attendants");
+            if let Some(state) = app(ctx) {
+                state.push_session_error(
+                    "Could not read jinn.toml to create that attendant — the [[attendant.entry]] list could not be parsed.",
+                );
+            }
+            return IntentResult::empty();
+        }
+    };
+    let Some(entry) = entries.into_iter().find(|entry| entry.name == name) else {
         return IntentResult::empty();
     };
     let Some(state) = app(ctx) else {

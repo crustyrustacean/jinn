@@ -7,16 +7,16 @@
 
 use jinn_attendant_msg::{AttendantSavedPickerState, SavedAttendantSummary};
 use jinn_picker::{PickerItemHooks, make_items_with_hooks};
-use ratatui::style::Color;
+use jinn_preferences_config::schemas::AttendantEntryConfig;
 use ratatui::text::{Line, Span};
 
-/// Renders one picker row: the entry's name, then its activation and
-/// trigger in the muted tone, with the pin count when it has pins.
+/// Renders one picker row: the saved attendant's name, in the ordinary
+/// text color the widget draws with.
 ///
-/// The detail is on the row rather than in a preview pane because two saved
-/// attendants are almost always told apart by exactly this — a reset
-/// reviewer with three pinned instructions and a manual one with none are
-/// different attendants wearing similar names.
+/// The name is the whole row. The picker answers "which of the attendants I
+/// saved do I want", and the name is how the user knows which is which;
+/// the run configuration every row would show is the same shape on all of
+/// them, and reading it before choosing is a second thing to do.
 #[must_use]
 pub fn saved_row(entry: &SavedAttendantSummary, ctx: &jinn_picker::RowCtx<'_>) -> Line<'static> {
     let base = if ctx.is_selected {
@@ -24,28 +24,21 @@ pub fn saved_row(entry: &SavedAttendantSummary, ctx: &jinn_picker::RowCtx<'_>) -
     } else {
         ratatui::style::Style::default()
     };
-    let mut spans = vec![Span::styled(entry.name.clone(), base.fg(Color::Cyan))];
-    spans.push(Span::styled(
-        format!(" · {} · {}", activation_label(entry), entry.trigger_label),
-        base.fg(Color::DarkGray),
-    ));
-    if entry.pin_count > 0 {
-        spans.push(Span::styled(
-            format!(" · {} pinned", entry.pin_count),
-            base.fg(Color::DarkGray),
-        ));
-    }
-    Line::from(spans)
+    Line::from(Span::styled(entry.name.clone(), base))
 }
 
-/// The activation's own word, matching the properties popup's labels.
+/// The picker's rows' payload, built from the document's entries.
+///
+/// The summary is the name and nothing else: the picker creates an
+/// attendant, it does not describe one.
 #[must_use]
-pub fn activation_label(entry: &SavedAttendantSummary) -> &'static str {
-    match entry.activation {
-        jinn_attendant_msg::AttendantActivation::Seed => "seed",
-        jinn_attendant_msg::AttendantActivation::Reset => "reset",
-        jinn_attendant_msg::AttendantActivation::Preserve => "preserve",
-    }
+pub fn summaries_of(entries: &[AttendantEntryConfig]) -> Vec<SavedAttendantSummary> {
+    entries
+        .iter()
+        .map(|entry| SavedAttendantSummary {
+            name: entry.name.clone(),
+        })
+        .collect()
 }
 
 /// Builds the picker's rows from the live configuration entries.

@@ -12,7 +12,6 @@
 //! close the loop into a cycle. The summary also keeps the cell renderable
 //! without a `jinn.toml` read on every frame.
 
-use crate::AttendantActivation;
 use jinn_slices::SlotKey;
 
 /// The `attendant/saved-picker` slot: the saved-attendants picker's state.
@@ -33,19 +32,17 @@ pub fn attendant_saved_picker_scope() -> jinn_slices::slice_scope::SliceScopeId 
 /// after opening the picker pages the same way it always has.
 pub const RESULTS_VIEWPORT_FALLBACK: usize = 20;
 
-/// One row in the saved-attendants picker: the entry's identity plus the
-/// two facts that tell two saved attendants apart at a glance.
+/// One row in the saved-attendants picker.
+///
+/// The name is the whole entry: it is what the row shows, and it is the
+/// key the created attendant is looked up by. The run configuration the
+/// entry carries is not summarized here — the picker creates an attendant,
+/// it does not describe one, and a row that previewed a configuration the
+/// user cannot change from this popup is a second thing to read.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SavedAttendantSummary {
     /// The entry's name — also the title the created attendant is given.
     pub name: String,
-    /// How the created attendant's context is prepared per run.
-    pub activation: AttendantActivation,
-    /// The condition that re-runs the created attendant.
-    pub trigger_label: String,
-    /// How many pinned entries the entry carries, so a user can tell an
-    /// instruction-bearing attendant from a bare one.
-    pub pin_count: usize,
 }
 
 /// State for the saved-attendants picker.

@@ -9,7 +9,7 @@
 )]
 
 use jinn_attendant_msg::{
-    AttendantActivation, AttendantPropertiesState, AttendantTrigger, PropertyField,
+    AttendantActivation, AttendantPropertiesState, AttendantTrigger, PopupStatus, PropertyField,
     attendant_properties_slot,
 };
 use jinn_slices::RenderFacts;
@@ -803,4 +803,49 @@ fn highlighted_row_of(buffer: &ratatui::buffer::Buffer, field: PropertyField) ->
         }
     }
     panic!("no row for {field:?}");
+}
+
+#[rstest::rstest]
+#[test]
+fn the_status_line_carries_the_outcome_in_the_themes_status_color() {
+    // Given a popup whose last save was refused.
+    let popup = AttendantPropertiesState {
+        status: Some(PopupStatus::SaveFailed {
+            reason: "Cannot save: jinn.toml's saved attendants could not be read.".to_owned(),
+        }),
+        ..popup_focused(PropertyField::Trigger)
+    };
+
+    // When rendering.
+    let buffer = render_properties(popup);
+
+    // Then the reason is on the popup's own status line.
+    let text = all_text(&buffer);
+    assert!(
+        text.contains("saved attendants could not be read"),
+        "the status line carries the reason: {text}"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn the_status_line_shows_the_overwrite_prompt() {
+    // Given a popup armed to overwrite a name that already exists.
+    let popup = AttendantPropertiesState {
+        status: Some(PopupStatus::OverwriteArmed {
+            name: "nightly".to_owned(),
+        }),
+        ..popup_focused(PropertyField::Trigger)
+    };
+
+    // When rendering.
+    let buffer = render_properties(popup);
+
+    // Then the popup asks which entry it will replace, in the warning
+    // color, rather than announcing a save that has not happened.
+    let row = (0..buffer.area.height)
+        .find(|&y| row_from_border(&buffer, y).contains("Overwrite"))
+        .expect("an overwrite prompt row");
+    let x = find_in_row(&buffer, row, "Overwrite").expect("the prompt's x");
+    assert_eq!(fg_at(&buffer, x, row), jinn_theme::default_theme().warning);
 }
