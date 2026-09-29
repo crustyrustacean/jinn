@@ -1,10 +1,6 @@
 #[cfg(test)]
 mod attendant_msg_tests {
-    #![allow(
-        clippy::expect_used,
-        clippy::unwrap_used,
-        reason = "test code"
-    )]
+    #![allow(clippy::expect_used, clippy::unwrap_used, reason = "test code")]
 
     use jiff::Timestamp;
 
