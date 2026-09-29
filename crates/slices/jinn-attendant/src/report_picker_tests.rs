@@ -22,12 +22,18 @@ fn state_with_attendant(reports: Vec<AttendantReport>) -> (State, jinn_core_type
     let state = State::new(AppState::default_with_scope_focus());
     let id = {
         let mut guard = state.write();
-        let mut attendant = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
+        let parent = ChatSessionState::new();
+        let parent_id = parent.session_id().clone();
+        let mut attendant = ChatSessionState::new_attendant(&parent, true);
         for r in reports {
             attendant.append_attendant_report(r.body);
         }
         let id = attendant.session_id().clone();
+        // The section is scoped to the active session's context, so the
+        // attendant must be installed under a parent that is being read.
+        guard.session.insert(parent);
         guard.session.insert(attendant);
+        guard.session.set_active(parent_id);
         guard
             .frontend
             .update_sections(|s| s.attendant.selected_index = Some(0));
@@ -111,11 +117,9 @@ fn section_rows_exclude_non_attendant_sessions() {
         let mut guard = state.write();
         let parent = ChatSessionState::new();
         let parent_id = parent.session_id().clone();
+        let attendant = ChatSessionState::new_attendant(&parent, true);
         guard.session.insert(parent);
-        guard.session.insert(ChatSessionState::new_attendant(
-            &guard.session.get(&parent_id).expect("parent").clone(),
-            true,
-        ));
+        guard.session.insert(attendant);
         guard.session.set_active(parent_id);
     }
 
