@@ -24,8 +24,7 @@ use unicode_segmentation::UnicodeSegmentation;
 const PRIMARY_TEXT: Color = Color::Rgb(220, 220, 220);
 
 use crate::properties_overlay::{
-    TOOLTIP_BG, TOOLTIP_DESC_FG, TOOLTIP_HEAD_FG, attendant_properties_overlay_rect,
-    render_attendant_properties, render_attendant_seed_template,
+    attendant_properties_overlay_rect, render_attendant_properties, render_attendant_seed_template,
 };
 
 /// Registers the popup's cell on a fresh registry (the cell catalog does
@@ -304,13 +303,13 @@ fn help_overlay_is_hidden_until_question_mark_is_pressed() {
 
 /// Whether a row carries the help card's surface.
 ///
-/// The card has no border of its own and is drawn at the popup's own
-/// width, so the row is a card row when the surface runs from the popup's
-/// left cell across most of its width — a row of surrounding screen is not
-/// card, and a card row is not screen.
+/// The card has no border of its own and is drawn at the popup's own width,
+/// so the row is a card row when the surface runs from the popup's left cell
+/// across most of its width.
 fn row_is_card(buffer: &ratatui::buffer::Buffer, y: u16) -> bool {
+    let theme = jinn_theme::default_theme();
     let card_cells = (inner_left()..inner_left() + 30)
-        .filter(|&x| bg_at(buffer, x, y) == TOOLTIP_BG)
+        .filter(|&x| bg_at(buffer, x, y) == theme.user_block_bg)
         .count();
     card_cells > 25
 }
@@ -696,7 +695,7 @@ fn the_help_card_leaves_the_field_it_describes_readable(#[case] field: PropertyF
 #[case::activation(PropertyField::Activation)]
 #[case::template(PropertyField::SeedTemplate)]
 #[test]
-fn the_help_card_never_covers_the_form_it_describes(#[case] field: PropertyField) {
+fn the_help_card_sits_below_the_form_on_every_field(#[case] field: PropertyField) {
     // Given a popup focused on `field` with the help overlay toggled on.
     let mut popup = popup_focused(field);
     popup.help_visible = true;
@@ -704,17 +703,23 @@ fn the_help_card_never_covers_the_form_it_describes(#[case] field: PropertyField
     // When rendering.
     let buffer = render_properties(popup);
 
-    // Then the card lies wholly off the popup. A multi-row card drawn over
-    // the form would cover a second field's row and answer the wrong
-    // question, and would sit on the popup's own border.
-    let (top, bottom) = tooltip_rows(&buffer);
+    // Then the card is below the popup whatever field it describes. A card
+    // that changes side as the user moves between fields is a card that
+    // jumps under the cursor; a fixed place is what lets a reader find the
+    // next field's help without hunting for it.
+    let (top, _) = tooltip_rows(&buffer);
     let form = attendant_properties_overlay_rect(&buffer.area).expect("popup rect");
-    let overlap = (top..=bottom).any(|y| y >= form.y && y < form.y + form.height);
+    let form_bottom = form.y + form.height - 1;
     assert!(
-        !overlap,
-        "the card (y={top}..{bottom}) must not cover the form (y={}..{})",
-        form.y,
-        form.y + form.height - 1
+        top > form_bottom,
+        "the card (starting y={top}) must sit below the form's last row \
+         (y={form_bottom})"
+    );
+    // And one blank row separates the two, so they never read as one block.
+    assert_eq!(
+        top - form_bottom,
+        2,
+        "one blank row must separate the card from the form"
     );
 }
 
@@ -739,24 +744,64 @@ fn the_tooltip_is_never_positioned_off_screen() {
 
 #[rstest::rstest]
 #[test]
-fn the_tooltip_uses_a_light_background_with_dark_text() {
-    // Given a popup with the help overlay toggled on.
+fn the_help_card_takes_its_colors_from_the_theme() {
+    // Given a popup with the help card toggled on.
+    let theme = jinn_theme::default_theme();
     let mut popup = popup_focused(PropertyField::Activation);
     popup.help_visible = true;
 
     // When rendering.
     let buffer = render_properties(popup);
 
-    // Then the card's body is dark on its light surface, and its header
-    // carries the keybind accent — the two roles are told apart by color,
-    // which is the point of building the card from styled lines.
-    let (top, bottom) = tooltip_rows(&buffer);
-    let x = find_in_row(&buffer, bottom, "preserve").expect("a body line");
-    assert_eq!(bg_at(&buffer, x, bottom), TOOLTIP_BG);
-    assert_eq!(fg_at(&buffer, x, bottom), TOOLTIP_DESC_FG);
+    // Then the card is drawn on the user-message surface, so it belongs to
+    // the app's own palette instead of a white box on a dark screen, and
+    // its body reads in the default text color.
+    let rows = card_row_numbers(&buffer);
+    let (y, x) = rows
+        .iter()
+        .find_map(|&y| find_in_row(&buffer, y, "populate").map(|x| (y, x)))
+        .expect("a description on the card");
+    assert_eq!(bg_at(&buffer, x, y), theme.user_block_bg);
+    assert_eq!(fg_at(&buffer, x, y), theme.primary_text);
+}
+
+#[rstest::rstest]
+#[test]
+fn a_listed_choice_is_green_like_the_forms_own_selected_choice() {
+    // Given the activation card.
+    let theme = jinn_theme::default_theme();
+    let mut popup = popup_focused(PropertyField::Activation);
+    popup.help_visible = true;
+
+    // When rendering.
+    let buffer = render_properties(popup);
+
+    // Then the choice's name wears the same green the field's own selected
+    // choice does, so the card and the form agree on which words are
+    // selectable and which are explanation.
+    let (row, x) = card_row_numbers(&buffer)
+        .iter()
+        .find_map(|&y| find_in_row(&buffer, y, "preserve").map(|x| (y, x)))
+        .expect("the preserve choice");
+    assert_eq!(fg_at(&buffer, x, row), theme.attendant_option_active);
+}
+
+#[rstest::rstest]
+#[test]
+fn the_help_card_names_the_field_in_the_focus_accent() {
+    // Given a popup with the help card toggled on.
+    let theme = jinn_theme::default_theme();
+    let mut popup = popup_focused(PropertyField::Activation);
+    popup.help_visible = true;
+
+    // When rendering.
+    let buffer = render_properties(popup);
+
+    // Then the card's header is the field's own label in the focus accent,
+    // so the card is tied to the row it answers for.
+    let (top, _) = tooltip_rows(&buffer);
     let x = find_in_row(&buffer, top, "activation").expect("the header");
-    assert_eq!(bg_at(&buffer, x, top), TOOLTIP_BG);
-    assert_eq!(fg_at(&buffer, x, top), TOOLTIP_HEAD_FG);
+    assert_eq!(fg_at(&buffer, x, top), theme.focus_accent);
 }
 
 #[rstest::rstest]
@@ -820,10 +865,27 @@ fn the_popup_rows_do_not_move_with_the_cursor(#[case] field: PropertyField, #[ca
 /// light background, wherever the overlay landed. The tooltip is laid over
 /// the terminal — including over the popup's own upper rows for a lower
 /// field — so its position cannot be assumed; it is read by color.
+/// Every row carrying the help card's surface, top to bottom.
+///
+/// The card is read by its background: the focused field's row inside the
+/// popup shares the same surface, so a card row is one that is not the
+/// popup's own row.
+fn card_row_numbers(buffer: &ratatui::buffer::Buffer) -> Vec<u16> {
+    let theme = jinn_theme::default_theme();
+    let form = attendant_properties_overlay_rect(&buffer.area).expect("popup rect");
+    (0..buffer.area.height)
+        .filter(|&y| {
+            let on_form = y >= form.y && y < form.y + form.height;
+            let surface = (inner_left()..buffer.area.width)
+                .any(|x| bg_at(buffer, x, y) == theme.user_block_bg);
+            surface && !on_form
+        })
+        .collect()
+}
+
+/// The help card's first and last row.
 fn tooltip_rows(buffer: &ratatui::buffer::Buffer) -> (u16, u16) {
-    let rows: Vec<u16> = (0..buffer.area.height)
-        .filter(|&y| (inner_left()..buffer.area.width).any(|x| bg_at(buffer, x, y) == TOOLTIP_BG))
-        .collect();
+    let rows: Vec<u16> = card_row_numbers(buffer);
     match (rows.first(), rows.last()) {
         (Some(top), Some(bottom)) => (*top, *bottom),
         _ => panic!("no tooltip row carrying the help card's background"),
@@ -953,5 +1015,35 @@ fn every_field_has_a_help_card_even_on_a_short_terminal(#[case] field: PropertyF
     assert!(
         text.contains(field.label()),
         "the card names the field it describes: {text}"
+    );
+}
+
+#[rstest::rstest]
+#[case::activation(PropertyField::Activation, "preserve")]
+#[case::trigger(PropertyField::Trigger, "manual")]
+#[test]
+fn a_listed_choice_is_introduced_by_a_colon(#[case] field: PropertyField, #[case] choice: &str) {
+    // Given the card for a field whose help is a list.
+    let mut popup = popup_focused(field);
+    popup.help_visible = true;
+
+    // When rendering.
+    let buffer = render_properties(popup);
+
+    // Then the choice's name is followed by a colon, so the name reads as a
+    // label for the line after it rather than as one more word in a
+    // sentence.
+    let rows = card_row_numbers(&buffer);
+    let row = rows
+        .iter()
+        .find(|&&y| find_in_row(&buffer, y, choice).is_some())
+        .copied()
+        .expect("the choice's row");
+    let text = row_from_border(&buffer, row);
+    let (_, after) = text.split_once(choice).expect("the choice is on its row");
+    assert!(
+        after.trim_start().starts_with(':'),
+        "the choice must be followed by a colon, got {:?}",
+        after.chars().take(12).collect::<String>()
     );
 }
