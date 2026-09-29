@@ -194,7 +194,7 @@ impl AttendantTriggerActor {
             });
 
             // A trigger respects the mode: it seeds for `Seed`/`Reset` and
-            // carries the existing context for `Continue`, so an unattended
+            // carries the existing context for `Preserve`, so an unattended
             // fire never injects a message the user did not ask for.
             let (entry, reset) = activation::prepare_trigger_run(session);
             let dispatch = entry.map(|entry| {

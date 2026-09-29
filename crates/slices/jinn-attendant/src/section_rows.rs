@@ -33,11 +33,11 @@ pub struct AttendantRow {
 /// viewing one resolves to that parent — which is also what makes an
 /// attendant's siblings visible from inside a sibling.
 #[must_use]
-pub fn attendant_context_of(state: &AppState) -> Option<jinn_core_types::SessionId> {
+pub fn attendant_context_of(state: &AppState) -> jinn_core_types::SessionId {
     let active = state.active_session();
     match active.parent_session() {
-        Some(parent) => Some(parent.clone()),
-        None => Some(active.session_id().clone()),
+        Some(parent) => parent.clone(),
+        None => active.session_id().clone(),
     }
 }
 
@@ -52,9 +52,7 @@ pub fn attendant_context_of(state: &AppState) -> Option<jinn_core_types::Session
 /// question the user did not ask from a screen they are not on.
 #[must_use]
 pub fn attendant_rows(state: &AppState) -> Vec<AttendantRow> {
-    let Some(context) = attendant_context_of(state) else {
-        return Vec::new();
-    };
+    let context = attendant_context_of(state);
     let mut rows: Vec<AttendantRow> = state
         .session
         .iter()

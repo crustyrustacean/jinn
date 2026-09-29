@@ -445,7 +445,7 @@ fn i_on_template_field_pushes_the_editor_scope() {
         jinn_slices::FocusScope::Dynamic(attendant_seed_template_scope())
     );
     // And the pre-editor text was captured (a fresh attendant seeds the
-    // default hypothesis template).
+    // default template).
     let popup = fx.cell.read().clone();
     assert_eq!(
         popup.editor_original,

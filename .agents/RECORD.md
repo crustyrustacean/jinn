@@ -373,14 +373,14 @@ Entries are added or amended **only with human approval**.
 - (attendant) Turn completion is published as `TurnCompleted`, with its outcome derived from the session's last history entry rather than the provider's stop reason.
 - (attendant) A turn that completes after the user already cancelled resolves as cancelled, so a cancelled turn never fires an attendant.
 - (attendant) Attendant rows in the session tree use a dedicated theme token distinct from the error colour.
-- (tools) Cancelling a turn stops every subagent or attendant beneath it, recursively; a fork is a boundary whose own descendants are never cancelled.
+- (tools) Cancelling a turn stops every subagent or attendant beneath it, recursively; a fork is a boundary whose own descendants are never cancelled. The same walk backs a manual attendant re-run, and the automatic trigger deliberately does not use it.
 - (tools) A single Escape cancels nothing — it arms the cancel confirmation; the cascade rides the confirmed second Escape.
 - (tools) The in-flight task-spawn registry exposes both a presence check and a child-list reader, and is the only live source of a session's running subagents.
 - (attendant) The attendant properties popup navigates vim-style: j/k moves between fields and h/l picks a choice in place, with no per-field confirm.
 - (attendant) An attendant properties edit applies every pending value together on enter and discards them on escape or ctrl-c.
 - (attendant) The seed template edits through a rename-style popup sharing the rename popup's capabilities — enter keeps, escape restores, ctrl-c clears or leaves.
 - (ui) The selected option in an attendant properties choice row uses a dedicated attendant-option theme key, distinct from the focus accent.
-- (attendant) An attendant is an ordinary session for storage: `new_attendant` takes a persist flag, and `is_persistable` checks it before every other clause, so a false there is terminal for the session's life.
+- (attendant) An attendant is an ordinary session for storage: it is created with the persist flag set, so it is saved on creation and on every turn, exactly like a subagent's child; `is_persistable` checks the flag before any other clause, so a false there would be terminal for the session's life.
 - (attendant) SqliteSessionStore::save returns Ok for a non-persistable snapshot, so a swallowed save is indistinguishable from success — proof that a session reached a store must assert on store contents, never on the return value.
 - (attendant) The manual re-run (R) and the trigger fire are separate run preparations, not one function with a mode flag: R always seeds through the template and cascades a cancel, while a trigger respects the mode and cancels only the attendant's own turn.
 - (attendant) A manual re-run must drive its own session phase to Idle before dispatching, because the enqueue handler queues any user message arriving while a session is Sending or Streaming.
@@ -389,3 +389,6 @@ Entries are added or amended **only with human approval**.
 - (attendant) The seed template's prior-report placeholder is replaced with a first-run sentence when no report exists, so no run ever dispatches a raw template token.
 - (attendant) The attendants sidebar section is scoped to the active session's parent context, so a parent shows its own attendants and an attendant shows its siblings.
 - (attendant) Field movement in the properties popup clamps at both ends rather than wrapping, so the cursor never silently teleports to the opposite edge.
+- (attendant) Attendant activation modes persist as `seed`, `reset`, and `preserve`; the third was renamed from `continue` to stop colliding with the unrelated `c` key that resumes a session, and no stored session carries the old spelling.
+- (attendant) The default seed template describes the situation rather than prescribing a kind of work, so it reads sensibly for an attendant that is not inspecting code; existing attendants keep their stored template, since the default only fills an absent key.
+- (attendant) The properties popup's default field focus is the first one, so every field stays reachable under clamping navigation.

@@ -72,8 +72,8 @@ pub fn reset_context(session: &mut ChatSessionState) -> Vec<jinn_core_types::Cha
 /// exclusions are worth writing.
 ///
 /// Seeding is unconditional here: a manual re-run is the user asking the
-/// question again, so it always goes through the template. `Continue` mode
-/// governs what the *resume* key does, not this.
+/// question again, so it always goes through the template. `Preserve` mode
+/// governs what an unattended trigger fire does, not this.
 #[must_use]
 pub fn prepare_manual_run(session: &mut ChatSessionState) -> (Option<ChatEntry>, Vec<ChatEntryId>) {
     let reset = if session.attendant_activation() == AttendantActivation::Reset {
@@ -87,7 +87,7 @@ pub fn prepare_manual_run(session: &mut ChatSessionState) -> (Option<ChatEntry>,
 /// Resets the session's context if it is in `Reset` mode, then builds the
 /// seeded run prompt for a *trigger* fire, which respects the mode.
 ///
-/// In `Continue` mode nothing is injected: the existing conversation carries
+/// In `Preserve` mode nothing is injected: the existing conversation carries
 /// an unattended fire, because the user did not ask for a new message this
 /// time. The manual path ([`prepare_manual_run`]) has no such reservation.
 #[must_use]
