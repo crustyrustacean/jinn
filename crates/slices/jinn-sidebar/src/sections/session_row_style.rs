@@ -57,14 +57,14 @@ pub fn chip_span(selected: bool, focused: bool, theme: &Theme) -> Span<'static> 
     )
 }
 
-/// The unstyled cell between the chip and the row's content.
+/// The dark cells between the chip and the row's content.
 ///
-/// Deliberately carries no style: on a selected row it takes the band and
-/// shows the band stopping short of the chip, which is what makes the chip
-/// read as a chip.
+/// Carries the sidebar background explicitly: the selection band would
+/// otherwise paint through the unstyled spaces and run straight into the
+/// content, erasing the gap on exactly the rows it highlights.
 #[must_use]
-pub fn chip_gap() -> Span<'static> {
-    Span::raw("  ")
+pub fn chip_gap(theme: &Theme) -> Span<'static> {
+    Span::styled("  ", Style::default().bg(theme.gutter_bg))
 }
 
 /// Extends a selected row's band to the row's full width.
@@ -171,14 +171,17 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn the_gap_cell_is_an_unstyled_space() {
-        // When the gap span is built.
-        let gap = chip_gap();
+    fn the_gap_cell_is_two_spaces_on_the_dark_background() {
+        // Given the default theme.
+        let theme = jinn_theme::default_theme();
 
-        // Then it is a plain space with no style, so the selection band
-        // paints through it — two cells, keeping a visible gap on both the
-        // dark gutter and the bright band.
+        // When the gap span is built.
+        let gap = chip_gap(&theme);
+
+        // Then it is two spaces whose background is the sidebar's — dark even
+        // on a selected row, so the band visibly stops short of the chip and
+        // a real gap separates chip from content.
         assert_eq!(gap.content, "  ");
-        assert_eq!(gap.style, Style::default());
+        assert_eq!(gap.style.bg, Some(theme.gutter_bg));
     }
 }

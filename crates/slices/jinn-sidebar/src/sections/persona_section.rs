@@ -93,7 +93,7 @@ impl SidebarSection for PersonaSection {
                 let content_width = 3 + persona_name.chars().count();
                 let mut spans = vec![
                     indicator,
-                    crate::sections::session_row_style::chip_gap(),
+                    crate::sections::session_row_style::chip_gap(theme),
                     Span::raw(persona_name),
                 ];
                 if is_selected {

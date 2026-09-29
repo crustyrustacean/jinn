@@ -475,7 +475,7 @@ fn build_entry_list(
         let content_width = 3 + 1 + badge_text.chars().count() + 1;
         let mut spans = vec![
             border,
-            crate::sections::session_row_style::chip_gap(),
+            crate::sections::session_row_style::chip_gap(theme),
             badge,
             Span::raw(capped_content),
         ];

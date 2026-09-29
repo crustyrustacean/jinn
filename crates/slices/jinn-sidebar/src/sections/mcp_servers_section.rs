@@ -218,7 +218,7 @@ impl SidebarSection for McpServersSection {
                     sidebar_focused,
                     theme,
                 );
-                let gap = crate::sections::session_row_style::chip_gap();
+                let gap = crate::sections::session_row_style::chip_gap(theme);
                 // The status label keeps its own color unselected — the state
                 // signal — and yields to the band when the row is selected.
                 let status = if is_selected {

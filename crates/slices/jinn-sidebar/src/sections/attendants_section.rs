@@ -186,7 +186,7 @@ impl crate::sections::section_trait::SidebarSection for AttendantsSection {
                 3 + if row.is_paused { 2 } else { 0 } + 1 + row.name.chars().count();
             let mut row_spans = vec![
                 indicator,
-                crate::sections::session_row_style::chip_gap(),
+                crate::sections::session_row_style::chip_gap(theme),
                 paused,
                 Span::styled(format!(" {}", row.name), name_style),
             ];
