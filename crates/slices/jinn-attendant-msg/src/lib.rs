@@ -34,6 +34,14 @@ pub const PRIOR_REPORT_PLACEHOLDER: &str = "<prior report>";
 /// it, and would read as a question about a report that does not exist.
 pub const NO_PRIOR_REPORT_TEXT: &str = "this is the first run, so there is no prior report";
 
+/// Labels the parent session id that every seed prompt carries.
+///
+/// Appended to the user's own template rather than substituted into it, so
+/// nothing the user typed is reordered or rewritten. An attendant runs in
+/// its own session and has no other way to find the transcript it reports
+/// on — a session-search tool needs an id to search by.
+pub const PARENT_SESSION_HEADER: &str = "The parent session's id is";
+
 /// The seed text a fresh attendant starts with when the user has not written one.
 ///
 /// Describes the situation rather than prescribing a kind of work, so the

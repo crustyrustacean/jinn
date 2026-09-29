@@ -1,6 +1,8 @@
 //! Preparing an attendant's context and dispatching its run.
 
-use jinn_attendant_msg::{AttendantActivation, NO_PRIOR_REPORT_TEXT, PRIOR_REPORT_PLACEHOLDER};
+use jinn_attendant_msg::{
+    AttendantActivation, NO_PRIOR_REPORT_TEXT, PARENT_SESSION_HEADER, PRIOR_REPORT_PLACEHOLDER,
+};
 use jinn_core_types::chat_entry::ChatEntry;
 use jinn_core_types::{ChatEntryId, ContextOverride};
 use jinn_session_state::ChatSessionState;
@@ -12,30 +14,41 @@ use jinn_session_state::ChatSessionState;
 ///   line — the user wrote instructions, the report is additional context.
 /// - With no prior report the placeholder becomes [`NO_PRIOR_REPORT_TEXT`],
 ///   so no run ever dispatches a raw template token.
+/// - `parent_session_id` is appended to every prompt, after the user's own
+///   text. An attendant runs in its own session and cannot otherwise reach
+///   the transcript it reports on; a session-search tool needs an id to
+///   search by.
 /// - An empty template means no injection at all.
 ///
 /// Pure; unit-testable without a session.
 #[must_use]
-pub fn render_seed_text(template: &str, prior_report: Option<&str>) -> Option<String> {
+pub fn render_seed_text(
+    template: &str,
+    prior_report: Option<&str>,
+    parent_session_id: &str,
+) -> Option<String> {
     if template.is_empty() {
         return None;
     }
-    match prior_report {
+    let body = match prior_report {
         // The template asked for the report and there is one.
         Some(prior) if template.contains(PRIOR_REPORT_PLACEHOLDER) => {
-            Some(template.replace(PRIOR_REPORT_PLACEHOLDER, prior))
+            template.replace(PRIOR_REPORT_PLACEHOLDER, prior)
         }
         // The template asked and there is nothing to fold in: a first run
         // says so, rather than handing the model a bare template token.
         None if template.contains(PRIOR_REPORT_PLACEHOLDER) => {
-            Some(template.replace(PRIOR_REPORT_PLACEHOLDER, NO_PRIOR_REPORT_TEXT))
+            template.replace(PRIOR_REPORT_PLACEHOLDER, NO_PRIOR_REPORT_TEXT)
         }
         // The user wrote instructions with no placeholder; a report that
         // exists is additional context appended beneath them.
-        Some(prior) => Some(format!("{template}\n\n{prior}")),
+        Some(prior) => format!("{template}\n\n{prior}"),
         // Nothing to add and nothing to replace.
-        None => Some(template.to_owned()),
-    }
+        None => template.to_owned(),
+    };
+    Some(format!(
+        "{body}\n\n{PARENT_SESSION_HEADER} {parent_session_id}"
+    ))
 }
 
 /// Force-excludes every non-pinned entry in the session's history.
@@ -112,6 +125,10 @@ fn seed_entry(session: &ChatSessionState) -> Option<ChatEntry> {
     let prior = session
         .latest_attendant_report()
         .map(|report| report.body.clone());
-    render_seed_text(session.seed_template(), prior.as_deref())
+    let parent = session
+        .parent_session()
+        .as_ref()
+        .map_or_else(String::new, ToString::to_string);
+    render_seed_text(session.seed_template(), prior.as_deref(), &parent)
         .map(|text| ChatEntry::user_expanded(text.clone(), text))
 }

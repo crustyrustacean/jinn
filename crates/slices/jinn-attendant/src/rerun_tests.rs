@@ -19,13 +19,25 @@ fn state_with_attendant(activation: AttendantActivation) -> (State, jinn_core_ty
     let state = State::new(AppState::default());
     let id = {
         let mut guard = state.write();
-        let mut attendant = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
+        let parent = ChatSessionState::new();
+        let mut attendant = ChatSessionState::new_attendant(&parent, true);
         attendant.set_attendant_activation(activation);
         let id = attendant.session_id().clone();
         guard.session.insert(attendant);
+        guard.session.insert(parent);
         id
     };
     (state, id)
+}
+
+/// The parent id an attendant built by [`state_with_attendant`] reports to.
+fn parent_id_of(state: &State) -> String {
+    let guard = state.read();
+    guard
+        .session
+        .iter()
+        .find(|(_, s)| !s.is_attendant())
+        .map_or_else(String::new, |(_, s)| s.session_id().to_string())
 }
 
 #[rstest::rstest]
@@ -51,7 +63,14 @@ fn rerun_on_a_reset_attendant_dispatches_the_seeded_run() {
     else {
         panic!("seed must be a user entry");
     };
-    assert_eq!(display, "verify: prior finding");
+    assert!(
+        display.starts_with("verify: prior finding"),
+        "the seeded prompt leads with the user's template: {display:?}"
+    );
+    assert!(
+        display.contains(&parent_id_of(&state)),
+        "the seeded prompt names the parent session: {display:?}"
+    );
 }
 
 #[rstest::rstest]
@@ -229,7 +248,14 @@ fn rerun_on_a_preserve_attendant_seeds_through_the_template() {
     else {
         panic!("seed must be a user entry");
     };
-    assert_eq!(display, "verify: prior finding");
+    assert!(
+        display.starts_with("verify: prior finding"),
+        "the seeded prompt leads with the user's template: {display:?}"
+    );
+    assert!(
+        display.contains(&parent_id_of(&state)),
+        "the seeded prompt names the parent session: {display:?}"
+    );
 }
 
 #[rstest::rstest]

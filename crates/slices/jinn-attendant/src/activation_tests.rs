@@ -19,16 +19,20 @@ use jinn_session_state::ChatSessionState;
 
 use crate::activation::{prepare_trigger_run, render_seed_text, reset_context};
 
+/// A stand-in parent id, so the appended line is visible in exact-match
+/// assertions and obvious in the failure output when it changes.
+const PARENT_ID: &str = "parent-1";
+
 #[rstest::rstest]
 #[case(
     "check: <prior report>",
     "the build was green",
-    "check: the build was green"
+    "check: the build was green\n\nThe parent session's id is parent-1"
 )]
 #[case(
     "fixed prompt",
     "the build was green",
-    "fixed prompt\n\nthe build was green"
+    "fixed prompt\n\nthe build was green\n\nThe parent session's id is parent-1"
 )]
 fn seed_rendering_substitutes_or_appends(
     #[case] template: &str,
@@ -38,7 +42,7 @@ fn seed_rendering_substitutes_or_appends(
     // Given a seed template and whatever the prior run reported.
 
     // When the run's seed text is rendered.
-    let rendered = render_seed_text(template, Some(prior));
+    let rendered = render_seed_text(template, Some(prior), PARENT_ID);
 
     // Then the placeholder is substituted, or the report is appended when
     // the template has none.
@@ -50,12 +54,15 @@ fn a_first_run_substitutes_the_no_report_sentence() {
     // Given a template still carrying its placeholder, on the first run.
 
     // When the seed text is rendered with no prior report.
-    let rendered = render_seed_text("check: <prior report>", None).expect("seeds");
+    let rendered = render_seed_text("check: <prior report>", None, PARENT_ID).expect("seeds");
 
     // Then the placeholder becomes a plain first-run sentence. Shipping the
     // raw token would put `<prior report>` in front of the model as if it
     // were the user having asked about a report that does not exist.
-    assert_eq!(rendered, format!("check: {NO_PRIOR_REPORT_TEXT}"));
+    assert_eq!(
+        rendered,
+        format!("check: {NO_PRIOR_REPORT_TEXT}\n\nThe parent session's id is {PARENT_ID}")
+    );
 }
 
 #[rstest::rstest]
@@ -63,8 +70,12 @@ fn no_placeholder_survives_into_a_first_run_prompt() {
     // Given the default template, on the first run.
 
     // When the seed text is rendered.
-    let rendered =
-        render_seed_text(&jinn_attendant_msg::default_seed_template(), None).expect("seeds");
+    let rendered = render_seed_text(
+        &jinn_attendant_msg::default_seed_template(),
+        None,
+        PARENT_ID,
+    )
+    .expect("seeds");
 
     // Then the raw token is gone — a prompt is user-visible, and the token
     // is a template instruction, not something the model should be handed.
@@ -80,12 +91,15 @@ fn a_placeholder_free_template_passes_through_unchanged() {
     // Given a template the user wrote with no placeholder in it.
 
     // When it is rendered on a run with no prior report.
-    let rendered = render_seed_text("count the files in src/", None);
+    let rendered = render_seed_text("count the files in src/", None, PARENT_ID);
 
     // Then it is passed through verbatim. A template that does not ask for
     // the report must not be given one — the substitution is a plain string
     // replace, and there is simply no token to replace.
-    assert_eq!(rendered.as_deref(), Some("count the files in src/"));
+    assert_eq!(
+        rendered.as_deref(),
+        Some("count the files in src/\n\nThe parent session's id is parent-1")
+    );
 }
 
 #[rstest::rstest]
@@ -94,8 +108,8 @@ fn empty_template_injects_nothing() {
     // Given an attendant whose user cleared the seed template.
 
     // When the seed text is rendered, with and without a prior report.
-    let without_prior = render_seed_text("", None);
-    let with_prior = render_seed_text("", Some("a finding"));
+    let without_prior = render_seed_text("", None, PARENT_ID);
+    let with_prior = render_seed_text("", Some("a finding"), PARENT_ID);
 
     // Then neither produces a seed — an empty template means no injection.
     assert_eq!(without_prior, None);
@@ -108,7 +122,7 @@ fn default_template_carries_the_placeholder() {
     // Given the shipped default template.
 
     // When it is rendered against a prior report.
-    let rendered = render_seed_text(&default_seed_template(), Some("finding"));
+    let rendered = render_seed_text(&default_seed_template(), Some("finding"), PARENT_ID);
 
     // Then the placeholder was substituted — the default is usable as-is.
     assert!(rendered.is_some_and(|text| !text.contains(PRIOR_REPORT_PLACEHOLDER)));
@@ -365,7 +379,10 @@ async fn succeeded_parent_turn_fires_its_triggered_attendant() {
     else {
         panic!("seed must be a user entry");
     };
-    assert_eq!(display, "verify: prior finding");
+    assert!(
+        display.starts_with("verify: prior finding"),
+        "the seeded prompt leads with the user's template: {display:?}"
+    );
     // And the attendant's turn is marked automated.
     let s = state.read();
     let attendant = s
@@ -491,9 +508,10 @@ async fn an_attendant_created_after_the_parent_completed_never_fires_retroactive
 async fn manual_rerun_runs_a_late_attendant_even_though_its_trigger_never_fired() {
     // Given an attendant created after its parent completed.
     let state = State::new(AppState::default());
-    let attendant_id = {
+    let (attendant_id, parent_id) = {
         let mut s = state.write();
         let parent = ChatSessionState::new();
+        let parent_id = parent.session_id().clone();
         let mut attendant = ChatSessionState::new_attendant(&parent, true);
         attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
         attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
@@ -501,7 +519,7 @@ async fn manual_rerun_runs_a_late_attendant_even_though_its_trigger_never_fired(
         attendant.set_seed_template("verify: <prior report>".to_owned());
         let id = attendant.session_id().clone();
         s.session.insert(attendant);
-        id
+        (id, parent_id)
     };
 
     // When the user re-runs it with `R`.
@@ -516,7 +534,14 @@ async fn manual_rerun_runs_a_late_attendant_even_though_its_trigger_never_fired(
     else {
         panic!("seed must be a user entry");
     };
-    assert_eq!(display, "verify: late finding");
+    assert!(
+        display.starts_with("verify: late finding"),
+        "the seeded prompt leads with the user's template: {display:?}"
+    );
+    assert!(
+        display.contains(&parent_id.to_string()),
+        "the seeded prompt names the parent session: {display:?}"
+    );
 }
 
 #[rstest::rstest]
@@ -664,7 +689,7 @@ async fn every_sibling_attendant_fires_when_the_parent_turn_succeeds() {
     // When the parent's turn completes successfully.
     harness
         .publish(jinn_session_msg::TurnCompleted {
-            session_id: parent_id,
+            session_id: parent_id.clone(),
             outcome: jinn_session_msg::TurnOutcome::Succeeded,
         })
         .await;
@@ -678,15 +703,16 @@ async fn every_sibling_attendant_fires_when_the_parent_turn_succeeds() {
     // user is silently left waiting on the two that never start.
     assert_eq!(dispatches.len(), 3);
     // And each sibling got its own seeded prompt, not a repeat of one.
+    let parent_label = parent_id.to_string();
     let mut seeded: Vec<String> = dispatches.iter().map(|d| d.entry.text().clone()).collect();
     seeded.sort();
     assert_eq!(
         seeded,
-        vec![
-            "check-0: prior finding".to_owned(),
-            "check-1: prior finding".to_owned(),
-            "check-2: prior finding".to_owned(),
-        ]
+        (0..3)
+            .map(|i| {
+                format!("check-{i}: prior finding\n\nThe parent session's id is {parent_label}")
+            })
+            .collect::<Vec<String>>()
     );
 }
 
@@ -1099,7 +1125,7 @@ async fn a_trigger_on_a_busy_attendant_queues_its_seeded_turn_for_after_the_curr
     // When the parent's turn completes.
     harness
         .publish(jinn_session_msg::TurnCompleted {
-            session_id: parent_id,
+            session_id: parent_id.clone(),
             outcome: jinn_session_msg::TurnOutcome::Succeeded,
         })
         .await;
@@ -1121,7 +1147,9 @@ async fn a_trigger_on_a_busy_attendant_queues_its_seeded_turn_for_after_the_curr
         .collect();
     assert_eq!(
         queued,
-        vec!["seeded: prior".to_owned()],
+        vec![format!(
+            "seeded: prior\n\nThe parent session's id is {parent_id}"
+        )],
         "the seeded turn must wait in the queue behind the running one"
     );
     // And nothing put it in the input box.
@@ -1129,5 +1157,55 @@ async fn a_trigger_on_a_busy_attendant_queues_its_seeded_turn_for_after_the_curr
     assert!(
         draft.is_empty(),
         "a trigger must never put its seeded turn in the input box: {draft:?}"
+    );
+}
+
+#[rstest::rstest]
+fn the_seed_prompt_names_the_parent_session_so_the_attendant_can_search_it() {
+    // Given an attendant whose user template says nothing about its parent.
+    let parent = ChatSessionState::new();
+    let mut attendant = ChatSessionState::new_attendant(&parent, true);
+    attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+    attendant.set_seed_template("Summarise the work.".to_owned());
+
+    // When the seed prompt is built.
+    let (entry, _) = prepare_trigger_run(&mut attendant);
+    let entry = entry.expect("a seed entry");
+
+    // Then the prompt carries the parent's session id. The attendant runs
+    // in its own session and has no way to reach the parent's transcript
+    // without it — a session-search tool needs an id to search by.
+    let parent_id = parent.session_id().to_string();
+    assert!(
+        entry.text().contains(&parent_id),
+        "the seed prompt must name the parent session {}; got {:?}",
+        parent_id,
+        entry.text()
+    );
+}
+
+#[rstest::rstest]
+fn the_parent_session_id_is_appended_rather_than_substituted_into_the_users_template() {
+    // Given a user template that carries its own text.
+    let parent = ChatSessionState::new();
+    let mut attendant = ChatSessionState::new_attendant(&parent, true);
+    attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+    attendant.set_seed_template("Summarise the work.".to_owned());
+    attendant.append_attendant_report("prior finding".to_owned());
+
+    // When the seed prompt is built.
+    let (entry, _) = prepare_trigger_run(&mut attendant);
+    let entry = entry.expect("a seed entry");
+    let text = entry.text();
+
+    // Then the user's own words are intact and the id is appended, so
+    // nothing the user typed is reordered or rewritten.
+    assert!(
+        text.starts_with("Summarise the work."),
+        "the user's template must lead the prompt: {text:?}"
+    );
+    assert!(
+        text.contains(&parent.session_id().to_string()),
+        "the parent id must still be present: {text:?}"
     );
 }
