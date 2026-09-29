@@ -7,11 +7,20 @@
 //! behaviors that shape each run.
 
 pub mod activation;
+pub mod properties_overlay;
+pub mod report_picker_actions;
+pub mod report_picker_render;
+pub mod report_picker_routes;
+pub mod report_picker_viewport;
 pub mod rerun;
+pub mod section_rows;
 pub mod trigger_actor;
 
 #[cfg(test)]
 mod activation_tests;
+
+#[cfg(test)]
+mod report_picker_tests;
 
 #[cfg(test)]
 mod rerun_tests;
@@ -21,6 +30,16 @@ mod trigger_actor_tests;
 
 use jinn_kernel::common::state::State;
 use jinn_slices::SliceHost;
+
+/// The report-history picker's opener, as a dispatchable action.
+///
+/// The attendants section's `s` key needs to open a picker that belongs to
+/// this slice; handing the sidebar this closure keeps the dependency honest
+/// in both directions (the `task_list_picker_opener` precedent).
+#[must_use]
+pub fn report_picker_opener() -> jinn_slices::route::ActionFn {
+    report_picker_routes::report_picker_opener()
+}
 
 /// Activates the attendant slice: spawns the trigger actor.
 ///
@@ -35,4 +54,87 @@ pub fn activate(
         host.system(),
         trigger_actor::AttendantTriggerActorDeps { services, state },
     );
+    activate_properties(host);
+    activate_report_picker(host);
+}
+
+/// Registers the report-history picker: overlay geometry, view, slot, the
+/// navigation and filter rows, and the input hook.
+///
+/// # Panics
+///
+/// Panics if the cell catalog has not run — the picker would render against
+/// an absent cell and paint nothing.
+#[expect(
+    clippy::expect_used,
+    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
+)]
+pub fn activate_report_picker(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
+    let cell = host
+        .slices()
+        .reader::<jinn_attendant_msg::AttendantReportPickerState>(
+            &jinn_attendant_msg::attendant_report_picker_slot(),
+        )
+        .expect("the cell catalog registers the report picker slot before any slice activates");
+
+    let scope = jinn_attendant_msg::attendant_report_picker_scope();
+    host.register_overlay(
+        scope.clone(),
+        std::sync::Arc::new(report_picker_render::report_picker_overlay_rect),
+    );
+    host.register_overlay_selectable(&scope);
+    host.register_overlay_slot(
+        scope.clone(),
+        jinn_attendant_msg::attendant_report_picker_slot(),
+    );
+    host.register_overlay_view(
+        scope,
+        std::sync::Arc::new(report_picker_render::render_report_picker),
+    );
+
+    report_picker_routes::attach_report_picker_rows(host.key_routes(), &cell);
+    report_picker_routes::register_report_picker_input_hook(host.key_routes(), &cell);
+}
+
+/// Registers the properties popup: overlay geometry, view, slot, and the
+/// input hook that routes typed keys into the seed-template editor.
+///
+/// The keybind rows (`P` open, confirm, leave) attach with the sidebar's
+/// rows, in the sessions scope; the popup's own scope holds only the input
+/// hook and the editing keys, so the popup cannot be opened from anywhere
+/// the sidebar does not offer it.
+///
+/// # Panics
+///
+/// Panics if the cell catalog has not run — the popup would render against
+/// an absent cell and paint nothing.
+#[expect(
+    clippy::expect_used,
+    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
+)]
+pub fn activate_properties(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
+    let cell = host
+        .slices()
+        .reader::<jinn_attendant_msg::AttendantPropertiesState>(
+            &jinn_attendant_msg::attendant_properties_slot(),
+        )
+        .expect(
+            "the cell catalog registers the attendant properties slot before any slice activates",
+        );
+
+    let scope = jinn_attendant_msg::attendant_properties_scope();
+    host.register_overlay(
+        scope.clone(),
+        std::sync::Arc::new(properties_overlay::attendant_properties_overlay_rect),
+    );
+    host.register_overlay_selectable(&scope);
+    host.register_overlay_slot(
+        scope.clone(),
+        jinn_attendant_msg::attendant_properties_slot(),
+    );
+    host.register_overlay_view(
+        scope,
+        std::sync::Arc::new(properties_overlay::render_attendant_properties),
+    );
+    properties_overlay::attach_properties_rows(host.key_routes(), &cell);
 }

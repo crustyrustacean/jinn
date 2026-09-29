@@ -27,7 +27,22 @@ pub fn rerun(state: &State, attendant_id: &SessionId) -> Option<RerunOutcome> {
         return None;
     }
     let mut guard = state.write();
-    let session = guard.session.get_mut(attendant_id)?;
+    rerun_in_state(&mut guard, attendant_id)
+}
+
+/// The keybind path: rerun against already-held mutable state.
+///
+/// The sidebar resolves the highlighted row and holds `&mut AppState`; the
+/// trigger actor holds the shared [`State`]. Both run the same sequence, so
+/// both delegate here with whatever access they have.
+pub fn rerun_in_state(
+    state: &mut jinn_kernel::AppState,
+    attendant_id: &SessionId,
+) -> Option<RerunOutcome> {
+    if rerun_blocked_reason_in(state, attendant_id).is_some() {
+        return None;
+    }
+    let session = state.session.get_mut(attendant_id)?;
     let cancel = (session.phase() != PhaseKind::Idle).then(|| CancelStream {
         session_id: attendant_id.clone(),
     });
@@ -47,7 +62,16 @@ pub fn rerun(state: &State, attendant_id: &SessionId) -> Option<RerunOutcome> {
 #[must_use]
 pub fn rerun_blocked_reason(state: &State, attendant_id: &SessionId) -> Option<&'static str> {
     let guard = state.read();
-    let session = guard.session.get(attendant_id)?;
+    rerun_blocked_reason_in(&guard, attendant_id)
+}
+
+/// The keybind path of [`rerun_blocked_reason`], over held state.
+#[must_use]
+pub fn rerun_blocked_reason_in(
+    state: &jinn_kernel::AppState,
+    attendant_id: &SessionId,
+) -> Option<&'static str> {
+    let session = state.session.get(attendant_id)?;
     if !session.is_attendant() {
         Some("not an attendant")
     } else if session.attendant_activation() == AttendantActivation::Seed {

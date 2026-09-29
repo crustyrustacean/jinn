@@ -48,6 +48,7 @@ pub fn register_hints(slices: &jinn_slices::Slices) {
     for section in [
         SidebarSectionId::Pins,
         SidebarSectionId::Persona,
+        SidebarSectionId::Attendant,
         SidebarSectionId::TaskList,
         SidebarSectionId::McpServers,
     ] {
@@ -261,6 +262,12 @@ pub fn draw_floating_surfaces(
         ctx,
     );
     crate::sections::sessions::render_session_preview_for_state(
+        frame,
+        sidebar_rect,
+        frame_area,
+        ctx,
+    );
+    crate::sections::attendants_reports::render_attendant_reports_for_state(
         frame,
         sidebar_rect,
         frame_area,

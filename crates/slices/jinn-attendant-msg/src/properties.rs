@@ -4,6 +4,7 @@
 //! The editable text and cursor live in [`LineInput`] (shared with other
 //! popup inputs); the toggles cycle through their enum variants in place.
 
+use crate::{AttendantActivation, AttendantTrigger};
 use jinn_slices::LineInput;
 use jinn_slices::SlotKey;
 
@@ -11,6 +12,13 @@ use jinn_slices::SlotKey;
 #[must_use]
 pub fn attendant_properties_slot() -> SlotKey {
     SlotKey::builtin("attendant", "properties")
+}
+
+/// The properties popup's dynamic scope (input-capturing when the seed
+/// template editor has focus; plain modal otherwise).
+#[must_use]
+pub fn attendant_properties_scope() -> jinn_slices::slice_scope::SliceScopeId {
+    jinn_slices::slice_scope::SliceScopeId::new("attendant", "properties")
 }
 
 /// State for the attendant properties popup.
@@ -23,4 +31,12 @@ pub struct AttendantPropertiesState {
     pub session_id: Option<jinn_core_types::SessionId>,
     /// The editable seed-template text + cursor.
     pub seed_template: LineInput,
+    /// Whether the trigger toggle has keyboard focus.
+    pub trigger_focus: bool,
+    /// Whether the activation toggle has keyboard focus.
+    pub activation_focus: bool,
+    /// The activation value the popup will apply on confirm.
+    pub current_activation: AttendantActivation,
+    /// The trigger value the popup will apply on confirm.
+    pub current_trigger: AttendantTrigger,
 }

@@ -8,6 +8,7 @@
 //! and sections can signal "unhandled" to let the sidebar move focus to the
 //! next/previous section.
 
+pub mod attendants_reports;
 pub mod attendants_section;
 pub mod intent;
 pub mod layout;

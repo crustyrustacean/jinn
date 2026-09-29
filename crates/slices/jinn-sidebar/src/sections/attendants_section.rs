@@ -7,70 +7,18 @@
 //! a distinct marker instead of an empty second line.
 
 use crate::sections::section_trait::{EnterFrom, SectionNavResult, SidebarIntent};
+use jinn_attendant::section_rows::{AttendantRow, attendant_rows};
 use jinn_kernel::AppState;
 use jinn_sidebar_msg::AttendantSectionState;
 
 /// The marker an attendant that has never reported shows on line 2.
-pub(crate) const NEVER_REPORTED_MARKER: &str = "· no reports yet";
+pub(crate) const NEVER_REPORTED_MARKER: &str = jinn_attendant_msg::AttendantReport::EMPTY_MARKER;
 
 /// Cursor indicator, matching the other sections' glyph.
 const SELECTED_INDICATOR: &str = "\u{2588}";
 
 /// The unselected cursor column (blank, keeps alignment).
 const UNSELECTED_BORDER: &str = " ";
-
-/// One attendant row: the session id, its display name, and its latest report.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AttendantRow {
-    /// The attendant session's id.
-    pub session_id: jinn_core_types::SessionId,
-    /// The session name — the attendant's identity in the UI.
-    pub name: String,
-    /// The most recent report body, if the attendant has ever reported.
-    pub latest_report: Option<String>,
-    /// Whether the latest report predates the parent's latest activity.
-    pub is_stale: bool,
-}
-
-/// Every loaded attendant, sorted by name, with report and staleness data.
-///
-/// Staleness: a report is stale when the parent session has been interacted
-/// (resumed) after the report was published. The comparison is per-attendant,
-/// so one attendant's fresh report never clears a sibling's stale one.
-pub(crate) fn attendant_rows(state: &AppState) -> Vec<AttendantRow> {
-    let mut rows: Vec<AttendantRow> = state
-        .session
-        .iter()
-        .filter(|(_, session)| {
-            session.is_attendant()
-                && session.session_state() == jinn_session_store_msg::SessionState::Loaded
-        })
-        .map(|(id, attendant)| {
-            let latest = attendant.latest_attendant_report();
-            // A report is stale when the parent has produced history since
-            // the report was published — that is the parent resuming work.
-            // The comparison is per-attendant, so one attendant's fresh
-            // report never clears a sibling's stale one.
-            let parent_activity = attendant
-                .parent_session()
-                .as_ref()
-                .and_then(|parent_id| state.session.get(parent_id))
-                .map(|parent| *parent.last_history_activity_at());
-            let is_stale = match (latest, parent_activity) {
-                (Some(report), Some(activity)) => report.published_at < activity,
-                _ => false,
-            };
-            AttendantRow {
-                session_id: id.clone(),
-                name: attendant.title().unwrap_or("Untitled Session").to_owned(),
-                latest_report: latest.map(|report| report.body.clone()),
-                is_stale,
-            }
-        })
-        .collect();
-    rows.sort_by(|a, b| a.name.cmp(&b.name));
-    rows
-}
 
 /// Whether the section has any rows — an empty section collapses.
 pub(crate) fn has_content(state: &AppState) -> bool {

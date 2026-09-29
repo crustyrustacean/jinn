@@ -6,15 +6,23 @@ description = "The attendant slice — fires attendants on parent turn completio
 
 [dependencies]
 jinn-attendant-msg = { workspace = true }
+jiff = { workspace = true }
 jinn-app-state = { workspace = true }
 jinn-chat-input-msg = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-inference-msg = { workspace = true }
+jinn-theme = { workspace = true }
+jinn-sidebar-msg = { workspace = true }
 jinn-kernel = { workspace = true }
 jinn-session-msg = { workspace = true }
 jinn-session-state = { workspace = true }
+jinn-session-store-msg = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-picker = { workspace = true }
 jinn-slices = { workspace = true }
 error-stack = { workspace = true }
+ratatui = { workspace = true }
+unicode-segmentation = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

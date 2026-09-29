@@ -419,26 +419,38 @@ async fn sidebar_task_list_section_opens_the_task_list_picker() {
 }
 
 #[rstest::rstest]
-fn the_sessions_section_binds_no_dead_lifecycle_key() {
+fn the_sessions_section_n_row_is_live_not_dead() {
     // Given the sidebar's real rows.
     let routes = jinn_slices::route::KeyRoutes::new();
     jinn_sidebar::key_routes::attach_sidebar_rows(&routes);
     let sessions = jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id();
 
-    // When the rows bound in the sessions scope are listed.
-    let keys: Vec<&str> = routes
-        .rows()
+    // When the `N` rows bound in the sessions scope are found.
+    let all_rows = routes.rows();
+    let n_rows: Vec<_> = all_rows
         .iter()
-        .filter(|row| row.scope == sessions)
-        .map(|row| row.key)
+        .filter(|row| row.scope == sessions && row.key == "N")
         .collect();
 
-    // Then no row claims `N` — it used to be advertised as "new session
-    // (setup)" while its action did nothing.
-    assert!(
-        !keys.contains(&"N"),
-        "the sessions section must not bind a dead `N` row, got {keys:?}"
+    // Then `N` is bound exactly once and is a live action — it used to be
+    // advertised as "new session (setup)" while its action did nothing, and
+    // this guard existed to catch that dead row. `N` now creates an
+    // attendant, so the guard flips: the row must exist and must name the
+    // new-attendant action, not a dead shell.
+    assert_eq!(
+        n_rows.len(),
+        1,
+        "the sessions section must bind `N` exactly once, got {:?}",
+        n_rows
+            .iter()
+            .map(|r| r.route_id.clone())
+            .collect::<Vec<_>>()
     );
+    let row = n_rows[0];
+    let jinn_slices::route::RouteOutcome::Action { action, .. } = &row.outcome else {
+        panic!("`N` must be an action row, got {:?}", row.outcome);
+    };
+    assert_eq!(*action, "session-new-attendant");
 }
 
 // ── Cancel-stream prompt: it must not outlive the keystroke after arming ──

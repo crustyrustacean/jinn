@@ -7,10 +7,16 @@
 mod activation;
 mod properties;
 mod report;
+mod report_picker;
 
 pub use crate::activation::{AttendantActivation, AttendantTrigger};
-pub use crate::properties::{AttendantPropertiesState, attendant_properties_slot};
+pub use crate::properties::{
+    AttendantPropertiesState, attendant_properties_scope, attendant_properties_slot,
+};
 pub use crate::report::AttendantReport;
+pub use crate::report_picker::{
+    AttendantReportPickerState, attendant_report_picker_scope, attendant_report_picker_slot,
+};
 
 #[cfg(test)]
 mod tests;

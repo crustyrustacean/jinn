@@ -2048,21 +2048,29 @@ name = "jinn-attendant"
 version = "1.1.2"
 dependencies = [
  "error-stack",
+ "jiff",
  "jinn-app-state",
  "jinn-attendant-msg",
  "jinn-chat-input-msg",
  "jinn-core-types",
  "jinn-inference-msg",
  "jinn-kernel",
+ "jinn-picker",
+ "jinn-selection-widget",
  "jinn-session-msg",
  "jinn-session-state",
+ "jinn-session-store-msg",
+ "jinn-sidebar-msg",
  "jinn-slices",
  "jinn-testutil",
+ "jinn-theme",
+ "ratatui",
  "rstest",
  "serde",
  "tokio",
  "tracing",
  "trouper",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -2071,6 +2079,8 @@ version = "1.1.2"
 dependencies = [
  "jiff",
  "jinn-core-types",
+ "jinn-picker",
+ "jinn-selection-widget",
  "jinn-slices",
  "rstest",
  "serde",
@@ -3417,6 +3427,8 @@ version = "1.1.2"
 dependencies = [
  "error-stack",
  "jiff",
+ "jinn-attendant",
+ "jinn-attendant-msg",
  "jinn-chat-input-msg",
  "jinn-chat-log-view",
  "jinn-chat-log-view-msg",

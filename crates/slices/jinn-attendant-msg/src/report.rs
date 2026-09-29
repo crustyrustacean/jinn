@@ -16,3 +16,8 @@ pub struct AttendantReport {
     /// The report body, as written by the model.
     pub body: String,
 }
+
+impl AttendantReport {
+    /// Marker shown for an attendant that has published nothing yet.
+    pub const EMPTY_MARKER: &'static str = "· no reports yet";
+}

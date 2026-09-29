@@ -5,6 +5,8 @@ edition.workspace = true
 
 [dependencies]
 jinn-mcp-msg = { workspace = true }
+jinn-attendant = { workspace = true }
+jinn-attendant-msg = { workspace = true }
 jinn-chat-log-view = { workspace = true }
 jinn-chat-log-view-msg = { workspace = true }
 jinn-chat-input-msg = { workspace = true }

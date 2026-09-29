@@ -399,6 +399,30 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         }),
     ));
     routes.attach(row(
+        "session-new-attendant",
+        sessions_scope.clone(),
+        "N",
+        "general",
+        "new attendant of session",
+        sync_with_config(sessions::attendant_actions::handle_new_attendant),
+    ));
+    routes.attach(row(
+        "session-rerun-attendant",
+        sessions_scope.clone(),
+        "R",
+        "general",
+        "re-run attendant",
+        sync(sessions::attendant_actions::handle_rerun_attendant),
+    ));
+    routes.attach(row(
+        "session-attendant-properties",
+        sessions_scope.clone(),
+        "P",
+        "general",
+        "attendant properties",
+        sync(sessions::attendant_properties::handle_open_attendant_properties),
+    ));
+    routes.attach(row(
         "session-terminal",
         sessions_scope.clone(),
         "T",
@@ -423,6 +447,18 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "general",
         "activate + insert",
         sync(sessions::handle_session_activate_insert),
+    ));
+
+    // ---- Attendants section ----
+    routes.attach(row(
+        "attendant-open-reports",
+        attendant_scope.clone(),
+        "s",
+        "general",
+        "browse report history",
+        // Opens the report-history browser through the attendant slice's own
+        // opener action — same reasoning as the task-list picker above.
+        jinn_attendant::report_picker_opener(),
     ));
 
     // ---- Task list section ----

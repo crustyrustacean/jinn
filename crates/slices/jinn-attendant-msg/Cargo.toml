@@ -6,6 +6,8 @@ description = "The attendant slice's contracts: run parameters, activation modes
 
 [dependencies]
 jinn-core-types = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-picker = { workspace = true }
 jinn-slices = { workspace = true }
 jiff = { workspace = true }
 serde = { workspace = true }
