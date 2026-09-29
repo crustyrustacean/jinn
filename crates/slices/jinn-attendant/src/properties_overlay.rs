@@ -351,6 +351,14 @@ pub fn attach_properties_rows(routes: &KeyRoutes, cell: &AttendantPropertiesCell
     ));
 }
 
+/// Registers the popup's input hook: typed keys land in the focused
+/// field's editor (the seed template). Without this the popup renders but
+/// silently swallows no keystrokes — the template is uneditable.
+pub fn register_properties_input_hook(routes: &KeyRoutes, cell: &AttendantPropertiesCell) {
+    let hook = attendant_properties_input_hook(cell);
+    routes.register_input_hook(&jinn_attendant_msg::attendant_properties_scope(), hook);
+}
+
 mod properties_overlay_inner {
     //! The pure state helpers the route rows call into.
     pub use super::cycle_focus;

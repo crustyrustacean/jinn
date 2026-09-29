@@ -441,10 +441,7 @@ fn the_sessions_section_n_row_is_live_not_dead() {
         n_rows.len(),
         1,
         "the sessions section must bind `N` exactly once, got {:?}",
-        n_rows
-            .iter()
-            .map(|r| r.route_id.clone())
-            .collect::<Vec<_>>()
+        n_rows.iter().map(|r| r.route_id).collect::<Vec<_>>()
     );
     let row = n_rows[0];
     let jinn_slices::route::RouteOutcome::Action { action, .. } = &row.outcome else {
@@ -700,11 +697,6 @@ async fn a_finished_turn_dismisses_the_cancel_stream_prompt() {
 // kernel. A key that opens or continues a which-key sequence resolves to no
 // intent at all, so the event loop returns before `IntentHandler` runs and
 // the prompt it would have dismissed stays on screen.
-
-/// A keypress parsed from notation.
-fn press(notation: &str) -> jinn_kernel::KeyEvent {
-    jinn_kernel::KeyEvent::parse_notation(notation).expect("notation should parse")
-}
 
 /// The real app, with the cancel prompt armed over a live turn.
 async fn app_with_cancel_prompt_armed() -> jinn_tui::TuiApp {

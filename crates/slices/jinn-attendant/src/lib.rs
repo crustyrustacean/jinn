@@ -137,4 +137,5 @@ pub fn activate_properties(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
         std::sync::Arc::new(properties_overlay::render_attendant_properties),
     );
     properties_overlay::attach_properties_rows(host.key_routes(), &cell);
+    properties_overlay::register_properties_input_hook(host.key_routes(), &cell);
 }
