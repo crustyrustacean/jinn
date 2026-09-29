@@ -76,8 +76,7 @@ impl PropertyField {
     pub fn next(self) -> Self {
         match self {
             Self::Trigger => Self::Activation,
-            Self::Activation => Self::SeedTemplate,
-            Self::SeedTemplate => Self::SeedTemplate,
+            Self::Activation | Self::SeedTemplate => Self::SeedTemplate,
         }
     }
 
@@ -85,8 +84,7 @@ impl PropertyField {
     #[must_use]
     pub fn previous(self) -> Self {
         match self {
-            Self::Trigger => Self::Trigger,
-            Self::Activation => Self::Trigger,
+            Self::Trigger | Self::Activation => Self::Trigger,
             Self::SeedTemplate => Self::Activation,
         }
     }
