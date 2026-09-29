@@ -190,6 +190,17 @@ pub struct AttendantPropertiesState {
     /// Whether the help overlay is showing. Toggled with `?`; it targets
     /// whichever field the form cursor is on, so it is never stale.
     pub help_visible: bool,
+    /// Whether a second `<c-s>` would overwrite a same-named saved
+    /// attendant.
+    ///
+    /// Saving over an existing entry destroys whatever that entry
+    /// currently holds, so it is armed by the first stroke and committed by
+    /// the second; a first save of a new name needs no second stroke,
+    /// because there is nothing to destroy. The flag is popup-local and
+    /// cleared on every path that leaves the popup (apply, `<esc>`,
+    /// `<c-c>`, a committed save), so an armed popup can never leak an
+    /// armed state into the next one.
+    pub save_armed: bool,
 }
 
 impl AttendantPropertiesState {
@@ -222,8 +233,11 @@ impl AttendantPropertiesState {
     /// Restores every field to the values captured at open, discarding all
     /// pending edits and any editor draft.
     ///
-    /// A no-op without a snapshot (the popup was never opened).
+    /// A no-op without a snapshot (the popup was never opened). Also
+    /// disarms the save: this is the `<esc>`/`<c-c>` close path, and an
+    /// armed overwrite must not survive into the next popup session.
     pub fn restore_original(&mut self) {
+        self.save_armed = false;
         let Some(original) = self.original.clone() else {
             return;
         };
@@ -256,5 +270,20 @@ impl AttendantPropertiesState {
     /// Accepts the edited text and closes the editor state.
     pub fn keep_template_edit(&mut self) {
         self.editor_original = None;
+    }
+
+    /// Arms an overwrite of the named saved attendant.
+    ///
+    /// The arming is what a second `<c-s>` confirms: the entry that exists
+    /// under this name is about to be replaced by this session's
+    /// configuration, and a user who did not mean to replace it can still
+    /// change the name before pressing again.
+    pub fn arm_save(&mut self) {
+        self.save_armed = true;
+    }
+
+    /// Disarms the overwrite, after a committed save.
+    pub fn disarm_save(&mut self) {
+        self.save_armed = false;
     }
 }

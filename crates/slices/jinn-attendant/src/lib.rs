@@ -13,6 +13,12 @@ pub mod report_picker_render;
 pub mod report_picker_routes;
 pub mod report_picker_viewport;
 pub mod rerun;
+pub mod saved_create;
+pub mod saved_entry;
+pub mod saved_picker_actions;
+pub mod saved_picker_render;
+pub mod saved_picker_routes;
+pub mod saved_picker_viewport;
 pub mod section_rows;
 pub mod trigger_actor;
 
@@ -30,6 +36,15 @@ mod report_picker_tests;
 
 #[cfg(test)]
 mod rerun_tests;
+
+#[cfg(test)]
+mod saved_entry_tests;
+
+#[cfg(test)]
+mod save_tests;
+
+#[cfg(test)]
+mod saved_picker_tests;
 
 #[cfg(test)]
 mod trigger_actor_tests;
@@ -62,6 +77,45 @@ pub fn activate(
     );
     activate_properties(host);
     activate_report_picker(host);
+    activate_saved_picker(host);
+}
+
+/// Registers the saved-attendants picker: overlay geometry, view, slot, the
+/// navigation and filter rows, and the input hook.
+///
+/// # Panics
+///
+/// Panics if the cell catalog has not run — the picker would render against
+/// an absent cell and paint nothing.
+#[expect(
+    clippy::expect_used,
+    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
+)]
+pub fn activate_saved_picker(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
+    let cell = host
+        .slices()
+        .reader::<jinn_attendant_msg::AttendantSavedPickerState>(
+            &jinn_attendant_msg::attendant_saved_picker_slot(),
+        )
+        .expect("the cell catalog registers the saved-attendants slot before any slice activates");
+
+    let scope = jinn_attendant_msg::attendant_saved_picker_scope();
+    host.register_overlay(
+        scope.clone(),
+        std::sync::Arc::new(saved_picker_render::saved_picker_overlay_rect),
+    );
+    host.register_overlay_selectable(&scope);
+    host.register_overlay_slot(
+        scope.clone(),
+        jinn_attendant_msg::attendant_saved_picker_slot(),
+    );
+    host.register_overlay_view(
+        scope,
+        std::sync::Arc::new(saved_picker_render::render_saved_picker),
+    );
+
+    saved_picker_routes::attach_saved_picker_rows(host.key_routes(), &cell);
+    saved_picker_routes::register_saved_picker_input_hook(host.key_routes(), &cell);
 }
 
 /// Registers the report-history picker: overlay geometry, view, slot, the

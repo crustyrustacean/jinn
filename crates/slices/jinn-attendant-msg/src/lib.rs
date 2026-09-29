@@ -8,6 +8,7 @@ mod activation;
 mod properties;
 mod report;
 mod report_picker;
+mod saved_picker;
 
 pub use crate::activation::{AttendantActivation, AttendantContextPolicy, AttendantTrigger};
 pub use crate::properties::{
@@ -43,6 +44,10 @@ pub fn is_attendant_tool_definition(def: &jinn_core_types::ToolDefinition) -> bo
 
 pub use crate::report_picker::{
     AttendantReportPickerState, attendant_report_picker_scope, attendant_report_picker_slot,
+};
+pub use crate::saved_picker::{
+    AttendantSavedPickerState, SavedAttendantSummary, attendant_saved_picker_scope,
+    attendant_saved_picker_slot,
 };
 
 #[cfg(test)]

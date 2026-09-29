@@ -300,7 +300,7 @@ fn properties_view<'a>(
     ] {
         lines.push(field_line(popup, field, theme, layout));
     }
-    lines.push(footer_line(popup.focus, theme));
+    lines.push(footer_line(popup.focus, popup.save_armed, theme));
     lines
 }
 
@@ -541,13 +541,21 @@ fn help_overlay(
 }
 
 /// The footer: the keys that work on the focused field.
-fn footer_line(focus: PropertyField, theme: &jinn_theme::Theme) -> Line<'static> {
-    let keys = match focus {
+fn footer_line(focus: PropertyField, armed: bool, theme: &jinn_theme::Theme) -> Line<'static> {
+    let mut keys = match focus {
         PropertyField::Trigger | PropertyField::Activation => {
-            "h/l pick · j/k field · ? help · <enter> apply · <esc> cancel"
+            "h/l pick · j/k field · ? help".to_owned()
         }
-        PropertyField::SeedTemplate => "i edit · j/k field · ? help · <enter> apply · <esc> cancel",
+        PropertyField::SeedTemplate => "i edit · j/k field · ? help".to_owned(),
     };
+    // An armed overwrite is the one state the user must be told about: the
+    // next `<c-s>` destroys the entry under this name, and the footer is
+    // the only place that says so before they press it.
+    keys.push_str(if armed {
+        " · <c-s> OVERWRITE? press again to replace"
+    } else {
+        " · <c-s> save · <enter> apply · <esc> cancel"
+    });
     Line::from(Span::styled(keys, Style::default().fg(theme.muted_text)))
 }
 
@@ -723,6 +731,14 @@ pub fn attach_properties_rows(routes: &KeyRoutes, cell: &AttendantPropertiesCell
         }),
     ));
     routes.attach(row(
+        "attendant-properties-save",
+        properties_scope.clone(),
+        "<c-s>",
+        "general",
+        "save this attendant to jinn.toml",
+        action(cell, save_attendant),
+    ));
+    routes.attach(row(
         "attendant-properties-apply",
         properties_scope.clone(),
         "<enter>",
@@ -750,6 +766,81 @@ pub fn attach_properties_rows(routes: &KeyRoutes, cell: &AttendantPropertiesCell
     }
 }
 
+/// The `<c-s>` action: saves the popup's attendant to `jinn.toml`.
+///
+/// A new name saves on the first press. An existing name arms on the first
+/// press and overwrites on the second, because the entry under that name
+/// holds an attendant the user may have spent an afternoon building, and a
+/// single stray key should not be able to replace it.
+///
+/// A session with no title cannot be saved: the title *is* the entry's
+/// identity, and a session that never received a submission has none. The
+/// refusal is surfaced in the attendant's own log — a silent no-op would
+/// read as a broken key.
+fn save_attendant(ctx: &mut ActionCtx<'_>, cell: &AttendantPropertiesCell) -> IntentResult {
+    let popup = cell.read().clone();
+    let Some(attendant_id) = popup.session_id.clone() else {
+        return IntentResult::empty();
+    };
+    // Read the config before the state borrow: `app` takes `ctx` mutably.
+    let config = ctx.config.clone();
+    let Some(state) = app(ctx) else {
+        return IntentResult::empty();
+    };
+    let Some(session) = state.session.get(&attendant_id) else {
+        return IntentResult::empty();
+    };
+    let Some(name) = session
+        .title()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_owned)
+    else {
+        return refuse_save(attendant_id);
+    };
+
+    // The layer reads the live document, so a name collision is a property
+    // of what is on disk rather than of anything this popup cached.
+    let mut entries = config
+        .get_list::<jinn_preferences_config::schemas::AttendantEntryConfig>()
+        .unwrap_or_default();
+    if entries.iter().any(|existing| existing.name == name) && !popup.save_armed {
+        cell.update(|p| p.arm_save());
+        return IntentResult::empty();
+    }
+
+    let entry = crate::saved_entry::entry_for_session(name, session);
+    entries.retain(|existing| existing.name != entry.name);
+    entries.push(entry);
+    if let Err(error) =
+        config.put_list::<jinn_preferences_config::schemas::AttendantEntryConfig>(&entries)
+    {
+        tracing::warn!(err = ?error, "failed to save the attendant to jinn.toml");
+        return IntentResult::empty();
+    }
+
+    // Committed: the arm has served its purpose, and a saved attendant is
+    // unarmed whether or not the popup closes.
+    cell.update(|p| p.disarm_save());
+    IntentResult::empty()
+}
+
+/// Tells the attendant why it was not saved, in its own chat log.
+///
+/// The popup targets a highlighted session that is not necessarily the
+/// active one, so the line goes to the attendant itself — a refusal
+/// written into some other session's log would be both invisible and
+/// misleading.
+fn refuse_save(attendant_id: jinn_core_types::SessionId) -> IntentResult {
+    IntentResult::empty().with_message(jinn_session_history_msg::PushChatEntry {
+        session_id: attendant_id,
+        entry: jinn_core_types::ChatEntry::error(
+            "Cannot save: this attendant has no title yet — send it a message first.",
+        ),
+        pin: None,
+    })
+}
+
 /// The apply row's action: commits the popup's pending values to the
 /// session it names, together, and persists once.
 fn apply_all_fields(ctx: &mut ActionCtx<'_>, cell: &AttendantPropertiesCell) -> IntentResult {
@@ -772,6 +863,10 @@ fn apply_all_fields(ctx: &mut ActionCtx<'_>, cell: &AttendantPropertiesCell) -> 
     // below is silently dropped.
     session.mark_interacted();
     session.touch();
+    // Leaving the popup disarms the save, exactly as `<esc>` does: an arm
+    // confirmed against a name the user has since changed must not survive
+    // into the next popup session.
+    cell.update(AttendantPropertiesState::disarm_save);
     IntentResult::empty()
         .with_message(jinn_session_store_msg::PersistSession {
             session_id: attendant_id,
