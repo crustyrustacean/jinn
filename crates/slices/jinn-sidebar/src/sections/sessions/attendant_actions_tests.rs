@@ -18,7 +18,7 @@ use jinn_kernel::common::app_state::AppState;
 use jinn_session_state::{SessionSnapshot, SessionStore, SessionStoreError};
 use jinn_slices::ConfigLayer;
 
-use super::attendant_actions::handle_new_attendant;
+use super::attendant_actions::{handle_new_attendant, handle_rerun_attendant};
 
 /// A recording store that honors the same `persist` gate the real SQLite
 /// store applies — a non-persistable snapshot is dropped without a write.
@@ -161,14 +161,66 @@ fn empty_config() -> ConfigLayer {
 /// State with the sessions section focused and its first row highlighted,
 /// which is what both `N` and `R` require of the cursor.
 fn state_with_selected_session() -> AppState {
+    state_with_selected_row(0)
+}
+
+/// State with the sessions section focused and `row` highlighted.
+fn state_with_selected_row(row: usize) -> AppState {
     let state = AppState::default_with_scope_focus();
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
     state
         .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+        .update_sections(|s| s.sessions.selected_index = Some(row));
     state
+}
+
+/// How many `CancelStream` messages a result publishes.
+fn cancel_count(result: &jinn_slices::route::RouteResult) -> usize {
+    result
+        .message_names
+        .iter()
+        .filter(|name| name.ends_with("CancelStream"))
+        .count()
+}
+
+/// A reset-mode attendant with a seeded run, parented to `parent`.
+///
+/// Built from a real parent session so the parent link — which is what the
+/// cascade walk follows — is the one the production path would produce.
+fn reset_attendant(
+    parent: &jinn_session_state::ChatSessionState,
+) -> jinn_session_state::ChatSessionState {
+    let mut attendant = jinn_session_state::ChatSessionState::new_attendant(parent, true);
+    attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+    attendant.set_seed_template("verify: <prior report>".to_owned());
+    attendant.append_attendant_report("a finding".to_owned());
+    attendant
+}
+
+/// A busy session the cascade can reach as a `task`-spawned subagent.
+///
+/// Built through `new_child` so it carries the `Subagent` origin the walk
+/// recurses on, and registered in the spawn registry, which is where the
+/// cascade looks for in-flight subagents — the session map's walk only
+/// surfaces attendants.
+fn busy_subagent(parent: &jinn_core_types::SessionId) -> jinn_session_state::ChatSessionState {
+    let mut session = jinn_session_state::ChatSessionState::new_child(parent, true);
+    session.set_title("zzz-subagent".to_owned());
+    session.begin_streaming();
+    session
+}
+
+/// A busy session reached as a nested attendant, which the session-map
+/// source of the cascade walk finds.
+fn busy_nested_attendant(
+    parent: &jinn_session_state::ChatSessionState,
+) -> jinn_session_state::ChatSessionState {
+    let mut nested = reset_attendant(parent);
+    nested.set_title("zzz-nested".to_owned());
+    nested.begin_streaming();
+    nested
 }
 
 #[rstest::rstest]
@@ -206,6 +258,131 @@ async fn created_attendant_reaches_the_store() {
 }
 
 #[rstest::rstest]
+#[test]
+fn rerun_cancels_the_attendants_busy_descendants() {
+    // Given an idle attendant — the only kind `R` accepts — with a busy
+    // nested attendant and a busy subagent beneath it. The attendant is
+    // titled and made active so row 0 resolves to it whatever the creation
+    // order happens to be.
+    let mut state = state_with_selected_row(0);
+    let attendant_id = {
+        let parent = jinn_session_state::ChatSessionState::new();
+        let mut attendant = reset_attendant(&parent);
+        attendant.set_title("aaa-attendant".to_owned());
+        let attendant_id = attendant.session_id().clone();
+
+        let nested = busy_nested_attendant(&attendant);
+        let subagent = busy_subagent(&attendant_id);
+        // A subagent is only discoverable through the spawn registry; the
+        // session map's walk only surfaces attendants.
+        state
+            .task_spawns
+            .register(attendant_id.clone(), subagent.session_id().clone());
+
+        state.session.insert(subagent);
+        state.session.insert(nested);
+        state.session.insert(attendant);
+        state.session.set_active(attendant_id.clone());
+        attendant_id
+    };
+    // Guard the fixture: `R` acts on the highlighted row, and the test only
+    // means something if that row is the attendant.
+    let highlighted = crate::sections::sessions::state::sorted_open_sessions(&state)
+        .first()
+        .map(|entry| entry.id.clone());
+    assert_eq!(
+        highlighted.as_ref(),
+        Some(&attendant_id),
+        "fixture must highlight the attendant, not a descendant"
+    );
+
+    // When `R` re-runs the attendant.
+    let result = handle_rerun_attendant(&mut state);
+
+    // Then both descendants are cancelled. They exist only to answer the
+    // question this attendant is re-asking, so a stale turn under either is
+    // answering a question nobody asked any more.
+    assert_eq!(
+        cancel_count(&result),
+        2,
+        "the nested attendant and the subagent must both be cancelled, published: {:?}",
+        result.message_names
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn rerun_does_not_cancel_below_a_fork() {
+    // Given an idle attendant with a fork beneath it holding a busy
+    // grandchild — the same shape as above, but through a fork.
+    let mut state = state_with_selected_row(0);
+    {
+        let parent = jinn_session_state::ChatSessionState::new();
+        let mut attendant = reset_attendant(&parent);
+        attendant.set_title("aaa-attendant".to_owned());
+        let attendant_id = attendant.session_id().clone();
+        let mut fork = jinn_session_state::ChatSessionState::new();
+        fork.set_title("mmm-fork".to_owned());
+        fork.restore_parent_session(Some(attendant_id.clone()));
+        let fork_id = fork.session_id().clone();
+        let grandchild = busy_subagent(&fork_id);
+        // The walk reaches the fork through the registry, then stops: a fork
+        // is an independent thread with no standing to be descended into.
+        state
+            .task_spawns
+            .register(attendant_id.clone(), fork_id.clone());
+        state
+            .task_spawns
+            .register(fork_id, grandchild.session_id().clone());
+        state.session.insert(grandchild);
+        state.session.insert(fork);
+        state.session.insert(attendant);
+        state.session.set_active(attendant_id);
+    }
+
+    // When `R` re-runs the attendant.
+    let result = handle_rerun_attendant(&mut state);
+
+    // Then nothing is cancelled. A plain idle session is not an attendant
+    // and not a recursable origin, so the walk stops before publishing.
+    assert_eq!(
+        cancel_count(&result),
+        0,
+        "the walk must stop at a fork, published: {:?}",
+        result.message_names
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn rerun_on_a_seed_attendant_is_still_refused() {
+    // Given an attendant still composing its instructions, in seed mode.
+    let mut state = state_with_selected_row(0);
+    {
+        let parent = jinn_session_state::ChatSessionState::new();
+        let mut attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
+        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Seed);
+        state.session.insert(attendant);
+    }
+
+    // When `R` re-runs it.
+    let result = handle_rerun_attendant(&mut state);
+
+    // Then nothing is dispatched or cancelled, and the reason is surfaced
+    // as a system line rather than a silent no-op.
+    assert_eq!(cancel_count(&result), 0);
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|name| name.ends_with("PushChatEntry")),
+        "a refused rerun must say why, published: {:?}",
+        result.message_names
+    );
+}
+
+#[rstest::rstest]
+#[test]
 fn created_attendant_is_persistable() {
     // Given the sessions section focused with a session highlighted.
     let mut state = state_with_selected_session();

@@ -56,7 +56,7 @@ fn rerun_on_a_reset_attendant_dispatches_the_seeded_run() {
 
 #[rstest::rstest]
 #[test]
-fn rerun_on_a_busy_attendant_cancels_its_own_turn_only() {
+fn rerun_on_a_busy_attendant_cancels_its_own_turn() {
     // Given a reset attendant whose turn is mid-flight.
     let (state, id) = state_with_attendant(AttendantActivation::Reset);
     {
@@ -71,13 +71,6 @@ fn rerun_on_a_busy_attendant_cancels_its_own_turn_only() {
     // Then the in-flight turn is cancelled and a new run dispatches.
     assert_eq!(cancel.expect("busy session cancels").session_id, id);
     assert!(dispatch.is_some());
-    // And the session phase was observed, not mutated — the cancel is a
-    // bus command the session actor applies.
-    let guard = state.read();
-    assert_eq!(
-        guard.session.get(&id).expect("attendant").phase(),
-        PhaseKind::Streaming
-    );
 }
 
 #[rstest::rstest]
@@ -152,6 +145,65 @@ fn reset_exclusions_survive_a_restart() {
         entry.context_override(),
         jinn_core_types::ContextOverride::ForcedExclude
     );
+}
+
+#[rstest::rstest]
+#[test]
+fn rerun_on_a_busy_attendant_drops_its_own_phase_so_the_seed_dispatches() {
+    // Given a reset attendant whose turn is mid-flight.
+    let (state, id) = state_with_attendant(AttendantActivation::Reset);
+    {
+        let mut guard = state.write();
+        let session = guard.session.get_mut(&id).expect("attendant");
+        session.begin_streaming();
+    }
+
+    // When the attendant is re-run.
+    let _ = rerun(&state, &id).expect("rerun allowed");
+
+    // Then its own phase is back to Idle.
+    //
+    // This is the invariant the enqueue handler depends on: a session that
+    // is still `Sending`/`Streaming` *queues* an incoming user message
+    // instead of dispatching it, so leaving the phase hot would make `R`
+    // silently queue the seed rather than run it. The frontend owns its own
+    // session's phase (the same contract `Esc` relies on), and the session
+    // actor owns the descendants' — hence the cascade publishes messages
+    // rather than writing their phases.
+    let guard = state.read();
+    assert_eq!(
+        guard.session.get(&id).expect("attendant").phase(),
+        PhaseKind::Idle
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn rerun_on_a_continue_attendant_seeds_through_the_template() {
+    // Given a continue-mode attendant with a prior report and a template.
+    //
+    // `R` is the user saying "ask again", so it goes through the template
+    // and inserts the seeded message in every mode. Continue mode governs
+    // what the `c` key does — resume the context as-is — not what a manual
+    // re-run does.
+    let (state, id) = state_with_attendant(AttendantActivation::Continue);
+    {
+        let mut guard = state.write();
+        let session = guard.session.get_mut(&id).expect("attendant");
+        session.append_attendant_report("prior finding".to_owned());
+        session.set_seed_template("verify: <prior report>".to_owned());
+    }
+
+    // When the attendant is re-run.
+    let (_, dispatch, _) = rerun(&state, &id).expect("rerun allowed");
+
+    // Then the seeded run dispatches with the report substituted.
+    let dispatch = dispatch.expect("R must seed in every non-seed mode");
+    let jinn_core_types::chat_entry::ChatEntryKind::User { display, .. } = &dispatch.entry.kind
+    else {
+        panic!("seed must be a user entry");
+    };
+    assert_eq!(display, "verify: prior finding");
 }
 
 #[rstest::rstest]

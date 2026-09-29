@@ -193,7 +193,10 @@ impl AttendantTriggerActor {
                 session_id: attendant_id.clone(),
             });
 
-            let (entry, reset) = activation::prepare_run(session);
+            // A trigger respects the mode: it seeds for `Seed`/`Reset` and
+            // carries the existing context for `Continue`, so an unattended
+            // fire never injects a message the user did not ask for.
+            let (entry, reset) = activation::prepare_trigger_run(session);
             let dispatch = entry.map(|entry| {
                 session.mark_turn_automated();
                 EnqueueUserMessage {

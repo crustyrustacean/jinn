@@ -1,8 +1,12 @@
 //! Re-running an attendant on the user's request.
 //!
-//! The `R` key in the sessions section calls into this from the frontend;
-//! the logic lives here so the trigger path and the manual path share one
-//! implementation.
+//! The `R` key in the sessions section calls into this from the frontend.
+//! The manual path is deliberately its own sequence, not the trigger's with
+//! a flag: `R` is the user saying "ask again", so it seeds through the
+//! template in every mode, and it stops the attendant's descendants along
+//! with it. A trigger cannot do either — it does not know which descendant
+//! should be cancelled, and it must not inject a message the user did not
+//! ask for.
 
 use jinn_attendant_msg::AttendantActivation;
 use jinn_chat_input_msg::EnqueueUserMessage;
@@ -27,9 +31,13 @@ pub type RerunOutcome = (
 
 /// Runs an attendant now, without any trigger condition.
 ///
-/// Same sequence as a trigger fire: cancel the in-flight turn, reset context
-/// per activation, seed, dispatch. Returns `None` when the run cannot start —
-/// see [`rerun_blocked_reason`] for which reason applies.
+/// The sequence: cancel the in-flight turn, reset context if the mode says
+/// so, seed through the template, dispatch. Returns `None` when the run
+/// cannot start — see [`rerun_blocked_reason`] for which reason applies.
+///
+/// Descendant cancels are *not* produced here: the subtree walk needs the
+/// whole application state, which the caller holds, and the sidebar's `R`
+/// handler publishes them alongside this outcome.
 pub fn rerun(state: &State, attendant_id: &SessionId) -> Option<RerunOutcome> {
     if rerun_blocked_reason(state, attendant_id).is_some() {
         return None;
@@ -51,10 +59,19 @@ pub fn rerun_in_state(
         return None;
     }
     let session = state.session.get_mut(attendant_id)?;
-    let cancel = (session.phase() != PhaseKind::Idle).then(|| CancelStream {
-        session_id: attendant_id.clone(),
+    // Superseding a busy attendant: drop the in-flight turn locally so the
+    // seeded entry below *dispatches* rather than queueing — the enqueue
+    // handler queues anything arriving while a session is Sending/Streaming.
+    // `Esc` uses `cancel_stream_and_drain`; `R` must not, because draining
+    // steers the cancelled partial into the input box and the run about to
+    // start would carry the old turn's leftovers.
+    let cancel = (session.phase() != PhaseKind::Idle).then(|| {
+        session.cancel_streaming(jiff::Timestamp::now());
+        CancelStream {
+            session_id: attendant_id.clone(),
+        }
     });
-    let (entry, reset) = activation::prepare_run(session);
+    let (entry, reset) = activation::prepare_manual_run(session);
     let dispatch = entry.map(|entry| {
         session.mark_turn_automated();
         EnqueueUserMessage {

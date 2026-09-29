@@ -135,6 +135,19 @@ pub fn handle_rerun_attendant(state: &mut AppState) -> IntentResult {
     if let Some(cancel) = cancel {
         result = result.with_message(cancel);
     }
+    // The confirmed-cancel cascade: every attendant or subagent beneath this
+    // one stops with it, recursively. A trigger deliberately does not do
+    // this — it cannot know which descendant the user would want stopped —
+    // but `R` is the user saying "start over", and the descendants only exist
+    // to answer the question this attendant is re-asking. Forks are
+    // boundaries; the walk stops there.
+    let mut visited = std::collections::HashSet::new();
+    visited.insert(attendant_id.clone());
+    result = result.merge(jinn_kernel::feat::intent::handler::cascade_descendants(
+        state,
+        &attendant_id,
+        &mut visited,
+    ));
     if let Some(dispatch) = dispatch {
         result = result.with_message(dispatch);
     }

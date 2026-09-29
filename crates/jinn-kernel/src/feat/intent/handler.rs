@@ -517,16 +517,10 @@ fn try_handle_cancel_stream_prompt(
     // The cascade: every subagent or attendant beneath this session stops
     // with it, recursively. Forks are boundaries — their descendants are
     // independent threads, out of the cancel's scope.
-    let registry = state.task_spawns.clone();
     let mut visited = std::collections::HashSet::new();
     visited.insert(state.session.active_session_id().clone());
-    result = cascade_descendants(
-        state,
-        state.session.active_session_id(),
-        &registry,
-        &mut visited,
-    )
-    .merge(result);
+    result =
+        cascade_descendants(state, state.session.active_session_id(), &mut visited).merge(result);
 
     Some(result)
 }
@@ -540,15 +534,20 @@ fn try_handle_cancel_stream_prompt(
 /// on a cyclic parent link (the same defence the visible session tree uses).
 ///
 /// Descendant cancels are messages, not synchronous state writes: the
-/// session actor owns each child's phase, and the frontend has already
-/// driven only *its own* session's phase to `Idle`.
-fn cascade_descendants(
+/// session actor owns each child's phase. A caller that also owns its own
+/// session's phase must drive it to `Idle` itself, or a user message it
+/// dispatches immediately after will be queued rather than sent.
+///
+/// The walk is shared by every caller that stops a subtree — `Esc` on the
+/// active session, and the attendant slice's manual re-run.
+#[must_use]
+pub fn cascade_descendants(
     state: &AppState,
     session_id: &jinn_core_types::SessionId,
-    registry: &jinn_tools_msg::TaskSpawnRegistry,
     visited: &mut std::collections::HashSet<jinn_core_types::SessionId>,
 ) -> IntentResult {
     let mut result = IntentResult::empty();
+    let registry = state.task_spawns.clone();
 
     // Union of both child sources, deduplicated.
     let mut child_ids: Vec<jinn_core_types::SessionId> = registry.children_of(session_id);
@@ -579,7 +578,7 @@ fn cascade_descendants(
                     .with_message(jinn_inference_msg::CancelStream {
                         session_id: child_id.clone(),
                     })
-                    .merge(cascade_descendants(state, &child_id, registry, visited));
+                    .merge(cascade_descendants(state, &child_id, visited));
             }
             // A fork is an independent thread: its own descendants are out
             // of scope. The walk stops here, deliberately. A user-created

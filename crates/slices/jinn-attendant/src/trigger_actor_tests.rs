@@ -76,6 +76,64 @@ async fn trigger_actor_receives_turn_completed_through_the_bus() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn trigger_does_not_cancel_the_attendants_descendants() {
+    // Given a busy attendant with a busy subagent beneath it, armed with a
+    // ParentCompleted trigger, and the trigger actor live on the bus.
+    let harness = TestHarness::new().await;
+    let canceled = harness
+        .spawn_recorder::<jinn_inference_msg::CancelStream>()
+        .await;
+    let state = State::new(AppState::default());
+    let parent_id = {
+        let mut s = state.write();
+        let parent = jinn_session_state::ChatSessionState::new();
+        let parent_id = parent.session_id().clone();
+        s.session.insert(parent);
+
+        let attendant_read = s.session.get(&parent_id).expect("parent").clone();
+        let mut attendant =
+            jinn_session_state::ChatSessionState::new_attendant(&attendant_read, true);
+        attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        let attendant_id = attendant.session_id().clone();
+
+        let mut subagent = jinn_session_state::ChatSessionState::new_child(&attendant_id, true);
+        subagent.begin_streaming();
+        s.task_spawns
+            .register(attendant_id.clone(), subagent.session_id().clone());
+        s.session.insert(subagent);
+        s.session.insert(attendant);
+        parent_id
+    };
+    let _actor = AttendantTriggerActor::spawn(
+        harness.system(),
+        AttendantTriggerActorDeps {
+            services: harness.services().await,
+            state: state.clone(),
+        },
+    );
+
+    // When the parent's turn completes and the attendant fires.
+    harness
+        .publish(TurnCompleted {
+            session_id: parent_id,
+            outcome: TurnOutcome::Succeeded,
+        })
+        .await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Then nothing is cancelled. A trigger does not know which descendant
+    // the user would want stopped, so stopping the subtree is reserved for
+    // the manual `R`, where the user has said "start over".
+    let cancels = canceled.drain();
+    assert!(
+        cancels.is_empty(),
+        "the trigger must not cascade a cancel, got {cancels:?}"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn trigger_actor_is_reachable_at_its_static_path() {
     // Given a harness with the trigger actor spawned.
     let harness = TestHarness::new().await;

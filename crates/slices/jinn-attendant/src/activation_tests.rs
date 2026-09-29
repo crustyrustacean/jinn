@@ -16,7 +16,7 @@ use jinn_kernel::common::state::State;
 use jinn_session_msg::SessionOrigin;
 use jinn_session_state::ChatSessionState;
 
-use crate::activation::{prepare_seed_entry, render_seed_text, reset_context};
+use crate::activation::{prepare_trigger_run, render_seed_text, reset_context};
 
 #[rstest::rstest]
 #[case(
@@ -147,7 +147,7 @@ fn continue_activation_prepares_no_entry() {
     session.append_attendant_report("a finding".to_owned());
 
     // When the run's seed entry is prepared.
-    let seed = prepare_seed_entry(&session);
+    let (seed, _reset) = prepare_trigger_run(&mut session);
 
     // Then nothing is injected — the existing conversation carries the run.
     assert!(seed.is_none());
@@ -163,7 +163,8 @@ fn reset_run_seeds_through_the_template_with_the_prior_report() {
     session.append_attendant_report("the tests were actually passing".to_owned());
 
     // When the run's seed entry is prepared.
-    let seed = prepare_seed_entry(&session).expect("reset mode with a prior report seeds");
+    let (seed, _reset) = prepare_trigger_run(&mut session);
+    let seed = seed.expect("reset mode with a prior report seeds");
 
     // Then the seed entry carries the report through the template.
     let jinn_core_types::chat_entry::ChatEntryKind::User { display, .. } = &seed.kind else {

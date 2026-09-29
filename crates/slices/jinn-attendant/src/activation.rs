@@ -55,39 +55,53 @@ pub fn reset_context(session: &mut ChatSessionState) -> Vec<jinn_core_types::Cha
 }
 
 /// Resets the session's context if it is in `Reset` mode, then builds the
-/// seeded run prompt from the template and the prior report.
+/// seeded run prompt for a *manual* re-run.
 ///
 /// Returns the entry to dispatch, and the ids whose context the reset
 /// changed — a caller that persists the session needs to know whether the
 /// exclusions are worth writing.
 ///
-/// `Reset` mode means "the model sees only the pins", so the reset is a
-/// mutation that has to happen on this path; [`prepare_seed_entry`] stays
-/// pure for callers that only need the prompt.
+/// Seeding is unconditional here: a manual re-run is the user asking the
+/// question again, so it always goes through the template. `Continue` mode
+/// governs what the *resume* key does, not this.
 #[must_use]
-pub fn prepare_run(session: &mut ChatSessionState) -> (Option<ChatEntry>, Vec<ChatEntryId>) {
+pub fn prepare_manual_run(session: &mut ChatSessionState) -> (Option<ChatEntry>, Vec<ChatEntryId>) {
     let reset = if session.attendant_activation() == AttendantActivation::Reset {
         reset_context(session)
     } else {
         Vec::new()
     };
-    (prepare_seed_entry(session), reset)
+    (seed_entry(session), reset)
 }
 
-/// The seed entry a run dispatches, per the session's activation mode.
+/// Resets the session's context if it is in `Reset` mode, then builds the
+/// seeded run prompt for a *trigger* fire, which respects the mode.
 ///
-/// Returns `None` in `Continue` mode — the existing conversation carries
-/// the run, and no new entry is injected.
+/// In `Continue` mode nothing is injected: the existing conversation carries
+/// an unattended fire, because the user did not ask for a new message this
+/// time. The manual path ([`prepare_manual_run`]) has no such reservation.
 #[must_use]
-pub fn prepare_seed_entry(session: &ChatSessionState) -> Option<ChatEntry> {
-    match session.attendant_activation() {
+pub fn prepare_trigger_run(
+    session: &mut ChatSessionState,
+) -> (Option<ChatEntry>, Vec<ChatEntryId>) {
+    let reset = if session.attendant_activation() == AttendantActivation::Reset {
+        reset_context(session)
+    } else {
+        Vec::new()
+    };
+    let seed = match session.attendant_activation() {
         AttendantActivation::Continue => None,
-        AttendantActivation::Seed | AttendantActivation::Reset => {
-            let prior = session
-                .latest_attendant_report()
-                .map(|report| report.body.clone());
-            render_seed_text(session.seed_template(), prior.as_deref())
-                .map(|text| ChatEntry::user_expanded(text.clone(), text))
-        }
-    }
+        AttendantActivation::Seed | AttendantActivation::Reset => seed_entry(session),
+    };
+    (seed, reset)
+}
+
+/// The prompt a run dispatches: the template with the prior report folded in.
+#[must_use]
+fn seed_entry(session: &ChatSessionState) -> Option<ChatEntry> {
+    let prior = session
+        .latest_attendant_report()
+        .map(|report| report.body.clone());
+    render_seed_text(session.seed_template(), prior.as_deref())
+        .map(|text| ChatEntry::user_expanded(text.clone(), text))
 }
