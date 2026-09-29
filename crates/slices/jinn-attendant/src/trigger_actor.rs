@@ -52,6 +52,9 @@ struct Fired {
     cancel: Option<CancelStream>,
     /// Dispatch the attendant's run.
     dispatch: Option<EnqueueUserMessage>,
+    /// Write the session back if a `Reset` excluded something, so the
+    /// exclusions outlive a restart instead of silently reverting.
+    persist: bool,
 }
 
 impl AttendantTriggerActor {
@@ -116,6 +119,11 @@ impl AttendantTriggerActor {
                 if let Some(dispatch) = fired.dispatch {
                     self.publish(dispatch);
                 }
+                if fired.persist {
+                    self.publish(jinn_session_store_msg::PersistSession {
+                        session_id: attendant_id,
+                    });
+                }
             }
         }
     }
@@ -166,8 +174,11 @@ impl AttendantTriggerActor {
     /// 2. A busy attendant's own turn is cancelled. That is a single-session
     ///    cancel: a re-trigger supersedes *this* attendant's work, and its
     ///    descendants still answer a question this attendant exists to read.
-    ///    It is not the confirmed-cancel cascade — that belongs to the user.
-    /// 3. `Reset` activation rebuilds context from the pins alone.
+    ///    It is not the confirmed-cancel cascade — a trigger does not know
+    ///    which descendant the user would want cancelled, so that stays a
+    ///    manual `R`.
+    /// 3. `Reset` activation force-excludes every non-pinned entry, so the
+    ///    model sees the pins alone. The changed session is persisted.
     /// 4. A prior report is injected through the seed template, and the
     ///    resulting entry is dispatched as a fresh user turn.
     fn fire(&self, attendant_id: &jinn_core_types::SessionId) -> Option<Fired> {
@@ -182,7 +193,8 @@ impl AttendantTriggerActor {
                 session_id: attendant_id.clone(),
             });
 
-            let dispatch = activation::prepare_run(session).map(|entry| {
+            let (entry, reset) = activation::prepare_run(session);
+            let dispatch = entry.map(|entry| {
                 session.mark_turn_automated();
                 EnqueueUserMessage {
                     session_id: attendant_id.clone(),
@@ -190,7 +202,11 @@ impl AttendantTriggerActor {
                 }
             });
 
-            Some(Fired { cancel, dispatch })
+            Some(Fired {
+                cancel,
+                dispatch,
+                persist: !reset.is_empty(),
+            })
         }
     }
 

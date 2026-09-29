@@ -1,8 +1,8 @@
 //! Preparing an attendant's context and dispatching its run.
 
 use jinn_attendant_msg::{AttendantActivation, PRIOR_REPORT_PLACEHOLDER};
-use jinn_core_types::ContextOverride;
 use jinn_core_types::chat_entry::ChatEntry;
+use jinn_core_types::{ChatEntryId, ContextOverride};
 use jinn_session_state::ChatSessionState;
 
 /// Builds the seed text for a run, from the seed template and the prior report.
@@ -54,14 +54,32 @@ pub fn reset_context(session: &mut ChatSessionState) -> Vec<jinn_core_types::Cha
         .collect()
 }
 
-/// Applies the `Reset`-mode preparation to the session: reset context, then
-/// build the seeded run prompt from the template and the prior report.
+/// Resets the session's context if it is in `Reset` mode, then builds the
+/// seeded run prompt from the template and the prior report.
 ///
-/// Returns the entry to dispatch, if one was produced. In `Continue` mode
-/// nothing is prepared — the existing conversation carries the run, and no
-/// new entry is injected.
+/// Returns the entry to dispatch, and the ids whose context the reset
+/// changed — a caller that persists the session needs to know whether the
+/// exclusions are worth writing.
+///
+/// `Reset` mode means "the model sees only the pins", so the reset is a
+/// mutation that has to happen on this path; [`prepare_seed_entry`] stays
+/// pure for callers that only need the prompt.
 #[must_use]
-pub fn prepare_run(session: &ChatSessionState) -> Option<ChatEntry> {
+pub fn prepare_run(session: &mut ChatSessionState) -> (Option<ChatEntry>, Vec<ChatEntryId>) {
+    let reset = if session.attendant_activation() == AttendantActivation::Reset {
+        reset_context(session)
+    } else {
+        Vec::new()
+    };
+    (prepare_seed_entry(session), reset)
+}
+
+/// The seed entry a run dispatches, per the session's activation mode.
+///
+/// Returns `None` in `Continue` mode — the existing conversation carries
+/// the run, and no new entry is injected.
+#[must_use]
+pub fn prepare_seed_entry(session: &ChatSessionState) -> Option<ChatEntry> {
     match session.attendant_activation() {
         AttendantActivation::Continue => None,
         AttendantActivation::Seed | AttendantActivation::Reset => {

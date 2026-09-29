@@ -6,7 +6,7 @@
 
 use jinn_attendant_msg::AttendantActivation;
 use jinn_chat_input_msg::EnqueueUserMessage;
-use jinn_core_types::SessionId;
+use jinn_core_types::{ChatEntryId, SessionId};
 use jinn_inference_msg::CancelStream;
 use jinn_kernel::common::state::State;
 use jinn_session_msg::PhaseKind;
@@ -15,7 +15,15 @@ use crate::activation;
 
 /// The outcome of a successful rerun: cancel the in-flight turn (if it was
 /// busy), then dispatch the seeded run.
-pub type RerunOutcome = (Option<CancelStream>, Option<EnqueueUserMessage>);
+///
+/// The third element is the ids whose context a `Reset` excluded — non-empty
+/// only when the reset actually changed something, which is the caller's cue
+/// that the exclusions need writing to disk.
+pub type RerunOutcome = (
+    Option<CancelStream>,
+    Option<EnqueueUserMessage>,
+    Vec<ChatEntryId>,
+);
 
 /// Runs an attendant now, without any trigger condition.
 ///
@@ -46,14 +54,15 @@ pub fn rerun_in_state(
     let cancel = (session.phase() != PhaseKind::Idle).then(|| CancelStream {
         session_id: attendant_id.clone(),
     });
-    let dispatch = activation::prepare_run(session).map(|entry| {
+    let (entry, reset) = activation::prepare_run(session);
+    let dispatch = entry.map(|entry| {
         session.mark_turn_automated();
         EnqueueUserMessage {
             session_id: attendant_id.clone(),
             entry,
         }
     });
-    Some((cancel, dispatch))
+    Some((cancel, dispatch, reset))
 }
 
 /// Why a rerun cannot start, for the status-bar hint.

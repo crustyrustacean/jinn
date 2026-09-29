@@ -16,7 +16,7 @@ use jinn_kernel::common::state::State;
 use jinn_session_msg::SessionOrigin;
 use jinn_session_state::ChatSessionState;
 
-use crate::activation::{prepare_run, render_seed_text, reset_context};
+use crate::activation::{prepare_seed_entry, render_seed_text, reset_context};
 
 #[rstest::rstest]
 #[case(
@@ -140,14 +140,14 @@ fn reset_context_is_idempotent() {
 #[rstest::rstest]
 #[test]
 fn continue_activation_prepares_no_entry() {
-    // Given a reset attendant with a prior report, switched to continue mode.
+    // Given a continue-mode attendant with a prior report.
     let parent = ChatSessionState::new();
     let mut session = ChatSessionState::new_attendant(&parent, true);
     session.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Continue);
     session.append_attendant_report("a finding".to_owned());
 
-    // When the run is prepared.
-    let seed = prepare_run(&session);
+    // When the run's seed entry is prepared.
+    let seed = prepare_seed_entry(&session);
 
     // Then nothing is injected — the existing conversation carries the run.
     assert!(seed.is_none());
@@ -162,8 +162,8 @@ fn reset_run_seeds_through_the_template_with_the_prior_report() {
     session.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
     session.append_attendant_report("the tests were actually passing".to_owned());
 
-    // When the run is prepared.
-    let seed = prepare_run(&session).expect("reset mode with a prior report seeds");
+    // When the run's seed entry is prepared.
+    let seed = prepare_seed_entry(&session).expect("reset mode with a prior report seeds");
 
     // Then the seed entry carries the report through the template.
     let jinn_core_types::chat_entry::ChatEntryKind::User { display, .. } = &seed.kind else {
@@ -444,7 +444,8 @@ async fn manual_rerun_runs_a_late_attendant_even_though_its_trigger_never_fired(
     };
 
     // When the user re-runs it with `R`.
-    let (cancel, dispatch) = crate::rerun::rerun(&state, &attendant_id).expect("rerun allowed");
+    let (cancel, dispatch, _reset) =
+        crate::rerun::rerun(&state, &attendant_id).expect("rerun allowed");
 
     // Then the run dispatches the seeded turn regardless of the trigger's
     // history — manual re-run has no trigger condition.

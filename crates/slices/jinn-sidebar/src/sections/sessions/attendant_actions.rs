@@ -118,7 +118,8 @@ pub fn handle_rerun_attendant(state: &mut AppState) -> IntentResult {
     let Some(attendant_id) = selected_idle_session(state) else {
         return IntentResult::empty();
     };
-    let Some((cancel, dispatch)) = jinn_attendant::rerun::rerun_in_state(state, &attendant_id)
+    let Some((cancel, dispatch, reset)) =
+        jinn_attendant::rerun::rerun_in_state(state, &attendant_id)
     else {
         // Surface the block reason when it is one the user can act on.
         if let Some(reason) = jinn_attendant::rerun::rerun_blocked_reason_in(state, &attendant_id) {
@@ -136,6 +137,14 @@ pub fn handle_rerun_attendant(state: &mut AppState) -> IntentResult {
     }
     if let Some(dispatch) = dispatch {
         result = result.with_message(dispatch);
+    }
+    // A `Reset` that excluded something changed what the model will see, and
+    // that only survives a restart if it is written now — an attendant
+    // reloaded from disk would otherwise come back with its full history.
+    if !reset.is_empty() {
+        result = result.with_message(PersistSession {
+            session_id: attendant_id,
+        });
     }
     result
 }
