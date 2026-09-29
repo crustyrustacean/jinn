@@ -384,6 +384,47 @@ count the number of hellos in the parent session. use the `report` tool to indic
 hellos: <count>
 ```""" } }, pin_position = "Relative", timing = { Instant = { at = "2026-09-29T07:18:22.551522849Z" } }, token_count = 39 }, { context_history = [], context_override = "default", id = "01a0ef12-d3ca-753f-9956-6a38e580f75c", kind = { User = { display = "sup", expanded = "sup" } }, pin_position = "Relative", timing = { Instant = { at = "2026-09-29T19:20:35.449046392Z" } }, token_count = 1 }]
 reasoning_effort = "high"
+seed_template = "sup"
+trigger = "manual"
+
+[attendant.entry.model]
+single = "openrouter/stealth/space-bunny-alpha"
+
+[[attendant.entry]]
+activation = "seed"
+disabled_skills = ["phased-task-loop"]
+disabled_tools = ["bash", "edit", "get_time", "grep", "interactive_term", "interactive_term_kill", "interactive_term_send", "openrouter:web_search", "read", "restart_mcp_server", "save_plan", "skill", "task", "todo_get_list", "todo_set_list", "todo_set_phase", "write"]
+name = "auto-nudge"
+pins = [{ context_history = [], context_override = "default", id = "01a0ef31-5410-764b-9c88-ee2244aa8ec3", kind = { User = { display = """
+You are in charge of keeping another agent on track. Please read the most recent message from the parent using the `session_fetch` tool and determine if it stopped prematurely. If so, use the `notify_parent` tool to tell the agent to continue.
+
+Examples of agents that stopped too early:
+> I am on phase 3 of 5 <explanation of why it stopped>.
+
+Examples of agents that stopped correctly:
+> I've finished all phases of the plan.
+> I had to stop because there is a problem with the current plan and I cannot continue because <reasons>.
+
+It's important that you only tell the agent to continue if it stopped for something it _should not_ have stopped for. If it got blocked by something, then stopping is OK.
+
+Regardless of the outcome, always use the `conclude` tool to record your conclusion:
+- If you had to use `notify_parent` -> the "conclude" should be "Nudged"
+- If the agent finished -> the "conclude" should be "Task complete"""", expanded = """
+You are in charge of keeping another agent on track. Please read the most recent message from the parent using the `session_fetch` tool and determine if it stopped prematurely. If so, use the `notify_parent` tool to tell the agent to continue.
+
+Examples of agents that stopped too early:
+> I am on phase 3 of 5 <explanation of why it stopped>.
+
+Examples of agents that stopped correctly:
+> I've finished all phases of the plan.
+> I had to stop because there is a problem with the current plan and I cannot continue because <reasons>.
+
+It's important that you only tell the agent to continue if it stopped for something it _should not_ have stopped for. If it got blocked by something, then stopping is OK.
+
+Regardless of the outcome, always use the `conclude` tool to record your conclusion:
+- If you had to use `notify_parent` -> the "conclude" should be "Nudged"
+- If the agent finished -> the "conclude" should be "Task complete"""" } }, pin_position = "Relative", timing = { Instant = { at = "2026-09-29T22:03:02.544721771Z" } }, token_count = 212 }]
+reasoning_effort = "high"
 seed_template = "The previous run of this attendant reported: <prior report>."
 trigger = "manual"
 

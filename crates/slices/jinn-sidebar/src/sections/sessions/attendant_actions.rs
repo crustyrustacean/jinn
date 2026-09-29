@@ -116,8 +116,7 @@ pub fn handle_new_attendant(state: &mut AppState, config: &ConfigLayer) -> Inten
         .with_message(jinn_session_history_msg::PushChatEntry {
             session_id: attendant_id.clone(),
             entry: ChatEntry::system(
-                "🛰️ Attendant created in seed mode — compose its instructions, \
-                 then flip activation to fire.",
+                "🛰️ Attendant created in seed mode for providing instructions. When you are done, select the attendant in the sidebar and press `P` to change properties. The attendant will not run autonomously unless you change the trigger mode and activation properties."
             ),
             pin: None,
         });

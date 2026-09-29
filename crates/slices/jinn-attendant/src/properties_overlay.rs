@@ -50,9 +50,14 @@ const POPUP_CONTENT_ROWS: u16 = 5;
 ///
 /// A constant rather than a theme key — the tooltip is popup furniture, and
 /// a help box is the same light card whatever the theme around it is.
-const TOOLTIP_BG: Color = Color::Rgb(240, 240, 240);
-/// The help card's text, dark against [`TOOLTIP_BG`].
-const TOOLTIP_FG: Color = Color::Rgb(26, 26, 26);
+pub(crate) const TOOLTIP_BG: Color = Color::Rgb(240, 240, 240);
+/// The help card's description text, on the axis between the body color and
+/// the muted one — the tone help has always used elsewhere in the app, kept
+/// here so a help card reads as the same kind of object as any other.
+pub(crate) const TOOLTIP_DESC_FG: Color = Color::Rgb(92, 92, 92);
+/// The help card's header text: a label, so it carries the app's keybind
+/// accent against the light card rather than the body color.
+pub(crate) const TOOLTIP_HEAD_FG: Color = Color::Rgb(178, 98, 0);
 
 /// Computes the centered properties popup rectangle: title, three field
 /// rows, one hint line, and a keybind footer.
@@ -99,8 +104,16 @@ pub fn render_attendant_properties(frame: &mut Frame<'_>, area: Rect, ctx: &Rend
     // The help overlay is anchored to the highlighted row, not to a
     // terminal cursor: this popup is navigation-only and owns no cursor of
     // its own, so its position follows the row the user is reading.
-    if let Some((help_area, help_lines)) = help_overlay(&popup, inner) {
+    if let Some((help_area, help_lines)) = help_overlay(&popup, area, inner, frame.area()) {
         frame.render_widget(Clear, help_area);
+        // The card's surface, painted across its whole area first: a
+        // `Paragraph` paints only the cells a line's text covers, so a card
+        // with a blank row in it would otherwise show a hole in its own
+        // background rather than a blank row of card.
+        frame.render_widget(
+            Block::default().style(Style::default().bg(TOOLTIP_BG)),
+            help_area,
+        );
         frame.render_widget(Paragraph::new(help_lines), help_area);
     }
 }
@@ -519,41 +532,131 @@ fn clip_to_columns(text: &str, max_columns: u16) -> String {
 }
 
 /// The hint line under the focused field.
-/// The help text for the focused field, wrapped to `width`.
-fn help_text(field: PropertyField) -> &'static str {
+/// The help card's body, for the focused field.
+///
+/// The body is a [`Line`], not a string: a field's help is a list of
+/// choices or a template, and a list reads as a list. Wrapping one choice
+/// per row also puts each name where a reader expects it, instead of
+/// leaving them mid-sentence on whatever row the wrap happened to break.
+///
+/// The text is plain on purpose. The card is a [`Paragraph`] and its
+/// construction is the place to add emphasis — see [`help_paragraph`].
+fn help_body(field: PropertyField) -> Vec<Line<'static>> {
     match field {
-        PropertyField::Trigger => "does this attendant re-run when its parent's turn completes?",
-        PropertyField::Activation => {
-            "seed pins without dispatching · reset keeps only pins · preserve appends"
-        }
-        PropertyField::SeedTemplate => "the text injected ahead of each run's prior report",
+        PropertyField::Trigger => vec![
+            Line::from("When the attendant re-runs on its own:"),
+            Line::from(""),
+            Line::from("  parent-completed  —  runs after every response message in the parent"),
+            Line::from("  manual  —  runs only when you trigger it yourself"),
+        ],
+        PropertyField::Activation => vec![
+            Line::from("How the session's context is prepared before each run:"),
+            Line::from(""),
+            Line::from("  seed  —  populate the session with data"),
+            Line::from("  reset  —  only pins survive activation"),
+            Line::from("  preserve  —  context is retained on activation"),
+        ],
+        PropertyField::SeedTemplate => vec![
+            Line::from("Text injected on each activation, ahead of the previous report:"),
+            Line::from(""),
+            Line::from("  <prior report>  —  replaced with the previous report"),
+        ],
     }
 }
 
-/// Wraps `text` to `width`, breaking on whitespace.
+/// The help card, styled: a header naming the field, then its body lines.
 ///
-/// The help is a single sentence, so a word that cannot fit a row of its
-/// own is placed on the next row rather than split mid-word.
-fn wrap_help(text: &str, width: u16) -> Vec<String> {
+/// Every row carries the card's own background, and its foreground is
+/// chosen by the row's *role* — header, body — so adding emphasis means
+/// giving a line a color, not restating the surface it sits on. The body
+/// lines are wrapped here rather than handed to the `Paragraph`, because the
+/// card sizes itself to its content and must know its height before it can
+/// be placed.
+fn help_paragraph(field: PropertyField, inner_width: u16) -> (Vec<Line<'static>>, u16) {
+    // `Line::style` replaces rather than patches, so each role carries its
+    // own foreground *and* the card's background in one style: a role
+    // layered on a base would drop the surface the card is drawn on.
+    let card = |fg| Style::default().fg(fg).bg(TOOLTIP_BG);
+    // One cell of the popup's width is the card's own left margin, so the
+    // text wraps a cell narrower than the row it is drawn into.
+    let text_width = inner_width.saturating_sub(1).max(1);
+    let body = help_body(field)
+        .into_iter()
+        .flat_map(|line| wrap_line(line, text_width))
+        .collect::<Vec<_>>();
+    let mut lines = vec![Line::from(Span::styled(
+        // The label as the form shows it, minus the colon padding: the
+        // card is a description of the field, not a copy of its row.
+        field.label().to_owned(),
+        card(TOOLTIP_HEAD_FG),
+    ))];
+    lines.extend(
+        body.into_iter()
+            .map(|line| line.style(card(TOOLTIP_DESC_FG))),
+    );
+    // A blank line in the authored body is the author's own spacing and is
+    // kept as authored; the card adds no pad of its own, so its height is
+    // its content and the gap below it is exactly the gap above.
+    let height = u16::try_from(lines.len()).unwrap_or(u16::MAX);
+    (lines, height.max(2))
+}
+
+/// Wraps one help line to `width`, breaking on whitespace, and returns the
+/// rows it occupies.
+///
+/// A word too long for a row of its own is placed on the next row rather
+/// than split mid-word; that is the only case that can overflow, and it is
+/// better one long row than a word broken across two. An empty line stays
+/// exactly one row: it is the blank the authored help asked for.
+fn wrap_line(line: Line<'static>, width: u16) -> Vec<Line<'static>> {
     let width = usize::from(width.max(1));
-    let mut rows: Vec<String> = Vec::new();
-    let mut current = String::new();
-    for word in text.split_whitespace() {
-        if current.is_empty() {
-            current.push_str(word);
-        } else if current.chars().count() + 1 + word.chars().count() <= width {
-            current.push(' ');
-            current.push_str(word);
-        } else {
-            rows.push(std::mem::take(&mut current));
-            current.push_str(word);
+    if line.spans.iter().all(|span| span.content.is_empty()) {
+        // A line of nothing: it asked for a row, and wrapping it to no rows
+        // at all would drop the author's blank.
+        return vec![line];
+    }
+    // Words are separated by their *authored* gap, and a run of whitespace is
+    // a run: the help lines are aligned columns, and collapsing the gap
+    // between a name and its description to one space would throw away the
+    // only thing that makes the list a list.
+    let mut rows: Vec<Line<'static>> = Vec::new();
+    let mut current: Vec<Span<'static>> = Vec::new();
+    let mut used = 0usize;
+    for span in line.spans {
+        // The whitespace between the span's words, as authored, and a row
+        // edge: an authored gap cannot be measured before the words around
+        // it are known, so it is buffered here rather than emitted.
+        let mut gap = String::new();
+        let mut at_row_start = true;
+        for token in span.content.split(' ') {
+            if token.is_empty() {
+                // A run of spaces: the run's own length is the gap, and it
+                // collapses to the count that fits.
+                if !at_row_start {
+                    gap.push(' ');
+                }
+                continue;
+            }
+            let length = token.chars().count();
+            let separator = usize::min(gap.len(), width.saturating_sub(1));
+            if used + separator + length > width {
+                rows.push(Line::from(std::mem::take(&mut current)));
+                used = 0;
+            } else if separator > 0 {
+                current.push(Span::styled(" ".repeat(separator), span.style));
+                used += separator;
+            }
+            current.push(Span::styled(token.to_owned(), span.style));
+            used += length;
+            gap = " ".to_owned();
+            at_row_start = false;
         }
     }
     if !current.is_empty() {
-        rows.push(current);
+        rows.push(Line::from(current));
     }
     if rows.is_empty() {
-        rows.push(String::new());
+        rows.push(Line::default());
     }
     rows
 }
@@ -579,40 +682,95 @@ fn focused_row_offset(focus: PropertyField) -> u16 {
 /// not a row inside the form — but its width is the popup's, and the text
 /// wraps at that width. Its height therefore has to be measured before it can
 /// be placed.
+///
+/// A card is not one row, so "above the field with a gap" is the preferred
+/// place and not an unconditional one. When the card is taller than the room
+/// above the field — the first field, or a card the terminal is too short to
+/// hold — it is placed below instead, where the field is followed by the rest
+/// of the form. Covering the row the user is reading is the one outcome not
+/// available to the card: the answer is about that field.
 fn help_overlay(
     popup: &AttendantPropertiesState,
+    popup_area: Rect,
     inner: Rect,
+    terminal: Rect,
 ) -> Option<(Rect, Vec<Line<'static>>)> {
     // The template editor owns the terminal cursor while it is open; the
     // help would sit on top of the draft the user is typing into.
     if !popup.help_visible || popup.editor_original.is_some() {
         return None;
     }
-    let rows = wrap_help(help_text(popup.focus), inner.width);
-    let height = rows.len() as u16;
-    // Above the highlighted row, with one blank row between. The terminal
-    // is guaranteed taller than the popup plus its help, so this clamp is
-    // the only rule: when there is no room, the help lands at the top row
-    // and draws over whatever the sidebar left there. An overlay is laid
-    // over the screen, not carved out of it.
+    let (lines, height) = help_paragraph(popup.focus, inner.width);
     let highlighted_y = inner.y.saturating_add(focused_row_offset(popup.focus));
-    let y = highlighted_y.saturating_sub(height + 1);
+    let y = place_help(HelpPlacementInput {
+        height,
+        highlighted_y,
+        // The card is kept off the popup *including its border*, not just
+        // its body: a card drawn over the popup's own top edge reads as a
+        // rendering fault rather than as an overlay.
+        popup_top: popup_area.y,
+        popup_bottom: popup_area.y.saturating_add(popup_area.height),
+        terminal_top: terminal.y,
+        terminal_bottom: terminal.y.saturating_add(terminal.height),
+    });
     let area = Rect {
         x: inner.x,
         y,
         width: inner.width,
         height,
     };
-    let lines = rows
-        .into_iter()
-        .map(|row| {
-            Line::from(Span::styled(
-                format!(" {row}"),
-                Style::default().fg(TOOLTIP_FG).bg(TOOLTIP_BG),
-            ))
-        })
-        .collect();
     Some((area, lines))
+}
+
+/// Where the help card goes: the gap, the space, the bounds.
+struct HelpPlacementInput {
+    /// The card's measured height.
+    height: u16,
+    /// The row the focused field occupies.
+    highlighted_y: u16,
+    /// The popup's top row, border included.
+    popup_top: u16,
+    /// One past the popup's last row, border included.
+    popup_bottom: u16,
+    /// The terminal's first row.
+    terminal_top: u16,
+    /// One past the terminal's last row.
+    terminal_bottom: u16,
+}
+
+/// The card's top row, preferring the gap above the focused field and
+/// falling back to the space below it.
+///
+/// Both candidates are clamped into the terminal, so a card taller than the
+/// screen draws from the top and the terminal simply cuts it — the same
+/// choice the one-line card made, and the only sane one when there is no
+/// room either way.
+fn place_help(input: HelpPlacementInput) -> u16 {
+    // Above the field, with one blank row of gap. This is the card's
+    // preferred place and the one the old single-row card always took.
+    let above = input
+        .popup_top
+        .saturating_sub(input.height + 1)
+        .max(input.highlighted_y.saturating_sub(input.height + 1));
+    // Below, starting one row clear of the popup's own last row.
+    let below = input
+        .popup_bottom
+        .saturating_add(1)
+        .min(input.terminal_bottom.saturating_sub(input.height));
+    // Above, the card must end before the popup even begins.
+    let fits_above =
+        above >= input.terminal_top && above.saturating_add(input.height) <= input.popup_top;
+    let fits_below = below >= input.popup_bottom.saturating_add(1)
+        && below.saturating_add(input.height) <= input.terminal_bottom;
+    match (fits_above, fits_below) {
+        (true, _) => above,
+        (false, true) => below,
+        // Neither side holds the whole card. The terminal is taller than
+        // the popup in every supported size, so a card too tall for the
+        // gap still clears the field on at least one side; draw from the
+        // top and let the terminal cut the rest.
+        (false, false) => input.terminal_top,
+    }
 }
 
 /// Builds the popup's input hook: typed keys edit the seed template draft.

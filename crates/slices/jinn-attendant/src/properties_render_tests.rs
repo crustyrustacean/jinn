@@ -24,7 +24,8 @@ use unicode_segmentation::UnicodeSegmentation;
 const PRIMARY_TEXT: Color = Color::Rgb(220, 220, 220);
 
 use crate::properties_overlay::{
-    attendant_properties_overlay_rect, render_attendant_properties, render_attendant_seed_template,
+    TOOLTIP_BG, TOOLTIP_DESC_FG, TOOLTIP_HEAD_FG, attendant_properties_overlay_rect,
+    render_attendant_properties, render_attendant_seed_template,
 };
 
 /// Registers the popup's cell on a fresh registry (the cell catalog does
@@ -301,10 +302,23 @@ fn help_overlay_is_hidden_until_question_mark_is_pressed() {
     );
 }
 
+/// Whether a row carries the help card's surface.
+///
+/// The card has no border of its own and is drawn at the popup's own
+/// width, so the row is a card row when the surface runs from the popup's
+/// left cell across most of its width — a row of surrounding screen is not
+/// card, and a card row is not screen.
+fn row_is_card(buffer: &ratatui::buffer::Buffer, y: u16) -> bool {
+    let card_cells = (inner_left()..inner_left() + 30)
+        .filter(|&x| bg_at(buffer, x, y) == TOOLTIP_BG)
+        .count();
+    card_cells > 25
+}
+
 #[rstest::rstest]
-#[case::trigger(PropertyField::Trigger, "does this attendant re-run")]
-#[case::activation(PropertyField::Activation, "seed pins without dispatching")]
-#[case::template(PropertyField::SeedTemplate, "the text injected ahead")]
+#[case::trigger(PropertyField::Trigger, "When the attendant re-runs on its own")]
+#[case::activation(PropertyField::Activation, "How the session's context is prepared")]
+#[case::template(PropertyField::SeedTemplate, "Text injected on each activation")]
 #[test]
 fn help_overlay_shows_the_focused_field_when_toggled(
     #[case] field: PropertyField,
@@ -340,7 +354,7 @@ fn help_overlay_is_suppressed_while_the_template_editor_is_open() {
     // Then the help is not drawn over the draft being typed into.
     let rendered = all_text(&buffer);
     assert!(
-        !rendered.contains("the text injected ahead"),
+        !rendered.contains("Text injected on each activation"),
         "help must not cover the editor's draft: {rendered}"
     );
 }
@@ -348,23 +362,25 @@ fn help_overlay_is_suppressed_while_the_template_editor_is_open() {
 #[rstest::rstest]
 #[test]
 fn help_overlay_wraps_at_the_popup_width() {
-    // Given a narrow popup with the help overlay toggled on.
+    // Given a narrow terminal with the help overlay toggled on: narrow
+    // enough that every help line wraps, tall enough to hold the card
+    // beside the form.
     let mut popup = popup_focused(PropertyField::Activation);
     popup.help_visible = true;
-    let buffer = render_properties_in(popup, 30, 12);
+    let buffer = render_properties_in(popup, 44, 26);
 
     // When reading the rendered screen.
     let rendered = all_text(&buffer);
 
     // Then the whole help is present, split across rows by the wrap. The
-    // needle sits in the middle of the sentence rather than at its start,
-    // so the assertion holds wherever the wrap happens to fall.
+    // needles are single words, so the assertion holds wherever the wrap
+    // happens to fall.
     assert!(
-        rendered.contains("dispatching") && rendered.contains("only pins"),
+        rendered.contains("activation") && rendered.contains("preserve"),
         "the whole help must be present, wrapped rather than cut: {rendered}"
     );
-    // And the popup's own rows still render below it — the overlay is
-    // laid over the terminal, not carved out of the form.
+    // And the popup's own rows still render — the overlay is laid over the
+    // terminal, not carved out of the form.
     assert!(
         rendered.contains("activation:"),
         "the form must still be drawn: {rendered}"
@@ -651,18 +667,12 @@ fn theme_key_defaults_to_the_age_fresh_green() {
     assert_eq!(fresh, option);
 }
 
-/// The tooltip's light surface, which is popup furniture rather than a
-/// themeable color: a help box is the same light card in every theme.
-const TOOLTIP_BG: Color = Color::Rgb(240, 240, 240);
-/// The tooltip's text, dark against `TOOLTIP_BG`.
-const TOOLTIP_FG: Color = Color::Rgb(26, 26, 26);
-
 #[rstest::rstest]
 #[case::trigger(PropertyField::Trigger)]
 #[case::activation(PropertyField::Activation)]
 #[case::template(PropertyField::SeedTemplate)]
 #[test]
-fn the_tooltip_sits_one_cell_above_the_highlighted_row(#[case] field: PropertyField) {
+fn the_help_card_leaves_the_field_it_describes_readable(#[case] field: PropertyField) {
     // Given a popup focused on `field` with the help overlay toggled on.
     let mut popup = popup_focused(field);
     popup.help_visible = true;
@@ -670,15 +680,41 @@ fn the_tooltip_sits_one_cell_above_the_highlighted_row(#[case] field: PropertyFi
     // When rendering.
     let buffer = render_properties(popup);
 
-    // Then the tooltip's bottom row leaves exactly one blank row between
-    // itself and the highlighted row — a gap, not a flush edge.
+    // Then the card never covers the field it is describing. A card taller
+    // than the gap above the field moves below it rather than answering
+    // the question with the row hidden.
     let (top, bottom) = tooltip_rows(&buffer);
     let highlighted = highlighted_row_of(&buffer, field);
-    assert_eq!(
-        highlighted.saturating_sub(bottom),
-        2,
-        "one blank row must separate the tooltip (y={top}..{bottom}) from \
-         the highlighted row at y={highlighted}"
+    assert!(
+        bottom < highlighted || top > highlighted,
+        "the card (y={top}..{bottom}) must not cover the field at y={highlighted}"
+    );
+}
+
+#[rstest::rstest]
+#[case::trigger(PropertyField::Trigger)]
+#[case::activation(PropertyField::Activation)]
+#[case::template(PropertyField::SeedTemplate)]
+#[test]
+fn the_help_card_never_covers_the_form_it_describes(#[case] field: PropertyField) {
+    // Given a popup focused on `field` with the help overlay toggled on.
+    let mut popup = popup_focused(field);
+    popup.help_visible = true;
+
+    // When rendering.
+    let buffer = render_properties(popup);
+
+    // Then the card lies wholly off the popup. A multi-row card drawn over
+    // the form would cover a second field's row and answer the wrong
+    // question, and would sit on the popup's own border.
+    let (top, bottom) = tooltip_rows(&buffer);
+    let form = attendant_properties_overlay_rect(&buffer.area).expect("popup rect");
+    let overlap = (top..=bottom).any(|y| y >= form.y && y < form.y + form.height);
+    assert!(
+        !overlap,
+        "the card (y={top}..{bottom}) must not cover the form (y={}..{})",
+        form.y,
+        form.y + form.height - 1
     );
 }
 
@@ -711,11 +747,16 @@ fn the_tooltip_uses_a_light_background_with_dark_text() {
     // When rendering.
     let buffer = render_properties(popup);
 
-    // Then the tooltip is a light card with dark text on it.
-    let (top, _) = tooltip_rows(&buffer);
-    let x = find_in_row(&buffer, top, "seed pins").expect("help text");
+    // Then the card's body is dark on its light surface, and its header
+    // carries the keybind accent — the two roles are told apart by color,
+    // which is the point of building the card from styled lines.
+    let (top, bottom) = tooltip_rows(&buffer);
+    let x = find_in_row(&buffer, bottom, "preserve").expect("a body line");
+    assert_eq!(bg_at(&buffer, x, bottom), TOOLTIP_BG);
+    assert_eq!(fg_at(&buffer, x, bottom), TOOLTIP_DESC_FG);
+    let x = find_in_row(&buffer, top, "activation").expect("the header");
     assert_eq!(bg_at(&buffer, x, top), TOOLTIP_BG);
-    assert_eq!(fg_at(&buffer, x, top), TOOLTIP_FG);
+    assert_eq!(fg_at(&buffer, x, top), TOOLTIP_HEAD_FG);
 }
 
 #[rstest::rstest]
@@ -848,4 +889,69 @@ fn the_status_line_shows_the_overwrite_prompt() {
         .expect("an overwrite prompt row");
     let x = find_in_row(&buffer, row, "Overwrite").expect("the prompt's x");
     assert_eq!(fg_at(&buffer, x, row), jinn_theme::default_theme().warning);
+}
+
+#[rstest::rstest]
+#[case::trigger(PropertyField::Trigger, "parent-completed")]
+#[case::activation(PropertyField::Activation, "preserve")]
+#[case::template(PropertyField::SeedTemplate, "prior report")]
+#[test]
+fn the_help_card_keeps_the_blank_line_between_its_lead_and_its_list(
+    #[case] field: PropertyField,
+    #[case] needle: &str,
+) {
+    // Given a popup on `field` with the help card toggled on.
+    let mut popup = popup_focused(field);
+    popup.help_visible = true;
+
+    // When rendering.
+    let buffer = render_properties(popup);
+
+    // Then the card separates its lead sentence from its list with a blank
+    // row. This is the newline support the card is built for: a field whose
+    // help is a list is unreadable as one wrapped sentence.
+    let (top, bottom) = tooltip_rows(&buffer);
+    // The card's own blank row: the one after its header, where the lead
+    // sentence ends and the list begins. The list may wrap over several
+    // rows, so it is located by its first line rather than its last.
+    let first_list_row = (top..=bottom)
+        .find(|&y| find_in_row(&buffer, y, needle).is_some())
+        .expect("the listed choice");
+    let header = find_in_row(&buffer, top, field.label()).map(|_| top);
+    assert!(header.is_some(), "the card names the field it describes");
+    let blank = (top + 1..first_list_row)
+        .find(|&y| row_from_border(&buffer, y).trim().is_empty() && row_is_card(&buffer, y));
+    assert!(
+        blank.is_some(),
+        "a blank card row must separate the lead from the list starting at \
+         y={first_list_row} (card y={top}..{bottom})"
+    );
+}
+
+#[rstest::rstest]
+#[case::trigger(PropertyField::Trigger)]
+#[case::activation(PropertyField::Activation)]
+#[case::template(PropertyField::SeedTemplate)]
+#[test]
+fn every_field_has_a_help_card_even_on_a_short_terminal(#[case] field: PropertyField) {
+    // Given a terminal barely taller than the popup, with help toggled on:
+    // a multi-row card has nowhere to go above or below, and must still be
+    // on screen rather than silently dropped.
+    let mut popup = popup_focused(field);
+    popup.help_visible = true;
+
+    // When rendering at that size.
+    let buffer = render_properties_in(popup, 100, 22);
+
+    // Then the card is there, though it may only have room for its head.
+    let (top, bottom) = tooltip_rows(&buffer);
+    assert!(
+        top <= bottom && bottom < buffer.area.height,
+        "the card must land inside a 22-row terminal, got y={top}..{bottom}"
+    );
+    let text = row_from_border(&buffer, top);
+    assert!(
+        text.contains(field.label()),
+        "the card names the field it describes: {text}"
+    );
 }
