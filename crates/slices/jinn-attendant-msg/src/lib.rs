@@ -42,6 +42,14 @@ pub const NO_PRIOR_REPORT_TEXT: &str = "this is the first run, so there is no pr
 /// on — a session-search tool needs an id to search by.
 pub const PARENT_SESSION_HEADER: &str = "The parent session's id is";
 
+/// Stands in for the parent session id when an attendant has no parent on
+/// record.
+///
+/// Reads as a sentence in the prompt and tells the agent the id is not
+/// available, rather than leaving the line trailing off after "is" — a
+/// prompt with a dangling label is a prompt the model tries to interpret.
+pub const NO_PARENT_SESSION_TEXT: &str = "unavailable";
+
 /// The seed text a fresh attendant starts with when the user has not written one.
 ///
 /// Describes the situation rather than prescribing a kind of work, so the

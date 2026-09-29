@@ -1,7 +1,8 @@
 //! Preparing an attendant's context and dispatching its run.
 
 use jinn_attendant_msg::{
-    AttendantActivation, NO_PRIOR_REPORT_TEXT, PARENT_SESSION_HEADER, PRIOR_REPORT_PLACEHOLDER,
+    AttendantActivation, NO_PARENT_SESSION_TEXT, NO_PRIOR_REPORT_TEXT, PARENT_SESSION_HEADER,
+    PRIOR_REPORT_PLACEHOLDER,
 };
 use jinn_core_types::chat_entry::ChatEntry;
 use jinn_core_types::{ChatEntryId, ContextOverride};
@@ -128,7 +129,7 @@ fn seed_entry(session: &ChatSessionState) -> Option<ChatEntry> {
     let parent = session
         .parent_session()
         .as_ref()
-        .map_or_else(String::new, ToString::to_string);
+        .map_or_else(|| NO_PARENT_SESSION_TEXT.to_owned(), ToString::to_string);
     render_seed_text(session.seed_template(), prior.as_deref(), &parent)
         .map(|text| ChatEntry::user_expanded(text.clone(), text))
 }
