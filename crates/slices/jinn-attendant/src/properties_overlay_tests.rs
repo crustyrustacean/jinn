@@ -295,7 +295,7 @@ fn enter_applies_all_fields_and_persists_once() {
         fx.session_values(),
         (
             AttendantTrigger::ParentCompleted,
-            AttendantActivation::Continue,
+            AttendantActivation::Preserve,
             "edited template".to_owned()
         )
     );

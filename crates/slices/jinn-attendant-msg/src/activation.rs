@@ -17,7 +17,10 @@ pub enum AttendantActivation {
     /// Rebuild context from pins alone before each run.
     Reset,
     /// Append to the existing conversation and keep the prior context.
-    Continue,
+    ///
+    /// Named for what it *preserves*, not for the `c` key that resumes a
+    /// session — a different feature that happens to share the old word.
+    Preserve,
 }
 
 impl AttendantActivation {

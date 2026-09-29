@@ -179,14 +179,14 @@ fn rerun_on_a_busy_attendant_drops_its_own_phase_so_the_seed_dispatches() {
 
 #[rstest::rstest]
 #[test]
-fn rerun_on_a_continue_attendant_seeds_through_the_template() {
-    // Given a continue-mode attendant with a prior report and a template.
+fn rerun_on_a_preserve_attendant_seeds_through_the_template() {
+    // Given a preserve-mode attendant with a prior report and a template.
     //
     // `R` is the user saying "ask again", so it goes through the template
     // and inserts the seeded message in every mode. Continue mode governs
     // what the `c` key does — resume the context as-is — not what a manual
     // re-run does.
-    let (state, id) = state_with_attendant(AttendantActivation::Continue);
+    let (state, id) = state_with_attendant(AttendantActivation::Preserve);
     {
         let mut guard = state.write();
         let session = guard.session.get_mut(&id).expect("attendant");

@@ -139,11 +139,11 @@ fn reset_context_is_idempotent() {
 
 #[rstest::rstest]
 #[test]
-fn continue_activation_prepares_no_entry() {
-    // Given a continue-mode attendant with a prior report.
+fn preserve_activation_prepares_no_entry() {
+    // Given a preserve-mode attendant with a prior report.
     let parent = ChatSessionState::new();
     let mut session = ChatSessionState::new_attendant(&parent, true);
-    session.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Continue);
+    session.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Preserve);
     session.append_attendant_report("a finding".to_owned());
 
     // When the run's seed entry is prepared.

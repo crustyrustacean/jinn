@@ -421,7 +421,7 @@ fn hint_line(field: PropertyField, theme: &jinn_theme::Theme) -> Line<'static> {
     let hint = match field {
         PropertyField::Trigger => "does this attendant re-run when its parent's turn completes?",
         PropertyField::Activation => {
-            "seed pins without dispatching · reset keeps only pins · continue appends"
+            "seed pins without dispatching · reset keeps only pins · preserve appends"
         }
         PropertyField::SeedTemplate => "the text injected ahead of each run's prior report",
     };

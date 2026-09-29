@@ -90,7 +90,7 @@ pub fn prepare_trigger_run(
         Vec::new()
     };
     let seed = match session.attendant_activation() {
-        AttendantActivation::Continue => None,
+        AttendantActivation::Preserve => None,
         AttendantActivation::Seed | AttendantActivation::Reset => seed_entry(session),
     };
     (seed, reset)

@@ -1,10 +1,33 @@
 #[cfg(test)]
 mod attendant_msg_tests {
-    #![allow(clippy::unwrap_used, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::unwrap_used,
+        reason = "test code"
+    )]
 
     use jiff::Timestamp;
 
     use crate::{AttendantActivation, AttendantReport, AttendantTrigger, PRIOR_REPORT_PLACEHOLDER};
+
+    #[rstest::rstest]
+    fn the_preserve_mode_is_named_preserve_on_disk() {
+        // Given the mode that keeps the prior conversation intact.
+        let mode = AttendantActivation::Preserve;
+
+        // When it is serialized as stored in session metadata.
+        let json = serde_json::to_string(&mode).expect("serializes");
+
+        // Then the stored name is `preserve`. The name has to be this, not
+        // `continue`: the `c` key already means "continue this session", and
+        // one word carrying two meanings is how a mode gets misread.
+        assert_eq!(json, r#""preserve""#);
+        // And it round-trips back to the same mode.
+        assert_eq!(
+            serde_json::from_str::<AttendantActivation>(&json).expect("deserializes"),
+            mode
+        );
+    }
 
     #[rstest::rstest]
     fn activation_defaults_to_seed() {
@@ -31,7 +54,7 @@ mod attendant_msg_tests {
     #[rstest::rstest]
     #[case(AttendantActivation::Seed, false)]
     #[case(AttendantActivation::Reset, true)]
-    #[case(AttendantActivation::Continue, true)]
+    #[case(AttendantActivation::Preserve, true)]
     fn seed_activation_is_not_dispatchable(
         #[case] activation: AttendantActivation,
         #[case] expected: bool,
@@ -108,19 +131,19 @@ mod properties_tests {
     }
 
     #[rstest::rstest]
-    fn activation_choices_are_ordered_seed_reset_continue() {
+    fn activation_choices_are_ordered_seed_reset_preserve() {
         // Given the activation choice row.
 
         // When reading its values in display order.
         let values: Vec<_> = ACTIVATION_CHOICES.iter().map(|(v, _)| *v).collect();
 
-        // Then the row reads seed, reset, continue.
+        // Then the row reads seed, reset, preserve.
         assert_eq!(
             values,
             vec![
                 AttendantActivation::Seed,
                 AttendantActivation::Reset,
-                AttendantActivation::Continue
+                AttendantActivation::Preserve
             ]
         );
     }
@@ -141,10 +164,10 @@ mod properties_tests {
         // Given the rightmost activation choice.
 
         // When picking right.
-        let picked = pick_activation(AttendantActivation::Continue, PickDirection::Right);
+        let picked = pick_activation(AttendantActivation::Preserve, PickDirection::Right);
 
         // Then the choice does not move.
-        assert_eq!(picked, AttendantActivation::Continue);
+        assert_eq!(picked, AttendantActivation::Preserve);
     }
 
     #[rstest::rstest]
@@ -157,7 +180,7 @@ mod properties_tests {
 
         // Then each pick lands on the adjacent choice.
         assert_eq!(left, AttendantActivation::Seed);
-        assert_eq!(right, AttendantActivation::Continue);
+        assert_eq!(right, AttendantActivation::Preserve);
     }
 
     #[rstest::rstest]
@@ -256,7 +279,7 @@ mod properties_tests {
         let mut popup = AttendantPropertiesState {
             original: Some(OriginalValues {
                 trigger: AttendantTrigger::ParentCompleted,
-                activation: AttendantActivation::Continue,
+                activation: AttendantActivation::Preserve,
                 template: "original".to_owned(),
             }),
             pending_trigger: AttendantTrigger::Manual,
@@ -270,7 +293,7 @@ mod properties_tests {
 
         // Then every field is back to its open-time value.
         assert_eq!(popup.pending_trigger, AttendantTrigger::ParentCompleted);
-        assert_eq!(popup.pending_activation, AttendantActivation::Continue);
+        assert_eq!(popup.pending_activation, AttendantActivation::Preserve);
         assert_eq!(popup.seed_template.input, "original");
     }
 

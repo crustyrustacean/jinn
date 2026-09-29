@@ -159,7 +159,7 @@ fn popup_focused(focus: PropertyField) -> AttendantPropertiesState {
     AttendantPropertiesState {
         focus,
         pending_trigger: AttendantTrigger::ParentCompleted,
-        pending_activation: AttendantActivation::Continue,
+        pending_activation: AttendantActivation::Preserve,
         seed_template: jinn_slices::LineInput {
             input: "draft".to_owned(),
             cursor_pos: 5,
@@ -219,10 +219,10 @@ fn selected_choice_uses_the_new_green_key() {
     // When locating the three activation choices.
     let seed_x = find_in_row(&buffer, activation_y, "seed").expect("seed");
     let reset_x = find_in_row(&buffer, activation_y, "reset").expect("reset");
-    let continue_x = find_in_row(&buffer, activation_y, "continue").expect("continue");
+    let preserve_x = find_in_row(&buffer, activation_y, "preserve").expect("preserve");
 
     // Then the selected choice is the attendant option green…
-    assert_eq!(fg_at(&buffer, continue_x, activation_y), Color::LightGreen);
+    assert_eq!(fg_at(&buffer, preserve_x, activation_y), Color::LightGreen);
     // …and the unselected ones are plain text.
     assert_eq!(fg_at(&buffer, seed_x, activation_y), PRIMARY_TEXT);
     assert_eq!(fg_at(&buffer, reset_x, activation_y), PRIMARY_TEXT);

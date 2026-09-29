@@ -55,7 +55,7 @@ pub const TRIGGER_CHOICES: &[(AttendantTrigger, &str)] = &[
 pub const ACTIVATION_CHOICES: &[(AttendantActivation, &str)] = &[
     (AttendantActivation::Seed, "seed"),
     (AttendantActivation::Reset, "reset"),
-    (AttendantActivation::Continue, "continue"),
+    (AttendantActivation::Preserve, "preserve"),
 ];
 
 /// One field of the properties form, in display order.
