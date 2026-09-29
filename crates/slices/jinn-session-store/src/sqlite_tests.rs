@@ -1749,7 +1749,7 @@ fn metadata_blob_is_unchanged_by_group_composition() {
             r#""lifecycle_script_state":"setup_ran","task_list":{"phases":[]},"#,
             r#""enabled_mcp_servers":[],"persist":false,"#,
             r#""activation":"seed","trigger":"manual","#,
-            r#""seed_template":"Your previous run reported: <prior report>. Confirm or refute this against the current code.","#,
+            r#""seed_template":"The previous run of this attendant reported: <prior report>.","#,
             r#""reports":[]}"#
         )
     );

@@ -1,6 +1,6 @@
 //! Preparing an attendant's context and dispatching its run.
 
-use jinn_attendant_msg::{AttendantActivation, PRIOR_REPORT_PLACEHOLDER};
+use jinn_attendant_msg::{AttendantActivation, NO_PRIOR_REPORT_TEXT, PRIOR_REPORT_PLACEHOLDER};
 use jinn_core_types::chat_entry::ChatEntry;
 use jinn_core_types::{ChatEntryId, ContextOverride};
 use jinn_session_state::ChatSessionState;
@@ -10,21 +10,31 @@ use jinn_session_state::ChatSessionState;
 /// - The `<prior report>` placeholder is substituted when present.
 /// - A template without the placeholder gets the report appended on a new
 ///   line — the user wrote instructions, the report is additional context.
+/// - With no prior report the placeholder becomes [`NO_PRIOR_REPORT_TEXT`],
+///   so no run ever dispatches a raw template token.
 /// - An empty template means no injection at all.
 ///
 /// Pure; unit-testable without a session.
 #[must_use]
 pub fn render_seed_text(template: &str, prior_report: Option<&str>) -> Option<String> {
-    let Some(prior) = prior_report else {
-        return (!template.is_empty()).then(|| template.to_owned());
-    };
     if template.is_empty() {
         return None;
     }
-    if template.contains(PRIOR_REPORT_PLACEHOLDER) {
-        Some(template.replace(PRIOR_REPORT_PLACEHOLDER, prior))
-    } else {
-        Some(format!("{template}\n\n{prior}"))
+    match prior_report {
+        // The template asked for the report and there is one.
+        Some(prior) if template.contains(PRIOR_REPORT_PLACEHOLDER) => {
+            Some(template.replace(PRIOR_REPORT_PLACEHOLDER, prior))
+        }
+        // The template asked and there is nothing to fold in: a first run
+        // says so, rather than handing the model a bare template token.
+        None if template.contains(PRIOR_REPORT_PLACEHOLDER) => {
+            Some(template.replace(PRIOR_REPORT_PLACEHOLDER, NO_PRIOR_REPORT_TEXT))
+        }
+        // The user wrote instructions with no placeholder; a report that
+        // exists is additional context appended beneath them.
+        Some(prior) => Some(format!("{template}\n\n{prior}")),
+        // Nothing to add and nothing to replace.
+        None => Some(template.to_owned()),
     }
 }
 

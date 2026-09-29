@@ -7,7 +7,7 @@
     reason = "test code"
 )]
 
-use jinn_attendant_msg::{PRIOR_REPORT_PLACEHOLDER, default_seed_template};
+use jinn_attendant_msg::{NO_PRIOR_REPORT_TEXT, PRIOR_REPORT_PLACEHOLDER, default_seed_template};
 use jinn_core_types::chat_entry::ChatEntry;
 use jinn_core_types::{ContextOverride, PinPosition};
 use jinn_kernel::common::app_state::AppState;
@@ -21,29 +21,70 @@ use crate::activation::{prepare_trigger_run, render_seed_text, reset_context};
 #[rstest::rstest]
 #[case(
     "check: <prior report>",
-    Some("the build was green"),
+    "the build was green",
     "check: the build was green"
 )]
 #[case(
     "fixed prompt",
-    Some("the build was green"),
+    "the build was green",
     "fixed prompt\n\nthe build was green"
 )]
-#[case("check: <prior report>", None, "check: <prior report>")]
-#[case("fixed prompt", None, "fixed prompt")]
 fn seed_rendering_substitutes_or_appends(
     #[case] template: &str,
-    #[case] prior: Option<&str>,
+    #[case] prior: &str,
     #[case] expected: &str,
 ) {
     // Given a seed template and whatever the prior run reported.
 
     // When the run's seed text is rendered.
-    let rendered = render_seed_text(template, prior);
+    let rendered = render_seed_text(template, Some(prior));
 
     // Then the placeholder is substituted, or the report is appended when
     // the template has none.
     assert_eq!(rendered.as_deref(), Some(expected));
+}
+
+#[rstest::rstest]
+fn a_first_run_substitutes_the_no_report_sentence() {
+    // Given a template still carrying its placeholder, on the first run.
+
+    // When the seed text is rendered with no prior report.
+    let rendered = render_seed_text("check: <prior report>", None).expect("seeds");
+
+    // Then the placeholder becomes a plain first-run sentence. Shipping the
+    // raw token would put `<prior report>` in front of the model as if it
+    // were the user having asked about a report that does not exist.
+    assert_eq!(rendered, format!("check: {NO_PRIOR_REPORT_TEXT}"));
+}
+
+#[rstest::rstest]
+fn no_placeholder_survives_into_a_first_run_prompt() {
+    // Given the default template, on the first run.
+
+    // When the seed text is rendered.
+    let rendered =
+        render_seed_text(&jinn_attendant_msg::default_seed_template(), None).expect("seeds");
+
+    // Then the raw token is gone — a prompt is user-visible, and the token
+    // is a template instruction, not something the model should be handed.
+    assert!(
+        !rendered.contains(PRIOR_REPORT_PLACEHOLDER),
+        "the token must not reach the model: {rendered}"
+    );
+    assert!(rendered.contains(NO_PRIOR_REPORT_TEXT));
+}
+
+#[rstest::rstest]
+fn a_placeholder_free_template_passes_through_unchanged() {
+    // Given a template the user wrote with no placeholder in it.
+
+    // When it is rendered on a run with no prior report.
+    let rendered = render_seed_text("count the files in src/", None);
+
+    // Then it is passed through verbatim. A template that does not ask for
+    // the report must not be given one — the substitution is a plain string
+    // replace, and there is simply no token to replace.
+    assert_eq!(rendered.as_deref(), Some("count the files in src/"));
 }
 
 #[rstest::rstest]
@@ -70,6 +111,24 @@ fn default_template_carries_the_placeholder() {
 
     // Then the placeholder was substituted — the default is usable as-is.
     assert!(rendered.is_some_and(|text| !text.contains(PRIOR_REPORT_PLACEHOLDER)));
+}
+
+#[rstest::rstest]
+fn the_default_template_prescribes_no_particular_work() {
+    // Given the shipped default template.
+
+    // When its wording is read.
+    let template = default_seed_template();
+
+    // Then it only describes the situation. The attendant feature is not
+    // code-specific — a default that tells the model to check code against
+    // the current code misleads every attendant that is not inspecting code,
+    // and the user has to notice and rewrite it.
+    assert!(
+        !template.to_lowercase().contains("code"),
+        "the default template must not presume a code-review task: {template}"
+    );
+    assert!(!template.contains("Confirm or refute"));
 }
 
 /// Builds a session with one pinned and two unpinned entries, returning

@@ -26,14 +26,19 @@ mod tests;
 /// The placeholder an attendant's seed template uses to refer to its last report.
 pub const PRIOR_REPORT_PLACEHOLDER: &str = "<prior report>";
 
+/// What the placeholder becomes on a run that has no prior report.
+///
+/// A first run has nothing to fold in, so the token is replaced with a plain
+/// sentence rather than left in place. Shipping the raw token would put a
+/// template instruction in front of the model as though the user had written
+/// it, and would read as a question about a report that does not exist.
+pub const NO_PRIOR_REPORT_TEXT: &str = "this is the first run, so there is no prior report";
+
 /// The seed text a fresh attendant starts with when the user has not written one.
 ///
-/// Framed as a hypothesis to check rather than a conclusion to trust, so a
-/// re-run treats the previous report as something to confirm or refute.
+/// Describes the situation rather than prescribing a kind of work, so the
+/// default reads sensibly for an attendant that is not inspecting code.
 #[must_use]
 pub fn default_seed_template() -> String {
-    format!(
-        "Your previous run reported: {PRIOR_REPORT_PLACEHOLDER}. \
-         Confirm or refute this against the current code."
-    )
+    format!("The previous run of this attendant reported: {PRIOR_REPORT_PLACEHOLDER}.")
 }
