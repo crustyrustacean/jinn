@@ -33,7 +33,7 @@ pub fn build_assembly_inputs(state: &AppState, session_id: &SessionId) -> Assemb
         .map(|cell| cell.read().tools_for_session(session_id))
         .unwrap_or_default()
         .into_iter()
-        .filter(|def| is_attendant_tool_definition(def) == session.is_attendant)
+        .filter(|def| session.is_attendant || !is_attendant_tool_definition(def))
         .collect();
 
     AssemblyInputs {
@@ -62,6 +62,9 @@ mod attendant_tool_visibility_tests {
     use jinn_kernel::common::state::State;
     use jinn_session_state::ChatSessionState;
 
+    /// Ordinary built-ins every session keeps, attendant or not.
+    const ORDINARY_TOOL_NAMES: &[&str] = &["read", "bash", "grep"];
+
     #[rstest::rstest]
     #[test]
     fn an_ordinary_session_is_offered_no_attendant_tool() {
@@ -81,7 +84,9 @@ mod attendant_tool_visibility_tests {
             );
         }
         // And the other built-ins are untouched.
-        assert!(names.contains(&"read".to_owned()));
+        for name in ORDINARY_TOOL_NAMES {
+            assert!(names.iter().any(|n| n == name), "{name} must remain");
+        }
     }
 
     #[rstest::rstest]
@@ -103,6 +108,15 @@ mod attendant_tool_visibility_tests {
                 "{name} must reach an attendant"
             );
         }
+        // And so are the ordinary ones. The attendant filter subtracts from
+        // a full list rather than replacing it — an attendant that only
+        // sees its own two tools cannot read, search or edit anything.
+        for name in ORDINARY_TOOL_NAMES {
+            assert!(
+                names.iter().any(|n| n == name),
+                "{name} must remain available to an attendant"
+            );
+        }
     }
 
     /// A state holding `session` as its active session, with the
@@ -115,10 +129,13 @@ mod attendant_tool_visibility_tests {
             guard.session.insert(session);
             let cell = guard.tool_registry().expect("registry cell attached");
             cell.update(|r| {
-                r.global.insert("conclude".to_owned(), tool("conclude"));
-                r.global
-                    .insert("notify_parent".to_owned(), tool("notify_parent"));
-                r.global.insert("read".to_owned(), tool("read"));
+                for name in ATTENDANT_TOOL_NAMES
+                    .iter()
+                    .chain(ORDINARY_TOOL_NAMES.iter())
+                    .copied()
+                {
+                    r.global.insert(name.to_owned(), tool(name));
+                }
             });
         }
         (state, session_id)

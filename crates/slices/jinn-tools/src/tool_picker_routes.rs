@@ -303,6 +303,11 @@ fn seed_from_session(state: &jinn_kernel::AppState) -> Seed {
     // something to toggle — offering it invites a toggle that changes
     // nothing, and its absence in the prompt while it sits in this list is
     // exactly the disagreement this filter exists to prevent.
+    //
+    // The attendant gate is a subtraction, never a substitution: an
+    // attendant keeps every ordinary tool and gains its own two. Filtering
+    // *to* the attendant tools instead would leave one that cannot read,
+    // search or edit anything.
     let is_attendant = active_session.is_attendant();
     let mut rows: Vec<ToolRow> = state
         .tool_registry()
@@ -312,7 +317,7 @@ fn seed_from_session(state: &jinn_kernel::AppState) -> Seed {
                 .tools_for_session(&session_id)
                 .into_iter()
                 .filter(|def| def.available_for_provider(&provider_name))
-                .filter(|def| is_attendant_tool_definition(def) == is_attendant)
+                .filter(|def| is_attendant || !is_attendant_tool_definition(def))
                 .map(|def| ToolRow {
                     name: def.name,
                     description: def.description,
@@ -405,6 +410,9 @@ mod attendant_tool_picker_tests {
     use jinn_kernel::common::state::State;
     use jinn_session_state::ChatSessionState;
 
+    /// Ordinary built-ins every session keeps, attendant or not.
+    const ORDINARY_TOOL_NAMES: &[&str] = &["read", "bash", "grep"];
+
     #[rstest::rstest]
     fn an_ordinary_session_is_offered_no_attendant_tool_row() {
         // Given a plain user session with the built-ins registered.
@@ -423,7 +431,9 @@ mod attendant_tool_picker_tests {
                 "{name} must not appear in the picker for a non-attendant"
             );
         }
-        assert!(names.iter().any(|n| n == "read"));
+        for name in ORDINARY_TOOL_NAMES {
+            assert!(names.iter().any(|n| n == name), "{name} must remain");
+        }
     }
 
     #[rstest::rstest]
@@ -443,6 +453,17 @@ mod attendant_tool_picker_tests {
                 "{name} must appear in the picker for an attendant"
             );
         }
+        // And the ordinary tools are still there. The attendant filter is a
+        // subtraction from a full list, not a substitution for one: an
+        // attendant reads, greps and writes like any other session, and
+        // whittling its list down to just its own two tools starves it of
+        // the work it exists to do.
+        for name in ORDINARY_TOOL_NAMES {
+            assert!(
+                names.iter().any(|n| n == name),
+                "{name} must remain available to an attendant"
+            );
+        }
     }
 
     /// A state whose active session is `session`, with the attendant
@@ -459,7 +480,11 @@ mod attendant_tool_picker_tests {
             guard.session.set_active(session_id.clone());
             let cell = guard.tool_registry().expect("registry cell attached");
             cell.update(|r| {
-                for name in ["conclude", "notify_parent", "read"] {
+                for name in ATTENDANT_TOOL_NAMES
+                    .iter()
+                    .chain(ORDINARY_TOOL_NAMES.iter())
+                    .copied()
+                {
                     r.global.insert(name.to_owned(), tool(name));
                 }
             });
