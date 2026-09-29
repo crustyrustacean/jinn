@@ -730,11 +730,13 @@ fn the_help_card_sits_below_the_form_on_every_field(#[case] field: PropertyField
         "the card (starting y={top}) must sit below the form's last row \
          (y={form_bottom})"
     );
-    // And one blank row separates the two, so they never read as one block.
+    // And it is flush with the popup's last row. The two were once a blank
+    // row apart; the card's own border does that job now, and a gap between
+    // two framed things reads as a hole rather than as separation.
     assert_eq!(
         top - form_bottom,
-        2,
-        "one blank row must separate the card from the form"
+        1,
+        "the card must sit directly on the popup's last row"
     );
 }
 
@@ -1052,6 +1054,9 @@ fn a_listed_choice_is_introduced_by_a_colon(#[case] field: PropertyField, #[case
 /// light background, wherever the overlay landed. The tooltip is laid over
 /// the terminal — including over the popup's own upper rows for a lower
 /// field — so its position cannot be assumed; it is read by color.
+/// The box-drawing corner the card's top-left is drawn with.
+const CORNER_TOP_LEFT: &str = "\u{250c}";
+
 /// The card's own left and right border columns, read from its bottom edge.
 fn card_columns(buffer: &ratatui::buffer::Buffer, bottom: u16) -> (u16, u16) {
     let theme = jinn_theme::default_theme();
@@ -1166,4 +1171,33 @@ fn the_card_border_leaves_no_room_the_text_runs_out_of() {
             "card row {y} runs into the right border: {row}"
         );
     }
+}
+
+#[rstest::rstest]
+#[test]
+fn no_blank_row_sits_between_the_form_and_the_card() {
+    // Given a popup with the help card on.
+    let mut popup = popup_focused(PropertyField::Activation);
+    popup.help_visible = true;
+
+    // When rendering.
+    let buffer = render_properties(popup);
+
+    // Then the card starts on the row directly below the popup: no empty
+    // row between them. A gap between two framed things is a hole in the
+    // screen, not separation - the card's own edge is what separates them.
+    let form = attendant_properties_overlay_rect(&buffer.area).expect("popup rect");
+    let form_bottom = form.y + form.height - 1;
+    let (top, _) = tooltip_rows(&buffer);
+    assert_eq!(
+        top,
+        form_bottom + 1,
+        "the card must start on the row directly below the form"
+    );
+    // And that row is drawn as the card's own top border, corner and all.
+    assert_eq!(
+        symbol_at(&buffer, inner_left() + 1, top),
+        CORNER_TOP_LEFT,
+        "the card's top row must be its own corner, not an empty row"
+    );
 }

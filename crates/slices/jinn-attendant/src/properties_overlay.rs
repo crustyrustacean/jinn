@@ -764,21 +764,23 @@ struct HelpPlacementInput {
     terminal_bottom: u16,
 }
 
-/// The card's top row: always below the popup, one row clear of its border.
+/// The card's top row: always below the popup, flush with its border.
 ///
 /// Below is the card's only home. Above was the old placement, and a card
 /// that flips sides as the user moves between fields is a card that jumps
 /// under the cursor — the help is read, not aimed at, and a fixed place is
 /// what lets a reader find the next field's help without hunting for it.
 ///
-/// One row of gap separates the card from the popup, so the two never read
-/// as one block. A terminal too short to hold the card below it draws from
-/// its own top row and lets the last rows be cut: an overlay is laid over
-/// the screen, and there is nowhere else to put it.
+/// The card sits on the popup's last row. There was a blank row between
+/// them once, to keep the two from reading as one block; the card's own
+/// pink border does that job, and does it better than an empty row — a gap
+/// between two framed things is a hole in the screen, not separation. A
+/// terminal too short to hold the card below it draws from its own top row
+/// and lets the last rows be cut: an overlay is laid over the screen, and
+/// there is nowhere else to put it.
 fn place_help(input: HelpPlacementInput) -> u16 {
     let below = input
         .popup_bottom
-        .saturating_add(1)
         .min(input.terminal_bottom.saturating_sub(input.height));
     if below.saturating_add(input.height) <= input.terminal_bottom {
         below
@@ -786,8 +788,7 @@ fn place_help(input: HelpPlacementInput) -> u16 {
         // No room below. The card is drawn from the top of the terminal and
         // the terminal cuts it, rather than from the top of the room below
         // the popup: a card that starts above the popup covers the form it
-        // is describing, and a card that starts level with it sits on the
-        // popup's own border. Neither reads as an overlay.
+        // is describing. Neither reads as an overlay.
         input.terminal_top
     }
 }
