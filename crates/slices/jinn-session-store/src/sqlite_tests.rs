@@ -980,12 +980,10 @@ async fn fork_strips_suppressed_task_tool() {
     source.set_session_id(source_id.clone());
     source.set_title("Subagent".to_owned());
     source.push_entry(ChatEntry::user("hello"));
-    {
-        let profile = source.profile_mut();
-        profile
-            .disabled_tools
-            .insert(jinn_tools_msg::TASK_TOOL_NAME.to_owned());
-    }
+    source
+        .profile_mut()
+        .tool_filter
+        .withhold(jinn_tools_msg::TASK_TOOL_NAME);
     store
         .save(&source.capture_snapshot())
         .await
@@ -1001,18 +999,18 @@ async fn fork_strips_suppressed_task_tool() {
         .expect("load forked")
         .expect("should exist");
     assert!(
-        !forked
+        forked
             .profile()
-            .disabled_tools
-            .contains(jinn_tools_msg::TASK_TOOL_NAME),
+            .tool_filter
+            .permits(jinn_tools_msg::TASK_TOOL_NAME),
         "a fork must not inherit the task suppression stamp, got: {:?}",
-        forked.profile().disabled_tools
+        forked.profile().tool_filter
     );
 }
 
 #[rstest::rstest]
 #[tokio::test]
-async fn fork_preserves_other_disabled_tools() {
+async fn fork_preserves_other_filtered_tools() {
     // Given a store with a source session disabling write (not task).
     let (_dir, store) = make_store().await;
     let source_id = SessionId::new();
@@ -1020,7 +1018,7 @@ async fn fork_preserves_other_disabled_tools() {
     source.set_session_id(source_id.clone());
     source.set_title("Manual disable".to_owned());
     source.push_entry(ChatEntry::user("hello"));
-    source.set_disabled_tools(std::collections::HashSet::from(["write".to_owned()]));
+    source.set_tool_filter(jinn_core_types::NameFilter::deny(["write".to_owned()]));
     store
         .save(&source.capture_snapshot())
         .await
@@ -1029,26 +1027,26 @@ async fn fork_preserves_other_disabled_tools() {
     // When forking.
     let forked_id = store.fork(&source_id, 0).await.expect("fork");
 
-    // Then the forked session still has write disabled — the strip is
-    // targeted at task, not a wipe of the disabled set.
+    // Then the forked session still withholds write — the strip is targeted
+    // at task, not a wipe of the filter.
     let forked = store
         .load_session(&forked_id)
         .await
         .expect("load forked")
         .expect("should exist");
     assert!(
-        forked.profile().disabled_tools.contains("write"),
-        "fork must preserve non-task disabled tools, got: {:?}",
-        forked.profile().disabled_tools
+        !forked.profile().tool_filter.permits("write"),
+        "fork must preserve the other filtered tools, got: {:?}",
+        forked.profile().tool_filter
     );
     // And it does not gain a task entry of its own.
     assert!(
-        !forked
+        forked
             .profile()
-            .disabled_tools
-            .contains(jinn_tools_msg::TASK_TOOL_NAME),
+            .tool_filter
+            .permits(jinn_tools_msg::TASK_TOOL_NAME),
         "fork must not gain a task disable, got: {:?}",
-        forked.profile().disabled_tools
+        forked.profile().tool_filter
     );
 }
 

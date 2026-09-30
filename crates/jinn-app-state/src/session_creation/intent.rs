@@ -55,15 +55,15 @@ pub fn handle_session_lifecycle_setup(
 
     let reasoning_effort = state.frontend.app_state.reasoning_effort;
 
-    // Seed per-session defaults from jinn.toml (disablement sets +
+    // Seed per-session defaults from jinn.toml (tool/skill filters +
     // auto-enabled MCP servers), matching every other session-creation path.
     let seed = SessionSeed::from_config(config);
 
     let mut new_session = ChatSessionState::new_with_profile(SessionProfile::new(
         model,
         persona_name,
-        seed.disabled_tools.clone(),
-        seed.disabled_skills.clone(),
+        seed.tool_filter.clone(),
+        seed.skill_filter.clone(),
         reasoning_effort,
         None,
     ));
@@ -745,26 +745,33 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn lifecycle_setup_seeds_disabled_tools_and_skills_from_config() {
-        // Given configuration disabling a tool and a skill.
+    fn lifecycle_setup_seeds_the_tool_filter_from_config() {
+        // Given configuration withholding a tool.
         let mut state = AppState::default_with_scope_focus();
         let config = jinn_config::testutil::config_layer(
-            "[tools]\ndisabled = [\"bash\"]\n\
-             [skills]\ndisabled = [\"phased-task-loop\"]\n",
+            "[tools.tool_filter]\nmode = \"deny\"\nnames = [\"bash\"]\n",
         );
 
         // When creating a new session via lifecycle setup.
         let _result = handle_session_lifecycle_setup(&mut state, "", &[], None, &config);
 
-        // Then the new session carries both disablement sets.
-        assert!(state.active_session().disabled_tools().contains("bash"));
-        // And the skill too.
-        assert!(
-            state
-                .active_session()
-                .disabled_skills()
-                .contains("phased-task-loop")
+        // Then the new session withholds it.
+        assert!(!state.active_session().is_tool_enabled("bash"));
+    }
+
+    #[rstest::rstest]
+    fn lifecycle_setup_seeds_the_skill_filter_from_config() {
+        // Given configuration withholding a skill.
+        let mut state = AppState::default_with_scope_focus();
+        let config = jinn_config::testutil::config_layer(
+            "[skills.skill_filter]\nmode = \"deny\"\nnames = [\"phased-task-loop\"]\n",
         );
+
+        // When creating a new session via lifecycle setup.
+        let _result = handle_session_lifecycle_setup(&mut state, "", &[], None, &config);
+
+        // Then the new session withholds it.
+        assert!(!state.active_session().is_skill_enabled("phased-task-loop"));
     }
 
     #[rstest::rstest]

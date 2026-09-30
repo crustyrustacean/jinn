@@ -21,7 +21,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use jinn_core_types::{ChatEntry, ChatEntryId, PinPosition, ToolResultStatus};
+use jinn_core_types::{ChatEntry, ChatEntryId, NameFilter, PinPosition, ToolResultStatus};
 use jinn_skills_msg::{Skill, SkillPickerState};
 use jinn_slices::KeyRoutes;
 use jinn_slices::RouteId;
@@ -289,8 +289,8 @@ pub fn register_skill_picker_input_hook(routes: &KeyRoutes, cell: &SkillPickerCe
 struct Seed {
     /// Skills discovered for the active session (cwd-scoped).
     discovered: Vec<Skill>,
-    /// Skills currently disabled, snapshotted so ESC can restore them.
-    disabled: HashSet<String>,
+    /// The session's skill filter, snapshotted so ESC can restore it whole.
+    skill_filter: NameFilter,
     /// The active theme, so rows render with the right colors.
     theme: jinn_theme::Theme,
 }
@@ -298,7 +298,7 @@ struct Seed {
 // ── Actions ─────────────────────────────────────────────────────────────
 
 /// Opens the picker: seed the rows from the session's discovered skills,
-/// snapshot the disabled set for the ESC revert, and push the picker's scope.
+/// snapshot the skill filter for the ESC revert, and push the picker's scope.
 fn open_skill_picker(ctx: &mut ActionCtx<'_>, cell: &SkillPickerCell) -> IntentResult {
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
@@ -306,18 +306,18 @@ fn open_skill_picker(ctx: &mut ActionCtx<'_>, cell: &SkillPickerCell) -> IntentR
     let session = state.active_session();
     let seed = Seed {
         discovered: session.discovered_skills().to_vec(),
-        disabled: session.disabled_skills().clone(),
+        skill_filter: session.skill_filter().clone(),
         theme: state.frontend.theme.clone(),
     };
 
     cell.update(|picker| {
-        skill_picker_actions::open(picker, &seed.discovered, &seed.disabled, &seed.theme);
+        skill_picker_actions::open(picker, &seed.discovered, &seed.skill_filter, &seed.theme);
     });
 
     IntentResult::empty().with_scope_signal(ScopeSignal::Push(skill_picker_scope()))
 }
 
-/// `<enter>`: commit the toggled set as the session's disabled skills and close.
+/// `<enter>`: commit the toggled rows as a deny filter and close.
 ///
 /// The snapshot is cleared without restoring — the commit is authoritative.
 fn confirm_skill_picker(ctx: &mut ActionCtx<'_>, cell: &SkillPickerCell) -> IntentResult {
@@ -328,22 +328,26 @@ fn confirm_skill_picker(ctx: &mut ActionCtx<'_>, cell: &SkillPickerCell) -> Inte
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    state.active_session_mut().set_disabled_skills(disabled);
+    // A blocklist by construction — the same mode decision the tool picker
+    // makes, and for the same reason.
+    state
+        .active_session_mut()
+        .set_skill_filter(NameFilter::deny(disabled));
     IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(skill_picker_scope()))
 }
 
-/// `<esc>`: restore the snapshotted disabled set and close.
+/// `<esc>`: restore the snapshotted filter and close.
 ///
 /// The revert path, never the confirm path. Without the pop the user would be
 /// stranded inside a picker whose filter no longer reflects the session.
 fn cancel_skill_picker(ctx: &mut ActionCtx<'_>, cell: &SkillPickerCell) -> IntentResult {
     let mut restored = None;
-    cell.update(|picker| restored = skill_picker_actions::cancel(picker));
+    cell.update(|picker| restored = skill_picker_actions::cancel_filter(picker));
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    if let Some(disabled) = restored {
-        state.active_session_mut().set_disabled_skills(disabled);
+    if let Some(filter) = restored {
+        state.active_session_mut().set_skill_filter(filter);
     }
     IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(skill_picker_scope()))
 }
@@ -434,12 +438,16 @@ fn load_highlighted_skill(ctx: &mut ActionCtx<'_>, cell: &SkillPickerCell) -> In
     IntentResult::new_message(jinn_session_msg::MarkSessionInteracted { session_id })
 }
 
-/// Auto-enables a skill everywhere it could otherwise be re-disabled: its row in
-/// the picker, the ESC-revert snapshot, and the session's live set.
+/// Permits a skill everywhere it could otherwise be re-withheld: its row in the
+/// picker, the ESC-revert snapshot, and the session's live filter.
+///
+/// Applied through the filter rather than by removing a name, because "permit
+/// this one" is not one operation across the two modes — dropping a name from
+/// an allow list would withhold everything that list was permitting.
 fn enable_durably(state: &mut jinn_kernel::AppState, cell: &SkillPickerCell, name: &str) {
     cell.update(|picker| {
         if let Some(snapshot) = picker.snapshot.as_mut() {
-            snapshot.remove(name);
+            snapshot.permit(name);
         }
         if picker
             .selection
@@ -452,9 +460,9 @@ fn enable_durably(state: &mut jinn_kernel::AppState, cell: &SkillPickerCell, nam
         }
     });
 
-    let mut disabled = state.active_session().disabled_skills().clone();
-    disabled.remove(name);
-    state.active_session_mut().set_disabled_skills(disabled);
+    let mut filter = state.active_session().skill_filter().clone();
+    filter.permit(name);
+    state.active_session_mut().set_skill_filter(filter);
 }
 
 /// `<c-r>`: rescan every discovery source.
@@ -538,9 +546,9 @@ pub fn republish_from_discovery(cell: &SkillPickerCell, discovered: &[Skill]) {
             .selection
             .selected_item()
             .map(|item| item.entry().name.clone());
-        let disabled = picker.snapshot.clone().unwrap_or_default();
+        let filter = picker.snapshot.clone().unwrap_or_default();
         let theme = picker.theme.clone();
-        crate::skill_picker_reload::reload_skill_picker(picker, discovered, &disabled, &theme);
+        crate::skill_picker_reload::reload_skill_picker(picker, discovered, &filter, &theme);
         if let Some(name) = highlight {
             restore_highlight(picker, &name);
         }

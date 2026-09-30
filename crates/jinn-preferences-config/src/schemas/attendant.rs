@@ -15,7 +15,7 @@
 //! shape and the session shape cannot compile.
 
 use jinn_attendant_msg::{AttendantBehavior, AttendantTrigger};
-use jinn_core_types::{Endpoint, ModelSelection, ReasoningEffort};
+use jinn_core_types::{Endpoint, ModelSelection, NameFilter, ReasoningEffort};
 use serde::{Deserialize, Serialize};
 
 impl jinn_config::ConfigList for AttendantEntryConfig {
@@ -29,8 +29,8 @@ impl jinn_config::ConfigList for AttendantEntryConfig {
         "seed_template",
         "model",
         "persona_name",
-        "disabled_tools",
-        "disabled_skills",
+        "tool_filter",
+        "skill_filter",
         "reasoning_effort",
         "endpoint",
         "pins",
@@ -79,13 +79,16 @@ pub struct AttendantEntryConfig {
     /// The persona name, absent when the saved session ran the default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persona_name: Option<String>,
-    /// Tool names explicitly disabled, sorted and deduplicated so two
-    /// saves of an unchanged attendant produce byte-identical TOML.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub disabled_tools: Vec<String>,
-    /// Skill names explicitly disabled, sorted and deduplicated as above.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub disabled_skills: Vec<String>,
+    /// Which tools this attendant may use.
+    ///
+    /// Same mode-plus-glob filter as `[tools]`. Stored as an optional filter
+    /// rather than a plain list: an allow-mode attendant must survive a
+    /// round trip, and a bare list could not say which mode it meant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_filter: Option<NameFilter>,
+    /// Which skills this attendant may load, as above.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skill_filter: Option<NameFilter>,
     /// Reasoning effort, absent when the saved session set none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<ReasoningEffort>,
@@ -216,8 +219,8 @@ impl AttendantEntryConfig {
         seed_template: String,
         model: &ModelSelection,
         persona_name: &str,
-        disabled_tools: &std::collections::HashSet<String>,
-        disabled_skills: &std::collections::HashSet<String>,
+        tool_filter: &NameFilter,
+        skill_filter: &NameFilter,
         reasoning_effort: Option<ReasoningEffort>,
         endpoint: Option<&Endpoint>,
         pins: Vec<AttendantPinConfig>,
@@ -236,8 +239,12 @@ impl AttendantEntryConfig {
             // it would only pin the entry to today's default value.
             persona_name: (!jinn_core_types::DEFAULT_PERSONA_NAME.eq(persona_name))
                 .then(|| persona_name.to_owned()),
-            disabled_tools: sorted_unique(disabled_tools),
-            disabled_skills: sorted_unique(disabled_skills),
+            // An unconfigured filter is stored as absent so create
+            // inherits the parent's, exactly as an absent disablement list
+            // used to. Storing an empty filter would pin the entry to
+            // "permit everything" and defeat that inheritance.
+            tool_filter: (!tool_filter.is_unconfigured()).then(|| tool_filter.clone()),
+            skill_filter: (!skill_filter.is_unconfigured()).then(|| skill_filter.clone()),
             reasoning_effort,
             endpoint: endpoint.cloned(),
             pins,
@@ -255,19 +262,6 @@ impl AttendantEntryConfig {
     }
 }
 
-/// A set as a sorted, deduplicated list.
-///
-/// `HashSet` iteration order is run-to-run unstable; serializing one would
-/// reorder the entry's lines on every save and diff the user's file
-/// pointlessly. Sorting costs one allocation per save and makes the output
-/// deterministic.
-fn sorted_unique(names: &std::collections::HashSet<String>) -> Vec<String> {
-    let mut sorted: Vec<String> = names.iter().cloned().collect();
-    sorted.sort();
-    sorted.dedup();
-    sorted
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -277,19 +271,13 @@ mod tests {
         reason = "test code"
     )]
 
-    use std::collections::HashSet;
     use std::sync::Arc;
 
     use jinn_attendant_msg::{AttendantBehavior, AttendantTrigger};
     use jinn_config::{ConfigLayer, InMemoryConfigStorage};
-    use jinn_core_types::{ModelSelection, NO_PROVIDER_ID};
+    use jinn_core_types::{FilterMode, ModelSelection, NO_PROVIDER_ID, NameFilter};
 
     use super::{AttendantEntryConfig, AttendantPinConfig, AttendantPinRole};
-
-    /// A set built from literals, for the disablement fields.
-    fn set(names: impl IntoIterator<Item = String>) -> HashSet<String> {
-        names.into_iter().collect()
-    }
 
     /// A layer over a document given as a string.
     fn layer_over(body: &str) -> ConfigLayer {
@@ -298,8 +286,7 @@ mod tests {
     }
 
     /// The plainest entry that still serializes: no model, no persona, no
-    /// disablements, so a test's size or field assertions measure only what
-    /// it actually set.
+    /// filters, so a test's field assertions measure only what it set.
     fn entry_with_pins(pins: Vec<AttendantPinConfig>) -> AttendantEntryConfig {
         AttendantEntryConfig::from_parts(
             "pinned".to_owned(),
@@ -309,30 +296,31 @@ mod tests {
             jinn_attendant_msg::default_seed_template(),
             &ModelSelection::Single(NO_PROVIDER_ID.to_owned()),
             jinn_core_types::DEFAULT_PERSONA_NAME,
-            &HashSet::new(),
-            &HashSet::new(),
+            &NameFilter::default(),
+            &NameFilter::default(),
             None,
             None,
             pins,
         )
     }
 
-    fn entry(name: &str) -> AttendantEntryConfig {
+    /// An entry carrying the given filters and nothing else notable.
+    fn entry_with_filters(
+        tool_filter: &NameFilter,
+        skill_filter: &NameFilter,
+    ) -> AttendantEntryConfig {
         AttendantEntryConfig::from_parts(
-            name.to_owned(),
+            "filtered".to_owned(),
             AttendantBehavior::Reset,
             AttendantTrigger::ParentCompleted,
             false,
             "prior: <prior report>".to_owned(),
             &ModelSelection::Single("zai/glm-4.7".to_owned()),
             "reviewer",
-            &set(["write".to_owned()]),
-            &set(["bash".to_owned(), "edit".to_owned(), "bash".to_owned()]),
-            Some(jinn_core_types::ReasoningEffort::High),
-            Some(&jinn_core_types::Endpoint {
-                tag: "zai".to_owned(),
-                provider_name: "ZAI".to_owned(),
-            }),
+            tool_filter,
+            skill_filter,
+            None,
+            None,
             Vec::new(),
         )
     }
@@ -351,9 +339,15 @@ mod tests {
             seed_template = "prior: <prior report>"
             model = { single = "zai/glm-4.7" }
             persona_name = "reviewer"
-            disabled_tools = ["write"]
-            disabled_skills = ["bash", "edit"]
             reasoning_effort = "high"
+
+            [attendant.entry.tool_filter]
+            mode = "deny"
+            names = ["write"]
+
+            [attendant.entry.skill_filter]
+            mode = "deny"
+            names = ["bash", "edit"]
 
             [attendant.entry.endpoint]
             tag = "zai"
@@ -366,13 +360,87 @@ mod tests {
             .get_list::<AttendantEntryConfig>()
             .expect("list reads");
 
-        // Then the entry reads back field for field.
+        // Then the entry reads back field for field, filters included.
         assert_eq!(entries.len(), 1);
         assert_eq!(
             entries[0],
-            entry("reviewer"),
+            entry_with_filters(
+                &NameFilter::deny(["write".to_owned()]),
+                &NameFilter::deny(["bash".to_owned(), "edit".to_owned()]),
+            ),
             "round trip lost fields: {}",
             layer.document_text()
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn an_allow_mode_filter_survives_the_document() {
+        // Given a document whose attendant is restricted to two tools.
+        let layer = layer_over(
+            r#"
+            [[attendant.entry]]
+            name = "narrow"
+
+            [attendant.entry.tool_filter]
+            mode = "allow"
+            names = ["read", "mcp__github__*"]
+        "#,
+        );
+
+        // When reading the list.
+        let entries = layer
+            .get_list::<AttendantEntryConfig>()
+            .expect("list reads");
+
+        // Then the mode is not lost — a plain list could not carry it, so
+        // this is the case that made the field a filter rather than names.
+        let filter = entries[0].tool_filter.as_ref().expect("filter present");
+        assert_eq!(filter.mode, FilterMode::Allow);
+        assert!(filter.permits("mcp__github__create_pr"));
+        assert!(!filter.permits("bash"));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn an_unconfigured_filter_is_stored_as_absent() {
+        // Given a session whose filters name nothing.
+        let entry = entry_with_filters(&NameFilter::default(), &NameFilter::default());
+
+        // When reading the stored filters.
+        // Then both are absent, so create inherits the parent's rather than
+        // pinning the attendant to "permit everything".
+        assert!(entry.tool_filter.is_none());
+        assert!(entry.skill_filter.is_none());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn clearing_a_filter_removes_it_from_the_document() {
+        // Given a document whose entry carries a tool filter.
+        let storage = Arc::new(InMemoryConfigStorage::new(
+            "name = \"stale\"\n\n[attendant.entry.tool_filter]\nmode = \"deny\"\nnames = [\"write\"]\n"
+                .parse()
+                .expect("parses"),
+        ));
+        let layer = ConfigLayer::load(storage.clone()).expect("load");
+
+        // When the entry is re-saved with no filter configured.
+        layer
+            .put_list::<AttendantEntryConfig>(&[entry_with_filters(
+                &NameFilter::default(),
+                &NameFilter::default(),
+            )])
+            .expect("list writes");
+
+        // Then the key is gone from the document. This is what `ENTRY_FIELDS`
+        // buys: without `tool_filter` in that list the patcher has no
+        // declaration for the key, leaves the stale block in place, and the
+        // filter survives a save that should have cleared it.
+        let text = storage.text();
+        assert!(
+            !text.contains("tool_filter"),
+            "a cleared filter survived the save:\n{text}"
         );
     }
 
@@ -465,43 +533,35 @@ mod tests {
         // paths used to disagree. An entry with no pins and no model passes
         // trivially: an empty array already rendered inline, so the fixture
         // never reached the oscillation.
-        let saved = AttendantEntryConfig::from_parts(
-            "reviewer".to_owned(),
-            AttendantBehavior::Reset,
-            AttendantTrigger::ParentCompleted,
-            false,
-            "prior: <prior report>".to_owned(),
-            &ModelSelection::Single("zai/glm-4.7".to_owned()),
-            "reviewer",
-            &set(["write".to_owned()]),
-            &set(["bash".to_owned()]),
-            Some(jinn_core_types::ReasoningEffort::High),
-            None,
-            vec![
-                AttendantPinConfig {
-                    role: AttendantPinRole::User,
-                    text: "always in context".to_owned(),
-                },
-                AttendantPinConfig {
-                    role: AttendantPinRole::Assistant,
-                    text: "the agreed verdict".to_owned(),
-                },
-            ],
+        let saved = entry_with_filters(
+            &NameFilter::deny(["write".to_owned()]),
+            &NameFilter::deny(["bash".to_owned()]),
         );
+        let mut with_pins = saved.clone();
+        with_pins.pins = vec![
+            AttendantPinConfig {
+                role: AttendantPinRole::User,
+                text: "always in context".to_owned(),
+            },
+            AttendantPinConfig {
+                role: AttendantPinRole::Assistant,
+                text: "the agreed verdict".to_owned(),
+            },
+        ];
 
         // When saving the same entry twice (second save is an overwrite).
         layer
-            .put_list::<AttendantEntryConfig>(std::slice::from_ref(&saved))
+            .put_list::<AttendantEntryConfig>(std::slice::from_ref(&with_pins))
             .expect("first save");
         let once = storage.text();
         layer
-            .put_list::<AttendantEntryConfig>(std::slice::from_ref(&saved))
+            .put_list::<AttendantEntryConfig>(std::slice::from_ref(&with_pins))
             .expect("second save");
         let twice = storage.text();
 
-        // Then the document did not move between saves: set-typed fields
-        // serialize sorted, so a HashSet's run-to-run order cannot churn
-        // the user's file.
+        // Then the document did not move between saves: the filter's names
+        // are a `BTreeSet`, so serialization order cannot churn the user's
+        // file between runs.
         assert_eq!(
             once, twice,
             "document moved:\nonce:\n{once}\ntwice:\n{twice}"
@@ -622,46 +682,22 @@ mod tests {
             "[tools]\nx = 1\n".parse().expect("parses"),
         ));
         let layer = ConfigLayer::load(storage.clone()).expect("load");
-        let first = AttendantEntryConfig::from_parts(
-            "first".to_owned(),
-            AttendantBehavior::Reset,
-            AttendantTrigger::Manual,
-            false,
-            jinn_attendant_msg::default_seed_template(),
-            &ModelSelection::Single(NO_PROVIDER_ID.to_owned()),
-            jinn_core_types::DEFAULT_PERSONA_NAME,
-            &HashSet::new(),
-            &HashSet::new(),
-            None,
-            None,
-            vec![AttendantPinConfig {
+        let mut first = entry_with_pins(vec![AttendantPinConfig {
+            role: AttendantPinRole::User,
+            text: "one".to_owned(),
+        }]);
+        first.name = "first".to_owned();
+        let mut second = entry_with_pins(vec![
+            AttendantPinConfig {
                 role: AttendantPinRole::User,
-                text: "one".to_owned(),
-            }],
-        );
-        let second = AttendantEntryConfig::from_parts(
-            "second".to_owned(),
-            AttendantBehavior::Reset,
-            AttendantTrigger::Manual,
-            false,
-            jinn_attendant_msg::default_seed_template(),
-            &ModelSelection::Single(NO_PROVIDER_ID.to_owned()),
-            jinn_core_types::DEFAULT_PERSONA_NAME,
-            &HashSet::new(),
-            &HashSet::new(),
-            None,
-            None,
-            vec![
-                AttendantPinConfig {
-                    role: AttendantPinRole::User,
-                    text: "two-a".to_owned(),
-                },
-                AttendantPinConfig {
-                    role: AttendantPinRole::User,
-                    text: "two-b".to_owned(),
-                },
-            ],
-        );
+                text: "two-a".to_owned(),
+            },
+            AttendantPinConfig {
+                role: AttendantPinRole::User,
+                text: "two-b".to_owned(),
+            },
+        ]);
+        second.name = "second".to_owned();
 
         // When saving both and reading them back.
         layer
@@ -706,45 +742,6 @@ mod tests {
             "lost:\n{}",
             storage.text()
         );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn disablement_sets_serialize_sorted_and_deduplicated() {
-        // Given an entry built from a set carrying a duplicate-inserted
-        // name.
-        let mut tools = std::collections::HashSet::new();
-        tools.insert("web_search".to_owned());
-        tools.insert("edit".to_owned());
-        let saved = AttendantEntryConfig::from_parts(
-            "t".to_owned(),
-            AttendantBehavior::Reset,
-            AttendantTrigger::Manual,
-            false,
-            jinn_attendant_msg::default_seed_template(),
-            &ModelSelection::Single(NO_PROVIDER_ID.to_owned()),
-            jinn_core_types::DEFAULT_PERSONA_NAME,
-            &tools,
-            &std::collections::HashSet::new(),
-            None,
-            None,
-            Vec::new(),
-        );
-
-        // When serializing to TOML.
-        let value = toml::Value::try_from(&saved).expect("serializes");
-
-        // Then the disablement list is sorted with no duplicate, and the
-        // unset model/persona fields are absent rather than placeholders.
-        assert_eq!(
-            value
-                .get("disabled_tools")
-                .and_then(toml::Value::as_array)
-                .map(std::vec::Vec::as_slice),
-            Some(&[toml::Value::from("edit"), toml::Value::from("web_search")][..])
-        );
-        assert!(value.get("model").is_none());
-        assert!(value.get("persona_name").is_none());
     }
 
     #[rstest::rstest]

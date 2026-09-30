@@ -29,7 +29,7 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use jinn_core_types::ChatEntry;
+use jinn_core_types::{ChatEntry, NameFilter};
 use jinn_skills_msg::{Skill, SkillPickerState, SkillSource, skill_picker_slot};
 use jinn_slices::KeyRoutes;
 use jinn_slices::cell::TypedCell;
@@ -114,7 +114,7 @@ fn visible_names(cell: &TypedCell<SkillPickerState>) -> Vec<String> {
 /// Opens the picker over `names` with `disabled` already off.
 fn opened(cell: &TypedCell<SkillPickerState>, names: &[&str], disabled: &[&str]) {
     let discovered: Vec<Skill> = names.iter().copied().map(skill).collect();
-    let off: HashSet<String> = disabled.iter().map(|s| (*s).to_owned()).collect();
+    let off = NameFilter::deny(disabled.iter().map(|s| (*s).to_owned()));
     cell.update(|picker| {
         skill_picker_actions::open(picker, &discovered, &off, &jinn_theme::default_theme());
     });
@@ -215,7 +215,7 @@ fn confirming_clears_the_revert_snapshot() {
 }
 
 #[rstest::rstest]
-fn cancelling_reports_the_pre_open_disabled_set() {
+fn cancelling_reports_the_pre_open_filter() {
     // Given a picker opened while one skill was disabled, then toggled on.
     let (cell, _routes) = wired();
     opened(&cell, &["alpha"], &["alpha"]);
@@ -223,11 +223,11 @@ fn cancelling_reports_the_pre_open_disabled_set() {
 
     // When cancelling.
     let mut restored = None;
-    cell.update(|picker| restored = skill_picker_actions::cancel(picker));
+    cell.update(|picker| restored = skill_picker_actions::cancel_filter(picker));
 
-    // Then the pre-open set comes back, undoing the toggle.
+    // Then the pre-open filter comes back, undoing the toggle.
     let restored = restored.expect("an open picker has a snapshot to restore");
-    assert!(restored.contains("alpha"));
+    assert!(!restored.permits("alpha"));
 }
 
 #[rstest::rstest]
@@ -238,7 +238,7 @@ fn cancelling_consumes_the_snapshot() {
 
     // When cancelling.
     cell.update(|picker| {
-        let _ = skill_picker_actions::cancel(picker);
+        let _ = skill_picker_actions::cancel_filter(picker);
     });
 
     // Then the snapshot is gone, so a second cancel cannot revert twice.
@@ -252,8 +252,8 @@ fn cancelling_a_picker_that_never_opened_reverts_nothing() {
     let (cell, _routes) = wired();
 
     // When cancelling.
-    let mut restored = Some(HashSet::new());
-    cell.update(|picker| restored = skill_picker_actions::cancel(picker));
+    let mut restored = Some(NameFilter::default());
+    cell.update(|picker| restored = skill_picker_actions::cancel_filter(picker));
 
     // Then there is no set to restore.
     assert!(restored.is_none());

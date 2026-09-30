@@ -1,20 +1,34 @@
 //! The `[tools]` section — the tools slice's own configuration.
 //!
 //! The fallback tool timeout, the two output caps the bash tool
-//! applies, and the list of tools a new session starts with disabled.
+//! applies, and the filter a new session starts under.
 
+use jinn_core_types::NameFilter;
 use serde::{Deserialize, Serialize};
 
 /// The `[tools]` section.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolsConfig {
-    /// Tools a NEW session starts with disabled, by tool name.
+    /// Which tools a NEW session starts permitted or withheld.
     ///
-    /// `BTreeSet`, not `HashSet`: the patcher rewrites this array's bytes
-    /// on save, and hash iteration order would reshuffle the user's list
-    /// between runs.
+    /// ```toml
+    /// # The former blocklist: withhold these two.
+    /// [tools.tool_filter]
+    /// mode = "deny"
+    /// names = ["bash", "write"]
+    ///
+    /// # An attendant that gets only what it is given, MCP included.
+    /// [tools.tool_filter]
+    /// mode = "allow"
+    /// names = ["read", "grep", "mcp__github__*"]
+    /// ```
+    ///
+    /// Replaces the former `disabled` key. A file still carrying `disabled`
+    /// parses without it, so the filter reads as empty and permits
+    /// everything — an existing blocklist silently stops applying. There is
+    /// no migration; move the names under `tool_filter` yourself.
     #[serde(default)]
-    pub disabled: std::collections::BTreeSet<String>,
+    pub tool_filter: NameFilter,
 
     /// Fallback timeout for a tool that declares none of its own, in
     /// seconds. Default: 300.
@@ -39,7 +53,7 @@ fn default_timeout_secs() -> u64 {
 impl Default for ToolsConfig {
     fn default() -> Self {
         Self {
-            disabled: std::collections::BTreeSet::new(),
+            tool_filter: NameFilter::default(),
             default_timeout_secs: default_timeout_secs(),
             max_output_lines: None,
             max_output_bytes: None,

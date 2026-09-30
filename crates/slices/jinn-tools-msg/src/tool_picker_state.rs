@@ -24,8 +24,7 @@
 //! `("tools", "tool-picker")` and the matching scope `("tools", "tool-picker")`
 //! to say which of the two it is without reading either implementation.
 
-use std::collections::HashSet;
-
+use jinn_core_types::NameFilter;
 use jinn_slices::SlotKey;
 
 use crate::tool_entry::ToolEntry;
@@ -37,20 +36,26 @@ use crate::tool_entry::ToolEntry;
 /// let the highlight walk off-screen.
 pub const RESULTS_VIEWPORT_FALLBACK: usize = 20;
 
-/// The tool picker's per-open state: what it shows, and the set it restores to
-/// on escape.
+/// The tool picker's per-open state: what it shows, and the filter it restores
+/// to on escape.
 #[derive(Debug)]
 pub struct ToolPickerState {
     /// The rows, the filter text, and the highlight.
     pub selection: jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<ToolEntry>>,
-    /// The disabled-tool set captured when the picker opened, or `None` before
-    /// the first open.
+    /// The session's tool filter as it was when the picker opened, or `None`
+    /// before the first open.
     ///
-    /// Escape restores it; confirm commits the toggled set instead and clears
-    /// it, so nothing can revert a choice the user just made. The set is
-    /// written to the session **only** on confirm — toggling edits the cell's
-    /// rows, never the live profile.
-    pub snapshot: Option<HashSet<String>>,
+    /// The whole filter, not just the names it withholds: the picker toggles
+    /// one bit per row and so can only commit a deny filter, but escape must
+    /// hand back what the session actually had. Restoring the withheld names
+    /// instead would demote an allow-mode session to a blocklist on the way
+    /// out of a picker the user changed nothing in.
+    ///
+    /// Escape restores it; confirm commits a deny filter over the toggled
+    /// rows instead and clears it, so nothing can revert a choice the user
+    /// just made. Either way the session is written **only** on confirm —
+    /// toggling edits the cell's rows, never the live profile.
+    pub snapshot: Option<NameFilter>,
     /// How many result rows fit on screen, measured by the render pass.
     pub results_viewport: usize,
 }
@@ -70,8 +75,8 @@ impl Default for ToolPickerState {
 impl ToolPickerState {
     /// Clears the filter and the highlight, ready for a fresh open.
     ///
-    /// The snapshot survives: it is the set escape restores to, and reopening
-    /// re-captures it from the live profile anyway.
+    /// The snapshot survives: it is the filter escape restores to, and
+    /// reopening re-captures it from the live profile anyway.
     pub fn reset(&mut self) {
         self.selection.clear_filter();
         self.selection.move_up(usize::MAX);

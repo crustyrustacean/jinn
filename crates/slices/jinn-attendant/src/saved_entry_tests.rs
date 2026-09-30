@@ -8,10 +8,13 @@
     reason = "test code"
 )]
 
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 use jinn_attendant_msg::{AttendantBehavior, AttendantTrigger};
-use jinn_core_types::{ChatEntry, ChatEntryKind, ContextOverride, PinPosition, ToolResultStatus};
+use jinn_core_types::{
+    ChatEntry, ChatEntryKind, ContextOverride, FilterMode, NameFilter, PinPosition,
+    ToolResultStatus,
+};
 use jinn_preferences_config::schemas::{AttendantPinConfig, AttendantPinRole};
 use jinn_session_state::ChatSessionState;
 
@@ -115,22 +118,42 @@ fn an_entry_does_not_store_where_each_pin_sat() {
 
 #[rstest::rstest]
 #[test]
-fn an_entry_records_the_disabled_tool_and_skill_sets() {
-    // Given an attendant with tools and skills explicitly disabled.
+fn an_entry_records_the_session_tool_filter() {
+    // Given an attendant carrying a tool filter.
     let mut session = composed_attendant();
-    {
-        let profile = session.profile_mut();
-        profile.disabled_tools = HashSet::from(["write".to_owned(), "bash".to_owned()]);
-        profile.disabled_skills = HashSet::from(["dataviz".to_owned()]);
-    }
+    session.profile_mut().tool_filter = NameFilter::deny(["write".to_owned(), "bash".to_owned()]);
 
     // When building its entry.
     let entry = saved_entry::entry_for_session("nightly".to_owned(), &session);
 
-    // Then they are stored sorted, so the file does not churn between
-    // saves of an unchanged attendant.
-    assert_eq!(entry.disabled_tools, vec!["bash", "write"]);
-    assert_eq!(entry.disabled_skills, vec!["dataviz"]);
+    // Then it is stored sorted, so the file does not churn between saves of
+    // an unchanged attendant.
+    let filter = entry.tool_filter.as_ref().expect("filter recorded");
+    assert_eq!(
+        filter.names.iter().map(String::as_str).collect::<Vec<_>>(),
+        vec!["bash", "write"]
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn an_entry_records_an_allow_mode_filter_with_its_mode() {
+    // Given an attendant restricted to two tools by an allow filter.
+    let mut session = composed_attendant();
+    session.profile_mut().tool_filter = NameFilter {
+        mode: FilterMode::Allow,
+        names: BTreeSet::from(["read".to_owned(), "mcp__github__*".to_owned()]),
+    };
+
+    // When building its entry.
+    let entry = saved_entry::entry_for_session("narrow".to_owned(), &session);
+
+    // Then the mode survives into the entry — this is what a plain name list
+    // could not carry, and the reason the field is a filter.
+    let filter = entry.tool_filter.as_ref().expect("filter recorded");
+    assert_eq!(filter.mode, FilterMode::Allow);
+    assert!(filter.permits("mcp__github__create_pr"));
+    assert!(!filter.permits("bash"));
 }
 
 #[rstest::rstest]
@@ -144,12 +167,12 @@ fn an_entry_omits_a_session_that_configured_nothing() {
     let entry = saved_entry::entry_for_session("bare".to_owned(), &session);
 
     // Then nothing is configured: the model is the placeholder, the persona
-    // the default, and both disablement sets empty — every one of which
-    // create inherits back from the parent session.
+    // the default, and both filters absent — every one of which create
+    // inherits back from the parent session.
     assert!(entry.configured_model().is_none());
     assert!(entry.persona_name.is_none());
-    assert!(entry.disabled_tools.is_empty());
-    assert!(entry.disabled_skills.is_empty());
+    assert!(entry.tool_filter.is_none());
+    assert!(entry.skill_filter.is_none());
 }
 
 #[rstest::rstest]

@@ -41,11 +41,15 @@ pub fn build(entry: &AttendantEntryConfig, parent: &ChatSessionState) -> ChatSes
         if let Some(persona) = &entry.persona_name {
             profile.persona_name = persona.clone();
         }
-        if !entry.disabled_tools.is_empty() {
-            profile.disabled_tools = entry.disabled_tools.iter().cloned().collect();
+        // An absent filter inherits the creating session's, so an attendant
+        // saved with no tools configured still gets whatever its parent had.
+        // A present filter replaces it wholesale — including an allow-mode
+        // one, which is the whole point of being able to save one.
+        if let Some(filter) = &entry.tool_filter {
+            profile.tool_filter = filter.clone();
         }
-        if !entry.disabled_skills.is_empty() {
-            profile.disabled_skills = entry.disabled_skills.iter().cloned().collect();
+        if let Some(filter) = &entry.skill_filter {
+            profile.skill_filter = filter.clone();
         }
         if let Some(effort) = entry.reasoning_effort {
             profile.reasoning_effort = Some(effort);

@@ -57,7 +57,7 @@ use jinn_session_state::ChatSessionState;
 
 /// The `task` tool's registration name, shared by the registry and the
 /// suppression sites: subagent spawn stamps it into the child's
-/// `disabled_tools`, fork strips it from the fork's set.
+/// `tool_filter`, fork strips it from the fork's set.
 pub const TASK_TOOL_NAME: &str = "task";
 
 /// Returns the tool definition for `task`.
@@ -272,13 +272,16 @@ fn build_child(
         p.persona_name.clone_from(&profile.persona_name);
         p.reasoning_effort = profile.reasoning_effort;
         p.endpoint.clone_from(&profile.endpoint);
-        p.disabled_tools.clone_from(&profile.disabled_tools);
+        p.tool_filter.clone_from(&profile.tool_filter);
         // Subagents cannot spawn further subagents unless re-enabled via the
         // tool picker; the stamp is per-session, so the picker reflects it.
         // Unconditional: even a re-enabled subagent's child starts suppressed.
-        p.disabled_tools
-            .insert(crate::task::TASK_TOOL_NAME.to_owned());
-        p.disabled_skills.clone_from(&profile.disabled_skills);
+        // Withheld through the filter rather than by inserting a name, so
+        // this reads correctly whichever mode the parent carried — inserting
+        // into an allow list would instead strip the child of that one tool
+        // while leaving everything else permitted.
+        p.tool_filter.withhold(crate::task::TASK_TOOL_NAME);
+        p.skill_filter.clone_from(&profile.skill_filter);
     }
     child.set_cwd(parent.cwd().to_path_buf());
     // Subagents inherit the parent's project association (stamped at the

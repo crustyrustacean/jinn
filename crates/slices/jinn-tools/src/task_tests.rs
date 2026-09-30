@@ -85,10 +85,7 @@ fn parent_fixture() -> (State, SessionId) {
         ));
         parent.set_cwd(std::path::PathBuf::from("/tmp/parent-cwd"));
         parent.set_title("Parent".to_owned());
-        parent
-            .profile_mut()
-            .disabled_tools
-            .insert("write".to_owned());
+        parent.profile_mut().tool_filter.withhold("write");
         parent.set_enabled_mcp_servers(BTreeSet::from(["stub".to_owned()]));
     }
     (state, parent_id)
@@ -237,7 +234,7 @@ async fn task_spawns_child_linked_and_inheriting() {
     );
     assert_eq!(child.cwd(), std::path::Path::new("/tmp/parent-cwd"));
     assert_eq!(child.persona_name(), "coding-assistant");
-    assert!(child.profile().disabled_tools.contains("write"));
+    assert!(!child.is_tool_enabled("write"));
     assert_eq!(
         child.enabled_mcp_servers(),
         &BTreeSet::from(["stub".to_owned()])
@@ -264,10 +261,7 @@ async fn task_child_has_task_tool_suppressed() {
         let snapshot = state.read();
         let parent = snapshot.session.get(&parent_id).expect("parent seeded");
         assert!(
-            !parent
-                .profile()
-                .disabled_tools
-                .contains(crate::task::TASK_TOOL_NAME),
+            parent.is_tool_enabled(crate::task::TASK_TOOL_NAME),
             "fixture parent must have task enabled"
         );
     }
@@ -284,19 +278,16 @@ async fn task_child_has_task_tool_suppressed() {
     let result = pending.await.expect("task join");
     assert!(result.success, "expected success; got: {}", result.content);
 
-    // Then the child's disabled tools include task — stamped at spawn.
+    // Then the child's tool filter withholds task — stamped at spawn.
     let snapshot = state.read();
     let child = snapshot
         .session
         .get(&child_id)
         .expect("child present in state");
     assert!(
-        child
-            .profile()
-            .disabled_tools
-            .contains(crate::task::TASK_TOOL_NAME),
+        !child.is_tool_enabled(crate::task::TASK_TOOL_NAME),
         "spawned child must start with the task tool suppressed, got: {:?}",
-        child.profile().disabled_tools
+        child.tool_filter()
     );
 }
 

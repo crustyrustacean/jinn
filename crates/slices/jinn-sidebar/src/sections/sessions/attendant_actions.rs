@@ -63,8 +63,8 @@ pub fn handle_new_attendant(state: &mut AppState, config: &ConfigLayer) -> Inten
         let mut attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
         {
             let p = attendant.profile_mut();
-            p.disabled_tools.clone_from(&seed.disabled_tools);
-            p.disabled_skills.clone_from(&seed.disabled_skills);
+            p.tool_filter.clone_from(&seed.tool_filter);
+            p.skill_filter.clone_from(&seed.skill_filter);
         }
         attendant
     };

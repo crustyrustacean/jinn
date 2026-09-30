@@ -35,6 +35,7 @@
 
 use std::sync::Arc;
 
+use jinn_core_types::NameFilter;
 use jinn_slices::KeyRoutes;
 use jinn_slices::RouteId;
 use jinn_slices::RouteResult as IntentResult;
@@ -265,7 +266,7 @@ fn open_tool_picker(ctx: &mut ActionCtx<'_>, cell: &ToolPickerCell) -> IntentRes
 
     let seed = seed_from_session(state);
     cell.update(|picker| {
-        tool_picker_actions::open(picker, &seed.rows, &seed.disabled, &seed.theme)
+        tool_picker_actions::open(picker, &seed.rows, &seed.tool_filter, &seed.theme)
     });
 
     state
@@ -278,8 +279,9 @@ fn open_tool_picker(ctx: &mut ActionCtx<'_>, cell: &ToolPickerCell) -> IntentRes
 struct Seed {
     /// The tools available for the session, in display order.
     rows: Vec<ToolRow>,
-    /// The session's live disabled set, snapshotted so escape can restore it.
-    disabled: std::collections::HashSet<String>,
+    /// The session's live tool filter, snapshotted so escape can restore it
+    /// mode and all.
+    tool_filter: NameFilter,
     /// The active theme, so the rows render with the right colors.
     theme: jinn_theme::Theme,
 }
@@ -292,7 +294,6 @@ struct Seed {
 /// session with no tool context offers nothing rather than panicking.
 fn seed_from_session(state: &jinn_kernel::AppState) -> Seed {
     let active_session = state.active_session();
-    let disabled = active_session.disabled_tools().clone();
     let provider_name = active_session.model_selection().provider_name().to_owned();
     let session_id = state.session.active_session_id().clone();
     let theme = state.frontend.theme.clone();
@@ -329,14 +330,14 @@ fn seed_from_session(state: &jinn_kernel::AppState) -> Seed {
 
     Seed {
         rows,
-        disabled,
+        tool_filter: active_session.tool_filter().clone(),
         theme,
     }
 }
 
-/// Enter: commit the toggled set as the session's disabled tools and close.
+/// Enter: commit the toggled rows as a deny filter and close.
 ///
-/// This is the *only* place the session's disabled set is written. Toggling
+/// This is the *only* place the session's tool filter is written. Toggling
 /// edits the cell's rows; nothing reaches the live profile until the user says
 /// so.
 fn confirm_tool_picker(ctx: &mut ActionCtx<'_>, cell: &ToolPickerCell) -> IntentResult {
@@ -347,22 +348,32 @@ fn confirm_tool_picker(ctx: &mut ActionCtx<'_>, cell: &ToolPickerCell) -> Intent
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    state.active_session_mut().set_disabled_tools(disabled);
+    // The picker is a blocklist editor by construction, so it commits a
+    // deny filter — a commit from a session holding an allow filter narrows
+    // it to that mode's withheld names. Making the picker mode-aware is
+    // deliberately out of scope; until it is, treat committing the picker as
+    // a decision to manage tools by blocklist.
+    state
+        .active_session_mut()
+        .set_tool_filter(NameFilter::deny(disabled));
     IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(tool_picker_scope()))
 }
 
-/// Escape: restore the snapshotted disabled set and close.
+/// Escape: restore the snapshotted filter and close.
 ///
 /// The revert path, never the confirm path. Confirm clears the snapshot, so
-/// after a commit there is nothing here left to restore.
+/// after a commit there is nothing here left to restore. What is restored is
+/// the snapshot *filter*, not its withheld names: escape must put back the
+/// filter the session had, including its mode, or it would silently demote
+/// an allow-mode session to a blocklist.
 fn cancel_tool_picker(ctx: &mut ActionCtx<'_>, cell: &ToolPickerCell) -> IntentResult {
     let mut restored = None;
-    cell.update(|picker| restored = tool_picker_actions::cancel(picker));
+    cell.update(|picker| restored = tool_picker_actions::cancel_filter(picker));
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    if let Some(disabled) = restored {
-        state.active_session_mut().set_disabled_tools(disabled);
+    if let Some(filter) = restored {
+        state.active_session_mut().set_tool_filter(filter);
     }
     IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(tool_picker_scope()))
 }

@@ -55,10 +55,10 @@ pub fn assemble(inputs: &AssemblyInputs, counter: &dyn TokenCounter) -> Assemble
         persona,
         history,
         tools,
-        disabled_tools,
+        tool_filter,
         provider_name,
         skills,
-        disabled_skills,
+        skill_filter,
         loaded_skills,
         context_files,
     } = inputs;
@@ -67,10 +67,13 @@ pub fn assemble(inputs: &AssemblyInputs, counter: &dyn TokenCounter) -> Assemble
 
     let mut tool_defs: Vec<ToolDefinition> = tools.clone();
 
-    // Filter out disabled tools and server tools that don't match the active provider.
-    tool_defs.retain(|def| {
-        !disabled_tools.contains(&def.name) && def.available_for_provider(provider_name)
-    });
+    // Two independent gates, one retain: the session's filter, and the
+    // provider gate for server tools. Kept as a single conjunction so the
+    // context block is built from exactly the set these definitions came
+    // from — folding them into one predicate would need the provider name
+    // here and at dispatch, where it is not always in hand.
+    tool_defs
+        .retain(|def| tool_filter.permits(&def.name) && def.available_for_provider(provider_name));
 
     let filtered_map: BTreeMap<String, ToolDefinition> = tool_defs
         .iter()
@@ -81,7 +84,7 @@ pub fn assemble(inputs: &AssemblyInputs, counter: &dyn TokenCounter) -> Assemble
 
     let filtered: Vec<_> = skills
         .iter()
-        .filter(|s| !disabled_skills.contains(&s.name))
+        .filter(|s| skill_filter.permits(&s.name))
         .cloned()
         .collect();
     let skills_block = format_skills_for_prompt(&filtered, loaded_skills);
@@ -308,6 +311,7 @@ mod tests {
     )]
     use super::*;
     use jinn_context::env_context::ContextFile;
+    use jinn_core_types::NameFilter;
     use jinn_core_types::ServerToolType;
     use jinn_core_types::SessionId;
     use jinn_core_types::model_selection::ModelSelection;
@@ -1068,7 +1072,7 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn assemble_prompt_excludes_disabled_tools_from_tool_definitions() {
+    fn assemble_prompt_excludes_filtered_tools_from_tool_definitions() {
         // Given a session with tools and some disabled.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
         {
@@ -1083,17 +1087,14 @@ mod tests {
                 r.global.insert("read".to_owned(), make_tool("read"));
                 r.global.insert("write".to_owned(), make_tool("write"));
             });
-            // Disable bash and write.
-            let mut disabled = std::collections::HashSet::new();
-            disabled.insert("bash".to_owned());
-            disabled.insert("write".to_owned());
+            // Withhold bash and write.
             {
                 let mut guard = state.write();
                 guard
                     .session
                     .get_mut(&session_id)
                     .expect("session exists")
-                    .set_disabled_tools(disabled);
+                    .set_tool_filter(NameFilter::deny(["bash".to_owned(), "write".to_owned()]));
             }
         }
 
@@ -1167,7 +1168,7 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn assemble_prompt_excludes_disabled_tools_from_tool_context_block() {
+    fn assemble_prompt_excludes_filtered_tools_from_tool_context_block() {
         // Given a session with tools and some disabled.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
         {
@@ -1181,22 +1182,20 @@ mod tests {
                 r.global.insert("bash".to_owned(), make_tool("bash"));
                 r.global.insert("read".to_owned(), make_tool("read"));
             });
-            // Disable bash.
-            let mut disabled = std::collections::HashSet::new();
-            disabled.insert("bash".to_owned());
+            // Withhold bash.
             let mut guard = state.write();
             guard
                 .session
                 .get_mut(&session_id)
                 .expect("session exists")
-                .set_disabled_tools(disabled);
+                .set_tool_filter(NameFilter::deny(["bash".to_owned()]));
         }
 
         // When assembling the prompt.
         let guard = state.read();
         let result = assemble_prompt(&guard, &session_id, &counter());
 
-        // Then the system prompt tool block excludes disabled tools.
+        // Then the system prompt tool block excludes the filtered tool.
         let system = result.system_prompt.to_string();
         assert!(
             system.contains("read does things"),
@@ -1210,7 +1209,7 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn assemble_prompt_excludes_disabled_skills_from_skills_block() {
+    fn assemble_prompt_excludes_filtered_skills_from_skills_block() {
         // Given a session with skills and some disabled.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("use skills")]);
         {
@@ -1225,7 +1224,7 @@ mod tests {
                 .session
                 .get_mut(&session_id)
                 .expect("session exists")
-                .set_disabled_skills(std::collections::HashSet::from(["web-coder".to_owned()]));
+                .set_skill_filter(NameFilter::deny(["web-coder".to_owned()]));
         }
 
         // When assembling the prompt.

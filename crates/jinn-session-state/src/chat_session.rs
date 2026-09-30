@@ -26,7 +26,7 @@ use jinn_context::{PromptTemplateStore, expand_tokens};
 use jinn_core_types::model_selection::ModelSelection;
 use jinn_core_types::{
     ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, EntryTiming,
-    HistoryMutation, PinPosition, SessionId, ToolResultStatus,
+    HistoryMutation, NameFilter, PinPosition, SessionId, ToolResultStatus,
 };
 use jinn_session_history::history_editor::{
     HistoryEditor, Priv, SessionHistoryAccess, SessionHistoryAccessPriv,
@@ -1653,32 +1653,37 @@ impl ChatSessionState {
         self.core.integrations.profile.model = model;
     }
 
-    /// Whether a tool is enabled for this session.
+    /// Whether this session may use the tool called `tool_name`.
     ///
-    /// Returns `true` if the tool name is not in the disabled set.
-    /// An empty disabled set means all tools are enabled.
+    /// One predicate for the tool gate, called by both the prompt assembler
+    /// and the tool dispatcher. Deciding at separate call sites is what let
+    /// the picker list tools the prompt hid, and — worse — what let a tool
+    /// absent from the prompt run anyway when the model named it directly.
+    ///
+    /// This gate is independent of the provider gate (`ToolDefinition::
+    /// available_for_provider`), which needs the provider name and stays
+    /// where it is. An attendant's filter composes as filter ∧ provider ∧
+    /// the attendant-only gate.
     #[must_use]
     pub fn is_tool_enabled(&self, tool_name: &str) -> bool {
-        !self
-            .core
+        self.core
             .integrations
             .profile
-            .disabled_tools
-            .contains(tool_name)
+            .tool_filter
+            .permits(tool_name)
     }
 
-    /// Read-only access to this session's disabled tool names.
-    ///
-    /// Opt-out model: tools not in this set are enabled.
-    pub fn disabled_tools(&self) -> &HashSet<String> {
-        &self.core.integrations.profile.disabled_tools
+    /// Read-only access to this session's tool filter.
+    #[must_use]
+    pub fn tool_filter(&self) -> &NameFilter {
+        &self.core.integrations.profile.tool_filter
     }
 
-    /// Replace the disabled tool set for this session.
+    /// Replace the tool filter for this session.
     ///
     /// Used by the tool picker to commit toggle state.
-    pub fn set_disabled_tools(&mut self, tools: HashSet<String>) {
-        self.core.integrations.profile.disabled_tools = tools;
+    pub fn set_tool_filter(&mut self, filter: NameFilter) {
+        self.core.integrations.profile.tool_filter = filter;
     }
 
     /// Read-only access to this session's enabled MCP server names.
@@ -1721,32 +1726,33 @@ impl ChatSessionState {
         self.core.integrations.enabled_mcp_servers = servers;
     }
 
-    /// Returns `true` if the skill is enabled for this session.
+    /// Whether this session may load the skill called `skill_name`.
     ///
-    /// An empty disabled set means all skills are enabled.
+    /// The skill counterpart of [`Self::is_tool_enabled`], sharing its one
+    /// predicate so the prompt assembler and the `skill` tool's refusal
+    /// path cannot disagree about what the session can load.
     #[must_use]
     pub fn is_skill_enabled(&self, skill_name: &str) -> bool {
-        !self
-            .core
+        self.core
             .integrations
             .profile
-            .disabled_skills
-            .contains(skill_name)
+            .skill_filter
+            .permits(skill_name)
     }
 
-    /// Read-only access to this session's disabled skill names.
-    ///
-    /// Opt-out model: skills not in this set are enabled.
-    pub fn disabled_skills(&self) -> &HashSet<String> {
-        &self.core.integrations.profile.disabled_skills
+    /// Read-only access to this session's skill filter.
+    #[must_use]
+    pub fn skill_filter(&self) -> &NameFilter {
+        &self.core.integrations.profile.skill_filter
     }
 
-    /// Replace the disabled skill set for this session.
+    /// Replace the skill filter for this session.
     ///
     /// Used by the skill picker to commit toggle state.
-    pub fn set_disabled_skills(&mut self, skills: HashSet<String>) {
-        self.core.integrations.profile.disabled_skills = skills;
+    pub fn set_skill_filter(&mut self, filter: NameFilter) {
+        self.core.integrations.profile.skill_filter = filter;
     }
+
     /// Compute the set of skill names that are currently loaded in this session.
     ///
     /// A skill is considered loaded if its body is present in history as a pinned

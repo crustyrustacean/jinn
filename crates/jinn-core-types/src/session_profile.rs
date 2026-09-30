@@ -1,10 +1,8 @@
 //! Per-session model, persona, and policy selection.
 
-use std::collections::HashSet;
-
 use serde::{Deserialize, Serialize};
 
-use crate::{Endpoint, ModelSelection, NO_PROVIDER_ID, ReasoningEffort};
+use crate::{Endpoint, ModelSelection, NO_PROVIDER_ID, NameFilter, ReasoningEffort};
 
 /// Default persona name used when none is explicitly set.
 pub const DEFAULT_PERSONA_NAME: &str = "coding-assistant";
@@ -22,12 +20,21 @@ pub struct SessionProfile {
     /// The persona name for this session.
     #[serde(default = "default_persona_name")]
     pub persona_name: String,
-    /// Tool names explicitly disabled for this session.
+    /// Which tools this session may use.
+    ///
+    /// Replaces the former `disabled_tools` set. A session saved before this
+    /// key existed deserializes to an empty filter, which permits
+    /// everything — so an older session's blocklist stops applying. That is
+    /// the same "a stale document reads as a fresh install" stance the
+    /// attendant entry and the umbrella layout take.
     #[serde(default)]
-    pub disabled_tools: HashSet<String>,
-    /// Skill names explicitly disabled for this session.
+    pub tool_filter: NameFilter,
+    /// Which skills this session may load.
+    ///
+    /// Replaces the former `disabled_skills` set, with the same migration
+    /// story as [`Self::tool_filter`].
     #[serde(default)]
-    pub disabled_skills: HashSet<String>,
+    pub skill_filter: NameFilter,
     /// Reasoning effort selected when this session was created.
     #[serde(default)]
     pub reasoning_effort: Option<ReasoningEffort>,
@@ -41,8 +48,8 @@ impl Default for SessionProfile {
         Self {
             model: ModelSelection::Single(NO_PROVIDER_ID.to_owned()),
             persona_name: DEFAULT_PERSONA_NAME.to_owned(),
-            disabled_tools: HashSet::new(),
-            disabled_skills: HashSet::new(),
+            tool_filter: NameFilter::default(),
+            skill_filter: NameFilter::default(),
             reasoning_effort: None,
             endpoint: None,
         }
@@ -70,16 +77,16 @@ impl SessionProfile {
     pub fn new(
         model: ModelSelection,
         persona_name: String,
-        disabled_tools: HashSet<String>,
-        disabled_skills: HashSet<String>,
+        tool_filter: NameFilter,
+        skill_filter: NameFilter,
         reasoning_effort: Option<ReasoningEffort>,
         endpoint: Option<Endpoint>,
     ) -> Self {
         Self {
             model,
             persona_name,
-            disabled_tools,
-            disabled_skills,
+            tool_filter,
+            skill_filter,
             reasoning_effort,
             endpoint,
         }
@@ -95,6 +102,10 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+    use std::collections::HashSet;
+
+    use crate::FilterMode;
+
     use super::*;
 
     #[rstest::rstest]
@@ -124,14 +135,14 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn disabled_tools_round_trips_through_serde() {
-        // Given a profile with disabled tools.
-        let disabled = HashSet::from(["bash".to_owned(), "edit".to_owned()]);
+    fn tool_filter_round_trips_through_serde() {
+        // Given a profile withholding two tools by an MCP server prefix.
+        let filter = NameFilter::deny(["mcp__github__*"].map(str::to_owned));
         let profile = SessionProfile::new(
             ModelSelection::Single("ollama/llama3".to_owned()),
             DEFAULT_PERSONA_NAME.to_owned(),
-            disabled.clone(),
-            HashSet::new(),
+            filter.clone(),
+            NameFilter::default(),
             None,
             None,
         );
@@ -140,19 +151,24 @@ mod tests {
         let json = serde_json::to_string(&profile).expect("serialize");
         let restored: SessionProfile = serde_json::from_str(&json).expect("deserialize");
 
-        // Then disabled_tools is preserved.
-        assert_eq!(restored.disabled_tools, disabled);
+        // Then the filter survives, globs included.
+        assert_eq!(restored.tool_filter, filter);
     }
 
     #[rstest::rstest]
-    fn disabled_skills_round_trips_through_serde() {
-        // Given a profile with disabled skills.
-        let disabled = HashSet::from(["phased-task-loop".to_owned(), "web-coder".to_owned()]);
+    fn skill_filter_round_trips_through_serde() {
+        // Given a profile permitting only two skills.
+        let filter = NameFilter {
+            mode: FilterMode::Allow,
+            names: HashSet::from(["a".to_owned(), "b".to_owned()])
+                .into_iter()
+                .collect(),
+        };
         let profile = SessionProfile::new(
             ModelSelection::Single("ollama/llama3".to_owned()),
             DEFAULT_PERSONA_NAME.to_owned(),
-            HashSet::new(),
-            disabled.clone(),
+            NameFilter::default(),
+            filter.clone(),
             None,
             None,
         );
@@ -161,26 +177,29 @@ mod tests {
         let json = serde_json::to_string(&profile).expect("serialize");
         let restored: SessionProfile = serde_json::from_str(&json).expect("deserialize");
 
-        // Then disabled_skills is preserved.
-        assert_eq!(restored.disabled_skills, disabled);
+        // Then the filter survives, mode included.
+        assert_eq!(restored.skill_filter, filter);
     }
 
     #[rstest::rstest]
-    fn legacy_json_without_disabled_skills_deserializes_to_empty_set() {
-        // Given JSON from an older version that lacks disabled_skills.
-        let json = r#"{"model":{"single":"ollama/llama3"},"persona_name":"coding-assistant","disabled_tools":[]}"#;
+    fn legacy_json_without_filters_permits_everything() {
+        // Given JSON from a version before filters, carrying only the old keys.
+        let json = r#"{"model":{"single":"ollama/llama3"},"persona_name":"coding-assistant","disabled_tools":["bash"],"disabled_skills":["web-search"]}"#;
 
         // When deserialized.
         let profile: SessionProfile = serde_json::from_str(json).expect("deserialize");
 
-        // Then disabled_skills is empty (all skills enabled).
-        assert!(profile.disabled_skills.is_empty());
+        // Then both filters permit everything: the old keys are unknown, so
+        // their blocklist does not apply. This is the accepted silent
+        // failure of the breaking rename.
+        assert!(profile.tool_filter.permits("bash"));
+        assert!(profile.skill_filter.permits("web-search"));
     }
 
     #[rstest::rstest]
     fn legacy_json_without_reasoning_effort_deserializes_to_none() {
         // Given JSON from an older version that lacks reasoning_effort.
-        let json = r#"{"model":{"single":"ollama/llama3"},"persona_name":"coding-assistant","disabled_tools":[],"disabled_skills":[]}"#;
+        let json = r#"{"model":{"single":"ollama/llama3"},"persona_name":"coding-assistant"}"#;
 
         // When deserialized.
         let profile: SessionProfile = serde_json::from_str(json).expect("deserialize");
@@ -206,26 +225,15 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn legacy_json_without_disabled_tools_deserializes_to_empty_set() {
-        // Given JSON from an older version that lacks disabled_tools.
-        let json = r#"{"model":{"single":"ollama/llama3"},"persona_name":"coding-assistant"}"#;
-
-        // When deserialized.
-        let profile: SessionProfile = serde_json::from_str(json).expect("deserialize");
-
-        // Then disabled_tools is empty (all tools enabled).
-        assert!(profile.disabled_tools.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn default_policy_sets_are_empty() {
+    fn default_filters_permit_everything() {
         // Given a default profile.
         let profile = SessionProfile::default();
 
-        // When reading the opt-out sets.
-        // Then both tool and skill sets are empty.
-        assert!(profile.disabled_tools.is_empty());
-        assert!(profile.disabled_skills.is_empty());
+        // When asking each filter about a resource.
+        // Then both permit it — an unconfigured session behaves exactly as
+        // it did before filters existed.
+        assert!(profile.tool_filter.permits("bash"));
+        assert!(profile.skill_filter.permits("anything"));
     }
 
     #[rstest::rstest]
@@ -279,7 +287,7 @@ mod tests {
     #[rstest::rstest]
     fn legacy_json_without_endpoint_deserializes_to_none() {
         // Given JSON from an older version that lacks endpoint.
-        let json = r#"{"model":{"single":"ollama/llama3"},"persona_name":"coding-assistant","disabled_tools":[],"disabled_skills":[],"reasoning_effort":null}"#;
+        let json = r#"{"model":{"single":"ollama/llama3"},"persona_name":"coding-assistant","reasoning_effort":null}"#;
 
         // When deserialized.
         let profile: SessionProfile = serde_json::from_str(json).expect("deserialize");

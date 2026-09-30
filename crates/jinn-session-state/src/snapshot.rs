@@ -226,8 +226,8 @@ impl SessionSnapshot {
         metadata.session_state = SessionState::Loaded;
         metadata
             .profile
-            .disabled_tools
-            .remove(jinn_tools_msg::TASK_TOOL_NAME);
+            .tool_filter
+            .permit(jinn_tools_msg::TASK_TOOL_NAME);
 
         Self {
             revision: SessionRevision::new(1),

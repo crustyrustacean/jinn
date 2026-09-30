@@ -42,10 +42,10 @@ pub fn build_assembly_inputs(state: &AppState, session_id: &SessionId) -> Assemb
         persona,
         history: session.history,
         tools,
-        disabled_tools: session.disabled_tools,
+        tool_filter: session.tool_filter,
         provider_name: session.provider_name,
         skills: session.skills,
-        disabled_skills: session.disabled_skills,
+        skill_filter: session.skill_filter,
         loaded_skills: session.loaded_skills,
         context_files: session.context_files,
     }

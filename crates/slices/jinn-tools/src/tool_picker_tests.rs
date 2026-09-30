@@ -26,6 +26,7 @@
     reason = "test module, panics are acceptable"
 )]
 
+use jinn_core_types::NameFilter;
 use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{EditIntent, RouteOutcome, ScopeSignal};
 use jinn_slices::{KeyRoutes, SliceHost, Slices};
@@ -179,13 +180,20 @@ impl Wired {
             .map(|item| item.entry().enabled)
     }
 
-    /// The session's live disabled-tool set.
-    fn session_disabled(&self) -> std::collections::HashSet<String> {
-        self.state
-            .borrow()
-            .active_session()
-            .disabled_tools()
-            .clone()
+    /// The names this fixture's three tools see as withheld.
+    ///
+    /// Read through the filter's own predicate rather than off its list, so
+    /// the assertion holds for an allow-mode filter too — an allow filter
+    /// withholds by omission, and reading its list would report the
+    /// opposite.
+    fn session_disabled(&self) -> std::collections::BTreeSet<String> {
+        let session = self.state.borrow();
+        let filter = session.active_session().tool_filter();
+        ["read", "bash", "write"]
+            .into_iter()
+            .filter(|name| !filter.permits(name))
+            .map(str::to_owned)
+            .collect()
     }
 
     /// Opens the picker through its real `open` route action.
@@ -327,7 +335,7 @@ async fn a_pre_disabled_tool_renders_off_when_the_picker_opens() {
         .state
         .borrow_mut()
         .active_session_mut()
-        .set_disabled_tools(["read"].iter().map(|s| (*s).to_owned()).collect());
+        .set_tool_filter(NameFilter::deny(["read".to_owned()]));
 
     // When the picker is opened.
     wired.open();
@@ -350,11 +358,9 @@ async fn a_subagent_stamped_tool_renders_off_when_the_picker_opens() {
         .state
         .borrow_mut()
         .active_session_mut()
-        .set_disabled_tools(
-            [jinn_tools_msg::TASK_TOOL_NAME.to_owned()]
-                .into_iter()
-                .collect(),
-        );
+        .set_tool_filter(NameFilter::deny(
+            [jinn_tools_msg::TASK_TOOL_NAME.to_owned()],
+        ));
 
     // When the picker is opened.
     wired.open();
@@ -654,7 +660,7 @@ async fn escape_restores_the_tools_that_were_disabled_when_the_picker_opened() {
         .state
         .borrow_mut()
         .active_session_mut()
-        .set_disabled_tools(["read"].iter().map(|s| (*s).to_owned()).collect());
+        .set_tool_filter(NameFilter::deny(["read".to_owned()]));
     wired.open();
     wired.fire("toggle-highlighted-tool");
 
@@ -796,7 +802,7 @@ async fn the_status_line_reports_the_live_enabled_count() {
         .state
         .borrow_mut()
         .active_session_mut()
-        .set_disabled_tools(["read"].iter().map(|s| (*s).to_owned()).collect());
+        .set_tool_filter(NameFilter::deny(["read".to_owned()]));
     wired.open();
 
     // When the popup is drawn.

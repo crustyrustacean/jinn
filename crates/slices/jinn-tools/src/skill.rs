@@ -174,6 +174,8 @@ fn parse_args(raw: &str) -> Result<String, serde_json::Error> {
 // #[cfg(test)]
 #[cfg(test)]
 mod tests {
+    use jinn_core_types::NameFilter;
+
     #![allow(
         clippy::expect_used,
         clippy::panic,
@@ -541,7 +543,7 @@ mod tests {
         {
             let mut guard = state.write();
             let session = guard.session_mut_or_create(&session_id);
-            session.set_disabled_skills(HashSet::from(["web-coder".to_owned()]));
+            session.set_skill_filter(NameFilter::deny(["web-coder".to_owned()]));
         }
 
         let call = ToolCall {

@@ -250,7 +250,7 @@ fn an_overwrite_replaces_the_whole_entry() {
     seeded.push(AttendantEntryConfig {
         name: "nightly".to_owned(),
         seed_template: "the original".to_owned(),
-        disabled_tools: vec!["write".to_owned()],
+        tool_filter: Some(jinn_core_types::NameFilter::deny(["write".to_owned()])),
         pins: vec![AttendantPinConfig {
             role: AttendantPinRole::User,
             text: "a stale instruction".to_owned(),
@@ -275,9 +275,9 @@ fn an_overwrite_replaces_the_whole_entry() {
         saved[0].pins
     );
     assert!(
-        saved[0].disabled_tools.is_empty(),
-        "stale disabled_tools survived: {:?}",
-        saved[0].disabled_tools
+        saved[0].tool_filter.is_none(),
+        "stale tool_filter survived: {:?}",
+        saved[0].tool_filter
     );
     assert_ne!(saved[0].seed_template, "the original");
 }

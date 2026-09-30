@@ -288,8 +288,8 @@ impl SessionStoreActor {
             );
             profile.reasoning_effort = app_state.reasoning_effort;
             let seed = SessionSeed::from_config(&self.services.config);
-            profile.disabled_tools.clone_from(&seed.disabled_tools);
-            profile.disabled_skills.clone_from(&seed.disabled_skills);
+            profile.tool_filter.clone_from(&seed.tool_filter);
+            profile.skill_filter.clone_from(&seed.skill_filter);
 
             let mut fresh = ChatSessionState::new_with_profile(profile);
             fresh.set_enabled_mcp_servers(seed.enabled_mcp.clone());
