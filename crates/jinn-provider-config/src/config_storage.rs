@@ -139,6 +139,7 @@ impl ConfigStorage for InMemoryConfigStorage {
                     providers: BTreeMap::new(),
                     aliases: vec![],
                     default_provider: None,
+                    endpoint_defaults: vec![],
                 })
             }
         }
@@ -262,6 +263,7 @@ mod tests {
             )]),
             aliases: vec![],
             default_provider: None,
+            endpoint_defaults: vec![],
         };
         let storage = InMemoryConfigStorage::with_config(&config);
 
@@ -331,6 +333,7 @@ mod tests {
             )]),
             aliases: vec![],
             default_provider: None,
+            endpoint_defaults: vec![],
         };
 
         // When saving and reloading through the service.

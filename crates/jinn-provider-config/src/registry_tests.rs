@@ -32,6 +32,7 @@ fn make_config(
         providers,
         aliases,
         default_provider: default_provider.map(String::from),
+        endpoint_defaults: Vec::new(),
     }
 }
 

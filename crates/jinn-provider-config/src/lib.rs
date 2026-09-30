@@ -29,9 +29,9 @@ mod template_validation_tests;
 pub use api_keys::ApiKeys;
 pub use api_keys_service::ApiKeysService;
 pub use config::{
-    AliasEntry, AlloyStrategy, ConfigError, InitProvidersError, InitProvidersOutcome,
-    ModelInfoEntry, ProviderEntry, ProvidersConfig, config_path, create_default_config,
-    init_default_providers_to, load_config, save_config,
+    AliasEntry, AlloyStrategy, ConfigError, EndpointDefault, InitProvidersError,
+    InitProvidersOutcome, ModelInfoEntry, ProviderEntry, ProvidersConfig, config_path,
+    create_default_config, init_default_providers_to, load_config, save_config,
 };
 pub use config_storage::{
     ConfigStorage, ConfigStorageService, FilesystemConfigStorage, InMemoryConfigStorage,

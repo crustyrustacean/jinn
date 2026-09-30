@@ -233,6 +233,7 @@ async fn load_provider_picker_entries_fills_the_picker_from_the_registry() {
             )]),
             aliases: vec![],
             default_provider: None,
+            endpoint_defaults: vec![],
         },
     )
     .expect("registry builds");
@@ -285,6 +286,7 @@ fn ollama_only_registry() -> jinn_provider_config::ProviderRegistry {
         )]),
         aliases: vec![],
         default_provider: None,
+        endpoint_defaults: vec![],
     })
     .expect("registry builds")
 }

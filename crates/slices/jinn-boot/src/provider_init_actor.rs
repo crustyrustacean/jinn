@@ -249,6 +249,7 @@ mod tests {
             )]),
             aliases: vec![],
             default_provider: None,
+            endpoint_defaults: vec![],
         }
     }
 

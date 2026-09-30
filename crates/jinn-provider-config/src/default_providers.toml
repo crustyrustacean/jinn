@@ -3,8 +3,11 @@
 # The active provider can be changed at runtime via the picker UI.
 #
 # TOML has no way back to the root after a [table] header, so root-level
-# keys (`default_provider`, `[[aliases]]`) must be written at the TOP of
-# this file — uncomment the marked examples below to use them.
+# keys (`default_provider`, `[[aliases]]`, `[[endpoint_defaults]]`) must be
+# written at the TOP of this file — uncomment the marked examples below to use
+# them. jinn itself writes the `[[endpoint_defaults]]` rows when you confirm
+# a choice in the endpoint picker, so leave that block alone unless you want
+# to hand-edit it.
 #
 # API keys are never stored here — reference env var names instead.
 # For providers that don't require a key (Ollama, LMStudio), set requires_key = false.
@@ -32,6 +35,15 @@
 # [[aliases]]
 # name = "smart"
 # target = "openrouter/openai/gpt-oss-120b"
+
+# Pinned OpenRouter routing endpoints, keyed by full model id.
+# Written by the endpoint picker (<leader>sE); hand-editable.
+# The choice applies to that model for every session, including sessions
+# created later. No entry for a model means auto-route.
+# (uncomment below to activate)
+# [[endpoint_defaults]]
+# model = "openrouter/anthropic/claude-sonnet-4-20250514"
+# tag = "anthropic"
 
 [providers.openrouter]
 backend = "openrouter"

@@ -696,6 +696,7 @@ mod tests {
             )]),
             aliases: vec![],
             default_provider: None,
+            endpoint_defaults: vec![],
         }
     }
 
@@ -779,6 +780,7 @@ mod tests {
             )]),
             aliases: vec![],
             default_provider: None,
+            endpoint_defaults: vec![],
         };
         let ctx = create_ctx().await;
         let services = ctx.deps.services.clone();
@@ -876,6 +878,7 @@ mod tests {
             )]),
             aliases: vec![],
             default_provider: None,
+            endpoint_defaults: vec![],
         };
         let ctx = create_ctx().await;
         let services = ctx.deps.services.clone();
@@ -990,6 +993,7 @@ mod tests {
             )]),
             aliases: vec![],
             default_provider: None,
+            endpoint_defaults: vec![],
         };
         let ctx = create_ctx().await;
         let services = ctx.deps.services.clone();
@@ -1051,6 +1055,7 @@ mod tests {
             )]),
             aliases: vec![],
             default_provider: None,
+            endpoint_defaults: vec![],
         };
         let ctx = create_ctx().await;
         let services = ctx.deps.services.clone();
@@ -1126,6 +1131,7 @@ mod tests {
             )]),
             aliases: vec![],
             default_provider: None,
+            endpoint_defaults: vec![],
         }
     }
 
@@ -1210,6 +1216,7 @@ mod tests {
             )]),
             aliases: vec![],
             default_provider: None,
+            endpoint_defaults: vec![],
         }
     }
 
