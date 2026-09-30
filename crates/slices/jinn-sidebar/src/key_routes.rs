@@ -785,260 +785,260 @@ mod tests {
             "<c-c> in the resize scope must not resolve to quit"
         );
     }
-}
 
-/// The sidebar's `T` actually toggles the terminal overlay.
-///
-/// This row used to publish a `KernelIntent::Dynamic` message naming the term
-/// slice's `toggle-for-selected` action. A published message goes to the bus,
-/// and no actor subscribes to `KernelIntent` — so the message was dropped and
-/// `T` did nothing. The row is now a direct call, and this test dispatches it
-/// the way the composed keymap does.
-#[rstest::rstest]
-fn session_terminal_row_toggles_the_overlay() {
-    // Given a session holding a live terminal, with the Sessions section
-    // selected in the sidebar.
-    use jinn_kernel::AppState;
-    use jinn_session_state::ChatSessionState;
-    let _ = jinn_term_msg::TERM_CONTROLS.set(jinn_term_msg::TermControls::default());
-    let mut state = AppState::default_with_scope_focus();
-    let slices = jinn_slices::Slices::new();
-    let routes = KeyRoutes::new();
-    attach_sidebar_rows(&routes);
-    let session = ChatSessionState::new();
-    let session_id = session.session_id().clone();
-    state.session.insert(session);
-    state
-        .term_tabs()
-        .expect("the term tabs cell is registered by wiring")
-        .update(|tabs| tabs.set_live(&session_id, true));
-    state
-        .frontend
-        .scope_swap_base(jinn_slices::FocusScope::Dynamic(
-            jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id(),
-        ));
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_id = Some(session_id.clone()));
-
-    // When `T` is pressed in the sidebar's sessions section.
-    let intent = jinn_slices::DynamicIntent::new(
-        jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id(),
-        "session-terminal",
-        "toggle terminal",
-    );
-    routes
-        .action_for(
-            &intent,
-            ActionCtx {
-                state: &mut state,
-                slices: &slices,
-                config: jinn_slices::empty_config_layer(),
-                key_bytes: Vec::new(),
-            },
-        )
-        .expect("the sessions section binds a `T` row");
-
-    // Then the terminal overlay is open.
-    assert_eq!(
-        state.frontend.scope(),
-        jinn_slices::FocusScope::Dynamic(jinn_term_msg::view_scope()),
-        "`T` must open the terminal overlay, not publish a message nobody reads"
-    );
-}
-
-/// The popup cell a state seeded by `default_with_scope_focus` writes.
-///
-/// `AppState::default_with_scope_focus` already attaches the real cell
-/// catalog, so the properties cell is registered — and `scope_focus` is a
-/// `OnceLock`, so it cannot be swapped for a test's own registry afterwards.
-/// Reading the cell off the state is therefore the only way to see what the
-/// opener seeded; a locally-built cell would be a different instance that
-/// the handler never writes.
-fn properties_cell(
-    state: &jinn_kernel::AppState,
-) -> jinn_slices::TypedCell<jinn_attendant_msg::AttendantPropertiesState> {
-    state
-        .frontend
-        .slices()
-        .expect("the fixture state has a cell registry")
-        .reader::<jinn_attendant_msg::AttendantPropertiesState>(
-            &jinn_attendant_msg::attendant_properties_slot(),
-        )
-        .expect("the catalog registers the properties cell")
-        .clone()
-}
-
-/// Puts `cursor` on the given sidebar section.
-fn focus_section(state: &jinn_kernel::AppState, section: jinn_sidebar_msg::SidebarSectionId) {
-    state
-        .frontend
-        .scope_swap_base(jinn_slices::FocusScope::Dynamic(section.scope_id()));
-}
-
-/// An active session with `count` titled attendants, in the order given.
-fn state_with_attendants(count: usize) -> jinn_kernel::AppState {
-    let mut state = jinn_kernel::AppState::default_with_scope_focus();
-    let parent = jinn_session_state::ChatSessionState::new();
-    let parent_id = parent.session_id().clone();
-    state.session.insert(parent);
-    for name in ["alpha", "beta", "gamma"].iter().take(count) {
-        let mut attendant = jinn_session_state::ChatSessionState::new_attendant(
-            state.session.get(&parent_id).expect("parent"),
-            true,
-        );
-        attendant.set_title((*name).to_owned());
-        state.session.insert(attendant);
-    }
-    state.session.set_active(parent_id);
-    state
-}
-
-/// Dispatches a sidebar row by (scope, action) and applies its scope signal
-/// the way the kernel's handler does — the opener's whole effect is a
-/// `ScopeSignal::Push`, which nothing dispatches on its own.
-fn press(
-    routes: &KeyRoutes,
-    state: &mut jinn_kernel::AppState,
-    scope: jinn_slices::SliceScopeId,
-    action: &'static str,
-) {
-    let slices = jinn_slices::Slices::new();
-    let result = routes
-        .action_for(
-            &jinn_slices::DynamicIntent::new(scope, action, action),
-            ActionCtx {
-                state,
-                slices: &slices,
-                config: jinn_slices::empty_config_layer(),
-                key_bytes: Vec::new(),
-            },
-        )
-        .unwrap_or_else(|| panic!("the sidebar binds {action:?}"));
-    match result.scope_signal {
-        Some(jinn_slices::ScopeSignal::Push(pushed)) => state
+    /// The sidebar's `T` actually toggles the terminal overlay.
+    ///
+    /// This row used to publish a `KernelIntent::Dynamic` message naming the term
+    /// slice's `toggle-for-selected` action. A published message goes to the bus,
+    /// and no actor subscribes to `KernelIntent` — so the message was dropped and
+    /// `T` did nothing. The row is now a direct call, and this test dispatches it
+    /// the way the composed keymap does.
+    #[rstest::rstest]
+    fn session_terminal_row_toggles_the_overlay() {
+        // Given a session holding a live terminal, with the Sessions section
+        // selected in the sidebar.
+        use jinn_kernel::AppState;
+        use jinn_session_state::ChatSessionState;
+        let _ = jinn_term_msg::TERM_CONTROLS.set(jinn_term_msg::TermControls::default());
+        let mut state = AppState::default_with_scope_focus();
+        let slices = jinn_slices::Slices::new();
+        let routes = KeyRoutes::new();
+        attach_sidebar_rows(&routes);
+        let session = ChatSessionState::new();
+        let session_id = session.session_id().clone();
+        state.session.insert(session);
+        state
+            .term_tabs()
+            .expect("the term tabs cell is registered by wiring")
+            .update(|tabs| tabs.set_live(&session_id, true));
+        state
             .frontend
-            .scope_push(jinn_slices::FocusScope::Dynamic(pushed)),
-        Some(jinn_slices::ScopeSignal::PopIf(_)) | None => {}
+            .scope_swap_base(jinn_slices::FocusScope::Dynamic(
+                jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id(),
+            ));
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_id = Some(session_id.clone()));
+
+        // When `T` is pressed in the sidebar's sessions section.
+        let intent = jinn_slices::DynamicIntent::new(
+            jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id(),
+            "session-terminal",
+            "toggle terminal",
+        );
+        routes
+            .action_for(
+                &intent,
+                ActionCtx {
+                    state: &mut state,
+                    slices: &slices,
+                    config: jinn_slices::empty_config_layer(),
+                    key_bytes: Vec::new(),
+                },
+            )
+            .expect("the sessions section binds a `T` row");
+
+        // Then the terminal overlay is open.
+        assert_eq!(
+            state.frontend.scope(),
+            jinn_slices::FocusScope::Dynamic(jinn_term_msg::view_scope()),
+            "`T` must open the terminal overlay, not publish a message nobody reads"
+        );
     }
-}
 
-#[rstest::rstest]
-fn P_in_the_attendants_section_opens_the_properties_popup() {
-    // Given the attendants section focused over one attendant.
-    let mut state = state_with_attendants(1);
-    focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Attendant);
-    let first_attendant = jinn_attendant::section_rows::attendant_rows(&state)
-        .first()
-        .map(|row| row.session_id.clone());
-    state
-        .frontend
-        .update_sections(|s| s.attendant.selected_id = first_attendant);
+    /// The popup cell a state seeded by `default_with_scope_focus` writes.
+    ///
+    /// `AppState::default_with_scope_focus` already attaches the real cell
+    /// catalog, so the properties cell is registered — and `scope_focus` is a
+    /// `OnceLock`, so it cannot be swapped for a test's own registry afterwards.
+    /// Reading the cell off the state is therefore the only way to see what the
+    /// opener seeded; a locally-built cell would be a different instance that
+    /// the handler never writes.
+    fn properties_cell(
+        state: &jinn_kernel::AppState,
+    ) -> jinn_slices::TypedCell<jinn_attendant_msg::AttendantPropertiesState> {
+        state
+            .frontend
+            .slices()
+            .expect("the fixture state has a cell registry")
+            .reader::<jinn_attendant_msg::AttendantPropertiesState>(
+                &jinn_attendant_msg::attendant_properties_slot(),
+            )
+            .expect("the catalog registers the properties cell")
+            .clone()
+    }
 
-    // When `P` is pressed in the sidebar's attendants section.
-    let routes = KeyRoutes::new();
-    attach_sidebar_rows(&routes);
-    press(
-        &routes,
-        &mut state,
-        jinn_sidebar_msg::SidebarSectionId::Attendant.scope_id(),
-        "attendant-open-properties",
-    );
+    /// Puts `cursor` on the given sidebar section.
+    fn focus_section(state: &jinn_kernel::AppState, section: jinn_sidebar_msg::SidebarSectionId) {
+        state
+            .frontend
+            .scope_swap_base(jinn_slices::FocusScope::Dynamic(section.scope_id()));
+    }
 
-    // Then the properties popup is open.
-    assert_eq!(
-        state.frontend.scope(),
-        jinn_slices::FocusScope::Dynamic(jinn_attendant_msg::attendant_properties_scope()),
-        "`P` must open the properties popup from the attendants section"
-    );
-}
+    /// An active session with `count` titled attendants, in the order given.
+    fn state_with_attendants(count: usize) -> jinn_kernel::AppState {
+        let mut state = jinn_kernel::AppState::default_with_scope_focus();
+        let parent = jinn_session_state::ChatSessionState::new();
+        let parent_id = parent.session_id().clone();
+        state.session.insert(parent);
+        for name in ["alpha", "beta", "gamma"].iter().take(count) {
+            let mut attendant = jinn_session_state::ChatSessionState::new_attendant(
+                state.session.get(&parent_id).expect("parent"),
+                true,
+            );
+            attendant.set_title((*name).to_owned());
+            state.session.insert(attendant);
+        }
+        state.session.set_active(parent_id);
+        state
+    }
 
-#[rstest::rstest]
-fn P_in_the_attendants_section_opens_the_highlighted_attendant() {
-    // Given two attendants under the active session, with the cursor on the
-    // second.
-    let mut state = state_with_attendants(2);
-    focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Attendant);
-    let expected = jinn_attendant::section_rows::attendant_rows(&state)[1]
-        .session_id
-        .clone();
-    let expected_for_cursor = expected.clone();
-    state
-        .frontend
-        .update_sections(|s| s.attendant.selected_id = Some(expected_for_cursor));
-    let properties = properties_cell(&state);
+    /// Dispatches a sidebar row by (scope, action) and applies its scope signal
+    /// the way the kernel's handler does — the opener's whole effect is a
+    /// `ScopeSignal::Push`, which nothing dispatches on its own.
+    fn press(
+        routes: &KeyRoutes,
+        state: &mut jinn_kernel::AppState,
+        scope: jinn_slices::SliceScopeId,
+        action: &'static str,
+    ) {
+        let slices = jinn_slices::Slices::new();
+        let result = routes
+            .action_for(
+                &jinn_slices::DynamicIntent::new(scope, action, action),
+                ActionCtx {
+                    state,
+                    slices: &slices,
+                    config: jinn_slices::empty_config_layer(),
+                    key_bytes: Vec::new(),
+                },
+            )
+            .unwrap_or_else(|| panic!("the sidebar binds {action:?}"));
+        match result.scope_signal {
+            Some(jinn_slices::ScopeSignal::Push(pushed)) => state
+                .frontend
+                .scope_push(jinn_slices::FocusScope::Dynamic(pushed)),
+            Some(jinn_slices::ScopeSignal::PopIf(_)) | None => {}
+        }
+    }
 
-    // When `P` is pressed.
-    let routes = KeyRoutes::new();
-    attach_sidebar_rows(&routes);
-    press(
-        &routes,
-        &mut state,
-        jinn_sidebar_msg::SidebarSectionId::Attendant.scope_id(),
-        "attendant-open-properties",
-    );
+    #[rstest::rstest]
+    fn P_in_the_attendants_section_opens_the_properties_popup() {
+        // Given the attendants section focused over one attendant.
+        let mut state = state_with_attendants(1);
+        focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Attendant);
+        let first_attendant = jinn_attendant::section_rows::attendant_rows(&state)
+            .first()
+            .map(|row| row.session_id.clone());
+        state
+            .frontend
+            .update_sections(|s| s.attendant.selected_id = first_attendant);
 
-    // Then the popup is seeded for the row under the cursor, not the first
-    // one — the two sections index different lists, so a handler reading the
-    // wrong one would open a different attendant's properties.
-    assert_eq!(
-        properties.read().session_id.as_ref(),
-        Some(&expected),
-        "`P` must open the highlighted attendant"
-    );
-}
+        // When `P` is pressed in the sidebar's attendants section.
+        let routes = KeyRoutes::new();
+        attach_sidebar_rows(&routes);
+        press(
+            &routes,
+            &mut state,
+            jinn_sidebar_msg::SidebarSectionId::Attendant.scope_id(),
+            "attendant-open-properties",
+        );
 
-#[rstest::rstest]
-fn P_in_the_attendants_section_over_no_attendants_opens_nothing() {
-    // Given a session with no attendants, so the section has no rows to
-    // highlight and the cursor it holds is stale.
-    let mut state = state_with_attendants(0);
-    focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Attendant);
-    let any_attendant = jinn_attendant::section_rows::attendant_rows(&state)
-        .first()
-        .map(|row| row.session_id.clone());
-    state
-        .frontend
-        .update_sections(|s| s.attendant.selected_id = any_attendant);
-    let before = state.frontend.scope();
+        // Then the properties popup is open.
+        assert_eq!(
+            state.frontend.scope(),
+            jinn_slices::FocusScope::Dynamic(jinn_attendant_msg::attendant_properties_scope()),
+            "`P` must open the properties popup from the attendants section"
+        );
+    }
 
-    // When `P` is pressed.
-    let routes = KeyRoutes::new();
-    attach_sidebar_rows(&routes);
-    press(
-        &routes,
-        &mut state,
-        jinn_sidebar_msg::SidebarSectionId::Attendant.scope_id(),
-        "attendant-open-properties",
-    );
+    #[rstest::rstest]
+    fn P_in_the_attendants_section_opens_the_highlighted_attendant() {
+        // Given two attendants under the active session, with the cursor on the
+        // second.
+        let mut state = state_with_attendants(2);
+        focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Attendant);
+        let expected = jinn_attendant::section_rows::attendant_rows(&state)[1]
+            .session_id
+            .clone();
+        let expected_for_cursor = expected.clone();
+        state
+            .frontend
+            .update_sections(|s| s.attendant.selected_id = Some(expected_for_cursor));
+        let properties = properties_cell(&state);
 
-    // Then nothing opened — there is no attendant to edit.
-    assert_eq!(state.frontend.scope(), before);
-}
+        // When `P` is pressed.
+        let routes = KeyRoutes::new();
+        attach_sidebar_rows(&routes);
+        press(
+            &routes,
+            &mut state,
+            jinn_sidebar_msg::SidebarSectionId::Attendant.scope_id(),
+            "attendant-open-properties",
+        );
 
-#[rstest::rstest]
-fn P_in_the_sessions_section_on_a_user_session_opens_nothing() {
-    // Given the sessions section focused on a plain user session.
-    let mut state = state_with_attendants(0);
-    focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Sessions);
-    let user_session = state.session.active_session_id().clone();
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_id = Some(user_session));
-    let before = state.frontend.scope();
+        // Then the popup is seeded for the row under the cursor, not the first
+        // one — the two sections index different lists, so a handler reading the
+        // wrong one would open a different attendant's properties.
+        assert_eq!(
+            properties.read().session_id.as_ref(),
+            Some(&expected),
+            "`P` must open the highlighted attendant"
+        );
+    }
 
-    // When `P` is pressed.
-    let routes = KeyRoutes::new();
-    attach_sidebar_rows(&routes);
-    press(
-        &routes,
-        &mut state,
-        jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id(),
-        "session-attendant-properties",
-    );
+    #[rstest::rstest]
+    fn P_in_the_attendants_section_over_no_attendants_opens_nothing() {
+        // Given a session with no attendants, so the section has no rows to
+        // highlight and the cursor it holds is stale.
+        let mut state = state_with_attendants(0);
+        focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Attendant);
+        let any_attendant = jinn_attendant::section_rows::attendant_rows(&state)
+            .first()
+            .map(|row| row.session_id.clone());
+        state
+            .frontend
+            .update_sections(|s| s.attendant.selected_id = any_attendant);
+        let before = state.frontend.scope();
 
-    // Then nothing opened. The popup has no field to edit on a user
-    // session, and the sessions section reaches users as well as
-    // attendants.
-    assert_eq!(state.frontend.scope(), before);
+        // When `P` is pressed.
+        let routes = KeyRoutes::new();
+        attach_sidebar_rows(&routes);
+        press(
+            &routes,
+            &mut state,
+            jinn_sidebar_msg::SidebarSectionId::Attendant.scope_id(),
+            "attendant-open-properties",
+        );
+
+        // Then nothing opened — there is no attendant to edit.
+        assert_eq!(state.frontend.scope(), before);
+    }
+
+    #[rstest::rstest]
+    fn P_in_the_sessions_section_on_a_user_session_opens_nothing() {
+        // Given the sessions section focused on a plain user session.
+        let mut state = state_with_attendants(0);
+        focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Sessions);
+        let user_session = state.session.active_session_id().clone();
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_id = Some(user_session));
+        let before = state.frontend.scope();
+
+        // When `P` is pressed.
+        let routes = KeyRoutes::new();
+        attach_sidebar_rows(&routes);
+        press(
+            &routes,
+            &mut state,
+            jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id(),
+            "session-attendant-properties",
+        );
+
+        // Then nothing opened. The popup has no field to edit on a user
+        // session, and the sessions section reaches users as well as
+        // attendants.
+        assert_eq!(state.frontend.scope(), before);
+    }
 }

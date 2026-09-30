@@ -7,7 +7,7 @@
 //! sidebar or the session store: the commands it emits are the ordinary
 //! ones an attendant creation publishes.
 
-use jinn_core_types::{ChatEntry, ModelSelection};
+use jinn_core_types::ChatEntry;
 use jinn_preferences_config::schemas::AttendantEntryConfig;
 use jinn_session_lifecycle_msg::event::SessionCreated;
 use jinn_session_state::ChatSessionState;
