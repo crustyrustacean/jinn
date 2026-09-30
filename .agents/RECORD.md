@@ -106,7 +106,7 @@ Entries are added or amended **only with human approval**.
 - (keybinds) The sidebar sessions scope has no `p` prefix group; the Normal-scope `p` pin binding is still guarded against Leaf→Branch keymap promotion by a dedicated regression test.
 - (keybinds) `Alt+Q` in input scope toggles input mode; `Alt+S` focuses the sidebar sessions section from both input and normal scopes.
 - (keybinds) `s` in the sidebar task-list section opens the task-list picker.
-- (keybinds) `gci` in normal scope isolates the highlighted entry's tool loop: it force-includes that loop and user-force-excludes every other non-pinned entry, leaving pins untouched.
+- (keybinds) `gci` in normal scope isolates the highlighted entry's tool loop: it force-includes that loop and user-force-excludes every other non-pinned entry. A pinned highlight is accepted — the other non-pinned entries are still excluded, and the pinned loop stays in context via its pin.
 - (mcp) jinn is an MCP client: one `McpActor` per (session × enabled server) owns a connection to an MCP server over stdio, local_http (jinn-managed child process), or remote_http (externally-managed, no process management).
 - (mcp) MCP tools are namespaced `mcp__<server>__<tool>` and registered per-session via `RegisterTools { session_id: Some(_) }`.
 - (mcp) MCP server enablement is per-session, persisted in `SessionCore`, off by default; enabling spawns the actor+process, disabling kills both.

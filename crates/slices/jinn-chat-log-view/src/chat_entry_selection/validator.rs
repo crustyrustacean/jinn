@@ -257,34 +257,28 @@ pub enum ChatEntryIsolateSelectedError {
     NoSelection,
     /// The chat history is empty.
     EmptyHistory,
-    /// The highlighted entry is pinned (its override is already authoritative).
-    IsPinned,
 }
 
 /// Validates the ChatEntryIsolateSelected intent.
 ///
-/// Mirrors the `x` toggle rules: the history must be non-empty, an entry must
-/// be highlighted (a cursor resting on a collapsed ignored block selects
-/// nothing), and a pinned highlight is rejected (isolate would force-include
-/// what the pin already forces in, silently doing nothing).
+/// The history must be non-empty and an entry must be highlighted (a cursor
+/// resting on a collapsed ignored block selects nothing). A pinned highlight is
+/// accepted: the pin already keeps its chunk in context, and isolate still
+/// excludes every other non-pinned chunk around it.
 ///
 /// # Errors
 ///
-/// Returns an error if the history is empty, no entry is selected,
-/// or the highlighted entry is pinned.
+/// Returns an error if the history is empty or no entry is selected.
 pub fn validate_chat_entry_isolate_selected(
     state: &AppState,
 ) -> Result<(), ChatEntryIsolateSelectedError> {
     if state.active_session().history().is_empty() {
         return Err(ChatEntryIsolateSelectedError::EmptyHistory);
     }
-    let selected = state
+    state
         .active_session()
         .selected_entry()
         .ok_or(ChatEntryIsolateSelectedError::NoSelection)?;
-    if selected.is_pinned() {
-        return Err(ChatEntryIsolateSelectedError::IsPinned);
-    }
     Ok(())
 }
 
@@ -1054,7 +1048,7 @@ mod ignore_selected_tests {
     }
 
     #[rstest::rstest]
-    fn isolate_selected_rejects_pinned_entry() {
+    fn isolate_selected_accepts_pinned_entry() {
         // Given a state with a selected pinned entry.
         let mut state = AppState::default();
         state
@@ -1065,11 +1059,9 @@ mod ignore_selected_tests {
         // When validating isolate selected.
         let result = validate_chat_entry_isolate_selected(&state);
 
-        // Then validation fails with IsPinned.
-        assert!(matches!(
-            result,
-            Err(ChatEntryIsolateSelectedError::IsPinned)
-        ));
+        // Then validation succeeds (the pin keeps its own chunk in context;
+        // isolate still has other chunks to exclude).
+        assert!(result.is_ok());
     }
 
     #[rstest::rstest]
