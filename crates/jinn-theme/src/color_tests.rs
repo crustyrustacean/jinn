@@ -172,6 +172,8 @@ mod style_map_integration_tests {
     #![allow(clippy::expect_used, reason = "test assertions")]
     use ratatui::style::Style;
 
+    use crate::theme::ThemeFile;
+
     #[rstest::rstest]
     #[test]
     fn style_map_returns_entry_for_every_theme_field() {
@@ -179,8 +181,25 @@ mod style_map_integration_tests {
         let theme = crate::default_theme();
         // When building the style map.
         let map = theme.style_map();
-        // Then it has one entry per Theme field.
-        assert_eq!(map.len(), 51, "style_map should cover all Theme fields");
+        // Then it has one entry per Theme field. The expected count is read
+        // off the theme file rather than written as a literal, because a
+        // literal made a newly added key fail here as "52 != 51" — naming
+        // neither the key nor the map, and asking the next person to count
+        // a struct by hand. `ThemeFile` and `Theme` are maintained in step
+        // by the two tests either side of this one, so comparing the three
+        // sizes is exactly the "did you update all of them?" question.
+        let file: ThemeFile = toml::from_str(crate::default_theme::DEFAULT_TOML)
+            .expect("the embedded default theme parses");
+        let field_count = toml::Value::try_from(&file)
+            .expect("the theme file serializes")
+            .as_table()
+            .expect("a theme file is a table")
+            .len();
+        assert_eq!(
+            map.len(),
+            field_count,
+            "style_map must cover every field the theme file exposes"
+        );
     }
 
     #[rstest::rstest]

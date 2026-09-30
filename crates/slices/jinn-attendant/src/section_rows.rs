@@ -25,10 +25,14 @@ pub struct AttendantRow {
     pub latest_report: Option<String>,
     /// Whether the latest report predates the parent's latest activity.
     pub is_stale: bool,
-    /// Whether the attendant will not dispatch a turn on its own. Rendered
-    /// beside the name, never inside it, so a rename can never reach the
-    /// marker.
-    pub is_paused: bool,
+    /// Whether the attendant is still being composed, so nothing will run.
+    /// Rendered beside the name, never inside it, so a rename can never
+    /// reach the marker.
+    pub is_prepping: bool,
+    /// Whether the attendant runs on its parent's completion. Its own
+    /// marker, because "fires on its own" is a different fact from "cannot
+    /// fire at all" and one glyph cannot say both.
+    pub fires_on_parent_completion: bool,
 }
 
 /// The session whose attendants the sidebar section is showing.
@@ -81,7 +85,8 @@ pub fn attendant_rows(state: &AppState) -> Vec<AttendantRow> {
                 name: attendant.title().unwrap_or("Untitled Session").to_owned(),
                 latest_report: latest.map(|report: &AttendantReport| report.body.clone()),
                 is_stale,
-                is_paused: attendant.attendant_is_paused(),
+                is_prepping: attendant.attendant_is_prepping(),
+                fires_on_parent_completion: attendant.attendant_fires_on_parent_completion(),
             }
         })
         .collect();

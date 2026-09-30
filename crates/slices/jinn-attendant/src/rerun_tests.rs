@@ -7,7 +7,7 @@
     reason = "test code"
 )]
 
-use jinn_attendant_msg::AttendantActivation;
+use jinn_attendant_msg::AttendantBehavior;
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::state::State;
 use jinn_session_msg::PhaseKind;
@@ -15,13 +15,18 @@ use jinn_session_state::ChatSessionState;
 
 use crate::rerun::{rerun, rerun_blocked_reason};
 
-fn state_with_attendant(activation: AttendantActivation) -> (State, jinn_core_types::SessionId) {
+/// State holding one composed attendant (prep mode off) with the given
+/// behavior, plus the parent it reports to.
+fn state_with_attendant(behavior: AttendantBehavior) -> (State, jinn_core_types::SessionId) {
     let state = State::new(AppState::default());
     let id = {
         let mut guard = state.write();
         let parent = ChatSessionState::new();
         let mut attendant = ChatSessionState::new_attendant(&parent, true);
-        attendant.set_attendant_activation(activation);
+        attendant.set_attendant_behavior(behavior);
+        // A fresh attendant is composing; these tests are about running
+        // one, so composition ends here.
+        attendant.set_attendant_is_prepping(false);
         let id = attendant.session_id().clone();
         guard.session.insert(attendant);
         guard.session.insert(parent);
@@ -48,7 +53,7 @@ fn parent_id_of(state: &State, attendant: &jinn_core_types::SessionId) -> String
 #[test]
 fn rerun_on_a_reset_attendant_dispatches_the_seeded_run() {
     // Given a reset attendant with a prior report and a template.
-    let (state, id) = state_with_attendant(AttendantActivation::Reset);
+    let (state, id) = state_with_attendant(AttendantBehavior::Reset);
     {
         let mut guard = state.write();
         let session = guard.session.get_mut(&id).expect("attendant");
@@ -81,7 +86,7 @@ fn rerun_on_a_reset_attendant_dispatches_the_seeded_run() {
 #[test]
 fn rerun_on_a_busy_attendant_cancels_its_own_turn() {
     // Given a reset attendant whose turn is mid-flight.
-    let (state, id) = state_with_attendant(AttendantActivation::Reset);
+    let (state, id) = state_with_attendant(AttendantBehavior::Reset);
     {
         let mut guard = state.write();
         let session = guard.session.get_mut(&id).expect("attendant");
@@ -100,7 +105,7 @@ fn rerun_on_a_busy_attendant_cancels_its_own_turn() {
 #[test]
 fn reset_run_excludes_non_pinned_entries_before_dispatching() {
     // Given a reset attendant with one pinned and two unpinned entries.
-    let (state, id) = state_with_attendant(AttendantActivation::Reset);
+    let (state, id) = state_with_attendant(AttendantBehavior::Reset);
     {
         let mut guard = state.write();
         let session = guard.session.get_mut(&id).expect("attendant");
@@ -141,9 +146,9 @@ fn reset_run_excludes_non_pinned_entries_before_dispatching() {
 }
 
 #[rstest::rstest]
-#[case(AttendantActivation::Reset)]
-#[case(AttendantActivation::Preserve)]
-fn an_attendants_run_is_persistable_in_every_dispatchable_mode(#[case] mode: AttendantActivation) {
+#[case(AttendantBehavior::Reset)]
+#[case(AttendantBehavior::Preserve)]
+fn an_attendants_run_is_persistable_in_every_dispatchable_mode(#[case] mode: AttendantBehavior) {
     // Given an attendant in the given mode.
     let (state, id) = state_with_attendant(mode);
 
@@ -156,7 +161,7 @@ fn an_attendants_run_is_persistable_in_every_dispatchable_mode(#[case] mode: Att
     //
     // Persistability comes from the constructor rather than from the run, so
     // this is the property a mode switch has to preserve: editing the
-    // activation in the properties popup must not drop the session out of
+    // prep mode in the properties popup must not drop the session out of
     // storage.
     let guard = state.read();
     assert!(
@@ -171,7 +176,7 @@ fn an_attendants_run_is_persistable_in_every_dispatchable_mode(#[case] mode: Att
 fn reset_exclusions_survive_a_restart() {
     // Given a reset attendant that has been re-run once, so its context
     // was excluded in memory only.
-    let (state, id) = state_with_attendant(AttendantActivation::Reset);
+    let (state, id) = state_with_attendant(AttendantBehavior::Reset);
     {
         let mut guard = state.write();
         let session = guard.session.get_mut(&id).expect("attendant");
@@ -200,7 +205,7 @@ fn reset_exclusions_survive_a_restart() {
 #[test]
 fn rerun_on_a_busy_attendant_drops_its_own_phase_so_the_seed_dispatches() {
     // Given a reset attendant whose turn is mid-flight.
-    let (state, id) = state_with_attendant(AttendantActivation::Reset);
+    let (state, id) = state_with_attendant(AttendantBehavior::Reset);
     {
         let mut guard = state.write();
         let session = guard.session.get_mut(&id).expect("attendant");
@@ -235,7 +240,7 @@ fn rerun_on_a_preserve_attendant_seeds_through_the_template() {
     // and inserts the seeded message in every mode. Preserve mode governs
     // what an unattended trigger fire does — carry the context as-is — not
     // what a manual re-run does.
-    let (state, id) = state_with_attendant(AttendantActivation::Preserve);
+    let (state, id) = state_with_attendant(AttendantBehavior::Preserve);
     {
         let mut guard = state.write();
         let session = guard.session.get_mut(&id).expect("attendant");
@@ -264,18 +269,28 @@ fn rerun_on_a_preserve_attendant_seeds_through_the_template() {
 
 #[rstest::rstest]
 #[test]
-fn rerun_on_a_seed_attendant_is_refused() {
-    // Given an attendant still in seed mode.
-    let (state, id) = state_with_attendant(AttendantActivation::Seed);
+fn rerun_on_a_composing_attendant_is_refused() {
+    // Given an attendant still being composed.
+    let (state, id) = {
+        let (state, id) = state_with_attendant(AttendantBehavior::Reset);
+        state
+            .write()
+            .session
+            .get_mut(&id)
+            .expect("attendant")
+            .set_attendant_is_prepping(true);
+        (state, id)
+    };
 
     // When the attendant is re-run.
     let outcome = rerun(&state, &id);
 
-    // Then nothing dispatches, and the reason names the mode.
+    // Then nothing dispatches, and the reason names the state by the name
+    // the panel shows it under.
     assert!(outcome.is_none());
     assert_eq!(
         rerun_blocked_reason(&state, &id),
-        Some("attendant is still being composed (seed mode)")
+        Some("attendant is in prep mode")
     );
 }
 

@@ -10,7 +10,7 @@
 
 use std::collections::HashSet;
 
-use jinn_attendant_msg::{AttendantActivation, AttendantTrigger};
+use jinn_attendant_msg::{AttendantBehavior, AttendantTrigger};
 use jinn_core_types::{ChatEntry, PinPosition};
 use jinn_session_state::ChatSessionState;
 
@@ -22,7 +22,7 @@ fn composed_attendant() -> ChatSessionState {
     let parent = ChatSessionState::new();
     let mut attendant = ChatSessionState::new_attendant(&parent, true);
     attendant.set_title("nightly".to_owned());
-    attendant.set_attendant_activation(AttendantActivation::Reset);
+    attendant.set_attendant_behavior(AttendantBehavior::Reset);
     attendant.set_attendant_trigger(AttendantTrigger::ParentCompleted);
     attendant.set_seed_template("review: <prior report>".to_owned());
     attendant.push_entry(ChatEntry {
@@ -59,9 +59,9 @@ fn an_entry_records_the_run_configuration() {
     // When building its entry.
     let entry = saved_entry::entry_for_session("nightly".to_owned(), &session);
 
-    // Then activation, trigger, and seed template come across as saved, so
+    // Then behavior, trigger, and seed template come across as saved, so
     // a created attendant is live from its first run.
-    assert_eq!(entry.activation, AttendantActivation::Reset);
+    assert_eq!(entry.behavior, AttendantBehavior::Reset);
     assert_eq!(entry.trigger, AttendantTrigger::ParentCompleted);
     assert_eq!(entry.seed_template, "review: <prior report>");
 }

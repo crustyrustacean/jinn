@@ -33,19 +33,32 @@ use unicode_width::UnicodeWidthStr;
 /// The typed cell the popup reads and writes.
 type AttendantPropertiesCell = TypedCell<AttendantPropertiesState>;
 
+/// The form's fields in display order — the single list the view, the
+/// popup's height, and the template row's offset are all derived from, so
+/// adding a row cannot leave one of them behind.
+const FIELDS_IN_DISPLAY_ORDER: [PropertyField; 4] = [
+    PropertyField::Trigger,
+    PropertyField::Behavior,
+    PropertyField::PrepMode,
+    PropertyField::SeedTemplate,
+];
+
 /// Horizontal padding fraction for the popup (20% each side).
 const POPUP_H_PAD_FRAC: f32 = 0.20;
 /// Minimum popup width in cells.
 const POPUP_MIN_WIDTH: u16 = 44;
-/// Popup content height: three field rows, the status line, one footer line.
+/// Popup content height: every field row, the status line, one footer line.
 ///
 /// The help text is an overlay rather than a row in the form, so moving the
-/// cursor no longer reflows the popup and this is a constant. The status
-/// line is a row: it holds a message, and a message that reflowed the form
-/// would move the fields out from under the cursor as it typed.
-const POPUP_CONTENT_ROWS: u16 = 5;
+/// cursor no longer reflows the popup and this is a constant. It is derived
+/// from the field list rather than written out, because a height that
+/// disagrees with the rows the view draws is a popup that either clips a
+/// field or wastes a row. The status line is a row: it holds a message, and a
+/// message that reflowed the form would move the fields out from under the
+/// cursor as it typed.
+const POPUP_CONTENT_ROWS: u16 = 4 + 1 + 1;
 
-/// Computes the centered properties popup rectangle: title, three field
+/// Computes the centered properties popup rectangle: title, four field
 /// rows, one hint line, and a keybind footer.
 fn properties_popup_rect(area: Rect) -> Rect {
     let popup_width = ((f32::from(area.width) * (1.0 - 2.0 * POPUP_H_PAD_FRAC)).ceil() as u16)
@@ -220,13 +233,16 @@ struct PropertiesLayout {
 
 /// Computes the draft window and cursor column for `popup` inside `inner`.
 ///
-/// The draft's row depends on which fields rendered a hint line above it:
-/// each field before the template contributes its own row, plus one more
-/// when it is focused (its hint line).
+/// The draft's row is a fixed offset below the popup's first body row: the
+/// form renders its fields in display order, with no hint row of its own,
+/// so the template is always the last field and the fields above it are
+/// always there. Deriving the count from the field list rather than
+/// hardcoding it is what keeps a fifth row from silently rendering the
+/// cursor one row above the draft.
 fn properties_layout(popup: &AttendantPropertiesState, inner: Rect) -> PropertiesLayout {
-    // The trigger and activation rows always sit above the template row, so
-    // this no longer moves with the cursor.
-    let rows_above = 2;
+    // Every field above the template, counted from the same list the view
+    // renders.
+    let rows_above = u16::try_from(FIELDS_IN_DISPLAY_ORDER.len() - 1).unwrap_or(u16::MAX);
     // The value starts at the label's end, and one cell is reserved so the
     // cursor can rest just past the last visible grapheme. The focused
     // marker is wide, so the window is one narrower than an unfocused row's.
@@ -290,11 +306,7 @@ fn properties_view<'a>(
     layout: &PropertiesLayout,
 ) -> Vec<Line<'a>> {
     let mut lines = vec![];
-    for field in [
-        PropertyField::Trigger,
-        PropertyField::Activation,
-        PropertyField::SeedTemplate,
-    ] {
+    for field in FIELDS_IN_DISPLAY_ORDER {
         lines.push(field_line(popup, field, theme, layout));
     }
     lines.push(status_line(popup, theme));
@@ -336,7 +348,7 @@ pub(crate) fn status_line(
 /// One hint as (key, description) — the keys the focused field responds to.
 fn hints(focus: PropertyField) -> Vec<(&'static str, &'static str)> {
     let mut hints = match focus {
-        PropertyField::Trigger | PropertyField::Activation => {
+        PropertyField::Trigger | PropertyField::Behavior | PropertyField::PrepMode => {
             vec![("h/l", "pick"), ("j/k", "field")]
         }
         PropertyField::SeedTemplate => vec![("i", "edit"), ("j/k", "field")],
@@ -374,6 +386,12 @@ fn footer_line(focus: PropertyField, theme: &jinn_theme::Theme) -> Line<'static>
 }
 
 /// One field row: focused marker + yellow label, then the value spans.
+///
+/// A row that does not apply while the attendant is being composed is
+/// dimmed: its label and its unselected choices go to the muted color, so
+/// the form says on its face which settings are inert. The *selected*
+/// choice keeps its green — the value the user wrote is still theirs, and
+/// muting it would read as "unset" rather than "written but not in effect".
 fn field_line<'a>(
     popup: &AttendantPropertiesState,
     field: PropertyField,
@@ -381,21 +399,25 @@ fn field_line<'a>(
     layout: &PropertiesLayout,
 ) -> Line<'a> {
     let focused = popup.focus == field;
+    let dim = popup.pending_prep_mode && !field.applies_while_prepping();
     let mut spans = vec![
-        field_marker(focused, theme),
-        field_name(field, focused, theme),
+        field_marker(focused, dim, theme),
+        field_name(field, focused, dim, theme),
     ];
     match field {
         PropertyField::Trigger => spans.extend(choice_spans(
             jinn_attendant_msg::TRIGGER_CHOICES,
             &popup.pending_trigger,
+            dim,
             theme,
         )),
-        PropertyField::Activation => spans.extend(choice_spans(
-            jinn_attendant_msg::ACTIVATION_CHOICES,
-            &popup.pending_activation,
+        PropertyField::Behavior => spans.extend(choice_spans(
+            jinn_attendant_msg::BEHAVIOR_CHOICES,
+            &popup.pending_behavior,
+            dim,
             theme,
         )),
+        PropertyField::PrepMode => spans.extend(prep_mode_spans(popup.pending_prep_mode, theme)),
         PropertyField::SeedTemplate => {
             spans.push(template_value(popup, theme, layout));
         }
@@ -411,6 +433,38 @@ fn field_line<'a>(
     Line::from(spans)
 }
 
+/// The prep row's value: what composition means, stated on the row.
+///
+/// `[on]` is a plain-text state with a warning beside it — not a selected
+/// choice, because nothing is being *chosen* between two peers; the
+/// alternative, composing, is what the state means. `[off]` wears the
+/// selected-choice green, because that is the state a user reaching for the
+/// attendant runs in, and it is the one the eye should find.
+fn prep_mode_spans<'a>(prep_mode: bool, theme: &'a jinn_theme::Theme) -> Vec<Span<'a>> {
+    if prep_mode {
+        vec![
+            Span::styled(
+                PREP_MODE_ON.to_owned(),
+                Style::default().fg(theme.primary_text),
+            ),
+            Span::styled(
+                PREP_MODE_DISABLED_NOTE.to_owned(),
+                Style::default().fg(theme.error_text),
+            ),
+        ]
+    } else {
+        vec![Span::styled(
+            PREP_MODE_OFF.to_owned(),
+            Style::default().fg(theme.attendant_option_active),
+        )]
+    }
+}
+
+/// The prep row's on-state label, and what it costs.
+const PREP_MODE_ON: &str = "[on]";
+const PREP_MODE_OFF: &str = "[off]";
+const PREP_MODE_DISABLED_NOTE: &str = "  (Attendant disabled)";
+
 /// The focused row's background: the user-message block, so the row reads
 /// as a selection against a surface the user already knows rather than as a
 /// new color introduced by this popup.
@@ -419,34 +473,54 @@ fn focused_row_style(theme: &jinn_theme::Theme) -> Style {
 }
 
 /// The focused-field marker: `▸` when focused, blank otherwise.
-fn field_marker(focused: bool, theme: &jinn_theme::Theme) -> Span<'static> {
+///
+/// A dimmed row's marker goes muted with its label. The cage makes the
+/// cursor unable to sit here, so a marker in the focus accent on a row the
+/// user cannot reach would be a claim the popup cannot keep.
+fn field_marker(focused: bool, dim: bool, theme: &jinn_theme::Theme) -> Span<'static> {
     Span::styled(
         marker_text(focused).to_owned(),
-        Style::default().fg(if focused {
-            theme.focus_accent
-        } else {
-            theme.primary_text
-        }),
+        Style::default().fg(row_foreground(focused, dim, theme)),
     )
 }
 
-/// The field's label, yellow only while its row is focused.
-fn field_name(field: PropertyField, focused: bool, theme: &jinn_theme::Theme) -> Span<'static> {
+/// The field's label, yellow only while its row is focused, muted when the
+/// row does not currently apply.
+fn field_name(
+    field: PropertyField,
+    focused: bool,
+    dim: bool,
+    theme: &jinn_theme::Theme,
+) -> Span<'static> {
     Span::styled(
         field_label(field),
-        Style::default().fg(if focused {
-            theme.focus_accent
-        } else {
-            theme.primary_text
-        }),
+        Style::default().fg(row_foreground(focused, dim, theme)),
     )
+}
+
+/// A row's label color: the focus accent on the focused row, the muted
+/// color on a row that does not apply, plain text otherwise.
+fn row_foreground(focused: bool, dim: bool, theme: &jinn_theme::Theme) -> ratatui::style::Color {
+    if focused {
+        theme.focus_accent
+    } else if dim {
+        theme.muted_text
+    } else {
+        theme.primary_text
+    }
 }
 
 /// The choice spans for a choice row: the selected choice in the active
 /// green, the rest in plain text, separated by muted slashes.
+///
+/// `dim` mutes the *unselected* choices only. The selected one stays green
+/// on a dimmed row so the value reads as written-and-held rather than
+/// unset, and so that turning prep mode off shows the same value, in the
+/// same color, the user last chose.
 fn choice_spans<'a, T>(
     choices: &[(T, &'static str)],
     selected: &T,
+    dim: bool,
     theme: &'a jinn_theme::Theme,
 ) -> Vec<Span<'a>>
 where
@@ -459,6 +533,8 @@ where
         }
         let style = if *value == *selected {
             Style::default().fg(theme.attendant_option_active)
+        } else if dim {
+            Style::default().fg(theme.muted_text)
         } else {
             Style::default().fg(theme.primary_text)
         };
@@ -545,15 +621,30 @@ fn help_body(field: PropertyField, theme: &jinn_theme::Theme) -> Vec<Line<'stati
             ),
             line("manual", "runs only when you trigger it yourself"),
         ],
-        PropertyField::Activation => vec![
-            Line::from("How the session's context is prepared before each run:"),
+        PropertyField::Behavior => vec![
+            Line::from(
+                "What each run sees of the conversation. Does not apply while prep mode is on:",
+            ),
             Line::from(""),
-            line("seed", "populate the session with data"),
-            line("reset", "only pins survive activation"),
-            line("preserve", "context is retained on activation"),
+            line("reset", "the run sees the pins alone"),
+            line("preserve", "the run keeps the context as it stands"),
+        ],
+        PropertyField::PrepMode => vec![
+            Line::from(
+                "Whether the attendant is still being composed. While it is on, nothing runs:",
+            ),
+            Line::from(""),
+            line(
+                "on",
+                "the trigger and behavior above do not apply, and no re-run is accepted",
+            ),
+            line(
+                "off",
+                "the trigger and behavior above apply, and the attendant can be re-run",
+            ),
         ],
         PropertyField::SeedTemplate => vec![
-            Line::from("Text injected on each activation, ahead of the previous report:"),
+            Line::from("Text injected on each run, ahead of the previous report:"),
             Line::from(""),
             line("<prior report>", "replaced with the previous report"),
         ],
@@ -1167,12 +1258,13 @@ fn apply_all_fields(ctx: &mut ActionCtx<'_>, cell: &AttendantPropertiesCell) -> 
         return IntentResult::empty();
     };
     let template = popup.seed_template.input.clone();
-    let (activation, trigger) = (popup.pending_activation, popup.pending_trigger);
+    let (behavior, trigger) = (popup.pending_behavior, popup.pending_trigger);
     let Some(session) = state.session.get_mut(&attendant_id) else {
         return IntentResult::empty();
     };
     session.set_seed_template(template);
-    session.set_attendant_activation(activation);
+    session.set_attendant_behavior(behavior);
+    session.set_attendant_is_prepping(popup.pending_prep_mode);
     session.set_attendant_trigger(trigger);
     // A fresh attendant was never interacted; without this the persist
     // below is silently dropped.

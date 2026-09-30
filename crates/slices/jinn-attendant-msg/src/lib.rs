@@ -1,20 +1,24 @@
 //! Attendant run parameters and the report log.
 //!
 //! An attendant is a session that references a parent without inheriting its
-//! conversation. These types describe *how* an attendant runs — when it fires,
-//! what it does to its context beforehand, and what it has concluded so far.
+//! conversation. These types describe *how* an attendant runs — when it
+//! fires, what it does to its context beforehand, whether it is still being
+//! composed, and what it has concluded so far. The four facts are named for
+//! the four rows of the properties popup, and nothing here combines them:
+//! an attendant that is still being composed can hold a behavior and a
+//! trigger, they simply do not apply until it stops being composed.
 
-mod activation;
+mod behavior;
 mod properties;
 mod report;
 mod report_picker;
 mod saved_picker;
 
-pub use crate::activation::{AttendantActivation, AttendantContextPolicy, AttendantTrigger};
+pub use crate::behavior::{AttendantBehavior, AttendantTrigger};
 pub use crate::properties::{
-    ACTIVATION_CHOICES, AttendantPropertiesState, OriginalValues, PickDirection, PopupStatus,
+    AttendantPropertiesState, BEHAVIOR_CHOICES, OriginalValues, PickDirection, PopupStatus,
     PropertyField, TRIGGER_CHOICES, attendant_properties_scope, attendant_properties_slot,
-    attendant_seed_template_scope, pick_activation, pick_trigger,
+    attendant_seed_template_scope, pick_behavior, pick_trigger,
 };
 pub use crate::report::AttendantReport;
 

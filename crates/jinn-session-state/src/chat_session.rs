@@ -13,9 +13,7 @@ use std::ops::Range;
 use std::sync::atomic::Ordering;
 
 use jiff::Timestamp;
-use jinn_attendant_msg::{
-    AttendantActivation, AttendantContextPolicy, AttendantReport, AttendantTrigger,
-};
+use jinn_attendant_msg::{AttendantBehavior, AttendantReport, AttendantTrigger};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
@@ -393,8 +391,8 @@ impl ChatSessionState {
     ///
     /// Copies the parent's environment — profile, cwd, project, home, and
     /// enabled MCP servers — and links via `parent_session`. History starts
-    /// empty and activation starts in [`AttendantActivation::Seed`], so the
-    /// user can compose its instructions before anything dispatches.
+    /// empty and in prep mode, so the user can compose its instructions
+    /// before anything dispatches.
     ///
     /// Does not reuse [`new_child`](Self::new_child): that constructor
     /// hard-codes the `Subagent` origin, and an attendant is a different
@@ -441,39 +439,46 @@ impl ChatSessionState {
         self.core.identity.origin == SessionOrigin::Attendant
     }
 
-    /// How this session's context is prepared when it runs.
+    /// What a run in this session sees of the conversation.
     #[must_use]
-    pub fn attendant_activation(&self) -> AttendantActivation {
-        self.core.attendant.activation
+    pub fn attendant_behavior(&self) -> AttendantBehavior {
+        self.core.attendant.behavior
     }
 
-    /// How this attendant prepares its context when it runs.
-    ///
-    /// The one question to ask before dispatching: the answer says what the
-    /// run sees, never whether it may run.
-    #[must_use]
-    pub fn attendant_context_policy(&self) -> AttendantContextPolicy {
-        self.attendant_activation().context_policy()
+    /// Set what a run in this session sees of the conversation.
+    pub fn set_attendant_behavior(&mut self, behavior: AttendantBehavior) {
+        self.core.attendant.behavior = behavior;
     }
 
-    /// Whether this attendant will run on its own.
+    /// Whether this attendant is still being composed.
     ///
-    /// Two configurations prevent a dispatch, and both are the user's
-    /// attention: a trigger that waits to be asked, and a session still
-    /// being composed, whose pins are half-written. Anything else fires
-    /// when its parent finishes.
+    /// Composition is the only configuration that stops a dispatch, and it
+    /// says so on its own: a manual trigger stops a *fire*, not the user
+    /// pressing `R`, so conflating the two would mark a perfectly runnable
+    /// attendant as stopped. Everything else runs on its own terms.
     ///
     /// Only meaningful for an attendant — an ordinary session carries the
     /// same default fields and would answer `true`.
     #[must_use]
-    pub fn attendant_is_paused(&self) -> bool {
-        self.attendant_trigger() == AttendantTrigger::Manual
-            || self.attendant_activation() == AttendantActivation::Seed
+    pub fn attendant_is_prepping(&self) -> bool {
+        self.core.attendant.prep_mode
     }
 
-    /// Set how this session's context is prepared when it runs.
-    pub fn set_attendant_activation(&mut self, activation: AttendantActivation) {
-        self.core.attendant.activation = activation;
+    /// Set whether this attendant is still being composed.
+    pub fn set_attendant_is_prepping(&mut self, prep_mode: bool) {
+        self.core.attendant.prep_mode = prep_mode;
+    }
+
+    /// Whether this attendant runs on its parent's completion.
+    ///
+    /// The sidebar marks this with its own glyph. It is a fact about the
+    /// configuration rather than a derived state, so it is asked of the
+    /// session rather than re-derived by each renderer — a marker whose
+    /// meaning is a few fields away is a marker the two surfaces can
+    /// disagree about.
+    #[must_use]
+    pub fn attendant_fires_on_parent_completion(&self) -> bool {
+        self.attendant_trigger() == AttendantTrigger::ParentCompleted
     }
 
     /// The condition that causes an automatic re-run.

@@ -23,7 +23,7 @@ use serde_json::Value as JsonValue;
 
 use daow::Param;
 use jinn_attendant_msg::{
-    AttendantActivation, AttendantReport, AttendantTrigger, default_seed_template,
+    AttendantBehavior, AttendantReport, AttendantTrigger, default_seed_template,
 };
 use jinn_core_types::SessionProfile;
 use jinn_core_types::{ChatEntry, ChatEntryKind};
@@ -31,6 +31,7 @@ use jinn_core_types::{ChatEntryId, ContextOverride, EntryTiming, SessionId};
 use jinn_provider::Attachment;
 use jinn_session_lifecycle_msg::LifecycleScriptState;
 use jinn_session_msg::SessionOrigin;
+use jinn_session_state::fields::default_prep_mode;
 use jinn_session_state::{SessionRevision, SessionSnapshot, SessionSnapshotMetadata};
 use jinn_session_store_msg::{
     SearchHit, SearchOutcome, SearchParams, SearchableEntry, TranscriptEntry, TranscriptWindow,
@@ -583,10 +584,13 @@ pub(crate) struct PersistableCore {
     /// Defaults to true for blobs written by older versions.
     #[serde(default = "default_persist")]
     persist: bool,
-    /// How an attendant prepares its context when it runs.
-    /// Defaults to seed (composing) for blobs written by older versions.
+    /// What a run in an attendant sees of the conversation.
     #[serde(default)]
-    activation: AttendantActivation,
+    behavior: AttendantBehavior,
+    /// Whether the attendant is still being composed.
+    /// Defaults to composing for blobs written before prep mode existed.
+    #[serde(default = "default_prep_mode")]
+    prep_mode: bool,
     /// The condition that causes an automatic attendant re-run.
     #[serde(default)]
     trigger: AttendantTrigger,
@@ -618,7 +622,8 @@ impl From<&SessionSnapshotMetadata> for PersistableCore {
             task_list: metadata.task_list.clone(),
             enabled_mcp_servers: metadata.enabled_mcp_servers.clone(),
             persist: metadata.persist,
-            activation: metadata.activation,
+            behavior: metadata.behavior,
+            prep_mode: metadata.prep_mode,
             trigger: metadata.trigger,
             seed_template: metadata.seed_template.clone(),
             reports: metadata.reports.clone(),
@@ -646,7 +651,8 @@ impl From<PersistableCore> for SessionSnapshotMetadata {
             task_list: core.task_list,
             enabled_mcp_servers: core.enabled_mcp_servers,
             persist: core.persist,
-            activation: core.activation,
+            behavior: core.behavior,
+            prep_mode: core.prep_mode,
             trigger: core.trigger,
             seed_template: core.seed_template,
             reports: core.reports,

@@ -58,8 +58,9 @@ pub fn entry_for_session(name: String, session: &ChatSessionState) -> AttendantE
     let profile = session.profile();
     let entry = AttendantEntryConfig::from_parts(
         name,
-        session.attendant_activation(),
+        session.attendant_behavior(),
         session.attendant_trigger(),
+        session.attendant_is_prepping(),
         session.seed_template().to_owned(),
         &profile.model,
         &profile.persona_name,

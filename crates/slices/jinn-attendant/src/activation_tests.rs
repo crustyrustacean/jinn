@@ -148,6 +148,17 @@ fn the_default_template_prescribes_no_particular_work() {
     assert!(!template.contains("Confirm or refute"));
 }
 
+/// An attendant of `parent` that has finished composing.
+///
+/// `new_attendant` alone leaves it in prep mode — the state `N` creates it
+/// in — so a test about a run has to say that composition ended. Doing it
+/// here keeps that one line out of eighteen fixtures.
+fn composed_attendant_of(parent: &ChatSessionState) -> ChatSessionState {
+    let mut attendant = ChatSessionState::new_attendant(parent, true);
+    attendant.set_attendant_is_prepping(false);
+    attendant
+}
+
 /// Builds a session with one pinned and two unpinned entries, returning
 /// (session, pinned_id, unpinned_ids).
 fn session_with_pins() -> (
@@ -215,11 +226,11 @@ fn reset_context_is_idempotent() {
 
 #[rstest::rstest]
 #[test]
-fn preserve_activation_dispatches_the_template_without_resetting_context() {
-    // Given a preserve-mode attendant with a prior report.
+fn preserve_behavior_dispatches_the_template_without_resetting_context() {
+    // Given a preserve-behavior attendant with a prior report.
     let parent = ChatSessionState::new();
-    let mut session = ChatSessionState::new_attendant(&parent, true);
-    session.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Preserve);
+    let mut session = composed_attendant_of(&parent);
+    session.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Preserve);
     session.append_attendant_report("a finding".to_owned());
     session.set_seed_template("carry on".to_owned());
 
@@ -234,7 +245,7 @@ fn preserve_activation_dispatches_the_template_without_resetting_context() {
         "the run leads with the user's template: {:?}",
         seed.text()
     );
-    // And nothing was force-excluded — preserving context is the whole mode.
+    // And nothing was force-excluded — preserving context is the whole behavior.
     assert!(reset.is_empty(), "preserve must not force-exclude anything");
 }
 
@@ -243,8 +254,8 @@ fn preserve_activation_dispatches_the_template_without_resetting_context() {
 fn reset_run_seeds_through_the_template_with_the_prior_report() {
     // Given a reset attendant that reported once.
     let parent = ChatSessionState::new();
-    let mut session = ChatSessionState::new_attendant(&parent, true);
-    session.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+    let mut session = composed_attendant_of(&parent);
+    session.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
     session.append_attendant_report("the tests were actually passing".to_owned());
 
     // When the run's seed entry is prepared.
@@ -269,20 +280,18 @@ fn attendant_created_from_parent_links_and_defaults() {
     // When an attendant is created from it.
     let attendant = ChatSessionState::new_attendant(&parent, true);
 
-    // Then the attendant links the parent with seed activation.
+    // Then the attendant links the parent and starts in prep mode: `N`
+    // hands the user an attendant they have not finished writing.
     assert_eq!(attendant.origin(), SessionOrigin::Attendant);
-    assert_eq!(
-        attendant.attendant_activation(),
-        jinn_attendant_msg::AttendantActivation::Seed
-    );
+    assert!(attendant.attendant_is_prepping());
     assert_eq!(attendant.project(), Some(std::path::Path::new("/tmp/p")));
     assert!(attendant.is_empty());
 }
 
 #[rstest::rstest]
 #[tokio::test]
-async fn seed_activation_makes_the_trigger_inert_end_to_end() {
-    // Given a parent with a ParentCompleted attendant still in seed mode,
+async fn prep_mode_makes_the_trigger_inert_end_to_end() {
+    // Given a parent with a ParentCompleted attendant still in prep mode,
     // and the trigger actor live on the bus.
     let harness = jinn_testutil::bus_harness::TestHarness::new().await;
     let dispatched = harness
@@ -301,12 +310,13 @@ async fn seed_activation_makes_the_trigger_inert_end_to_end() {
         let parent = ChatSessionState::new();
         let id = parent.session_id().clone();
         s.session.insert(parent);
+        // Built by `new_attendant` and left composing: the user has not
+        // finished writing it, so its trigger is written down and inert.
         let mut attendant = {
             let read = s.session.get(&id).expect("parent").clone();
             ChatSessionState::new_attendant(&read, true)
         };
         attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        // Still in Seed activation — the user has not armed it.
         attendant.set_seed_template("re-check".to_owned());
         s.session.insert(attendant);
         id
@@ -328,9 +338,10 @@ async fn seed_activation_makes_the_trigger_inert_end_to_end() {
         .await;
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-    // Then nothing dispatches and nothing cancels — seed mode is inert.
-    assert!(dispatched.is_empty(), "seed activation must not dispatch");
-    assert!(canceled.is_empty(), "seed activation must not cancel");
+    // Then nothing dispatches and nothing cancels — prep mode is inert, and
+    // the trigger that is configured on it is not enough to override it.
+    assert!(dispatched.is_empty(), "prep mode must not dispatch");
+    assert!(canceled.is_empty(), "prep mode must not cancel");
 }
 
 #[rstest::rstest]
@@ -353,10 +364,10 @@ async fn succeeded_parent_turn_fires_its_triggered_attendant() {
         s.session.insert(parent);
         let mut attendant = {
             let read = s.session.get(&id).expect("parent").clone();
-            ChatSessionState::new_attendant(&read, true)
+            composed_attendant_of(&read)
         };
         attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
         attendant.set_seed_template("verify: <prior report>".to_owned());
         attendant.append_attendant_report("prior finding".to_owned());
         s.session.insert(attendant);
@@ -423,10 +434,10 @@ async fn errored_and_canceled_turns_fire_nothing() {
         s.session.insert(parent);
         let mut attendant = {
             let read = s.session.get(&id).expect("parent").clone();
-            ChatSessionState::new_attendant(&read, true)
+            composed_attendant_of(&read)
         };
         attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
         s.session.insert(attendant);
         id
     };
@@ -498,9 +509,9 @@ async fn an_attendant_created_after_the_parent_completed_never_fires_retroactive
             .next()
             .map(|(_, p)| p.clone())
             .expect("parent");
-        let mut attendant = ChatSessionState::new_attendant(&parent_read, true);
+        let mut attendant = composed_attendant_of(&parent_read);
         attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
         s.session.insert(attendant);
     }
 
@@ -523,9 +534,9 @@ async fn manual_rerun_runs_a_late_attendant_even_though_its_trigger_never_fired(
         let mut s = state.write();
         let parent = ChatSessionState::new();
         let parent_id = parent.session_id().clone();
-        let mut attendant = ChatSessionState::new_attendant(&parent, true);
+        let mut attendant = composed_attendant_of(&parent);
         attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
         attendant.append_attendant_report("late finding".to_owned());
         attendant.set_seed_template("verify: <prior report>".to_owned());
         let id = attendant.session_id().clone();
@@ -573,10 +584,10 @@ async fn manual_trigger_attendant_does_not_fire_on_parent_completion() {
         s.session.insert(parent);
         let mut attendant = {
             let read = s.session.get(&id).expect("parent").clone();
-            ChatSessionState::new_attendant(&read, true)
+            composed_attendant_of(&read)
         };
         // Trigger stays Manual.
-        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
         s.session.insert(attendant);
         id
     };
@@ -617,10 +628,10 @@ async fn a_fired_attendant_turn_is_marked_automated() {
         s.session.insert(parent);
         let mut attendant = {
             let read = s.session.get(&parent_id).expect("parent").clone();
-            ChatSessionState::new_attendant(&read, true)
+            composed_attendant_of(&read)
         };
         attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
         s.session.insert(attendant);
         parent_id
     };
@@ -679,10 +690,10 @@ async fn every_sibling_attendant_fires_when_the_parent_turn_succeeds() {
         for index in 0..3 {
             let mut attendant = {
                 let read = s.session.get(&id).expect("parent").clone();
-                ChatSessionState::new_attendant(&read, true)
+                composed_attendant_of(&read)
             };
             attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-            attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+            attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
             attendant.set_seed_template(format!("check-{index}: <prior report>"));
             attendant.append_attendant_report("prior finding".to_owned());
             s.session.insert(attendant);
@@ -740,9 +751,9 @@ async fn an_attendant_nested_under_another_attendant_does_not_fire_from_the_pare
     // Each attendant is built from an already-cloned parent, so no read
     // guard is ever taken while the write guard below is held.
     let arm = |parent: &ChatSessionState| {
-        let mut attendant = ChatSessionState::new_attendant(parent, true);
+        let mut attendant = composed_attendant_of(parent);
         attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
         attendant.set_seed_template("check".to_owned());
         attendant.append_attendant_report("prior finding".to_owned());
         attendant
@@ -806,9 +817,9 @@ async fn a_cyclic_parent_link_does_not_hang_the_trigger_walk() {
         let root_id = root.session_id().clone();
         s.session.insert(root.clone());
         let arm = |parent: &ChatSessionState| {
-            let mut attendant = ChatSessionState::new_attendant(parent, true);
+            let mut attendant = composed_attendant_of(parent);
             attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-            attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+            attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
             attendant.set_seed_template("check".to_owned());
             attendant.append_attendant_report("prior finding".to_owned());
             attendant
@@ -910,9 +921,9 @@ async fn every_sibling_attendant_lands_its_own_seeded_entry() {
         s.session.insert(parent.clone());
         let mut ids = Vec::new();
         for index in 0..5 {
-            let mut attendant = ChatSessionState::new_attendant(&parent, true);
+            let mut attendant = composed_attendant_of(&parent);
             attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-            attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+            attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
             attendant.set_seed_template(format!("check-{index}: <prior report>"));
             attendant.append_attendant_report("prior finding".to_owned());
             ids.push(attendant.session_id().clone());
@@ -975,10 +986,10 @@ async fn a_second_attendant_built_the_way_the_ui_builds_one_still_fires() {
         let parent = ChatSessionState::new();
         let parent_id = parent.session_id().clone();
         s.session.insert(parent.clone());
-        let mut first = ChatSessionState::new_attendant(&parent, true);
+        let mut first = composed_attendant_of(&parent);
         first.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
         // The user configured this one and left seed.
-        first.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        first.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
         first.set_seed_template("first: <prior report>".to_owned());
         first.append_attendant_report("prior".to_owned());
         let first_id = first.session_id().clone();
@@ -1050,9 +1061,9 @@ async fn a_trigger_does_not_cancel_an_attendant_that_is_already_running() {
         let parent = ChatSessionState::new();
         let parent_id = parent.session_id().clone();
         s.session.insert(parent.clone());
-        let mut attendant = ChatSessionState::new_attendant(&parent, true);
+        let mut attendant = composed_attendant_of(&parent);
         attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
         attendant.set_seed_template("seeded: <prior report>".to_owned());
         attendant.append_attendant_report("prior".to_owned());
         let id = attendant.session_id().clone();
@@ -1111,9 +1122,9 @@ async fn a_trigger_on_a_busy_attendant_queues_its_seeded_turn_for_after_the_curr
         let parent = ChatSessionState::new();
         let parent_id = parent.session_id().clone();
         s.session.insert(parent.clone());
-        let mut attendant = ChatSessionState::new_attendant(&parent, true);
+        let mut attendant = composed_attendant_of(&parent);
         attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
         attendant.set_seed_template("seeded: <prior report>".to_owned());
         attendant.append_attendant_report("prior".to_owned());
         let id = attendant.session_id().clone();
@@ -1173,10 +1184,11 @@ async fn a_trigger_on_a_busy_attendant_queues_its_seeded_turn_for_after_the_curr
 
 #[rstest::rstest]
 fn the_seed_prompt_names_the_parent_session_so_the_attendant_can_search_it() {
-    // Given an attendant whose user template says nothing about its parent.
+    // Given a composed attendant whose user template says nothing about its
+    // parent.
     let parent = ChatSessionState::new();
-    let mut attendant = ChatSessionState::new_attendant(&parent, true);
-    attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+    let mut attendant = composed_attendant_of(&parent);
+    attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
     attendant.set_seed_template("Summarise the work.".to_owned());
 
     // When the seed prompt is built.
@@ -1197,10 +1209,10 @@ fn the_seed_prompt_names_the_parent_session_so_the_attendant_can_search_it() {
 
 #[rstest::rstest]
 fn the_parent_session_id_is_appended_rather_than_substituted_into_the_users_template() {
-    // Given a user template that carries its own text.
+    // Given a composed attendant with a user template carrying its own text.
     let parent = ChatSessionState::new();
-    let mut attendant = ChatSessionState::new_attendant(&parent, true);
-    attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+    let mut attendant = composed_attendant_of(&parent);
+    attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
     attendant.set_seed_template("Summarise the work.".to_owned());
     attendant.append_attendant_report("prior finding".to_owned());
 

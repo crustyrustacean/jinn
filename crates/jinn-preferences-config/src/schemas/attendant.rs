@@ -8,13 +8,13 @@
 //! know — the creating session's cwd, project, and the rest of its
 //! environment.
 //!
-//! The entry stores the *session-state* types (`AttendantActivation`,
+//! The entry stores the *session-state* types (`AttendantBehavior`,
 //! `AttendantTrigger`, `ModelSelection`, `ReasoningEffort`, `Endpoint`) via
 //! serde rather than TOML-native stand-ins, so restore means "deserialize"
 //! and never "translate field by field" — a divergence between the entry
 //! shape and the session shape cannot compile.
 
-use jinn_attendant_msg::{AttendantActivation, AttendantTrigger};
+use jinn_attendant_msg::{AttendantBehavior, AttendantTrigger};
 use jinn_core_types::{ChatEntry, Endpoint, ModelSelection, ReasoningEffort};
 use serde::{Deserialize, Serialize};
 
@@ -43,12 +43,19 @@ impl jinn_config::ConfigList for AttendantEntryConfig {
 pub struct AttendantEntryConfig {
     /// The entry's identity, and the title the created attendant gets.
     pub name: String,
-    /// How the attendant's context is prepared when it runs.
+    /// What a run in the attendant sees of the conversation.
     #[serde(default)]
-    pub activation: AttendantActivation,
+    pub behavior: AttendantBehavior,
     /// The condition that causes an automatic re-run.
     #[serde(default)]
     pub trigger: AttendantTrigger,
+    /// Whether the attendant is still being composed, and so does not run.
+    ///
+    /// Saved like any other run setting: an attendant saved in prep mode is
+    /// a half-written one, and restoring it as a running attendant would
+    /// dispatch instructions the user never finished.
+    #[serde(default = "default_prep_mode")]
+    pub prep_mode: bool,
     /// The text injected ahead of each run's prior report.
     #[serde(default = "default_seed_template")]
     pub seed_template: String,
@@ -89,6 +96,15 @@ fn default_seed_template() -> String {
     jinn_attendant_msg::default_seed_template()
 }
 
+/// Prep mode's default in a config file.
+///
+/// True, matching the session default: an entry that does not say it is
+/// composing says it is composing, the same way a session blob that omits
+/// the key does.
+const fn default_prep_mode() -> bool {
+    true
+}
+
 impl AttendantEntryConfig {
     /// Captures a save-ready entry from a session's live configuration.
     ///
@@ -99,8 +115,9 @@ impl AttendantEntryConfig {
     #[must_use]
     pub fn from_parts(
         name: String,
-        activation: AttendantActivation,
+        behavior: AttendantBehavior,
         trigger: AttendantTrigger,
+        prep_mode: bool,
         seed_template: String,
         model: &ModelSelection,
         persona_name: &str,
@@ -112,8 +129,9 @@ impl AttendantEntryConfig {
     ) -> Self {
         Self {
             name,
-            activation,
+            behavior,
             trigger,
+            prep_mode,
             seed_template,
             // A session with no provider configured has nothing worth
             // saving: the created attendant would refuse to dispatch, so
@@ -176,7 +194,7 @@ mod tests {
     use std::collections::HashSet;
     use std::sync::Arc;
 
-    use jinn_attendant_msg::{AttendantActivation, AttendantTrigger};
+    use jinn_attendant_msg::{AttendantBehavior, AttendantTrigger};
     use jinn_config::{ConfigLayer, ConfigList, InMemoryConfigStorage};
     use jinn_core_types::{ModelSelection, NO_PROVIDER_ID};
 
@@ -190,8 +208,9 @@ mod tests {
     fn entry(name: &str) -> AttendantEntryConfig {
         AttendantEntryConfig::from_parts(
             name.to_owned(),
-            AttendantActivation::Reset,
+            AttendantBehavior::Reset,
             AttendantTrigger::ParentCompleted,
+            false,
             "prior: <prior report>".to_owned(),
             &ModelSelection::Single("zai/glm-4.7".to_owned()),
             "reviewer",
@@ -213,8 +232,9 @@ mod tests {
         let doc = r#"
             [[attendant.entry]]
             name = "reviewer"
-            activation = "reset"
+            behavior = "reset"
             trigger = "parent_completed"
+            prep_mode = false
             seed_template = "prior: <prior report>"
             model = { single = "zai/glm-4.7" }
             persona_name = "reviewer"
@@ -277,11 +297,13 @@ mod tests {
             .get_list::<AttendantEntryConfig>()
             .expect("list reads");
 
-        // Then the entry is a seed-mode manual attendant with the shared
-        // seed template and nothing configured.
+        // Then the entry is a composing manual attendant with the shared
+        // seed template and nothing configured. A bare entry does not run:
+        // the same default `N` gives the session it came from.
         let e = &entries[0];
-        assert_eq!(e.activation, AttendantActivation::Seed);
+        assert_eq!(e.behavior, AttendantBehavior::Reset);
         assert_eq!(e.trigger, AttendantTrigger::Manual);
+        assert!(e.prep_mode);
         assert_eq!(e.seed_template, jinn_attendant_msg::default_seed_template());
         assert_eq!(e.configured_model(), None);
         assert_eq!(e.persona_name, None);
@@ -309,7 +331,7 @@ mod tests {
 
         // When rewriting the whole list with the first entry changed.
         let mut entries = layer.get_list::<AttendantEntryConfig>().expect("read");
-        entries[0].activation = AttendantActivation::Reset;
+        entries[0].behavior = AttendantBehavior::Reset;
         layer
             .put_list::<AttendantEntryConfig>(&entries)
             .expect("list writes");
@@ -322,7 +344,7 @@ mod tests {
             "lost:\n{text}"
         );
         let reread = layer.get_list::<AttendantEntryConfig>().expect("reread");
-        assert_eq!(reread[0].activation, AttendantActivation::Reset);
+        assert_eq!(reread[0].behavior, AttendantBehavior::Reset);
         assert_eq!(reread[0].trigger, AttendantTrigger::ParentCompleted);
     }
 
@@ -361,8 +383,9 @@ mod tests {
         tools.insert("edit".to_owned());
         let saved = AttendantEntryConfig::from_parts(
             "t".to_owned(),
-            AttendantActivation::Seed,
+            AttendantBehavior::Reset,
             AttendantTrigger::Manual,
+            false,
             jinn_attendant_msg::default_seed_template(),
             &ModelSelection::Single(NO_PROVIDER_ID.to_owned()),
             jinn_core_types::DEFAULT_PERSONA_NAME,
@@ -428,8 +451,9 @@ mod tests {
         };
         let saved = AttendantEntryConfig::from_parts(
             "pinned".to_owned(),
-            AttendantActivation::Seed,
+            AttendantBehavior::Reset,
             AttendantTrigger::Manual,
+            false,
             jinn_attendant_msg::default_seed_template(),
             &ModelSelection::Single(NO_PROVIDER_ID.to_owned()),
             jinn_core_types::DEFAULT_PERSONA_NAME,

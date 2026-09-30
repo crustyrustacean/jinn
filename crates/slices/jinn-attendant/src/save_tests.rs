@@ -96,11 +96,12 @@ impl SaveFixture {
                 input: template.clone(),
                 cursor_pos,
             },
-            pending_activation: session.attendant_activation(),
+            pending_behavior: session.attendant_behavior(),
             pending_trigger: session.attendant_trigger(),
             original: Some(OriginalValues {
                 trigger: session.attendant_trigger(),
-                activation: session.attendant_activation(),
+                behavior: session.attendant_behavior(),
+                prep_mode: session.attendant_is_prepping(),
                 template,
             }),
             ..AttendantPropertiesState::default()
@@ -377,7 +378,7 @@ fn a_save_preserves_the_documents_comments() {
 #[rstest::rstest]
 #[test]
 fn a_save_records_the_sessions_run_configuration() {
-    // Given a titled attendant whose trigger is live and whose activation
+    // Given a titled attendant whose trigger is live and whose behavior
     // is reset.
     let mut fx = SaveFixture::new(Some("nightly"));
     {
@@ -386,7 +387,7 @@ fn a_save_records_the_sessions_run_configuration() {
             .session
             .get_mut(&fx.attendant_id)
             .expect("attendant");
-        session.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        session.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
         session.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
         session.set_seed_template("review: <prior report>".to_owned());
     }
@@ -399,8 +400,8 @@ fn a_save_records_the_sessions_run_configuration() {
     // attendant is live from the first run.
     let saved = fx.saved();
     assert_eq!(
-        saved[0].activation,
-        jinn_attendant_msg::AttendantActivation::Reset
+        saved[0].behavior,
+        jinn_attendant_msg::AttendantBehavior::Reset
     );
     assert_eq!(
         saved[0].trigger,

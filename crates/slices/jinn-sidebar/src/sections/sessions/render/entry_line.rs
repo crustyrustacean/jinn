@@ -191,8 +191,10 @@ pub(crate) fn assemble_entry_line(
 const SUBAGENT_SYMBOL: &str = "⋄ ";
 /// Marks a session with a live `interactive_term` terminal.
 pub(crate) const LIVE_TERM_SYMBOL: &str = "◼ ";
-/// Marks an attendant in seed mode, which will not dispatch a turn.
-const ATTENDANT_PAUSED_SYMBOL: &str = "⏸ ";
+/// Marks an attendant still being composed, which will not dispatch a turn.
+const ATTENDANT_PREPPING_SYMBOL: &str = "⏸ ";
+/// Marks an attendant that runs when its parent's turn completes.
+const ATTENDANT_PARENT_TRIGGER_SYMBOL: &str = "⇉ ";
 
 /// Renders a session entry line (indicator + arrow + tree + styled title).
 fn assemble_session_line(
@@ -219,17 +221,26 @@ fn assemble_session_line(
     } else {
         ""
     };
-    // Like the subagent symbol, this sits beside the title rather than
+    // Like the subagent symbol, these sit beside the title rather than
     // inside it: the title is what a rename replaces, and a mode marker
     // must not be reachable by the rename key.
-    let paused_symbol = if entry.is_attendant_paused {
-        ATTENDANT_PAUSED_SYMBOL
+    let prepping_symbol = if entry.is_attendant_prepping {
+        ATTENDANT_PREPPING_SYMBOL
+    } else {
+        ""
+    };
+    // A separate glyph, not a second mark on the pause: "cannot run yet" and
+    // "runs on its own" are independent facts, and an attendant can be in
+    // either state without the other being false.
+    let parent_trigger_symbol = if entry.attendant_fires_on_parent_completion {
+        ATTENDANT_PARENT_TRIGGER_SYMBOL
     } else {
         ""
     };
     let symbol_len = (subagent_symbol.graphemes(true).count())
         + term_symbol.graphemes(true).count()
-        + paused_symbol.graphemes(true).count();
+        + prepping_symbol.graphemes(true).count()
+        + parent_trigger_symbol.graphemes(true).count();
     let budget = max_title_len.saturating_sub(tree_len);
     let display_title = {
         let title_budget = budget.saturating_sub(symbol_len);
@@ -246,10 +257,16 @@ fn assemble_session_line(
             Style::default().fg(theme.subagent_fg),
         ));
     }
-    if !paused_symbol.is_empty() {
+    if !prepping_symbol.is_empty() {
         spans.push(Span::styled(
-            paused_symbol.to_owned(),
+            prepping_symbol.to_owned(),
             Style::default().fg(theme.attendant_paused),
+        ));
+    }
+    if !parent_trigger_symbol.is_empty() {
+        spans.push(Span::styled(
+            parent_trigger_symbol.to_owned(),
+            Style::default().fg(theme.attendant_parent_trigger),
         ));
     }
     if !term_symbol.is_empty() {

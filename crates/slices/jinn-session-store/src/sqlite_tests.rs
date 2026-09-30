@@ -1748,7 +1748,7 @@ fn metadata_blob_is_unchanged_by_group_composition() {
             r#""blobs":{},"lifecycle_name":"dev","lifecycle_args":["--fast"],"#,
             r#""lifecycle_script_state":"setup_ran","task_list":{"phases":[]},"#,
             r#""enabled_mcp_servers":[],"persist":false,"#,
-            r#""activation":"seed","trigger":"manual","#,
+            r#""behavior":"reset","prep_mode":true,"trigger":"manual","#,
             r#""seed_template":"The previous run of this attendant reported: <prior report>.","#,
             r#""reports":[]}"#
         )
@@ -3236,7 +3236,7 @@ async fn attendant_fields_round_trip_through_save_and_load() {
     let mut session = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
     session.set_session_id(session_id.clone());
     session.set_title("Judge".to_owned());
-    session.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+    session.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
     session.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
     session.set_seed_template("check: <prior report>".to_owned());
     session.append_attendant_report("the build was actually green".to_owned());
@@ -3253,8 +3253,8 @@ async fn attendant_fields_round_trip_through_save_and_load() {
     let metadata = &snapshot.metadata;
     assert_eq!(metadata.origin, jinn_session_msg::SessionOrigin::Attendant);
     assert_eq!(
-        metadata.activation,
-        jinn_attendant_msg::AttendantActivation::Reset
+        metadata.behavior,
+        jinn_attendant_msg::AttendantBehavior::Reset
     );
     assert_eq!(
         metadata.trigger,

@@ -34,7 +34,7 @@ pub use core::SessionCore;
 pub use fields::{
     SessionHistoryWorkFields, SessionIdentityMetadataFields, SessionIntegrationFields,
     SessionLifecycleLocationFields, SessionProfile, SessionStorageFields, default_cwd,
-    default_persist,
+    default_persist, default_prep_mode,
 };
 pub use read_projection::SessionReadProjection;
 pub use runtime::{SessionCoreEphemeral, SessionUi};

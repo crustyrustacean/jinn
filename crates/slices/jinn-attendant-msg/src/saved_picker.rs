@@ -8,7 +8,7 @@
 //!
 //! The payload is [`SavedAttendantSummary`], a flat view of one entry, not
 //! the config type itself: the config crate depends on *this* crate for its
-//! activation/trigger vocabulary, so a cell holding the config entry would
+//! behavior/trigger vocabulary, so a cell holding the config entry would
 //! close the loop into a cycle. The summary also keeps the cell renderable
 //! without a `jinn.toml` read on every frame.
 

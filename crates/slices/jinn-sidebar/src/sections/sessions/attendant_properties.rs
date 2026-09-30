@@ -1,7 +1,7 @@
 //! Attendant properties popup — opening, closing, and cell seeding.
 //!
 //! The popup lives on its own dynamic scope with the three controls
-//! (trigger, activation, seed template) as a single form. This module is
+//! (trigger, behavior, prep mode, seed template) as a single form. This module is
 //! the sidebar-side glue: `P` in the sessions scope seeds the popup's cell
 //! from the highlighted attendant and pushes the scope; the popup's own
 //! rows (in `jinn-attendant`) handle editing, applying, and leaving.
@@ -46,21 +46,26 @@ pub fn handle_open_attendant_properties(state: &mut AppState) -> IntentResult {
 
     let template = session.seed_template().to_owned();
     let cursor_pos = template.len();
+    let prep_mode = session.attendant_is_prepping();
     let popup = AttendantPropertiesState {
         session_id: Some(entry.id.clone()),
         seed_template: jinn_slices::LineInput {
             input: template.clone(),
             cursor_pos,
         },
-        pending_activation: session.attendant_activation(),
+        pending_behavior: session.attendant_behavior(),
         pending_trigger: session.attendant_trigger(),
+        pending_prep_mode: prep_mode,
         original: Some(OriginalValues {
             trigger: session.attendant_trigger(),
-            activation: session.attendant_activation(),
+            behavior: session.attendant_behavior(),
+            prep_mode,
             template,
         }),
-        // The form cursor rests on the trigger, the first field, so that
-        // `j` reaches every field below it.
+        // A composing attendant opens on the prep row: the two rows above
+        // it do not apply, so a cursor there would be on an inert control.
+        // A running one opens on the trigger, the first field.
+        focus: jinn_attendant_msg::PropertyField::opening_focus(prep_mode),
         ..AttendantPropertiesState::default()
     };
     // The popup state rides its cell (registered by the cell catalog); the

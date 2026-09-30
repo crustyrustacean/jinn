@@ -38,9 +38,12 @@ pub struct SessionEntry {
     pub is_subagent: bool,
     /// Whether this session is an attendant of another session.
     pub is_attendant: bool,
-    /// Whether this attendant is in seed mode, which will not dispatch a
-    /// turn. Rendered beside the title, never inside it.
-    pub is_attendant_paused: bool,
+    /// Whether this attendant is still being composed, so nothing will
+    /// dispatch a turn. Rendered beside the title, never inside it.
+    pub is_attendant_prepping: bool,
+    /// Whether this attendant runs on its parent's completion, which is
+    /// what makes it fire without anyone asking.
+    pub attendant_fires_on_parent_completion: bool,
     /// Whether the session currently owns a live interactive terminal.
     pub has_live_term: bool,
     /// Whether a disposal operation for this session has been dispatched and

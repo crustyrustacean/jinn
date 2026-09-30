@@ -6,7 +6,7 @@
 
 use jinn_app_state::AppState;
 use jinn_attendant_msg::{
-    AttendantActivation, AttendantPropertiesState, AttendantTrigger, OriginalValues, PickDirection,
+    AttendantBehavior, AttendantPropertiesState, AttendantTrigger, OriginalValues, PickDirection,
     PropertyField, attendant_properties_scope, attendant_properties_slot,
     attendant_seed_template_scope,
 };
@@ -136,19 +136,25 @@ impl PopupFixture {
             .expect("attendant");
         let template = session.seed_template().to_owned();
         let cursor_pos = template.len();
+        let prep_mode = session.attendant_is_prepping();
         let popup = AttendantPropertiesState {
             session_id: Some(self.attendant_id.clone()),
             seed_template: jinn_slices::LineInput {
                 input: template.clone(),
                 cursor_pos,
             },
-            pending_activation: session.attendant_activation(),
+            pending_behavior: session.attendant_behavior(),
             pending_trigger: session.attendant_trigger(),
+            pending_prep_mode: prep_mode,
             original: Some(OriginalValues {
                 trigger: session.attendant_trigger(),
-                activation: session.attendant_activation(),
+                behavior: session.attendant_behavior(),
+                prep_mode,
                 template,
             }),
+            // The opener's rule: a composing attendant opens on the prep
+            // row, anything else on the first field.
+            focus: PropertyField::opening_focus(prep_mode),
             ..AttendantPropertiesState::default()
         };
         self.cell.update(|s| *s = popup);
@@ -159,17 +165,33 @@ impl PopupFixture {
             ));
     }
 
+    /// Ends composition on the underlying session, as leaving prep mode
+    /// in the panel would.
+    fn finish_composing(&mut self) {
+        self.state
+            .session
+            .get_mut(&self.attendant_id)
+            .expect("attendant")
+            .set_attendant_is_prepping(false);
+    }
+
     /// Opens the popup and walks the cursor down to the seed-template field.
+    ///
+    /// A fresh attendant is composing, and the cage floors the walk at the
+    /// prep row. These tests are about the rows below it, so the fixture
+    /// ends composition before the walk — the walk is then one press longer
+    /// than it was when the form had three rows.
     fn open_on_the_template_field(&mut self) {
+        self.finish_composing();
         self.open();
-        for _ in 0..2 {
+        for _ in 0..3 {
             self.press("attendant-properties-field-next");
         }
         assert_eq!(self.cell.read().focus, PropertyField::SeedTemplate);
     }
 
     /// Reads the attendant session's current values.
-    fn session_values(&self) -> (AttendantTrigger, AttendantActivation, String) {
+    fn session_values(&self) -> (AttendantTrigger, AttendantBehavior, String) {
         let session = self
             .state
             .session
@@ -177,7 +199,7 @@ impl PopupFixture {
             .expect("attendant");
         (
             session.attendant_trigger(),
-            session.attendant_activation(),
+            session.attendant_behavior(),
             session.seed_template().to_owned(),
         )
     }
@@ -202,8 +224,10 @@ impl PopupFixture {
 #[rstest::rstest]
 #[test]
 fn j_and_k_stop_at_the_ends_of_the_form() {
-    // Given an open popup, focused on the first field.
+    // Given an open popup over a composed attendant, focused on the first
+    // field.
     let mut fx = PopupFixture::new();
+    fx.finish_composing();
     fx.open();
     assert_eq!(fx.cell.read().focus, PropertyField::Trigger);
 
@@ -220,9 +244,79 @@ fn j_and_k_stop_at_the_ends_of_the_form() {
         fx.press("attendant-properties-field-next");
     }
     assert_eq!(fx.cell.read().focus, PropertyField::SeedTemplate);
-    // And one step up from the bottom is the activation.
+    // And the rows above it are one press each, in reverse display order.
     fx.press("attendant-properties-field-previous");
-    assert_eq!(fx.cell.read().focus, PropertyField::Activation);
+    assert_eq!(fx.cell.read().focus, PropertyField::PrepMode);
+    fx.press("attendant-properties-field-previous");
+    assert_eq!(fx.cell.read().focus, PropertyField::Behavior);
+}
+
+#[rstest::rstest]
+#[test]
+fn a_composing_attendant_opens_with_the_cursor_on_the_prep_row() {
+    // Given a fresh attendant, which `N` leaves composing.
+    let mut fx = PopupFixture::new();
+
+    // When the popup opens.
+    fx.open();
+
+    // Then the cursor rests on the prep row, not the trigger. The two rows
+    // above do not apply while composing, and a cursor on one of them would
+    // be sitting on a control that cannot be operated.
+    assert_eq!(fx.cell.read().focus, PropertyField::PrepMode);
+}
+
+#[rstest::rstest]
+#[test]
+fn the_cursor_cannot_climb_above_the_prep_row_while_composing() {
+    // Given an open popup over a composing attendant.
+    let mut fx = PopupFixture::new();
+    fx.open();
+
+    // When pressing k twice from the prep row — enough to cross both rows
+    // that do not apply.
+    fx.press("attendant-properties-field-previous");
+    fx.press("attendant-properties-field-previous");
+
+    // Then the cursor is still on the prep row. The rows are on screen and
+    // dimmed, but the cursor cannot land on them.
+    assert_eq!(fx.cell.read().focus, PropertyField::PrepMode);
+}
+
+#[rstest::rstest]
+#[test]
+fn leaving_prep_mode_reaches_the_rows_above_it() {
+    // Given an open popup over a composing attendant, cursor on the prep
+    // row.
+    let mut fx = PopupFixture::new();
+    fx.open();
+    assert_eq!(fx.cell.read().focus, PropertyField::PrepMode);
+
+    // When turning prep mode off and pressing k.
+    fx.press("attendant-properties-pick-left");
+    fx.press("attendant-properties-field-previous");
+
+    // Then the cursor lands on the behavior row: the row directly above the
+    // prep row became live the moment composition ended.
+    assert!(!fx.cell.read().pending_prep_mode);
+    assert_eq!(fx.cell.read().focus, PropertyField::Behavior);
+}
+
+#[rstest::rstest]
+#[test]
+fn either_pick_key_turns_composition_off_from_the_prep_row() {
+    // Given an open popup over a composing attendant, cursor on the prep
+    // row.
+    let mut fx = PopupFixture::new();
+    fx.open();
+    assert!(fx.cell.read().pending_prep_mode);
+
+    // When pressing l — the other pick key.
+    fx.press("attendant-properties-pick-right");
+
+    // Then composition ended. A two-state field has no previous or next, so
+    // both pick keys cycle it the same way.
+    assert!(!fx.cell.read().pending_prep_mode);
 }
 
 #[rstest::rstest]
@@ -231,6 +325,7 @@ fn h_and_l_pick_choices_in_place() {
     // Given an open popup focused on the trigger row, whose pending value
     // is the rightmost choice (a fresh attendant's `manual`).
     let mut fx = PopupFixture::new();
+    fx.finish_composing();
     fx.open();
     assert_eq!(fx.cell.read().focus, PropertyField::Trigger);
     assert_eq!(fx.cell.read().pending_trigger, AttendantTrigger::Manual);
@@ -254,17 +349,18 @@ fn h_and_l_pick_choices_in_place() {
 #[rstest::rstest]
 #[test]
 fn picking_clamps_at_row_ends() {
-    // Given the activation row focused on its leftmost choice.
+    // Given the behavior row focused on its leftmost choice.
     let mut fx = PopupFixture::new();
+    fx.finish_composing();
     fx.open();
-    fx.press("attendant-properties-field-previous"); // template -> activation
-    assert_eq!(fx.cell.read().pending_activation, AttendantActivation::Seed);
+    fx.press("attendant-properties-field-previous"); // template -> prep mode
+    assert_eq!(fx.cell.read().pending_behavior, AttendantBehavior::Reset);
 
     // When picking left at the left end.
     fx.press("attendant-properties-pick-left");
 
     // Then the choice does not move.
-    assert_eq!(fx.cell.read().pending_activation, AttendantActivation::Seed);
+    assert_eq!(fx.cell.read().pending_behavior, AttendantBehavior::Reset);
 }
 
 #[rstest::rstest]
@@ -278,7 +374,7 @@ fn picking_does_not_touch_the_session_until_enter() {
     fx.press("attendant-properties-pick-right");
 
     // When checking the session before applying.
-    let (trigger, _activation, _template) = fx.session_values();
+    let (trigger, _behavior, _template) = fx.session_values();
 
     // Then the session still holds its original trigger: picks are pending.
     assert_eq!(trigger, AttendantTrigger::Manual);
@@ -287,30 +383,42 @@ fn picking_does_not_touch_the_session_until_enter() {
 #[rstest::rstest]
 #[test]
 fn enter_applies_all_fields_and_persists_once() {
-    // Given an open popup with all three fields edited. The fresh
-    // attendant's trigger starts at `manual` (rightmost), so the pick goes
-    // left; the activation starts at `seed` (leftmost), so it goes right.
+    // Given an open popup with every field edited. The fresh attendant's
+    // trigger starts at `manual` (rightmost), so the pick goes left; the
+    // behavior starts at `reset` (leftmost), so it goes right; and prep
+    // mode starts on, so it is turned off — which is what makes the other
+    // two edits applicable in the first place.
     let mut fx = PopupFixture::new();
     fx.open();
+    assert_eq!(fx.cell.read().focus, PropertyField::PrepMode);
+    fx.press("attendant-properties-pick-left"); // prep mode -> off
+    fx.press("attendant-properties-field-previous"); // prep mode -> behavior
+    fx.cell.update(|p| p.pick(PickDirection::Right)); // reset -> preserve
+    fx.press("attendant-properties-field-previous"); // behavior -> trigger
     fx.press("attendant-properties-pick-left"); // trigger -> parent-completed
-    fx.press("attendant-properties-field-next"); // trigger -> activation
-    fx.cell.update(|p| {
-        p.pick(PickDirection::Right);
-        p.pick(PickDirection::Right); // seed -> preserve
-        p.seed_template.input = "edited template".to_owned();
-    });
+    fx.cell
+        .update(|p| p.seed_template.input = "edited template".to_owned());
 
     // When applying.
     let result = fx.press("attendant-properties-apply");
 
-    // Then the session holds every edited value together.
+    // Then the session holds every edited value together, composition
+    // included.
     assert_eq!(
         fx.session_values(),
         (
             AttendantTrigger::ParentCompleted,
-            AttendantActivation::Preserve,
+            AttendantBehavior::Preserve,
             "edited template".to_owned()
         )
+    );
+    assert!(
+        !fx.state
+            .session
+            .get(&fx.attendant_id)
+            .expect("attendant")
+            .attendant_is_prepping(),
+        "applying must end composition, or nothing would ever run"
     );
     // And exactly one persist was published.
     assert_eq!(
@@ -393,7 +501,7 @@ fn escape_restores_original_values_and_pops() {
         fx.session_values(),
         (
             AttendantTrigger::Manual,
-            AttendantActivation::Seed,
+            AttendantBehavior::Reset,
             "original".to_owned()
         )
     );
@@ -456,12 +564,13 @@ fn i_on_template_field_pushes_the_editor_scope() {
 #[rstest::rstest]
 #[test]
 fn i_off_the_template_field_is_a_noop() {
-    // Given an open popup focused on the activation row — a choice row, not
-    // the template row.
+    // Given an open popup over a composed attendant, focused on the
+    // behavior row — a choice row, not the template row.
     let mut fx = PopupFixture::new();
+    fx.finish_composing();
     fx.open();
     fx.press("attendant-properties-field-next");
-    assert_eq!(fx.cell.read().focus, PropertyField::Activation);
+    assert_eq!(fx.cell.read().focus, PropertyField::Behavior);
 
     // When pressing i.
     fx.press("attendant-properties-edit-template");

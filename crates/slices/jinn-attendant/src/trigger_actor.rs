@@ -203,16 +203,16 @@ impl AttendantTriggerActor {
     ///
     /// The sequence, in order:
     ///
-    /// 1. `Seed` activation is inert — the user is still composing its
-    ///    instructions, and firing against half-written pins is the exact
-    ///    failure the mode exists to prevent.
+    /// 1. Prep mode is inert — the user is still composing the
+    ///    attendant's instructions, and firing against half-written pins is
+    ///    the exact failure the mode exists to prevent.
     /// 2. A busy attendant's own turn is cancelled. That is a single-session
     ///    cancel: a re-trigger supersedes *this* attendant's work, and its
     ///    descendants still answer a question this attendant exists to read.
     ///    It is not the confirmed-cancel cascade — a trigger does not know
     ///    which descendant the user would want cancelled, so that stays a
     ///    manual `R`.
-    /// 3. `Reset` activation force-excludes every non-pinned entry, so the
+    /// 3. The `reset` behavior force-excludes every non-pinned entry, so the
     ///    model sees the pins alone. The changed session is persisted.
     /// 4. A prior report is injected through the seed template, and the
     ///    resulting entry is dispatched as a fresh user turn.
@@ -220,12 +220,11 @@ impl AttendantTriggerActor {
         {
             let mut state = self.state.write();
             let session = state.session.get_mut(attendant_id)?;
-            // Whether a fire is configured to run at all. Seed is the
-            // attendant being composed, so nothing dispatches for it yet.
-            if !session
-                .attendant_trigger()
-                .is_enabled_for(session.attendant_activation())
-            {
+            // Whether the attendant may dispatch at all. Prep mode is the
+            // attendant being composed, so nothing runs for it yet — not
+            // even the `R` key, which is why the gate is asked of the
+            // session rather than derived from the trigger here.
+            if session.attendant_is_prepping() {
                 return None;
             }
 

@@ -41,6 +41,11 @@ pub struct Theme {
     /// moving through it — without sharing the key, because a session can
     /// be both a stream's target and paused on its own row.
     pub attendant_paused: Color,
+    /// Marker for an attendant that runs on its parent's completion, with
+    /// no one asking. Defaulted to the attendant's own pink: the glyph
+    /// marks the same rows `attendant_fg` already marks, and saying so
+    /// with a second pink would be noise.
+    pub attendant_parent_trigger: Color,
     pub attendant_bg: Color,
     /// Error text color.
     pub error_text: Color,
@@ -184,6 +189,7 @@ impl Theme {
             "subagent_fg" => subagent_fg,
             "attendant_fg" => attendant_fg,
             "attendant_paused" => attendant_paused,
+            "attendant_parent_trigger" => attendant_parent_trigger,
             "error_text" => error_text,
             "dormant_fg" => dormant_fg,
             "success" => success,
@@ -261,6 +267,8 @@ pub struct ThemeFile {
     pub attendant_fg: Option<ThemeColor>,
     #[serde(default)]
     pub attendant_paused: Option<ThemeColor>,
+    #[serde(default)]
+    pub attendant_parent_trigger: Option<ThemeColor>,
     /// Attendant row background, paired with `attendant_fg`.
     #[serde(default)]
     pub attendant_bg: Option<ThemeColor>,
@@ -406,6 +414,10 @@ impl ThemeFile {
             attendant_paused: self
                 .attendant_paused
                 .map_or(fallback.attendant_paused, crate::color::ThemeColor::inner),
+            attendant_parent_trigger: self.attendant_parent_trigger.map_or(
+                fallback.attendant_parent_trigger,
+                crate::color::ThemeColor::inner,
+            ),
             attendant_bg: self
                 .attendant_bg
                 .map_or(fallback.attendant_bg, crate::color::ThemeColor::inner),
@@ -566,6 +578,7 @@ impl ThemeFile {
             subagent_bg: Self::resolve_field(self.subagent_bg),
             attendant_fg: Self::resolve_field(self.attendant_fg),
             attendant_paused: Self::resolve_field(self.attendant_paused),
+            attendant_parent_trigger: Self::resolve_field(self.attendant_parent_trigger),
             attendant_bg: Self::resolve_field(self.attendant_bg),
             error_text: Self::resolve_field(self.error_text),
             dormant_fg: Self::resolve_field(self.dormant_fg),
@@ -635,6 +648,7 @@ mod tests {
             subagent_bg: None,
             attendant_fg: None,
             attendant_paused: None,
+            attendant_parent_trigger: None,
             attendant_bg: None,
             error_text: None,
             dormant_fg: None,
@@ -693,6 +707,7 @@ mod tests {
             attendant_fg: Some(ThemeColor(Color::Rgb(255, 105, 180))),
             attendant_bg: Some(ThemeColor(Color::Rgb(56, 48, 17))),
             attendant_paused: Some(ThemeColor(Color::Rgb(128, 132, 144))),
+            attendant_parent_trigger: Some(ThemeColor(Color::Rgb(255, 105, 180))),
             error_text: Some(ThemeColor(Color::Red)),
             dormant_fg: Some(ThemeColor(Color::Blue)),
             success: Some(ThemeColor(Color::Green)),

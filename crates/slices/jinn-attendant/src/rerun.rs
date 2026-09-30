@@ -3,12 +3,17 @@
 //! The `R` key in the sessions section calls into this from the frontend.
 //! The manual path is deliberately its own sequence, not the trigger's with
 //! a flag: `R` is the user saying "ask again", so it seeds through the
-//! template in every mode, and it stops the attendant's descendants along
-//! with it. A trigger cannot do either — it does not know which descendant
-//! should be cancelled, and it must not inject a message the user did not
-//! ask for.
+//! template in every behavior, and it stops the attendant's descendants
+//! along with it. A trigger cannot do either — it does not know which
+//! descendant should be cancelled, and it must not inject a message the user
+//! did not ask for.
+//!
+//! The one configuration `R` refuses is prep mode: an attendant still being
+//! composed has half-written pins, and running it would dispatch a prompt
+//! built from instructions the user has not finished. The block names the
+//! reason so the sidebar can put it on screen — a key that silently does
+//! nothing is the complaint this replaces.
 
-use jinn_attendant_msg::AttendantActivation;
 use jinn_chat_input_msg::EnqueueUserMessage;
 use jinn_core_types::{ChatEntryId, SessionId};
 use jinn_inference_msg::CancelStream;
@@ -100,8 +105,8 @@ pub fn rerun_blocked_reason_in(
     let session = state.session.get(attendant_id)?;
     if !session.is_attendant() {
         Some("not an attendant")
-    } else if session.attendant_activation() == AttendantActivation::Seed {
-        Some("attendant is still being composed (seed mode)")
+    } else if session.attendant_is_prepping() {
+        Some("attendant is in prep mode")
     } else {
         None
     }

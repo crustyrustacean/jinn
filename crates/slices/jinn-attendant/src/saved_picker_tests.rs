@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use jinn_app_state::AppState;
 use jinn_attendant_msg::{
-    AttendantActivation, AttendantSavedPickerState, AttendantTrigger, attendant_saved_picker_scope,
+    AttendantBehavior, AttendantSavedPickerState, AttendantTrigger, attendant_saved_picker_scope,
     attendant_saved_picker_slot,
 };
 use jinn_config::{ConfigLayer, InMemoryConfigStorage};
@@ -47,8 +47,9 @@ fn active_session_id(state: &AppState) -> SessionId {
 fn configured_entry(name: &str) -> AttendantEntryConfig {
     AttendantEntryConfig::from_parts(
         name.to_owned(),
-        AttendantActivation::Reset,
+        AttendantBehavior::Reset,
         AttendantTrigger::ParentCompleted,
+        false,
         "review: <prior report>".to_owned(),
         &jinn_core_types::ModelSelection::Single("zai/glm-4.7".to_owned()),
         "reviewer",
@@ -204,7 +205,7 @@ fn the_opener_reads_the_document_at_open() {
     fx.open();
 
     // Then the new entry is there without a restart — the cell reads the
-    // live document rather than a snapshot taken at activation.
+    // live document rather than a snapshot taken when the picker opened.
     assert_eq!(fx.cell.read().selection.filtered_count(), 2);
 }
 
@@ -256,8 +257,8 @@ fn a_created_attendant_is_titled_after_its_entry() {
 
 #[rstest::rstest]
 #[test]
-fn a_created_attendant_restores_activation_and_trigger_as_saved() {
-    // Given an entry saved in reset activation with a live trigger.
+fn a_created_attendant_restores_behavior_and_trigger_as_saved() {
+    // Given an entry saved with the reset behavior and a live trigger.
     let mut fx = PickerFixture::new(vec![configured_entry("nightly")]);
     fx.open();
 
@@ -266,12 +267,12 @@ fn a_created_attendant_restores_activation_and_trigger_as_saved() {
 
     // Then it is live from the first run, not dropped back into seed mode.
     let created = fx.active();
-    assert_eq!(created.attendant_activation(), AttendantActivation::Reset);
+    assert_eq!(created.attendant_behavior(), AttendantBehavior::Reset);
     assert_eq!(
         created.attendant_trigger(),
         AttendantTrigger::ParentCompleted
     );
-    assert!(!created.attendant_is_paused());
+    assert!(!created.attendant_is_prepping());
 }
 
 #[rstest::rstest]
@@ -520,7 +521,7 @@ fn a_row_shows_only_the_saved_attendants_name() {
         &jinn_picker::RowCtx::flat(true, &[]),
     );
 
-    // Then the row is the name and nothing else — no activation, trigger,
+    // Then the row is the name and nothing else — no behavior, trigger,
     // or pin count to read past.
     assert_eq!(row.spans.len(), 1);
     assert_eq!(row.spans[0].content, "nightly");
@@ -608,7 +609,7 @@ fn a_malformed_document_says_so_instead_of_looking_empty() {
     let malformed = r#"
 [[attendant.entry]]
 name = "nightly"
-activation = "reset"
+behavior = "reset"
 trigger = "parent-completed"
 "#;
     let doc = format!("# user's own comment\n{malformed}")

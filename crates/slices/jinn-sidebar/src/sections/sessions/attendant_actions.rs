@@ -33,7 +33,7 @@ fn selected_idle_session(state: &AppState) -> Option<jinn_core_types::SessionId>
 /// `N` — creates an attendant of the highlighted session and activates it.
 ///
 /// The attendant starts in
-/// [`jinn_attendant_msg::AttendantActivation::Seed`]: submissions pin into
+/// [`jinn_attendant_msg::AttendantBehavior::Reset`]: submissions pin into
 /// its context without dispatching, and its trigger is inert until the user
 /// flips it out of seed. Nothing is sent to any provider from this path.
 ///
@@ -116,7 +116,7 @@ pub fn handle_new_attendant(state: &mut AppState, config: &ConfigLayer) -> Inten
         .with_message(jinn_session_history_msg::PushChatEntry {
             session_id: attendant_id.clone(),
             entry: ChatEntry::system(
-                "🛰️ Attendant created in seed mode for providing instructions. When you are done, select the attendant in the sidebar and press `P` to change properties. The attendant will not run autonomously unless you change the trigger mode and activation properties."
+                "🛰️ Attendant created in prep mode for providing instructions. When you are done, select the attendant in the sidebar and press `P` to turn prep mode off. The attendant will not run until you do."
             ),
             pin: None,
         });

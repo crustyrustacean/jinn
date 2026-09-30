@@ -364,8 +364,8 @@ Entries are added or amended **only with human approval**.
 
 - (attendant) An attendant is a session that references a parent without inheriting its conversation; it re-runs when the parent's turn completes successfully.
 - (attendant) An attendant's run parameters and its append-only report log persist in the session metadata blob, so adding them required no schema migration.
-- (attendant) An attendant in seed activation has user submissions pinned into its context without dispatching them, and its trigger is inert.
-- (attendant) Attendant activation is three-state: seed composes without firing, reset rebuilds context from pins alone, preserve appends.
+- (attendant) An attendant in prep mode has user submissions pinned into its context without dispatching them, and its trigger is inert.
+- (attendant) Attendant run configuration is a trigger, a behavior, and a prep mode: prep mode composes without firing, reset rebuilds context from pins alone, preserve appends.
 - (attendant) An attendant reaches its parent through two separate tools: `report` records for the user, `notify_parent` starts a parent turn.
 - (attendant) The harness places no bound on how often an attendant may notify its parent; loop termination is the agent's decision.
 - (attendant) An attendant's report goes stale when its parent resumes work and clears only on that attendant's own next report.
@@ -383,6 +383,10 @@ Entries are added or amended **only with human approval**.
 - (attendant) An attendant is an ordinary session for storage: it is created with the persist flag set, so it is saved on creation and on every turn, exactly like a subagent's child; `is_persistable` checks the flag before any other clause, so a false there would be terminal for the session's life.
 - (attendant) SqliteSessionStore::save returns Ok for a non-persistable snapshot, so a swallowed save is indistinguishable from success — proof that a session reached a store must assert on store contents, never on the return value.
 - (attendant) The manual re-run (R) and the trigger fire are separate run preparations, not one function with a mode flag: R always seeds through the template and cascades a cancel, while a trigger respects the mode and cancels only the attendant's own turn.
+- (attendant) An attendant in prep mode is marked paused in the sidebar and cannot be run; the ⏸ marker means prep mode and nothing else.
+- (attendant) An attendant whose trigger is parent-completed is marked in the sidebar with ⇉.
+- (attendant) The properties panel cages the cursor on the three live rows while prep mode is on, because a row that governs nothing is one the cursor has no business resting on.
+- (attendant) The properties panel's popup height is derived from the field list, so adding a row cannot leave the height disagreeing with the rows the view draws.
 - (attendant) A manual re-run must drive its own session phase to Idle before dispatching, because the enqueue handler queues any user message arriving while a session is Sending or Streaming.
 - (attendant) A manual re-run cancels via cancel_streaming rather than cancel_stream_and_drain, because the drain would steer the aborted partial into the input box.
 - (attendant) A reset-mode run writes its forced-exclusions to the store; without that, a restarted attendant would silently regain its full history.

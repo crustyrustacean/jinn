@@ -10,12 +10,18 @@ use crate::sections::section_trait::{EnterFrom, SectionNavResult, SidebarIntent}
 use jinn_attendant::section_rows::attendant_rows;
 use jinn_kernel::AppState;
 use jinn_sidebar_msg::AttendantSectionState;
+use ratatui::style::{Color, Style};
+use ratatui::text::Span;
 
 /// The marker an attendant that has never reported shows on line 2.
 pub(crate) const NEVER_REPORTED_MARKER: &str = jinn_attendant_msg::AttendantReport::EMPTY_MARKER;
 
-/// Marks an attendant in seed mode, matching the sessions section's glyph.
-const ATTENDANT_PAUSED_SYMBOL: &str = "⏸ ";
+/// Marks an attendant still being composed, matching the sessions
+/// section's glyph.
+const ATTENDANT_PREPPING_SYMBOL: &str = "⏸ ";
+/// Marks an attendant that runs on its parent's completion, matching the
+/// sessions section's glyph.
+const ATTENDANT_PARENT_TRIGGER_SYMBOL: &str = "⇉ ";
 
 /// Whether the section has any rows — an empty section collapses.
 pub(crate) fn has_content(state: &AppState) -> bool {
@@ -134,8 +140,8 @@ impl crate::sections::section_trait::SidebarSection for AttendantsSection {
         skip_rows: u16,
         ctx: &dyn jinn_slices::DrawContext<jinn_kernel::common::app_state::AppState>,
     ) {
-        use ratatui::style::{Modifier, Style};
-        use ratatui::text::{Line, Span};
+        use ratatui::style::Modifier;
+        use ratatui::text::Line;
         use ratatui::widgets::{Block, Paragraph};
 
         let state = ctx.state();
@@ -166,28 +172,34 @@ impl crate::sections::section_trait::SidebarSection for AttendantsSection {
                 Style::default().fg(theme.attendant_fg)
             };
             // Ahead of the name, where the sessions section puts the same
-            // marker: the eye reads the marker before the title. And beside
+            // markers: the eye reads a marker before the title. And beside
             // the name rather than inside it — the name is what a rename
-            // replaces, so the marker must stay out of its reach. Like every
-            // state color it yields to the selection band when selected.
-            let paused = if !row.is_paused {
-                Span::raw("")
-            } else if is_selected {
-                Span::raw(ATTENDANT_PAUSED_SYMBOL)
-            } else {
-                Span::styled(
-                    ATTENDANT_PAUSED_SYMBOL,
-                    Style::default().fg(theme.attendant_paused),
-                )
-            };
+            // replaces, so a marker must stay out of its reach. Like every
+            // state color they yield to the selection band when selected.
+            let prepping = marker_span(
+                row.is_prepping,
+                ATTENDANT_PREPPING_SYMBOL,
+                theme.attendant_paused,
+                is_selected,
+            );
+            let parent_trigger = marker_span(
+                row.fires_on_parent_completion,
+                ATTENDANT_PARENT_TRIGGER_SYMBOL,
+                theme.attendant_parent_trigger,
+                is_selected,
+            );
             // Content is shifted one column right of the header: gutter(1),
-            // gap(1), then the marker and name.
-            let content_width =
-                2 + if row.is_paused { 2 } else { 0 } + 1 + row.name.chars().count();
+            // gap(1), then the markers and the name. Every marker is the same
+            // width, so the count is the number of them times two.
+            let content_width = 2
+                + 2 * (usize::from(row.is_prepping) + usize::from(row.fires_on_parent_completion))
+                + 1
+                + row.name.chars().count();
             let mut row_spans = vec![
                 crate::sections::session_row_style::gutter_span(theme),
                 crate::sections::session_row_style::gutter_span(theme),
-                paused,
+                prepping,
+                parent_trigger,
                 Span::styled(format!(" {}", row.name), name_style),
             ];
             if is_selected {
@@ -249,6 +261,21 @@ impl crate::sections::section_trait::SidebarSection for AttendantsSection {
         // Defers to `rows` so the height the layout reserves and the lines
         // the render draws stay one number, gap included.
         rows(ctx.state())
+    }
+}
+
+/// One state marker on an attendant row, or nothing when it does not apply.
+///
+/// A selected row is the selection band, so a hard foreground would defeat
+/// it; every state color on this section yields to the band the same way.
+fn marker_span(present: bool, symbol: &str, color: Color, is_selected: bool) -> Span<'static> {
+    if !present {
+        return Span::raw("");
+    }
+    if is_selected {
+        Span::raw(symbol.to_owned())
+    } else {
+        Span::styled(symbol.to_owned(), Style::default().fg(color))
     }
 }
 
@@ -395,26 +422,23 @@ mod tests {
             .join("\n")
     }
 
-    /// A parent with one paused attendant of the given configuration.
-    fn state_with_paused_attendant(
-        activation: jinn_attendant_msg::AttendantActivation,
+    /// A parent with one composed attendant of the given configuration.
+    fn state_with_attendant(
         trigger: jinn_attendant_msg::AttendantTrigger,
+        prep_mode: bool,
     ) -> AppState {
         let parent = user_session();
         let mut attendant = attendant_of(&parent);
         attendant.set_title("reviewer".to_owned());
-        attendant.set_attendant_activation(activation);
         attendant.set_attendant_trigger(trigger);
+        attendant.set_attendant_is_prepping(prep_mode);
         state_with(parent, attendant)
     }
 
     #[rstest::rstest]
-    fn a_paused_attendant_row_shows_the_marker_before_the_title() {
-        // Given a paused attendant under an active parent.
-        let state = state_with_paused_attendant(
-            jinn_attendant_msg::AttendantActivation::Seed,
-            jinn_attendant_msg::AttendantTrigger::Manual,
-        );
+    fn a_composing_attendant_row_shows_the_marker_before_the_title() {
+        // Given an attendant still being composed, under an active parent.
+        let state = state_with_attendant(jinn_attendant_msg::AttendantTrigger::Manual, true);
 
         // When the section is rendered.
         let buffer = render_section(&state);
@@ -432,12 +456,9 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn the_pause_marker_sits_outside_the_title() {
-        // Given a paused attendant.
-        let state = state_with_paused_attendant(
-            jinn_attendant_msg::AttendantActivation::Seed,
-            jinn_attendant_msg::AttendantTrigger::Manual,
-        );
+    fn the_prep_marker_sits_outside_the_title() {
+        // Given an attendant still being composed.
+        let state = state_with_attendant(jinn_attendant_msg::AttendantTrigger::Manual, true);
 
         // When the section is rendered.
         let buffer = render_section(&state);

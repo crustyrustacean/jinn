@@ -28,7 +28,7 @@ const CREATED_NOTICE: &str =
 /// saved on one machine must still run where the user's cwd and project
 /// are.
 ///
-/// The activation and trigger come across unchanged, so a saved live
+/// The behavior, trigger, and prep mode come across unchanged, so a live
 /// attendant starts live rather than dropping back into seed mode.
 #[must_use]
 pub fn build(entry: &AttendantEntryConfig, parent: &ChatSessionState) -> ChatSessionState {
@@ -61,8 +61,9 @@ pub fn build(entry: &AttendantEntryConfig, parent: &ChatSessionState) -> ChatSes
     {
         attendant.profile_mut().endpoint = Some(endpoint.clone());
     }
-    attendant.set_attendant_activation(entry.activation);
+    attendant.set_attendant_behavior(entry.behavior);
     attendant.set_attendant_trigger(entry.trigger);
+    attendant.set_attendant_is_prepping(entry.prep_mode);
     attendant.set_seed_template(entry.seed_template.clone());
     // The entry's name is the attendant's identity, both in the picker and
     // in the sessions list.

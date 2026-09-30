@@ -6231,22 +6231,52 @@ fn new_attendant_copies_parent_environment() {
 
 #[rstest::rstest]
 #[test]
-fn new_attendant_starts_in_seed_activation_with_manual_trigger() {
+fn new_attendant_starts_composing_with_a_manual_trigger() {
     // Given a parent session.
 
     // When creating an attendant of that parent.
     let attendant = ChatSessionState::new_attendant(&parent_of_new_session(), true);
 
-    // Then activation is seed — the user is still composing its instructions.
+    // Then it is in prep mode — the user is still composing its
+    // instructions, so nothing may run.
+    assert!(attendant.attendant_is_prepping());
     // And the trigger is manual — it fires for no one until configured.
-    assert_eq!(
-        attendant.attendant_activation(),
-        jinn_attendant_msg::AttendantActivation::Seed
-    );
     assert_eq!(
         attendant.attendant_trigger(),
         jinn_attendant_msg::AttendantTrigger::Manual
     );
+}
+
+#[rstest::rstest]
+#[test]
+fn attendant_run_settings_start_at_their_defaults() {
+    // Given a fresh attendant.
+
+    // When reading the two settings a run would obey.
+    let attendant = ChatSessionState::new_attendant(&parent_of_new_session(), true);
+    let behavior = attendant.attendant_behavior();
+    let trigger = attendant.attendant_trigger();
+
+    // Then they are the defaults, independently of the prep mode above: a
+    // composing attendant still holds a run configuration, it simply does
+    // not apply yet.
+    assert_eq!(behavior, jinn_attendant_msg::AttendantBehavior::Reset);
+    assert_eq!(trigger, jinn_attendant_msg::AttendantTrigger::Manual);
+}
+
+#[rstest::rstest]
+#[test]
+fn a_prepping_attendant_answers_the_trigger_question_still() {
+    // Given a fresh attendant, whose trigger is manual.
+
+    // When asking whether it fires on its parent's completion.
+    let fires = ChatSessionState::new_attendant(&parent_of_new_session(), true)
+        .attendant_fires_on_parent_completion();
+
+    // Then it does not. The trigger is a fact about the configuration; prep
+    // mode is a separate fact about whether the attendant may run, and
+    // conflating them would make the sidebar unable to mark either.
+    assert!(!fires);
 }
 
 fn parent_of_new_session() -> ChatSessionState {
@@ -6301,10 +6331,12 @@ fn latest_attendant_report_is_none_before_the_first_report() {
 #[rstest::rstest]
 #[test]
 fn session_fields_round_trip_through_serialization() {
-    // Given an attendant with activation, trigger, template, and reports.
+    // Given an attendant with behavior, trigger, prep mode, template, and
+    // reports — one of each, and the ones that differ from the default.
     let mut session = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
-    session.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+    session.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Preserve);
     session.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+    session.set_attendant_is_prepping(false);
     session.set_seed_template("custom template".to_owned());
     session.append_attendant_report("prior finding".to_owned());
 
@@ -6314,13 +6346,14 @@ fn session_fields_round_trip_through_serialization() {
 
     // Then every attendant field is preserved.
     assert_eq!(
-        restored.attendant.activation,
-        jinn_attendant_msg::AttendantActivation::Reset
+        restored.attendant.behavior,
+        jinn_attendant_msg::AttendantBehavior::Preserve
     );
     assert_eq!(
         restored.attendant.trigger,
         jinn_attendant_msg::AttendantTrigger::ParentCompleted
     );
+    assert!(!restored.attendant.prep_mode);
     assert_eq!(restored.attendant.seed_template, "custom template");
     assert_eq!(restored.attendant.reports.len(), 1);
     assert_eq!(restored.attendant.reports[0].body, "prior finding");
@@ -6352,8 +6385,8 @@ fn attendant_fields_default_when_absent_from_persisted_blob() {
 
     // Then the attendant group takes its defaults — no migration needed.
     assert_eq!(
-        core.attendant.activation,
-        jinn_attendant_msg::AttendantActivation::Seed
+        core.attendant.behavior,
+        jinn_attendant_msg::AttendantBehavior::Reset
     );
     assert_eq!(
         core.attendant.trigger,
@@ -6438,76 +6471,95 @@ fn a_queued_message_is_handed_back_to_the_user_as_an_editable_draft() {
     );
 }
 
-/// An attendant configured with the given activation and trigger.
-fn attendant_configured(
-    activation: jinn_attendant_msg::AttendantActivation,
-    trigger: jinn_attendant_msg::AttendantTrigger,
-) -> ChatSessionState {
+/// An attendant with the given trigger, out of prep mode.
+fn attendant_configured(trigger: jinn_attendant_msg::AttendantTrigger) -> ChatSessionState {
     let mut attendant = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
-    attendant.set_attendant_activation(activation);
     attendant.set_attendant_trigger(trigger);
+    attendant.set_attendant_is_prepping(false);
     attendant
 }
 
 #[rstest::rstest]
-#[case(jinn_attendant_msg::AttendantActivation::Seed)]
-#[case(jinn_attendant_msg::AttendantActivation::Reset)]
-#[case(jinn_attendant_msg::AttendantActivation::Preserve)]
-fn a_manual_trigger_attendant_is_paused(
-    #[case] activation: jinn_attendant_msg::AttendantActivation,
-) {
-    // Given an attendant that waits for the user to run it.
-    let session = attendant_configured(activation, jinn_attendant_msg::AttendantTrigger::Manual);
+#[test]
+fn a_composed_attendant_is_not_prepping() {
+    // Given an attendant that has finished composing.
+    let session = attendant_configured(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
 
-    // When asking whether it will run on its own.
-    let paused = session.attendant_is_paused();
+    // When asking whether it may run.
+    let prepping = session.attendant_is_prepping();
 
-    // Then it is paused — nothing dispatches without the user asking.
-    assert!(paused);
+    // Then it may. The behavior above it is a separate fact and cannot
+    // decide this one.
+    assert!(!prepping);
+}
+
+#[rstest::rstest]
+#[test]
+fn a_fresh_attendant_is_prepping() {
+    // Given an attendant straight from `N`.
+    let session = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
+
+    // When asking whether it may run.
+    let prepping = session.attendant_is_prepping();
+
+    // Then it may not: its pins are half-written, so nothing dispatches —
+    // not the `R` key, and not the trigger.
+    assert!(prepping);
 }
 
 #[rstest::rstest]
 #[case(jinn_attendant_msg::AttendantTrigger::Manual)]
 #[case(jinn_attendant_msg::AttendantTrigger::ParentCompleted)]
-fn a_seed_attendant_is_paused(#[case] trigger: jinn_attendant_msg::AttendantTrigger) {
-    // Given an attendant still being composed.
-    let session = attendant_configured(jinn_attendant_msg::AttendantActivation::Seed, trigger);
-
-    // When asking whether it will run on its own.
-    let paused = session.attendant_is_paused();
-
-    // Then it is paused — its pins are half-written, so nothing dispatches.
-    assert!(paused);
-}
-
-#[rstest::rstest]
-#[case(jinn_attendant_msg::AttendantActivation::Reset)]
-#[case(jinn_attendant_msg::AttendantActivation::Preserve)]
-fn a_dispatching_attendant_is_not_paused(
-    #[case] activation: jinn_attendant_msg::AttendantActivation,
+fn a_manual_trigger_does_not_stop_a_composed_attendant(
+    #[case] trigger: jinn_attendant_msg::AttendantTrigger,
 ) {
-    // Given a composed attendant on the trigger that fires it.
-    let session = attendant_configured(
-        activation,
-        jinn_attendant_msg::AttendantTrigger::ParentCompleted,
-    );
+    // Given a composed attendant on each trigger.
+    let session = attendant_configured(trigger);
 
-    // When asking whether it will run on its own.
-    let paused = session.attendant_is_paused();
+    // When asking whether it is prepping.
+    let prepping = session.attendant_is_prepping();
 
-    // Then it is not paused — the parent's turn completes and it runs.
-    assert!(!paused);
+    // Then it is not. A manual trigger declines to fire on its own; the
+    // user pressing `R` still runs it. Marking that attendant as stopped
+    // is the ambiguity the old `or` of two fields produced.
+    assert!(!prepping);
 }
 
 #[rstest::rstest]
-fn an_ordinary_session_is_never_paused() {
-    // Given a plain user session, which carries the default attendant
-    // fields (manual trigger, seed activation) without being an attendant.
-    let session = ChatSessionState::new();
+#[test]
+fn only_a_parent_completed_trigger_fires_on_its_own() {
+    // Given a composed attendant on each trigger.
+    let manual = attendant_configured(jinn_attendant_msg::AttendantTrigger::Manual);
+    let automatic = attendant_configured(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
 
-    // When asking whether it will run on its own.
-    let paused = session.is_attendant() && session.attendant_is_paused();
+    // When asking which one fires when its parent finishes.
+    let fires = [
+        manual.attendant_fires_on_parent_completion(),
+        automatic.attendant_fires_on_parent_completion(),
+    ];
 
-    // Then it is not paused — the predicate is meaningless off an attendant.
-    assert!(!paused);
+    // Then only the parent-completed one does.
+    assert_eq!(fires, [false, true]);
+}
+
+#[rstest::rstest]
+#[test]
+fn the_behavior_does_not_change_the_trigger_question() {
+    // Given the same trigger under each behavior.
+    let mut preserve = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
+    preserve.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Preserve);
+    preserve.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+    preserve.set_attendant_is_prepping(false);
+    let mut reset = preserve.clone();
+    reset.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
+
+    // When asking which fires on the parent's completion.
+    let fires = [
+        preserve.attendant_fires_on_parent_completion(),
+        reset.attendant_fires_on_parent_completion(),
+    ];
+
+    // Then both do, identically. What a run sees and when it happens are
+    // two independent facts, and the sidebar marks them separately.
+    assert_eq!(fires, [true, true]);
 }

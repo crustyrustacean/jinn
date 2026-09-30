@@ -4,38 +4,50 @@ mod attendant_msg_tests {
 
     use jiff::Timestamp;
 
-    use crate::{
-        AttendantActivation, AttendantContextPolicy, AttendantReport, AttendantTrigger,
-        PRIOR_REPORT_PLACEHOLDER,
-    };
+    use crate::{AttendantBehavior, AttendantReport, AttendantTrigger, PRIOR_REPORT_PLACEHOLDER};
+
     #[rstest::rstest]
-    fn the_preserve_mode_is_named_preserve_on_disk() {
-        // Given the mode that keeps the prior conversation intact.
-        let mode = AttendantActivation::Preserve;
+    fn the_preserve_behavior_is_named_preserve_on_disk() {
+        // Given the behavior that keeps the prior conversation intact.
+        let behavior = AttendantBehavior::Preserve;
 
         // When it is serialized as stored in session metadata.
-        let json = serde_json::to_string(&mode).expect("serializes");
+        let json = serde_json::to_string(&behavior).expect("serializes");
 
         // Then the stored name is `preserve`. The name has to be this, not
         // `continue`: the `c` key already means "continue this session", and
-        // one word carrying two meanings is how a mode gets misread.
+        // one word carrying two meanings is how a behavior gets misread.
         assert_eq!(json, r#""preserve""#);
-        // And it round-trips back to the same mode.
+        // And it round-trips back to the same behavior.
         assert_eq!(
-            serde_json::from_str::<AttendantActivation>(&json).expect("deserializes"),
-            mode
+            serde_json::from_str::<AttendantBehavior>(&json).expect("deserializes"),
+            behavior
         );
     }
 
     #[rstest::rstest]
-    fn activation_defaults_to_seed() {
-        // Given no explicit activation.
+    fn behavior_defaults_to_reset() {
+        // Given no explicit behavior.
 
-        // When creating the default activation.
-        let activation = AttendantActivation::default();
+        // When creating the default behavior.
+        let behavior = AttendantBehavior::default();
 
-        // Then the attendant is still being composed.
-        assert_eq!(activation, AttendantActivation::Seed);
+        // Then a run rebuilds its context from the pins alone.
+        assert_eq!(behavior, AttendantBehavior::Reset);
+    }
+
+    #[rstest::rstest]
+    #[case(AttendantBehavior::Reset, true)]
+    #[case(AttendantBehavior::Preserve, false)]
+    fn only_reset_rebuilds_context(#[case] behavior: AttendantBehavior, #[case] expected: bool) {
+        // Given a behavior.
+
+        // When asking whether a run in it rebuilds context.
+        let resets = behavior.resets_context();
+
+        // Then only reset excludes the history: keeping the context as it
+        // stands is the whole of the other behavior.
+        assert_eq!(resets, expected);
     }
 
     #[rstest::rstest]
@@ -47,41 +59,6 @@ mod attendant_msg_tests {
 
         // Then the attendant only runs when the user asks.
         assert_eq!(trigger, AttendantTrigger::Manual);
-    }
-
-    #[rstest::rstest]
-    #[case(AttendantActivation::Seed, false)]
-    #[case(AttendantActivation::Reset, true)]
-    #[case(AttendantActivation::Preserve, true)]
-    fn a_parent_completed_trigger_is_enabled_for_every_mode_but_seed(
-        #[case] activation: AttendantActivation,
-        #[case] expected: bool,
-    ) {
-        // Given an activation mode.
-
-        // When checking whether a parent-completed fire is configured.
-        let enabled = AttendantTrigger::ParentCompleted.is_enabled_for(activation);
-
-        // Then only the composing mode is blocked. Preserve is as runnable
-        // as Reset — it is a mode, not a veto.
-        assert_eq!(enabled, expected);
-    }
-
-    #[rstest::rstest]
-    #[case(AttendantActivation::Seed, AttendantContextPolicy::Pin)]
-    #[case(AttendantActivation::Reset, AttendantContextPolicy::Reset)]
-    #[case(AttendantActivation::Preserve, AttendantContextPolicy::Preserve)]
-    fn each_activation_mode_answers_exactly_what_it_does_to_context(
-        #[case] activation: AttendantActivation,
-        #[case] expected: AttendantContextPolicy,
-    ) {
-        // Given an activation mode.
-
-        // When asking how it prepares context.
-        let policy = activation.context_policy();
-
-        // Then the mode answers only that, and every mode has an answer.
-        assert_eq!(policy, expected);
     }
 
     #[rstest::rstest]
@@ -116,9 +93,9 @@ mod attendant_msg_tests {
 #[cfg(test)]
 mod properties_tests {
     use crate::{
-        ACTIVATION_CHOICES, AttendantActivation, AttendantPropertiesState, AttendantTrigger,
+        AttendantBehavior, AttendantPropertiesState, AttendantTrigger, BEHAVIOR_CHOICES,
         OriginalValues, PickDirection, PropertyField, TRIGGER_CHOICES, attendant_properties_scope,
-        attendant_seed_template_scope, pick_activation, pick_trigger,
+        attendant_seed_template_scope, pick_behavior, pick_trigger,
     };
 
     #[rstest::rstest]
@@ -149,19 +126,44 @@ mod properties_tests {
     }
 
     #[rstest::rstest]
-    fn activation_choices_are_ordered_seed_reset_preserve() {
-        // Given the activation choice row.
+    fn behavior_choices_are_ordered_reset_preserve() {
+        // Given the behavior choice row.
 
         // When reading its values in display order.
-        let values: Vec<_> = ACTIVATION_CHOICES.iter().map(|(v, _)| *v).collect();
+        let values: Vec<_> = BEHAVIOR_CHOICES.iter().map(|(v, _)| *v).collect();
 
-        // Then the row reads seed, reset, preserve.
+        // Then the row reads reset, preserve.
         assert_eq!(
             values,
+            vec![AttendantBehavior::Reset, AttendantBehavior::Preserve]
+        );
+    }
+
+    #[rstest::rstest]
+    fn the_form_has_its_four_rows_in_display_order() {
+        // Given a popup whose cursor is on the first row.
+
+        // When moving down one row per press.
+        let mut popup = AttendantPropertiesState {
+            pending_prep_mode: false,
+            ..AttendantPropertiesState::default()
+        };
+        let mut visited = vec![popup.focus];
+        for _ in 0..3 {
+            popup.focus_next();
+            visited.push(popup.focus);
+        }
+
+        // Then the rows are the four the panel shows, in the order it shows
+        // them: what fires, what it sees, whether it is still being
+        // composed, and the text a run injects.
+        assert_eq!(
+            visited,
             vec![
-                AttendantActivation::Seed,
-                AttendantActivation::Reset,
-                AttendantActivation::Preserve
+                PropertyField::Trigger,
+                PropertyField::Behavior,
+                PropertyField::PrepMode,
+                PropertyField::SeedTemplate,
             ]
         );
     }
@@ -179,26 +181,26 @@ mod properties_tests {
 
     #[rstest::rstest]
     fn picking_right_from_the_last_choice_clamps() {
-        // Given the rightmost activation choice.
+        // Given the rightmost behavior choice.
 
         // When picking right.
-        let picked = pick_activation(AttendantActivation::Preserve, PickDirection::Right);
+        let picked = pick_behavior(AttendantBehavior::Preserve, PickDirection::Right);
 
         // Then the choice does not move.
-        assert_eq!(picked, AttendantActivation::Preserve);
+        assert_eq!(picked, AttendantBehavior::Preserve);
     }
 
     #[rstest::rstest]
     fn picking_moves_one_choice_per_key() {
-        // Given a mid-row activation choice.
+        // Given a mid-row trigger choice.
 
         // When picking in each direction.
-        let left = pick_activation(AttendantActivation::Reset, PickDirection::Left);
-        let right = pick_activation(AttendantActivation::Reset, PickDirection::Right);
+        let left = pick_trigger(AttendantTrigger::ParentCompleted, PickDirection::Left);
+        let right = pick_trigger(AttendantTrigger::ParentCompleted, PickDirection::Right);
 
         // Then each pick lands on the adjacent choice.
-        assert_eq!(left, AttendantActivation::Seed);
-        assert_eq!(right, AttendantActivation::Preserve);
+        assert_eq!(left, AttendantTrigger::ParentCompleted);
+        assert_eq!(right, AttendantTrigger::Manual);
     }
 
     #[rstest::rstest]
@@ -231,6 +233,7 @@ mod properties_tests {
         // When moving forward.
         let mut popup = AttendantPropertiesState {
             focus: PropertyField::SeedTemplate,
+            pending_prep_mode: false,
             ..AttendantPropertiesState::default()
         };
         popup.focus_next();
@@ -248,6 +251,7 @@ mod properties_tests {
         // When moving backward.
         let mut popup = AttendantPropertiesState {
             focus: PropertyField::Trigger,
+            pending_prep_mode: false,
             ..AttendantPropertiesState::default()
         };
         popup.focus_previous();
@@ -257,63 +261,159 @@ mod properties_tests {
     }
 
     #[rstest::rstest]
-    fn every_field_is_reachable_by_moving_down_from_the_first() {
-        // Given a popup opened on its first field.
+    fn the_cursor_cannot_reach_the_rows_above_a_prepping_attendant() {
+        // Given a popup whose attendant is in prep mode, cursor on the
+        // template row.
+        let mut popup = AttendantPropertiesState {
+            focus: PropertyField::SeedTemplate,
+            pending_prep_mode: true,
+            ..AttendantPropertiesState::default()
+        };
 
-        // When moving down once per press, three times.
-        let mut popup = AttendantPropertiesState::default();
-        let mut visited = vec![popup.focus];
-        for _ in 0..2 {
-            popup.focus_next();
-            visited.push(popup.focus);
+        // When moving up twice — enough to cross both dimmed rows.
+        popup.focus_previous();
+        popup.focus_previous();
+        popup.focus_previous();
+
+        // Then the cursor never lands above the prep row. The rows are on
+        // screen but do not apply, so a cursor on one of them would be on a
+        // control that cannot be operated.
+        assert_eq!(popup.focus, PropertyField::PrepMode);
+    }
+
+    #[rstest::rstest]
+    fn the_cursor_returns_to_the_dimmed_rows_once_prep_mode_is_off() {
+        // Given a popup whose attendant has left prep mode, cursor on the
+        // template row.
+        let mut popup = AttendantPropertiesState {
+            focus: PropertyField::SeedTemplate,
+            pending_prep_mode: false,
+            ..AttendantPropertiesState::default()
+        };
+
+        // When moving up three times — once per remaining row.
+        for _ in 0..3 {
+            popup.focus_previous();
         }
 
-        // Then all three fields were visited in display order.
-        assert_eq!(
-            visited,
-            vec![
-                PropertyField::Trigger,
-                PropertyField::Activation,
-                PropertyField::SeedTemplate,
-            ]
-        );
+        // Then the cursor reaches the top row: leaving prep mode makes the
+        // two rows above live again, and one press is still one row.
+        assert_eq!(popup.focus, PropertyField::Trigger);
+    }
+
+    #[rstest::rstest]
+    fn a_composing_attendant_opens_with_the_cursor_on_the_prep_row() {
+        // Given prep mode on and off.
+
+        // When asking where the cursor rests as the popup opens.
+        let prepping = PropertyField::opening_focus(true);
+        let running = PropertyField::opening_focus(false);
+
+        // Then a composing attendant opens on the prep row — the only row
+        // above which two inapplicable rows sit — and a running one opens on
+        // the first row as before.
+        assert_eq!(prepping, PropertyField::PrepMode);
+        assert_eq!(running, PropertyField::Trigger);
+    }
+
+    #[rstest::rstest]
+    fn the_seed_template_still_applies_while_prepping() {
+        // Given each field.
+
+        // When asking whether it applies during composition.
+        let applies = [
+            PropertyField::Trigger,
+            PropertyField::Behavior,
+            PropertyField::PrepMode,
+            PropertyField::SeedTemplate,
+        ]
+        .map(|field| field.applies_while_prepping());
+
+        // Then pins are the point of composing, so the template is exactly
+        // what a user writes during prep; only the two run settings do not
+        // apply.
+        assert_eq!(applies, [false, false, true, true]);
     }
 
     #[rstest::rstest]
     fn pick_moves_the_focused_choice_row_only() {
         // Given a popup focused on the trigger with pending edits on both
-        // rows.
+        // rows and prep mode off.
         let mut popup = AttendantPropertiesState {
             focus: PropertyField::Trigger,
-            pending_activation: AttendantActivation::Seed,
+            pending_behavior: AttendantBehavior::Preserve,
             pending_trigger: AttendantTrigger::ParentCompleted,
+            pending_prep_mode: false,
             ..AttendantPropertiesState::default()
         };
-
-        // When picking left.
-        popup.pick(PickDirection::Left);
-
-        // Then the trigger moved to its leftmost choice.
-        assert_eq!(popup.pending_trigger, AttendantTrigger::ParentCompleted);
-        // And the activation did not move.
-        assert_eq!(popup.pending_activation, AttendantActivation::Seed);
-
-        // Given the same popup refocused on the activation.
-        popup.focus = PropertyField::Activation;
 
         // When picking right.
         popup.pick(PickDirection::Right);
 
-        // Then the activation moved one choice right.
-        assert_eq!(popup.pending_activation, AttendantActivation::Reset);
+        // Then the trigger moved to its rightmost choice.
+        assert_eq!(popup.pending_trigger, AttendantTrigger::Manual);
+        // And the behavior did not move.
+        assert_eq!(popup.pending_behavior, AttendantBehavior::Preserve);
+
+        // Given the same popup refocused on the behavior.
+        popup.focus = PropertyField::Behavior;
+
+        // When picking left.
+        popup.pick(PickDirection::Left);
+
+        // Then the behavior moved one choice left.
+        assert_eq!(popup.pending_behavior, AttendantBehavior::Reset);
         // And the trigger did not move.
-        assert_eq!(popup.pending_trigger, AttendantTrigger::ParentCompleted);
+        assert_eq!(popup.pending_trigger, AttendantTrigger::Manual);
+    }
+
+    #[rstest::rstest]
+    #[case(PickDirection::Left, "h")]
+    #[case(PickDirection::Right, "l")]
+    fn either_pick_key_cycles_prep_mode(#[case] direction: PickDirection, #[case] _key: &str) {
+        // Given a popup focused on the prep row, still composing.
+        let mut popup = AttendantPropertiesState {
+            focus: PropertyField::PrepMode,
+            pending_prep_mode: true,
+            ..AttendantPropertiesState::default()
+        };
+
+        // When picking.
+        popup.pick(direction);
+
+        // Then prep mode is off. A two-state field has no previous or next,
+        // so both keys cycle it the same way.
+        assert!(!popup.pending_prep_mode);
+    }
+
+    #[rstest::rstest]
+    fn pick_does_not_change_the_run_settings_while_prepping() {
+        // Given a popup whose trigger and behavior rows are focused in turn
+        // while the attendant is composing.
+        let mut popup = AttendantPropertiesState {
+            pending_behavior: AttendantBehavior::Preserve,
+            pending_trigger: AttendantTrigger::Manual,
+            pending_prep_mode: true,
+            ..AttendantPropertiesState::default()
+        };
+        popup.focus = PropertyField::Trigger;
+        popup.pick(PickDirection::Right);
+        popup.focus = PropertyField::Behavior;
+        popup.pick(PickDirection::Left);
+
+        // Then neither value moved: they are written down, they simply do
+        // not govern anything until composition ends.
+        assert_eq!(popup.pending_trigger, AttendantTrigger::Manual);
+        assert_eq!(popup.pending_behavior, AttendantBehavior::Preserve);
     }
 
     #[rstest::rstest]
     fn pick_is_a_noop_on_the_seed_template_field() {
         // Given a popup focused on the seed template.
-        let mut popup = AttendantPropertiesState::default();
+        let mut popup = AttendantPropertiesState {
+            pending_prep_mode: false,
+            ..AttendantPropertiesState::default()
+        };
 
         // When picking in either direction.
         popup.pick(PickDirection::Left);
@@ -321,7 +421,7 @@ mod properties_tests {
 
         // Then nothing changed: the template is not a choice row.
         assert_eq!(popup.pending_trigger, AttendantTrigger::Manual);
-        assert_eq!(popup.pending_activation, AttendantActivation::Seed);
+        assert_eq!(popup.pending_behavior, AttendantBehavior::Reset);
     }
 
     #[rstest::rstest]
@@ -330,11 +430,13 @@ mod properties_tests {
         let mut popup = AttendantPropertiesState {
             original: Some(OriginalValues {
                 trigger: AttendantTrigger::ParentCompleted,
-                activation: AttendantActivation::Preserve,
+                behavior: AttendantBehavior::Preserve,
+                prep_mode: false,
                 template: "original".to_owned(),
             }),
             pending_trigger: AttendantTrigger::Manual,
-            pending_activation: AttendantActivation::Seed,
+            pending_behavior: AttendantBehavior::Reset,
+            pending_prep_mode: true,
             ..AttendantPropertiesState::default()
         };
         popup.seed_template.input = "edited".to_owned();
@@ -344,7 +446,8 @@ mod properties_tests {
 
         // Then every field is back to its open-time value.
         assert_eq!(popup.pending_trigger, AttendantTrigger::ParentCompleted);
-        assert_eq!(popup.pending_activation, AttendantActivation::Preserve);
+        assert_eq!(popup.pending_behavior, AttendantBehavior::Preserve);
+        assert!(!popup.pending_prep_mode);
         assert_eq!(popup.seed_template.input, "original");
     }
 

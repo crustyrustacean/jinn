@@ -455,19 +455,17 @@ fn route_to_enqueue_or_steer(
     }
 }
 
-/// Pins a submission into a seed-mode attendant's context without dispatching.
+/// Pins a submission into a preparing attendant's context without dispatching.
 ///
-/// Returns `None` for any session that is not an attendant in `Seed`
-/// activation, so the caller falls through to the normal routing.
+/// Returns `None` for any session that is not an attendant in prep mode, so
+/// the caller falls through to the normal routing.
 fn seed_mode_submission(
     state: &AppState,
     session_id: &SessionId,
     display: String,
 ) -> Option<IntentResult> {
-    use jinn_attendant_msg::AttendantActivation;
-
     let session = state.session.get(session_id)?;
-    if !session.is_attendant() || session.attendant_activation() != AttendantActivation::Seed {
+    if !session.is_attendant() || !session.attendant_is_prepping() {
         return None;
     }
     let entry = ChatEntry::user(display);

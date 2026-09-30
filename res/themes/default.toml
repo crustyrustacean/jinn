@@ -16,6 +16,7 @@ subagent_bg = [70, 58, 105]
 attendant_fg = [255, 105, 180]
 attendant_bg = [56, 48, 17]
 attendant_paused = [128, 132, 144]
+attendant_parent_trigger = [255, 105, 180]
 error_text = "red"
 dormant_fg = [140, 140, 140]
 

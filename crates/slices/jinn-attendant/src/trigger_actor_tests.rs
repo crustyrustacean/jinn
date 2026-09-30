@@ -94,7 +94,7 @@ async fn trigger_does_not_cancel_the_attendants_descendants() {
         let mut attendant =
             jinn_session_state::ChatSessionState::new_attendant(&attendant_read, true);
         attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
         let attendant_id = attendant.session_id().clone();
 
         let mut subagent = jinn_session_state::ChatSessionState::new_child(&attendant_id, true);

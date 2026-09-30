@@ -9,7 +9,7 @@
 )]
 
 use jinn_attendant_msg::{
-    AttendantActivation, AttendantPropertiesState, AttendantTrigger, PopupStatus, PropertyField,
+    AttendantBehavior, AttendantPropertiesState, AttendantTrigger, PopupStatus, PropertyField,
     attendant_properties_slot,
 };
 use jinn_slices::RenderFacts;
@@ -200,17 +200,31 @@ fn right_border_x(buffer: &ratatui::buffer::Buffer, y: u16) -> u16 {
     panic!("no right border found");
 }
 
-/// An open popup over a fresh attendant, focused as given.
+/// An open popup over a *composed* attendant, focused as given.
+///
+/// Prep mode off: the dimmed-row and cage tests build their own popups from
+/// this one, and a fixture that dimmed its own rows would make the plain
+/// styling assertions below fail for the wrong reason.
 fn popup_focused(focus: PropertyField) -> AttendantPropertiesState {
     AttendantPropertiesState {
         focus,
         pending_trigger: AttendantTrigger::ParentCompleted,
-        pending_activation: AttendantActivation::Preserve,
+        pending_behavior: AttendantBehavior::Preserve,
+        pending_prep_mode: false,
         seed_template: jinn_slices::LineInput {
             input: "draft".to_owned(),
             cursor_pos: 5,
         },
         ..AttendantPropertiesState::default()
+    }
+}
+
+/// The same popup, still composing: the two rows above the prep row apply
+/// to nothing and are drawn dimmed.
+fn popup_focused_while_prepping(focus: PropertyField) -> AttendantPropertiesState {
+    AttendantPropertiesState {
+        pending_prep_mode: true,
+        ..popup_focused(focus)
     }
 }
 
@@ -240,14 +254,14 @@ fn focused_row_marker_and_label_are_yellow_only() {
 #[rstest::rstest]
 #[test]
 fn the_focused_row_carries_the_attendant_background() {
-    // Given a popup focused on the activation row.
-    let buffer = render_properties(popup_focused(PropertyField::Activation));
-    // The activation field is the second body row; the rows are adjacent
+    // Given a popup focused on the behavior row.
+    let buffer = render_properties(popup_focused(PropertyField::Behavior));
+    // The behavior field is the second body row; the rows are adjacent
     // because the help is an overlay rather than a row of its own.
     let row = body_top(&buffer) + 1;
 
     // When reading a cell on that row.
-    let label_x = find_in_row(&buffer, row, "activation:").expect("activation label");
+    let label_x = find_in_row(&buffer, row, "behavior:").expect("behavior label");
 
     // Then the row is backed by the attendant's background color, so the
     // cursor reads as a selected row rather than a tinted label.
@@ -268,16 +282,16 @@ fn unfocused_row_marker_and_label_are_plain() {
     let buffer = render_properties(popup_focused(PropertyField::Trigger));
     let top = body_top(&buffer);
 
-    // When locating the unfocused activation row. The rows are adjacent:
+    // When locating the unfocused behavior row. The rows are adjacent:
     // the help is an overlay, so it no longer sits between them.
-    let activation_y = top + 1;
-    let label_x = find_in_row(&buffer, activation_y, "activation:").expect("activation label");
+    let behavior_y = top + 1;
+    let label_x = find_in_row(&buffer, behavior_y, "behavior:").expect("behavior label");
 
     // Then the label is plain text, not the focus accent.
-    assert_eq!(fg_at(&buffer, label_x, activation_y), PRIMARY_TEXT);
+    assert_eq!(fg_at(&buffer, label_x, behavior_y), PRIMARY_TEXT);
     // And the row carries no background — only the focused row is tinted.
     assert_eq!(
-        bg_at(&buffer, label_x, activation_y),
+        bg_at(&buffer, label_x, behavior_y),
         Color::Reset,
         "an unfocused row must not be tinted"
     );
@@ -286,29 +300,47 @@ fn unfocused_row_marker_and_label_are_plain() {
 #[rstest::rstest]
 #[test]
 fn selected_choice_uses_the_new_green_key() {
-    // Given a popup whose pending activation is `continue` (last choice),
+    // Given a popup whose pending behavior is `preserve` (last choice),
     // focused on the template field so no choice row is focused.
     let buffer = render_properties(popup_focused(PropertyField::SeedTemplate));
     let top = body_top(&buffer);
-    let activation_y = top + 1; // no hint above: the trigger row is unfocused
+    let behavior_y = top + 1; // no hint above: the trigger row is unfocused
 
-    // When locating the three activation choices.
-    let seed_x = find_in_row(&buffer, activation_y, "seed").expect("seed");
-    let reset_x = find_in_row(&buffer, activation_y, "reset").expect("reset");
-    let preserve_x = find_in_row(&buffer, activation_y, "preserve").expect("preserve");
+    // When locating the two behavior choices.
+    let reset_x = find_in_row(&buffer, behavior_y, "reset").expect("reset");
+    let preserve_x = find_in_row(&buffer, behavior_y, "preserve").expect("preserve");
 
     // Then the selected choice is the attendant option green…
-    assert_eq!(fg_at(&buffer, preserve_x, activation_y), Color::LightGreen);
-    // …and the unselected ones are plain text.
-    assert_eq!(fg_at(&buffer, seed_x, activation_y), PRIMARY_TEXT);
-    assert_eq!(fg_at(&buffer, reset_x, activation_y), PRIMARY_TEXT);
+    assert_eq!(fg_at(&buffer, preserve_x, behavior_y), Color::LightGreen);
+    // …and the unselected one is plain text.
+    assert_eq!(fg_at(&buffer, reset_x, behavior_y), PRIMARY_TEXT);
+}
+
+#[rstest::rstest]
+#[case(0, "trigger:")]
+#[case(1, "behavior:")]
+#[case(2, "prep mode:")]
+#[case(3, "seed template:")]
+fn the_form_shows_a_row_at_a_given_offset(#[case] offset: u16, #[case] label: &str) {
+    // Given a popup over a composed attendant.
+    let buffer = render_properties(popup_focused(PropertyField::SeedTemplate));
+    let top = body_top(&buffer);
+
+    // When reading the row at that offset from the top of the form.
+    let row = row_from_border(&buffer, top + offset);
+
+    // Then it is the field that offset names.
+    assert!(
+        row.contains(label),
+        "expected {label:?} at offset {offset}, read: {row}"
+    );
 }
 
 #[rstest::rstest]
 #[test]
 fn help_overlay_is_hidden_until_question_mark_is_pressed() {
-    // Given a popup focused on the activation row, with help not toggled.
-    let buffer = render_properties(popup_focused(PropertyField::Activation));
+    // Given a popup focused on the behavior row, with help not toggled.
+    let buffer = render_properties(popup_focused(PropertyField::Behavior));
 
     // When reading the rendered popup.
     let rendered = all_text(&buffer);
@@ -316,7 +348,7 @@ fn help_overlay_is_hidden_until_question_mark_is_pressed() {
     // Then no help text is on screen. The help is an overlay, not a row in
     // the form, so it costs the popup nothing until it is asked for.
     assert!(
-        !rendered.contains("seed pins without dispatching"),
+        !rendered.contains("What each run sees"),
         "help must not render before `?`: {rendered}"
     );
 }
@@ -331,8 +363,12 @@ fn row_is_card(buffer: &ratatui::buffer::Buffer, y: u16) -> bool {
 
 #[rstest::rstest]
 #[case::trigger(PropertyField::Trigger, "When the attendant re-runs on its own")]
-#[case::activation(PropertyField::Activation, "How the session's context is prepared")]
-#[case::template(PropertyField::SeedTemplate, "Text injected on each activation")]
+#[case::behavior(PropertyField::Behavior, "What each run sees")]
+#[case::prep(
+    PropertyField::PrepMode,
+    "Whether the attendant is still being composed"
+)]
+#[case::template(PropertyField::SeedTemplate, "Text injected on each run")]
 #[test]
 fn help_overlay_shows_the_focused_field_when_toggled(
     #[case] field: PropertyField,
@@ -368,7 +404,7 @@ fn help_overlay_is_suppressed_while_the_template_editor_is_open() {
     // Then the help is not drawn over the draft being typed into.
     let rendered = all_text(&buffer);
     assert!(
-        !rendered.contains("Text injected on each activation"),
+        !rendered.contains("Text injected on each run"),
         "help must not cover the editor's draft: {rendered}"
     );
 }
@@ -379,7 +415,7 @@ fn help_overlay_wraps_at_the_popup_width() {
     // Given a narrow terminal with the help overlay toggled on: narrow
     // enough that every help line wraps, tall enough to hold the card
     // beside the form.
-    let mut popup = popup_focused(PropertyField::Activation);
+    let mut popup = popup_focused(PropertyField::Behavior);
     popup.help_visible = true;
     let buffer = render_properties_in(popup, 44, 26);
 
@@ -390,13 +426,13 @@ fn help_overlay_wraps_at_the_popup_width() {
     // needles are single words, so the assertion holds wherever the wrap
     // happens to fall.
     assert!(
-        rendered.contains("activation") && rendered.contains("preserve"),
+        rendered.contains("behavior") && rendered.contains("preserve"),
         "the whole help must be present, wrapped rather than cut: {rendered}"
     );
     // And the popup's own rows still render — the overlay is laid over the
     // terminal, not carved out of the form.
     assert!(
-        rendered.contains("activation:"),
+        rendered.contains("behavior:"),
         "the form must still be drawn: {rendered}"
     );
 }
@@ -516,12 +552,12 @@ fn editor_view_places_the_cursor_in_the_draft() {
 
     // Then the cursor sits on the template row — with focus on the seed
     // template field, no hint line renders above it, so the draft is the
-    // third body row (trigger, activation, template) — and exactly one
-    // cell past the draft's last grapheme.
+    // fourth body row (trigger, behavior, prep mode, template) — and
+    // exactly one cell past the draft's last grapheme.
     let cursor = terminal.get_cursor_position().expect("cursor");
-    // Derived rather than hardcoded: the template row is the third body
+    // Derived rather than hardcoded: the template row is the fourth body
     // row, and the popup's own position moves with its height.
-    let template_y = body_top(terminal.backend().buffer()) + 2;
+    let template_y = body_top(terminal.backend().buffer()) + 3;
     assert_eq!(cursor.y, template_y, "cursor rests on the template row");
     let buffer = terminal.backend().buffer();
     assert_eq!(
@@ -562,7 +598,7 @@ fn editor_window_follows_the_cursor_in_a_long_draft(
     let buffer = terminal.backend().buffer();
     // Derived from the render rather than hardcoded: the popup's position
     // and width both move with its height and the terminal size.
-    let template_y = body_top(buffer) + 2;
+    let template_y = body_top(buffer) + 3;
 
     // Then the cursor rests immediately after a visible draft grapheme —
     // never floating over the blank tail of the row, which is what a
@@ -598,7 +634,7 @@ fn wide_graphemes_keep_the_cursor_on_its_own_text(
     let mut terminal = render_editor(popup);
     let cursor = terminal.get_cursor_position().expect("cursor");
     let buffer = terminal.backend().buffer();
-    let template_y = 7 + 1 + 2;
+    let template_y = 7 + 1 + 3;
 
     // Then the cell under the cursor is a real (blank) cursor cell within
     // the popup, and the text before it ends where the cursor is.
@@ -617,7 +653,7 @@ fn wide_graphemes_keep_the_cursor_on_its_own_text(
 /// A draft far wider than the row never spills past the popup border.
 #[rstest::rstest]
 #[case(PropertyField::SeedTemplate, "the focused row's wide marker")]
-#[case(PropertyField::Activation, "an unfocused row's plain marker")]
+#[case(PropertyField::Behavior, "an unfocused row's plain marker")]
 fn template_window_never_overwrites_the_popup_border(
     #[case] focus: PropertyField,
     #[case] _about: &str,
@@ -683,7 +719,8 @@ fn theme_key_defaults_to_the_age_fresh_green() {
 
 #[rstest::rstest]
 #[case::trigger(PropertyField::Trigger)]
-#[case::activation(PropertyField::Activation)]
+#[case::behavior(PropertyField::Behavior)]
+#[case::prep(PropertyField::PrepMode)]
 #[case::template(PropertyField::SeedTemplate)]
 #[test]
 fn the_help_card_leaves_the_field_it_describes_readable(#[case] field: PropertyField) {
@@ -707,7 +744,8 @@ fn the_help_card_leaves_the_field_it_describes_readable(#[case] field: PropertyF
 
 #[rstest::rstest]
 #[case::trigger(PropertyField::Trigger)]
-#[case::activation(PropertyField::Activation)]
+#[case::behavior(PropertyField::Behavior)]
+#[case::prep(PropertyField::PrepMode)]
 #[case::template(PropertyField::SeedTemplate)]
 #[test]
 fn the_help_card_sits_below_the_form_on_every_field(#[case] field: PropertyField) {
@@ -788,7 +826,7 @@ fn the_tooltip_is_never_positioned_off_screen() {
 fn the_help_card_takes_its_colors_from_the_theme() {
     // Given a popup with the help card toggled on.
     let theme = jinn_theme::default_theme();
-    let mut popup = popup_focused(PropertyField::Activation);
+    let mut popup = popup_focused(PropertyField::Behavior);
     popup.help_visible = true;
 
     // When rendering.
@@ -800,7 +838,7 @@ fn the_help_card_takes_its_colors_from_the_theme() {
     let rows = card_row_numbers(&buffer);
     let (y, x) = rows
         .iter()
-        .find_map(|&y| find_in_row(&buffer, y, "populate").map(|x| (y, x)))
+        .find_map(|&y| find_in_row(&buffer, y, "pins alone").map(|x| (y, x)))
         .expect("a description on the card");
     assert_eq!(bg_at(&buffer, x, y), theme.user_block_bg);
     assert_eq!(fg_at(&buffer, x, y), theme.primary_text);
@@ -809,9 +847,9 @@ fn the_help_card_takes_its_colors_from_the_theme() {
 #[rstest::rstest]
 #[test]
 fn a_listed_choice_is_green_like_the_forms_own_selected_choice() {
-    // Given the activation card.
+    // Given the behavior card.
     let theme = jinn_theme::default_theme();
-    let mut popup = popup_focused(PropertyField::Activation);
+    let mut popup = popup_focused(PropertyField::Behavior);
     popup.help_visible = true;
 
     // When rendering.
@@ -832,7 +870,7 @@ fn a_listed_choice_is_green_like_the_forms_own_selected_choice() {
 fn the_help_card_names_the_field_in_the_focus_accent() {
     // Given a popup with the help card toggled on.
     let theme = jinn_theme::default_theme();
-    let mut popup = popup_focused(PropertyField::Activation);
+    let mut popup = popup_focused(PropertyField::Behavior);
     popup.help_visible = true;
 
     // When rendering.
@@ -842,21 +880,21 @@ fn the_help_card_names_the_field_in_the_focus_accent() {
     // so the card is tied to the row it answers for.
     let (top, _) = tooltip_rows(&buffer);
     let header = (top + 1..=top + 3)
-        .find(|&y| find_in_row(&buffer, y, "activation").is_some())
+        .find(|&y| find_in_row(&buffer, y, "behavior").is_some())
         .expect("the header, inside the card's border");
-    let x = find_in_row(&buffer, header, "activation").expect("the header");
+    let x = find_in_row(&buffer, header, "behavior").expect("the header");
     assert_eq!(fg_at(&buffer, x, header), theme.focus_accent);
 }
 
 #[rstest::rstest]
 #[test]
 fn the_focused_row_uses_the_user_message_background() {
-    // Given a popup focused on the activation row.
-    let buffer = render_properties(popup_focused(PropertyField::Activation));
-    let row = highlighted_row_of(&buffer, PropertyField::Activation);
+    // Given a popup focused on the behavior row.
+    let buffer = render_properties(popup_focused(PropertyField::Behavior));
+    let row = highlighted_row_of(&buffer, PropertyField::Behavior);
 
     // When reading the background behind the label.
-    let label_x = find_in_row(&buffer, row, "activation:").expect("activation label");
+    let label_x = find_in_row(&buffer, row, "behavior:").expect("behavior label");
 
     // Then it is the user-message background, not the attendant's own.
     assert_eq!(
@@ -887,7 +925,7 @@ fn the_selected_choice_stays_green_on_the_focused_row() {
 
 #[rstest::rstest]
 #[case::trigger(PropertyField::Trigger, "trigger:")]
-#[case::activation(PropertyField::Activation, "activation:")]
+#[case::behavior(PropertyField::Behavior, "behavior:")]
 #[case::template(PropertyField::SeedTemplate, "seed template:")]
 #[test]
 fn the_popup_rows_do_not_move_with_the_cursor(#[case] field: PropertyField, #[case] label: &str) {
@@ -952,7 +990,7 @@ fn the_status_line_shows_the_overwrite_prompt() {
 
 #[rstest::rstest]
 #[case::trigger(PropertyField::Trigger, "parent-completed:")]
-#[case::activation(PropertyField::Activation, "seed:")]
+#[case::behavior(PropertyField::Behavior, "reset:")]
 #[case::template(PropertyField::SeedTemplate, "<prior report>:")]
 #[test]
 fn the_help_card_keeps_the_blank_line_between_its_lead_and_its_list(
@@ -993,7 +1031,8 @@ fn the_help_card_keeps_the_blank_line_between_its_lead_and_its_list(
 
 #[rstest::rstest]
 #[case::trigger(PropertyField::Trigger)]
-#[case::activation(PropertyField::Activation)]
+#[case::behavior(PropertyField::Behavior)]
+#[case::prep(PropertyField::PrepMode)]
 #[case::template(PropertyField::SeedTemplate)]
 #[test]
 fn every_field_has_a_help_card_even_on_a_short_terminal(#[case] field: PropertyField) {
@@ -1022,7 +1061,7 @@ fn every_field_has_a_help_card_even_on_a_short_terminal(#[case] field: PropertyF
 }
 
 #[rstest::rstest]
-#[case::activation(PropertyField::Activation, "preserve")]
+#[case::behavior(PropertyField::Behavior, "preserve")]
 #[case::trigger(PropertyField::Trigger, "manual")]
 #[test]
 fn a_listed_choice_is_introduced_by_a_colon(#[case] field: PropertyField, #[case] choice: &str) {
@@ -1103,7 +1142,8 @@ fn tooltip_rows(buffer: &ratatui::buffer::Buffer) -> (u16, u16) {
 fn highlighted_row_of(buffer: &ratatui::buffer::Buffer, field: PropertyField) -> u16 {
     let label = match field {
         PropertyField::Trigger => "trigger:",
-        PropertyField::Activation => "activation:",
+        PropertyField::Behavior => "behavior:",
+        PropertyField::PrepMode => "prep mode:",
         PropertyField::SeedTemplate => "seed template:",
     };
     for y in body_top(buffer)..buffer.area.height {
@@ -1116,7 +1156,8 @@ fn highlighted_row_of(buffer: &ratatui::buffer::Buffer, field: PropertyField) ->
 
 #[rstest::rstest]
 #[case::trigger(PropertyField::Trigger)]
-#[case::activation(PropertyField::Activation)]
+#[case::behavior(PropertyField::Behavior)]
+#[case::prep(PropertyField::PrepMode)]
 #[case::template(PropertyField::SeedTemplate)]
 #[test]
 fn the_help_card_is_framed_in_the_attendants_own_pink(#[case] field: PropertyField) {
@@ -1177,7 +1218,7 @@ fn the_card_border_leaves_no_room_the_text_runs_out_of() {
 #[test]
 fn no_blank_row_sits_between_the_form_and_the_card() {
     // Given a popup with the help card on.
-    let mut popup = popup_focused(PropertyField::Activation);
+    let mut popup = popup_focused(PropertyField::Behavior);
     popup.help_visible = true;
 
     // When rendering.

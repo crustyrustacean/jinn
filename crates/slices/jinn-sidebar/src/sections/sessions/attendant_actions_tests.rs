@@ -189,15 +189,18 @@ fn cancel_count(result: &jinn_slices::route::RouteResult) -> usize {
         .count()
 }
 
-/// A reset-mode attendant with a seeded run, parented to `parent`.
+/// A composed attendant with a seeded run, parented to `parent`.
 ///
 /// Built from a real parent session so the parent link — which is what the
 /// cascade walk follows — is the one the production path would produce.
+/// Composition ends here because every `R` test is about a runnable
+/// attendant; the refusal is covered by its own test.
 fn reset_attendant(
     parent: &jinn_session_state::ChatSessionState,
 ) -> jinn_session_state::ChatSessionState {
     let mut attendant = jinn_session_state::ChatSessionState::new_attendant(parent, true);
-    attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+    attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
+    attendant.set_attendant_is_prepping(false);
     attendant.set_seed_template("verify: <prior report>".to_owned());
     attendant.append_attendant_report("a finding".to_owned());
     attendant
@@ -455,13 +458,14 @@ fn rerun_does_not_cancel_below_a_fork() {
 
 #[rstest::rstest]
 #[test]
-fn rerun_on_a_seed_attendant_is_still_refused() {
-    // Given an attendant still composing its instructions, in seed mode.
+fn rerun_on_a_composing_attendant_is_still_refused() {
+    // Given an attendant still composing its instructions, so `R` is
+    // refused however the trigger is set.
     let mut state = state_with_selected_row(0);
     {
         let parent = jinn_session_state::ChatSessionState::new();
-        let mut attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
-        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Seed);
+        // Left in prep mode, which is the state `N` creates an attendant in.
+        let attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
         state.session.insert(attendant);
     }
 

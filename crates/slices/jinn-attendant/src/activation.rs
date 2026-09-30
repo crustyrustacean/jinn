@@ -1,8 +1,7 @@
 //! Preparing an attendant's context and dispatching its run.
 
 use jinn_attendant_msg::{
-    AttendantContextPolicy, NO_PARENT_SESSION_TEXT, NO_PRIOR_REPORT_TEXT, PARENT_SESSION_HEADER,
-    PRIOR_REPORT_PLACEHOLDER,
+    NO_PARENT_SESSION_TEXT, NO_PRIOR_REPORT_TEXT, PARENT_SESSION_HEADER, PRIOR_REPORT_PLACEHOLDER,
 };
 use jinn_core_types::chat_entry::ChatEntry;
 use jinn_core_types::{ChatEntryId, ContextOverride};
@@ -54,7 +53,7 @@ pub fn render_seed_text(
 
 /// Force-excludes every non-pinned entry in the session's history.
 ///
-/// This is what `Reset` activation means: the model sees only the pins.
+/// This is what the `reset` behavior means: the model sees only the pins.
 /// The human still sees the full transcript; `ForcedExclude` hides an entry
 /// from context, not from the UI, and the user can un-hide any entry.
 ///
@@ -90,7 +89,7 @@ pub fn reset_context(session: &mut ChatSessionState) -> Vec<jinn_core_types::Cha
 /// governs what an unattended trigger fire does, not this.
 #[must_use]
 pub fn prepare_manual_run(session: &mut ChatSessionState) -> (Option<ChatEntry>, Vec<ChatEntryId>) {
-    let reset = if session.attendant_context_policy() == AttendantContextPolicy::Reset {
+    let reset = if session.attendant_behavior().resets_context() {
         reset_context(session)
     } else {
         Vec::new()
@@ -98,17 +97,24 @@ pub fn prepare_manual_run(session: &mut ChatSessionState) -> (Option<ChatEntry>,
     (seed_entry(session), reset)
 }
 
-/// Resets the session's context if it is in `Reset` mode, then builds the
-/// seeded run prompt for a *trigger* fire.
+/// Resets the session's context if it resets, then builds the seeded run
+/// prompt for a *trigger* fire.
 ///
-/// The mode governs *context*, never *dispatch*. Every mode allowed to run
-/// sends a message; what differs is what the run sees. `Preserve` runs on
-/// the context as it stands, and still dispatches the template — the
+/// The behavior governs *context*, never *dispatch*. Every behavior
+/// dispatches a message; what differs is what the run sees. `Preserve` runs
+/// on the context as it stands, and still dispatches the template — the
 /// standing instructions that describe what this attendant is for. It folds
-/// the prior report in like every other mode: the report is the attendant's
-/// own record of what it found last time, and preserving context means not
-/// forgetting it. The difference from `Reset` is what happens to the
-/// *history*, not what the prompt says.
+/// the prior report in like every other behavior: the report is the
+/// attendant's own record of what it found last time, and preserving context
+/// means not forgetting it. The difference from `Reset` is what happens to
+/// the *history*, not what the prompt says.
+///
+/// An attendant still being composed dispatches nothing at all. The gate
+/// lives here rather than only at the call site so that a trigger fire and a
+/// manual re-run cannot disagree about what a preparing attendant does, and
+/// it is a gate rather than a caller-side check because `None` for a seed
+/// entry is the same shape as an empty template — a run with nothing to say
+/// is legitimately a no-dispatch.
 ///
 /// The earlier design returned `None` here for `Preserve`, on the reasoning
 /// that an unattended fire "never injects a message the user did not ask
@@ -120,16 +126,15 @@ pub fn prepare_manual_run(session: &mut ChatSessionState) -> (Option<ChatEntry>,
 pub fn prepare_trigger_run(
     session: &mut ChatSessionState,
 ) -> (Option<ChatEntry>, Vec<ChatEntryId>) {
-    let reset = if session.attendant_context_policy() == AttendantContextPolicy::Reset {
+    if session.attendant_is_prepping() {
+        return (None, Vec::new());
+    }
+    let reset = if session.attendant_behavior().resets_context() {
         reset_context(session)
     } else {
         Vec::new()
     };
-    let seed = match session.attendant_context_policy() {
-        AttendantContextPolicy::Pin => None,
-        AttendantContextPolicy::Reset | AttendantContextPolicy::Preserve => seed_entry(session),
-    };
-    (seed, reset)
+    (seed_entry(session), reset)
 }
 
 /// The prompt a run dispatches: the template with the prior report folded in.

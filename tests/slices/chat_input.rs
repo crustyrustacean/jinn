@@ -5143,14 +5143,16 @@ fn seed_mode_submission_leaves_normal_sessions_dispatching() {
 }
 
 #[rstest::rstest]
-fn reset_mode_attendant_submissions_dispatch_normally() {
-    // Given a reset-mode attendant (armed and firing) as the active session.
+fn a_composed_attendant_submissions_dispatch_normally() {
+    // Given a composed attendant — out of prep mode, so it is runnable — as
+    // the active session.
     let mut state = AppState::default_with_scope_focus();
     {
         let session = state.active_session_mut();
         let parent = jinn_session_state::ChatSessionState::new();
         let mut attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
-        attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
+        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
+        attendant.set_attendant_is_prepping(false);
         *session = attendant;
     }
     state.update_active_input(|i| i.insert_text("go"));
@@ -5161,7 +5163,7 @@ fn reset_mode_attendant_submissions_dispatch_normally() {
         jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
-    // Then the normal enqueue path runs — only Seed mode pins without
+    // Then the normal enqueue path runs — only prep mode pins without
     // dispatching.
     assert!(
         result

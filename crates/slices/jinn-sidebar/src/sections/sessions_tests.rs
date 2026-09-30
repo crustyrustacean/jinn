@@ -1136,7 +1136,8 @@ fn style_entry(
         is_last_child: false,
         is_subagent,
         is_attendant: false,
-        is_attendant_paused: false,
+        is_attendant_prepping: false,
+        attendant_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     }
@@ -3203,23 +3204,20 @@ fn an_unchanged_frame_rebuilds_the_tree_only_once() {
     );
 }
 
-/// State holding a parent session and an attendant whose trigger decides
-/// whether the paused marker shows.
-///
-/// An attendant is born paused (`Manual` trigger, `Seed` activation), so the
-/// not-paused configuration is set explicitly.
-fn state_with_attendant_on_trigger(trigger: jinn_attendant_msg::AttendantTrigger) -> AppState {
+/// State holding a parent session and a composed attendant.
+fn state_with_composed_attendant() -> AppState {
     let mut state = AppState::default_with_scope_focus();
     let parent = state.session.active_session().clone();
     let mut attendant = ChatSessionState::new_attendant(&parent, true);
     attendant.set_title("reviewer".to_owned());
-    attendant.set_attendant_activation(jinn_attendant_msg::AttendantActivation::Reset);
-    attendant.set_attendant_trigger(trigger);
+    attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
+    attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+    attendant.set_attendant_is_prepping(false);
     state.session.insert(attendant);
     state
 }
 
-/// The id of the attendant in `state`, whichever trigger it carries.
+/// The id of the attendant in `state`.
 fn attendant_id(state: &AppState) -> jinn_core_types::SessionId {
     state
         .session
@@ -3229,20 +3227,19 @@ fn attendant_id(state: &AppState) -> jinn_core_types::SessionId {
         .expect("an attendant session")
 }
 
-/// Whether the sessions tree marks any attendant as paused.
-fn any_attendant_paused(state: &AppState) -> bool {
+/// Whether the sessions tree marks any attendant as still composing.
+fn any_attendant_prepping(state: &AppState) -> bool {
     sorted_open_sessions(state)
         .iter()
-        .any(|entry| entry.is_attendant_paused)
+        .any(|entry| entry.is_attendant_prepping)
 }
 
 #[rstest::rstest]
-fn changing_an_attendant_trigger_refreshes_the_sessions_tree() {
-    // Given a section that has already rendered a frame with an attendant
-    // set to trigger on its own, so no paused marker is owed.
+fn leaving_prep_mode_refreshes_the_sessions_tree() {
+    // Given a section that has already rendered a frame with a composed
+    // attendant, so no prep marker is owed.
     let mut section = SessionsSection::new();
-    let mut state =
-        state_with_attendant_on_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+    let mut state = state_with_composed_attendant();
     {
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
@@ -3254,17 +3251,18 @@ fn changing_an_attendant_trigger_refreshes_the_sessions_tree() {
     }
     let after_first = section.rebuilds();
     assert!(
-        !any_attendant_paused(&state),
-        "an auto-triggered attendant is not paused"
+        !any_attendant_prepping(&state),
+        "a composed attendant is not marked"
     );
 
-    // When the trigger is committed and the section asks for its height again.
+    // When the attendant goes back into prep mode and the section asks for
+    // its height again.
     let id = attendant_id(&state);
     state
         .session
         .get_mut(&id)
         .expect("the attendant")
-        .set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::Manual);
+        .set_attendant_is_prepping(true);
     {
         let slices = jinn_slices::Slices::new();
         let overlay_views = jinn_slices::OverlayViews::new();
@@ -3275,34 +3273,102 @@ fn changing_an_attendant_trigger_refreshes_the_sessions_tree() {
         ));
     }
 
-    // Then the tree is rebuilt, because the key summarises the paused flag.
+    // Then the tree is rebuilt, because the key summarises the prep flag.
     assert!(
         section.rebuilds() > after_first,
-        "a trigger change must invalidate the memoized tree"
+        "a prep-mode change must invalidate the memoized tree"
     );
-    // And the tree the section is now caching marks the attendant paused.
+    // And the tree the section is now caching marks the attendant as
+    // composing.
     assert!(
-        any_attendant_paused(&state),
-        "a manually triggered attendant is paused"
+        any_attendant_prepping(&state),
+        "a composing attendant is marked"
     );
 }
 
 #[rstest::rstest]
-fn the_sessions_list_key_summarizes_the_paused_flag() {
-    // Given a state whose attendant is set to trigger on its own.
-    let running =
-        state_with_attendant_on_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+fn a_manual_trigger_alone_does_not_mark_an_attendant_as_composing() {
+    // Given a composed attendant on the manual trigger.
+    let mut state = state_with_composed_attendant();
+    let id = attendant_id(&state);
+    state
+        .session
+        .get_mut(&id)
+        .expect("the attendant")
+        .set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::Manual);
+
+    // When the sessions tree is built.
+    let tree = sorted_open_sessions(&state);
+
+    // Then it carries no prep marker. A manual trigger declines to fire on
+    // its own; the `R` key still runs the attendant, and marking it as
+    // unable to run is the ambiguity the two-fact split removed.
+    assert!(
+        !tree.iter().any(|entry| entry.is_attendant_prepping),
+        "a manual trigger is not composition"
+    );
+}
+
+#[rstest::rstest]
+fn a_parent_completed_attendant_carries_the_trigger_marker() {
+    // Given a composed attendant on the parent-completed trigger.
+    let mut state = state_with_composed_attendant();
+
+    // When the sessions tree is built.
+    let tree = sorted_open_sessions(&state);
+
+    // Then it carries the marker saying it fires on its own.
+    assert!(
+        tree.iter()
+            .any(|entry| entry.attendant_fires_on_parent_completion),
+        "a parent-completed attendant must be marked as one that fires on its own"
+    );
+}
+
+#[rstest::rstest]
+fn the_sessions_list_key_summarizes_the_prep_flag() {
+    // Given a state whose attendant is composed.
+    let running = state_with_composed_attendant();
     let running_key = crate::sections::sessions::state::session_list_key(&running);
 
-    // When the same attendant's trigger is committed as manual.
-    let mut paused = state_with_attendant_on_trigger(jinn_attendant_msg::AttendantTrigger::Manual);
-    let paused_key = crate::sections::sessions::state::session_list_key(&paused);
+    // When the same attendant goes back into prep mode.
+    let mut preparing = state_with_composed_attendant();
+    let id = attendant_id(&preparing);
+    preparing
+        .session
+        .get_mut(&id)
+        .expect("the attendant")
+        .set_attendant_is_prepping(true);
+    let preparing_key = crate::sections::sessions::state::session_list_key(&preparing);
 
-    // Then the two keys differ, so a pause-state change can never be a
+    // Then the two keys differ, so a prep-state change can never be a
     // cache hit and leave the marker stale.
     assert_ne!(
-        running_key, paused_key,
+        running_key, preparing_key,
         "the memo key must summarize the flag the tree reads"
+    );
+}
+
+#[rstest::rstest]
+fn the_sessions_list_key_summarizes_the_trigger_marker() {
+    // Given a state whose attendant fires on its parent's completion.
+    let automatic = state_with_composed_attendant();
+    let automatic_key = crate::sections::sessions::state::session_list_key(&automatic);
+
+    // When the same attendant's trigger is committed as manual.
+    let mut manual = state_with_composed_attendant();
+    manual
+        .session
+        .get_mut(&attendant_id(&manual))
+        .expect("the attendant")
+        .set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::Manual);
+    let manual_key = crate::sections::sessions::state::session_list_key(&manual);
+
+    // Then the two keys differ, so the second marker cannot go stale behind
+    // a cache hit either.
+    assert_ne!(
+        automatic_key, manual_key,
+        "the memo key must summarize every flag the tree reads"
     );
 }
 

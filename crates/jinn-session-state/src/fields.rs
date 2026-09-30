@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use jiff::Timestamp;
 use jinn_attendant_msg::{
-    AttendantActivation, AttendantReport, AttendantTrigger, default_seed_template,
+    AttendantBehavior, AttendantReport, AttendantTrigger, default_seed_template,
 };
 use jinn_core_types::{ChatHistory, SessionId};
 use jinn_session_lifecycle_msg::LifecycleScriptState;
@@ -170,13 +170,17 @@ impl Default for SessionStorageFields {
 /// attendants existed deserializes without a migration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionAttendantFields {
-    /// How this session's context is prepared when it runs.
+    /// What a run in this session sees of the conversation.
     #[serde(default)]
-    pub activation: AttendantActivation,
+    pub behavior: AttendantBehavior,
     /// The condition that causes an automatic re-run.
     #[serde(default)]
     pub trigger: AttendantTrigger,
-    /// User-editable text used to inject the prior report at activation.
+    /// Whether the attendant is still being composed. While it is, nothing
+    /// dispatches and the two settings above govern nothing.
+    #[serde(default = "crate::fields::default_prep_mode")]
+    pub prep_mode: bool,
+    /// User-editable text used to inject the prior report on each run.
     #[serde(default = "default_seed_template")]
     pub seed_template: String,
     /// Append-only; the harness never removes or edits a report.
@@ -187,10 +191,22 @@ pub struct SessionAttendantFields {
 impl Default for SessionAttendantFields {
     fn default() -> Self {
         Self {
-            activation: AttendantActivation::default(),
+            behavior: AttendantBehavior::default(),
             trigger: AttendantTrigger::default(),
+            prep_mode: default_prep_mode(),
             seed_template: default_seed_template(),
             reports: Vec::new(),
         }
     }
+}
+
+/// The default for [`SessionAttendantFields::prep_mode`].
+///
+/// Composition is the state an attendant is *born* in — `N` creates one the
+/// user has not finished writing — so a session with no stored answer is
+/// composing. A bool has no third value to say "not set" with, so the
+/// default *is* the answer rather than a sentinel that means it; that is why
+/// this is a function rather than a bare `true` on the attribute.
+pub const fn default_prep_mode() -> bool {
+    true
 }
