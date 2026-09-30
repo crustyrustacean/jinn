@@ -16,6 +16,27 @@ use crate::sections::intent::handle_sidebar_focus;
 use crate::sections::pins::PinsSection;
 use crate::sections::section_trait::SidebarIntent;
 use crate::sections::sidebar::{Sidebar, jump_to_section, navigate_sidebar};
+
+/// Puts the sessions cursor on the session drawn at `row`.
+fn cursor_to_row(state: &mut AppState, row: usize) {
+    let id = crate::sections::sessions::state::sorted_open_sessions(state)
+        .get(row)
+        .map(|entry| entry.id.clone())
+        .expect("the row under test exists in the list it indexes");
+    state
+        .frontend
+        .update_sections(|s| s.sessions.selected_id = Some(id));
+}
+
+/// The row the sessions cursor is drawn on.
+fn cursor_row(state: &AppState) -> Option<usize> {
+    let id = state
+        .frontend
+        .with_sections(|s| s.sessions.selected_id.clone(), || None)?;
+    crate::sections::sessions::state::sorted_open_sessions(state)
+        .iter()
+        .position(|entry| &entry.id == &id)
+}
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_kernel::protocol::ChatEntry;
@@ -244,9 +265,7 @@ fn move_up_from_sessions_skips_empty_pins_to_persona() {
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+    cursor_to_row(&mut state, 0);
 
     // When navigating up.
     let _ = navigate_sidebar(
@@ -425,9 +444,7 @@ fn jump_next_from_sessions_at_boundary_does_nothing() {
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+    cursor_to_row(&mut state, 0);
 
     // When jumping to next section (no section after Sessions).
     let _ = jump_to_section(
@@ -497,9 +514,7 @@ fn jump_to_sessions_retains_cursor_and_adjusts_scroll() {
         .frontend
         .update_sections(|s| s.persona.cursor = Some(0));
     // Pre-set sessions cursor and scroll.
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(18));
+    cursor_to_row(&mut state, 18);
 
     // When jumping to sessions (skipping empty pins if any, or through pins).
     let _ = jump_to_section(
@@ -512,12 +527,7 @@ fn jump_to_sessions_retains_cursor_and_adjusts_scroll() {
     // If pins is empty (default state has no pins), we land on sessions.
     if state.frontend.sidebar_section() == Some(jinn_sidebar_msg::SidebarSectionId::Sessions) {
         // Then cursor is retained.
-        assert_eq!(
-            state
-                .frontend
-                .with_sections(|s| s.sessions.selected_index, || None),
-            Some(18)
-        );
+        assert_eq!(cursor_row(&state), Some(18));
     }
 }
 

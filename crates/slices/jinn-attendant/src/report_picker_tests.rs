@@ -36,7 +36,7 @@ fn state_with_attendant(reports: Vec<AttendantReport>) -> (State, jinn_core_type
         guard.session.set_active(parent_id);
         guard
             .frontend
-            .update_sections(|s| s.attendant.selected_index = Some(0));
+            .update_sections(|s| s.attendant.selected_id = Some(id.clone()));
         id
     };
     (state, id)

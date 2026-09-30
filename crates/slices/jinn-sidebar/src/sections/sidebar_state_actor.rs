@@ -282,131 +282,175 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn clamps_selected_index_after_session_removed() {
-        // Given a sidebar actor with three sessions and cursor at index 2.
+    async fn cursor_falls_back_when_the_session_it_names_is_removed() {
+        // Given a sidebar actor with three sessions, cursor on the last.
         let actor = test_actor();
-        let removed_id = {
+        let (removed_id, first_id) = {
             let mut state = actor.state.write();
-            // Remove default session so we control exact count.
             let default_id = state.session.active_session_id().clone();
             state.session.remove_without_replacement(&default_id);
 
             let s1 = ChatSessionState::new();
             let s2 = ChatSessionState::new();
             let s3 = ChatSessionState::new();
-            let id3 = s3.session_id().clone();
+            let first = s1.session_id().clone();
+            let third = s3.session_id().clone();
             state.session.insert(s1);
             state.session.insert(s2);
             state.session.insert(s3);
-            state.session.set_active(id3.clone());
+            state.session.set_active(third.clone());
             state
                 .frontend
-                .update_sections(|s| s.sessions.selected_index = Some(2));
-            id3
+                .update_sections(|s| s.sessions.selected_id = Some(third.clone()));
+            (third, first)
         };
 
-        // Simulate the session being removed (as the session actor would do).
+        // When the session the cursor names is removed.
         {
             let mut state = actor.state.write();
             state.session.remove_without_replacement(&removed_id);
         }
-
-        // When handling SessionClosed.
-        let payload = jinn_session_msg::SessionRemoved {
+        actor.handle_session_removed(&jinn_session_msg::SessionRemoved {
             session_id: removed_id,
             removed_parent: None,
-        };
-        actor.handle_session_removed(&payload);
+        });
 
-        // Then selected_index is clamped to 1 (max valid index).
+        // Then the cursor lands on a session that still exists. An identity
+        // cannot run off the end of a list the way an index could, but it can
+        // name a session that just went away, and then there is nothing to
+        // point at.
         let state = actor.state.read();
-        assert_eq!(
-            state
-                .frontend
-                .with_sections(|s| s.sessions.selected_index, || None),
-            Some(1)
+        let cursor = state
+            .frontend
+            .with_sections(|s| s.sessions.selected_id.clone(), || None)
+            .expect("a fallback session is chosen");
+        assert!(
+            state.session.contains(&cursor),
+            "the cursor must name a session that exists, got {cursor:?}"
+        );
+        assert_ne!(
+            cursor, first_id,
+            "sanity: the fallback is not the removed one"
         );
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn handles_removal_of_last_session_cursor_at_zero() {
-        // Given a sidebar actor with one session and cursor at 0.
+    async fn cursor_falls_back_to_the_replacement_when_the_session_it_names_is_replaced() {
+        // Given a sidebar actor whose only session the cursor names.
         let actor = test_actor();
         let removed_id = {
             let mut state = actor.state.write();
             let id = state.session.active_session_id().clone();
             state
                 .frontend
-                .update_sections(|s| s.sessions.selected_index = Some(0));
+                .update_sections(|s| s.sessions.selected_id = Some(id.clone()));
             id
         };
 
-        // Simulate session close + new session creation (as session actor would do).
+        // When that session is replaced by a fresh one.
         {
             let mut state = actor.state.write();
-            state
-                .session
-                .remove_and_replace(&removed_id, ChatSessionState::new());
+            let replacement = ChatSessionState::new();
+            let replacement_id = replacement.session_id().clone();
+            state.session.remove_and_replace(&removed_id, replacement);
+            state.session.set_active(replacement_id);
         }
-
-        // When handling SessionClosed.
-        let payload = jinn_session_msg::SessionRemoved {
-            session_id: removed_id,
+        actor.handle_session_removed(&jinn_session_msg::SessionRemoved {
+            session_id: removed_id.clone(),
             removed_parent: None,
-        };
-        actor.handle_session_removed(&payload);
+        });
 
-        // Then cursor stays at 0.
+        // Then the cursor names the session that replaced it. The old identity
+        // named nothing that exists, so it moves to the row now drawn first —
+        // which under an index would have been the number 0 all along.
         let state = actor.state.read();
-        assert_eq!(
-            state
-                .frontend
-                .with_sections(|s| s.sessions.selected_index, || None),
-            Some(0)
+        let cursor = state
+            .frontend
+            .with_sections(|s| s.sessions.selected_id.clone(), || None)
+            .expect("the replacement session is listed");
+        assert_ne!(
+            cursor, removed_id,
+            "the cursor must not still name the old session"
+        );
+        assert!(
+            state.session.contains(&cursor),
+            "the cursor must name a session that exists"
         );
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn cursor_stays_when_index_still_valid() {
-        // Given a sidebar actor with three sessions and cursor at index 0.
+    async fn cursor_is_cleared_when_nothing_is_listed_anymore() {
+        // Given a sidebar actor whose only listed session the cursor names.
         let actor = test_actor();
         let removed_id = {
+            let mut state = actor.state.write();
+            let id = state.session.active_session_id().clone();
+            state.session.remove_without_replacement(&id);
+            state
+                .frontend
+                .update_sections(|s| s.sessions.selected_id = Some(id.clone()));
+            id
+        };
+
+        // When it goes and nothing takes its place.
+        actor.handle_session_removed(&jinn_session_msg::SessionRemoved {
+            session_id: removed_id,
+            removed_parent: None,
+        });
+
+        // Then there is no cursor, because there is no session to name.
+        let state = actor.state.read();
+        assert!(
+            state
+                .frontend
+                .with_sections(|s| s.sessions.selected_id.clone(), || None)
+                .is_none(),
+            "an empty list has no session for the cursor to name"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn cursor_is_untouched_when_another_session_is_removed() {
+        // Given a sidebar actor with three sessions, cursor on the first.
+        let actor = test_actor();
+        let (removed_id, cursor_id) = {
             let mut state = actor.state.write();
             let s1 = ChatSessionState::new();
             let s2 = ChatSessionState::new();
             let s3 = ChatSessionState::new();
-            let id3 = s3.session_id().clone();
+            let first = s1.session_id().clone();
+            let third = s3.session_id().clone();
             state.session.insert(s1);
             state.session.insert(s2);
             state.session.insert(s3);
             state
                 .frontend
-                .update_sections(|s| s.sessions.selected_index = Some(0));
-            id3
+                .update_sections(|s| s.sessions.selected_id = Some(first.clone()));
+            (third, first)
         };
 
-        // Simulate removal of the last session (cursor at 0 is still valid).
+        // When a different session is removed.
         {
             let mut state = actor.state.write();
             state.session.remove_without_replacement(&removed_id);
         }
-
-        // When handling SessionClosed.
-        let payload = jinn_session_msg::SessionRemoved {
+        actor.handle_session_removed(&jinn_session_msg::SessionRemoved {
             session_id: removed_id,
             removed_parent: None,
-        };
-        actor.handle_session_removed(&payload);
+        });
 
-        // Then cursor stays at 0.
+        // Then the cursor still names the session it always did. With an
+        // index this was a clamp that could quietly move the cursor; with an
+        // identity, a removal elsewhere cannot reach it.
         let state = actor.state.read();
         assert_eq!(
             state
                 .frontend
-                .with_sections(|s| s.sessions.selected_index, || None),
-            Some(0)
+                .with_sections(|s| s.sessions.selected_id.clone(), || None),
+            Some(cursor_id)
         );
     }
 }

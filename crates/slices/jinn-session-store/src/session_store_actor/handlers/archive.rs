@@ -1,6 +1,6 @@
 //! Single-session and whole-tree archiving.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::HashMap;
 
 use jinn_core_types::SessionId;
 use jinn_core_types::SessionProfile;
@@ -118,7 +118,7 @@ impl SessionStoreActor {
                 );
             }
         }
-        build_closure(root, &parent_of)
+        jinn_session_list::descendant_closure(root, &parent_of)
     }
 
     /// Snapshots parent links for every loaded session.
@@ -315,34 +315,4 @@ impl SessionStoreActor {
         });
         (removed_parent, enablement)
     }
-}
-
-/// Builds a cycle-safe descendant closure in breadth-first order.
-fn build_closure(
-    root: &SessionId,
-    parent_of: &HashMap<SessionId, Option<SessionId>>,
-) -> Vec<SessionId> {
-    let mut children_of: HashMap<SessionId, Vec<SessionId>> = HashMap::new();
-    for (id, parent) in parent_of {
-        if let Some(parent_id) = parent {
-            children_of
-                .entry(parent_id.clone())
-                .or_default()
-                .push(id.clone());
-        }
-    }
-
-    let mut closure = Vec::new();
-    let mut visited = HashSet::new();
-    let mut queue = VecDeque::from([root.clone()]);
-    while let Some(id) = queue.pop_front() {
-        if !visited.insert(id.clone()) {
-            continue;
-        }
-        closure.push(id.clone());
-        if let Some(children) = children_of.get(&id) {
-            queue.extend(children.iter().cloned());
-        }
-    }
-    closure
 }

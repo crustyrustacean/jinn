@@ -14,7 +14,6 @@ use jinn_session_store_msg::PersistSession;
 use jinn_slices::ConfigLayer;
 
 use super::close::validate_session_close;
-use super::state::sorted_open_sessions;
 
 /// The idle session under the sessions-section cursor, if any.
 ///
@@ -22,12 +21,9 @@ use super::state::sorted_open_sessions;
 /// something with a selected, loaded, idle session row.
 fn selected_idle_session(state: &AppState) -> Option<jinn_core_types::SessionId> {
     validate_session_close(state).ok()?;
-    let index = state
+    state
         .frontend
-        .with_sections(|sections| sections.sessions.selected_index, || None)?;
-    sorted_open_sessions(state)
-        .get(index)
-        .map(|entry| entry.id.clone())
+        .with_sections(|sections| sections.sessions.selected_id.clone(), || None)
 }
 
 /// `N` — creates an attendant of the highlighted session and activates it.

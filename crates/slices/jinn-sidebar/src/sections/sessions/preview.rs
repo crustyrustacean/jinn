@@ -75,10 +75,15 @@ pub fn render_session_preview_for_state(
     if state.frontend.sidebar_section() != Some(jinn_sidebar_msg::SidebarSectionId::Sessions) {
         return;
     }
-    let Some(idx) = state
+    let Some(id) = state
         .frontend
-        .with_sections(|s| s.sessions.selected_index, || None)
+        .with_sections(|s| s.sessions.selected_id.clone(), || None)
     else {
+        return;
+    };
+
+    // The cursor names a session; the popup needs the row to hang off.
+    let Some(idx) = crate::sections::sessions::state::visible_row_of(state, &id) else {
         return;
     };
 
@@ -87,7 +92,7 @@ pub fn render_session_preview_for_state(
         return;
     };
 
-    let Some(session) = state.session.get(&entry.id) else {
+    let Some(session) = state.session.get(&id) else {
         return;
     };
     let theme = &state.frontend.theme;

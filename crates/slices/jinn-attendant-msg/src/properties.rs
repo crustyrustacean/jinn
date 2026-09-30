@@ -706,12 +706,11 @@ impl AttendantPropertiesState {
         // — including no names, which is a set frozen to nothing. A row with
         // no capture commits as no filter at all: that is a thaw, and the
         // attendant inherits from here.
-        let committed = |names: Option<&BTreeSet<String>>| match names {
-            Some(names) => Some(NameFilter {
+        let committed = |names: Option<&BTreeSet<String>>| {
+            names.map(|names| NameFilter {
                 mode: FilterMode::Allow,
                 names: names.clone(),
-            }),
-            None => None,
+            })
         };
         // An untouched row keeps the filter the attendant already had,
         // which is what the commit wrote too -- recording the row's Live

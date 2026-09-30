@@ -79,6 +79,30 @@ fn state_with_sessions(count: usize) -> AppState {
     state
 }
 
+/// Puts the cursor on the session drawn at `row`.
+///
+/// Fixtures in this file spell a row because that is how a user thinks about
+/// where they are looking; the cursor stores an id, so this is where a row
+/// becomes a session.
+fn cursor_row(state: &AppState) -> Option<usize> {
+    let id = state
+        .frontend
+        .with_sections(|s| s.sessions.selected_id.clone(), || None)?;
+    crate::sections::sessions::state::sorted_open_sessions(state)
+        .iter()
+        .position(|entry| &entry.id == &id)
+}
+
+fn cursor_to_row(state: &mut AppState, row: usize) {
+    let id = crate::sections::sessions::state::sorted_open_sessions(state)
+        .get(row)
+        .map(|entry| entry.id.clone())
+        .expect("the row under test exists in the list it indexes");
+    state
+        .frontend
+        .update_sections(|s| s.sessions.selected_id = Some(id));
+}
+
 #[rstest::rstest]
 fn section_id_is_sessions() {
     // Given a sessions section.
@@ -132,9 +156,7 @@ fn navigate_down_moves_cursor_without_switching() {
     // Given state with 3 sessions, cursor at index 0.
     let mut state = state_with_sessions(3);
     let original_active = state.session.active_session_id().clone();
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+    cursor_to_row(&mut state, 0);
 
     // When navigating down.
     let (result, _) = navigate(
@@ -146,12 +168,7 @@ fn navigate_down_moves_cursor_without_switching() {
     // Then the result is Moved.
     assert_eq!(result, SectionNavResult::Moved);
     // And the cursor moved to index 1.
-    assert_eq!(
-        state
-            .frontend
-            .with_sections(|s| s.sessions.selected_index, || None),
-        Some(1)
-    );
+    assert_eq!(cursor_row(&state), Some(1));
     // And the active session did NOT change.
     assert_eq!(*state.session.active_session_id(), original_active);
 }
@@ -162,9 +179,7 @@ fn navigate_up_moves_cursor_without_switching() {
     let mut state = state_with_sessions(3);
     let sessions = sorted_open_sessions(&state);
     state.session.set_active(sessions[2].id.clone());
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(2));
+    cursor_to_row(&mut state, 2);
     let original_active = state.session.active_session_id().clone();
 
     // When navigating up.
@@ -177,12 +192,7 @@ fn navigate_up_moves_cursor_without_switching() {
     // Then the result is Moved.
     assert_eq!(result, SectionNavResult::Moved);
     // And the cursor moved to index 1.
-    assert_eq!(
-        state
-            .frontend
-            .with_sections(|s| s.sessions.selected_index, || None),
-        Some(1)
-    );
+    assert_eq!(cursor_row(&state), Some(1));
     // And the active session did NOT change.
     assert_eq!(*state.session.active_session_id(), original_active);
 }
@@ -192,9 +202,7 @@ fn navigate_down_at_bottom_returns_exhausted() {
     // Given state with 2 sessions, cursor at last index.
     let mut state = state_with_sessions(2);
     let sessions = sorted_open_sessions(&state);
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(sessions.len() - 1));
+    cursor_to_row(&mut state, sessions.len() - 1);
 
     // When navigating down.
     let (result, _) = navigate(
@@ -211,9 +219,7 @@ fn navigate_down_at_bottom_returns_exhausted() {
 fn navigate_up_at_top_returns_exhausted() {
     // Given state with 2 sessions, cursor at index 0.
     let mut state = state_with_sessions(2);
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+    cursor_to_row(&mut state, 0);
 
     // When navigating up.
     let (result, _) = navigate(
@@ -259,9 +265,7 @@ fn document_offset_is_zero_when_cursor_is_near_the_top() {
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+    cursor_to_row(&mut state, 0);
 
     // When resolving the document offset for a 20-row column.
     let offset = document_offset_for(&state, 20);
@@ -277,9 +281,7 @@ fn document_offset_clamps_at_the_end_for_the_last_session() {
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(39));
+    cursor_to_row(&mut state, 39);
 
     // When resolving the document offset for a 20-row column.
     let offset = document_offset_for(&state, 20);
@@ -299,9 +301,7 @@ fn document_offset_grows_as_the_cursor_moves_down() {
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+    cursor_to_row(&mut state, 0);
 
     // When navigating down past the bottom of a 20-row column.
     let before = document_offset_for(&state, 20);
@@ -325,9 +325,7 @@ fn document_offset_grows_as_the_cursor_moves_down() {
 fn every_session_is_reachable_when_uncapped() {
     // Given 100 sessions with the cursor on the first one.
     let mut state = state_with_sessions(100);
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+    cursor_to_row(&mut state, 0);
 
     // When navigating down until the list is exhausted.
     let mut moves = 0usize;
@@ -343,12 +341,7 @@ fn every_session_is_reachable_when_uncapped() {
     }
 
     // Then the cursor reached the last session, so none is unreachable.
-    assert_eq!(
-        state
-            .frontend
-            .with_sections(|s| s.sessions.selected_index, || None),
-        Some(99)
-    );
+    assert_eq!(cursor_row(&state), Some(99));
 }
 
 #[rstest::rstest]
@@ -395,12 +388,7 @@ fn receive_cursor_from_top_positions_at_index_zero() {
     );
 
     // Then the selected index is 0.
-    assert_eq!(
-        state
-            .frontend
-            .with_sections(|s| s.sessions.selected_index, || None),
-        Some(0)
-    );
+    assert_eq!(cursor_row(&state), Some(0));
 }
 
 #[rstest::rstest]
@@ -417,12 +405,7 @@ fn receive_cursor_from_bottom_positions_at_last_index() {
     );
 
     // Then the selected index is the last one.
-    assert_eq!(
-        state
-            .frontend
-            .with_sections(|s| s.sessions.selected_index, || None),
-        Some(count - 1)
-    );
+    assert_eq!(cursor_row(&state), Some(count - 1));
 }
 
 #[rstest::rstest]
@@ -442,12 +425,7 @@ fn receive_cursor_noop_when_empty() {
     );
 
     // Then no index is selected.
-    assert_eq!(
-        state
-            .frontend
-            .with_sections(|s| s.sessions.selected_index, || None),
-        None
-    );
+    assert_eq!(cursor_row(&state), None);
 }
 
 #[rstest::rstest]
@@ -767,9 +745,7 @@ fn first_close_press_arms_prompt_without_removing_session() {
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(1));
+    cursor_to_row(&mut state, 1);
 
     // When pressing close.
     let result = handle_session_close_arm(&mut state);
@@ -787,9 +763,7 @@ fn second_close_press_emits_lifecycle_command_for_selected_session() {
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(1));
+    cursor_to_row(&mut state, 1);
     let selected_id = sorted_open_sessions(&state)[1].id.clone();
 
     // When pressing close twice.
@@ -809,9 +783,7 @@ fn close_session_rejected_when_streaming() {
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+    cursor_to_row(&mut state, 0);
     state.active_session_mut().begin_streaming();
 
     // When validating close.
@@ -828,9 +800,7 @@ fn close_session_rejected_when_working_phase() {
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+    cursor_to_row(&mut state, 0);
     state.active_session_mut().begin_busy();
 
     // When validating close.
@@ -963,9 +933,7 @@ fn activate_switches_to_cursor_session() {
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
     let sessions = sorted_open_sessions(&state);
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(1));
+    cursor_to_row(&mut state, 1);
     let target_id = sessions[1].id.clone();
 
     // When activating.
@@ -980,9 +948,7 @@ fn activate_is_noop_when_not_sessions_section() {
     // Given state with persona section focused.
     let mut state = state_with_sessions(3);
     let original_active = state.session.active_session_id().clone();
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(1));
+    cursor_to_row(&mut state, 1);
 
     // When activating.
     handle_session_activate(&mut state);
@@ -1033,9 +999,7 @@ fn teardown_only_emits_run_session_teardown() {
     state
         .active_session_mut()
         .set_lifecycle_args(vec!["my-branch".to_owned()]);
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+    cursor_to_row(&mut state, 0);
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
@@ -1058,9 +1022,7 @@ fn teardown_only_is_noop_without_lifecycle_teardown() {
     state
         .active_session_mut()
         .set_lifecycle_name(Some("plain".to_owned()));
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+    cursor_to_row(&mut state, 0);
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
@@ -1088,9 +1050,7 @@ fn teardown_only_is_noop_when_session_busy() {
         .set_lifecycle_args(vec!["my-branch".to_owned()]);
     // Mark the session busy so close validation rejects it.
     state.active_session_mut().begin_busy();
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+    cursor_to_row(&mut state, 0);
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
@@ -1501,9 +1461,7 @@ fn navigate_down_from_root_goes_to_first_child() {
         .iter()
         .position(|s| entry_title(&state, &s.id).contains("root a"))
         .expect("root a");
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(root_a_index));
+    cursor_to_row(&mut state, root_a_index);
 
     // When navigating down.
     let _ = navigate(
@@ -1514,10 +1472,7 @@ fn navigate_down_from_root_goes_to_first_child() {
 
     // Then the cursor is on the next entry (root_a's first child in DFS order).
     let new_sessions = sorted_open_sessions(&state);
-    let new_index = state
-        .frontend
-        .with_sections(|s| s.sessions.selected_index, || None)
-        .unwrap();
+    let new_index = cursor_row(&state).expect("the cursor is on a row");
     assert_eq!(
         new_index,
         root_a_index + 1,
@@ -1539,9 +1494,7 @@ fn navigate_up_from_child_goes_to_parent() {
         .iter()
         .position(|s| entry_title(&state, &s.id).contains("child a1"))
         .expect("child a1");
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(child_a1_index));
+    cursor_to_row(&mut state, child_a1_index);
 
     // When navigating up.
     let _ = navigate(
@@ -1551,10 +1504,7 @@ fn navigate_up_from_child_goes_to_parent() {
     );
 
     // Then the cursor is on root_a (parent).
-    let new_index = state
-        .frontend
-        .with_sections(|s| s.sessions.selected_index, || None)
-        .unwrap();
+    let new_index = cursor_row(&state).expect("the cursor is on a row");
     assert_eq!(
         new_index,
         child_a1_index - 1,
@@ -1580,9 +1530,7 @@ fn close_child_session_clamps_cursor() {
         .position(|s| entry_title(&state, &s.id).contains("child a1"))
         .expect("child a1");
     let child_a1_id = sessions[child_a1_index].id.clone();
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(child_a1_index));
+    cursor_to_row(&mut state, child_a1_index);
 
     // When closing child_a1.
     complete_removed_session(&mut state, &child_a1_id);
@@ -1591,10 +1539,7 @@ fn close_child_session_clamps_cursor() {
     assert!(!state.session.contains(&child_a1_id));
     // And the cursor is clamped to valid range.
     let remaining = sorted_open_sessions(&state);
-    let selected = state
-        .frontend
-        .with_sections(|s| s.sessions.selected_index, || None)
-        .unwrap();
+    let selected = cursor_row(&state).unwrap();
     assert!(selected < remaining.len());
 }
 
@@ -1611,9 +1556,7 @@ fn close_root_session_promotes_children_to_roots() {
         .position(|s| entry_title(&state, &s.id).contains("root a"))
         .expect("root a");
     let root_a_id = sessions[root_a_index].id.clone();
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(root_a_index));
+    cursor_to_row(&mut state, root_a_index);
 
     // When closing root_a.
     complete_removed_session(&mut state, &root_a_id);
@@ -1659,9 +1602,7 @@ fn activate_child_session_switches_active() {
         .position(|s| entry_title(&state, &s.id).contains("child a1"))
         .expect("child a1");
     let child_a1_id = sessions[child_a1_index].id.clone();
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(child_a1_index));
+    cursor_to_row(&mut state, child_a1_index);
 
     // When activating.
     handle_session_activate(&mut state);
@@ -1731,9 +1672,7 @@ fn archiving_intermediate_parent_reparents_grandchild_under_grandparent() {
         .find(|s| entry_title(&state, &s.id).contains("grandchild"))
         .map(|s| s.id.clone())
         .expect("grandchild");
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(child_a1_index));
+    cursor_to_row(&mut state, child_a1_index);
 
     // When closing child_a1 (the intermediate parent).
     complete_removed_session(&mut state, &child_a1_id);
@@ -1780,9 +1719,7 @@ fn archiving_root_does_not_create_visual_parents_for_orphaned_children() {
         .position(|s| entry_title(&state, &s.id).contains("root a"))
         .expect("root a");
     let _root_a_id = sessions[root_a_index].id.clone();
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(root_a_index));
+    cursor_to_row(&mut state, root_a_index);
 
     // When closing root_a (no loaded ancestor to reparent to).
     complete_removed_session(&mut state, &_root_a_id);
@@ -1854,14 +1791,11 @@ fn visual_parent_of(
 /// Archives `id` the way a keypress would: put the cursor on it, then complete
 /// its removal.
 fn archive_session_from_the_list(state: &mut AppState, id: &jinn_core_types::SessionId) {
-    let sessions = sorted_open_sessions(state);
-    let index = sessions
+    let index = sorted_open_sessions(state)
         .iter()
         .position(|s| &s.id == id)
         .expect("session is listed");
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(index));
+    cursor_to_row(state, index);
     complete_removed_session(state, id);
 }
 
@@ -2260,14 +2194,11 @@ fn focus_sessions_and_select(state: &mut AppState, title: &str) {
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    let sessions = sorted_open_sessions(state);
-    let index = sessions
+    let index = sorted_open_sessions(state)
         .iter()
         .position(|e| entry_title(state, &e.id) == title)
         .unwrap_or_else(|| panic!("session titled {title} not in sidebar"));
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(index));
+    cursor_to_row(state, index);
 }
 
 #[rstest::rstest]
@@ -2366,13 +2297,53 @@ fn archive_tree_members_rejected_when_no_selection() {
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
     state
         .frontend
-        .update_sections(|s| s.sessions.selected_index = None);
+        .update_sections(|s| s.sessions.selected_id = None);
 
     // When resolving the archive-tree members.
     let result = archive_tree_members(&state);
 
     // Then validation fails with NoSelection.
     assert_eq!(result, Err(ArchiveTreeError::NoSelection));
+}
+
+#[rstest::rstest]
+fn archive_tree_members_rejected_when_the_cursor_names_an_absent_session() {
+    // Given a focused sessions section whose cursor names a session that is
+    // no longer loaded — it was archived while the section was not focused.
+    let (mut state, [root_id, ..]) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    state.session.remove_without_replacement(&root_id);
+
+    // When resolving the archive-tree members.
+    let result = archive_tree_members(&state);
+
+    // Then the request is refused rather than acting on whatever row now
+    // occupies the space the cursor used to point at.
+    assert_eq!(result, Err(ArchiveTreeError::NoSelection));
+}
+
+#[rstest::rstest]
+fn archive_tree_members_counts_a_descendant_that_is_not_listed() {
+    // Given a parent with a loaded child and an archived grandchild beneath
+    // it. The grandchild is not drawn, but it is part of the parent's subtree.
+    let (mut state, [_root, _child, grandchild_id, _survivor]) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    state
+        .session
+        .get_mut(&grandchild_id)
+        .expect("grandchild")
+        .set_session_state(jinn_session_store_msg::SessionState::Archived);
+
+    // When resolving the archive-tree members.
+    let members = archive_tree_members(&state).expect("members");
+
+    // Then the walk reaches the grandchild anyway. The count the prompt shows
+    // is the tree's size, not the number of rows on screen — the sidebar used
+    // to build this from the rows and therefore undercounted here.
+    assert!(
+        members.contains(&grandchild_id),
+        "an unlisted descendant is still in the subtree: {members:?}"
+    );
 }
 
 #[rstest::rstest]
@@ -3156,10 +3127,7 @@ fn sidebar_after_archive_tree_cascade_shows_survivors_only() {
     );
 
     // And the cursor is valid: either None or in bounds.
-    if let Some(index) = state
-        .frontend
-        .with_sections(|s| s.sessions.selected_index, || None)
-    {
+    if let Some(index) = cursor_row(&state) {
         assert!(index < sessions.len(), "cursor out of bounds: {index}");
     }
 }
@@ -3531,9 +3499,7 @@ fn state_with_one_selected_idle_session() -> (AppState, jinn_core_types::Session
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+    cursor_to_row(&mut state, 0);
     (state, id)
 }
 
@@ -3591,9 +3557,7 @@ fn archive_tree_marks_every_member_of_an_idle_subtree() {
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+    cursor_to_row(&mut state, 0);
 
     // When confirming the archive-tree prompt twice.
     let _ = crate::sections::sessions::handle_session_tree_action_arm(
@@ -3623,9 +3587,7 @@ fn archive_tree_with_busy_member_marks_nothing() {
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+    cursor_to_row(&mut state, 0);
 
     // When confirming the archive-tree prompt twice.
     let _ = crate::sections::sessions::handle_session_tree_action_arm(
@@ -3654,9 +3616,7 @@ fn teardown_tree_marks_every_member_of_an_idle_subtree() {
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+    cursor_to_row(&mut state, 0);
 
     // When confirming the teardown-tree prompt twice.
     let _ = crate::sections::sessions::handle_session_tree_action_arm(
@@ -3829,15 +3789,10 @@ mod navigation_preview_requests {
     fn moving_onto_a_session_requests_its_preview() {
         // Given a sessions section with three sessions.
         let (mut state, _ids) = state_with_sessions(3);
-        state
-            .frontend
-            .update_sections(|s| s.sessions.selected_index = Some(0));
+        cursor_to_row(&mut state, 0);
         // And the first session's preview already served, so the move is what
         // triggers the request rather than a cold start.
-        let first = state
-            .frontend
-            .with_sections(|s| s.sessions.selected_index, || None)
-            .expect("index");
+        let first = cursor_row(&state).expect("index");
         assert_eq!(first, 0);
 
         // When the cursor moves down.
@@ -3862,9 +3817,7 @@ mod navigation_preview_requests {
         // not necessarily agree.
         let (mut state, _ids) = state_with_sessions(1);
         let last = sorted_open_sessions(&state).len().saturating_sub(1);
-        state
-            .frontend
-            .update_sections(|s| s.sessions.selected_index = Some(last));
+        cursor_to_row(&mut state, last);
 
         // When the cursor moves down past the end.
         let config = jinn_slices::empty_config_layer();
@@ -3881,7 +3834,7 @@ mod navigation_preview_requests {
         let (mut state, _ids) = state_with_sessions(2);
         state
             .frontend
-            .update_sections(|s| s.sessions.selected_index = None);
+            .update_sections(|s| s.sessions.selected_id = None);
 
         // When the sidebar enters the section from above.
         let emitted = receive_cursor(
@@ -3907,9 +3860,7 @@ fn a_selected_session_row_bands_the_full_width() {
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+    cursor_to_row(&mut state, 0);
     let theme = state.frontend.theme.clone();
 
     // When rendering into a wide terminal.
@@ -3964,9 +3915,7 @@ fn no_sidebar_session_row_carries_the_reversed_modifier() {
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+    cursor_to_row(&mut state, 0);
 
     // When rendering.
     let width = 40u16;
@@ -4060,9 +4009,7 @@ fn a_selected_error_row_takes_the_selection_band_not_red() {
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+    cursor_to_row(&mut state, 0);
     let theme = state.frontend.theme.clone();
 
     // When rendering.

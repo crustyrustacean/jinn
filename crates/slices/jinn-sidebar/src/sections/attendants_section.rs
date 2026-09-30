@@ -8,6 +8,7 @@
 
 use crate::sections::section_trait::{EnterFrom, SectionNavResult, SidebarIntent};
 use jinn_attendant::section_rows::attendant_rows;
+use jinn_core_types::SessionId;
 use jinn_kernel::AppState;
 use jinn_sidebar_msg::AttendantSectionState;
 use ratatui::style::{Color, Style};
@@ -43,7 +44,7 @@ pub(crate) fn rows(state: &AppState) -> u16 {
 
 /// The cursor row relative to the section's first rendered row.
 pub(crate) fn cursor_row(state: &AppState) -> Option<u16> {
-    let index = selected_index(state)?;
+    let index = selected_row(state)?;
     let row = attendant_rows(state)
         .len()
         .checked_sub(1)
@@ -61,11 +62,38 @@ fn row_index_of(index: usize) -> u16 {
     idx.saturating_mul(2)
 }
 
-fn selected_index(state: &AppState) -> Option<usize> {
+fn selected_id(state: &AppState) -> Option<SessionId> {
     state.frontend.with_sections(
-        |sections: &jinn_sidebar_msg::SidebarSections| sections.attendant.selected_index,
+        |sections: &jinn_sidebar_msg::SidebarSections| sections.attendant.selected_id.clone(),
         || None,
     )
+}
+
+/// The row the cursor is drawn on, which is where it started only because the
+/// rows happen to be built in list order.
+fn selected_row(state: &AppState) -> Option<usize> {
+    let id = selected_id(state)?;
+    attendant_rows(state)
+        .iter()
+        .position(|row| &row.session_id == &id)
+}
+
+/// Moves the cursor to `row`, reporting exhaustion at the edges.
+fn select_row(state: &mut AppState, row: usize, max_row: usize) -> SectionNavResult {
+    if row > max_row {
+        return SectionNavResult::Exhausted;
+    }
+    let Some(id) = attendant_rows(state)
+        .into_iter()
+        .nth(row)
+        .map(|target| target.session_id)
+    else {
+        return SectionNavResult::Exhausted;
+    };
+    state
+        .frontend
+        .update_sections(|s| s.attendant.selected_id = Some(id));
+    SectionNavResult::Moved
 }
 
 /// Place the cursor on this section from a given direction.
@@ -78,13 +106,18 @@ pub(crate) fn receive_cursor(state: &mut AppState, enter_from: EnterFrom) {
         EnterFrom::Top => 0,
         EnterFrom::Bottom => count - 1,
     };
-    state
-        .frontend
-        .update_sections(|s: &mut jinn_sidebar_msg::SidebarSections| {
-            s.attendant = AttendantSectionState {
-                selected_index: Some(index),
-            };
-        });
+    if let Some(id) = attendant_rows(state)
+        .get(index)
+        .map(|row| row.session_id.clone())
+    {
+        state
+            .frontend
+            .update_sections(|s: &mut jinn_sidebar_msg::SidebarSections| {
+                s.attendant = AttendantSectionState {
+                    selected_id: Some(id),
+                };
+            });
+    }
 }
 
 /// Navigate the section's cursor, reporting exhaustion at the edges.
@@ -94,28 +127,10 @@ pub(crate) fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionN
         return SectionNavResult::Exhausted;
     }
     let max_index = count - 1;
-    let current = selected_index(state).unwrap_or(0);
+    let current = selected_row(state).unwrap_or(0);
     match intent {
-        SidebarIntent::MoveDown => {
-            if current >= max_index {
-                SectionNavResult::Exhausted
-            } else {
-                state
-                    .frontend
-                    .update_sections(|s| s.attendant.selected_index = Some(current + 1));
-                SectionNavResult::Moved
-            }
-        }
-        SidebarIntent::MoveUp => {
-            if current == 0 {
-                SectionNavResult::Exhausted
-            } else {
-                state
-                    .frontend
-                    .update_sections(|s| s.attendant.selected_index = Some(current - 1));
-                SectionNavResult::Moved
-            }
-        }
+        SidebarIntent::MoveDown => select_row(state, current.saturating_add(1), max_index),
+        SidebarIntent::MoveUp => select_row(state, current.saturating_sub(1), max_index),
         SidebarIntent::Action(_) => SectionNavResult::Moved,
     }
 }
@@ -149,7 +164,7 @@ impl crate::sections::section_trait::SidebarSection for AttendantsSection {
         let section_focused = sidebar_focused
             && state.frontend.sidebar_section()
                 == Some(jinn_sidebar_msg::SidebarSectionId::Attendant);
-        let cursor = selected_index(state);
+        let cursor = selected_row(state);
         let theme = &state.frontend.theme;
 
         let mut lines = Vec::new();
@@ -493,9 +508,12 @@ mod tests {
         state
             .frontend
             .scope_push(jinn_sidebar_msg::SidebarSectionId::Attendant.focus_scope());
+        let first = jinn_attendant::section_rows::attendant_rows(&state)
+            .first()
+            .map(|row| row.session_id.clone());
         state
             .frontend
-            .update_sections(|s| s.attendant.selected_index = Some(0));
+            .update_sections(|s| s.attendant.selected_id = first);
         let theme = state.frontend.theme.clone();
 
         // When the section is rendered into a buffer.

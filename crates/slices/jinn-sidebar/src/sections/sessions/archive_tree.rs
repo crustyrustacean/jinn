@@ -1,6 +1,6 @@
 //! Archive-tree validation, prompting, and command flow.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::HashMap;
 
 use jinn_core_types::SessionId;
 use jinn_kernel::common::app_state::AppState;
@@ -9,27 +9,34 @@ use jinn_session_lifecycle_msg::TeardownSessionTree;
 use jinn_session_store_msg::ArchiveSessionTree;
 pub use jinn_sidebar_msg::{ArchiveTreePrompt, TreePromptAction};
 
-use super::state::{SessionEntry, SessionEntryKind, mark_in_flight, sorted_open_sessions};
+use jinn_session_list::descendant_closure;
+
+use super::state::mark_in_flight;
 
 /// Why an archive-tree request can be rejected.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ArchiveTreeError {
     /// The sessions section is not focused.
     WrongSection,
-    /// No session is selected.
+    /// No session is selected, or the one selected is not loaded.
     NoSelection,
-    /// The selected entry is not a session.
-    NotASession,
     /// At least one member of the subtree is busy.
     SubtreeBusy,
 }
 
-/// Resolves the selected session's visible descendants in breadth-first order.
+/// Resolves the selected session's descendants in breadth-first order.
+///
+/// The walk reads parent links rather than the rows the sidebar draws, so the
+/// scope is the session's own subtree and does not change with what happens to
+/// be listed. Only loaded sessions are linked here; the actors that carry out
+/// the disposal re-derive their closure from the store as well, which is
+/// authoritative — this count is what the prompt shows the user, not what is
+/// disposed of.
 ///
 /// # Errors
 ///
 /// Returns [`ArchiveTreeError`] when the selection is invalid or any member
-/// of the visible subtree is busy.
+/// of the subtree is busy.
 pub fn archive_tree_members(state: &AppState) -> Result<Vec<SessionId>, ArchiveTreeError> {
     if !matches!(
         state.frontend.sidebar_section(),
@@ -37,25 +44,37 @@ pub fn archive_tree_members(state: &AppState) -> Result<Vec<SessionId>, ArchiveT
     ) {
         return Err(ArchiveTreeError::WrongSection);
     }
-    let index = state
+    let root = state
         .frontend
-        .with_sections(|sections| sections.sessions.selected_index, || None)
+        .with_sections(|sections| sections.sessions.selected_id.clone(), || None)
         .ok_or(ArchiveTreeError::NoSelection)?;
-    let entries = sorted_open_sessions(state);
-    let root = entries.get(index).ok_or(ArchiveTreeError::NoSelection)?;
-    if root.kind != SessionEntryKind::Session {
-        return Err(ArchiveTreeError::NotASession);
+    if !state.session.contains(&root) {
+        return Err(ArchiveTreeError::NoSelection);
     }
-    let members = collect_subtree(&root.id, &build_children_map(&entries));
+    let members = descendant_closure(&root, &parent_links(state));
     if !members.iter().all(|id| {
-        entries
-            .iter()
-            .find(|entry| &entry.id == id)
-            .is_some_and(|entry| entry.is_idle)
+        state.session.get(id).is_some_and(|session| {
+            matches!(session.phase(), jinn_session_msg::PhaseKind::Idle) && !session.is_busy()
+        })
     }) {
         return Err(ArchiveTreeError::SubtreeBusy);
     }
     Ok(members)
+}
+
+/// Every loaded session's parent link, the input the subtree walk reads.
+///
+/// Over all loaded sessions rather than the rows the sidebar happens to draw,
+/// so the closure is the session's own and not the display's. A root whose
+/// descendants are not all loaded still walks correctly; the ones that are
+/// not loaded are the store's business, and the actors that dispose of the
+/// tree re-derive their closure from the store's summaries.
+fn parent_links(state: &AppState) -> HashMap<SessionId, Option<SessionId>> {
+    state
+        .session
+        .iter()
+        .map(|(id, session)| (id.clone(), session.parent_session().clone()))
+        .collect()
 }
 
 /// Arms the prompt on first press, or revalidates and emits the command on
@@ -154,41 +173,4 @@ fn command_for(action: TreePromptAction, root: SessionId) -> IntentResult {
             IntentResult::new_message(TeardownSessionTree { root })
         }
     }
-}
-
-fn build_children_map(entries: &[SessionEntry]) -> HashMap<SessionId, Vec<SessionId>> {
-    entries
-        .iter()
-        .filter_map(|entry| {
-            entry
-                .parent_id
-                .as_ref()
-                .map(|parent_id| (parent_id.clone(), entry.id.clone()))
-        })
-        .fold(
-            HashMap::<SessionId, Vec<SessionId>>::new(),
-            |mut children, (parent_id, child_id)| {
-                children.entry(parent_id).or_default().push(child_id);
-                children
-            },
-        )
-}
-
-fn collect_subtree(
-    root: &SessionId,
-    children_map: &HashMap<SessionId, Vec<SessionId>>,
-) -> Vec<SessionId> {
-    let mut members = Vec::new();
-    let mut visited = HashSet::new();
-    let mut queue = VecDeque::from([root.clone()]);
-    while let Some(id) = queue.pop_front() {
-        if !visited.insert(id.clone()) {
-            continue;
-        }
-        members.push(id.clone());
-        if let Some(children) = children_map.get(&id) {
-            queue.extend(children.iter().cloned());
-        }
-    }
-    members
 }

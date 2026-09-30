@@ -22,7 +22,7 @@ pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
             (
                 s.persona.cursor.is_some(),
                 s.pins.selected_id().is_some(),
-                s.sessions.selected_index.is_some(),
+                s.sessions.selected_id.is_some(),
             )
         },
         || (false, false, false),
@@ -255,7 +255,7 @@ mod tests {
         assert!(
             state
                 .frontend
-                .with_sections(|s| s.sessions.selected_index, || None)
+                .with_sections(|s| s.sessions.selected_id.clone(), || None)
                 .is_some()
         );
     }
@@ -346,21 +346,22 @@ mod tests {
         assert!(
             state
                 .frontend
-                .with_sections(|s| s.sessions.selected_index, || None)
+                .with_sections(|s| s.sessions.selected_id.clone(), || None)
                 .is_some()
         );
     }
 
     #[rstest::rstest]
     fn sidebar_focus_sessions_already_on_sessions_is_noop() {
-        // Given the sessions section scope with cursor at index 0.
+        // Given the sessions section scope with the cursor on a session.
         let mut state = AppState::default_with_scope_focus();
+        let id = state.session.active_session_id().clone();
         state
             .frontend
             .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
         state
             .frontend
-            .update_sections(|s| s.sessions.selected_index = Some(0));
+            .update_sections(|s| s.sessions.selected_id = Some(id));
 
         // When handling sidebar focus sessions.
         let result = handle_sidebar_focus_sessions(&mut state, jinn_slices::empty_config_layer());
@@ -371,11 +372,12 @@ mod tests {
             jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope()
         );
         // And cursor is unchanged.
+        let active = state.session.active_session_id().clone();
         assert_eq!(
             state
                 .frontend
-                .with_sections(|s| s.sessions.selected_index, || None),
-            Some(0)
+                .with_sections(|s| s.sessions.selected_id.clone(), || None),
+            Some(active)
         );
         assert!(result.message_names.is_empty());
     }
@@ -408,7 +410,7 @@ mod tests {
         assert!(
             state
                 .frontend
-                .with_sections(|s| s.sessions.selected_index, || None)
+                .with_sections(|s| s.sessions.selected_id.clone(), || None)
                 .is_some()
         );
     }

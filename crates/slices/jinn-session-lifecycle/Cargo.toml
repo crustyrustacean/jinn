@@ -11,6 +11,7 @@ jinn-core-types = { workspace = true }
 jinn-common = { workspace = true }
 jinn-picker = { workspace = true }
 jinn-preferences-config = { workspace = true }
+jinn-session-list = { workspace = true }
 jinn-session-msg = { workspace = true }
 jinn-session-history-msg = { workspace = true }
 jinn-session-lifecycle-msg = { workspace = true }

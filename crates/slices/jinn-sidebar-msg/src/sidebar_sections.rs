@@ -404,12 +404,19 @@ mod tests {
 }
 /// Sessions section cursor state - stored on `FrontendState`.
 ///
-/// Tracks the selected index within the sorted open sessions list.
-/// `None` means no cursor (section not focused).
+/// Tracks the selected session by identity. `None` means no cursor (section
+/// not focused).
+///
+/// The cursor is an id rather than a row index on purpose: the list is a
+/// rendered projection, and an index into it makes every key's target a
+/// function of what happens to be drawn. A key that says "archive this
+/// subtree" must archive the subtree the session actually has, whether or not
+/// the list currently shows it — so the session is named, and the list is
+/// consulted only to find where that session is drawn.
 #[derive(Debug, Clone, Default)]
 pub struct SessionsSectionState {
-    /// Index into the sorted open sessions list.
-    pub selected_index: Option<usize>,
+    /// The selected session, or `None` when the section has no cursor.
+    pub selected_id: Option<SessionId>,
     /// Visual-parent index: maps a loaded session to its nearest loaded ancestor
     /// when the direct parent has been archived/removed from memory.
     /// Updated reactively in `remove_and_replace()`, invalidated on session load.
@@ -500,10 +507,14 @@ pub struct McpServersSectionState {
     pub selected_index: Option<usize>,
 }
 
-/// Attendants-section cursor state: an index into the loaded-attendants
-/// list (sorted by name). `None` means no cursor (section not focused).
+/// Attendants-section cursor state: the selected attendant, as a session id.
+/// `None` means no cursor (section not focused).
 #[derive(Debug, Clone, Default)]
 pub struct AttendantSectionState {
-    /// Index into the attendants list.
-    pub selected_index: Option<usize>,
+    /// The selected attendant, or `None` when the section has no cursor.
+    ///
+    /// An id like the sessions section's: the attendants list is a rendered
+    /// projection of the active session's children, and a key bound here acts
+    /// on the attendant rather than on the position it happens to occupy.
+    pub selected_id: Option<SessionId>,
 }

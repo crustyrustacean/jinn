@@ -28,8 +28,6 @@ use jinn_kernel::protocol::IntentResult;
 use jinn_sidebar_msg::SidebarSectionId;
 use jinn_slices::ScopeSignal;
 
-use super::sorted_open_sessions;
-
 /// Opens the attendant properties popup for the highlighted attendant,
 /// from whichever sidebar section is focused.
 pub fn handle_open_attendant_properties(state: &mut AppState) -> IntentResult {
@@ -44,34 +42,20 @@ pub fn handle_open_attendant_properties(state: &mut AppState) -> IntentResult {
 ///
 /// Both sections keep their own cursor and clear the one they are leaving,
 /// so exactly one of them is ever set — which is what makes reading the
-/// focused section's cursor the right answer rather than a guess. Their row
-/// lists are not the same list, though: the sessions section walks the
-/// session tree while the attendants section walks the active session's
-/// attendants by name, so the index has to be resolved against the list the
-/// focused section is actually rendering. Reading the attendants cursor
-/// against the sessions list would open some other attendant's properties.
+/// focused section's cursor the right answer rather than a guess. Both
+/// cursors are session ids, so this is a choice between two identities rather
+/// than between two row positions: the two sections list different sessions
+/// over different orders, and there is no index to resolve against the wrong
+/// one.
 fn highlighted_attendant_id(state: &AppState) -> Option<jinn_core_types::SessionId> {
-    let Some(focused) = state.frontend.sidebar_section() else {
-        return None;
-    };
-    let index = state.frontend.with_sections(
+    let focused = state.frontend.sidebar_section()?;
+    state.frontend.with_sections(
         |s| match focused {
-            SidebarSectionId::Attendant => s.attendant.selected_index,
-            _ => s.sessions.selected_index,
+            SidebarSectionId::Attendant => s.attendant.selected_id.clone(),
+            _ => s.sessions.selected_id.clone(),
         },
         || None,
-    );
-    let Some(index) = index else {
-        return None;
-    };
-    match focused {
-        SidebarSectionId::Attendant => jinn_attendant::section_rows::attendant_rows(state)
-            .get(index)
-            .map(|row| row.session_id.clone()),
-        _ => sorted_open_sessions(state)
-            .get(index)
-            .map(|entry| entry.id.clone()),
-    }
+    )
 }
 
 /// Opens the properties popup over one specific attendant.

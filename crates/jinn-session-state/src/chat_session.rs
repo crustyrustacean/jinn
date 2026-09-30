@@ -53,7 +53,7 @@ use crate::steering_buffer::SteeringBuffer;
 /// the answer is the same as an empty deny filter's — but the decision is
 /// made here, from the field's `None`, rather than inside the filter, whose
 /// emptiness means nothing at all.
-fn permits_or_inherits(filter: &Option<NameFilter>, name: &str) -> bool {
+fn permits_or_inherits(filter: Option<&NameFilter>, name: &str) -> bool {
     filter.as_ref().is_none_or(|filter| filter.permits(name))
 }
 
@@ -1676,7 +1676,10 @@ impl ChatSessionState {
     /// the attendant-only gate.
     #[must_use]
     pub fn is_tool_enabled(&self, tool_name: &str) -> bool {
-        permits_or_inherits(&self.core.integrations.profile.tool_filter, tool_name)
+        permits_or_inherits(
+            self.core.integrations.profile.tool_filter.as_ref(),
+            tool_name,
+        )
     }
 
     /// Read-only access to this session's tool filter.
@@ -1746,7 +1749,10 @@ impl ChatSessionState {
     /// path cannot disagree about what the session can load.
     #[must_use]
     pub fn is_skill_enabled(&self, skill_name: &str) -> bool {
-        permits_or_inherits(&self.core.integrations.profile.skill_filter, skill_name)
+        permits_or_inherits(
+            self.core.integrations.profile.skill_filter.as_ref(),
+            skill_name,
+        )
     }
 
     /// Read-only access to this session's skill filter.

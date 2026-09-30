@@ -3,7 +3,6 @@
 use jinn_kernel::common::app_state::AppState;
 use jinn_sidebar_msg::sidebar_sections::RenameSessionInputState;
 
-use crate::sections::sessions::state::sorted_open_sessions;
 use jinn_kernel::protocol::IntentResult;
 use jinn_session_store_msg::PersistSession;
 use jinn_slices::ScopeSignal;
@@ -21,21 +20,19 @@ pub fn rename_scope() -> SliceScopeId {
 /// "Untitled Session") and requests the rename scope. No-op if no session is
 /// selected in the sidebar.
 pub fn handle_rename_session_enter(state: &mut AppState) -> IntentResult {
-    let Some(index) = state
+    let Some(session_id) = state
         .frontend
-        .with_sections(|s| s.sessions.selected_index, || None)
+        .with_sections(|s| s.sessions.selected_id.clone(), || None)
     else {
         return IntentResult::empty();
     };
-
-    let sessions = sorted_open_sessions(state);
-    let Some(entry) = sessions.get(index) else {
+    if !state.session.contains(&session_id) {
         return IntentResult::empty();
-    };
+    }
 
     let title = state
         .session
-        .get(&entry.id)
+        .get(&session_id)
         .map(|s| s.title().unwrap_or("Untitled Session").to_owned())
         .unwrap_or_default();
     let cursor_pos = title.len();
@@ -68,17 +65,15 @@ pub fn handle_rename_session_confirm(state: &mut AppState) -> IntentResult {
     }
 
     // Resolve the selected session.
-    let Some(index) = state
+    let Some(session_id) = state
         .frontend
-        .with_sections(|s| s.sessions.selected_index, || None)
+        .with_sections(|s| s.sessions.selected_id.clone(), || None)
     else {
         return IntentResult::empty();
     };
-    let sessions = sorted_open_sessions(state);
-    let Some(entry) = sessions.get(index) else {
+    if !state.session.contains(&session_id) {
         return IntentResult::empty();
-    };
-    let session_id = entry.id.clone();
+    }
 
     // Update the session title and mark as interacted.
     state.session_mut(&session_id).set_title(text);
@@ -220,6 +215,17 @@ mod tests {
     use jinn_kernel::common::app_state::AppState;
     use jinn_slices::FocusScope;
 
+    /// Puts the cursor on the session drawn at `row`.
+    fn cursor_to_row(state: &mut AppState, row: usize) {
+        let id = crate::sections::sessions::state::sorted_open_sessions(state)
+            .get(row)
+            .map(|entry| entry.id.clone())
+            .expect("the row under test exists in the list it indexes");
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_id = Some(id));
+    }
+
     fn state_with_sessions(count: usize) -> AppState {
         let mut state = AppState::default_with_scope_focus();
         for _ in 1..count {
@@ -239,9 +245,7 @@ mod tests {
         state
             .frontend
             .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-        state
-            .frontend
-            .update_sections(|s| s.sessions.selected_index = Some(0));
+        cursor_to_row(&mut state, 0);
 
         // When handling SidebarRenameSession.
         let result = handle_rename_session_enter(&mut state);
@@ -265,9 +269,7 @@ mod tests {
         state
             .frontend
             .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-        state
-            .frontend
-            .update_sections(|s| s.sessions.selected_index = Some(0));
+        cursor_to_row(&mut state, 0);
 
         // When handling SidebarRenameSession.
         let _result = handle_rename_session_enter(&mut state);
@@ -317,9 +319,7 @@ mod tests {
         state
             .frontend
             .scope_push(FocusScope::Dynamic(rename_scope()));
-        state
-            .frontend
-            .update_sections(|s| s.sessions.selected_index = Some(0));
+        cursor_to_row(&mut state, 0);
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
                 text: jinn_slices::LineInput {
@@ -360,9 +360,7 @@ mod tests {
         state
             .frontend
             .scope_push(FocusScope::Dynamic(rename_scope()));
-        state
-            .frontend
-            .update_sections(|s| s.sessions.selected_index = Some(0));
+        cursor_to_row(&mut state, 0);
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
                 text: jinn_slices::LineInput {
@@ -403,9 +401,7 @@ mod tests {
         state
             .frontend
             .scope_push(FocusScope::Dynamic(rename_scope()));
-        state
-            .frontend
-            .update_sections(|s| s.sessions.selected_index = Some(0));
+        cursor_to_row(&mut state, 0);
         state.frontend.update_sections(|s| {
             s.rename_input = RenameSessionInputState {
                 text: jinn_slices::LineInput {

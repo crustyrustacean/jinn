@@ -158,9 +158,11 @@ impl SidebarSection for SessionsSection {
                 Some(jinn_sidebar_msg::SidebarSectionId::Sessions)
             );
 
-        let selected_index = state
+        // The cursor names a session; the band goes on the row it is drawn on.
+        let selected_row = state
             .frontend
-            .with_sections(|s| s.sessions.selected_index, || None);
+            .with_sections(|s| s.sessions.selected_id.clone(), || None)
+            .and_then(|id| super::state::visible_row_of(state, &id));
 
         // The document window decides what is visible, so build lines only for
         // the rows inside it — with an uncapped session list, building a line
@@ -179,7 +181,7 @@ impl SidebarSection for SessionsSection {
                 let Some(entry) = sessions.get(usize::from(i)) else {
                     break;
                 };
-                let is_selected = section_focused && selected_index == Some(usize::from(i));
+                let is_selected = section_focused && selected_row == Some(usize::from(i));
                 let max_title_len = area.width.saturating_sub(4) as usize;
                 lines.push(assemble_entry_line(
                     entry,
@@ -285,7 +287,7 @@ pub fn render_close_session_prompt_for_state(
     }
     if state
         .frontend
-        .with_sections(|s| s.sessions.selected_index.is_none(), || true)
+        .with_sections(|s| s.sessions.selected_id.is_none(), || true)
     {
         return;
     }
@@ -323,7 +325,7 @@ pub fn render_archive_tree_prompt_for_state(
     }
     if state
         .frontend
-        .with_sections(|s| s.sessions.selected_index.is_none(), || true)
+        .with_sections(|s| s.sessions.selected_id.is_none(), || true)
     {
         return;
     }

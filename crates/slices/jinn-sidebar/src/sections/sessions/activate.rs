@@ -2,7 +2,6 @@
 
 use jinn_kernel::common::app_state::AppState;
 
-use crate::sections::sessions::state::sorted_open_sessions;
 use jinn_chat_log_view::kernel_element::activate_session;
 use jinn_kernel::protocol::IntentResult;
 
@@ -52,17 +51,12 @@ fn activate_selected(state: &mut AppState, enter_input: bool) -> IntentResult {
     ) {
         return IntentResult::empty();
     }
-    let Some(index) = state
+    let Some(target_id) = state
         .frontend
-        .with_sections(|s| s.sessions.selected_index, || None)
+        .with_sections(|s| s.sessions.selected_id.clone(), || None)
     else {
         return IntentResult::empty();
     };
-    let sessions = sorted_open_sessions(state);
-    let Some(entry) = sessions.get(index) else {
-        return IntentResult::empty();
-    };
-    let target_id = entry.id.clone();
 
     state.frontend.scope_swap_base(FocusScope::Normal);
     if enter_input {
@@ -102,15 +96,10 @@ mod tests {
         second_session.push_entry(jinn_core_types::ChatEntry::assistant("an earlier answer"));
         let second = second_session.session_id().clone();
         state.session.insert(second_session);
-        // Cursor points at the second session in sorted order.
-        let sessions = sorted_open_sessions(&state);
-        let target_idx = sessions
-            .iter()
-            .position(|e| e.id == second)
-            .expect("second session present");
+        // The cursor names the second session directly.
         state
             .frontend
-            .update_sections(|s| s.sessions.selected_index = Some(target_idx));
+            .update_sections(|s| s.sessions.selected_id = Some(second.clone()));
         state
             .frontend
             .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
@@ -134,13 +123,10 @@ mod tests {
         use jinn_kernel::common::ui_element::UiElement;
         use jinn_testutil::setup_term;
 
-        let target_id = {
-            let index = state
-                .frontend
-                .with_sections(|s| s.sessions.selected_index, || None)
-                .expect("the fixture puts the cursor on a session");
-            sorted_open_sessions(state)[index].id.clone()
-        };
+        let target_id = state
+            .frontend
+            .with_sections(|s| s.sessions.selected_id.clone(), || None)
+            .expect("the fixture puts the cursor on a session");
         let on_screen = state.session.active_session_id().clone();
         let (mut terminal, area) = setup_term(width, 10);
         let mut render_once = |session_id: &SessionId| {
@@ -195,7 +181,7 @@ mod tests {
         state
             .frontend
             .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
-        // selected_index stays None.
+        // The cursor stays absent.
 
         // When activating.
         let result = handle_session_activate(&mut state);
@@ -352,7 +338,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn activate_insert_with_no_selected_index_is_noop() {
+    fn activate_insert_with_no_cursor_is_noop() {
         // Given sessions sidebar but no selected index.
         let mut state = AppState::default_with_scope_focus();
         state

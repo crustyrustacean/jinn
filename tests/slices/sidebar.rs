@@ -36,14 +36,14 @@ where
     }
 }
 
-/// The sidebar cursor is clamped after the kernel closes a session:
+/// A session removal crosses to the sidebar and the cursor falls back:
 /// bus → relay → trouper actor → sections cell.
 #[rstest::rstest]
 #[tokio::test]
-async fn session_closed_crosses_to_sidebar_and_clamps_cursor() {
-    // Given a composed app whose sidebar cursor sits at index 2 of
-    // three sessions, with the third session already removed (the
-    // close itself — the actor's job is the cursor clamp).
+async fn session_closed_crosses_to_sidebar_and_moves_cursor() {
+    // Given a composed app whose sidebar cursor names the third of three
+    // sessions, with that session already removed (the close itself — the
+    // actor's job is the cursor fallback).
     let app = test_app().await;
     let removed_id = {
         let mut state = app.core.state.write();
@@ -59,7 +59,7 @@ async fn session_closed_crosses_to_sidebar_and_clamps_cursor() {
         state.session.set_active(id3.clone());
         state
             .frontend
-            .update_sections(|s| s.sessions.selected_index = Some(2));
+            .update_sections(|s| s.sessions.selected_id = Some(id3.clone()));
         state.session.remove_without_replacement(&id3);
         id3
     };
@@ -69,21 +69,22 @@ async fn session_closed_crosses_to_sidebar_and_clamps_cursor() {
         .core
         .bridge
         .send(Bridge::publish_closure(SessionRemoved {
-            session_id: removed_id,
+            session_id: removed_id.clone(),
             removed_parent: None,
         }));
 
-    // Then the sidebar cursor is clamped to 1 (max valid index).
-    let clamped = await_condition(Duration::from_secs(5), || {
-        app.core
-            .state
-            .read()
+    // Then the sidebar cursor names a session that still exists. It used to
+    // be clamped to the last valid index; an identity that names a removed
+    // session is replaced with one that does not exist no more.
+    let cursor = await_condition(Duration::from_secs(5), || {
+        let state = app.core.state.read();
+        state
             .frontend
-            .with_sections(|s| s.sessions.selected_index, || None)
-            .filter(|index| *index == 1)
+            .with_sections(|s| s.sessions.selected_id.clone(), || None)
+            .filter(|id| state.session.contains(id))
     })
     .await;
-    assert_eq!(clamped, 1);
+    assert_ne!(cursor, removed_id);
 }
 
 /// The preview deadline actually reaches the layout supervisor.

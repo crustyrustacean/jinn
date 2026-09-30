@@ -113,26 +113,12 @@ pub fn selected_sessions_sidebar_target(state: &AppState) -> Option<jinn_core_ty
     ) {
         return None;
     }
-    let index = state
+    // The cursor is a session, so this needs no list, no ordering, and no
+    // visual-parent repair: it used to rebuild the visible tree purely to
+    // turn a row index back into the identity the tree already had.
+    state
         .frontend
-        .with_sections(|s| s.sessions.selected_index, || None)?;
-    let nodes = state
-        .session
-        .iter()
-        .filter(|(_, session)| {
-            session.session_state() == jinn_session_store_msg::SessionState::Loaded
-        })
-        .map(|(id, session)| jinn_session_list::SessionTreeNode {
-            id: id.clone(),
-            created_at: *session.created_at(),
-            parent_id: session.parent_session().clone(),
-        })
-        .collect();
-    let visual_parents = state.frontend.with_sections(
-        |sections| sections.sessions.visual_parents.clone(),
-        std::collections::HashMap::new,
-    );
-    jinn_session_list::visible_session_at(nodes, &visual_parents, index)
+        .with_sections(|s| s.sessions.selected_id.clone(), || None)
 }
 
 /// The active scope, if it is one of the overlay's scopes.
@@ -699,7 +685,7 @@ mod tests {
         ));
         state
             .frontend
-            .update_sections(|s| s.sessions.selected_index = Some(0));
+            .update_sections(|s| s.sessions.selected_id = Some(second_id.clone()));
 
         // When dispatching toggle-for-selected.
         dispatch(

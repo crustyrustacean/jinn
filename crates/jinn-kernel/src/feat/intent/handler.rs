@@ -790,7 +790,7 @@ mod tests {
             .scope_swap_base(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
         state
             .frontend
-            .update_sections(|s| s.sessions.selected_index = Some(0));
+            .update_sections(|s| s.sessions.selected_id = Some(second_id.clone()));
 
         (state, second_id)
     }

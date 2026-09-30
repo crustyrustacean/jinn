@@ -44,14 +44,16 @@ pub fn render_attendant_reports_for_state(
     if state.frontend.sidebar_section() != Some(jinn_sidebar_msg::SidebarSectionId::Attendant) {
         return;
     }
-    let Some(idx) = state
+    let Some(id) = state
         .frontend
-        .with_sections(|s| s.attendant.selected_index, || None)
+        .with_sections(|s| s.attendant.selected_id.clone(), || None)
     else {
         return;
     };
-    let rows = jinn_attendant::section_rows::attendant_rows(state);
-    let Some(row) = rows.get(idx) else {
+    let Some(row) = jinn_attendant::section_rows::attendant_rows(state)
+        .into_iter()
+        .find(|row| row.session_id == id)
+    else {
         return;
     };
     let Some(session) = state.session.get(&row.session_id) else {
@@ -278,10 +280,14 @@ mod tests {
         state
             .frontend
             .scope_push(jinn_sidebar_msg::SidebarSectionId::Attendant.focus_scope());
+        state.session.set_active(parent_id);
+        let nth = jinn_attendant::section_rows::attendant_rows(&state)
+            .into_iter()
+            .nth(selected)
+            .map(|row| row.session_id);
         state
             .frontend
-            .update_sections(|s| s.attendant.selected_index = Some(selected));
-        state.session.set_active(parent_id);
+            .update_sections(|s| s.attendant.selected_id = nth);
         state
     }
 

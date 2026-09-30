@@ -10,7 +10,6 @@ use jinn_session_lifecycle_msg::{
 };
 
 use super::close::validate_session_close;
-use super::state::sorted_open_sessions;
 use jinn_preferences_config::schemas::SessionLifecycle;
 
 /// Re-runs setup for the selected session when its lifecycle is still unrun.
@@ -60,12 +59,9 @@ pub fn handle_session_rerun_setup(
 
 fn selected_idle_session(state: &AppState) -> Option<jinn_core_types::SessionId> {
     validate_session_close(state).ok()?;
-    let index = state
+    state
         .frontend
-        .with_sections(|sections| sections.sessions.selected_index, || None)?;
-    sorted_open_sessions(state)
-        .get(index)
-        .map(|entry| entry.id.clone())
+        .with_sections(|sections| sections.sessions.selected_id.clone(), || None)
 }
 
 fn render_setup(setup: &LifecycleCommand, args: &[String]) -> String {
@@ -82,13 +78,14 @@ mod tests {
     use super::*;
 
     fn state_with_selected_session() -> AppState {
-        let state = AppState::default_with_scope_focus();
+        let mut state = AppState::default_with_scope_focus();
+        let active = state.session.active_session_id().clone();
         state
             .frontend
             .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
         state
             .frontend
-            .update_sections(|sections| sections.sessions.selected_index = Some(0));
+            .update_sections(|sections| sections.sessions.selected_id = Some(active));
         state
     }
 

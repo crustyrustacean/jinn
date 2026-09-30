@@ -311,7 +311,7 @@ fn focus_sessions_on_loaded_session(app: &crate::TuiApp) {
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
     state
         .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+        .update_sections(|s| s.sessions.selected_id = Some(id.clone()));
     drop(state);
 }
 

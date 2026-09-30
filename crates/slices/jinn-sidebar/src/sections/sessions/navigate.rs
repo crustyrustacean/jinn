@@ -4,6 +4,8 @@ use crate::sections::section_trait::{EnterFrom, SectionNavResult, SidebarIntent}
 use crate::sections::sessions::preview_load::update_preview;
 use crate::sections::sessions::state::sorted_open_sessions;
 use jinn_core_types::SessionId;
+
+use crate::sections::sessions::state::{select_row, visible_row_of};
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::protocol::IntentResult;
 use jinn_slices::ConfigLayer;
@@ -12,14 +14,13 @@ use crate::sections::sidebar_state_actor::PREVIEW_DEADLINE;
 use jinn_chat_log_view_msg::{ArmPreviewDeadline, PreviewSessionRequested};
 
 /// The session under the cursor, if there is one.
-fn highlighted_session(
-    state: &AppState,
-    sessions: &[jinn_sidebar_msg::SessionEntry],
-) -> Option<SessionId> {
-    let index = state
+///
+/// The cursor is already a session, so this is a read rather than a lookup —
+/// there is no list to consult and no way for the two to disagree.
+fn highlighted_session(state: &AppState) -> Option<SessionId> {
+    state
         .frontend
-        .with_sections(|s| s.sessions.selected_index, || None)?;
-    sessions.get(index).map(|entry| entry.id.clone())
+        .with_sections(|s| s.sessions.selected_id.clone(), || None)
 }
 
 /// Asks for the highlighted session's preview, if the cursor is on one.
@@ -38,8 +39,7 @@ fn highlighted_session(
 /// pass — sends them as a pair. [`preview_messages`] is the single place that
 /// builds them.
 fn request_preview(state: &mut AppState, config: &ConfigLayer) -> IntentResult {
-    let sessions = sorted_open_sessions(state);
-    let Some(session_id) = highlighted_session(state, &sessions) else {
+    let Some(session_id) = highlighted_session(state) else {
         return IntentResult::empty();
     };
     update_preview(state, &session_id, config).map_or_else(IntentResult::empty, preview_messages)
@@ -79,32 +79,31 @@ pub fn navigate(
         return (SectionNavResult::Exhausted, IntentResult::empty());
     }
 
+    // Movement is expressed in rows because that is what the user is doing,
+    // and stored as the session that row is. The session that row names is
+    // read fresh each move rather than carried in the cursor, so a list that
+    // changed since the last move cannot leave the cursor describing a
+    // position that no longer exists.
+    let current_row = state
+        .frontend
+        .with_sections(|s| s.sessions.selected_id.clone(), || None)
+        .and_then(|id| visible_row_of(state, &id))
+        .unwrap_or(0);
+
     let result = match intent {
         SidebarIntent::MoveDown => {
-            let current = state
-                .frontend
-                .with_sections(|s| s.sessions.selected_index, || None)
-                .unwrap_or(0);
-            let new_index = current.saturating_add(1);
-            if new_index >= sessions.len() {
+            let next = current_row.saturating_add(1);
+            if next >= sessions.len() {
                 return (SectionNavResult::Exhausted, IntentResult::empty());
             }
-            state
-                .frontend
-                .update_sections(|s| s.sessions.selected_index = Some(new_index));
+            select_row(state, next, &sessions);
             SectionNavResult::Moved
         }
         SidebarIntent::MoveUp => {
-            let current = state
-                .frontend
-                .with_sections(|s| s.sessions.selected_index, || None)
-                .unwrap_or(0);
-            if current == 0 {
+            if current_row == 0 {
                 return (SectionNavResult::Exhausted, IntentResult::empty());
             }
-            state
-                .frontend
-                .update_sections(|s| s.sessions.selected_index = Some(current - 1));
+            select_row(state, current_row - 1, &sessions);
             SectionNavResult::Moved
         }
         SidebarIntent::Action(_) => SectionNavResult::Moved,
@@ -127,13 +126,11 @@ pub fn receive_cursor(
     if sessions.is_empty() {
         return IntentResult::empty();
     }
-    let index = match enter_from {
+    let row = match enter_from {
         EnterFrom::Top => 0,
         EnterFrom::Bottom => sessions.len() - 1,
     };
-    state
-        .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(index));
+    select_row(state, row, &sessions);
 
     request_preview(state, config)
 }

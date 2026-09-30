@@ -171,12 +171,15 @@ fn state_with_selected_session() -> AppState {
 /// State with the sessions section focused and `row` highlighted.
 fn state_with_selected_row(row: usize) -> AppState {
     let state = AppState::default_with_scope_focus();
+    let id = crate::sections::sessions::state::sorted_open_sessions(&state)
+        .get(row)
+        .map(|entry| entry.id.clone());
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
     state
         .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(row));
+        .update_sections(|s| s.sessions.selected_id = id);
     state
 }
 
@@ -299,6 +302,11 @@ fn creating_an_attendant_makes_its_parent_worth_saving() {
         let parent_id = parent.session_id().clone();
         state.session.insert(parent);
         state.session.set_active(parent_id.clone());
+        // The cursor names the session these tests act on, so it has to be
+        // repointed at the parent they just introduced.
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_id = Some(parent_id.clone()));
         parent_id
     };
 
@@ -334,6 +342,11 @@ fn creating_an_attendant_also_saves_a_parent_that_was_never_saved() {
         let parent_id = parent.session_id().clone();
         state.session.insert(parent);
         state.session.set_active(parent_id.clone());
+        // The cursor names the session these tests act on, so it has to be
+        // repointed at the parent they just introduced.
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_id = Some(parent_id.clone()));
         parent_id
     };
 
@@ -386,17 +399,20 @@ fn rerun_cancels_the_attendants_busy_descendants() {
         state.session.insert(nested);
         state.session.insert(attendant);
         state.session.set_active(attendant_id.clone());
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_id = Some(attendant_id.clone()));
         attendant_id
     };
-    // Guard the fixture: `R` acts on the highlighted row, and the test only
-    // means something if that row is the attendant.
-    let highlighted = crate::sections::sessions::state::sorted_open_sessions(&state)
-        .first()
-        .map(|entry| entry.id.clone());
+    // Guard the fixture: `R` acts on the cursor, and the test only means
+    // something if the cursor is the attendant rather than a descendant.
+    let highlighted = state
+        .frontend
+        .with_sections(|s| s.sessions.selected_id.clone(), || None);
     assert_eq!(
         highlighted.as_ref(),
         Some(&attendant_id),
-        "fixture must highlight the attendant, not a descendant"
+        "fixture must put the cursor on the attendant, not a descendant"
     );
 
     // When `R` re-runs the attendant.

@@ -16,18 +16,36 @@ pub fn reconcile_split(
 ) {
     let sessions = sorted_open_sessions_split(session, frontend);
     if sessions.is_empty() {
-        frontend.update_sections(|sections| sections.sessions.selected_index = Some(0));
+        frontend.update_sections(|sections| sections.sessions.selected_id = None);
         return;
     }
-    let current = frontend
-        .with_sections(|sections| sections.sessions.selected_index, || None)
-        .unwrap_or(0);
-    let clamped = current.min(sessions.len() - 1);
-    frontend.update_sections(|sections| sections.sessions.selected_index = Some(clamped));
+    // A cursor names a session, so there is no index to run off the end of
+    // the list and nothing to clamp. The one thing that can leave it stale is
+    // the session it names being removed, which is this function's reason to
+    // exist — so a cursor that no longer names a listed session falls back to
+    // the first row, and one that still names one is left exactly where the
+    // user put it.
+    let still_listed = frontend.with_sections(
+        |sections| {
+            sections
+                .sessions
+                .selected_id
+                .as_ref()
+                .is_some_and(|id| sessions.iter().any(|entry| &entry.id == id))
+        },
+        || true,
+    );
+    if !still_listed {
+        frontend.update_sections(|sections| {
+            sections.sessions.selected_id = Some(sessions[0].id.clone())
+        });
+    }
+
+    let cursor = frontend.with_sections(|sections| sections.sessions.selected_id.clone(), || None);
     let active_id = session.active_session_id();
     if !sessions.iter().any(|entry| &entry.id == active_id)
-        && let Some(entry) = sessions.get(clamped)
+        && let Some(id) = cursor
     {
-        session.set_active(entry.id.clone());
+        session.set_active(id);
     }
 }

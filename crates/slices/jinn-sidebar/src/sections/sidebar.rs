@@ -296,11 +296,11 @@ pub(crate) fn clear_cursor(id: SidebarSectionId, state: &mut AppState) {
     state.frontend.update_sections(|s| match id {
         jinn_sidebar_msg::SidebarSectionId::Persona => s.persona.cursor = None,
         jinn_sidebar_msg::SidebarSectionId::Pins => s.pins.clear_selection(),
-        jinn_sidebar_msg::SidebarSectionId::Attendant => s.attendant.selected_index = None,
+        jinn_sidebar_msg::SidebarSectionId::Attendant => s.attendant.selected_id = None,
         jinn_sidebar_msg::SidebarSectionId::TaskList => s.task_list.selected_phase_index = None,
         jinn_sidebar_msg::SidebarSectionId::McpServers => s.mcp_servers.selected_index = None,
         jinn_sidebar_msg::SidebarSectionId::Sessions => {
-            s.sessions.selected_index = None;
+            s.sessions.selected_id = None;
         }
     });
 }
@@ -347,14 +347,14 @@ fn section_has_cursor(id: SidebarSectionId, state: &AppState) -> bool {
         |s| match id {
             jinn_sidebar_msg::SidebarSectionId::Persona => s.persona.cursor.is_some(),
             jinn_sidebar_msg::SidebarSectionId::Pins => s.pins.selected_id().is_some(),
-            jinn_sidebar_msg::SidebarSectionId::Attendant => s.attendant.selected_index.is_some(),
+            jinn_sidebar_msg::SidebarSectionId::Attendant => s.attendant.selected_id.is_some(),
             jinn_sidebar_msg::SidebarSectionId::TaskList => {
                 s.task_list.selected_phase_index.is_some()
             }
             jinn_sidebar_msg::SidebarSectionId::McpServers => {
                 s.mcp_servers.selected_index.is_some()
             }
-            jinn_sidebar_msg::SidebarSectionId::Sessions => s.sessions.selected_index.is_some(),
+            jinn_sidebar_msg::SidebarSectionId::Sessions => s.sessions.selected_id.is_some(),
         },
         || false,
     )

@@ -819,7 +819,7 @@ fn session_terminal_row_toggles_the_overlay() {
         ));
     state
         .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+        .update_sections(|s| s.sessions.selected_id = Some(session_id.clone()));
 
     // When `T` is pressed in the sidebar's sessions section.
     let intent = jinn_slices::DynamicIntent::new(
@@ -928,9 +928,12 @@ fn P_in_the_attendants_section_opens_the_properties_popup() {
     // Given the attendants section focused over one attendant.
     let mut state = state_with_attendants(1);
     focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Attendant);
+    let first_attendant = jinn_attendant::section_rows::attendant_rows(&state)
+        .first()
+        .map(|row| row.session_id.clone());
     state
         .frontend
-        .update_sections(|s| s.attendant.selected_index = Some(0));
+        .update_sections(|s| s.attendant.selected_id = first_attendant);
 
     // When `P` is pressed in the sidebar's attendants section.
     let routes = KeyRoutes::new();
@@ -956,12 +959,13 @@ fn P_in_the_attendants_section_opens_the_highlighted_attendant() {
     // second.
     let mut state = state_with_attendants(2);
     focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Attendant);
-    state
-        .frontend
-        .update_sections(|s| s.attendant.selected_index = Some(1));
     let expected = jinn_attendant::section_rows::attendant_rows(&state)[1]
         .session_id
         .clone();
+    let expected_for_cursor = expected.clone();
+    state
+        .frontend
+        .update_sections(|s| s.attendant.selected_id = Some(expected_for_cursor));
     let properties = properties_cell(&state);
 
     // When `P` is pressed.
@@ -990,9 +994,12 @@ fn P_in_the_attendants_section_over_no_attendants_opens_nothing() {
     // highlight and the cursor it holds is stale.
     let mut state = state_with_attendants(0);
     focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Attendant);
+    let any_attendant = jinn_attendant::section_rows::attendant_rows(&state)
+        .first()
+        .map(|row| row.session_id.clone());
     state
         .frontend
-        .update_sections(|s| s.attendant.selected_index = Some(0));
+        .update_sections(|s| s.attendant.selected_id = any_attendant);
     let before = state.frontend.scope();
 
     // When `P` is pressed.
@@ -1014,9 +1021,10 @@ fn P_in_the_sessions_section_on_a_user_session_opens_nothing() {
     // Given the sessions section focused on a plain user session.
     let mut state = state_with_attendants(0);
     focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Sessions);
+    let user_session = state.session.active_session_id().clone();
     state
         .frontend
-        .update_sections(|s| s.sessions.selected_index = Some(0));
+        .update_sections(|s| s.sessions.selected_id = Some(user_session));
     let before = state.frontend.scope();
 
     // When `P` is pressed.

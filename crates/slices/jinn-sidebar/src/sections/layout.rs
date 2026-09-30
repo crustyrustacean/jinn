@@ -425,10 +425,11 @@ fn mcp_servers_cursor_row(state: &AppState) -> Option<u16> {
 
 /// Sessions has no header — entries start at the section's first row.
 fn sessions_cursor_row(state: &AppState) -> Option<u16> {
-    let index = state
+    let id = state
         .frontend
-        .with_sections(|sections| sections.sessions.selected_index, || None)?;
-    Some(index as u16)
+        .with_sections(|sections| sections.sessions.selected_id.clone(), || None)?;
+    let row = crate::sections::sessions::state::visible_row_of(state, &id)?;
+    Some(u16::try_from(row).unwrap_or(u16::MAX))
 }
 
 // ---------------------------------------------------------------------------

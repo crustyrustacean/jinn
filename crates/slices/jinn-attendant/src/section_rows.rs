@@ -102,15 +102,13 @@ pub fn attendant_rows(state: &AppState) -> Vec<AttendantRow> {
 /// the picker renders as its never-reported state.
 #[must_use]
 pub fn highlighted_reports(state: &AppState) -> Option<Vec<jinn_attendant_msg::AttendantReport>> {
-    let index = state.frontend.with_sections(
-        |sections: &jinn_sidebar_msg::SidebarSections| sections.attendant.selected_index,
+    let id = state.frontend.with_sections(
+        |sections: &jinn_sidebar_msg::SidebarSections| sections.attendant.selected_id.clone(),
         || None,
     )?;
-    let rows = attendant_rows(state);
-    let row = rows.get(index)?;
     state
         .session
-        .get(&row.session_id)
+        .get(&id)
         .map(|a| a.attendant_reports().to_vec())
 }
 
