@@ -477,11 +477,11 @@ mod tests {
 
         // When saving the same entry twice (second save is an overwrite).
         layer
-            .put_list::<AttendantEntryConfig>(&[saved.clone()])
+            .put_list::<AttendantEntryConfig>(std::slice::from_ref(&saved))
             .expect("first save");
         let once = storage.text();
         layer
-            .put_list::<AttendantEntryConfig>(&[saved])
+            .put_list::<AttendantEntryConfig>(std::slice::from_ref(&saved))
             .expect("second save");
         let twice = storage.text();
 

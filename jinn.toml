@@ -352,33 +352,25 @@ settle_max_wait_ms = 3000
 behavior = "reset"
 disabled_skills = ["phased-task-loop"]
 disabled_tools = ["grep"]
+model = { single = "openrouter/deepseek/deepseek-v4.1-flash" }
 name = "sample"
+pins = [{ role = "user", text = "hello" }, { role = "user", text = "sup" }]
 prep_mode = true
 reasoning_effort = "high"
 seed_template = "The previous run of this attendant reported: <prior report>."
 trigger = "manual"
-pins= [{ role = "user", text = "hello" }, { role = "user", text = "sup" }]
-
-[attendant.entry.model]
-single = "openrouter/deepseek/deepseek-v4.1-flash"
 
 [[attendant.entry]]
 behavior = "reset"
 disabled_skills = ["phased-task-loop"]
 disabled_tools = ["grep"]
+model = { single = "openrouter/deepseek/deepseek-v4.1-flash" }
 name = "lol"
+pins = [{ role = "user", text = "wait" }]
 prep_mode = true
 reasoning_effort = "high"
 seed_template = "The previous run of this attendant reported: <prior report>."
 trigger = "manual"
-
-[attendant.entry.model]
-single = "openrouter/deepseek/deepseek-v4.1-flash"
-
-[[attendant.entry.pins]]
-role = "user"
-text = "wait"
-
 
 [context_curation.auto_prune]
 # > When auto pruners run, their targeted chat entries are held in a queue
