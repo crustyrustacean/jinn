@@ -57,3 +57,24 @@ impl BusMessage for LoadEndpointPickerEntries {}
 pub struct RefreshEndpointPickerEntries;
 
 impl BusMessage for RefreshEndpointPickerEntries {}
+
+/// The user confirmed a choice in the OpenRouter endpoint picker.
+///
+/// The pin is a per-model default in `providers.toml`, not session state: the
+/// provider actor persists a `[[endpoint_defaults]]` row for `model` and then
+/// writes it back into the registry it holds. A `None` `tag` is the
+/// auto-route sentinel and removes the row.
+///
+/// The route action cannot do this itself — an `ActionCtx` carries only app
+/// state, slices, and the config layer, never `Services` — so confirming
+/// publishes this command and the actor performs the write.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Persist the chosen OpenRouter routing endpoint as a per-model default.")]
+pub struct SetEndpointDefault {
+    /// Full model id the choice applies to (`{provider}/{model}`).
+    pub model: String,
+    /// The routing tag to pin, or `None` to return the model to auto-route.
+    pub tag: Option<String>,
+}
+
+impl BusMessage for SetEndpointDefault {}

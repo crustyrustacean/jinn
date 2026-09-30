@@ -27,8 +27,8 @@
     reason = "test module, panics are acceptable"
 )]
 
-use jinn_core_types::Endpoint;
 use jinn_core_types::model_selection::{AlloyStrategy, ModelSelection};
+use jinn_provider_selection_msg::SetEndpointDefault;
 use jinn_provider_selection_msg::endpoint::EndpointEntry;
 use jinn_provider_selection_msg::endpoint::EndpointPickerState;
 use jinn_provider_selection_msg::endpoint::endpoint_picker_scope;
@@ -143,14 +143,43 @@ impl Wired {
         };
     }
 
-    /// The endpoint the session profile has pinned.
-    fn pinned(&self) -> Option<Endpoint> {
-        self.state
-            .borrow()
-            .active_session()
-            .profile()
-            .endpoint
-            .clone()
+    /// The `SetEndpointDefault` a result publishes, if it publishes one.
+    ///
+    /// Confirming no longer writes anything itself — an `ActionCtx` cannot
+    /// reach `ConfigStorage` — so the observable effect of the key is the
+    /// command it hands the provider actor.
+    fn published_pin(&self, result: jinn_slices::RouteResult) -> Option<SetEndpointDefault> {
+        #[derive(Default)]
+        struct RecordingSink {
+            published: std::sync::Mutex<Vec<(String, serde_json::Value)>>,
+        }
+
+        impl jinn_slices::PublishSink for RecordingSink {
+            fn publish_schema(
+                &self,
+                schema_id: trouper::schema::SchemaId,
+                payload: serde_json::Value,
+                _name: &'static str,
+            ) {
+                self.published
+                    .lock()
+                    .expect("sink lock")
+                    .push((format!("{schema_id}"), payload));
+            }
+        }
+
+        let sink = RecordingSink::default();
+        for closure in result.messages {
+            closure(&sink);
+        }
+        let published = sink.published.lock().expect("sink lock");
+        let (_, payload) = published
+            .iter()
+            .find(|(id, _)| id.ends_with("SetEndpointDefault"))?;
+        Some(
+            serde_json::from_value(payload.clone())
+                .expect("the published payload is a SetEndpointDefault"),
+        )
     }
 
     /// Fills the picker with `entries` through its own actions.
@@ -598,7 +627,7 @@ async fn the_render_pass_publishes_the_measured_viewport() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn confirming_pins_the_highlighted_endpoint() {
+async fn confirming_publishes_a_pin_for_the_highlighted_row() {
     // Given the picker open with the second row highlighted.
     let wired = Wired::new().await;
     wired.set_single_model();
@@ -609,16 +638,27 @@ async fn confirming_pins_the_highlighted_endpoint() {
     // When confirming.
     let result = wired.fire("confirm-endpoint-picker");
 
-    // Then the session profile pins that endpoint.
-    assert_eq!(
-        wired.pinned(),
-        Some(Endpoint {
-            tag: "us-east".to_owned(),
-            provider_name: "Acme".to_owned(),
-        }),
-        "confirming must pin the highlighted endpoint on the session"
-    );
-    // And the picker closes.
+    // Then a pin is published for the active session's model.
+    let pin = wired
+        .published_pin(result)
+        .expect("confirming must publish a pin command");
+    assert_eq!(pin.model, "openrouter/anthropic/claude-sonnet-4.5");
+    assert_eq!(pin.tag.as_deref(), Some("us-east"));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn confirming_closes_the_picker() {
+    // Given the picker open with rows.
+    let wired = Wired::new().await;
+    wired.set_single_model();
+    wired.open();
+    wired.with_entries(sample_entries());
+
+    // When confirming.
+    let result = wired.fire("confirm-endpoint-picker");
+
+    // Then the picker closes.
     assert_eq!(
         result.scope_signal,
         Some(ScopeSignal::PopIf(endpoint_picker_scope())),
@@ -628,30 +668,25 @@ async fn confirming_pins_the_highlighted_endpoint() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn confirming_the_auto_route_sentinel_clears_the_pin() {
-    // Given a session that already has an endpoint pinned.
+async fn confirming_the_auto_route_sentinel_publishes_a_removal() {
+    // Given the picker open with the auto-route sentinel highlighted.
     let wired = Wired::new().await;
     wired.set_single_model();
-    wired
-        .state
-        .borrow_mut()
-        .active_session_mut()
-        .profile_mut()
-        .endpoint = Some(Endpoint {
-        tag: "us-east".to_owned(),
-        provider_name: "Acme".to_owned(),
-    });
     wired.open();
     wired.with_entries(sample_entries());
 
-    // When confirming with the auto-route sentinel highlighted.
-    wired.fire("confirm-endpoint-picker");
+    // When confirming.
+    let result = wired.fire("confirm-endpoint-picker");
 
-    // Then the pin is cleared, so OpenRouter chooses the upstream again.
-    assert_eq!(
-        wired.pinned(),
-        None,
-        "the auto-route sentinel must clear the pin rather than pin a blank tag"
+    // Then the published command carries no tag, so the row is removed
+    // rather than a blank tag written.
+    let pin = wired
+        .published_pin(result)
+        .expect("confirming must publish a pin command");
+    assert_eq!(pin.model, "openrouter/anthropic/claude-sonnet-4.5");
+    assert!(
+        pin.tag.is_none(),
+        "the auto-route sentinel must remove the pin rather than pin a blank tag"
     );
 }
 
@@ -667,12 +702,15 @@ async fn cancelling_closes_without_pinning() {
     // When cancelling.
     let result = wired.fire("cancel-endpoint-picker");
 
-    // Then the picker closes and the session keeps no endpoint.
+    // Then the picker closes without publishing a pin.
     assert_eq!(
         result.scope_signal,
         Some(ScopeSignal::PopIf(endpoint_picker_scope()))
     );
-    assert_eq!(wired.pinned(), None);
+    assert!(
+        wired.published_pin(result).is_none(),
+        "cancelling must not change the pin"
+    );
 }
 
 #[rstest::rstest]
@@ -684,10 +722,10 @@ async fn confirming_an_empty_menu_pins_nothing() {
     wired.open();
 
     // When confirming.
-    wired.fire("confirm-endpoint-picker");
+    let result = wired.fire("confirm-endpoint-picker");
 
-    // Then the session is untouched, so a mistimed Enter cannot clear a pin.
-    assert_eq!(wired.pinned(), None);
+    // Then no pin command is published, so a mistimed Enter cannot clear a pin.
+    assert!(wired.published_pin(result).is_none());
 }
 
 // ── Refreshing ──────────────────────────────────────────────────────────

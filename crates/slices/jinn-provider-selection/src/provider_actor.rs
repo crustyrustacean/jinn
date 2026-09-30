@@ -31,6 +31,7 @@ use jinn_provider_selection_msg::endpoint::EndpointEntry;
 use jinn_provider_selection_msg::{
     LoadEndpointPickerEntries, LoadProviderPickerEntries, ModelCacheLoaded, ModelsRefreshed,
     ProviderCell, ProviderSwitch, ProviderSwitched, RefreshEndpointPickerEntries,
+    SetEndpointDefault,
 };
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
@@ -174,6 +175,7 @@ impl ProviderActor {
             .handles::<RefreshEndpointPickerEntries>()
             .handles::<ModelsRefreshed>()
             .handles::<ModelCacheLoaded>()
+            .handles::<SetEndpointDefault>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
         path
@@ -218,6 +220,12 @@ impl MsgHandler<ModelsRefreshed> for ProviderActor {
 impl MsgHandler<ModelCacheLoaded> for ProviderActor {
     async fn handle(&mut self, msg: &ModelCacheLoaded, _ctx: &mut MsgCtx<'_>) {
         self.handle_model_cache_loaded(&msg.cache);
+    }
+}
+
+impl MsgHandler<SetEndpointDefault> for ProviderActor {
+    async fn handle(&mut self, msg: &SetEndpointDefault, _ctx: &mut MsgCtx<'_>) {
+        self.handle_set_endpoint_default(msg);
     }
 }
 
@@ -423,6 +431,73 @@ impl ProviderActor {
     fn write_endpoint_items(&self, entries: Vec<EndpointEntry>) {
         self.endpoint_picker_cell
             .update(|picker| crate::endpoint_picker_actions::reload(picker, entries));
+    }
+
+    /// SetEndpointDefault: persist the picker's choice as a per-model default.
+    ///
+    /// The write is one read-modify-write, in a fixed order: snapshot the
+    /// config the registry holds → apply the row change → save through
+    /// `ConfigStorage` → write the same change back into the registry. Disk
+    /// before memory, so a save that fails leaves the run and the file
+    /// agreeing on the old value rather than disagreeing.
+    ///
+    /// A `None` tag is the auto-route sentinel: the row is deleted instead of
+    /// written, and the save is skipped entirely when the model has no row to
+    /// begin with — there is nothing to persist and nothing to change.
+    fn handle_set_endpoint_default(&self, msg: &SetEndpointDefault) {
+        let mut config = self.deps.services.provider_registry.config_snapshot();
+
+        if let Some(tag) = &msg.tag {
+            set_endpoint_row(&mut config, msg.model.clone(), tag.clone());
+        } else {
+            let before = config.endpoint_defaults.len();
+            config
+                .endpoint_defaults
+                .retain(|row| row.model != msg.model);
+            if config.endpoint_defaults.len() == before {
+                return;
+            }
+        }
+
+        if let Err(report) = self.deps.services.config_storage.save(&config) {
+            tracing::error!(
+                model = %msg.model,
+                tag = ?msg.tag,
+                "{report:?}"
+            );
+            return;
+        }
+
+        match &msg.tag {
+            Some(tag) => {
+                self.deps
+                    .services
+                    .provider_registry
+                    .set_endpoint_default(msg.model.clone(), tag.clone());
+            }
+            None => self
+                .deps
+                .services
+                .provider_registry
+                .clear_endpoint_default(&msg.model),
+        }
+    }
+}
+
+/// Sets the `[[endpoint_defaults]]` row for `model` to `tag`.
+///
+/// A field write in the same shape the registry uses, so a save patches only
+/// this model's row and leaves every other row — and its comments — intact.
+fn set_endpoint_row(config: &mut ProvidersConfig, model: String, tag: String) {
+    match config
+        .endpoint_defaults
+        .iter_mut()
+        .find(|row| row.model == model)
+    {
+        Some(row) => row.tag = tag,
+        None => config
+            .endpoint_defaults
+            .push(jinn_provider_config::EndpointDefault { model, tag }),
     }
 }
 
@@ -1592,6 +1667,401 @@ mod tests {
         assert!(
             !picker.read().selection.items().is_empty(),
             "non-OpenRouter load must still show the placeholder row"
+        );
+    }
+}
+
+#[cfg(test)]
+mod endpoint_default_tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use jinn_kernel::AppState;
+    use jinn_kernel::common::actor_deps::ActorDeps;
+    use jinn_kernel::common::bus::HarnessServices;
+    use jinn_kernel::common::state::State;
+    use jinn_provider_config::{
+        ConfigStorage, InMemoryConfigStorage, ProviderEntry, ProviderRegistry, ProvidersConfig,
+    };
+    use jinn_provider_selection_msg::{ProviderCell, SetEndpointDefault, provider_state_slot};
+    use jinn_testutil::bus_harness::TestHarness;
+    use trouper::actor::ActorPath;
+
+    use super::{PROVIDER_ACTOR_PATH, ProviderActor, ProviderActorDeps};
+
+    /// A `ConfigStorage` that counts saves and can be made to fail, so the
+    /// ordering guarantee ("one save per confirm", "a failed save changes
+    /// nothing in memory") is observable rather than asserted by inspection.
+    #[derive(Default)]
+    struct CountingConfigStorage {
+        saves: AtomicUsize,
+        fail: bool,
+    }
+
+    impl CountingConfigStorage {
+        fn failing() -> Arc<Self> {
+            Arc::new(Self {
+                saves: AtomicUsize::new(0),
+                fail: true,
+            })
+        }
+
+        fn working() -> Arc<Self> {
+            Arc::new(Self::default())
+        }
+
+        fn save_count(&self) -> usize {
+            self.saves.load(Ordering::SeqCst)
+        }
+    }
+
+    impl ConfigStorage for CountingConfigStorage {
+        fn name(&self) -> &'static str {
+            "counting"
+        }
+
+        fn load(
+            &self,
+        ) -> Result<ProvidersConfig, error_stack::Report<jinn_provider_config::ConfigError>>
+        {
+            InMemoryConfigStorage::new().load()
+        }
+
+        fn save(
+            &self,
+            config: &ProvidersConfig,
+        ) -> Result<(), error_stack::Report<jinn_provider_config::ConfigError>> {
+            self.saves.fetch_add(1, Ordering::SeqCst);
+            if self.fail {
+                return Err(
+                    error_stack::Report::new(jinn_provider_config::ConfigError::Io)
+                        .attach("test storage is configured to fail"),
+                );
+            }
+            InMemoryConfigStorage::with_config(config).save(config)
+        }
+    }
+
+    /// A registry whose openrouter provider serves one model.
+    fn openrouter_config() -> ProvidersConfig {
+        ProvidersConfig {
+            providers: std::collections::BTreeMap::from([(
+                "openrouter".to_owned(),
+                ProviderEntry {
+                    model_info: Vec::new(),
+                    backend: "openrouter".to_owned(),
+                    models: vec!["anthropic/claude-sonnet-4".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: None,
+                },
+            )]),
+            aliases: vec![],
+            default_provider: None,
+            endpoint_defaults: vec![],
+        }
+    }
+
+    /// Harness + state + deps, with a working storage and a registry built
+    /// from `config`, and the provider actor spawned against them.
+    async fn ctx_with(
+        config: ProvidersConfig,
+        storage: Arc<dyn ConfigStorage>,
+    ) -> (TestHarness, State, ActorDeps) {
+        let harness = TestHarness::new().await;
+        let mut deps = harness.actor_deps().await;
+        let slices = deps.services.slices.clone();
+        let _ = slices.register(provider_state_slot(), ProviderCell::default());
+        let _ = slices.register(
+            jinn_provider_selection_msg::endpoint::endpoint_picker_slot(),
+            jinn_provider_selection_msg::endpoint::EndpointPickerState::default(),
+        );
+        let _ = slices.register(
+            jinn_provider_selection_msg::provider_picker_slot(),
+            jinn_provider_selection_msg::ProviderPickerState::default(),
+        );
+        let app = AppState::default();
+        app.frontend.attach_slices(slices);
+        let state = State::new(app);
+        deps.services
+            .provider_registry
+            .replace(ProviderRegistry::from_config(config).expect("registry"));
+        deps.services.config_storage = jinn_provider_config::ConfigStorageService::new(storage);
+        ProviderActor::spawn(
+            &deps.services.trouper_system,
+            ProviderActorDeps {
+                deps: deps.clone(),
+                state: state.clone(),
+                provider_cell: deps
+                    .services
+                    .slices
+                    .reader(&provider_state_slot())
+                    .expect("provider cell"),
+                endpoint_picker_cell: deps
+                    .services
+                    .slices
+                    .reader(&jinn_provider_selection_msg::endpoint::endpoint_picker_slot())
+                    .expect("endpoint picker cell"),
+                provider_picker_cell: deps
+                    .services
+                    .slices
+                    .reader(&jinn_provider_selection_msg::provider_picker_slot())
+                    .expect("provider picker cell"),
+            },
+        );
+        (harness, state, deps)
+    }
+
+    /// Tells the actor to apply a pin and waits for it to drain.
+    async fn tell(deps: &ActorDeps, msg: SetEndpointDefault) {
+        deps.services
+            .trouper_system
+            .tell(ActorPath::new(PROVIDER_ACTOR_PATH), msg)
+            .await
+            .expect("command delivers");
+        // The handler is synchronous once dequeued; the sleep only covers the
+        // queue hop.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+
+    const CLAUDE: &str = "openrouter/anthropic/claude-sonnet-4";
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn set_endpoint_default_pins_the_tag_for_the_named_model() {
+        // Given a registry with no endpoint pins.
+        let storage = CountingConfigStorage::working();
+        let (_harness, _state, deps) = ctx_with(openrouter_config(), storage.clone()).await;
+
+        // When the actor applies a pin.
+        tell(
+            &deps,
+            SetEndpointDefault {
+                model: CLAUDE.to_owned(),
+                tag: Some("anthropic".to_owned()),
+            },
+        )
+        .await;
+
+        // Then the registry resolves that model to the pinned tag.
+        assert_eq!(
+            deps.services
+                .provider_registry
+                .pinned_endpoint_tag(CLAUDE)
+                .as_deref(),
+            Some("anthropic")
+        );
+        assert!(storage.save_count() > 0, "the pin must be persisted");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn set_endpoint_default_persists_the_row_to_storage() {
+        // Given a registry with no endpoint pins.
+        let storage = CountingConfigStorage::working();
+        let (_harness, _state, deps) = ctx_with(openrouter_config(), storage).await;
+
+        // When the actor applies a pin.
+        tell(
+            &deps,
+            SetEndpointDefault {
+                model: CLAUDE.to_owned(),
+                tag: Some("anthropic".to_owned()),
+            },
+        )
+        .await;
+
+        // Then the snapshot the registry holds carries the row.
+        let snapshot = deps.services.provider_registry.config_snapshot();
+        assert_eq!(snapshot.endpoint_defaults.len(), 1);
+        assert_eq!(snapshot.endpoint_defaults[0].model, CLAUDE);
+        assert_eq!(snapshot.endpoint_defaults[0].tag, "anthropic");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn set_endpoint_default_replaces_the_existing_row_for_the_same_model() {
+        // Given a registry already pinning this model to one upstream.
+        let mut config = openrouter_config();
+        config
+            .endpoint_defaults
+            .push(jinn_provider_config::EndpointDefault {
+                model: CLAUDE.to_owned(),
+                tag: "anthropic".to_owned(),
+            });
+        let (_harness, _state, deps) = ctx_with(config, CountingConfigStorage::working()).await;
+
+        // When the actor re-pins the same model to another upstream.
+        tell(
+            &deps,
+            SetEndpointDefault {
+                model: CLAUDE.to_owned(),
+                tag: Some("azure".to_owned()),
+            },
+        )
+        .await;
+
+        // Then the row is replaced, not duplicated.
+        let rows = &deps
+            .services
+            .provider_registry
+            .config_snapshot()
+            .endpoint_defaults;
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].tag, "azure");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn set_endpoint_default_leaves_other_models_rows_untouched() {
+        // Given a registry pinning two different models.
+        let mut config = openrouter_config();
+        config
+            .endpoint_defaults
+            .push(jinn_provider_config::EndpointDefault {
+                model: CLAUDE.to_owned(),
+                tag: "anthropic".to_owned(),
+            });
+        config
+            .endpoint_defaults
+            .push(jinn_provider_config::EndpointDefault {
+                model: "openrouter/openai/gpt-oss-120b".to_owned(),
+                tag: "openai".to_owned(),
+            });
+        let (_harness, _state, deps) = ctx_with(config, CountingConfigStorage::working()).await;
+
+        // When the actor re-pins only the first model.
+        tell(
+            &deps,
+            SetEndpointDefault {
+                model: CLAUDE.to_owned(),
+                tag: Some("azure".to_owned()),
+            },
+        )
+        .await;
+
+        // Then the other model's row survives unchanged.
+        let registry = &deps.services.provider_registry;
+        assert_eq!(
+            registry
+                .pinned_endpoint_tag("openrouter/openai/gpt-oss-120b")
+                .as_deref(),
+            Some("openai")
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn set_endpoint_default_performs_exactly_one_save() {
+        // Given a registry with no endpoint pins.
+        let storage = CountingConfigStorage::working();
+        let (_harness, _state, deps) = ctx_with(openrouter_config(), storage.clone()).await;
+
+        // When the actor applies one pin.
+        tell(
+            &deps,
+            SetEndpointDefault {
+                model: CLAUDE.to_owned(),
+                tag: Some("anthropic".to_owned()),
+            },
+        )
+        .await;
+
+        // Then the write is a single read-modify-write, not one per stage.
+        assert_eq!(storage.save_count(), 1, "confirm must save exactly once");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn clearing_the_pin_removes_the_row() {
+        // Given a registry pinning this model.
+        let mut config = openrouter_config();
+        config
+            .endpoint_defaults
+            .push(jinn_provider_config::EndpointDefault {
+                model: CLAUDE.to_owned(),
+                tag: "anthropic".to_owned(),
+            });
+        let (_harness, _state, deps) = ctx_with(config, CountingConfigStorage::working()).await;
+
+        // When the actor applies the auto-route sentinel.
+        tell(
+            &deps,
+            SetEndpointDefault {
+                model: CLAUDE.to_owned(),
+                tag: None,
+            },
+        )
+        .await;
+
+        // Then the model has no pin and auto-routes again.
+        assert!(
+            deps.services
+                .provider_registry
+                .pinned_endpoint_tag(CLAUDE)
+                .is_none()
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn clearing_an_unpinned_model_does_not_save() {
+        // Given a registry with no endpoint pins.
+        let storage = CountingConfigStorage::working();
+        let (_harness, _state, deps) = ctx_with(openrouter_config(), storage.clone()).await;
+
+        // When the actor applies the auto-route sentinel to an unpinned model.
+        tell(
+            &deps,
+            SetEndpointDefault {
+                model: CLAUDE.to_owned(),
+                tag: None,
+            },
+        )
+        .await;
+
+        // Then nothing was written — there was no row to remove.
+        assert_eq!(
+            storage.save_count(),
+            0,
+            "a no-op delete must not rewrite the file"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_failed_save_leaves_the_in_memory_pin_unchanged() {
+        // Given a registry with no endpoint pins and a storage that fails.
+        let (_harness, _state, deps) =
+            ctx_with(openrouter_config(), CountingConfigStorage::failing()).await;
+
+        // When the actor tries to apply a pin.
+        tell(
+            &deps,
+            SetEndpointDefault {
+                model: CLAUDE.to_owned(),
+                tag: Some("anthropic".to_owned()),
+            },
+        )
+        .await;
+
+        // Then memory is unchanged, so the run and the file still agree.
+        assert!(
+            deps.services
+                .provider_registry
+                .pinned_endpoint_tag(CLAUDE)
+                .is_none(),
+            "a failed save must not update the in-memory config"
         );
     }
 }
