@@ -1344,3 +1344,129 @@ fn the_skill_set_row_is_inert_when_the_attendant_has_no_discovered_skills() {
     // though committing it writes nothing.
     assert_eq!(fx.cell.read().set_mode_of(SetField::Skill), SetMode::Frozen);
 }
+
+#[rstest::rstest]
+#[test]
+fn a_frozen_tool_set_survives_reopening_the_panel() {
+    // Given an attendant with two tools and the panel opened on the tool set.
+    let mut fx = PopupFixture::new();
+    fx.offer(&["read", "write"]);
+    fx.open_on_the_tool_set();
+
+    // When freezing the row and pressing enter.
+    fx.press("attendant-properties-pick-right");
+    fx.press("attendant-properties-apply");
+
+    // Then the session carries the allow list.
+    assert_eq!(
+        fx.tool_filter(),
+        allow(&["read", "write"]),
+        "enter must write the frozen set to the session"
+    );
+
+    // And reopening the panel shows the row still Frozen.
+    fx.open();
+    fx_press_n(&mut fx, 3);
+    assert_eq!(fx.cell.read().focus, PropertyField::ToolSet);
+    assert_eq!(
+        fx.cell.read().set_mode_of(SetField::Tool),
+        SetMode::Frozen,
+        "the row must not read Live again after the panel reopens"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn thawing_a_frozen_set_releases_the_filter_it_was_holding() {
+    // Given an attendant frozen to a tool set.
+    let mut fx = PopupFixture::new();
+    fx.offer(&["read", "write"]);
+    fx.open_on_the_tool_set();
+    fx.press("attendant-properties-pick-right");
+    fx.press("attendant-properties-apply");
+    assert_eq!(fx.tool_filter(), allow(&["read", "write"]));
+
+    // When reopening on the tool row, thawing it, and applying again.
+    fx.open_on_the_tool_set();
+    fx.press("attendant-properties-pick-left");
+    fx.press("attendant-properties-apply");
+
+    // Then the session's filter is released. A Live row that left the
+    // allow list in place would keep refusing every tool outside it while
+    // the panel claimed the set was live -- and reopening would read
+    // Frozen again, because the filter is what the row is derived from.
+    assert!(
+        fx.tool_filter().is_unconfigured(),
+        "a live row must release the frozen filter, found {:?}",
+        fx.tool_filter()
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn a_frozen_skill_set_over_an_undiscovered_attendant_writes_the_allow_list() {
+    // Given an attendant whose skill scan has not landed yet -- no
+    // discovered skills at all, which is what a freshly created attendant
+    // looks like for as long as the scan is still in flight.
+    let mut fx = PopupFixture::new();
+    fx.open_on_the_skill_set();
+    fx.press("attendant-properties-pick-right");
+    fx.press("attendant-properties-apply");
+
+    // Then the row holds Frozen. Whether or not any skill has been
+    // discovered is not something the panel can know, and refusing the
+    // choice on that basis is what made the row look dead.
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Skill), SetMode::Frozen);
+}
+
+#[rstest::rstest]
+#[test]
+fn a_frozen_skill_set_captures_the_parent_skill_names() {
+    // Given an attendant whose parent carried an allow-mode skill filter
+    // naming two skills, and whose own session has discovered none -- the
+    // shape a freshly created attendant has, because the profile is
+    // inherited but the discovery scan has not landed on it yet.
+    let mut fx = PopupFixture::new();
+    fx.state
+        .session
+        .get_mut(&fx.attendant_id)
+        .expect("attendant")
+        .set_skill_filter(allow(&["web-coder", "reviewer"]));
+    fx.open_on_the_skill_set();
+
+    // When freezing the row.
+    fx.press("attendant-properties-pick-right");
+
+    // Then the capture is the filter's own names. The attendant already
+    // holds this allow list, so refusing to read it as a freeze left the
+    // row reading Live and dropped the whole skill set on save.
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Skill), SetMode::Frozen);
+    assert_eq!(
+        fx.cell.read().pending_set(SetField::Skill),
+        Some(&allow(&["web-coder", "reviewer"]).names)
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn a_freeze_over_nothing_says_so_at_the_moment_it_is_made() {
+    // Given an attendant that has discovered no skills.
+    let mut fx = PopupFixture::new();
+    fx.open_on_the_skill_set();
+
+    // When freezing the row.
+    fx.press("attendant-properties-pick-right");
+
+    // Then the row holds Frozen and the status line says nothing was
+    // recorded. There is no filter that expresses "frozen to no skills" --
+    // an empty allow list is read as no filter -- so this is the only
+    // place the user can be told, and the moment is the only time they
+    // are still looking at the row they just changed.
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Skill), SetMode::Frozen);
+    assert_eq!(
+        fx.cell.read().status,
+        Some(PopupStatus::SetNotRecorded {
+            field: SetField::Skill
+        })
+    );
+}

@@ -361,6 +361,15 @@ pub struct AttendantPropertiesState {
     pub pending_prep_mode: bool,
     /// Whether `<enter>` would pin the attendant's tools.
     pub pending_tool_set: SetMode,
+    /// Whether the user has acted on the tool row this popup session.
+    ///
+    /// Distinct from the mode, and the reason: the mode is a reading of the
+    /// attendant's own filter, so an untouched row on a hand-written
+    /// blocklist commits back that blocklist and changes nothing. What the
+    /// commit has to act on is whether the *user* moved the row, because a
+    /// thaw has to write the unconfigured filter — leaving the allow list
+    /// in place is what pinned a thawed attendant to its old set forever.
+    pub tool_set_touched: bool,
     /// The tool names a Frozen tool set would be pinned to.
     ///
     /// Captured at the moment the row was flipped, never recomputed: the
@@ -370,6 +379,8 @@ pub struct AttendantPropertiesState {
     pub frozen_tools: Option<BTreeSet<String>>,
     /// Whether `<enter>` would pin the attendant's skills.
     pub pending_skill_set: SetMode,
+    /// Whether the user has acted on the skill row, as for the tool row.
+    pub skill_set_touched: bool,
     /// The skill names a Frozen skill set would be pinned to, as above.
     pub frozen_skills: Option<BTreeSet<String>>,
     /// The values the session had at open; `<esc>`/`<c-c>` restore them.
@@ -451,6 +462,16 @@ pub enum PopupStatus {
         /// Which set row changed: the tool set or the skill set.
         field: SetField,
     },
+    /// A set was frozen over an empty capture, so nothing was recorded.
+    ///
+    /// The row holds Frozen and says so; there is simply nothing to write,
+    /// because an allow list over no names is read as no filter at all and
+    /// would leave the attendant inheriting its parent's while the file
+    /// claimed otherwise.
+    SetNotRecorded {
+        /// Which set row was frozen: the tool set or the skill set.
+        field: SetField,
+    },
 }
 
 impl AttendantPropertiesState {
@@ -496,6 +517,17 @@ impl AttendantPropertiesState {
                 self.pending_prep_mode = !self.pending_prep_mode;
             }
             PropertyField::ToolSet | PropertyField::SkillSet | PropertyField::SeedTemplate => {}
+        }
+    }
+
+    /// Whether the user has moved this popup's cursor onto a set row and
+    /// acted on it, as opposed to the popup having merely opened over an
+    /// attendant that already carried a filter.
+    #[must_use]
+    pub fn set_touched(&self, field: SetField) -> bool {
+        match field {
+            SetField::Tool => self.tool_set_touched,
+            SetField::Skill => self.skill_set_touched,
         }
     }
 
@@ -558,10 +590,12 @@ impl AttendantPropertiesState {
             SetField::Tool => {
                 self.pending_tool_set = frozen;
                 self.frozen_tools = next;
+                self.tool_set_touched = true;
             }
             SetField::Skill => {
                 self.pending_skill_set = frozen;
                 self.frozen_skills = next;
+                self.skill_set_touched = true;
             }
         }
     }
@@ -674,12 +708,30 @@ impl AttendantPropertiesState {
             },
             None => NameFilter::default(),
         };
+        // An untouched row keeps the filter the attendant already had,
+        // which is what the commit wrote too -- recording the row's Live
+        // reading here instead would make `<esc>` after a save "undo" a
+        // freeze the save actually persisted.
+        let settled = |touched: bool,
+                       captured: Option<&BTreeSet<String>>,
+                       was: Option<&NameFilter>| match (touched, was) {
+            (false, Some(was)) => was.clone(),
+            _ => committed(captured),
+        };
         self.original = Some(OriginalValues {
             trigger: self.pending_trigger,
             behavior: self.pending_behavior,
             prep_mode: self.pending_prep_mode,
-            tool_set: committed(self.frozen_tools.as_ref()),
-            skill_set: committed(self.frozen_skills.as_ref()),
+            tool_set: settled(
+                self.tool_set_touched,
+                self.frozen_tools.as_ref(),
+                self.original.as_ref().map(|o| &o.tool_set),
+            ),
+            skill_set: settled(
+                self.skill_set_touched,
+                self.frozen_skills.as_ref(),
+                self.original.as_ref().map(|o| &o.skill_set),
+            ),
             template: self.seed_template.input.clone(),
         });
         self.editor_original = None;

@@ -353,6 +353,13 @@ pub(crate) fn status_line(
             ),
             theme.warning,
         ),
+        Some(jinn_attendant_msg::PopupStatus::SetNotRecorded { field }) => (
+            format!(
+                "No {} is available to freeze yet — the set stays live until there is something to hold.",
+                field.resource()
+            ),
+            theme.warning,
+        ),
     };
     Line::from(Span::styled(text, Style::default().fg(color)))
 }
@@ -1204,10 +1211,18 @@ fn pick_on(
         false => permitted_now(ctx, &attendant_id, field),
     };
     let dropped = !thawing && contains_glob(ctx, &attendant_id, field);
+    // A freeze that captured nothing has to say so at the moment it is
+    // made. There is no file change behind it to discover later -- the
+    // commit turns an empty capture back into the inheriting filter, so
+    // the row reads Live the next time the panel opens and the user is
+    // left wondering whether they ever froze anything.
+    let empty = !thawing && permitted.is_empty();
     cell.update(|popup| {
         popup.set_mode(field, next, &permitted);
-        if dropped {
-            popup.report(PopupStatus::GlobDropped { field });
+        match (dropped, empty) {
+            (true, _) => popup.report(PopupStatus::GlobDropped { field }),
+            (_, true) => popup.report(PopupStatus::SetNotRecorded { field }),
+            _ => {}
         }
     });
     IntentResult::empty()
@@ -1461,11 +1476,18 @@ fn commit_pending_to_session(
     session.set_attendant_is_prepping(popup.pending_prep_mode);
     session.set_attendant_trigger(popup.pending_trigger);
     for field in [SetField::Tool, SetField::Skill] {
-        if let Some(filter) = pending_filter(popup, field) {
-            match field {
-                SetField::Tool => session.set_tool_filter(filter),
-                SetField::Skill => session.set_skill_filter(filter),
-            }
+        // Only a row the user actually moved may write. An untouched row
+        // opens as a reading of whatever filter the attendant already
+        // carried -- a hand-written blocklist included -- and committing
+        // that reading back unchanged is what keeps opening and saving an
+        // untouched panel a no-op on every field.
+        if !popup.set_touched(field) {
+            continue;
+        }
+        let filter = committed_filter(popup, field);
+        match field {
+            SetField::Tool => session.set_tool_filter(filter),
+            SetField::Skill => session.set_skill_filter(filter),
         }
     }
     // A fresh attendant was never interacted; without this the persist is
@@ -1474,36 +1496,45 @@ fn commit_pending_to_session(
     session.touch();
 }
 
-/// The filter a set row would commit as, or `None` to leave it alone.
+/// What a set row commits to the session's filter.
 ///
-/// A Live row yields `None` because "leave the attendant's filter as it is"
-/// and "clear it" are the same thing to a session that inherited it — the
-/// unconfigured filter is precisely the one that says *inherit*. A row is
-/// never cleared here for that reason: thawing an attendant that was
-/// hand-written as frozen leaves the file's allow list alone rather than
-/// quietly widening it, which is the direction that takes capabilities away
-/// nobody asked to lose.
+/// A Live row commits an *unconfigured* filter, and that is the whole
+/// reason the commit cannot simply skip a Live row. The row's mode is
+/// derived from the session's filter — `OriginalValues::mode_of` reads an
+/// allow-mode filter as Frozen — so leaving a thawed attendant's filter in
+/// place left the session refusing everything outside the old allow list
+/// while the panel said the set was live, and the next open of the panel
+/// read Frozen again. There was no way back to Live. Writing the
+/// unconfigured filter is what actually releases the set, and it means the
+/// attendant inherits its parent's from there.
 ///
-/// A Frozen row whose capture is empty also yields `None`, and this is the
-/// one place that decision belongs. An empty allow list is read as no filter
-/// at all, so writing one would mark the attendant frozen in `jinn.toml`
-/// while it went on inheriting everything — the one outcome the row exists
-/// to prevent. Declining the *write* leaves the user with the choice they
-/// made on the row and no file change behind it; declining the *choice*
-/// instead, as this used to, made the row unselectable on any attendant
-/// that had discovered nothing yet.
-fn pending_filter(
+/// A row is never cleared because the attendant was *hand-written* as
+/// frozen, though: an untouched popup commits the same unconfigured filter,
+/// which is already what such an attendant inherits, so the file is left
+/// alone and nothing widens behind the user's back. The freeze only ever
+/// came from this panel, so this releases exactly what this panel put there.
+///
+/// A Frozen row whose capture is empty also commits an unconfigured
+/// filter, which is the same release as a thaw. An empty allow list is read
+/// as no filter at all, so persisting one would mark the attendant frozen
+/// in `jinn.toml` while it went on inheriting everything — the one outcome
+/// the row exists to prevent. That is why the refusal lives here, at the
+/// write, rather than at the choice: refusing the mode instead, as this
+/// once did, made the row unselectable on any attendant that had
+/// discovered nothing yet, which is the default state of a fresh one.
+fn committed_filter(
     popup: &jinn_attendant_msg::AttendantPropertiesState,
     field: SetField,
-) -> Option<NameFilter> {
-    let names = popup.pending_set(field)?;
-    if names.is_empty() {
-        return None;
+) -> NameFilter {
+    let frozen = popup.pending_set(field);
+    match frozen {
+        Some(names) if !names.is_empty() => NameFilter {
+            mode: FilterMode::Allow,
+            names: names.clone(),
+        },
+        // Live, or frozen over nothing: inherit.
+        _ => NameFilter::default(),
     }
-    Some(NameFilter {
-        mode: FilterMode::Allow,
-        names: names.clone(),
-    })
 }
 
 /// The user-facing half of a config write failure.

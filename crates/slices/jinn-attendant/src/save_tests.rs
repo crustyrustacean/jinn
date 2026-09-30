@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use jinn_app_state::AppState;
 use jinn_attendant_msg::{
-    AttendantPropertiesState, OriginalValues, PopupStatus, attendant_properties_scope,
+    AttendantPropertiesState, OriginalValues, PopupStatus, SetMode, attendant_properties_scope,
     attendant_properties_slot,
 };
 use jinn_config::{ConfigLayer, InMemoryConfigStorage};
@@ -953,4 +953,83 @@ fn a_keystroke_between_the_two_presses_withdraws_the_confirmation() {
         "nothing was replaced"
     );
     assert!(fx.cell.read().save_armed, "the press re-arms the prompt");
+}
+
+#[rstest::rstest]
+#[test]
+fn saving_after_a_skill_freeze_records_the_skill_filter() {
+    // Given a titled attendant with two skills discovered.
+    let mut fx = SaveFixture::new(Some("skilled"));
+    fx.state
+        .session
+        .get_mut(&fx.attendant_id)
+        .expect("attendant")
+        .set_discovered_skills(vec![skill("web-coder"), skill("reviewer")]);
+    fx.state
+        .session
+        .get_mut(&fx.attendant_id)
+        .expect("attendant")
+        .set_attendant_is_prepping(false);
+    fx.open();
+    for _ in 0..4 {
+        fx.press("attendant-properties-field-next");
+    }
+
+    // When freezing the skill row and saving.
+    fx.press("attendant-properties-pick-right");
+    fx.press("attendant-properties-save");
+
+    // Then the entry carries an allow list naming the discovered skills.
+    let filter = fx.saved()[0]
+        .skill_filter
+        .clone()
+        .expect("skill filter recorded on save");
+    assert_eq!(filter.mode, FilterMode::Allow);
+    assert_eq!(
+        filter.names,
+        ["reviewer".to_owned(), "web-coder".to_owned()]
+            .into_iter()
+            .collect()
+    );
+}
+
+/// A discovered skill named `name`, as the discovery scan would leave it.
+fn skill(name: &str) -> jinn_skills_msg::Skill {
+    jinn_skills_msg::Skill {
+        name: name.to_owned(),
+        description: format!("{name} description"),
+        body: String::new(),
+        file_path: std::path::PathBuf::from("/tmp/skill/SKILL.md"),
+        base_dir: std::path::PathBuf::from("/tmp/skill"),
+        source: jinn_skills_msg::SkillSource::Global,
+    }
+}
+
+#[rstest::rstest]
+#[test]
+fn a_saved_frozen_skill_set_reopens_the_panel_as_frozen() {
+    // Given an attendant whose saved entry carries a frozen skill set.
+    let mut fx = SaveFixture::new(Some("skilled"));
+    let filter = NameFilter {
+        mode: FilterMode::Allow,
+        names: ["web-coder".to_owned()].into_iter().collect(),
+    };
+    fx.state
+        .session
+        .get_mut(&fx.attendant_id)
+        .expect("attendant")
+        .set_skill_filter(filter);
+    fx.state
+        .session
+        .get_mut(&fx.attendant_id)
+        .expect("attendant")
+        .set_attendant_is_prepping(false);
+
+    // When opening the panel.
+    fx.open();
+
+    // Then the skill row reads Frozen. A row that reads Live over a saved
+    // allow list means the freeze did not survive the round trip, and the
+    // next save would silently drop it.
+    assert_eq!(fx.cell.read().pending_skill_set, SetMode::Frozen);
 }
