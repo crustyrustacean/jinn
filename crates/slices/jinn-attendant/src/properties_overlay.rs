@@ -1184,6 +1184,21 @@ fn save_attendant(ctx: &mut ActionCtx<'_>, cell: &AttendantPropertiesCell) -> In
         return IntentResult::empty();
     }
 
+    // Commit the popup's pending values to the session before reading it
+    // back. Pressing save means wanting these settings, so the entry is
+    // built from what the user is looking at — not from the pre-edit
+    // session, which would write the old values and report success.
+    //
+    // `commit_pending_to_session` is the same path `<enter>` takes, so the
+    // two ways of committing cannot drift apart.
+    commit_pending_to_session(ctx, &popup, &attendant_id);
+
+    let Some(state) = app(ctx) else {
+        return IntentResult::empty();
+    };
+    let Some(session) = state.session.get(&attendant_id) else {
+        return IntentResult::empty();
+    };
     let entry = crate::saved_entry::entry_for_session(name.clone(), session);
     entries.retain(|existing| existing.name != entry.name);
     entries.push(entry);
@@ -1196,14 +1211,48 @@ fn save_attendant(ctx: &mut ActionCtx<'_>, cell: &AttendantPropertiesCell) -> In
         return IntentResult::empty();
     }
 
-    // Committed: the arm has served its purpose, and a saved attendant is
-    // unarmed whether or not the popup closes.
+    // Committed: the arm has served its purpose, and the popup's restore
+    // point moves to what was just written so `<esc>` does not undo the
+    // save it just reported as done.
     let saved = name;
     cell.update(|p| {
         p.disarm_save();
+        p.commit_as_original();
         p.report(PopupStatus::Saved { name: saved });
     });
-    IntentResult::empty()
+
+    // A save is a session edit, so it persists like any other. A freshly
+    // created attendant was never interacted, and without this the write
+    // below is silently dropped.
+    IntentResult::empty().with_message(jinn_session_store_msg::PersistSession {
+        session_id: attendant_id,
+    })
+}
+
+/// Writes a properties popup's pending values onto its session.
+///
+/// Shared by `<enter>` (apply and close) and `<c-s>` (save and stay) so the
+/// two commit paths cannot disagree about what "committed" means. Marks the
+/// session interacted and touched, so a freshly created attendant persists.
+fn commit_pending_to_session(
+    ctx: &mut ActionCtx<'_>,
+    popup: &jinn_attendant_msg::AttendantPropertiesState,
+    attendant_id: &jinn_core_types::SessionId,
+) {
+    let Some(state) = app(ctx) else {
+        return;
+    };
+    let Some(session) = state.session.get_mut(attendant_id) else {
+        return;
+    };
+    session.set_seed_template(popup.seed_template.input.clone());
+    session.set_attendant_behavior(popup.pending_behavior);
+    session.set_attendant_is_prepping(popup.pending_prep_mode);
+    session.set_attendant_trigger(popup.pending_trigger);
+    // A fresh attendant was never interacted; without this the persist is
+    // silently dropped.
+    session.mark_interacted();
+    session.touch();
 }
 
 /// The user-facing half of a config write failure.
@@ -1247,26 +1296,11 @@ fn refuse_save(
 /// The apply row's action: commits the popup's pending values to the
 /// session it names, together, and persists once.
 fn apply_all_fields(ctx: &mut ActionCtx<'_>, cell: &AttendantPropertiesCell) -> IntentResult {
-    let Some(state) = app(ctx) else {
-        return IntentResult::empty();
-    };
     let popup = cell.read().clone();
     let Some(attendant_id) = popup.session_id.clone() else {
         return IntentResult::empty();
     };
-    let template = popup.seed_template.input.clone();
-    let (behavior, trigger) = (popup.pending_behavior, popup.pending_trigger);
-    let Some(session) = state.session.get_mut(&attendant_id) else {
-        return IntentResult::empty();
-    };
-    session.set_seed_template(template);
-    session.set_attendant_behavior(behavior);
-    session.set_attendant_is_prepping(popup.pending_prep_mode);
-    session.set_attendant_trigger(trigger);
-    // A fresh attendant was never interacted; without this the persist
-    // below is silently dropped.
-    session.mark_interacted();
-    session.touch();
+    commit_pending_to_session(ctx, &popup, &attendant_id);
     // Leaving the popup disarms the save, exactly as `<esc>` does: an arm
     // confirmed against a name the user has since changed must not survive
     // into the next popup session.

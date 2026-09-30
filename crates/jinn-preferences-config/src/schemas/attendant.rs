@@ -21,6 +21,20 @@ use serde::{Deserialize, Serialize};
 impl jinn_config::ConfigList for AttendantEntryConfig {
     const KEY: &'static str = "attendant.entry";
     const ENTRY_KEY: &'static str = "name";
+    const ENTRY_FIELDS: &'static [&'static str] = &[
+        "name",
+        "behavior",
+        "trigger",
+        "prep_mode",
+        "seed_template",
+        "model",
+        "persona_name",
+        "disabled_tools",
+        "disabled_skills",
+        "reasoning_effort",
+        "endpoint",
+        "pins",
+    ];
 }
 
 /// One saved attendant, defined in `jinn.toml` under `[[attendant.entry]]`.

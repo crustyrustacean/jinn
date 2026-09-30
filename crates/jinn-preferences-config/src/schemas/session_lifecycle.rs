@@ -183,6 +183,7 @@ pub struct SessionLifecycle {
 impl jinn_config::ConfigList for SessionLifecycle {
     const KEY: &'static str = "session_lifecycle.script";
     const ENTRY_KEY: &'static str = "name";
+    const ENTRY_FIELDS: &'static [&'static str] = &["name", "description", "setup", "teardown"];
 }
 
 #[cfg(test)]

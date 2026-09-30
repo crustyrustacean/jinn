@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 impl jinn_config::ConfigList for ProjectConfig {
     const KEY: &'static str = "project.entry";
     const ENTRY_KEY: &'static str = "path";
+    const ENTRY_FIELDS: &'static [&'static str] = &["path", "command_policy"];
 }
 
 /// A curated project directory shown in the project picker.

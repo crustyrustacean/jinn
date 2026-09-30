@@ -349,13 +349,13 @@ settle_max_wait_ms = 3000
 [attendant]
 
 [[attendant.entry]]
-behavior = "reset"
+behavior = "preserve"
 disabled_skills = ["phased-task-loop"]
 disabled_tools = ["grep"]
 model = { single = "openrouter/deepseek/deepseek-v4.1-flash" }
 name = "sample"
 pins = [{ role = "user", text = "hello" }, { role = "user", text = "sup" }]
-prep_mode = true
+prep_mode = false
 reasoning_effort = "high"
 seed_template = "The previous run of this attendant reported: <prior report>."
 trigger = "manual"

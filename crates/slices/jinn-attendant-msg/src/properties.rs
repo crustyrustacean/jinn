@@ -420,6 +420,26 @@ impl AttendantPropertiesState {
         self.save_armed = false;
     }
 
+    /// Accepts the popup's current values as the restore point.
+    ///
+    /// Called once a save has been written. `<esc>` reverts to
+    /// [`Self::original`], so leaving that frozen at its open-time value
+    /// would make a close undo a save the user was just told had
+    /// succeeded. The baseline moves to what was written instead.
+    ///
+    /// A save means wanting these settings, so the pending values are what
+    /// the session now holds and what the file now says; both are the same
+    /// thing here, and this makes the popup agree with them.
+    pub fn commit_as_original(&mut self) {
+        self.original = Some(OriginalValues {
+            trigger: self.pending_trigger,
+            behavior: self.pending_behavior,
+            prep_mode: self.pending_prep_mode,
+            template: self.seed_template.input.clone(),
+        });
+        self.editor_original = None;
+    }
+
     /// Replaces the status line's message.
     pub fn report(&mut self, status: PopupStatus) {
         self.status = Some(status);

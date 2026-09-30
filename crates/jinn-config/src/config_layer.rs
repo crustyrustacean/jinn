@@ -437,6 +437,12 @@ impl ConfigLayer {
         };
         let mut patcher = DocumentPatcher::new();
         patcher.register_array_key([static_leaf::<T>()], T::ENTRY_KEY);
+        // A save replaces each entry it matches, so a field the user cleared
+        // disappears from the file instead of surviving as a stale value.
+        patcher.register_replace(
+            [static_leaf::<T>()],
+            T::ENTRY_FIELDS.iter().map(|f| (*f).to_owned()).collect(),
+        );
 
         let parent = ensure_table(&mut doc, &parent_path)
             .change_context(PatchError::Generic)
@@ -861,6 +867,7 @@ mod tests {
     impl ConfigList for LifecycleEntry {
         const KEY: &'static str = "session_lifecycle.script";
         const ENTRY_KEY: &'static str = "name";
+        const ENTRY_FIELDS: &'static [&'static str] = &["name", "setup"];
     }
 
     /// A section whose list is nested below its own key.
@@ -903,6 +910,7 @@ mod tests {
     impl ConfigList for ProjectEntry {
         const KEY: &'static str = "project.entry";
         const ENTRY_KEY: &'static str = "name";
+        const ENTRY_FIELDS: &'static [&'static str] = &["name"];
     }
 
     fn doc(body: &str) -> DocumentMut {

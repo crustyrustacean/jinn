@@ -46,8 +46,8 @@
 //!   on the same line as a value may detach if the value is replaced. This is
 //!   inherent to `toml_edit`'s document model.
 
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
 
 use toml_edit::{ArrayOfTables, Item, Table, Value};
 use wherror::Error;
@@ -71,6 +71,9 @@ pub enum PatchError {
 #[derive(Debug, Default, Clone)]
 pub struct KeyRegistry {
     keys: HashMap<Vec<String>, &'static str>,
+    /// Per path, the field names a save is authoritative for. `None` means
+    /// the list merges.
+    replacing: HashMap<Vec<String>, Option<HashSet<String>>>,
 }
 
 impl KeyRegistry {
@@ -90,6 +93,31 @@ impl KeyRegistry {
     {
         let path: Vec<String> = path.into_iter().map(str::to_owned).collect();
         self.keys.insert(path, key_field);
+    }
+
+    /// Marks the entry list at `path` as replace-on-save, authoritative for
+    /// `declared` field names.
+    ///
+    /// `declared` is the entry's own field list, not the serialized value.
+    /// It must be the *schema*, because a field the user cleared is absent
+    /// from the serialized value — which is exactly the key that has to be
+    /// removed. Passing the serialized keys instead would make every
+    /// replace-on-save a no-op.
+    ///
+    /// Naming fields rather than deleting unconditionally is what keeps a
+    /// key the struct never declared safe: TOML attaches a bare trailing
+    /// key to the table above it, so a root scalar written after a list
+    /// entry genuinely lives *inside* that entry.
+    pub fn register_replace<P>(&mut self, path: P, declared: HashSet<String>)
+    where
+        P: IntoIterator<Item = &'static str>,
+    {
+        let path: Vec<String> = path.into_iter().map(str::to_owned).collect();
+        self.replacing.insert(path, Some(declared));
+    }
+
+    fn replacing(&self, path: &[String]) -> Option<&HashSet<String>> {
+        self.replacing.get(path).and_then(Option::as_ref)
     }
 
     fn lookup(&self, path: &[String]) -> Option<&'static str> {
@@ -177,6 +205,15 @@ impl DocumentPatcher {
         P: IntoIterator<Item = &'static str>,
     {
         self.registry.register(path, key_field);
+    }
+
+    /// Marks the entry list at `path` as replace-on-save. See
+    /// [`KeyRegistry::register_replace`] for what `declared` must be.
+    pub fn register_replace<P>(&mut self, path: P, declared: HashSet<String>)
+    where
+        P: IntoIterator<Item = &'static str>,
+    {
+        self.registry.register_replace(path, declared);
     }
 
     /// Applies `value` onto `doc`, preserving comments and unknown fields.
@@ -581,9 +618,14 @@ fn apply_array(
     } else {
         None
     };
+    let declared = if shape.is_array(path) {
+        shape.arrays.replacing(path)
+    } else {
+        None
+    };
 
     if let Some(key_field) = key_field {
-        apply_array_of_tables_by_key(new, target, key_field, shape, path)
+        apply_array_of_tables_by_key(new, target, key_field, declared, shape, path)
     } else {
         // Wholesale replace; preserve the `= v` whitespace the old value
         // carried so the rendered line keeps its spacing.
@@ -605,13 +647,14 @@ fn apply_array_of_tables_by_key(
     new: &[toml::Value],
     target: &mut Item,
     key_field: &'static str,
+    declared: Option<&HashSet<String>>,
     shape: &Shape<'_>,
     path: &[String],
 ) -> Result<(), PatchError> {
     let array = ensure_array_of_tables(target)?;
     let (new_keys_in_order, new_by_key) = index_new_entries_by_key(new, key_field);
     let matched = mark_matched_entries(array, &new_by_key, key_field)?;
-    apply_in_place_updates(array, &new_by_key, key_field, shape, path)?;
+    apply_in_place_updates(array, &new_by_key, key_field, declared, shape, path)?;
     remove_unmatched_entries(array, &matched);
     append_new_entries(array, &new_keys_in_order, &new_by_key, key_field);
 
@@ -693,6 +736,7 @@ fn apply_in_place_updates(
     array: &mut ArrayOfTables,
     new_by_key: &HashMap<String, &toml::Value>,
     key_field: &'static str,
+    declared: Option<&HashSet<String>>,
     shape: &Shape<'_>,
     path: &[String],
 ) -> Result<(), PatchError> {
@@ -715,6 +759,9 @@ fn apply_in_place_updates(
         let entry_mut: &mut Table = array.get_mut(idx).ok_or(PatchError::InternalInvariant {
             what: "idx in range",
         })?;
+        if let Some(declared) = declared {
+            drop_stale_entry_keys(entry_mut, repl_t, declared);
+        }
         for (k, child_value) in repl_t {
             let mut child_path = path.to_vec();
             child_path.push(k.clone());
@@ -730,6 +777,24 @@ fn apply_in_place_updates(
         }
     }
     Ok(())
+}
+
+/// Removes the keys an entry holds that the new entry omits, among the
+/// fields the entry's schema declares.
+///
+/// Without this an "overwrite" is a merge: clearing a field writes nothing
+/// for that key, so the old value survives and the file keeps a setting the
+/// user just removed.
+///
+/// Only `declared` keys are considered. A key the struct never declares is
+/// left alone — TOML attaches a bare trailing key to the table above it, so
+/// an entry can legitimately hold something the struct has no field for.
+fn drop_stale_entry_keys(
+    entry: &mut Table,
+    replacement: &toml::value::Table,
+    declared: &HashSet<String>,
+) {
+    entry.retain(|key, _| replacement.contains_key(key) || !declared.contains(&key.to_owned()));
 }
 
 /// Removes existing entries whose key was dropped from the new struct.
@@ -1099,6 +1164,65 @@ mod tests {
         assert!(out.contains("alpha"), "alpha kept");
         assert!(!out.contains("beta"), "beta removed");
         assert!(!out.contains("# beta"), "beta comment removed with it");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_replaced_entry_drops_a_cleared_field() {
+        // Given an entry holding a field the schema declares.
+        let mut d = doc("[[items]]\nname = \"a\"\ncolour = \"blue\"\n");
+        let mut p = DocumentPatcher::new();
+        p.register_array_key(["items"], "name");
+        p.register_replace(
+            ["items"],
+            HashSet::from(["name".to_owned(), "colour".to_owned()]),
+        );
+
+        // When re-saving an entry that no longer carries it.
+        let mut entry = toml::value::Table::new();
+        entry.insert("name".to_owned(), toml::Value::String("a".to_owned()));
+        let mut list = toml::value::Table::new();
+        list.insert(
+            "items".to_owned(),
+            toml::Value::Array(vec![toml::Value::Table(entry)]),
+        );
+        p.apply(&list, d.as_table_mut()).expect("apply");
+
+        // Then the cleared field is gone: an overwrite that only adds is not
+        // an overwrite.
+        assert!(!d.to_string().contains("colour"), "stale field kept:\n{d}");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_replaced_entry_keeps_a_key_the_schema_does_not_declare() {
+        // Given an entry holding a key no field describes. TOML attaches a
+        // bare trailing key to the table above it, so a root scalar written
+        // after a list entry genuinely lives inside that entry.
+        let mut d = doc("[[aliases]]\nname = \"a\"\n\ndefault_provider = \"a\"\n");
+        let mut p = DocumentPatcher::new();
+        p.register_array_key(["aliases"], "name");
+        p.register_replace(
+            ["aliases"],
+            HashSet::from(["name".to_owned(), "target".to_owned()]),
+        );
+
+        // When re-saving the same alias.
+        let mut entry = toml::value::Table::new();
+        entry.insert("name".to_owned(), toml::Value::String("a".to_owned()));
+        let mut list = toml::value::Table::new();
+        list.insert(
+            "aliases".to_owned(),
+            toml::Value::Array(vec![toml::Value::Table(entry)]),
+        );
+        p.apply(&list, d.as_table_mut()).expect("apply");
+
+        // Then the undeclared key survives: `replace` says this schema is
+        // authoritative, not that everything else may be deleted.
+        assert!(
+            d.to_string().contains("default_provider"),
+            "undeclared key dropped:\n{d}"
+        );
     }
 
     #[rstest::rstest]

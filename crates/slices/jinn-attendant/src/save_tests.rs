@@ -18,7 +18,9 @@ use jinn_attendant_msg::{
 };
 use jinn_config::{ConfigLayer, InMemoryConfigStorage};
 use jinn_core_types::{ChatEntry, PinPosition, SessionId};
-use jinn_preferences_config::schemas::AttendantEntryConfig;
+use jinn_preferences_config::schemas::{
+    AttendantEntryConfig, AttendantPinConfig, AttendantPinRole,
+};
 use jinn_session_state::ChatSessionState;
 use jinn_slices::KeyRoutes;
 use jinn_slices::cell::TypedCell;
@@ -205,6 +207,150 @@ fn an_untitled_refusal_says_so_in_the_attendants_own_log() {
     // Then a line is published to the attendant itself, so the user learns
     // why nothing happened rather than concluding the key is broken.
     assert_eq!(result.message_names, vec!["PushChatEntry"]);
+}
+
+#[rstest::rstest]
+#[test]
+fn a_save_writes_the_pops_pending_edits() {
+    // Given an open popup whose pending values the session does not
+    // yet hold — the user typed them but committed nothing.
+    let mut fx = SaveFixture::new(Some("nightly"));
+    fx.open();
+    let session = fx
+        .state
+        .session
+        .get(&fx.attendant_id)
+        .expect("attendant")
+        .clone();
+    let original_template = session.seed_template().to_owned();
+    fx.cell
+        .update(|p| p.seed_template.input = "the edited template".to_owned());
+
+    // When pressing the save key.
+    fx.press("attendant-properties-save");
+
+    // Then the entry holds the edited template, not the pre-edit one.
+    // Pressing save means wanting these settings, so the popup's pending
+    // values are what get written.
+    assert_eq!(fx.saved()[0].seed_template, "the edited template");
+    // And the session holds them too, so the commit is not popup-only.
+    let after = fx.state.session.get(&fx.attendant_id).expect("attendant");
+    assert_eq!(after.seed_template(), "the edited template");
+    assert_ne!(after.seed_template(), original_template);
+}
+
+#[rstest::rstest]
+#[test]
+fn an_overwrite_replaces_the_whole_entry() {
+    // Given a popup armed against an entry holding fields the session no
+    // longer has — the user cleared them, so the new entry must not.
+    let mut fx = SaveFixture::new(Some("nightly"));
+    fx.open();
+    let mut seeded = fx.saved();
+    seeded.push(AttendantEntryConfig {
+        name: "nightly".to_owned(),
+        seed_template: "the original".to_owned(),
+        disabled_tools: vec!["write".to_owned()],
+        pins: vec![AttendantPinConfig {
+            role: AttendantPinRole::User,
+            text: "a stale instruction".to_owned(),
+        }],
+        ..AttendantEntryConfig::default()
+    });
+    fx.config
+        .put_list::<AttendantEntryConfig>(&seeded)
+        .expect("seed writes");
+
+    // When overwriting it with an entry that has neither field.
+    fx.press("attendant-properties-save");
+    fx.press("attendant-properties-save");
+
+    // Then both are gone rather than merged back in: an overwrite that
+    // only adds fields is not an overwrite.
+    let saved = fx.saved();
+    assert_eq!(saved.len(), 1);
+    assert!(
+        saved[0].pins.is_empty(),
+        "stale pins survived the overwrite: {:?}",
+        saved[0].pins
+    );
+    assert!(
+        saved[0].disabled_tools.is_empty(),
+        "stale disabled_tools survived: {:?}",
+        saved[0].disabled_tools
+    );
+    assert_ne!(saved[0].seed_template, "the original");
+}
+
+#[rstest::rstest]
+#[test]
+fn closing_after_a_save_reverts_to_the_saved_values() {
+    // Given a popup whose pending values differ from the session, saved.
+    let mut fx = SaveFixture::new(Some("nightly"));
+    fx.open();
+    fx.cell
+        .update(|p| p.seed_template.input = "the saved template".to_owned());
+    fx.press("attendant-properties-save");
+    // The user keeps editing after the save.
+    fx.cell
+        .update(|p| p.seed_template.input = "an unsaved thought".to_owned());
+
+    // When closing with the cancel key.
+    fx.press("attendant-properties-leave");
+
+    // Then the popup reverts to what was saved, not to what was on screen
+    // when it opened — otherwise closing would undo a save the user was
+    // told had succeeded.
+    assert_eq!(
+        fx.cell.read().seed_template.input,
+        "the saved template",
+        "revert target is stale"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn closing_without_saving_still_reverts_to_the_session() {
+    // Given a popup with unsaved pending values.
+    let mut fx = SaveFixture::new(Some("nightly"));
+    fx.open();
+    let session_template = fx
+        .state
+        .session
+        .get(&fx.attendant_id)
+        .expect("attendant")
+        .seed_template()
+        .to_owned();
+    fx.cell
+        .update(|p| p.seed_template.input = "never saved".to_owned());
+
+    // When closing with the cancel key.
+    fx.press("attendant-properties-leave");
+
+    // Then the popup reverts to the session's values, which no save moved.
+    assert_eq!(fx.cell.read().seed_template.input, session_template);
+}
+
+#[rstest::rstest]
+#[test]
+fn a_save_does_not_close_the_popup() {
+    // Given an open popup over a new attendant.
+    let mut fx = SaveFixture::new(Some("nightly"));
+    fx.open();
+
+    // When pressing the save key.
+    let result = fx.press("attendant-properties-save");
+
+    // Then the popup stays open, so the user can see what was written and
+    // keep adjusting without reopening.
+    assert!(
+        !matches!(result.scope_signal, Some(ScopeSignal::PopIf(_))),
+        "save closed the popup"
+    );
+    assert_eq!(
+        fx.state.frontend.scope(),
+        jinn_slices::FocusScope::Dynamic(attendant_properties_scope())
+    );
 }
 
 #[rstest::rstest]
