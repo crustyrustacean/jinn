@@ -475,6 +475,29 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         // layer.
         sync(sessions::attendant_properties::handle_open_attendant_properties),
     ));
+    // Activation and activate-and-type are the same bindings the sessions
+    // section has, pointing at the same two handlers, for the same reason:
+    // the attendants section is one of the two places a user stands when they
+    // decide to open an attendant's conversation, and the only thing that
+    // differs is which row the cursor is on. Routing them through the shared
+    // handlers keeps the two sections' definition of "open this attendant"
+    // from drifting.
+    routes.attach(row(
+        "attendant-activate",
+        attendant_scope.clone(),
+        "<enter>",
+        "general",
+        "activate attendant",
+        sync(sessions::handle_session_activate),
+    ));
+    routes.attach(row(
+        "attendant-activate-insert",
+        attendant_scope,
+        "i",
+        "general",
+        "activate + insert",
+        sync(sessions::handle_session_activate_insert),
+    ));
 
     // ---- Task list section ----
     routes.attach(row(
@@ -1040,5 +1063,125 @@ mod tests {
         // session, and the sessions section reaches users as well as
         // attendants.
         assert_eq!(state.frontend.scope(), before);
+    }
+
+    /// The attendants section with its cursor on `index`.
+    fn state_with_attendant_cursor(
+        index: usize,
+    ) -> (jinn_kernel::AppState, jinn_core_types::SessionId) {
+        let mut state = state_with_attendants(3);
+        focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Attendant);
+        let rows = jinn_attendant::section_rows::attendant_rows(&state);
+        let highlighted = rows[index].session_id.clone();
+        let for_cursor = highlighted.clone();
+        state
+            .frontend
+            .update_sections(|s| s.attendant.selected_id = Some(for_cursor));
+        (state, highlighted)
+    }
+
+    #[rstest::rstest]
+    fn enter_in_the_attendants_section_activates_the_highlighted_attendant() {
+        // Given the attendants section focused with the cursor on the second
+        // attendant.
+        let (mut state, expected) = state_with_attendant_cursor(1);
+
+        // When `<enter>` is pressed.
+        let routes = KeyRoutes::new();
+        attach_sidebar_rows(&routes);
+        press(
+            &routes,
+            &mut state,
+            jinn_sidebar_msg::SidebarSectionId::Attendant.scope_id(),
+            "attendant-activate",
+        );
+
+        // Then that attendant's conversation is the one on screen.
+        assert_eq!(state.session.active_session_id(), &expected);
+    }
+
+    #[rstest::rstest]
+    fn enter_in_the_attendants_section_returns_to_the_normal_scope() {
+        // Given the attendants section focused over an attendant.
+        let (mut state, _expected) = state_with_attendant_cursor(0);
+
+        // When `<enter>` is pressed.
+        let routes = KeyRoutes::new();
+        attach_sidebar_rows(&routes);
+        press(
+            &routes,
+            &mut state,
+            jinn_sidebar_msg::SidebarSectionId::Attendant.scope_id(),
+            "attendant-activate",
+        );
+
+        // Then the sidebar is gone and the chat pane has the keyboard back in
+        // its ordinary mode.
+        assert_eq!(state.frontend.scope(), jinn_slices::FocusScope::Normal);
+    }
+
+    #[rstest::rstest]
+    fn i_in_the_attendants_section_activates_the_highlighted_attendant() {
+        // Given the attendants section focused with the cursor on the second
+        // attendant.
+        let (mut state, expected) = state_with_attendant_cursor(1);
+
+        // When `i` is pressed.
+        let routes = KeyRoutes::new();
+        attach_sidebar_rows(&routes);
+        press(
+            &routes,
+            &mut state,
+            jinn_sidebar_msg::SidebarSectionId::Attendant.scope_id(),
+            "attendant-activate-insert",
+        );
+
+        // Then that attendant's conversation is the one on screen.
+        assert_eq!(state.session.active_session_id(), &expected);
+    }
+
+    #[rstest::rstest]
+    fn i_in_the_attendants_section_enters_input_mode() {
+        // Given the attendants section focused over an attendant.
+        let (mut state, _expected) = state_with_attendant_cursor(0);
+
+        // When `i` is pressed.
+        let routes = KeyRoutes::new();
+        attach_sidebar_rows(&routes);
+        press(
+            &routes,
+            &mut state,
+            jinn_sidebar_msg::SidebarSectionId::Attendant.scope_id(),
+            "attendant-activate-insert",
+        );
+
+        // Then a message can be typed straight away, with Normal as the base
+        // so ESC lands there.
+        assert_eq!(state.frontend.scope(), jinn_slices::FocusScope::Input);
+        assert_eq!(
+            state.frontend.scope_parent(),
+            Some(jinn_slices::FocusScope::Normal)
+        );
+    }
+
+    #[rstest::rstest]
+    fn enter_in_the_attendants_section_over_a_stale_cursor_activates_nothing() {
+        // Given the attendants section focused with no attendant highlighted.
+        let mut state = state_with_attendants(0);
+        focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Attendant);
+        let before = state.session.active_session_id().clone();
+
+        // When `<enter>` is pressed.
+        let routes = KeyRoutes::new();
+        attach_sidebar_rows(&routes);
+        press(
+            &routes,
+            &mut state,
+            jinn_sidebar_msg::SidebarSectionId::Attendant.scope_id(),
+            "attendant-activate",
+        );
+
+        // Then the conversation on screen does not change.
+        assert_eq!(state.session.active_session_id(), &before);
     }
 }

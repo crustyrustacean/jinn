@@ -4,6 +4,7 @@ use jinn_kernel::common::app_state::AppState;
 
 use jinn_chat_log_view::kernel_element::activate_session;
 use jinn_kernel::protocol::IntentResult;
+use jinn_sidebar_msg::SidebarSectionId;
 
 /// Activates the session under the cursor.
 ///
@@ -14,13 +15,16 @@ use jinn_kernel::protocol::IntentResult;
 ///   are emitted: each session's discovered skills/prompts/context-files
 ///   are ephemeral and persist across activation changes, and were
 ///   hydrated when the session was created/loaded.
+/// - Also answers in the attendants section, so an attendant's own
+///   conversation opens from the list that names it.
 pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
     activate_selected(state, false)
 }
 
 /// Activates the session under the cursor and enters Insert mode.
 ///
-/// Called when the user presses `i` in the sessions section. Like
+/// Called when the user presses `i` in the sessions section — or in the
+/// attendants section, for the same reason `<enter>` answers in both. Like
 /// [`handle_session_activate`] but lands in Input mode instead of Normal,
 /// so the user can immediately start typing. The scope stack ends up
 /// `[Normal, Input]` — Normal as the base so that ESC (`clear_overlays`)
@@ -45,16 +49,7 @@ pub fn handle_session_activate_insert(state: &mut AppState) -> IntentResult {
 fn activate_selected(state: &mut AppState, enter_input: bool) -> IntentResult {
     use jinn_slices::FocusScope;
 
-    if !matches!(
-        state.frontend.sidebar_section(),
-        Some(jinn_sidebar_msg::SidebarSectionId::Sessions)
-    ) {
-        return IntentResult::empty();
-    }
-    let Some(target_id) = state
-        .frontend
-        .with_sections(|s| s.sessions.selected_id.clone(), || None)
-    else {
+    let Some(target_id) = highlighted_session_id(state) else {
         return IntentResult::empty();
     };
 
@@ -63,6 +58,29 @@ fn activate_selected(state: &mut AppState, enter_input: bool) -> IntentResult {
         state.frontend.scope_push(FocusScope::Input);
     }
     activate_session(state, target_id, IntentResult::empty())
+}
+
+/// The session id under the cursor, or `None` outside the two sections that
+/// list a session to activate.
+///
+/// Two sections list sessions a user opens this way, and they keep separate
+/// cursors over separate lists: sessions and attendants. Reading whichever
+/// cursor belongs to the focused section is a choice between two identities
+/// rather than between two row positions — there is no index to resolve
+/// against the wrong list.
+///
+/// Any other section has no session to activate, and neither has the chat
+/// pane itself; those return `None`, leaving the key inert there.
+fn highlighted_session_id(state: &AppState) -> Option<jinn_core_types::SessionId> {
+    let focused = state.frontend.sidebar_section()?;
+    state.frontend.with_sections(
+        |s| match focused {
+            SidebarSectionId::Sessions => s.sessions.selected_id.clone(),
+            SidebarSectionId::Attendant => s.attendant.selected_id.clone(),
+            _ => None,
+        },
+        || None,
+    )
 }
 
 #[cfg(test)]
