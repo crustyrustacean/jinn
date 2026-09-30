@@ -36,6 +36,7 @@ use jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT;
 use jinn_chat_log_view_msg::PREVIEW_MAX_LINES;
 use jinn_chat_log_view_msg::PREVIEW_REQUEST_ENTRY_COUNT;
 use jinn_kernel::common::app_state::AppState;
+use jinn_session_msg::SessionOrigin;
 use jinn_session_state::ChatSessionState;
 use jinn_slices::DrawContext;
 use jinn_theme::Theme;
@@ -267,6 +268,22 @@ pub fn render_session_preview(
     render_session_preview_inner(frame, popup_area, session, theme, lines);
 }
 
+/// The color the popup's border is drawn in.
+///
+/// A preview is a way of asking what a session *is* before opening it, and for
+/// a subagent or an attendant that is the one question a title cannot answer —
+/// the session list already tints those rows, and the popup that hangs off the
+/// row was saying nothing. The border carries the same tint, so the popup and
+/// the row that opened it agree. Every other kind keeps the ordinary unfocused
+/// border: an ordinary session needs no distinguishing.
+fn preview_border_fg(session: &ChatSessionState, theme: &Theme) -> ratatui::style::Color {
+    match session.origin() {
+        SessionOrigin::Attendant => theme.attendant_fg,
+        SessionOrigin::Subagent => theme.subagent_fg,
+        SessionOrigin::User | SessionOrigin::Fork => theme.border_unfocused,
+    }
+}
+
 /// The preview's lines with any trailing blank rows dropped.
 ///
 /// Every entry is padded above and below, so the last line a worker returns is
@@ -410,7 +427,7 @@ fn render_session_preview_inner(
                 Style::default().fg(theme.popup_title),
             ))
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme.border_unfocused));
+            .border_style(Style::default().fg(preview_border_fg(session, theme)));
         if let Some(badge) = badge {
             block = block.title(
                 Line::from(Span::styled(badge, Style::default().fg(theme.streaming)))
