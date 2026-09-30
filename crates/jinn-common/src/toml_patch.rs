@@ -123,9 +123,22 @@ fn path_matches(path: &[String], pattern: &[String]) -> bool {
 }
 
 /// Applies a `toml::Value` tree onto an existing `DocumentMut` in place.
+///
+/// The patcher serves two callers whose shapes differ:
+///
+/// - [`ConfigLayer::put`] writes *sections*. Every table it carries is a named
+///   section (`[watchdog.stall]`, `[providers.zai]`) and must keep header form.
+/// - [`ConfigLayer::put_list`] writes *entries*. The entry list is a
+///   header-form array-of-tables, but every value nested inside an entry
+///   (`model = { ... }`, `pins = [{ ... }]`) renders inline.
+///
+/// Which one is in play is declared, not inferred: [`Self::register_section`]
+/// marks the tables that are real sections, and anything unregistered is a
+/// value inside whatever section encloses it.
 #[derive(Debug, Default)]
 pub struct DocumentPatcher {
     registry: KeyRegistry,
+    sections: KeyRegistry,
 }
 
 impl DocumentPatcher {
@@ -138,7 +151,24 @@ impl DocumentPatcher {
     /// Creates a patcher with the given key registry.
     #[must_use]
     pub fn with_registry(registry: KeyRegistry) -> Self {
-        Self { registry }
+        Self {
+            registry,
+            ..Self::default()
+        }
+    }
+
+    /// Declares that the table at `path` is a named section and must render as
+    /// a `[path]` header rather than inline.
+    ///
+    /// Registration is what makes the two callers above distinguishable: a
+    /// table the patcher has never heard of is a *value* inside its enclosing
+    /// section, and rendering it inline is what keeps it from being anchored
+    /// outside the entry it belongs to.
+    pub fn register_section<P>(&mut self, path: P)
+    where
+        P: IntoIterator<Item = &'static str>,
+    {
+        self.sections.register(path, "");
     }
 
     /// Registers a key field for the array-of-tables at the given dotted path.
@@ -160,14 +190,42 @@ impl DocumentPatcher {
         value: &toml::value::Table,
         target: &mut toml_edit::Table,
     ) -> Result<(), PatchError> {
-        apply_table_inner(value, target, &self.registry, &[])
+        let shape = Shape {
+            arrays: &self.registry,
+            sections: &self.sections,
+        };
+        apply_table_inner(value, target, &shape, &[])
+    }
+}
+
+/// The two registrations that decide how a value renders.
+///
+/// Bundled because every apply function needs both and threading them
+/// separately made the signatures unreadable at the call sites.
+#[derive(Debug)]
+struct Shape<'k> {
+    /// Paths that are entry lists and render as `[[header]]` tables.
+    arrays: &'k KeyRegistry,
+    /// Paths that are named sections and render as `[header]` tables.
+    sections: &'k KeyRegistry,
+}
+
+impl Shape<'_> {
+    /// Whether `path` renders as a header-form table.
+    fn is_section(&self, path: &[String]) -> bool {
+        self.sections.lookup(path).is_some()
+    }
+
+    /// Whether `path` renders as a header-form array-of-tables.
+    fn is_array(&self, path: &[String]) -> bool {
+        self.arrays.lookup(path).is_some()
     }
 }
 
 fn apply_table_inner(
     new: &toml::value::Table,
     target: &mut Table,
-    registry: &KeyRegistry,
+    shape: &Shape<'_>,
     path: &[String],
 ) -> Result<(), PatchError> {
     for (key, child_value) in new {
@@ -180,8 +238,7 @@ fn apply_table_inner(
             // leading comment must first be lifted off — otherwise the
             // document is rendered corrupt (`[# comment\nkey ]`) — and is
             // re-attached to the header once the coercion is done.
-            let salvaged = if coerces_to_header(child_value, target.get(key), registry, &child_path)
-            {
+            let salvaged = if coerces_to_header(child_value, target.get(key), shape, &child_path) {
                 take_key_decor_prefix(target, key)
             } else {
                 None
@@ -191,11 +248,36 @@ fn apply_table_inner(
                 target.get_mut(key).ok_or(PatchError::InternalInvariant {
                     what: "just checked contains_key",
                 })?;
-            apply_value(child_value, child_item, registry, &child_path)?;
+            apply_value(child_value, child_item, shape, &child_path)?;
 
             if let Some(prefix) = salvaged {
                 reattach_key_prefix(target, key, prefix);
             }
+        } else if shape.is_array(&child_path) {
+            // A key new to this table but registered as an entry list: it is
+            // an array-of-tables, and must be *created* in header form.
+            //
+            // Routing this through `value_to_item` would write it inline
+            // (`entry = [{ ... }]`) on first save and as `[[entry]]` on every
+            // save after, because only the coercion path above consults the
+            // registry. Consulting it on insert too is what makes the two
+            // paths agree — and a document that only ever changes shape
+            // between identical saves is the bug this replaces.
+            apply_new_registered_array(child_value, target, key, shape, &child_path)?;
+        } else if shape.is_section(&child_path) {
+            // A key new to this table but registered as a named section: it is
+            // a `[header]` table, created in header form for the same reason.
+            let toml::Value::Table(section_value) = child_value else {
+                target.insert(key.as_str(), value_to_item(child_value));
+                continue;
+            };
+            let mut section = Table::new();
+            let mut item = Item::Table(Table::new());
+            apply_table(section_value, &mut item, shape, &child_path)?;
+            if let Some(t) = item.as_table_mut() {
+                section = std::mem::take(t);
+            }
+            target.insert(key.as_str(), Item::Table(section));
         } else {
             target.insert(key.as_str(), value_to_item(child_value));
         }
@@ -203,17 +285,74 @@ fn apply_table_inner(
     Ok(())
 }
 
+/// Inserts a registered array-of-tables key that the document does not yet
+/// carry, building it directly in header form.
+///
+/// Insertion rather than patch: there is no prior shape to merge with, so
+/// there is nothing to preserve and nothing to coerce.
+fn apply_new_registered_array(
+    new: &toml::Value,
+    target: &mut Table,
+    key: &str,
+    shape: &Shape<'_>,
+    path: &[String],
+) -> Result<(), PatchError> {
+    let toml::Value::Array(entries) = new else {
+        target.insert(key, value_to_item(new));
+        return Ok(());
+    };
+    // The registration is what makes this an entry list. The key field it
+    // names is for *matching* existing entries, which is the patch path's
+    // job; on a first insert there is nothing to match against.
+    debug_assert!(
+        shape.is_array(path),
+        "caller must confirm the path is a registered array"
+    );
+    let mut array = ArrayOfTables::new();
+    for entry in entries {
+        let toml::Value::Table(entry_table) = entry else {
+            continue;
+        };
+        let mut entry_mut = Table::new();
+        for (child_key, child_value) in entry_table {
+            let mut child_path = path.to_vec();
+            child_path.push(child_key.clone());
+            // Fields inside an entry are values, and render inline. The
+            // entry itself is the only header-form thing at this level.
+            if shape.is_array(&child_path) {
+                apply_new_registered_array(
+                    child_value,
+                    &mut entry_mut,
+                    child_key,
+                    shape,
+                    &child_path,
+                )?;
+            } else {
+                entry_mut.insert(child_key, value_to_item(child_value));
+            }
+        }
+        array.push(entry_mut);
+    }
+    target.insert(key, Item::ArrayOfTables(array));
+    Ok(())
+}
+
 /// Whether applying `new` over the existing item coerces it from inline
 /// form to header form (`[key]` / `[[key]]`).
 ///
-/// Tables coerce whenever the existing item is not already header-form.
-/// Arrays coerce only for registered array keys — an unregistered array
-/// is replaced wholesale and stays inline (`key = [...]`), where key
-/// decor renders harmlessly before the `=`.
+/// A registered array key coerces, because it is an entry list that the
+/// patcher matches element-wise and must keep in header form to carry
+/// per-entry comments. Anything else — including a table — is replaced with
+/// the form the new value renders in, which for a nested value is always
+/// inline.
+///
+/// Tables therefore do NOT coerce: coercing `model = { single = "..." }` to
+/// `[model]` would move it out of the entry it belongs to, and it would do
+/// so inconsistently — only when the key already existed.
 fn coerces_to_header(
     new: &toml::Value,
     existing: Option<&Item>,
-    registry: &KeyRegistry,
+    shape: &Shape<'_>,
     path: &[String],
 ) -> bool {
     let Some(existing) = existing else {
@@ -223,8 +362,8 @@ fn coerces_to_header(
         return false;
     }
     match new {
-        toml::Value::Table(_) => true,
-        toml::Value::Array(_) => registry.lookup(path).is_some(),
+        toml::Value::Array(_) => shape.is_array(path),
+        toml::Value::Table(_) => shape.is_section(path),
         _ => false,
     }
 }
@@ -280,12 +419,12 @@ fn reattach_key_prefix(table: &mut Table, key: &str, prefix: String) {
 fn apply_value(
     new: &toml::Value,
     target: &mut Item,
-    registry: &KeyRegistry,
+    shape: &Shape<'_>,
     path: &[String],
 ) -> Result<(), PatchError> {
     match new {
-        toml::Value::Table(t) => apply_table(t, target, registry, path),
-        toml::Value::Array(a) => apply_array(a, target, registry, path),
+        toml::Value::Table(t) => apply_table(t, target, shape, path),
+        toml::Value::Array(a) => apply_array(a, target, shape, path),
         scalar => {
             apply_scalar(scalar, target);
             Ok(())
@@ -293,12 +432,39 @@ fn apply_value(
     }
 }
 
+/// Applies a table onto a target that is *itself* a named sub-table —
+/// `[providers.zai]`, `[auto_prune.regex]` — and so must keep header form.
+///
+/// A value that is inline (`model = { ... }`) never reaches here: its parent
+/// dispatches it to [`apply_inline_value`], which cannot promote anything to a
+/// header. Keeping the two apart is what stops a nested value from being
+/// written as a table while a genuine sub-table still merges key-wise and
+/// keeps its comments.
 fn apply_table(
     new: &toml::value::Table,
     target: &mut Item,
-    registry: &KeyRegistry,
+    shape: &Shape<'_>,
     path: &[String],
 ) -> Result<(), PatchError> {
+    // An inline table at the target is the same data in the inline shape.
+    // Merge into it rather than promoting, so a value that was written
+    // inline stays inline.
+    if let Some(inline) = target.as_value_mut().and_then(|v| match v {
+        Value::InlineTable(t) => Some(t),
+        _ => None,
+    }) {
+        for (key, child_value) in new {
+            let mut child_path = path.to_vec();
+            child_path.push(key.clone());
+            if let Some(child) = inline.get_mut(key) {
+                apply_inline_value(child_value, child, shape, &child_path)?;
+            } else {
+                inline.insert(key, value_to_value_edit(child_value));
+            }
+        }
+        return Ok(());
+    }
+
     let table: &mut Table = if target.is_table() {
         target.as_table_mut().ok_or(PatchError::InternalInvariant {
             what: "just checked is_table",
@@ -309,8 +475,8 @@ fn apply_table(
             what: "just inserted a Table variant",
         })?
     } else {
-        // Was a scalar or array — replace with a table (lossy, but the
-        // document and struct disagreed on shape).
+        // Was a scalar, an array, or an array-of-tables — the document and
+        // the struct disagree on shape, so replace wholesale.
         *target = Item::Table(Table::new());
         target.as_table_mut().ok_or(PatchError::InternalInvariant {
             what: "just inserted a Table variant",
@@ -325,24 +491,99 @@ fn apply_table(
                 table.get_mut(key).ok_or(PatchError::InternalInvariant {
                     what: "just checked contains_key",
                 })?;
-            apply_value(child_value, child_item, registry, &child_path)?;
+            apply_value(child_value, child_item, shape, &child_path)?;
+        } else if shape.is_section(&child_path) {
+            // A registered section's own sub-table, created in header form.
+            let Some(section_value) = child_value.as_table() else {
+                table.insert(key, value_to_item(child_value));
+                continue;
+            };
+            let mut item = Item::Table(Table::new());
+            apply_table(section_value, &mut item, shape, &child_path)?;
+            if let Some(t) = item.as_table_mut() {
+                table.insert(key, Item::Table(std::mem::take(t)));
+            }
         } else {
+            // A key new to this table is a value inside it, and renders
+            // inline — `model = { ... }`, `pins = [{ ... }]`.
             table.insert(key, value_to_item(child_value));
         }
     }
     Ok(())
 }
 
+/// Applies `new` onto a value already living inside an inline table.
+///
+/// [`apply_value`] works on [`Item`] because it may promote a value to header
+/// form; an inline table's children are [`Value`]s, which cannot become
+/// headers without leaving the table. Every operation here is therefore
+/// value-to-value and stays inline.
+fn apply_inline_value(
+    new: &toml::Value,
+    target: &mut Value,
+    shape: &Shape<'_>,
+    path: &[String],
+) -> Result<(), PatchError> {
+    match new {
+        toml::Value::Table(new_table) => {
+            let Some(inline) = target.as_inline_table_mut() else {
+                // The document holds this key in a shape an inline table
+                // cannot merge into; replace rather than lose the value.
+                *target = value_to_value_edit(new);
+                return Ok(());
+            };
+            for (key, child_value) in new_table {
+                let mut child_path = path.to_vec();
+                child_path.push(key.clone());
+                if let Some(child) = inline.get_mut(key) {
+                    apply_inline_value(child_value, child, shape, &child_path)?;
+                } else {
+                    inline.insert(key, value_to_value_edit(child_value));
+                }
+            }
+            Ok(())
+        }
+        // A registered array is an entry list matched by key elsewhere; it is
+        // never replaced wholesale here. An unregistered one is a plain value
+        // and is replaced outright, preserving the `= v` whitespace the old
+        // value carried so the rendered line keeps its spacing.
+        toml::Value::Array(new_array) if !shape.is_array(path) => {
+            let ws = target
+                .decor()
+                .prefix()
+                .and_then(|raw| raw.as_str())
+                .unwrap_or(" ")
+                .to_owned();
+            let mut arr = toml_edit::Array::new();
+            for v in new_array {
+                arr.push(value_to_value_edit(v));
+            }
+            let mut replacement = Value::Array(arr);
+            replacement.decor_mut().set_prefix(ws);
+            *target = replacement;
+            Ok(())
+        }
+        _ => {
+            *target = value_to_value_edit(new);
+            Ok(())
+        }
+    }
+}
+
 fn apply_array(
     new: &[toml::Value],
     target: &mut Item,
-    registry: &KeyRegistry,
+    shape: &Shape<'_>,
     path: &[String],
 ) -> Result<(), PatchError> {
-    let key_field = registry.lookup(path);
+    let key_field = if shape.is_array(path) {
+        shape.arrays.lookup(path)
+    } else {
+        None
+    };
 
     if let Some(key_field) = key_field {
-        apply_array_of_tables_by_key(new, target, key_field, registry, path)
+        apply_array_of_tables_by_key(new, target, key_field, shape, path)
     } else {
         // Wholesale replace; preserve the `= v` whitespace the old value
         // carried so the rendered line keeps its spacing.
@@ -364,13 +605,13 @@ fn apply_array_of_tables_by_key(
     new: &[toml::Value],
     target: &mut Item,
     key_field: &'static str,
-    registry: &KeyRegistry,
+    shape: &Shape<'_>,
     path: &[String],
 ) -> Result<(), PatchError> {
     let array = ensure_array_of_tables(target)?;
     let (new_keys_in_order, new_by_key) = index_new_entries_by_key(new, key_field);
     let matched = mark_matched_entries(array, &new_by_key, key_field)?;
-    apply_in_place_updates(array, &new_by_key, key_field, registry, path)?;
+    apply_in_place_updates(array, &new_by_key, key_field, shape, path)?;
     remove_unmatched_entries(array, &matched);
     append_new_entries(array, &new_keys_in_order, &new_by_key, key_field);
 
@@ -452,7 +693,7 @@ fn apply_in_place_updates(
     array: &mut ArrayOfTables,
     new_by_key: &HashMap<String, &toml::Value>,
     key_field: &'static str,
-    registry: &KeyRegistry,
+    shape: &Shape<'_>,
     path: &[String],
 ) -> Result<(), PatchError> {
     let matched_keys: Vec<(usize, String)> = array
@@ -482,7 +723,7 @@ fn apply_in_place_updates(
                     entry_mut.get_mut(k).ok_or(PatchError::InternalInvariant {
                         what: "just checked contains_key",
                     })?;
-                apply_value(child_value, child_item, registry, &child_path)?;
+                apply_value(child_value, child_item, shape, &child_path)?;
             } else {
                 entry_mut.insert(k, value_to_item(child_value));
             }
@@ -568,38 +809,33 @@ fn apply_scalar(new: &toml::Value, target: &mut Item) {
     }
 }
 
-/// Converts a `toml::Value` to a `toml_edit::Item`, suitable for insertion
-/// into a table.
+/// Converts a `toml::Value` into a `toml_edit` item for insertion as a
+/// *value inside* a table.
+///
+/// Nested values always render inline — `key = value`, or `key = [...]` /
+/// `key = {...}` for a composite. Promoting a nested array to
+/// `[[key]]` headers would make it a SIBLING of the entry it belongs to in
+/// TOML's grammar rather than a child of it, which both reads as the next
+/// entry and can bind to the wrong one.
+///
+/// The top-level entry list is unaffected: it is built by
+/// [`append_new_entries`] and [`apply_in_place_updates`], which construct
+/// `Table`/`ArrayOfTables` directly rather than coming through here.
 fn value_to_item(v: &toml::Value) -> Item {
     match v {
         toml::Value::Table(t) => {
-            let mut tab = Table::new();
+            let mut inline = toml_edit::InlineTable::new();
             for (k, child) in t {
-                tab.insert(k, value_to_item(child));
+                inline.insert(k, value_to_value_edit(child));
             }
-            Item::Table(tab)
+            Item::Value(Value::InlineTable(inline))
         }
         toml::Value::Array(a) => {
-            // If all elements are tables, treat as array-of-tables.
-            if a.iter().all(|e| matches!(e, toml::Value::Table(_))) && !a.is_empty() {
-                let mut arr = ArrayOfTables::new();
-                for entry in a {
-                    if let toml::Value::Table(t) = entry {
-                        let mut tab = Table::new();
-                        for (k, child) in t {
-                            tab.insert(k, value_to_item(child));
-                        }
-                        arr.push(tab);
-                    }
-                }
-                Item::ArrayOfTables(arr)
-            } else {
-                let mut arr = toml_edit::Array::new();
-                for entry in a {
-                    arr.push(value_to_value_edit(entry));
-                }
-                Item::Value(Value::Array(arr))
+            let mut arr = toml_edit::Array::new();
+            for entry in a {
+                arr.push(value_to_value_edit(entry));
             }
+            Item::Value(Value::Array(arr))
         }
         scalar => Item::Value(value_to_value_edit(scalar)),
     }

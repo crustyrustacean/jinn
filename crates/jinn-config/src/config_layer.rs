@@ -344,6 +344,27 @@ impl ConfigLayer {
         remove_stale_keys(&mut doc, T::KEY, &section);
 
         let mut patcher = DocumentPatcher::new();
+        // Every table a section carries is a named section and keeps header
+        // form; the nested arrays it may hold are the section's own values and
+        // render inline.
+        //
+        // Registered per *prefix*, not just for the full key: `put` hands the
+        // patcher a document whose root carries `watchdog` wrapping `stall`
+        // wrapping `stall.enabled`, and each level is a real section needing
+        // its own header. Registering only `watchdog.stall` would leave
+        // `watchdog` unregistered, and an unregistered table is by definition
+        // a value — which would inline the whole subtree.
+        //
+        // The wrapped tree is `{watchdog: {stall: <WatchdogCfg>}}`, and
+        // `WatchdogCfg` itself has a `stall` field, so the path a sub-table
+        // of the section reaches is one segment longer than the section's own
+        // key. Each level up to and including that leaf is registered; a
+        // deeper table is a field *inside* the section and is one of its
+        // values, which renders inline.
+        for (depth, _) in T::KEY.split('.').enumerate() {
+            let prefix: Vec<&'static str> = T::KEY.split('.').take(depth + 1).collect();
+            patcher.register_section(prefix);
+        }
         if let Some(entry) = T::ENTRY_KEY {
             patcher.register_array_key(entry.full_path(T::KEY), entry.field());
         }

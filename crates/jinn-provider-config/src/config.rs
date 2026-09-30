@@ -317,6 +317,16 @@ where
         let mut patcher = jinn_common::toml_patch::DocumentPatcher::new();
         patcher.register_array_key(["aliases"], "name");
         patcher.register_array_key(["providers", "*", "model_info"], "id");
+        // `providers`, each provider block, and `aliases` are named sections
+        // and keep header form. Unregistered, a table is by definition a
+        // *value* inside whatever encloses it and would be written inline.
+        //
+        // The provider block needs the wildcard: `providers` alone does not
+        // cover `providers.alpha`, and each provider is a section in its own
+        // right rather than a field of `providers`.
+        patcher.register_section(["providers"]);
+        patcher.register_section(["providers", "*"]);
+        patcher.register_section(["aliases"]);
 
         let new_value = toml::Value::try_from(config)
             .change_context(ConfigError::Parse)
