@@ -311,11 +311,11 @@ mod tests {
     )]
     use super::*;
     use jinn_context::env_context::ContextFile;
-    use jinn_core_types::NameFilter;
     use jinn_core_types::ServerToolType;
     use jinn_core_types::SessionId;
     use jinn_core_types::model_selection::ModelSelection;
     use jinn_core_types::tool_types::ToolDefinition;
+    use jinn_core_types::{FilterMode, NameFilter};
     use jinn_kernel::common::app_state::AppState;
     use jinn_kernel::common::state::State;
     use jinn_kernel::protocol::ChatEntry;
@@ -987,6 +987,52 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
+    fn an_allow_filter_cannot_re_admit_a_tool_the_provider_gate_withholds() {
+        // Given a non-openrouter model with web search registered, and an
+        // allow filter naming it.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("search it")]);
+        set_active_model(&state, "zai/glm-4.6");
+        {
+            let cell = state
+                .read()
+                .tool_registry()
+                .expect("registry cell attached");
+            cell.update(|r| {
+                r.global
+                    .insert("openrouter:web_search".to_owned(), make_web_search_tool());
+            });
+            let mut guard = state.write();
+            guard
+                .session
+                .get_mut(&session_id)
+                .expect("session exists")
+                .set_tool_filter(NameFilter {
+                    mode: FilterMode::Allow,
+                    names: ["openrouter:web_search".to_owned()].into_iter().collect(),
+                });
+        }
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter());
+
+        // Then the tool is still absent. The filter and the provider gate are
+        // independent: an allow filter widens what the session *may* use, not
+        // what the provider *can* run. Folding them into one predicate would
+        // let an allow list hand back a tool the model cannot call.
+        assert!(
+            result.tool_definitions.is_empty(),
+            "the provider gate must still withhold the tool; got: {:?}",
+            result
+                .tool_definitions
+                .iter()
+                .map(|t| t.name.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
     fn assemble_prompt_keeps_function_tools_for_non_openrouter_model() {
         // Given a state on a non-openrouter model with a function tool registered.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("do work")]);
@@ -1073,7 +1119,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn assemble_prompt_excludes_filtered_tools_from_tool_definitions() {
-        // Given a session with tools and some disabled.
+        // Given a session with tools, some withheld by a deny filter.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
         {
             let cell = {
@@ -1114,11 +1160,11 @@ mod tests {
         );
         assert!(
             !tool_names.contains(&"write"),
-            "disabled write should be excluded, got: {tool_names:?}"
+            "filtered write should be excluded, got: {tool_names:?}"
         );
         assert!(
             tool_names.contains(&"read"),
-            "enabled read should be included, got: {tool_names:?}"
+            "unfiltered read should be included, got: {tool_names:?}"
         );
     }
 
@@ -1219,7 +1265,7 @@ mod tests {
                 make_skill("web-coder"),
                 make_skill("scream"),
             ]);
-            // Disable web-coder.
+            // Withhold web-coder.
             guard
                 .session
                 .get_mut(&session_id)
@@ -1231,7 +1277,7 @@ mod tests {
         let guard = state.read();
         let result = assemble_prompt(&guard, &session_id, &counter());
 
-        // Then the system prompt skills block excludes disabled skills.
+        // Then the system prompt skills block excludes the filtered skill.
         let system = result.system_prompt.to_string();
         assert!(
             system.contains("<name>phased-task-loop</name>"),
@@ -1243,7 +1289,89 @@ mod tests {
         );
         assert!(
             !system.contains("<name>web-coder</name>"),
-            "disabled skill should be excluded from skills block, got: {system}"
+            "filtered skill should be excluded from skills block, got: {system}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn an_allow_filter_excludes_every_unlisted_tool_from_the_prompt() {
+        // Given a session permitted exactly one tool.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
+        {
+            let cell = state
+                .read()
+                .tool_registry()
+                .expect("registry cell attached");
+            cell.update(|r| {
+                r.global.insert("read".to_owned(), make_tool("read"));
+                r.global.insert("write".to_owned(), make_tool("write"));
+                r.global.insert(
+                    "mcp__github__create_pr".to_owned(),
+                    make_tool("mcp__github__create_pr"),
+                );
+            });
+            let mut guard = state.write();
+            guard
+                .session
+                .get_mut(&session_id)
+                .expect("session exists")
+                .set_tool_filter(NameFilter {
+                    mode: FilterMode::Allow,
+                    names: ["read".to_owned()].into_iter().collect(),
+                });
+        }
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter());
+
+        // Then only the listed tool is offered. The MCP tool is the case a
+        // blocklist could not reach: there is no entry to remove, only a list
+        // it fails to appear on.
+        let tool_names: Vec<&str> = result
+            .tool_definitions
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect();
+        assert!(tool_names.contains(&"read"), "got: {tool_names:?}");
+        assert!(!tool_names.contains(&"write"), "got: {tool_names:?}");
+        assert!(
+            !tool_names.contains(&"mcp__github__create_pr"),
+            "an unlisted MCP tool must be withheld; got: {tool_names:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_session_with_no_filter_offers_every_tool() {
+        // Given a session whose filter names nothing.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
+        {
+            let cell = state
+                .read()
+                .tool_registry()
+                .expect("registry cell attached");
+            cell.update(|r| {
+                r.global.insert("read".to_owned(), make_tool("read"));
+                r.global.insert("write".to_owned(), make_tool("write"));
+            });
+        }
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter());
+
+        // Then every tool is offered, exactly as before this type existed.
+        let tool_names: Vec<&str> = result
+            .tool_definitions
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect();
+        assert_eq!(
+            tool_names.len(),
+            2,
+            "an unconfigured filter must withhold nothing; got: {tool_names:?}"
         );
     }
 

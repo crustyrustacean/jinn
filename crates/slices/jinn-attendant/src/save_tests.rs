@@ -17,7 +17,7 @@ use jinn_attendant_msg::{
     attendant_properties_slot,
 };
 use jinn_config::{ConfigLayer, InMemoryConfigStorage};
-use jinn_core_types::{ChatEntry, PinPosition, SessionId};
+use jinn_core_types::{ChatEntry, FilterMode, NameFilter, PinPosition, SessionId};
 use jinn_preferences_config::schemas::{
     AttendantEntryConfig, AttendantPinConfig, AttendantPinRole,
 };
@@ -552,6 +552,97 @@ fn a_save_records_the_sessions_run_configuration() {
         jinn_attendant_msg::AttendantTrigger::ParentCompleted
     );
     assert_eq!(saved[0].seed_template, "review: <prior report>");
+}
+
+#[rstest::rstest]
+#[test]
+fn a_save_records_the_sessions_tool_filter() {
+    // Given a titled attendant whose tool filter withholds two tools.
+    let mut fx = SaveFixture::new(Some("nightly"));
+    {
+        let session = fx
+            .state
+            .session
+            .get_mut(&fx.attendant_id)
+            .expect("attendant");
+        session.set_tool_filter(NameFilter::deny(["write".to_owned(), "bash".to_owned()]));
+    }
+    fx.open();
+
+    // When saving.
+    fx.press("attendant-properties-save");
+
+    // Then the filter is on the entry, sorted, so the file does not churn.
+    let filter = fx.saved()[0]
+        .tool_filter
+        .clone()
+        .expect("filter recorded on save");
+    assert_eq!(
+        filter.names.iter().map(String::as_str).collect::<Vec<_>>(),
+        vec!["bash", "write"]
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn a_save_records_the_sessions_skill_filter() {
+    // Given a titled attendant whose skill filter withholds one skill.
+    let mut fx = SaveFixture::new(Some("nightly"));
+    {
+        let session = fx
+            .state
+            .session
+            .get_mut(&fx.attendant_id)
+            .expect("attendant");
+        session.set_skill_filter(NameFilter::deny(["dataviz".to_owned()]));
+    }
+    fx.open();
+
+    // When saving.
+    fx.press("attendant-properties-save");
+
+    // Then the skill filter is on the entry.
+    let filter = fx.saved()[0]
+        .skill_filter
+        .clone()
+        .expect("skill filter recorded on save");
+    assert!(!filter.permits("dataviz"));
+    assert!(filter.permits("scream"));
+}
+
+#[rstest::rstest]
+#[test]
+fn an_allow_filtered_attendant_saves_with_its_mode_intact() {
+    // Given a titled attendant restricted to two tools by an allow filter.
+    let mut fx = SaveFixture::new(Some("narrow"));
+    {
+        let session = fx
+            .state
+            .session
+            .get_mut(&fx.attendant_id)
+            .expect("attendant");
+        session.set_tool_filter(NameFilter {
+            mode: FilterMode::Allow,
+            names: ["read".to_owned(), "mcp__github__*".to_owned()]
+                .into_iter()
+                .collect(),
+        });
+    }
+    fx.open();
+
+    // When saving.
+    fx.press("attendant-properties-save");
+
+    // Then the entry records allow mode, not a blocklist of the same names.
+    // Storing the names alone would restore as a deny filter and invert the
+    // attendant's whole tool access on its next run.
+    let filter = fx.saved()[0]
+        .tool_filter
+        .clone()
+        .expect("filter recorded on save");
+    assert_eq!(filter.mode, FilterMode::Allow);
+    assert!(filter.permits("mcp__github__create_pr"));
+    assert!(!filter.permits("bash"));
 }
 
 #[rstest::rstest]

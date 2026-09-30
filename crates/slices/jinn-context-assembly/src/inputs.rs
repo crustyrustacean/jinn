@@ -58,6 +58,7 @@ mod attendant_tool_visibility_tests {
     use super::*;
     use jinn_attendant_msg::ATTENDANT_TOOL_NAMES;
     use jinn_core_types::tool_types::ToolDefinition;
+    use jinn_core_types::{FilterMode, NameFilter};
     use jinn_kernel::common::app_state::AppState;
     use jinn_kernel::common::state::State;
     use jinn_session_state::ChatSessionState;
@@ -117,6 +118,58 @@ mod attendant_tool_visibility_tests {
                 "{name} must remain available to an attendant"
             );
         }
+    }
+
+    /// An allow filter narrows which of the session's own tools it may use.
+    /// It must not be read as "these are the only tools that exist" — that
+    /// reading would strip an attendant of `report` and `notify_parent`, the
+    /// two tools it exists to call.
+    #[rstest::rstest]
+    #[test]
+    fn an_allow_filtered_attendant_keeps_its_own_tools() {
+        // Given an attendant permitted exactly one ordinary tool.
+        let parent = ChatSessionState::new();
+        let mut attendant = ChatSessionState::new_attendant(&parent, true);
+        attendant.set_tool_filter(NameFilter {
+            mode: FilterMode::Allow,
+            names: ["read".to_owned()].into_iter().collect(),
+        });
+        let (state, session_id) = state_with_session(attendant);
+
+        // When its assembly inputs are built.
+        let names = tool_names(&state, &session_id);
+
+        // Then both attendant tools are still offered.
+        for name in ATTENDANT_TOOL_NAMES {
+            assert!(
+                names.iter().any(|n| n == name),
+                "{name} must survive an allow filter on an attendant"
+            );
+        }
+    }
+
+    /// The unlisted *ordinary* tools are what the filter withholds. Without
+    /// this half of the test the case above would also pass if the filter were
+    /// ignored entirely.
+    #[rstest::rstest]
+    #[test]
+    fn an_allow_filtered_attendant_loses_the_tools_it_did_not_name() {
+        // Given an attendant permitted exactly one ordinary tool.
+        let parent = ChatSessionState::new();
+        let mut attendant = ChatSessionState::new_attendant(&parent, true);
+        attendant.set_tool_filter(NameFilter {
+            mode: FilterMode::Allow,
+            names: ["read".to_owned()].into_iter().collect(),
+        });
+        let (state, session_id) = state_with_session(attendant);
+
+        // When its assembly inputs are built.
+        let inputs = build_assembly_inputs(&state.read(), &session_id);
+
+        // Then `read` is permitted and the other ordinary tools are not.
+        assert!(inputs.tool_filter.permits("read"));
+        assert!(!inputs.tool_filter.permits("bash"));
+        assert!(!inputs.tool_filter.permits("grep"));
     }
 
     /// A state holding `session` as its active session, with the

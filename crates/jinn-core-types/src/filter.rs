@@ -133,27 +133,6 @@ impl NameFilter {
         }
     }
 
-    /// The names in `names` this filter withholds, per its mode.
-    ///
-    /// Deny mode withholds its own patterns; allow mode withholds everything
-    /// they do not cover. This is the lossy view — callers with a finite list
-    /// to check, who do not care how the withholding was expressed. A caller
-    /// that writes the result back must keep the filter instead: a round trip
-    /// through here drops allow mode's patterns.
-    #[must_use]
-    pub fn withheld_from<'a, I, S>(&self, names: I) -> BTreeSet<String>
-    where
-        I: IntoIterator<Item = &'a S>,
-        S: AsRef<str> + 'a + ?Sized,
-    {
-        names
-            .into_iter()
-            .map(|n| n.as_ref())
-            .filter(|name| !self.permits(name))
-            .map(str::to_owned)
-            .collect()
-    }
-
     /// Whether this filter names anything at all.
     ///
     /// The "not configured" test callers use to decide whether a field
@@ -290,7 +269,7 @@ mod tests {
         // Given a filter that names nothing, in this mode.
         let filter = NameFilter {
             mode,
-            names: Default::default(),
+            ..NameFilter::default()
         };
 
         // When asking about a tool.

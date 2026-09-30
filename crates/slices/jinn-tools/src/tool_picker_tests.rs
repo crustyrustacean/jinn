@@ -26,7 +26,7 @@
     reason = "test module, panics are acceptable"
 )]
 
-use jinn_core_types::NameFilter;
+use jinn_core_types::{FilterMode, NameFilter};
 use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{EditIntent, RouteOutcome, ScopeSignal};
 use jinn_slices::{KeyRoutes, SliceHost, Slices};
@@ -588,6 +588,25 @@ async fn confirming_writes_the_toggled_off_tools_to_the_session() {
         "confirm must write the toggled set to the session; got {:?}",
         wired.session_disabled(&three_tools())
     );
+}
+
+/// The picker is a blocklist editor by construction, so what it commits is a
+/// deny filter — asserted on the mode, not just the names, because a mode
+/// error inverts every name in the set.
+#[rstest::rstest]
+#[tokio::test]
+async fn confirming_commits_a_deny_filter() {
+    // Given an open picker whose first row was toggled off.
+    let wired = Wired::new(three_tools()).await;
+    wired.open();
+    wired.fire("toggle-highlighted-tool");
+
+    // When enter is pressed.
+    wired.fire("confirm-tool-picker");
+
+    // Then the session's filter is in deny mode.
+    let filter = wired.state.borrow().active_session().tool_filter().clone();
+    assert_eq!(filter.mode, FilterMode::Deny);
 }
 
 #[rstest::rstest]

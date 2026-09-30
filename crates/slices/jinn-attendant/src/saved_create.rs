@@ -142,3 +142,142 @@ pub fn create_in_state(
         state.session.get(&attendant_id)?,
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, reason = "test code")]
+
+    use jinn_core_types::{FilterMode, ModelSelection, NameFilter};
+    use jinn_preferences_config::schemas::AttendantEntryConfig;
+    use jinn_session_state::ChatSessionState;
+
+    use super::build;
+
+    /// An entry carrying the given filters and nothing else.
+    fn entry_with(
+        tool_filter: Option<NameFilter>,
+        skill_filter: Option<NameFilter>,
+    ) -> AttendantEntryConfig {
+        AttendantEntryConfig {
+            name: "nightly".to_owned(),
+            tool_filter,
+            skill_filter,
+            ..AttendantEntryConfig::default()
+        }
+    }
+
+    #[rstest::rstest]
+    fn a_created_attendant_carries_the_saved_tool_filter() {
+        // Given a parent withholding two tools, and an entry that saved so.
+        let mut parent = ChatSessionState::new();
+        parent.set_tool_filter(NameFilter::deny(["bash".to_owned(), "write".to_owned()]));
+
+        // When an attendant is created from it.
+        let attendant = build(
+            &entry_with(
+                Some(NameFilter::deny(["bash".to_owned(), "write".to_owned()])),
+                None,
+            ),
+            &parent,
+        );
+
+        // Then the created attendant withholds the same tools, so a save and
+        // restore is a no-op on its access rather than a widening of it.
+        assert!(!attendant.is_tool_enabled("bash"));
+        assert!(!attendant.is_tool_enabled("write"));
+        assert!(attendant.is_tool_enabled("read"));
+    }
+
+    #[rstest::rstest]
+    fn a_created_attendant_carries_a_saved_allow_filter_intact() {
+        // Given an entry restricted to two tools by an allow filter.
+        let parent = ChatSessionState::new();
+        let filter = NameFilter {
+            mode: FilterMode::Allow,
+            names: ["read".to_owned(), "mcp__github__*".to_owned()]
+                .into_iter()
+                .collect(),
+        };
+
+        // When an attendant is created from it.
+        let attendant = build(&entry_with(Some(filter.clone()), None), &parent);
+
+        // Then the mode survives. Restoring it as a deny filter would invert
+        // the attendant's tool access — it would be left able to run
+        // everything except the two tools it was meant to be limited to.
+        assert_eq!(attendant.tool_filter().mode, FilterMode::Allow);
+        assert!(attendant.is_tool_enabled("mcp__github__create_pr"));
+        assert!(!attendant.is_tool_enabled("bash"));
+    }
+
+    #[rstest::rstest]
+    fn a_created_attendant_inherits_the_parents_filter_when_none_was_saved() {
+        // Given a parent withholding a tool and an entry that saved no filter.
+        let mut parent = ChatSessionState::new();
+        parent.set_tool_filter(NameFilter::deny(["bash".to_owned()]));
+
+        // When an attendant is created from it.
+        let attendant = build(&entry_with(None, None), &parent);
+
+        // Then it inherits. An absent filter means "as configured here",
+        // which is what an attendant saved with nothing overrides did before
+        // filters existed.
+        assert!(!attendant.is_tool_enabled("bash"));
+    }
+
+    #[rstest::rstest]
+    fn a_created_attendant_inherits_the_parents_allow_filter_when_none_was_saved() {
+        // Given a parent restricted by an allow filter, and an entry with none.
+        let mut parent = ChatSessionState::new();
+        parent.set_tool_filter(NameFilter {
+            mode: FilterMode::Allow,
+            names: ["read".to_owned()].into_iter().collect(),
+        });
+
+        // When an attendant is created from it.
+        let attendant = build(&entry_with(None, None), &parent);
+
+        // Then the restriction is inherited whole, mode included — inheriting
+        // only the withheld names would leave the child permitted everything.
+        assert_eq!(attendant.tool_filter().mode, FilterMode::Allow);
+        assert!(!attendant.is_tool_enabled("bash"));
+    }
+
+    #[rstest::rstest]
+    fn a_created_attendant_carries_the_saved_skill_filter() {
+        // Given a parent withholding a skill, and an entry that saved so.
+        let mut parent = ChatSessionState::new();
+        parent.set_skill_filter(NameFilter::deny(["scream".to_owned()]));
+
+        // When an attendant is created from it.
+        let attendant = build(
+            &entry_with(None, Some(NameFilter::deny(["dataviz".to_owned()]))),
+            &parent,
+        );
+
+        // Then the saved skill filter replaces the parent's rather than
+        // composing with it.
+        assert!(!attendant.is_skill_enabled("dataviz"));
+        assert!(
+            attendant.is_skill_enabled("scream"),
+            "the saved filter replaces the parent's, it does not merge with it"
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_created_attendant_inherits_the_parents_untouched_fields() {
+        // Given a parent on a specific model.
+        let mut parent = ChatSessionState::new();
+        parent.set_model(ModelSelection::Single("zai/glm-4.7".to_owned()));
+
+        // When an attendant is created from an entry that configures no model.
+        let attendant = build(&entry_with(None, None), &parent);
+
+        // Then it runs on the parent's model, as an entry without one always
+        // did — the filter work must not have changed the inheritance path.
+        assert_eq!(
+            attendant.model_selection(),
+            &ModelSelection::Single("zai/glm-4.7".to_owned())
+        );
+    }
+}

@@ -57,6 +57,9 @@ mod orchestrator;
 #[cfg(test)]
 mod interactive_term_tests;
 #[cfg(test)]
+#[path = "orchestrator_filter_tests.rs"]
+mod orchestrator_filter_tests;
+#[cfg(test)]
 mod task_list_picker_tests;
 #[cfg(test)]
 mod task_tests;

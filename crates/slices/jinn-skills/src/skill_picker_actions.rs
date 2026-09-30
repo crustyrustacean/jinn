@@ -108,12 +108,12 @@ mod tests {
     }
 
     /// A picker over two skills, holding the given filter.
-    fn opened_with(filter: NameFilter) -> SkillPickerState {
+    fn opened_with(filter: &NameFilter) -> SkillPickerState {
         let mut state = SkillPickerState::default();
         open(
             &mut state,
             &[skill("alpha"), skill("beta")],
-            &filter,
+            filter,
             &jinn_theme::default_theme(),
         );
         state
@@ -125,7 +125,7 @@ mod tests {
         let filter = NameFilter::deny(["beta".to_owned()]);
 
         // When opening the picker.
-        let state = opened_with(filter.clone());
+        let state = opened_with(&filter);
 
         // Then the snapshot holds that filter, so ESC can restore it.
         assert_eq!(state.snapshot, Some(filter));
@@ -140,7 +140,7 @@ mod tests {
         };
 
         // When opening the picker over both.
-        let state = opened_with(filter);
+        let state = opened_with(&filter);
 
         // Then the omitted skill's row opens already off, so committing
         // without touching it withholds the same skill the filter did.
@@ -160,7 +160,7 @@ mod tests {
             mode: jinn_core_types::FilterMode::Allow,
             names: ["alpha".to_owned()].into_iter().collect(),
         };
-        let mut state = opened_with(filter.clone());
+        let mut state = opened_with(&filter);
         toggle_highlighted(&mut state);
 
         // When cancelling.

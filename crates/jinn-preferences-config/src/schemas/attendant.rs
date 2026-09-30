@@ -427,9 +427,12 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn clearing_a_filter_removes_it_from_the_document() {
-        // Given a document whose entry carries a tool filter.
+        // Given a document whose entry carries a tool filter. The header and
+        // the name must both match what is written back, or the patcher finds
+        // no entry to update and the test would pass for the wrong reason.
         let storage = Arc::new(InMemoryConfigStorage::new(
-            "name = \"stale\"\n\n[attendant.entry.tool_filter]\nmode = \"deny\"\nnames = [\"write\"]\n"
+            "[[attendant.entry]]\nname = \"reviewer\"\n\
+             \n[attendant.entry.tool_filter]\nmode = \"deny\"\nnames = [\"write\"]\n"
                 .parse()
                 .expect("parses"),
         ));

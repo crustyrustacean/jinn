@@ -198,6 +198,26 @@ fn confirming_an_untouched_picker_disables_nothing() {
     assert!(committed.is_empty());
 }
 
+/// The picker is a blocklist editor by construction, so what its commit is
+/// wrapped into matters: a mode error inverts every name in the set.
+#[rstest::rstest]
+fn confirming_commits_names_that_become_a_deny_filter() {
+    // Given an open picker whose only skill has been toggled off.
+    let (cell, _routes) = wired();
+    opened(&cell, &["alpha"], &[]);
+    cell.update(skill_picker_actions::toggle_highlighted);
+
+    // When confirming and wrapping the committed names as the route does.
+    let mut committed = HashSet::new();
+    cell.update(|picker| committed = skill_picker_actions::confirm(picker));
+    let filter = NameFilter::deny(committed);
+
+    // Then the skill is withheld and nothing else is.
+    assert_eq!(filter.mode, jinn_core_types::FilterMode::Deny);
+    assert!(!filter.permits("alpha"));
+    assert!(filter.permits("beta"));
+}
+
 #[rstest::rstest]
 fn confirming_clears_the_revert_snapshot() {
     // Given an open picker that snapshotted a disabled set.
