@@ -9,6 +9,7 @@
     reason = "test code"
 )]
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use jinn_app_state::AppState;
@@ -1035,4 +1036,157 @@ fn a_saved_frozen_skill_set_reopens_the_panel_as_frozen() {
     // allow list means the freeze did not survive the round trip, and the
     // next save would silently drop it.
     assert_eq!(fx.cell.read().pending_skill_set, SetMode::Frozen);
+}
+
+/// The end state, exercised end to end: an attendant frozen to nothing,
+/// saved, read back out of the document, and rebuilt from that entry.
+///
+/// This is the whole point of the change. Before it, a freeze over an empty
+/// capture could not be written at all — the allow list naming nothing was
+/// read back as no filter — so there was no way to say "this attendant has
+/// no tools and no skills", and the panel refused the freeze instead.
+#[rstest::rstest]
+#[test]
+fn an_attendant_frozen_to_nothing_saves_with_no_tools_and_no_skills() {
+    // Given a titled attendant with nothing offered to freeze: no tool
+    // registry at all, and no discovered skills — the shape a freshly
+    // created attendant is in until its own scans land.
+    let mut fx = SaveFixture::new(Some("hollow"));
+    fx.state
+        .session
+        .get_mut(&fx.attendant_id)
+        .expect("attendant")
+        .set_attendant_is_prepping(false);
+    fx.open();
+
+    // When both set rows are frozen and the attendant is saved. Composition
+    // ends first so the cursor is free to walk the whole form.
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-pick-right");
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-pick-right");
+    fx.press("attendant-properties-save");
+
+    // Then the saved entry carries a present allow filter over no names for
+    // both resources.
+    let entry = fx.saved().first().cloned().expect("one entry saved");
+    for filter in [entry.tool_filter.as_ref(), entry.skill_filter.as_ref()] {
+        let filter = filter.expect("the freeze was written");
+        assert_eq!(
+            filter.mode,
+            FilterMode::Allow,
+            "a frozen set commits as an allow list"
+        );
+        assert!(
+            filter.names.is_empty(),
+            "an empty capture is a capture, not a refusal"
+        );
+    }
+
+    // And an attendant rebuilt from that entry has no tools and no skills.
+    let parent = ChatSessionState::new();
+    let restored = crate::saved_create::build(&entry, &parent);
+    for name in ["read", "bash", "mcp__github__create_pr"] {
+        assert!(
+            !restored.is_tool_enabled(name),
+            "a frozen-to-nothing attendant must refuse {name}"
+        );
+    }
+    for name in ["web-coder", "dataviz", "anything-at-all"] {
+        assert!(
+            !restored.is_skill_enabled(name),
+            "a frozen-to-nothing attendant must refuse {name}"
+        );
+    }
+}
+
+/// The mirror case, and the one that regressed before: thawing must leave
+/// the field absent, not write an empty filter over it. An empty allow
+/// filter written by a thaw would leave the attendant frozen to nothing
+/// while the panel claimed the set was live.
+#[rstest::rstest]
+#[test]
+fn thawing_a_frozen_set_leaves_the_attendant_with_no_filter() {
+    // Given a titled attendant whose tool set is frozen.
+    let mut fx = SaveFixture::new(Some("thawed"));
+    fx.state
+        .session
+        .get_mut(&fx.attendant_id)
+        .expect("attendant")
+        .set_attendant_is_prepping(false);
+    fx.open();
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-pick-right");
+    fx.press("attendant-properties-apply");
+
+    // When the row is thawed and applied again.
+    fx.press("attendant-properties-pick-left");
+    fx.press("attendant-properties-apply");
+
+    // Then the session holds no filter at all, so it inherits again and
+    // admits every tool.
+    assert!(
+        fx.state
+            .session
+            .get(&fx.attendant_id)
+            .expect("attendant")
+            .tool_filter()
+            .is_none(),
+        "a thaw writes absence, not an empty filter"
+    );
+    assert!(
+        fx.state
+            .session
+            .get(&fx.attendant_id)
+            .expect("attendant")
+            .is_tool_enabled("bash")
+    );
+}
+
+/// An absent filter must stay absent through a save, or "inherit" would
+/// quietly become "pinned to today's configuration".
+#[rstest::rstest]
+#[test]
+fn a_save_of_an_unconstrained_attendant_records_no_filter() {
+    // Given a titled attendant with no filter for either resource.
+    let mut fx = SaveFixture::new(Some("bare"));
+    fx.open();
+
+    // When saving without touching either set row.
+    fx.press("attendant-properties-save");
+
+    // Then the entry carries neither.
+    let entry = fx.saved().first().cloned().expect("one entry saved");
+    assert!(entry.tool_filter.is_none());
+    assert!(entry.skill_filter.is_none());
+}
+
+/// A created attendant takes its parent's profile — filters included — but
+/// none of the parent's discovered resources. Under the old lenient rule
+/// that combination was harmless; under the strict one, a parent carrying
+/// an allow filter produces a child holding that filter and no resources,
+/// which is why freezing to nothing had to become expressible at all.
+#[rstest::rstest]
+#[test]
+fn a_created_attendant_inherits_the_parents_empty_allow_filter_as_nothing_allowed() {
+    // Given a parent whose allow filter names no tools.
+    let mut parent = ChatSessionState::new();
+    parent.set_tool_filter(Some(NameFilter {
+        mode: FilterMode::Allow,
+        names: BTreeSet::new(),
+    }));
+
+    // When an attendant is created from an entry that configured nothing.
+    let entry = AttendantEntryConfig {
+        name: "child".to_owned(),
+        ..AttendantEntryConfig::default()
+    };
+    let child = crate::saved_create::build(&entry, &parent);
+
+    // Then it inherits nothing-allowed rather than inheriting nothing at all.
+    assert!(!child.is_tool_enabled("read"));
 }

@@ -420,6 +420,10 @@ pub struct AttendantPropertiesState {
     /// key — the session is only written by `<enter>`, and a flip that
     /// silently discarded a glob would otherwise be invisible.
     ///
+    /// There is no message for a freeze that captured nothing, because there
+    /// is nothing to report: an allow list over no names is a filter like
+    /// any other, and it is written.
+    ///
     /// Cleared by the next keystroke, so the line always describes the most
     /// recent thing that happened rather than accumulating a history of
     /// things that did.
@@ -467,16 +471,6 @@ pub enum PopupStatus {
     /// A mode change dropped one or more glob patterns from the filter.
     GlobDropped {
         /// Which set row changed: the tool set or the skill set.
-        field: SetField,
-    },
-    /// A set was frozen over an empty capture, so nothing was recorded.
-    ///
-    /// The row holds Frozen and says so; there is simply nothing to write,
-    /// because an allow list over no names is read as no filter at all and
-    /// would leave the attendant inheriting its parent's while the file
-    /// claimed otherwise.
-    SetNotRecorded {
-        /// Which set row was frozen: the tool set or the skill set.
         field: SetField,
     },
 }

@@ -1073,3 +1073,35 @@ impl Def {
         }
     }
 }
+
+/// An ordinary picker, over an ordinary unrestricted session, must behave
+/// exactly as it did before filters became strict: every tool listed, every
+/// tool enabled, and confirming writes the same deny filter it always wrote.
+///
+/// This is the guard on the change being narrow. Only a session carrying a
+/// genuinely present empty allow filter — which is now what freezing to
+/// nothing produces — should see a different list.
+#[rstest::rstest]
+#[tokio::test]
+async fn a_picker_over_an_unrestricted_session_admits_every_tool() {
+    // Given a session with no tool filter configured at all.
+    let wired = Wired::new(three_tools()).await;
+
+    // When the picker is opened over them.
+    wired.open();
+
+    // Then every tool is listed, and every row opens enabled.
+    assert_eq!(wired.visible_names(), vec!["Bash", "edit", "read"]);
+    for name in ["Bash", "edit", "read"] {
+        assert_eq!(
+            wired.enabled(name),
+            Some(true),
+            "an unconfigured session restricts nothing, so {name} must open enabled"
+        );
+    }
+    // And the session itself withholds nothing.
+    assert!(
+        wired.session_disabled(&three_tools()).is_empty(),
+        "an unconfigured session must withhold no tool"
+    );
+}

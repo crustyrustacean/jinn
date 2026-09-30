@@ -828,8 +828,7 @@ impl PopupFixture {
     fn tool_filter(&self) -> Option<jinn_core_types::NameFilter> {
         self.state
             .session
-            .get(&self.attendant_id)
-            .expect("attendant")
+            .get(&self.attendant_id)?
             .tool_filter()
             .cloned()
     }
@@ -838,8 +837,7 @@ impl PopupFixture {
     fn skill_filter(&self) -> Option<jinn_core_types::NameFilter> {
         self.state
             .session
-            .get(&self.attendant_id)
-            .expect("attendant")
+            .get(&self.attendant_id)?
             .skill_filter()
             .cloned()
     }
@@ -1452,24 +1450,23 @@ fn a_frozen_skill_set_captures_the_parent_skill_names() {
 
 #[rstest::rstest]
 #[test]
-fn a_freeze_over_nothing_says_so_at_the_moment_it_is_made() {
-    // Given an attendant that has discovered no skills.
+fn a_freeze_over_nothing_is_recorded_without_a_status_message() {
+    // Given an attendant that has discovered no skills -- the shape a freshly
+    // created attendant is in, because it inherits its parent's profile but
+    // not its parent's discovered skills.
     let mut fx = PopupFixture::new();
     fx.open_on_the_skill_set();
 
     // When freezing the row.
     fx.press("attendant-properties-pick-right");
 
-    // Then the row holds Frozen and the status line says nothing was
-    // recorded. There is no filter that expresses "frozen to no skills" --
-    // an empty allow list is read as no filter -- so this is the only
-    // place the user can be told, and the moment is the only time they
-    // are still looking at the row they just changed.
+    // Then the row holds Frozen and captured nothing. An allow list naming
+    // nothing is a filter that withholds every name, so the freeze is a real
+    // one and there is nothing on the status line to report about it.
     assert_eq!(fx.cell.read().set_mode_of(SetField::Skill), SetMode::Frozen);
     assert_eq!(
-        fx.cell.read().status,
-        Some(PopupStatus::SetNotRecorded {
-            field: SetField::Skill
-        })
+        fx.cell.read().pending_set(SetField::Skill),
+        Some(&BTreeSet::new())
     );
+    assert!(fx.cell.read().status.is_none());
 }

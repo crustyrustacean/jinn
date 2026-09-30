@@ -148,6 +148,58 @@ mod tests {
         assert!(!filter(&config).permits("bash"));
     }
 
+    /// The round trip end to end, which is the only thing that actually
+    /// proves the two cases survive a user's save. Serializing must write
+    /// the present empty filter as a key, and reading it back must not
+    /// collapse it into absence -- otherwise "no tools" silently becomes
+    /// "all tools" on the first save.
+    #[rstest::rstest]
+    fn a_present_empty_allow_filter_survives_a_round_trip() {
+        // Given a section whose allow filter names nothing.
+        let config = ToolsConfig {
+            tool_filter: Some(NameFilter {
+                mode: FilterMode::Allow,
+                names: Default::default(),
+            }),
+            ..ToolsConfig::default()
+        };
+
+        // When it is serialized and read back.
+        let written = toml::to_string(&config).expect("serializes");
+        let table: toml::Table = toml::from_str(&written).expect("written TOML parses");
+        let read_back = ToolsConfig::from_table(&table).expect("section deserializes");
+
+        // Then the filter is still present, still allow mode, and still
+        // withholds every tool.
+        let restored = filter(&read_back);
+        assert_eq!(restored.mode, FilterMode::Allow);
+        assert!(restored.names.is_empty());
+        assert!(!restored.permits("bash"));
+        // And the written document carries the key, so the next save has
+        // something to patch rather than a filter that vanished.
+        assert!(
+            written.contains("tool_filter"),
+            "the filter key was dropped on save:\n{written}"
+        );
+    }
+
+    /// The other half of the round trip: absence must stay absence, or
+    /// every unconfigured session would grow a filter on its first save.
+    #[rstest::rstest]
+    fn an_absent_filter_survives_a_round_trip_as_absent() {
+        // Given a section configuring no filter.
+        let config = ToolsConfig::default();
+
+        // When it is serialized and read back.
+        let written = toml::to_string(&config).expect("serializes");
+        let table: toml::Table = toml::from_str(&written).expect("written TOML parses");
+        let read_back = ToolsConfig::from_table(&table).expect("section deserializes");
+
+        // Then no filter is configured, and the document never grew one.
+        assert!(read_back.tool_filter.is_none());
+        assert!(!written.contains("tool_filter"));
+    }
+
     #[rstest::rstest]
     fn a_section_with_no_filter_configures_none() {
         // Given a table carrying only an unrelated key.

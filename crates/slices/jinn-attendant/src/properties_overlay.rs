@@ -353,13 +353,6 @@ pub(crate) fn status_line(
             ),
             theme.warning,
         ),
-        Some(jinn_attendant_msg::PopupStatus::SetNotRecorded { field }) => (
-            format!(
-                "No {} is available to freeze yet — the set stays live until there is something to hold.",
-                field.resource()
-            ),
-            theme.warning,
-        ),
     };
     Line::from(Span::styled(text, Style::default().fg(color)))
 }
@@ -1210,19 +1203,16 @@ fn pick_on(
         true => BTreeSet::new(),
         false => permitted_now(ctx, &attendant_id, field),
     };
+    // A capture that came back empty is a set frozen to nothing, and the
+    // commit writes it: an allow list naming nothing is a filter that
+    // withholds every name, so nothing has to be reported about it. A glob
+    // in the attendant's filter is the one thing a flip does silently
+    // change, so that is what the line is for.
     let dropped = !thawing && contains_glob(ctx, &attendant_id, field);
-    // A freeze that captured nothing has to say so at the moment it is
-    // made. There is no file change behind it to discover later -- the
-    // commit turns an empty capture back into the inheriting filter, so
-    // the row reads Live the next time the panel opens and the user is
-    // left wondering whether they ever froze anything.
-    let empty = !thawing && permitted.is_empty();
     cell.update(|popup| {
         popup.set_mode(field, next, &permitted);
-        match (dropped, empty) {
-            (true, _) => popup.report(PopupStatus::GlobDropped { field }),
-            (_, true) => popup.report(PopupStatus::SetNotRecorded { field }),
-            _ => {}
+        if dropped {
+            popup.report(PopupStatus::GlobDropped { field });
         }
     });
     IntentResult::empty()
