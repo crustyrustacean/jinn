@@ -271,7 +271,6 @@ fn build_child(
         p.model = model;
         p.persona_name.clone_from(&profile.persona_name);
         p.reasoning_effort = profile.reasoning_effort;
-        p.endpoint.clone_from(&profile.endpoint);
         p.disabled_tools.clone_from(&profile.disabled_tools);
         // Subagents cannot spawn further subagents unless re-enabled via the
         // tool picker; the stamp is per-session, so the picker reflects it.

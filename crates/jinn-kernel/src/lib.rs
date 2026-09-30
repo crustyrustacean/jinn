@@ -75,9 +75,9 @@ pub use feat::intent::IntentHandler;
 
 // Re-export providers types
 pub use jinn_provider_config::{
-    ApiKeys, ApiKeysService, ConfigStorageService, FakeLlmServiceFactory, FilesystemConfigStorage,
-    InMemoryConfigStorage, InitProvidersOutcome, LlmServiceFactoryService, ModelCache,
-    NoProvidersAvailableFactory, ProviderEntry, ProviderId, ProviderRegistry,
+    ApiKeys, ApiKeysService, ConfigStorageService, EndpointDefault, FakeLlmServiceFactory,
+    FilesystemConfigStorage, InMemoryConfigStorage, InitProvidersOutcome, LlmServiceFactoryService,
+    ModelCache, NoProvidersAvailableFactory, ProviderEntry, ProviderId, ProviderRegistry,
     ProviderRegistryService, ProvidersConfig, ScriptedResponse, TOOL_LOOP_TRIGGER, cache_path,
     config_path, init_default_providers_to,
 };

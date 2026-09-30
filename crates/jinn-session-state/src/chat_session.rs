@@ -1499,12 +1499,10 @@ impl ChatSessionState {
 
     /// Set the model selection for this session.
     ///
-    /// When switching to an alloy, any pinned OpenRouter endpoint is cleared:
-    /// an endpoint pin is model-specific and incoherent across a rotating set.
+    /// No endpoint bookkeeping is needed here: a routing pin is a per-model
+    /// default in `providers.toml`, so switching models switches which pin
+    /// applies by construction rather than by clearing a session field.
     pub fn set_model(&mut self, model: ModelSelection) {
-        if matches!(model, ModelSelection::Alloy { .. }) {
-            self.core.integrations.profile.endpoint = None;
-        }
         self.core.integrations.profile.model = model;
     }
 

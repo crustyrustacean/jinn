@@ -5852,16 +5852,12 @@ fn set_enabled_mcp_servers_replaces_the_set() {
 }
 
 #[rstest::rstest]
-fn set_model_to_alloy_clears_endpoint_pin() {
-    // Given a session with a pinned endpoint and a single model.
+fn set_model_to_alloy_stores_the_alloy_selection() {
+    // Given a session on a single model.
     let mut session = ChatSessionState::new();
     session.set_model(ModelSelection::Single(
         "openrouter/anthropic/claude".to_owned(),
     ));
-    session.profile_mut().endpoint = Some(jinn_core_types::Endpoint {
-        tag: "anthropic".to_owned(),
-        provider_name: "Anthropic".to_owned(),
-    });
 
     // When switching the model to an alloy.
     session.set_model(ModelSelection::Alloy {
@@ -5869,9 +5865,18 @@ fn set_model_to_alloy_clears_endpoint_pin() {
         strategy: jinn_core_types::model_selection::AlloyStrategy::RoundRobin { index: 0 },
     });
 
-    // Then the endpoint pin is cleared (an endpoint pin is model-specific and
-    // incoherent across a rotating set).
-    assert!(session.profile().endpoint.is_none());
+    // Then the alloy is the session's selection, with its rotation index
+    // untouched by the switch.
+    match &session.profile().model {
+        ModelSelection::Alloy { models, strategy } => {
+            assert_eq!(models, &vec!["openrouter/anthropic/claude".to_owned()]);
+            assert_eq!(
+                strategy,
+                &jinn_core_types::model_selection::AlloyStrategy::RoundRobin { index: 0 }
+            );
+        }
+        ModelSelection::Single(_) => panic!("set_model must store the alloy selection"),
+    }
 }
 
 #[rstest::rstest]

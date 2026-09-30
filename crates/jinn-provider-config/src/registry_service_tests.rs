@@ -47,6 +47,7 @@ fn clone_sees_same_providers() {
         providers: BTreeMap::from([("ollama".to_owned(), ollama_entry())]),
         aliases: vec![],
         default_provider: None,
+        endpoint_defaults: vec![],
     };
     let registry = crate::registry::ProviderRegistry::from_config(config).expect("registry");
     let service = ProviderRegistryService::new(registry);
@@ -75,6 +76,7 @@ fn service_with_providers() -> ProviderRegistryService {
             target: "ollama/llama3".to_owned(),
         }],
         default_provider: None,
+        endpoint_defaults: vec![],
     };
     let registry = crate::registry::ProviderRegistry::from_config(config).expect("registry");
     ProviderRegistryService::new(registry)
@@ -188,6 +190,7 @@ fn default_provider_id_delegates_to_registry() {
         providers: BTreeMap::from([("ollama".to_owned(), ollama_entry())]),
         aliases: vec![],
         default_provider: Some("ollama/llama3".to_owned()),
+        endpoint_defaults: vec![],
     };
     let registry = crate::registry::ProviderRegistry::from_config(config).expect("registry");
     let service = ProviderRegistryService::new(registry);
@@ -215,6 +218,7 @@ fn create_factory_delegates_to_registry() {
         providers: BTreeMap::from([("sample".to_owned(), sample)]),
         aliases: vec![],
         default_provider: None,
+        endpoint_defaults: vec![],
     };
     let registry = crate::registry::ProviderRegistry::from_config(config).expect("registry");
     let service = ProviderRegistryService::new(registry);

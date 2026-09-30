@@ -34,6 +34,7 @@ use std::sync::Arc;
 
 use jinn_provider_selection_msg::LoadEndpointPickerEntries;
 use jinn_provider_selection_msg::RefreshEndpointPickerEntries;
+use jinn_provider_selection_msg::SetEndpointDefault;
 use jinn_provider_selection_msg::endpoint::EndpointPickerState;
 use jinn_provider_selection_msg::endpoint_picker_scope;
 use jinn_slices::KeyRoutes;
@@ -303,7 +304,13 @@ fn open_endpoint_picker(ctx: &mut ActionCtx<'_>, cell: &EndpointPickerCell) -> I
         .with_scope_signal(ScopeSignal::Push(endpoint_picker_scope()))
 }
 
-/// Enter: pin the highlighted endpoint on the session profile.
+/// Enter: pin the highlighted endpoint as a per-model default.
+///
+/// The pin is a `[[endpoint_defaults]]` row in `providers.toml`, not session
+/// state, so this action cannot apply it: an [`ActionCtx`] carries only app
+/// state, the slice cells, and the config layer — never `Services`, and
+/// `ConfigStorage` lives there. So the action publishes a command and the
+/// provider actor performs the write.
 ///
 /// The auto-route sentinel clears the pin rather than pinning a blank tag.
 fn confirm_endpoint_picker(ctx: &mut ActionCtx<'_>, cell: &EndpointPickerCell) -> IntentResult {
@@ -325,11 +332,24 @@ fn confirm_endpoint_picker(ctx: &mut ActionCtx<'_>, cell: &EndpointPickerCell) -
         return IntentResult::empty();
     };
 
-    let session_id = state.session.active_session_id().clone();
-    state.active_session_mut().profile_mut().endpoint = endpoint;
+    // The row is keyed by the model the choice applies to, not by the session
+    // that made it: the pin outlives this session and covers every other one
+    // using the same model. Only a `Single` selection can reach here — the
+    // open action gates alloys out — so there is no rotation to resolve.
+    let jinn_core_types::model_selection::ModelSelection::Single(model) =
+        &state.active_session().profile().model
+    else {
+        return IntentResult::empty();
+    };
+    let model = model.clone();
 
-    IntentResult::new_message(jinn_session_msg::MarkSessionInteracted { session_id })
-        .with_scope_signal(ScopeSignal::PopIf(endpoint_picker_scope()))
+    // No `MarkSessionInteracted` here: the choice is no longer session state,
+    // so there is nothing on the session for a persist to carry.
+    IntentResult::new_message(SetEndpointDefault {
+        model,
+        tag: endpoint.map(|e| e.tag),
+    })
+    .with_scope_signal(ScopeSignal::PopIf(endpoint_picker_scope()))
 }
 
 /// Escape: close without pinning.

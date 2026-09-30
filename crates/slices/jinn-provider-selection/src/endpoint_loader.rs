@@ -6,7 +6,6 @@
 //! is a direct HTTP call — so the entry-building functions are pure and
 //! the fetch stays behind the actor's cache.
 
-use jinn_core_types::Endpoint;
 use jinn_core_types::ModelSelection;
 use jinn_provider_selection_msg::endpoint::EndpointEntry;
 
@@ -92,18 +91,26 @@ pub(crate) async fn fetch_endpoints(
 /// Builds the picker entries from a list of upstream endpoints.
 ///
 /// Always prepends the "Default (auto-route)" sentinel; real endpoints are
-/// mapped one-to-one. The currently pinned endpoint, if any, is marked
-/// `is_active`. This is pure: same inputs always produce the same entries,
-/// so both the fresh-fetch path and the cache-hit path reuse it.
+/// mapped one-to-one. The row matching the model's configured routing tag,
+/// if any, is marked `is_active`.
+///
+/// `pinned_tag` is the tag from the model's `[[endpoint_defaults]]` row in
+/// `providers.toml` — read from the registry, not from session state, so the
+/// active row is known without a network call and is right for a model pinned
+/// in an earlier session. This is pure: same inputs always produce the same
+/// entries, so both the fresh-fetch path and the cache-hit path reuse it.
 pub(crate) fn build_endpoint_entries(
     endpoints: &[jinn_provider::EndpointInfo],
     theme: &jinn_theme::Theme,
-    pinned: Option<&Endpoint>,
+    pinned_tag: Option<&str>,
 ) -> Vec<EndpointEntry> {
     let mut entries = Vec::with_capacity(endpoints.len() + 1);
-    entries.push(EndpointEntry::auto_route(pinned.is_none(), theme.clone()));
+    entries.push(EndpointEntry::auto_route(
+        pinned_tag.is_none(),
+        theme.clone(),
+    ));
     for ep in endpoints {
-        let is_active = pinned.is_some_and(|p| p.tag == ep.tag);
+        let is_active = pinned_tag == Some(ep.tag.as_str());
         entries.push(EndpointEntry {
             tag: ep.tag.clone(),
             provider_name: ep.provider_name.clone(),
@@ -124,9 +131,9 @@ pub(crate) fn build_endpoint_entries(
 /// its empty `tag` means confirming it clears any pin.
 pub(crate) fn unavailable_endpoint_entries(
     theme: jinn_theme::Theme,
-    pinned: Option<&Endpoint>,
+    pinned_tag: Option<&str>,
 ) -> Vec<EndpointEntry> {
-    vec![EndpointEntry::auto_route(pinned.is_none(), theme)]
+    vec![EndpointEntry::auto_route(pinned_tag.is_none(), theme)]
 }
 
 #[cfg(test)]
@@ -165,13 +172,12 @@ mod tests {
                 max_completion_tokens: None,
             },
         ];
-        let pinned = Endpoint {
-            tag: "anthropic".to_owned(),
-            provider_name: "Anthropic".to_owned(),
-        };
+        // The pin is only a tag: `providers.toml` stores the routing slug and
+        // takes the display name from the fetched row.
+        let pinned_tag = "anthropic";
 
         // When building entries (pure: same inputs always produce same output).
-        let entries = build_endpoint_entries(&endpoints, &theme, Some(&pinned));
+        let entries = build_endpoint_entries(&endpoints, &theme, Some(pinned_tag));
 
         // Then the auto-route sentinel is prepended and is NOT active (a pin exists).
         assert!(entries[0].tag.is_empty(), "first entry is the sentinel");

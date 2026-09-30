@@ -1740,7 +1740,7 @@ fn metadata_blob_is_unchanged_by_group_composition() {
             r#""title":"Lifecycle title","updated_at":"2024-01-01T00:00:00Z","#,
             r#""created_at":"2024-01-01T00:00:00Z","profile":{"model":{"single":"__no_provider__"},"#,
             r#""persona_name":"coding-assistant","disabled_tools":[],"disabled_skills":[],"#,
-            r#""reasoning_effort":null,"endpoint":null},"cwd":"/workspace/project","#,
+            r#""reasoning_effort":null},"cwd":"/workspace/project","#,
             r#""parent_session":null,"fork_ordinal":null,"origin":"user","project":null,"#,
             r#""blobs":{},"lifecycle_name":"dev","lifecycle_args":["--fast"],"#,
             r#""lifecycle_script_state":"setup_ran","task_list":{"phases":[]},"#,

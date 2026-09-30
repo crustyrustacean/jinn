@@ -194,6 +194,7 @@ impl Services {
                     providers: std::collections::BTreeMap::new(),
                     aliases: vec![],
                     default_provider: None,
+                    endpoint_defaults: vec![],
                 })
                 .expect("empty config is valid"),
             ),
@@ -260,6 +261,7 @@ impl Services {
                     providers: std::collections::BTreeMap::new(),
                     aliases: vec![],
                     default_provider: None,
+                    endpoint_defaults: vec![],
                 })
                 .expect("empty config is valid"),
             ),

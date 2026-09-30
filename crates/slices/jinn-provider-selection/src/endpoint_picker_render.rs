@@ -193,7 +193,7 @@ pub fn endpoint_status(
     let gray = Style::default().fg(theme.muted_text);
     let orange = Style::default().fg(theme.accent_action);
 
-    let pinned_name = crate::endpoint_picker_actions::active_provider_name(state)
+    let pinned_name = crate::endpoint_picker_actions::active_routing_label(state)
         .unwrap_or_else(|| "auto-route".to_owned());
 
     let mut spans = vec![

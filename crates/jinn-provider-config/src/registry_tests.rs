@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 
 use super::registry::*;
 use crate::api_keys::ApiKeys;
-use crate::config::{AliasEntry, ProviderEntry, ProvidersConfig};
+use crate::config::{AliasEntry, EndpointDefault, ProviderEntry, ProvidersConfig};
 use crate::provider_id::ProviderId;
 
 /// A one-provider map.
@@ -32,6 +32,7 @@ fn make_config(
         providers,
         aliases,
         default_provider: default_provider.map(String::from),
+        endpoint_defaults: Vec::new(),
     }
 }
 
@@ -991,4 +992,104 @@ fn merge_cache_per_model_extra_body_beats_block_level() {
         static_entry.extra_body.as_ref().expect("extra")["block"],
         true
     );
+}
+
+/// A registry whose config pins one model's endpoint.
+fn registry_with_endpoint_pins(rows: Vec<EndpointDefault>) -> ProviderRegistry {
+    let mut config = make_config(one("openrouter", openrouter_entry()), vec![], None);
+    config.endpoint_defaults = rows;
+    ProviderRegistry::from_config(config).expect("registry")
+}
+
+#[rstest::rstest]
+fn set_endpoint_default_adds_a_row_for_an_unpinned_model() {
+    // Given a registry with no endpoint pins.
+    let mut registry = registry_with_endpoint_pins(vec![]);
+
+    // When pinning a model.
+    registry.set_endpoint_default("openrouter/anthropic/claude", "anthropic");
+
+    // Then the held config carries the row.
+    let row = crate::endpoint_default::endpoint_default_for(
+        registry.config(),
+        "openrouter/anthropic/claude",
+    )
+    .expect("row written");
+    assert_eq!(row.tag, "anthropic");
+}
+
+#[rstest::rstest]
+fn set_endpoint_default_replaces_the_row_for_the_same_model() {
+    // Given a registry already pinning a model.
+    let mut registry = registry_with_endpoint_pins(vec![EndpointDefault {
+        model: "openrouter/anthropic/claude".to_owned(),
+        tag: "anthropic".to_owned(),
+    }]);
+
+    // When pinning the same model to a different upstream.
+    registry.set_endpoint_default("openrouter/anthropic/claude", "azure");
+
+    // Then the row is replaced, not duplicated.
+    let rows = &registry.config().endpoint_defaults;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].tag, "azure");
+}
+
+#[rstest::rstest]
+fn set_endpoint_default_leaves_other_models_rows_untouched() {
+    // Given a registry pinning two different models.
+    let mut registry = registry_with_endpoint_pins(vec![
+        EndpointDefault {
+            model: "openrouter/anthropic/claude".to_owned(),
+            tag: "anthropic".to_owned(),
+        },
+        EndpointDefault {
+            model: "openrouter/openai/gpt-oss-120b".to_owned(),
+            tag: "openai".to_owned(),
+        },
+    ]);
+
+    // When re-pinning the first model.
+    registry.set_endpoint_default("openrouter/anthropic/claude", "azure");
+
+    // Then the second model's row is untouched.
+    let other = crate::endpoint_default::endpoint_default_for(
+        registry.config(),
+        "openrouter/openai/gpt-oss-120b",
+    )
+    .expect("other row intact");
+    assert_eq!(other.tag, "openai");
+}
+
+#[rstest::rstest]
+fn clear_endpoint_default_removes_the_row_for_that_model() {
+    // Given a registry pinning a model.
+    let mut registry = registry_with_endpoint_pins(vec![EndpointDefault {
+        model: "openrouter/anthropic/claude".to_owned(),
+        tag: "anthropic".to_owned(),
+    }]);
+
+    // When clearing it (choosing auto-route).
+    registry.clear_endpoint_default("openrouter/anthropic/claude");
+
+    // Then the config has no row for that model.
+    assert!(
+        crate::endpoint_default::endpoint_default_for(
+            registry.config(),
+            "openrouter/anthropic/claude"
+        )
+        .is_none()
+    );
+}
+
+#[rstest::rstest]
+fn clear_endpoint_default_on_an_unpinned_model_is_a_no_op() {
+    // Given a registry with no endpoint pins.
+    let mut registry = registry_with_endpoint_pins(vec![]);
+
+    // When clearing a model that has no pin.
+    registry.clear_endpoint_default("openrouter/anthropic/claude");
+
+    // Then nothing is added or removed.
+    assert!(registry.config().endpoint_defaults.is_empty());
 }
