@@ -30,3 +30,4 @@ build/
 
 ^\.plans/
 chat-export*
+jinn.toml
