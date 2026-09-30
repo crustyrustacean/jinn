@@ -40,6 +40,8 @@ trouper = { workspace = true }
 jinn-chat-input-msg = { workspace = true }
 jinn-turn-dispatch-msg = { workspace = true }
 jinn-context-assembly = { workspace = true }
+# The discovered-skill shape the skill-set capture test builds fixtures from.
+jinn-skills-msg = { workspace = true }
 jinn-session-turn = { workspace = true }
 jinn-llm-support = { workspace = true }
 jinn-token-count-msg = { workspace = true }

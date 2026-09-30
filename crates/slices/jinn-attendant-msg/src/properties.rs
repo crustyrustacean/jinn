@@ -1,24 +1,30 @@
-//! Attendant properties popup — the edit state for its four fields.
+//! Attendant properties popup — the edit state for its six fields.
 //!
 //! The popup is a two-phase vim-style form over an attendant's trigger,
-//! behavior, prep mode, and seed template. `j`/`k` move the form cursor
-//! between fields, `h`/`l` act within the focused field, and `i` opens the
-//! seed-template editor on its own scope. Every edit stays pending — the
-//! popup never touches the session — until the user applies all four fields
-//! at once. The values the session had at open are snapshotted so leaving
-//! restores them exactly.
+//! behavior, prep mode, tool set, skill set, and seed template. `j`/`k` move
+//! the form cursor between fields, `h`/`l` act within the focused field, and
+//! `i` opens the seed-template editor on its own scope. Every edit stays
+//! pending — the popup never touches the session — until the user applies
+//! every field at once. The values the session had at open are snapshotted so
+//! leaving restores them exactly.
 //!
 //! Prep mode cages the two rows above it. While the attendant is being
 //! composed nothing runs, so its trigger and behavior are values the user
 //! has written but that do not apply; they stay on screen, dimmed, and the
 //! cursor cannot reach them, which is a stronger statement than letting the
-//! cursor arrive and having the pick do nothing.
+//! cursor arrive and having the pick do nothing. The tool and skill rows sit
+//! *below* the prep row and are never caged: an attendant being composed
+//! still has a tool budget, and a frozen set is what the attendant is being
+//! composed *for*.
 //!
 //! Choice rows carry their display order and labels here ([`TRIGGER_CHOICES`],
 //! [`BEHAVIOR_CHOICES`]) so the renderer and the pick helpers share one
 //! source of truth; nothing downstream hardcodes a choice string.
 
+use std::collections::BTreeSet;
+
 use crate::{AttendantBehavior, AttendantTrigger};
+use jinn_core_types::{FilterMode, NameFilter};
 use jinn_slices::LineInput;
 use jinn_slices::SlotKey;
 
@@ -63,6 +69,35 @@ pub const BEHAVIOR_CHOICES: &[(AttendantBehavior, &str)] = &[
     (AttendantBehavior::Preserve, "preserve"),
 ];
 
+/// Whether an attendant's tools or skills are held fixed or keep growing.
+///
+/// The two rows this names are the only place an attendant's capability set
+/// can be pinned to what it is. A blocklist — the shape the pickers write —
+/// can only say "never these"; it says nothing about the tools a server
+/// starts contributing next week, so every attendant silently gains them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SetMode {
+    /// The attendant inherits whatever its parent has, including resources
+    /// discovered after this attendant was saved. The default: an attendant
+    /// nobody constrained follows the user's configuration as it grows.
+    #[default]
+    Live,
+    /// The attendant is restricted to the names it had at the moment it was
+    /// frozen. Anything discovered afterward is refused.
+    Frozen,
+}
+
+impl SetMode {
+    /// The row's label.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Live => "Live",
+            Self::Frozen => "Frozen",
+        }
+    }
+}
+
 /// One field of the properties form, in display order.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum PropertyField {
@@ -75,6 +110,12 @@ pub enum PropertyField {
     /// `h`/`l` cycle it, and while it is on, the two rows above do not
     /// apply.
     PrepMode,
+    /// Whether new tools are admitted automatically or refused. A two-state
+    /// field; freezing captures the tools the attendant currently permits.
+    ToolSet,
+    /// Whether new skills are admitted automatically or refused. A two-state
+    /// field, over the same shape as the tool set.
+    SkillSet,
     /// The seed text, edited through the template editor (`i`).
     SeedTemplate,
 }
@@ -86,13 +127,16 @@ impl PropertyField {
     /// row are unreachable, so moving *up* off the prep row stays put
     /// rather than landing on a row that governs nothing. The rows are
     /// still rendered — a hidden row is not a disabled one, and the value
-    /// the user wrote has to be visible to be worth keeping.
+    /// the user wrote has to be visible to be worth keeping. The rows below
+    /// it are never gated: they still apply to an attendant being composed.
     #[must_use]
     pub fn next(self, prep_mode: bool) -> Self {
         let stepped = match self {
             Self::Trigger => Self::Behavior,
             Self::Behavior => Self::PrepMode,
-            Self::PrepMode | Self::SeedTemplate => Self::SeedTemplate,
+            Self::PrepMode => Self::ToolSet,
+            Self::ToolSet => Self::SkillSet,
+            Self::SkillSet | Self::SeedTemplate => Self::SeedTemplate,
         };
         match stepped {
             Self::Trigger | Self::Behavior if prep_mode => self,
@@ -116,7 +160,9 @@ impl PropertyField {
             Self::Trigger => floor,
             Self::Behavior => Self::Trigger,
             Self::PrepMode => Self::Behavior,
-            Self::SeedTemplate => Self::PrepMode,
+            Self::ToolSet => Self::PrepMode,
+            Self::SkillSet => Self::ToolSet,
+            Self::SeedTemplate => Self::SkillSet,
         }
         .clamp_to(floor)
     }
@@ -155,10 +201,12 @@ impl PropertyField {
     ///
     /// The seed template survives: pins are the whole point of composing,
     /// so a template written during prep is exactly what the first run
-    /// should inject.
+    /// should inject. So do the two set rows — a frozen tool or skill set is
+    /// precisely the constraint a user composes an attendant *under*, so
+    /// caging them would make the row useless for as long as it is needed.
     #[must_use]
     pub fn applies_while_prepping(self) -> bool {
-        matches!(self, Self::PrepMode | Self::SeedTemplate)
+        !matches!(self, Self::Trigger | Self::Behavior)
     }
 
     /// The field's label as shown in the popup.
@@ -168,6 +216,8 @@ impl PropertyField {
             Self::Trigger => "trigger",
             Self::Behavior => "behavior",
             Self::PrepMode => "prep mode",
+            Self::ToolSet => "tool set",
+            Self::SkillSet => "skill set",
             Self::SeedTemplate => "seed template",
         }
     }
@@ -176,14 +226,16 @@ impl PropertyField {
 /// A field's position in display order, for comparing two of them.
 ///
 /// Declared after the enum rather than as a `rank` on it because a field's
-/// place in the *form* is the form's business: the enum names four settings,
+/// place in the *form* is the form's business: the enum names six settings,
 /// and nothing about the settings themselves says which row they sit on.
 fn rank(field: PropertyField) -> u8 {
     match field {
         PropertyField::Trigger => 0,
         PropertyField::Behavior => 1,
         PropertyField::PrepMode => 2,
-        PropertyField::SeedTemplate => 3,
+        PropertyField::ToolSet => 3,
+        PropertyField::SkillSet => 4,
+        PropertyField::SeedTemplate => 5,
     }
 }
 
@@ -238,7 +290,7 @@ pub fn pick_behavior(current: AttendantBehavior, direction: PickDirection) -> At
 /// The values an attendant had when the properties popup opened.
 ///
 /// Leaving the popup restores these; applying replaces them.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct OriginalValues {
     /// The trigger at open time.
     pub trigger: AttendantTrigger,
@@ -246,13 +298,54 @@ pub struct OriginalValues {
     pub behavior: AttendantBehavior,
     /// Whether the attendant was being composed at open time.
     pub prep_mode: bool,
+    /// The frozen tool set at open time.
+    ///
+    /// Carried as a whole filter rather than a bare [`SetMode`] because
+    /// opening the popup is what *reads* the attendant's filter, and the
+    /// filter is where the row's meaning lives: an unconfigured filter means
+    /// Live, and so does a deny filter with nothing in it — only an
+    /// allow-mode filter says the set has been pinned.
+    pub tool_set: NameFilter,
+    /// The frozen skill set at open time, as above.
+    pub skill_set: NameFilter,
     /// The seed template at open time.
     pub template: String,
 }
 
+impl OriginalValues {
+    /// The set mode a filter of this shape represents.
+    ///
+    /// Only an allow-mode filter is a frozen set. A deny filter is a
+    /// blocklist — "never these" — which says nothing about the names
+    /// nobody thought to withhold, so an attendant carrying one is still
+    /// growing with its parent's configuration.
+    ///
+    /// This is the one reading of a filter both the popup's opener and its
+    /// restore path use, so a row can never mean one thing when it opens
+    /// and another when `<esc>` puts it back.
+    #[must_use]
+    pub fn mode_of(filter: &NameFilter) -> SetMode {
+        if filter.mode == FilterMode::Allow && !filter.is_unconfigured() {
+            SetMode::Frozen
+        } else {
+            SetMode::Live
+        }
+    }
+
+    /// The names an already-frozen filter would commit as, mode included.
+    ///
+    /// The filter's own patterns rather than a set re-derived from them: a
+    /// hand-written allow list's globs are already in the correct mode, and
+    /// flattening them into names would quietly narrow what the user wrote.
+    #[must_use]
+    pub fn names_of(filter: &NameFilter) -> Option<BTreeSet<String>> {
+        (Self::mode_of(filter) == SetMode::Frozen).then(|| filter.names.clone())
+    }
+}
+
 /// State for the attendant properties popup.
 ///
-/// Opened from the sessions section with `P`; all three fields target the
+/// Opened from the sessions section with `P`; every field targets the
 /// highlighted attendant session. Nothing here reaches the session — the
 /// popup holds pending edits until the apply row commits them together.
 #[derive(Debug, Clone, Default)]
@@ -267,6 +360,19 @@ pub struct AttendantPropertiesState {
     pub pending_trigger: AttendantTrigger,
     /// Whether `<enter>` would leave the attendant in prep mode.
     pub pending_prep_mode: bool,
+    /// Whether `<enter>` would pin the attendant's tools.
+    pub pending_tool_set: SetMode,
+    /// The tool names a Frozen tool set would be pinned to.
+    ///
+    /// Captured at the moment the row was flipped, never recomputed: the
+    /// capture is a statement of what the attendant had *then*, and reading
+    /// the live filter again at commit time would capture whatever the
+    /// configuration has since become. `None` while the row is Live.
+    pub frozen_tools: Option<BTreeSet<String>>,
+    /// Whether `<enter>` would pin the attendant's skills.
+    pub pending_skill_set: SetMode,
+    /// The skill names a Frozen skill set would be pinned to, as above.
+    pub frozen_skills: Option<BTreeSet<String>>,
     /// The values the session had at open; `<esc>`/`<c-c>` restore them.
     /// `None` while the popup is closed.
     pub original: Option<OriginalValues>,
@@ -292,14 +398,35 @@ pub struct AttendantPropertiesState {
     /// The popup's one-line status, shown under the form.
     ///
     /// Holds what the last key did: a save that wrote, a save that was
-    /// refused, an overwrite waiting on its second stroke. The form has no
-    /// other way to answer a key — the session is only written by
-    /// `<enter>`, and a save that armed would otherwise be invisible.
+    /// refused, an overwrite waiting on its second stroke, a mode change
+    /// that had to drop a pattern. The form has no other way to answer a
+    /// key — the session is only written by `<enter>`, and a flip that
+    /// silently discarded a glob would otherwise be invisible.
     ///
     /// Cleared by the next keystroke, so the line always describes the most
     /// recent thing that happened rather than accumulating a history of
     /// things that did.
     pub status: Option<PopupStatus>,
+}
+
+/// Which of the two set rows a flip or a capture concerns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SetField {
+    /// The tool-set row, over the session's tool filter.
+    Tool,
+    /// The skill-set row, over the session's skill filter.
+    Skill,
+}
+
+impl SetField {
+    /// The resource's name, as the status line reports it.
+    #[must_use]
+    pub fn resource(self) -> &'static str {
+        match self {
+            Self::Tool => "tool",
+            Self::Skill => "skill",
+        }
+    }
 }
 
 /// What the popup's status line reports.
@@ -319,6 +446,11 @@ pub enum PopupStatus {
     SaveFailed {
         /// The reason, in the user's terms.
         reason: String,
+    },
+    /// A mode change dropped one or more glob patterns from the filter.
+    GlobDropped {
+        /// Which set row changed: the tool set or the skill set.
+        field: SetField,
     },
 }
 
@@ -347,18 +479,86 @@ impl AttendantPropertiesState {
     /// attendant is being composed, which the cage already makes
     /// unreachable; the guard is here so a caller that reaches the row
     /// some other way cannot move a value that governs nothing.
+    ///
+    /// A no-op on either set row. Freezing one has to read the attendant's
+    /// live capability set, which this cell cannot reach; [`Self::set_mode`]
+    /// is that operation, and a bare cycle here would freeze the row
+    /// against nothing.
     pub fn pick(&mut self, direction: PickDirection) {
         match self.focus {
-            PropertyField::Trigger if !self.pending_prep_mode => {
+            PropertyField::Trigger | PropertyField::Behavior if self.pending_prep_mode => {}
+            PropertyField::Trigger => {
                 self.pending_trigger = pick_trigger(self.pending_trigger, direction);
             }
-            PropertyField::Behavior if !self.pending_prep_mode => {
+            PropertyField::Behavior => {
                 self.pending_behavior = pick_behavior(self.pending_behavior, direction);
             }
             PropertyField::PrepMode => {
                 self.pending_prep_mode = !self.pending_prep_mode;
             }
-            PropertyField::Trigger | PropertyField::Behavior | PropertyField::SeedTemplate => {}
+            PropertyField::ToolSet | PropertyField::SkillSet | PropertyField::SeedTemplate => {}
+        }
+    }
+
+    /// The pending mode of one of the two set rows.
+    #[must_use]
+    pub fn set_mode_of(&self, field: SetField) -> SetMode {
+        match field {
+            SetField::Tool => self.pending_tool_set,
+            SetField::Skill => self.pending_skill_set,
+        }
+    }
+
+    /// The names the pending mode of `field` would be committed as.
+    ///
+    /// `None` while the row is Live, which is the signal to leave the
+    /// attendant's filter for that resource alone and let it inherit.
+    #[must_use]
+    pub fn pending_set(&self, field: SetField) -> Option<&BTreeSet<String>> {
+        match field {
+            SetField::Tool => self.frozen_tools.as_ref(),
+            SetField::Skill => self.frozen_skills.as_ref(),
+        }
+    }
+
+    /// Sets a set row to `mode`, from the capabilities `permitted` names.
+    ///
+    /// Freezing records what the attendant has *now*, as an allow list of
+    /// the names it currently permits. Capturing at the moment of the flip
+    /// rather than at commit is the whole point: the popup buffers edits so
+    /// `<esc>` can withdraw them, and a capture taken later would be a
+    /// reading of a configuration the user never looked at.
+    ///
+    /// The effective set is preserved exactly, so nothing in either picker
+    /// changes its mark when the attendant is frozen — only names that
+    /// arrive *later* are refused, and those appear unchecked.
+    ///
+    /// A capture that permits nothing is a no-op: it stores no names and
+    /// leaves the row Live. An empty allow list is indistinguishable from no
+    /// filter at all — `NameFilter::permits` reads an empty set as
+    /// "everything" in both modes — so writing one would look like a frozen
+    /// set in `jinn.toml` and behave as an inheriting one, which is exactly
+    /// the leak freezing exists to stop.
+    ///
+    /// Flipping back to Live discards the capture outright rather than
+    /// caching it. Nothing was written when the row was frozen, so a
+    /// round trip has nothing to restore, and holding a second copy of every
+    /// filter on the panel would be state no one reads.
+    pub fn set_mode(&mut self, field: SetField, mode: SetMode, permitted: &BTreeSet<String>) {
+        let (frozen, next) = match mode {
+            SetMode::Live => (SetMode::Live, None),
+            SetMode::Frozen if permitted.is_empty() => return,
+            SetMode::Frozen => (SetMode::Frozen, Some(permitted.clone())),
+        };
+        match field {
+            SetField::Tool => {
+                self.pending_tool_set = frozen;
+                self.frozen_tools = next;
+            }
+            SetField::Skill => {
+                self.pending_skill_set = frozen;
+                self.frozen_skills = next;
+            }
         }
     }
 
@@ -368,6 +568,11 @@ impl AttendantPropertiesState {
     /// A no-op without a snapshot (the popup was never opened). Also
     /// disarms the save: this is the `<esc>`/`<c-c>` close path, and an
     /// armed overwrite must not survive into the next popup session.
+    ///
+    /// The set rows go back to what the attendant's filters said, captures
+    /// included. Nothing was written while they were being flipped, so this
+    /// is what makes leaving the popup byte-for-byte invisible to the
+    /// session.
     pub fn restore_original(&mut self) {
         self.save_armed = false;
         let Some(original) = self.original.clone() else {
@@ -377,11 +582,34 @@ impl AttendantPropertiesState {
         self.pending_behavior = original.behavior;
         self.pending_trigger = original.trigger;
         self.pending_prep_mode = original.prep_mode;
+        self.restore_set(SetField::Tool, &original.tool_set);
+        self.restore_set(SetField::Skill, &original.skill_set);
         self.seed_template = LineInput {
             input: original.template,
             cursor_pos,
         };
         self.editor_original = None;
+    }
+
+    /// Puts one set row back to the open-time filter, capture included.
+    ///
+    /// A filter that was already a frozen set keeps its own names rather
+    /// than a capture: the user did not ask for this row to change, and
+    /// re-deriving the names from a filter the user did not author would
+    /// silently drop the patterns it contains.
+    fn restore_set(&mut self, field: SetField, filter: &NameFilter) {
+        let mode = OriginalValues::mode_of(filter);
+        let captured = OriginalValues::names_of(filter);
+        match field {
+            SetField::Tool => {
+                self.pending_tool_set = mode;
+                self.frozen_tools = captured;
+            }
+            SetField::Skill => {
+                self.pending_skill_set = mode;
+                self.frozen_skills = captured;
+            }
+        }
     }
 
     /// Captures the current template text as the editor's restore point.
@@ -430,11 +658,24 @@ impl AttendantPropertiesState {
     /// A save means wanting these settings, so the pending values are what
     /// the session now holds and what the file now says; both are the same
     /// thing here, and this makes the popup agree with them.
+    ///
+    /// The set rows are recorded in the shape a filter takes rather than as
+    /// bare captures, so the next `<esc>` puts back the file's own contents
+    /// — patterns included — instead of a set re-derived from them.
     pub fn commit_as_original(&mut self) {
+        let committed = |names: Option<&BTreeSet<String>>| match names {
+            Some(names) => NameFilter {
+                mode: FilterMode::Allow,
+                names: names.clone(),
+            },
+            None => NameFilter::default(),
+        };
         self.original = Some(OriginalValues {
             trigger: self.pending_trigger,
             behavior: self.pending_behavior,
             prep_mode: self.pending_prep_mode,
+            tool_set: committed(self.frozen_tools.as_ref()),
+            skill_set: committed(self.frozen_skills.as_ref()),
             template: self.seed_template.input.clone(),
         });
         self.editor_original = None;

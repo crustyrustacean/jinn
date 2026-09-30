@@ -1,10 +1,11 @@
 //! Attendant properties popup — opening, closing, and cell seeding.
 //!
-//! The popup lives on its own dynamic scope with the three controls
-//! (trigger, behavior, prep mode, seed template) as a single form. This module is
-//! the sidebar-side glue: `P` in the sessions scope seeds the popup's cell
-//! from the highlighted attendant and pushes the scope; the popup's own
-//! rows (in `jinn-attendant`) handle editing, applying, and leaving.
+//! The popup lives on its own dynamic scope with the six controls
+//! (trigger, behavior, prep mode, tool set, skill set, seed template) as a
+//! single form. This module is the sidebar-side glue: `P` in the sessions
+//! scope seeds the popup's cell from the highlighted attendant and pushes
+//! the scope; the popup's own rows (in `jinn-attendant`) handle editing,
+//! applying, and leaving.
 //!
 //! The apply half commits straight to `AppState` and publishes
 //! `PersistSession`; it cannot live in `jinn-attendant-msg` (no state
@@ -47,6 +48,11 @@ pub fn handle_open_attendant_properties(state: &mut AppState) -> IntentResult {
     let template = session.seed_template().to_owned();
     let cursor_pos = template.len();
     let prep_mode = session.attendant_is_prepping();
+    // What the set rows say is a reading of the attendant's own filters:
+    // only an allow-mode filter pins a set, so a blocklist — the shape the
+    // pickers write — still opens as Live.
+    let tool_set = session.tool_filter().clone();
+    let skill_set = session.skill_filter().clone();
     let popup = AttendantPropertiesState {
         session_id: Some(entry.id.clone()),
         seed_template: jinn_slices::LineInput {
@@ -56,10 +62,16 @@ pub fn handle_open_attendant_properties(state: &mut AppState) -> IntentResult {
         pending_behavior: session.attendant_behavior(),
         pending_trigger: session.attendant_trigger(),
         pending_prep_mode: prep_mode,
+        pending_tool_set: OriginalValues::mode_of(&tool_set),
+        frozen_tools: OriginalValues::names_of(&tool_set),
+        pending_skill_set: OriginalValues::mode_of(&skill_set),
+        frozen_skills: OriginalValues::names_of(&skill_set),
         original: Some(OriginalValues {
             trigger: session.attendant_trigger(),
             behavior: session.attendant_behavior(),
             prep_mode,
+            tool_set,
+            skill_set,
             template,
         }),
         // A composing attendant opens on the prep row: the two rows above

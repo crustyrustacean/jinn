@@ -94,9 +94,24 @@ mod attendant_msg_tests {
 mod properties_tests {
     use crate::{
         AttendantBehavior, AttendantPropertiesState, AttendantTrigger, BEHAVIOR_CHOICES,
-        OriginalValues, PickDirection, PropertyField, TRIGGER_CHOICES, attendant_properties_scope,
-        attendant_seed_template_scope, pick_behavior, pick_trigger,
+        OriginalValues, PickDirection, PropertyField, SetField, SetMode, TRIGGER_CHOICES,
+        attendant_properties_scope, attendant_seed_template_scope, pick_behavior, pick_trigger,
     };
+    use jinn_core_types::{FilterMode, NameFilter};
+    use std::collections::BTreeSet;
+
+    /// An allow-mode filter naming `patterns`.
+    fn allow(patterns: &[&str]) -> NameFilter {
+        NameFilter {
+            mode: FilterMode::Allow,
+            names: patterns.iter().map(|p| (*p).to_owned()).collect(),
+        }
+    }
+
+    /// The names in `names`, as a capture the set rows hold.
+    fn names(names: &[&str]) -> BTreeSet<String> {
+        names.iter().map(|n| (*n).to_owned()).collect()
+    }
 
     #[rstest::rstest]
     fn form_focus_defaults_to_the_first_field() {
@@ -149,20 +164,23 @@ mod properties_tests {
             ..AttendantPropertiesState::default()
         };
         let mut visited = vec![popup.focus];
-        for _ in 0..3 {
+        for _ in 0..5 {
             popup.focus_next();
             visited.push(popup.focus);
         }
 
-        // Then the rows are the four the panel shows, in the order it shows
+        // Then the rows are the six the panel shows, in the order it shows
         // them: what fires, what it sees, whether it is still being
-        // composed, and the text a run injects.
+        // composed, what it may reach for, what it may know, and the text a
+        // run injects.
         assert_eq!(
             visited,
             vec![
                 PropertyField::Trigger,
                 PropertyField::Behavior,
                 PropertyField::PrepMode,
+                PropertyField::ToolSet,
+                PropertyField::SkillSet,
                 PropertyField::SeedTemplate,
             ]
         );
@@ -291,8 +309,8 @@ mod properties_tests {
             ..AttendantPropertiesState::default()
         };
 
-        // When moving up three times — once per remaining row.
-        for _ in 0..3 {
+        // When moving up five times — once per remaining row.
+        for _ in 0..5 {
             popup.focus_previous();
         }
 
@@ -325,14 +343,17 @@ mod properties_tests {
             PropertyField::Trigger,
             PropertyField::Behavior,
             PropertyField::PrepMode,
+            PropertyField::ToolSet,
+            PropertyField::SkillSet,
             PropertyField::SeedTemplate,
         ]
         .map(|field| field.applies_while_prepping());
 
         // Then pins are the point of composing, so the template is exactly
-        // what a user writes during prep; only the two run settings do not
+        // what a user writes during prep; a tool budget is what a user
+        // composes an attendant *under*. Only the two run settings do not
         // apply.
-        assert_eq!(applies, [false, false, true, true]);
+        assert_eq!(applies, [false, false, true, true, true, true]);
     }
 
     #[rstest::rstest]
@@ -432,6 +453,8 @@ mod properties_tests {
                 trigger: AttendantTrigger::ParentCompleted,
                 behavior: AttendantBehavior::Preserve,
                 prep_mode: false,
+                tool_set: NameFilter::default(),
+                skill_set: NameFilter::default(),
                 template: "original".to_owned(),
             }),
             pending_trigger: AttendantTrigger::Manual,
@@ -510,5 +533,218 @@ mod properties_tests {
         // Then the arm goes with it: a save the user was never told about
         // must not be one keystroke away.
         assert!(!popup.save_armed);
+    }
+
+    #[rstest::rstest]
+    fn both_set_rows_default_to_live() {
+        // Given a fresh popup state.
+
+        // When reading both set rows.
+        let popup = AttendantPropertiesState::default();
+
+        // Then both are Live: an attendant nobody constrained follows the
+        // user's configuration as it grows.
+        assert_eq!(popup.set_mode_of(SetField::Tool), SetMode::Live);
+        assert_eq!(popup.set_mode_of(SetField::Skill), SetMode::Live);
+    }
+
+    #[rstest::rstest]
+    fn an_allow_filter_reads_as_a_frozen_set() {
+        // Given a filter pinning an attendant to three tools.
+
+        // When reading it as a set mode.
+        let mode = OriginalValues::mode_of(&allow(&["read", "write", "bash"]));
+
+        // Then the set is Frozen — an allow list is the only shape that says
+        // "these and no others".
+        assert_eq!(mode, SetMode::Frozen);
+    }
+
+    #[rstest::rstest]
+    #[case::blocklist(FilterMode::Deny, &["bash"], false)]
+    #[case::empty_allow(FilterMode::Allow, &[], false)]
+    fn a_filter_that_names_nothing_to_pin_reads_as_live(
+        #[case] mode: FilterMode,
+        #[case] patterns: &[&str],
+        #[case] frozen: bool,
+    ) {
+        // Given a filter that cannot mean a frozen set: a blocklist, or an
+        // allow list over nothing.
+        let filter = NameFilter {
+            mode,
+            names: patterns.iter().map(|p| (*p).to_owned()).collect(),
+        };
+
+        // When reading it as a set mode.
+        let read = OriginalValues::mode_of(&filter);
+
+        // Then it is Live. A blocklist says "never these" and nothing about
+        // the rest, and an empty filter is read as no filter at all.
+        assert_eq!(read == SetMode::Frozen, frozen);
+    }
+
+    #[rstest::rstest]
+    fn freezing_a_set_captures_exactly_the_names_it_permits() {
+        // Given a popup over an attendant with two tools permitted.
+        let mut popup = AttendantPropertiesState::default();
+
+        // When freezing the tool set.
+        popup.set_mode(SetField::Tool, SetMode::Frozen, &names(&["read", "write"]));
+
+        // Then the row is Frozen and holds exactly those two names.
+        assert_eq!(popup.set_mode_of(SetField::Tool), SetMode::Frozen);
+        assert_eq!(
+            popup.pending_set(SetField::Tool),
+            Some(&names(&["read", "write"]))
+        );
+    }
+
+    #[rstest::rstest]
+    fn freezing_the_tool_set_leaves_the_skill_set_alone() {
+        // Given a popup with a capture already on the skill row.
+        let mut popup = AttendantPropertiesState::default();
+        popup.set_mode(SetField::Skill, SetMode::Frozen, &names(&["web-coder"]));
+
+        // When freezing the tool set.
+        popup.set_mode(SetField::Tool, SetMode::Frozen, &names(&["read"]));
+
+        // Then the skill row keeps its own mode and its own names.
+        assert_eq!(popup.set_mode_of(SetField::Skill), SetMode::Frozen);
+        assert_eq!(
+            popup.pending_set(SetField::Skill),
+            Some(&names(&["web-coder"]))
+        );
+    }
+
+    #[rstest::rstest]
+    fn thawing_a_set_discards_its_capture() {
+        // Given a popup whose tool set is frozen over two names.
+        let mut popup = AttendantPropertiesState::default();
+        popup.set_mode(SetField::Tool, SetMode::Frozen, &names(&["read", "write"]));
+
+        // When thawing it.
+        popup.set_mode(SetField::Tool, SetMode::Live, &names(&["read", "write"]));
+
+        // Then the row is Live and holds nothing to commit. Nothing was
+        // written when it was frozen, so there is nothing to put back.
+        assert_eq!(popup.set_mode_of(SetField::Tool), SetMode::Live);
+        assert!(popup.pending_set(SetField::Tool).is_none());
+    }
+
+    #[rstest::rstest]
+    fn freezing_a_set_that_permits_nothing_is_a_no_op() {
+        // Given a popup whose attendant permits no tools at all.
+        let mut popup = AttendantPropertiesState::default();
+
+        // When freezing the tool set over an empty capture.
+        popup.set_mode(SetField::Tool, SetMode::Frozen, &BTreeSet::new());
+
+        // Then the row stays Live with nothing captured. An empty allow list
+        // is read by `NameFilter` as "no filter", so writing one would look
+        // frozen in `jinn.toml` and behave as inheriting.
+        assert_eq!(popup.set_mode_of(SetField::Tool), SetMode::Live);
+        assert!(popup.pending_set(SetField::Tool).is_none());
+    }
+
+    #[rstest::rstest]
+    fn restoring_puts_a_frozen_set_back_with_the_filters_own_names() {
+        // Given a popup opened on an attendant whose tool filter is an
+        // allow list written by hand, including a glob.
+        let original = allow(&["read", "mcp__github__*"]);
+        let mut popup = AttendantPropertiesState {
+            original: Some(OriginalValues {
+                tool_set: original.clone(),
+                ..OriginalValues::default()
+            }),
+            ..AttendantPropertiesState::default()
+        };
+        // And the row was frozen away from that filter in the meantime.
+        popup.set_mode(SetField::Tool, SetMode::Live, &BTreeSet::new());
+
+        // When restoring.
+        popup.restore_original();
+
+        // Then the row is Frozen again carrying the filter's own patterns.
+        // The glob is already in the correct mode, so re-deriving names from
+        // it would quietly narrow what the user wrote.
+        assert_eq!(popup.set_mode_of(SetField::Tool), SetMode::Frozen);
+        assert_eq!(popup.pending_set(SetField::Tool), Some(&original.names));
+    }
+
+    #[rstest::rstest]
+    fn restoring_puts_a_blocklisted_set_back_as_live() {
+        // Given a popup opened on an attendant whose tool filter is a
+        // blocklist — the shape the pickers write.
+        let blocklist = NameFilter::deny(["bash".to_owned()]);
+        let mut popup = AttendantPropertiesState {
+            original: Some(OriginalValues {
+                tool_set: blocklist,
+                ..OriginalValues::default()
+            }),
+            ..AttendantPropertiesState::default()
+        };
+        popup.set_mode(SetField::Tool, SetMode::Frozen, &names(&["read"]));
+
+        // When restoring.
+        popup.restore_original();
+
+        // Then the row is Live: a blocklist pins nothing, so it must not
+        // come back claiming to.
+        assert_eq!(popup.set_mode_of(SetField::Tool), SetMode::Live);
+        assert!(popup.pending_set(SetField::Tool).is_none());
+    }
+
+    #[rstest::rstest]
+    fn committing_a_save_records_the_sets_as_filters() {
+        // Given a popup with one set frozen and the other live.
+        let mut popup = AttendantPropertiesState::default();
+        popup.set_mode(SetField::Tool, SetMode::Frozen, &names(&["read"]));
+
+        // When accepting the current values as the restore point.
+        popup.commit_as_original();
+
+        // Then the tool filter is the allow list that was committed, and the
+        // skill filter is the unconfigured one a Live row means. Recording
+        // the shape a filter takes is what lets the next `<esc>` put back
+        // the file's own contents.
+        let original = popup.original.expect("committed");
+        assert_eq!(original.tool_set, allow(&["read"]));
+        assert_eq!(original.skill_set, NameFilter::default());
+    }
+
+    #[rstest::rstest]
+    fn a_pick_key_does_nothing_on_a_set_row() {
+        // Given a popup focused on the tool set row.
+        let mut popup = AttendantPropertiesState {
+            focus: PropertyField::ToolSet,
+            ..AttendantPropertiesState::default()
+        };
+
+        // When picking in either direction.
+        popup.pick(PickDirection::Left);
+        popup.pick(PickDirection::Right);
+
+        // Then nothing moved: freezing has to read the attendant's live
+        // capability set, which this cell cannot reach.
+        assert_eq!(popup.set_mode_of(SetField::Tool), SetMode::Live);
+        assert!(popup.pending_set(SetField::Tool).is_none());
+    }
+
+    #[rstest::rstest]
+    fn the_cursor_reaches_the_set_rows_while_composing() {
+        // Given a popup whose attendant is still being composed, focused on
+        // the prep row.
+        let mut popup = AttendantPropertiesState {
+            focus: PropertyField::PrepMode,
+            pending_prep_mode: true,
+            ..AttendantPropertiesState::default()
+        };
+
+        // When moving down off the prep row.
+        popup.focus_next();
+
+        // Then the tool set row is reached: a composing attendant still has
+        // a tool budget, and a frozen set is what it is composed under.
+        assert_eq!(popup.focus, PropertyField::ToolSet);
     }
 }

@@ -30,6 +30,17 @@ pub fn buffer_rows(buffer: &ratatui::buffer::Buffer, width: u16, height: u16) ->
     (0..height).map(|y| buffer_row(buffer, y, width)).collect()
 }
 
+/// A JSON null, for a test-built value whose shape no behavior reads.
+///
+/// A `ToolDefinition`'s schema is one: the tests that build one care that the
+/// tool is *named* and registered, never that its parameters validate, and
+/// `serde_json::Value::Null` says that without each test hand-rolling a
+/// `json!({})` it does not mean.
+#[must_use]
+pub fn json_value() -> serde_json::Value {
+    serde_json::Value::Null
+}
+
 // ---------------------------------------------------------------------------
 // Test fabric: a real trouper system, no kernel Services.
 // ---------------------------------------------------------------------------

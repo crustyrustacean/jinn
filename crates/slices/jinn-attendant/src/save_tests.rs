@@ -17,7 +17,7 @@ use jinn_attendant_msg::{
     attendant_properties_slot,
 };
 use jinn_config::{ConfigLayer, InMemoryConfigStorage};
-use jinn_core_types::{ChatEntry, FilterMode, NameFilter, PinPosition, SessionId};
+use jinn_core_types::{ChatEntry, FilterMode, NameFilter, PinPosition, SessionId, ToolDefinition};
 use jinn_preferences_config::schemas::{
     AttendantEntryConfig, AttendantPinConfig, AttendantPinRole,
 };
@@ -100,10 +100,16 @@ impl SaveFixture {
             },
             pending_behavior: session.attendant_behavior(),
             pending_trigger: session.attendant_trigger(),
+            pending_tool_set: OriginalValues::mode_of(session.tool_filter()),
+            frozen_tools: OriginalValues::names_of(session.tool_filter()),
+            pending_skill_set: OriginalValues::mode_of(session.skill_filter()),
+            frozen_skills: OriginalValues::names_of(session.skill_filter()),
             original: Some(OriginalValues {
                 trigger: session.attendant_trigger(),
                 behavior: session.attendant_behavior(),
                 prep_mode: session.attendant_is_prepping(),
+                tool_set: session.tool_filter().clone(),
+                skill_set: session.skill_filter().clone(),
                 template,
             }),
             ..AttendantPropertiesState::default()
@@ -643,6 +649,74 @@ fn an_allow_filtered_attendant_saves_with_its_mode_intact() {
     assert_eq!(filter.mode, FilterMode::Allow);
     assert!(filter.permits("mcp__github__create_pr"));
     assert!(!filter.permits("bash"));
+}
+
+#[rstest::rstest]
+#[test]
+fn saving_after_a_freeze_records_the_captured_set_as_an_allow_list() {
+    // Given a titled attendant whose tools are a blocklist, with a tool
+    // registry offering three tools.
+    let mut fx = SaveFixture::new(Some("narrow"));
+    fx.state
+        .tool_registry()
+        .expect("the cell catalog registers the tool registry")
+        .update(|registry| {
+            for name in ["read", "write", "bash"] {
+                registry.global.insert(
+                    name.to_owned(),
+                    ToolDefinition {
+                        name: name.to_owned(),
+                        description: format!("{name} description"),
+                        parameters: jinn_testutil::json_value(),
+                        prompt_snippet: None,
+                        prompt_guidelines: Vec::new(),
+                        server_tool_type: None,
+                    },
+                );
+            }
+        });
+    {
+        let session = fx
+            .state
+            .session
+            .get_mut(&fx.attendant_id)
+            .expect("attendant");
+        session.set_tool_filter(NameFilter::deny(["bash".to_owned()]));
+    }
+    // A composing attendant's cursor is caged at the prep row, so the walk
+    // down to the tool set needs composition ended first.
+    fx.state
+        .session
+        .get_mut(&fx.attendant_id)
+        .expect("attendant")
+        .set_attendant_is_prepping(false);
+    fx.open();
+    for _ in 0..3 {
+        fx.press("attendant-properties-field-next");
+    }
+    fx.press("attendant-properties-pick-right");
+
+    // When saving.
+    fx.press("attendant-properties-save");
+
+    // Then the entry carries allow mode naming exactly the two tools the
+    // attendant could use when it was frozen. This is the whole point: the
+    // file must carry the frozen set, not the blocklist the picker wrote,
+    // and not a glob that would invert on the next run.
+    let filter = fx.saved()[0]
+        .tool_filter
+        .clone()
+        .expect("filter recorded on save");
+    assert_eq!(filter.mode, FilterMode::Allow);
+    assert_eq!(
+        filter.names,
+        ["read".to_owned(), "write".to_owned()]
+            .into_iter()
+            .collect()
+    );
+    // And the skill filter, whose row was left Live, is not recorded at all:
+    // an absent filter is what makes the attendant inherit its parent's.
+    assert!(fx.saved()[0].skill_filter.is_none());
 }
 
 #[rstest::rstest]

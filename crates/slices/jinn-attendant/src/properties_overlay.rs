@@ -1,20 +1,23 @@
 //! The attendant properties popup — overlay geometry, view, and rows.
 //!
 //! The popup is a two-phase form. Its own scope is navigation-only: `j`/`k`
-//! move the form cursor between the three fields, `h`/`l` pick a choice
+//! move the form cursor between the six fields, `h`/`l` pick a choice
 //! within the focused field, and `i` (on the seed-template field) opens the
 //! template editor on its own capturing scope. Every edit stays pending in
-//! the popup's cell until `<enter>` commits all three fields to the session
+//! the popup's cell until `<enter>` commits every field to the session
 //! together; `<esc>`/`<c-c>` restore the open-time snapshot and close.
 //!
 //! Both popup phases render the full form — only the top scope's overlay is
 //! drawn, so the editor view re-assembles the same rows and adds the text
 //! cursor. The shared row assembly lives in [`properties_view`].
 
+use std::collections::BTreeSet;
+
 use jinn_attendant_msg::{
-    AttendantPropertiesState, PickDirection, PopupStatus, PropertyField,
+    AttendantPropertiesState, PickDirection, PopupStatus, PropertyField, SetField, SetMode,
     attendant_seed_template_scope,
 };
+use jinn_core_types::{FilterMode, NameFilter};
 use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{
     ActionCtx, ActionFn, BindSite, EditIntent, InputHook, RouteId, RouteOutcome, RouteRow,
@@ -36,10 +39,12 @@ type AttendantPropertiesCell = TypedCell<AttendantPropertiesState>;
 /// The form's fields in display order — the single list the view, the
 /// popup's height, and the template row's offset are all derived from, so
 /// adding a row cannot leave one of them behind.
-const FIELDS_IN_DISPLAY_ORDER: [PropertyField; 4] = [
+const FIELDS_IN_DISPLAY_ORDER: [PropertyField; 6] = [
     PropertyField::Trigger,
     PropertyField::Behavior,
     PropertyField::PrepMode,
+    PropertyField::ToolSet,
+    PropertyField::SkillSet,
     PropertyField::SeedTemplate,
 ];
 
@@ -56,10 +61,10 @@ const POPUP_MIN_WIDTH: u16 = 44;
 /// field or wastes a row. The status line is a row: it holds a message, and a
 /// message that reflowed the form would move the fields out from under the
 /// cursor as it typed.
-const POPUP_CONTENT_ROWS: u16 = 4 + 1 + 1;
+const POPUP_CONTENT_ROWS: u16 = FIELDS_IN_DISPLAY_ORDER.len() as u16 + 1 + 1;
 
-/// Computes the centered properties popup rectangle: title, four field
-/// rows, one hint line, and a keybind footer.
+/// Computes the centered properties popup rectangle: title, one row per
+/// field, one hint line, and a keybind footer.
 fn properties_popup_rect(area: Rect) -> Rect {
     let popup_width = ((f32::from(area.width) * (1.0 - 2.0 * POPUP_H_PAD_FRAC)).ceil() as u16)
         .max(POPUP_MIN_WIDTH)
@@ -341,6 +346,13 @@ pub(crate) fn status_line(
         Some(jinn_attendant_msg::PopupStatus::SaveFailed { reason }) => {
             (reason.clone(), theme.error_text)
         }
+        Some(jinn_attendant_msg::PopupStatus::GlobDropped { field }) => (
+            format!(
+                "A pattern was dropped from the {} set: it means the opposite thing in an allow list.",
+                field.resource()
+            ),
+            theme.warning,
+        ),
     };
     Line::from(Span::styled(text, Style::default().fg(color)))
 }
@@ -348,10 +360,8 @@ pub(crate) fn status_line(
 /// One hint as (key, description) — the keys the focused field responds to.
 fn hints(focus: PropertyField) -> Vec<(&'static str, &'static str)> {
     let mut hints = match focus {
-        PropertyField::Trigger | PropertyField::Behavior | PropertyField::PrepMode => {
-            vec![("h/l", "pick"), ("j/k", "field")]
-        }
         PropertyField::SeedTemplate => vec![("i", "edit"), ("j/k", "field")],
+        _ => vec![("h/l", "pick"), ("j/k", "field")],
     };
     hints.push(("?", "help"));
     // The save hint is only true while the name is savable, and the popup
@@ -418,6 +428,8 @@ fn field_line<'a>(
             theme,
         )),
         PropertyField::PrepMode => spans.extend(prep_mode_spans(popup.pending_prep_mode, theme)),
+        PropertyField::ToolSet => spans.extend(set_mode_spans(popup.pending_tool_set, theme)),
+        PropertyField::SkillSet => spans.extend(set_mode_spans(popup.pending_skill_set, theme)),
         PropertyField::SeedTemplate => {
             spans.push(template_value(popup, theme, layout));
         }
@@ -464,6 +476,27 @@ fn prep_mode_spans<'a>(prep_mode: bool, theme: &'a jinn_theme::Theme) -> Vec<Spa
 const PREP_MODE_ON: &str = "[on]";
 const PREP_MODE_OFF: &str = "[off]";
 const PREP_MODE_DISABLED_NOTE: &str = "  (Attendant disabled)";
+
+/// A set row's value: Live in plain text, Frozen in the selected-choice
+/// green.
+///
+/// The two are rendered as spans rather than a choice row because nothing is
+/// being chosen between peers — Live is the absence of a decision, and
+/// Frozen is the decision, so Frozen is the word the eye should find. This
+/// is the same reading the prep row gives its `[off]`, and for the same
+/// reason: `[off]` is the state a user reaching for the attendant runs in.
+fn set_mode_spans<'a>(mode: SetMode, theme: &'a jinn_theme::Theme) -> Vec<Span<'a>> {
+    let frozen = mode == SetMode::Frozen;
+    let color = if frozen {
+        theme.attendant_option_active
+    } else {
+        theme.primary_text
+    };
+    vec![Span::styled(
+        mode.label().to_owned(),
+        Style::default().fg(color),
+    )]
+}
 
 /// The focused row's background: the user-message block, so the row reads
 /// as a selection against a surface the user already knows rather than as a
@@ -634,6 +667,28 @@ fn help_body(field: PropertyField, theme: &jinn_theme::Theme) -> Vec<Line<'stati
                 "prepare the session by submitting messages; attendant disabled",
             ),
             line("off", "attendant is active"),
+        ],
+        PropertyField::ToolSet => vec![
+            Line::from(
+                "Whether tools discovered later are admitted automatically or refused. Freezing keeps exactly the tools the attendant has now, whichever you have switched on or off since.",
+            ),
+            Line::from(""),
+            line(
+                "Live",
+                "new tools are admitted; the attendant follows your setup",
+            ),
+            line("Frozen", "only the tools it had when you froze the set"),
+        ],
+        PropertyField::SkillSet => vec![
+            Line::from(
+                "Whether skills discovered later are admitted automatically or refused. Freezing keeps exactly the skills the attendant has now.",
+            ),
+            Line::from(""),
+            line(
+                "Live",
+                "new skills are admitted; the attendant follows your setup",
+            ),
+            line("Frozen", "only the skills it had when you froze the set"),
         ],
         PropertyField::SeedTemplate => vec![
             Line::from(
@@ -1052,10 +1107,7 @@ pub fn attach_properties_rows(routes: &KeyRoutes, cell: &AttendantPropertiesCell
         "h",
         "navigation",
         "pick the previous choice",
-        action(cell, |_, cell| {
-            cell.update(|popup| popup.pick(PickDirection::Left));
-            IntentResult::empty()
-        }),
+        action(cell, |ctx, cell| pick_on(ctx, cell, PickDirection::Left)),
     ));
     routes.attach(row(
         "attendant-properties-pick-right",
@@ -1063,10 +1115,7 @@ pub fn attach_properties_rows(routes: &KeyRoutes, cell: &AttendantPropertiesCell
         "l",
         "navigation",
         "pick the next choice",
-        action(cell, |_, cell| {
-            cell.update(|popup| popup.pick(PickDirection::Right));
-            IntentResult::empty()
-        }),
+        action(cell, |ctx, cell| pick_on(ctx, cell, PickDirection::Right)),
     ));
     routes.attach(row(
         "attendant-properties-edit-template",
@@ -1118,6 +1167,146 @@ pub fn attach_properties_rows(routes: &KeyRoutes, cell: &AttendantPropertiesCell
             }),
         ));
     }
+}
+
+/// The `h`/`l` action: acts on whichever row the form cursor is on.
+///
+/// Four of the six rows are decided entirely from the popup's own cell, so
+/// they go straight to [`AttendantPropertiesState::pick`]. The two set rows
+/// are the exception: freezing one is a statement about the attendant's
+/// present capabilities, and reading those means reaching `AppState` — the
+/// same way [`save_attendant`] and [`commit_pending_to_session`] do.
+///
+/// A set row that is already Frozen thaws on the same key rather than
+/// re-freezing: `h` and `l` are the same key on a two-state field, so
+/// pressing either one toggles it, and a row that ignored the key would be
+/// the one row in the form where a key does nothing.
+fn pick_on(
+    ctx: &mut ActionCtx<'_>,
+    cell: &AttendantPropertiesCell,
+    direction: PickDirection,
+) -> IntentResult {
+    let Some(field) = set_field_of(cell.read().focus) else {
+        cell.update(|popup| popup.pick(direction));
+        return IntentResult::empty();
+    };
+    let Some(attendant_id) = cell.read().session_id.clone() else {
+        return IntentResult::empty();
+    };
+    let thawing = cell.read().set_mode_of(field) == SetMode::Frozen;
+    // A thaw has nothing to read: the capture is discarded and the
+    // attendant's filter is left for the commit to leave alone.
+    let permitted = match thawing {
+        true => BTreeSet::new(),
+        false => permitted_now(ctx, &attendant_id, field),
+    };
+    let dropped = !thawing && contains_glob(ctx, &attendant_id, field);
+    let (frozen, cleared) = (SetMode::Frozen, SetMode::Live);
+    cell.update(|popup| {
+        popup.set_mode(field, if thawing { cleared } else { frozen }, &permitted);
+        if dropped {
+            popup.report(PopupStatus::GlobDropped { field });
+        }
+    });
+    IntentResult::empty()
+}
+
+/// The set row a form field names, or `None` for the four rows that are
+/// decided from the cell alone.
+fn set_field_of(field: PropertyField) -> Option<SetField> {
+    match field {
+        PropertyField::ToolSet => Some(SetField::Tool),
+        PropertyField::SkillSet => Some(SetField::Skill),
+        PropertyField::Trigger
+        | PropertyField::Behavior
+        | PropertyField::PrepMode
+        | PropertyField::SeedTemplate => None,
+    }
+}
+
+/// The names the attendant currently permits for `field`.
+///
+/// The sources are the ones a picker seeds its rows from, narrowed by the
+/// attendant's own filter and — for tools — by the provider gate, because a
+/// name that is refused at dispatch however the filter is written is not
+/// worth freezing in: it would make `jinn.toml` longer to read and change
+/// nothing.
+///
+/// This is the same conjunction the context assembler applies, and it is
+/// deliberately derived rather than read from a registry: a name the
+/// attendant cannot use is not part of what freezing is meant to preserve.
+fn permitted_now(
+    ctx: &mut ActionCtx<'_>,
+    attendant_id: &jinn_core_types::SessionId,
+    field: SetField,
+) -> BTreeSet<String> {
+    let Some(state) = app(ctx) else {
+        return BTreeSet::new();
+    };
+    let Some(session) = state.session.get(attendant_id) else {
+        return BTreeSet::new();
+    };
+    match field {
+        SetField::Skill => {
+            let filter = session.skill_filter();
+            session
+                .discovered_skills()
+                .iter()
+                .filter(|skill| filter.permits(&skill.name))
+                .map(|skill| skill.name.clone())
+                .collect()
+        }
+        SetField::Tool => {
+            let filter = session.tool_filter().clone();
+            let provider = session.model_selection().provider_name().to_owned();
+            state
+                .tool_registry()
+                .map(|registry| {
+                    registry
+                        .read()
+                        .tools_for_session(attendant_id)
+                        .into_iter()
+                        .filter(|def| filter.permits(&def.name))
+                        .filter(|def| def.available_for_provider(&provider))
+                        .map(|def| def.name)
+                        .collect()
+                })
+                .unwrap_or_default()
+        }
+    }
+}
+
+/// Whether the attendant's own filter for `field` holds a glob pattern.
+///
+/// Only the attendant's *own* filter is asked. An inherited parent pattern
+/// is not the user's, and reporting a drop they did not make — or dropping
+/// a pattern that never applied to this attendant — would put a message on
+/// the status line about an edit that was not made.
+fn contains_glob(
+    ctx: &mut ActionCtx<'_>,
+    attendant_id: &jinn_core_types::SessionId,
+    field: SetField,
+) -> bool {
+    let Some(state) = app(ctx) else {
+        return false;
+    };
+    let Some(session) = state.session.get(attendant_id) else {
+        return false;
+    };
+    let filter = match field {
+        SetField::Tool => session.tool_filter(),
+        SetField::Skill => session.skill_filter(),
+    };
+    filter.names.iter().any(|pattern| is_glob(pattern))
+}
+
+/// Whether `pattern` is a glob rather than a plain name.
+///
+/// A pattern that would not compile as a glob is a literal — the same
+/// reading `NameFilter` gives it when matching — so an uncompilable pattern
+/// is not reported as one.
+fn is_glob(pattern: &str) -> bool {
+    pattern.contains(['*', '?', '[', '{'])
 }
 
 /// The `<c-s>` action: saves the popup's attendant to `jinn.toml`.
@@ -1234,6 +1423,11 @@ fn save_attendant(ctx: &mut ActionCtx<'_>, cell: &AttendantPropertiesCell) -> In
 /// Shared by `<enter>` (apply and close) and `<c-s>` (save and stay) so the
 /// two commit paths cannot disagree about what "committed" means. Marks the
 /// session interacted and touched, so a freshly created attendant persists.
+///
+/// The two set rows are written here rather than in the save path, because
+/// `<enter>` alone has to leave the session holding what the panel showed.
+/// A Live row writes nothing: the attendant inherits its parent's set, which
+/// is what an unconfigured filter already means.
 fn commit_pending_to_session(
     ctx: &mut ActionCtx<'_>,
     popup: &jinn_attendant_msg::AttendantPropertiesState,
@@ -1249,10 +1443,37 @@ fn commit_pending_to_session(
     session.set_attendant_behavior(popup.pending_behavior);
     session.set_attendant_is_prepping(popup.pending_prep_mode);
     session.set_attendant_trigger(popup.pending_trigger);
+    for field in [SetField::Tool, SetField::Skill] {
+        if let Some(filter) = pending_filter(popup, field) {
+            match field {
+                SetField::Tool => session.set_tool_filter(filter),
+                SetField::Skill => session.set_skill_filter(filter),
+            }
+        }
+    }
     // A fresh attendant was never interacted; without this the persist is
     // silently dropped.
     session.mark_interacted();
     session.touch();
+}
+
+/// The filter a set row would commit as, or `None` to leave it alone.
+///
+/// A Live row yields `None` because "leave the attendant's filter as it is"
+/// and "clear it" are the same thing to a session that inherited it — the
+/// unconfigured filter is precisely the one that says *inherit*. A row is
+/// never cleared here for that reason: thawing an attendant that was
+/// hand-written as frozen leaves the file's allow list alone rather than
+/// quietly widening it, which is the direction that takes capabilities away
+/// nobody asked to lose.
+fn pending_filter(
+    popup: &jinn_attendant_msg::AttendantPropertiesState,
+    field: SetField,
+) -> Option<NameFilter> {
+    popup.pending_set(field).map(|names| NameFilter {
+        mode: FilterMode::Allow,
+        names: names.clone(),
+    })
 }
 
 /// The user-facing half of a config write failure.

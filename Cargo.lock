@@ -2091,6 +2091,7 @@ dependencies = [
  "jinn-session-store-msg",
  "jinn-session-turn",
  "jinn-sidebar-msg",
+ "jinn-skills-msg",
  "jinn-slices",
  "jinn-testutil",
  "jinn-theme",

@@ -7,8 +7,8 @@
 use jinn_app_state::AppState;
 use jinn_attendant_msg::{
     AttendantBehavior, AttendantPropertiesState, AttendantTrigger, OriginalValues, PickDirection,
-    PropertyField, attendant_properties_scope, attendant_properties_slot,
-    attendant_seed_template_scope,
+    PopupStatus, PropertyField, SetField, SetMode, attendant_properties_scope,
+    attendant_properties_slot, attendant_seed_template_scope,
 };
 use jinn_session_state::ChatSessionState;
 use jinn_slices::KeyRoutes;
@@ -146,10 +146,16 @@ impl PopupFixture {
             pending_behavior: session.attendant_behavior(),
             pending_trigger: session.attendant_trigger(),
             pending_prep_mode: prep_mode,
+            pending_tool_set: OriginalValues::mode_of(session.tool_filter()),
+            frozen_tools: OriginalValues::names_of(session.tool_filter()),
+            pending_skill_set: OriginalValues::mode_of(session.skill_filter()),
+            frozen_skills: OriginalValues::names_of(session.skill_filter()),
             original: Some(OriginalValues {
                 trigger: session.attendant_trigger(),
                 behavior: session.attendant_behavior(),
                 prep_mode,
+                tool_set: session.tool_filter().clone(),
+                skill_set: session.skill_filter().clone(),
                 template,
             }),
             // The opener's rule: a composing attendant opens on the prep
@@ -179,12 +185,12 @@ impl PopupFixture {
     ///
     /// A fresh attendant is composing, and the cage floors the walk at the
     /// prep row. These tests are about the rows below it, so the fixture
-    /// ends composition before the walk — the walk is then one press longer
-    /// than it was when the form had three rows.
+    /// ends composition before the walk — the walk is then one press per
+    /// field above the template, and the template is last of six.
     fn open_on_the_template_field(&mut self) {
         self.finish_composing();
         self.open();
-        for _ in 0..3 {
+        for _ in 0..5 {
             self.press("attendant-properties-field-next");
         }
         assert_eq!(self.cell.read().focus, PropertyField::SeedTemplate);
@@ -245,6 +251,10 @@ fn j_and_k_stop_at_the_ends_of_the_form() {
     }
     assert_eq!(fx.cell.read().focus, PropertyField::SeedTemplate);
     // And the rows above it are one press each, in reverse display order.
+    fx.press("attendant-properties-field-previous");
+    assert_eq!(fx.cell.read().focus, PropertyField::SkillSet);
+    fx.press("attendant-properties-field-previous");
+    assert_eq!(fx.cell.read().focus, PropertyField::ToolSet);
     fx.press("attendant-properties-field-previous");
     assert_eq!(fx.cell.read().focus, PropertyField::PrepMode);
     fx.press("attendant-properties-field-previous");
@@ -732,4 +742,501 @@ fn properties_scope_has_no_input_hook() {
 
     // Then there is none: the navigation-only form captures no input.
     assert!(routes.input_hook(&attendant_properties_scope()).is_none());
+}
+
+// ── Tool and skill sets ─────────────────────────────────────────────────
+
+/// A discovered skill named `name`.
+fn skill(name: String) -> jinn_skills_msg::Skill {
+    jinn_skills_msg::Skill {
+        name,
+        description: "a skill".to_owned(),
+        body: String::new(),
+        file_path: std::path::PathBuf::from("/tmp/skill/SKILL.md"),
+        base_dir: std::path::PathBuf::from("/tmp/skill"),
+        source: jinn_skills_msg::SkillSource::Global,
+    }
+}
+
+/// A plain function tool named `name` — available to every provider.
+fn tool(name: &str) -> jinn_core_types::ToolDefinition {
+    jinn_core_types::ToolDefinition {
+        name: name.to_owned(),
+        description: format!("{name} description"),
+        parameters: jinn_testutil::json_value(),
+        prompt_snippet: None,
+        prompt_guidelines: Vec::new(),
+        server_tool_type: None,
+    }
+}
+
+impl PopupFixture {
+    /// Puts `tools` and `skills` in the attendant's registry and discovered
+    /// set, as context assembly would.
+    fn offer(&mut self, tools: &[&str]) {
+        self.state
+            .tool_registry()
+            .expect("the cell catalog registers the tool registry")
+            .update(|registry| {
+                for name in tools {
+                    registry.global.insert((*name).to_owned(), tool(name));
+                }
+            });
+    }
+
+    /// Puts `skills` in the attendant's discovered set, as discovery would.
+    fn offer_skills(&mut self, skills: &[&str]) {
+        self.state
+            .session
+            .get_mut(&self.attendant_id)
+            .expect("attendant")
+            .set_discovered_skills(
+                skills
+                    .iter()
+                    .map(|name| skill((*name).to_owned()))
+                    .collect(),
+            );
+    }
+
+    /// Gives the attendant the given tool filter.
+    fn with_tool_filter(&mut self, filter: jinn_core_types::NameFilter) {
+        self.state
+            .session
+            .get_mut(&self.attendant_id)
+            .expect("attendant")
+            .set_tool_filter(filter);
+    }
+
+    /// Focuses the tool-set row.
+    fn open_on_the_tool_set(&mut self) {
+        self.finish_composing();
+        self.open();
+        fx_press_n(self, 3);
+        assert_eq!(self.cell.read().focus, PropertyField::ToolSet);
+    }
+
+    /// Focuses the skill-set row.
+    fn open_on_the_skill_set(&mut self) {
+        self.finish_composing();
+        self.open();
+        fx_press_n(self, 4);
+        assert_eq!(self.cell.read().focus, PropertyField::SkillSet);
+    }
+
+    /// The attendant's current tool filter.
+    fn tool_filter(&self) -> jinn_core_types::NameFilter {
+        self.state
+            .session
+            .get(&self.attendant_id)
+            .expect("attendant")
+            .tool_filter()
+            .clone()
+    }
+
+    /// The attendant's current skill filter.
+    fn skill_filter(&self) -> jinn_core_types::NameFilter {
+        self.state
+            .session
+            .get(&self.attendant_id)
+            .expect("attendant")
+            .skill_filter()
+            .clone()
+    }
+}
+
+/// Presses the next-field row `count` times on `fx`.
+fn fx_press_n(fx: &mut PopupFixture, count: usize) {
+    for _ in 0..count {
+        fx.press("attendant-properties-field-next");
+    }
+}
+
+/// An allow filter over `names`.
+fn allow(names: &[&str]) -> jinn_core_types::NameFilter {
+    jinn_core_types::NameFilter {
+        mode: jinn_core_types::FilterMode::Allow,
+        names: names.iter().map(|n| (*n).to_owned()).collect(),
+    }
+}
+
+#[rstest::rstest]
+#[test]
+fn a_fresh_attendant_opens_with_both_sets_live() {
+    // Given an attendant whose filters are unconfigured.
+    let mut fx = PopupFixture::new();
+
+    // When the popup opens.
+    fx.open();
+
+    // Then both set rows read Live: nothing about this attendant pins a
+    // capability set, so it follows the user's configuration as it grows.
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Tool), SetMode::Live);
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Skill), SetMode::Live);
+}
+
+#[rstest::rstest]
+#[test]
+fn an_allow_filtered_attendant_opens_with_its_tool_set_frozen() {
+    // Given an attendant already pinned to two tools.
+    let mut fx = PopupFixture::new();
+    fx.with_tool_filter(allow(&["read", "write"]));
+
+    // When the popup opens.
+    fx.open();
+
+    // Then the tool set row reads Frozen, carrying the filter's own names.
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Tool), SetMode::Frozen);
+    assert_eq!(
+        fx.cell.read().pending_set(SetField::Tool),
+        Some(&allow(&["read", "write"]).names)
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn a_blocklisted_attendant_opens_with_its_tool_set_live() {
+    // Given an attendant with a blocklist — the shape the pickers write.
+    let mut fx = PopupFixture::new();
+    fx.with_tool_filter(jinn_core_types::NameFilter::deny(["bash".to_owned()]));
+
+    // When the popup opens.
+    fx.open();
+
+    // Then the tool set row reads Live. A blocklist says "never these" and
+    // nothing about the rest, so it pins no set.
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Tool), SetMode::Live);
+}
+
+#[rstest::rstest]
+#[test]
+fn freezing_the_tool_set_does_not_touch_the_session() {
+    // Given an open popup over an attendant with no filter.
+    let mut fx = PopupFixture::new();
+    fx.offer(&["read", "write"]);
+    fx.open_on_the_tool_set();
+
+    // When freezing the row.
+    fx.press("attendant-properties-pick-right");
+
+    // Then the row is Frozen…
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Tool), SetMode::Frozen);
+    // …and the attendant's filter is still exactly what it was. The popup
+    // buffers; nothing reaches the session until `<enter>`.
+    assert!(fx.tool_filter().is_unconfigured());
+}
+
+#[rstest::rstest]
+#[test]
+fn freezing_the_tool_set_captures_the_names_the_attendant_permits() {
+    // Given an attendant that a blocklist withholds one tool from.
+    let mut fx = PopupFixture::new();
+    fx.offer(&["read", "write", "bash"]);
+    fx.with_tool_filter(jinn_core_types::NameFilter::deny(["bash".to_owned()]));
+    fx.open_on_the_tool_set();
+
+    // When freezing the row.
+    fx.press("attendant-properties-pick-right");
+
+    // Then the capture is the permitted set — the blocklist's whole point
+    // is that `bash` is not in it.
+    assert_eq!(
+        fx.cell.read().pending_set(SetField::Tool),
+        Some(&allow(&["read", "write"]).names)
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn freezing_the_skill_set_captures_the_discovered_skills() {
+    // Given an attendant with two skills discovered and one withheld.
+    let mut fx = PopupFixture::new();
+    fx.offer(&[]);
+    fx.offer_skills(&["web-coder", "reviewer"]);
+    fx.state
+        .session
+        .get_mut(&fx.attendant_id)
+        .expect("attendant")
+        .set_skill_filter(jinn_core_types::NameFilter::deny(["reviewer".to_owned()]));
+    fx.open_on_the_skill_set();
+
+    // When freezing the row.
+    fx.press("attendant-properties-pick-left");
+
+    // Then the capture is the permitted set.
+    assert_eq!(
+        fx.cell.read().pending_set(SetField::Skill),
+        Some(&allow(&["web-coder"]).names)
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn enter_writes_the_frozen_set_as_an_allow_list() {
+    // Given a popup with its tool set frozen over two names.
+    let mut fx = PopupFixture::new();
+    fx.offer(&["read", "write"]);
+    fx.open_on_the_tool_set();
+    fx.press("attendant-properties-pick-right");
+
+    // When applying.
+    fx.press("attendant-properties-apply");
+
+    // Then the attendant's filter is an allow list naming exactly those two,
+    // which is what makes a tool registered afterward refused.
+    assert_eq!(fx.tool_filter(), allow(&["read", "write"]));
+}
+
+#[rstest::rstest]
+#[test]
+fn a_live_set_writes_nothing_so_the_attendant_inherits() {
+    // Given a popup left with both set rows Live.
+    let mut fx = PopupFixture::new();
+    fx.offer(&["read"]);
+    fx.offer_skills(&["web-coder"]);
+    fx.open_on_the_tool_set();
+
+    // When applying.
+    fx.press("attendant-properties-apply");
+
+    // Then both filters are left unconfigured, so a tool or skill
+    // registered later is admitted automatically.
+    assert!(fx.tool_filter().is_unconfigured());
+    assert!(fx.skill_filter().is_unconfigured());
+}
+
+#[rstest::rstest]
+#[test]
+fn a_frozen_attendant_refuses_a_tool_registered_after_the_freeze() {
+    // Given an attendant frozen to the two tools it had.
+    let mut fx = PopupFixture::new();
+    fx.offer(&["read", "write"]);
+    fx.open_on_the_tool_set();
+    fx.press("attendant-properties-pick-right");
+    fx.press("attendant-properties-apply");
+
+    // When a new tool arrives — an MCP server the user has just added.
+    fx.offer(&["read", "write", "mcp__github__create_pr"]);
+
+    // Then the attendant still admits the two it was frozen with and
+    // refuses the newcomer.
+    let filter = fx.tool_filter();
+    assert!(filter.permits("read"));
+    assert!(!filter.permits("mcp__github__create_pr"));
+}
+
+#[rstest::rstest]
+#[test]
+fn a_live_attendant_admits_a_tool_registered_after_the_panel_opened() {
+    // Given an attendant left with its tool set Live.
+    let mut fx = PopupFixture::new();
+    fx.offer(&["read"]);
+    fx.open_on_the_tool_set();
+
+    // When a new tool arrives.
+    fx.offer(&["read", "mcp__github__create_pr"]);
+
+    // Then its filter permits the newcomer: an unconfigured filter places no
+    // restriction on names it does not contain.
+    assert!(fx.tool_filter().permits("mcp__github__create_pr"));
+}
+
+#[rstest::rstest]
+#[test]
+fn escape_after_a_freeze_leaves_both_filters_untouched() {
+    // Given an attendant holding a blocklist and an allow list.
+    let mut fx = PopupFixture::new();
+    fx.offer(&["read", "write", "bash"]);
+    fx.offer_skills(&["web-coder"]);
+    let before_tools = jinn_core_types::NameFilter::deny(["bash".to_owned()]);
+    let before_skills = allow(&["web-coder"]);
+    fx.with_tool_filter(before_tools.clone());
+    fx.state
+        .session
+        .get_mut(&fx.attendant_id)
+        .expect("attendant")
+        .set_skill_filter(before_skills.clone());
+    fx.open_on_the_tool_set();
+    // And the tool set is frozen, then thawed, then frozen again.
+    fx.press("attendant-properties-pick-right");
+    fx.press("attendant-properties-pick-left");
+    fx.press("attendant-properties-pick-right");
+
+    // When leaving with escape.
+    fx.press("attendant-properties-leave");
+
+    // Then both filters are byte-identical to their open-time values. A
+    // popup that had been applied would not close on escape, so reaching
+    // this line at all is half the assertion.
+    assert_eq!(fx.tool_filter(), before_tools);
+    assert_eq!(fx.skill_filter(), before_skills);
+}
+
+#[rstest::rstest]
+#[test]
+fn escape_restores_a_frozen_row_with_the_filters_own_names() {
+    // Given an attendant whose tool filter is an allow list written by
+    // hand, including a glob.
+    let mut fx = PopupFixture::new();
+    let hand_written = allow(&["read", "mcp__github__*"]);
+    fx.with_tool_filter(hand_written.clone());
+    fx.open_on_the_tool_set();
+
+    // When leaving with escape without touching the row.
+    fx.press("attendant-properties-leave");
+
+    // Then the row is still Frozen carrying the glob the user wrote, and the
+    // attendant's filter is unchanged.
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Tool), SetMode::Frozen);
+    assert_eq!(
+        fx.cell.read().pending_set(SetField::Tool),
+        Some(&hand_written.names)
+    );
+    assert_eq!(fx.tool_filter(), hand_written);
+}
+
+#[rstest::rstest]
+#[test]
+fn thawing_a_frozen_row_clears_its_capture() {
+    // Given a popup with its tool set frozen over two names.
+    let mut fx = PopupFixture::new();
+    fx.offer(&["read", "write"]);
+    fx.open_on_the_tool_set();
+    fx.press("attendant-properties-pick-right");
+
+    // When thawing it with the other pick key.
+    fx.press("attendant-properties-pick-left");
+
+    // Then the row is Live and holds nothing to commit, and no status line
+    // is left over from the freeze.
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Tool), SetMode::Live);
+    assert!(fx.cell.read().pending_set(SetField::Tool).is_none());
+    assert!(fx.cell.read().status.is_none());
+}
+
+#[rstest::rstest]
+#[test]
+fn saving_a_thawed_attendant_leaves_its_filter_unconfigured() {
+    // Given a popup frozen over two tools and then thawed again.
+    let mut fx = PopupFixture::new();
+    fx.offer(&["read", "write"]);
+    fx.open_on_the_tool_set();
+    fx.press("attendant-properties-pick-right");
+    fx.press("attendant-properties-pick-left");
+
+    // When applying.
+    fx.press("attendant-properties-apply");
+
+    // Then the filter is unconfigured, so the attendant inherits its
+    // parent's growing set again.
+    assert!(fx.tool_filter().is_unconfigured());
+}
+
+#[rstest::rstest]
+#[test]
+fn freezing_over_an_empty_capture_writes_nothing() {
+    // Given an attendant with no tool registry attached at all.
+    let mut fx = PopupFixture::new();
+    fx.state
+        .tool_registry()
+        .expect("registry cell")
+        .update(|r| {
+            r.global.clear();
+        });
+    fx.open_on_the_tool_set();
+
+    // When freezing the row.
+    fx.press("attendant-properties-pick-right");
+
+    // Then the row stays Live: an allow list over nothing is read as no
+    // filter at all, so writing one would look frozen in `jinn.toml` and
+    // behave as inheriting.
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Tool), SetMode::Live);
+    assert!(fx.cell.read().pending_set(SetField::Tool).is_none());
+    // And applying writes no empty allow list.
+    fx.press("attendant-properties-apply");
+    assert!(fx.tool_filter().is_unconfigured());
+}
+
+#[rstest::rstest]
+#[test]
+fn freezing_a_glob_filter_drops_the_glob_and_says_so() {
+    // Given an attendant whose tool filter holds a glob.
+    let mut fx = PopupFixture::new();
+    fx.offer(&["read", "mcp__github__create_pr", "mcp__github__list_prs"]);
+    fx.with_tool_filter(jinn_core_types::NameFilter::deny([
+        "mcp__github__*".to_owned()
+    ]));
+    fx.open_on_the_tool_set();
+
+    // When freezing the row.
+    fx.press("attendant-properties-pick-right");
+
+    // Then the capture is all literals — the glob is gone, because a
+    // pattern means "only" in an allow list and would have inverted.
+    let captured = fx.cell.read().pending_set(SetField::Tool).cloned();
+    assert_eq!(
+        captured,
+        Some(allow(&["read"]).names),
+        "the glob must not survive into the frozen set"
+    );
+    // And the status line names the resource and says a pattern was lost.
+    assert_eq!(
+        fx.cell.read().status,
+        Some(PopupStatus::GlobDropped {
+            field: SetField::Tool
+        })
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn freezing_a_literal_filter_reports_nothing() {
+    // Given an attendant whose tool filter is all literals.
+    let mut fx = PopupFixture::new();
+    fx.offer(&["read", "write", "bash"]);
+    fx.with_tool_filter(jinn_core_types::NameFilter::deny([
+        "bash".to_owned(),
+        "write".to_owned(),
+    ]));
+    fx.open_on_the_tool_set();
+
+    // When freezing the row.
+    fx.press("attendant-properties-pick-right");
+
+    // Then no drop is reported — nothing was lost.
+    assert!(fx.cell.read().status.is_none());
+}
+
+#[rstest::rstest]
+#[test]
+fn freezing_the_tool_set_leaves_the_skill_row_live() {
+    // Given an open popup.
+    let mut fx = PopupFixture::new();
+    fx.offer(&["read"]);
+    fx.offer_skills(&["web-coder"]);
+    fx.open_on_the_tool_set();
+
+    // When freezing the tool set.
+    fx.press("attendant-properties-pick-right");
+
+    // Then the skill row is untouched.
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Skill), SetMode::Live);
+    assert!(fx.cell.read().pending_set(SetField::Skill).is_none());
+}
+
+#[rstest::rstest]
+#[test]
+fn the_set_rows_are_reachable_while_composing() {
+    // Given an open popup over an attendant that is still being composed,
+    // cursor on the prep row.
+    let mut fx = PopupFixture::new();
+    fx.open();
+    assert!(fx.cell.read().pending_prep_mode);
+
+    // When pressing j twice — off the prep row and onto the skill row.
+    fx_press_n(&mut fx, 2);
+
+    // Then the skill set row is reached. The cage above the prep row does
+    // not extend below it: a composing attendant still has a tool budget.
+    assert_eq!(fx.cell.read().focus, PropertyField::SkillSet);
 }

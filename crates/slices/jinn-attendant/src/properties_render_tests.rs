@@ -320,7 +320,9 @@ fn selected_choice_uses_the_new_green_key() {
 #[case(0, "trigger:")]
 #[case(1, "behavior:")]
 #[case(2, "prep mode:")]
-#[case(3, "seed template:")]
+#[case(3, "tool set:")]
+#[case(4, "skill set:")]
+#[case(5, "seed template:")]
 fn the_form_shows_a_row_at_a_given_offset(#[case] offset: u16, #[case] label: &str) {
     // Given a popup over a composed attendant.
     let buffer = render_properties(popup_focused(PropertyField::SeedTemplate));
@@ -367,6 +369,11 @@ fn row_is_card(buffer: &ratatui::buffer::Buffer, y: u16) -> bool {
 #[case::prep(
     PropertyField::PrepMode,
     "Whether the attendant is still being composed"
+)]
+#[case::tools(PropertyField::ToolSet, "Whether tools discovered later are admitted")]
+#[case::skills(
+    PropertyField::SkillSet,
+    "Whether skills discovered later are admitted"
 )]
 #[case::template(PropertyField::SeedTemplate, "Text injected on each run")]
 #[test]
@@ -550,14 +557,14 @@ fn editor_view_places_the_cursor_in_the_draft() {
     // When rendering.
     let mut terminal = render_editor(popup);
 
-    // Then the cursor sits on the template row — with focus on the seed
-    // template field, no hint line renders above it, so the draft is the
-    // fourth body row (trigger, behavior, prep mode, template) — and
-    // exactly one cell past the draft's last grapheme.
+    // Then the cursor sits on the template row — the last field row, with
+    // the popup's own position moving with its height — and exactly one
+    // cell past the draft's last grapheme.
     let cursor = terminal.get_cursor_position().expect("cursor");
-    // Derived rather than hardcoded: the template row is the fourth body
-    // row, and the popup's own position moves with its height.
-    let template_y = body_top(terminal.backend().buffer()) + 3;
+    // Derived from the render rather than counted: the form's row count is
+    // the view's business, and a test that counts rows alongside it has to
+    // be edited every time a row is added.
+    let template_y = template_row_y(terminal.backend().buffer());
     assert_eq!(cursor.y, template_y, "cursor rests on the template row");
     let buffer = terminal.backend().buffer();
     assert_eq!(
@@ -598,7 +605,7 @@ fn editor_window_follows_the_cursor_in_a_long_draft(
     let buffer = terminal.backend().buffer();
     // Derived from the render rather than hardcoded: the popup's position
     // and width both move with its height and the terminal size.
-    let template_y = body_top(buffer) + 3;
+    let template_y = template_row_y(buffer);
 
     // Then the cursor rests immediately after a visible draft grapheme —
     // never floating over the blank tail of the row, which is what a
@@ -721,6 +728,8 @@ fn theme_key_defaults_to_the_age_fresh_green() {
 #[case::trigger(PropertyField::Trigger)]
 #[case::behavior(PropertyField::Behavior)]
 #[case::prep(PropertyField::PrepMode)]
+#[case::tools(PropertyField::ToolSet)]
+#[case::skills(PropertyField::SkillSet)]
 #[case::template(PropertyField::SeedTemplate)]
 #[test]
 fn the_help_card_leaves_the_field_it_describes_readable(#[case] field: PropertyField) {
@@ -746,6 +755,8 @@ fn the_help_card_leaves_the_field_it_describes_readable(#[case] field: PropertyF
 #[case::trigger(PropertyField::Trigger)]
 #[case::behavior(PropertyField::Behavior)]
 #[case::prep(PropertyField::PrepMode)]
+#[case::tools(PropertyField::ToolSet)]
+#[case::skills(PropertyField::SkillSet)]
 #[case::template(PropertyField::SeedTemplate)]
 #[test]
 fn the_help_card_sits_below_the_form_on_every_field(#[case] field: PropertyField) {
@@ -1033,6 +1044,8 @@ fn the_help_card_keeps_the_blank_line_between_its_lead_and_its_list(
 #[case::trigger(PropertyField::Trigger)]
 #[case::behavior(PropertyField::Behavior)]
 #[case::prep(PropertyField::PrepMode)]
+#[case::tools(PropertyField::ToolSet)]
+#[case::skills(PropertyField::SkillSet)]
 #[case::template(PropertyField::SeedTemplate)]
 #[test]
 fn every_field_has_a_help_card_even_on_a_short_terminal(#[case] field: PropertyField) {
@@ -1043,20 +1056,23 @@ fn every_field_has_a_help_card_even_on_a_short_terminal(#[case] field: PropertyF
     popup.help_visible = true;
 
     // When rendering at that size.
-    let buffer = render_properties_in(popup, 100, 22);
+    let buffer = render_properties_in(popup, 100, 26);
 
     // Then the card is there, though it may only have room for its head.
     let (top, bottom) = tooltip_rows(&buffer);
     assert!(
         top <= bottom && bottom < buffer.area.height,
-        "the card must land inside a 22-row terminal, got y={top}..{bottom}"
+        "the card must land inside a 26-row terminal, got y={top}..{bottom}"
     );
     // The card's first row is its top border; the header is the first row
     // inside it.
+    let rendered = all_text(&buffer);
     let header = (top + 1..=bottom)
         .map(|y| row_from_border(&buffer, y))
         .find(|row| row.contains(field.label()))
-        .unwrap_or_else(|| panic!("the card (y={top}..{bottom}) must name the field it describes"));
+        .unwrap_or_else(|| {
+            panic!("the card (y={top}..{bottom}) must name the field it describes\n{rendered}")
+        });
     assert!(header.contains(field.label()));
 }
 
@@ -1144,6 +1160,8 @@ fn highlighted_row_of(buffer: &ratatui::buffer::Buffer, field: PropertyField) ->
         PropertyField::Trigger => "trigger:",
         PropertyField::Behavior => "behavior:",
         PropertyField::PrepMode => "prep mode:",
+        PropertyField::ToolSet => "tool set:",
+        PropertyField::SkillSet => "skill set:",
         PropertyField::SeedTemplate => "seed template:",
     };
     for y in body_top(buffer)..buffer.area.height {
@@ -1158,6 +1176,8 @@ fn highlighted_row_of(buffer: &ratatui::buffer::Buffer, field: PropertyField) ->
 #[case::trigger(PropertyField::Trigger)]
 #[case::behavior(PropertyField::Behavior)]
 #[case::prep(PropertyField::PrepMode)]
+#[case::tools(PropertyField::ToolSet)]
+#[case::skills(PropertyField::SkillSet)]
 #[case::template(PropertyField::SeedTemplate)]
 #[test]
 fn the_help_card_is_framed_in_the_attendants_own_pink(#[case] field: PropertyField) {
