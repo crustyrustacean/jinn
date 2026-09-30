@@ -1166,10 +1166,16 @@ pub fn attach_properties_rows(routes: &KeyRoutes, cell: &AttendantPropertiesCell
 /// present capabilities, and reading those means reaching `AppState` — the
 /// same way [`save_attendant`] and [`commit_pending_to_session`] do.
 ///
-/// A set row that is already Frozen thaws on the same key rather than
-/// re-freezing: `h` and `l` are the same key on a two-state field, so
-/// pressing either one toggles it, and a row that ignored the key would be
-/// the one row in the form where a key does nothing.
+/// The key walks the row rather than toggling it. Every other choice row in
+/// the form moves one position per press and stops at its ends, and a row
+/// that reads identically to those should not behave differently under the
+/// same key: `h` on the leftmost choice is a no-op rather than a flip to the
+/// rightmost, and `l` on the rightmost is a no-op rather than a re-freeze
+/// that would recapture against a state the user has since changed.
+///
+/// The direction is still consumed by the *outcome*, which is what a
+/// two-state row cannot avoid: moving onto Frozen is the freeze, whatever
+/// came from.
 fn pick_on(
     ctx: &mut ActionCtx<'_>,
     cell: &AttendantPropertiesCell,
@@ -1182,7 +1188,15 @@ fn pick_on(
     let Some(attendant_id) = cell.read().session_id.clone() else {
         return IntentResult::empty();
     };
-    let thawing = cell.read().set_mode_of(field) == SetMode::Frozen;
+    let current = cell.read().set_mode_of(field);
+    let Some(next) = next_set_mode(current, direction) else {
+        // Already at the end the key points at. Unlike the cell-only rows,
+        // this leaves the status line alone: there is nothing to report
+        // about a key that walked to the end of its row, and the row's
+        // current value is still on it.
+        return IntentResult::empty();
+    };
+    let thawing = next == SetMode::Live;
     // A thaw has nothing to read: the capture is discarded and the
     // attendant's filter is left for the commit to leave alone.
     let permitted = match thawing {
@@ -1190,14 +1204,28 @@ fn pick_on(
         false => permitted_now(ctx, &attendant_id, field),
     };
     let dropped = !thawing && contains_glob(ctx, &attendant_id, field);
-    let (frozen, cleared) = (SetMode::Frozen, SetMode::Live);
     cell.update(|popup| {
-        popup.set_mode(field, if thawing { cleared } else { frozen }, &permitted);
+        popup.set_mode(field, next, &permitted);
         if dropped {
             popup.report(PopupStatus::GlobDropped { field });
         }
     });
     IntentResult::empty()
+}
+
+/// The mode one position along a set row from `current`, or `None` when the
+/// key points past the end.
+///
+/// The two choices run left to right — `live` then `frozen` — so the row is
+/// a window with two positions in it and the keys move within it. Stopping
+/// at the ends is what makes the row honest: `h` says "left", and on the
+/// leftmost row there is nothing to its left.
+fn next_set_mode(current: SetMode, direction: PickDirection) -> Option<SetMode> {
+    match (direction, current) {
+        (PickDirection::Right, SetMode::Live) => Some(SetMode::Frozen),
+        (PickDirection::Left, SetMode::Frozen) => Some(SetMode::Live),
+        _ => None,
+    }
 }
 
 /// The set row a form field names, or `None` for the four rows that are
@@ -1455,11 +1483,24 @@ fn commit_pending_to_session(
 /// hand-written as frozen leaves the file's allow list alone rather than
 /// quietly widening it, which is the direction that takes capabilities away
 /// nobody asked to lose.
+///
+/// A Frozen row whose capture is empty also yields `None`, and this is the
+/// one place that decision belongs. An empty allow list is read as no filter
+/// at all, so writing one would mark the attendant frozen in `jinn.toml`
+/// while it went on inheriting everything — the one outcome the row exists
+/// to prevent. Declining the *write* leaves the user with the choice they
+/// made on the row and no file change behind it; declining the *choice*
+/// instead, as this used to, made the row unselectable on any attendant
+/// that had discovered nothing yet.
 fn pending_filter(
     popup: &jinn_attendant_msg::AttendantPropertiesState,
     field: SetField,
 ) -> Option<NameFilter> {
-    popup.pending_set(field).map(|names| NameFilter {
+    let names = popup.pending_set(field)?;
+    if names.is_empty() {
+        return None;
+    }
+    Some(NameFilter {
         mode: FilterMode::Allow,
         names: names.clone(),
     })

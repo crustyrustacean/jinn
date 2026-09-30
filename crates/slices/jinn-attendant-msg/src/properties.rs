@@ -546,7 +546,12 @@ impl AttendantPropertiesState {
     pub fn set_mode(&mut self, field: SetField, mode: SetMode, permitted: &BTreeSet<String>) {
         let (frozen, next) = match mode {
             SetMode::Live => (SetMode::Live, None),
-            SetMode::Frozen if permitted.is_empty() => return,
+            // An empty capture is recorded as Frozen with no names, and the
+            // commit is what declines to write it. Refusing the mode here
+            // instead would make the row unselectable on an attendant that
+            // has discovered nothing yet, which is the *default* state of a
+            // fresh attendant — the user could reach Frozen on no row but
+            // that one, and would see the key do nothing at all.
             SetMode::Frozen => (SetMode::Frozen, Some(permitted.clone())),
         };
         match field {

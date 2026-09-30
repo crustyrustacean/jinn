@@ -3,6 +3,7 @@
 //! `AppState`.
 
 #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+use std::collections::BTreeSet;
 
 use jinn_app_state::AppState;
 use jinn_attendant_msg::{
@@ -960,7 +961,7 @@ fn freezing_the_skill_set_captures_the_discovered_skills() {
     fx.open_on_the_skill_set();
 
     // When freezing the row.
-    fx.press("attendant-properties-pick-left");
+    fx.press("attendant-properties-pick-right");
 
     // Then the capture is the permitted set.
     assert_eq!(
@@ -1144,16 +1145,15 @@ fn freezing_over_an_empty_capture_writes_nothing() {
         });
     fx.open_on_the_tool_set();
 
-    // When freezing the row.
+    // When freezing the row and applying.
     fx.press("attendant-properties-pick-right");
-
-    // Then the row stays Live: an allow list over nothing is read as no
-    // filter at all, so writing one would look frozen in `jinn.toml` and
-    // behave as inheriting.
-    assert_eq!(fx.cell.read().set_mode_of(SetField::Tool), SetMode::Live);
-    assert!(fx.cell.read().pending_set(SetField::Tool).is_none());
-    // And applying writes no empty allow list.
     fx.press("attendant-properties-apply");
+
+    // Then no empty allow list reaches the session. An allow list over
+    // nothing is read as no filter at all, so writing one would look frozen
+    // in `jinn.toml` and behave as inheriting -- the exact outcome the row
+    // exists to prevent. The row itself still held Frozen; it is the write
+    // that is declined.
     assert!(fx.tool_filter().is_unconfigured());
 }
 
@@ -1239,4 +1239,108 @@ fn the_set_rows_are_reachable_while_composing() {
     // Then the skill set row is reached. The cage above the prep row does
     // not extend below it: a composing attendant still has a tool budget.
     assert_eq!(fx.cell.read().focus, PropertyField::SkillSet);
+}
+
+#[rstest::rstest]
+#[test]
+fn pressing_right_on_a_live_set_row_freezes_it() {
+    // Given an open popup on a Live tool-set row.
+    let mut fx = PopupFixture::new();
+    fx.offer(&["read", "write"]);
+    fx.open_on_the_tool_set();
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Tool), SetMode::Live);
+
+    // When pressing the right-pick key — moving toward the second choice.
+    fx.press("attendant-properties-pick-right");
+
+    // Then the row holds the second choice, Frozen. `l` walks the row; it
+    // does not toggle it.
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Tool), SetMode::Frozen);
+}
+
+#[rstest::rstest]
+#[test]
+fn pressing_left_on_a_frozen_set_row_thaws_it() {
+    // Given an open popup on a Frozen tool-set row.
+    let mut fx = PopupFixture::new();
+    fx.offer(&["read", "write"]);
+    fx.open_on_the_tool_set();
+    fx.press("attendant-properties-pick-right");
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Tool), SetMode::Frozen);
+
+    // When pressing the left-pick key — moving back toward the first choice.
+    fx.press("attendant-properties-pick-left");
+
+    // Then the row holds the first choice, Live.
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Tool), SetMode::Live);
+}
+
+#[rstest::rstest]
+#[test]
+fn pressing_left_on_a_live_set_row_stays_live() {
+    // Given an open popup on a Live tool-set row.
+    let mut fx = PopupFixture::new();
+    fx.offer(&["read"]);
+    fx.open_on_the_tool_set();
+
+    // When pressing the left-pick key — already at the first choice.
+    fx.press("attendant-properties-pick-left");
+
+    // Then the row is unchanged. The choices run left to right, so moving
+    // left from `live` has nowhere to go and must not wrap or freeze.
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Tool), SetMode::Live);
+}
+
+#[rstest::rstest]
+#[test]
+fn pressing_right_on_a_frozen_set_row_stays_frozen() {
+    // Given an open popup on a Frozen tool-set row.
+    let mut fx = PopupFixture::new();
+    fx.offer(&["read"]);
+    fx.open_on_the_tool_set();
+    fx.press("attendant-properties-pick-right");
+
+    // When pressing the right-pick key — already at the last choice.
+    fx.press("attendant-properties-pick-right");
+
+    // Then the row is unchanged, and no re-capture happened.
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Tool), SetMode::Frozen);
+}
+
+#[rstest::rstest]
+#[test]
+fn the_skill_set_row_freezes_on_its_right_pick_key() {
+    // Given an open popup on a Live skill-set row, with a discovered skill.
+    let mut fx = PopupFixture::new();
+    fx.offer_skills(&["web-coder"]);
+    fx.open_on_the_skill_set();
+
+    // When pressing the right-pick key.
+    fx.press("attendant-properties-pick-right");
+
+    // Then the skill row freezes and captures the discovered skill.
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Skill), SetMode::Frozen);
+    assert_eq!(
+        fx.cell.read().pending_set(SetField::Skill),
+        Some(&BTreeSet::from(["web-coder".to_owned()]))
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn the_skill_set_row_is_inert_when_the_attendant_has_no_discovered_skills() {
+    // Given an attendant that has discovered no skills — a fresh attendant,
+    // or one whose skill scan has not settled.
+    let mut fx = PopupFixture::new();
+    fx.open_on_the_skill_set();
+
+    // When the user walks the row to Frozen and back.
+    fx.press("attendant-properties-pick-right");
+    fx.press("attendant-properties-pick-right");
+
+    // Then the row is still selectable. The empty-capture guard that stops a
+    // zero-name allow list being written must not also stop the user from
+    // choosing Frozen: the row has to be able to hold the choice even
+    // though committing it writes nothing.
+    assert_eq!(fx.cell.read().set_mode_of(SetField::Skill), SetMode::Frozen);
 }

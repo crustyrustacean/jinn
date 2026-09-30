@@ -632,18 +632,24 @@ mod properties_tests {
     }
 
     #[rstest::rstest]
-    fn freezing_a_set_that_permits_nothing_is_a_no_op() {
+    fn freezing_a_set_that_permits_nothing_still_holds_the_choice() {
         // Given a popup whose attendant permits no tools at all.
         let mut popup = AttendantPropertiesState::default();
 
         // When freezing the tool set over an empty capture.
         popup.set_mode(SetField::Tool, SetMode::Frozen, &BTreeSet::new());
 
-        // Then the row stays Live with nothing captured. An empty allow list
-        // is read by `NameFilter` as "no filter", so writing one would look
-        // frozen in `jinn.toml` and behave as inheriting.
-        assert_eq!(popup.set_mode_of(SetField::Tool), SetMode::Live);
-        assert!(popup.pending_set(SetField::Tool).is_none());
+        // Then the row holds Frozen, capturing nothing. The row must stay
+        // selectable on an attendant that has discovered nothing yet --
+        // that is the default state of a fresh attendant, and refusing the
+        // mode here made the key silently do nothing. The empty capture is
+        // declined at commit instead, where it would otherwise be written.
+        assert_eq!(popup.set_mode_of(SetField::Tool), SetMode::Frozen);
+        assert_eq!(
+            popup.pending_set(SetField::Tool),
+            Some(&BTreeSet::new()),
+            "an empty capture is recorded as empty, not discarded"
+        );
     }
 
     #[rstest::rstest]
