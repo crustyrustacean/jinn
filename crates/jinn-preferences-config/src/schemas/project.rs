@@ -41,7 +41,7 @@ mod tests {
 
     use jinn_config::{ConfigLayer, ConfigList, InMemoryConfigStorage};
 
-    use super::ProjectConfig;
+    use super::{CommandPolicyRule, ProjectConfig};
 
     #[rstest::rstest]
     fn project_entries_read_from_the_umbrella_key() {
@@ -79,6 +79,61 @@ mod tests {
 
         // Then it is empty rather than an error.
         assert!(projects.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn a_projects_command_policy_renders_inline_and_reads_back() {
+        // Given a project carrying two blocked-command rules.
+        let project = ProjectConfig {
+            path: "/tmp/demo".parse().expect("path parses"),
+            command_policy: vec![
+                CommandPolicyRule {
+                    pattern: "git push".to_owned(),
+                    message: "ask first".to_owned(),
+                },
+                CommandPolicyRule {
+                    pattern: "rm -rf".to_owned(),
+                    message: "never".to_owned(),
+                },
+            ],
+        };
+        let storage = Arc::new(InMemoryConfigStorage::new(
+            "[tools]\nx = 1\n".parse().expect("parses"),
+        ));
+        let layer = ConfigLayer::load(storage.clone()).expect("load");
+
+        // When saving it, then saving the identical value again.
+        layer
+            .put_list::<ProjectConfig>(std::slice::from_ref(&project))
+            .expect("first save");
+        let once = storage.text();
+        layer
+            .put_list::<ProjectConfig>(std::slice::from_ref(&project))
+            .expect("second save");
+        let twice = storage.text();
+
+        // Then the rules render as one `key = value` on the entry rather than
+        // as a `[[project.entry.command_policy]]` sub-list, which TOML reads
+        // as a sibling of the project rather than part of it.
+        assert!(
+            once.contains("command_policy = [{ message = \"ask first\", pattern = \"git push\" }"),
+            "policy not inline:\n{once}"
+        );
+        assert!(
+            !once.contains("[[project.entry.command_policy]]"),
+            "policy rendered as a sub-list:\n{once}"
+        );
+
+        // And an identical re-save does not move the file.
+        assert_eq!(
+            once, twice,
+            "document moved:\nonce:\n{once}\ntwice:\n{twice}"
+        );
+
+        // And both rules read back off the right project.
+        let read = layer.get_list::<ProjectConfig>().expect("read");
+        assert_eq!(read.len(), 1);
+        assert_eq!(read[0].command_policy, project.command_policy);
     }
 
     #[rstest::rstest]

@@ -447,7 +447,33 @@ mod tests {
         let doc = "# user header\n".parse().expect("test TOML parses");
         let storage = Arc::new(InMemoryConfigStorage::new(doc));
         let layer = ConfigLayer::load(storage.clone()).expect("load");
-        let saved = entry("reviewer");
+        // With nested values present, because that is where the two save
+        // paths used to disagree. An entry with no pins and no model passes
+        // trivially: an empty array already rendered inline, so the fixture
+        // never reached the oscillation.
+        let saved = AttendantEntryConfig::from_parts(
+            "reviewer".to_owned(),
+            AttendantBehavior::Reset,
+            AttendantTrigger::ParentCompleted,
+            false,
+            "prior: <prior report>".to_owned(),
+            &ModelSelection::Single("zai/glm-4.7".to_owned()),
+            "reviewer",
+            &set(["write".to_owned()]),
+            &set(["bash".to_owned()]),
+            Some(jinn_core_types::ReasoningEffort::High),
+            None,
+            vec![
+                AttendantPinConfig {
+                    role: AttendantPinRole::User,
+                    text: "always in context".to_owned(),
+                },
+                AttendantPinConfig {
+                    role: AttendantPinRole::Assistant,
+                    text: "the agreed verdict".to_owned(),
+                },
+            ],
+        );
 
         // When saving the same entry twice (second save is an overwrite).
         layer
@@ -462,7 +488,210 @@ mod tests {
         // Then the document did not move between saves: set-typed fields
         // serialize sorted, so a HashSet's run-to-run order cannot churn
         // the user's file.
-        assert_eq!(once, twice);
+        assert_eq!(
+            once, twice,
+            "document moved:\nonce:\n{once}\ntwice:\n{twice}"
+        );
+    }
+
+    /// The rendered `pins` line, with spacing around `=` normalized away.
+    ///
+    /// The patcher preserves the whitespace the old line carried, so a file
+    /// hand-edited to `pins= [...]` stays tight. Asserting on the shape
+    /// rather than the spacing keeps these tests about inline-vs-header.
+    fn pins_line(text: &str) -> Option<String> {
+        text.lines()
+            .find(|line| line.trim_start().starts_with("pins"))
+            .map(|line| line.replace("pins=", "pins ="))
+    }
+
+    /// An entry with both nested-value kinds present, so a rendering
+    /// assertion can cover a table and an array at once.
+    fn entry_with_pins_and_model() -> AttendantEntryConfig {
+        let mut e = entry_with_pins(vec![AttendantPinConfig {
+            role: AttendantPinRole::User,
+            text: "always in context".to_owned(),
+        }]);
+        e.model = Some(ModelSelection::Single("zai/glm-4.7".to_owned()));
+        e
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn an_entries_values_all_render_as_key_value_pairs() {
+        // Given an attendant carrying both kinds of nested value.
+        let storage = Arc::new(InMemoryConfigStorage::new(
+            "[tools]\ndefault_timeout_secs = 60\n"
+                .parse()
+                .expect("parses"),
+        ));
+        let layer = ConfigLayer::load(storage.clone()).expect("load");
+        layer
+            .put_list::<AttendantEntryConfig>(&[entry_with_pins_and_model()])
+            .expect("write");
+
+        // When reading the rendered document.
+        let text = storage.text();
+
+        // Then the entry is one block and every value sits on it as
+        // `key = value`. A nested `[[attendant.entry.pins]]` is a *sibling*
+        // of its entry in TOML's grammar, not a child — it reads as the next
+        // attendant and can bind to the wrong one.
+        assert!(
+            text.contains("model = { single = \"zai/glm-4.7\" }"),
+            "model not inline:\n{text}"
+        );
+        assert_eq!(
+            pins_line(&text).as_deref(),
+            Some("pins = [{ role = \"user\", text = \"always in context\" }]"),
+            "pins not inline:\n{text}"
+        );
+        assert!(
+            !text.contains("[attendant.entry.model]"),
+            "model rendered as a sub-table:\n{text}"
+        );
+        assert!(
+            !text.contains("[[attendant.entry.pins]]"),
+            "pins rendered as a sub-list:\n{text}"
+        );
+        assert_eq!(
+            text.matches("[[attendant.entry]]").count(),
+            1,
+            "expected exactly one entry block:\n{text}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[case::no_entry_yet("")]
+    #[case::already_inline(
+        "[[attendant.entry]]\nname = \"pinned\"\npins = [{ role = \"user\", text = \"a\" }]\n"
+    )]
+    #[case::left_in_header_form(
+        "[[attendant.entry]]\nname = \"pinned\"\n[[attendant.entry.pins]]\nrole = \"user\"\ntext = \"a\"\n"
+    )]
+    fn an_entry_renders_the_same_way_from_any_starting_shape(#[case] body: &str) {
+        // Given a document in one of the shapes a save can be handed.
+        let storage = Arc::new(InMemoryConfigStorage::new(
+            body.parse().expect("test TOML parses"),
+        ));
+        let layer = ConfigLayer::load(storage.clone()).expect("load");
+        let saved = entry_with_pins(vec![AttendantPinConfig {
+            role: AttendantPinRole::User,
+            text: "a".to_owned(),
+        }]);
+
+        // When saving it.
+        layer
+            .put_list::<AttendantEntryConfig>(std::slice::from_ref(&saved))
+            .expect("write");
+
+        // Then the pins render inline regardless of how the document already
+        // held them — the rendered form must not depend on whether the key
+        // was already present, which is what made consecutive saves disagree.
+        let text = storage.text();
+        assert_eq!(
+            pins_line(&text).as_deref(),
+            Some("pins = [{ role = \"user\", text = \"a\" }]"),
+            "pins not inline from this starting shape:\n{text}"
+        );
+        assert!(
+            !text.contains("[[attendant.entry.pins]]"),
+            "pins left in header form:\n{text}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn two_entries_keep_their_own_pins() {
+        // Given two attendants pinned to different instructions.
+        let storage = Arc::new(InMemoryConfigStorage::new(
+            "[tools]\nx = 1\n".parse().expect("parses"),
+        ));
+        let layer = ConfigLayer::load(storage.clone()).expect("load");
+        let first = AttendantEntryConfig::from_parts(
+            "first".to_owned(),
+            AttendantBehavior::Reset,
+            AttendantTrigger::Manual,
+            false,
+            jinn_attendant_msg::default_seed_template(),
+            &ModelSelection::Single(NO_PROVIDER_ID.to_owned()),
+            jinn_core_types::DEFAULT_PERSONA_NAME,
+            &HashSet::new(),
+            &HashSet::new(),
+            None,
+            None,
+            vec![AttendantPinConfig {
+                role: AttendantPinRole::User,
+                text: "one".to_owned(),
+            }],
+        );
+        let second = AttendantEntryConfig::from_parts(
+            "second".to_owned(),
+            AttendantBehavior::Reset,
+            AttendantTrigger::Manual,
+            false,
+            jinn_attendant_msg::default_seed_template(),
+            &ModelSelection::Single(NO_PROVIDER_ID.to_owned()),
+            jinn_core_types::DEFAULT_PERSONA_NAME,
+            &HashSet::new(),
+            &HashSet::new(),
+            None,
+            None,
+            vec![
+                AttendantPinConfig {
+                    role: AttendantPinRole::User,
+                    text: "two-a".to_owned(),
+                },
+                AttendantPinConfig {
+                    role: AttendantPinRole::User,
+                    text: "two-b".to_owned(),
+                },
+            ],
+        );
+
+        // When saving both and reading them back.
+        layer
+            .put_list::<AttendantEntryConfig>(&[first, second])
+            .expect("write");
+        let read = layer.get_list::<AttendantEntryConfig>().expect("read");
+
+        // Then each entry holds exactly its own pins — a nested list must
+        // never bind to the neighbouring entry.
+        assert_eq!(read[0].name, "first");
+        assert_eq!(read[0].pins.len(), 1);
+        assert_eq!(read[0].pins[0].text, "one");
+        assert_eq!(read[1].name, "second");
+        assert_eq!(read[1].pins.len(), 2);
+        assert_eq!(read[1].pins[0].text, "two-a");
+        assert_eq!(read[1].pins[1].text, "two-b");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_comment_above_an_entry_survives_rewriting_its_pins() {
+        // Given a document whose attendant entry carries a user comment.
+        let storage = Arc::new(InMemoryConfigStorage::new(
+            "# nightly reviewer\n[tools]\nx = 1\n"
+                .parse()
+                .expect("parses"),
+        ));
+        let layer = ConfigLayer::load(storage.clone()).expect("load");
+
+        // When saving an attendant with pins.
+        layer
+            .put_list::<AttendantEntryConfig>(&[entry_with_pins(vec![AttendantPinConfig {
+                role: AttendantPinRole::User,
+                text: "always in context".to_owned(),
+            }])])
+            .expect("write");
+
+        // Then the comment survives — inline rendering must not cost the
+        // user their notes.
+        assert!(
+            storage.text().contains("# nightly reviewer"),
+            "lost:\n{}",
+            storage.text()
+        );
     }
 
     #[rstest::rstest]
