@@ -39,6 +39,13 @@ pub struct AppState {
     pub session: SessionState,
     /// Frontend / UI state - owned by IntentHandler.
     pub frontend: FrontendState,
+    /// The in-flight subagent registry, shared with the tool orchestrator.
+    ///
+    /// Composition stamps the same handle `Services` carries, so the
+    /// confirmed-cancel cascade reads exactly what the `task` tool writes.
+    /// Cheap to clone (Arc-backed); test states carry an empty registry,
+    /// which the cascade reads as "no running subagents".
+    pub task_spawns: jinn_tools_msg::TaskSpawnRegistry,
 }
 
 impl AppState {

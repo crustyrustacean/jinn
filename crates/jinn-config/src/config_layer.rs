@@ -344,6 +344,27 @@ impl ConfigLayer {
         remove_stale_keys(&mut doc, T::KEY, &section);
 
         let mut patcher = DocumentPatcher::new();
+        // Every table a section carries is a named section and keeps header
+        // form; the nested arrays it may hold are the section's own values and
+        // render inline.
+        //
+        // Registered per *prefix*, not just for the full key: `put` hands the
+        // patcher a document whose root carries `watchdog` wrapping `stall`
+        // wrapping `stall.enabled`, and each level is a real section needing
+        // its own header. Registering only `watchdog.stall` would leave
+        // `watchdog` unregistered, and an unregistered table is by definition
+        // a value — which would inline the whole subtree.
+        //
+        // The wrapped tree is `{watchdog: {stall: <WatchdogCfg>}}`, and
+        // `WatchdogCfg` itself has a `stall` field, so the path a sub-table
+        // of the section reaches is one segment longer than the section's own
+        // key. Each level up to and including that leaf is registered; a
+        // deeper table is a field *inside* the section and is one of its
+        // values, which renders inline.
+        for (depth, _) in T::KEY.split('.').enumerate() {
+            let prefix: Vec<&'static str> = T::KEY.split('.').take(depth + 1).collect();
+            patcher.register_section(prefix);
+        }
         if let Some(entry) = T::ENTRY_KEY {
             patcher.register_array_key(entry.full_path(T::KEY), entry.field());
         }
@@ -416,6 +437,12 @@ impl ConfigLayer {
         };
         let mut patcher = DocumentPatcher::new();
         patcher.register_array_key([static_leaf::<T>()], T::ENTRY_KEY);
+        // A save replaces each entry it matches, so a field the user cleared
+        // disappears from the file instead of surviving as a stale value.
+        patcher.register_replace(
+            [static_leaf::<T>()],
+            T::ENTRY_FIELDS.iter().map(|f| (*f).to_owned()).collect(),
+        );
 
         let parent = ensure_table(&mut doc, &parent_path)
             .change_context(PatchError::Generic)
@@ -640,7 +667,7 @@ fn drop_unmatched_entries<T: ConfigList>(
             table.get(entry_field).cloned()
         })
         .collect();
-    let Some((leaf, head)) = key.rsplit_once('.') else {
+    let Some((head, leaf)) = key.rsplit_once('.') else {
         return;
     };
     let Some(parent) = resolve_table_mut(doc.as_table_mut(), &head.split('.').collect::<Vec<_>>())
@@ -840,6 +867,7 @@ mod tests {
     impl ConfigList for LifecycleEntry {
         const KEY: &'static str = "session_lifecycle.script";
         const ENTRY_KEY: &'static str = "name";
+        const ENTRY_FIELDS: &'static [&'static str] = &["name", "setup"];
     }
 
     /// A section whose list is nested below its own key.
@@ -882,6 +910,7 @@ mod tests {
     impl ConfigList for ProjectEntry {
         const KEY: &'static str = "project.entry";
         const ENTRY_KEY: &'static str = "name";
+        const ENTRY_FIELDS: &'static [&'static str] = &["name"];
     }
 
     fn doc(body: &str) -> DocumentMut {
@@ -892,6 +921,20 @@ mod tests {
         let storage = Arc::new(InMemoryConfigStorage::new(doc(body)));
         let layer = ConfigLayer::load(storage.clone()).expect("layer loads");
         (layer, storage)
+    }
+
+    /// Fails when `body` carries a root-level table header named `name`.
+    ///
+    /// The lookup that walks a list's parent path creates the tables it
+    /// passes through, so a mis-split key silently grows a table at the
+    /// document root. That is invisible in a value assertion and obvious in
+    /// the text, which is why this checks the text.
+    fn assert_no_root_table(body: &str, name: &str) {
+        let header = format!("[{name}]");
+        assert!(
+            !body.lines().any(|line| line.trim() == header),
+            "a root-level table named {name} appeared:\n{body}"
+        );
     }
 
     #[rstest::rstest]
@@ -1187,9 +1230,51 @@ mod tests {
         assert_eq!(read.len(), 1, "the entry survived the rewrite:\n{text}");
     }
 
-    // PINNED: the umbrella parent is not resolved as a table, so the list
-    // is rewritten inline and the user's comment above the umbrella goes
-    // with it. The capability is real; the layer does not deliver it yet.
+    #[rstest::rstest]
+    #[case::no_umbrella_at_all("")]
+    #[case::umbrella_with_other_keys("[attendant]\nbehaviour = \"reset\"\n")]
+    #[case::umbrella_with_an_empty_list("[attendant]\nentry = []\n")]
+    #[case::umbrella_with_an_inline_array("[attendant]\nentry = [{ name = \"old\" }]\n")]
+    #[case::umbrella_with_the_list_in_header_form("[[attendant.entry]]\nname = \"old\"\n")]
+    fn put_list_never_creates_a_root_table_named_after_its_leaf(#[case] body: &str) {
+        // Given a layer over a document in each shape the umbrella might
+        // already be in.
+        let (layer, storage) = layer(body);
+
+        // When a list under that umbrella is written back.
+        layer
+            .put_list::<ProjectEntry>(&[ProjectEntry {
+                name: "alpha".to_owned(),
+            }])
+            .expect("list writes");
+
+        // Then the leaf's own name never becomes a table at the root.
+        assert_no_root_table(&storage.text(), "entry");
+    }
+
+    #[rstest::rstest]
+    #[case::no_umbrella_at_all("")]
+    #[case::umbrella_with_the_list_in_header_form("[[session_lifecycle.script]]\nname = \"old\"\n")]
+    fn put_list_does_not_leak_a_differently_named_leaf(#[case] body: &str) {
+        // Given a layer over a document with no umbrella, and over one
+        // whose umbrella already carries the list.
+        let (layer, storage) = layer(body);
+
+        // When a list under that umbrella is written back.
+        layer
+            .put_list::<LifecycleEntry>(&[LifecycleEntry {
+                name: "alpha".to_owned(),
+                setup: "one".to_owned(),
+            }])
+            .expect("list writes");
+
+        // Then this list's leaf name does not become a root table either.
+        //
+        // The fix is a property of the key split, not of any one leaf
+        // name, so a second leaf is what shows it generalizes.
+        assert_no_root_table(&storage.text(), "script");
+    }
+
     #[rstest::rstest]
     #[test]
     fn put_list_under_an_umbrella_preserves_surrounding_document() {

@@ -146,6 +146,20 @@ pub trait ConfigList: Serialize + DeserializeOwned + Send + Sync + 'static {
     /// state is the empty list, so there is no "default entry" for the
     /// bound to supply.
     const ENTRY_KEY: &'static str;
+
+    /// Every field an entry may carry, whether or not a given save
+    /// serializes it.
+    ///
+    /// A save *replaces* each entry it matches, so a field absent from the
+    /// serialized value is one the user cleared and must disappear from the
+    /// file. The field list is therefore the schema, not the serialized
+    /// keys: `skip_serializing_if` hides exactly the fields this exists to
+    /// catch, so deriving it from a save would make replacement a no-op.
+    ///
+    /// Keys outside this list are the user's, and a save leaves them alone.
+    /// TOML attaches a bare trailing key to the table above it, so an entry
+    /// can legitimately hold a key no field of this struct describes.
+    const ENTRY_FIELDS: &'static [&'static str];
 }
 
 /// Layers `overlay` onto `base`: tables merge key-wise, every other value

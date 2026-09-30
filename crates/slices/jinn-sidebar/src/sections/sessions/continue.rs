@@ -36,15 +36,15 @@ pub fn handle_session_continue(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     }
 
-    let Some(index) = state
+    let Some(id) = state
         .frontend
-        .with_sections(|s| s.sessions.selected_index, || None)
+        .with_sections(|s| s.sessions.selected_id.clone(), || None)
     else {
         return IntentResult::empty();
     };
 
     let sessions = sorted_open_sessions(state);
-    let Some(entry) = sessions.get(index) else {
+    let Some(entry) = sessions.iter().find(|entry| entry.id == id) else {
         return IntentResult::empty();
     };
 
@@ -119,7 +119,7 @@ mod tests {
         assert!(
             state
                 .frontend
-                .with_sections(|s| s.sessions.selected_index.is_none(), || true)
+                .with_sections(|s| s.sessions.selected_id.is_none(), || true)
         );
 
         // When handling session continue.

@@ -38,10 +38,10 @@ pub fn build_assembly_inputs(state: &AppState, session_id: &SessionId) -> Assemb
         persona,
         history: session.history().to_vec(),
         tools,
-        disabled_tools: session.disabled_tools().clone(),
+        tool_filter: session.tool_filter().cloned(),
         provider_name: session.model_selection().provider_name().to_owned(),
         skills: session.discovered_skills().to_vec(),
-        disabled_skills: session.disabled_skills().clone(),
+        skill_filter: session.skill_filter().cloned(),
         loaded_skills: session.loaded_skills(),
         context_files: session.discovered_context_files().to_vec(),
     }

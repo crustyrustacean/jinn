@@ -134,8 +134,7 @@ impl SidebarSection for PinsSection {
                     .add_modifier(Modifier::BOLD),
             )])]
         } else {
-            let sidebar_focused = state.frontend.is_sidebar();
-            let section_focused = sidebar_focused
+            let section_focused = state.frontend.is_sidebar()
                 && matches!(
                     state.frontend.sidebar_section(),
                     Some(jinn_sidebar_msg::SidebarSectionId::Pins)
@@ -144,7 +143,6 @@ impl SidebarSection for PinsSection {
                 &pinned,
                 selected_index,
                 area.width,
-                sidebar_focused,
                 section_focused,
                 &state.frontend.theme,
             )
@@ -322,12 +320,7 @@ fn cycle_position(pos: PinPosition) -> PinPosition {
 // Rendering helpers
 // ---------------------------------------------------------------------------
 
-/// Solid yellow full block used as the selection indicator.
-const SELECTED_INDICATOR: &str = "\u{2588}";
-/// One space used as the unselected border.
-const UNSELECTED_BORDER: &str = " ";
-
-/// Builds the list of lines for the pinned entries panel.
+/// The `[TOP]`/`[BOT]`/`[REL]` badge text and color for a pin's position.
 fn position_badge(position: PinPosition) -> (&'static str, Color) {
     match position {
         PinPosition::Top => ("[TOP]", Color::Cyan),
@@ -435,7 +428,6 @@ fn build_entry_list(
     pinned: &[&jinn_kernel::protocol::ChatEntry],
     selected_index: usize,
     area_width: u16,
-    sidebar_focused: bool,
     section_focused: bool,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
@@ -450,23 +442,12 @@ fn build_entry_list(
     )]));
     lines.push(Line::from(""));
 
-    // Fixed overhead per entry line: border(1) + space(1) + badge(5) + space(1) = 8 cells.
-    let fixed_overhead: u16 = 8;
+    // Fixed overhead per entry line: gutter(1) + gap(1) + badge(" [TOP] " = 7) = 9 cells.
+    let fixed_overhead: u16 = 9;
     let content_budget = area_width.saturating_sub(fixed_overhead) as usize;
 
     for (i, entry) in pinned.iter().enumerate() {
         let is_selected = section_focused && i == selected_index;
-
-        let indicator_color = if sidebar_focused {
-            theme.focus_accent
-        } else {
-            theme.border_unfocused
-        };
-        let border = if is_selected {
-            Span::styled(SELECTED_INDICATOR, Style::default().fg(indicator_color))
-        } else {
-            Span::raw(UNSELECTED_BORDER)
-        };
 
         let (badge_text, badge_color) =
             position_badge(entry.pin_position.unwrap_or(PinPosition::Relative));
@@ -477,17 +458,41 @@ fn build_entry_list(
         let full_content = format!("{prefix}{content}");
         let capped_content = truncate_to_width(&full_content, content_budget);
 
-        let style = if is_selected {
-            Style::default().add_modifier(Modifier::REVERSED)
+        // The badge keeps its color as the position signal on an unselected
+        // row and yields to the band on a selected one, like every state
+        // color in the sidebar.
+        let badge = if is_selected {
+            Span::styled(format!(" {badge_text} "), Style::default())
         } else {
-            Style::default()
+            Span::styled(format!(" {badge_text} "), Style::default().fg(badge_color))
         };
-
-        lines.push(Line::from(vec![
-            border,
-            Span::styled(format!(" {badge_text} "), Style::default().fg(badge_color)),
-            Span::styled(capped_content, style),
-        ]));
+        // The gutter column is kept: one dark cell, then a gap cell, then the
+        // badge.
+        let content_width = 2 + 1 + badge_text.chars().count() + 1;
+        let mut spans = vec![
+            crate::sections::session_row_style::gutter_span(theme),
+            crate::sections::session_row_style::gutter_span(theme),
+            badge,
+            Span::raw(capped_content),
+        ];
+        if is_selected {
+            // The pad carries the band to the row's last cell — `Paragraph`
+            // does not extend a line's style past the last grapheme.
+            spans.push(crate::sections::session_row_style::band_pad(
+                content_width,
+                usize::from(area_width),
+                theme,
+            ));
+        }
+        let row = Line::from(spans);
+        let row = if is_selected {
+            row.style(crate::sections::session_row_style::selected_row_style(
+                theme,
+            ))
+        } else {
+            row
+        };
+        lines.push(row);
     }
 
     lines

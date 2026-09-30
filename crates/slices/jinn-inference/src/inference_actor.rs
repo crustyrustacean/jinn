@@ -67,6 +67,7 @@ impl OnRetry for PushEntryOnRetry {
             bus.publish(PushChatEntry {
                 session_id,
                 entry: ChatEntry::system(message),
+                pin: None,
             })
             .await;
         });
@@ -86,6 +87,7 @@ async fn emit_stream_error(
     bus.publish(PushChatEntry {
         session_id: session_id.clone(),
         entry: ChatEntry::error(message),
+        pin: None,
     })
     .await;
     bus.publish(StreamCompleted {

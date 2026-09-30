@@ -7,25 +7,26 @@
 
 use std::collections::HashSet;
 
+use jinn_core_types::NameFilter;
 use jinn_skills_msg::{Skill, SkillPickerState};
 
 use crate::skill_picker_reload::build_skill_entries;
 
 /// Opening the picker: fresh filter and selection, snapshot the session's
-/// disabled set for the ESC revert, and load entries from the discovered
+/// skill filter for the ESC revert, and load entries from the discovered
 /// skills.
 pub fn open(
     state: &mut SkillPickerState,
     discovered: &[Skill],
-    disabled: &HashSet<String>,
+    skill_filter: Option<&NameFilter>,
     theme: &jinn_theme::Theme,
 ) {
     state.reset();
-    state.snapshot = Some(disabled.clone());
+    state.snapshot = Some(skill_filter.cloned());
     state.theme = theme.clone();
     state
         .selection
-        .set_items(build_skill_entries(discovered, disabled, theme));
+        .set_items(build_skill_entries(discovered, skill_filter, theme));
 }
 
 /// Enter: commit the toggled set as the session's disabled skills, and return
@@ -47,12 +48,15 @@ pub fn confirm(state: &mut SkillPickerState) -> HashSet<String> {
 }
 
 /// ESC (the revert path — never the confirm path): restore the snapshotted
-/// disabled set.
+/// filter.
 ///
-/// Returns the set to restore, or `None` when the picker was never opened
-/// (so the caller leaves the session's set alone).
+/// Returns the filter to restore, or `None` when the picker was never opened
+/// (so the caller leaves the session's filter alone). The whole filter
+/// comes back, mode included — handing back only its withheld names would
+/// demote an allow-mode session on the way out of a picker nothing changed
+/// in.
 #[must_use]
-pub fn cancel(state: &mut SkillPickerState) -> Option<HashSet<String>> {
+pub fn cancel_filter(state: &mut SkillPickerState) -> Option<Option<NameFilter>> {
     state.snapshot.take()
 }
 
@@ -94,35 +98,78 @@ mod tests {
 
     fn opened(disabled: &[&str]) -> SkillPickerState {
         let mut state = SkillPickerState::default();
-        let set: HashSet<String> = disabled.iter().map(|s| (*s).to_owned()).collect();
         open(
             &mut state,
             &[skill("alpha"), skill("beta")],
-            &set,
+            Some(&NameFilter::deny(disabled.iter().map(|s| (*s).to_owned()))),
+            &jinn_theme::default_theme(),
+        );
+        state
+    }
+
+    /// A picker over two skills, holding the given filter.
+    fn opened_with(filter: &NameFilter) -> SkillPickerState {
+        let mut state = SkillPickerState::default();
+        open(
+            &mut state,
+            &[skill("alpha"), skill("beta")],
+            Some(filter),
             &jinn_theme::default_theme(),
         );
         state
     }
 
     #[rstest::rstest]
-    fn open_snapshots_the_disabled_set_for_revert() {
-        // Given a session with one skill already disabled.
-        let disabled: HashSet<String> = ["beta".to_owned()].into_iter().collect();
+    fn open_snapshots_the_filter_for_revert() {
+        // Given a session withholding one skill.
+        let filter = NameFilter::deny(["beta".to_owned()]);
 
         // When opening the picker.
-        let state = {
-            let mut state = SkillPickerState::default();
-            open(
-                &mut state,
-                &[skill("alpha"), skill("beta")],
-                &disabled,
-                &jinn_theme::default_theme(),
-            );
-            state
+        let state = opened_with(&filter);
+
+        // Then the snapshot holds that filter, so ESC can restore it.
+        assert_eq!(state.snapshot, Some(Some(filter)));
+    }
+
+    #[rstest::rstest]
+    fn open_seeds_a_row_from_an_allow_filter_that_omits_it() {
+        // Given an allow filter naming only one of the two skills.
+        let filter = NameFilter {
+            mode: jinn_core_types::FilterMode::Allow,
+            names: ["alpha".to_owned()].into_iter().collect(),
         };
 
-        // Then the snapshot holds that set, so ESC can restore it.
-        assert_eq!(state.snapshot, Some(disabled));
+        // When opening the picker over both.
+        let state = opened_with(&filter);
+
+        // Then the omitted skill's row opens already off, so committing
+        // without touching it withholds the same skill the filter did.
+        let beta = state
+            .selection
+            .items()
+            .iter()
+            .find(|item| item.entry().name == "beta")
+            .expect("beta has a row");
+        assert!(!beta.entry().enabled);
+    }
+
+    #[rstest::rstest]
+    fn cancel_restores_the_snapshot_verbatim() {
+        // Given a picker opened with an allow filter, then toggled.
+        let filter = NameFilter {
+            mode: jinn_core_types::FilterMode::Allow,
+            names: ["alpha".to_owned()].into_iter().collect(),
+        };
+        let mut state = opened_with(&filter);
+        toggle_highlighted(&mut state);
+
+        // When cancelling.
+        let restored = cancel_filter(&mut state);
+
+        // Then the filter comes back with its mode intact — handing back only
+        // its withheld names would have demoted it to a blocklist.
+        assert_eq!(restored, Some(Some(filter)));
+        assert!(state.snapshot.is_none());
     }
 
     #[rstest::rstest]
@@ -160,31 +207,14 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn cancel_restores_the_snapshotted_set() {
-        // Given a picker opened with beta disabled, then toggled.
-        let mut state = opened(&["beta"]);
-        toggle_highlighted(&mut state);
-
-        // When cancelling.
-        let restored = cancel(&mut state);
-
-        // Then the pre-open set comes back and the snapshot is consumed.
-        assert_eq!(
-            restored,
-            Some(["beta".to_owned()].into_iter().collect::<HashSet<String>>())
-        );
-        assert!(state.snapshot.is_none());
-    }
-
-    #[rstest::rstest]
     fn cancel_on_a_never_opened_picker_restores_nothing() {
         // Given a picker with no snapshot.
         let mut state = SkillPickerState::default();
 
         // When cancelling.
-        let restored = cancel(&mut state);
+        let restored = cancel_filter(&mut state);
 
-        // Then nothing is restored, so the session's set is left alone.
+        // Then nothing is restored, so the session's filter is left alone.
         assert!(restored.is_none());
     }
 }

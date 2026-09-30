@@ -6,9 +6,8 @@
 //! [`SkillPickerState`] cell rather than a kernel-owned field, which is what
 //! lets the picker leave the kernel's vocabulary behind.
 
-use std::collections::HashSet;
-
 use crate::skill_preview::render_skill_preview;
+use jinn_core_types::NameFilter;
 use jinn_skills_msg::{Skill, SkillEntry, SkillPickerState, body_hash_key, skill_row};
 use jinn_theme::Theme;
 
@@ -20,7 +19,7 @@ use jinn_theme::Theme;
 #[must_use]
 pub fn build_skill_entries(
     discovered: &[Skill],
-    disabled: &HashSet<String>,
+    skill_filter: Option<&NameFilter>,
     theme: &Theme,
 ) -> Vec<jinn_picker::PickerEntry<SkillEntry>> {
     let mut entries: Vec<SkillEntry> = discovered
@@ -29,7 +28,10 @@ pub fn build_skill_entries(
             name: skill.name.clone(),
             description: skill.description.clone(),
             body: skill.body.clone(),
-            enabled: !disabled.contains(&skill.name),
+            // Seeded from the filter itself rather than from a withheld
+            // list, so a skill the session's allow-mode filter omits opens as
+            // already off rather than silently toggled on.
+            enabled: skill_filter.is_none_or(|filter| filter.permits(&skill.name)),
             source: skill.source.clone(),
             theme: theme.clone(),
         })
@@ -52,15 +54,15 @@ pub fn build_skill_entries(
 /// Reloads the picker's rows from the session's discovered skills.
 ///
 /// `state` is the skill picker's own cell. The session data
-/// (`discovered_skills`, `disabled_skills`) is passed in rather than read from
-/// the session, so this stays a pure function of (skills, disabled, theme).
+/// (`discovered_skills`, the skill filter) is passed in rather than read from
+/// the session, so this stays a pure function of (skills, filter, theme).
 pub fn reload_skill_picker(
     state: &mut SkillPickerState,
     discovered: &[Skill],
-    disabled: &HashSet<String>,
+    skill_filter: Option<&NameFilter>,
     theme: &Theme,
 ) {
-    let wrapped = build_skill_entries(discovered, disabled, theme);
+    let wrapped = build_skill_entries(discovered, skill_filter, theme);
     state.selection.set_items(wrapped);
 }
 
@@ -94,7 +96,7 @@ mod tests {
         let skills = vec![skill("alpha", "does things", "# body")];
 
         // When reloading the skill picker.
-        reload_skill_picker(&mut state, &skills, &HashSet::new(), &default_theme());
+        reload_skill_picker(&mut state, &skills, None, &default_theme());
 
         // Then the row renders through the spec's row hook (enabled marker
         // plus name), not the bare search label.
@@ -110,7 +112,7 @@ mod tests {
         let skills = vec![skill("alpha", "does things", "# Title")];
 
         // When reloading the skill picker.
-        reload_skill_picker(&mut state, &skills, &HashSet::new(), &default_theme());
+        reload_skill_picker(&mut state, &skills, None, &default_theme());
 
         // Then the preview renders the markdown body, not an empty pane.
         let item = &state.selection.items()[0];
@@ -131,7 +133,7 @@ mod tests {
         ];
 
         // When building the picker's entries.
-        let items = build_skill_entries(&skills, &HashSet::new(), &default_theme());
+        let items = build_skill_entries(&skills, None, &default_theme());
 
         // Then they are ordered case-insensitively. The label is the spec's
         // search text, "{name} {description}", so the leading token is the name.

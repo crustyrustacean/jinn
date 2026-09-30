@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 base64 = { workspace = true }
+globset = { workspace = true }
 jiff = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

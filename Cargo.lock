@@ -310,6 +310,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bstr"
+version = "1.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6bb31b46c14244e20ee9984b11bf5c992b91fb6939fea616e3512c8baecdbe5f"
+dependencies = [
+ "memchr",
+ "serde_core",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1394,6 +1404,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
+name = "globset"
+version = "0.4.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e47d37d2ae4464254884b60ab7071be2b876a9c35b696bd018ddcc76847309cd"
+dependencies = [
+ "aho-corasick",
+ "bstr",
+ "log",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
 name = "h2"
 version = "0.4.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1914,6 +1937,8 @@ dependencies = [
  "dotenvy",
  "error-stack",
  "jiff",
+ "jinn-attendant",
+ "jinn-attendant-msg",
  "jinn-boot",
  "jinn-boot-msg",
  "jinn-cell-catalog",
@@ -2042,6 +2067,61 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-attendant"
+version = "1.1.2"
+dependencies = [
+ "error-stack",
+ "jiff",
+ "jinn-app-state",
+ "jinn-attendant-msg",
+ "jinn-chat-input-msg",
+ "jinn-config",
+ "jinn-context-assembly",
+ "jinn-core-types",
+ "jinn-inference-msg",
+ "jinn-kernel",
+ "jinn-llm-support",
+ "jinn-picker",
+ "jinn-preferences-config",
+ "jinn-selection-widget",
+ "jinn-session-history-msg",
+ "jinn-session-lifecycle-msg",
+ "jinn-session-msg",
+ "jinn-session-state",
+ "jinn-session-store-msg",
+ "jinn-session-turn",
+ "jinn-sidebar-msg",
+ "jinn-skills-msg",
+ "jinn-slices",
+ "jinn-testutil",
+ "jinn-theme",
+ "jinn-token-count-msg",
+ "jinn-turn-dispatch-msg",
+ "ratatui",
+ "rstest",
+ "serde",
+ "tokio",
+ "tracing",
+ "trouper",
+ "unicode-segmentation",
+ "unicode-width 0.2.2",
+]
+
+[[package]]
+name = "jinn-attendant-msg"
+version = "1.1.2"
+dependencies = [
+ "jiff",
+ "jinn-core-types",
+ "jinn-picker",
+ "jinn-selection-widget",
+ "jinn-slices",
+ "rstest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "jinn-boot"
 version = "1.1.2"
 dependencies = [
@@ -2084,6 +2164,7 @@ dependencies = [
 name = "jinn-cell-catalog"
 version = "1.1.2"
 dependencies = [
+ "jinn-attendant-msg",
  "jinn-chat-input-msg",
  "jinn-chat-log-view-msg",
  "jinn-cwd-msg",
@@ -2112,6 +2193,7 @@ name = "jinn-chat-input"
 version = "1.1.2"
 dependencies = [
  "error-stack",
+ "jinn-attendant-msg",
  "jinn-chat-input-msg",
  "jinn-config",
  "jinn-context",
@@ -2120,7 +2202,9 @@ dependencies = [
  "jinn-export-msg",
  "jinn-kernel",
  "jinn-preferences-config",
+ "jinn-session-history-msg",
  "jinn-session-msg",
+ "jinn-session-store-msg",
  "jinn-slices",
  "ratatui",
  "rstest",
@@ -2295,6 +2379,7 @@ name = "jinn-context-assembly"
 version = "1.1.2"
 dependencies = [
  "error-stack",
+ "jinn-attendant-msg",
  "jinn-context",
  "jinn-context-assembly-msg",
  "jinn-core-types",
@@ -2382,6 +2467,7 @@ name = "jinn-core-types"
 version = "1.1.2"
 dependencies = [
  "base64 0.22.1",
+ "globset",
  "jiff",
  "rand 0.9.5",
  "rstest",
@@ -2863,6 +2949,7 @@ version = "1.1.2"
 dependencies = [
  "dirs",
  "error-stack",
+ "jinn-attendant-msg",
  "jinn-common",
  "jinn-config",
  "jinn-core-types",
@@ -3154,6 +3241,7 @@ dependencies = [
  "jinn-selection-widget",
  "jinn-session-history-msg",
  "jinn-session-lifecycle-msg",
+ "jinn-session-list",
  "jinn-session-msg",
  "jinn-session-state",
  "jinn-session-store-msg",
@@ -3242,6 +3330,7 @@ dependencies = [
  "async-trait",
  "error-stack",
  "jiff",
+ "jinn-attendant-msg",
  "jinn-cell-catalog",
  "jinn-chat-input-msg",
  "jinn-chat-log-view-msg",
@@ -3273,6 +3362,7 @@ dependencies = [
  "daow",
  "error-stack",
  "jiff",
+ "jinn-attendant-msg",
  "jinn-boot-msg",
  "jinn-chat-input-msg",
  "jinn-chat-log-view",
@@ -3287,6 +3377,7 @@ dependencies = [
  "jinn-provider-config",
  "jinn-selection-widget",
  "jinn-session-lifecycle-msg",
+ "jinn-session-list",
  "jinn-session-msg",
  "jinn-session-schema",
  "jinn-session-state",
@@ -3373,8 +3464,11 @@ dependencies = [
 name = "jinn-sidebar"
 version = "1.1.2"
 dependencies = [
+ "async-trait",
  "error-stack",
  "jiff",
+ "jinn-attendant",
+ "jinn-attendant-msg",
  "jinn-chat-input-msg",
  "jinn-chat-log-view",
  "jinn-chat-log-view-msg",
@@ -3692,6 +3786,7 @@ dependencies = [
  "error-stack",
  "futures",
  "jiff",
+ "jinn-attendant-msg",
  "jinn-cell-catalog",
  "jinn-chat-input-msg",
  "jinn-common",

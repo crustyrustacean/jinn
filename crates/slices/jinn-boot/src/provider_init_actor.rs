@@ -128,6 +128,7 @@ impl ProviderInitActor {
             self.publish(PushChatEntry {
                 session_id,
                 entry: crate::no_api_keys::no_api_keys_msg(),
+                pin: None,
             })
             .await;
         }

@@ -1047,3 +1047,94 @@ mod loading_state {
         );
     }
 }
+
+/// The popup's border, read from the cell at the top-left corner.
+///
+/// The corner is the one border cell whose position is fixed by the rect, so
+/// it says what the border was drawn in without depending on where any title or
+/// badge happens to start.
+fn border_fg(session: &ChatSessionState) -> ratatui::style::Color {
+    let (buffer, popup_area) = render_preview(session, 100, 40);
+    buffer
+        .cell((popup_area.x, popup_area.y))
+        .expect("the popup has a top-left corner")
+        .fg
+}
+
+/// A session of `origin`, with one entry so the popup has content to show.
+fn session_of_origin(origin: jinn_session_msg::SessionOrigin) -> ChatSessionState {
+    let mut session = make_session_with_entries(1);
+    session.set_origin(origin);
+    session
+}
+
+#[rstest::rstest]
+fn an_attendant_sessions_preview_border_is_tinted_for_attendants() {
+    // Given an attendant's session.
+    let session = session_of_origin(jinn_session_msg::SessionOrigin::Attendant);
+
+    // When its preview is rendered.
+    let color = border_fg(&session);
+
+    // Then the border carries the attendant color the session list uses.
+    assert_eq!(color, default_theme().attendant_fg);
+}
+
+#[rstest::rstest]
+fn a_subagent_sessions_preview_border_is_tinted_for_subagents() {
+    // Given a subagent's session.
+    let session = session_of_origin(jinn_session_msg::SessionOrigin::Subagent);
+
+    // When its preview is rendered.
+    let color = border_fg(&session);
+
+    // Then the border carries the subagent color the session list uses.
+    assert_eq!(color, default_theme().subagent_fg);
+}
+
+#[rstest::rstest]
+fn a_user_sessions_preview_border_is_the_ordinary_unfocused_border() {
+    // Given a plain user session.
+    let session = session_of_origin(jinn_session_msg::SessionOrigin::User);
+
+    // When its preview is rendered.
+    let color = border_fg(&session);
+
+    // Then nothing distinguishes it — the border is exactly what it always was.
+    assert_eq!(color, default_theme().border_unfocused);
+}
+
+#[rstest::rstest]
+fn a_fork_of_an_attendant_sessions_preview_border_is_the_ordinary_border() {
+    // Given a session forked from an attendant's conversation.
+    let session = session_of_origin(jinn_session_msg::SessionOrigin::Fork);
+
+    // When its preview is rendered.
+    let color = border_fg(&session);
+
+    // Then the fork is an ordinary conversation and says so, whatever it was
+    // branched from.
+    assert_eq!(color, default_theme().border_unfocused);
+}
+
+#[rstest::rstest]
+fn an_attendant_sessions_preview_border_tint_leaves_the_title_alone() {
+    // Given an attendant's session with a title.
+    let mut session = session_of_origin(jinn_session_msg::SessionOrigin::Attendant);
+    session.set_title("nightly review".to_owned());
+
+    // When its preview is rendered.
+    let (buffer, popup_area) = render_preview(&session, 100, 40);
+    let top = buffer_row(&buffer, popup_area.y, popup_area.width);
+
+    // Then the title is still in the popup's own title color — only the border
+    // follows the session's kind.
+    let cell = buffer
+        .cell((popup_area.x + 1, popup_area.y))
+        .expect("the top border holds the title");
+    assert!(
+        top.contains("nightly review"),
+        "the title must still show: {top}"
+    );
+    assert_eq!(cell.fg, default_theme().popup_title);
+}

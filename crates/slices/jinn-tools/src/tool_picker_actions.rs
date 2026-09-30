@@ -22,6 +22,7 @@
 
 use std::collections::HashSet;
 
+use jinn_core_types::NameFilter;
 use jinn_picker::picker_style::{dim_style, split_match_indices};
 use jinn_picker::{PickerItemHooks, make_items_with_hooks};
 use jinn_selection_widget::highlight::highlight_text_with_bg;
@@ -90,25 +91,30 @@ pub struct ToolRow {
 }
 
 /// Opens the picker: fresh filter and highlight over `definitions`, and a
-/// snapshot of the session's disabled set so escape can put it back.
+/// snapshot of the session's tool filter so escape can put it back.
 ///
-/// The disabled set is read *only* here, to seed the rows and to take the
-/// snapshot. It is written back only on confirm.
+/// `tool_filter` is read *only* here, to seed each row's toggle bit and to
+/// take the snapshot. The session's filter is written only on confirm.
 pub fn open(
     state: &mut ToolPickerState,
     definitions: &[ToolRow],
-    disabled: &HashSet<String>,
+    tool_filter: Option<&NameFilter>,
     theme: &Theme,
 ) {
     state.reset();
-    state.snapshot = Some(disabled.clone());
+    state.snapshot = Some(tool_filter.cloned());
 
+    // Each row carries one toggle bit, seeded from whether the session's
+    // filter permits the tool right now — so a tool withheld by an
+    // allow-mode filter opens as already off, and committing it back yields
+    // the same effective set. An absent filter permits everything, which is
+    // what a session with none configured has always presented.
     let entries: Vec<ToolEntry> = definitions
         .iter()
         .map(|def| ToolEntry {
             name: def.name.clone(),
             description: def.description.clone(),
-            enabled: !disabled.contains(&def.name),
+            enabled: tool_filter.is_none_or(|filter| filter.permits(&def.name)),
             theme: theme.clone(),
         })
         .collect();
@@ -148,12 +154,13 @@ pub fn confirm(state: &mut ToolPickerState) -> HashSet<String> {
 }
 
 /// Escape (the revert path — never the confirm path): restore the snapshotted
-/// disabled set.
+/// filter.
 ///
-/// Returns the set to restore, or `None` when the picker was never opened (or
-/// was already committed), so the caller leaves the session's set alone.
+/// Returns the filter to restore, or `None` when the picker was never opened
+/// (or was already committed), so the caller leaves the session's filter
+/// alone.
 #[must_use]
-pub fn cancel(state: &mut ToolPickerState) -> Option<HashSet<String>> {
+pub fn cancel_filter(state: &mut ToolPickerState) -> Option<Option<NameFilter>> {
     state.snapshot.take()
 }
 
@@ -210,11 +217,15 @@ mod tests {
             .collect()
     }
 
-    /// A picker opened over `names` with `disabled` already turned off.
+    /// A picker opened over `names` withholding `disabled`.
     fn opened(names: &[&str], disabled: &[&str]) -> ToolPickerState {
         let mut state = ToolPickerState::default();
-        let set: HashSet<String> = disabled.iter().map(|s| (*s).to_owned()).collect();
-        open(&mut state, &rows(names), &set, &jinn_theme::default_theme());
+        open(
+            &mut state,
+            &rows(names),
+            Some(&NameFilter::deny(disabled.iter().map(|s| (*s).to_owned()))),
+            &jinn_theme::default_theme(),
+        );
         state
     }
 
@@ -238,16 +249,49 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn open_snapshots_the_disabled_set_for_the_escape_revert() {
-        // Given a session with one tool disabled.
-        // When opening the picker.
-        let state = opened(&["bash", "read"], &["read"]);
+    fn open_snapshots_the_filter_for_the_escape_revert() {
+        // Given a session withholding one tool.
+        let filter = NameFilter::deny(["read".to_owned()]);
 
-        // Then the snapshot holds that set, so escape can restore it.
-        assert_eq!(
-            state.snapshot,
-            Some(["read".to_owned()].into_iter().collect::<HashSet<String>>())
+        // When opening the picker over both tools.
+        let mut state = ToolPickerState::default();
+        open(
+            &mut state,
+            &rows(&["bash", "read"]),
+            Some(&filter),
+            &jinn_theme::default_theme(),
         );
+
+        // Then the snapshot holds that filter, so escape can restore it.
+        assert_eq!(state.snapshot, Some(Some(filter)));
+    }
+
+    #[rstest::rstest]
+    fn open_seeds_a_row_from_an_allow_filter_that_omits_it() {
+        // Given an allow filter naming only one of two tools.
+        let filter = NameFilter {
+            mode: jinn_core_types::FilterMode::Allow,
+            names: ["read".to_owned()].into_iter().collect(),
+        };
+
+        // When opening the picker.
+        let mut state = ToolPickerState::default();
+        open(
+            &mut state,
+            &rows(&["bash", "read"]),
+            Some(&filter),
+            &jinn_theme::default_theme(),
+        );
+
+        // Then the omitted tool's row opens off, so committing untouched
+        // withholds what the filter withheld.
+        let bash = state
+            .selection
+            .items()
+            .iter()
+            .find(|item| item.entry().name == "bash")
+            .expect("bash has a row");
+        assert!(!bash.entry().enabled);
     }
 
     #[rstest::rstest]
@@ -281,16 +325,16 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn toggling_does_not_touch_the_snapshotted_disabled_set() {
+    fn toggling_does_not_touch_the_snapshotted_filter() {
         // Given an opened picker whose snapshot is the pre-open set.
         let mut state = opened(&["bash", "read"], &[]);
 
         // When toggling a row off.
         toggle_highlighted(&mut state);
 
-        // Then the snapshot is untouched — the disabled set is only ever
-        // written on confirm, so a toggle can never pre-commit anything.
-        assert_eq!(state.snapshot, Some(HashSet::new()));
+        // Then the snapshot is untouched — the filter is only ever written on
+        // confirm, so a toggle can never pre-commit anything.
+        assert_eq!(state.snapshot, Some(Some(NameFilter::default())));
     }
 
     #[rstest::rstest]
@@ -309,19 +353,27 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn cancel_restores_the_snapshotted_set() {
-        // Given a picker opened with a tool disabled, then toggled.
-        let mut state = opened(&["bash", "read"], &["read"]);
+    fn cancel_restores_the_snapshot_verbatim() {
+        // Given a picker opened under an allow filter, then toggled.
+        let filter = NameFilter {
+            mode: jinn_core_types::FilterMode::Allow,
+            names: ["read".to_owned()].into_iter().collect(),
+        };
+        let mut state = ToolPickerState::default();
+        open(
+            &mut state,
+            &rows(&["bash", "read"]),
+            Some(&filter),
+            &jinn_theme::default_theme(),
+        );
         toggle_highlighted(&mut state);
 
         // When cancelling.
-        let restored = cancel(&mut state);
+        let restored = cancel_filter(&mut state);
 
-        // Then the pre-open set comes back and the snapshot is consumed.
-        assert_eq!(
-            restored,
-            Some(["read".to_owned()].into_iter().collect::<HashSet<String>>())
-        );
+        // Then the filter comes back with its mode intact — handing back only
+        // its withheld names would have demoted it to a blocklist.
+        assert_eq!(restored, Some(Some(filter)));
         assert!(state.snapshot.is_none());
     }
 
@@ -331,9 +383,9 @@ mod tests {
         let mut state = ToolPickerState::default();
 
         // When cancelling.
-        let restored = cancel(&mut state);
+        let restored = cancel_filter(&mut state);
 
-        // Then nothing is restored, so the session's set is left alone.
+        // Then nothing is restored, so the session's filter is left alone.
         assert!(restored.is_none());
     }
 

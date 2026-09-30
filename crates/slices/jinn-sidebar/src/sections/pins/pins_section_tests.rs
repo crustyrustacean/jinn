@@ -7,7 +7,6 @@
 )]
 
 use jinn_testutil::setup_term;
-use ratatui::style::Color;
 
 use crate::sections::pins::pins_section::*;
 use crate::sections::section_trait::SidebarSection;
@@ -353,7 +352,7 @@ fn consecutive_pinned_entries_are_adjacent_with_no_blank_between() {
 }
 
 #[rstest::rstest]
-fn render_selected_entry_has_yellow_marker_when_sidebar_focused() {
+fn render_selected_entry_row_keeps_a_dark_gutter_when_sidebar_focused() {
     // Given a pins section with two pinned entries and the pins scope focused.
     let mut section = PinsSection;
     let state = state_with_pinned(2);
@@ -372,14 +371,14 @@ fn render_selected_entry_has_yellow_marker_when_sidebar_focused() {
         })
         .unwrap();
 
-    // Then the selected entry's marker cell is a yellow block.
-    // No bordered block in section render - content starts at row 0.
-    // First entry at index 0 is selected by default.
+    // Then the selected entry's gutter cell is a dark blank. No bordered
+    // block in section render - content
+    // starts at row 0. First entry at index 0 is selected by default.
     let buffer = terminal.backend().buffer();
+    let theme = &state.frontend.theme;
     let cell0 = buffer.cell((0, 2)).expect("cell 0,2");
-    assert_eq!(cell0.symbol(), "\u{2588}");
-    // And its foreground is yellow.
-    assert_eq!(cell0.fg, Color::Yellow);
+    assert_eq!(cell0.symbol(), " ");
+    assert_eq!(cell0.bg, theme.gutter_bg);
 }
 
 #[rstest::rstest]
@@ -926,4 +925,70 @@ fn long_content_is_truncated_to_fit_area_width() {
         combined.contains('\u{2026}'),
         "long content should be truncated with ellipsis: {combined}"
     );
+}
+
+#[rstest::rstest]
+fn a_selected_pin_row_bands_the_full_width_with_a_dark_gutter_and_banded_badge() {
+    // Given a pinned entry with the section's cursor on it, sidebar focused
+    // on Pins.
+    let state = state_with_pinned(1);
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Pins.focus_scope());
+    state
+        .frontend
+        .scope_set_sidebar_section(jinn_sidebar_msg::SidebarSectionId::Pins);
+    let theme = state.frontend.theme.clone();
+
+    // When rendering wide.
+    let mut section = PinsSection;
+    let width = 50u16;
+    let height = 10u16;
+    let (mut terminal, area) = setup_term(width, height);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            section.render(frame, area, 0, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer();
+
+    // Then the selected row carries the band...
+    let band_y = (0..height)
+        .find(|&y| {
+            (0..width).any(|x| {
+                buffer
+                    .cell((x, y))
+                    .is_some_and(|cell| cell.bg == theme.selection_fg)
+            })
+        })
+        .unwrap_or_else(|| panic!("no selection band rendered"));
+    let last_banded_x = (0..width)
+        .filter(|&x| {
+            buffer
+                .cell((x, band_y))
+                .is_some_and(|cell| cell.bg == theme.selection_fg)
+        })
+        .max();
+    assert_eq!(
+        last_banded_x,
+        Some(width.saturating_sub(1)),
+        "the band must reach the row's last cell"
+    );
+    // And the gutter cell at column 0 stays on the dark sidebar background.
+    let gutter = buffer.cell((0, band_y)).expect("gutter cell");
+    assert_eq!(gutter.bg, theme.gutter_bg, "the gutter cell stays dark");
+    assert_eq!(gutter.symbol(), " ", "the gutter is a blank");
+    // And the badge inside the row takes the band rather than its own color.
+    let text: String = (0..width)
+        .filter_map(|x| buffer.cell((x, band_y)).map(ratatui::buffer::Cell::symbol))
+        .collect();
+    let badge_at = text.find("[TOP]").expect("badge visible");
+    let badge_cell = buffer
+        .cell((u16::try_from(badge_at).unwrap_or(0), band_y))
+        .expect("badge cell");
+    assert_eq!(badge_cell.bg, theme.selection_fg);
+    assert_eq!(badge_cell.fg, theme.gutter_bg);
 }

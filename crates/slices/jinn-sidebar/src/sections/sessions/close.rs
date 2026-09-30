@@ -4,17 +4,15 @@ use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::protocol::IntentResult;
 use jinn_session_msg::PhaseKind;
 
-use super::state::{mark_in_flight, sorted_open_sessions};
+use crate::sections::sessions::state::mark_in_flight;
 
 /// Why a session close can be rejected.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionCloseError {
     /// The sessions section is not focused.
     WrongSection,
-    /// No session is selected.
+    /// No session is selected, or the one selected is not loaded.
     NoSelection,
-    /// The selected entry is not a session.
-    NotASession,
     /// The selected session is streaming or sending.
     SessionBusy,
 }
@@ -31,15 +29,13 @@ pub fn validate_session_close(state: &AppState) -> Result<(), SessionCloseError>
     ) {
         return Err(SessionCloseError::WrongSection);
     }
-    let index = state
+    let id = state
         .frontend
-        .with_sections(|sections| sections.sessions.selected_index, || None)
+        .with_sections(|sections| sections.sessions.selected_id.clone(), || None)
         .ok_or(SessionCloseError::NoSelection)?;
-    let entries = sorted_open_sessions(state);
-    let entry = entries.get(index).ok_or(SessionCloseError::NoSelection)?;
     let session = state
         .session
-        .get(&entry.id)
+        .get(&id)
         .ok_or(SessionCloseError::NoSelection)?;
     if session.is_busy() || !matches!(session.phase(), PhaseKind::Idle) {
         return Err(SessionCloseError::SessionBusy);
@@ -65,15 +61,16 @@ pub fn handle_session_close_with_lifecycle(state: &mut AppState) -> IntentResult
     if validate_session_close(state).is_err() {
         return IntentResult::empty();
     }
-    let index = state
+    // Re-read after validating rather than trusting the earlier read: the
+    // cursor is a session, and if it went away between the two the close is
+    // simply refused. It used to unwrap here on the strength of the
+    // validation having just passed.
+    let Some(selected) = state
         .frontend
-        .with_sections(|sections| sections.sessions.selected_index, || None)
-        .expect("validated session close has a selected index");
-    let selected = sorted_open_sessions(state)
-        .get(index)
-        .expect("validated session close has a selected entry")
-        .id
-        .clone();
+        .with_sections(|sections| sections.sessions.selected_id.clone(), || None)
+    else {
+        return IntentResult::empty();
+    };
 
     // Mark in flight - the row stays tinted until the teardown and its
     // following archive both conclude.

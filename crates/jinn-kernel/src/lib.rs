@@ -60,6 +60,7 @@ pub use jinn_app_state::app_state::{AppState, SessionState};
 pub use jinn_app_state::frontend_state::{FrontendState, PendingSessionCreation};
 pub use jinn_context::PromptTemplateStore;
 pub use jinn_core_types::NO_PROVIDER_ID;
+pub use jinn_session_state::ChatSessionState;
 pub use jinn_slices::{FocusScope, ScopeStack, TuiSignals};
 
 // Re-export services types

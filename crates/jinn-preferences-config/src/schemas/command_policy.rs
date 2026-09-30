@@ -26,4 +26,5 @@ pub struct CommandPolicyRule {
 impl jinn_config::ConfigList for CommandPolicyRule {
     const KEY: &'static str = GLOBAL_COMMAND_POLICY_KEY;
     const ENTRY_KEY: &'static str = "pattern";
+    const ENTRY_FIELDS: &'static [&'static str] = &["pattern", "message"];
 }

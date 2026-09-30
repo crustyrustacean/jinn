@@ -8,6 +8,8 @@
 //! and sections can signal "unhandled" to let the sidebar move focus to the
 //! next/previous section.
 
+pub mod attendants_reports;
+pub mod attendants_section;
 pub mod intent;
 pub mod layout;
 pub mod mcp_servers_section;
@@ -16,6 +18,7 @@ pub mod pins;
 pub mod rename_input;
 pub mod resize;
 pub mod section_trait;
+pub mod session_row_style;
 pub mod sessions;
 pub mod sidebar;
 pub mod sidebar_state_actor;
@@ -36,6 +39,7 @@ pub use sidebar::navigate_sidebar;
 /// Registers all built-in sidebar sections into the given sidebar.
 pub fn register_sections(sidebar: &mut Sidebar) {
     sidebar.register(Box::new(persona_section::PersonaSection));
+    sidebar.register(Box::new(attendants_section::AttendantsSection));
     sidebar.register(Box::new(pins::PinsSection));
     sidebar.register(Box::new(task_list_section::TaskListSection));
     sidebar.register(Box::new(mcp_servers_section::McpServersSection));

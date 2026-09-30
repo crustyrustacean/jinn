@@ -137,6 +137,13 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
     let state_snapshot = ctx.state().clone();
     let services_snapshot = ctx.services().clone();
     jinn_watchdog::activate(&mut ctx.host(), &state_snapshot, services_snapshot);
+    // The attendant trigger actor subscribes to `TurnCompleted`. Ordering
+    // against turn-dispatch/inference below is not load-bearing: an attendant
+    // fires on a completed turn, and no turn can complete before dispatch
+    // exists, so the trigger actor cannot miss anything by spawning first.
+    let state_snapshot = ctx.state().clone();
+    let services_snapshot = ctx.services().clone();
+    jinn_attendant::activate(&mut ctx.host(), state_snapshot, services_snapshot);
     let state_snapshot = ctx.state().clone();
     let services_snapshot = ctx.services().clone();
     jinn_turn_dispatch::activate(&mut ctx.host(), state_snapshot, services_snapshot);

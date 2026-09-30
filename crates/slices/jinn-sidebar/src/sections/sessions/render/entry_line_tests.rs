@@ -44,6 +44,9 @@ fn tree_entry(
         is_last_child,
         is_subagent,
         has_live_term: false,
+        is_attendant: false,
+        is_attendant_prepping: false,
+        attendant_fires_on_parent_completion: false,
         is_in_flight: false,
     }
 }
@@ -196,6 +199,9 @@ fn assembled_line_includes_tree_prefix_for_non_root() {
         ancestor_continuations: vec![true],
         is_last_child: true,
         is_subagent: false,
+        is_attendant: false,
+        is_attendant_prepping: false,
+        attendant_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -228,6 +234,9 @@ fn assembled_line_has_no_tree_prefix_for_root() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent: false,
+        is_attendant: false,
+        is_attendant_prepping: false,
+        attendant_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -261,6 +270,9 @@ fn assembled_line_has_tree_prefix_span_for_child() {
         ancestor_continuations: vec![true],
         is_last_child: false,
         is_subagent: false,
+        is_attendant: false,
+        is_attendant_prepping: false,
+        attendant_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -298,6 +310,9 @@ fn title_is_truncated_more_at_higher_depth() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent: false,
+        is_attendant: false,
+        is_attendant_prepping: false,
+        attendant_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -314,6 +329,9 @@ fn title_is_truncated_more_at_higher_depth() {
         ancestor_continuations: vec![true, true, true],
         is_last_child: true,
         is_subagent: false,
+        is_attendant: false,
+        is_attendant_prepping: false,
+        attendant_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -336,6 +354,50 @@ fn title_is_truncated_more_at_higher_depth() {
 }
 
 // ---------------------------------------------------------------------------
+// attendant rows render in the attendant theme token
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
+fn attendant_row_uses_the_attendant_theme_token() {
+    // Given an attendant entry, not selected, not active.
+    let theme = default_theme();
+    let entry = SessionEntry {
+        is_attendant: true,
+        is_attendant_prepping: false,
+        attendant_fires_on_parent_completion: false,
+        is_active: false,
+        ..tree_entry(0, vec![], true, false)
+    };
+
+    // When the entry's title style is computed.
+    let style = crate::sections::sessions::render::entry_line::entry_title_style(&entry, &theme);
+
+    // Then the row is tinted with the attendant token, not the subagent or
+    // error token.
+    assert_eq!(style.fg, Some(theme.attendant_fg));
+}
+
+#[rstest::rstest]
+fn non_attendant_row_does_not_use_the_attendant_theme_token() {
+    // Given a plain user session entry, not selected, not active.
+    let theme = default_theme();
+    let entry = SessionEntry {
+        is_attendant: false,
+        is_attendant_prepping: false,
+        attendant_fires_on_parent_completion: false,
+        is_active: false,
+        ..tree_entry(0, vec![], true, false)
+    };
+
+    // When the entry's title style is computed.
+    let style = crate::sections::sessions::render::entry_line::entry_title_style(&entry, &theme);
+
+    // Then the row keeps the muted base, and the attendant token is nowhere.
+    assert_eq!(style.fg, Some(theme.muted_text));
+    assert_ne!(style.fg, Some(theme.attendant_fg));
+}
+
+// ---------------------------------------------------------------------------
 // assemble_entry_line - active arrow at depth > 0
 // ---------------------------------------------------------------------------
 
@@ -355,6 +417,9 @@ fn active_arrow_shows_at_depth_greater_than_zero() {
         ancestor_continuations: vec![true, true],
         is_last_child: true,
         is_subagent: false,
+        is_attendant: false,
+        is_attendant_prepping: false,
+        attendant_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -392,6 +457,9 @@ fn tree_prefix_uses_muted_text_color() {
         ancestor_continuations: vec![true],
         is_last_child: true,
         is_subagent: false,
+        is_attendant: false,
+        is_attendant_prepping: false,
+        attendant_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -459,6 +527,9 @@ fn sidebar_marks_child_with_symbol() {
         ancestor_continuations: vec![true],
         is_last_child: true,
         is_subagent: true,
+        is_attendant: false,
+        is_attendant_prepping: false,
+        attendant_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -505,6 +576,9 @@ fn sidebar_omits_symbol_for_regular_session() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent: false,
+        is_attendant: false,
+        is_attendant_prepping: false,
+        attendant_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -537,6 +611,9 @@ fn sidebar_shows_live_term_symbol_for_session_with_terminal() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent: false,
+        is_attendant: false,
+        is_attendant_prepping: false,
+        attendant_fires_on_parent_completion: false,
         has_live_term: true,
         is_in_flight: false,
     };
@@ -570,6 +647,9 @@ fn sidebar_omits_live_term_symbol_for_session_without_terminal() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent: false,
+        is_attendant: false,
+        is_attendant_prepping: false,
+        attendant_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -602,6 +682,9 @@ fn sidebar_live_term_symbol_consumes_truncation_budget() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent,
+        is_attendant: false,
+        is_attendant_prepping: false,
+        attendant_fires_on_parent_completion: false,
         has_live_term: true,
         is_in_flight: false,
     };
@@ -654,6 +737,9 @@ fn sidebar_symbol_consumes_truncation_budget() {
         is_last_child: true,
         is_subagent,
         has_live_term: false,
+        is_attendant: false,
+        is_attendant_prepping: false,
+        attendant_fires_on_parent_completion: false,
         is_in_flight: false,
     };
     let plain = make(false);
@@ -734,24 +820,23 @@ fn idle_row_is_not_tinted() {
 }
 
 #[rstest::rstest]
-fn selected_and_in_flight_row_is_not_reversed() {
+fn selected_and_in_flight_row_takes_the_selection_band() {
     // Given a session that is both cursor-selected and in flight.
     let entry = entry_with_in_flight(true);
     let theme = default_theme();
+    let band = crate::sections::session_row_style::selected_row_style(&theme);
 
     // When assembling its line.
     let line = assemble_entry_line(&entry, true, 40, &idle_throbber(), &theme);
 
-    // Then no span is reversed, which would invert the wash into a light one.
-    let reversed = line.spans.iter().any(|span| {
-        span.style
-            .add_modifier
-            .contains(ratatui::style::Modifier::REVERSED)
-    });
-    assert!(
-        !reversed,
-        "REVERSED would invert the in-flight wash instead of showing it"
-    );
+    // Then the line carries the band: selection overrides the wash, and no
+    // span keeps the tint's background for itself.
+    assert_eq!(line.style, band, "the band is line-level");
+    let tinted = line
+        .spans
+        .iter()
+        .any(|span| span.style.bg == Some(theme.in_flight_bg));
+    assert!(!tinted, "selection overrides the in-flight wash");
 }
 
 #[rstest::rstest]
@@ -810,7 +895,7 @@ fn selected_in_flight_row_uses_selection_background() {
     let unselected = line
         .spans
         .iter()
-        .filter(|span| span.style.bg != Some(theme.selection_bg))
+        .filter(|span| span.style.bg != Some(theme.selection_fg))
         .count();
     assert_eq!(
         unselected, 0,
@@ -831,7 +916,7 @@ fn selected_in_flight_row_differs_from_unselected_in_flight_row() {
     // Then the two rows are told apart by their background.
     let selected_bg = selected.spans.last().expect("spans").style.bg;
     let unselected_bg = unselected.spans.last().expect("spans").style.bg;
-    assert_eq!(selected_bg, Some(theme.selection_bg));
+    assert_eq!(selected_bg, Some(theme.selection_fg));
     assert_eq!(unselected_bg, Some(theme.in_flight_bg));
     assert_ne!(
         selected_bg, unselected_bg,
@@ -862,7 +947,7 @@ fn selected_in_flight_row_keeps_the_spinner_visible() {
 fn selected_in_flight_row_text_contrasts_with_its_background() {
     // Given a light theme whose selection background is lighter than the tint's text.
     let mut theme = default_theme();
-    theme.selection_bg = ratatui::style::Color::Rgb(216, 222, 233);
+    theme.selection_fg = ratatui::style::Color::Rgb(216, 222, 233);
     theme.in_flight_bg = ratatui::style::Color::Rgb(76, 86, 106);
     theme.in_flight_fg = ratatui::style::Color::Rgb(236, 239, 244);
     let entry = entry_with_in_flight(true);
@@ -876,5 +961,97 @@ fn selected_in_flight_row_text_contrasts_with_its_background() {
         title.style.fg,
         Some(theme.in_flight_fg),
         "light text on a light selection background would be invisible"
+    );
+}
+
+/// A seed-mode attendant row carries the pause marker beside its title.
+#[rstest::rstest]
+#[test]
+fn a_seed_mode_attendant_row_shows_the_pause_marker() {
+    // Given an attendant in seed mode.
+    let mut entry = tree_entry(0, vec![], true, false);
+    entry.is_attendant = true;
+    entry.is_attendant_prepping = true;
+
+    // When the row is rendered.
+    let line = crate::sections::sessions::render::entry_line::assemble_entry_line(
+        &entry,
+        false,
+        40,
+        &idle_throbber(),
+        &default_theme(),
+    );
+    let text: String = line
+        .spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect();
+
+    // Then the marker appears beside the title.
+    assert!(
+        text.contains('\u{23F8}'),
+        "a seed attendant must be marked: {text:?}"
+    );
+}
+
+/// A reset-mode attendant is not marked — it still dispatches.
+#[rstest::rstest]
+#[test]
+fn a_dispatching_attendant_row_has_no_pause_marker() {
+    // Given an attendant that is not in seed mode.
+    let mut entry = tree_entry(0, vec![], true, false);
+    entry.is_attendant = true;
+    entry.is_attendant_prepping = false;
+
+    // When the row is rendered.
+    let line = crate::sections::sessions::render::entry_line::assemble_entry_line(
+        &entry,
+        false,
+        40,
+        &idle_throbber(),
+        &default_theme(),
+    );
+    let text: String = line
+        .spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect();
+
+    // Then no pause marker is drawn.
+    assert!(
+        !text.contains('\u{23F8}'),
+        "a dispatching attendant must not be marked: {text:?}"
+    );
+}
+
+/// The marker is outside the title, so a rename can never replace it.
+#[rstest::rstest]
+#[test]
+fn the_pause_marker_sits_outside_the_title() {
+    // Given a seed-mode attendant whose title does not contain the glyph.
+    let mut entry = tree_entry(0, vec![], true, false);
+    entry.is_attendant = true;
+    entry.is_attendant_prepping = true;
+    entry.title = "reviewer".to_owned();
+
+    // When the row is rendered.
+    let line = crate::sections::sessions::render::entry_line::assemble_entry_line(
+        &entry,
+        false,
+        40,
+        &idle_throbber(),
+        &default_theme(),
+    );
+
+    // Then the title span itself is the name alone, with the marker in a
+    // span of its own — the property a rename replaces.
+    let title_span = line
+        .spans
+        .iter()
+        .find(|span| span.content.as_ref() == "reviewer");
+    assert!(
+        title_span.is_some(),
+        "the title must remain its own span: {:?}",
+        line.spans
     );
 }

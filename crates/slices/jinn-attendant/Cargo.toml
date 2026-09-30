@@ -1,0 +1,56 @@
+[package]
+name = "jinn-attendant"
+version.workspace = true
+edition.workspace = true
+description = "The attendant slice — fires attendants on parent turn completion and re-runs them."
+
+[dependencies]
+jinn-attendant-msg = { workspace = true }
+jiff = { workspace = true }
+jinn-app-state = { workspace = true }
+jinn-chat-input-msg = { workspace = true }
+jinn-config = { workspace = true }
+jinn-core-types = { workspace = true }
+# The `[[attendant.entry]]` schema the save and create paths read and write.
+jinn-preferences-config = { workspace = true }
+jinn-inference-msg = { workspace = true }
+jinn-theme = { workspace = true }
+jinn-sidebar-msg = { workspace = true }
+jinn-kernel = { workspace = true }
+jinn-session-msg = { workspace = true }
+jinn-session-state = { workspace = true }
+jinn-session-store-msg = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-slices = { workspace = true }
+# The published commands the creation path emits, so the picker needs no
+# kernel types to build them.
+jinn-session-history-msg = { workspace = true }
+jinn-session-lifecycle-msg = { workspace = true }
+error-stack = { workspace = true }
+ratatui = { workspace = true }
+unicode-segmentation = { workspace = true }
+unicode-width = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+trouper = { workspace = true }
+
+[dev-dependencies]
+jinn-chat-input-msg = { workspace = true }
+jinn-turn-dispatch-msg = { workspace = true }
+jinn-context-assembly = { workspace = true }
+# The discovered-skill shape the skill-set capture test builds fixtures from.
+jinn-skills-msg = { workspace = true }
+jinn-session-turn = { workspace = true }
+jinn-llm-support = { workspace = true }
+jinn-token-count-msg = { workspace = true }
+jinn-inference-msg = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-testutil = { workspace = true }
+rstest = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

@@ -986,6 +986,48 @@ async fn a_failed_archive_raises_a_hint_naming_the_session() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn persist_session_does_not_write_a_session_that_is_not_worth_saving() {
+    // Given a running store actor and a brand new session: persistable in
+    // principle, but carrying no turn and no children, so it is not yet
+    // worth a row.
+    let fixture = actor_fixture().await;
+    let session_id = {
+        let state = fixture.state.read();
+        state.active_session().session_id().clone()
+    };
+    assert!(
+        !fixture.state.read().active_session().is_persistable(),
+        "a brand new session is not persistable — that is the premise"
+    );
+
+    // When PersistSession is published for it.
+    fixture
+        .harness
+        .publish(PersistSession {
+            session_id: session_id.clone(),
+        })
+        .await;
+
+    // Then nothing is written. A caller that marks a session as worth
+    // keeping is what makes the save take effect; publishing the request
+    // alone is not sufficient, and a test that only ever starts from an
+    // already-interacted session cannot see the difference.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let saved = fixture
+        .store
+        .load_session(&session_id)
+        .await
+        .ok()
+        .flatten()
+        .is_some();
+    assert!(
+        !saved,
+        "a session with nothing to keep must not reach the store"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn persist_session_writes_interacted_session_to_store() {
     // Given a running store actor and an interacted session.
     let fixture = actor_fixture().await;

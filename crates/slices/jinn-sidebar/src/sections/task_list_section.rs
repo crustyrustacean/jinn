@@ -230,13 +230,15 @@ impl<'a> TaskListView<'a> {
 
     /// Available text width for a phase header's wrapped description.
     ///
-    /// Accounts for the phase indent and the collapse/expand indicator's display width.
+    /// Accounts for the gutter column, the phase indent, and the
+    /// collapse/expand indicator's display width.
     fn phase_text_width(&self) -> usize {
         self.sidebar_width
-            .saturating_sub(PHASE_INDENT + PHASE_INDICATOR_WIDTH)
+            .saturating_sub(1 + PHASE_INDENT + PHASE_INDICATOR_WIDTH)
     }
 
-    /// True when the phase at `index` is the focused, expanded one.
+    /// True when the phase at `index` is the selected one — the row the
+    /// cursor is on, which wears the full-width selection band.
     fn is_expanded(&self, index: usize) -> bool {
         self.expanded == Some(index)
     }
@@ -253,20 +255,14 @@ impl<'a> TaskListView<'a> {
         }
     }
 
-    /// Style for a phase header line, with reversed colors when the phase is selected.
-    fn phase_header_style(
-        &self,
-        phase: &Phase,
-        index: usize,
-        active_phase_id: Option<&PhaseId>,
-    ) -> Style {
-        let mut style = Style::default()
+    /// Style for a phase header line's text.
+    ///
+    /// Selection is not part of this: the band is line-level (see
+    /// [`Self::phase_header_lines`]), and a hard fg here would fight it.
+    fn phase_header_style(&self, phase: &Phase, active_phase_id: Option<&PhaseId>) -> Style {
+        Style::default()
             .fg(self.phase_header_color(phase, active_phase_id))
-            .add_modifier(Modifier::BOLD);
-        if self.is_expanded(index) {
-            style = style.add_modifier(Modifier::REVERSED);
-        }
-        style
+            .add_modifier(Modifier::BOLD)
     }
 
     /// The title line at the top of the section.
@@ -283,8 +279,10 @@ impl<'a> TaskListView<'a> {
         )])
     }
 
-    /// Phase header lines: the collapse/expand indicator on the first wrapped segment,
-    /// continuation lines indented beneath the description.
+    /// Phase header lines: the gutter column, then the indent and indicator
+    /// on the first wrapped segment, continuation lines indented beneath the
+    /// description. Selected rows take the shared full-width band, with a
+    /// band pad so it reaches the row's last cell.
     fn phase_header_lines(
         &self,
         phase: &Phase,
@@ -296,18 +294,54 @@ impl<'a> TaskListView<'a> {
         } else {
             "\u{25B8} " // ▸ collapsed
         };
-        let style = self.phase_header_style(phase, index, active_phase_id);
+        let selected = self.is_expanded(index);
+        // A selected row is the band, so its spans carry no style of their
+        // own and the band's text color shows through — the phase's state
+        // color is for unselected rows, like every sidebar state color.
+        let style = if selected {
+            Style::default()
+        } else {
+            self.phase_header_style(phase, active_phase_id)
+        };
+        let width = self.sidebar_width;
         let wrapped = wrap_description(phase.description(), self.phase_text_width());
         wrapped
             .iter()
             .enumerate()
             .map(|(i, segment)| {
-                let prefix = if i == 0 {
-                    format!("  {indicator}{segment}")
+                // Gutter(1) + indent(2) + indicator-slot(2) ahead of every
+                // segment: the gutter column shifts the whole row right of
+                // the header, and the slot is fixed-width so the wrap budget
+                // and row count are unchanged. The spaces are built with
+                // `.repeat`, not a `{PHASE_INDENT}` format capture — that
+                // interpolates the constant's *value*, which is where the
+                // literal `2▸` came from.
+                let slot = if i == 0 {
+                    indicator.to_owned()
                 } else {
-                    format!("    {}{segment}", " ".repeat(PHASE_INDICATOR_WIDTH))
+                    " ".repeat(PHASE_INDICATOR_WIDTH)
                 };
-                Line::from(Span::styled(prefix, style))
+                let used = 1 + PHASE_INDENT + PHASE_INDICATOR_WIDTH + segment.chars().count();
+                let mut spans = vec![
+                    crate::sections::session_row_style::gutter_span(self.theme),
+                    Span::styled(
+                        format!("{}{slot}{segment}", " ".repeat(PHASE_INDENT)),
+                        style,
+                    ),
+                ];
+                if selected {
+                    // The pad carries the band to the row's last cell —
+                    // `Paragraph` does not extend a line's style past the
+                    // last grapheme.
+                    spans.push(crate::sections::session_row_style::band_pad(
+                        used, width, self.theme,
+                    ));
+                    Line::from(spans).style(crate::sections::session_row_style::selected_row_style(
+                        self.theme,
+                    ))
+                } else {
+                    Line::from(spans)
+                }
             })
             .collect()
     }
@@ -324,9 +358,10 @@ impl<'a> TaskListView<'a> {
 
 /// Builds the render lines for a task list.
 ///
-/// Renders only phase headers — the focused phase shows a `◂` indicator pointing
-/// at the preview popup to its left, and gets `REVERSED` styling. Task contents are
-/// shown in the preview popup (see `preview.rs`), never inline.
+/// Renders only phase headers — the selected phase shows a `◂` indicator pointing
+/// at the preview popup to its left. Selected rows take the shared
+/// full-width band.
+/// Task contents are shown in the preview popup (see `preview.rs`), never inline.
 fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
     let view = TaskListView::from_state(state);
     let active_phase_id = list.active_phase().map(Phase::id);
@@ -757,28 +792,26 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn selected_phase_header_has_reversed_modifier() {
+    fn selected_phase_header_takes_the_selection_band() {
         // Given a task list focused on its first phase.
         let mut app = setup_with_tasks();
         setup_focused_on_phase(&mut app, 0);
         let list = app.session.active_session().task_list().clone();
+        let theme = app.frontend.theme.clone();
+        let band = crate::sections::session_row_style::selected_row_style(&theme);
 
         // When building render lines.
         let lines = build_render_lines(&list, &app);
 
-        // Then the selected phase's header is reversed. Find a line containing
-        // the first phase name.
-        let has_reversed = lines.iter().any(|line| {
+        // Then the selected phase's header carries the band. Find a line
+        // containing the first phase name.
+        let has_band = lines.iter().any(|line| {
             let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
-            text.contains("Research")
-                && line
-                    .spans
-                    .iter()
-                    .any(|s| s.style.add_modifier.contains(Modifier::REVERSED))
+            text.contains("Research") && line.style == band
         });
         assert!(
-            has_reversed,
-            "selected phase header should have REVERSED modifier for cursor highlight"
+            has_band,
+            "selected phase header should carry the selection band"
         );
     }
 
@@ -842,7 +875,8 @@ mod tests {
         );
     }
 
-    /// Helper: find a line containing `phase_name` and return its first span's foreground color.
+    /// Helper: find a line containing `phase_name` and return the text span's
+    /// foreground color — the line's only span.
     fn phase_header_fg(lines: &[Line<'static>], phase_name: &str) -> Option<ratatui::style::Color> {
         lines
             .iter()
@@ -850,7 +884,8 @@ mod tests {
                 let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
                 text.contains(phase_name)
             })
-            .and_then(|line| line.spans.first().map(|s| s.style.fg))
+            // The text span is the second span — the first is the gutter.
+            .and_then(|line| line.spans.get(1).map(|s| s.style.fg))
             .flatten()
     }
 
@@ -947,7 +982,7 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn selected_active_phase_header_has_reversed_and_streaming_color() {
+    fn selected_active_phase_header_carries_the_band_not_streaming_text() {
         // Given 2 phases with pending tasks, focused on first (active) phase.
         let mut app = AppState::default_with_scope_focus();
         let session = app.session.active_session_mut();
@@ -963,22 +998,22 @@ mod tests {
         ]);
         let list = session.task_list().clone();
         setup_focused_on_phase(&mut app, 0);
+        let theme = app.frontend.theme.clone();
+        let band = crate::sections::session_row_style::selected_row_style(&theme);
 
         // When rendering.
         let lines = build_render_lines(&list, &app);
 
-        // Then the active phase header has both streaming color AND REVERSED.
-        let has_both = lines.iter().any(|line| {
+        // Then the active, selected phase header carries the band — selection
+        // overrides the streaming color, which is the state signal only while
+        // the row is not selected.
+        let has_band = lines.iter().any(|line| {
             let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
-            text.contains("Research")
-                && line.spans.iter().any(|s| {
-                    s.style.fg == Some(app.frontend.theme.streaming)
-                        && s.style.add_modifier.contains(Modifier::REVERSED)
-                })
+            text.contains("Research") && line.style == band
         });
         assert!(
-            has_both,
-            "selected active phase header should have streaming color AND REVERSED modifier"
+            has_band,
+            "selected active phase header should wear the selection band"
         );
     }
 

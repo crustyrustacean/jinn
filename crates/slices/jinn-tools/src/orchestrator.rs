@@ -690,6 +690,19 @@ impl ToolOrchestratorActor {
             reg_type,
         );
 
+        // The session's filter gate, checked after `reg_type` so the tracing
+        // above still classifies the tool by how it is registered, and before
+        // the dispatch match so a withheld tool is refused rather than run.
+        //
+        // Enforcing here is the point: `find_registration` reads only the
+        // registry, so a tool absent from the prompt would still execute if
+        // the model named it. That is exactly the gap an allow-mode filter
+        // exists to close — the tool the user withheld must not be reachable
+        // by naming it directly.
+        if self.tool_withheld(&session_id, &tool_call.name) {
+            return self.reject_withheld_tool(session_id, tool_call).await;
+        }
+
         match self.find_registration(&session_id, &tool_call.name) {
             Some(ToolRegistration::Builtin {
                 execute,
@@ -708,6 +721,55 @@ impl ToolOrchestratorActor {
             }
             None => self.reject_unknown_tool(session_id, tool_call).await,
         }
+    }
+
+    /// Whether this session's tool filter withholds `tool_name`.
+    ///
+    /// The same predicate the prompt assembler consulted, read from live
+    /// session state rather than from the assembled inputs, so a filter
+    /// changed mid-turn takes effect on the next call.
+    ///
+    /// A session absent from state withholds nothing. It has no filter to
+    /// consult, and defaulting to "withheld" would refuse every tool for any
+    /// session that has not been inserted yet — which includes a call
+    /// dispatched for a session this actor has not seen. The unknown-tool
+    /// path is the honest answer for a session that does not exist.
+    fn tool_withheld(&self, session_id: &SessionId, tool_name: &str) -> bool {
+        let guard = self.state.read();
+        guard
+            .session
+            .get(session_id)
+            .is_some_and(|session| !session.is_tool_enabled(tool_name))
+    }
+
+    /// Publishes a failure for a tool this session's filter withholds.
+    ///
+    /// Deliberately not [`Self::reject_unknown_tool`]: the tool exists and is
+    /// registered, so reporting it as unknown would be false — and it would
+    /// mislead the model into guessing a different name rather than telling
+    /// it the tool is out of scope.
+    async fn reject_withheld_tool(
+        &self,
+        session_id: SessionId,
+        tool_call: ToolCall,
+    ) -> Option<tokio::task::JoinHandle<()>> {
+        let result = ToolResult {
+            tool_call_id: tool_call.id.clone(),
+            name: tool_call.name.clone(),
+            content: format!(
+                "tool '{}' is withheld by this session's filter; \
+                 it is not available, so do not retry it or look for an alias",
+                tool_call.name
+            ),
+            success: false,
+            full_content: None,
+            truncation: None,
+            pin_position: None,
+        };
+
+        self.publish(ToolExecutionCompleted { session_id, result })
+            .await;
+        None
     }
 
     /// Looks up a tool registration, preferring a session-scoped registration

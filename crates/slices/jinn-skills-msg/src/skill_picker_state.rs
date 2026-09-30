@@ -6,9 +6,8 @@
 //! opened, which lets ESC restore exactly the set of enabled skills that was
 //! in force before any toggles.
 
-use std::collections::HashSet;
-
 use crate::skill::SkillSource;
+use jinn_core_types::NameFilter;
 use jinn_picker::RowCtx;
 use jinn_slices::SlotKey;
 use jinn_theme::Theme;
@@ -27,16 +26,19 @@ pub fn skill_picker_slot() -> SlotKey {
 /// after opening the picker pages the same way it always has.
 pub const RESULTS_VIEWPORT_FALLBACK: usize = 20;
 
-/// The skill picker's complete state: what it shows, and the set it restores
-/// to on cancel.
+/// The skill picker's complete state: what it shows, and the filter it
+/// restores to on cancel.
 #[derive(Debug)]
 pub struct SkillPickerState {
     /// The selection/filter state backing the picker's rows.
     pub selection: jinn_selection_widget::SelectionState<jinn_picker::PickerEntry<SkillEntry>>,
-    /// The disabled-skill set captured when the picker opened, or `None`
-    /// before the first open. ESC restores it; confirm commits the toggled
-    /// set instead.
-    pub snapshot: Option<HashSet<String>>,
+    /// The session's skill filter as it was when the picker opened, or `None`
+    /// before the first open. ESC restores it whole, mode included; confirm
+    /// commits a deny filter over the toggled rows instead.
+    ///
+    /// Carried as the session's own `Option`, so an ESC restores an absent
+    /// filter back to absent rather than materializing one.
+    pub snapshot: Option<Option<NameFilter>>,
     /// The preview pane's scroll offset for the highlighted skill.
     ///
     /// Lives beside the selection because the preview follows the cursor:
@@ -76,7 +78,7 @@ impl Default for SkillPickerState {
 impl SkillPickerState {
     /// Clears the filter and preview scroll, ready for a fresh open.
     ///
-    /// The snapshot survives: it is the set ESC restores to, and a reopen
+    /// The snapshot survives: it is the filter ESC restores to, and a reopen
     /// re-captures it only once the user confirms.
     pub fn reset(&mut self) {
         self.selection.clear_filter();

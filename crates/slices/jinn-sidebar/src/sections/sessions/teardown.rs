@@ -1,7 +1,6 @@
 //! Session teardown handler.
 
 use crate::sections::sessions::close::validate_session_close;
-use crate::sections::sessions::state::sorted_open_sessions;
 use jinn_kernel::IntentResult;
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::session_lifecycle::intent::build_run_session_teardown;
@@ -15,7 +14,7 @@ use jinn_kernel::session_lifecycle::intent::build_run_session_teardown;
 ///
 /// # Panics
 ///
-/// Panics if `sessions_section.selected_index` is `None`.
+/// Does nothing if the sessions section has no cursor.
 pub fn handle_session_teardown(
     state: &mut AppState,
     config: &jinn_slices::ConfigLayer,
@@ -25,15 +24,12 @@ pub fn handle_session_teardown(
         return IntentResult::empty();
     }
 
-    let index = state
+    let Some(target_id) = state
         .frontend
-        .with_sections(|s| s.sessions.selected_index, || None)
-        .unwrap();
-    let sessions = sorted_open_sessions(state);
-    let Some(target) = sessions.get(index) else {
+        .with_sections(|s| s.sessions.selected_id.clone(), || None)
+    else {
         return IntentResult::empty();
     };
-    let target_id = target.id.clone();
 
     let Some(msg) = build_run_session_teardown(state, &target_id, config) else {
         return IntentResult::empty();

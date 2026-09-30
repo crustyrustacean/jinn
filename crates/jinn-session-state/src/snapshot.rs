@@ -7,7 +7,10 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
-use jinn_core_types::{ChatEntry, ChatEntryKind, SessionId, SessionProfile};
+use jinn_attendant_msg::{
+    AttendantBehavior, AttendantReport, AttendantTrigger, default_seed_template,
+};
+use jinn_core_types::{ChatEntry, ChatEntryKind, NameFilter, SessionId, SessionProfile};
 use jinn_session_lifecycle_msg::LifecycleScriptState;
 use jinn_session_msg::SessionOrigin;
 use jinn_session_store_msg::SessionState;
@@ -15,6 +18,7 @@ use jinn_token_count_msg::TokenRecord;
 use jinn_tools_msg::TaskList;
 
 use crate::core::SessionCore;
+use crate::fields::default_prep_mode;
 
 /// Monotonic in-process revision for one authoritative session capture.
 #[derive(
@@ -105,6 +109,25 @@ pub struct SessionSnapshotMetadata {
     /// Loaded/archived state, reconstructed from the sessions table.
     #[serde(skip, default)]
     pub session_state: SessionState,
+    /// What a run in an attendant sees of the conversation.
+    #[serde(default)]
+    pub behavior: AttendantBehavior,
+    /// Whether the attendant is still being composed.
+    ///
+    /// Absent means composing, the state `N` creates an attendant in: a
+    /// bool has no third value, so the default is the answer rather than a
+    /// sentinel standing in for one.
+    #[serde(default = "default_prep_mode")]
+    pub prep_mode: bool,
+    /// The condition that causes an automatic attendant re-run.
+    #[serde(default)]
+    pub trigger: AttendantTrigger,
+    /// User-editable seed text used to inject the prior report.
+    #[serde(default = "default_seed_template")]
+    pub seed_template: String,
+    /// The attendant's append-only report log.
+    #[serde(default)]
+    pub reports: Vec<AttendantReport>,
 }
 
 impl From<&SessionCore> for SessionSnapshotMetadata {
@@ -128,6 +151,11 @@ impl From<&SessionCore> for SessionSnapshotMetadata {
             enabled_mcp_servers: core.integrations.enabled_mcp_servers.clone(),
             persist: core.storage.persist,
             session_state: core.storage.session_state,
+            behavior: core.attendant.behavior,
+            prep_mode: core.attendant.prep_mode,
+            trigger: core.attendant.trigger,
+            seed_template: core.attendant.seed_template.clone(),
+            reports: core.attendant.reports.clone(),
         }
     }
 }
@@ -153,6 +181,11 @@ impl From<SessionSnapshotMetadata> for SessionCore {
         core.integrations.enabled_mcp_servers = metadata.enabled_mcp_servers;
         core.storage.persist = metadata.persist;
         core.storage.session_state = metadata.session_state;
+        core.attendant.behavior = metadata.behavior;
+        core.attendant.prep_mode = metadata.prep_mode;
+        core.attendant.trigger = metadata.trigger;
+        core.attendant.seed_template = metadata.seed_template;
+        core.attendant.reports = metadata.reports;
         core
     }
 }
@@ -191,10 +224,19 @@ impl SessionSnapshot {
         metadata.fork_ordinal = Some(at_ordinal);
         metadata.origin = SessionOrigin::Fork;
         metadata.session_state = SessionState::Loaded;
-        metadata
+        // A fork of a session with no tool filter still has to have the task
+        // tool permitted, and "no filter" cannot be edited in place: a
+        // subagent inheriting nothing needs its filter to name the task tool
+        // only in allow mode, or to withhold it in deny mode. So an absent
+        // filter is materialized as the filter an absence inherits before
+        // the one name is added to it.
+        let mut forked_filter = metadata
             .profile
-            .disabled_tools
-            .remove(jinn_tools_msg::TASK_TOOL_NAME);
+            .tool_filter
+            .clone()
+            .unwrap_or_else(NameFilter::inherited);
+        forked_filter.permit(jinn_tools_msg::TASK_TOOL_NAME);
+        metadata.profile.tool_filter = Some(forked_filter);
 
         Self {
             revision: SessionRevision::new(1),

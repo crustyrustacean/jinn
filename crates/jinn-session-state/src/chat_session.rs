@@ -13,6 +13,7 @@ use std::ops::Range;
 use std::sync::atomic::Ordering;
 
 use jiff::Timestamp;
+use jinn_attendant_msg::{AttendantBehavior, AttendantReport, AttendantTrigger};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
@@ -25,7 +26,7 @@ use jinn_context::{PromptTemplateStore, expand_tokens};
 use jinn_core_types::model_selection::ModelSelection;
 use jinn_core_types::{
     ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, EntryTiming,
-    HistoryMutation, PinPosition, SessionId, ToolResultStatus,
+    HistoryMutation, NameFilter, PinPosition, SessionId, ToolResultStatus,
 };
 use jinn_session_history::history_editor::{
     HistoryEditor, Priv, SessionHistoryAccess, SessionHistoryAccessPriv,
@@ -45,6 +46,16 @@ use crate::core::SessionCore;
 use crate::fields::SessionProfile;
 use crate::runtime::SessionUi;
 use crate::steering_buffer::SteeringBuffer;
+
+/// The one place an absent filter is answered at a gate.
+///
+/// An absent filter inherits, and an inherited filter withholds nothing, so
+/// the answer is the same as an empty deny filter's — but the decision is
+/// made here, from the field's `None`, rather than inside the filter, whose
+/// emptiness means nothing at all.
+fn permits_or_inherits(filter: Option<&NameFilter>, name: &str) -> bool {
+    filter.as_ref().is_none_or(|filter| filter.permits(name))
+}
 
 /// Error returned when a streaming operation fails.
 #[derive(Debug, wherror::Error)]
@@ -383,6 +394,150 @@ impl ChatSessionState {
                 jinn_chat_log_view_msg::ChatLogViewUi::default(),
             ),
         }
+    }
+
+    /// Create an attendant session: a peer that references a parent without
+    /// inheriting its conversation.
+    ///
+    /// Copies the parent's environment — profile, cwd, project, home, and
+    /// enabled MCP servers — and links via `parent_session`. History starts
+    /// empty and in prep mode, so the user can compose its instructions
+    /// before anything dispatches.
+    ///
+    /// Does not reuse [`new_child`](Self::new_child): that constructor
+    /// hard-codes the `Subagent` origin, and an attendant is a different
+    /// creation path.
+    #[must_use]
+    pub fn new_attendant(parent: &Self, persist: bool) -> Self {
+        {
+            let mut attendant = Self {
+                core: SessionCore::default(),
+                ui: SessionUi::default(),
+                slices: std::sync::OnceLock::new(),
+                view_fallback: parking_lot::RwLock::new(
+                    jinn_chat_log_view_msg::ChatLogViewUi::default(),
+                ),
+            };
+            let attendant_core = &mut attendant.core;
+            attendant_core.identity.parent_session = Some(parent.core.identity.session_id.clone());
+            attendant_core.identity.origin = SessionOrigin::Attendant;
+            attendant_core
+                .identity
+                .project
+                .clone_from(&parent.core.identity.project);
+            attendant_core.storage.persist = persist;
+            attendant_core.integrations.profile = parent.core.integrations.profile.clone();
+            attendant_core
+                .lifecycle
+                .cwd
+                .clone_from(&parent.core.lifecycle.cwd);
+            attendant_core
+                .lifecycle
+                .home
+                .clone_from(&parent.core.lifecycle.home);
+            attendant_core
+                .integrations
+                .enabled_mcp_servers
+                .clone_from(&parent.core.integrations.enabled_mcp_servers);
+            attendant
+        }
+    }
+
+    /// Whether this session is an attendant of another session.
+    #[must_use]
+    pub fn is_attendant(&self) -> bool {
+        self.core.identity.origin == SessionOrigin::Attendant
+    }
+
+    /// What a run in this session sees of the conversation.
+    #[must_use]
+    pub fn attendant_behavior(&self) -> AttendantBehavior {
+        self.core.attendant.behavior
+    }
+
+    /// Set what a run in this session sees of the conversation.
+    pub fn set_attendant_behavior(&mut self, behavior: AttendantBehavior) {
+        self.core.attendant.behavior = behavior;
+    }
+
+    /// Whether this attendant is still being composed.
+    ///
+    /// Composition is the only configuration that stops a dispatch, and it
+    /// says so on its own: a manual trigger stops a *fire*, not the user
+    /// pressing `R`, so conflating the two would mark a perfectly runnable
+    /// attendant as stopped. Everything else runs on its own terms.
+    ///
+    /// Only meaningful for an attendant — an ordinary session carries the
+    /// same default fields and would answer `true`.
+    #[must_use]
+    pub fn attendant_is_prepping(&self) -> bool {
+        self.core.attendant.prep_mode
+    }
+
+    /// Set whether this attendant is still being composed.
+    pub fn set_attendant_is_prepping(&mut self, prep_mode: bool) {
+        self.core.attendant.prep_mode = prep_mode;
+    }
+
+    /// Whether this attendant runs on its parent's completion.
+    ///
+    /// The sidebar marks this with its own glyph. It is a fact about the
+    /// configuration rather than a derived state, so it is asked of the
+    /// session rather than re-derived by each renderer — a marker whose
+    /// meaning is a few fields away is a marker the two surfaces can
+    /// disagree about.
+    #[must_use]
+    pub fn attendant_fires_on_parent_completion(&self) -> bool {
+        self.attendant_trigger() == AttendantTrigger::ParentCompleted
+    }
+
+    /// The condition that causes an automatic re-run.
+    #[must_use]
+    pub fn attendant_trigger(&self) -> AttendantTrigger {
+        self.core.attendant.trigger
+    }
+
+    /// Set the condition that causes an automatic re-run.
+    pub fn set_attendant_trigger(&mut self, trigger: AttendantTrigger) {
+        self.core.attendant.trigger = trigger;
+    }
+
+    /// The user-editable seed text injected ahead of the prior report.
+    #[must_use]
+    pub fn seed_template(&self) -> &str {
+        &self.core.attendant.seed_template
+    }
+
+    /// Set the user-editable seed text injected ahead of the prior report.
+    pub fn set_seed_template(&mut self, template: String) {
+        self.core.attendant.seed_template = template;
+    }
+
+    /// The attendant's append-only report log, oldest first.
+    #[must_use]
+    pub fn attendant_reports(&self) -> &[AttendantReport] {
+        &self.core.attendant.reports
+    }
+
+    /// Append one report to this attendant's log.
+    ///
+    /// Append-only by design: the harness never removes or edits a report,
+    /// and the next run is seeded from the most recent entry.
+    pub fn append_attendant_report(&mut self, body: String) -> AttendantReport {
+        let reports = &mut self.core.attendant.reports;
+        let report = AttendantReport {
+            run: reports.len() + 1,
+            published_at: Timestamp::now(),
+            body,
+        };
+        reports.push(report.clone());
+        report
+    }
+
+    /// The most recent report, if this attendant has ever reported.
+    #[must_use]
+    pub fn latest_attendant_report(&self) -> Option<&AttendantReport> {
+        self.core.attendant.reports.last()
     }
 
     /// Immutable access to this session's steering buffer.
@@ -1506,32 +1661,43 @@ impl ChatSessionState {
         self.core.integrations.profile.model = model;
     }
 
-    /// Whether a tool is enabled for this session.
+    /// Whether this session may use the tool called `tool_name`.
     ///
-    /// Returns `true` if the tool name is not in the disabled set.
-    /// An empty disabled set means all tools are enabled.
+    /// One predicate for the tool gate, called by both the prompt assembler
+    /// and the tool dispatcher. Deciding at separate call sites is what let
+    /// the picker list tools the prompt hid, and — worse — what let a tool
+    /// absent from the prompt run anyway when the model named it directly.
+    ///
+    /// This gate is independent of the provider gate (`ToolDefinition::
+    /// available_for_provider`), which needs the provider name and stays
+    /// where it is. An attendant's filter composes as filter ∧ provider ∧
+    /// the attendant-only gate.
     #[must_use]
     pub fn is_tool_enabled(&self, tool_name: &str) -> bool {
-        !self
-            .core
-            .integrations
-            .profile
-            .disabled_tools
-            .contains(tool_name)
+        permits_or_inherits(
+            self.core.integrations.profile.tool_filter.as_ref(),
+            tool_name,
+        )
     }
 
-    /// Read-only access to this session's disabled tool names.
+    /// Read-only access to this session's tool filter.
     ///
-    /// Opt-out model: tools not in this set are enabled.
-    pub fn disabled_tools(&self) -> &HashSet<String> {
-        &self.core.integrations.profile.disabled_tools
+    /// `None` means the session has no tool filter and inherits whatever it
+    /// would have had. Callers that only need to answer a gate read
+    /// [`Self::is_tool_enabled`] instead; this one is for the callers that
+    /// seed a picker or hand the filter on.
+    #[must_use]
+    pub fn tool_filter(&self) -> Option<&NameFilter> {
+        self.core.integrations.profile.tool_filter.as_ref()
     }
 
-    /// Replace the disabled tool set for this session.
+    /// Replace the tool filter for this session.
     ///
-    /// Used by the tool picker to commit toggle state.
-    pub fn set_disabled_tools(&mut self, tools: HashSet<String>) {
-        self.core.integrations.profile.disabled_tools = tools;
+    /// `None` releases it, sending the session back to inheriting. Used by
+    /// the tool picker to commit toggle state and by the attendant panel to
+    /// thaw a frozen set.
+    pub fn set_tool_filter(&mut self, filter: Option<NameFilter>) {
+        self.core.integrations.profile.tool_filter = filter;
     }
 
     /// Read-only access to this session's enabled MCP server names.
@@ -1574,32 +1740,37 @@ impl ChatSessionState {
         self.core.integrations.enabled_mcp_servers = servers;
     }
 
-    /// Returns `true` if the skill is enabled for this session.
+    /// Whether this session may load the skill called `skill_name`.
     ///
-    /// An empty disabled set means all skills are enabled.
+    /// The skill counterpart of [`Self::is_tool_enabled`], sharing its one
+    /// predicate so the prompt assembler and the `skill` tool's refusal
+    /// path cannot disagree about what the session can load.
     #[must_use]
     pub fn is_skill_enabled(&self, skill_name: &str) -> bool {
-        !self
-            .core
-            .integrations
-            .profile
-            .disabled_skills
-            .contains(skill_name)
+        permits_or_inherits(
+            self.core.integrations.profile.skill_filter.as_ref(),
+            skill_name,
+        )
     }
 
-    /// Read-only access to this session's disabled skill names.
+    /// Read-only access to this session's skill filter.
     ///
-    /// Opt-out model: skills not in this set are enabled.
-    pub fn disabled_skills(&self) -> &HashSet<String> {
-        &self.core.integrations.profile.disabled_skills
+    /// `None` means the session has no skill filter and inherits whatever it
+    /// would have had; see [`Self::tool_filter`].
+    #[must_use]
+    pub fn skill_filter(&self) -> Option<&NameFilter> {
+        self.core.integrations.profile.skill_filter.as_ref()
     }
 
-    /// Replace the disabled skill set for this session.
+    /// Replace the skill filter for this session.
     ///
-    /// Used by the skill picker to commit toggle state.
-    pub fn set_disabled_skills(&mut self, skills: HashSet<String>) {
-        self.core.integrations.profile.disabled_skills = skills;
+    /// `None` releases it, sending the session back to inheriting. Used by
+    /// the skill picker to commit toggle state and by the attendant panel to
+    /// thaw a frozen set.
+    pub fn set_skill_filter(&mut self, filter: Option<NameFilter>) {
+        self.core.integrations.profile.skill_filter = filter;
     }
+
     /// Compute the set of skill names that are currently loaded in this session.
     ///
     /// A skill is considered loaded if its body is present in history as a pinned
@@ -2891,6 +3062,14 @@ impl ChatSessionState {
         self.core.identity.fork_ordinal = Some(ordinal);
     }
 
+    /// Set the session origin for construction paths that decide the kind
+    /// after building the session (forks built from snapshots, test
+    /// fixtures). Construction paths that know the kind up front use a
+    /// dedicated constructor (`new_child`, `new_attendant`) instead.
+    pub fn set_origin(&mut self, origin: SessionOrigin) {
+        self.core.identity.origin = origin;
+    }
+
     /// Set the parent session.
     pub fn set_parent_session(&mut self, parent: SessionId) {
         self.core.identity.parent_session = Some(parent);
@@ -3219,6 +3398,26 @@ impl ChatSessionState {
     #[must_use]
     pub fn has_buffered_tool_results(&self) -> bool {
         self.core.ephemeral.pending_tool_batch.is_some()
+    }
+
+    /// Marks this session's current turn as started by automation.
+    ///
+    /// While set, a `TurnCompleted` for this session does not fire its own
+    /// attendants — the suppression that keeps a notify loop from spinning
+    /// unattended.
+    pub fn mark_turn_automated(&mut self) {
+        self.core.ephemeral.turn_started_automatically = true;
+    }
+
+    /// Whether this session's current turn was started by automation.
+    #[must_use]
+    pub fn is_turn_automated(&self) -> bool {
+        self.core.ephemeral.turn_started_automatically
+    }
+
+    /// Clears the automation marker once the turn's outcome is published.
+    pub fn clear_turn_automated(&mut self) {
+        self.core.ephemeral.turn_started_automatically = false;
     }
 
     /// Return the number of deferred history-mutation batches.

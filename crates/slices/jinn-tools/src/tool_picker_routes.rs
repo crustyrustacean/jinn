@@ -35,6 +35,7 @@
 
 use std::sync::Arc;
 
+use jinn_core_types::NameFilter;
 use jinn_slices::KeyRoutes;
 use jinn_slices::RouteId;
 use jinn_slices::RouteResult as IntentResult;
@@ -45,6 +46,7 @@ use jinn_slices::route::{
 use jinn_tools_msg::{ToolPickerState, tool_picker_scope};
 
 use crate::tool_picker_actions::{self, ToolRow};
+use jinn_attendant_msg::is_attendant_tool_definition;
 
 /// The picker's cell — the single home for everything it shows.
 type ToolPickerCell = TypedCell<ToolPickerState>;
@@ -264,7 +266,7 @@ fn open_tool_picker(ctx: &mut ActionCtx<'_>, cell: &ToolPickerCell) -> IntentRes
 
     let seed = seed_from_session(state);
     cell.update(|picker| {
-        tool_picker_actions::open(picker, &seed.rows, &seed.disabled, &seed.theme)
+        tool_picker_actions::open(picker, &seed.rows, seed.tool_filter.as_ref(), &seed.theme)
     });
 
     state
@@ -277,8 +279,9 @@ fn open_tool_picker(ctx: &mut ActionCtx<'_>, cell: &ToolPickerCell) -> IntentRes
 struct Seed {
     /// The tools available for the session, in display order.
     rows: Vec<ToolRow>,
-    /// The session's live disabled set, snapshotted so escape can restore it.
-    disabled: std::collections::HashSet<String>,
+    /// The session's live tool filter, snapshotted so escape can restore it
+    /// mode and all. `None` means the session has no filter at all.
+    tool_filter: Option<NameFilter>,
     /// The active theme, so the rows render with the right colors.
     theme: jinn_theme::Theme,
 }
@@ -291,11 +294,22 @@ struct Seed {
 /// session with no tool context offers nothing rather than panicking.
 fn seed_from_session(state: &jinn_kernel::AppState) -> Seed {
     let active_session = state.active_session();
-    let disabled = active_session.disabled_tools().clone();
     let provider_name = active_session.model_selection().provider_name().to_owned();
     let session_id = state.session.active_session_id().clone();
     let theme = state.frontend.theme.clone();
 
+    // Two filters, both "may this session use this tool": the provider
+    // gate for server tools, and the attendant gate for the tools that
+    // only exist inside an attendant. A row the session cannot use is not
+    // something to toggle — offering it invites a toggle that changes
+    // nothing, and its absence in the prompt while it sits in this list is
+    // exactly the disagreement this filter exists to prevent.
+    //
+    // The attendant gate is a subtraction, never a substitution: an
+    // attendant keeps every ordinary tool and gains its own two. Filtering
+    // *to* the attendant tools instead would leave one that cannot read,
+    // search or edit anything.
+    let is_attendant = active_session.is_attendant();
     let mut rows: Vec<ToolRow> = state
         .tool_registry()
         .map(|registry| {
@@ -304,6 +318,7 @@ fn seed_from_session(state: &jinn_kernel::AppState) -> Seed {
                 .tools_for_session(&session_id)
                 .into_iter()
                 .filter(|def| def.available_for_provider(&provider_name))
+                .filter(|def| is_attendant || !is_attendant_tool_definition(def))
                 .map(|def| ToolRow {
                     name: def.name,
                     description: def.description,
@@ -315,14 +330,14 @@ fn seed_from_session(state: &jinn_kernel::AppState) -> Seed {
 
     Seed {
         rows,
-        disabled,
+        tool_filter: active_session.tool_filter().cloned(),
         theme,
     }
 }
 
-/// Enter: commit the toggled set as the session's disabled tools and close.
+/// Enter: commit the toggled rows as a deny filter and close.
 ///
-/// This is the *only* place the session's disabled set is written. Toggling
+/// This is the *only* place the session's tool filter is written. Toggling
 /// edits the cell's rows; nothing reaches the live profile until the user says
 /// so.
 fn confirm_tool_picker(ctx: &mut ActionCtx<'_>, cell: &ToolPickerCell) -> IntentResult {
@@ -333,22 +348,32 @@ fn confirm_tool_picker(ctx: &mut ActionCtx<'_>, cell: &ToolPickerCell) -> Intent
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    state.active_session_mut().set_disabled_tools(disabled);
+    // The picker is a blocklist editor by construction, so it commits a
+    // deny filter — a commit from a session holding an allow filter narrows
+    // it to that mode's withheld names. Making the picker mode-aware is
+    // deliberately out of scope; until it is, treat committing the picker as
+    // a decision to manage tools by blocklist.
+    state
+        .active_session_mut()
+        .set_tool_filter(Some(NameFilter::deny(disabled)));
     IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(tool_picker_scope()))
 }
 
-/// Escape: restore the snapshotted disabled set and close.
+/// Escape: restore the snapshotted filter and close.
 ///
 /// The revert path, never the confirm path. Confirm clears the snapshot, so
-/// after a commit there is nothing here left to restore.
+/// after a commit there is nothing here left to restore. What is restored is
+/// the snapshot *filter*, not its withheld names: escape must put back the
+/// filter the session had, including its mode, or it would silently demote
+/// an allow-mode session to a blocklist.
 fn cancel_tool_picker(ctx: &mut ActionCtx<'_>, cell: &ToolPickerCell) -> IntentResult {
     let mut restored = None;
-    cell.update(|picker| restored = tool_picker_actions::cancel(picker));
+    cell.update(|picker| restored = tool_picker_actions::cancel_filter(picker));
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
     };
-    if let Some(disabled) = restored {
-        state.active_session_mut().set_disabled_tools(disabled);
+    if let Some(filter) = restored {
+        state.active_session_mut().set_tool_filter(filter);
     }
     IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(tool_picker_scope()))
 }
@@ -383,4 +408,120 @@ fn clear_filter_or_leave(ctx: &mut ActionCtx<'_>, cell: &ToolPickerCell) -> Inte
         return cancel_tool_picker(ctx, cell);
     }
     IntentResult::empty()
+}
+
+#[cfg(test)]
+mod attendant_tool_picker_tests {
+    #![allow(clippy::expect_used, clippy::unwrap_used, reason = "test module")]
+
+    use super::*;
+    use jinn_attendant_msg::ATTENDANT_TOOL_NAMES;
+    use jinn_core_types::tool_types::ToolDefinition;
+    use jinn_kernel::common::app_state::AppState;
+    use jinn_kernel::common::state::State;
+    use jinn_session_state::ChatSessionState;
+
+    /// Ordinary built-ins every session keeps, attendant or not.
+    const ORDINARY_TOOL_NAMES: &[&str] = &["read", "bash", "grep"];
+
+    #[rstest::rstest]
+    fn an_ordinary_session_is_offered_no_attendant_tool_row() {
+        // Given a plain user session with the built-ins registered.
+        let state = state_with_session(ChatSessionState::new());
+
+        // When the picker seeds its rows.
+        let names = row_names(&state);
+
+        // Then no attendant tool is listed. A row the session cannot use
+        // is a toggle that changes nothing, and the prompt already omits
+        // these — a list that shows what the prompt hides reads as a bug
+        // in one of the two.
+        for name in ATTENDANT_TOOL_NAMES {
+            assert!(
+                !names.iter().any(|n| n == name),
+                "{name} must not appear in the picker for a non-attendant"
+            );
+        }
+        for name in ORDINARY_TOOL_NAMES {
+            assert!(names.iter().any(|n| n == name), "{name} must remain");
+        }
+    }
+
+    #[rstest::rstest]
+    fn an_attendant_is_offered_its_own_tool_rows() {
+        // Given an attendant session.
+        let parent = ChatSessionState::new();
+        let state = state_with_session(ChatSessionState::new_attendant(&parent, true));
+
+        // When the picker seeds its rows.
+        let names = row_names(&state);
+
+        // Then both attendant tools are listed — an attendant that cannot
+        // toggle its own tools is as broken as one that cannot call them.
+        for name in ATTENDANT_TOOL_NAMES {
+            assert!(
+                names.iter().any(|n| n == name),
+                "{name} must appear in the picker for an attendant"
+            );
+        }
+        // And the ordinary tools are still there. The attendant filter is a
+        // subtraction from a full list, not a substitution for one: an
+        // attendant reads, greps and writes like any other session, and
+        // whittling its list down to just its own two tools starves it of
+        // the work it exists to do.
+        for name in ORDINARY_TOOL_NAMES {
+            assert!(
+                names.iter().any(|n| n == name),
+                "{name} must remain available to an attendant"
+            );
+        }
+    }
+
+    /// A state whose active session is `session`, with the attendant
+    /// built-ins and one ordinary tool registered.
+    fn state_with_session(session: ChatSessionState) -> State {
+        let state = State::new(AppState::default_with_scope_focus());
+        let session_id = session.session_id().clone();
+        {
+            let mut guard = state.write();
+            guard.session.insert(session);
+            // The picker seeds from the *active* session, so a fixture that
+            // inserts without activating tests the default session instead
+            // of the one it meant to build.
+            guard.session.set_active(session_id.clone());
+            let cell = guard.tool_registry().expect("registry cell attached");
+            cell.update(|r| {
+                for name in ATTENDANT_TOOL_NAMES
+                    .iter()
+                    .chain(ORDINARY_TOOL_NAMES.iter())
+                    .copied()
+                {
+                    r.global.insert(name.to_owned(), tool(name));
+                }
+            });
+        }
+        state
+    }
+
+    /// The tool names the picker's rows would carry for the active session.
+    fn row_names(state: &State) -> Vec<String> {
+        let guard = state.read();
+        seed_from_session(&guard)
+            .rows
+            .into_iter()
+            .map(|r| r.name)
+            .collect()
+    }
+
+    /// A minimal tool definition under `name`.
+    fn tool(name: &str) -> ToolDefinition {
+        ToolDefinition {
+            name: name.to_owned(),
+            description: String::new(),
+            parameters: serde_json::json!({ "type": "object" }),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+            server_tool_type: None,
+        }
+    }
 }

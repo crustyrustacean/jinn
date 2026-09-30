@@ -84,6 +84,11 @@ impl TuiAppBuilder {
             bridge: services.bridge.clone(),
         };
 
+        // The in-flight subagent registry: the same handle `Services`
+        // carries, so the confirmed-cancel cascade reads what the `task`
+        // tool writes (production wiring mirrors this in actor_wiring).
+        core.state.write().task_spawns = services.task_spawns.clone();
+
         // The same element list the app runs with, so a test app draws
         // every element a real app draws. The chat input box is fetched
         // with `if let Some(..)`, so a missing registration would fail

@@ -172,6 +172,8 @@ mod style_map_integration_tests {
     #![allow(clippy::expect_used, reason = "test assertions")]
     use ratatui::style::Style;
 
+    use crate::theme::ThemeFile;
+
     #[rstest::rstest]
     #[test]
     fn style_map_returns_entry_for_every_theme_field() {
@@ -179,8 +181,25 @@ mod style_map_integration_tests {
         let theme = crate::default_theme();
         // When building the style map.
         let map = theme.style_map();
-        // Then it has one entry per Theme field.
-        assert_eq!(map.len(), 47, "style_map should cover all Theme fields");
+        // Then it has one entry per Theme field. The expected count is read
+        // off the theme file rather than written as a literal, because a
+        // literal made a newly added key fail here as "52 != 51" — naming
+        // neither the key nor the map, and asking the next person to count
+        // a struct by hand. `ThemeFile` and `Theme` are maintained in step
+        // by the two tests either side of this one, so comparing the three
+        // sizes is exactly the "did you update all of them?" question.
+        let file: ThemeFile = toml::from_str(crate::default_theme::DEFAULT_TOML)
+            .expect("the embedded default theme parses");
+        let field_count = toml::Value::try_from(&file)
+            .expect("the theme file serializes")
+            .as_table()
+            .expect("a theme file is a table")
+            .len();
+        assert_eq!(
+            map.len(),
+            field_count,
+            "style_map must cover every field the theme file exposes"
+        );
     }
 
     #[rstest::rstest]
@@ -276,4 +295,38 @@ mod in_flight_tint_tests {
             "in_flight_fg should already be legible against in_flight_bg"
         );
     }
+}
+
+#[rstest::rstest]
+fn the_attendant_fg_is_hot_pink() {
+    // Given the default theme.
+
+    // When reading the color that marks attendant sessions.
+    let attendant_fg = crate::default_theme().attendant_fg;
+
+    // Then it is hot pink — the one named color with enough distance from
+    // subagent purple to be told apart at a glance.
+    assert_eq!(attendant_fg, Color::Rgb(255, 105, 180));
+}
+
+#[rstest::rstest]
+fn the_attendant_color_is_not_confusable_with_subagent_purple() {
+    // Given the default theme's two session-kind markers.
+    let theme = crate::default_theme();
+    let to_rgb = |c: Color| match c {
+        Color::Rgb(r, g, b) => (u32::from(r), u32::from(g), u32::from(b)),
+        other => panic!("expected an RGB color, got {other:?}"),
+    };
+    let (r1, g1, b1) = to_rgb(theme.attendant_fg);
+    let (r2, g2, b2) = to_rgb(theme.subagent_fg);
+
+    // When measuring how far apart they sit.
+    let distance_sq = r1.abs_diff(r2).pow(2) + g1.abs_diff(g2).pow(2) + b1.abs_diff(b2).pow(2);
+
+    // Then they are far apart — well clear of the 1500 legibility gate that
+    // let the previous dusty rose pass while still reading as purple.
+    assert!(
+        distance_sq >= 10_000,
+        "attendant_fg sits only d²={distance_sq} from subagent_fg, close enough to read as the same color"
+    );
 }

@@ -92,7 +92,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             return failure_result(&call, "skill name must not be empty");
         }
 
-        // Reject disabled skills.
+        // Reject skills the session's filter withholds.
         if let (Some(state), Some(session_id)) = (ctx.state.as_ref(), &ctx.session_id) {
             let guard = state.read();
             if let Some(session) = guard.session.get(session_id)
@@ -100,8 +100,13 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             {
                 return failure_result(
                     &call,
+                    // The message names the filter, not the picker: under an
+                    // allow-mode filter there is no per-skill toggle to flip,
+                    // so telling the model to open the picker would send it to
+                    // a control that cannot change this outcome.
                     format!(
-                        "skill '{name}' is disabled for this session. Use <leader>sk to re-enable it."
+                        "skill '{name}' is withheld by this session's filter; \
+                         it is not available, so do not retry it or look for an alias"
                     ),
                 );
             }
@@ -183,7 +188,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use jinn_core_types::SessionId;
+    use jinn_core_types::{NameFilter, SessionId};
     use jinn_kernel::common::app_state::AppState;
     use jinn_kernel::common::state::State;
     use std::path::PathBuf;
@@ -529,19 +534,18 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn execute_returns_error_for_disabled_skill() {
+    async fn execute_returns_error_for_a_withheld_skill() {
         use jinn_core_types::SessionId;
         use jinn_kernel::common::app_state::AppState;
         use jinn_kernel::common::state::State;
-        use std::collections::HashSet;
 
-        // Given a session with "web-coder" disabled.
+        // Given a session whose filter withholds "web-coder".
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         {
             let mut guard = state.write();
             let session = guard.session_mut_or_create(&session_id);
-            session.set_disabled_skills(HashSet::from(["web-coder".to_owned()]));
+            session.set_skill_filter(Some(NameFilter::deny(["web-coder".to_owned()])));
         }
 
         let call = ToolCall {
@@ -573,8 +577,72 @@ mod tests {
         // When executing.
         let result = execute(call, ctx).await;
 
-        // Then the result indicates failure due to disabled skill.
+        // Then the result fails, and says the filter withheld it.
         assert!(!result.success);
-        assert!(result.content.contains("disabled for this session"));
+        assert!(
+            result.content.contains("withheld"),
+            "the refusal must name the filter as the reason; got: {:?}",
+            result.content
+        );
+    }
+
+    /// A message pointing at the skill picker would be wrong under an
+    /// allow-mode filter: there is no per-skill toggle there that could change
+    /// this outcome, so the model would be sent to a control that cannot help.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn an_allow_filter_refusal_does_not_point_at_the_skill_picker() {
+        use jinn_core_types::SessionId;
+        use jinn_kernel::common::app_state::AppState;
+        use jinn_kernel::common::state::State;
+
+        // Given a session permitted one skill, not this one.
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+        {
+            let mut guard = state.write();
+            guard
+                .session_mut_or_create(&session_id)
+                .set_skill_filter(Some(NameFilter {
+                    mode: jinn_core_types::FilterMode::Allow,
+                    names: ["scream".to_owned()].into_iter().collect(),
+                }));
+        }
+
+        let call = ToolCall {
+            id: "call_1".to_owned(),
+            name: "skill".to_owned(),
+            arguments: serde_json::json!({"name": "web-coder"}).to_string(),
+        };
+
+        let ctx = ToolContext {
+            cwd: PathBuf::from("/tmp"),
+            command_policy: jinn_tools_msg::CompiledCommandPolicy::default(),
+            config: jinn_config::testutil::config_layer(""),
+            timeout: None,
+            state: Some(state),
+            session_id: Some(session_id),
+            app_paths: jinn_kernel::common::app_paths::AppPaths::default(),
+            bus: None,
+            max_output_lines: None,
+            max_output_bytes: None,
+            dispatched_at: jiff::Timestamp::now(),
+            mcp_coordinator: None,
+            interactive_term: None,
+            task_spawns: None,
+            session_store: None,
+            trouper_system: None,
+        };
+
+        // When executing.
+        let result = execute(call, ctx).await;
+
+        // Then the load is refused, and the message names no picker.
+        assert!(!result.success);
+        assert!(
+            !result.content.contains("<leader>sk"),
+            "an allow-mode refusal must not send the model to the picker; got: {:?}",
+            result.content
+        );
     }
 }

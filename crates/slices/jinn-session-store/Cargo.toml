@@ -19,9 +19,11 @@ jinn-provider = { workspace = true }
 jinn-provider-config = { workspace = true }
 jinn-common = { workspace = true }
 jinn-session-schema = { workspace = true }
+jinn-session-list = { workspace = true }
 jinn-session-msg = { workspace = true }
 jinn-session-state = { workspace = true }
 jinn-session-store-msg = { workspace = true }
+jinn-attendant-msg = { workspace = true }
 jinn-chat-input-msg = { workspace = true }
 jinn-chat-log-view-msg = { workspace = true }
 jinn-token-count-msg = { workspace = true }

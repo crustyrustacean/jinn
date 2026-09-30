@@ -1,6 +1,6 @@
 //! Teardown command handling and the pre-archive tree guard.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::HashMap;
 
 use jinn_core_types::SessionId;
 use jinn_kernel::common::actor_deps::BusPublish;
@@ -52,6 +52,7 @@ impl SessionLifecycleActor {
                 self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
                     entry: teardown_success_msg(),
+                    pin: None,
                 })
                 .await;
                 self.publish(SessionTeardownFinished {
@@ -109,6 +110,7 @@ impl SessionLifecycleActor {
                 self.publish(PushChatEntry {
                     session_id: payload.root.clone(),
                     entry: teardown_success_msg(),
+                    pin: None,
                 })
                 .await;
                 self.publish(SessionTeardownFinished {
@@ -187,6 +189,7 @@ impl SessionLifecycleActor {
             self.publish(PushChatEntry {
                 session_id: session_id.clone(),
                 entry: jinn_core_types::ChatEntry::error(&error),
+                pin: None,
             })
             .await;
             return false;
@@ -216,6 +219,7 @@ impl SessionLifecycleActor {
             self.publish(PushChatEntry {
                 session_id: session_id.clone(),
                 entry: jinn_core_types::ChatEntry::error(&error),
+                pin: None,
             })
             .await;
             false
@@ -294,7 +298,7 @@ impl SessionLifecycleActor {
                 );
             }
         }
-        build_closure(root, &parent_of)
+        jinn_session_list::descendant_closure(root, &parent_of)
     }
 
     fn parent_links_from_memory(&self) -> HashMap<SessionId, Option<SessionId>> {
@@ -305,33 +309,4 @@ impl SessionLifecycleActor {
             .map(|(id, session)| (id.clone(), session.parent_session().clone()))
             .collect()
     }
-}
-
-fn build_closure(
-    root: &SessionId,
-    parent_of: &HashMap<SessionId, Option<SessionId>>,
-) -> Vec<SessionId> {
-    let mut children_of: HashMap<SessionId, Vec<SessionId>> = HashMap::new();
-    for (id, parent) in parent_of {
-        if let Some(parent_id) = parent {
-            children_of
-                .entry(parent_id.clone())
-                .or_default()
-                .push(id.clone());
-        }
-    }
-
-    let mut closure = Vec::new();
-    let mut visited = HashSet::new();
-    let mut queue = VecDeque::from([root.clone()]);
-    while let Some(id) = queue.pop_front() {
-        if !visited.insert(id.clone()) {
-            continue;
-        }
-        closure.push(id.clone());
-        if let Some(children) = children_of.get(&id) {
-            queue.extend(children.iter().cloned());
-        }
-    }
-    closure
 }

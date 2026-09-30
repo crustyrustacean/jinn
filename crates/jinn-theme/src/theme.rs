@@ -32,6 +32,21 @@ pub struct Theme {
     /// sessions apart from user-initiated ones.
     pub subagent_fg: Color,
     pub subagent_bg: Color,
+    /// Attendant session rows in the session tree — distinct from the error
+    /// colour and from the subagent pair.
+    pub attendant_fg: Color,
+    /// Marker for an attendant that will not dispatch on this run.
+    ///
+    /// Carries the streaming color's meaning — a session with no messages
+    /// moving through it — without sharing the key, because a session can
+    /// be both a stream's target and paused on its own row.
+    pub attendant_paused: Color,
+    /// Marker for an attendant that runs on its parent's completion, with
+    /// no one asking. Defaulted to the attendant's own pink: the glyph
+    /// marks the same rows `attendant_fg` already marks, and saying so
+    /// with a second pink would be noise.
+    pub attendant_parent_trigger: Color,
+    pub attendant_bg: Color,
     /// Error text color.
     pub error_text: Color,
     /// Dormant-but-healthy state color (a passivated actor in the
@@ -115,6 +130,12 @@ pub struct Theme {
     /// Stale data age color.
     pub age_stale: Color,
 
+    // Attendant properties popup
+    /// The selected choice in an attendant properties row. Mirrors
+    /// `age_fresh` by default but is an independent key, so the two can
+    /// diverge without a theme-file breaking change.
+    pub attendant_option_active: Color,
+
     // Scroll indicator
     /// Scroll indicator background.
     pub scroll_indicator_bg: Color,
@@ -149,99 +170,72 @@ impl Theme {
     /// This is the single source of truth for the badge style vocabulary.
     #[must_use]
     pub fn style_map(&self) -> HashMap<&'static str, Style> {
+        /// One `m.insert` per theme field, `fg` by default.
+        macro_rules! insert_style {
+            ($m:ident, fg: { $($name:literal => $field:ident),* $(,)? }
+                    bg: { $($bname:literal => $bfield:ident),* $(,)? }) => {
+                $( $m.insert($name, Style::default().fg(self.$field)); )*
+                $( $m.insert($bname, Style::default().bg(self.$bfield)); )*
+            };
+        }
         let mut m = HashMap::new();
-        m.insert("focus_accent", Style::default().fg(self.focus_accent));
-        m.insert(
-            "border_unfocused",
-            Style::default().fg(self.border_unfocused),
-        );
-        m.insert("popup_title", Style::default().fg(self.popup_title));
-        m.insert("primary_text", Style::default().fg(self.primary_text));
-        m.insert("muted_text", Style::default().fg(self.muted_text));
-        m.insert("subagent_fg", Style::default().fg(self.subagent_fg));
-        m.insert("subagent_bg", Style::default().bg(self.subagent_bg));
-        m.insert("error_text", Style::default().fg(self.error_text));
-        m.insert("dormant_fg", Style::default().fg(self.dormant_fg));
-        m.insert("success", Style::default().fg(self.success));
-        m.insert("warning", Style::default().fg(self.warning));
-        m.insert("streaming", Style::default().fg(self.streaming));
-        m.insert("gutter_bg", Style::default().fg(self.gutter_bg));
-        m.insert(
-            "gutter_context_included",
-            Style::default().fg(self.gutter_context_included),
-        );
-        m.insert("user_block_bg", Style::default().fg(self.user_block_bg));
-        m.insert("tool_fg", Style::default().fg(self.tool_fg));
-        m.insert("tool_success_bg", Style::default().fg(self.tool_success_bg));
-        m.insert("tool_failure_bg", Style::default().fg(self.tool_failure_bg));
-        m.insert("tool_pending_bg", Style::default().fg(self.tool_pending_bg));
-        m.insert(
-            "challenge_alert_bg",
-            Style::default().fg(self.challenge_alert_bg),
-        );
-        m.insert(
-            "challenge_alert_fg",
-            Style::default().fg(self.challenge_alert_fg),
-        );
-        m.insert(
-            "compaction_block_bg",
-            Style::default().fg(self.compaction_block_bg),
-        );
-        m.insert(
-            "sources_header_bg",
-            Style::default().fg(self.sources_header_bg),
-        );
-        m.insert(
-            "sources_header_fg",
-            Style::default().fg(self.sources_header_fg),
-        );
-        m.insert("truncation_fg", Style::default().fg(self.truncation_fg));
-        m.insert(
-            "picker_active_marker",
-            Style::default().fg(self.picker_active_marker),
-        );
-        m.insert(
-            "picker_selected_bg",
-            Style::default().fg(self.picker_selected_bg),
-        );
-        m.insert(
-            "picker_highlight_bg",
-            Style::default().fg(self.picker_highlight_bg),
-        );
-        m.insert("tab_active_fg", Style::default().fg(self.tab_active_fg));
-        m.insert("tab_active_bg", Style::default().fg(self.tab_active_bg));
-        m.insert("tab_inactive_fg", Style::default().fg(self.tab_inactive_fg));
-        m.insert("selection_fg", Style::default().fg(self.selection_fg));
-        m.insert("selection_bg", Style::default().fg(self.selection_bg));
-        m.insert("in_flight_bg", Style::default().fg(self.in_flight_bg));
-        m.insert("in_flight_fg", Style::default().fg(self.in_flight_fg));
-        m.insert("accent_action", Style::default().fg(self.accent_action));
-        m.insert("age_fresh", Style::default().fg(self.age_fresh));
-        m.insert("age_stale", Style::default().fg(self.age_stale));
-        m.insert(
-            "scroll_indicator_bg",
-            Style::default().fg(self.scroll_indicator_bg),
-        );
-        m.insert(
-            "sidebar_resize_accent",
-            Style::default().fg(self.sidebar_resize_accent),
-        );
-        m.insert(
-            "input_mode_queue",
-            Style::default().fg(self.input_mode_queue),
-        );
-        m.insert(
-            "input_mode_steer",
-            Style::default().fg(self.input_mode_steer),
-        );
-        m.insert("infopopup_bg", Style::default().fg(self.infopopup_bg));
-        m.insert("infopopup_title", Style::default().fg(self.infopopup_title));
-        m.insert(
-            "infopopup_border",
-            Style::default().fg(self.infopopup_border),
-        );
-        m.insert("infopopup_fg", Style::default().fg(self.infopopup_fg));
-        m.insert("quake_bar_bg", Style::default().bg(self.quake_bar_bg));
+        insert_style! {
+            m, fg: {
+            "focus_accent" => focus_accent,
+            "border_unfocused" => border_unfocused,
+            "popup_title" => popup_title,
+            "primary_text" => primary_text,
+            "muted_text" => muted_text,
+            "subagent_fg" => subagent_fg,
+            "attendant_fg" => attendant_fg,
+            "attendant_paused" => attendant_paused,
+            "attendant_parent_trigger" => attendant_parent_trigger,
+            "error_text" => error_text,
+            "dormant_fg" => dormant_fg,
+            "success" => success,
+            "warning" => warning,
+            "streaming" => streaming,
+            "gutter_bg" => gutter_bg,
+            "gutter_context_included" => gutter_context_included,
+            "user_block_bg" => user_block_bg,
+            "tool_fg" => tool_fg,
+            "tool_success_bg" => tool_success_bg,
+            "tool_failure_bg" => tool_failure_bg,
+            "tool_pending_bg" => tool_pending_bg,
+            "challenge_alert_bg" => challenge_alert_bg,
+            "challenge_alert_fg" => challenge_alert_fg,
+            "compaction_block_bg" => compaction_block_bg,
+            "sources_header_bg" => sources_header_bg,
+            "sources_header_fg" => sources_header_fg,
+            "truncation_fg" => truncation_fg,
+            "picker_active_marker" => picker_active_marker,
+            "picker_selected_bg" => picker_selected_bg,
+            "picker_highlight_bg" => picker_highlight_bg,
+            "tab_active_fg" => tab_active_fg,
+            "tab_active_bg" => tab_active_bg,
+            "tab_inactive_fg" => tab_inactive_fg,
+            "selection_fg" => selection_fg,
+            "selection_bg" => selection_bg,
+            "in_flight_bg" => in_flight_bg,
+            "in_flight_fg" => in_flight_fg,
+            "accent_action" => accent_action,
+            "age_fresh" => age_fresh,
+            "age_stale" => age_stale,
+            "attendant_option_active" => attendant_option_active,
+            "scroll_indicator_bg" => scroll_indicator_bg,
+            "sidebar_resize_accent" => sidebar_resize_accent,
+            "input_mode_queue" => input_mode_queue,
+            "input_mode_steer" => input_mode_steer,
+            "infopopup_bg" => infopopup_bg,
+            "infopopup_title" => infopopup_title,
+            "infopopup_border" => infopopup_border,
+            "infopopup_fg" => infopopup_fg,
+            } bg: {
+            "subagent_bg" => subagent_bg,
+            "attendant_bg" => attendant_bg,
+            "quake_bar_bg" => quake_bar_bg,
+            }
+        }
         m
     }
 }
@@ -268,6 +262,16 @@ pub struct ThemeFile {
     /// Subagent block background shown on `task` tool calls and their results.
     #[serde(default)]
     pub subagent_bg: Option<ThemeColor>,
+    /// Attendant session rows in the session tree.
+    #[serde(default)]
+    pub attendant_fg: Option<ThemeColor>,
+    #[serde(default)]
+    pub attendant_paused: Option<ThemeColor>,
+    #[serde(default)]
+    pub attendant_parent_trigger: Option<ThemeColor>,
+    /// Attendant row background, paired with `attendant_fg`.
+    #[serde(default)]
+    pub attendant_bg: Option<ThemeColor>,
     #[serde(default)]
     pub error_text: Option<ThemeColor>,
     pub dormant_fg: Option<ThemeColor>,
@@ -338,6 +342,8 @@ pub struct ThemeFile {
     pub age_fresh: Option<ThemeColor>,
     #[serde(default)]
     pub age_stale: Option<ThemeColor>,
+    #[serde(default)]
+    pub attendant_option_active: Option<ThemeColor>,
 
     #[serde(default)]
     pub scroll_indicator_bg: Option<ThemeColor>,
@@ -402,6 +408,19 @@ impl ThemeFile {
             subagent_bg: self
                 .subagent_bg
                 .map_or(fallback.subagent_bg, crate::color::ThemeColor::inner),
+            attendant_fg: self
+                .attendant_fg
+                .map_or(fallback.attendant_fg, crate::color::ThemeColor::inner),
+            attendant_paused: self
+                .attendant_paused
+                .map_or(fallback.attendant_paused, crate::color::ThemeColor::inner),
+            attendant_parent_trigger: self.attendant_parent_trigger.map_or(
+                fallback.attendant_parent_trigger,
+                crate::color::ThemeColor::inner,
+            ),
+            attendant_bg: self
+                .attendant_bg
+                .map_or(fallback.attendant_bg, crate::color::ThemeColor::inner),
             error_text: self
                 .error_text
                 .map_or(fallback.error_text, crate::color::ThemeColor::inner),
@@ -500,6 +519,10 @@ impl ThemeFile {
             age_stale: self
                 .age_stale
                 .map_or(fallback.age_stale, crate::color::ThemeColor::inner),
+            attendant_option_active: self.attendant_option_active.map_or(
+                fallback.attendant_option_active,
+                crate::color::ThemeColor::inner,
+            ),
             scroll_indicator_bg: self.scroll_indicator_bg.map_or(
                 fallback.scroll_indicator_bg,
                 crate::color::ThemeColor::inner,
@@ -553,6 +576,10 @@ impl ThemeFile {
             muted_text: Self::resolve_field(self.muted_text),
             subagent_fg: Self::resolve_field(self.subagent_fg),
             subagent_bg: Self::resolve_field(self.subagent_bg),
+            attendant_fg: Self::resolve_field(self.attendant_fg),
+            attendant_paused: Self::resolve_field(self.attendant_paused),
+            attendant_parent_trigger: Self::resolve_field(self.attendant_parent_trigger),
+            attendant_bg: Self::resolve_field(self.attendant_bg),
             error_text: Self::resolve_field(self.error_text),
             dormant_fg: Self::resolve_field(self.dormant_fg),
             success: Self::resolve_field(self.success),
@@ -585,6 +612,7 @@ impl ThemeFile {
             accent_action: Self::resolve_field(self.accent_action),
             age_fresh: Self::resolve_field(self.age_fresh),
             age_stale: Self::resolve_field(self.age_stale),
+            attendant_option_active: Self::resolve_field(self.attendant_option_active),
             scroll_indicator_bg: Self::resolve_field(self.scroll_indicator_bg),
             sidebar_resize_accent: Self::resolve_field(self.sidebar_resize_accent),
             infopopup_bg: Self::resolve_field(self.infopopup_bg),
@@ -618,6 +646,10 @@ mod tests {
             muted_text: None,
             subagent_fg: None,
             subagent_bg: None,
+            attendant_fg: None,
+            attendant_paused: None,
+            attendant_parent_trigger: None,
+            attendant_bg: None,
             error_text: None,
             dormant_fg: None,
             success: None,
@@ -650,6 +682,7 @@ mod tests {
             accent_action: None,
             age_fresh: None,
             age_stale: None,
+            attendant_option_active: None,
             scroll_indicator_bg: None,
             sidebar_resize_accent: None,
             input_mode_queue: None,
@@ -671,6 +704,10 @@ mod tests {
             muted_text: Some(ThemeColor(Color::DarkGray)),
             subagent_fg: Some(ThemeColor(Color::Rgb(152, 128, 208))),
             subagent_bg: Some(ThemeColor(Color::Rgb(70, 58, 105))),
+            attendant_fg: Some(ThemeColor(Color::Rgb(255, 105, 180))),
+            attendant_bg: Some(ThemeColor(Color::Rgb(56, 48, 17))),
+            attendant_paused: Some(ThemeColor(Color::Rgb(128, 132, 144))),
+            attendant_parent_trigger: Some(ThemeColor(Color::Rgb(255, 105, 180))),
             error_text: Some(ThemeColor(Color::Red)),
             dormant_fg: Some(ThemeColor(Color::Blue)),
             success: Some(ThemeColor(Color::Green)),
@@ -703,6 +740,7 @@ mod tests {
             accent_action: Some(ThemeColor(Color::Rgb(255, 165, 0))),
             age_fresh: Some(ThemeColor(Color::LightGreen)),
             age_stale: Some(ThemeColor(Color::Red)),
+            attendant_option_active: Some(ThemeColor(Color::LightGreen)),
             scroll_indicator_bg: Some(ThemeColor(Color::Black)),
             sidebar_resize_accent: Some(ThemeColor(Color::Green)),
             infopopup_bg: Some(ThemeColor(Color::Rgb(40, 44, 52))),

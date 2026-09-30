@@ -980,12 +980,9 @@ async fn fork_strips_suppressed_task_tool() {
     source.set_session_id(source_id.clone());
     source.set_title("Subagent".to_owned());
     source.push_entry(ChatEntry::user("hello"));
-    {
-        let profile = source.profile_mut();
-        profile
-            .disabled_tools
-            .insert(jinn_tools_msg::TASK_TOOL_NAME.to_owned());
-    }
+    source.set_tool_filter(Some(jinn_core_types::NameFilter::deny([
+        jinn_tools_msg::TASK_TOOL_NAME.to_owned(),
+    ])));
     store
         .save(&source.capture_snapshot())
         .await
@@ -1001,18 +998,19 @@ async fn fork_strips_suppressed_task_tool() {
         .expect("load forked")
         .expect("should exist");
     assert!(
-        !forked
+        forked
             .profile()
-            .disabled_tools
-            .contains(jinn_tools_msg::TASK_TOOL_NAME),
+            .tool_filter
+            .as_ref()
+            .is_none_or(|filter| filter.permits(jinn_tools_msg::TASK_TOOL_NAME)),
         "a fork must not inherit the task suppression stamp, got: {:?}",
-        forked.profile().disabled_tools
+        forked.profile().tool_filter
     );
 }
 
 #[rstest::rstest]
 #[tokio::test]
-async fn fork_preserves_other_disabled_tools() {
+async fn fork_preserves_other_filtered_tools() {
     // Given a store with a source session disabling write (not task).
     let (_dir, store) = make_store().await;
     let source_id = SessionId::new();
@@ -1020,7 +1018,9 @@ async fn fork_preserves_other_disabled_tools() {
     source.set_session_id(source_id.clone());
     source.set_title("Manual disable".to_owned());
     source.push_entry(ChatEntry::user("hello"));
-    source.set_disabled_tools(std::collections::HashSet::from(["write".to_owned()]));
+    source.set_tool_filter(Some(jinn_core_types::NameFilter::deny(
+        ["write".to_owned()],
+    )));
     store
         .save(&source.capture_snapshot())
         .await
@@ -1029,26 +1029,31 @@ async fn fork_preserves_other_disabled_tools() {
     // When forking.
     let forked_id = store.fork(&source_id, 0).await.expect("fork");
 
-    // Then the forked session still has write disabled — the strip is
-    // targeted at task, not a wipe of the disabled set.
+    // Then the forked session still withholds write — the strip is targeted
+    // at task, not a wipe of the filter.
     let forked = store
         .load_session(&forked_id)
         .await
         .expect("load forked")
         .expect("should exist");
     assert!(
-        forked.profile().disabled_tools.contains("write"),
-        "fork must preserve non-task disabled tools, got: {:?}",
-        forked.profile().disabled_tools
+        !forked
+            .profile()
+            .tool_filter
+            .as_ref()
+            .is_none_or(|filter| filter.permits("write")),
+        "fork must preserve the other filtered tools, got: {:?}",
+        forked.profile().tool_filter
     );
     // And it does not gain a task entry of its own.
     assert!(
-        !forked
+        forked
             .profile()
-            .disabled_tools
-            .contains(jinn_tools_msg::TASK_TOOL_NAME),
+            .tool_filter
+            .as_ref()
+            .is_none_or(|filter| filter.permits(jinn_tools_msg::TASK_TOOL_NAME)),
         "fork must not gain a task disable, got: {:?}",
-        forked.profile().disabled_tools
+        forked.profile().tool_filter
     );
 }
 
@@ -1732,19 +1737,25 @@ fn metadata_blob_is_unchanged_by_group_composition() {
     .expect("serialize metadata");
 
     // Then the legacy flat JSON shape is unchanged, with runtime-only home and
-    // row-backed session state still absent.
+    // row-backed session state still absent. The attendant group appends four
+    // defaulted keys (activation, trigger, seed_template, reports) — flat, as
+    // with every group; a blob written before attendants lacks them and
+    // deserializes to the same defaults.
     assert_eq!(
         blob,
         concat!(
             r#"{"session_id":"10000000-0000-0000-0000-000000000067","#,
             r#""title":"Lifecycle title","updated_at":"2024-01-01T00:00:00Z","#,
             r#""created_at":"2024-01-01T00:00:00Z","profile":{"model":{"single":"__no_provider__"},"#,
-            r#""persona_name":"coding-assistant","disabled_tools":[],"disabled_skills":[],"#,
+            r#""persona_name":"coding-assistant","#,
             r#""reasoning_effort":null},"cwd":"/workspace/project","#,
             r#""parent_session":null,"fork_ordinal":null,"origin":"user","project":null,"#,
             r#""blobs":{},"lifecycle_name":"dev","lifecycle_args":["--fast"],"#,
             r#""lifecycle_script_state":"setup_ran","task_list":{"phases":[]},"#,
-            r#""enabled_mcp_servers":[],"persist":false}"#
+            r#""enabled_mcp_servers":[],"persist":false,"#,
+            r#""behavior":"reset","prep_mode":true,"trigger":"manual","#,
+            r#""seed_template":"The previous run of this attendant reported: <prior report>.","#,
+            r#""reports":[]}"#
         )
     );
 }
@@ -1941,7 +1952,7 @@ fn legacy_flat_lifecycle_blob_loads_after_group_composition() {
         r#"{"session_id":"10000000-0000-0000-0000-000000000068","#,
         r#""title":"Legacy lifecycle","updated_at":"2024-01-01T00:00:00Z","#,
         r#""created_at":"2024-01-01T00:00:00Z","profile":{"model":{"single":"ollama/llama3"},"#,
-        r#""persona_name":"coding-assistant","disabled_tools":[],"disabled_skills":[],"#,
+        r#""persona_name":"coding-assistant","#,
         r#""reasoning_effort":null,"endpoint":null},"cwd":"/legacy/project","#,
         r#""parent_session":null,"fork_ordinal":null,"origin":"fork","project":null,"#,
         r#""blobs":{},"lifecycle_name":"release","lifecycle_args":["--verbose"],"#,
@@ -3218,4 +3229,44 @@ async fn fts_and_map_counts(pool: &daow::Pool, session_id: &str) -> (i64, i64) {
     })
     .await
     .expect("fts/map counts")
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn attendant_fields_round_trip_through_save_and_load() {
+    // Given a store with an attendant session carrying activation, trigger,
+    // seed template, and a report.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
+    session.set_session_id(session_id.clone());
+    session.set_title("Judge".to_owned());
+    session.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
+    session.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+    session.set_seed_template("check: <prior report>".to_owned());
+    session.append_attendant_report("the build was actually green".to_owned());
+
+    // When saving and loading.
+    store.save(&session.capture_snapshot()).await.expect("save");
+    let snapshot = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then every attendant field is preserved.
+    let metadata = &snapshot.metadata;
+    assert_eq!(metadata.origin, jinn_session_msg::SessionOrigin::Attendant);
+    assert_eq!(
+        metadata.behavior,
+        jinn_attendant_msg::AttendantBehavior::Reset
+    );
+    assert_eq!(
+        metadata.trigger,
+        jinn_attendant_msg::AttendantTrigger::ParentCompleted
+    );
+    assert_eq!(metadata.seed_template, "check: <prior report>");
+    assert_eq!(metadata.reports.len(), 1);
+    assert_eq!(metadata.reports[0].body, "the build was actually green");
+    assert_eq!(metadata.reports[0].run, 1);
 }

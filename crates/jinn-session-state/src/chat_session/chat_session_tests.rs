@@ -6176,3 +6176,395 @@ fn tool_age_window_exclude_refused_on_included_todo_pair() {
         ContextOverride::ForcedInclude
     );
 }
+
+#[rstest::rstest]
+#[test]
+fn new_attendant_links_parent_without_inheriting_conversation() {
+    // Given a parent session with a project stamp, cwd, home, and MCP servers.
+    let mut parent = ChatSessionState::new();
+    parent.set_project(Some(PathBuf::from("/tmp/demo-project")));
+    parent.set_cwd(PathBuf::from("/tmp/demo-cwd"));
+    parent.set_home(PathBuf::from("/tmp/demo-home"));
+    parent.set_enabled_mcp_servers(std::collections::BTreeSet::from(["filesystem".to_owned()]));
+    parent.push_entry(ChatEntry::user("parent conversation"));
+
+    // When creating an attendant of that parent.
+    let attendant = ChatSessionState::new_attendant(&parent, true);
+
+    // Then the attendant references the parent.
+    // And it is an attendant by origin.
+    // And its history is empty — environment is inherited, never conversation.
+    assert_eq!(
+        attendant.parent_session().as_ref(),
+        Some(parent.session_id())
+    );
+    assert!(attendant.is_attendant());
+    assert!(attendant.is_empty());
+}
+
+#[rstest::rstest]
+#[test]
+fn new_attendant_copies_parent_environment() {
+    // Given a parent session with environment values set.
+    let mut parent = ChatSessionState::new();
+    parent.set_project(Some(PathBuf::from("/tmp/demo-project")));
+    parent.set_cwd(PathBuf::from("/tmp/demo-cwd"));
+    parent.set_home(PathBuf::from("/tmp/demo-home"));
+    parent.set_enabled_mcp_servers(std::collections::BTreeSet::from(["filesystem".to_owned()]));
+
+    // When creating an attendant of that parent.
+    let attendant = ChatSessionState::new_attendant(&parent, true);
+
+    // Then every environment field matches the parent.
+    assert_eq!(
+        attendant.project(),
+        parent.project(),
+        "project association follows the parent"
+    );
+    assert_eq!(attendant.cwd(), parent.cwd(), "cwd follows the parent");
+    assert_eq!(
+        attendant.enabled_mcp_servers(),
+        parent.enabled_mcp_servers(),
+        "MCP enablement follows the parent"
+    );
+    assert_eq!(
+        attendant.profile().persona_name,
+        parent.profile().persona_name,
+        "persona follows the parent"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn new_attendant_starts_composing_with_a_manual_trigger() {
+    // Given a parent session.
+
+    // When creating an attendant of that parent.
+    let attendant = ChatSessionState::new_attendant(&parent_of_new_session(), true);
+
+    // Then it is in prep mode — the user is still composing its
+    // instructions, so nothing may run.
+    assert!(attendant.attendant_is_prepping());
+    // And the trigger is manual — it fires for no one until configured.
+    assert_eq!(
+        attendant.attendant_trigger(),
+        jinn_attendant_msg::AttendantTrigger::Manual
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn attendant_run_settings_start_at_their_defaults() {
+    // Given a fresh attendant.
+
+    // When reading the two settings a run would obey.
+    let attendant = ChatSessionState::new_attendant(&parent_of_new_session(), true);
+    let behavior = attendant.attendant_behavior();
+    let trigger = attendant.attendant_trigger();
+
+    // Then they are the defaults, independently of the prep mode above: a
+    // composing attendant still holds a run configuration, it simply does
+    // not apply yet.
+    assert_eq!(behavior, jinn_attendant_msg::AttendantBehavior::Reset);
+    assert_eq!(trigger, jinn_attendant_msg::AttendantTrigger::Manual);
+}
+
+#[rstest::rstest]
+#[test]
+fn a_prepping_attendant_answers_the_trigger_question_still() {
+    // Given a fresh attendant, whose trigger is manual.
+
+    // When asking whether it fires on its parent's completion.
+    let fires = ChatSessionState::new_attendant(&parent_of_new_session(), true)
+        .attendant_fires_on_parent_completion();
+
+    // Then it does not. The trigger is a fact about the configuration; prep
+    // mode is a separate fact about whether the attendant may run, and
+    // conflating them would make the sidebar unable to mark either.
+    assert!(!fires);
+}
+
+fn parent_of_new_session() -> ChatSessionState {
+    ChatSessionState::new()
+}
+
+#[rstest::rstest]
+#[test]
+fn new_attendant_preserves_persistence_argument() {
+    // Given a parent session and an explicit persistence policy.
+
+    // When creating an attendant with that policy.
+    let attendant = ChatSessionState::new_attendant(&ChatSessionState::new(), false);
+
+    // Then the attendant preserves that exact policy.
+    assert!(!attendant.persist());
+}
+
+#[rstest::rstest]
+#[test]
+fn attendant_reports_append_in_run_order() {
+    // Given a fresh attendant.
+    let mut session = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
+
+    // When the attendant publishes two reports.
+    session.append_attendant_report("first finding".to_owned());
+    session.append_attendant_report("second finding".to_owned());
+
+    // Then the log holds both, oldest first, with run numbers from one.
+    let reports = session.attendant_reports();
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0].run, 1);
+    assert_eq!(reports[1].run, 2);
+    assert_eq!(reports[0].body, "first finding");
+    assert_eq!(reports[1].body, "second finding");
+}
+
+#[rstest::rstest]
+#[test]
+fn latest_attendant_report_is_none_before_the_first_report() {
+    // Given an attendant that has never reported.
+
+    // When the latest report is read.
+    let latest = ChatSessionState::new_attendant(&ChatSessionState::new(), true)
+        .latest_attendant_report()
+        .cloned();
+
+    // Then there is nothing to seed the next run from.
+    assert!(latest.is_none());
+}
+
+#[rstest::rstest]
+#[test]
+fn session_fields_round_trip_through_serialization() {
+    // Given an attendant with behavior, trigger, prep mode, template, and
+    // reports — one of each, and the ones that differ from the default.
+    let mut session = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
+    session.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Preserve);
+    session.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+    session.set_attendant_is_prepping(false);
+    session.set_seed_template("custom template".to_owned());
+    session.append_attendant_report("prior finding".to_owned());
+
+    // When the whole state survives a serialization round trip.
+    let json = serde_json::to_string(&session.core).expect("serialize");
+    let restored: SessionCore = serde_json::from_str(&json).expect("deserialize");
+
+    // Then every attendant field is preserved.
+    assert_eq!(
+        restored.attendant.behavior,
+        jinn_attendant_msg::AttendantBehavior::Preserve
+    );
+    assert_eq!(
+        restored.attendant.trigger,
+        jinn_attendant_msg::AttendantTrigger::ParentCompleted
+    );
+    assert!(!restored.attendant.prep_mode);
+    assert_eq!(restored.attendant.seed_template, "custom template");
+    assert_eq!(restored.attendant.reports.len(), 1);
+    assert_eq!(restored.attendant.reports[0].body, "prior finding");
+}
+
+#[rstest::rstest]
+#[test]
+fn attendant_fields_default_when_absent_from_persisted_blob() {
+    // Given a serialized session core written before attendants existed.
+    let legacy = r#"{
+        "session_id": "019912ac-0000-7000-8000-000000000001",
+        "updated_at": "2026-01-01T00:00:00Z",
+        "created_at": "2026-01-01T00:00:00Z",
+        "cwd": ".",
+        "history": [],
+        "profile": { "model": { "single": "__no_provider__" } },
+        "blobs": {},
+        "lifecycle_args": [],
+        "lifecycle_script_state": "nothing_ran",
+        "token_ledger": [],
+        "session_state": "loaded",
+        "persist": true,
+        "has_interacted": false,
+        "origin": "user"
+    }"#;
+
+    // When that blob is deserialized.
+    let core: SessionCore = serde_json::from_str(legacy).expect("deserialize legacy blob");
+
+    // Then the attendant group takes its defaults — no migration needed.
+    assert_eq!(
+        core.attendant.behavior,
+        jinn_attendant_msg::AttendantBehavior::Reset
+    );
+    assert_eq!(
+        core.attendant.trigger,
+        jinn_attendant_msg::AttendantTrigger::Manual
+    );
+    assert!(core.attendant.reports.is_empty());
+    assert_eq!(
+        core.attendant.seed_template,
+        jinn_attendant_msg::default_seed_template()
+    );
+}
+
+#[rstest::rstest]
+fn cancel_streaming_leaves_the_input_draft_where_the_user_typed_it() {
+    // Given a streaming session attached to a registry holding the
+    // chat-input cell, with a draft the user typed.
+    let slices = jinn_slices::Slices::new();
+    slices
+        .register(
+            jinn_chat_input_msg::chat_inputs_slot(),
+            jinn_chat_input_msg::ChatInputs::new(),
+        )
+        .expect("fresh registry");
+    let mut session = ChatSessionState::new();
+    session.attach_slices(slices.clone());
+    session.update_input(|i| i.replace_all("draft the user typed".to_owned()));
+    session.push_entry(ChatEntry::user("in flight"));
+    session.begin_streaming();
+
+    // When the turn is cancelled the way a trigger supersedes one — the
+    // plain phase transition, not the Esc drain.
+    session.cancel_streaming(jiff::Timestamp::now());
+
+    // Then the session is Idle, so the enqueue that follows dispatches
+    // rather than queueing behind a still-hot phase.
+    assert_eq!(session.phase(), jinn_session_msg::PhaseKind::Idle);
+    // And the draft is untouched: draining into the input box is an Esc
+    // affordance for recovering text, and a caller that has no use for the
+    // abandoned fragment must not put it where the user can see it.
+    assert_eq!(
+        session.with_input(|i| i.text().to_owned(), String::new),
+        "draft the user typed",
+        "cancel_streaming must not steer the abandoned fragment into the input box"
+    );
+}
+
+#[rstest::rstest]
+fn a_queued_message_is_handed_back_to_the_user_as_an_editable_draft() {
+    // Given a streaming session attached to the chat-input cell, with a
+    // seeded turn already sitting in the queue. This is the state a trigger
+    // produces when it publishes `CancelStream` without also dropping the
+    // phase: the enqueue sees a hot session and queues instead of
+    // dispatching.
+    let slices = jinn_slices::Slices::new();
+    slices
+        .register(
+            jinn_chat_input_msg::chat_inputs_slot(),
+            jinn_chat_input_msg::ChatInputs::new(),
+        )
+        .expect("fresh registry");
+    let mut session = ChatSessionState::new();
+    session.attach_slices(slices.clone());
+    session.push_entry(ChatEntry::user("in flight"));
+    session.begin_streaming();
+    session.enqueue(jinn_turn_dispatch_msg::QueueItem::UserMessage(Box::new(
+        ChatEntry::user("seeded: prior report"),
+    )));
+
+    // When a cancel drains the session the way the Esc path does.
+    session.cancel_stream_and_drain();
+
+    // Then the seeded turn surfaces as editable draft text instead of
+    // having run. This is what a user sees when an attendant is triggered
+    // while busy: a templated prompt they never sent, sitting in the input
+    // box. The fix is upstream — the trigger must drop the phase so the
+    // enqueue dispatches — and this test exists to keep the cost of getting
+    // that wrong visible.
+    assert_eq!(
+        session.with_input(|i| i.text().to_owned(), String::new),
+        "seeded: prior report",
+        "a queued message is recovered as draft text by design"
+    );
+}
+
+/// An attendant with the given trigger, out of prep mode.
+fn attendant_configured(trigger: jinn_attendant_msg::AttendantTrigger) -> ChatSessionState {
+    let mut attendant = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
+    attendant.set_attendant_trigger(trigger);
+    attendant.set_attendant_is_prepping(false);
+    attendant
+}
+
+#[rstest::rstest]
+#[test]
+fn a_composed_attendant_is_not_prepping() {
+    // Given an attendant that has finished composing.
+    let session = attendant_configured(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+
+    // When asking whether it may run.
+    let prepping = session.attendant_is_prepping();
+
+    // Then it may. The behavior above it is a separate fact and cannot
+    // decide this one.
+    assert!(!prepping);
+}
+
+#[rstest::rstest]
+#[test]
+fn a_fresh_attendant_is_prepping() {
+    // Given an attendant straight from `N`.
+    let session = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
+
+    // When asking whether it may run.
+    let prepping = session.attendant_is_prepping();
+
+    // Then it may not: its pins are half-written, so nothing dispatches —
+    // not the `R` key, and not the trigger.
+    assert!(prepping);
+}
+
+#[rstest::rstest]
+#[case(jinn_attendant_msg::AttendantTrigger::Manual)]
+#[case(jinn_attendant_msg::AttendantTrigger::ParentCompleted)]
+fn a_manual_trigger_does_not_stop_a_composed_attendant(
+    #[case] trigger: jinn_attendant_msg::AttendantTrigger,
+) {
+    // Given a composed attendant on each trigger.
+    let session = attendant_configured(trigger);
+
+    // When asking whether it is prepping.
+    let prepping = session.attendant_is_prepping();
+
+    // Then it is not. A manual trigger declines to fire on its own; the
+    // user pressing `R` still runs it. Marking that attendant as stopped
+    // is the ambiguity the old `or` of two fields produced.
+    assert!(!prepping);
+}
+
+#[rstest::rstest]
+#[test]
+fn only_a_parent_completed_trigger_fires_on_its_own() {
+    // Given a composed attendant on each trigger.
+    let manual = attendant_configured(jinn_attendant_msg::AttendantTrigger::Manual);
+    let automatic = attendant_configured(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+
+    // When asking which one fires when its parent finishes.
+    let fires = [
+        manual.attendant_fires_on_parent_completion(),
+        automatic.attendant_fires_on_parent_completion(),
+    ];
+
+    // Then only the parent-completed one does.
+    assert_eq!(fires, [false, true]);
+}
+
+#[rstest::rstest]
+#[test]
+fn the_behavior_does_not_change_the_trigger_question() {
+    // Given the same trigger under each behavior.
+    let mut preserve = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
+    preserve.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Preserve);
+    preserve.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+    preserve.set_attendant_is_prepping(false);
+    let mut reset = preserve.clone();
+    reset.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
+
+    // When asking which fires on the parent's completion.
+    let fires = [
+        preserve.attendant_fires_on_parent_completion(),
+        reset.attendant_fires_on_parent_completion(),
+    ];
+
+    // Then both do, identically. What a run sees and when it happens are
+    // two independent facts, and the sidebar marks them separately.
+    assert_eq!(fires, [true, true]);
+}

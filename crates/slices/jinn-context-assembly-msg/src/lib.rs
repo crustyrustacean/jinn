@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use jinn_context::ContextFile;
-use jinn_core_types::{ChatEntry, SessionId, ToolDefinition};
+use jinn_core_types::{ChatEntry, NameFilter, SessionId, ToolDefinition};
 use jinn_skills_msg::Skill;
 use jinn_slices::AssembledPrompt;
 use jinn_slices::Persona;
@@ -30,14 +30,17 @@ pub struct AssemblyInputs {
     pub history: Vec<ChatEntry>,
     /// Merged (global + session-override) tool definitions, unfiltered.
     pub tools: Vec<ToolDefinition>,
-    /// Tool names the session disabled.
-    pub disabled_tools: HashSet<String>,
+    /// Which tools the session may use. Its own gate, applied here and again
+    /// at dispatch — both read the same filter so they cannot disagree.
+    /// `None` means the session has no filter and inherits.
+    pub tool_filter: Option<NameFilter>,
     /// The provider the request will go to (for server-tool filtering).
     pub provider_name: String,
     /// Discovered skills, unfiltered.
     pub skills: Vec<Skill>,
-    /// Skill names the session disabled.
-    pub disabled_skills: HashSet<String>,
+    /// Which skills the session may load, by the same one predicate. `None`
+    /// means the session has no filter and inherits.
+    pub skill_filter: Option<NameFilter>,
     /// Skill names whose bodies are loaded.
     pub loaded_skills: HashSet<String>,
     /// Discovered context files (rendered into the env block).

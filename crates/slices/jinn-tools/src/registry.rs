@@ -7,9 +7,9 @@ use crate::tool_types::ToolContext;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition};
 
 use super::{
-    BoxedToolFuture, bash, edit, get_time, grep, interactive_term, interactive_term_kill,
-    interactive_term_send, read, restart_mcp, save_plan, session_fetch, session_search, skill,
-    task, write,
+    BoxedToolFuture, attendant_tools, bash, edit, get_time, grep, interactive_term,
+    interactive_term_kill, interactive_term_send, read, restart_mcp, save_plan, session_fetch,
+    session_search, skill, task, write,
 };
 
 /// A built-in tool entry: its definition paired with its execute function,
@@ -84,6 +84,16 @@ pub fn builtin_tools(default_timeout_secs: u64) -> Vec<BuiltinToolEntry> {
         (
             restart_mcp::definition(),
             restart_mcp::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
+        ),
+        (
+            attendant_tools::conclude_definition(),
+            attendant_tools::conclude_execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
+        ),
+        (
+            attendant_tools::notify_parent_definition(),
+            attendant_tools::notify_parent_execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
             false,
         ),
         (

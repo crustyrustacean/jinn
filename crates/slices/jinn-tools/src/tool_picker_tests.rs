@@ -26,6 +26,7 @@
     reason = "test module, panics are acceptable"
 )]
 
+use jinn_core_types::{FilterMode, NameFilter};
 use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{EditIntent, RouteOutcome, ScopeSignal};
 use jinn_slices::{KeyRoutes, SliceHost, Slices};
@@ -179,13 +180,21 @@ impl Wired {
             .map(|item| item.entry().enabled)
     }
 
-    /// The session's live disabled-tool set.
-    fn session_disabled(&self) -> std::collections::HashSet<String> {
-        self.state
-            .borrow()
-            .active_session()
-            .disabled_tools()
-            .clone()
+    /// The names of `tools` this fixture's session filter withholds.
+    ///
+    /// Read through the filter's own predicate rather than off its list, so
+    /// the assertion holds for an allow-mode filter too — an allow filter
+    /// withholds by omission, and reading its names would report the
+    /// opposite.
+    fn session_disabled(&self, tools: &[Def]) -> std::collections::BTreeSet<String> {
+        let session = self.state.borrow();
+        let filter = session.active_session().tool_filter();
+        tools
+            .iter()
+            .map(|def| def.name)
+            .filter(|name| !filter.is_none_or(|filter| filter.permits(name)))
+            .map(str::to_owned)
+            .collect()
     }
 
     /// Opens the picker through its real `open` route action.
@@ -327,7 +336,7 @@ async fn a_pre_disabled_tool_renders_off_when_the_picker_opens() {
         .state
         .borrow_mut()
         .active_session_mut()
-        .set_disabled_tools(["read"].iter().map(|s| (*s).to_owned()).collect());
+        .set_tool_filter(Some(NameFilter::deny(["read".to_owned()])));
 
     // When the picker is opened.
     wired.open();
@@ -350,11 +359,9 @@ async fn a_subagent_stamped_tool_renders_off_when_the_picker_opens() {
         .state
         .borrow_mut()
         .active_session_mut()
-        .set_disabled_tools(
-            [jinn_tools_msg::TASK_TOOL_NAME.to_owned()]
-                .into_iter()
-                .collect(),
-        );
+        .set_tool_filter(Some(NameFilter::deny([
+            jinn_tools_msg::TASK_TOOL_NAME.to_owned()
+        ])));
 
     // When the picker is opened.
     wired.open();
@@ -577,10 +584,35 @@ async fn confirming_writes_the_toggled_off_tools_to_the_session() {
 
     // Then the toggled-off tool lands in the session's disabled set.
     assert!(
-        wired.session_disabled().contains("Bash"),
+        wired.session_disabled(&three_tools()).contains("Bash"),
         "confirm must write the toggled set to the session; got {:?}",
-        wired.session_disabled()
+        wired.session_disabled(&three_tools())
     );
+}
+
+/// The picker is a blocklist editor by construction, so what it commits is a
+/// deny filter — asserted on the mode, not just the names, because a mode
+/// error inverts every name in the set.
+#[rstest::rstest]
+#[tokio::test]
+async fn confirming_commits_a_deny_filter() {
+    // Given an open picker whose first row was toggled off.
+    let wired = Wired::new(three_tools()).await;
+    wired.open();
+    wired.fire("toggle-highlighted-tool");
+
+    // When enter is pressed.
+    wired.fire("confirm-tool-picker");
+
+    // Then the session's filter is in deny mode.
+    let filter = wired
+        .state
+        .borrow()
+        .active_session()
+        .tool_filter()
+        .cloned()
+        .expect("confirming writes a filter");
+    assert_eq!(filter.mode, FilterMode::Deny);
 }
 
 #[rstest::rstest]
@@ -609,7 +641,7 @@ async fn toggling_alone_never_writes_the_session_disabled_set() {
     // Given an open picker over three tools.
     let wired = Wired::new(three_tools()).await;
     wired.open();
-    assert!(wired.session_disabled().is_empty());
+    assert!(wired.session_disabled(&three_tools()).is_empty());
 
     // When a row is toggled off.
     wired.fire("toggle-highlighted-tool");
@@ -617,9 +649,9 @@ async fn toggling_alone_never_writes_the_session_disabled_set() {
     // Then the session's disabled set is still empty: toggling edits the menu,
     // only confirming commits.
     assert!(
-        wired.session_disabled().is_empty(),
+        wired.session_disabled(&three_tools()).is_empty(),
         "a toggle must not write the disabled set; got {:?}",
-        wired.session_disabled()
+        wired.session_disabled(&three_tools())
     );
 }
 
@@ -636,9 +668,9 @@ async fn escaping_never_writes_the_session_disabled_set() {
 
     // Then the session's disabled set is untouched.
     assert!(
-        wired.session_disabled().is_empty(),
+        wired.session_disabled(&three_tools()).is_empty(),
         "escape must restore, never commit; got {:?}",
-        wired.session_disabled()
+        wired.session_disabled(&three_tools())
     );
 }
 
@@ -654,7 +686,7 @@ async fn escape_restores_the_tools_that_were_disabled_when_the_picker_opened() {
         .state
         .borrow_mut()
         .active_session_mut()
-        .set_disabled_tools(["read"].iter().map(|s| (*s).to_owned()).collect());
+        .set_tool_filter(Some(NameFilter::deny(["read".to_owned()])));
     wired.open();
     wired.fire("toggle-highlighted-tool");
 
@@ -663,7 +695,7 @@ async fn escape_restores_the_tools_that_were_disabled_when_the_picker_opened() {
 
     // Then the pre-open disabled set is back and the toggle never landed.
     assert_eq!(
-        wired.session_disabled(),
+        wired.session_disabled(&three_tools()),
         ["read".to_owned()].into_iter().collect()
     );
 }
@@ -698,7 +730,7 @@ async fn escape_after_a_confirm_restores_nothing() {
     wired.fire("cancel-tool-picker");
 
     // Then the committed set stands — confirm was authoritative.
-    assert!(wired.session_disabled().contains("Bash"));
+    assert!(wired.session_disabled(&three_tools()).contains("Bash"));
 }
 
 // ── Tab: toggle and advance ─────────────────────────────────────────────
@@ -796,7 +828,7 @@ async fn the_status_line_reports_the_live_enabled_count() {
         .state
         .borrow_mut()
         .active_session_mut()
-        .set_disabled_tools(["read"].iter().map(|s| (*s).to_owned()).collect());
+        .set_tool_filter(Some(NameFilter::deny(["read".to_owned()])));
     wired.open();
 
     // When the popup is drawn.
@@ -1040,4 +1072,36 @@ impl Def {
             provider_gated: false,
         }
     }
+}
+
+/// An ordinary picker, over an ordinary unrestricted session, must behave
+/// exactly as it did before filters became strict: every tool listed, every
+/// tool enabled, and confirming writes the same deny filter it always wrote.
+///
+/// This is the guard on the change being narrow. Only a session carrying a
+/// genuinely present empty allow filter — which is now what freezing to
+/// nothing produces — should see a different list.
+#[rstest::rstest]
+#[tokio::test]
+async fn a_picker_over_an_unrestricted_session_admits_every_tool() {
+    // Given a session with no tool filter configured at all.
+    let wired = Wired::new(three_tools()).await;
+
+    // When the picker is opened over them.
+    wired.open();
+
+    // Then every tool is listed, and every row opens enabled.
+    assert_eq!(wired.visible_names(), vec!["Bash", "edit", "read"]);
+    for name in ["Bash", "edit", "read"] {
+        assert_eq!(
+            wired.enabled(name),
+            Some(true),
+            "an unconfigured session restricts nothing, so {name} must open enabled"
+        );
+    }
+    // And the session itself withholds nothing.
+    assert!(
+        wired.session_disabled(&three_tools()).is_empty(),
+        "an unconfigured session must withhold no tool"
+    );
 }

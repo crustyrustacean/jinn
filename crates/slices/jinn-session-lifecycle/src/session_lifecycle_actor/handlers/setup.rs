@@ -59,6 +59,7 @@ impl SessionLifecycleActor {
                 self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
                     entry: setup_complete_msg(cwd),
+                    pin: None,
                 })
                 .await;
                 self.publish(SessionSetupCompleted {
@@ -73,6 +74,7 @@ impl SessionLifecycleActor {
                 self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
                     entry: jinn_core_types::ChatEntry::error(error),
+                    pin: None,
                 })
                 .await;
                 self.publish(SessionSetupCompleted {
@@ -98,6 +100,7 @@ impl SessionLifecycleActor {
                 self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
                     entry: no_output_info(&existing_cwd),
+                    pin: None,
                 })
                 .await;
                 self.publish(SessionSetupCompleted {
@@ -121,6 +124,7 @@ impl SessionLifecycleActor {
                 self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
                     entry: jinn_core_types::ChatEntry::error(&error),
+                    pin: None,
                 })
                 .await;
                 self.publish(SessionSetupCompleted {
@@ -165,6 +169,7 @@ impl SessionLifecycleActor {
             self.publish(PushChatEntry {
                 session_id: session_id.clone(),
                 entry: jinn_core_types::ChatEntry::error(&error),
+                pin: None,
             })
             .await;
             self.publish(SessionSetupCompleted {
@@ -189,6 +194,7 @@ impl SessionLifecycleActor {
                 self.publish(PushChatEntry {
                     session_id: session_id.clone(),
                     entry: setup_complete_msg(&cwd),
+                    pin: None,
                 })
                 .await;
                 self.publish(SessionSetupCompleted {
@@ -203,6 +209,7 @@ impl SessionLifecycleActor {
                 self.publish(PushChatEntry {
                     session_id: session_id.clone(),
                     entry: jinn_core_types::ChatEntry::error(&error),
+                    pin: None,
                 })
                 .await;
                 self.publish(SessionSetupCompleted {

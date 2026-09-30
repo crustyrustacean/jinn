@@ -85,10 +85,8 @@ fn parent_fixture() -> (State, SessionId) {
         ));
         parent.set_cwd(std::path::PathBuf::from("/tmp/parent-cwd"));
         parent.set_title("Parent".to_owned());
-        parent
-            .profile_mut()
-            .disabled_tools
-            .insert("write".to_owned());
+        parent.profile_mut().tool_filter =
+            Some(jinn_core_types::NameFilter::deny(["write".to_owned()]));
         parent.set_enabled_mcp_servers(BTreeSet::from(["stub".to_owned()]));
     }
     (state, parent_id)
@@ -237,7 +235,7 @@ async fn task_spawns_child_linked_and_inheriting() {
     );
     assert_eq!(child.cwd(), std::path::Path::new("/tmp/parent-cwd"));
     assert_eq!(child.persona_name(), "coding-assistant");
-    assert!(child.profile().disabled_tools.contains("write"));
+    assert!(!child.is_tool_enabled("write"));
     assert_eq!(
         child.enabled_mcp_servers(),
         &BTreeSet::from(["stub".to_owned()])
@@ -264,10 +262,7 @@ async fn task_child_has_task_tool_suppressed() {
         let snapshot = state.read();
         let parent = snapshot.session.get(&parent_id).expect("parent seeded");
         assert!(
-            !parent
-                .profile()
-                .disabled_tools
-                .contains(crate::task::TASK_TOOL_NAME),
+            parent.is_tool_enabled(crate::task::TASK_TOOL_NAME),
             "fixture parent must have task enabled"
         );
     }
@@ -284,19 +279,16 @@ async fn task_child_has_task_tool_suppressed() {
     let result = pending.await.expect("task join");
     assert!(result.success, "expected success; got: {}", result.content);
 
-    // Then the child's disabled tools include task — stamped at spawn.
+    // Then the child's tool filter withholds task — stamped at spawn.
     let snapshot = state.read();
     let child = snapshot
         .session
         .get(&child_id)
         .expect("child present in state");
     assert!(
-        child
-            .profile()
-            .disabled_tools
-            .contains(crate::task::TASK_TOOL_NAME),
+        !child.is_tool_enabled(crate::task::TASK_TOOL_NAME),
         "spawned child must start with the task tool suppressed, got: {:?}",
-        child.profile().disabled_tools
+        child.tool_filter()
     );
 }
 
@@ -695,7 +687,7 @@ async fn concurrent_task_calls_resolve_independently() {
 #[rstest::rstest]
 #[tokio::test]
 async fn parent_cancel_leaves_child_running_and_unregisters_pair() {
-    // Given an in-flight task call awaiting its child.
+    // GIVEN an in-flight task call awaiting its child.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
     let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
@@ -718,6 +710,13 @@ async fn parent_cancel_leaves_child_running_and_unregisters_pair() {
     assert!(registry.has_in_flight(&parent_id));
 
     // When the parent's tool-call future is aborted (batch cancelled).
+    //
+    // RATIONALE: this exercises the registry layer only. The *cascade* is
+    // the confirmed-cancel gesture (ESC ESC, `try_handle_cancel_stream_prompt`),
+    // which walks `children_of` and stops every descendant; a batch abort
+    // here is the dispatcher's own cleanup, not a user cancel, so the child
+    // legitimately keeps running — its result still answers the question the
+    // parent's *next* turn will ask.
     pending.abort();
     // Give the aborted future a moment to drop its registry guard.
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -726,6 +725,12 @@ async fn parent_cancel_leaves_child_running_and_unregisters_pair() {
     assert!(
         !registry.has_in_flight(&parent_id),
         "abort must unregister the in-flight pair"
+    );
+    // And `children_of` reads empty: presence *means* in-flight, so the
+    // cascade's live query can never stop a child whose call already ended.
+    assert!(
+        registry.children_of(&parent_id).is_empty(),
+        "children_of must read empty once the guard drops"
     );
     let snapshot = state.read();
     let child = snapshot.session.get(&child_id).expect("child survives");

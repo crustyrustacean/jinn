@@ -384,6 +384,7 @@ where
     created.with_message(PushChatEntry {
         session_id: new_session_id,
         entry: seed,
+        pin: None,
     })
 }
 

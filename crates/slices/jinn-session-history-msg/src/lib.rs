@@ -31,6 +31,27 @@ pub struct PushChatEntry {
     pub session_id: SessionId,
     /// The chat entry to add.
     pub entry: ChatEntry,
+    /// Pin the entry on arrival, in one atomic step.
+    ///
+    /// A separate `PinChatEntry` cannot express "pin what you just
+    /// pushed": every message is published through its own spawned task,
+    /// so the two race, and a pin that arrives first finds no entry and is
+    /// dropped in silence. Carrying the pin here makes the pair
+    /// order-independent by construction.
+    #[serde(default)]
+    pub pin: Option<PinPosition>,
+}
+
+impl PushChatEntry {
+    /// A push that carries no pin.
+    #[must_use]
+    pub fn unpinned(session_id: SessionId, entry: ChatEntry) -> Self {
+        Self {
+            session_id,
+            entry,
+            pin: None,
+        }
+    }
 }
 
 impl jinn_slices::BusMessage for PushChatEntry {}
@@ -150,6 +171,7 @@ mod tests {
         let cmd = PushChatEntry {
             session_id: SessionId::new(),
             entry: ChatEntry::user("hello"),
+            pin: None,
         };
 
         // When serializing and deserializing.

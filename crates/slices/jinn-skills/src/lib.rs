@@ -30,7 +30,9 @@ pub use jinn_skills_msg::loaded_skill_summary_label;
 pub use jinn_skills_msg::parse_loaded_skill_name;
 pub use jinn_skills_msg::{Skill, SkillFrontmatter, SkillSource};
 pub use scan::scan_skills;
-pub use skill_picker_actions::{cancel, confirm, highlighted_name, open, toggle_highlighted};
+pub use skill_picker_actions::{
+    cancel_filter, confirm, highlighted_name, open, toggle_highlighted,
+};
 pub use skill_picker_reload::{build_skill_entries, reload_skill_picker};
 pub use skill_picker_render::{render_skill_picker, skill_picker_overlay_rect};
 pub use skill_picker_routes::{SKILL_PICKER_BINDINGS, attach_skill_picker_rows};

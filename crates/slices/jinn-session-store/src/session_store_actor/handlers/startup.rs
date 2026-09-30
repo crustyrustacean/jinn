@@ -54,8 +54,8 @@ impl SessionStoreActor {
             let seed = SessionSeed::from_config(&self.services.config);
             {
                 let profile = session.profile_mut();
-                profile.disabled_tools.clone_from(&seed.disabled_tools);
-                profile.disabled_skills.clone_from(&seed.disabled_skills);
+                profile.tool_filter.clone_from(&seed.tool_filter);
+                profile.skill_filter.clone_from(&seed.skill_filter);
             }
             for server in &seed.enabled_mcp {
                 session.enable_mcp_server(server);

@@ -15,11 +15,6 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-/// Solid full block used as the selection indicator (same as pins section).
-const SELECTED_INDICATOR: &str = "\u{2588}";
-/// One space used as the unselected border (same as pins section).
-const UNSELECTED_BORDER: &str = " ";
-
 pub use jinn_sidebar_msg::PersonaSectionState;
 
 /// Navigate within the persona section.
@@ -67,21 +62,10 @@ impl SidebarSection for PersonaSection {
             );
         let theme = &state.frontend.theme;
 
-        let indicator_color = if sidebar_focused {
-            theme.focus_accent
-        } else {
-            theme.border_unfocused
-        };
-
         let is_selected = section_focused
             && state
                 .frontend
                 .with_sections(|s| s.persona.cursor.is_some(), || false);
-        let indicator = if is_selected {
-            Span::styled(SELECTED_INDICATOR, Style::default().fg(indicator_color))
-        } else {
-            Span::raw(UNSELECTED_BORDER)
-        };
 
         // Read persona from the active session, not the global default.
         // This ensures the sidebar reflects the current session's persona
@@ -99,16 +83,35 @@ impl SidebarSection for PersonaSection {
             )]));
             // Blank separator.
             lines.push(Line::from(""));
-            // Entry line.
-            let name_style = if is_selected {
-                Style::default().add_modifier(Modifier::REVERSED)
-            } else {
-                Style::default()
+            // Entry line. Content is shifted one column right of the header:
+            // gutter(1), gap(1), then the name. Selection is the shared
+            // full-width band; the pad carries the band to the row's last
+            // cell, since `Paragraph` does not extend a line's style past
+            // the last grapheme.
+            let entry_line = {
+                let content_width = 3 + persona_name.chars().count();
+                let mut spans = vec![
+                    crate::sections::session_row_style::gutter_span(theme),
+                    crate::sections::session_row_style::gutter_span(theme),
+                    Span::raw(persona_name),
+                ];
+                if is_selected {
+                    spans.push(crate::sections::session_row_style::band_pad(
+                        content_width,
+                        usize::from(area.width),
+                        theme,
+                    ));
+                }
+                let name = Line::from(spans);
+                if is_selected {
+                    name.style(crate::sections::session_row_style::selected_row_style(
+                        theme,
+                    ))
+                } else {
+                    name
+                }
             };
-            lines.push(Line::from(vec![
-                indicator,
-                Span::styled(format!(" {persona_name}"), name_style),
-            ]));
+            lines.push(entry_line);
             lines
         };
 

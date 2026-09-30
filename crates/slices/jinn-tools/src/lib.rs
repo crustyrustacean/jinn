@@ -15,7 +15,12 @@
 
 pub use jinn_tools_msg::BoxedToolFuture;
 
+pub mod attendant_tools;
 pub mod bash;
+
+#[cfg(test)]
+mod attendant_tools_tests;
+
 pub mod command_policy;
 pub mod edit;
 pub mod get_time;
@@ -51,6 +56,9 @@ mod orchestrator;
 
 #[cfg(test)]
 mod interactive_term_tests;
+#[cfg(test)]
+#[path = "orchestrator_filter_tests.rs"]
+mod orchestrator_filter_tests;
 #[cfg(test)]
 mod task_list_picker_tests;
 #[cfg(test)]

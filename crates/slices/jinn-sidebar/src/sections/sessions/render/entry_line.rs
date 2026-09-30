@@ -3,14 +3,14 @@
 //! Each function is pure (no side effects, no `&mut self`) and takes explicit
 //! parameters so it can be unit-tested in isolation.
 
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use throbber_widgets_tui::ThrobberState;
 use unicode_segmentation::UnicodeSegmentation;
 
+use crate::sections::session_row_style::selected_row_style;
 use crate::sections::sessions::state::{SessionEntry, SessionEntryKind};
 use jinn_theme::Theme;
-use jinn_theme::contrast;
 
 use super::super::{ACTIVE_PREFIX, INACTIVE_PREFIX};
 use super::truncate::truncate_str;
@@ -96,44 +96,40 @@ pub(crate) fn arrow_span(is_active: bool, theme: &Theme) -> Span<'static> {
 
 /// Computes the title style based on entry state.
 ///
-/// Priority: in-flight+selected → tinted on the selection background,
-/// in-flight → tinted, error+selected → red+reversed, error → red,
-/// selected → reversed, active → subagent/primary text,
-/// default → subagent/muted text. Subagent sessions use
-/// [`Theme::subagent_fg`] wherever a regular session would use muted text, so
-/// machine-spawned sessions read as a different kind.
-pub(crate) fn entry_title_style(entry: &SessionEntry, is_selected: bool, theme: &Theme) -> Style {
-    // A selected in-flight row outranks the tint: the cursor has to stay
-    // visible on a row that is being archived, or the row looks untouched
-    // while the archive runs. See `selected_in_flight_style` for why this uses
-    // a background instead of `Modifier::REVERSED`.
+/// This answers only "what color is this row's text when nothing is selected"
+/// — selection is a line-level band applied by [`assemble_session_line`], not
+/// a property of the title. Priority: in-flight → tinted, error → red block,
+/// active → subagent/attendant/primary text, default → subagent/attendant/
+/// muted text. Subagent sessions use [`Theme::subagent_fg`] wherever a regular
+/// session would use muted text, so machine-spawned sessions read as a
+/// different kind.
+pub(crate) fn entry_title_style(entry: &SessionEntry, theme: &Theme) -> Style {
+    // The in-flight tint outranks every other state, including selection:
+    // selection no longer restyles the title at all. The tint's background is
+    // what the row wears while its disposal runs; the band is painted on top
+    // of it by the line, so the row reads as selected without losing the tint.
     if entry.is_in_flight {
-        return if is_selected {
-            selected_in_flight_style(theme)
-        } else {
-            in_flight_style(theme)
-        };
+        return in_flight_style(theme);
     }
     let base = if entry.is_subagent {
         theme.subagent_fg
+    } else if entry.is_attendant {
+        theme.attendant_fg
     } else {
         theme.muted_text
     };
     let active = if entry.is_subagent {
         theme.subagent_fg
+    } else if entry.is_attendant {
+        theme.attendant_fg
     } else {
         theme.primary_text
     };
     if entry.last_entry_is_error {
-        if is_selected {
-            Style::default()
-                .fg(Color::Red)
-                .add_modifier(Modifier::REVERSED)
-        } else {
-            Style::default().fg(Color::Red)
-        }
-    } else if is_selected {
-        Style::default().add_modifier(Modifier::REVERSED)
+        // A red block: the row's own foreground is the sidebar background, so
+        // the block is a literal inversion of the panel. Selection overrides
+        // it — selected is handled by the line, not here.
+        Style::default().fg(theme.gutter_bg).bg(Color::Red)
     } else if entry.is_active {
         Style::default().fg(active)
     } else {
@@ -146,27 +142,6 @@ fn in_flight_style(theme: &Theme) -> Style {
     Style::default()
         .fg(theme.in_flight_fg)
         .bg(theme.in_flight_bg)
-}
-
-/// The style for a row the cursor is on.
-///
-/// The cursor must stay visible on a row that is also being archived, so this
-/// deliberately sets a *background* rather than using `Modifier::REVERSED`.
-/// `REVERSED` inverts fg/bg at the terminal, which would swap the tint's
-/// dark wash for a light one and read as a normal selection rather than as
-/// "selected and in flight". A real background keeps both facts legible:
-/// `selection_bg` says the cursor is here, the spinner says it is disposing.
-///
-/// The foreground is contrast-checked against the selection background: a light
-/// theme's `selection_bg` can be lighter than the tint's foreground, and the
-/// text must not disappear into it.
-fn selected_in_flight_style(theme: &Theme) -> Style {
-    Style::default()
-        .fg(contrast::ensure_contrast(
-            theme.in_flight_fg,
-            theme.selection_bg,
-        ))
-        .bg(theme.selection_bg)
 }
 
 /// Builds the tree connector prefix for a session entry.
@@ -216,6 +191,10 @@ pub(crate) fn assemble_entry_line(
 const SUBAGENT_SYMBOL: &str = "⋄ ";
 /// Marks a session with a live `interactive_term` terminal.
 pub(crate) const LIVE_TERM_SYMBOL: &str = "◼ ";
+/// Marks an attendant still being composed, which will not dispatch a turn.
+const ATTENDANT_PREPPING_SYMBOL: &str = "⏸ ";
+/// Marks an attendant that runs when its parent's turn completes.
+const ATTENDANT_PARENT_TRIGGER_SYMBOL: &str = "⇉ ";
 
 /// Renders a session entry line (indicator + arrow + tree + styled title).
 fn assemble_session_line(
@@ -229,7 +208,7 @@ fn assemble_session_line(
     let arrow = arrow_span(entry.is_active, theme);
     let tree = tree_prefix(entry);
     let tree_len = tree.graphemes(true).count();
-    let style = entry_title_style(entry, is_selected, theme);
+    let style = entry_title_style(entry, theme);
     // The subagent symbol is part of the title's rendered width so the
     // truncation budget accounts for it.
     let subagent_symbol = if entry.is_subagent {
@@ -242,13 +221,32 @@ fn assemble_session_line(
     } else {
         ""
     };
-    let symbol_len =
-        (subagent_symbol.graphemes(true).count()) + term_symbol.graphemes(true).count();
+    // Like the subagent symbol, these sit beside the title rather than
+    // inside it: the title is what a rename replaces, and a mode marker
+    // must not be reachable by the rename key.
+    let prepping_symbol = if entry.is_attendant_prepping {
+        ATTENDANT_PREPPING_SYMBOL
+    } else {
+        ""
+    };
+    // A separate glyph, not a second mark on the pause: "cannot run yet" and
+    // "runs on its own" are independent facts, and an attendant can be in
+    // either state without the other being false.
+    let parent_trigger_symbol = if entry.attendant_fires_on_parent_completion {
+        ATTENDANT_PARENT_TRIGGER_SYMBOL
+    } else {
+        ""
+    };
+    let symbol_len = (subagent_symbol.graphemes(true).count())
+        + term_symbol.graphemes(true).count()
+        + prepping_symbol.graphemes(true).count()
+        + parent_trigger_symbol.graphemes(true).count();
     let budget = max_title_len.saturating_sub(tree_len);
     let display_title = {
         let title_budget = budget.saturating_sub(symbol_len);
         truncate_str(&entry.title, title_budget)
     };
+    let title_width = display_title.graphemes(true).count();
     let mut spans = vec![indicator, Span::raw(" "), arrow];
     if !tree.is_empty() {
         spans.push(Span::styled(tree, Style::default().fg(theme.muted_text)));
@@ -259,6 +257,18 @@ fn assemble_session_line(
             Style::default().fg(theme.subagent_fg),
         ));
     }
+    if !prepping_symbol.is_empty() {
+        spans.push(Span::styled(
+            prepping_symbol.to_owned(),
+            Style::default().fg(theme.attendant_paused),
+        ));
+    }
+    if !parent_trigger_symbol.is_empty() {
+        spans.push(Span::styled(
+            parent_trigger_symbol.to_owned(),
+            Style::default().fg(theme.attendant_parent_trigger),
+        ));
+    }
     if !term_symbol.is_empty() {
         spans.push(Span::styled(
             term_symbol.to_owned(),
@@ -266,21 +276,32 @@ fn assemble_session_line(
         ));
     }
     spans.push(Span::styled(display_title, style));
+    // Selection replaces every span's style, not just the title's: a span
+    // with its own background (the error block, the in-flight wash) would
+    // otherwise win over the band for its cells, and selection overrides
+    // every session state. A trailing band-styled pad carries the band to
+    // the row's last cell — `Paragraph` does not extend a line's style into
+    // the cells past the last grapheme, so the pad is what makes the band
+    // full-width.
+    if is_selected {
+        let band = selected_row_style(theme);
+        let used = tree_len + symbol_len + title_width + 3; // indicator(1) + gap(1) + arrow(1)
+        let pad_width = max_title_len.saturating_sub(used) + 4; // back to full area width
+        let mut spans = spans
+            .into_iter()
+            .map(|span| span.style(band))
+            .collect::<Vec<_>>();
+        spans.push(Span::styled(" ".repeat(pad_width), band));
+        return Line::from(spans).style(band);
+    }
     // Re-style every span so the wash runs the full width of the row rather
     // than only behind the title, and so the indicator, arrow, tree connector
-    // and status glyphs read as part of the same tinted row. A selected row
-    // is restyled with the selection-aware style instead, so the cursor
-    // highlight survives the whole-row wash.
+    // and status glyphs read as part of the same tinted row.
     if entry.is_in_flight {
-        let row_style = if is_selected {
-            selected_in_flight_style(theme)
-        } else {
-            in_flight_style(theme)
-        };
         spans = spans
             .into_iter()
-            .map(|span| span.style(row_style))
-            .collect();
+            .map(|span| span.style(in_flight_style(theme)))
+            .collect::<Vec<_>>();
     }
     Line::from(spans)
 }

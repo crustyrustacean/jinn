@@ -16,6 +16,10 @@ pub enum SessionOrigin {
     Fork,
     /// Spawned as a child session by another session.
     Subagent,
+    /// A peer session that references a parent and re-runs when the parent's
+    /// turn completes. Inherits the parent's environment but never its
+    /// conversation, and reports what it concludes back to the user.
+    Attendant,
 }
 
 #[cfg(test)]
@@ -39,6 +43,7 @@ mod tests {
     #[case(SessionOrigin::User, "\"user\"")]
     #[case(SessionOrigin::Fork, "\"fork\"")]
     #[case(SessionOrigin::Subagent, "\"subagent\"")]
+    #[case(SessionOrigin::Attendant, "\"attendant\"")]
     fn session_origin_serializes_as_snake_case(
         #[case] origin: SessionOrigin,
         #[case] expected: &str,
@@ -56,6 +61,7 @@ mod tests {
     #[case("\"user\"", SessionOrigin::User)]
     #[case("\"fork\"", SessionOrigin::Fork)]
     #[case("\"subagent\"", SessionOrigin::Subagent)]
+    #[case("\"attendant\"", SessionOrigin::Attendant)]
     fn session_origin_deserializes_from_snake_case(
         #[case] raw: &str,
         #[case] expected: SessionOrigin,

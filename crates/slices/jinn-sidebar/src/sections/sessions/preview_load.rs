@@ -37,7 +37,6 @@ use jinn_preferences_config::schemas::ChatLogConfig;
 use jinn_slices::ConfigLayer;
 
 use crate::sections::sessions::preview::DEFAULT_TOOL_ENTRY_MAX_LINES;
-use crate::sections::sessions::state::sorted_open_sessions;
 
 /// A summary of the content a preview would show.
 ///
@@ -252,10 +251,9 @@ pub fn request_preview_if_needed(
     if state.frontend.sidebar_section() != Some(jinn_sidebar_msg::SidebarSectionId::Sessions) {
         return None;
     }
-    let index = state
+    let session_id = state
         .frontend
-        .with_sections(|s| s.sessions.selected_index, || None)?;
-    let session_id = sorted_open_sessions(state).get(index)?.id.clone();
+        .with_sections(|s| s.sessions.selected_id.clone(), || None)?;
     update_preview(state, &session_id, config)
 }
 
@@ -766,9 +764,10 @@ mod preview_load_tests {
         state
             .frontend
             .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+        let active = state.session.active_session_id().clone();
         state
             .frontend
-            .update_sections(|s| s.sessions.selected_index = Some(0));
+            .update_sections(|s| s.sessions.selected_id = Some(active));
         state
     }
 
@@ -797,7 +796,9 @@ mod preview_load_tests {
         // render path will ask about, since a cache keyed to any other id would
         // not be the one it finds.
         let mut state = state_focused_on_sessions();
-        let id = sorted_open_sessions(&state)[0].id.clone();
+        let id = crate::sections::sessions::state::sorted_open_sessions(&state)[0]
+            .id
+            .clone();
         let signature = signature_of(&state, &id);
         // Armed first, exactly as a real request is: a result is only accepted
         // for a generation that was actually issued, so completing one that was

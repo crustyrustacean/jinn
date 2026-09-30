@@ -1,6 +1,6 @@
 //! Sidebar-owned sessions-list state adapter.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use jinn_core_types::SessionId;
 use jinn_kernel::common::app_state::AppState;
@@ -30,6 +30,9 @@ pub struct SessionListKey {
     last_entry_is_error: bool,
     parent_id: Option<SessionId>,
     is_subagent: bool,
+    is_attendant: bool,
+    is_attendant_prepping: bool,
+    attendant_fires_on_parent_completion: bool,
     has_live_term: bool,
     is_in_flight: bool,
 }
@@ -67,6 +70,12 @@ impl SessionListKey {
             }),
             parent_id: session.parent_session().clone(),
             is_subagent: session.origin() == SessionOrigin::Subagent,
+            is_attendant: session.is_attendant(),
+            // Same expression the tree build uses, so the key and the tree
+            // cannot disagree about whether the paused marker should render.
+            is_attendant_prepping: session.is_attendant() && session.attendant_is_prepping(),
+            attendant_fires_on_parent_completion: session.is_attendant()
+                && session.attendant_fires_on_parent_completion(),
             has_live_term,
             is_in_flight,
         }
@@ -137,6 +146,10 @@ pub fn sorted_open_sessions_split(
             ancestor_continuations: vec![],
             is_last_child: false,
             is_subagent: session.origin() == SessionOrigin::Subagent,
+            is_attendant: session.is_attendant(),
+            is_attendant_prepping: session.is_attendant() && session.attendant_is_prepping(),
+            attendant_fires_on_parent_completion: session.is_attendant()
+                && session.attendant_fires_on_parent_completion(),
             has_live_term: frontend
                 .slices()
                 .and_then(|slices| {
@@ -158,6 +171,51 @@ pub fn sorted_open_sessions_split(
 ///
 /// Called at the moment the disposal command is dispatched, never at keypress
 /// time, so a rejected validation leaves no in-flight indication behind.
+/// The visible row at which the sessions section's cursor is drawn.
+///
+/// The cursor names a session; drawing, scrolling and anchoring all need the
+/// row it lands on. Resolving that is the one direction the id-cursor does
+/// need, and it goes through the session-list crate's own inverse so the two
+/// directions cannot drift: `None` when the session is no longer listed, which
+/// is what a session archived while the sidebar was unfocused looks like.
+#[must_use]
+pub fn visible_row_of(state: &AppState, id: &SessionId) -> Option<usize> {
+    jinn_session_list::visible_index_of(session_tree_nodes(state), &visual_parents(state), id)
+}
+
+/// Stores the session drawn at `row` as the cursor.
+pub fn select_row(state: &mut AppState, row: usize, sessions: &[SessionEntry]) {
+    if let Some(entry) = sessions.get(row) {
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_id = Some(entry.id.clone()));
+    }
+}
+
+/// The section's visual-parent map: a session whose direct parent is unloaded
+/// is drawn under its nearest loaded ancestor.
+fn visual_parents(state: &AppState) -> HashMap<SessionId, SessionId> {
+    state
+        .frontend
+        .with_sections(|s| s.sessions.visual_parents.clone(), HashMap::new)
+}
+
+/// The loaded sessions reduced to identity and tree position.
+fn session_tree_nodes(state: &AppState) -> Vec<jinn_session_list::SessionTreeNode> {
+    state
+        .session
+        .iter()
+        .filter(|(_, session)| {
+            session.session_state() == jinn_session_store_msg::SessionState::Loaded
+        })
+        .map(|(id, session)| jinn_session_list::SessionTreeNode {
+            id: id.clone(),
+            created_at: *session.created_at(),
+            parent_id: session.parent_session().clone(),
+        })
+        .collect()
+}
+
 pub fn mark_in_flight(state: &AppState, ids: &[SessionId]) {
     state
         .frontend

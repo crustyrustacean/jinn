@@ -20,7 +20,7 @@ use crate::sections::section_trait::{
 };
 use jinn_kernel::common::app_state::AppState;
 use jinn_mcp_msg::McpConnectionStatus;
-use jinn_preferences_config::schemas::mcp::McpServersConfig;
+use jinn_preferences_config::schemas::mcp::{McpServerConfig, McpServersConfig};
 use jinn_slices::ConfigLayer;
 use jinn_slices::DrawContext;
 use ratatui::Frame;
@@ -29,10 +29,6 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-/// Solid full block used as the selection indicator (same as other sections).
-const SELECTED_INDICATOR: &str = "\u{2588}";
-/// One space used as the unselected border (same as other sections).
-const UNSELECTED_BORDER: &str = " ";
 pub use jinn_sidebar_msg::McpServersSectionState;
 
 /// The effective visual state of a single (enabled) server row.
@@ -187,12 +183,6 @@ impl SidebarSection for McpServersSection {
             .with_sections(|s| s.mcp_servers.selected_index, || None);
         let theme = &state.frontend.theme;
 
-        let indicator_color = if sidebar_focused {
-            theme.focus_accent
-        } else {
-            theme.border_unfocused
-        };
-
         let lines = {
             let enabled = state.active_session().enabled_mcp_servers().clone();
             let statuses = ctx
@@ -202,9 +192,10 @@ impl SidebarSection for McpServersSection {
                 .unwrap_or_default();
             // Only enabled servers are surfaced; disabled ones are omitted entirely.
             let configured = ctx.config().get::<McpServersConfig>().unwrap_or_default();
-            let servers: Vec<_> = configured
+            let servers: Vec<(String, McpServerConfig)> = configured
                 .iter()
                 .filter(|(name, _)| enabled.contains(name.as_str()))
+                .map(|(name, server)| (name.clone(), server.clone()))
                 .collect();
 
             let mut lines = Vec::new();
@@ -222,24 +213,44 @@ impl SidebarSection for McpServersSection {
                 let is_selected = section_focused && cursor == Some(index);
                 let row_state = ServerRowState::derive(statuses.get(name.as_str()).copied());
 
-                let indicator = if is_selected {
-                    Span::styled(SELECTED_INDICATOR, Style::default().fg(indicator_color))
+                // The status label keeps its own color unselected — the state
+                // signal — and yields to the band when the row is selected.
+                let status = if is_selected {
+                    Span::styled(row_state.label(), Style::new())
                 } else {
-                    Span::raw(UNSELECTED_BORDER)
+                    Span::styled(row_state.label(), Style::default().fg(row_state.color()))
                 };
 
-                let name_style = if is_selected {
-                    Style::default().add_modifier(Modifier::REVERSED)
-                } else {
-                    Style::default()
-                };
-
-                lines.push(Line::from(vec![
-                    indicator,
-                    Span::styled(format!(" {name}"), name_style),
+                // The gutter column is kept: one dark cell, then a gap cell,
+                // then the name.
+                let content_width =
+                    2 + name.chars().count() + 1 + row_state.label().chars().count();
+                let mut spans = vec![
+                    crate::sections::session_row_style::gutter_span(theme),
+                    crate::sections::session_row_style::gutter_span(theme),
+                    Span::raw(name.clone()),
                     Span::raw(" "),
-                    Span::styled(row_state.label(), Style::default().fg(row_state.color())),
-                ]));
+                    status,
+                ];
+                if is_selected {
+                    // The pad carries the band to the row's last cell —
+                    // `Paragraph` does not extend a line's style past the
+                    // last grapheme.
+                    spans.push(crate::sections::session_row_style::band_pad(
+                        content_width,
+                        usize::from(area.width),
+                        theme,
+                    ));
+                }
+                let row = Line::from(spans);
+                let row = if is_selected {
+                    row.style(crate::sections::session_row_style::selected_row_style(
+                        theme,
+                    ))
+                } else {
+                    row
+                };
+                lines.push(row);
             }
             lines
         };
@@ -570,5 +581,133 @@ mod tests {
                 .with_sections(|s| s.mcp_servers.selected_index, || None),
             Some(0)
         );
+    }
+
+    /// Renders the section and returns the buffer, so a test can read the
+    /// styles the user actually sees.
+    fn render_buffer(
+        state: &AppState,
+        config: &ConfigLayer,
+        width: u16,
+        height: u16,
+    ) -> ratatui::buffer::Buffer {
+        let mut section = McpServersSection;
+        let (mut terminal, area) = setup_term(width, height);
+        terminal
+            .draw(|frame| {
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
+                let ctx = RenderCtx::new(state, &slices, &overlay_views, config);
+                section.render(frame, area, 0, &ctx);
+            })
+            .unwrap();
+        terminal.backend().buffer().clone()
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_selected_mcp_row_bands_the_full_width_with_a_dark_gutter() {
+        // Given an enabled server and the section's cursor on it.
+        let (mut state, config) = state_with_servers(&[server("excalimate")]);
+        state.active_session_mut().enable_mcp_server("excalimate");
+        state
+            .frontend
+            .scope_push(jinn_sidebar_msg::SidebarSectionId::McpServers.focus_scope());
+        state
+            .frontend
+            .update_sections(|s| s.mcp_servers.selected_index = Some(0));
+        let theme = state.frontend.theme.clone();
+
+        // When rendering wide.
+        let width = 50u16;
+        let buffer = render_buffer(&state, &config, width, 8);
+
+        // Then the selected row carries the band...
+        let band_y = (0..8)
+            .find(|&y| {
+                (0..width).any(|x| {
+                    buffer
+                        .cell((x, y))
+                        .is_some_and(|cell| cell.bg == theme.selection_fg)
+                })
+            })
+            .unwrap_or_else(|| panic!("no selection band rendered"));
+        let last_banded_x = (0..width)
+            .filter(|&x| {
+                buffer
+                    .cell((x, band_y))
+                    .is_some_and(|cell| cell.bg == theme.selection_fg)
+            })
+            .max();
+        assert_eq!(
+            last_banded_x,
+            Some(width.saturating_sub(1)),
+            "the band must reach the row's last cell"
+        );
+        // And the gutter cell at column 0 stays on the dark sidebar
+        // background.
+        let gutter = buffer.cell((0, band_y)).expect("gutter cell");
+        assert_eq!(gutter.bg, theme.gutter_bg, "the gutter cell stays dark");
+        assert_eq!(gutter.symbol(), " ", "the gutter is a blank");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn an_mcp_status_label_takes_the_selection_band() {
+        // Given an enabled, running server selected by the cursor.
+        let (mut state, config) = state_with_servers(&[server("excalimate")]);
+        state.active_session_mut().enable_mcp_server("excalimate");
+        let slices = jinn_slices::Slices::new();
+        let session_id = state.active_session().session_id().clone();
+        let runtime = slices
+            .register(
+                jinn_mcp_msg::mcp_runtime_slot(),
+                jinn_mcp_msg::McpRuntimeState::default(),
+            )
+            .expect("MCP runtime cell");
+        runtime.update(|runtime| {
+            runtime.set_status(&session_id, "excalimate", McpConnectionStatus::Running);
+        });
+        state
+            .frontend
+            .scope_push(jinn_sidebar_msg::SidebarSectionId::McpServers.focus_scope());
+        state
+            .frontend
+            .update_sections(|s| s.mcp_servers.selected_index = Some(0));
+        let theme = state.frontend.theme.clone();
+
+        // When rendering.
+        let width = 50u16;
+        let (mut terminal, area) = setup_term(width, 8);
+        terminal
+            .draw(|frame| {
+                let overlay_views = jinn_slices::OverlayViews::new();
+                let ctx = RenderCtx::new(&state, &slices, &overlay_views, &config);
+                McpServersSection.render(frame, area, 0, &ctx);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+
+        // Then the status label's cells sit on the selection background — the
+        // state color yields to the band when the row is selected.
+        let band_y = (0..8)
+            .find(|&y| {
+                (0..width).any(|x| {
+                    buffer
+                        .cell((x, y))
+                        .is_some_and(|cell| cell.bg == theme.selection_fg)
+                })
+            })
+            .unwrap_or_else(|| panic!("no selection band rendered"));
+        let text: String = (0..width)
+            .filter_map(|x| buffer.cell((x, band_y)).map(ratatui::buffer::Cell::symbol))
+            .collect();
+        let label_at = text.find("running").expect("running label visible");
+        let label_cell = buffer
+            .cell((u16::try_from(label_at).unwrap_or(0), band_y))
+            .expect("label cell");
+        assert_eq!(label_cell.bg, theme.selection_fg);
+        // And the label's text is the band's text color, not the state color.
+        assert_eq!(label_cell.fg, theme.gutter_bg);
     }
 }

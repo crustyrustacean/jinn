@@ -35,9 +35,11 @@ pub fn definition() -> ToolDefinition {
  entries of a session to catch up on it.\n\nTwo modes:\n  anchored — pass entry_id (from a \
  session_search hit); returns it with surrounding entries. context controls how many entries \
  total (default 6, max 50).\n  tail — omit entry_id; returns the last entries of the session \
- (default 30, max 100).\n\nEach line is rendered as [position] role: text. Entries currently \
+ (default 30, max 100).\n\nEach line is rendered as [position] role: text. The [position] is a DISPLAY LABEL, NOT \
+ an entry id — it is a running count that shifts as the session grows, and passing one as \
+ entry_id is rejected. Entries currently \
  excluded from the model's context are flagged [excluded from context] — useful for \
- understanding why something was forgotten. Positions shift as sessions grow; always address \
+ understanding why something was forgotten. Always address \
  entries by entry id, never by position.\n\nOmit session_id to read the current session.\n\n\
  Examples:\n  session_fetch({\"entry_id\": \"e-7f3a…\", \"context\": 10})\n  \
  session_fetch({\"session_id\": \"0196a3b2-…\", \"limit\": 15})"
@@ -53,11 +55,11 @@ pub fn definition() -> ToolDefinition {
             "properties": {
                 "session_id": {
                     "type": "string",
-                    "description": "Session to read. Omits to the current session."
+                    "description": "Session to read. Defaults to the current session."
                 },
                 "entry_id": {
                     "type": "string",
-                    "description": "Anchor entry id from a session_search hit. Omit for a tail read."
+                    "description": "Anchor entry id copied verbatim from a session_search hit. NOT the [position] label this tool prints — positions are not addresses and are rejected. Omit for a tail read."
                 },
                 "context": {
                     "type": "integer",
@@ -82,6 +84,16 @@ enum FetchMode {
     Tail { limit: usize },
 }
 
+/// Whether a value is a rendered `[position]` label rather than an entry id.
+///
+/// Entry ids here are UUIDs, so a bare integer is always a position copied
+/// out of this tool's own output. Matching on that one shape is deliberate:
+/// the store does the real validation, since it knows which session an id
+/// belongs to, and a stricter guess would refuse a legitimate id.
+fn is_rendered_position(value: &str) -> bool {
+    value.parse::<u64>().is_ok()
+}
+
 /// Parses and validates raw JSON arguments.
 fn parse_args(raw: &str) -> Result<(Option<String>, FetchMode), String> {
     let args: serde_json::Value =
@@ -99,6 +111,21 @@ fn parse_args(raw: &str) -> Result<(Option<String>, FetchMode), String> {
 
     let mode = match entry_id {
         Some(entry_id) => {
+            // The output labels every line with a bracketed position, and a
+            // position looks enough like a value to be copied straight into
+            // this argument. It is not one: positions are rendered ordinals
+            // that shift as the session grows, so honouring one silently
+            // resolves to a *different* entry — often in another session,
+            // which is how a fetch of "entry 0" once returned a confident
+            // window of the wrong transcript. Refuse it by name instead.
+            if is_rendered_position(&entry_id) {
+                return Err(format!(
+                    "entry_id must be the entry id from a session_search hit, not the [position] \
+                     label this tool prints. Got {entry_id:?}, which is a rendered position: \
+                     positions shift as a session grows, so they are not addresses. Omit \
+                     entry_id to read the tail of the session instead."
+                ));
+            }
             let context = match args.get("context") {
                 None | Some(serde_json::Value::Null) => DEFAULT_CONTEXT,
                 Some(v) => {
@@ -172,12 +199,16 @@ fn format_window(window: &TranscriptWindow) -> String {
         };
         let text = item.entry.text();
         let (rendered, note) = elide_entry_text(&text);
+        // `#N`, not `[N]`: a bare integer in brackets is the one value a
+        // reader might paste into `entry_id`, and `#` reads as a display
+        // label rather than a value. The id is printed alongside so the
+        // anchored mode is always one copy away.
         let _ = writeln!(
             out,
-            "[{}] {}{}: {rendered}",
-            item.ordinal,
-            item.entry.kind_str(),
-            flag
+            "#{n} ({id}) {kind}{flag}: {rendered}",
+            n = item.ordinal,
+            id = item.entry.id,
+            kind = item.entry.kind_str(),
         );
         if let Some(note) = note {
             let _ = writeln!(out, "    [{note}]");

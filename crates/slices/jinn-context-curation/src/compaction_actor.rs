@@ -119,6 +119,7 @@ impl CompactionActor {
         self.publish(PushChatEntry {
             session_id: payload.session_id.clone(),
             entry: ChatEntry::system("⏳ Compacting context..."),
+            pin: None,
         })
         .await;
 
@@ -159,6 +160,7 @@ impl CompactionActor {
                 self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
                     entry: ChatEntry::system(&msg),
+                    pin: None,
                 })
                 .await;
             }
@@ -172,6 +174,7 @@ impl CompactionActor {
                 self.publish(PushChatEntry {
                     session_id: payload.session_id.clone(),
                     entry: ChatEntry::system(&msg),
+                    pin: None,
                 })
                 .await;
             }
