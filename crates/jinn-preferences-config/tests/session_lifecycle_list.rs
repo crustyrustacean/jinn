@@ -62,9 +62,6 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
 }
 
 #[rstest::rstest]
-// PINNED: `put_list` on a section nested under an umbrella rewrites the
-// umbrella inline and drops the user's comments. The capability these
-// tests describe is real; the layer does not deliver it yet.
 fn put_lifecycle_list_preserves_session_lifecycle_block_and_comments() {
     // Given a jinn.toml with a session_lifecycle block.
     let original = "# my custom lifecycle\n[[session_lifecycle.script]]\nname = \"fossil-branch\"\ndescription = \"open a branch\"\n";
@@ -88,9 +85,6 @@ fn put_lifecycle_list_preserves_session_lifecycle_block_and_comments() {
 }
 
 #[rstest::rstest]
-// PINNED: `put_list` on a section nested under an umbrella rewrites the
-// umbrella inline and drops the user's comments. The capability these
-// tests describe is real; the layer does not deliver it yet.
 fn put_lifecycle_list_deletes_session_lifecycle_block_on_entry_removal() {
     // Given a jinn.toml with two lifecycle blocks.
     let original = "# keep\n[[session_lifecycle.script]]\nname = \"alpha\"\n\n# delete\n[[session_lifecycle.script]]\nname = \"beta\"\n";
@@ -117,9 +111,6 @@ fn put_lifecycle_list_deletes_session_lifecycle_block_on_entry_removal() {
 }
 
 #[rstest::rstest]
-// PINNED: `put_list` on a section nested under an umbrella rewrites the
-// umbrella inline and drops the user's comments. The capability these
-// tests describe is real; the layer does not deliver it yet.
 fn put_lifecycle_list_appends_new_session_lifecycle_at_end() {
     // Given a jinn.toml with one lifecycle block.
     let original = "# existing\n[[session_lifecycle.script]]\nname = \"alpha\"\n";
