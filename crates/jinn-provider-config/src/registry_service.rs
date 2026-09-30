@@ -16,6 +16,7 @@ use jinn_provider::{LlmServiceError, LlmServiceFactory, ReasoningEffort};
 
 use super::api_keys::ApiKeys;
 use super::config::{AliasEntry, ProvidersConfig};
+use super::endpoint_default;
 use super::provider_id::ProviderId;
 use super::registry::ProviderRegistry;
 use super::resolved_provider::ResolvedProvider;
@@ -140,6 +141,30 @@ impl ProviderRegistryService {
     /// Updates the default provider in the config.
     pub fn set_default_provider(&self, name: Option<String>) {
         self.inner.write().set_default_provider(name);
+    }
+
+    /// Pins `tag` as the routing endpoint for `model`, replacing any pin.
+    ///
+    /// Callers persist the same change through
+    /// [`ConfigStorageService::save`](crate::ConfigStorageService::save) first,
+    /// then write it back here — disk before memory, so a failed save cannot
+    /// leave the run and the file disagreeing.
+    pub fn set_endpoint_default(&self, model: String, tag: String) {
+        self.inner.write().set_endpoint_default(model, tag);
+    }
+
+    /// Clears the routing endpoint pin for `model`, if it has one.
+    pub fn clear_endpoint_default(&self, model: &str) {
+        self.inner.write().clear_endpoint_default(model);
+    }
+
+    /// Returns the routing tag pinned for `model`, or `None` to auto-route.
+    ///
+    /// The read side of [`set_endpoint_default`](Self::set_endpoint_default),
+    /// consulted by every dispatch path before building an LLM factory.
+    #[must_use]
+    pub fn pinned_endpoint_tag(&self, model: &str) -> Option<String> {
+        endpoint_default::pinned_tag(self.inner.read().config(), model)
     }
 
     /// Returns a snapshot of the current config for persistence.

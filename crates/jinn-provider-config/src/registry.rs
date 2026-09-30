@@ -18,7 +18,7 @@ use jinn_provider::{Backend, LlmService, LlmServiceError, LlmServiceFactory, Rea
 
 use super::SampleLlmServiceFactory;
 use super::api_keys::ApiKeys;
-use super::config::{AliasEntry, ConfigError, ProviderEntry, ProvidersConfig};
+use super::config::{AliasEntry, ConfigError, EndpointDefault, ProviderEntry, ProvidersConfig};
 use super::generic_factory::GenericLlmServiceFactory;
 use super::provider_id::ProviderId;
 use super::resolved_provider::ResolvedProvider;
@@ -158,6 +158,26 @@ impl ProviderRegistry {
     /// Updates the default provider in the config (for persistence on switch).
     pub fn set_default_provider(&mut self, name: Option<String>) {
         self.config.default_provider = name;
+    }
+
+    /// Replaces the endpoint row for `model` with `tag`, removing any row
+    /// already there.
+    ///
+    /// The in-memory half of a picker save: the caller persists the same
+    /// change through [`ConfigStorage`](crate::ConfigStorage) first, then
+    /// writes it back here so the running process and the file agree.
+    pub fn set_endpoint_default(&mut self, model: String, tag: String) {
+        upsert_endpoint_default(&mut self.config.endpoint_defaults, &model, tag);
+    }
+
+    /// Drops the endpoint row for `model`, if it has one.
+    ///
+    /// The in-memory half of choosing auto-route: with no row for the model,
+    /// dispatch stops forcing an upstream.
+    pub fn clear_endpoint_default(&mut self, model: &str) {
+        self.config
+            .endpoint_defaults
+            .retain(|row| row.model != model);
     }
 
     /// Merges runtime-discovered models from the model cache into the registry.
@@ -355,6 +375,17 @@ impl ProviderRegistry {
         );
 
         Ok(Box::new(factory))
+    }
+}
+
+/// Sets `rows[model]` to `tag`, replacing any row already keyed by `model`.
+fn upsert_endpoint_default(rows: &mut Vec<EndpointDefault>, model: &str, tag: String) {
+    match rows.iter_mut().find(|row| row.model == model) {
+        Some(row) => row.tag = tag,
+        None => rows.push(EndpointDefault {
+            model: model.to_owned(),
+            tag,
+        }),
     }
 }
 

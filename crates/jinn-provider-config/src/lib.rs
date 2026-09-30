@@ -9,6 +9,7 @@ mod api_keys;
 mod api_keys_service;
 mod config;
 mod config_storage;
+mod endpoint_default;
 mod generic_factory;
 mod model_cache;
 mod models_dev;
@@ -36,6 +37,7 @@ pub use config::{
 pub use config_storage::{
     ConfigStorage, ConfigStorageService, FilesystemConfigStorage, InMemoryConfigStorage,
 };
+pub use endpoint_default::{endpoint_default_for, has_pin, pinned_tag};
 pub use generic_factory::GenericLlmServiceFactory;
 pub use jinn_provider::{
     ChatStream, FakeLlmServiceFactory, InputModalities, LlmService, LlmServiceError,
