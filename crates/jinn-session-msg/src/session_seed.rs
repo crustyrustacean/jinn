@@ -196,6 +196,28 @@ mod tests {
         assert!(skill_filter.permits("any"));
     }
 
+    /// A config save writes through the patcher, so a filter with no names
+    /// must contribute no key at all — otherwise every save of an unconfigured
+    /// file would grow an empty filter table into it.
+    #[rstest::rstest]
+    fn a_written_unconfigured_filter_writes_no_key() {
+        // Given a layer over a file that configures no filter.
+        let config = layer("[tools]\ndefault_timeout_secs = 60\n");
+
+        // When the section is saved back.
+        let section = config.read::<ToolsConfig>();
+        config
+            .put::<ToolsConfig>(&section)
+            .expect("layer writes the tools section");
+
+        // Then the document carries no filter key.
+        assert!(
+            !config.document_text().contains("tool_filter"),
+            "an unconfigured filter grew a key:\n{}",
+            config.document_text()
+        );
+    }
+
     #[rstest::rstest]
     fn a_written_tool_filter_reads_back_identically() {
         // Given a layer whose filter is written through it.
