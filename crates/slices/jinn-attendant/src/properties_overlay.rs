@@ -613,40 +613,37 @@ fn help_body(field: PropertyField, theme: &jinn_theme::Theme) -> Vec<Line<'stati
     };
     match field {
         PropertyField::Trigger => vec![
-            Line::from("When the attendant re-runs on its own:"),
+            Line::from("Condition to trigger the attendant."),
             Line::from(""),
-            line(
-                "parent-completed",
-                "runs after every response message in the parent",
-            ),
-            line("manual", "runs only when you trigger it yourself"),
+            line("parent-completed", "runs when the agent finishes it's turn"),
+            line("manual", "only the `R` keybind will run the attendant"),
         ],
         PropertyField::Behavior => vec![
-            Line::from(
-                "What each run sees of the conversation. Does not apply while prep mode is on:",
-            ),
+            Line::from("How to manage the context when the attendant is triggered."),
             Line::from(""),
-            line("reset", "the run sees the pins alone"),
-            line("preserve", "the run keeps the context as it stands"),
+            line("reset", "pins are kept, all other context excluded/hidden"),
+            line("preserve", "one continuous chat session; no context edits"),
         ],
         PropertyField::PrepMode => vec![
             Line::from(
-                "Whether the attendant is still being composed. While it is on, nothing runs:",
+                "Attendants need to be 'prepped' before usage by providing pinned context to define their behavior. Messages land in context pinned and not sent to a provider.",
             ),
             Line::from(""),
             line(
                 "on",
-                "the trigger and behavior above do not apply, and no re-run is accepted",
+                "prepare the session by submitting messages; attendant disabled",
             ),
-            line(
-                "off",
-                "the trigger and behavior above apply, and the attendant can be re-run",
-            ),
+            line("off", "attendant is active"),
         ],
         PropertyField::SeedTemplate => vec![
-            Line::from("Text injected on each run, ahead of the previous report:"),
+            Line::from(
+                "Text injected on each run, ahead of the previous report. Useful when using `reset` behavior to advise the agent of the previous conclusion.",
+            ),
             Line::from(""),
-            line("<prior report>", "replaced with the previous report"),
+            line(
+                "<prior report>",
+                "replacement token you can optionally add to the see template",
+            ),
         ],
     }
 }
