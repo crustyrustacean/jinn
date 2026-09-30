@@ -2,10 +2,19 @@
 //!
 //! The popup lives on its own dynamic scope with the six controls
 //! (trigger, behavior, prep mode, tool set, skill set, seed template) as a
-//! single form. This module is the sidebar-side glue: `P` in the sessions
-//! scope seeds the popup's cell from the highlighted attendant and pushes
-//! the scope; the popup's own rows (in `jinn-attendant`) handle editing,
-//! applying, and leaving.
+//! single form. This module is the sidebar-side glue: `P` seeds the popup's
+//! cell from the highlighted attendant and pushes the scope; the popup's own
+//! rows (in `jinn-attendant`) handle editing, applying, and leaving.
+//!
+//! `P` answers for two sections, because there are two places a user stands
+//! when they decide an attendant needs editing. The sessions section lists
+//! the whole tree and reaches the attendant through its own row; the
+//! attendants section lists an attendant's siblings directly, which is the
+//! screen a user is already on when the trigger or the frozen sets are what
+//! they came to change. Only the *row resolution* differs — each section owns
+//! its own cursor over its own list — so the split is drawn at the id: this
+//! module resolves a highlighted attendant from whichever section is focused,
+//! and everything after that is section-agnostic.
 //!
 //! The apply half commits straight to `AppState` and publishes
 //! `PersistSession`; it cannot live in `jinn-attendant-msg` (no state
@@ -16,29 +25,63 @@ use jinn_attendant_msg::{
 };
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::protocol::IntentResult;
+use jinn_sidebar_msg::SidebarSectionId;
 use jinn_slices::ScopeSignal;
 
 use super::sorted_open_sessions;
 
-/// Opens the attendant properties popup for the highlighted session.
-///
-/// Validates that the highlighted session *is* an attendant — the popup has
-/// nothing to edit on a user session, fork, or subagent — seeds the popup's
-/// cell with the session's current values (as both the pending edits and
-/// the open-time snapshot that leaving restores), and pushes the popup
-/// scope.
+/// Opens the attendant properties popup for the highlighted attendant,
+/// from whichever sidebar section is focused.
 pub fn handle_open_attendant_properties(state: &mut AppState) -> IntentResult {
-    let Some(index) = state
-        .frontend
-        .with_sections(|s| s.sessions.selected_index, || None)
-    else {
+    let Some(id) = highlighted_attendant_id(state) else {
         return IntentResult::empty();
     };
-    let sessions = sorted_open_sessions(state);
-    let Some(entry) = sessions.get(index) else {
-        return IntentResult::empty();
+    open_properties_for(state, &id)
+}
+
+/// The session id of the highlighted attendant, or `None` when the focused
+/// section has no attendant under its cursor.
+///
+/// Both sections keep their own cursor and clear the one they are leaving,
+/// so exactly one of them is ever set — which is what makes reading the
+/// focused section's cursor the right answer rather than a guess. Their row
+/// lists are not the same list, though: the sessions section walks the
+/// session tree while the attendants section walks the active session's
+/// attendants by name, so the index has to be resolved against the list the
+/// focused section is actually rendering. Reading the attendants cursor
+/// against the sessions list would open some other attendant's properties.
+fn highlighted_attendant_id(state: &AppState) -> Option<jinn_core_types::SessionId> {
+    let Some(focused) = state.frontend.sidebar_section() else {
+        return None;
     };
-    let Some(session) = state.session.get(&entry.id) else {
+    let index = state.frontend.with_sections(
+        |s| match focused {
+            SidebarSectionId::Attendant => s.attendant.selected_index,
+            _ => s.sessions.selected_index,
+        },
+        || None,
+    );
+    let Some(index) = index else {
+        return None;
+    };
+    match focused {
+        SidebarSectionId::Attendant => jinn_attendant::section_rows::attendant_rows(state)
+            .get(index)
+            .map(|row| row.session_id.clone()),
+        _ => sorted_open_sessions(state)
+            .get(index)
+            .map(|entry| entry.id.clone()),
+    }
+}
+
+/// Opens the properties popup over one specific attendant.
+///
+/// Validates that the session *is* an attendant — the popup has nothing to
+/// edit on a user session, fork, or subagent — seeds the popup's cell with
+/// the session's current values (as both the pending edits and the open-time
+/// snapshot that leaving restores), and pushes the popup scope.
+fn open_properties_for(state: &mut AppState, id: &jinn_core_types::SessionId) -> IntentResult {
+    let Some(session) = state.session.get(id) else {
         return IntentResult::empty();
     };
     if !session.is_attendant() {
@@ -54,7 +97,7 @@ pub fn handle_open_attendant_properties(state: &mut AppState) -> IntentResult {
     let tool_set = session.tool_filter().cloned();
     let skill_set = session.skill_filter().cloned();
     let popup = AttendantPropertiesState {
-        session_id: Some(entry.id.clone()),
+        session_id: Some(id.clone()),
         seed_template: jinn_slices::LineInput {
             input: template.clone(),
             cursor_pos,
