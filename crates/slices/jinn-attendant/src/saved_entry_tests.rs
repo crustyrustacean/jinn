@@ -11,7 +11,8 @@
 use std::collections::HashSet;
 
 use jinn_attendant_msg::{AttendantBehavior, AttendantTrigger};
-use jinn_core_types::{ChatEntry, PinPosition};
+use jinn_core_types::{ChatEntry, ChatEntryKind, ContextOverride, PinPosition, ToolResultStatus};
+use jinn_preferences_config::schemas::{AttendantPinConfig, AttendantPinRole};
 use jinn_session_state::ChatSessionState;
 
 use crate::saved_entry;
@@ -75,11 +76,41 @@ fn an_entry_records_the_pins_in_history_order() {
     // When building its entry.
     let entry = saved_entry::entry_for_session("nightly".to_owned(), &session);
 
-    // Then both pins are stored in order and the chatter is not stored.
-    let texts: Vec<String> = entry.pins.iter().map(ChatEntry::text).collect();
+    // Then both instructions are stored in order and the chatter is not.
+    let texts: Vec<&str> = entry.pins.iter().map(|pin| pin.text.as_str()).collect();
     assert_eq!(texts, vec!["first instruction", "second instruction"]);
-    assert_eq!(entry.pins[0].pin_position, Some(PinPosition::Top));
-    assert_eq!(entry.pins[1].pin_position, Some(PinPosition::Bottom));
+}
+
+#[rstest::rstest]
+#[test]
+fn an_entry_does_not_store_where_each_pin_sat() {
+    // Given an attendant whose pins sit at different positions.
+    let session = composed_attendant();
+
+    // When building its entry.
+    let entry = saved_entry::entry_for_session("nightly".to_owned(), &session);
+
+    // Then no instruction carries a position at all — a restored attendant
+    // is a new session, and where an instruction sat in the old one says
+    // nothing about where it should sit here. Restore attaches `Relative`
+    // and the session store owns it from then on.
+    //
+    // The serialized form is asserted at the schema level; here the claim is
+    // simply that the captured pins are two bare instructions.
+    let pins: Vec<AttendantPinConfig> = entry.pins.clone();
+    assert_eq!(
+        pins,
+        vec![
+            AttendantPinConfig {
+                role: AttendantPinRole::User,
+                text: "first instruction".to_owned(),
+            },
+            AttendantPinConfig {
+                role: AttendantPinRole::User,
+                text: "second instruction".to_owned(),
+            },
+        ]
+    );
 }
 
 #[rstest::rstest]
@@ -123,32 +154,33 @@ fn an_entry_omits_a_session_that_configured_nothing() {
 
 #[rstest::rstest]
 #[test]
-fn restoring_pins_gives_every_entry_a_fresh_id() {
-    // Given a saved entry's pins.
+fn restoring_pins_gives_every_instruction_its_own_id() {
+    // Given a saved entry's pins, restored twice into two fresh attendants.
     let session = composed_attendant();
     let entry = saved_entry::entry_for_session("nightly".to_owned(), &session);
-    let saved_ids: Vec<String> = entry.pins.iter().map(|e| e.id.to_string()).collect();
-
-    // When restoring them into a fresh attendant.
     let parent = ChatSessionState::new();
-    let mut fresh = ChatSessionState::new_attendant(&parent, true);
-    saved_entry::restore_pins(&mut fresh, &entry.pins);
+    let mut first = ChatSessionState::new_attendant(&parent, true);
+    let mut second = ChatSessionState::new_attendant(&parent, true);
+    saved_entry::restore_pins(&mut first, &entry.pins);
+    saved_entry::restore_pins(&mut second, &entry.pins);
 
-    // Then the entries are there, in order, with ids that are not the ones
-    // the saved session used — a replayed id would be a different entry
-    // sharing a name in a new session's history.
-    let restored: Vec<String> = fresh.history().iter().map(ChatEntry::text).collect();
-    assert_eq!(restored, vec!["first instruction", "second instruction"]);
-    let fresh_ids: Vec<String> = fresh.history().iter().map(|e| e.id.to_string()).collect();
-    for (fresh_id, saved_id) in fresh_ids.iter().zip(&saved_ids) {
-        assert_ne!(fresh_id, saved_id, "a saved entry id was replayed");
-    }
+    // Then no two entries share an id — a shared id would make every
+    // id-keyed view state (the selected entry, the streaming target) resolve
+    // to whichever entry happened to be looked up first.
+    let ids: Vec<String> = first
+        .history()
+        .iter()
+        .chain(second.history())
+        .map(|e| e.id.to_string())
+        .collect();
+    let unique: std::collections::HashSet<&String> = ids.iter().collect();
+    assert_eq!(unique.len(), ids.len(), "an entry id was replayed");
 }
 
 #[rstest::rstest]
 #[test]
-fn restoring_pins_keeps_each_saved_pin_position() {
-    // Given a saved entry whose pins sit at different positions.
+fn restoring_pins_pins_every_instruction_relative() {
+    // Given a saved entry whose pins sat at different positions.
     let session = composed_attendant();
     let entry = saved_entry::entry_for_session("nightly".to_owned(), &session);
 
@@ -157,7 +189,9 @@ fn restoring_pins_keeps_each_saved_pin_position() {
     let mut fresh = ChatSessionState::new_attendant(&parent, true);
     saved_entry::restore_pins(&mut fresh, &entry.pins);
 
-    // Then each entry is pinned where it was saved.
+    // Then each is pinned, and pinned relative. A pin is what makes an
+    // instruction survive a run with a reset behavior, which force-excludes
+    // everything that is not pinned.
     let positions: Vec<Option<PinPosition>> = fresh
         .history()
         .iter()
@@ -165,6 +199,133 @@ fn restoring_pins_keeps_each_saved_pin_position() {
         .collect();
     assert_eq!(
         positions,
-        vec![Some(PinPosition::Top), Some(PinPosition::Bottom)]
+        vec![Some(PinPosition::Relative), Some(PinPosition::Relative)]
     );
+}
+
+#[rstest::rstest]
+#[test]
+fn restoring_pins_keeps_each_instruction_in_saved_order() {
+    // Given a saved entry whose pins were in a known order.
+    let session = composed_attendant();
+    let entry = saved_entry::entry_for_session("nightly".to_owned(), &session);
+
+    // When restoring them.
+    let parent = ChatSessionState::new();
+    let mut fresh = ChatSessionState::new_attendant(&parent, true);
+    saved_entry::restore_pins(&mut fresh, &entry.pins);
+
+    // Then they arrive in that order, because a saved attendant's context
+    // is a sequence.
+    let restored: Vec<String> = fresh.history().iter().map(ChatEntry::text).collect();
+    assert_eq!(restored, vec!["first instruction", "second instruction"]);
+}
+
+#[rstest::rstest]
+#[case(AttendantPinRole::User)]
+#[case(AttendantPinRole::Assistant)]
+fn a_saved_instruction_restores_as_the_role_it_was_saved_as(#[case] role: AttendantPinRole) {
+    // Given a saved pin of this role.
+    let pin = AttendantPinConfig {
+        role,
+        text: "same words either way".to_owned(),
+    };
+
+    // When restoring it into a fresh attendant.
+    let parent = ChatSessionState::new();
+    let mut fresh = ChatSessionState::new_attendant(&parent, true);
+    saved_entry::restore_pins(&mut fresh, std::slice::from_ref(&pin));
+
+    // Then the entry comes back as that role. Identical text in the other
+    // role would be a different message to the model: an agent result read
+    // as an instruction the user gave.
+    let kind = &fresh.history()[0].kind;
+    let restored_role = match kind {
+        ChatEntryKind::User { .. } => AttendantPinRole::User,
+        ChatEntryKind::Assistant(_) => AttendantPinRole::Assistant,
+        other => panic!("restored as an unexpected kind: {other:?}"),
+    };
+    assert_eq!(restored_role, role);
+}
+
+#[rstest::rstest]
+#[test]
+fn a_session_with_pinned_non_message_entries_saves_only_its_instructions() {
+    // Given an attendant with a pinned tool result and a pinned system line
+    // alongside its instructions.
+    let session = {
+        let parent = ChatSessionState::new();
+        let mut attendant = ChatSessionState::new_attendant(&parent, true);
+        attendant.push_entry(ChatEntry {
+            pin_position: Some(PinPosition::Top),
+            ..ChatEntry::user("an instruction")
+        });
+        attendant.push_entry(ChatEntry {
+            pin_position: Some(PinPosition::Relative),
+            ..ChatEntry::tool_result(
+                "call-1",
+                "read_file",
+                "contents".to_owned(),
+                ToolResultStatus::Success,
+            )
+        });
+        attendant.push_entry(ChatEntry {
+            pin_position: Some(PinPosition::Relative),
+            ..ChatEntry::system("a note")
+        });
+        attendant
+    };
+
+    // When building its entry.
+    let entry = saved_entry::entry_for_session("mixed".to_owned(), &session);
+
+    // Then only the instruction is stored. A tool result is a snapshot of a
+    // file as it was; re-injected into a newly spawned attendant it asserts
+    // stale contents as current fact. System lines never reach the model.
+    let texts: Vec<&str> = entry.pins.iter().map(|pin| pin.text.as_str()).collect();
+    assert_eq!(texts, vec!["an instruction"]);
+}
+
+#[rstest::rstest]
+#[test]
+fn an_entry_with_no_pins_restores_an_attendant_with_no_pins() {
+    // Given a saved entry carrying no pins.
+    let entry = saved_entry::entry_for_session("bare".to_owned(), &ChatSessionState::new());
+
+    // When restoring them.
+    let parent = ChatSessionState::new();
+    let mut fresh = ChatSessionState::new_attendant(&parent, true);
+    saved_entry::restore_pins(&mut fresh, &entry.pins);
+
+    // Then the attendant has an empty history.
+    assert!(fresh.history().is_empty());
+}
+
+#[rstest::rstest]
+#[test]
+fn a_restored_instruction_survives_a_reset_run() {
+    // Given an attendant restored from a saved entry.
+    let session = composed_attendant();
+    let entry = saved_entry::entry_for_session("nightly".to_owned(), &session);
+    let parent = ChatSessionState::new();
+    let mut fresh = ChatSessionState::new_attendant(&parent, true);
+    saved_entry::restore_pins(&mut fresh, &entry.pins);
+    fresh.push_entry(ChatEntry::user("chatter after the restore"));
+
+    // When the context is reset, which is what a reset-behavior run does.
+    let excluded = crate::activation::reset_context(&mut fresh);
+
+    // Then the instructions are still in context while the chatter is not —
+    // reset force-excludes everything unpinned, so a restored instruction
+    // only survives because restore pinned it.
+    let in_context: Vec<String> = fresh
+        .history()
+        .iter()
+        .filter(|entry| entry.context_override != ContextOverride::ForcedExclude)
+        .map(ChatEntry::text)
+        .collect();
+    assert_eq!(in_context, vec!["first instruction", "second instruction"]);
+    // And the only entry the reset touched is the chatter.
+    let chatter = &fresh.history()[2];
+    assert_eq!(excluded, vec![chatter.id.clone()]);
 }

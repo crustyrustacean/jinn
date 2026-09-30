@@ -40,7 +40,7 @@ pub mod term;
 pub mod tool_call_watchdog;
 pub mod tools;
 
-pub use attendant::AttendantEntryConfig;
+pub use attendant::{AttendantEntryConfig, AttendantPinConfig, AttendantPinRole};
 pub use auto_prune::{
     AnchoredAssistantAutoPruneConfig, AutoPruneConfig, BrokenEditAutoPruneConfig,
     ConsecutiveReadsAutoPruneConfig, DoubleEditAutoPruneConfig, EditReadAutoPruneConfig,

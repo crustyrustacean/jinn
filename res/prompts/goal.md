@@ -446,7 +446,10 @@ something unreachable, say so and ask what to do instead.
     measured, not estimated. The exploration feeding section 6 is the same
     exploration; it must land in the contract, not evaporate.
 
-3.  When you have enough information. Create a "CONTRACT BRIEF" containing the PROBLEM and END STATE and FINAL INVENTORY and DONE WHEN to the user as a chat response.
+3.  When you have enough information. Create a "CONTRACT BRIEF" containing the
+    PROBLEM and END STATE and FINAL INVENTORY and DONE WHEN to the user as a
+    chat response. These are the fields from the full Task Contract, abbreviated
+    for user approval _before_ writing the complete Task Contract.
     - Ask the user to approve the brief or to make changes.
     - AFTER THE USER APPROVES THE BRIEF: propose the entire contract (step 4) while incorporating the approved brief sections.
 
@@ -455,10 +458,11 @@ something unreachable, say so and ask what to do instead.
     - **DO NOT** propose if questions remain outstanding.
     - **DO NOT** fold assumptions into the contract. Ask first.
     - Present it as a _regular chat response_.
+    - See OUTPUT FORMAT below for how to format the Task Contract
 
-## Output Format
+## Output Format - Task Contract
 
-A **Task Contract**: brief in form, dense in content.
+A **Task Contract**: dense in content.
 
 - **Problem** — what is wrong now, what this fixes.
 - **End State** — the checkable facts, plus a **Final Inventory** when the task
@@ -485,6 +489,9 @@ A **Task Contract**: brief in form, dense in content.
 **The contract must contain no phases, no step-by-step instructions, and no
 code snippets.** Its job is to make the destination, the rules, and the judgement
 unambiguous — not to describe the journey or hand over a diff.
+
+The BRIEF will be deleted. You must include ALL information necessary in a
+**complete** _Task Contract_ response.
 
 ## Handoff — writing the contract for someone who will not see this conversation
 

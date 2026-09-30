@@ -15,7 +15,7 @@
 //! shape and the session shape cannot compile.
 
 use jinn_attendant_msg::{AttendantBehavior, AttendantTrigger};
-use jinn_core_types::{ChatEntry, Endpoint, ModelSelection, ReasoningEffort};
+use jinn_core_types::{Endpoint, ModelSelection, ReasoningEffort};
 use serde::{Deserialize, Serialize};
 
 impl jinn_config::ConfigList for AttendantEntryConfig {
@@ -35,11 +35,11 @@ impl jinn_config::ConfigList for AttendantEntryConfig {
 /// no-provider placeholder counts as not configured and inherits too —
 /// [`Self::configured_model`].
 ///
-/// `PartialEq` is derived over the serialized form rather than the struct:
-/// [`ChatEntry`] has no `PartialEq` of its own, and the only comparison
-/// that means anything here is "the two entries write the same document" —
-/// which is exactly what a round trip must preserve.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/// Every field type is `PartialEq`, so equality is derived from the struct
+/// rather than compared through a serialized form. That was not always so:
+/// `pins` used to hold whole chat entries, which have no `PartialEq`, and
+/// [`same_entry`] compared the two documents instead.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct AttendantEntryConfig {
     /// The entry's identity, and the title the created attendant gets.
     pub name: String,
@@ -78,15 +78,96 @@ pub struct AttendantEntryConfig {
     /// Pinned OpenRouter routing endpoint, absent when none was pinned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub endpoint: Option<Endpoint>,
-    /// The session's pinned entries at save time, in history order.
+    /// The session's pinned instructions at save time, in history order.
     ///
-    /// Restored as pinned history in the same order with fresh entry IDs —
-    /// replaying the saved IDs would collide with nothing, but would lie
-    /// about which entries a new session's history holds. Tool-call loops
-    /// are stored as their full member run, so restore appends the loop
-    /// contiguously.
+    /// A saved pin is a role and a text — see [`AttendantPinConfig`] for
+    /// why nothing else is stored. Order is the whole point: an attendant's
+    /// standing instructions are a *sequence*, so restore rebuilds them as
+    /// pinned history in this order with fresh entry ids.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub pins: Vec<ChatEntry>,
+    pub pins: Vec<AttendantPinConfig>,
+}
+
+/// One standing instruction a saved attendant is spawned with.
+///
+/// A persisted pin is only the instruction text and the role the model reads
+/// it as. Everything else a chat entry carries is either derived when the
+/// attendant is created or deliberately left out because a restored
+/// attendant is a new session and the old values would be lies: entry ids
+/// and timestamps describe the session this was saved from, and a persisted
+/// token count is never recomputed — it stays stale forever.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AttendantPinConfig {
+    /// Whether the model reads this instruction as something the user said
+    /// or something the agent produced.
+    ///
+    /// Required, with no `#[serde(default)]`. A user instruction and an
+    /// agent result with identical text are *different messages* to the
+    /// model, and nothing in the text distinguishes them. Defaulting a
+    /// missing role to `user` would restore the attendant's own prior turns
+    /// as facts it was told, so a malformed pin must fail loudly instead.
+    pub role: AttendantPinRole,
+
+    /// The instruction itself.
+    pub text: String,
+}
+
+/// The entry kinds a saved attendant can carry.
+///
+/// These are exactly the kinds `entries_to_messages` turns into a message.
+/// System and actor entries are excluded from context by default, and a tool
+/// result is a snapshot of a file as it was — re-injected into a newly
+/// spawned attendant, it asserts stale contents as current fact.
+///
+/// If a future change makes another kind reach the prompt, the save-side
+/// filter must follow it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AttendantPinRole {
+    /// An instruction the user gave the attendant.
+    User,
+    /// A result the agent produced that the attendant should keep seeing.
+    Assistant,
+}
+
+impl AttendantPinConfig {
+    /// This instruction as a live entry, or `None` for a kind the model
+    /// never reads.
+    ///
+    /// `None` is what keeps a tool result, system line, or actor notice out
+    /// of the spawn schema — see [`AttendantPinRole`] for why.
+    #[must_use]
+    pub fn from_entry(entry: &jinn_core_types::ChatEntry) -> Option<Self> {
+        let role = match &entry.kind {
+            jinn_core_types::ChatEntryKind::User { .. } => AttendantPinRole::User,
+            jinn_core_types::ChatEntryKind::Assistant(_) => AttendantPinRole::Assistant,
+            _ => return None,
+        };
+        Some(Self {
+            role,
+            text: entry.text().clone(),
+        })
+    }
+
+    /// This instruction as a live entry, for a fresh session to pin.
+    ///
+    /// The two roles construct differently: a user entry carries a
+    /// display/expanded split and an assistant entry a single string. Both
+    /// fields get the same text here because nothing in the tree ever makes
+    /// them differ, and filling both keeps the round trip honest if that
+    /// ever changes.
+    ///
+    /// Pin position is deliberately *not* set here — restore decides, and
+    /// the reason it picks `Relative` belongs to the restore path.
+    #[must_use]
+    pub fn to_entry(&self) -> jinn_core_types::ChatEntry {
+        match self.role {
+            AttendantPinRole::User => {
+                jinn_core_types::ChatEntry::user_expanded(self.text.clone(), self.text.clone())
+            }
+            AttendantPinRole::Assistant => jinn_core_types::ChatEntry::assistant(&self.text),
+        }
+    }
 }
 
 /// Serde default for the seed template, matching the session state's own
@@ -125,7 +206,7 @@ impl AttendantEntryConfig {
         disabled_skills: &std::collections::HashSet<String>,
         reasoning_effort: Option<ReasoningEffort>,
         endpoint: Option<&Endpoint>,
-        pins: Vec<ChatEntry>,
+        pins: Vec<AttendantPinConfig>,
     ) -> Self {
         Self {
             name,
@@ -173,15 +254,6 @@ fn sorted_unique(names: &std::collections::HashSet<String>) -> Vec<String> {
     sorted
 }
 
-/// Whether two entries would write the same document.
-///
-/// Compares serialized forms: an entry's meaning is what lands in
-/// `jinn.toml`, and the types it holds are not all `PartialEq`.
-#[must_use]
-pub fn same_entry(left: &AttendantEntryConfig, right: &AttendantEntryConfig) -> bool {
-    toml::Value::try_from(left).is_ok_and(|l| toml::Value::try_from(right).is_ok_and(|r| l == r))
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -195,14 +267,40 @@ mod tests {
     use std::sync::Arc;
 
     use jinn_attendant_msg::{AttendantBehavior, AttendantTrigger};
-    use jinn_config::{ConfigLayer, ConfigList, InMemoryConfigStorage};
+    use jinn_config::{ConfigLayer, InMemoryConfigStorage};
     use jinn_core_types::{ModelSelection, NO_PROVIDER_ID};
 
-    use super::AttendantEntryConfig;
+    use super::{AttendantEntryConfig, AttendantPinConfig, AttendantPinRole};
 
     /// A set built from literals, for the disablement fields.
     fn set(names: impl IntoIterator<Item = String>) -> HashSet<String> {
         names.into_iter().collect()
+    }
+
+    /// A layer over a document given as a string.
+    fn layer_over(body: &str) -> ConfigLayer {
+        let doc = body.parse().expect("test TOML parses");
+        ConfigLayer::load(Arc::new(InMemoryConfigStorage::new(doc))).expect("layer loads")
+    }
+
+    /// The plainest entry that still serializes: no model, no persona, no
+    /// disablements, so a test's size or field assertions measure only what
+    /// it actually set.
+    fn entry_with_pins(pins: Vec<AttendantPinConfig>) -> AttendantEntryConfig {
+        AttendantEntryConfig::from_parts(
+            "pinned".to_owned(),
+            AttendantBehavior::Reset,
+            AttendantTrigger::Manual,
+            false,
+            jinn_attendant_msg::default_seed_template(),
+            &ModelSelection::Single(NO_PROVIDER_ID.to_owned()),
+            jinn_core_types::DEFAULT_PERSONA_NAME,
+            &HashSet::new(),
+            &HashSet::new(),
+            None,
+            None,
+            pins,
+        )
     }
 
     fn entry(name: &str) -> AttendantEntryConfig {
@@ -229,7 +327,8 @@ mod tests {
     #[test]
     fn entries_round_trip_through_the_config_layer() {
         // Given a document carrying one full attendant entry.
-        let doc = r#"
+        let layer = layer_over(
+            r#"
             [[attendant.entry]]
             name = "reviewer"
             behavior = "reset"
@@ -245,10 +344,8 @@ mod tests {
             [attendant.entry.endpoint]
             tag = "zai"
             provider_name = "ZAI"
-        "#
-        .parse()
-        .expect("test TOML parses");
-        let layer = ConfigLayer::load(Arc::new(InMemoryConfigStorage::new(doc))).expect("load");
+        "#,
+        );
 
         // When reading the list.
         let entries = layer
@@ -257,8 +354,9 @@ mod tests {
 
         // Then the entry reads back field for field.
         assert_eq!(entries.len(), 1);
-        assert!(
-            super::same_entry(&entries[0], &entry("reviewer")),
+        assert_eq!(
+            entries[0],
+            entry("reviewer"),
             "round trip lost fields: {}",
             layer.document_text()
         );
@@ -268,10 +366,7 @@ mod tests {
     #[test]
     fn an_absent_attendant_list_reads_empty() {
         // Given a document with no attendant umbrella at all.
-        let doc = "[tools]\ndefault_timeout_secs = 60"
-            .parse()
-            .expect("test TOML parses");
-        let layer = ConfigLayer::load(Arc::new(InMemoryConfigStorage::new(doc))).expect("load");
+        let layer = layer_over("[tools]\ndefault_timeout_secs = 60");
 
         // When reading the list.
         let entries = layer
@@ -287,10 +382,7 @@ mod tests {
     #[test]
     fn a_minimal_entry_defaults_its_attendant_fields() {
         // Given an entry naming only what it must.
-        let doc = "[[attendant.entry]]\nname = \"bare\"\n"
-            .parse()
-            .expect("test TOML parses");
-        let layer = ConfigLayer::load(Arc::new(InMemoryConfigStorage::new(doc))).expect("load");
+        let layer = layer_over("[[attendant.entry]]\nname = \"bare\"\n");
 
         // When reading the list.
         let entries = layer
@@ -417,11 +509,9 @@ mod tests {
     fn a_no_provider_model_is_never_configured() {
         // Given an entry whose model deserialized to the no-provider
         // placeholder (as a hand-written entry naming it would).
-        let doc = format!(
+        let layer = layer_over(&format!(
             "[[attendant.entry]]\nname = \"x\"\nmodel = {{ single = \"{NO_PROVIDER_ID}\" }}\n"
-        );
-        let doc = doc.parse().expect("test TOML parses");
-        let layer = ConfigLayer::load(Arc::new(InMemoryConfigStorage::new(doc))).expect("load");
+        ));
 
         // When reading its configured model.
         let entries = layer.get_list::<AttendantEntryConfig>().expect("read");
@@ -433,63 +523,161 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn pinned_entries_round_trip_through_the_document() {
-        // Given an entry carrying a pinned user entry and a pinned tool
-        // result.
-        let user_pin = jinn_core_types::ChatEntry {
-            pin_position: Some(jinn_core_types::PinPosition::Top),
-            ..jinn_core_types::ChatEntry::user("always in context")
-        };
-        let tool_pin = jinn_core_types::ChatEntry {
-            pin_position: Some(jinn_core_types::PinPosition::Bottom),
-            ..jinn_core_types::ChatEntry::tool_result(
-                "call-1",
-                "read_file",
-                "contents".to_owned(),
-                jinn_core_types::ToolResultStatus::Success,
-            )
-        };
-        let saved = AttendantEntryConfig::from_parts(
-            "pinned".to_owned(),
-            AttendantBehavior::Reset,
-            AttendantTrigger::Manual,
-            false,
-            jinn_attendant_msg::default_seed_template(),
-            &ModelSelection::Single(NO_PROVIDER_ID.to_owned()),
-            jinn_core_types::DEFAULT_PERSONA_NAME,
-            &std::collections::HashSet::new(),
-            &std::collections::HashSet::new(),
-            None,
-            None,
-            vec![user_pin, tool_pin],
-        );
-
-        // When the entry is written and read back.
-        let layer = ConfigLayer::load(Arc::new(InMemoryConfigStorage::new(
+    fn pinned_instructions_round_trip_through_the_document() {
+        // Given a document carrying one user instruction and one the agent
+        // produced.
+        let saved = entry_with_pins(vec![
+            AttendantPinConfig {
+                role: AttendantPinRole::User,
+                text: "always in context".to_owned(),
+            },
+            AttendantPinConfig {
+                role: AttendantPinRole::Assistant,
+                text: "the agreed verdict".to_owned(),
+            },
+        ]);
+        let storage = Arc::new(InMemoryConfigStorage::new(
             "# header\n".parse().expect("parses"),
-        )))
-        .expect("load");
+        ));
+        let layer = ConfigLayer::load(storage.clone()).expect("load");
         layer
-            .put_list::<AttendantEntryConfig>(&[saved])
+            .put_list::<AttendantEntryConfig>(std::slice::from_ref(&saved))
             .expect("write");
+
+        // When the list is read back.
         let read = layer.get_list::<AttendantEntryConfig>().expect("read");
 
-        // Then both pins survive with their positions and content.
-        let pins = &read[0].pins;
-        assert_eq!(pins.len(), 2);
-        assert_eq!(
-            pins[0].pin_position,
-            Some(jinn_core_types::PinPosition::Top)
+        // Then both pins survive, in order, with their roles intact — a
+        // user instruction must not come back as an agent result.
+        assert_eq!(read[0].pins, saved.pins, "document:\n{}", storage.text());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_pin_carries_a_role_and_a_text_and_nothing_else() {
+        // Given an entry carrying one instruction.
+        let saved = entry_with_pins(vec![AttendantPinConfig {
+            role: AttendantPinRole::User,
+            text: "always in context".to_owned(),
+        }]);
+
+        // When it is serialized.
+        let text = toml::to_string(&saved).expect("serializes");
+
+        // Then no field a restored session derives — or would be lied to by
+        // — reaches the file: no id, timing, token count, pin position, or
+        // the display/expanded split.
+        for leaked in [
+            "id",
+            "timing",
+            "token_count",
+            "pin_position",
+            "display",
+            "expanded",
+            "context_override",
+            "context_history",
+        ] {
+            assert!(
+                !text.contains(leaked),
+                "a derived field leaked into the file as {leaked}:\n{text}"
+            );
+        }
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_pin_without_a_role_fails_to_read_rather_than_defaulting() {
+        // Given a hand-written entry whose pin names a text but no role.
+        let doc = "[[attendant.entry]]\nname = \"x\"\npins = [{ text = \"hi\" }]\n";
+
+        // When reading the list.
+        let layer = layer_over(doc);
+
+        // Then the read fails. Defaulting the role to user would restore an
+        // agent result as an instruction the user gave.
+        let result = layer.get_list::<AttendantEntryConfig>();
+
+        assert!(result.is_err(), "a roleless pin was accepted");
+    }
+
+    #[rstest::rstest]
+    #[case(AttendantPinRole::User, "user")]
+    #[case(AttendantPinRole::Assistant, "assistant")]
+    fn a_pin_role_writes_its_kind_name(#[case] role: AttendantPinRole, #[case] wire: &str) {
+        // Given an entry carrying a pin of this role.
+        let saved = entry_with_pins(vec![AttendantPinConfig {
+            role,
+            text: "hi".to_owned(),
+        }]);
+
+        // When it is serialized.
+        let text = toml::to_string(&saved).expect("serializes");
+
+        // Then the role is spelled the way `ChatEntry::kind_str` spells it,
+        // so the file reads in one vocabulary.
+        assert!(
+            text.contains(&format!("role = \"{wire}\"")),
+            "expected role = \"{wire}\":\n{text}"
         );
-        assert_eq!(
-            pins[1].pin_position,
-            Some(jinn_core_types::PinPosition::Bottom)
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_long_instruction_shrinks_to_a_fraction_of_a_whole_entry() {
+        // Given an instruction long enough that a whole chat entry's
+        // derived fields would dominate its line.
+        let instruction = "keep the module boundary intact ".repeat(40);
+
+        // When an entry carries it as a role and text.
+        let now = toml::to_string(&entry_with_pins(vec![AttendantPinConfig {
+            role: AttendantPinRole::User,
+            text: instruction.clone(),
+        }]))
+        .expect("serializes")
+        .len();
+
+        // Then it takes roughly half what the same entry took when `pins`
+        // held whole chat entries. Both sides are whole entries, so the
+        // shared fields cancel out and the difference is the pin's cost
+        // alone. The old shape is measured, not assumed — it still
+        // serializes, so this compares real bytes.
+        let old = toml::to_string(&legacy_entry_with_pin(&instruction))
+            .expect("serializes")
+            .len();
+        let ratio = f64::from(u32::try_from(now).expect("length fits")) / old as f64;
+        assert!(
+            (0.45..0.65).contains(&ratio),
+            "expected roughly a half, got {ratio:.2} ({now} vs {old})"
         );
-        assert_eq!(
-            pins[0].text(),
-            "always in context",
-            "pin content must survive: {}",
-            layer.document_text()
-        );
+    }
+
+    /// An entry shaped as `pins` used to be: whole pinned chat entries.
+    ///
+    /// Retained only to measure what the role-and-text schema saves. Nothing
+    /// in the tree reads this shape any more — the struct exists solely so
+    /// the size assertion compares against the real old bytes rather than a
+    /// mirrored guess that could drift from them.
+    #[derive(serde::Serialize)]
+    struct LegacyEntryConfig {
+        name: String,
+        behavior: AttendantBehavior,
+        trigger: AttendantTrigger,
+        prep_mode: bool,
+        seed_template: String,
+        pins: Vec<jinn_core_types::ChatEntry>,
+    }
+
+    fn legacy_entry_with_pin(instruction: &str) -> LegacyEntryConfig {
+        LegacyEntryConfig {
+            name: "pinned".to_owned(),
+            behavior: AttendantBehavior::Reset,
+            trigger: AttendantTrigger::Manual,
+            prep_mode: false,
+            seed_template: jinn_attendant_msg::default_seed_template(),
+            pins: vec![jinn_core_types::ChatEntry {
+                pin_position: Some(jinn_core_types::PinPosition::Relative),
+                ..jinn_core_types::ChatEntry::user(instruction)
+            }],
+        }
     }
 }

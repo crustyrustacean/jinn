@@ -347,13 +347,11 @@ fn a_save_captures_the_attendants_pins_in_order() {
     // When saving.
     fx.press("attendant-properties-save");
 
-    // Then the entry carries both pins, in history order, and not the
-    // unpinned entry.
+    // Then the entry carries both instructions, in history order, and not
+    // the unpinned entry.
     let saved = fx.saved();
-    let texts: Vec<String> = saved[0].pins.iter().map(ChatEntry::text).collect();
+    let texts: Vec<&str> = saved[0].pins.iter().map(|pin| pin.text.as_str()).collect();
     assert_eq!(texts, vec!["first instruction", "second instruction"]);
-    assert_eq!(saved[0].pins[0].pin_position, Some(PinPosition::Top));
-    assert_eq!(saved[0].pins[1].pin_position, Some(PinPosition::Bottom));
 }
 
 #[rstest::rstest]

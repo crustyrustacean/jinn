@@ -7,8 +7,8 @@
 //! an inheritance that silently does not happen.
 
 use jinn_attendant_msg::AttendantTrigger;
-use jinn_core_types::{ChatEntry, ChatEntryId};
-use jinn_preferences_config::schemas::AttendantEntryConfig;
+use jinn_core_types::PinPosition;
+use jinn_preferences_config::schemas::{AttendantEntryConfig, AttendantPinConfig};
 use jinn_session_state::ChatSessionState;
 
 /// What the save path has to decide before it writes anything.
@@ -56,7 +56,7 @@ pub fn save_intent(config: &jinn_config::ConfigLayer, name: &str) -> SaveIntent 
 #[must_use]
 pub fn entry_for_session(name: String, session: &ChatSessionState) -> AttendantEntryConfig {
     let profile = session.profile();
-    let entry = AttendantEntryConfig::from_parts(
+    AttendantEntryConfig::from_parts(
         name,
         session.attendant_behavior(),
         session.attendant_trigger(),
@@ -69,47 +69,55 @@ pub fn entry_for_session(name: String, session: &ChatSessionState) -> AttendantE
         profile.reasoning_effort,
         profile.endpoint.as_ref(),
         pinned_entries(session),
-    );
-    entry
+    )
 }
 
-/// The session's pinned entries, in history order.
+/// The session's standing instructions, in history order.
 ///
-/// Order is the whole point: a saved attendant's context is a *sequence*
-/// of pinned instructions, and replaying them in a different order builds a
-/// different attendant. Tool loops stay contiguous because the editor's
-/// pin is chunk-scoped — pinning one member pins the whole run, so the
-/// members are already adjacent in a saved session's history.
+/// Order is the whole point: a saved attendant's context is a *sequence* of
+/// pinned instructions, and replaying them in a different order builds a
+/// different attendant.
+///
+/// Only user and assistant entries are carried, because those are the kinds
+/// `entries_to_messages` turns into a message. Pinning a tool result in a
+/// live session is still fully supported — it simply does not cross into the
+/// spawn schema, where re-injecting a snapshot of a file as it was would
+/// assert stale contents as current fact.
 #[must_use]
-pub fn pinned_entries(session: &ChatSessionState) -> Vec<ChatEntry> {
+pub fn pinned_entries(session: &ChatSessionState) -> Vec<AttendantPinConfig> {
     session
         .history()
         .iter()
         .filter(|entry| entry.pin_position().is_some())
-        .cloned()
+        .filter_map(AttendantPinConfig::from_entry)
         .collect()
 }
 
-/// Appends the entry's pins to a fresh attendant, in order, with fresh
-/// entry ids.
+/// Appends the entry's instructions to a fresh attendant, in order.
 ///
-/// The ids are regenerated because a new session's history is its own: a
-/// replayed id would be a different entry sharing a name with one from the
-/// session that was saved, and every id-keyed view state in the UI (the
-/// selected entry, the streaming target) would resolve to the wrong one.
+/// Each is restored as a *relative* pin. The config stores no pin position —
+/// a restored attendant is a new session, so where an instruction sat in the
+/// session it was saved from says nothing about where it should sit here —
+/// and the session store owns the position from this point on: the user
+/// re-pins in the TUI and the store persists it. Re-saving an attendant
+/// therefore returns every pin to `Relative`, which is the cost of not
+/// storing it.
 ///
-/// The pin position rides on the entry itself — including the kind-level
-/// pin a tool result carries inside its kind — so the restored pin is the
-/// saved pin without a chunk re-pin. Re-pinning through the editor would be
-/// the alternative, and it is deliberately not done: the editor's pin is
-/// chunk-scoped, so a re-pin would rewrite the positions of *every* member
-/// of whatever chunk the new entry joined, rather than the one position the
-/// user chose. The loop's members arrive contiguous and in the saved
-/// order, so the history this builds is the history that was pinned.
-pub fn restore_pins(session: &mut ChatSessionState, pins: &[ChatEntry]) {
-    for saved in pins {
-        let mut entry = saved.clone();
-        entry.id = ChatEntryId::new();
+/// `Relative` rather than no pin at all is what makes the instruction
+/// survive a run with a `reset` behavior: reset force-excludes everything
+/// that is not pinned, so an unpinned instruction would be dropped before
+/// the model ever saw it.
+///
+/// Ids are fresh for the same reason they always were — a new session's
+/// history is its own, and a replayed id would make every id-keyed view
+/// state resolve to an entry from the session that was saved. Every other
+/// field comes from the constructor, which is where a token count belongs:
+/// `fill_missing_token_counts` fills only entries that carry none, so a
+/// persisted count would never be recomputed and would stay stale forever.
+pub fn restore_pins(session: &mut ChatSessionState, pins: &[AttendantPinConfig]) {
+    for pin in pins {
+        let mut entry = pin.to_entry();
+        entry.pin_position = Some(PinPosition::Relative);
         session.push_entry(entry);
     }
 }

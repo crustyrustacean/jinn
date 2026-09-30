@@ -20,8 +20,10 @@ use jinn_attendant_msg::{
     attendant_saved_picker_slot,
 };
 use jinn_config::{ConfigLayer, InMemoryConfigStorage};
-use jinn_core_types::{ChatEntry, PinPosition, SessionId};
-use jinn_preferences_config::schemas::AttendantEntryConfig;
+use jinn_core_types::{PinPosition, SessionId};
+use jinn_preferences_config::schemas::{
+    AttendantEntryConfig, AttendantPinConfig, AttendantPinRole,
+};
 use jinn_session_state::ChatSessionState;
 use jinn_slices::KeyRoutes;
 use jinn_slices::cell::TypedCell;
@@ -57,9 +59,9 @@ fn configured_entry(name: &str) -> AttendantEntryConfig {
         &std::collections::HashSet::new(),
         Some(jinn_core_types::ReasoningEffort::High),
         None,
-        vec![ChatEntry {
-            pin_position: Some(PinPosition::Top),
-            ..ChatEntry::user("always in context")
+        vec![AttendantPinConfig {
+            role: AttendantPinRole::User,
+            text: "always in context".to_owned(),
         }],
     )
 }
@@ -372,12 +374,14 @@ fn a_created_attendant_restores_its_pins() {
     // When confirming.
     fx.press("confirm-attendant-saved-picker");
 
-    // Then the pin is in the new attendant's history, pinned where it was
-    // saved — the standing instruction that makes it the same attendant.
+    // Then the pin is in the new attendant's history, pinned relative — the
+    // standing instruction that makes it the same attendant. A relative pin
+    // is what survives a run with a reset behavior, which force-excludes
+    // everything that is not pinned.
     let history = fx.active().history();
     assert_eq!(history.len(), 1);
     assert_eq!(history[0].text(), "always in context");
-    assert_eq!(history[0].pin_position(), Some(PinPosition::Top));
+    assert_eq!(history[0].pin_position(), Some(PinPosition::Relative));
 }
 
 #[rstest::rstest]
