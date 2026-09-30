@@ -77,15 +77,26 @@ pub fn highlighted_endpoint(state: &EndpointPickerState) -> Option<Endpoint> {
     entry_to_endpoint(item.entry())
 }
 
-/// The provider name of the endpoint currently pinned, for the status line.
+/// The label for the status line's `Routing:` field.
+///
+/// Prefers the active row's fetched provider name, and falls back to the raw
+/// routing tag when no fetched row matches. The fallback is what makes a
+/// hand-edited pin visible before the list has been fetched, and what keeps a
+/// pinned tag legible when the upstream no longer advertises it.
 #[must_use]
-pub fn active_provider_name(state: &EndpointPickerState) -> Option<String> {
-    state
+pub fn active_routing_label(state: &EndpointPickerState) -> Option<String> {
+    let tag = state
         .selection
         .items()
         .iter()
-        .find(|item| item.entry().is_active)
-        .map(|item| item.entry().provider_name.clone())
+        .map(|item| item.entry())
+        .find(|entry| entry.is_active)?;
+
+    if tag.provider_name.is_empty() {
+        Some(tag.tag.clone())
+    } else {
+        Some(tag.provider_name.clone())
+    }
 }
 
 /// The pinned value for one entry: the auto-route sentinel clears the pin.
@@ -153,4 +164,93 @@ fn wrap_entries(entries: Vec<EndpointEntry>) -> Vec<jinn_picker::PickerEntry<End
                 (!entry.tag.is_empty()).then(|| jinn_picker::PreviewKey(entry.tag.clone()))
             }),
     )
+}
+
+#[cfg(test)]
+mod routing_label_tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        reason = "test module, panics are acceptable"
+    )]
+
+    use jinn_theme::default_theme;
+
+    use super::*;
+
+    /// A picker showing `entries`.
+    fn picker_with(entries: Vec<EndpointEntry>) -> EndpointPickerState {
+        let mut state = EndpointPickerState::default();
+        state.selection.set_items(wrap_entries(entries));
+        state
+    }
+
+    /// A real upstream row, active or not.
+    fn row(tag: &str, provider_name: &str, is_active: bool) -> EndpointEntry {
+        EndpointEntry {
+            tag: tag.to_owned(),
+            provider_name: provider_name.to_owned(),
+            uptime_30m: None,
+            prompt_price: None,
+            completion_price: None,
+            quantization: None,
+            max_completion_tokens: None,
+            is_active,
+            theme: default_theme(),
+        }
+    }
+
+    #[rstest::rstest]
+    fn the_label_prefers_the_active_rows_provider_name() {
+        // Given a picker whose active row came from a completed fetch.
+        let state = picker_with(vec![
+            EndpointEntry::auto_route(false, default_theme()),
+            row("anthropic", "Anthropic", true),
+        ]);
+
+        // When reading the routing label.
+        let label = active_routing_label(&state);
+
+        // Then the human-readable name is shown.
+        assert_eq!(label.as_deref(), Some("Anthropic"));
+    }
+
+    #[rstest::rstest]
+    fn the_label_falls_back_to_the_tag_when_the_row_has_no_name() {
+        // Given a picker whose active row carries no fetched provider name.
+        let state = picker_with(vec![
+            EndpointEntry::auto_route(false, default_theme()),
+            row("anthropic", "", true),
+        ]);
+
+        // When reading the routing label.
+        let label = active_routing_label(&state);
+
+        // Then the raw routing tag is shown instead of an empty field.
+        assert_eq!(label.as_deref(), Some("anthropic"));
+    }
+
+    #[rstest::rstest]
+    fn the_label_names_the_sentinel_when_the_model_auto_routes() {
+        // Given a picker on auto-route, where the sentinel is the active row.
+        let state = picker_with(vec![EndpointEntry::auto_route(true, default_theme())]);
+
+        // When reading the routing label.
+        let label = active_routing_label(&state);
+
+        // Then the sentinel's own name is reported, not the empty tag.
+        assert_eq!(label.as_deref(), Some("Default"));
+    }
+
+    #[rstest::rstest]
+    fn the_label_is_absent_when_no_row_is_active() {
+        // Given a picker whose rows are all inactive.
+        let state = picker_with(vec![row("anthropic", "Anthropic", false)]);
+
+        // When reading the routing label.
+        let label = active_routing_label(&state);
+
+        // Then there is nothing to name — the status line shows auto-route.
+        assert!(label.is_none());
+    }
 }

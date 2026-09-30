@@ -34,11 +34,15 @@ use jinn_kernel::common::services::Services;
 use jinn_kernel::common::services::bus_service::BusAudit;
 use jinn_kernel::common::state::State;
 use jinn_kernel::protocol::ChatEntry;
+use jinn_kernel::{ProviderEntry, ProvidersConfig};
 use jinn_session_msg::PhaseKind;
 use jinn_session_msg::SessionPhaseChanged;
 use jinn_session_store_msg::PersistSession;
 use jinn_turn_dispatch_msg::DispatchTurn;
 use jinn_turn_dispatch_msg::QueueItem;
+
+/// The model the endpoint-pin tests configure, as a full provider id.
+const PINNED_MODEL: &str = "openrouter/anthropic/claude-sonnet-4";
 
 async fn create_actor() -> (QueueActor, State, BusAudit) {
     let (bus, audit) = jinn_kernel::BusService::new_recording();
@@ -1045,4 +1049,168 @@ async fn dispatch_turn_with_assembly_failure_publishes_nothing() {
     );
     // And no PersistSession followed.
     assert!(audit.of_type::<PersistSession>().is_empty());
+}
+
+// ── Routing endpoint resolution ─────────────────────────────────────────
+
+/// A services set whose provider config pins `model` to `tag`.
+///
+/// The pin lives in `providers.toml`, not in session state, so a dispatch
+/// test sets it on the registry rather than on the session profile.
+async fn services_pinning(model: &str, tag: Option<&str>) -> Services {
+    let config = ProvidersConfig {
+        providers: std::collections::BTreeMap::from([(
+            "openrouter".to_owned(),
+            ProviderEntry {
+                model_info: Vec::new(),
+                backend: "openrouter".to_owned(),
+                models: vec!["anthropic/claude-sonnet-4".to_owned()],
+                base_url: None,
+                api_key_env: None,
+                requires_key: false,
+                extra_body: None,
+                context_length: None,
+            },
+        )]),
+        aliases: vec![],
+        default_provider: None,
+        endpoint_defaults: tag
+            .map(|tag| {
+                vec![jinn_kernel::EndpointDefault {
+                    model: model.to_owned(),
+                    tag: tag.to_owned(),
+                }]
+            })
+            .unwrap_or_default(),
+    };
+    let (bus, _audit) = jinn_kernel::BusService::new_recording();
+    let services = Services::new_fake_with_bus(bus).await;
+    services
+        .provider_registry
+        .replace(jinn_kernel::ProviderRegistry::from_config(config).expect("registry"));
+    services
+}
+
+/// A queue actor on `services`, with `sid`'s model set to `model`.
+async fn actor_on(services: Services, model: &str) -> (QueueActor, State, SessionId, BusAudit) {
+    let (bus, audit) = jinn_kernel::BusService::new_recording();
+    let mut services = services;
+    services.bus = bus;
+    let _ = jinn_context_assembly::service::ensure_spawned(&services.trouper_system);
+    let state = State::new(AppState::default_with_scope_focus());
+    let sid = session_id();
+    {
+        let mut state = state.write();
+        let session = state.session_mut_or_create(&sid);
+        session.profile_mut().model =
+            jinn_core_types::model_selection::ModelSelection::Single(model.to_owned());
+    }
+    (
+        QueueActor {
+            state: state.clone(),
+            services,
+        },
+        state,
+        sid,
+        audit,
+    )
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn dispatch_forces_the_endpoint_pinned_for_the_model() {
+    // Given a provider config pinning the model to an upstream.
+    let services = services_pinning(PINNED_MODEL, Some("anthropic")).await;
+    let (actor, _state, sid, audit) = actor_on(services, PINNED_MODEL).await;
+
+    // When dispatching a user message.
+    actor
+        .dispatch_user_message(&sid, &ChatEntry::user("hello"), StreamOrigin::User)
+        .await;
+
+    // Then the send carries the pinned routing tag.
+    let sends: Vec<SendToLlmProvider> = audit.of_type::<SendToLlmProvider>();
+    assert_eq!(
+        sends.first().expect("one send").endpoint_tag.as_deref(),
+        Some("anthropic")
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn dispatch_auto_routes_a_model_with_no_pinned_endpoint() {
+    // Given a provider config with no endpoint pins.
+    let services = services_pinning(PINNED_MODEL, None).await;
+    let (actor, _state, sid, audit) = actor_on(services, PINNED_MODEL).await;
+
+    // When dispatching a user message.
+    actor
+        .dispatch_user_message(&sid, &ChatEntry::user("hello"), StreamOrigin::User)
+        .await;
+
+    // Then the send forces no upstream, leaving OpenRouter to auto-route.
+    let sends: Vec<SendToLlmProvider> = audit.of_type::<SendToLlmProvider>();
+    assert!(
+        sends.first().expect("one send").endpoint_tag.is_none(),
+        "a model with no [[endpoint_defaults]] row must auto-route"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn dispatch_ignores_a_pin_keyed_to_a_different_model() {
+    // Given a provider config pinning one model.
+    let services = services_pinning("openrouter/some-other-model", Some("anthropic")).await;
+
+    // And a session on a different model.
+    let (actor, _state, sid, audit) = actor_on(services, PINNED_MODEL).await;
+
+    // When dispatching a user message.
+    actor
+        .dispatch_user_message(&sid, &ChatEntry::user("hello"), StreamOrigin::User)
+        .await;
+
+    // Then no upstream is forced — the pin belongs to another model.
+    let sends: Vec<SendToLlmProvider> = audit.of_type::<SendToLlmProvider>();
+    assert!(
+        sends.first().expect("one send").endpoint_tag.is_none(),
+        "a pin keyed to another model must not apply"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn dispatch_does_not_force_an_endpoint_for_an_alloy() {
+    // Given a provider config pinning one model.
+    let services = services_pinning(PINNED_MODEL, Some("anthropic")).await;
+    let (bus, audit) = jinn_kernel::BusService::new_recording();
+    let mut services = services;
+    services.bus = bus;
+    let _ = jinn_context_assembly::service::ensure_spawned(&services.trouper_system);
+    let state = State::new(AppState::default_with_scope_focus());
+    let sid = session_id();
+    {
+        let mut state = state.write();
+        let session = state.session_mut_or_create(&sid);
+        session.profile_mut().model = jinn_core_types::model_selection::ModelSelection::Alloy {
+            models: vec![PINNED_MODEL.to_owned()],
+            strategy: jinn_core_types::AlloyStrategy::RoundRobin { index: 0 },
+        };
+    }
+    let actor = QueueActor {
+        state: state.clone(),
+        services,
+    };
+
+    // When dispatching a user message.
+    actor
+        .dispatch_user_message(&sid, &ChatEntry::user("hello"), StreamOrigin::User)
+        .await;
+
+    // Then no upstream is forced — an alloy chooses its own routing.
+    let sends: Vec<SendToLlmProvider> = audit.of_type::<SendToLlmProvider>();
+    assert!(
+        sends.first().expect("one send").endpoint_tag.is_none(),
+        "an alloy must never have a pinned endpoint forced"
+    );
 }

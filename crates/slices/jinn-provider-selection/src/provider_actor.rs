@@ -22,6 +22,7 @@
 //! the async endpoint fetch.
 
 use error_stack::Report;
+use jinn_core_types::model_selection::ModelSelection;
 use jinn_kernel::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_kernel::common::state::State;
 use jinn_provider_config::ModelCache;
@@ -354,26 +355,29 @@ impl ProviderActor {
     /// open (serve from cache when present). The backend gate lives here (the
     /// actor owns `Services`); the picker-open validator only checks `Single`.
     ///
+    /// The active row is marked from the model's `[[endpoint_defaults]]` row,
+    /// so which row is active is known from the registry on the cache-hit path
+    /// as well as the fetch path — no network call is needed to know it.
+    ///
     /// Every terminal branch writes back all three: items, fetched_at, and
     /// loading=false — so the spinner never sticks on success, error, or the
     /// non-OpenRouter placeholder path.
     async fn handle_load_endpoint_picker_entries(&mut self, force: bool) {
         // Snapshot what we need under the read lock, then release it before
         // the async network fetch.
-        let (model, pinned, theme) = {
+        let (model, pinned_tag, theme) = {
             let s = self.state.read();
-            let session = s.active_session();
-            let model = session.profile().model.clone();
-            let pinned = session.profile().endpoint.clone();
+            let model = s.active_session().profile().model.clone();
             let theme = s.frontend.theme.clone();
-            (model, pinned, theme)
+            let pinned_tag = self.pinned_tag_for(&model);
+            (model, pinned_tag, theme)
         };
 
         let Some(target) = resolve_openrouter_target(&self.deps.services, &model) else {
             // Not served via OpenRouter (or an alloy): render the placeholder,
             // clear loading, and leave both the cache and fetched_at untouched
             // (this path never fetched anything).
-            let entries = unavailable_endpoint_entries(theme, pinned.as_ref());
+            let entries = unavailable_endpoint_entries(theme, pinned_tag.as_deref());
             self.write_endpoint_items(entries);
             self.provider_cell.update(|cell| {
                 cell.endpoint_loading = false;
@@ -386,7 +390,7 @@ impl ProviderActor {
         // Cache hit on a non-forced open: rebuild entries from the cached
         // upstream list (theme/pin re-derived), no network call.
         if !force && let Some((endpoints, ts)) = self.endpoints_cache.get(&key).cloned() {
-            let entries = build_endpoint_entries(&endpoints, &theme, pinned.as_ref());
+            let entries = build_endpoint_entries(&endpoints, &theme, pinned_tag.as_deref());
             self.write_endpoint_items(entries);
             self.provider_cell.update(|cell| {
                 cell.endpoint_fetched_at = Some(ts);
@@ -401,13 +405,13 @@ impl ProviderActor {
             Ok(endpoints) => {
                 self.endpoints_cache.insert(key, (endpoints.clone(), now));
                 (
-                    build_endpoint_entries(&endpoints, &theme, pinned.as_ref()),
+                    build_endpoint_entries(&endpoints, &theme, pinned_tag.as_deref()),
                     Some(now),
                 )
             }
             // On error: sentinel only, cache untouched, keep prior fetched_at.
             Err(()) => (
-                vec![EndpointEntry::auto_route(pinned.is_none(), theme)],
+                vec![EndpointEntry::auto_route(pinned_tag.is_none(), theme)],
                 None,
             ),
         };
@@ -420,6 +424,20 @@ impl ProviderActor {
             }
             cell.endpoint_loading = false;
         });
+    }
+
+    /// The routing tag pinned for `model` in `providers.toml`, if any.
+    ///
+    /// `None` for an alloy, for a model with no row, and for the
+    /// `no-provider` placeholder id — all three auto-route.
+    fn pinned_tag_for(&self, model: &ModelSelection) -> Option<String> {
+        let ModelSelection::Single(provider_id) = model else {
+            return None;
+        };
+        self.deps
+            .services
+            .provider_registry
+            .pinned_endpoint_tag(provider_id)
     }
 
     /// Wraps `entries` through the picker's own hooks and publishes them into
