@@ -99,7 +99,7 @@ impl StreamingIndicatorElement {
         // is given and there is no way to hold a second element at its right
         // edge. `to_line` reads the same state the widget's render would, so
         // the glyph still steps every frame.
-        let busy = if is_spinning {
+        let busy = is_spinning.then(|| {
             let text = if is_busy {
                 " Working..."
             } else {
@@ -116,10 +116,8 @@ impl StreamingIndicatorElement {
             // across a long idle stretch rather than drifting until the widget
             // has to clamp it back.
             self.throbber_state.normalize(&throbber);
-            Some(throbber.to_line(&self.throbber_state))
-        } else {
-            None
-        };
+            throbber.to_line(&self.throbber_state)
+        });
 
         frame.render_widget(indicator_row(busy, kind, area), area);
 
@@ -524,24 +522,21 @@ mod tests {
         let (mut terminal, area) = setup_term(40, 1);
 
         // When the indicator row is rendered twice, an animation interval apart.
-        let glyphs = (0..2)
-            .map(|_| {
-                std::thread::sleep(
-                    jinn_slices::SPINNER_INTERVAL + std::time::Duration::from_millis(5),
-                );
-                terminal
-                    .draw(|frame| {
-                        let slices = jinn_slices::Slices::new();
-                        let overlay_views = jinn_slices::OverlayViews::new();
-                        let ctx =
-                            RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-                        element.render(frame, area, &ctx);
-                    })
-                    .expect("draw the indicator row");
-                let buffer = terminal.backend().buffer().clone();
-                buffer.cell((0, 0)).expect("a cell").symbol().to_owned()
-            })
-            .collect::<Vec<_>>();
+        let glyphs = std::iter::repeat_with(|| {
+            std::thread::sleep(jinn_slices::SPINNER_INTERVAL + std::time::Duration::from_millis(5));
+            terminal
+                .draw(|frame| {
+                    let slices = jinn_slices::Slices::new();
+                    let overlay_views = jinn_slices::OverlayViews::new();
+                    let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+                    element.render(frame, area, &ctx);
+                })
+                .expect("draw the indicator row");
+            let buffer = terminal.backend().buffer().clone();
+            buffer.cell((0, 0)).expect("a cell").symbol().to_owned()
+        })
+        .take(2)
+        .collect::<Vec<_>>();
 
         // Then the glyph steps between the two frames — the label sharing the
         // row did not cost the spinner its animation state.

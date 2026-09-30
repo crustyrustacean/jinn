@@ -1069,7 +1069,7 @@ mod tests {
     fn state_with_attendant_cursor(
         index: usize,
     ) -> (jinn_kernel::AppState, jinn_core_types::SessionId) {
-        let mut state = state_with_attendants(3);
+        let state = state_with_attendants(3);
         focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Attendant);
         let rows = jinn_attendant::section_rows::attendant_rows(&state);
         let highlighted = rows[index].session_id.clone();
