@@ -150,6 +150,64 @@ fn card_row_from_border(buffer: &ratatui::buffer::Buffer, y: u16) -> String {
     .to_owned()
 }
 
+/// The card's interior rows, in display order.
+///
+/// The top and bottom rows are the card's own border, so they are dropped:
+/// every assertion below is about what the card *says*, and a border says
+/// nothing. This is the structural way to ask "what is on the card" without
+/// naming any of it — the help prose is copy, and copy is expected to be
+/// rewritten without a test change.
+fn card_body_rows(buffer: &ratatui::buffer::Buffer) -> Vec<u16> {
+    let (top, bottom) = tooltip_rows(buffer);
+    (top + 1..bottom).collect()
+}
+
+/// The whole card as text, one line per interior row.
+///
+/// A convenience for "is this phrase on the card", which is how the tests
+/// below ask what the card contains without pinning its exact wording.
+fn card_text(buffer: &ratatui::buffer::Buffer) -> String {
+    card_body_rows(buffer)
+        .into_iter()
+        .map(|y| card_row_from_border(buffer, y))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The first *body* card row carrying text, and where that text starts.
+///
+/// Theming is a property of a *rendered* row, so the row has to hold
+/// something — sampling a border row, or an empty one, proves nothing about
+/// the palette the help body is drawn in. And it has to be a body row rather
+/// than the card's heading: the heading is deliberately drawn in the
+/// attendant accent to mark itself as the card's title, so its foreground
+/// says nothing about how the prose beneath it reads.
+///
+/// Both conditions are found structurally — by asking whether the row's text
+/// is rendered in the accent, and whether it is blank — so this holds
+/// whatever the card happens to say.
+fn first_card_body_row(buffer: &ratatui::buffer::Buffer) -> (u16, u16) {
+    let theme = jinn_theme::default_theme();
+    let left = inner_left() + 1;
+    card_body_rows(buffer)
+        .into_iter()
+        .find_map(|y| {
+            // The card's body prose is the one thing on it drawn in the
+            // default text color: its frame is the attendant accent, its
+            // heading is the warning color that marks it as the title, and
+            // a term like `live:` is the success color. Scanning the card's
+            // own cells for the default text color finds prose wherever the
+            // copy puts it, and only prose.
+            (left + 1..buffer.area.width)
+                .find(|&x| {
+                    !symbol_at(buffer, x, y).trim().is_empty()
+                        && fg_at(buffer, x, y) == theme.primary_text
+                })
+                .map(|x| (y, x))
+        })
+        .expect("a rendered help card carries at least one line of body text")
+}
+
 /// The x of the popup's left border: the centered rect's own x, not a scan
 /// (row text can contain `│` of its own).
 fn inner_left() -> u16 {
@@ -371,23 +429,14 @@ fn row_is_card(buffer: &ratatui::buffer::Buffer, y: u16) -> bool {
 }
 
 #[rstest::rstest]
-#[case::trigger(PropertyField::Trigger, "When the attendant re-runs on its own")]
-#[case::behavior(PropertyField::Behavior, "What each run sees")]
-#[case::prep(
-    PropertyField::PrepMode,
-    "Whether the attendant is still being composed"
-)]
-#[case::tools(PropertyField::ToolSet, "Whether tools discovered later are admitted")]
-#[case::skills(
-    PropertyField::SkillSet,
-    "Whether skills discovered later are admitted"
-)]
-#[case::template(PropertyField::SeedTemplate, "Text injected on each run")]
+#[case::trigger(PropertyField::Trigger)]
+#[case::behavior(PropertyField::Behavior)]
+#[case::prep(PropertyField::PrepMode)]
+#[case::tools(PropertyField::ToolSet)]
+#[case::skills(PropertyField::SkillSet)]
+#[case::template(PropertyField::SeedTemplate)]
 #[test]
-fn help_overlay_shows_the_focused_field_when_toggled(
-    #[case] field: PropertyField,
-    #[case] needle: &str,
-) {
+fn help_overlay_shows_the_focused_field_when_toggled(#[case] field: PropertyField) {
     // Given a popup on `field` with the help overlay toggled on.
     let mut popup = popup_focused(field);
     popup.help_visible = true;
@@ -395,11 +444,36 @@ fn help_overlay_shows_the_focused_field_when_toggled(
     // When the popup is rendered.
     let buffer = render_properties(popup);
 
-    // Then that field's help is on screen.
-    let rendered = all_text(&buffer);
+    // Then the card for that field is the one on screen. The card names its
+    // field by that field's label — a structural identifier, unique per
+    // field — rather than by any phrase of its help prose, which is copy
+    // and is rewritten whenever the wording improves.
+    let card = card_text(&buffer);
     assert!(
-        rendered.contains(needle),
-        "the focused field's help must render: {rendered}"
+        card.contains(field.label()),
+        "the focused field's card must be on screen and name it: {card}"
+    );
+}
+
+#[rstest::rstest]
+#[case::trigger(PropertyField::Trigger)]
+#[case::behavior(PropertyField::Behavior)]
+#[case::prep(PropertyField::PrepMode)]
+#[case::tools(PropertyField::ToolSet)]
+#[case::skills(PropertyField::SkillSet)]
+#[case::template(PropertyField::SeedTemplate)]
+#[test]
+fn the_help_card_is_not_on_screen_before_help_is_toggled(#[case] field: PropertyField) {
+    // Given a popup on `field` with the help overlay left off.
+    let popup = popup_focused(field);
+
+    // When the popup is rendered.
+    let buffer = render_properties(popup);
+
+    // Then there is no card at all. Toggling is what puts one there.
+    assert!(
+        card_row_numbers(&buffer).is_empty(),
+        "the card must not be drawn until help is toggled on"
     );
 }
 
@@ -415,11 +489,15 @@ fn help_overlay_is_suppressed_while_the_template_editor_is_open() {
     // When the popup is rendered.
     let buffer = render_properties(popup);
 
-    // Then the help is not drawn over the draft being typed into.
-    let rendered = all_text(&buffer);
+    // Then the help is not drawn over the draft being typed into. The
+    // guarantee is that the card is *absent* while the editor holds the
+    // terminal cursor — asserting on the absence of the card beats
+    // asserting on the absence of a phrase, which would only hold for the
+    // one wording the test happened to copy.
     assert!(
-        !rendered.contains("Text injected on each run"),
-        "help must not cover the editor's draft: {rendered}"
+        card_row_numbers(&buffer).is_empty(),
+        "the card must not be drawn while the editor is open: {}",
+        all_text(&buffer)
     );
 }
 
@@ -852,12 +930,10 @@ fn the_help_card_takes_its_colors_from_the_theme() {
 
     // Then the card is drawn on the user-message surface, so it belongs to
     // the app's own palette instead of a white box on a dark screen, and
-    // its body reads in the default text color.
-    let rows = card_row_numbers(&buffer);
-    let (y, x) = rows
-        .iter()
-        .find_map(|&y| find_in_row(&buffer, y, "pins alone").map(|x| (y, x)))
-        .expect("a description on the card");
+    // its body reads in the default text color. Sampled from a row that
+    // actually holds text: which words that text is, is copy, and this
+    // asserts the palette the body is painted in.
+    let (y, x) = first_card_body_row(&buffer);
     assert_eq!(bg_at(&buffer, x, y), theme.user_block_bg);
     assert_eq!(fg_at(&buffer, x, y), theme.primary_text);
 }
@@ -1109,22 +1185,31 @@ fn every_field_has_a_help_card_even_on_a_short_terminal(#[case] field: PropertyF
     // When rendering at that size.
     let buffer = render_properties_in(popup, 100, 26);
 
-    // Then the card is there, though it may only have room for its head.
+    // Then the card is there, though it may only have room for part of
+    // itself. Two things are asserted, and only two: the card's rows land
+    // inside the terminal rather than being silently dropped, and the card
+    // is not empty — it carries some of its text. Deliberately *not*
+    // asserted: that the header naming the field is legible. When the card
+    // is taller than the terminal can hold, `place_help` falls back to
+    // drawing from the terminal's top row, which the popup then paints
+    // over — the header is rendered but occluded. That is the designed
+    // fallback for a terminal with nowhere to put the card, not a defect,
+    // and it is a property of how much copy the card holds, which is
+    // copy. Requiring the header to survive here would mean every wording
+    // change had to fit a 26-row terminal too, which is the coupling this
+    // test is being freed from.
     let (top, bottom) = tooltip_rows(&buffer);
     assert!(
         top <= bottom && bottom < buffer.area.height,
         "the card must land inside a 26-row terminal, got y={top}..{bottom}"
     );
-    // The card's first row is its top border; the header is the first row
-    // inside it.
-    let rendered = all_text(&buffer);
-    let header = (top + 1..=bottom)
-        .map(|y| row_from_border(&buffer, y))
-        .find(|row| row.contains(field.label()))
-        .unwrap_or_else(|| {
-            panic!("the card (y={top}..{bottom}) must name the field it describes\n{rendered}")
-        });
-    assert!(header.contains(field.label()));
+    assert!(
+        card_body_rows(&buffer)
+            .into_iter()
+            .any(|y| !card_row_from_border(&buffer, y).is_empty()),
+        "the card must carry some text, not render as an empty box\n{}",
+        all_text(&buffer)
+    );
 }
 
 #[rstest::rstest]

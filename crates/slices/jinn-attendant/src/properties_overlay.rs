@@ -348,7 +348,7 @@ pub(crate) fn status_line(
         }
         Some(jinn_attendant_msg::PopupStatus::GlobDropped { field }) => (
             format!(
-                "A pattern was dropped from the {} set: it means the opposite thing in an allow list.",
+                "A manually-configured glob was dropped from the {} set.",
                 field.resource()
             ),
             theme.warning,
@@ -659,25 +659,31 @@ fn help_body(field: PropertyField, theme: &jinn_theme::Theme) -> Vec<Line<'stati
         ],
         PropertyField::ToolSet => vec![
             Line::from(
-                "Whether tools discovered later are admitted automatically or refused. Freezing keeps exactly the tools the attendant has now, whichever you have switched on or off since.",
+                "Controls the working tool set and how tool enablement works. If you manually configured globs in the config file, then they will be dropped upon switching modes (their meaning will invert)",
             ),
             Line::from(""),
             line(
                 "live",
-                "new tools are admitted; the attendant follows your setup",
+                "(block list) - Tools that were disabled for the attendant stay disabled. New tools are automatically enabled, mirroring jinn's enabled-by-default behavior",
             ),
-            line("frozen", "only the tools it had when you froze the set"),
+            line(
+                "frozen",
+                "(allow list) - The tools enabled for the attendant are the only ones available. New tools are automatically disabled.",
+            ),
         ],
         PropertyField::SkillSet => vec![
             Line::from(
-                "Whether skills discovered later are admitted automatically or refused. Freezing keeps exactly the skills the attendant has now.",
+                "Controls the working skill set and how skill enablement works. If you manually configured globs in the config file, then they will be dropped upon switching modes (their meaning will invert).",
             ),
             Line::from(""),
             line(
                 "live",
-                "new skills are admitted; the attendant follows your setup",
+                "(block list) - Skills that were disabled for the attendant stay disabled. New skills are automatically enabled, mirroring jinn's enabled-by-default behavior",
             ),
-            line("frozen", "only the skills it had when you froze the set"),
+            line(
+                "frozen",
+                "(allow list) - The skills enabled for the attendant are the only ones available. New skills are automatically disabled.",
+            ),
         ],
         PropertyField::SeedTemplate => vec![
             Line::from(
