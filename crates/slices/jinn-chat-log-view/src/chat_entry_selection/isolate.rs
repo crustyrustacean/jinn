@@ -8,8 +8,9 @@
 //!
 //! The cursor remains on the highlighted entry. Already-correct chunks no-op
 //! inside the editor; a fully idempotent re-press returns an empty result.
-//! No-op cases: empty history, cursor resting on a collapsed block (no
-//! selected entry), or a pinned highlighted entry (validator rejection).
+//! No-op cases: empty history, or a cursor resting on a collapsed block (no
+//! selected entry). A pinned highlight is not a no-op — its chunk is included
+//! by the pin either way, and every other non-pinned chunk is still excluded.
 
 use super::validator;
 use jinn_context_assembly_msg::ContextOverrideChanged;
@@ -68,8 +69,7 @@ fn isolate_all_but_highlighted_chunk(
 /// Force-include the highlighted chunk and user-force-exclude every other
 /// non-pinned chunk, then persist and emit one event per changed entry.
 pub fn handle_isolate_selected(state: &mut AppState) -> RouteResult {
-    // Validate: empty history, cursor on a collapsed block, or a pinned
-    // highlight all no-op.
+    // Validate: empty history, or a cursor on a collapsed block, all no-op.
     if validator::validate_chat_entry_isolate_selected(state).is_err() {
         return RouteResult::empty();
     }
@@ -332,7 +332,92 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn isolate_noops_on_pinned_highlight() {
+    fn isolate_excludes_other_chunks_when_highlight_is_pinned() {
+        // Given two loops with the first loop's opener pinned and the cursor on
+        // the second loop's opener.
+        let mut state = state_with([loop_entries(), loop_entries()].concat());
+        let pinned_opener_id = state.active_session().history()[0].id.clone();
+        state
+            .active_session_mut()
+            .pin_entry(&pinned_opener_id, PinPosition::Top);
+        let opener_id = state.active_session().history()[4].id.clone();
+        state.active_session_mut().set_selected_cursor_id(opener_id);
+
+        // When handling isolate selected.
+        let _result = handle_isolate_selected(&mut state);
+
+        // Then the other (unpinned) loop's members are forced-excluded.
+        let history = state.active_session().history();
+        assert!(
+            history[1..4]
+                .iter()
+                .all(|e| e.context_override() == ContextOverride::ForcedExclude),
+            "the non-pinned loop is excluded"
+        );
+        // And the pinned opener stays in context via its pin.
+        assert!(history[0].is_in_context(), "the pin keeps it in context");
+    }
+
+    #[rstest::rstest]
+    fn isolate_emits_persist_and_one_event_per_changed_chunk_on_pinned_highlight() {
+        // Given two loops with the first loop's opener pinned and the cursor on
+        // the second loop's opener.
+        let mut state = state_with([loop_entries(), loop_entries()].concat());
+        let pinned_opener_id = state.active_session().history()[0].id.clone();
+        state
+            .active_session_mut()
+            .pin_entry(&pinned_opener_id, PinPosition::Top);
+        let opener_id = state.active_session().history()[4].id.clone();
+        state.active_session_mut().set_selected_cursor_id(opener_id);
+
+        // When handling isolate selected.
+        let result = handle_isolate_selected(&mut state);
+
+        // Then persist happens once.
+        assert_eq!(
+            result
+                .message_names
+                .iter()
+                .filter(|n| n.contains("PersistSession"))
+                .count(),
+            1,
+            "exactly one PersistSession"
+        );
+        // And three chunks changed (the pinned opener is refused by the
+        // editor, so it emits nothing) — one event per changed chunk, the
+        // same granularity an unpinned highlight of the same layout yields.
+        let override_events = result
+            .message_names
+            .iter()
+            .filter(|n| n.contains("ContextOverrideChanged"))
+            .count();
+        assert_eq!(override_events, 3, "one event per changed chunk");
+    }
+
+    #[rstest::rstest]
+    fn isolate_is_idempotent_on_pinned_highlight() {
+        // Given a state already isolated on a pinned highlighted opener.
+        let mut state = state_with([loop_entries(), loop_entries()].concat());
+        let pinned_opener_id = state.active_session().history()[0].id.clone();
+        state
+            .active_session_mut()
+            .pin_entry(&pinned_opener_id, PinPosition::Top);
+        let opener_id = state.active_session().history()[4].id.clone();
+        state.active_session_mut().set_selected_cursor_id(opener_id);
+        let _first = handle_isolate_selected(&mut state);
+
+        // When handling isolate selected again.
+        let result = handle_isolate_selected(&mut state);
+
+        // Then nothing is emitted (every chunk is already at target).
+        assert!(
+            result.message_names.is_empty(),
+            "second press is a silent no-op"
+        );
+    }
+
+    #[rstest::rstest]
+    fn isolate_preserves_cursor_on_pinned_highlight() {
         // Given a pinned highlighted opener.
         let mut state = state_with(loop_entries());
         let opener_id = state.active_session().history()[0].id.clone();
@@ -344,15 +429,13 @@ mod tests {
             .pin_entry(&opener_id, PinPosition::Top);
 
         // When handling isolate selected.
-        let result = handle_isolate_selected(&mut state);
+        let _result = handle_isolate_selected(&mut state);
 
-        // Then nothing is emitted and all overrides stay Default.
-        assert!(result.message_names.is_empty());
-        assert!(
-            overrides(&state)
-                .iter()
-                .all(|o| *o == ContextOverride::Default),
-            "no override was touched"
+        // Then the cursor still rests on the highlighted entry.
+        assert_eq!(
+            state.active_session().selected_cursor_id(),
+            Some(opener_id),
+            "cursor stays on the highlighted entry"
         );
     }
 
