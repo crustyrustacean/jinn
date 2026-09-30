@@ -275,7 +275,9 @@ mod tests {
 
     use jinn_attendant_msg::{AttendantBehavior, AttendantTrigger};
     use jinn_config::{ConfigLayer, InMemoryConfigStorage};
-    use jinn_core_types::{FilterMode, ModelSelection, NO_PROVIDER_ID, NameFilter};
+    use jinn_core_types::{
+        Endpoint, FilterMode, ModelSelection, NO_PROVIDER_ID, NameFilter, ReasoningEffort,
+    };
 
     use super::{AttendantEntryConfig, AttendantPinConfig, AttendantPinRole};
 
@@ -304,13 +306,21 @@ mod tests {
         )
     }
 
-    /// An entry carrying the given filters and nothing else notable.
+    /// A fully-populated entry, the shape `entries_round_trip_through_the_
+    /// config_layer` reads back.
+    ///
+    /// Every field is set, so a round-trip failure names the field that did
+    /// not survive rather than one that was never in the fixture.
     fn entry_with_filters(
         tool_filter: &NameFilter,
         skill_filter: &NameFilter,
     ) -> AttendantEntryConfig {
+        let endpoint = Endpoint {
+            tag: "zai".to_owned(),
+            provider_name: "ZAI".to_owned(),
+        };
         AttendantEntryConfig::from_parts(
-            "filtered".to_owned(),
+            "reviewer".to_owned(),
             AttendantBehavior::Reset,
             AttendantTrigger::ParentCompleted,
             false,
@@ -319,8 +329,8 @@ mod tests {
             "reviewer",
             tool_filter,
             skill_filter,
-            None,
-            None,
+            Some(ReasoningEffort::High),
+            Some(&endpoint),
             Vec::new(),
         )
     }

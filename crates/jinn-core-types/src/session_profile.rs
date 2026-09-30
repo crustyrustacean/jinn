@@ -27,13 +27,13 @@ pub struct SessionProfile {
     /// everything — so an older session's blocklist stops applying. That is
     /// the same "a stale document reads as a fresh install" stance the
     /// attendant entry and the umbrella layout take.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "NameFilter::is_unconfigured")]
     pub tool_filter: NameFilter,
     /// Which skills this session may load.
     ///
     /// Replaces the former `disabled_skills` set, with the same migration
     /// story as [`Self::tool_filter`].
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "NameFilter::is_unconfigured")]
     pub skill_filter: NameFilter,
     /// Reasoning effort selected when this session was created.
     #[serde(default)]

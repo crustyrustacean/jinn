@@ -180,17 +180,18 @@ impl Wired {
             .map(|item| item.entry().enabled)
     }
 
-    /// The names this fixture's three tools see as withheld.
+    /// The names of `tools` this fixture's session filter withholds.
     ///
     /// Read through the filter's own predicate rather than off its list, so
     /// the assertion holds for an allow-mode filter too — an allow filter
-    /// withholds by omission, and reading its list would report the
+    /// withholds by omission, and reading its names would report the
     /// opposite.
-    fn session_disabled(&self) -> std::collections::BTreeSet<String> {
+    fn session_disabled(&self, tools: &[Def]) -> std::collections::BTreeSet<String> {
         let session = self.state.borrow();
         let filter = session.active_session().tool_filter();
-        ["read", "bash", "write"]
-            .into_iter()
+        tools
+            .iter()
+            .map(|def| def.name)
             .filter(|name| !filter.permits(name))
             .map(str::to_owned)
             .collect()
@@ -583,9 +584,9 @@ async fn confirming_writes_the_toggled_off_tools_to_the_session() {
 
     // Then the toggled-off tool lands in the session's disabled set.
     assert!(
-        wired.session_disabled().contains("Bash"),
+        wired.session_disabled(&three_tools()).contains("Bash"),
         "confirm must write the toggled set to the session; got {:?}",
-        wired.session_disabled()
+        wired.session_disabled(&three_tools())
     );
 }
 
@@ -615,7 +616,7 @@ async fn toggling_alone_never_writes_the_session_disabled_set() {
     // Given an open picker over three tools.
     let wired = Wired::new(three_tools()).await;
     wired.open();
-    assert!(wired.session_disabled().is_empty());
+    assert!(wired.session_disabled(&three_tools()).is_empty());
 
     // When a row is toggled off.
     wired.fire("toggle-highlighted-tool");
@@ -623,9 +624,9 @@ async fn toggling_alone_never_writes_the_session_disabled_set() {
     // Then the session's disabled set is still empty: toggling edits the menu,
     // only confirming commits.
     assert!(
-        wired.session_disabled().is_empty(),
+        wired.session_disabled(&three_tools()).is_empty(),
         "a toggle must not write the disabled set; got {:?}",
-        wired.session_disabled()
+        wired.session_disabled(&three_tools())
     );
 }
 
@@ -642,9 +643,9 @@ async fn escaping_never_writes_the_session_disabled_set() {
 
     // Then the session's disabled set is untouched.
     assert!(
-        wired.session_disabled().is_empty(),
+        wired.session_disabled(&three_tools()).is_empty(),
         "escape must restore, never commit; got {:?}",
-        wired.session_disabled()
+        wired.session_disabled(&three_tools())
     );
 }
 
@@ -669,7 +670,7 @@ async fn escape_restores_the_tools_that_were_disabled_when_the_picker_opened() {
 
     // Then the pre-open disabled set is back and the toggle never landed.
     assert_eq!(
-        wired.session_disabled(),
+        wired.session_disabled(&three_tools()),
         ["read".to_owned()].into_iter().collect()
     );
 }
@@ -704,7 +705,7 @@ async fn escape_after_a_confirm_restores_nothing() {
     wired.fire("cancel-tool-picker");
 
     // Then the committed set stands — confirm was authoritative.
-    assert!(wired.session_disabled().contains("Bash"));
+    assert!(wired.session_disabled(&three_tools()).contains("Bash"));
 }
 
 // ── Tab: toggle and advance ─────────────────────────────────────────────

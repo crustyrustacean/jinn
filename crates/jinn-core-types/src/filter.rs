@@ -46,6 +46,12 @@ pub struct NameFilter {
     /// `BTreeSet`, not `HashSet`: the config patcher rewrites this array's
     /// bytes on save, and hash iteration order would reshuffle the user's
     /// list between runs.
+    ///
+    /// An unconfigured filter contributes nothing. The *field* holding it is
+    /// what carries `skip_serializing_if`; serde has no container-level form
+    /// of that attribute, and an empty filter written out as
+    /// `{"mode":"deny"}` would grow a key into every session that configures
+    /// nothing.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub names: BTreeSet<String>,
 }

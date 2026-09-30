@@ -174,8 +174,6 @@ fn parse_args(raw: &str) -> Result<String, serde_json::Error> {
 // #[cfg(test)]
 #[cfg(test)]
 mod tests {
-    use jinn_core_types::NameFilter;
-
     #![allow(
         clippy::expect_used,
         clippy::panic,
@@ -185,7 +183,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use jinn_core_types::SessionId;
+    use jinn_core_types::{NameFilter, SessionId};
     use jinn_kernel::common::app_state::AppState;
     use jinn_kernel::common::state::State;
     use std::path::PathBuf;
@@ -535,7 +533,6 @@ mod tests {
         use jinn_core_types::SessionId;
         use jinn_kernel::common::app_state::AppState;
         use jinn_kernel::common::state::State;
-        use std::collections::HashSet;
 
         // Given a session with "web-coder" disabled.
         let state = State::new(AppState::default());
