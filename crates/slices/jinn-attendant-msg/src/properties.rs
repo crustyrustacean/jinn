@@ -69,6 +69,16 @@ pub const BEHAVIOR_CHOICES: &[(AttendantBehavior, &str)] = &[
     (AttendantBehavior::Preserve, "preserve"),
 ];
 
+/// The tool-set and skill-set rows' choices in display order: first shown
+/// leftmost.
+///
+/// Declared here beside the trigger's and the behavior's so the renderer
+/// reads every choice row from one place, and so the set rows are ordered
+/// the same way as the rest of the form rather than as a bespoke pair of
+/// spans.
+pub const SET_MODE_CHOICES: &[(SetMode, &str)] =
+    &[(SetMode::Live, "live"), (SetMode::Frozen, "frozen")];
+
 /// Whether an attendant's tools or skills are held fixed or keep growing.
 ///
 /// The two rows this names are the only place an attendant's capability set
@@ -85,17 +95,6 @@ pub enum SetMode {
     /// The attendant is restricted to the names it had at the moment it was
     /// frozen. Anything discovered afterward is refused.
     Frozen,
-}
-
-impl SetMode {
-    /// The row's label.
-    #[must_use]
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Live => "Live",
-            Self::Frozen => "Frozen",
-        }
-    }
 }
 
 /// One field of the properties form, in display order.

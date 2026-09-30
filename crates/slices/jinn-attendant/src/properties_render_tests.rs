@@ -107,12 +107,19 @@ fn fg_at(buffer: &ratatui::buffer::Buffer, x: u16, y: u16) -> Color {
 }
 
 /// Finds the x position of the first occurrence of `needle` in row `y`.
+///
+/// The search is per-cell rather than over the row's joined text: the
+/// focused marker `▸` is three bytes but two cells wide, so a byte offset
+/// into the joined row is not a screen column, and every lookup on a
+/// focused row would land a cell or two to the right of its needle.
 fn find_in_row(buffer: &ratatui::buffer::Buffer, y: u16, needle: &str) -> Option<u16> {
-    // Positions are cell indices measured from the popup's left border, so
-    // the row is cut there (not at x=0) to keep offsets screen-aligned.
-    let line = row_from_border(buffer, y);
-    let byte_index = line.find(needle)?;
-    Some(inner_left() + u16::try_from(byte_index).expect("row fits u16"))
+    let start = inner_left();
+    (start..buffer.area.width).find(|&x| {
+        (start..=x)
+            .map(|x| symbol_at(buffer, x, y))
+            .collect::<String>()
+            .contains(needle)
+    })
 }
 
 /// The popup row `y` as text, starting at its left border cell.
@@ -913,6 +920,50 @@ fn the_focused_row_uses_the_user_message_background() {
         jinn_theme::default_theme().user_block_bg,
         "the focused row must borrow the user-message background"
     );
+}
+
+#[rstest::rstest]
+#[case::tools(PropertyField::ToolSet)]
+#[case::skills(PropertyField::SkillSet)]
+#[test]
+fn a_set_row_shows_both_choices_separated_by_a_slash(#[case] field: PropertyField) {
+    // Given a popup focused on a set row.
+    let buffer = render_properties(popup_focused(field));
+
+    // When reading that row.
+    let row = highlighted_row_of(&buffer, field);
+    let text = row_from_border(&buffer, row);
+
+    // Then both choices are on the row, slash-separated, the way the trigger
+    // and behavior rows are. Showing only the current value would make a
+    // two-state row look like a setting with one setting.
+    assert!(
+        text.contains("live / frozen"),
+        "the set row must offer both choices; read: {text}"
+    );
+}
+
+#[rstest::rstest]
+#[case::tools(PropertyField::ToolSet)]
+#[case::skills(PropertyField::SkillSet)]
+#[test]
+fn a_set_row_marks_its_live_choice_green(#[case] field: PropertyField) {
+    // Given a popup whose set row is Live — the default.
+    let buffer = render_properties(popup_focused(field));
+    let row = highlighted_row_of(&buffer, field);
+
+    // When reading the `live` choice's foreground.
+    let live_x = find_in_row(&buffer, row, "live").expect("the live choice");
+
+    // Then it wears the selected-choice green, exactly as a chosen trigger
+    // does, so both kinds of choice row read the same way.
+    assert_eq!(
+        fg_at(&buffer, live_x, row),
+        jinn_theme::default_theme().attendant_option_active,
+    );
+    // And the unselected one is plain text.
+    let frozen_x = find_in_row(&buffer, row, "frozen").expect("the frozen choice");
+    assert_eq!(fg_at(&buffer, frozen_x, row), PRIMARY_TEXT);
 }
 
 #[rstest::rstest]

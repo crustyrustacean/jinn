@@ -428,8 +428,18 @@ fn field_line<'a>(
             theme,
         )),
         PropertyField::PrepMode => spans.extend(prep_mode_spans(popup.pending_prep_mode, theme)),
-        PropertyField::ToolSet => spans.extend(set_mode_spans(popup.pending_tool_set, theme)),
-        PropertyField::SkillSet => spans.extend(set_mode_spans(popup.pending_skill_set, theme)),
+        PropertyField::ToolSet => spans.extend(choice_spans(
+            jinn_attendant_msg::SET_MODE_CHOICES,
+            &popup.pending_tool_set,
+            dim,
+            theme,
+        )),
+        PropertyField::SkillSet => spans.extend(choice_spans(
+            jinn_attendant_msg::SET_MODE_CHOICES,
+            &popup.pending_skill_set,
+            dim,
+            theme,
+        )),
         PropertyField::SeedTemplate => {
             spans.push(template_value(popup, theme, layout));
         }
@@ -476,27 +486,6 @@ fn prep_mode_spans<'a>(prep_mode: bool, theme: &'a jinn_theme::Theme) -> Vec<Spa
 const PREP_MODE_ON: &str = "[on]";
 const PREP_MODE_OFF: &str = "[off]";
 const PREP_MODE_DISABLED_NOTE: &str = "  (Attendant disabled)";
-
-/// A set row's value: Live in plain text, Frozen in the selected-choice
-/// green.
-///
-/// The two are rendered as spans rather than a choice row because nothing is
-/// being chosen between peers — Live is the absence of a decision, and
-/// Frozen is the decision, so Frozen is the word the eye should find. This
-/// is the same reading the prep row gives its `[off]`, and for the same
-/// reason: `[off]` is the state a user reaching for the attendant runs in.
-fn set_mode_spans<'a>(mode: SetMode, theme: &'a jinn_theme::Theme) -> Vec<Span<'a>> {
-    let frozen = mode == SetMode::Frozen;
-    let color = if frozen {
-        theme.attendant_option_active
-    } else {
-        theme.primary_text
-    };
-    vec![Span::styled(
-        mode.label().to_owned(),
-        Style::default().fg(color),
-    )]
-}
 
 /// The focused row's background: the user-message block, so the row reads
 /// as a selection against a surface the user already knows rather than as a
@@ -674,10 +663,10 @@ fn help_body(field: PropertyField, theme: &jinn_theme::Theme) -> Vec<Line<'stati
             ),
             Line::from(""),
             line(
-                "Live",
+                "live",
                 "new tools are admitted; the attendant follows your setup",
             ),
-            line("Frozen", "only the tools it had when you froze the set"),
+            line("frozen", "only the tools it had when you froze the set"),
         ],
         PropertyField::SkillSet => vec![
             Line::from(
@@ -685,10 +674,10 @@ fn help_body(field: PropertyField, theme: &jinn_theme::Theme) -> Vec<Line<'stati
             ),
             Line::from(""),
             line(
-                "Live",
+                "live",
                 "new skills are admitted; the attendant follows your setup",
             ),
-            line("Frozen", "only the skills it had when you froze the set"),
+            line("frozen", "only the skills it had when you froze the set"),
         ],
         PropertyField::SeedTemplate => vec![
             Line::from(
