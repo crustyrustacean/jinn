@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Endpoint, ModelSelection, NO_PROVIDER_ID, NameFilter, ReasoningEffort};
+use crate::{ModelSelection, NO_PROVIDER_ID, NameFilter, ReasoningEffort};
 
 /// Default persona name used when none is explicitly set.
 pub const DEFAULT_PERSONA_NAME: &str = "coding-assistant";
@@ -13,6 +13,10 @@ fn default_persona_name() -> String {
 }
 
 /// Per-session model and persona selection.
+///
+/// A routing endpoint is deliberately absent: pinning one is a property of
+/// the model, not of the session, so it lives in `providers.toml` as a
+/// `[[endpoint_defaults]]` row. See `jinn_provider_config::EndpointDefault`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionProfile {
     /// The model selection for this session, either a single model or an alloy.
@@ -42,9 +46,6 @@ pub struct SessionProfile {
     /// Reasoning effort selected when this session was created.
     #[serde(default)]
     pub reasoning_effort: Option<ReasoningEffort>,
-    /// Pinned OpenRouter routing endpoint for prefix-cache affinity.
-    #[serde(default)]
-    pub endpoint: Option<Endpoint>,
 }
 
 impl Default for SessionProfile {
@@ -55,7 +56,6 @@ impl Default for SessionProfile {
             tool_filter: None,
             skill_filter: None,
             reasoning_effort: None,
-            endpoint: None,
         }
     }
 }
@@ -84,7 +84,6 @@ impl SessionProfile {
         tool_filter: Option<NameFilter>,
         skill_filter: Option<NameFilter>,
         reasoning_effort: Option<ReasoningEffort>,
-        endpoint: Option<Endpoint>,
     ) -> Self {
         Self {
             model,
@@ -92,7 +91,6 @@ impl SessionProfile {
             tool_filter,
             skill_filter,
             reasoning_effort,
-            endpoint,
         }
     }
 }
@@ -149,7 +147,6 @@ mod tests {
             Some(filter.clone()),
             None,
             None,
-            None,
         );
 
         // When serialized and deserialized.
@@ -175,7 +172,6 @@ mod tests {
             None,
             Some(filter.clone()),
             None,
-            None,
         );
 
         // When serialized and deserialized.
@@ -200,7 +196,6 @@ mod tests {
             ModelSelection::Single("ollama/llama3".to_owned()),
             DEFAULT_PERSONA_NAME.to_owned(),
             Some(filter.clone()),
-            None,
             None,
             None,
         );
@@ -318,34 +313,36 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn endpoint_round_trips_through_serde() {
-        // Given a profile with a pinned endpoint.
-        let endpoint = Endpoint {
-            tag: "anthropic".to_owned(),
-            provider_name: "Anthropic".to_owned(),
-        };
-        let profile = SessionProfile {
-            endpoint: Some(endpoint.clone()),
-            ..SessionProfile::from_config("openrouter/anthropic/claude".to_owned())
-        };
-
-        // When serializing then deserializing.
-        let json = serde_json::to_string(&profile).expect("serialize");
-        let reloaded: SessionProfile = serde_json::from_str(&json).expect("deserialize");
-
-        // Then the pinned endpoint is preserved.
-        assert_eq!(reloaded.endpoint, Some(endpoint));
-    }
-
-    #[rstest::rstest]
-    fn legacy_json_without_endpoint_deserializes_to_none() {
-        // Given JSON from an older version that lacks endpoint.
-        let json = r#"{"model":{"single":"ollama/llama3"},"persona_name":"coding-assistant","reasoning_effort":null}"#;
+    fn legacy_json_carrying_a_stored_endpoint_still_deserializes() {
+        // Given a stored session row from before the pin moved into
+        // providers.toml — it still carries the per-session `endpoint` key.
+        let json = r#"{"model":{"single":"openrouter/anthropic/claude"},"disabled_tools":[],"disabled_skills":[],"reasoning_effort":null,"endpoint":{"tag":"anthropic","provider_name":"Anthropic"}}"#;
 
         // When deserialized.
         let profile: SessionProfile = serde_json::from_str(json).expect("deserialize");
 
-        // Then endpoint is None.
-        assert!(profile.endpoint.is_none());
+        // Then the row loads, with the removed key ignored and the model
+        // intact — an old session must not become unloadable.
+        assert_eq!(
+            profile.model,
+            ModelSelection::Single("openrouter/anthropic/claude".to_owned())
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_reloaded_profile_does_not_carry_a_stored_endpoint_back() {
+        // Given a legacy session row carrying a per-session endpoint.
+        let json = r#"{"model":{"single":"openrouter/anthropic/claude"},"endpoint":{"tag":"anthropic","provider_name":"Anthropic"}}"#;
+        let profile: SessionProfile = serde_json::from_str(json).expect("deserialize");
+
+        // When serialized back out for persistence.
+        let written = serde_json::to_string(&profile).expect("serialize");
+
+        // Then the stale pin is gone — the routing choice now lives in
+        // providers.toml, and rewriting it here would resurrect it.
+        assert!(
+            !written.contains("endpoint"),
+            "the removed pin must not be written back: {written}"
+        );
     }
 }

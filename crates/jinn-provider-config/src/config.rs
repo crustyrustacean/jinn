@@ -43,6 +43,28 @@ pub struct ProvidersConfig {
     /// The last-selected default provider (persisted across sessions).
     #[serde(default)]
     pub default_provider: Option<String>,
+    /// Pinned OpenRouter routing endpoints, keyed by full model id.
+    /// Written by the endpoint picker; a model with no row auto-routes.
+    /// See [`EndpointDefault`].
+    #[serde(default)]
+    pub endpoint_defaults: Vec<EndpointDefault>,
+}
+
+/// A pinned OpenRouter routing endpoint for one model.
+///
+/// Declared at the config root as `[[endpoint_defaults]]` tables. The
+/// `model` value is the full model id as shown in the picker (e.g.
+/// `"openrouter/anthropic/claude-sonnet-4-20250514"`) and `tag` is the
+/// upstream routing tag sent to OpenRouter (e.g. `"anthropic"`).
+///
+/// Only the tag is persisted: the human-readable provider name is fetched
+/// from OpenRouter at display time and would drift if it were stored.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EndpointDefault {
+    /// Full model id this endpoint applies to.
+    pub model: String,
+    /// The OpenRouter routing tag to force for this model.
+    pub tag: String,
 }
 
 /// A single configured provider.
@@ -316,6 +338,7 @@ where
 
         let mut patcher = jinn_common::toml_patch::DocumentPatcher::new();
         patcher.register_array_key(["aliases"], "name");
+        patcher.register_array_key(["endpoint_defaults"], "model");
         patcher.register_array_key(["providers", "*", "model_info"], "id");
         // `providers`, each provider block, and `aliases` are named sections
         // and keep header form. Unregistered, a table is by definition a
@@ -410,6 +433,16 @@ pub(crate) mod tests {
                 target: "fixture-provider/fixture/model-a".to_owned(),
             }],
             default_provider: Some("fixture-provider/fixture/model-a".to_owned()),
+            endpoint_defaults: vec![
+                EndpointDefault {
+                    model: "fixture-provider/fixture/model-a".to_owned(),
+                    tag: "fixture-upstream".to_owned(),
+                },
+                EndpointDefault {
+                    model: "fixture-provider/fixture/model-b".to_owned(),
+                    tag: "fixture-upstream-2".to_owned(),
+                },
+            ],
         }
     }
 
@@ -612,6 +645,7 @@ target = "ollama/llama3""#;
             providers: BTreeMap::from([("test".to_owned(), entry("openrouter", &["gpt-4"]))]),
             aliases: vec![],
             default_provider: Some("test/gpt-4".to_owned()),
+            endpoint_defaults: Vec::new(),
         };
 
         let dir = TempDir::new().expect("temp dir");
@@ -637,6 +671,7 @@ target = "ollama/llama3""#;
             ]),
             aliases: vec![],
             default_provider: None,
+            endpoint_defaults: Vec::new(),
         };
 
         let dir = TempDir::new().expect("temp dir");
@@ -766,6 +801,7 @@ tool_stream = true"#;
             ]),
             aliases: vec![],
             default_provider: None,
+            endpoint_defaults: Vec::new(),
         };
         save_config_to(&config, &path).expect("save");
 
@@ -820,6 +856,7 @@ tool_stream = true"#;
             providers: BTreeMap::from([("test-save".to_owned(), entry("ollama", &["llama3"]))]),
             aliases: vec![],
             default_provider: Some("test-save/llama3".to_owned()),
+            endpoint_defaults: Vec::new(),
         };
 
         // When saving it to disk.
@@ -1105,5 +1142,208 @@ strategy = "round_robin""#;
             "alloy comment lost: {written}"
         );
         assert!(written.contains("name = \"balanced\""));
+    }
+
+    #[rstest::rstest]
+    fn load_config_without_endpoint_defaults_key_yields_empty_list() {
+        // Given a providers.toml written before endpoint pinning existed.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(
+            &path,
+            "[providers.ollama]\nbackend = \"ollama\"\nmodels = [\"llama3\"]\n",
+        )
+        .expect("write");
+
+        // When loading.
+        let config = load_config_from(&path).expect("load");
+
+        // Then the endpoint defaults are an empty list (every model auto-routes).
+        assert!(config.endpoint_defaults.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn load_config_parses_endpoint_defaults_rows() {
+        // Given a providers.toml with two [[endpoint_defaults]] rows.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        let toml = r#"
+[providers.openrouter]
+backend = "openrouter"
+models = ["anthropic/claude-sonnet-4-20250514"]
+
+[[endpoint_defaults]]
+model = "openrouter/anthropic/claude-sonnet-4-20250514"
+tag = "anthropic"
+
+[[endpoint_defaults]]
+model = "openrouter/openai/gpt-oss-120b"
+tag = "openai"
+"#;
+        std::fs::write(&path, toml).expect("write");
+
+        // When loading.
+        let config = load_config_from(&path).expect("load");
+
+        // Then both rows load with their model id and routing tag.
+        assert_eq!(
+            config.endpoint_defaults,
+            vec![
+                EndpointDefault {
+                    model: "openrouter/anthropic/claude-sonnet-4-20250514".to_owned(),
+                    tag: "anthropic".to_owned(),
+                },
+                EndpointDefault {
+                    model: "openrouter/openai/gpt-oss-120b".to_owned(),
+                    tag: "openai".to_owned(),
+                },
+            ]
+        );
+    }
+
+    #[rstest::rstest]
+    fn endpoint_default_row_missing_tag_fails_to_parse() {
+        // Given a providers.toml whose [[endpoint_defaults]] row omits `tag`.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        let toml = r#"
+[providers.openrouter]
+backend = "openrouter"
+models = ["anthropic/claude-sonnet-4-20250514"]
+
+[[endpoint_defaults]]
+model = "openrouter/anthropic/claude-sonnet-4-20250514"
+"#;
+        std::fs::write(&path, toml).expect("write");
+
+        // When loading.
+        let result = load_config_from(&path);
+
+        // Then parsing fails — a half-written pin is a configuration error,
+        // not a silent auto-route.
+        assert!(result.is_err());
+    }
+
+    #[rstest::rstest]
+    fn save_config_round_trips_multiple_endpoint_default_rows() {
+        // Given a config carrying two [[endpoint_defaults]] rows.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        let config = ProvidersConfig {
+            providers: BTreeMap::from([(
+                "openrouter".to_owned(),
+                entry("openrouter", &["anthropic/claude-sonnet-4-20250514"]),
+            )]),
+            aliases: vec![],
+            default_provider: None,
+            endpoint_defaults: vec![
+                EndpointDefault {
+                    model: "openrouter/anthropic/claude-sonnet-4-20250514".to_owned(),
+                    tag: "anthropic".to_owned(),
+                },
+                EndpointDefault {
+                    model: "openrouter/openai/gpt-oss-120b".to_owned(),
+                    tag: "openai".to_owned(),
+                },
+            ],
+        };
+
+        // When saving and reloading.
+        save_config_to(&config, &path).expect("save");
+        let reloaded = load_config_from(&path).expect("reload");
+
+        // Then both rows survive intact.
+        assert_eq!(reloaded.endpoint_defaults, config.endpoint_defaults);
+    }
+
+    #[rstest::rstest]
+    fn save_config_changing_one_endpoint_default_preserves_the_other_rows_comments() {
+        // Given a providers.toml whose endpoint rows each carry a comment.
+        let original = r#"[providers.openrouter]
+backend = "openrouter"
+models = ["anthropic/claude-sonnet-4-20250514", "openai/gpt-oss-120b"]
+
+# prefix cache matters most here
+[[endpoint_defaults]]
+model = "openrouter/anthropic/claude-sonnet-4-20250514"
+tag = "anthropic"
+
+# cheap but slower
+[[endpoint_defaults]]
+model = "openrouter/openai/gpt-oss-120b"
+tag = "openai"
+"#;
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(&path, original).expect("write");
+
+        // When loading, re-pinning only the first model, and saving.
+        let mut config = load_config_from(&path).expect("load");
+        config.endpoint_defaults[0].tag = "anthropic-us".to_owned();
+        save_config_to(&config, &path).expect("save");
+        let written = std::fs::read_to_string(&path).expect("read");
+
+        // Then the edited row's value changed in place, and both comments survive.
+        assert!(written.contains("tag = \"anthropic-us\""), "tag updated");
+        assert!(written.contains("# prefix cache matters most here"));
+        assert!(written.contains("# cheap but slower"));
+        assert!(written.contains("tag = \"openai\""), "other row untouched");
+    }
+
+    #[rstest::rstest]
+    fn save_config_removing_the_last_endpoint_default_leaves_an_empty_array() {
+        // Given a providers.toml with a single [[endpoint_defaults]] row.
+        let original = r#"[providers.openrouter]
+backend = "openrouter"
+models = ["openai/gpt-oss-120b"]
+
+[[endpoint_defaults]]
+model = "openrouter/openai/gpt-oss-120b"
+tag = "openai"
+"#;
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(&path, original).expect("write");
+
+        // When loading, clearing the row (the auto-route sentinel), and saving.
+        let mut config = load_config_from(&path).expect("load");
+        config.endpoint_defaults.clear();
+        save_config_to(&config, &path).expect("save");
+        let written = std::fs::read_to_string(&path).expect("read");
+
+        // Then the key is present and empty rather than vanished, so a second
+        // save does not oscillate between absent and re-added.
+        assert!(
+            written.contains("endpoint_defaults= []") || written.contains("endpoint_defaults = []"),
+            "expected an inline empty array, got:\n{written}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn save_config_over_template_with_endpoint_defaults_writes_past_the_commented_example() {
+        // Given the shipped template, whose endpoint_defaults example is commented out.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(&path, DEFAULT_CONFIG).expect("write template");
+
+        // When loading, pinning an endpoint, and saving.
+        let mut config = load_config_from(&path).expect("load");
+        config.endpoint_defaults.push(EndpointDefault {
+            model: "openrouter/anthropic/claude-sonnet-4-20250514".to_owned(),
+            tag: "anthropic".to_owned(),
+        });
+        save_config_to(&config, &path).expect("save");
+        let reloaded = load_config_from(&path).expect("reload");
+
+        // Then the pin is live in the file, and the template's own comments are intact.
+        assert_eq!(reloaded.endpoint_defaults.len(), 1);
+        assert_eq!(reloaded.endpoint_defaults[0].tag, "anthropic");
+        let written = std::fs::read_to_string(&path).expect("read");
+        for line in DEFAULT_CONFIG.lines().filter(|l| l.starts_with('#')) {
+            assert!(
+                written.contains(line),
+                "expected template comment preserved: {line}"
+            );
+        }
     }
 }

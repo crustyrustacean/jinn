@@ -271,7 +271,6 @@ fn build_child(
         p.model = model;
         p.persona_name.clone_from(&profile.persona_name);
         p.reasoning_effort = profile.reasoning_effort;
-        p.endpoint.clone_from(&profile.endpoint);
         // A child has to carry a filter either way: the parent's may be
         // absent, and "no filter" cannot be edited to withhold the task tool.
         let mut child_filter = profile

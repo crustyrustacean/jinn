@@ -67,7 +67,10 @@ pub fn entry_for_session(name: String, session: &ChatSessionState) -> AttendantE
         profile.tool_filter.as_ref(),
         profile.skill_filter.as_ref(),
         profile.reasoning_effort,
-        profile.endpoint.as_ref(),
+        // An endpoint pin is no longer a property of the session profile, so
+        // a session has none to read here. The pin lives on the attendant
+        // entry, where `providers.toml` supplies it at run time.
+        None,
         pinned_entries(session),
     )
 }

@@ -177,6 +177,7 @@ impl Default for TestServices {
                 providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
+                endpoint_defaults: vec![],
             },
             handle: None,
             llm_service: None,

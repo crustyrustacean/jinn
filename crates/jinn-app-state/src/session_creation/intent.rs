@@ -65,7 +65,6 @@ pub fn handle_session_lifecycle_setup(
         seed.tool_filter.clone(),
         seed.skill_filter.clone(),
         reasoning_effort,
-        None,
     ));
     new_session.set_enabled_mcp_servers(seed.enabled_mcp.clone());
     let new_id = new_session.session_id().clone();

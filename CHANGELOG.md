@@ -1,5 +1,10 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Do not make edits)**
 
+## (trunk)
+
+- OpenRouter endpoint selection is now persisted automatically to `providers.toml`.
+- Bugfix: `gci` now works when a pinned entry is selected.
+
 ## 2026-09-27 v1.1.2
 
 - Add a new "extending jinn" document. You should now be able to ask `jinn` to configure and extend itself.

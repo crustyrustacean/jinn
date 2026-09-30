@@ -127,6 +127,7 @@ fn empty_providers_config() -> ProvidersConfig {
         providers: BTreeMap::new(),
         aliases: Vec::new(),
         default_provider: None,
+        endpoint_defaults: Vec::new(),
     }
 }
 

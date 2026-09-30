@@ -39,6 +39,7 @@ fn sample_config() -> jinn_provider_config::ProvidersConfig {
         )]),
         aliases: vec![],
         default_provider: None,
+        endpoint_defaults: vec![],
     }
 }
 

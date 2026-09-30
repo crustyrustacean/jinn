@@ -57,16 +57,6 @@ pub fn build(entry: &AttendantEntryConfig, parent: &ChatSessionState) -> ChatSes
             profile.reasoning_effort = Some(effort);
         }
     }
-    // An endpoint pin is model-specific, so it is only kept when the model
-    // it was pinned for is the one the attendant will run. An alloy rotates
-    // across models and has no single endpoint; `set_model` drops the pin
-    // for exactly that case, and the same rule is applied here rather than
-    // attaching a stale endpoint to a rotating set.
-    if let Some(endpoint) = &entry.endpoint
-        && !matches!(attendant.profile().model, ModelSelection::Alloy { .. })
-    {
-        attendant.profile_mut().endpoint = Some(endpoint.clone());
-    }
     attendant.set_attendant_behavior(entry.behavior);
     attendant.set_attendant_trigger(entry.trigger);
     attendant.set_attendant_is_prepping(entry.prep_mode);

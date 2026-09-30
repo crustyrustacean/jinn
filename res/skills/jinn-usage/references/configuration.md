@@ -30,6 +30,12 @@ user to quit (`q`) and relaunch. Per-session choices made in the UI (enabled
 tools/skills/MCP servers, model, persona) persist in the session database and
 do _not_ need a restart or config edit.
 
+One choice is a config write rather than session state: the OpenRouter
+endpoint pin made in the endpoint picker writes a `[[endpoint_defaults]]` row
+to `providers.toml`, so it is live immediately (no restart) but is keyed by
+model and applies to every session using that model. Hand-editing that row,
+by contrast, still needs a restart.
+
 ## Offer-to-edit protocol
 
 When the user's ask maps to a config change:

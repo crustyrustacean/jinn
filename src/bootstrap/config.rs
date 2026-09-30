@@ -91,6 +91,7 @@ pub fn prepare(
                 providers: std::collections::BTreeMap::new(),
                 aliases: vec![],
                 default_provider: None,
+                endpoint_defaults: vec![],
             })
             .change_context(AppError)?,
         ),

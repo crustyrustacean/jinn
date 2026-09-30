@@ -34,11 +34,18 @@ one:
    endpoint list for that model (listings are cached in memory for the
    session's lifetime).
 3. `<enter>` pins an endpoint. From then on requests force that endpoint and
-   disable fallbacks, maximizing KV-cache hits.
+   disable fallbacks, maximizing KV-cache hits. `<enter>` on the "Default
+   (auto-route)" row clears the pin.
+
+A pin is a **per-model default**, not per-session state. Confirming writes a
+`[[endpoint_defaults]]` row into `providers.toml`, so the choice applies to
+that model in every session — including sessions you create later — and
+survives a restart. The block is hand-editable; no row for a model means that
+model auto-routes. jinn reads the file once at launch, so a hand-edit needs a
+restart to take effect, while a pin made in the picker is live immediately.
 
 Scope rules: a pin applies only to a **single (non-alloy) model served via
-OpenRouter**; it's ignored for alloys and every other backend. The pin is
-per-session.
+OpenRouter**; it's ignored for alloys and every other backend.
 
 ## Compaction model
 
@@ -65,9 +72,14 @@ meaning, duplicate names are rejected. Example shape:
 Model metadata can be set per model in `[[providers.<name>.model_info]]`
 tables (context length, image support, extra request body). Precedence for
 model metadata: per-model config > provider-block config > API-discovered
-cache > models.dev. `providers.toml` is hand-authored only — jinn never
-writes discovered models into it. **Edits require a restart**; a whole-file
-syntax error aborts launch (fail-fast, with a legible error).
+cache > models.dev.
+
+`providers.toml` is hand-authored: jinn never writes discovered models into it.
+The one exception is the endpoint picker, which writes your
+`[[endpoint_defaults]]` row when you confirm a pin (and deletes it when you
+choose auto-route); everything else in the file is left alone, comments
+included. **Edits require a restart**; a whole-file syntax error aborts launch
+(fail-fast, with a legible error).
 
 See `configuration.md` for the full config-file map and the offer-to-edit
 protocol.

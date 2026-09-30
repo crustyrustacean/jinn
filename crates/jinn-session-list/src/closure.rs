@@ -90,7 +90,8 @@ mod tests {
             "the whole chain is reachable: {closure:?}"
         );
         assert_eq!(
-            closure[0], root,
+            closure.first(),
+            Some(&root),
             "the root is the head, which callers rely on"
         );
     }

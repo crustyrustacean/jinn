@@ -176,6 +176,7 @@ impl SessionPersistenceActor {
 
         // Resolve model under write lock (round-robin mutates index), push token
         // record, and transition phase — all in one lock acquisition.
+        let registry = self.services.provider_registry.clone();
         let (provider_id, model_used, reasoning_effort, endpoint_tag, old_phase, new_phase) = {
             self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(session_id);
@@ -187,20 +188,27 @@ impl SessionPersistenceActor {
                     jinn_kernel::resolve_effort(profile.reasoning_effort)
                 };
                 let (provider_id, model_used, endpoint_tag) = {
-                    // Snapshot the endpoint tag immutably before mutating the model
-                    // (alloy round-robin mutates index during resolve_model).
-                    let endpoint_tag = match (&session.profile().model, &session.profile().endpoint)
-                    {
-                        (ModelSelection::Single(_), Some(ep)) => Some(ep.tag.clone()),
-                        _ => None,
-                    };
+                    let is_single = matches!(session.profile().model, ModelSelection::Single(_));
                     let model = &mut session.profile_mut().model;
-                    if model.is_no_provider() {
-                        (None, None, endpoint_tag)
+                    let (provider_id, model_used) = if model.is_no_provider() {
+                        (None, None)
                     } else {
                         let resolved = model.resolve_model();
-                        (Some(resolved.clone()), Some(resolved), endpoint_tag)
-                    }
+                        (Some(resolved.clone()), Some(resolved))
+                    };
+                    // The routing endpoint is keyed by model, so it is
+                    // resolved from the member `resolve_model` just produced
+                    // — but only for a `Single` selection. An alloy rotates,
+                    // and a row keyed to one of its members would pin
+                    // whichever member this turn landed on.
+                    let endpoint_tag = if is_single {
+                        model_used
+                            .as_deref()
+                            .and_then(|resolved| registry.pinned_endpoint_tag(resolved))
+                    } else {
+                        None
+                    };
+                    (provider_id, model_used, endpoint_tag)
                 };
 
                 session.push_token_record(TokenRecord {

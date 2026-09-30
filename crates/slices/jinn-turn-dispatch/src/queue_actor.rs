@@ -58,6 +58,7 @@ use trouper::system::ActorSystem;
 use jinn_chat_input_msg::ChatEntrySubmitted;
 use jinn_context_assembly::inputs::build_assembly_inputs;
 use jinn_context_assembly::inputs_snapshot::assemble_via_service;
+use jinn_core_types::model_selection::ModelSelection;
 use jinn_core_types::{ChatEntry, ChatEntryKind, ReasoningEffort, SessionId};
 use jinn_inference_msg::{SendToLlmProvider, StreamOrigin};
 use jinn_kernel::common::actor_deps::BusPublish;
@@ -308,8 +309,14 @@ impl QueueActor {
     }
 
     /// Reads the active session's resolved model, reasoning effort, and
-    /// endpoint pin for dispatch. The endpoint pin applies only to a Single
-    /// model; alloys rotate members and never pin.
+    /// routing endpoint for dispatch.
+    ///
+    /// The routing endpoint is a per-model default in `providers.toml`, not
+    /// session state, so it is looked up in the registry the process booted
+    /// with. A model with no `[[endpoint_defaults]]` row auto-routes, and an
+    /// alloy never has a row consulted at all: its members rotate, so a row
+    /// keyed to one of them would silently pin whichever member that turn
+    /// happened to land on, which is not what a pin means.
     fn resolve_dispatch_model(
         &self,
         session_id: &SessionId,
@@ -319,6 +326,7 @@ impl QueueActor {
         Option<ReasoningEffort>,
         Option<String>,
     ) {
+        let registry = self.services.provider_registry.clone();
         self.state.with_session(|view| {
             let profile = view
                 .session
@@ -326,17 +334,19 @@ impl QueueActor {
                 .get_unchecked_mut(session_id)
                 .profile_mut();
             let reasoning_effort = resolve_effort(profile.reasoning_effort);
-            // Endpoint pin applies only to a Single model; alloys rotate.
-            let endpoint_tag = match (&profile.model, &profile.endpoint) {
-                (jinn_core_types::model_selection::ModelSelection::Single(_), Some(ep)) => {
-                    Some(ep.tag.clone())
-                }
-                _ => None,
-            };
             if profile.model.is_no_provider() {
                 (None, None, reasoning_effort, None)
             } else {
+                // Read the shape before `resolve_model` consumes the alloy's
+                // rotation, so the guard describes the selection the caller
+                // asked for rather than whichever member it rotated to.
+                let is_single = matches!(profile.model, ModelSelection::Single(_));
                 let resolved = profile.model.resolve_model();
+                let endpoint_tag = if is_single {
+                    registry.pinned_endpoint_tag(&resolved)
+                } else {
+                    None
+                };
                 (
                     Some(resolved.clone()),
                     Some(resolved),
@@ -430,25 +440,26 @@ impl QueueActor {
         // transition → Streaming and record the outgoing token count. The
         // record carries the resolved model (the direct-send path's former
         // push-then-`set_last_token_model` dance, converged).
+        let registry = self.services.provider_registry.clone();
         let (provider_id, model_used, reasoning_effort, endpoint_tag, old_phase, new_phase) = {
             self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(session_id);
                 let reasoning_effort = resolve_effort(session.profile().reasoning_effort);
-                // Snapshot the endpoint tag immutably before mutating the
-                // model (alloy round-robin mutates index during
-                // resolve_model).
-                let endpoint_tag = match (&session.profile().model, &session.profile().endpoint) {
-                    (jinn_core_types::model_selection::ModelSelection::Single(_), Some(ep)) => {
-                        Some(ep.tag.clone())
-                    }
-                    _ => None,
-                };
                 let model = &mut session.profile_mut().model;
                 let (provider_id, model_used) = if model.is_no_provider() {
                     (None, None)
                 } else {
                     let resolved = model.resolve_model();
                     (Some(resolved.clone()), Some(resolved))
+                };
+                // The routing endpoint is keyed by model, so it is resolved
+                // from the member `resolve_model` just produced — but only
+                // for a `Single` selection. An alloy rotates, and a row keyed
+                // to one of its members would pin whichever member this turn
+                // landed on rather than expressing a choice.
+                let endpoint_tag = match (&session.profile().model, &model_used) {
+                    (ModelSelection::Single(_), Some(id)) => registry.pinned_endpoint_tag(id),
+                    _ => None,
                 };
                 let old_phase = session.phase();
                 session.begin_streaming();
