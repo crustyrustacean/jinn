@@ -92,6 +92,8 @@ mod attendant_msg_tests {
 
 #[cfg(test)]
 mod properties_tests {
+    #![allow(clippy::expect_used, reason = "test code")]
+
     use crate::{
         AttendantBehavior, AttendantPropertiesState, AttendantTrigger, BEHAVIOR_CHOICES,
         OriginalValues, PickDirection, PropertyField, SetField, SetMode, TRIGGER_CHOICES,
@@ -347,7 +349,7 @@ mod properties_tests {
             PropertyField::SkillSet,
             PropertyField::SeedTemplate,
         ]
-        .map(|field| field.applies_while_prepping());
+        .map(PropertyField::applies_while_prepping);
 
         // Then pins are the point of composing, so the template is exactly
         // what a user writes during prep; a tool budget is what a user
@@ -391,7 +393,11 @@ mod properties_tests {
     #[rstest::rstest]
     #[case(PickDirection::Left, "h")]
     #[case(PickDirection::Right, "l")]
-    fn either_pick_key_cycles_prep_mode(#[case] direction: PickDirection, #[case] _key: &str) {
+    fn either_pick_key_cycles_prep_mode(#[case] direction: PickDirection, #[case] key: &str) {
+        // The key each direction is bound to is documented by the case above
+        // it; the popup takes a direction, not a key, and the binding itself
+        // is covered where the routes are attached.
+        let _ = key;
         // Given a popup focused on the prep row, still composing.
         let mut popup = AttendantPropertiesState {
             focus: PropertyField::PrepMode,

@@ -78,7 +78,7 @@ mod tests {
     use super::*;
 
     fn state_with_selected_session() -> AppState {
-        let mut state = AppState::default_with_scope_focus();
+        let state = AppState::default_with_scope_focus();
         let active = state.session.active_session_id().clone();
         state
             .frontend

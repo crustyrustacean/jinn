@@ -75,8 +75,8 @@ mod tests {
 
     /// Whether the seed's filter permits a name, with an absent filter
     /// inheriting — which at a gate is what permits everything.
-    fn permits(filter: &Option<NameFilter>, name: &str) -> bool {
-        filter.as_ref().is_none_or(|filter| filter.permits(name))
+    fn permits(filter: Option<&NameFilter>, name: &str) -> bool {
+        filter.is_none_or(|filter| filter.permits(name))
     }
 
     #[rstest::rstest]
@@ -88,8 +88,8 @@ mod tests {
         let seed = SessionSeed::from_config(&config);
 
         // Then no tool or skill is withheld and no server is auto-enabled.
-        assert!(permits(&seed.tool_filter, "bash"));
-        assert!(permits(&seed.skill_filter, "any"));
+        assert!(permits(seed.tool_filter.as_ref(), "bash"));
+        assert!(permits(seed.skill_filter.as_ref(), "any"));
         assert!(seed.enabled_mcp.is_empty());
     }
 
@@ -103,9 +103,12 @@ mod tests {
         let seed = SessionSeed::from_config(&config);
 
         // Then exactly those are withheld, glob included.
-        assert!(!permits(&seed.tool_filter, "bash"));
-        assert!(!permits(&seed.tool_filter, "mcp__github__create_pr"));
-        assert!(permits(&seed.tool_filter, "read"));
+        assert!(!permits(seed.tool_filter.as_ref(), "bash"));
+        assert!(!permits(
+            seed.tool_filter.as_ref(),
+            "mcp__github__create_pr"
+        ));
+        assert!(permits(seed.tool_filter.as_ref(), "read"));
     }
 
     #[rstest::rstest]
@@ -118,8 +121,8 @@ mod tests {
         let seed = SessionSeed::from_config(&config);
 
         // Then exactly that skill is withheld.
-        assert!(!permits(&seed.skill_filter, "phased-task-loop"));
-        assert!(permits(&seed.skill_filter, "micro-task-loop"));
+        assert!(!permits(seed.skill_filter.as_ref(), "phased-task-loop"));
+        assert!(permits(seed.skill_filter.as_ref(), "micro-task-loop"));
     }
 
     #[rstest::rstest]
@@ -132,9 +135,12 @@ mod tests {
 
         // Then every unlisted tool is withheld, MCP included — the case a
         // blocklist could not express.
-        assert!(permits(&seed.tool_filter, "read"));
-        assert!(!permits(&seed.tool_filter, "bash"));
-        assert!(!permits(&seed.tool_filter, "mcp__github__create_pr"));
+        assert!(permits(seed.tool_filter.as_ref(), "read"));
+        assert!(!permits(seed.tool_filter.as_ref(), "bash"));
+        assert!(!permits(
+            seed.tool_filter.as_ref(),
+            "mcp__github__create_pr"
+        ));
     }
 
     #[rstest::rstest]
@@ -168,8 +174,8 @@ mod tests {
         let seed = SessionSeed::from_config(&config);
 
         // Then each section's value lands in its own field.
-        assert!(!permits(&seed.tool_filter, "bash"));
-        assert!(!permits(&seed.skill_filter, "micro-task-loop"));
+        assert!(!permits(seed.tool_filter.as_ref(), "bash"));
+        assert!(!permits(seed.skill_filter.as_ref(), "micro-task-loop"));
         assert!(seed.enabled_mcp.contains("gamma"));
         assert!(seed.has_auto_enabled_mcp());
     }

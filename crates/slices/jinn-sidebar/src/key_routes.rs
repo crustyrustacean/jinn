@@ -741,7 +741,7 @@ mod tests {
     /// attendant — so the same key does the same thing there.
     #[rstest::rstest]
     #[test]
-    fn attach_sidebar_rows_binds_P_for_attendant_properties_in_the_attendants_scope() {
+    fn attach_sidebar_rows_binds_p_for_attendant_properties_in_the_attendants_scope() {
         // Given an empty shared route table.
         let routes = KeyRoutes::new();
 
@@ -923,7 +923,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn P_in_the_attendants_section_opens_the_properties_popup() {
+    fn p_in_the_attendants_section_opens_the_properties_popup() {
         // Given the attendants section focused over one attendant.
         let mut state = state_with_attendants(1);
         focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Attendant);
@@ -953,7 +953,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn P_in_the_attendants_section_opens_the_highlighted_attendant() {
+    fn p_in_the_attendants_section_opens_the_highlighted_attendant() {
         // Given two attendants under the active session, with the cursor on the
         // second.
         let mut state = state_with_attendants(2);
@@ -988,7 +988,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn P_in_the_attendants_section_over_no_attendants_opens_nothing() {
+    fn p_in_the_attendants_section_over_no_attendants_opens_nothing() {
         // Given a session with no attendants, so the section has no rows to
         // highlight and the cursor it holds is stale.
         let mut state = state_with_attendants(0);
@@ -1016,7 +1016,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn P_in_the_sessions_section_on_a_user_session_opens_nothing() {
+    fn p_in_the_sessions_section_on_a_user_session_opens_nothing() {
         // Given the sessions section focused on a plain user session.
         let mut state = state_with_attendants(0);
         focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Sessions);

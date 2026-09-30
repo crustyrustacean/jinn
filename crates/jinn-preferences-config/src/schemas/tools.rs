@@ -71,6 +71,7 @@ impl jinn_config::Configurable for ToolsConfig {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, reason = "test code")]
+    use std::collections::BTreeSet;
 
     use jinn_config::Configurable;
     use jinn_core_types::{FilterMode, NameFilter};
@@ -159,7 +160,7 @@ mod tests {
         let config = ToolsConfig {
             tool_filter: Some(NameFilter {
                 mode: FilterMode::Allow,
-                names: Default::default(),
+                names: BTreeSet::default(),
             }),
             ..ToolsConfig::default()
         };
@@ -234,7 +235,7 @@ mod tests {
         let config = ToolsConfig {
             tool_filter: Some(NameFilter {
                 mode: FilterMode::Allow,
-                names: Default::default(),
+                names: BTreeSet::default(),
             }),
             ..ToolsConfig::default()
         };

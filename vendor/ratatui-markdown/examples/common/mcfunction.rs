@@ -1,3 +1,10 @@
+// This file is a shared module compiled into every example binary, but the
+// highlighter is only constructed by the `code` example. The other three
+// (`basic`, `mermaid`, `tree_list`, `custom_code_block`) each compile their
+// own copy of this module and so each report it, and the two items only the
+// `code` example reaches, as dead code.
+#![allow(dead_code, reason = "only the code example constructs the highlighter")]
+
 use pest::Parser;
 use pest_derive::Parser;
 use ratatui::style::{Color, Modifier, Style};

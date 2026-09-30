@@ -75,7 +75,7 @@ fn selected_row(state: &AppState) -> Option<usize> {
     let id = selected_id(state)?;
     attendant_rows(state)
         .iter()
-        .position(|row| &row.session_id == &id)
+        .position(|row| row.session_id == id)
 }
 
 /// Moves the cursor to `row`, reporting exhaustion at the edges.

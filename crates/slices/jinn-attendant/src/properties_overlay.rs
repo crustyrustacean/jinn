@@ -323,13 +323,6 @@ fn properties_view<'a>(
 ///
 /// The line is always rendered, empty when there is nothing to say, so the
 /// popup's fields never move up or down as messages come and go.
-#[cfg_attr(
-    not(test),
-    allow(
-        dead_code,
-        reason = "the status line is read directly by the slice's tests"
-    )
-)]
 pub(crate) fn status_line(
     popup: &AttendantPropertiesState,
     theme: &jinn_theme::Theme,
@@ -462,7 +455,7 @@ fn field_line<'a>(
 /// alternative, composing, is what the state means. `[off]` wears the
 /// selected-choice green, because that is the state a user reaching for the
 /// attendant runs in, and it is the one the eye should find.
-fn prep_mode_spans<'a>(prep_mode: bool, theme: &'a jinn_theme::Theme) -> Vec<Span<'a>> {
+fn prep_mode_spans(prep_mode: bool, theme: &jinn_theme::Theme) -> Vec<Span<'_>> {
     if prep_mode {
         vec![
             Span::styled(
@@ -804,10 +797,13 @@ fn wrap_line(line: Line<'static>, width: u16) -> Vec<Line<'static>> {
             } else if separator > 0 {
                 current.push(Span::styled(" ".repeat(separator), span.style));
                 used += separator;
+            } else {
+                // No room for a gap: the token starts the row alone.
             }
             current.push(Span::styled(token.to_owned(), span.style));
             used += length;
-            gap = " ".to_owned();
+            gap.clear();
+            gap.push(' ');
             at_row_start = false;
         }
     }
@@ -853,7 +849,7 @@ fn help_overlay<'a>(
         .unwrap_or(u16::MAX)
         .saturating_add(2)
         .max(2);
-    let y = place_help(HelpPlacementInput {
+    let y = place_help(&HelpPlacementInput {
         height,
         // The card is kept off the popup *including its border*, not just
         // its body: a card drawn over the popup's own top edge reads as a
@@ -916,7 +912,7 @@ struct HelpPlacementInput {
 /// terminal too short to hold the card below it draws from its own top row
 /// and lets the last rows be cut: an overlay is laid over the screen, and
 /// there is nowhere else to put it.
-fn place_help(input: HelpPlacementInput) -> u16 {
+fn place_help(input: &HelpPlacementInput) -> u16 {
     let below = input
         .popup_bottom
         .min(input.terminal_bottom.saturating_sub(input.height));
@@ -1205,9 +1201,10 @@ fn pick_on(
     let thawing = next == SetMode::Live;
     // A thaw has nothing to read: the capture is discarded and the
     // attendant's filter is left for the commit to leave alone.
-    let permitted = match thawing {
-        true => BTreeSet::new(),
-        false => permitted_now(ctx, &attendant_id, field),
+    let permitted = if thawing {
+        BTreeSet::new()
+    } else {
+        permitted_now(ctx, &attendant_id, field)
     };
     // A capture that came back empty is a set frozen to nothing, and the
     // commit writes it: an allow list naming nothing is a filter that
@@ -1518,21 +1515,17 @@ fn committed_filter(
     popup: &jinn_attendant_msg::AttendantPropertiesState,
     field: SetField,
 ) -> Option<NameFilter> {
-    let frozen = popup.pending_set(field);
-    match frozen {
-        // A captured set commits as an allow list over exactly those names.
-        // An empty capture is a capture: it is a set frozen to nothing, and
-        // it commits as an allow list naming nothing, which withholds every
-        // name. That is the whole point of the row — refusing the empty case
-        // left a freshly created attendant (which has the parent's filters
-        // but none of its discovered skills) with no way to say so.
-        Some(names) => Some(NameFilter {
-            mode: FilterMode::Allow,
-            names: names.clone(),
-        }),
-        // Live: no filter at all, so the attendant inherits its parent's.
-        None => None,
-    }
+    // A captured set commits as an allow list over exactly those names.
+    // An empty capture is a capture: it is a set frozen to nothing, and
+    // it commits as an allow list naming nothing, which withholds every
+    // name. That is the whole point of the row — refusing the empty case
+    // left a freshly created attendant (which has the parent's filters
+    // but none of its discovered skills) with no way to say so.
+    // Live: no filter at all, so the attendant inherits its parent's.
+    popup.pending_set(field).map(|names| NameFilter {
+        mode: FilterMode::Allow,
+        names: names.clone(),
+    })
 }
 
 /// The user-facing half of a config write failure.

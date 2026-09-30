@@ -284,15 +284,6 @@ fn popup_focused(focus: PropertyField) -> AttendantPropertiesState {
     }
 }
 
-/// The same popup, still composing: the two rows above the prep row apply
-/// to nothing and are drawn dimmed.
-fn popup_focused_while_prepping(focus: PropertyField) -> AttendantPropertiesState {
-    AttendantPropertiesState {
-        pending_prep_mode: true,
-        ..popup_focused(focus)
-    }
-}
-
 #[rstest::rstest]
 #[test]
 fn focused_row_marker_and_label_are_yellow_only() {

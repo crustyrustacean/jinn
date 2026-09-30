@@ -272,6 +272,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+    use std::collections::BTreeSet;
 
     use std::sync::Arc;
 
@@ -434,7 +435,7 @@ mod tests {
         // Given a session whose filter permits no tool at all.
         let filter = NameFilter {
             mode: FilterMode::Allow,
-            names: Default::default(),
+            names: BTreeSet::default(),
         };
         let entry = entry_with_filters(Some(&filter), None);
 

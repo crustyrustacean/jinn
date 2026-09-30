@@ -39,7 +39,7 @@ pub fn build(entry: &AttendantEntryConfig, parent: &ChatSessionState) -> ChatSes
             profile.model = model.clone();
         }
         if let Some(persona) = &entry.persona_name {
-            profile.persona_name = persona.clone();
+            profile.persona_name.clone_from(persona);
         }
         // An absent filter leaves the creating session's in place, so an
         // attendant saved with no filter configured still gets whatever its

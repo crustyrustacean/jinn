@@ -303,7 +303,7 @@ impl<'a> TaskListView<'a> {
         } else {
             self.phase_header_style(phase, active_phase_id)
         };
-        let width = usize::from(self.sidebar_width);
+        let width = self.sidebar_width;
         let wrapped = wrap_description(phase.description(), self.phase_text_width());
         wrapped
             .iter()

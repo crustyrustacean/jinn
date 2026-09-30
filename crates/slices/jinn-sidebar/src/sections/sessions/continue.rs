@@ -44,7 +44,7 @@ pub fn handle_session_continue(state: &mut AppState) -> IntentResult {
     };
 
     let sessions = sorted_open_sessions(state);
-    let Some(entry) = sessions.iter().find(|entry| &entry.id == &id) else {
+    let Some(entry) = sessions.iter().find(|entry| entry.id == id) else {
         return IntentResult::empty();
     };
 

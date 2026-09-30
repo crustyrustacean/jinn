@@ -79,13 +79,13 @@ struct PickerFixture {
 impl PickerFixture {
     /// Builds the fixture with an active ordinary session and a document
     /// holding `entries`.
-    fn new(entries: Vec<AttendantEntryConfig>) -> Self {
+    fn new(entries: &[AttendantEntryConfig]) -> Self {
         let doc = "# user's own comment\n".parse().expect("parses");
         let config = ConfigLayer::load(Arc::new(InMemoryConfigStorage::new(doc)))
             .expect("an empty document always loads");
         if !entries.is_empty() {
             config
-                .put_list::<AttendantEntryConfig>(&entries)
+                .put_list::<AttendantEntryConfig>(entries)
                 .expect("seed writes");
         }
         let mut state = AppState::default_with_scope_focus();
@@ -172,10 +172,7 @@ impl PickerFixture {
 #[test]
 fn the_opener_lists_the_documents_entries() {
     // Given a document listing two saved attendants.
-    let mut fx = PickerFixture::new(vec![
-        configured_entry("nightly"),
-        configured_entry("watcher"),
-    ]);
+    let mut fx = PickerFixture::new(&[configured_entry("nightly"), configured_entry("watcher")]);
 
     // When opening the picker.
     fx.open();
@@ -192,7 +189,7 @@ fn the_opener_lists_the_documents_entries() {
 #[test]
 fn the_opener_reads_the_document_at_open() {
     // Given a picker opened over a document holding one attendant.
-    let mut fx = PickerFixture::new(vec![configured_entry("nightly")]);
+    let mut fx = PickerFixture::new(&[configured_entry("nightly")]);
     fx.open();
     assert_eq!(fx.cell.read().selection.filtered_count(), 1);
 
@@ -215,7 +212,7 @@ fn the_opener_reads_the_document_at_open() {
 #[test]
 fn an_empty_document_opens_an_empty_picker() {
     // Given a document with no saved attendants.
-    let mut fx = PickerFixture::new(Vec::new());
+    let mut fx = PickerFixture::new(&[]);
 
     // When opening the picker.
     fx.open();
@@ -229,7 +226,7 @@ fn an_empty_document_opens_an_empty_picker() {
 #[test]
 fn confirming_creates_the_attendant_and_activates_it() {
     // Given a picker over a saved attendant.
-    let mut fx = PickerFixture::new(vec![configured_entry("nightly")]);
+    let mut fx = PickerFixture::new(&[configured_entry("nightly")]);
     fx.open();
     let parent_id = fx.parent_id.clone();
 
@@ -246,7 +243,7 @@ fn confirming_creates_the_attendant_and_activates_it() {
 #[test]
 fn a_created_attendant_is_titled_after_its_entry() {
     // Given a picker over a saved attendant named "nightly".
-    let mut fx = PickerFixture::new(vec![configured_entry("nightly")]);
+    let mut fx = PickerFixture::new(&[configured_entry("nightly")]);
     fx.open();
 
     // When confirming.
@@ -261,7 +258,7 @@ fn a_created_attendant_is_titled_after_its_entry() {
 #[test]
 fn a_created_attendant_restores_behavior_and_trigger_as_saved() {
     // Given an entry saved with the reset behavior and a live trigger.
-    let mut fx = PickerFixture::new(vec![configured_entry("nightly")]);
+    let mut fx = PickerFixture::new(&[configured_entry("nightly")]);
     fx.open();
 
     // When confirming.
@@ -281,7 +278,7 @@ fn a_created_attendant_restores_behavior_and_trigger_as_saved() {
 #[test]
 fn a_created_attendant_restores_the_seed_template() {
     // Given an entry with a custom seed template.
-    let mut fx = PickerFixture::new(vec![configured_entry("nightly")]);
+    let mut fx = PickerFixture::new(&[configured_entry("nightly")]);
     fx.open();
 
     // When confirming.
@@ -295,7 +292,7 @@ fn a_created_attendant_restores_the_seed_template() {
 #[test]
 fn a_created_attendant_takes_the_entrys_model_and_persona() {
     // Given an entry that configured a model and a persona.
-    let mut fx = PickerFixture::new(vec![configured_entry("nightly")]);
+    let mut fx = PickerFixture::new(&[configured_entry("nightly")]);
     fx.open();
 
     // When confirming.
@@ -318,7 +315,7 @@ fn a_created_attendant_takes_the_entrys_model_and_persona() {
 #[test]
 fn a_created_attendant_inherits_an_unconfigured_model_from_its_parent() {
     // Given a parent running a model, and an entry that configured none.
-    let mut fx = PickerFixture::new(Vec::new());
+    let mut fx = PickerFixture::new(&[]);
     {
         let parent = fx.state.session.get_mut(&fx.parent_id).expect("parent");
         parent.profile_mut().model =
@@ -348,7 +345,7 @@ fn a_created_attendant_inherits_an_unconfigured_model_from_its_parent() {
 #[test]
 fn a_created_attendant_inherits_the_parents_cwd() {
     // Given a parent whose cwd is somewhere specific.
-    let mut fx = PickerFixture::new(vec![configured_entry("nightly")]);
+    let mut fx = PickerFixture::new(&[configured_entry("nightly")]);
     fx.state
         .session
         .get_mut(&fx.parent_id)
@@ -368,7 +365,7 @@ fn a_created_attendant_inherits_the_parents_cwd() {
 #[test]
 fn a_created_attendant_restores_its_pins() {
     // Given an entry carrying a pinned instruction.
-    let mut fx = PickerFixture::new(vec![configured_entry("nightly")]);
+    let mut fx = PickerFixture::new(&[configured_entry("nightly")]);
     fx.open();
 
     // When confirming.
@@ -388,7 +385,7 @@ fn a_created_attendant_restores_its_pins() {
 #[test]
 fn the_parent_is_persisted_before_the_created_attendant() {
     // Given a picker over a saved attendant.
-    let mut fx = PickerFixture::new(vec![configured_entry("nightly")]);
+    let mut fx = PickerFixture::new(&[configured_entry("nightly")]);
     fx.open();
     let parent_id = fx.parent_id.clone();
 
@@ -424,7 +421,7 @@ fn the_parent_is_persisted_before_the_created_attendant() {
 #[test]
 fn cancelling_creates_nothing() {
     // Given a picker over a saved attendant.
-    let mut fx = PickerFixture::new(vec![configured_entry("nightly")]);
+    let mut fx = PickerFixture::new(&[configured_entry("nightly")]);
     fx.open();
 
     // When cancelling.
@@ -438,7 +435,7 @@ fn cancelling_creates_nothing() {
 #[test]
 fn a_created_attendant_leaves_the_picker() {
     // Given a picker over a saved attendant.
-    let mut fx = PickerFixture::new(vec![configured_entry("nightly")]);
+    let mut fx = PickerFixture::new(&[configured_entry("nightly")]);
     fx.open();
     fx.state
         .frontend
@@ -461,7 +458,7 @@ fn a_created_attendant_leaves_the_picker() {
 #[test]
 fn the_opener_key_is_the_leader_attendant_sequence() {
     // Given the picker's attached rows.
-    let fx = PickerFixture::new(Vec::new());
+    let fx = PickerFixture::new(&[]);
 
     // When collecting the key the opener row binds.
     let opener_key = fx
@@ -495,7 +492,7 @@ fn the_opener_key_is_the_leader_attendant_sequence() {
 #[test]
 fn no_other_saved_picker_key_collides_with_the_opener() {
     // Given the picker's attached rows.
-    let fx = PickerFixture::new(Vec::new());
+    let fx = PickerFixture::new(&[]);
 
     // When counting the rows bound to the opener's key.
     let collisions = fx
@@ -516,7 +513,7 @@ fn no_other_saved_picker_key_collides_with_the_opener() {
 #[test]
 fn a_row_shows_only_the_saved_attendants_name() {
     // Given a document whose entry carries a full run configuration.
-    let mut fx = PickerFixture::new(vec![configured_entry("nightly")]);
+    let mut fx = PickerFixture::new(&[configured_entry("nightly")]);
     fx.open();
 
     // When rendering the highlighted row.
@@ -556,10 +553,7 @@ fn a_row_leaves_the_text_color_to_the_widget() {
 #[test]
 fn the_status_line_counts_every_saved_attendant() {
     // Given a document holding two saved attendants.
-    let mut fx = PickerFixture::new(vec![
-        configured_entry("nightly"),
-        configured_entry("watcher"),
-    ]);
+    let mut fx = PickerFixture::new(&[configured_entry("nightly"), configured_entry("watcher")]);
     fx.open();
     let theme = jinn_theme::default_theme();
 
@@ -574,10 +568,7 @@ fn the_status_line_counts_every_saved_attendant() {
 #[test]
 fn the_status_line_ignores_the_filter() {
     // Given a picker over two saved attendants.
-    let mut fx = PickerFixture::new(vec![
-        configured_entry("nightly"),
-        configured_entry("watcher"),
-    ]);
+    let mut fx = PickerFixture::new(&[configured_entry("nightly"), configured_entry("watcher")]);
     fx.open();
 
     // When typing a filter that matches only one of them.
@@ -620,7 +611,7 @@ trigger = "parent-completed"
         .parse()
         .expect("parses");
     let config = ConfigLayer::load(Arc::new(InMemoryConfigStorage::new(doc))).expect("loads");
-    let mut fx = PickerFixture::new(vec![]);
+    let mut fx = PickerFixture::new(&[]);
     fx.config = config;
 
     // When opening the picker.

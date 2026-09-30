@@ -90,7 +90,7 @@ fn cursor_row(state: &AppState) -> Option<usize> {
         .with_sections(|s| s.sessions.selected_id.clone(), || None)?;
     crate::sections::sessions::state::sorted_open_sessions(state)
         .iter()
-        .position(|entry| &entry.id == &id)
+        .position(|entry| entry.id == id)
 }
 
 fn cursor_to_row(state: &mut AppState, row: usize) {

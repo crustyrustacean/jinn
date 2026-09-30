@@ -381,7 +381,7 @@ impl ProviderRegistry {
 /// Sets `rows[model]` to `tag`, replacing any row already keyed by `model`.
 fn upsert_endpoint_default(rows: &mut Vec<EndpointDefault>, model: &str, tag: &str) {
     match rows.iter_mut().find(|row| row.model == model) {
-        Some(row) => row.tag = tag.to_owned(),
+        Some(row) => tag.clone_into(&mut row.tag),
         None => rows.push(EndpointDefault {
             model: model.to_owned(),
             tag: tag.to_owned(),

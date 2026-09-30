@@ -35,7 +35,7 @@ fn cursor_row(state: &AppState) -> Option<usize> {
         .with_sections(|s| s.sessions.selected_id.clone(), || None)?;
     crate::sections::sessions::state::sorted_open_sessions(state)
         .iter()
-        .position(|entry| &entry.id == &id)
+        .position(|entry| entry.id == id)
 }
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::render_ctx::RenderCtx;
