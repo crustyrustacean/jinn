@@ -85,7 +85,8 @@ fn parent_fixture() -> (State, SessionId) {
         ));
         parent.set_cwd(std::path::PathBuf::from("/tmp/parent-cwd"));
         parent.set_title("Parent".to_owned());
-        parent.profile_mut().tool_filter.withhold("write");
+        parent.profile_mut().tool_filter =
+            Some(jinn_core_types::NameFilter::deny(["write".to_owned()]));
         parent.set_enabled_mcp_servers(BTreeSet::from(["stub".to_owned()]));
     }
     (state, parent_id)

@@ -980,10 +980,9 @@ async fn fork_strips_suppressed_task_tool() {
     source.set_session_id(source_id.clone());
     source.set_title("Subagent".to_owned());
     source.push_entry(ChatEntry::user("hello"));
-    source
-        .profile_mut()
-        .tool_filter
-        .withhold(jinn_tools_msg::TASK_TOOL_NAME);
+    source.set_tool_filter(Some(jinn_core_types::NameFilter::deny([
+        jinn_tools_msg::TASK_TOOL_NAME.to_owned(),
+    ])));
     store
         .save(&source.capture_snapshot())
         .await
@@ -1002,7 +1001,8 @@ async fn fork_strips_suppressed_task_tool() {
         forked
             .profile()
             .tool_filter
-            .permits(jinn_tools_msg::TASK_TOOL_NAME),
+            .as_ref()
+            .is_none_or(|filter| filter.permits(jinn_tools_msg::TASK_TOOL_NAME)),
         "a fork must not inherit the task suppression stamp, got: {:?}",
         forked.profile().tool_filter
     );
@@ -1018,7 +1018,9 @@ async fn fork_preserves_other_filtered_tools() {
     source.set_session_id(source_id.clone());
     source.set_title("Manual disable".to_owned());
     source.push_entry(ChatEntry::user("hello"));
-    source.set_tool_filter(jinn_core_types::NameFilter::deny(["write".to_owned()]));
+    source.set_tool_filter(Some(jinn_core_types::NameFilter::deny(
+        ["write".to_owned()],
+    )));
     store
         .save(&source.capture_snapshot())
         .await
@@ -1035,7 +1037,11 @@ async fn fork_preserves_other_filtered_tools() {
         .expect("load forked")
         .expect("should exist");
     assert!(
-        !forked.profile().tool_filter.permits("write"),
+        !forked
+            .profile()
+            .tool_filter
+            .as_ref()
+            .is_none_or(|filter| filter.permits("write")),
         "fork must preserve the other filtered tools, got: {:?}",
         forked.profile().tool_filter
     );
@@ -1044,7 +1050,8 @@ async fn fork_preserves_other_filtered_tools() {
         forked
             .profile()
             .tool_filter
-            .permits(jinn_tools_msg::TASK_TOOL_NAME),
+            .as_ref()
+            .is_none_or(|filter| filter.permits(jinn_tools_msg::TASK_TOOL_NAME)),
         "fork must not gain a task disable, got: {:?}",
         forked.profile().tool_filter
     );

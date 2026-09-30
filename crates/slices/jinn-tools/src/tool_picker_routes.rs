@@ -266,7 +266,7 @@ fn open_tool_picker(ctx: &mut ActionCtx<'_>, cell: &ToolPickerCell) -> IntentRes
 
     let seed = seed_from_session(state);
     cell.update(|picker| {
-        tool_picker_actions::open(picker, &seed.rows, &seed.tool_filter, &seed.theme)
+        tool_picker_actions::open(picker, &seed.rows, seed.tool_filter.as_ref(), &seed.theme)
     });
 
     state
@@ -280,8 +280,8 @@ struct Seed {
     /// The tools available for the session, in display order.
     rows: Vec<ToolRow>,
     /// The session's live tool filter, snapshotted so escape can restore it
-    /// mode and all.
-    tool_filter: NameFilter,
+    /// mode and all. `None` means the session has no filter at all.
+    tool_filter: Option<NameFilter>,
     /// The active theme, so the rows render with the right colors.
     theme: jinn_theme::Theme,
 }
@@ -330,7 +330,7 @@ fn seed_from_session(state: &jinn_kernel::AppState) -> Seed {
 
     Seed {
         rows,
-        tool_filter: active_session.tool_filter().clone(),
+        tool_filter: active_session.tool_filter().cloned(),
         theme,
     }
 }
@@ -355,7 +355,7 @@ fn confirm_tool_picker(ctx: &mut ActionCtx<'_>, cell: &ToolPickerCell) -> Intent
     // a decision to manage tools by blocklist.
     state
         .active_session_mut()
-        .set_tool_filter(NameFilter::deny(disabled));
+        .set_tool_filter(Some(NameFilter::deny(disabled)));
     IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(tool_picker_scope()))
 }
 

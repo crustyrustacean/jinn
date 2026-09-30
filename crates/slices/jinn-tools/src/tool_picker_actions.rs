@@ -98,22 +98,23 @@ pub struct ToolRow {
 pub fn open(
     state: &mut ToolPickerState,
     definitions: &[ToolRow],
-    tool_filter: &NameFilter,
+    tool_filter: Option<&NameFilter>,
     theme: &Theme,
 ) {
     state.reset();
-    state.snapshot = Some(tool_filter.clone());
+    state.snapshot = Some(tool_filter.cloned());
 
     // Each row carries one toggle bit, seeded from whether the session's
     // filter permits the tool right now — so a tool withheld by an
     // allow-mode filter opens as already off, and committing it back yields
-    // the same effective set.
+    // the same effective set. An absent filter permits everything, which is
+    // what a session with none configured has always presented.
     let entries: Vec<ToolEntry> = definitions
         .iter()
         .map(|def| ToolEntry {
             name: def.name.clone(),
             description: def.description.clone(),
-            enabled: tool_filter.permits(&def.name),
+            enabled: tool_filter.is_none_or(|filter| filter.permits(&def.name)),
             theme: theme.clone(),
         })
         .collect();
@@ -159,7 +160,7 @@ pub fn confirm(state: &mut ToolPickerState) -> HashSet<String> {
 /// (or was already committed), so the caller leaves the session's filter
 /// alone.
 #[must_use]
-pub fn cancel_filter(state: &mut ToolPickerState) -> Option<NameFilter> {
+pub fn cancel_filter(state: &mut ToolPickerState) -> Option<Option<NameFilter>> {
     state.snapshot.take()
 }
 
@@ -222,7 +223,7 @@ mod tests {
         open(
             &mut state,
             &rows(names),
-            &NameFilter::deny(disabled.iter().map(|s| (*s).to_owned())),
+            Some(&NameFilter::deny(disabled.iter().map(|s| (*s).to_owned()))),
             &jinn_theme::default_theme(),
         );
         state
@@ -257,12 +258,12 @@ mod tests {
         open(
             &mut state,
             &rows(&["bash", "read"]),
-            &filter,
+            Some(&filter),
             &jinn_theme::default_theme(),
         );
 
         // Then the snapshot holds that filter, so escape can restore it.
-        assert_eq!(state.snapshot, Some(filter));
+        assert_eq!(state.snapshot, Some(Some(filter)));
     }
 
     #[rstest::rstest]
@@ -278,7 +279,7 @@ mod tests {
         open(
             &mut state,
             &rows(&["bash", "read"]),
-            &filter,
+            Some(&filter),
             &jinn_theme::default_theme(),
         );
 
@@ -333,7 +334,7 @@ mod tests {
 
         // Then the snapshot is untouched — the filter is only ever written on
         // confirm, so a toggle can never pre-commit anything.
-        assert_eq!(state.snapshot, Some(NameFilter::default()));
+        assert_eq!(state.snapshot, Some(Some(NameFilter::default())));
     }
 
     #[rstest::rstest]
@@ -362,7 +363,7 @@ mod tests {
         open(
             &mut state,
             &rows(&["bash", "read"]),
-            &filter,
+            Some(&filter),
             &jinn_theme::default_theme(),
         );
         toggle_highlighted(&mut state);
@@ -372,7 +373,7 @@ mod tests {
 
         // Then the filter comes back with its mode intact — handing back only
         // its withheld names would have demoted it to a blocklist.
-        assert_eq!(restored, Some(filter));
+        assert_eq!(restored, Some(Some(filter)));
         assert!(state.snapshot.is_none());
     }
 

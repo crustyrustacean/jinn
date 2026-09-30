@@ -55,8 +55,8 @@ fn configured_entry(name: &str) -> AttendantEntryConfig {
         "review: <prior report>".to_owned(),
         &jinn_core_types::ModelSelection::Single("zai/glm-4.7".to_owned()),
         "reviewer",
-        &jinn_core_types::NameFilter::deny(["write".to_owned()]),
-        &jinn_core_types::NameFilter::default(),
+        Some(&jinn_core_types::NameFilter::deny(["write".to_owned()])),
+        None,
         Some(jinn_core_types::ReasoningEffort::High),
         None,
         vec![AttendantPinConfig {

@@ -35,7 +35,8 @@ pub enum FilterMode {
 ///
 /// The default is the empty deny filter, which permits everything: a session
 /// with no filter configured behaves exactly as it did before this type
-/// existed.
+/// existed. An absent filter and an empty one are distinct, though — absence
+/// is carried by the field holding this, never by the filter's contents.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NameFilter {
     /// Which direction the patterns apply in.
@@ -47,12 +48,12 @@ pub struct NameFilter {
     /// bytes on save, and hash iteration order would reshuffle the user's
     /// list between runs.
     ///
-    /// An unconfigured filter contributes nothing. The *field* holding it is
-    /// what carries `skip_serializing_if`; serde has no container-level form
-    /// of that attribute, and an empty filter written out as
-    /// `{"mode":"deny"}` would grow a key into every session that configures
-    /// nothing.
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    /// Serialized even when empty, because the empty list is what an allow
+    /// filter naming nothing *means* — it is the difference between "no
+    /// filter configured" and "permitted nothing", and a document that could
+    /// not express the second could not say that. Whether a filter is
+    /// configured at all is the field's `Option`, not this field's length.
+    #[serde(default)]
     pub names: BTreeSet<String>,
 }
 
@@ -76,23 +77,21 @@ impl NameFilter {
 
     /// Whether this session may use the resource called `name`.
     ///
-    /// # An empty filter is no filter, in both modes
+    /// # The mode governs an empty name list as strictly as a populated one
     ///
-    /// An allow filter with no patterns would read strictly as "nothing is
-    /// permitted", leaving a session with no tools at all. That is almost
-    /// never what a user means by writing an empty field, and it fails as a
-    /// session that cannot do anything at all rather than as a config error.
-    /// Treating empty as "no filter" instead makes a field's absence and its
-    /// emptiness agree, which is also what keeps a session with no filter
-    /// configured identical to one predating this type.
+    /// An allow filter names the only resources permitted, so one naming
+    /// nothing permits nothing: that is how an attendant frozen to no tools
+    /// at all is expressed. A deny filter names the only resources withheld,
+    /// so one naming nothing withholds nothing. Neither mode gets to read an
+    /// empty list as "no filter" — that would make the two directions
+    /// disagree about what an empty list means, and would make a set frozen
+    /// to nothing indistinguishable from a set never frozen.
     ///
-    /// This is a deliberate departure from strict allow semantics. It is
-    /// here to stay; "fixing" it into the surprise is the bug.
+    /// Whether a filter is *configured at all* is a separate question, asked
+    /// of the field holding it rather than of the filter's contents. See
+    /// [`Self::is_empty`].
     #[must_use]
     pub fn permits(&self, name: &str) -> bool {
-        if self.names.is_empty() {
-            return true;
-        }
         match self.mode {
             FilterMode::Deny => !self.matches_any(name),
             FilterMode::Allow => self.matches_any(name),
@@ -135,11 +134,27 @@ impl NameFilter {
 
     /// Whether this filter names anything at all.
     ///
-    /// The "not configured" test callers use to decide whether a field
-    /// should be written or inherited.
+    /// A statement about the filter's contents, not about whether one is
+    /// configured: absence is the field's `None`, and a present filter over
+    /// no names is a real filter that permits nothing in allow mode.
+    ///
+    /// Callers deciding whether to *write* a filter ask the field instead;
+    /// this is for callers reading what a present filter contains.
     #[must_use]
-    pub fn is_unconfigured(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.names.is_empty()
+    }
+
+    /// The filter an absent one inherits as: a deny filter naming nothing,
+    /// which permits everything.
+    ///
+    /// Used by a reader that has to hand out a usable filter and cannot
+    /// report absence. Materializing absence through this is only sound at a
+    /// gate, where the two read identically — a caller that writes the
+    /// result back has turned an absent filter into a configured one.
+    #[must_use]
+    pub fn inherited() -> Self {
+        Self::default()
     }
 
     /// Whether any pattern covers `name`.
@@ -263,31 +278,37 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[case::deny(FilterMode::Deny)]
-    #[case::allow(FilterMode::Allow)]
-    fn an_empty_filter_permits_everything_in_either_mode(#[case] mode: FilterMode) {
-        // Given a filter that names nothing, in this mode.
-        let filter = NameFilter {
-            mode,
-            ..NameFilter::default()
-        };
+    fn an_empty_allow_filter_permits_nothing() {
+        // Given an allow filter naming nothing.
+        let filter = allow(&[]);
 
         // When asking about a tool.
-        // Then it is permitted. See `permits`: an empty allow filter
-        // withholding everything would leave a session unable to act at all,
-        // which is never what an empty field means.
+        // Then it is withheld: the allow list is absolute, and it names
+        // nothing. This is what an attendant frozen to no tools at all
+        // carries.
+        assert!(!filter.permits("bash"));
+    }
+
+    #[rstest::rstest]
+    fn an_empty_deny_filter_withholds_nothing() {
+        // Given a deny filter naming nothing.
+        let filter = deny(&[]);
+
+        // When asking about a tool.
+        // Then it is permitted: the deny list names the only withheld
+        // resources and it names none.
         assert!(filter.permits("bash"));
     }
 
     #[rstest::rstest]
-    fn an_empty_filter_is_unconfigured_in_either_mode() {
+    fn an_empty_filter_names_nothing_in_either_mode() {
         // Given a filter that names nothing, in allow mode.
         let filter = allow(&[]);
 
-        // When asking whether it is configured.
-        // Then it is not — a save should omit it, and a restore should
-        // inherit rather than pin an empty allow list.
-        assert!(filter.is_unconfigured());
+        // When asking whether it names anything.
+        // Then it does not. Emptiness is the filter's contents; whether one
+        // is configured at all is the field's `None`.
+        assert!(filter.is_empty());
     }
 
     #[rstest::rstest]
@@ -355,15 +376,16 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn an_absent_filter_key_deserializes_to_an_empty_deny_filter() {
+    fn an_absent_filter_key_deserializes_to_an_absent_filter() {
         // Given JSON carrying no filter, as an older document would.
         let json = r#"{"model":{"single":"ollama/llama3"}}"#;
 
         // When deserialized into a profile.
         let profile: crate::SessionProfile = serde_json::from_str(json).expect("deserializes");
 
-        // Then the filter permits everything, as before filters existed.
-        assert!(profile.tool_filter.permits("bash"));
-        assert!(profile.skill_filter.permits("anything"));
+        // Then the filter is absent rather than an empty one, so "no filter"
+        // and "an allow list over nothing" stay distinguishable.
+        assert!(profile.tool_filter.is_none());
+        assert!(profile.skill_filter.is_none());
     }
 }

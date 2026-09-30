@@ -50,7 +50,7 @@ use crate::task_settle_listener_actor::{TaskSettleListenerActor, TaskSettleListe
 use crate::tool_types::ToolContext;
 use jinn_chat_input_msg::EnqueueUserMessage;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use jinn_core_types::{ChatEntry, ChatEntryKind, ModelSelection, SessionId};
+use jinn_core_types::{ChatEntry, ChatEntryKind, ModelSelection, NameFilter, SessionId};
 use jinn_inference_msg::CancelStream;
 use jinn_session_lifecycle_msg::SessionCreated;
 use jinn_session_state::ChatSessionState;
@@ -272,7 +272,12 @@ fn build_child(
         p.persona_name.clone_from(&profile.persona_name);
         p.reasoning_effort = profile.reasoning_effort;
         p.endpoint.clone_from(&profile.endpoint);
-        p.tool_filter.clone_from(&profile.tool_filter);
+        // A child has to carry a filter either way: the parent's may be
+        // absent, and "no filter" cannot be edited to withhold the task tool.
+        let mut child_filter = profile
+            .tool_filter
+            .clone()
+            .unwrap_or_else(NameFilter::inherited);
         // Subagents cannot spawn further subagents unless re-enabled via the
         // tool picker; the stamp is per-session, so the picker reflects it.
         // Unconditional: even a re-enabled subagent's child starts suppressed.
@@ -280,7 +285,8 @@ fn build_child(
         // this reads correctly whichever mode the parent carried — inserting
         // into an allow list would instead strip the child of that one tool
         // while leaving everything else permitted.
-        p.tool_filter.withhold(crate::task::TASK_TOOL_NAME);
+        child_filter.withhold(crate::task::TASK_TOOL_NAME);
+        p.tool_filter = Some(child_filter);
         p.skill_filter.clone_from(&profile.skill_filter);
     }
     child.set_cwd(parent.cwd().to_path_buf());

@@ -18,11 +18,11 @@ use crate::skill_picker_reload::build_skill_entries;
 pub fn open(
     state: &mut SkillPickerState,
     discovered: &[Skill],
-    skill_filter: &NameFilter,
+    skill_filter: Option<&NameFilter>,
     theme: &jinn_theme::Theme,
 ) {
     state.reset();
-    state.snapshot = Some(skill_filter.clone());
+    state.snapshot = Some(skill_filter.cloned());
     state.theme = theme.clone();
     state
         .selection
@@ -56,7 +56,7 @@ pub fn confirm(state: &mut SkillPickerState) -> HashSet<String> {
 /// demote an allow-mode session on the way out of a picker nothing changed
 /// in.
 #[must_use]
-pub fn cancel_filter(state: &mut SkillPickerState) -> Option<NameFilter> {
+pub fn cancel_filter(state: &mut SkillPickerState) -> Option<Option<NameFilter>> {
     state.snapshot.take()
 }
 
@@ -101,7 +101,7 @@ mod tests {
         open(
             &mut state,
             &[skill("alpha"), skill("beta")],
-            &NameFilter::deny(disabled.iter().map(|s| (*s).to_owned())),
+            Some(&NameFilter::deny(disabled.iter().map(|s| (*s).to_owned()))),
             &jinn_theme::default_theme(),
         );
         state
@@ -113,7 +113,7 @@ mod tests {
         open(
             &mut state,
             &[skill("alpha"), skill("beta")],
-            filter,
+            Some(filter),
             &jinn_theme::default_theme(),
         );
         state
@@ -128,7 +128,7 @@ mod tests {
         let state = opened_with(&filter);
 
         // Then the snapshot holds that filter, so ESC can restore it.
-        assert_eq!(state.snapshot, Some(filter));
+        assert_eq!(state.snapshot, Some(Some(filter)));
     }
 
     #[rstest::rstest]
@@ -168,7 +168,7 @@ mod tests {
 
         // Then the filter comes back with its mode intact — handing back only
         // its withheld names would have demoted it to a blocklist.
-        assert_eq!(restored, Some(filter));
+        assert_eq!(restored, Some(Some(filter)));
         assert!(state.snapshot.is_none());
     }
 

@@ -9,9 +9,14 @@ use jinn_core_types::NameFilter;
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionSeed {
     /// Which tools the session starts permitted or withheld.
-    pub tool_filter: NameFilter,
-    /// Which skills the session starts permitted or withheld.
-    pub skill_filter: NameFilter,
+    ///
+    /// `None` configures no filter: the session starts unrestricted, which
+    /// is what a `[tools]` section that says nothing about the filter means.
+    /// `Some` is a filter the user wrote, including an allow list naming
+    /// nothing — which starts the session with no tools.
+    pub tool_filter: Option<NameFilter>,
+    /// Which skills the session starts permitted or withheld, as above.
+    pub skill_filter: Option<NameFilter>,
     /// MCP servers to start the session with enabled.
     pub enabled_mcp: BTreeSet<String>,
 }
@@ -68,6 +73,12 @@ mod tests {
         layer("")
     }
 
+    /// Whether the seed's filter permits a name, with an absent filter
+    /// inheriting — which at a gate is what permits everything.
+    fn permits(filter: &Option<NameFilter>, name: &str) -> bool {
+        filter.as_ref().is_none_or(|filter| filter.permits(name))
+    }
+
     #[rstest::rstest]
     fn an_unconfigured_document_leaves_everything_enabled() {
         // Given a layer with no configured sections.
@@ -77,8 +88,8 @@ mod tests {
         let seed = SessionSeed::from_config(&config);
 
         // Then no tool or skill is withheld and no server is auto-enabled.
-        assert!(seed.tool_filter.permits("bash"));
-        assert!(seed.skill_filter.permits("any"));
+        assert!(permits(&seed.tool_filter, "bash"));
+        assert!(permits(&seed.skill_filter, "any"));
         assert!(seed.enabled_mcp.is_empty());
     }
 
@@ -92,9 +103,9 @@ mod tests {
         let seed = SessionSeed::from_config(&config);
 
         // Then exactly those are withheld, glob included.
-        assert!(!seed.tool_filter.permits("bash"));
-        assert!(!seed.tool_filter.permits("mcp__github__create_pr"));
-        assert!(seed.tool_filter.permits("read"));
+        assert!(!permits(&seed.tool_filter, "bash"));
+        assert!(!permits(&seed.tool_filter, "mcp__github__create_pr"));
+        assert!(permits(&seed.tool_filter, "read"));
     }
 
     #[rstest::rstest]
@@ -107,8 +118,8 @@ mod tests {
         let seed = SessionSeed::from_config(&config);
 
         // Then exactly that skill is withheld.
-        assert!(!seed.skill_filter.permits("phased-task-loop"));
-        assert!(seed.skill_filter.permits("micro-task-loop"));
+        assert!(!permits(&seed.skill_filter, "phased-task-loop"));
+        assert!(permits(&seed.skill_filter, "micro-task-loop"));
     }
 
     #[rstest::rstest]
@@ -121,9 +132,9 @@ mod tests {
 
         // Then every unlisted tool is withheld, MCP included — the case a
         // blocklist could not express.
-        assert!(seed.tool_filter.permits("read"));
-        assert!(!seed.tool_filter.permits("bash"));
-        assert!(!seed.tool_filter.permits("mcp__github__create_pr"));
+        assert!(permits(&seed.tool_filter, "read"));
+        assert!(!permits(&seed.tool_filter, "bash"));
+        assert!(!permits(&seed.tool_filter, "mcp__github__create_pr"));
     }
 
     #[rstest::rstest]
@@ -157,8 +168,8 @@ mod tests {
         let seed = SessionSeed::from_config(&config);
 
         // Then each section's value lands in its own field.
-        assert!(!seed.tool_filter.permits("bash"));
-        assert!(!seed.skill_filter.permits("micro-task-loop"));
+        assert!(!permits(&seed.tool_filter, "bash"));
+        assert!(!permits(&seed.skill_filter, "micro-task-loop"));
         assert!(seed.enabled_mcp.contains("gamma"));
         assert!(seed.has_auto_enabled_mcp());
     }
@@ -183,24 +194,22 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn the_tools_and_skills_defaults_permit_everything() {
+    fn the_tools_and_skills_defaults_configure_no_filter() {
         // Given no configuration for the tools or skills sections.
         let tools = ToolsConfig::default();
         let skills = SkillsConfig::default();
 
-        // When asking each section's filter about a resource.
-        let (tool_filter, skill_filter) = (&tools.tool_filter, &skills.skill_filter);
-
-        // Then the code defaults withhold nothing.
-        assert!(tool_filter.permits("bash"));
-        assert!(skill_filter.permits("any"));
+        // When reading each section's filter.
+        // Then both are absent, so a new session starts unrestricted.
+        assert!(tools.tool_filter.is_none());
+        assert!(skills.skill_filter.is_none());
     }
 
-    /// A config save writes through the patcher, so a filter with no names
-    /// must contribute no key at all — otherwise every save of an unconfigured
-    /// file would grow an empty filter table into it.
+    /// A config save writes through the patcher, so an absent filter must
+    /// contribute no key at all — otherwise every save of an unconfigured file
+    /// would grow an empty filter table into it.
     #[rstest::rstest]
-    fn a_written_unconfigured_filter_writes_no_key() {
+    fn a_written_absent_filter_writes_no_key() {
         // Given a layer over a file that configures no filter.
         let config = layer("[tools]\ndefault_timeout_secs = 60\n");
 

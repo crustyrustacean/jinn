@@ -453,8 +453,8 @@ mod properties_tests {
                 trigger: AttendantTrigger::ParentCompleted,
                 behavior: AttendantBehavior::Preserve,
                 prep_mode: false,
-                tool_set: NameFilter::default(),
-                skill_set: NameFilter::default(),
+                tool_set: None,
+                skill_set: None,
                 template: "original".to_owned(),
             }),
             pending_trigger: AttendantTrigger::Manual,
@@ -553,7 +553,7 @@ mod properties_tests {
         // Given a filter pinning an attendant to three tools.
 
         // When reading it as a set mode.
-        let mode = OriginalValues::mode_of(&allow(&["read", "write", "bash"]));
+        let mode = OriginalValues::mode_of(Some(&allow(&["read", "write", "bash"])));
 
         // Then the set is Frozen — an allow list is the only shape that says
         // "these and no others".
@@ -562,25 +562,36 @@ mod properties_tests {
 
     #[rstest::rstest]
     #[case::blocklist(FilterMode::Deny, &["bash"], false)]
-    #[case::empty_allow(FilterMode::Allow, &[], false)]
-    fn a_filter_that_names_nothing_to_pin_reads_as_live(
+    #[case::empty_allow(FilterMode::Allow, &[], true)]
+    fn a_filter_pins_a_set_only_when_it_is_an_allow_list(
         #[case] mode: FilterMode,
         #[case] patterns: &[&str],
         #[case] frozen: bool,
     ) {
-        // Given a filter that cannot mean a frozen set: a blocklist, or an
-        // allow list over nothing.
+        // Given a filter of this mode over these patterns.
         let filter = NameFilter {
             mode,
             names: patterns.iter().map(|p| (*p).to_owned()).collect(),
         };
 
         // When reading it as a set mode.
-        let read = OriginalValues::mode_of(&filter);
+        let read = OriginalValues::mode_of(Some(&filter));
 
-        // Then it is Live. A blocklist says "never these" and nothing about
-        // the rest, and an empty filter is read as no filter at all.
+        // Then it is Frozen exactly when it is an allow list. A blocklist
+        // says "never these" and nothing about the rest; an allow list over
+        // nothing pins a set to nothing, which is a set all the same.
         assert_eq!(read == SetMode::Frozen, frozen);
+    }
+
+    #[rstest::rstest]
+    fn an_absent_filter_reads_as_a_live_set() {
+        // Given an attendant carrying no filter at all.
+        // When reading it as a set mode.
+        let mode = OriginalValues::mode_of(None);
+
+        // Then the set is Live: it inherits, and follows whatever the parent
+        // is permitted as that grows.
+        assert_eq!(mode, SetMode::Live);
     }
 
     #[rstest::rstest]
@@ -659,7 +670,7 @@ mod properties_tests {
         let original = allow(&["read", "mcp__github__*"]);
         let mut popup = AttendantPropertiesState {
             original: Some(OriginalValues {
-                tool_set: original.clone(),
+                tool_set: Some(original.clone()),
                 ..OriginalValues::default()
             }),
             ..AttendantPropertiesState::default()
@@ -684,7 +695,7 @@ mod properties_tests {
         let blocklist = NameFilter::deny(["bash".to_owned()]);
         let mut popup = AttendantPropertiesState {
             original: Some(OriginalValues {
-                tool_set: blocklist,
+                tool_set: Some(blocklist),
                 ..OriginalValues::default()
             }),
             ..AttendantPropertiesState::default()
@@ -714,8 +725,8 @@ mod properties_tests {
         // the shape a filter takes is what lets the next `<esc>` put back
         // the file's own contents.
         let original = popup.original.expect("committed");
-        assert_eq!(original.tool_set, allow(&["read"]));
-        assert_eq!(original.skill_set, NameFilter::default());
+        assert_eq!(original.tool_set, Some(allow(&["read"])));
+        assert!(original.skill_set.is_none());
     }
 
     #[rstest::rstest]

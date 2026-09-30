@@ -19,7 +19,7 @@ use jinn_theme::Theme;
 #[must_use]
 pub fn build_skill_entries(
     discovered: &[Skill],
-    skill_filter: &NameFilter,
+    skill_filter: Option<&NameFilter>,
     theme: &Theme,
 ) -> Vec<jinn_picker::PickerEntry<SkillEntry>> {
     let mut entries: Vec<SkillEntry> = discovered
@@ -31,7 +31,7 @@ pub fn build_skill_entries(
             // Seeded from the filter itself rather than from a withheld
             // list, so a skill the session's allow-mode filter omits opens as
             // already off rather than silently toggled on.
-            enabled: skill_filter.permits(&skill.name),
+            enabled: skill_filter.is_none_or(|filter| filter.permits(&skill.name)),
             source: skill.source.clone(),
             theme: theme.clone(),
         })
@@ -59,7 +59,7 @@ pub fn build_skill_entries(
 pub fn reload_skill_picker(
     state: &mut SkillPickerState,
     discovered: &[Skill],
-    skill_filter: &NameFilter,
+    skill_filter: Option<&NameFilter>,
     theme: &Theme,
 ) {
     let wrapped = build_skill_entries(discovered, skill_filter, theme);
@@ -96,12 +96,7 @@ mod tests {
         let skills = vec![skill("alpha", "does things", "# body")];
 
         // When reloading the skill picker.
-        reload_skill_picker(
-            &mut state,
-            &skills,
-            &NameFilter::default(),
-            &default_theme(),
-        );
+        reload_skill_picker(&mut state, &skills, None, &default_theme());
 
         // Then the row renders through the spec's row hook (enabled marker
         // plus name), not the bare search label.
@@ -117,12 +112,7 @@ mod tests {
         let skills = vec![skill("alpha", "does things", "# Title")];
 
         // When reloading the skill picker.
-        reload_skill_picker(
-            &mut state,
-            &skills,
-            &NameFilter::default(),
-            &default_theme(),
-        );
+        reload_skill_picker(&mut state, &skills, None, &default_theme());
 
         // Then the preview renders the markdown body, not an empty pane.
         let item = &state.selection.items()[0];
@@ -143,7 +133,7 @@ mod tests {
         ];
 
         // When building the picker's entries.
-        let items = build_skill_entries(&skills, &NameFilter::default(), &default_theme());
+        let items = build_skill_entries(&skills, None, &default_theme());
 
         // Then they are ordered case-insensitively. The label is the spec's
         // search text, "{name} {description}", so the leading token is the name.

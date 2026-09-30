@@ -41,15 +41,17 @@ pub fn build(entry: &AttendantEntryConfig, parent: &ChatSessionState) -> ChatSes
         if let Some(persona) = &entry.persona_name {
             profile.persona_name = persona.clone();
         }
-        // An absent filter inherits the creating session's, so an attendant
-        // saved with no tools configured still gets whatever its parent had.
-        // A present filter replaces it wholesale — including an allow-mode
-        // one, which is the whole point of being able to save one.
+        // An absent filter leaves the creating session's in place, so an
+        // attendant saved with no filter configured still gets whatever its
+        // parent had. A present filter replaces it wholesale — including an
+        // allow-mode one, which is the whole point of being able to save
+        // one, and including one naming nothing, which is an attendant with
+        // no tools at all.
         if let Some(filter) = &entry.tool_filter {
-            profile.tool_filter = filter.clone();
+            profile.tool_filter = Some(filter.clone());
         }
         if let Some(filter) = &entry.skill_filter {
-            profile.skill_filter = filter.clone();
+            profile.skill_filter = Some(filter.clone());
         }
         if let Some(effort) = entry.reasoning_effort {
             profile.reasoning_effort = Some(effort);
@@ -153,6 +155,15 @@ mod tests {
 
     use super::build;
 
+    /// The mode of the attendant's tool filter, which must be present for
+    /// every test here that asserts on it.
+    fn filter_mode(attendant: &ChatSessionState) -> FilterMode {
+        attendant
+            .tool_filter()
+            .expect("attendant carries a tool filter")
+            .mode
+    }
+
     /// An entry carrying the given filters and nothing else.
     fn entry_with(
         tool_filter: Option<NameFilter>,
@@ -170,7 +181,10 @@ mod tests {
     fn a_created_attendant_carries_the_saved_tool_filter() {
         // Given a parent withholding two tools, and an entry that saved so.
         let mut parent = ChatSessionState::new();
-        parent.set_tool_filter(NameFilter::deny(["bash".to_owned(), "write".to_owned()]));
+        parent.set_tool_filter(Some(NameFilter::deny([
+            "bash".to_owned(),
+            "write".to_owned(),
+        ])));
 
         // When an attendant is created from it.
         let attendant = build(
@@ -205,7 +219,7 @@ mod tests {
         // Then the mode survives. Restoring it as a deny filter would invert
         // the attendant's tool access — it would be left able to run
         // everything except the two tools it was meant to be limited to.
-        assert_eq!(attendant.tool_filter().mode, FilterMode::Allow);
+        assert_eq!(filter_mode(&attendant), FilterMode::Allow);
         assert!(attendant.is_tool_enabled("mcp__github__create_pr"));
         assert!(!attendant.is_tool_enabled("bash"));
     }
@@ -214,7 +228,7 @@ mod tests {
     fn a_created_attendant_inherits_the_parents_filter_when_none_was_saved() {
         // Given a parent withholding a tool and an entry that saved no filter.
         let mut parent = ChatSessionState::new();
-        parent.set_tool_filter(NameFilter::deny(["bash".to_owned()]));
+        parent.set_tool_filter(Some(NameFilter::deny(["bash".to_owned()])));
 
         // When an attendant is created from it.
         let attendant = build(&entry_with(None, None), &parent);
@@ -229,17 +243,17 @@ mod tests {
     fn a_created_attendant_inherits_the_parents_allow_filter_when_none_was_saved() {
         // Given a parent restricted by an allow filter, and an entry with none.
         let mut parent = ChatSessionState::new();
-        parent.set_tool_filter(NameFilter {
+        parent.set_tool_filter(Some(NameFilter {
             mode: FilterMode::Allow,
             names: ["read".to_owned()].into_iter().collect(),
-        });
+        }));
 
         // When an attendant is created from it.
         let attendant = build(&entry_with(None, None), &parent);
 
         // Then the restriction is inherited whole, mode included — inheriting
         // only the withheld names would leave the child permitted everything.
-        assert_eq!(attendant.tool_filter().mode, FilterMode::Allow);
+        assert_eq!(filter_mode(&attendant), FilterMode::Allow);
         assert!(!attendant.is_tool_enabled("bash"));
     }
 
@@ -247,7 +261,7 @@ mod tests {
     fn a_created_attendant_carries_the_saved_skill_filter() {
         // Given a parent withholding a skill, and an entry that saved so.
         let mut parent = ChatSessionState::new();
-        parent.set_skill_filter(NameFilter::deny(["scream".to_owned()]));
+        parent.set_skill_filter(Some(NameFilter::deny(["scream".to_owned()])));
 
         // When an attendant is created from it.
         let attendant = build(

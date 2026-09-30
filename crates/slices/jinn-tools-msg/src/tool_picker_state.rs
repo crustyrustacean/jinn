@@ -55,7 +55,10 @@ pub struct ToolPickerState {
     /// rows instead and clears it, so nothing can revert a choice the user
     /// just made. Either way the session is written **only** on confirm —
     /// toggling edits the cell's rows, never the live profile.
-    pub snapshot: Option<NameFilter>,
+    ///
+    /// Carried as the session's own `Option`, so an escape restores an
+    /// absent filter back to absent rather than materializing one.
+    pub snapshot: Option<Option<NameFilter>>,
     /// How many result rows fit on screen, measured by the render pass.
     pub results_viewport: usize,
 }

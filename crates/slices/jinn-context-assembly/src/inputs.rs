@@ -130,10 +130,10 @@ mod attendant_tool_visibility_tests {
         // Given an attendant permitted exactly one ordinary tool.
         let parent = ChatSessionState::new();
         let mut attendant = ChatSessionState::new_attendant(&parent, true);
-        attendant.set_tool_filter(NameFilter {
+        attendant.set_tool_filter(Some(NameFilter {
             mode: FilterMode::Allow,
             names: ["read".to_owned()].into_iter().collect(),
-        });
+        }));
         let (state, session_id) = state_with_session(attendant);
 
         // When its assembly inputs are built.
@@ -157,19 +157,20 @@ mod attendant_tool_visibility_tests {
         // Given an attendant permitted exactly one ordinary tool.
         let parent = ChatSessionState::new();
         let mut attendant = ChatSessionState::new_attendant(&parent, true);
-        attendant.set_tool_filter(NameFilter {
+        attendant.set_tool_filter(Some(NameFilter {
             mode: FilterMode::Allow,
             names: ["read".to_owned()].into_iter().collect(),
-        });
+        }));
         let (state, session_id) = state_with_session(attendant);
 
         // When its assembly inputs are built.
         let inputs = build_assembly_inputs(&state.read(), &session_id);
 
         // Then `read` is permitted and the other ordinary tools are not.
-        assert!(inputs.tool_filter.permits("read"));
-        assert!(!inputs.tool_filter.permits("bash"));
-        assert!(!inputs.tool_filter.permits("grep"));
+        let filter = inputs.tool_filter.expect("attendant carries a filter");
+        assert!(filter.permits("read"));
+        assert!(!filter.permits("bash"));
+        assert!(!filter.permits("grep"));
     }
 
     /// A state holding `session` as its active session, with the

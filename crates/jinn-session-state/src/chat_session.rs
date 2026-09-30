@@ -47,6 +47,16 @@ use crate::fields::SessionProfile;
 use crate::runtime::SessionUi;
 use crate::steering_buffer::SteeringBuffer;
 
+/// The one place an absent filter is answered at a gate.
+///
+/// An absent filter inherits, and an inherited filter withholds nothing, so
+/// the answer is the same as an empty deny filter's — but the decision is
+/// made here, from the field's `None`, rather than inside the filter, whose
+/// emptiness means nothing at all.
+fn permits_or_inherits(filter: &Option<NameFilter>, name: &str) -> bool {
+    filter.as_ref().is_none_or(|filter| filter.permits(name))
+}
+
 /// Error returned when a streaming operation fails.
 #[derive(Debug, wherror::Error)]
 pub enum StreamingError {
@@ -1666,23 +1676,26 @@ impl ChatSessionState {
     /// the attendant-only gate.
     #[must_use]
     pub fn is_tool_enabled(&self, tool_name: &str) -> bool {
-        self.core
-            .integrations
-            .profile
-            .tool_filter
-            .permits(tool_name)
+        permits_or_inherits(&self.core.integrations.profile.tool_filter, tool_name)
     }
 
     /// Read-only access to this session's tool filter.
+    ///
+    /// `None` means the session has no tool filter and inherits whatever it
+    /// would have had. Callers that only need to answer a gate read
+    /// [`Self::is_tool_enabled`] instead; this one is for the callers that
+    /// seed a picker or hand the filter on.
     #[must_use]
-    pub fn tool_filter(&self) -> &NameFilter {
-        &self.core.integrations.profile.tool_filter
+    pub fn tool_filter(&self) -> Option<&NameFilter> {
+        self.core.integrations.profile.tool_filter.as_ref()
     }
 
     /// Replace the tool filter for this session.
     ///
-    /// Used by the tool picker to commit toggle state.
-    pub fn set_tool_filter(&mut self, filter: NameFilter) {
+    /// `None` releases it, sending the session back to inheriting. Used by
+    /// the tool picker to commit toggle state and by the attendant panel to
+    /// thaw a frozen set.
+    pub fn set_tool_filter(&mut self, filter: Option<NameFilter>) {
         self.core.integrations.profile.tool_filter = filter;
     }
 
@@ -1733,23 +1746,24 @@ impl ChatSessionState {
     /// path cannot disagree about what the session can load.
     #[must_use]
     pub fn is_skill_enabled(&self, skill_name: &str) -> bool {
-        self.core
-            .integrations
-            .profile
-            .skill_filter
-            .permits(skill_name)
+        permits_or_inherits(&self.core.integrations.profile.skill_filter, skill_name)
     }
 
     /// Read-only access to this session's skill filter.
+    ///
+    /// `None` means the session has no skill filter and inherits whatever it
+    /// would have had; see [`Self::tool_filter`].
     #[must_use]
-    pub fn skill_filter(&self) -> &NameFilter {
-        &self.core.integrations.profile.skill_filter
+    pub fn skill_filter(&self) -> Option<&NameFilter> {
+        self.core.integrations.profile.skill_filter.as_ref()
     }
 
     /// Replace the skill filter for this session.
     ///
-    /// Used by the skill picker to commit toggle state.
-    pub fn set_skill_filter(&mut self, filter: NameFilter) {
+    /// `None` releases it, sending the session back to inheriting. Used by
+    /// the skill picker to commit toggle state and by the attendant panel to
+    /// thaw a frozen set.
+    pub fn set_skill_filter(&mut self, filter: Option<NameFilter>) {
         self.core.integrations.profile.skill_filter = filter;
     }
 

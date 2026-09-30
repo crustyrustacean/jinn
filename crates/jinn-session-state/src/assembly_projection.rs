@@ -25,14 +25,16 @@ pub struct AssemblySessionProjection {
     pub persona_name: String,
     /// Full conversation history, including pins.
     pub history: Vec<ChatEntry>,
-    /// Which tools the session may use, by session policy.
-    pub tool_filter: NameFilter,
+    /// Which tools the session may use, by session policy. `None` means the
+    /// session has no filter and inherits.
+    pub tool_filter: Option<NameFilter>,
     /// Provider selected by the session profile.
     pub provider_name: String,
     /// Skills discovered for the session.
     pub skills: Vec<Skill>,
-    /// Which skills the session may load, by session policy.
-    pub skill_filter: NameFilter,
+    /// Which skills the session may load, by session policy. `None` means
+    /// the session has no filter and inherits.
+    pub skill_filter: Option<NameFilter>,
     /// Skills whose bodies are loaded.
     pub loaded_skills: HashSet<String>,
     /// Project context files discovered for the session.
@@ -52,10 +54,10 @@ impl AssemblySessionProjection {
             cwd: session.cwd().to_path_buf(),
             persona_name: session.persona_name().to_owned(),
             history: session.history().to_vec(),
-            tool_filter: session.tool_filter().clone(),
+            tool_filter: session.tool_filter().cloned(),
             provider_name: session.model_selection().provider_name().to_owned(),
             skills: session.discovered_skills().to_vec(),
-            skill_filter: session.skill_filter().clone(),
+            skill_filter: session.skill_filter().cloned(),
             loaded_skills: session.loaded_skills(),
             context_files: session.discovered_context_files().to_vec(),
             is_attendant: session.is_attendant(),

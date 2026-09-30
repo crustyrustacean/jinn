@@ -545,7 +545,7 @@ mod tests {
         {
             let mut guard = state.write();
             let session = guard.session_mut_or_create(&session_id);
-            session.set_skill_filter(NameFilter::deny(["web-coder".to_owned()]));
+            session.set_skill_filter(Some(NameFilter::deny(["web-coder".to_owned()])));
         }
 
         let call = ToolCall {
@@ -603,10 +603,10 @@ mod tests {
             let mut guard = state.write();
             guard
                 .session_mut_or_create(&session_id)
-                .set_skill_filter(NameFilter {
+                .set_skill_filter(Some(NameFilter {
                     mode: jinn_core_types::FilterMode::Allow,
                     names: ["scream".to_owned()].into_iter().collect(),
-                });
+                }));
         }
 
         let call = ToolCall {

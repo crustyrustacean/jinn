@@ -10,7 +10,7 @@ use serde_json::Value as JsonValue;
 use jinn_attendant_msg::{
     AttendantBehavior, AttendantReport, AttendantTrigger, default_seed_template,
 };
-use jinn_core_types::{ChatEntry, ChatEntryKind, SessionId, SessionProfile};
+use jinn_core_types::{ChatEntry, ChatEntryKind, NameFilter, SessionId, SessionProfile};
 use jinn_session_lifecycle_msg::LifecycleScriptState;
 use jinn_session_msg::SessionOrigin;
 use jinn_session_store_msg::SessionState;
@@ -224,10 +224,19 @@ impl SessionSnapshot {
         metadata.fork_ordinal = Some(at_ordinal);
         metadata.origin = SessionOrigin::Fork;
         metadata.session_state = SessionState::Loaded;
-        metadata
+        // A fork of a session with no tool filter still has to have the task
+        // tool permitted, and "no filter" cannot be edited in place: a
+        // subagent inheriting nothing needs its filter to name the task tool
+        // only in allow mode, or to withhold it in deny mode. So an absent
+        // filter is materialized as the filter an absence inherits before
+        // the one name is added to it.
+        let mut forked_filter = metadata
             .profile
             .tool_filter
-            .permit(jinn_tools_msg::TASK_TOOL_NAME);
+            .clone()
+            .unwrap_or_else(NameFilter::inherited);
+        forked_filter.permit(jinn_tools_msg::TASK_TOOL_NAME);
+        metadata.profile.tool_filter = Some(forked_filter);
 
         Self {
             revision: SessionRevision::new(1),

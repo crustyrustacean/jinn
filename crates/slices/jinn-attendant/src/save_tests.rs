@@ -108,8 +108,8 @@ impl SaveFixture {
                 trigger: session.attendant_trigger(),
                 behavior: session.attendant_behavior(),
                 prep_mode: session.attendant_is_prepping(),
-                tool_set: session.tool_filter().clone(),
-                skill_set: session.skill_filter().clone(),
+                tool_set: session.tool_filter().cloned(),
+                skill_set: session.skill_filter().cloned(),
                 template,
             }),
             ..AttendantPropertiesState::default()
@@ -571,7 +571,10 @@ fn a_save_records_the_sessions_tool_filter() {
             .session
             .get_mut(&fx.attendant_id)
             .expect("attendant");
-        session.set_tool_filter(NameFilter::deny(["write".to_owned(), "bash".to_owned()]));
+        session.set_tool_filter(Some(NameFilter::deny([
+            "write".to_owned(),
+            "bash".to_owned(),
+        ])));
     }
     fx.open();
 
@@ -600,7 +603,7 @@ fn a_save_records_the_sessions_skill_filter() {
             .session
             .get_mut(&fx.attendant_id)
             .expect("attendant");
-        session.set_skill_filter(NameFilter::deny(["dataviz".to_owned()]));
+        session.set_skill_filter(Some(NameFilter::deny(["dataviz".to_owned()])));
     }
     fx.open();
 
@@ -627,12 +630,12 @@ fn an_allow_filtered_attendant_saves_with_its_mode_intact() {
             .session
             .get_mut(&fx.attendant_id)
             .expect("attendant");
-        session.set_tool_filter(NameFilter {
+        session.set_tool_filter(Some(NameFilter {
             mode: FilterMode::Allow,
             names: ["read".to_owned(), "mcp__github__*".to_owned()]
                 .into_iter()
                 .collect(),
-        });
+        }));
     }
     fx.open();
 
@@ -681,7 +684,7 @@ fn saving_after_a_freeze_records_the_captured_set_as_an_allow_list() {
             .session
             .get_mut(&fx.attendant_id)
             .expect("attendant");
-        session.set_tool_filter(NameFilter::deny(["bash".to_owned()]));
+        session.set_tool_filter(Some(NameFilter::deny(["bash".to_owned()])));
     }
     // A composing attendant's cursor is caged at the prep row, so the walk
     // down to the tool set needs composition ended first.
@@ -1018,7 +1021,7 @@ fn a_saved_frozen_skill_set_reopens_the_panel_as_frozen() {
         .session
         .get_mut(&fx.attendant_id)
         .expect("attendant")
-        .set_skill_filter(filter);
+        .set_skill_filter(Some(filter));
     fx.state
         .session
         .get_mut(&fx.attendant_id)

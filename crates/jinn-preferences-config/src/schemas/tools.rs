@@ -27,8 +27,11 @@ pub struct ToolsConfig {
     /// parses without it, so the filter reads as empty and permits
     /// everything — an existing blocklist silently stops applying. There is
     /// no migration; move the names under `tool_filter` yourself.
-    #[serde(default, skip_serializing_if = "NameFilter::is_unconfigured")]
-    pub tool_filter: NameFilter,
+    ///
+    /// Absent means a new session starts unrestricted. Present over no names
+    /// is not absent: an allow list naming nothing starts it with no tools.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_filter: Option<NameFilter>,
 
     /// Fallback timeout for a tool that declares none of its own, in
     /// seconds. Default: 300.
@@ -53,7 +56,7 @@ fn default_timeout_secs() -> u64 {
 impl Default for ToolsConfig {
     fn default() -> Self {
         Self {
-            tool_filter: NameFilter::default(),
+            tool_filter: None,
             default_timeout_secs: default_timeout_secs(),
             max_output_lines: None,
             max_output_bytes: None,
@@ -74,6 +77,11 @@ mod tests {
 
     use super::ToolsConfig;
 
+    /// The section's filter, which a test always expects to be present.
+    fn filter(config: &ToolsConfig) -> &NameFilter {
+        config.tool_filter.as_ref().expect("filter present")
+    }
+
     #[rstest::rstest]
     fn a_denied_tool_is_read_from_the_filter() {
         // Given a table denying two tools.
@@ -85,9 +93,9 @@ mod tests {
         let config = ToolsConfig::from_table(&table).expect("section deserializes");
 
         // Then both are withheld and the third is not.
-        assert!(!config.tool_filter.permits("bash"));
-        assert!(!config.tool_filter.permits("web-search"));
-        assert!(config.tool_filter.permits("read"));
+        assert!(!filter(&config).permits("bash"));
+        assert!(!filter(&config).permits("web-search"));
+        assert!(filter(&config).permits("read"));
     }
 
     /// The breaking rename's silent failure, pinned where it bites: a user's
@@ -102,9 +110,8 @@ mod tests {
         // When reading the section.
         let config = ToolsConfig::from_table(&table).expect("section deserializes");
 
-        // Then the old key is unknown, so the tool is permitted again.
-        assert_eq!(config.tool_filter, NameFilter::default());
-        assert!(config.tool_filter.permits("bash"));
+        // Then the old key is unknown, so no filter is configured at all.
+        assert!(config.tool_filter.is_none());
     }
 
     #[rstest::rstest]
@@ -119,13 +126,30 @@ mod tests {
 
         // Then only a matching tool is permitted — MCP included, which is the
         // case a blocklist could not express.
-        assert_eq!(config.tool_filter.mode, FilterMode::Allow);
-        assert!(config.tool_filter.permits("mcp__github__create_pr"));
-        assert!(!config.tool_filter.permits("bash"));
+        assert_eq!(filter(&config).mode, FilterMode::Allow);
+        assert!(filter(&config).permits("mcp__github__create_pr"));
+        assert!(!filter(&config).permits("bash"));
+    }
+
+    /// A hand-written allow list naming nothing is how a user says "no tools
+    /// at all", and it has to survive the read as a filter that permits
+    /// nothing rather than collapsing into an absent one.
+    #[rstest::rstest]
+    fn a_present_empty_allow_filter_permits_no_tool() {
+        // Given a table configuring an allow list with no names.
+        let table: toml::Table = toml::from_str("[tool_filter]\nmode = \"allow\"\nnames = []\n")
+            .expect("test TOML parses");
+
+        // When reading the section.
+        let config = ToolsConfig::from_table(&table).expect("section deserializes");
+
+        // Then the filter is present and withholds every tool.
+        assert_eq!(filter(&config).mode, FilterMode::Allow);
+        assert!(!filter(&config).permits("bash"));
     }
 
     #[rstest::rstest]
-    fn a_section_with_no_filter_permits_every_tool() {
+    fn a_section_with_no_filter_configures_none() {
         // Given a table carrying only an unrelated key.
         let table: toml::Table =
             toml::from_str("default_timeout_secs = 60").expect("test TOML parses");
@@ -133,13 +157,13 @@ mod tests {
         // When reading the section.
         let config = ToolsConfig::from_table(&table).expect("section deserializes");
 
-        // Then every tool is permitted, exactly as before filters existed.
-        assert!(config.tool_filter.permits("bash"));
+        // Then no filter is configured, exactly as before filters existed.
+        assert!(config.tool_filter.is_none());
     }
 
     #[rstest::rstest]
-    fn an_unconfigured_filter_writes_no_key() {
-        // Given a section whose filter names nothing.
+    fn an_absent_filter_writes_no_key() {
+        // Given a default section, which configures no filter.
         let config = ToolsConfig::default();
 
         // When serializing it.
@@ -148,5 +172,33 @@ mod tests {
         // Then no filter key is written, so a user's file does not gain an
         // empty table on every save.
         assert!(table.get("tool_filter").is_none());
+    }
+
+    /// The mirror of the absent case: a filter the user did write must not
+    /// be dropped on save, even with nothing in it.
+    #[rstest::rstest]
+    fn a_present_empty_allow_filter_still_writes_its_key() {
+        // Given a section whose filter is an allow list naming nothing.
+        let config = ToolsConfig {
+            tool_filter: Some(NameFilter {
+                mode: FilterMode::Allow,
+                names: Default::default(),
+            }),
+            ..ToolsConfig::default()
+        };
+
+        // When serializing it.
+        let table = toml::Value::try_from(&config).expect("serializes");
+
+        // Then the key is present, carrying an empty name list.
+        let written = table.get("tool_filter").expect("filter key written");
+        assert_eq!(
+            written
+                .get("names")
+                .and_then(toml::Value::as_array)
+                .map(Vec::len),
+            Some(0),
+            "written: {written:?}"
+        );
     }
 }

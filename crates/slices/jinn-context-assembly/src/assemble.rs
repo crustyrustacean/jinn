@@ -72,8 +72,12 @@ pub fn assemble(inputs: &AssemblyInputs, counter: &dyn TokenCounter) -> Assemble
     // context block is built from exactly the set these definitions came
     // from — folding them into one predicate would need the provider name
     // here and at dispatch, where it is not always in hand.
-    tool_defs
-        .retain(|def| tool_filter.permits(&def.name) && def.available_for_provider(provider_name));
+    tool_defs.retain(|def| {
+        tool_filter
+            .as_ref()
+            .is_none_or(|filter| filter.permits(&def.name))
+            && def.available_for_provider(provider_name)
+    });
 
     let filtered_map: BTreeMap<String, ToolDefinition> = tool_defs
         .iter()
@@ -84,7 +88,11 @@ pub fn assemble(inputs: &AssemblyInputs, counter: &dyn TokenCounter) -> Assemble
 
     let filtered: Vec<_> = skills
         .iter()
-        .filter(|s| skill_filter.permits(&s.name))
+        .filter(|s| {
+            skill_filter
+                .as_ref()
+                .is_none_or(|filter| filter.permits(&s.name))
+        })
         .cloned()
         .collect();
     let skills_block = format_skills_for_prompt(&filtered, loaded_skills);
@@ -1006,10 +1014,10 @@ mod tests {
                 .session
                 .get_mut(&session_id)
                 .expect("session exists")
-                .set_tool_filter(NameFilter {
+                .set_tool_filter(Some(NameFilter {
                     mode: FilterMode::Allow,
                     names: ["openrouter:web_search".to_owned()].into_iter().collect(),
-                });
+                }));
         }
 
         // When assembling the prompt.
@@ -1140,7 +1148,10 @@ mod tests {
                     .session
                     .get_mut(&session_id)
                     .expect("session exists")
-                    .set_tool_filter(NameFilter::deny(["bash".to_owned(), "write".to_owned()]));
+                    .set_tool_filter(Some(NameFilter::deny([
+                        "bash".to_owned(),
+                        "write".to_owned(),
+                    ])));
             }
         }
 
@@ -1234,7 +1245,7 @@ mod tests {
                 .session
                 .get_mut(&session_id)
                 .expect("session exists")
-                .set_tool_filter(NameFilter::deny(["bash".to_owned()]));
+                .set_tool_filter(Some(NameFilter::deny(["bash".to_owned()])));
         }
 
         // When assembling the prompt.
@@ -1270,7 +1281,7 @@ mod tests {
                 .session
                 .get_mut(&session_id)
                 .expect("session exists")
-                .set_skill_filter(NameFilter::deny(["web-coder".to_owned()]));
+                .set_skill_filter(Some(NameFilter::deny(["web-coder".to_owned()])));
         }
 
         // When assembling the prompt.
@@ -1316,10 +1327,10 @@ mod tests {
                 .session
                 .get_mut(&session_id)
                 .expect("session exists")
-                .set_tool_filter(NameFilter {
+                .set_tool_filter(Some(NameFilter {
                     mode: FilterMode::Allow,
                     names: ["read".to_owned()].into_iter().collect(),
-                });
+                }));
         }
 
         // When assembling the prompt.

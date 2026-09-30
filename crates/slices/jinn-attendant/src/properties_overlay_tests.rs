@@ -155,8 +155,8 @@ impl PopupFixture {
                 trigger: session.attendant_trigger(),
                 behavior: session.attendant_behavior(),
                 prep_mode,
-                tool_set: session.tool_filter().clone(),
-                skill_set: session.skill_filter().clone(),
+                tool_set: session.tool_filter().cloned(),
+                skill_set: session.skill_filter().cloned(),
                 template,
             }),
             // The opener's rule: a composing attendant opens on the prep
@@ -805,7 +805,7 @@ impl PopupFixture {
             .session
             .get_mut(&self.attendant_id)
             .expect("attendant")
-            .set_tool_filter(filter);
+            .set_tool_filter(Some(filter));
     }
 
     /// Focuses the tool-set row.
@@ -824,24 +824,24 @@ impl PopupFixture {
         assert_eq!(self.cell.read().focus, PropertyField::SkillSet);
     }
 
-    /// The attendant's current tool filter.
-    fn tool_filter(&self) -> jinn_core_types::NameFilter {
+    /// The attendant's current tool filter, absent filter included.
+    fn tool_filter(&self) -> Option<jinn_core_types::NameFilter> {
         self.state
             .session
             .get(&self.attendant_id)
             .expect("attendant")
             .tool_filter()
-            .clone()
+            .cloned()
     }
 
-    /// The attendant's current skill filter.
-    fn skill_filter(&self) -> jinn_core_types::NameFilter {
+    /// The attendant's current skill filter, absent filter included.
+    fn skill_filter(&self) -> Option<jinn_core_types::NameFilter> {
         self.state
             .session
             .get(&self.attendant_id)
             .expect("attendant")
             .skill_filter()
-            .clone()
+            .cloned()
     }
 }
 
@@ -923,7 +923,7 @@ fn freezing_the_tool_set_does_not_touch_the_session() {
     assert_eq!(fx.cell.read().set_mode_of(SetField::Tool), SetMode::Frozen);
     // …and the attendant's filter is still exactly what it was. The popup
     // buffers; nothing reaches the session until `<enter>`.
-    assert!(fx.tool_filter().is_unconfigured());
+    assert!(fx.tool_filter().is_none());
 }
 
 #[rstest::rstest]
@@ -957,7 +957,9 @@ fn freezing_the_skill_set_captures_the_discovered_skills() {
         .session
         .get_mut(&fx.attendant_id)
         .expect("attendant")
-        .set_skill_filter(jinn_core_types::NameFilter::deny(["reviewer".to_owned()]));
+        .set_skill_filter(Some(jinn_core_types::NameFilter::deny([
+            "reviewer".to_owned()
+        ])));
     fx.open_on_the_skill_set();
 
     // When freezing the row.
@@ -984,7 +986,7 @@ fn enter_writes_the_frozen_set_as_an_allow_list() {
 
     // Then the attendant's filter is an allow list naming exactly those two,
     // which is what makes a tool registered afterward refused.
-    assert_eq!(fx.tool_filter(), allow(&["read", "write"]));
+    assert_eq!(fx.tool_filter(), Some(allow(&["read", "write"])));
 }
 
 #[rstest::rstest]
@@ -999,10 +1001,10 @@ fn a_live_set_writes_nothing_so_the_attendant_inherits() {
     // When applying.
     fx.press("attendant-properties-apply");
 
-    // Then both filters are left unconfigured, so a tool or skill
-    // registered later is admitted automatically.
-    assert!(fx.tool_filter().is_unconfigured());
-    assert!(fx.skill_filter().is_unconfigured());
+    // Then both filters are left absent, so a tool or skill registered
+    // later is admitted automatically.
+    assert!(fx.tool_filter().is_none());
+    assert!(fx.skill_filter().is_none());
 }
 
 #[rstest::rstest]
@@ -1020,7 +1022,9 @@ fn a_frozen_attendant_refuses_a_tool_registered_after_the_freeze() {
 
     // Then the attendant still admits the two it was frozen with and
     // refuses the newcomer.
-    let filter = fx.tool_filter();
+    let filter = fx
+        .tool_filter()
+        .expect("a frozen attendant carries a filter");
     assert!(filter.permits("read"));
     assert!(!filter.permits("mcp__github__create_pr"));
 }
@@ -1036,9 +1040,9 @@ fn a_live_attendant_admits_a_tool_registered_after_the_panel_opened() {
     // When a new tool arrives.
     fx.offer(&["read", "mcp__github__create_pr"]);
 
-    // Then its filter permits the newcomer: an unconfigured filter places no
-    // restriction on names it does not contain.
-    assert!(fx.tool_filter().permits("mcp__github__create_pr"));
+    // Then it has no filter at all, which admits the newcomer: an absent
+    // filter places no restriction on any name.
+    assert!(fx.tool_filter().is_none());
 }
 
 #[rstest::rstest]
@@ -1055,7 +1059,7 @@ fn escape_after_a_freeze_leaves_both_filters_untouched() {
         .session
         .get_mut(&fx.attendant_id)
         .expect("attendant")
-        .set_skill_filter(before_skills.clone());
+        .set_skill_filter(Some(before_skills.clone()));
     fx.open_on_the_tool_set();
     // And the tool set is frozen, then thawed, then frozen again.
     fx.press("attendant-properties-pick-right");
@@ -1068,8 +1072,8 @@ fn escape_after_a_freeze_leaves_both_filters_untouched() {
     // Then both filters are byte-identical to their open-time values. A
     // popup that had been applied would not close on escape, so reaching
     // this line at all is half the assertion.
-    assert_eq!(fx.tool_filter(), before_tools);
-    assert_eq!(fx.skill_filter(), before_skills);
+    assert_eq!(fx.tool_filter(), Some(before_tools));
+    assert_eq!(fx.skill_filter(), Some(before_skills));
 }
 
 #[rstest::rstest]
@@ -1092,7 +1096,7 @@ fn escape_restores_a_frozen_row_with_the_filters_own_names() {
         fx.cell.read().pending_set(SetField::Tool),
         Some(&hand_written.names)
     );
-    assert_eq!(fx.tool_filter(), hand_written);
+    assert_eq!(fx.tool_filter(), Some(hand_written));
 }
 
 #[rstest::rstest]
@@ -1127,9 +1131,9 @@ fn saving_a_thawed_attendant_leaves_its_filter_unconfigured() {
     // When applying.
     fx.press("attendant-properties-apply");
 
-    // Then the filter is unconfigured, so the attendant inherits its
-    // parent's growing set again.
-    assert!(fx.tool_filter().is_unconfigured());
+    // Then the filter is absent, so the attendant inherits its parent's
+    // growing set again.
+    assert!(fx.tool_filter().is_none());
 }
 
 #[rstest::rstest]
@@ -1149,12 +1153,11 @@ fn freezing_over_an_empty_capture_writes_nothing() {
     fx.press("attendant-properties-pick-right");
     fx.press("attendant-properties-apply");
 
-    // Then no empty allow list reaches the session. An allow list over
-    // nothing is read as no filter at all, so writing one would look frozen
-    // in `jinn.toml` and behave as inheriting -- the exact outcome the row
-    // exists to prevent. The row itself still held Frozen; it is the write
-    // that is declined.
-    assert!(fx.tool_filter().is_unconfigured());
+    // Then an allow list naming nothing reaches the session. That is the
+    // only way to say "frozen to no tools": an allow list over nothing is
+    // not read as no filter any more, so the row can be frozen before
+    // anything has been registered.
+    assert_eq!(fx.tool_filter(), Some(allow(&[])));
 }
 
 #[rstest::rstest]
@@ -1360,7 +1363,7 @@ fn a_frozen_tool_set_survives_reopening_the_panel() {
     // Then the session carries the allow list.
     assert_eq!(
         fx.tool_filter(),
-        allow(&["read", "write"]),
+        Some(allow(&["read", "write"])),
         "enter must write the frozen set to the session"
     );
 
@@ -1384,7 +1387,7 @@ fn thawing_a_frozen_set_releases_the_filter_it_was_holding() {
     fx.open_on_the_tool_set();
     fx.press("attendant-properties-pick-right");
     fx.press("attendant-properties-apply");
-    assert_eq!(fx.tool_filter(), allow(&["read", "write"]));
+    assert_eq!(fx.tool_filter(), Some(allow(&["read", "write"])));
 
     // When reopening on the tool row, thawing it, and applying again.
     fx.open_on_the_tool_set();
@@ -1396,7 +1399,7 @@ fn thawing_a_frozen_set_releases_the_filter_it_was_holding() {
     // the panel claimed the set was live -- and reopening would read
     // Frozen again, because the filter is what the row is derived from.
     assert!(
-        fx.tool_filter().is_unconfigured(),
+        fx.tool_filter().is_none(),
         "a live row must release the frozen filter, found {:?}",
         fx.tool_filter()
     );
@@ -1431,7 +1434,7 @@ fn a_frozen_skill_set_captures_the_parent_skill_names() {
         .session
         .get_mut(&fx.attendant_id)
         .expect("attendant")
-        .set_skill_filter(allow(&["web-coder", "reviewer"]));
+        .set_skill_filter(Some(allow(&["web-coder", "reviewer"])));
     fx.open_on_the_skill_set();
 
     // When freezing the row.

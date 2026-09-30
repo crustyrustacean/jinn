@@ -35,7 +35,10 @@ pub struct SkillPickerState {
     /// The session's skill filter as it was when the picker opened, or `None`
     /// before the first open. ESC restores it whole, mode included; confirm
     /// commits a deny filter over the toggled rows instead.
-    pub snapshot: Option<NameFilter>,
+    ///
+    /// Carried as the session's own `Option`, so an ESC restores an absent
+    /// filter back to absent rather than materializing one.
+    pub snapshot: Option<Option<NameFilter>>,
     /// The preview pane's scroll offset for the highlighted skill.
     ///
     /// Lives beside the selection because the preview follows the cursor:

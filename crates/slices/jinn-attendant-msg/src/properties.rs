@@ -301,12 +301,12 @@ pub struct OriginalValues {
     ///
     /// Carried as a whole filter rather than a bare [`SetMode`] because
     /// opening the popup is what *reads* the attendant's filter, and the
-    /// filter is where the row's meaning lives: an unconfigured filter means
-    /// Live, and so does a deny filter with nothing in it — only an
-    /// allow-mode filter says the set has been pinned.
-    pub tool_set: NameFilter,
+    /// filter is where the row's meaning lives. Absent means Live, and so
+    /// does a deny filter — only a present allow-mode filter says the set has
+    /// been pinned, including one naming nothing.
+    pub tool_set: Option<NameFilter>,
     /// The frozen skill set at open time, as above.
-    pub skill_set: NameFilter,
+    pub skill_set: Option<NameFilter>,
     /// The seed template at open time.
     pub template: String,
 }
@@ -323,8 +323,8 @@ impl OriginalValues {
     /// restore path use, so a row can never mean one thing when it opens
     /// and another when `<esc>` puts it back.
     #[must_use]
-    pub fn mode_of(filter: &NameFilter) -> SetMode {
-        if filter.mode == FilterMode::Allow && !filter.is_unconfigured() {
+    pub fn mode_of(filter: Option<&NameFilter>) -> SetMode {
+        if filter.is_some_and(|filter| filter.mode == FilterMode::Allow) {
             SetMode::Frozen
         } else {
             SetMode::Live
@@ -336,9 +336,16 @@ impl OriginalValues {
     /// The filter's own patterns rather than a set re-derived from them: a
     /// hand-written allow list's globs are already in the correct mode, and
     /// flattening them into names would quietly narrow what the user wrote.
+    ///
+    /// `Some` with an empty set is a real answer — a set frozen to nothing —
+    /// and is distinct from `None`, which says the row is Live.
     #[must_use]
-    pub fn names_of(filter: &NameFilter) -> Option<BTreeSet<String>> {
-        (Self::mode_of(filter) == SetMode::Frozen).then(|| filter.names.clone())
+    pub fn names_of(filter: Option<&NameFilter>) -> Option<BTreeSet<String>> {
+        (Self::mode_of(filter) == SetMode::Frozen).then(|| {
+            filter
+                .map(|filter| filter.names.clone())
+                .unwrap_or_default()
+        })
     }
 }
 
@@ -620,8 +627,8 @@ impl AttendantPropertiesState {
         self.pending_behavior = original.behavior;
         self.pending_trigger = original.trigger;
         self.pending_prep_mode = original.prep_mode;
-        self.restore_set(SetField::Tool, &original.tool_set);
-        self.restore_set(SetField::Skill, &original.skill_set);
+        self.restore_set(SetField::Tool, original.tool_set.as_ref());
+        self.restore_set(SetField::Skill, original.skill_set.as_ref());
         self.seed_template = LineInput {
             input: original.template,
             cursor_pos,
@@ -635,7 +642,7 @@ impl AttendantPropertiesState {
     /// than a capture: the user did not ask for this row to change, and
     /// re-deriving the names from a filter the user did not author would
     /// silently drop the patterns it contains.
-    fn restore_set(&mut self, field: SetField, filter: &NameFilter) {
+    fn restore_set(&mut self, field: SetField, filter: Option<&NameFilter>) {
         let mode = OriginalValues::mode_of(filter);
         let captured = OriginalValues::names_of(filter);
         match field {
@@ -701,12 +708,16 @@ impl AttendantPropertiesState {
     /// bare captures, so the next `<esc>` puts back the file's own contents
     /// — patterns included — instead of a set re-derived from them.
     pub fn commit_as_original(&mut self) {
+        // A captured set commits as an allow filter over exactly those names
+        // — including no names, which is a set frozen to nothing. A row with
+        // no capture commits as no filter at all: that is a thaw, and the
+        // attendant inherits from here.
         let committed = |names: Option<&BTreeSet<String>>| match names {
-            Some(names) => NameFilter {
+            Some(names) => Some(NameFilter {
                 mode: FilterMode::Allow,
                 names: names.clone(),
-            },
-            None => NameFilter::default(),
+            }),
+            None => None,
         };
         // An untouched row keeps the filter the attendant already had,
         // which is what the commit wrote too -- recording the row's Live
@@ -715,7 +726,7 @@ impl AttendantPropertiesState {
         let settled = |touched: bool,
                        captured: Option<&BTreeSet<String>>,
                        was: Option<&NameFilter>| match (touched, was) {
-            (false, Some(was)) => was.clone(),
+            (false, Some(was)) => Some(was.clone()),
             _ => committed(captured),
         };
         self.original = Some(OriginalValues {
@@ -725,12 +736,12 @@ impl AttendantPropertiesState {
             tool_set: settled(
                 self.tool_set_touched,
                 self.frozen_tools.as_ref(),
-                self.original.as_ref().map(|o| &o.tool_set),
+                self.original.as_ref().and_then(|o| o.tool_set.as_ref()),
             ),
             skill_set: settled(
                 self.skill_set_touched,
                 self.frozen_skills.as_ref(),
-                self.original.as_ref().map(|o| &o.skill_set),
+                self.original.as_ref().and_then(|o| o.skill_set.as_ref()),
             ),
             template: self.seed_template.input.clone(),
         });

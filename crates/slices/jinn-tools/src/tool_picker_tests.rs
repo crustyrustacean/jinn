@@ -192,7 +192,7 @@ impl Wired {
         tools
             .iter()
             .map(|def| def.name)
-            .filter(|name| !filter.permits(name))
+            .filter(|name| !filter.is_none_or(|filter| filter.permits(name)))
             .map(str::to_owned)
             .collect()
     }
@@ -336,7 +336,7 @@ async fn a_pre_disabled_tool_renders_off_when_the_picker_opens() {
         .state
         .borrow_mut()
         .active_session_mut()
-        .set_tool_filter(NameFilter::deny(["read".to_owned()]));
+        .set_tool_filter(Some(NameFilter::deny(["read".to_owned()])));
 
     // When the picker is opened.
     wired.open();
@@ -359,9 +359,9 @@ async fn a_subagent_stamped_tool_renders_off_when_the_picker_opens() {
         .state
         .borrow_mut()
         .active_session_mut()
-        .set_tool_filter(NameFilter::deny(
-            [jinn_tools_msg::TASK_TOOL_NAME.to_owned()],
-        ));
+        .set_tool_filter(Some(NameFilter::deny([
+            jinn_tools_msg::TASK_TOOL_NAME.to_owned()
+        ])));
 
     // When the picker is opened.
     wired.open();
@@ -605,7 +605,13 @@ async fn confirming_commits_a_deny_filter() {
     wired.fire("confirm-tool-picker");
 
     // Then the session's filter is in deny mode.
-    let filter = wired.state.borrow().active_session().tool_filter().clone();
+    let filter = wired
+        .state
+        .borrow()
+        .active_session()
+        .tool_filter()
+        .cloned()
+        .expect("confirming writes a filter");
     assert_eq!(filter.mode, FilterMode::Deny);
 }
 
@@ -680,7 +686,7 @@ async fn escape_restores_the_tools_that_were_disabled_when_the_picker_opened() {
         .state
         .borrow_mut()
         .active_session_mut()
-        .set_tool_filter(NameFilter::deny(["read".to_owned()]));
+        .set_tool_filter(Some(NameFilter::deny(["read".to_owned()])));
     wired.open();
     wired.fire("toggle-highlighted-tool");
 
@@ -822,7 +828,7 @@ async fn the_status_line_reports_the_live_enabled_count() {
         .state
         .borrow_mut()
         .active_session_mut()
-        .set_tool_filter(NameFilter::deny(["read".to_owned()]));
+        .set_tool_filter(Some(NameFilter::deny(["read".to_owned()])));
     wired.open();
 
     // When the popup is drawn.

@@ -22,19 +22,23 @@ pub struct SessionProfile {
     pub persona_name: String,
     /// Which tools this session may use.
     ///
-    /// Replaces the former `disabled_tools` set. A session saved before this
-    /// key existed deserializes to an empty filter, which permits
-    /// everything — so an older session's blocklist stops applying. That is
-    /// the same "a stale document reads as a fresh install" stance the
-    /// attendant entry and the umbrella layout take.
-    #[serde(default, skip_serializing_if = "NameFilter::is_unconfigured")]
-    pub tool_filter: NameFilter,
+    /// Absent means no filter: a new session starts unrestricted and an
+    /// older session's missing key leaves it so. A session saved before this
+    /// key existed deserializes to `None` — and so an older session's
+    /// blocklist stops applying. That is the same "a stale document reads as
+    /// a fresh install" stance the attendant entry and the umbrella layout
+    /// take.
+    ///
+    /// Present with no names is not absent: it is an allow list over nothing,
+    /// which permits nothing. See [`NameFilter`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_filter: Option<NameFilter>,
     /// Which skills this session may load.
     ///
     /// Replaces the former `disabled_skills` set, with the same migration
     /// story as [`Self::tool_filter`].
-    #[serde(default, skip_serializing_if = "NameFilter::is_unconfigured")]
-    pub skill_filter: NameFilter,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skill_filter: Option<NameFilter>,
     /// Reasoning effort selected when this session was created.
     #[serde(default)]
     pub reasoning_effort: Option<ReasoningEffort>,
@@ -48,8 +52,8 @@ impl Default for SessionProfile {
         Self {
             model: ModelSelection::Single(NO_PROVIDER_ID.to_owned()),
             persona_name: DEFAULT_PERSONA_NAME.to_owned(),
-            tool_filter: NameFilter::default(),
-            skill_filter: NameFilter::default(),
+            tool_filter: None,
+            skill_filter: None,
             reasoning_effort: None,
             endpoint: None,
         }
@@ -77,8 +81,8 @@ impl SessionProfile {
     pub fn new(
         model: ModelSelection,
         persona_name: String,
-        tool_filter: NameFilter,
-        skill_filter: NameFilter,
+        tool_filter: Option<NameFilter>,
+        skill_filter: Option<NameFilter>,
         reasoning_effort: Option<ReasoningEffort>,
         endpoint: Option<Endpoint>,
     ) -> Self {
@@ -102,6 +106,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+    use std::collections::BTreeSet;
     use std::collections::HashSet;
 
     use crate::FilterMode;
@@ -141,8 +146,8 @@ mod tests {
         let profile = SessionProfile::new(
             ModelSelection::Single("ollama/llama3".to_owned()),
             DEFAULT_PERSONA_NAME.to_owned(),
-            filter.clone(),
-            NameFilter::default(),
+            Some(filter.clone()),
+            None,
             None,
             None,
         );
@@ -152,7 +157,7 @@ mod tests {
         let restored: SessionProfile = serde_json::from_str(&json).expect("deserialize");
 
         // Then the filter survives, globs included.
-        assert_eq!(restored.tool_filter, filter);
+        assert_eq!(restored.tool_filter, Some(filter));
     }
 
     #[rstest::rstest]
@@ -167,8 +172,8 @@ mod tests {
         let profile = SessionProfile::new(
             ModelSelection::Single("ollama/llama3".to_owned()),
             DEFAULT_PERSONA_NAME.to_owned(),
-            NameFilter::default(),
-            filter.clone(),
+            None,
+            Some(filter.clone()),
             None,
             None,
         );
@@ -178,7 +183,54 @@ mod tests {
         let restored: SessionProfile = serde_json::from_str(&json).expect("deserialize");
 
         // Then the filter survives, mode included.
-        assert_eq!(restored.skill_filter, filter);
+        assert_eq!(restored.skill_filter, Some(filter));
+    }
+
+    /// The point of carrying absence in the field: a present allow list over
+    /// nothing is the only way to say "no tools at all", and it cannot be
+    /// told apart from absence by the filter's contents alone.
+    #[rstest::rstest]
+    fn a_present_empty_allow_filter_round_trips_rather_than_being_dropped() {
+        // Given a profile whose tool filter permits nothing.
+        let filter = NameFilter {
+            mode: FilterMode::Allow,
+            names: BTreeSet::new(),
+        };
+        let profile = SessionProfile::new(
+            ModelSelection::Single("ollama/llama3".to_owned()),
+            DEFAULT_PERSONA_NAME.to_owned(),
+            Some(filter.clone()),
+            None,
+            None,
+            None,
+        );
+
+        // When serialized then deserialized.
+        let json = serde_json::to_string(&profile).expect("serialize");
+        let restored: SessionProfile = serde_json::from_str(&json).expect("deserialize");
+
+        // Then the filter is still present, and still permits nothing.
+        assert_eq!(restored.tool_filter, Some(filter));
+        assert!(
+            restored
+                .tool_filter
+                .as_ref()
+                .is_some_and(|filter| !filter.permits("bash"))
+        );
+    }
+
+    #[rstest::rstest]
+    fn an_absent_filter_serializes_to_no_key_at_all() {
+        // Given a default profile, which configures no filter.
+        let profile = SessionProfile::default();
+
+        // When serialized.
+        let json = serde_json::to_string(&profile).expect("serialize");
+
+        // Then neither key appears, so a user's file does not grow an empty
+        // filter table on every save.
+        assert!(!json.contains("tool_filter"), "written: {json}");
+        assert!(!json.contains("skill_filter"), "written: {json}");
     }
 
     #[rstest::rstest]
@@ -189,11 +241,11 @@ mod tests {
         // When deserialized.
         let profile: SessionProfile = serde_json::from_str(json).expect("deserialize");
 
-        // Then both filters permit everything: the old keys are unknown, so
-        // their blocklist does not apply. This is the accepted silent
-        // failure of the breaking rename.
-        assert!(profile.tool_filter.permits("bash"));
-        assert!(profile.skill_filter.permits("web-search"));
+        // Then both filters are absent, so nothing is withheld: the old keys
+        // are unknown. This is the accepted silent failure of the breaking
+        // rename.
+        assert!(profile.tool_filter.is_none());
+        assert!(profile.skill_filter.is_none());
     }
 
     #[rstest::rstest]
@@ -225,15 +277,16 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn default_filters_permit_everything() {
+    fn a_default_profile_configures_no_filter() {
         // Given a default profile.
         let profile = SessionProfile::default();
 
-        // When asking each filter about a resource.
-        // Then both permit it — an unconfigured session behaves exactly as
-        // it did before filters existed.
-        assert!(profile.tool_filter.permits("bash"));
-        assert!(profile.skill_filter.permits("anything"));
+        // When reading its filters.
+        // Then both are absent, which at a gate permits everything — an
+        // unconfigured session behaves exactly as it did before filters
+        // existed.
+        assert!(profile.tool_filter.is_none());
+        assert!(profile.skill_filter.is_none());
     }
 
     #[rstest::rstest]

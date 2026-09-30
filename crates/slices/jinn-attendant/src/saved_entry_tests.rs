@@ -121,7 +121,8 @@ fn an_entry_does_not_store_where_each_pin_sat() {
 fn an_entry_records_the_session_tool_filter() {
     // Given an attendant carrying a tool filter.
     let mut session = composed_attendant();
-    session.profile_mut().tool_filter = NameFilter::deny(["write".to_owned(), "bash".to_owned()]);
+    session.profile_mut().tool_filter =
+        Some(NameFilter::deny(["write".to_owned(), "bash".to_owned()]));
 
     // When building its entry.
     let entry = saved_entry::entry_for_session("nightly".to_owned(), &session);
@@ -140,10 +141,10 @@ fn an_entry_records_the_session_tool_filter() {
 fn an_entry_records_an_allow_mode_filter_with_its_mode() {
     // Given an attendant restricted to two tools by an allow filter.
     let mut session = composed_attendant();
-    session.profile_mut().tool_filter = NameFilter {
+    session.profile_mut().tool_filter = Some(NameFilter {
         mode: FilterMode::Allow,
         names: BTreeSet::from(["read".to_owned(), "mcp__github__*".to_owned()]),
-    };
+    });
 
     // When building its entry.
     let entry = saved_entry::entry_for_session("narrow".to_owned(), &session);

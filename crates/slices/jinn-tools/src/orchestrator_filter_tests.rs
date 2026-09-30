@@ -25,7 +25,7 @@ fn state_filtering(filter: NameFilter) -> (State, SessionId) {
     let session_id = {
         let mut guard = state.write();
         let session = guard.active_session_mut();
-        session.set_tool_filter(filter);
+        session.set_tool_filter(Some(filter));
         session.session_id().clone()
     };
     (state, session_id)
@@ -228,7 +228,7 @@ async fn a_withheld_skill_does_not_admit_a_withheld_tool() {
         let mut guard = state.write();
         guard
             .active_session_mut()
-            .set_skill_filter(NameFilter::deny(["web-coder".to_owned()]));
+            .set_skill_filter(Some(NameFilter::deny(["web-coder".to_owned()])));
     }
     let harness = TestHarness::new().await;
     spawn(&harness, state).await;

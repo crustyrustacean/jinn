@@ -116,7 +116,12 @@ fn opened(cell: &TypedCell<SkillPickerState>, names: &[&str], disabled: &[&str])
     let discovered: Vec<Skill> = names.iter().copied().map(skill).collect();
     let off = NameFilter::deny(disabled.iter().map(|s| (*s).to_owned()));
     cell.update(|picker| {
-        skill_picker_actions::open(picker, &discovered, &off, &jinn_theme::default_theme());
+        skill_picker_actions::open(
+            picker,
+            &discovered,
+            Some(&off),
+            &jinn_theme::default_theme(),
+        );
     });
 }
 
@@ -246,7 +251,9 @@ fn cancelling_reports_the_pre_open_filter() {
     cell.update(|picker| restored = skill_picker_actions::cancel_filter(picker));
 
     // Then the pre-open filter comes back, undoing the toggle.
-    let restored = restored.expect("an open picker has a snapshot to restore");
+    let restored = restored
+        .expect("an open picker has a snapshot to restore")
+        .expect("the snapshot held a filter");
     assert!(!restored.permits("alpha"));
 }
 
@@ -272,7 +279,7 @@ fn cancelling_a_picker_that_never_opened_reverts_nothing() {
     let (cell, _routes) = wired();
 
     // When cancelling.
-    let mut restored = Some(NameFilter::default());
+    let mut restored = None;
     cell.update(|picker| restored = skill_picker_actions::cancel_filter(picker));
 
     // Then there is no set to restore.

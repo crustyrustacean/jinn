@@ -49,10 +49,10 @@ pub fn handle_open_attendant_properties(state: &mut AppState) -> IntentResult {
     let cursor_pos = template.len();
     let prep_mode = session.attendant_is_prepping();
     // What the set rows say is a reading of the attendant's own filters:
-    // only an allow-mode filter pins a set, so a blocklist — the shape the
-    // pickers write — still opens as Live.
-    let tool_set = session.tool_filter().clone();
-    let skill_set = session.skill_filter().clone();
+    // only a present allow-mode filter pins a set, so a blocklist — the shape
+    // the pickers write — still opens as Live.
+    let tool_set = session.tool_filter().cloned();
+    let skill_set = session.skill_filter().cloned();
     let popup = AttendantPropertiesState {
         session_id: Some(entry.id.clone()),
         seed_template: jinn_slices::LineInput {
@@ -62,10 +62,10 @@ pub fn handle_open_attendant_properties(state: &mut AppState) -> IntentResult {
         pending_behavior: session.attendant_behavior(),
         pending_trigger: session.attendant_trigger(),
         pending_prep_mode: prep_mode,
-        pending_tool_set: OriginalValues::mode_of(&tool_set),
-        frozen_tools: OriginalValues::names_of(&tool_set),
-        pending_skill_set: OriginalValues::mode_of(&skill_set),
-        frozen_skills: OriginalValues::names_of(&skill_set),
+        pending_tool_set: OriginalValues::mode_of(tool_set.as_ref()),
+        frozen_tools: OriginalValues::names_of(tool_set.as_ref()),
+        pending_skill_set: OriginalValues::mode_of(skill_set.as_ref()),
+        frozen_skills: OriginalValues::names_of(skill_set.as_ref()),
         original: Some(OriginalValues {
             trigger: session.attendant_trigger(),
             behavior: session.attendant_behavior(),

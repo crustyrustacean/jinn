@@ -219,8 +219,8 @@ impl AttendantEntryConfig {
         seed_template: String,
         model: &ModelSelection,
         persona_name: &str,
-        tool_filter: &NameFilter,
-        skill_filter: &NameFilter,
+        tool_filter: Option<&NameFilter>,
+        skill_filter: Option<&NameFilter>,
         reasoning_effort: Option<ReasoningEffort>,
         endpoint: Option<&Endpoint>,
         pins: Vec<AttendantPinConfig>,
@@ -239,12 +239,14 @@ impl AttendantEntryConfig {
             // it would only pin the entry to today's default value.
             persona_name: (!jinn_core_types::DEFAULT_PERSONA_NAME.eq(persona_name))
                 .then(|| persona_name.to_owned()),
-            // An unconfigured filter is stored as absent so create
-            // inherits the parent's, exactly as an absent disablement list
-            // used to. Storing an empty filter would pin the entry to
-            // "permit everything" and defeat that inheritance.
-            tool_filter: (!tool_filter.is_unconfigured()).then(|| tool_filter.clone()),
-            skill_filter: (!skill_filter.is_unconfigured()).then(|| skill_filter.clone()),
+            // Absence is the filter's own: a session carrying no filter
+            // stores none, so create inherits the parent's exactly as an
+            // absent disablement list used to. A session carrying a present
+            // filter stores that filter whole, including one naming nothing —
+            // an attendant frozen to no tools has to survive the round trip
+            // as the attendant that has no tools.
+            tool_filter: tool_filter.cloned(),
+            skill_filter: skill_filter.cloned(),
             reasoning_effort,
             endpoint: endpoint.cloned(),
             pins,
@@ -298,8 +300,8 @@ mod tests {
             jinn_attendant_msg::default_seed_template(),
             &ModelSelection::Single(NO_PROVIDER_ID.to_owned()),
             jinn_core_types::DEFAULT_PERSONA_NAME,
-            &NameFilter::default(),
-            &NameFilter::default(),
+            None,
+            None,
             None,
             None,
             pins,
@@ -312,8 +314,8 @@ mod tests {
     /// Every field is set, so a round-trip failure names the field that did
     /// not survive rather than one that was never in the fixture.
     fn entry_with_filters(
-        tool_filter: &NameFilter,
-        skill_filter: &NameFilter,
+        tool_filter: Option<&NameFilter>,
+        skill_filter: Option<&NameFilter>,
     ) -> AttendantEntryConfig {
         let endpoint = Endpoint {
             tag: "zai".to_owned(),
@@ -375,8 +377,8 @@ mod tests {
         assert_eq!(
             entries[0],
             entry_with_filters(
-                &NameFilter::deny(["write".to_owned()]),
-                &NameFilter::deny(["bash".to_owned(), "edit".to_owned()]),
+                Some(&NameFilter::deny(["write".to_owned()])),
+                Some(&NameFilter::deny(["bash".to_owned(), "edit".to_owned()])),
             ),
             "round trip lost fields: {}",
             layer.document_text()
@@ -413,15 +415,32 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn an_unconfigured_filter_is_stored_as_absent() {
-        // Given a session whose filters name nothing.
-        let entry = entry_with_filters(&NameFilter::default(), &NameFilter::default());
+    fn an_absent_filter_is_stored_as_absent() {
+        // Given a session carrying no filter for either resource.
+        let entry = entry_with_filters(None, None);
 
         // When reading the stored filters.
-        // Then both are absent, so create inherits the parent's rather than
-        // pinning the attendant to "permit everything".
+        // Then both are absent, so create inherits the parent's.
         assert!(entry.tool_filter.is_none());
         assert!(entry.skill_filter.is_none());
+    }
+
+    /// The distinction the field exists to carry: a present allow list over
+    /// nothing is a filter that permits nothing, and storing it must not
+    /// collapse into the absent case.
+    #[rstest::rstest]
+    #[test]
+    fn a_present_empty_allow_filter_is_stored_as_present() {
+        // Given a session whose filter permits no tool at all.
+        let filter = NameFilter {
+            mode: FilterMode::Allow,
+            names: Default::default(),
+        };
+        let entry = entry_with_filters(Some(&filter), None);
+
+        // When reading the stored filter.
+        // Then it is present, and still permits nothing.
+        assert_eq!(entry.tool_filter, Some(filter));
     }
 
     #[rstest::rstest]
@@ -440,10 +459,7 @@ mod tests {
 
         // When the entry is re-saved with no filter configured.
         layer
-            .put_list::<AttendantEntryConfig>(&[entry_with_filters(
-                &NameFilter::default(),
-                &NameFilter::default(),
-            )])
+            .put_list::<AttendantEntryConfig>(&[entry_with_filters(None, None)])
             .expect("list writes");
 
         // Then the key is gone from the document. This is what `ENTRY_FIELDS`
@@ -547,8 +563,8 @@ mod tests {
         // trivially: an empty array already rendered inline, so the fixture
         // never reached the oscillation.
         let saved = entry_with_filters(
-            &NameFilter::deny(["write".to_owned()]),
-            &NameFilter::deny(["bash".to_owned()]),
+            Some(&NameFilter::deny(["write".to_owned()])),
+            Some(&NameFilter::deny(["bash".to_owned()])),
         );
         let mut with_pins = saved.clone();
         with_pins.pins = vec![

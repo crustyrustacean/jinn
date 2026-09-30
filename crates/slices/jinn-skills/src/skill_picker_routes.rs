@@ -290,7 +290,8 @@ struct Seed {
     /// Skills discovered for the active session (cwd-scoped).
     discovered: Vec<Skill>,
     /// The session's skill filter, snapshotted so ESC can restore it whole.
-    skill_filter: NameFilter,
+    /// `None` means the session has no filter at all.
+    skill_filter: Option<NameFilter>,
     /// The active theme, so rows render with the right colors.
     theme: jinn_theme::Theme,
 }
@@ -306,12 +307,17 @@ fn open_skill_picker(ctx: &mut ActionCtx<'_>, cell: &SkillPickerCell) -> IntentR
     let session = state.active_session();
     let seed = Seed {
         discovered: session.discovered_skills().to_vec(),
-        skill_filter: session.skill_filter().clone(),
+        skill_filter: session.skill_filter().cloned(),
         theme: state.frontend.theme.clone(),
     };
 
     cell.update(|picker| {
-        skill_picker_actions::open(picker, &seed.discovered, &seed.skill_filter, &seed.theme);
+        skill_picker_actions::open(
+            picker,
+            &seed.discovered,
+            seed.skill_filter.as_ref(),
+            &seed.theme,
+        );
     });
 
     IntentResult::empty().with_scope_signal(ScopeSignal::Push(skill_picker_scope()))
@@ -332,7 +338,7 @@ fn confirm_skill_picker(ctx: &mut ActionCtx<'_>, cell: &SkillPickerCell) -> Inte
     // makes, and for the same reason.
     state
         .active_session_mut()
-        .set_skill_filter(NameFilter::deny(disabled));
+        .set_skill_filter(Some(NameFilter::deny(disabled)));
     IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(skill_picker_scope()))
 }
 
@@ -446,8 +452,13 @@ fn load_highlighted_skill(ctx: &mut ActionCtx<'_>, cell: &SkillPickerCell) -> In
 /// an allow list would withhold everything that list was permitting.
 fn enable_durably(state: &mut jinn_kernel::AppState, cell: &SkillPickerCell, name: &str) {
     cell.update(|picker| {
+        // A snapshot over an absent filter has to become a present one for
+        // the same reason the session's does: permitting a name is a
+        // configuration change.
         if let Some(snapshot) = picker.snapshot.as_mut() {
-            snapshot.permit(name);
+            snapshot
+                .get_or_insert_with(NameFilter::inherited)
+                .permit(name);
         }
         if picker
             .selection
@@ -460,9 +471,16 @@ fn enable_durably(state: &mut jinn_kernel::AppState, cell: &SkillPickerCell, nam
         }
     });
 
-    let mut filter = state.active_session().skill_filter().clone();
+    // An absent filter has to become a present one here: permitting a name
+    // is a configuration change, and a session with no filter cannot carry
+    // one without the field growing into it.
+    let mut filter = state
+        .active_session()
+        .skill_filter()
+        .cloned()
+        .unwrap_or_else(NameFilter::inherited);
     filter.permit(name);
-    state.active_session_mut().set_skill_filter(filter);
+    state.active_session_mut().set_skill_filter(Some(filter));
 }
 
 /// `<c-r>`: rescan every discovery source.
@@ -546,9 +564,14 @@ pub fn republish_from_discovery(cell: &SkillPickerCell, discovered: &[Skill]) {
             .selection
             .selected_item()
             .map(|item| item.entry().name.clone());
-        let filter = picker.snapshot.clone().unwrap_or_default();
+        let filter = picker.snapshot.clone().flatten();
         let theme = picker.theme.clone();
-        crate::skill_picker_reload::reload_skill_picker(picker, discovered, &filter, &theme);
+        crate::skill_picker_reload::reload_skill_picker(
+            picker,
+            discovered,
+            filter.as_ref(),
+            &theme,
+        );
         if let Some(name) = highlight {
             restore_highlight(picker, &name);
         }

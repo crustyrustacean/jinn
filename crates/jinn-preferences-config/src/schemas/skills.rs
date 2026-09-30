@@ -11,8 +11,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkillsConfig {
     /// Which skills a NEW session may load.
-    #[serde(default, skip_serializing_if = "NameFilter::is_unconfigured")]
-    pub skill_filter: NameFilter,
+    ///
+    /// Absent means a new session starts unrestricted. Present over no names
+    /// is not absent: an allow list naming nothing starts it with no skills.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skill_filter: Option<NameFilter>,
 }
 
 impl jinn_config::Configurable for SkillsConfig {
@@ -27,6 +30,11 @@ mod tests {
     use jinn_core_types::{FilterMode, NameFilter};
 
     use super::SkillsConfig;
+
+    /// The section's filter, which a test always expects to be present.
+    fn filter(config: &SkillsConfig) -> &NameFilter {
+        config.skill_filter.as_ref().expect("filter present")
+    }
 
     #[rstest::rstest]
     fn a_denied_skill_is_read_from_the_filter() {
@@ -44,7 +52,7 @@ mod tests {
         let config = SkillsConfig::from_table(&table).expect("section deserializes");
 
         // Then the skill reads as withheld.
-        assert!(!config.skill_filter.permits("web-search"));
+        assert!(!filter(&config).permits("web-search"));
     }
 
     #[rstest::rstest]
@@ -63,13 +71,13 @@ mod tests {
         let config = SkillsConfig::from_table(&table).expect("section deserializes");
 
         // Then the mode survives, and only a listed skill is permitted.
-        assert_eq!(config.skill_filter.mode, FilterMode::Allow);
-        assert!(config.skill_filter.permits("web-search"));
-        assert!(!config.skill_filter.permits("phased-task-loop"));
+        assert_eq!(filter(&config).mode, FilterMode::Allow);
+        assert!(filter(&config).permits("web-search"));
+        assert!(!filter(&config).permits("phased-task-loop"));
     }
 
     #[rstest::rstest]
-    fn a_section_with_no_filter_permits_every_skill() {
+    fn a_section_with_no_filter_configures_none() {
         // Given a table carrying only an unrelated key.
         let table: toml::Table =
             toml::from_str("default_timeout_secs = 60").expect("test TOML parses");
@@ -77,8 +85,8 @@ mod tests {
         // When reading the section.
         let config = SkillsConfig::from_table(&table).expect("section deserializes");
 
-        // Then every skill is permitted, exactly as before filters existed.
-        assert!(config.skill_filter.permits("web-search"));
+        // Then no filter is configured, exactly as before filters existed.
+        assert!(config.skill_filter.is_none());
     }
 
     #[rstest::rstest]
@@ -93,13 +101,12 @@ mod tests {
         // Then the old key is unknown, so the skill comes back. This is the
         // accepted silent failure of the breaking rename: an existing
         // blocklist stops applying without anything reporting it.
-        assert_eq!(config.skill_filter, NameFilter::default());
-        assert!(config.skill_filter.permits("web-search"));
+        assert!(config.skill_filter.is_none());
     }
 
     #[rstest::rstest]
-    fn an_unconfigured_filter_is_omitted_when_serialized() {
-        // Given a section whose filter names nothing.
+    fn an_absent_filter_is_omitted_when_serialized() {
+        // Given a default section, which configures no filter.
         let config = SkillsConfig::default();
 
         // When serializing it.
@@ -108,5 +115,32 @@ mod tests {
         // Then no filter key is written, so a user's file does not gain an
         // empty table on every save.
         assert!(table.get("skill_filter").is_none());
+    }
+
+    /// A present filter is present on save even when it names nothing: an
+    /// allow list over no skills is the only way to say "no skills at all".
+    #[rstest::rstest]
+    fn a_present_empty_allow_filter_still_writes_its_key() {
+        // Given a section whose filter is an allow list naming nothing.
+        let config = SkillsConfig {
+            skill_filter: Some(NameFilter {
+                mode: FilterMode::Allow,
+                names: Default::default(),
+            }),
+        };
+
+        // When serializing it.
+        let table = toml::Value::try_from(&config).expect("serializes");
+
+        // Then the key is present, carrying an empty name list.
+        let written = table.get("skill_filter").expect("filter key written");
+        assert_eq!(
+            written
+                .get("names")
+                .and_then(toml::Value::as_array)
+                .map(Vec::len),
+            Some(0),
+            "written: {written:?}"
+        );
     }
 }

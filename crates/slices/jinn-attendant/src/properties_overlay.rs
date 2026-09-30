@@ -1279,17 +1279,13 @@ fn permitted_now(
         return BTreeSet::new();
     };
     match field {
-        SetField::Skill => {
-            let filter = session.skill_filter();
-            session
-                .discovered_skills()
-                .iter()
-                .filter(|skill| filter.permits(&skill.name))
-                .map(|skill| skill.name.clone())
-                .collect()
-        }
+        SetField::Skill => session
+            .discovered_skills()
+            .iter()
+            .filter(|skill| session.is_skill_enabled(&skill.name))
+            .map(|skill| skill.name.clone())
+            .collect(),
         SetField::Tool => {
-            let filter = session.tool_filter().clone();
             let provider = session.model_selection().provider_name().to_owned();
             state
                 .tool_registry()
@@ -1298,7 +1294,7 @@ fn permitted_now(
                         .read()
                         .tools_for_session(attendant_id)
                         .into_iter()
-                        .filter(|def| filter.permits(&def.name))
+                        .filter(|def| session.is_tool_enabled(&def.name))
                         .filter(|def| def.available_for_provider(&provider))
                         .map(|def| def.name)
                         .collect()
@@ -1329,7 +1325,7 @@ fn contains_glob(
         SetField::Tool => session.tool_filter(),
         SetField::Skill => session.skill_filter(),
     };
-    filter.names.iter().any(|pattern| is_glob(pattern))
+    filter.is_some_and(|filter| filter.names.iter().any(|pattern| is_glob(pattern)))
 }
 
 /// Whether `pattern` is a glob rather than a plain name.
@@ -1525,15 +1521,21 @@ fn commit_pending_to_session(
 fn committed_filter(
     popup: &jinn_attendant_msg::AttendantPropertiesState,
     field: SetField,
-) -> NameFilter {
+) -> Option<NameFilter> {
     let frozen = popup.pending_set(field);
     match frozen {
-        Some(names) if !names.is_empty() => NameFilter {
+        // A captured set commits as an allow list over exactly those names.
+        // An empty capture is a capture: it is a set frozen to nothing, and
+        // it commits as an allow list naming nothing, which withholds every
+        // name. That is the whole point of the row — refusing the empty case
+        // left a freshly created attendant (which has the parent's filters
+        // but none of its discovered skills) with no way to say so.
+        Some(names) => Some(NameFilter {
             mode: FilterMode::Allow,
             names: names.clone(),
-        },
-        // Live, or frozen over nothing: inherit.
-        _ => NameFilter::default(),
+        }),
+        // Live: no filter at all, so the attendant inherits its parent's.
+        None => None,
     }
 }
 
