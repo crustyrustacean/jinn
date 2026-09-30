@@ -166,8 +166,8 @@ impl ProviderRegistry {
     /// The in-memory half of a picker save: the caller persists the same
     /// change through [`ConfigStorage`](crate::ConfigStorage) first, then
     /// writes it back here so the running process and the file agree.
-    pub fn set_endpoint_default(&mut self, model: String, tag: String) {
-        upsert_endpoint_default(&mut self.config.endpoint_defaults, &model, tag);
+    pub fn set_endpoint_default(&mut self, model: &str, tag: &str) {
+        upsert_endpoint_default(&mut self.config.endpoint_defaults, model, tag);
     }
 
     /// Drops the endpoint row for `model`, if it has one.
@@ -379,12 +379,12 @@ impl ProviderRegistry {
 }
 
 /// Sets `rows[model]` to `tag`, replacing any row already keyed by `model`.
-fn upsert_endpoint_default(rows: &mut Vec<EndpointDefault>, model: &str, tag: String) {
+fn upsert_endpoint_default(rows: &mut Vec<EndpointDefault>, model: &str, tag: &str) {
     match rows.iter_mut().find(|row| row.model == model) {
-        Some(row) => row.tag = tag,
+        Some(row) => row.tag = tag.to_owned(),
         None => rows.push(EndpointDefault {
             model: model.to_owned(),
-            tag,
+            tag: tag.to_owned(),
         }),
     }
 }

@@ -148,7 +148,7 @@ impl Wired {
     /// Confirming no longer writes anything itself — an `ActionCtx` cannot
     /// reach `ConfigStorage` — so the observable effect of the key is the
     /// command it hands the provider actor.
-    fn published_pin(&self, result: jinn_slices::RouteResult) -> Option<SetEndpointDefault> {
+    fn published_pin(result: jinn_slices::RouteResult) -> Option<SetEndpointDefault> {
         #[derive(Default)]
         struct RecordingSink {
             published: std::sync::Mutex<Vec<(String, serde_json::Value)>>,
@@ -639,9 +639,7 @@ async fn confirming_publishes_a_pin_for_the_highlighted_row() {
     let result = wired.fire("confirm-endpoint-picker");
 
     // Then a pin is published for the active session's model.
-    let pin = wired
-        .published_pin(result)
-        .expect("confirming must publish a pin command");
+    let pin = Wired::published_pin(result).expect("confirming must publish a pin command");
     assert_eq!(pin.model, "openrouter/anthropic/claude-sonnet-4.5");
     assert_eq!(pin.tag.as_deref(), Some("us-east"));
 }
@@ -680,9 +678,7 @@ async fn confirming_the_auto_route_sentinel_publishes_a_removal() {
 
     // Then the published command carries no tag, so the row is removed
     // rather than a blank tag written.
-    let pin = wired
-        .published_pin(result)
-        .expect("confirming must publish a pin command");
+    let pin = Wired::published_pin(result).expect("confirming must publish a pin command");
     assert_eq!(pin.model, "openrouter/anthropic/claude-sonnet-4.5");
     assert!(
         pin.tag.is_none(),
@@ -708,7 +704,7 @@ async fn cancelling_closes_without_pinning() {
         Some(ScopeSignal::PopIf(endpoint_picker_scope()))
     );
     assert!(
-        wired.published_pin(result).is_none(),
+        Wired::published_pin(result).is_none(),
         "cancelling must not change the pin"
     );
 }
@@ -725,7 +721,7 @@ async fn confirming_an_empty_menu_pins_nothing() {
     let result = wired.fire("confirm-endpoint-picker");
 
     // Then no pin command is published, so a mistimed Enter cannot clear a pin.
-    assert!(wired.published_pin(result).is_none());
+    assert!(Wired::published_pin(result).is_none());
 }
 
 // ── Refreshing ──────────────────────────────────────────────────────────

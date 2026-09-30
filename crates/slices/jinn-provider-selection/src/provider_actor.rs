@@ -491,7 +491,7 @@ impl ProviderActor {
                 self.deps
                     .services
                     .provider_registry
-                    .set_endpoint_default(msg.model.clone(), tag.clone());
+                    .set_endpoint_default(&msg.model, tag);
             }
             None => self
                 .deps

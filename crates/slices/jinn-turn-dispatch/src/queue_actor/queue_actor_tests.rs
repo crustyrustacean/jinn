@@ -1092,7 +1092,7 @@ async fn services_pinning(model: &str, tag: Option<&str>) -> Services {
 }
 
 /// A queue actor on `services`, with `sid`'s model set to `model`.
-async fn actor_on(services: Services, model: &str) -> (QueueActor, State, SessionId, BusAudit) {
+fn actor_on(services: Services, model: &str) -> (QueueActor, State, SessionId, BusAudit) {
     let (bus, audit) = jinn_kernel::BusService::new_recording();
     let mut services = services;
     services.bus = bus;
@@ -1121,7 +1121,7 @@ async fn actor_on(services: Services, model: &str) -> (QueueActor, State, Sessio
 async fn dispatch_forces_the_endpoint_pinned_for_the_model() {
     // Given a provider config pinning the model to an upstream.
     let services = services_pinning(PINNED_MODEL, Some("anthropic")).await;
-    let (actor, _state, sid, audit) = actor_on(services, PINNED_MODEL).await;
+    let (actor, _state, sid, audit) = actor_on(services, PINNED_MODEL);
 
     // When dispatching a user message.
     actor
@@ -1141,7 +1141,7 @@ async fn dispatch_forces_the_endpoint_pinned_for_the_model() {
 async fn dispatch_auto_routes_a_model_with_no_pinned_endpoint() {
     // Given a provider config with no endpoint pins.
     let services = services_pinning(PINNED_MODEL, None).await;
-    let (actor, _state, sid, audit) = actor_on(services, PINNED_MODEL).await;
+    let (actor, _state, sid, audit) = actor_on(services, PINNED_MODEL);
 
     // When dispatching a user message.
     actor
@@ -1163,7 +1163,7 @@ async fn dispatch_ignores_a_pin_keyed_to_a_different_model() {
     let services = services_pinning("openrouter/some-other-model", Some("anthropic")).await;
 
     // And a session on a different model.
-    let (actor, _state, sid, audit) = actor_on(services, PINNED_MODEL).await;
+    let (actor, _state, sid, audit) = actor_on(services, PINNED_MODEL);
 
     // When dispatching a user message.
     actor

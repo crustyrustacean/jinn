@@ -1007,10 +1007,7 @@ fn set_endpoint_default_adds_a_row_for_an_unpinned_model() {
     let mut registry = registry_with_endpoint_pins(vec![]);
 
     // When pinning a model.
-    registry.set_endpoint_default(
-        "openrouter/anthropic/claude".to_owned(),
-        "anthropic".to_owned(),
-    );
+    registry.set_endpoint_default("openrouter/anthropic/claude", "anthropic");
 
     // Then the held config carries the row.
     let row = crate::endpoint_default::endpoint_default_for(
@@ -1030,7 +1027,7 @@ fn set_endpoint_default_replaces_the_row_for_the_same_model() {
     }]);
 
     // When pinning the same model to a different upstream.
-    registry.set_endpoint_default("openrouter/anthropic/claude".to_owned(), "azure".to_owned());
+    registry.set_endpoint_default("openrouter/anthropic/claude", "azure");
 
     // Then the row is replaced, not duplicated.
     let rows = &registry.config().endpoint_defaults;
@@ -1053,7 +1050,7 @@ fn set_endpoint_default_leaves_other_models_rows_untouched() {
     ]);
 
     // When re-pinning the first model.
-    registry.set_endpoint_default("openrouter/anthropic/claude".to_owned(), "azure".to_owned());
+    registry.set_endpoint_default("openrouter/anthropic/claude", "azure");
 
     // Then the second model's row is untouched.
     let other = crate::endpoint_default::endpoint_default_for(

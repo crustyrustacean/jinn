@@ -89,7 +89,7 @@ pub fn active_routing_label(state: &EndpointPickerState) -> Option<String> {
         .selection
         .items()
         .iter()
-        .map(|item| item.entry())
+        .map(jinn_picker::PickerEntry::entry)
         .find(|entry| entry.is_active)?;
 
     if tag.provider_name.is_empty() {

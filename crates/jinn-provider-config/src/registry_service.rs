@@ -149,7 +149,7 @@ impl ProviderRegistryService {
     /// [`ConfigStorageService::save`](crate::ConfigStorageService::save) first,
     /// then write it back here — disk before memory, so a failed save cannot
     /// leave the run and the file disagreeing.
-    pub fn set_endpoint_default(&self, model: String, tag: String) {
+    pub fn set_endpoint_default(&self, model: &str, tag: &str) {
         self.inner.write().set_endpoint_default(model, tag);
     }
 
