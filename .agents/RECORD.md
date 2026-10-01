@@ -324,6 +324,7 @@ Entries are added or amended **only with human approval**.
 - (preview) The session preview runs at most one render in flight per session, and a result superseded by newer content is dropped rather than cached.
 - (preview) The session preview bounds each entry's previewed text to its last 4096 bytes, because a preview displays at most its last 20 rows.
 - (preview) The session preview popup has a fixed height, derived from the preview's line budget rather than from how many lines its content happens to render to.
+- (preview) The session preview popup is omitted entirely when the cursor row leaves less than its minimum height of space above it, rather than being drawn over the cursor row.
 - (preview) Session preview content is anchored to the bottom of the popup's content area, with overflow dropped from the front, so the newest entry is always the last visible row.
 - (preview) The session preview popup draws its loading indicator on the last row of its content area, horizontally centred, matching the chat log's session-load line.
 - (session) Session activation is one command: the session store actor skips the disk read for a session already in memory and measures its chat log instead, so the sidebar, the session picker, and subagent entry all behave alike.

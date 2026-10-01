@@ -568,6 +568,90 @@ fn preview_popup_rect_for_frame(app: &crate::TuiApp, area: Rect, sidebar: Rect) 
         0,
     );
     jinn_sidebar::sections::sessions::session_preview_popup_rect(area, cursor_y)
+        .expect("the sessions cursor has room above it for a preview")
+}
+
+/// Whether `row` of `area` carries the selected-row style the cursor paints.
+fn is_selected_row(
+    buffer: &ratatui::buffer::Buffer,
+    area: Rect,
+    row: u16,
+    theme: &jinn_theme::Theme,
+) -> bool {
+    (area.x..area.x.saturating_add(area.width)).any(|x| {
+        buffer.cell((x, row)).is_some_and(|cell| {
+            jinn_sidebar::sections::session_row_style::is_selected_row_style(cell.style(), theme)
+        })
+    })
+}
+
+/// Adds `count` loaded sessions to the sidebar and points its cursor at one.
+///
+/// A short terminal scrolls the sessions section up so the cursor stays near
+/// the middle of the column. With more sessions than it can show it does not
+/// have to, which is what leaves the cursor in the rows where the popup has no
+/// room to be drawn at all.
+fn add_loaded_sessions_and_focus_one(app: &crate::TuiApp, count: usize) {
+    let mut state = app.core.state.write();
+    let mut oldest = None;
+    for _ in 0..count {
+        let mut session = jinn_kernel::ChatSessionState::new();
+        session.set_session_state(jinn_session_store_msg::SessionState::Loaded);
+        oldest = Some(session.session_id().clone());
+        state.session.insert(session);
+    }
+    state
+        .frontend
+        .update_sections(|s| s.sessions.selected_id = oldest);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn the_session_preview_leaves_the_cursor_row_readable_on_a_small_terminal() {
+    // Given a TuiApp whose sessions section holds more sessions than the
+    // shortest terminal can show, with the cursor on one of the first rows. This
+    // is the geometry where the popup used to paint over the row that opened it.
+    let mut app = render_test_app().await;
+    {
+        let (mut terminal, _area) = setup_term(40, 15);
+        terminal.draw(|frame| app.render(frame)).unwrap();
+    }
+    focus_sessions_on_loaded_session(&app);
+    add_loaded_sessions_and_focus_one(&app, 40);
+    // A frame to measure the preview width and request at it.
+    {
+        let (mut terminal, _area) = setup_term(40, 15);
+        terminal.draw(|frame| app.render(frame)).unwrap();
+    }
+    fill_preview_cache(&app);
+
+    // When a frame renders.
+    let area = frame_area(40, 15);
+    let (mut terminal, _area) = setup_term(40, 15);
+    terminal.draw(|frame| app.render(frame)).unwrap();
+    let buffer = terminal.backend().buffer().clone();
+
+    // Then the row the cursor is on is still marked as the cursor's. The band is
+    // the mark: the popup is right-aligned to the same edge, so a box reaching
+    // the cursor's row would `Clear` it and leave the row looking like the rest.
+    let theme = app.core.state.read().frontend.theme.clone();
+    let sidebar = AppLayout::new(area, 1, 30, 30).sidebar;
+    let selected_rows: Vec<u16> = (sidebar.y..sidebar.y.saturating_add(sidebar.height))
+        .filter(|row| is_selected_row(&buffer, sidebar, *row, &theme))
+        .collect();
+    assert_eq!(
+        selected_rows.len(),
+        1,
+        "exactly one sidebar row should carry the cursor band: {selected_rows:?}"
+    );
+    // And the cursor really is in the band the popup cannot be drawn in, so
+    // this is measuring the fix rather than a geometry the bug never affected.
+    assert!(
+        selected_rows[0] < 7,
+        "this test is meant to place the cursor where the popup has no room \
+         above it, but the band landed on row {}",
+        selected_rows[0]
+    );
 }
 
 #[rstest::rstest]
@@ -598,7 +682,8 @@ async fn the_popup_keeps_its_borders_where_they_are_as_content_grows() {
     let (mut terminal, _area) = setup_term(100, 60);
     terminal.draw(|frame| app.render(frame)).unwrap();
     let popup =
-        jinn_sidebar::sections::sessions::session_preview_popup_rect(frame_area(100, 60), 35);
+        jinn_sidebar::sections::sessions::session_preview_popup_rect(frame_area(100, 60), 35)
+            .expect("a 60-row frame has room above row 35 for a preview");
     let short_rows = popup_border_rows(terminal.backend().buffer(), popup);
     let short_buffer = terminal.backend().buffer().clone();
 
