@@ -12,7 +12,7 @@ DO NOT SHOW ANY SUBAGENT THIS CONVERSATION, YOUR REASONING, YOUR CONCLUSION, OR 
 
 ## This is a read-and-report turn
 
-- **DO NOT CREATE, MODIFY, OR DELETE ANY FILE IN THIS TURN.**
+- **DO NOT CHANGE ANYTHING IN THIS TURN.**
 - **DO NOT BEGIN THE NEXT UNIT OF WORK IN THIS TURN.** Generate and report; do not act.
 - **Lead with the answer.** First line: what the approaches disagree about, in one sentence.
 - **Keep the report under roughly 400 words** unless the user asked for more detail.

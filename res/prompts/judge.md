@@ -12,7 +12,7 @@ DO NOT SHOW ANY SUBAGENT THIS CONVERSATION, YOUR REASONING, YOUR CONCLUSION, OR 
 
 ## This is a read-and-report turn
 
-- **DO NOT CREATE, MODIFY, OR DELETE ANY FILE IN THIS TURN.**
+- **DO NOT CHANGE ANYTHING IN THIS TURN.**
 - **DO NOT BEGIN THE NEXT UNIT OF WORK IN THIS TURN.** Judge and report; do not act.
 - **Lead with the answer.** First line: the verdict, in one sentence.
 - **Keep the report under roughly 300 words** unless the user asked for more detail.
@@ -23,12 +23,12 @@ DO NOT SHOW ANY SUBAGENT THIS CONVERSATION, YOUR REASONING, YOUR CONCLUSION, OR 
 
 Before spawning anything, write down the criteria. Three slots:
 
-- **MUST include** — what a correct version has to have. Name real things: specific behaviors, files,
-  edge cases. "Handles errors" is not a criterion.
+- **MUST include** — what a correct version has to have. Name real things: specific properties,
+  parts, or cases. "Handles errors well" is not a criterion.
 - **ACCEPTABLE alternative** — ways of doing it that are different from the obvious one but still
   right. Without this slot, reviewers mark down correct work for not looking like what they expected.
-- **MUST NOT** — what ruins it no matter what else is right. Going beyond scope, making up APIs,
-  leaving placeholders, breaking something the user said must hold.
+- **MUST NOT** — what ruins it no matter what else is right. Going beyond scope, making up details
+  that were never specified, leaving gaps, breaking something the user said must hold.
 
 Show the criteria, then proceed. Do not stall on a round trip.
 
@@ -38,9 +38,9 @@ Show the criteria, then proceed. Do not stall on a round trip.
 `judge-3`.
 
 Every reviewer gets the **same brief**. You're after three independent readings of the same thing,
-not three people answering three different questions. Don't hand them your read on the thing —
-they can pick up the codebase themselves, and anything you tell them about what you think of it
-just makes them agree with you.
+not three people answering three different questions. Don't hand them your read on the thing — they
+can look at it themselves, and anything you tell them about what you think of it just makes them
+agree with you.
 
 ```
 <thing>
@@ -89,8 +89,7 @@ Each brief must stand alone. No unfilled placeholders, no trailing input section
 ## Where they split
 
 <Either they all agree, or they don't: who dissented and what they saw. Put this before the tally.
-If two passed it and one said it doesn't hold under concurrent writes, that's the question worth
-asking.>
+If two passed it and one said it doesn't hold up under pressure, that's the question worth asking.>
 
 ## Criteria used
 
@@ -106,10 +105,10 @@ asking.>
 
 ## When this approach is the wrong one
 
-- A tool can answer it. Builds, tests, types, formatting — instant and certain.
+- A tool can answer it. Anything measurable or mechanical — instant and certain.
 - You have several things and want to know which one. Compare them against each other instead.
 - You want ideas nobody's thought of yet. Generate approaches outside the options already ruled out.
-- You want to know how it breaks, not whether it's any good. Break it instead.
+- You want to know how it fails, not whether it's any good. Find its failure modes instead.
 
 </instructions>
 

@@ -12,7 +12,7 @@ DO NOT SHOW ANY SUBAGENT THIS CONVERSATION, YOUR REASONING, YOUR CONCLUSION, OR 
 
 ## This is a read-and-report turn
 
-- **DO NOT CREATE, MODIFY, OR DELETE ANY FILE IN THIS TURN.**
+- **DO NOT CHANGE ANYTHING IN THIS TURN.**
 - **DO NOT BEGIN THE NEXT UNIT OF WORK IN THIS TURN.** Compare and report; do not act.
 - **Lead with the answer.** First line: which option wins, in one sentence.
 - **Keep the report under roughly 400 words** unless the user asked for more detail.
@@ -35,8 +35,8 @@ Show the list, then proceed. Do not stall on a round trip.
 `rank-2`.
 
 Both get the **same brief**, and each one runs the whole comparison on its own. Do not spawn a
-subagent per pair — every subagent has to get its bearings in the codebase before it can do
-anything, and that is the expensive part. Pay for two opinions, not for a tournament.
+subagent per pair — every subagent has to get oriented before it can do anything, and that is the
+expensive part. Pay for two opinions, not for a tournament.
 
 ```
 <options>
@@ -120,7 +120,7 @@ is worth less than it looks.>
 - You want ideas nobody has thought of yet. Generate approaches outside the options already ruled
   out instead.
 - You have one thing and want to know if it's any good. Judge it instead.
-- A tool can decide it. Benchmark both.
+- A tool can decide it. Anything measurable or mechanical.
 
 </instructions>
 

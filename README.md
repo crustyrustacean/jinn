@@ -212,6 +212,27 @@ Use this when you want a `plan` -> `implement` -> `verify` workflow with control
 5. After implementation is complete, you can optionally submit a `#gap-analysis` message.
    - Using the `#gap-analysis` prompt tells the agent to confirm that the implementation meets the acceptance criteria. It will produce a report explaining the acceptance criteria, if it was met, and potential resolutions for gaps.
 
+## Builtin Prompts
+
+`jinn` comes with several builtin prompts.
+
+### General purpose
+
+- `#diverge <the problem>`: find new approaches to a problem
+- `#rank <list of choices>`: determine which is best from a set
+- `#judge <a thing>`: determine if one thing is any good
+- `#falsify <a thing>`: find the ways something goes wrong
+- `#metaprompt <repeatable 1-shot task>`: generate a new prompt which can be used to perform some task. This is meant for smaller tasks that can be completed in 1-2 prompts.
+- `#research <topic>`: search the web and produce a report
+- `#generate-persona <description>`: make a new `jinn` persona. Examples: `ruthless article editor`, `pedantic code reviewer`
+
+### Code-specific
+
+- `#plan <thing to make/do>`: make a high-level plan to build a thing. See [above](#plan-based-feature-implementation) for details.
+- `#approve-plan`: generates a detailed implementation specification. Used as a followup to `#plan` after the high-level plan is proposed.
+- `#goal <thing to accomplish>`: autonomously reach a goal by providing the end state. See [above](#goal-based-feature-implementation) for details.
+- `#gap-analysis`: check an implementation to see if it was done correctly
+
 ## Configuration
 
 jinn is configured via the files in the `~/.config/jinn` directory:

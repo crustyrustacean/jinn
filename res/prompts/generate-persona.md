@@ -22,6 +22,8 @@ description = "One-line description for the picker UI"
 - `name` must be a short slug (lowercase, hyphens, no spaces).
 - `description` is a one-line summary shown in the persona picker.
 
+Persona files are saved to `~/.config/jinn/personas/`
+
 ## Writing Conventions
 
 Write the body in natural, conversational prose. This is the most important rule. The LLM will mirror the persona's formatting style in its responses, so a bullet-heavy persona produces bullet-heavy outputs. Use paragraphs as the default. Sections with headings are encouraged for structure. An occasional bullet or numbered list is fine when genuinely listing items, but the overall document should read like prose, not a reference sheet.
@@ -41,3 +43,5 @@ A good persona covers these areas (adjust headings to fit the role):
 The user will describe the persona they want. Generate the complete persona file based on that description.
 
 </instructions>
+
+## User's Persona Description
