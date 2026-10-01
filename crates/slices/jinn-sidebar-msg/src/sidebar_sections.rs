@@ -437,6 +437,14 @@ pub struct SessionsSectionState {
     /// and cleared by the event announcing that session's outcome, so an
     /// in-flight row is always a session that is genuinely still live.
     pub in_flight: HashSet<SessionId>,
+    /// The row the cursor occupied the last frame it could be resolved on.
+    ///
+    /// Removing the session the cursor names deletes that row, and an identity
+    /// cursor cannot recover a position from post-removal state — so the row is
+    /// remembered here, every frame, and the removal hands the cursor the row
+    /// now sitting where this one was. `None` before the first frame that
+    /// resolves the cursor.
+    pub last_cursor_row: Option<usize>,
 }
 
 impl SessionsSectionState {
@@ -517,4 +525,9 @@ pub struct AttendantSectionState {
     /// projection of the active session's children, and a key bound here acts
     /// on the attendant rather than on the position it happens to occupy.
     pub selected_id: Option<SessionId>,
+    /// The attendant row the cursor was on when the last rendered frame
+    /// resolved it, remembered for the same reason as the sessions section's
+    /// `last_cursor_row`: a removed attendant takes its row with it, and only a
+    /// row captured before the removal can restore the position.
+    pub last_cursor_row: Option<usize>,
 }

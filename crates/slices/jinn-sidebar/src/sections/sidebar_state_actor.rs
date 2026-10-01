@@ -35,6 +35,37 @@ pub const SIDEBAR_STATE_PATH: &str = "sidebar-state";
 /// preview and would leave a spinner up far too long if a worker wedged.
 pub const PREVIEW_DEADLINE: Duration = Duration::from_secs(5);
 
+/// Returns the attendants cursor to the row its attendant occupied, when that
+/// attendant is the one that was removed.
+///
+/// The attendants section draws two screen lines per attendant, so the row is
+/// an index into the section's list — the same unit the section navigates by.
+/// A cursor left naming a removed attendant resolves to nothing at all, which
+/// costs the section its selection band and gives the document no cursor row
+/// to scroll by, so this restores it from the row captured before the removal.
+fn repair_attendant_cursor(
+    session: &mut jinn_session_state::SessionMap,
+    frontend: &mut jinn_kernel::state::frontend_state::FrontendState,
+    removed_id: &jinn_core_types::SessionId,
+) {
+    let cursor = frontend.with_sections(|sections| sections.attendant.selected_id.clone(), || None);
+    let names_removed = cursor.as_ref() == Some(removed_id);
+    if !names_removed {
+        return;
+    }
+    let count = crate::sections::attendants_section::row_count_split(session, frontend);
+    if count == 0 {
+        return;
+    }
+    let row = crate::sections::capture_rows::restored_attendant_row_split(session, frontend);
+    let target = jinn_attendant::section_rows::attendant_rows_split(session, frontend)
+        .get(row)
+        .map(|entry| entry.session_id.clone());
+    if let Some(target) = target {
+        frontend.update_sections(|sections| sections.attendant.selected_id = Some(target));
+    }
+}
+
 /// Actor that adjusts sidebar cursor state in response to session close.
 ///
 /// Holds the shared [`State`] handle, injected at spawn via `start_with`
@@ -100,7 +131,8 @@ impl SidebarStateActor {
                 &payload.session_id,
                 payload.removed_parent.as_ref(),
             );
-            sessions::reconcile_split(view.session.map(), view.frontend);
+            repair_attendant_cursor(view.session.map(), view.frontend, &payload.session_id);
+            sessions::reconcile_split(view.session.map(), view.frontend, payload.was_active);
         });
     }
 
@@ -220,6 +252,7 @@ mod tests {
         actor.handle_session_removed(&SessionRemoved {
             session_id: id.clone(),
             removed_parent: None,
+            was_active: true,
         });
 
         // Then the in-flight mark is cleared.
@@ -280,58 +313,173 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn cursor_falls_back_when_the_session_it_names_is_removed() {
-        // Given a sidebar actor with three sessions, cursor on the last.
-        let actor = test_actor();
-        let (removed_id, first_id) = {
-            let mut state = actor.state.write();
-            let default_id = state.session.active_session_id().clone();
-            state.session.remove_without_replacement(&default_id);
+    /// The row the sessions cursor is drawn on, resolved through the same list
+    /// the rest of the slice reads.
+    fn cursor_row(actor: &SidebarStateActor) -> Option<usize> {
+        let state = actor.state.read();
+        let id = state
+            .frontend
+            .with_sections(|s| s.sessions.selected_id.clone(), || None)?;
+        crate::sections::sessions::state::sorted_open_sessions(&state)
+            .iter()
+            .position(|entry| entry.id == id)
+    }
 
-            let s1 = ChatSessionState::new();
-            let s2 = ChatSessionState::new();
-            let s3 = ChatSessionState::new();
-            let first = s1.session_id().clone();
-            let third = s3.session_id().clone();
-            state.session.insert(s1);
-            state.session.insert(s2);
-            state.session.insert(s3);
-            state.session.set_active(third.clone());
-            state
-                .frontend
-                .update_sections(|s| s.sessions.selected_id = Some(third.clone()));
-            (third, first)
-        };
+    /// Builds `count` extra sessions and returns their ids in the order the
+    /// list draws them.
+    ///
+    /// Row order, not insertion order: roots sort newest-first, so a fixture
+    /// that assumed otherwise would address a different session than the row
+    /// it named, and the test would pass without ever exercising the cursor.
+    fn insert_sessions(actor: &SidebarStateActor, count: usize) -> Vec<jinn_core_types::SessionId> {
+        let mut state = actor.state.write();
+        let default_id = state.session.active_session_id().clone();
+        state.session.remove_without_replacement(&default_id);
+        for index in 0..count {
+            let mut session = ChatSessionState::new();
+            session.set_title(format!("session {index}"));
+            state.session.insert(session);
+        }
+        let ordered: Vec<jinn_core_types::SessionId> =
+            crate::sections::sessions::state::sorted_open_sessions(&state)
+                .into_iter()
+                .map(|entry| entry.id)
+                .collect();
+        // The removal fixtures take the map's only session out before adding
+        // their own, so the active id still names a session that is gone.
+        if let Some(first) = ordered.first() {
+            state.session.set_active(first.clone());
+        }
+        ordered
+    }
 
-        // When the session the cursor names is removed.
+    /// Puts the cursor on the listed row, having first recorded that row the
+    /// way the pre-render pass does every frame.
+    fn place_cursor_on_row(actor: &SidebarStateActor, row: usize) {
+        let state = actor.state.write();
+        let id = crate::sections::sessions::state::sorted_open_sessions(&state)
+            .get(row)
+            .map(|entry| entry.id.clone())
+            .expect("the row under test exists in the list it indexes");
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_id = Some(id));
+        crate::sections::capture_rows::capture_sessions_cursor_row(&state);
+    }
+
+    /// Removes a session the way the store does, optionally leaving the map's
+    /// active id on `retarget_to_row`, and handles the event that follows.
+    ///
+    /// Returns the active session as it stands afterwards, so a test can prove the
+    /// actor moved it rather than leaving the map's own choice alone.
+    fn active_after_removal(
+        actor: &SidebarStateActor,
+        removed_id: &jinn_core_types::SessionId,
+        was_active: bool,
+        retarget_to_row: Option<usize>,
+    ) -> Option<jinn_core_types::SessionId> {
         {
             let mut state = actor.state.write();
-            state.session.remove_without_replacement(&removed_id);
+            state.session.remove_without_replacement(removed_id);
+            let retarget = retarget_to_row.and_then(|row| {
+                crate::sections::sessions::state::sorted_open_sessions(&state)
+                    .get(row)
+                    .map(|entry| entry.id.clone())
+            });
+            if let Some(retarget) = retarget {
+                state.session.set_active(retarget);
+            }
         }
         actor.handle_session_removed(&jinn_session_msg::SessionRemoved {
-            session_id: removed_id,
+            session_id: removed_id.clone(),
             removed_parent: None,
+            was_active,
         });
+        let state = actor.state.read();
+        Some(state.session.active_session_id().clone())
+    }
 
-        // Then the cursor lands on a session that still exists. An identity
-        // cannot run off the end of a list the way an index could, but it can
-        // name a session that just went away, and then there is nothing to
-        // point at.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn cursor_keeps_its_row_when_the_session_it_names_is_removed() {
+        // Given four listed sessions with the cursor on the middle one, and
+        // that row captured from the last rendered frame.
+        let actor = test_actor();
+        let ids = insert_sessions(&actor, 4);
+        place_cursor_on_row(&actor, 1);
+
+        // When the session the cursor names is removed.
+        active_after_removal(&actor, &ids[1], false, None);
+
+        // Then the cursor is on the row the removed session occupied, which
+        // now holds the session that shifted up into it.
+        assert_eq!(cursor_row(&actor), Some(1));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn cursor_moves_to_the_new_last_row_when_removed_from_the_last_one() {
+        // Given three listed sessions with the cursor on the last one, and
+        // that row captured from the last rendered frame.
+        let actor = test_actor();
+        let ids = insert_sessions(&actor, 3);
+        place_cursor_on_row(&actor, 2);
+
+        // When that last session is removed.
+        active_after_removal(&actor, &ids[2], false, None);
+
+        // Then the cursor clamps to the new last row rather than jumping to
+        // the top of the list.
+        assert_eq!(cursor_row(&actor), Some(1));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn the_cursor_becomes_active_when_the_session_it_names_was_active() {
+        // Given four listed sessions with the cursor on row 1, which is also
+        // the active session.
+        let actor = test_actor();
+        let ids = insert_sessions(&actor, 4);
+        {
+            let mut state = actor.state.write();
+            state.session.set_active(ids[1].clone());
+        }
+        place_cursor_on_row(&actor, 1);
+
+        // When it is removed and the map's own retarget leaves the active id
+        // on the last row — neither where the cursor lands nor the top of the
+        // list, so a pass here cannot come from the cursor happening to agree.
+        let active = active_after_removal(&actor, &ids[1], true, Some(2));
+
+        // Then the active session is the row the cursor landed on, so the
+        // selection band and the active indicator agree.
         let state = actor.state.read();
         let cursor = state
             .frontend
-            .with_sections(|s| s.sessions.selected_id.clone(), || None)
-            .expect("a fallback session is chosen");
-        assert!(
-            state.session.contains(&cursor),
-            "the cursor must name a session that exists, got {cursor:?}"
-        );
-        assert_ne!(
-            cursor, first_id,
-            "sanity: the fallback is not the removed one"
-        );
+            .with_sections(|s| s.sessions.selected_id.clone(), || None);
+        assert_eq!(active, cursor, "the cursor's new row becomes active");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn the_active_session_is_unchanged_when_another_session_is_removed() {
+        // Given four listed sessions with the cursor on the last one, and a
+        // different session active.
+        let actor = test_actor();
+        let ids = insert_sessions(&actor, 4);
+        {
+            let mut state = actor.state.write();
+            state.session.set_active(ids[0].clone());
+        }
+        place_cursor_on_row(&actor, 3);
+
+        // When the session the cursor names is removed — one the user was not
+        // reading.
+        let active = active_after_removal(&actor, &ids[3], false, None);
+
+        // Then the user stays in the conversation they were reading, even
+        // though the cursor sits somewhere else.
+        assert_eq!(active, Some(ids[0].clone()));
     }
 
     #[rstest::rstest]
@@ -359,11 +507,12 @@ mod tests {
         actor.handle_session_removed(&jinn_session_msg::SessionRemoved {
             session_id: removed_id.clone(),
             removed_parent: None,
+            was_active: true,
         });
 
         // Then the cursor names the session that replaced it. The old identity
-        // named nothing that exists, so it moves to the row now drawn first —
-        // which under an index would have been the number 0 all along.
+        // named nothing that exists, and with no row captured there is nothing
+        // to restore either — so it falls to the row now drawn first.
         let state = actor.state.read();
         let cursor = state
             .frontend
@@ -398,6 +547,7 @@ mod tests {
         actor.handle_session_removed(&jinn_session_msg::SessionRemoved {
             session_id: removed_id,
             removed_parent: None,
+            was_active: true,
         });
 
         // Then there is no cursor, because there is no session to name.
@@ -440,6 +590,7 @@ mod tests {
         actor.handle_session_removed(&jinn_session_msg::SessionRemoved {
             session_id: removed_id,
             removed_parent: None,
+            was_active: false,
         });
 
         // Then the cursor still names the session it always did. With an
@@ -452,5 +603,64 @@ mod tests {
                 .with_sections(|s| s.sessions.selected_id.clone(), || None),
             Some(cursor_id)
         );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn the_attendant_cursor_keeps_its_row_when_that_attendant_is_removed() {
+        // Given a parent with three attendants, the cursor on the middle one
+        // and that row captured from the last rendered frame.
+        let actor = test_actor();
+        let parent = ChatSessionState::new();
+        let parent_id = parent.session_id().clone();
+        let attendant_ids: Vec<_> = {
+            let mut state = actor.state.write();
+            let default_id = state.session.active_session_id().clone();
+            state.session.remove_without_replacement(&default_id);
+            state.session.insert(parent.clone());
+            (0..3)
+                .map(|index| {
+                    let mut attendant = ChatSessionState::new_attendant(&parent, true);
+                    attendant.set_title(format!("attendant {index}"));
+                    let id = attendant.session_id().clone();
+                    state.session.insert(attendant);
+                    id
+                })
+                .collect()
+        };
+        {
+            let mut state = actor.state.write();
+            state.session.set_active(parent_id.clone());
+        }
+        {
+            let mut state = actor.state.write();
+            state
+                .frontend
+                .update_sections(|s| s.attendant.selected_id = Some(attendant_ids[1].clone()));
+            crate::sections::capture_rows::capture_attendant_cursor_row(&state);
+        }
+
+        // When that attendant is removed.
+        {
+            let mut state = actor.state.write();
+            state.session.remove_without_replacement(&attendant_ids[1]);
+        }
+        actor.handle_session_removed(&jinn_session_msg::SessionRemoved {
+            session_id: attendant_ids[1].clone(),
+            removed_parent: Some(parent_id),
+            was_active: false,
+        });
+
+        // Then the cursor names the attendant now on the row it occupied.
+        let state = actor.state.read();
+        let cursor = state
+            .frontend
+            .with_sections(|s| s.attendant.selected_id.clone(), || None);
+        let rows = jinn_attendant::section_rows::attendant_rows(&state);
+        let index = rows
+            .iter()
+            .position(|row| Some(&row.session_id) == cursor.as_ref())
+            .expect("the cursor names a listed attendant");
+        assert_eq!(index, 1);
     }
 }

@@ -10,6 +10,7 @@
 
 pub mod attendants_reports;
 pub mod attendants_section;
+pub mod capture_rows;
 pub mod intent;
 pub mod layout;
 pub mod mcp_servers_section;

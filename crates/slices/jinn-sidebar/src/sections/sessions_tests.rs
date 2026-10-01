@@ -21,11 +21,27 @@ use ratatui::style::Color;
 
 /// Helper: get a session title from the live session map via a tree entry.
 fn complete_removed_session(state: &mut AppState, removed_id: &jinn_core_types::SessionId) {
+    complete_removed_session_from(state, removed_id, false)
+}
+
+/// As [`complete_removed_session`], for the case where the removed session was
+/// the one the user was reading.
+fn complete_active_session(state: &mut AppState, removed_id: &jinn_core_types::SessionId) {
+    complete_removed_session_from(state, removed_id, true)
+}
+
+fn complete_removed_session_from(
+    state: &mut AppState,
+    removed_id: &jinn_core_types::SessionId,
+    was_active: bool,
+) {
     let removed_parent = state
         .session
         .get(removed_id)
         .and_then(|session| session.parent_session().as_ref().cloned());
     crate::sections::sessions::update_visual_parents_on_removal(state, removed_id);
+    // Recorded the way the pre-render pass does, before the row is gone.
+    crate::sections::capture_rows::capture_sessions_cursor_row(state);
     state.session.remove_without_replacement(removed_id);
     crate::sections::sessions::state::repair_visual_parents_after_removal(
         &state.session,
@@ -33,7 +49,7 @@ fn complete_removed_session(state: &mut AppState, removed_id: &jinn_core_types::
         removed_id,
         removed_parent.as_ref(),
     );
-    crate::sections::sessions::reconcile_after_session_removal(state);
+    crate::sections::sessions::reconcile_after_session_removal(state, was_active);
 }
 
 fn entry_title(state: &AppState, id: &jinn_core_types::SessionId) -> String {
@@ -1519,28 +1535,51 @@ fn navigate_up_from_child_goes_to_parent() {
 
 #[rstest::rstest]
 fn close_child_session_clamps_cursor() {
-    // Given state with a tree, cursor on child_a1.
+    // Given state with a tree, cursor on the last row.
     let mut state = state_with_tree();
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
     let sessions = sorted_open_sessions(&state);
-    let child_a1_index = sessions
-        .iter()
-        .position(|s| entry_title(&state, &s.id).contains("child a1"))
-        .expect("child a1");
-    let child_a1_id = sessions[child_a1_index].id.clone();
-    cursor_to_row(&mut state, child_a1_index);
+    let last_index = sessions.len() - 1;
+    let last_id = sessions[last_index].id.clone();
+    cursor_to_row(&mut state, last_index);
 
-    // When closing child_a1.
-    complete_removed_session(&mut state, &child_a1_id);
+    // When closing it.
+    complete_removed_session(&mut state, &last_id);
 
-    // Then child_a1 is removed.
-    assert!(!state.session.contains(&child_a1_id));
-    // And the cursor is clamped to valid range.
+    // Then the cursor is clamped to the new last row — the row the closed
+    // session occupied, which no longer exists.
     let remaining = sorted_open_sessions(&state);
-    let selected = cursor_row(&state).unwrap();
-    assert!(selected < remaining.len());
+    assert_eq!(cursor_row(&state), Some(remaining.len() - 1));
+}
+
+#[rstest::rstest]
+fn closing_the_active_session_makes_the_cursor_row_active() {
+    // Given state with a tree, cursor on a middle row that is also the active
+    // session.
+    let mut state = state_with_tree();
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+    let sessions = sorted_open_sessions(&state);
+    let middle_index = sessions.len() / 2;
+    let middle_id = sessions[middle_index].id.clone();
+    state.session.set_active(middle_id.clone());
+    cursor_to_row(&mut state, middle_index);
+
+    // When closing it.
+    complete_active_session(&mut state, &middle_id);
+
+    // Then the session the cursor landed on is the active one, so the sidebar
+    // does not show a selection band and an active marker a row apart.
+    let cursor = state
+        .frontend
+        .with_sections(|s| s.sessions.selected_id.clone(), || None);
+    assert_eq!(
+        state.session.active_session_id(),
+        &cursor.expect("a cursor")
+    );
 }
 
 #[rstest::rstest]
@@ -3102,7 +3141,7 @@ fn sidebar_after_archive_tree_cascade_shows_survivors_only() {
     for member in [&root_id, &child_id, &grandchild_id] {
         crate::sections::sessions::update_visual_parents_on_removal(&mut state, member);
         state.session.remove(member);
-        crate::sections::sessions::reconcile_after_session_removal(&mut state);
+        crate::sections::sessions::reconcile_after_session_removal(&mut state, false);
     }
 
     // Then the sidebar lists only the survivor.

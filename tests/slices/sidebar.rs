@@ -71,6 +71,7 @@ async fn session_closed_crosses_to_sidebar_and_moves_cursor() {
         .send(Bridge::publish_closure(SessionRemoved {
             session_id: removed_id.clone(),
             removed_parent: None,
+            was_active: true,
         }));
 
     // Then the sidebar cursor names a session that still exists. It used to

@@ -159,10 +159,16 @@ impl SessionStoreActor {
                 continue;
             }
             self.snapshot_before_removal(session_id);
+            // Read before the removal: `remove_and_replace` points the active
+            // id at whichever session `HashMap` iteration yields first, so
+            // after it there is no way back to whether this was the session the
+            // user was reading.
+            let was_active = self.state.read().session.active_session_id() == session_id;
             let (removed_parent, mcp_enablement) = self.remove_and_replace(session_id);
             self.publish(SessionRemoved {
                 session_id: session_id.clone(),
                 removed_parent,
+                was_active,
             })
             .await;
             self.publish(SessionArchived {

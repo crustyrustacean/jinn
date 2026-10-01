@@ -73,9 +73,51 @@ fn selected_id(state: &AppState) -> Option<SessionId> {
 /// rows happen to be built in list order.
 fn selected_row(state: &AppState) -> Option<usize> {
     let id = selected_id(state)?;
+    row_of(state, &id)
+}
+
+/// Which row of the section's list this attendant is drawn on.
+///
+/// The section's own list, in its own order — two screen lines per attendant,
+/// so the unit here is the attendant, not the screen row.
+#[must_use]
+pub fn row_of(state: &AppState, id: &SessionId) -> Option<usize> {
     attendant_rows(state)
         .iter()
-        .position(|row| row.session_id == id)
+        .position(|row| &row.session_id == id)
+}
+
+/// How many attendants the section is listing.
+#[must_use]
+pub fn row_count(state: &AppState) -> usize {
+    attendant_rows(state).len()
+}
+
+/// Which row of the section's list this attendant is drawn on, from the map and
+/// frontend state separately.
+///
+/// The removal path holds both mutably at once and still needs to ask the same
+/// question the render pass asks, so the section's list is resolved here rather
+/// than reconstructed.
+#[must_use]
+pub fn row_of_split(
+    session: &jinn_session_state::SessionMap,
+    frontend: &jinn_kernel::state::frontend_state::FrontendState,
+    id: &SessionId,
+) -> Option<usize> {
+    jinn_attendant::section_rows::attendant_rows_split(session, frontend)
+        .iter()
+        .position(|row| &row.session_id == id)
+}
+
+/// How many attendants the section lists, from the map and frontend state
+/// separately.
+#[must_use]
+pub fn row_count_split(
+    session: &jinn_session_state::SessionMap,
+    frontend: &jinn_kernel::state::frontend_state::FrontendState,
+) -> usize {
+    jinn_attendant::section_rows::attendant_rows_split(session, frontend).len()
 }
 
 /// Moves the cursor to `row`, reporting exhaustion at the edges.
@@ -115,6 +157,7 @@ pub(crate) fn receive_cursor(state: &mut AppState, enter_from: EnterFrom) {
             .update_sections(|s: &mut jinn_sidebar_msg::SidebarSections| {
                 s.attendant = AttendantSectionState {
                     selected_id: Some(id),
+                    ..AttendantSectionState::default()
                 };
             });
     }
