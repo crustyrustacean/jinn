@@ -42,7 +42,7 @@ highlights:
   alloy mode; `<c-r>` refreshes the model list from the provider.
 - **Tool / Skill**: `<Tab>` toggles the highlighted entry on/off for this
   session. Toggles are per-session and persist; they never write back to the
-  `disabled_tools` / `disabled_skills` defaults in `jinn.toml`.
+  `tool_filter` / `skill_filter` defaults in `jinn.toml`.
 - **Skill**: `<c-l>` loads the highlighted skill's body into context as a
   pinned tool-result pair (the picker stays open, so you can load several);
   loading auto-enables a disabled skill. `<c-u>`/`<c-d>` scroll the markdown

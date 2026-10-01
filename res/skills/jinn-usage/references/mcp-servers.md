@@ -61,6 +61,6 @@ preview). The agent can also restart a dead server itself via its built-in
 Enabled servers register their tools for the session automatically (namespace
 `mcp__<server>__<tool>`); disabling unregisters them, so the model's context
 stays clean. Tool-call timeouts and other tool defaults come from
-`tool_default_timeout_secs` in `jinn.toml`. Disable individual MCP tools the
+`default_timeout_secs` in `jinn.toml`. Disable individual MCP tools the
 same way as built-ins: the tool picker (`<leader>st`), or the
-`disabled_tools` default in `jinn.toml` using the full namespaced name.
+`tool_filter` default in `jinn.toml` using the full namespaced name.

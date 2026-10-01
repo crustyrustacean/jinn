@@ -133,7 +133,7 @@ to every section:
 | Key               | Action                                                         |
 | ----------------- | -------------------------------------------------------------- |
 | `j` / `k`         | Move down / up within the section                              |
-| `J` / `K`         | Next / previous section (wraps)                                |
+| `J` / `K`         | Next / previous section (stops at the ends)                     |
 | `<esc>` / `<c-h>` | Leave the sidebar, back to chat                                |
 | `<c-w>`           | Enter sidebar resize mode (`h`/`l` widen/narrow, `<esc>` done) |
 | `q`, `<c-c>`, `?` | Quit / quit / which-key                                        |
@@ -170,6 +170,25 @@ to every section:
 | `c`       | Continue: switch to the session and re-run its setup command             |
 | `s`       | Re-run the session's setup command                                       |
 | `T`       | Toggle the terminal overlay for the selected session                     |
+
+Section navigation does not wrap: `J` on the last section (Sessions) and `K`
+on the first (Persona) do nothing. Sections with nothing in them are skipped
+over, so a section you never see is still reachable.
+
+### Attendants section
+
+Sessions that watch another session. See `attendants.md` for what an attendant
+is, and for the properties popup's and the pickers' own keys.
+
+| Key       | Action                                                |
+| --------- | ----------------------------------------------------- |
+| `<enter>` | Switch to the highlighted attendant                   |
+| `i`       | Switch to it and enter input mode                     |
+| `P`       | Open the attendant's properties popup                 |
+| `s`       | Browse the highlighted attendant's report history     |
+
+`N` (new attendant) and `R` (re-run) work only in the **Sessions** section,
+not here — they act on the session selected there.
 
 ### Task-list section
 
