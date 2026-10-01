@@ -462,6 +462,28 @@ pub fn attach_rows(routes: &KeyRoutes, toggle_key: &'static str) {
         }),
     ));
 
+    // A bracketed paste in capture mode goes to the pty verbatim. The row
+    // is keyless like `send-key` (a paste is not a keystroke): the kernel's
+    // paste branch re-mints the intent against the focused scope, and this
+    // row delivers it. It routes through `handle_send_key` so the
+    // control-holder check stays the single gate — a paste must not be a
+    // second, unchecked way to write to the terminal.
+    routes.attach(row(
+        "send-paste",
+        control.clone(),
+        "",
+        "general",
+        "paste text to terminal",
+        BindSite::OwnScope,
+        ActionFn::new(|mut ctx| {
+            // The kernel's paste branch delivers the text in the ctx's
+            // byte payload, and the pty takes bytes verbatim — no decode,
+            // no newline translation.
+            let bytes = std::mem::take(&mut ctx.key_bytes);
+            handle_send_key(app(&mut ctx), bytes)
+        }),
+    ));
+
     // Shared chrome: quit + which-key popup.
     routes.attach(chrome_row(view.clone(), "q", "term:quit"));
     routes.attach(chrome_row(view, "?", "term:which-key"));

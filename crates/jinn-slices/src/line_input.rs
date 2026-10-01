@@ -44,15 +44,24 @@ impl LineInput {
         self.cursor_pos += ch.len_utf8();
     }
 
-    /// Bulk-inserts `text` at the cursor, advancing the cursor by `text.len()` bytes.
+    /// Bulk-inserts `text` at the cursor, advancing the cursor by the
+    /// inserted text's byte length.
     ///
-    /// No-op when `text` is empty.
+    /// Line breaks are stripped: a [`LineInput`] is a single-line field, so
+    /// a multi-line paste collapses to one line rather than producing a
+    /// value the field cannot represent. This mirrors what every picker
+    /// filter already did with pasted newlines, so a paste lands the same
+    /// way whichever single-line surface holds focus. The multi-line chat
+    /// input box does not use this type and keeps its newlines.
+    ///
+    /// No-op when the text holds nothing but line breaks.
     pub fn paste(&mut self, text: &str) {
-        if text.is_empty() {
+        let flattened = text.replace(['\n', '\r'], "");
+        if flattened.is_empty() {
             return;
         }
-        self.input.insert_str(self.cursor_pos, text);
-        self.cursor_pos += text.len();
+        self.input.insert_str(self.cursor_pos, &flattened);
+        self.cursor_pos += flattened.len();
     }
 
     /// Deletes the grapheme immediately before the cursor.

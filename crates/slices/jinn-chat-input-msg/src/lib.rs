@@ -12,6 +12,19 @@ pub use file_picker_state::{FileEntry, FilePickerState, file_picker_slot, resolv
 pub use scope::chat_input_scope;
 pub use slash_command::{SlashCommand, SlashCommandEntry};
 
+/// The action name a bracketed paste dispatches to.
+///
+/// A bracketed paste is not a keystroke, so it carries no key and binds no
+/// keymap entry. It travels as a dynamic intent under this name, and the
+/// kernel routes it to whichever surface currently holds focus: the focused
+/// scope's input hook, that scope's own paste row, or — when focus is not a
+/// dynamic slice scope — the chat input box.
+///
+/// The name lives in this crossing crate rather than in
+/// `jinn-chat-input` so the kernel can mint the intent it routes without
+/// depending on a slice implementation crate.
+pub const PASTE_TEXT_ACTION: &str = "paste-text";
+
 #[cfg(test)]
 mod tests {
     use super::*;

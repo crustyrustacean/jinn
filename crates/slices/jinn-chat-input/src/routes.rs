@@ -331,7 +331,10 @@ pub fn attach_insert_char_row(routes: &KeyRoutes) {
 }
 
 /// The action name a bracketed paste dispatches to.
-pub const PASTE_TEXT_ACTION: &str = "paste-text";
+///
+/// Re-exported from the crossing crate: the kernel mints the same
+/// intent name while routing a paste to whichever surface holds focus.
+pub use jinn_chat_input_msg::PASTE_TEXT_ACTION;
 
 /// Attaches the `paste-text` row.
 ///

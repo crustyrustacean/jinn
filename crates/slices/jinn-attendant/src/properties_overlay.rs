@@ -954,12 +954,10 @@ pub fn attendant_properties_input_hook(cell: &AttendantPropertiesCell) -> InputH
                 Some(IntentResult::empty())
             }
             EditIntent::Paste(text) => {
+                // The seed-template field is a single-line `LineInput`, so
+                // its paste flattens line breaks like every other one.
                 let text = text.clone();
-                cell.update(move |s| {
-                    for ch in text.chars() {
-                        s.seed_template.insert_char(ch);
-                    }
-                });
+                cell.update(move |s| s.seed_template.paste(&text));
                 Some(IntentResult::empty())
             }
             EditIntent::CursorLeft => {
