@@ -1,5 +1,9 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Do not make edits)**
 
+## (development)
+
+- Agents should be less likely to use the `interactive_term` `max_duration_seconds` parameter as a sleep function.
+
 ## 2026-09-30 v1.2.1
 
 - Embedded resources meant to ship in v1.2.0 are now included.
