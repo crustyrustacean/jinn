@@ -6,31 +6,83 @@ A TUI agent harness with multi-session support and Vim-style keybinds.
 
 ## Major Features
 
-- Run any number of concurrent sessions, with live preview during session navigation
-- Which-key style keybind system with help popup
-- Quickly navigate and change things via Telescope-inspired pickers:
-  - Change model/provider, skills, tools, MCP servers, OpenRouter endpoints + more.
-- Fork a new session from any message by hitting `f`
-- Run TUI apps in a separate task that an agent can interact with
-  - TUI app runs continuously in the background without blocking the agent or `jinn`
-  - Take or release control of the TUI app within `jinn` at any time
-  - Send TUI "screenshots" to the agent with a single keystroke
-- Agent-managed task list with progress display
-- Customizable personas for maximum agent behavior configurability (See [System Prompt](#system-prompt))
-- Fine-grained context management and feedback:
-  - Background workers continuously manage the context while sessions are in-progress. Changes are buffered(configurable) to take advantage of prefix cache pricing.
-  - Individual chat entries can toggled in and out of context using `x`, good for when you send a message but then change your mind. No context poisoning!
-  - Pin messages with `p` to keep them in context indefinitely, with coarse positioning (start/mid/end).
-  - Made a plan and want to implement it? Use keybind `gci` on the plan message to "isolate" it, which excludes everything except the selected message and pins.
-  - Auto compaction exists as an emergency backstop and should _almost never_ fire when doing anything even remotely related to building software. If your sessions get compacted _at all_ while coding, please **open an issue** describing your workflow and provide your `[auto_prune*]` and `[compaction]` sections from your `jinn.toml` file along with the model you used.
-  - Cache hit rate indicator should floor at 98% _during agentic coding loops_ (usually 99%). Anything lower than 98% means your configuration should be adjusted.
-- Standard agent harness-y things like `AGENTS.md`, `~/.agents` skill discovery, custom prompts, MCP server support, subagents/tasks, usage display.
-  - Subagents/tasks are regular sessions that are linked together in a tree, so you can steer an in-progress subagent or fork a new session from it.
-  - Stats are all tracked and displayed per-session. When a session is part of a tree, aggregated information is shown as a secondary display so you'll have totals for the entire tree.
+### Multi-session
 
-![WhichKey](doc/whichkey.png)
-![Skill Picker](doc/skill-picker.png)
-![Task Preview](doc/task-preview.png)
+Run any number of concurrent sessions, with live preview session navigation.
+- First-class forking and subagent support
+- Cache hit %, tokens up/down, context usage/max, total spend, and number of turns tracked per session and aggregated across forks, subagents, and attendants.
+
+![Multisession](doc/screenshots/multi-session.png)
+
+![Status bar](doc/screenshots/status-bar.png)
+
+### Terminal-first experience with Vim-style keybinds
+
+- WhichKey-like keybinding and popup help
+- Navigate the interface with `hjkl`
+- Fork a new session from any message by hitting `f`
+- Toggle messages in and out of context with `x`
+- Yank a message with `y`
+- Shell out to `$EDITOR` for new chat messages
+
+![WhichKey](doc/screenshots/which-key.png)
+
+### Pickers
+
+Quickly navigate and change things via Telescope-inspired pickers:
+  - Change model/provider, skills, tools, MCP servers, OpenRouter endpoints + more.
+
+![Pickers](doc/screenshots/pickers.png)
+
+### Attendants
+
+Attach "attendants" to sessions that fire on agent turn end (or manually with `R`). Things that attendants can do:
+
+- Multi-agent judge panels
+- Agent continuation when agent stops mid-task (shipped by default as `auto-nudge`)
+- Task completion checker
+- Code quality gate
+- Automatically fetch issues from a tracker and start bugfix sessions
+
+They can be created entirely in-app by typing in the instructions, turning it on, and optionally saving to your `jinn.toml` so they can be attached to other sessions.
+
+![Attendants](doc/screenshots/attendant.png)
+
+### Task/todo list
+
+Agent-managed task list with task search.
+
+![Task List](doc/screenshots/task-list.png)
+
+### Interative term
+
+Run TUI apps in a separate task that an agent can interact with.
+
+- TUI app runs continuously in the background without blocking the agent or `jinn`
+- Take or release control of the TUI app within `jinn` at any time
+- Send TUI "screenshots" to the agent with a single keystroke
+
+![Interactive term](doc/screenshots/interactive-term.png)
+
+
+### Comprehensive context management  
+
+- Background workers continuously manage the context while sessions are in-progress. Changes are buffered(configurable) to take advantage of prefix cache pricing.
+- Individual chat entries can toggled in and out of context using `x`, good for when you send a message but then change your mind to avoid context poisoning.
+- Pin messages with `p` to keep them in context indefinitely, with coarse positioning (start/mid/end).
+- Made a plan and want to implement it? Use keybind `gci` on the plan message to "isolate" it, which excludes everything except the selected message and pins. No spawning of dedicated subagents or session forking needed.
+- Auto compaction exists as an emergency backstop and should _almost never_ fire when doing anything even remotely related to building software. If your sessions get compacted _at all_ while coding, please **open an issue** describing your workflow and provide your `[auto_prune*]` and `[compaction]` sections from your `jinn.toml` file along with the model you used.
+- Cache hit rate indicator should floor at 98% _during agentic coding loops_ (usually 99%). Anything lower than 98% means your configuration should be adjusted.
+
+### System prompt configuration
+
+Almost all of the "system prompt" / prefix can be configured, with the main driving being customizable personas. See [System Prompt](#system-prompt) for details.
+
+![Personas](doc/screenshots/personas.png)
+
+### etc
+- Standard agent harness-y things like `AGENTS.md`, `~/.agents` skill discovery, custom prompts, MCP server support, subagents/tasks, usage display.
+- Subagents/tasks are regular sessions that are linked together in a tree, so you can steer an in-progress subagent or fork a new session from it.
 
 ## Usage
 
