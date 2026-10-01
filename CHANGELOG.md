@@ -1,6 +1,11 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Do not make edits)**
 
-## (trunk)
+## 2026-09-30 v1.2.1
+
+- Embedded resources meant to ship in v1.2.0 are now included.
+  - Changed internal architecture to embed by directory instead of individual files.
+
+## 2026-09-30 v1.2.0
 
 - OpenRouter endpoint selection is now persisted automatically to `providers.toml`.
 - Bugfix: `gci` now works when a pinned entry is selected.
