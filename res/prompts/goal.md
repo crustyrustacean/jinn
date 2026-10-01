@@ -448,8 +448,8 @@ something unreachable, say so and ask what to do instead.
 
 3.  When you have enough information. Create a "CONTRACT BRIEF" containing the
     PROBLEM and END STATE and FINAL INVENTORY and DONE WHEN to the user as a
-    chat response. These are the fields from the full Task Contract, abbreviated
-    for user approval _before_ writing the complete Task Contract.
+    chat response. These are the fields from the full TASK CONTRACT, abbreviated
+    for user approval _before_ writing the complete TASK CONTRACT.
     - Ask the user to approve the brief or to make changes.
     - AFTER THE USER APPROVES THE BRIEF: propose the entire contract (step 4) while incorporating the approved brief sections.
 
