@@ -11,6 +11,7 @@ jinn-skills = { workspace = true }
 jinn-common = { workspace = true }
 error-stack = { workspace = true }
 wherror = { workspace = true }
+include_dir = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
