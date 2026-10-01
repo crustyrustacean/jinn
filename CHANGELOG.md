@@ -5,13 +5,28 @@
 - OpenRouter endpoint selection is now persisted automatically to `providers.toml`.
 - Bugfix: `gci` now works when a pinned entry is selected.
 - Session preview will no longer obscure the session selection cursor on small terminals.
+- Session preview border is now colorized based on session type:
+  - Regular session: gray
+  - Subagent: purple
+  - Attendant: pink
+- Subagent and attendant sessions now display a colored indicator in the bottom right corner of the chat history section.
+- The sidebar selection cursor now spans the entire width of the sidebar
 - Canceling a session now recursively cancels child subagents and attendants.
   - The cascade skips child _forks_ under the assumption that forked sessions are now operating independently.
 - Add attendants. See README for details.
-- `jinn.toml` now supports allow or deny list for tools and skills:
+- `jinn.toml` now supports allow or deny list for tools and skills, replacing the `disabled` key:
 
 ```toml
+[tools]
+# NO LONGER WORKS!
+# disabled = ["..."]
 
+# "deny" mode works the same as the previous "disabled" key. The `grep` tool will be disabled in all new sessions.
+tool_filter = { mode = "deny", names = ["grep"] }
+
+[skills]
+# "allow" mode is an allow list. All tools are disabled except for the ones listed
+skill_filter = { mode = "allow", names = ["read"] }
 ```
 
 ## 2026-09-27 v1.1.2
