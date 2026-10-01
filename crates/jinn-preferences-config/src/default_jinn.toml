@@ -383,7 +383,6 @@ prep_mode = false
 reasoning_effort = "high"
 seed_template = "The previous run of this attendant reported: <prior report>."
 trigger = "parent_completed"
-model = { single = "openrouter/deepseek/deepseek-v4.1-flash" }
 tool_filter = { mode = "allow", names = ["conclude", "notify_parent", "session_fetch", "session_search"] }
 skill_filter = { mode = "allow", names = [] }
 
