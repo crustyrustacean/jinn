@@ -31,4 +31,5 @@ build/
 ^\.plans/
 chat-export*
 jinn.toml
+test.toml
 research/
