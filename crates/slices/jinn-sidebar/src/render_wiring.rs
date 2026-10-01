@@ -85,14 +85,36 @@ fn rename_scope() -> SliceScopeId {
 /// runs them.
 ///
 /// The pre-render pass holds one write lock and drives these in
-/// sequence, so the order is part of the contract: the preview width
-/// is recorded before anything reads it, and the scroll offset is
-/// written after the geometry that depends on it.
+/// sequence, so the order is part of the contract: the cursor rows
+/// are recorded before anything reads them, the preview width is
+/// recorded before anything reads it, and the scroll offset is written
+/// after the geometry that depends on it.
 pub fn register_pre_render_hooks(slices: &jinn_slices::Slices) {
     slices.push_pre_render_hook::<AppState>(Arc::new(record_preview_width));
     slices.push_pre_render_hook::<AppState>(Arc::new(request_session_preview));
+    slices.push_pre_render_hook::<AppState>(Arc::new(record_cursor_rows));
     slices.push_pre_render_hook::<AppState>(Arc::new(write_task_list_geometry));
     slices.push_pre_render_hook::<AppState>(Arc::new(write_scroll_offset));
+}
+
+/// Records which row each sidebar cursor is sitting on.
+///
+/// Unconditional, like [`record_preview_width`] and unlike the two hooks below
+/// it: a cursor's row is a fact about state, not about the current frame's
+/// geometry. A frame drawn in a full-width tab has no sidebar column at all, and
+/// a frame drawn while the chat pane holds focus still knows where the sidebar's
+/// cursors are — gating either of those away is how the record goes stale
+/// exactly when a removal needs it.
+///
+/// Runs before the scroll offset is written, which is derived from the cursor
+/// row the frame is drawing: the two must describe the same frame.
+fn record_cursor_rows(
+    state: &mut AppState,
+    _ctx: &PreRenderCtx<'_>,
+) -> Vec<jinn_slices::route::PublishClosure> {
+    crate::sections::capture_rows::capture_sessions_cursor_row(state);
+    crate::sections::capture_rows::capture_attendant_cursor_row(state);
+    Vec::new()
 }
 
 /// Records the width a session preview wraps its lines at.

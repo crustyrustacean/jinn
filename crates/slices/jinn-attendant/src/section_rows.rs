@@ -42,7 +42,15 @@ pub struct AttendantRow {
 /// attendant's siblings visible from inside a sibling.
 #[must_use]
 pub fn attendant_context_of(state: &AppState) -> jinn_core_types::SessionId {
-    let active = state.active_session();
+    attendant_context_of_split(&state.session)
+}
+
+/// Split-borrow variant of [`attendant_context_of`].
+#[must_use]
+pub fn attendant_context_of_split(
+    session: &jinn_session_state::SessionMap,
+) -> jinn_core_types::SessionId {
+    let active = session.active_session();
     match active.parent_session() {
         Some(parent) => parent.clone(),
         None => active.session_id().clone(),
@@ -60,9 +68,21 @@ pub fn attendant_context_of(state: &AppState) -> jinn_core_types::SessionId {
 /// question the user did not ask from a screen they are not on.
 #[must_use]
 pub fn attendant_rows(state: &AppState) -> Vec<AttendantRow> {
-    let context = attendant_context_of(state);
-    let mut rows: Vec<AttendantRow> = state
-        .session
+    attendant_rows_split(&state.session, &state.frontend)
+}
+
+/// Split-borrow variant of [`attendant_rows`].
+///
+/// Same rows in the same order — one implementation, so a caller holding
+/// mutable frontend state (the sidebar's removal path) resolves the list
+/// through exactly the function the render pass uses rather than rebuilding it.
+#[must_use]
+pub fn attendant_rows_split(
+    session: &jinn_session_state::SessionMap,
+    _frontend: &jinn_kernel::state::frontend_state::FrontendState,
+) -> Vec<AttendantRow> {
+    let context = attendant_context_of_split(session);
+    let mut rows: Vec<AttendantRow> = session
         .iter()
         .filter(|(_, session)| {
             session.is_attendant()
@@ -74,7 +94,7 @@ pub fn attendant_rows(state: &AppState) -> Vec<AttendantRow> {
             let parent_activity = attendant
                 .parent_session()
                 .as_ref()
-                .and_then(|parent_id| state.session.get(parent_id))
+                .and_then(|parent_id| session.get(parent_id))
                 .map(|parent| *parent.last_history_activity_at());
             let is_stale = match (latest, parent_activity) {
                 (Some(report), Some(activity)) => report.published_at < activity,

@@ -137,7 +137,7 @@ Entries are added or amended **only with human approval**.
 - (selection) Chat entry selection applies an accumulated-exclude guard that only takes effect after a threshold, with per-entry forced include/exclude tracked separately.
 - (session) A replacement session seeded on archive inherits reasoning effort from the global default.
 - (session) An empty session that was never interacted with is not persisted on archive.
-- (session) Archiving the last active session creates a new one; archiving an empty session removes and archives it; archiving the active session switches to the next one.
+- (session) Archiving the last active session creates a new one; archiving an empty session removes and archives it; archiving the active session makes the row the sidebar cursor lands on the active session.
 - (session) Entry kinds round-trip through serialization; image attachments are allowed only on models confirmed image-capable via models.dev — text-only and unknown models are blocked with an error entry.
 - (session) Model selection supports alloy (multi-provider) configs that round-trip through serde; `as_single` returns `None` for an alloy and the string for a single model.
 - (session) A session can pin one OpenRouter endpoint on its profile; when pinned and the model is served via the OpenRouter backend, dispatch forces that endpoint with `provider.order=[tag]` and `allow_fallbacks:false` for prefix-cache affinity.
@@ -444,3 +444,5 @@ Entries are added or amended **only with human approval**.
 - (ui) The attendants sidebar section binds the same activation keys as the sessions section, so an attendant's conversation can be opened from either list. Opening one previously required routing through the sessions list, even though the attendants section already had the highlighted session in hand.
 - (session) A session's kind label survives beside the busy indicator rather than replacing it, because the spinner cannot remain a widget: a widget takes the whole area it is handed and there is no way to hold a second element at its right edge. The throbber becomes a `Line` via `to_line`, which reads the same `ThrobberState` — and still needs normalizing before the read, or the stored step drifts out of range across an idle stretch and the widget has to clamp it back.
 - (session) Advancing the busy indicator's animation step is gated on a spinner actually being drawn. Once a kind label alone can get the row past the early return, an idle attendant session draws every frame, and an ungated step would spend that idle time spinning up a spinner it never shows.
+- (sidebar) Removing a session leaves the sessions cursor on the row it occupied, clamped to the new last row.
+- (sidebar) The attendants cursor returns to the attendant it was on when that attendant is removed, clamped to the new last one.

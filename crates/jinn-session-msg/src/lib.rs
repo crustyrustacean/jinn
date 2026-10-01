@@ -174,6 +174,14 @@ pub struct SessionRemoved {
     pub session_id: SessionId,
     /// The removed session's persisted direct parent, captured before deletion.
     pub removed_parent: Option<SessionId>,
+    /// Whether the removed session was the active one, captured before deletion.
+    ///
+    /// Carried rather than reconstructed: once the session is gone the active id
+    /// already names whatever `remove_and_replace` moved it to, so a consumer
+    /// cannot tell whether the user was reading this session when it left. That
+    /// distinction decides whether the next session becomes active, and getting
+    /// it wrong pulls the user out of a conversation they are still reading.
+    pub was_active: bool,
 }
 
 /// Emitted when archiving a session did not complete, leaving it live.
@@ -294,6 +302,7 @@ mod tests {
             SessionRemoved {
                 session_id: id.clone(),
                 removed_parent: Some(removed_parent.clone()),
+                was_active: true,
             },
         );
 
@@ -317,5 +326,6 @@ mod tests {
         assert_eq!(restored.3.session_id, id);
         assert_eq!(restored.4.session_id, id);
         assert_eq!(restored.4.removed_parent, Some(removed_parent));
+        assert!(restored.4.was_active);
     }
 }
