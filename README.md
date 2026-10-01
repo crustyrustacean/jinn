@@ -4,6 +4,8 @@ A TUI agent harness with multi-session support and Vim-style keybinds.
 
 [CHANGELOG](./CHANGELOG.md)
 
+![Screenshot](doc/screenshots/full.png)
+
 ## Major Features
 
 ### Multi-session
