@@ -55,6 +55,13 @@ pub(crate) const POPUP_FOOTER_ROWS: u16 = 3;
 /// Two rows leaves a one-row gap, so the popup reads as a separate surface
 /// rather than colliding with the highlighted session row.
 const POPUP_GAP: u16 = 2;
+/// The shortest popup worth drawing: two borders, three footer rows, and at
+/// least one row of content — a box with nothing in it says nothing.
+///
+/// Also the room the cursor must leave above it. A box shorter than this would
+/// have no content row at all, so a cursor with less room than this above it
+/// gets no popup rather than one drawn over itself.
+const MIN_POPUP_HEIGHT: u16 = 5;
 
 /// Renders the session preview popup when the sidebar sessions section is focused.
 ///
@@ -150,19 +157,23 @@ pub fn render_session_preview_for_state(
             recorded_width=state.frontend.with_sections(|s| s.sessions.preview_content_width, || 0),
             "session preview has nothing cached and nothing in flight");
     }
+    // Resolved once for both states below, so the loading box and the ready box
+    // are the same rect and the surface cannot resize when the lines land.
+    // `None` means the cursor leaves no room above it for a box that has a
+    // content row; there is then no rect that does not cover the cursor, so
+    // nothing is drawn. Whichever way this goes, the cursor row is untouched.
+    let Some(popup_rect) = session_preview_popup_rect(frame_area, cursor_y) else {
+        return;
+    };
+
     let Some(lines) = cached else {
         // Nothing has ever been drawn for this session, at any content or width.
         // `cached` returning `None` is what distinguishes loading from empty — an
         // empty session renders zero lines but is still a cache hit, so it takes
         // the branch below and shows the empty state rather than spinning forever.
-        // The rect is the same one the ready path draws, so the box does not
-        // resize when the lines land.
-        let popup_rect = session_preview_popup_rect(frame_area, cursor_y);
         render_session_preview_loading(frame, popup_rect, session, theme);
         return;
     };
-
-    let popup_rect = session_preview_popup_rect(frame_area, cursor_y);
 
     render_session_preview(frame, popup_rect, session, theme, &lines);
 }
@@ -625,7 +636,14 @@ fn render_model_line(
 ///
 /// The only thing that varies the height is the cap — a terminal with less room
 /// above the cursor than the popup wants gets a shorter box.
-pub fn session_preview_popup_rect(frame_area: Rect, cursor_y: u16) -> Rect {
+///
+/// Returns `None` when there is no room above the cursor for even the shortest
+/// box worth drawing. The popup hangs above the cursor rather than beside it, so
+/// below that floor the only rect it could occupy is the cursor's own row: the
+/// alternative is a box drawn over the row that opened it, which leaves the user
+/// without either the cursor or the preview.
+#[must_use]
+pub fn session_preview_popup_rect(frame_area: Rect, cursor_y: u16) -> Option<Rect> {
     let popup_width = preview_width(frame_area);
 
     // Content rows come from the same budget the layout worker renders to, so
@@ -636,20 +654,27 @@ pub fn session_preview_popup_rect(frame_area: Rect, cursor_y: u16) -> Rect {
     let desired_height = content_rows
         .saturating_add(POPUP_FOOTER_ROWS)
         .saturating_add(2);
-    // Cap to available space above the cursor (with 1-row gap).
+    // Cap to available space above the cursor (with 1-row gap). The floor is
+    // applied once, here: a box shorter than `MIN_POPUP_HEIGHT` has no content
+    // row left to put a preview in.
     let max_height = cursor_y
         .saturating_sub(frame_area.y)
         .saturating_sub(POPUP_GAP);
-    let popup_height = desired_height.min(max_height).max(5);
+    if max_height < MIN_POPUP_HEIGHT {
+        return None;
+    }
+    let popup_height = desired_height.min(max_height).max(MIN_POPUP_HEIGHT);
 
     // Right-align: right edge = frame right edge.
     let popup_x = frame_area.x + frame_area.width.saturating_sub(popup_width);
-    // Bottom edge sits 1 row above the cursor.
+    // Bottom edge sits 1 row above the cursor. With `max_height` above the floor
+    // this cannot underflow, so the popup's bottom edge plus `POPUP_GAP` is the
+    // cursor row — the gap is honoured exactly, never traded for a taller box.
     let popup_y = cursor_y
         .saturating_sub(popup_height)
         .saturating_sub(POPUP_GAP);
 
-    Rect::new(popup_x, popup_y, popup_width, popup_height)
+    Some(Rect::new(popup_x, popup_y, popup_width, popup_height))
 }
 
 /// The content rows the popup's inner area has left once the footer is taken.

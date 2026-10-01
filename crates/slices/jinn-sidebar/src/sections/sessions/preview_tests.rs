@@ -90,7 +90,7 @@ fn render_preview_at_cursor(
 ) -> (Buffer, Rect) {
     let theme = default_theme();
     let frame_area = Rect::new(0, 0, term_width, term_height);
-    let popup_area = session_preview_popup_rect(frame_area, cursor_y);
+    let popup_area = popup_rect_or_panic(frame_area, cursor_y);
     let lines = worker_lines_for(session, popup_area);
 
     let (mut terminal, _) = setup_term(term_width, term_height);
@@ -118,7 +118,7 @@ fn render_preview(
     let frame_area = Rect::new(0, 0, term_width, term_height);
     // Simulate cursor at row 30 (sessions section starts at row 30, cursor on first item).
     let cursor_y = 30u16;
-    let popup_area = session_preview_popup_rect(frame_area, cursor_y);
+    let popup_area = popup_rect_or_panic(frame_area, cursor_y);
 
     // The lines a worker would have published for this session, rendered the
     // same way the chat log renders them.
@@ -630,6 +630,17 @@ fn content_rows_of(popup_rect: Rect) -> u16 {
     popup_rect.height.saturating_sub(2).saturating_sub(3)
 }
 
+/// The rect production computes, for tests that are not about the no-room case.
+///
+/// Every caller here picks a cursor row with room for a box, so the unwrap is a
+/// guard against a test silently measuring nothing rather than a measure of the
+/// floor. The floor itself is asserted directly, on
+/// [`session_preview_popup_rect`].
+fn popup_rect_or_panic(frame_area: Rect, cursor_y: u16) -> Rect {
+    session_preview_popup_rect(frame_area, cursor_y)
+        .unwrap_or_else(|| panic!("no popup rect at cursor_y={cursor_y} with frame {frame_area:?}"))
+}
+
 #[rstest::rstest]
 #[case::normal(30)]
 #[case::near_top(10)]
@@ -639,7 +650,7 @@ fn popup_bottom_edge_sits_two_rows_above_cursor(#[case] cursor_y: u16) {
     let frame_area = Rect::new(0, 0, 80, 40);
 
     // When computing the popup rect.
-    let popup_rect = session_preview_popup_rect(frame_area, cursor_y);
+    let popup_rect = popup_rect_or_panic(frame_area, cursor_y);
 
     // Then the popup bottom edge + 2 = cursor_y, leaving a one-row gap.
     assert_eq!(
@@ -658,8 +669,8 @@ fn popup_follows_cursor_not_section_top() {
     let frame_area = Rect::new(0, 0, 80, 60);
 
     // When computing popup rects for each cursor.
-    let rect_at_30 = session_preview_popup_rect(frame_area, 30);
-    let rect_at_35 = session_preview_popup_rect(frame_area, 35);
+    let rect_at_30 = popup_rect_or_panic(frame_area, 30);
+    let rect_at_35 = popup_rect_or_panic(frame_area, 35);
 
     // Then each popup is anchored to its own cursor, not to a fixed section top.
     // The height is constant, so the top row is what moves with the cursor.
@@ -690,7 +701,7 @@ fn popup_height_is_the_budget_plus_chrome() {
     let frame_area = Rect::new(0, 0, 80, 60);
 
     // When computing the popup rect.
-    let popup_rect = session_preview_popup_rect(frame_area, 50);
+    let popup_rect = popup_rect_or_panic(frame_area, 50);
 
     // Then the content area is the preview's own line budget — the same constant
     // the layout worker renders to, not a second number kept alongside it — and
@@ -715,7 +726,7 @@ fn popup_height_does_not_depend_on_how_much_text_it_holds() {
     // When computing rects for every amount of content the worker can return.
     let heights: Vec<u16> = [0, 1, 5, 12, PREVIEW_MAX_LINES]
         .iter()
-        .map(|_| session_preview_popup_rect(frame_area, cursor_y).height)
+        .map(|_| popup_rect_or_panic(frame_area, cursor_y).height)
         .collect();
 
     // Then they are all the same, so the box does not resize as a reply grows
@@ -733,7 +744,7 @@ fn popup_height_capped_when_cursor_near_top() {
     let cursor_y = 7u16;
 
     // When computing the popup rect.
-    let popup_rect = session_preview_popup_rect(frame_area, cursor_y);
+    let popup_rect = popup_rect_or_panic(frame_area, cursor_y);
 
     // Then the popup height is capped (max_height = 7 - 0 - 2 = 5).
     assert_eq!(
@@ -756,10 +767,10 @@ fn popup_height_capped_below_the_full_height() {
     // 20 rows above the cursor, so the cap (20 - 2) bites below the full 25.
     let frame_area = Rect::new(0, 0, 80, 40);
     let cursor_y = 22u16;
-    let full_height = session_preview_popup_rect(frame_area, 40).height;
+    let full_height = popup_rect_or_panic(frame_area, 40).height;
 
     // When computing the popup rect.
-    let popup_rect = session_preview_popup_rect(frame_area, cursor_y);
+    let popup_rect = popup_rect_or_panic(frame_area, cursor_y);
 
     // Then the cap genuinely binds — the box is shorter than the full height,
     // which a test at cursor_y=7 could not tell apart from the floor.
@@ -771,6 +782,62 @@ fn popup_height_capped_below_the_full_height() {
     assert!(
         popup_rect.height < full_height,
         "this cursor row was chosen so the cap binds below the full height"
+    );
+}
+
+#[rstest::rstest]
+fn no_popup_is_anchored_to_a_cursor_row_it_would_cover() {
+    // Given the shortest terminal the app lays out — below this it renders the
+    // "too small" notice and no popup path at all — and a taller one.
+    let smallest = Rect::new(0, 0, 80, 15);
+    let taller = Rect::new(0, 0, 80, 40);
+
+    // When computing the popup rect for every row the cursor could land on.
+    for frame_area in [smallest, taller] {
+        for cursor_y in frame_area.y..=frame_area.y.saturating_add(frame_area.height) {
+            let Some(popup_rect) = session_preview_popup_rect(frame_area, cursor_y) else {
+                continue;
+            };
+
+            // Then no row of the box lands on the cursor's row, so the row the
+            // popup describes is still the row the user can see.
+            assert!(
+                popup_rect.y > cursor_y
+                    || popup_rect.y.saturating_add(popup_rect.height) <= cursor_y,
+                "the popup at cursor_y={cursor_y} is {} rows at y={}, covering the cursor: {popup_rect:?}",
+                popup_rect.height,
+                popup_rect.y
+            );
+        }
+    }
+}
+
+#[rstest::rstest]
+fn no_popup_is_drawn_under_the_minimum_height_of_room() {
+    // Given a frame whose top rows leave less room than the shortest box needs.
+    let frame_area = Rect::new(0, 0, 80, 40);
+
+    // When computing the rect for a cursor within that space, and again with
+    // exactly enough of it.
+    let with_no_room = session_preview_popup_rect(frame_area, 5);
+    let below_the_gap = session_preview_popup_rect(frame_area, 6);
+    let with_enough_room = session_preview_popup_rect(frame_area, 7);
+
+    // Then the first two draw nothing at any height, and the third draws a box
+    // at the floor: the boundary is the room itself, not a tiebreak in the
+    // height arithmetic.
+    assert_eq!(
+        with_no_room, None,
+        "a cursor 5 rows down leaves no room for a box"
+    );
+    assert_eq!(
+        below_the_gap, None,
+        "a cursor 6 rows down leaves only the gap, and no box fits in it"
+    );
+    assert_eq!(
+        with_enough_room.map(|rect| rect.height),
+        Some(5),
+        "the shortest drawable box is the floor, and it starts where the room does"
     );
 }
 
@@ -801,7 +868,7 @@ mod loading_state {
     ) -> (Buffer, Rect) {
         let theme = default_theme();
         let frame_area = Rect::new(0, 0, term_width, term_height);
-        let popup_area = session_preview_popup_rect(frame_area, 30);
+        let popup_area = popup_rect_or_panic(frame_area, 30);
 
         let (mut terminal, _) = setup_term(term_width, term_height);
         terminal
@@ -840,7 +907,7 @@ mod loading_state {
         let frame_area = Rect::new(0, 0, 100, 40);
 
         // When the loading popup's rect is computed the way production does.
-        let popup_area = session_preview_popup_rect(frame_area, 30);
+        let popup_area = popup_rect_or_panic(frame_area, 30);
 
         // Then rows remain for content once the borders and footer are taken.
         // The height no longer depends on a line count, so the loading popup is
@@ -860,8 +927,8 @@ mod loading_state {
 
         // When the rect is computed — which no longer takes a line count, so
         // there is nothing for the loading state to size itself differently to.
-        let loading = session_preview_popup_rect(frame_area, 30);
-        let ready = session_preview_popup_rect(frame_area, 30);
+        let loading = popup_rect_or_panic(frame_area, 30);
+        let ready = popup_rect_or_panic(frame_area, 30);
 
         // Then the box does not resize when the render comes back.
         assert_eq!(
@@ -986,7 +1053,7 @@ mod loading_state {
         let session = make_session_with_title("busy");
         let theme = default_theme();
         let frame_area = Rect::new(0, 0, 100, 40);
-        let popup_area = session_preview_popup_rect(frame_area, 30);
+        let popup_area = popup_rect_or_panic(frame_area, 30);
 
         // When the loading renderer draws it.
         let (mut terminal, _) = setup_term(100, 40);
@@ -1031,7 +1098,7 @@ mod loading_state {
         // When the ready renderer draws it.
         let theme = default_theme();
         let frame_area = Rect::new(0, 0, 100, 40);
-        let popup_area = session_preview_popup_rect(frame_area, 30);
+        let popup_area = popup_rect_or_panic(frame_area, 30);
         let (mut terminal, _) = setup_term(100, 40);
         terminal
             .draw(|frame| {
