@@ -189,6 +189,16 @@ const BUNDLED: &[Bundled] = &[
     },
     Bundled {
         kind: Kind::Prompt,
+        relative: "diverge.md",
+        contents: include_str!("../../../res/prompts/diverge.md"),
+    },
+    Bundled {
+        kind: Kind::Prompt,
+        relative: "falsify.md",
+        contents: include_str!("../../../res/prompts/falsify.md"),
+    },
+    Bundled {
+        kind: Kind::Prompt,
         relative: "gap-analysis.md",
         contents: include_str!("../../../res/prompts/gap-analysis.md"),
     },
@@ -199,6 +209,11 @@ const BUNDLED: &[Bundled] = &[
     },
     Bundled {
         kind: Kind::Prompt,
+        relative: "judge.md",
+        contents: include_str!("../../../res/prompts/judge.md"),
+    },
+    Bundled {
+        kind: Kind::Prompt,
         relative: "meta-prompt.md",
         contents: include_str!("../../../res/prompts/meta-prompt.md"),
     },
@@ -206,6 +221,11 @@ const BUNDLED: &[Bundled] = &[
         kind: Kind::Prompt,
         relative: "plan.md",
         contents: include_str!("../../../res/prompts/plan.md"),
+    },
+    Bundled {
+        kind: Kind::Prompt,
+        relative: "rank.md",
+        contents: include_str!("../../../res/prompts/rank.md"),
     },
     Bundled {
         kind: Kind::Prompt,
@@ -232,6 +252,11 @@ const BUNDLED: &[Bundled] = &[
         kind: Kind::Skill,
         relative: "jinn-usage/SKILL.md",
         contents: include_str!("../../../res/skills/jinn-usage/SKILL.md"),
+    },
+    Bundled {
+        kind: Kind::Skill,
+        relative: "jinn-usage/references/attendants.md",
+        contents: include_str!("../../../res/skills/jinn-usage/references/attendants.md"),
     },
     Bundled {
         kind: Kind::Skill,
@@ -883,10 +908,10 @@ mod tests {
                 "{relative} exists on disk but is not registered in BUNDLED"
             );
         }
-        // And the directory holds the expected set (router + 10 references).
+        // And the directory holds the expected set (router + 11 references).
         assert_eq!(
             disk_files.len(),
-            11,
+            12,
             "unexpected file count under res/skills/jinn-usage: {disk_files:?}"
         );
     }

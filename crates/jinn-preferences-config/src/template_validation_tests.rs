@@ -155,6 +155,7 @@ const OWNED_KEYS: &[&str] = &[
     // Read on demand (`ConfigList`).
     "session_lifecycle",
     "project",
+    "attendant",
 ];
 
 #[rstest::rstest]

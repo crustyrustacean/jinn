@@ -24,7 +24,7 @@ use super::BoxedToolFuture;
 pub fn conclude_definition() -> ToolDefinition {
     ToolDefinition {
         name: "conclude".to_owned(),
-        description: "Record what you concluded during your execution. Information saved here will be made available to you later."
+        description: "Record what you concluded during your execution. The first line must be a summary of 10 WORDS or fewer, for the human reading it. Remaining lines are context for you to use later. Information saved here will be made available to you later."
             .to_owned(),
         prompt_snippet: None,
         prompt_guidelines: vec![
