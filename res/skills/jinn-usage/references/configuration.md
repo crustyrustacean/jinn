@@ -36,6 +36,12 @@ to `providers.toml`, so it is live immediately (no restart) but is keyed by
 model and applies to every session using that model. Hand-editing that row,
 by contrast, still needs a restart.
 
+One exception inside `jinn.toml` itself: the `[[attendant.entry]]` list is
+re-read every time the saved-attendants picker (`<leader>sa`) opens, so
+adding or editing a saved attendant takes effect immediately. The shipped
+default file ships one such entry (`auto-nudge`). Everything else in
+`jinn.toml` follows the restart rule above.
+
 ## Offer-to-edit protocol
 
 When the user's ask maps to a config change:
@@ -60,19 +66,31 @@ prefer the command over hand-editing.
 
 ```toml
 [tools]
-disabled = ["grep", "openrouter:web_search", "mcp__context7__lookup"]
+tool_filter = { mode = "deny", names = ["grep", "openrouter:web_search", "mcp__context7__lookup"] }
 
 [skills]
-disabled = ["svg-creator"]
+skill_filter = { mode = "deny", names = ["svg-creator"] }
 ```
+
+`mode = "deny"` withholds every name that matches and permits everything else;
+`mode = "allow"` permits **only** the names that match. Patterns are **globs**
+over the namespaced name, so one entry covers a whole MCP server
+(`mcp__github__*`) without naming each of its tools. An empty `names` list in
+an `allow` filter is meaningful: "this session may use nothing" — which is
+different from omitting the filter entirely.
+
+Both shipped default tables are in `deny` mode: `[tools]` denies `grep`,
+`[skills]` denies `phased-task-loop`.
 
 Entries are **tool names**, not display labels: a builtin is its bare name
 (`bash`, `grep`, `write`, `task`, `skill`, …), a provider-side tool keeps its
 namespace (`openrouter:web_search`), and an MCP tool is its full namespaced
 name (`mcp__<server>__<tool>`). A name that matches nothing is simply inert.
 
-New sessions start with these disabled; per-session toggles (`<leader>st`,
-`<leader>sk`) override and persist in the session, never writing back here.
+New sessions start with these filters applied; per-session toggles
+(`<leader>st`, `<leader>sk`) override and persist in the session, never
+writing back here. The same two filter keys also exist per saved attendant
+(see `attendants.md`).
 
 **Timeouts / output caps**
 
@@ -105,6 +123,32 @@ command policy that blocks bash commands by regex inside that project:
 path = "~/code/myapp"
 command_policy = [{ pattern = 'rm\s+-rf\s+/', message = "Never rm -rf from root here." }]
 ```
+
+**Saved attendants** (`[[attendant.entry]]` — see `attendants.md` for the
+full field reference and the feature itself):
+
+```toml
+[[attendant.entry]]
+name = "reviewer"
+trigger = "parent_completed"
+behavior = "reset"
+prep_mode = false
+seed_template = "The previous run of this attendant reported: <prior report>."
+model = { single = "openrouter/deepseek/deepseek-v4.1-flash" }
+tool_filter = { mode = "allow", names = ["read", "bash", "session_fetch", "session_search"] }
+pins = [{ role = "user", text = "Review the parent's last turn and report one line." }]
+```
+
+`name` is required; every other field you omit is inherited from the session
+the attendant is created under. **`prep_mode` defaults to `true`**, so an
+entry that omits it does not run until you say `prep_mode = false`. Pin
+entries must carry a `role` (`"user"` or `"assistant"`) — a pin without one
+fails to parse.
+
+This list is the one `jinn.toml` surface read **live**: the saved-attendants
+picker (`<leader>sa`) re-reads the document every time it opens, so a hand edit
+shows up without a restart. `name` is the key entries are matched by, so
+saving under an existing name replaces that entry in place.
 
 **Global command policy** (blocks the same commands in every directory, in
 every session). Same shape as a project's policy, and evaluated *before* the
@@ -296,10 +340,10 @@ success, so the failures need not be consecutive.
 
 Every section in the shipped default `jinn.toml` is represented above or in a
 linked reference (`mcp-servers.md`, `terminal-overlay.md`,
-`context-management.md`, `sessions-and-subagents.md`). Section names are
-exact — `[term]`, not `[interactive_term]`; `[mcp.<name>]`, not
-`[[mcp_server]]`; `[context_curation.compaction]`, not `[compaction]`. A
-misspelled section is **silently ignored** (it reads as absent, not as an
+`context-management.md`, `sessions-and-subagents.md`, `attendants.md`).
+Section names are exact — `[term]`, not `[interactive_term]`; `[mcp.<name>]`,
+not `[[mcp_server]]`; `[context_curation.compaction]`, not `[compaction]`.
+A misspelled section is **silently ignored** (it reads as absent, not as an
 error), so a typo'd key will not announce itself.
 
 When an ask touches a

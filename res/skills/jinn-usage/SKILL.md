@@ -36,6 +36,7 @@ running it right now.
 | `references/keybindings.md`            | Every scope's default bindings, categorized                                                |
 | `references/context-management.md`     | Pinning, context toggles, isolate, compaction/pruning tuning                               |
 | `references/sessions-and-subagents.md` | Sessions, forks, the session tree, subagents/tasks                                         |
+| `references/attendants.md`            | Attendants: properties popup, triggers, `[[attendant.entry]]`, report history               |
 | `references/pickers-and-search.md`     | The `<leader>s*` pickers, session search                                                   |
 | `references/terminal-overlay.md`       | Interactive terminal overlay, control mode                                                 |
 | `references/mcp-servers.md`            | MCP server config, enabling, the inspector                                                 |
