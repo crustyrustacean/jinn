@@ -24,11 +24,11 @@ use super::BoxedToolFuture;
 pub fn conclude_definition() -> ToolDefinition {
     ToolDefinition {
         name: "conclude".to_owned(),
-        description: "Record what you concluded, for the user to read. ONLY ONE LINE OF TEXT, MAX 10 WORDS."
+        description: "Record what you concluded during your execution. Information saved here will be made available to you later."
             .to_owned(),
         prompt_snippet: None,
         prompt_guidelines: vec![
-            "Use `conclude` to leave your verdict or findings; keep each conclusion self-contained. IT MUST BE ONE LINE OF TEXT, MAX 10 WORDS."
+            "Use `conclude` to leave your concise verdict or findings. The first line should be up to 10 words for human consumption, and the remaining lines are context for you to use later."
                 .to_owned(),
         ],
         parameters: serde_json::json!({
@@ -36,7 +36,7 @@ pub fn conclude_definition() -> ToolDefinition {
             "properties": {
                 "body": {
                     "type": "string",
-                    "description": "Your conclusion. ONE LINE, MAX 10 WORDS."
+                    "description": "Your conclusion. Keep it brief."
                 }
             },
             "required": ["body"]
@@ -49,8 +49,7 @@ pub fn conclude_definition() -> ToolDefinition {
 pub fn notify_parent_definition() -> ToolDefinition {
     ToolDefinition {
         name: "notify_parent".to_owned(),
-        description: "Start a turn in the session you attend. Use only when the parent needs \
-                      to act on what you found."
+        description: "Send a message to the parent session."
             .to_owned(),
         prompt_snippet: None,
         prompt_guidelines: vec![

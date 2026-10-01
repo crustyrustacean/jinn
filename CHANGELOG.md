@@ -13,6 +13,7 @@
 - The sidebar selection cursor now spans the entire width of the sidebar
 - Canceling a session now recursively cancels child subagents and attendants.
   - The cascade skips child _forks_ under the assumption that forked sessions are now operating independently.
+- Sessions that are cancelled or end in an error use a red background in the sidebar instead of a red foreground.
 - Add attendants. See README for details.
 - `jinn.toml` now supports allow or deny list for tools and skills, replacing the `disabled` key:
 

@@ -4,11 +4,14 @@ A TUI agent harness with multi-session support and Vim-style keybinds.
 
 [CHANGELOG](./CHANGELOG.md)
 
+![Screenshot](doc/screenshots/full.png)
+
 ## Major Features
 
 ### Multi-session
 
 Run any number of concurrent sessions, with live preview session navigation.
+
 - First-class forking and subagent support
 - Cache hit %, tokens up/down, context usage/max, total spend, and number of turns tracked per session and aggregated across forks, subagents, and attendants.
 
@@ -30,7 +33,8 @@ Run any number of concurrent sessions, with live preview session navigation.
 ### Pickers
 
 Quickly navigate and change things via Telescope-inspired pickers:
-  - Change model/provider, skills, tools, MCP servers, OpenRouter endpoints + more.
+
+- Change model/provider, skills, tools, MCP servers, OpenRouter endpoints + more.
 
 ![Pickers](doc/screenshots/pickers.png)
 
@@ -38,11 +42,10 @@ Quickly navigate and change things via Telescope-inspired pickers:
 
 Attach "attendants" to sessions that fire on agent turn end (or manually with `R`). Things that attendants can do:
 
-- Multi-agent judge panels
 - Agent continuation when agent stops mid-task (shipped by default as `auto-nudge`)
 - Task completion checker
 - Code quality gate
-- Automatically fetch issues from a tracker and start bugfix sessions
+- Automatically fetch issues from a tracker for continuous bugfixing
 
 They can be created entirely in-app by typing in the instructions, turning it on, and optionally saving to your `jinn.toml` so they can be attached to other sessions.
 
@@ -64,8 +67,7 @@ Run TUI apps in a separate task that an agent can interact with.
 
 ![Interactive term](doc/screenshots/interactive-term.png)
 
-
-### Comprehensive context management  
+### Comprehensive context management
 
 - Background workers continuously manage the context while sessions are in-progress. Changes are buffered(configurable) to take advantage of prefix cache pricing.
 - Individual chat entries can toggled in and out of context using `x`, good for when you send a message but then change your mind to avoid context poisoning.
@@ -81,6 +83,7 @@ Almost all of the "system prompt" / prefix can be configured, with the main driv
 ![Personas](doc/screenshots/personas.png)
 
 ### etc
+
 - Standard agent harness-y things like `AGENTS.md`, `~/.agents` skill discovery, custom prompts, MCP server support, subagents/tasks, usage display.
 - Subagents/tasks are regular sessions that are linked together in a tree, so you can steer an in-progress subagent or fork a new session from it.
 
