@@ -44,15 +44,24 @@ impl LineInput {
         self.cursor_pos += ch.len_utf8();
     }
 
-    /// Bulk-inserts `text` at the cursor, advancing the cursor by `text.len()` bytes.
+    /// Bulk-inserts `text` at the cursor, advancing the cursor by the
+    /// inserted text's byte length.
     ///
-    /// No-op when `text` is empty.
+    /// Line breaks are stripped: a [`LineInput`] is a single-line field, so
+    /// a multi-line paste collapses to one line rather than producing a
+    /// value the field cannot represent. This mirrors what every picker
+    /// filter already did with pasted newlines, so a paste lands the same
+    /// way whichever single-line surface holds focus. The multi-line chat
+    /// input box does not use this type and keeps its newlines.
+    ///
+    /// No-op when the text holds nothing but line breaks.
     pub fn paste(&mut self, text: &str) {
-        if text.is_empty() {
+        let flattened = text.replace(['\n', '\r'], "");
+        if flattened.is_empty() {
             return;
         }
-        self.input.insert_str(self.cursor_pos, text);
-        self.cursor_pos += text.len();
+        self.input.insert_str(self.cursor_pos, &flattened);
+        self.cursor_pos += flattened.len();
     }
 
     /// Deletes the grapheme immediately before the cursor.
@@ -250,6 +259,48 @@ mod tests {
         li.paste("");
 
         // Then nothing changes.
+        assert_eq!(li.input, "hello");
+        assert_eq!(li.cursor_pos, 2);
+    }
+
+    #[rstest::rstest]
+    fn paste_flattens_line_breaks_into_one_line() {
+        // Given an empty single-line field.
+        let mut li = LineInput::new();
+
+        // When pasting text carrying newlines.
+        li.paste("one\ntwo\r\nthree");
+
+        // Then the field holds one line: the breaks are gone and the
+        // fragments are joined.
+        assert_eq!(li.input, "onetwothree");
+    }
+
+    #[rstest::rstest]
+    fn paste_advances_the_cursor_by_the_flattened_length() {
+        // Given a field with a trailing break in the pasted text.
+        let mut li = LineInput::new();
+        li.set("ab".to_owned());
+
+        // When pasting text whose line breaks must not be counted.
+        li.paste("cd\nef");
+
+        // Then the cursor advanced by the flattened text's bytes, landing
+        // on the end of the inserted text.
+        assert_eq!(li.cursor_pos, "abcdef".len());
+    }
+
+    #[rstest::rstest]
+    fn paste_of_only_line_breaks_is_a_noop() {
+        // Given a single-line field.
+        let mut li = LineInput::new();
+        li.set("hello".to_owned());
+        li.cursor_pos = 2;
+
+        // When pasting text that is nothing but line breaks.
+        li.paste("\n\r\n");
+
+        // Then nothing changes: there is no text to flatten into.
         assert_eq!(li.input, "hello");
         assert_eq!(li.cursor_pos, 2);
     }

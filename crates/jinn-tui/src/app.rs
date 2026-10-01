@@ -140,13 +140,15 @@ impl TuiApp {
                         self.route_intent(intent);
                     }
                     crossterm::event::Event::Paste(text) => {
-                        // A paste belongs to the chat input box, not the
-                        // kernel: mint the box's dynamic intent and let its
-                        // `paste-text` row insert the text.
+                        // A bracketed paste carries bytes and nothing else:
+                        // which surface claims it is the kernel's call, made
+                        // against the focused scope. The scope named here is
+                        // a placeholder the kernel's paste branch replaces,
+                        // so this platform layer names no slice.
                         self.route_intent(jinn_kernel::KernelIntent::Dynamic(
                             jinn_slices::DynamicIntent::with_bytes(
                                 jinn_chat_input_msg::chat_input_scope(),
-                                jinn_chat_input::routes::PASTE_TEXT_ACTION,
+                                jinn_chat_input_msg::PASTE_TEXT_ACTION,
                                 "paste text",
                                 text.into_bytes(),
                             ),

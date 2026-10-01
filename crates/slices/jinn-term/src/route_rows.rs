@@ -462,6 +462,28 @@ pub fn attach_rows(routes: &KeyRoutes, toggle_key: &'static str) {
         }),
     ));
 
+    // A bracketed paste in capture mode goes to the pty verbatim. The row
+    // is keyless like `send-key` (a paste is not a keystroke): the kernel's
+    // paste branch re-mints the intent against the focused scope, and this
+    // row delivers it. It routes through `handle_send_key` so the
+    // control-holder check stays the single gate — a paste must not be a
+    // second, unchecked way to write to the terminal.
+    routes.attach(row(
+        "send-paste",
+        control.clone(),
+        "",
+        "general",
+        "paste text to terminal",
+        BindSite::OwnScope,
+        ActionFn::new(|mut ctx| {
+            // The kernel's paste branch delivers the text in the ctx's
+            // byte payload, and the pty takes bytes verbatim — no decode,
+            // no newline translation.
+            let bytes = std::mem::take(&mut ctx.key_bytes);
+            handle_send_key(app(&mut ctx), bytes)
+        }),
+    ));
+
     // Shared chrome: quit + which-key popup.
     routes.attach(chrome_row(view.clone(), "q", "term:quit"));
     routes.attach(chrome_row(view, "?", "term:which-key"));
@@ -778,6 +800,122 @@ mod tests {
                 .any(|name| name.ends_with("SendTermKey")),
             "expected a SendTermKey command; got {:?}",
             result.message_names
+        );
+    }
+
+    /// A test-local sink recording every payload published through it, so
+    /// a test can assert on the bytes a row actually sent.
+    #[derive(Debug, Default)]
+    struct RecordingSink {
+        payloads: std::sync::Mutex<Vec<serde_json::Value>>,
+    }
+
+    impl jinn_slices::PublishSink for RecordingSink {
+        fn publish_schema(
+            &self,
+            _schema_id: trouper::schema::SchemaId,
+            payload: serde_json::Value,
+            _name: &'static str,
+        ) {
+            self.payloads.lock().expect("sink lock").push(payload);
+        }
+    }
+
+    /// Drains `result`'s publish closures into a sink and returns the
+    /// bytes of the single `SendTermKey` they carried.
+    fn send_term_key_bytes(result: RouteResult) -> Option<Vec<u8>> {
+        let sink = RecordingSink::default();
+        for publish in result.messages {
+            publish(&sink);
+        }
+        let payloads = sink.payloads.lock().expect("sink lock").clone();
+        payloads.into_iter().find_map(|payload| {
+            payload
+                .get("bytes")?
+                .as_array()?
+                .iter()
+                .filter_map(serde_json::Value::as_u64)
+                .map(|byte| u8::try_from(byte).ok())
+                .collect::<Option<Vec<u8>>>()
+        })
+    }
+
+    #[rstest::rstest]
+    fn paste_reaches_the_pty_verbatim_in_capture_mode() {
+        // Given the user holding terminal control.
+        let mut state = app_state();
+        let routes = KeyRoutes::new();
+        attach_rows(&routes, "<c-g>");
+        handle_take_control(&mut state);
+
+        // When dispatching the send-paste action with multi-line text.
+        let result = dispatch(
+            &routes,
+            &mut state,
+            &Slices::new(),
+            "send-paste",
+            &control_scope(),
+            "one\ntwo\r\nthree".as_bytes().to_vec(),
+        );
+
+        // Then the bytes reached the pty unmodified: no newline-to-return
+        // translation, because a pasted program may legitimately want the
+        // shell to interpret the breaks itself.
+        assert_eq!(
+            result.and_then(send_term_key_bytes),
+            Some("one\ntwo\r\nthree".as_bytes().to_vec())
+        );
+    }
+
+    #[rstest::rstest]
+    fn paste_publishes_exactly_one_term_key_message() {
+        // Given the user holding terminal control.
+        let mut state = app_state();
+        let routes = KeyRoutes::new();
+        attach_rows(&routes, "<c-g>");
+        handle_take_control(&mut state);
+
+        // When dispatching the send-paste action.
+        let result = dispatch(
+            &routes,
+            &mut state,
+            &Slices::new(),
+            "send-paste",
+            &control_scope(),
+            b"one paste".to_vec(),
+        );
+
+        // Then exactly one message is published, not a message per line
+        // or per character.
+        let result = result.expect("the send-paste row is attached");
+        assert_eq!(result.message_names.len(), 1);
+        assert!(result.message_names[0].ends_with("SendTermKey"));
+    }
+
+    #[rstest::rstest]
+    fn paste_in_view_mode_writes_nothing_to_the_pty() {
+        // Given the terminal overlay open in view mode (agent holds it).
+        let mut state = app_state();
+        let routes = KeyRoutes::new();
+        attach_rows(&routes, "<c-g>");
+        state
+            .frontend
+            .scope_swap_base(FocusScope::Dynamic(view_scope()));
+
+        // When dispatching the send-paste action.
+        let result = dispatch(
+            &routes,
+            &mut state,
+            &Slices::new(),
+            "send-paste",
+            &control_scope(),
+            b"typed at the agent".to_vec(),
+        );
+
+        // Then nothing was published: the user does not hold the terminal.
+        assert!(
+            result.is_none_or(|r| r.messages.is_empty()),
+            "a paste in view mode must not write to the pty"
         );
     }
 
