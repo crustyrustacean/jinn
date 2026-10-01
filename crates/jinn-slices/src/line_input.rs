@@ -264,6 +264,48 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn paste_flattens_line_breaks_into_one_line() {
+        // Given an empty single-line field.
+        let mut li = LineInput::new();
+
+        // When pasting text carrying newlines.
+        li.paste("one\ntwo\r\nthree");
+
+        // Then the field holds one line: the breaks are gone and the
+        // fragments are joined.
+        assert_eq!(li.input, "onetwothree");
+    }
+
+    #[rstest::rstest]
+    fn paste_advances_the_cursor_by_the_flattened_length() {
+        // Given a field with a trailing break in the pasted text.
+        let mut li = LineInput::new();
+        li.set("ab".to_owned());
+
+        // When pasting text whose line breaks must not be counted.
+        li.paste("cd\nef");
+
+        // Then the cursor advanced by the flattened text's bytes, landing
+        // on the end of the inserted text.
+        assert_eq!(li.cursor_pos, "abcdef".len());
+    }
+
+    #[rstest::rstest]
+    fn paste_of_only_line_breaks_is_a_noop() {
+        // Given a single-line field.
+        let mut li = LineInput::new();
+        li.set("hello".to_owned());
+        li.cursor_pos = 2;
+
+        // When pasting text that is nothing but line breaks.
+        li.paste("\n\r\n");
+
+        // Then nothing changes: there is no text to flatten into.
+        assert_eq!(li.input, "hello");
+        assert_eq!(li.cursor_pos, 2);
+    }
+
+    #[rstest::rstest]
     fn delete_removes_preceding_grapheme() {
         // Given a LineInput with cursor at the end.
         let mut li = LineInput::new();

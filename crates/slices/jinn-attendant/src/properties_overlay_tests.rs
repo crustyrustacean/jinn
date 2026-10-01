@@ -728,6 +728,52 @@ fn editor_typing_never_reaches_the_chat_input() {
 
 #[rstest::rstest]
 #[test]
+fn editor_paste_reaches_the_draft_through_the_hook() {
+    // Given the editor open with its hook registered on the editor scope.
+    let mut fx = PopupFixture::new();
+    fx.open();
+    fx.press("attendant-properties-edit-template");
+
+    // When the hook receives a paste edit intent.
+    let hook = fx
+        .routes
+        .input_hook(&attendant_seed_template_scope())
+        .expect("editor hook registered");
+    let _ = hook(&jinn_slices::route::EditIntent::Paste(
+        "seed the run".to_owned(),
+    ));
+
+    // Then the draft holds the pasted text.
+    assert!(fx.cell.read().seed_template.input.contains("seed the run"));
+}
+
+#[rstest::rstest]
+#[test]
+fn editor_paste_flattens_line_breaks() {
+    // Given the editor open with its hook registered on the editor scope.
+    let mut fx = PopupFixture::new();
+    fx.open();
+    fx.press("attendant-properties-edit-template");
+
+    // When the hook receives a multi-line paste.
+    let hook = fx
+        .routes
+        .input_hook(&attendant_seed_template_scope())
+        .expect("editor hook registered");
+    let _ = hook(&jinn_slices::route::EditIntent::Paste(
+        "one\ntwo\r\nthree".to_owned(),
+    ));
+
+    // Then the single-line draft holds the text flattened to one line,
+    // with no line break anywhere in it.
+    let input = fx.cell.read().seed_template.input.clone();
+    assert!(!input.contains('\n'));
+    assert!(!input.contains('\r'));
+    assert!(input.contains("onetwothree"));
+}
+
+#[rstest::rstest]
+#[test]
 fn properties_scope_has_no_input_hook() {
     // Given the popup rows attached as at activation.
 
