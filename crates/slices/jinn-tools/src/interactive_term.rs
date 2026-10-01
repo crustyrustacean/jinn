@@ -82,7 +82,7 @@ pub fn definition() -> ToolDefinition {
         name: "interactive_term".to_owned(),
         description: "Spawn an INTERACTIVE terminal program (vim, psql, ssh, htop, a REPL) in a \
             pseudo-terminal and return its rendered screen. Use this instead of `bash` when the \
-            command needs a full-screen TUI, cursor addressing, or incremental input. \
+            command is long-running, needs a full-screen TUI, cursor addressing, or incremental input. \
             \
             NOT A NON-INTERACTIVE COMMAND RUNNER: do NOT append shell redirections, pipes, \
             `tee`, `grep`, `less`, or `> file` to the command. The program runs attached to a \
@@ -102,17 +102,14 @@ pub fn definition() -> ToolDefinition {
             Send input via `interactive_term_send` (keys like \"enter\", \"ctrl+c\", \"f4\", text, \
             or both). Kill the session with `interactive_term_kill` when done. \
             Each chat session has AT MOST ONE terminal: spawning again kills the previous \
-            program (unsaved work is lost) and reports it. \
-            \
-            TIMEOUT: default settle budget is 3s. Pass `max_duration_secs` to extend for \
-            slow-starting programs (e.g. {\"max_duration_secs\": 30})."
+            program (unsaved work is lost) and reports it."
             .to_owned(),
         prompt_snippet: Some(
             "Spawn interactive TUI programs (vim, psql, ssh, REPLs) in a PTY; returns the rendered screen"
                 .to_owned(),
         ),
         prompt_guidelines: vec![
-            "Prefer `bash` for one-shot commands; use this only when the program needs a full-screen TUI, cursor addressing, or incremental input.".to_owned(),
+            "Prefer `bash` for one-shot commands; use this only when the program runs for a long time, needs a full-screen TUI, cursor addressing, or incremental input.".to_owned(),
             "Do NOT add shell redirections, pipes, or grep to the interactive_term command (e.g. \"htop | grep foo\" or \"psql > out.txt\") — the tool returns the rendered SCREEN, so piped/redirected output is silently lost. Run the command bare; filter nothing.".to_owned(),
             "You can snapshot the terminal at any time: call interactive_term_send with NO arguments to re-render and read the current screen without sending input.".to_owned(),
             "Each call BLOCKS until screen output settles and returns the rendered screen — call interactive_term_send afterwards to type text or press named keys (\"enter\", \"tab\", \"ctrl+c\", \"up\").".to_owned(),
@@ -128,7 +125,7 @@ pub fn definition() -> ToolDefinition {
                 },
                 "max_duration_secs": {
                     "type": "number",
-                    "description": "Maximum seconds to wait for the screen to settle. Default 3. Raise for slow-starting programs (e.g. 30 for a remote ssh)."
+                    "description": "The terminal output will be returned to you when it settles (doesn't change), or at max_duration_sec, whichever comes first. This is NOT a way to sleep and wait. This is strictly for ensuring you get output for interactive application that update their display frequently (like htop or a game)."
                 }
             },
             "required": ["command"]
