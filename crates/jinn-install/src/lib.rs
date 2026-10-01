@@ -27,10 +27,10 @@ use bundled::{Bundled, bundled_catalogue};
 /// tests can point at temp dirs.
 #[derive(Debug, Clone)]
 pub struct Destinations {
-    pub(crate) themes: PathBuf,
-    pub(crate) personas: PathBuf,
-    pub(crate) prompts: PathBuf,
-    pub(crate) skills: PathBuf,
+    themes: PathBuf,
+    personas: PathBuf,
+    prompts: PathBuf,
+    skills: PathBuf,
 }
 
 impl Destinations {
@@ -43,6 +43,26 @@ impl Destinations {
             prompts,
             skills,
         }
+    }
+
+    /// The root directory themes install into.
+    pub(crate) fn themes(&self) -> &Path {
+        &self.themes
+    }
+
+    /// The root directory personas install into.
+    pub(crate) fn personas(&self) -> &Path {
+        &self.personas
+    }
+
+    /// The root directory prompts install into.
+    pub(crate) fn prompts(&self) -> &Path {
+        &self.prompts
+    }
+
+    /// The root directory skills install into.
+    pub(crate) fn skills(&self) -> &Path {
+        &self.skills
     }
 }
 
@@ -162,14 +182,14 @@ fn install_resource(
     destinations: &Destinations,
     overwrite: bool,
 ) -> Result<InstallOutcome, Report<InstallError>> {
-    let destination = resource.kind.root(destinations).join(&resource.relative);
+    let destination = resource.destination(destinations);
     let existed = destination.exists();
 
     if existed && !overwrite {
         return Ok(InstallOutcome::Skipped(destination));
     }
 
-    write_resource(&destination, resource.contents)?;
+    write_resource(&destination, resource.contents())?;
 
     Ok(final_outcome(destination, existed))
 }
@@ -288,8 +308,8 @@ mod tests {
     fn install_skips_theme_when_present() {
         // Given a destinations dir where `default.toml` already exists.
         let env = TestEnv::fresh();
-        let existing = env.destinations.themes.join("default.toml");
-        std::fs::create_dir_all(env.destinations.themes.clone()).unwrap();
+        let existing = env.destinations.themes().join("default.toml");
+        std::fs::create_dir_all(env.destinations.themes()).unwrap();
         std::fs::write(&existing, "PRE-EXISTING").unwrap();
 
         // When installing defaults.
@@ -343,7 +363,7 @@ mod tests {
         // Then `general.md` lands under the personas root.
         let outcome = outcome_for(&report.outcomes, "general.md");
         assert!(
-            outcome.path().starts_with(&env.destinations.personas),
+            outcome.path().starts_with(env.destinations.personas()),
             "persona should be under the personas root"
         );
         assert!(
@@ -364,7 +384,7 @@ mod tests {
         // Then `plan.md` lands under the prompts root.
         let outcome = outcome_for(&report.outcomes, "plan.md");
         assert!(
-            outcome.path().starts_with(&env.destinations.prompts),
+            outcome.path().starts_with(env.destinations.prompts()),
             "prompt should be under the prompts root"
         );
     }
@@ -381,7 +401,7 @@ mod tests {
         // Then `research.md` lands under the prompts root.
         let outcome = outcome_for(&report.outcomes, "research.md");
         assert!(
-            outcome.path().starts_with(&env.destinations.prompts),
+            outcome.path().starts_with(env.destinations.prompts()),
             "prompt should be under the prompts root"
         );
         // And it reports Created.
@@ -422,7 +442,7 @@ mod tests {
         // Then the micro-task-loop skill was created under the skills root.
         let outcome = outcome_for(&report.outcomes, "micro-task-loop/SKILL.md");
         assert!(
-            outcome.path().starts_with(&env.destinations.skills),
+            outcome.path().starts_with(env.destinations.skills()),
             "skill should be under the skills root"
         );
         assert!(
@@ -486,8 +506,8 @@ mod tests {
     fn install_overwrites_theme_when_force() {
         // Given a destinations dir where `default.toml` already exists.
         let env = TestEnv::fresh();
-        let existing = env.destinations.themes.join("default.toml");
-        std::fs::create_dir_all(env.destinations.themes.clone()).unwrap();
+        let existing = env.destinations.themes().join("default.toml");
+        std::fs::create_dir_all(env.destinations.themes()).unwrap();
         std::fs::write(&existing, "PRE-EXISTING").unwrap();
 
         // When installing defaults with overwrite enabled.
@@ -508,11 +528,11 @@ mod tests {
         // and a second destinations dir installed fresh to capture the bundled bytes.
         let env = TestEnv::fresh();
         let bundled_env = TestEnv::fresh();
-        let existing = env.destinations.themes.join("default.toml");
-        std::fs::create_dir_all(env.destinations.themes.clone()).unwrap();
+        let existing = env.destinations.themes().join("default.toml");
+        std::fs::create_dir_all(env.destinations.themes()).unwrap();
         std::fs::write(&existing, "PRE-EXISTING").unwrap();
         bundled_env.run(false);
-        let bundled_default = bundled_env.destinations.themes.join("default.toml");
+        let bundled_default = bundled_env.destinations.themes().join("default.toml");
         let expected = std::fs::read_to_string(&bundled_default).expect("read bundled");
 
         // When installing with overwrite enabled.
@@ -604,8 +624,8 @@ mod tests {
         }
         let original = "# my edits\n[compaction]\nthreshold = 0.4\n";
         std::fs::write(&env.prefs_path, original).unwrap();
-        let existing = env.destinations.themes.join("default.toml");
-        std::fs::create_dir_all(env.destinations.themes.clone()).unwrap();
+        let existing = env.destinations.themes().join("default.toml");
+        std::fs::create_dir_all(env.destinations.themes()).unwrap();
         std::fs::write(&existing, "PRE-EXISTING").unwrap();
 
         // When installing defaults with force.
@@ -645,9 +665,9 @@ mod tests {
             .iter()
             .map(InstallOutcome::path)
             .find(|path| {
-                path.starts_with(&env.destinations.skills)
+                path.starts_with(env.destinations.skills())
                     && path
-                        .strip_prefix(&env.destinations.skills)
+                        .strip_prefix(env.destinations.skills())
                         .is_ok_and(|rest| rest.components().count() > 2)
             })
             .expect("a skill reference nested under skills/<name>/");
@@ -668,10 +688,10 @@ mod tests {
 
         // Then every installed file's bytes match the resource it came from.
         let roots = [
-            ("themes", &env.destinations.themes),
-            ("personas", &env.destinations.personas),
-            ("prompts", &env.destinations.prompts),
-            ("skills", &env.destinations.skills),
+            ("themes", env.destinations.themes()),
+            ("personas", env.destinations.personas()),
+            ("prompts", env.destinations.prompts()),
+            ("skills", env.destinations.skills()),
         ];
         for outcome in &report.outcomes {
             let installed = outcome.path();
@@ -706,7 +726,7 @@ mod tests {
         // Given a fresh install with a nested skill on disk.
         let env = TestEnv::fresh();
         let report = env.run(false);
-        let usage_dir = env.destinations.skills.join("jinn-usage");
+        let usage_dir = env.destinations.skills().join("jinn-usage");
 
         // When extracting the installed router's `references/*.md` links.
         let body = std::fs::read_to_string(usage_dir.join("SKILL.md")).expect("read SKILL.md");
@@ -753,7 +773,7 @@ mod tests {
         env.run(false);
 
         // When scanning the skills destination.
-        let skills = jinn_skills::scan_skills(&env.destinations.skills);
+        let skills = jinn_skills::scan_skills(env.destinations.skills());
 
         // Then jinn-usage is discovered by name with a usable description.
         let usage = skills

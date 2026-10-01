@@ -58,10 +58,10 @@ impl Kind {
     /// Resolves this kind to its destination root within `destinations`.
     pub(crate) fn root(self, destinations: &Destinations) -> &Path {
         match self {
-            Kind::Theme => &destinations.themes,
-            Kind::Persona => &destinations.personas,
-            Kind::Prompt => &destinations.prompts,
-            Kind::Skill => &destinations.skills,
+            Kind::Theme => destinations.themes(),
+            Kind::Persona => destinations.personas(),
+            Kind::Prompt => destinations.prompts(),
+            Kind::Skill => destinations.skills(),
         }
     }
 
@@ -82,16 +82,27 @@ impl Kind {
 #[derive(Debug)]
 pub(crate) struct Bundled {
     /// Selects the destination root; see [`Kind`].
-    pub(crate) kind: Kind,
+    kind: Kind,
     /// Path relative to the destination root, with any nesting beneath the
     /// kind directory preserved (e.g. `default.toml`,
     /// `jinn-usage/references/keybindings.md`).
-    pub(crate) relative: PathBuf,
+    relative: PathBuf,
     /// The embedded payload, written verbatim.
-    pub(crate) contents: &'static [u8],
+    contents: &'static [u8],
 }
 
 impl Bundled {
+    /// Where this resource installs: its kind's destination root joined with
+    /// its path relative to that root.
+    pub(crate) fn destination(&self, destinations: &Destinations) -> PathBuf {
+        self.kind.root(destinations).join(&self.relative)
+    }
+
+    /// The embedded payload, written verbatim.
+    pub(crate) fn contents(&self) -> &'static [u8] {
+        self.contents
+    }
+
     /// This resource's path relative to the root of `res/`, reconstructing the
     /// top-level directory its [`Kind`] came from.
     #[cfg(test)]
@@ -155,7 +166,7 @@ fn resource(file: &'static File<'static>) -> Result<Bundled, Report<InstallError
     let (kind, relative) = split_kind(embedded)
         .change_context(InstallError)
         .attach("bundled resource has no destination")
-        .attach(format!("path: {embedded:?}"))?;
+        .attach(format!("path: {}", embedded.display()))?;
 
     Ok(Bundled {
         kind,
