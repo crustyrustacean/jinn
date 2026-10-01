@@ -271,13 +271,31 @@ impl SessionPersistenceActor {
 
                 let old_phase = session.phase();
 
+                // Hard cancel: settles the session from either busy phase, and
+                // runs *before* the terminal entry is pushed. That ordering
+                // mirrors the frontend's Escape path — `cancel_streaming`
+                // finalizes partial entries and clears the streaming indices,
+                // then the "Cancelled" entry lands last in history so
+                // `outcome_from_history` derives `Canceled`. Routing this
+                // through `finish_streaming` instead would only accept
+                // `Streaming`, wedging a descendant cancelled mid-tool-loop
+                // with its spinner still on and no turn-end signal published.
+                if event.reason == StreamCompletedReason::Canceled {
+                    session.cancel_streaming(event.dispatched_at);
+                }
+
                 apply_completion_entries(session, event, output_tokens);
 
-                let preserve_assistant = matches!(
-                    event.reason,
-                    StreamCompletedReason::Finished | StreamCompletedReason::ToolUse,
-                );
-                session.finish_streaming(preserve_assistant, event.dispatched_at);
+                // Normal completion, error, and tool use all arrive from
+                // `Streaming`. `Canceled` is excluded: it was already settled
+                // by the hard cancel above.
+                if event.reason != StreamCompletedReason::Canceled {
+                    let preserve_assistant = matches!(
+                        event.reason,
+                        StreamCompletedReason::Finished | StreamCompletedReason::ToolUse,
+                    );
+                    session.finish_streaming(preserve_assistant, event.dispatched_at);
+                }
 
                 // Hard cancel: force-exclude dangling tool calls left by the interrupted stream.
                 if event.reason == StreamCompletedReason::Canceled {
@@ -614,6 +632,16 @@ mod tests {
         state.session.active_session_id().clone()
     }
 
+    /// Puts the active session into sending phase - the mid-tool-loop state a
+    /// descendant occupies when a cascade cancel lands on it while a tool call
+    /// is still running - returning its id.
+    fn begin_sending_session(actor: &SessionPersistenceActor) -> jinn_core_types::SessionId {
+        let mut state = actor.state.write();
+        let session = state.active_session_mut();
+        session.begin_sending();
+        state.session.active_session_id().clone()
+    }
+
     /// Puts the active session into streaming phase with one queued
     /// context-override mutation, returning the targeted entry id and the
     /// session id.
@@ -791,6 +819,154 @@ mod tests {
             session.with_input(|i| i.text().to_owned(), String::new),
             "queued message"
         );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn on_stream_completed_canceled_returns_sending_session_to_idle() {
+        // Given a session in sending phase - a descendant mid-tool-loop when a
+        // cascade cancel lands on it.
+        let (actor, _audit) = test_actor_recording().await;
+        let session_id = begin_sending_session(&actor);
+
+        // When the stream completes because it was canceled.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Canceled,
+            None,
+            None,
+            None,
+            None,
+        );
+        actor.on_stream_completed(&event).await;
+
+        // Then the session is no longer busy.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert_eq!(session.phase(), PhaseKind::Idle);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn on_stream_completed_canceled_publishes_phase_change_from_sending() {
+        // Given a session in sending phase when a cascade cancel lands on it.
+        let (actor, audit) = test_actor_recording().await;
+        let session_id = begin_sending_session(&actor);
+
+        // When the stream completes because it was canceled.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Canceled,
+            None,
+            None,
+            None,
+            None,
+        );
+        actor.on_stream_completed(&event).await;
+
+        // Then subscribers learn the session went idle.
+        let phase_events = audit.of_type::<SessionPhaseChanged>();
+        assert!(
+            phase_events
+                .iter()
+                .any(|e| e.old_phase == PhaseKind::Sending && e.new_phase == PhaseKind::Idle),
+            "expected SessionPhaseChanged(Sending -> Idle); got: {:?}",
+            audit.names()
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn on_stream_completed_canceled_publishes_canceled_outcome_from_sending() {
+        // Given a session in sending phase when a cascade cancel lands on it.
+        let (actor, audit) = test_actor_recording().await;
+        let session_id = begin_sending_session(&actor);
+
+        // When the stream completes because it was canceled.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Canceled,
+            None,
+            None,
+            None,
+            None,
+        );
+        actor.on_stream_completed(&event).await;
+
+        // Then exactly one turn completion reports the cancel.
+        let completions = audit.of_type::<jinn_session_msg::TurnCompleted>();
+        assert_eq!(completions.len(), 1);
+        assert_eq!(
+            completions[0].outcome,
+            jinn_session_msg::TurnOutcome::Canceled
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn on_stream_completed_canceled_persists_session_from_sending() {
+        // Given an interacted session in sending phase when a cascade cancel
+        // lands on it.
+        let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.mark_interacted();
+            session.begin_sending();
+            state.session.active_session_id().clone()
+        };
+
+        // When the stream completes because it was canceled.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Canceled,
+            None,
+            None,
+            None,
+            None,
+        );
+        actor.on_stream_completed(&event).await;
+
+        // Then the session was persisted (should_save = true for Canceled).
+        assert!(
+            store.last_saved_session(&session_id).is_some(),
+            "expected session to be saved after Canceled"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn on_stream_completed_canceled_from_sending_appends_only_cancel_entry() {
+        // Given a sending session holding one user entry.
+        let (actor, _audit) = test_actor_recording().await;
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.begin_sending();
+            state.session.active_session_id().clone()
+        };
+
+        // When the stream completes because it was canceled.
+        let event = stream_completed(
+            &session_id,
+            StreamCompletedReason::Canceled,
+            None,
+            None,
+            None,
+            None,
+        );
+        actor.on_stream_completed(&event).await;
+
+        // Then the user entry is followed only by the cancel entry - no
+        // assistant entry is synthesized for a session that never streamed.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let kinds: Vec<ChatEntryKind> = session.history().iter().map(|e| e.kind.clone()).collect();
+        assert_eq!(kinds.len(), 2);
+        assert!(matches!(kinds[0], ChatEntryKind::User { .. }));
+        assert!(matches!(&kinds[1], ChatEntryKind::Error(text) if text == "Cancelled"));
     }
 
     #[rstest::rstest]
