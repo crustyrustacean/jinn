@@ -43,6 +43,7 @@ Quickly navigate and change things via Telescope-inspired pickers:
 Attach "attendants" to sessions that fire on agent turn end (or manually with `R`). Things that attendants can do:
 
 - Agent continuation when agent stops mid-task (shipped by default as `auto-nudge`)
+- Ensure implementation is done (shipped by default as `gap-check`)
 - Task completion checker
 - Code quality gate
 - Automatically fetch issues from a tracker for continuous bugfixing
