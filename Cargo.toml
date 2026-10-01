@@ -288,6 +288,12 @@ jinn-context-assembly = { path = "crates/slices/jinn-context-assembly" }
 wasm-encoder = "=0.252.0"
 wasmparser = "=0.252.0"
 
+# Embedding the `res/` resource tree. `include_dir!` reads the directory at
+# compile time and expands to `include_bytes!` per file, so a resource added
+# to `res/` ships without any source edit. It registers no `rerun-if-changed`
+# of its own, so `jinn-install/build.rs` supplies that for the tree.
+include_dir = { version = "0.7", default-features = false }
+
 # Error handling
 wherror = "2.3.1"
 error-stack = { version = "0.8", features = ["serde"] }
