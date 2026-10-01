@@ -15,8 +15,11 @@ max_output_lines = 2000
 # > Number of bytes in a tool call before truncating.
 max_output_bytes = 51200
 
-# > Disable these tools
-disabled = ["grep"]
+# > Tool set initialization for new sessions. `deny` disables the listed tools
+# > and permits everything else; `allow` permits the listed tools and
+# > blocks everything else. Globs are supported, so `mcp__foo__*` covers
+# > every tool the `foo` server contributes.
+tool_filter = { mode = "deny", names = ["grep"] }
 
 # ---------------------------------------------------------------------------
 # Command policies
@@ -113,9 +116,10 @@ min_collapse_count = 3
 # Skills
 # ###########################################################################
 [skills]
-#
-# > Disable these skills
-disabled = ["phased-task-loop"]
+# > Skill set initialization for new sessions. `deny` blocks the listed skills
+# > and permits everything else; `allow` permits _only_ the listed skills.
+# > Globs are supported.
+skill_filter = { mode = "deny", names = ["phased-task-loop"] }
 
 # ###########################################################################
 # Session lifecycle commands
@@ -345,6 +349,43 @@ settle_quiet_ms = 400
 # > sending a terminal screenshot back to the agent. This covers cases with stuff
 # > like `htop` that may update more frequently than the settle_quiet_ms.
 settle_max_wait_ms = 3000
+
+# ###########################################################################
+# Attendants
+# ###########################################################################
+[attendant]
+
+# > "Nudges" a session to complete it's work if it stops mid-way. Relies
+# > on the agent having a defined list of work and that it reports how far along
+# > it is. This is NOT for evaluating the quality nor checking if the work was
+# > actually implemented.
+[[attendant.entry]]
+behavior = "reset"
+name = "auto-nudge"
+pins = [{ role = "user", text = """
+You are in charge of keeping another agent on track. Please read the most recent message from the parent using the `session_fetch` tool and determine if it stopped prematurely. If it stopped prematurely, use the `notify_parent` tool to tell the agent to continue. The "continue" explanation should be brief but firm like "Continue with the <task>".
+
+Examples of agents that stopped too early:
+> I am on phase 3 of 5 <explanation of why it stopped>.
+
+Examples of agents that stopped correctly:
+> I've finished all phases of the plan.
+> I had to stop because there is a problem with the current plan and I cannot continue because <reasons>.
+
+It's important that you only tell the agent to continue if it stopped for something it _should not_ have stopped for. If it got blocked by something, then stopping is OK.
+
+Regardless of the outcome, always use the `conclude` tool to record your conclusion:
+- If you had to use `notify_parent` -> the "conclude" should be "Nudged"
+- If the agent finished -> the "conclude" should be "Task complete"
+
+You **do not** need to evaluate whether the agent actually did the work. Your job is simply to keep the agent moving if it says that it stopped before finishing. You don't need to check the work at all.""" }]
+prep_mode = false
+reasoning_effort = "high"
+seed_template = "The previous run of this attendant reported: <prior report>."
+trigger = "parent_completed"
+model = { single = "openrouter/deepseek/deepseek-v4.1-flash" }
+tool_filter = { mode = "allow", names = ["conclude", "notify_parent", "session_fetch", "session_search"] }
+skill_filter = { mode = "allow", names = [] }
 
 # ###########################################################################
 # Context curation

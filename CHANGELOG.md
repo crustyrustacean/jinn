@@ -7,6 +7,12 @@
 - Session preview will no longer obscure the session selection cursor on small terminals.
 - Canceling a session now recursively cancels child subagents and attendants.
   - The cascade skips child _forks_ under the assumption that forked sessions are now operating independently.
+- Add attendants. See README for details.
+- `jinn.toml` now supports allow or deny list for tools and skills:
+
+```toml
+
+```
 
 ## 2026-09-27 v1.1.2
 
