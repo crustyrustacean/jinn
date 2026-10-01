@@ -3,6 +3,7 @@
 ## (development)
 
 - Agents should be less likely to use the `interactive_term` `max_duration_seconds` parameter as a sleep function.
+- Paste now works properly across all input boxes.
 
 ## 2026-09-30 v1.2.1
 
