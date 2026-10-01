@@ -1,8 +1,8 @@
 //! Default resource installation — seeds themes, personas, prompts, and
 //! skills into the user's config and agent directories.
 //!
-//! Every resource under `res/` is embedded at compile time (`include_str!`),
-//! so the binary is self-contained.
+//! Every resource under `res/` is embedded at compile time (see
+//! [`bundled`]), so the binary is self-contained.
 //!
 //! [`install_defaults_to`] (`jinn install`) is a pure seeder. Payload files
 //! follow skip/`--force` rules; `jinn.toml` is written **exactly once**,
@@ -10,10 +10,14 @@
 //! even with `--force` — so user edits survive and a malformed file never
 //! fails the install.
 
+mod bundled;
+
 use std::path::{Path, PathBuf};
 
 use error_stack::{Report, ResultExt};
 use wherror::Error;
+
+use bundled::{Bundled, bundled_catalogue};
 
 /// Relative destinations for the four resource kinds.
 ///
@@ -23,10 +27,10 @@ use wherror::Error;
 /// tests can point at temp dirs.
 #[derive(Debug, Clone)]
 pub struct Destinations {
-    themes: PathBuf,
-    personas: PathBuf,
-    prompts: PathBuf,
-    skills: PathBuf,
+    pub(crate) themes: PathBuf,
+    pub(crate) personas: PathBuf,
+    pub(crate) prompts: PathBuf,
+    pub(crate) skills: PathBuf,
 }
 
 impl Destinations {
@@ -40,38 +44,6 @@ impl Destinations {
             skills,
         }
     }
-}
-
-/// Where a bundled resource should be installed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Kind {
-    Theme,
-    Persona,
-    Prompt,
-    Skill,
-}
-
-impl Kind {
-    /// Resolves this kind to its destination root within `destinations`.
-    fn root(self, destinations: &Destinations) -> &Path {
-        match self {
-            Kind::Theme => &destinations.themes,
-            Kind::Persona => &destinations.personas,
-            Kind::Prompt => &destinations.prompts,
-            Kind::Skill => &destinations.skills,
-        }
-    }
-}
-
-/// One bundled resource: its kind, its relative path under its destination
-/// root, and its compile-time-embedded contents.
-struct Bundled {
-    kind: Kind,
-    /// Path relative to the destination root (e.g. `default.toml`,
-    /// `phased-task-loop/SKILL.md`).
-    relative: &'static str,
-    /// The embedded payload, written verbatim.
-    contents: &'static str,
 }
 
 /// Outcome of installing one resource.
@@ -105,7 +77,7 @@ pub struct InstallError;
 /// The result of a full default install.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallReport {
-    /// Per-resource outcomes in [`BUNDLED`] order (deterministic).
+    /// Per-resource outcomes in catalogue order (deterministic).
     pub outcomes: Vec<InstallOutcome>,
     /// Outcome for the user preferences file itself.
     pub jinn_toml: JinnTomlOutcome,
@@ -125,193 +97,6 @@ pub enum JinnTomlOutcome {
     Untouched(PathBuf),
 }
 
-/// The compile-time catalogue of bundled defaults.
-///
-/// Ordering is deterministic; outcomes are returned in this order.
-const BUNDLED: &[Bundled] = &[
-    // --- themes ---
-    Bundled {
-        kind: Kind::Theme,
-        relative: "catppuccin-mocha.toml",
-        contents: include_str!("../../../res/themes/catppuccin-mocha.toml"),
-    },
-    Bundled {
-        kind: Kind::Theme,
-        relative: "default.toml",
-        contents: include_str!("../../../res/themes/default.toml"),
-    },
-    Bundled {
-        kind: Kind::Theme,
-        relative: "nord-light.toml",
-        contents: include_str!("../../../res/themes/nord-light.toml"),
-    },
-    Bundled {
-        kind: Kind::Theme,
-        relative: "gruvbox-dark.toml",
-        contents: include_str!("../../../res/themes/gruvbox-dark.toml"),
-    },
-    Bundled {
-        kind: Kind::Theme,
-        relative: "sonokai.toml",
-        contents: include_str!("../../../res/themes/sonokai.toml"),
-    },
-    // --- personas ---
-    Bundled {
-        kind: Kind::Persona,
-        relative: "brainstorm.md",
-        contents: include_str!("../../../res/personas/brainstorm.md"),
-    },
-    Bundled {
-        kind: Kind::Persona,
-        relative: "coding-assistant.md",
-        contents: include_str!("../../../res/personas/coding-assistant.md"),
-    },
-    Bundled {
-        kind: Kind::Persona,
-        relative: "general.md",
-        contents: include_str!("../../../res/personas/general.md"),
-    },
-    Bundled {
-        kind: Kind::Persona,
-        relative: "learning-tutor.md",
-        contents: include_str!("../../../res/personas/learning-tutor.md"),
-    },
-    // --- prompts ---
-    Bundled {
-        kind: Kind::Prompt,
-        relative: "approve-plan.md",
-        contents: include_str!("../../../res/prompts/approve-plan.md"),
-    },
-    Bundled {
-        kind: Kind::Prompt,
-        relative: "_compaction.md",
-        contents: include_str!("../../../res/prompts/_compaction.md"),
-    },
-    Bundled {
-        kind: Kind::Prompt,
-        relative: "diverge.md",
-        contents: include_str!("../../../res/prompts/diverge.md"),
-    },
-    Bundled {
-        kind: Kind::Prompt,
-        relative: "falsify.md",
-        contents: include_str!("../../../res/prompts/falsify.md"),
-    },
-    Bundled {
-        kind: Kind::Prompt,
-        relative: "gap-analysis.md",
-        contents: include_str!("../../../res/prompts/gap-analysis.md"),
-    },
-    Bundled {
-        kind: Kind::Prompt,
-        relative: "generate-persona.md",
-        contents: include_str!("../../../res/prompts/generate-persona.md"),
-    },
-    Bundled {
-        kind: Kind::Prompt,
-        relative: "judge.md",
-        contents: include_str!("../../../res/prompts/judge.md"),
-    },
-    Bundled {
-        kind: Kind::Prompt,
-        relative: "meta-prompt.md",
-        contents: include_str!("../../../res/prompts/meta-prompt.md"),
-    },
-    Bundled {
-        kind: Kind::Prompt,
-        relative: "plan.md",
-        contents: include_str!("../../../res/prompts/plan.md"),
-    },
-    Bundled {
-        kind: Kind::Prompt,
-        relative: "rank.md",
-        contents: include_str!("../../../res/prompts/rank.md"),
-    },
-    Bundled {
-        kind: Kind::Prompt,
-        relative: "research.md",
-        contents: include_str!("../../../res/prompts/research.md"),
-    },
-    // --- skills (preserve nested subdir structure) ---
-    Bundled {
-        kind: Kind::Skill,
-        relative: "phased-task-loop/SKILL.md",
-        contents: include_str!("../../../res/skills/phased-task-loop/SKILL.md"),
-    },
-    Bundled {
-        kind: Kind::Skill,
-        relative: "simple-task-loop/SKILL.md",
-        contents: include_str!("../../../res/skills/simple-task-loop/SKILL.md"),
-    },
-    Bundled {
-        kind: Kind::Skill,
-        relative: "micro-task-loop/SKILL.md",
-        contents: include_str!("../../../res/skills/micro-task-loop/SKILL.md"),
-    },
-    Bundled {
-        kind: Kind::Skill,
-        relative: "jinn-usage/SKILL.md",
-        contents: include_str!("../../../res/skills/jinn-usage/SKILL.md"),
-    },
-    Bundled {
-        kind: Kind::Skill,
-        relative: "jinn-usage/references/attendants.md",
-        contents: include_str!("../../../res/skills/jinn-usage/references/attendants.md"),
-    },
-    Bundled {
-        kind: Kind::Skill,
-        relative: "jinn-usage/references/keybindings.md",
-        contents: include_str!("../../../res/skills/jinn-usage/references/keybindings.md"),
-    },
-    Bundled {
-        kind: Kind::Skill,
-        relative: "jinn-usage/references/context-management.md",
-        contents: include_str!("../../../res/skills/jinn-usage/references/context-management.md"),
-    },
-    Bundled {
-        kind: Kind::Skill,
-        relative: "jinn-usage/references/sessions-and-subagents.md",
-        contents: include_str!(
-            "../../../res/skills/jinn-usage/references/sessions-and-subagents.md"
-        ),
-    },
-    Bundled {
-        kind: Kind::Skill,
-        relative: "jinn-usage/references/pickers-and-search.md",
-        contents: include_str!("../../../res/skills/jinn-usage/references/pickers-and-search.md"),
-    },
-    Bundled {
-        kind: Kind::Skill,
-        relative: "jinn-usage/references/terminal-overlay.md",
-        contents: include_str!("../../../res/skills/jinn-usage/references/terminal-overlay.md"),
-    },
-    Bundled {
-        kind: Kind::Skill,
-        relative: "jinn-usage/references/mcp-servers.md",
-        contents: include_str!("../../../res/skills/jinn-usage/references/mcp-servers.md"),
-    },
-    Bundled {
-        kind: Kind::Skill,
-        relative: "jinn-usage/references/chat-input-tokens.md",
-        contents: include_str!("../../../res/skills/jinn-usage/references/chat-input-tokens.md"),
-    },
-    Bundled {
-        kind: Kind::Skill,
-        relative: "jinn-usage/references/models-and-providers.md",
-        contents: include_str!("../../../res/skills/jinn-usage/references/models-and-providers.md"),
-    },
-    Bundled {
-        kind: Kind::Skill,
-        relative: "jinn-usage/references/configuration.md",
-        contents: include_str!("../../../res/skills/jinn-usage/references/configuration.md"),
-    },
-    Bundled {
-        kind: Kind::Skill,
-        relative: "jinn-usage/references/extending-jinn.md",
-        contents: include_str!("../../../res/skills/jinn-usage/references/extending-jinn.md"),
-    },
-];
-
 /// Installs every bundled default resource into the given destinations.
 ///
 /// Per resource:
@@ -328,7 +113,7 @@ const BUNDLED: &[Bundled] = &[
 /// `overwrite` — so a malformed `jinn.toml` never fails the install; the
 /// caller surfaces this via [`JinnTomlOutcome::Untouched`].
 ///
-/// Outcomes are returned in [`BUNDLED`] order (deterministic), alongside the
+/// Outcomes are returned in catalogue order (deterministic), alongside the
 /// `jinn.toml` outcome.
 ///
 /// # Errors
@@ -342,10 +127,12 @@ pub fn install_defaults_to(
 ) -> Result<InstallReport, Report<InstallError>> {
     let prefs_existed = prefs_path.exists();
 
-    let outcomes: Vec<InstallOutcome> = BUNDLED
-        .iter()
-        .map(|resource| install_text(resource, resource.contents, destinations, overwrite))
-        .collect::<Result<Vec<_>, Report<InstallError>>>()?;
+    let catalogue = bundled_catalogue()?;
+
+    let mut outcomes = Vec::with_capacity(catalogue.len());
+    for resource in &catalogue {
+        outcomes.push(install_resource(resource, destinations, overwrite)?);
+    }
 
     let jinn_toml = if prefs_existed {
         JinnTomlOutcome::Untouched(prefs_path.to_path_buf())
@@ -366,21 +153,23 @@ pub fn install_defaults_to(
     })
 }
 
-/// Installs a single bundled text resource, returning its outcome.
-fn install_text(
+/// Installs a single bundled resource, returning its outcome.
+///
+/// The payload is written verbatim from its embedded bytes; whether it is valid
+/// UTF-8 is irrelevant to installation.
+fn install_resource(
     resource: &Bundled,
-    contents: &str,
     destinations: &Destinations,
     overwrite: bool,
 ) -> Result<InstallOutcome, Report<InstallError>> {
-    let destination = resource.kind.root(destinations).join(resource.relative);
+    let destination = resource.kind.root(destinations).join(&resource.relative);
     let existed = destination.exists();
 
     if existed && !overwrite {
         return Ok(InstallOutcome::Skipped(destination));
     }
 
-    write_resource(&destination, contents.as_bytes())?;
+    write_resource(&destination, resource.contents)?;
 
     Ok(final_outcome(destination, existed))
 }
@@ -688,8 +477,8 @@ mod tests {
             report.outcomes.iter().all(|o| o.path().is_absolute()),
             "every outcome must carry an absolute path"
         );
-        // And the count matches the bundled catalogue size.
-        assert_eq!(report.outcomes.len(), BUNDLED.len());
+        // And the install covered at least one bundled resource.
+        assert!(!report.outcomes.is_empty());
     }
 
     #[rstest::rstest]
@@ -837,17 +626,90 @@ mod tests {
         );
     }
 
+    /// A nested skill reference (a file beneath a skill's own directory)
+    /// installs with its structure intact, at the same relative path under the
+    /// skills root.
     #[rstest::rstest]
     #[test]
-    fn jinn_usage_router_links_resolve_to_bundled_references() {
-        // Given the bundled jinn-usage SKILL.md body.
-        let skill = BUNDLED
-            .iter()
-            .find(|b| b.kind == Kind::Skill && b.relative == "jinn-usage/SKILL.md")
-            .expect("jinn-usage SKILL.md must be registered in BUNDLED");
-        let body = skill.contents;
+    fn install_preserves_nested_skill_reference_path() {
+        // Given a fresh set of destinations.
+        let env = TestEnv::fresh();
 
-        // When extracting its `references/*.md` links.
+        // When installing defaults.
+        let report = env.run(false);
+
+        // Then some reference nested beneath a skill directory lands under the
+        // skills root at its own nested relative path.
+        let nested = report
+            .outcomes
+            .iter()
+            .map(InstallOutcome::path)
+            .find(|path| {
+                path.starts_with(&env.destinations.skills)
+                    && path
+                        .strip_prefix(&env.destinations.skills)
+                        .is_ok_and(|rest| rest.components().count() > 2)
+            })
+            .expect("a skill reference nested under skills/<name>/");
+        assert!(nested.is_file());
+    }
+
+    /// Every installed payload is byte-identical to its source file under
+    /// `res/` — the embedding is verbatim, whatever the file's extension.
+    #[rstest::rstest]
+    #[test]
+    fn installed_payloads_are_byte_identical_to_their_sources() {
+        // Given a fresh set of destinations and the on-disk `res/` tree.
+        let env = TestEnv::fresh();
+        let res = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../res");
+
+        // When installing defaults.
+        let report = env.run(false);
+
+        // Then every installed file's bytes match the resource it came from.
+        let roots = [
+            ("themes", &env.destinations.themes),
+            ("personas", &env.destinations.personas),
+            ("prompts", &env.destinations.prompts),
+            ("skills", &env.destinations.skills),
+        ];
+        for outcome in &report.outcomes {
+            let installed = outcome.path();
+            let (kind_dir, under_root) = roots
+                .iter()
+                .find_map(|(kind_dir, root)| {
+                    installed
+                        .strip_prefix(root)
+                        .ok()
+                        .map(|rest| (*kind_dir, rest))
+                })
+                .unwrap_or_else(|| {
+                    panic!("{} is not under any destination root", installed.display())
+                });
+            let source = res.join(kind_dir).join(under_root);
+
+            assert_eq!(
+                std::fs::read(installed).expect("read installed"),
+                std::fs::read(&source).expect("read source"),
+                "{} was not installed verbatim from {}",
+                installed.display(),
+                source.display()
+            );
+        }
+    }
+
+    /// The router's `references/*.md` links resolve: every reference the
+    /// installed `jinn-usage` SKILL.md points at is installed alongside it.
+    #[rstest::rstest]
+    #[test]
+    fn jinn_usage_router_links_resolve_to_installed_references() {
+        // Given a fresh install with a nested skill on disk.
+        let env = TestEnv::fresh();
+        let report = env.run(false);
+        let usage_dir = env.destinations.skills.join("jinn-usage");
+
+        // When extracting the installed router's `references/*.md` links.
+        let body = std::fs::read_to_string(usage_dir.join("SKILL.md")).expect("read SKILL.md");
         let linked: Vec<&str> = body
             .lines()
             .filter_map(|line| line.split("references/").nth(1))
@@ -863,56 +725,20 @@ mod tests {
             linked.len() >= 8,
             "expected the router to link its reference files, found {linked:?}"
         );
-        // And every linked reference is bundled.
+        // And every linked reference was installed next to it.
         for name in linked {
-            let relative = format!("jinn-usage/references/{name}");
             assert!(
-                BUNDLED
-                    .iter()
-                    .any(|b| b.kind == Kind::Skill && b.relative == relative),
-                "SKILL.md links references/{name} but it is not registered in BUNDLED"
+                usage_dir.join("references").join(name).is_file(),
+                "SKILL.md links references/{name} but it was not installed"
             );
         }
-    }
-
-    /// Every file under `res/skills/jinn-usage/` has a `BUNDLED` entry. A
-    /// reference added on disk but not registered silently fails to install
-    /// (`include_str!` only catches the opposite direction).
-    #[rstest::rstest]
-    #[test]
-    fn every_jinn_usage_disk_file_is_registered_in_bundled() {
-        // Given the on-disk jinn-usage skill directory.
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../res/skills/jinn-usage");
-        let mut disk_files: Vec<String> = Vec::new();
-        if dir.join("SKILL.md").is_file() {
-            disk_files.push("jinn-usage/SKILL.md".to_owned());
-        }
-        let refs = dir.join("references");
-        if refs.is_dir() {
-            for file in std::fs::read_dir(&refs).expect("read references") {
-                let file = file.expect("read reference");
-                let name = file.file_name().to_string_lossy().to_string();
-                if name.to_ascii_lowercase().ends_with(".md") {
-                    disk_files.push(format!("jinn-usage/references/{name}"));
-                }
-            }
-        }
-
-        // When comparing against the catalogue.
-        // Then every disk file is registered.
-        for relative in &disk_files {
-            assert!(
-                BUNDLED
-                    .iter()
-                    .any(|b| b.kind == Kind::Skill && b.relative == relative),
-                "{relative} exists on disk but is not registered in BUNDLED"
-            );
-        }
-        // And the directory holds the expected set (router + 11 references).
-        assert_eq!(
-            disk_files.len(),
-            12,
-            "unexpected file count under res/skills/jinn-usage: {disk_files:?}"
+        // And the install reported the router itself.
+        assert!(
+            report
+                .outcomes
+                .iter()
+                .map(InstallOutcome::path)
+                .any(|p| p == usage_dir.join("SKILL.md").as_path())
         );
     }
 
