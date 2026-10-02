@@ -1,7 +1,7 @@
 //! The attendant properties popup — overlay geometry, view, and rows.
 //!
 //! The popup is a two-phase form. Its own scope is navigation-only: `j`/`k`
-//! move the form cursor between the six fields, `h`/`l` pick a choice
+//! move the form cursor between the seven fields, `h`/`l` pick a choice
 //! within the focused field, and `i` (on the seed-template field) opens the
 //! template editor on its own capturing scope. Every edit stays pending in
 //! the popup's cell until `<enter>` commits every field to the session
@@ -39,12 +39,16 @@ type AttendantPropertiesCell = TypedCell<AttendantPropertiesState>;
 /// The form's fields in display order — the single list the view, the
 /// popup's height, and the template row's offset are all derived from, so
 /// adding a row cannot leave one of them behind.
-const FIELDS_IN_DISPLAY_ORDER: [PropertyField; 6] = [
+///
+/// `pub(crate)` so a test can walk the form by the same list the view draws,
+/// rather than by a press count that a new row would silently falsify.
+pub(crate) const FIELDS_IN_DISPLAY_ORDER: [PropertyField; 7] = [
     PropertyField::Trigger,
     PropertyField::Behavior,
     PropertyField::PrepMode,
     PropertyField::ToolSet,
     PropertyField::SkillSet,
+    PropertyField::Model,
     PropertyField::SeedTemplate,
 ];
 
@@ -433,6 +437,12 @@ fn field_line<'a>(
             dim,
             theme,
         )),
+        PropertyField::Model => spans.extend(choice_spans(
+            jinn_attendant_msg::MODEL_CHOICES,
+            &popup.pending_model_setting,
+            dim,
+            theme,
+        )),
         PropertyField::SeedTemplate => {
             spans.push(template_value(popup, theme, layout));
         }
@@ -676,6 +686,20 @@ fn help_body(field: PropertyField, theme: &jinn_theme::Theme) -> Vec<Line<'stati
             line(
                 "frozen",
                 "(allow list) - The skills enabled for the attendant are the only ones available. New skills are automatically disabled.",
+            ),
+        ],
+        PropertyField::Model => vec![
+            Line::from(
+                "Whether to use the model in the parent session at spawn time, or one saved in the attendent config.",
+            ),
+            Line::from(""),
+            line(
+                "inherit",
+                "the model is the one this attendant was created with",
+            ),
+            line(
+                "fixed",
+                "the model selected in the attendant session will persist on all new attachments",
             ),
         ],
         PropertyField::SeedTemplate => vec![
@@ -1160,7 +1184,7 @@ pub fn attach_properties_rows(routes: &KeyRoutes, cell: &AttendantPropertiesCell
 
 /// The `h`/`l` action: acts on whichever row the form cursor is on.
 ///
-/// Four of the six rows are decided entirely from the popup's own cell, so
+/// Five of the seven rows are decided entirely from the popup's own cell, so
 /// they go straight to [`AttendantPropertiesState::pick`]. The two set rows
 /// are the exception: freezing one is a statement about the attendant's
 /// present capabilities, and reading those means reaching `AppState` — the
@@ -1234,7 +1258,7 @@ fn next_set_mode(current: SetMode, direction: PickDirection) -> Option<SetMode> 
     }
 }
 
-/// The set row a form field names, or `None` for the four rows that are
+/// The set row a form field names, or `None` for the five rows that are
 /// decided from the cell alone.
 fn set_field_of(field: PropertyField) -> Option<SetField> {
     match field {
@@ -1243,6 +1267,7 @@ fn set_field_of(field: PropertyField) -> Option<SetField> {
         PropertyField::Trigger
         | PropertyField::Behavior
         | PropertyField::PrepMode
+        | PropertyField::Model
         | PropertyField::SeedTemplate => None,
     }
 }
@@ -1446,7 +1471,9 @@ fn save_attendant(ctx: &mut ActionCtx<'_>, cell: &AttendantPropertiesCell) -> In
 /// The two set rows are written here rather than in the save path, because
 /// `<enter>` alone has to leave the session holding what the panel showed.
 /// A Live row writes nothing: the attendant inherits its parent's set, which
-/// is what an unconfigured filter already means.
+/// is what an unconfigured filter already means. The model row is written
+/// unconditionally — it holds a value of its own rather than a reading of the
+/// session, so there is no untouched case to leave alone.
 fn commit_pending_to_session(
     ctx: &mut ActionCtx<'_>,
     popup: &jinn_attendant_msg::AttendantPropertiesState,
@@ -1462,6 +1489,7 @@ fn commit_pending_to_session(
     session.set_attendant_behavior(popup.pending_behavior);
     session.set_attendant_is_prepping(popup.pending_prep_mode);
     session.set_attendant_trigger(popup.pending_trigger);
+    session.set_attendant_model_setting(popup.pending_model_setting);
     for field in [SetField::Tool, SetField::Skill] {
         // Only a row the user actually moved may write. An untouched row
         // opens as a reading of whatever filter the attendant already

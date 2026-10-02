@@ -53,6 +53,10 @@ pub fn save_intent(config: &jinn_config::ConfigLayer, name: &str) -> SaveIntent 
 /// edit the user never committed. The entry describes the session as it
 /// stands; `<enter>` then applies the pending edits, and a second save
 /// captures them.
+///
+/// Whether the entry carries a `model` key is the session's own claim to its
+/// model, not a reading of the model: every session holds one, so reading it
+/// would pin every inheriting attendant on its first save.
 #[must_use]
 pub fn entry_for_session(name: String, session: &ChatSessionState) -> AttendantEntryConfig {
     let profile = session.profile();
@@ -62,6 +66,7 @@ pub fn entry_for_session(name: String, session: &ChatSessionState) -> AttendantE
         session.attendant_trigger(),
         session.attendant_is_prepping(),
         session.seed_template().to_owned(),
+        session.attendant_model_setting(),
         &profile.model,
         &profile.persona_name,
         profile.tool_filter.as_ref(),

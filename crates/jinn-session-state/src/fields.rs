@@ -8,7 +8,8 @@ use std::path::PathBuf;
 
 use jiff::Timestamp;
 use jinn_attendant_msg::{
-    AttendantBehavior, AttendantReport, AttendantTrigger, default_seed_template,
+    AttendantBehavior, AttendantModelSetting, AttendantReport, AttendantTrigger,
+    default_seed_template,
 };
 use jinn_core_types::{ChatHistory, SessionId};
 use jinn_session_lifecycle_msg::LifecycleScriptState;
@@ -183,6 +184,14 @@ pub struct SessionAttendantFields {
     /// User-editable text used to inject the prior report on each run.
     #[serde(default = "default_seed_template")]
     pub seed_template: String,
+    /// Whether the session's model is this attendant's own or the copy it
+    /// inherited at creation.
+    ///
+    /// The model itself lives on the profile and is always concrete; this
+    /// only records whether the attendant *owns* it, which is what decides
+    /// whether a save writes a `model` key into the entry.
+    #[serde(default)]
+    pub model_setting: AttendantModelSetting,
     /// Append-only; the harness never removes or edits a report.
     #[serde(default)]
     pub reports: Vec<AttendantReport>,
@@ -195,6 +204,7 @@ impl Default for SessionAttendantFields {
             trigger: AttendantTrigger::default(),
             prep_mode: default_prep_mode(),
             seed_template: default_seed_template(),
+            model_setting: AttendantModelSetting::default(),
             reports: Vec::new(),
         }
     }
@@ -209,4 +219,34 @@ impl Default for SessionAttendantFields {
 /// this is a function rather than a bare `true` on the attribute.
 pub const fn default_prep_mode() -> bool {
     true
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, reason = "test code")]
+
+    use jinn_attendant_msg::AttendantModelSetting;
+
+    use super::SessionAttendantFields;
+
+    #[rstest::rstest]
+    fn an_attendant_blob_written_before_the_model_row_inherits() {
+        // Given a blob holding every attendant field as they were written
+        // before the model setting existed.
+        let blob = serde_json::json!({
+            "behavior": "reset",
+            "trigger": "parent_completed",
+            "prep_mode": false,
+            "seed_template": "review: <prior report>",
+            "reports": [],
+        });
+
+        // When it is deserialized as an attendant's fields.
+        let fields: SessionAttendantFields =
+            serde_json::from_value(blob).expect("a pre-change blob deserializes");
+
+        // Then the setting reads inherit, so an attendant that predates the
+        // row saves without a model key rather than pinning one.
+        assert_eq!(fields.model_setting, AttendantModelSetting::Inherit);
+    }
 }

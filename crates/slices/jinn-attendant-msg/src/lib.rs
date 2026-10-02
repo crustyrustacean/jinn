@@ -14,12 +14,12 @@ mod report;
 mod report_picker;
 mod saved_picker;
 
-pub use crate::behavior::{AttendantBehavior, AttendantTrigger};
+pub use crate::behavior::{AttendantBehavior, AttendantModelSetting, AttendantTrigger};
 pub use crate::properties::{
-    AttendantPropertiesState, BEHAVIOR_CHOICES, OriginalValues, PickDirection, PopupStatus,
-    PropertyField, SET_MODE_CHOICES, SetField, SetMode, TRIGGER_CHOICES,
+    AttendantPropertiesState, BEHAVIOR_CHOICES, MODEL_CHOICES, OriginalValues, PickDirection,
+    PopupStatus, PropertyField, SET_MODE_CHOICES, SetField, SetMode, TRIGGER_CHOICES,
     attendant_properties_scope, attendant_properties_slot, attendant_seed_template_scope,
-    pick_behavior, pick_trigger,
+    pick_behavior, pick_model_setting, pick_trigger,
 };
 pub use crate::report::AttendantReport;
 
