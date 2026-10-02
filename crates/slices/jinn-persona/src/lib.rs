@@ -4,7 +4,7 @@
 //! the markdown personas scanned from the user and system persona
 //! directories at activation. Activation also hands the scanned set back
 //! to composition, which publishes the kernel's `PersonasLoaded` event —
-//! the same contract the retired `persona-loader` plugin fulfilled over
+//! the same contract the retired `persona-loader` component fulfilled over
 //! the wire — so the session actor's consumer code is unchanged.
 
 use std::path::Path;
@@ -38,7 +38,7 @@ pub use parse::parse_persona_file;
 /// writes the scanned value through the resolved handle rather than
 /// minting a second cell nobody else can see.
 ///
-/// Scan semantics (the retired plugin's): `.md` files only, one
+/// Scan semantics (the inherited ones): `.md` files only, one
 /// unparseable file is noted on stderr and skipped — a single bad file
 /// never drops the batch — and the user directory shadows the system
 /// directory for same-name personas.

@@ -3,31 +3,150 @@
 This document defines the _coding conventions_, _patterns_, and _architecture_ for the `jinn` codebase.
 
 - IGNORE ALL CODE IN `vendor/` UNLESS IT'S SPECIFICALLY RELATED TO THE TASK.
-- NEVER RUN `cargo test -p <package>`. ALWAYS USE `just test` to test the code!
-- NEVER run `cargo test` directly — not even `--workspace`. The suite is slow; run it ONCE per check via `just test`, which tees full output to `target/test-output.log` and prints a summary.
-- NEVER pipe `cargo test` through `grep`/`awk`/`head` filters, and never invoke it twice in one command (e.g. once for a tally, once for failure names). The summary and `just test-failures` already provide this — re-deriving it re-runs the whole suite.
-- NEVER use `--no-run` to "pre-compile tests" before a test run. `just test` compiles anyway; if you only want a compile check, use `just check`.
+- ALWAYS USE `just` RECIPES TO BUILD, TEST, LINT, AND COMMIT. Every command you are told to run is a recipe in the `justfile`; do not invoke a compiler or test runner directly.
+- NEVER run the test suite directly, not even across the whole workspace. The suite is slow; run it ONCE per check via `just test`, which tees full output to `target/test-output.log` and prints a summary.
+- NEVER pipe the test run through `grep`/`awk`/`head` filters, and never invoke it twice in one command (e.g. once for a tally, once for failure names). The summary and `just test-failures` already provide this — re-deriving it re-runs the whole suite.
+- NEVER use a "pre-compile tests" flag before a test run. `just test` compiles anyway; if you only want a compile check, use `just check`.
 
 ### Test Discipline
 
 The full workspace suite takes minutes. Treat suite executions as expensive:
 
-1. Run `just test` ONCE. It runs the suite with `--no-fail-fast`, captures everything to `target/test-output.log`, and prints a passed/failed summary plus failing test names.
-2. Get failure details from the capture with `just test-failures` — instant, no cargo. Or grep the log manually as needed.
+1. Run `just test` ONCE. It runs the suite with fail-fast disabled, captures everything to `target/test-output.log`, and prints a passed/failed summary plus failing test names.
+2. Get failure details from the capture with `just test-failures` — instant, no rebuild. Or grep the log manually as needed.
 3. Iterate cheaply while fixing: `just test-one <test_name_filter>` runs only matching tests across the workspace.
 4. Before committing, confirm with one final `just test`.
 
 ## 1. Overview
 
-This style guide ensures consistent, maintainable Rust code across the codebase. It covers error handling, trait-based design, testing patterns, documentation standards, and module organization. Following these patterns enables dependency injection for testability and clear separation of concerns.
+This style guide ensures consistent, maintainable Rust code across the codebase. It covers the slice architecture, error handling, trait-based design, testing patterns, documentation standards, and module organization.
 
-## 2. Core Patterns
+## 2. Architecture: The Slice System
+
+`jinn` is assembled out of **slices**. A slice is one self-contained domain feature: it owns its state, its logic, its view, and its keybinds, and it contributes those to the application at startup through a single `activate` function. The kernel never names a slice; a slice never reaches into the kernel's enums.
+
+Four pieces make this work, and every convention below follows from them.
+
+### 2.1 Implementation crate + `-msg` contract crate
+
+Slice crates live under `crates/slices/`. Most come in a pair:
+
+- `crates/slices/jinn-foo/` — the **implementation**: the actor, the view, the routes.
+- `crates/slices/jinn-foo-msg/` — the **contract**: the cell payload, the slot key, the scope id, and the command/event structs that cross the slice boundary.
+
+The dependency arrow points one way: **the implementation crate depends on its `-msg` crate; a `-msg` crate never depends on an implementation crate.** A `-msg` crate holds pure data and pure functions only — no actors, no traits with behavior, no `activate`.
+
+This split exists so the shared cell catalog can name a slice's payload without pulling in that slice's actor and renderer. It is why every cell payload type lives beside its slot key in the `-msg` crate, and why `jinn-slices` (below) can be consumed by the kernel while slices depend on the kernel.
+
+Exceptions exist and are legitimate. A slice with **no cell, no routes, and no view** needs no contract crate — the watchdogs are the worked example: two actors, config read at activation, no shared state. A slice whose cell is read by four different crate families puts the payload in `jinn-slices` instead. Follow the pattern, not the directory name.
+
+### 2.2 `jinn-slices` — shared vocabulary
+
+`crates/jinn-slices` sits **below** the kernel and holds the types every slice uses, as opposed to the types one slice owns. It never depends on `jinn-kernel`, which is what lets a slice import it freely.
+
+It defines the cell primitives (`TypedCell`, `SlotKey`, `SlotTaken`), the dynamic identity types (`SliceScopeId`, `DynamicIntent`, `RouteId`), the activation surface (`SliceHost`), the routing table (`KeyRoutes`, `RouteRow`, `RouteOutcome`, `ActionFn`, the three hook aliases), the view primitives (`SliceView`, `Viewport`, `Region`, `RenderFacts`), and the bus wrapper (`BusService`, `BusMessage`, `PublishSink`).
+
+There is **no registry of slice ids**. Spelling a new `SliceScopeId` is exactly the act of creating a slice.
+
+### 2.3 `activate()` at composition
+
+Composition owns the boot list: `src/bootstrap/slices.rs` holds `activate_all`, which is called once from `src/actor_wiring.rs`. Every `pub fn activate*` in a slice crate is called from there and nowhere else in production.
+
+There is no trait and no macro for `activate` — each slice declares the signature it needs. The convention that fits the tree:
+
+- **Take `host: &mut SliceHost<'_, jinn_slices::RenderFacts>` first** when the slice touches cells, routes, overlays, or views. This is the majority case.
+- Add `&State` and/or `Services` after it when the slice reads shared state or configuration.
+- A slice that only spawns actors may take `&ActorSystem` and its deps instead, with no host at all.
+- A slice that can fail to activate returns `Result`; composition propagates with `?`.
+
+`SliceHost` is the complete contribution surface. Its verbs: `register_cell`, `spawn_service`, `attach_rows`, `register_tab_scope`, `register_overlay`, `register_overlay_slot`, `register_overlay_selectable`, `set_flag`, plus accessors `system()`, `slices()`, `key_routes()`, `viewport()`. Anything else a slice needs (`register_render_slot`, `register_scope_hint`, `push_pre_render_hook`) goes through `host.slices()`.
+
+**Activation order is behavioural, not cosmetic.** The boot list is written in blocks: the cell catalog, then producers, then independents, then system-level actors. Inline comments at each call name the constraint that forces the order — a subscription that must exist before an actor spawns, a cell that must be minted before a consumer resolves it. Read them before moving a line.
+
+### 2.4 The cell catalog
+
+A cell is a slice's private storage: a `TypedCell<T>` under a `SlotKey`. The owning slice gets the write handle; everyone else resolves read-only.
+
+**Every cell in the workspace is registered in one function**: `jinn_cell_catalog::register_all_cells`, in `crates/jinn-cell-catalog/src/lib.rs`. It runs before any slice activates, and every test harness calls it when it needs a seeded registry. A slice's `activate` **resolves** its cell; it never registers it.
+
+Adding a cell means two edits: one `register!` entry in the catalog, and bumping `EXPECTED_CELL_COUNT` alongside it. The count assertion is a tripwire that catches both a stale count and a payload registered under the wrong type.
+
+### 2.5 Route rows and key dispatch
+
+Keybinds are **data, not enum variants**. A slice registers `RouteRow`s at activation; composition turns them into keymap bindings after every slice has activated.
+
+A `RouteRow` says: *in this scope, this key, produce this outcome.* The outcome is one of:
+
+- `RouteOutcome::Action` — a closure `ActionFn` that runs in the handler, resolved by a linear scan over `(slice, action)`.
+- `RouteOutcome::StaticIntent` — a shared-chrome key (quit, which-key, tab switch) that composition binds to a real `KernelIntent` via the `static_intent` table in `crates/jinn-tui/src/keymap_gen.rs`. A route id missing from that table logs a warning and leaves the key unbound; it is a wiring bug, not a compile error.
+
+The resulting intent is `KernelIntent::Dynamic(DynamicIntent)`, where `DynamicIntent` carries the slice, the action name, a display label, and an optional byte payload. **A slice's identity is data, so no slice ever edits a central enum.** That is the whole point of the layer.
+
+`BindSite` decides where a row binds: its own dynamic scope, every scope (`GlobalToggle`), or named static scopes.
+
+A slice may also register three per-scope hooks: `InputHook` (editing intents while the scope is focused — the synchronous typing carve-out), `KeyHook` (catch-all for unbound keys, e.g. a terminal capturing raw bytes), and `ScopeEnterHook` (fires once when a transition lands on the scope).
+
+Slices can also declare a `scope_signal` on a `RouteResult` to request a focus-stack push or conditional pop. **The `IntentHandler` is the only writer of the scope stack**; a slice declares the transition as data and the handler applies it before any message publishes.
+
+### 2.6 Data flow
+
+```
+  Keyboard / Mouse / Script
+         │
+         ▼
+  Keymap  ────────────────────────────────┐
+  (built-ins + rows generated from KeyRoutes) │
+         │                                    │
+         ▼                                    │
+  IntentHandler::handle  (sync)                │
+    1. route rows (DynamicIntent) ─────────────┘  (early return on a hit)
+    2. slice input hooks                       (early return on a hit)
+    3. built-in match arms → per-feature handle_*
+    4. apply scope signal, return IntentResult { messages, scope_signal }
+         │
+         ▼
+  Bridge (kanal channel, sync send)  →  async drain task
+         │
+         ▼
+  BusService → trouper ActorSystem (schema broadcast)
+         │
+         ├──▶ actors that declared .handles::<M>()
+         └──▶ TUI renderer, reading AppState and cell readers
+```
+
+Unidirectional: frontend → actors. The shared `AppState` and the cell registry are the feedback — actors and handlers write them, the renderer reads on the next tick.
+
+### 2.7 Actors and the bus
+
+There is no central actor host. The bus is a **schema broadcast**: publishing a message delivers it to every actor that declared `.handles::<M>()` at spawn, and to no one else. Publishing is not a route table.
+
+An actor is a struct ending in `Actor` that implements three things:
+
+- `ServiceActor` (from `trouper`) — with `start` returning an error, because actors always spawn via `start_with`. That `Err` is a hard invariant, not a stub.
+- `MsgHandler<M>` for each message it consumes, one impl per message, each delegating to a handler function.
+- `BusPublish` (jinn's own trait, in `crates/jinn-kernel/src/common/actor_deps.rs`) — gives the actor the bus.
+
+**The flush gate.** A spawn builder's `.handles::<M>()` declares subscriptions; its `.emits::<M>()` declares what the actor is allowed to send. A type that is neither handled nor emitted is **dropped silently at runtime**. When an outbound message vanishes, the fix is almost always a missing `.emits::<M>()`.
+
+`Bridge` (`crates/jinn-kernel/src/common/bridge.rs`) is how a synchronous caller reaches the bus: the handler produces erased `PublishClosure`s, the bridge takes them over a synchronous channel, and an async task drains them through the same `BusService` every actor uses. The closure rides the identical path as a direct publish — same broadcast semantics, same recording mode.
+
+### 2.8 State ownership
+
+`AppState` (`crates/jinn-app-state/src/app_state.rs`) is deliberately small: `session`, `frontend`, and `task_spawns`. Anything a slice needs a typed handle to lives in a cell in the `Slices` registry, not as an `AppState` field.
+
+Each field is written by **at most one owner** — a slice's actor for slice state, the `IntentHandler` for frontend state. "At most one" is an upper bound, not a requirement that a dedicated writer exist. Writing state is ordinary inline work for whatever already owns that domain; do not create an actor in order to write.
+
+Ownership is per-field, not per-struct: a slice actor writing the cell it owns is correct, and the `IntentHandler` writing the same field is also correct (it is the exempt synchronous frontend mutator). A **second** actor writing a field another actor owns is the red flag.
+
+**Anti-pattern — the "sync sibling."** Do not split one domain boundary across two actors where one persists and a second subscribes to the first's event purely to write state. If an actor has no `State`, and you spawned a sibling to do the write, the sibling is the bug. One boundary, one actor.
+
+## 3. Core Patterns
 
 ### Error Handling
 
 Use `wherror::Error` with `error_stack::Report` for all fallible operations.
 
-**Colocate errors with their related types.** Never create standalone `error.rs` or `errors.rs` files. Error types belong in the same module as the trait, struct, or function that produces them. For example, `ActorHostError` lives in `actor_host.rs` alongside the `ActorHost` trait, not in a separate `error.rs`.
+**Colocate errors with their related types.** Never create standalone `error.rs` or `errors.rs` files. An error type belongs in the same module as the trait, struct, or function that produces it.
 
 **Error type:**
 
@@ -61,12 +180,12 @@ pub fn load() -> Result<Config, Report<ConfigError>> {
 pub fn run(tick_rate: Duration) -> Result<(), Report<TuiRunError>>
 ```
 
-### Validator Pattern
+### Validators
 
-Each `Intent` variant has a dedicated validator function. Validators are plain functions — no registries or trait objects. Fallible validators return `Result<(), SpecificError>` with a custom error enum per intent.
+An action with preconditions has a dedicated validator co-located with its feature. Validators are plain functions — no registries, no trait objects.
 
 ```rust
-// Validator pattern — co-located per feature, e.g. slices/jinn-chat-input/src/validator.rs
+// Co-located per feature, e.g. crates/slices/jinn-chat-input/src/validator.rs
 pub fn validate_submit_message(state: &AppState) -> Result<(), SubmitMessageError> {
     if state.active_chat_input().is_empty() {
         return Err(SubmitMessageError::EmptyBuffer);
@@ -77,15 +196,18 @@ pub fn validate_submit_message(state: &AppState) -> Result<(), SubmitMessageErro
 
 **Validator rules:**
 
-- All validators take `&AppState` as input
-- Each fallible intent has a custom error enum describing why it cannot proceed
-- On validation failure, the `IntentHandler` match arm does nothing (no-op)
+- Validators take `&AppState` as their first parameter.
+- Each fallible action has a custom error enum naming why it cannot proceed.
+- An infallible action gets no validator; if you write one anyway, it returns `()` and says so in its doc.
+- On validation failure the call site does nothing — no partial mutation, no error surfaced to the user.
+
+A validator is not a formality. Most user actions are now **route actions, not `KernelIntent` variants**, and the route dispatch path has no validation stage. A precondition on a route action is enforced inside the `ActionFn` closure, where it can return an empty result. Reach for a validator when the action is a `KernelIntent` arm.
 
 ### Trait Usage
 
 Every external dependency or service must have a trait abstraction.
 
-**Colocate traits with their related types.** Never create standalone `traits.rs` files. Traits belong in the same module as the types that implement them or the domain they define. For example, `MessageSink` lives in `message_sink.rs`, not in a separate `traits.rs`.
+**Colocate traits with their related types.** Never create standalone `traits.rs` files. A trait belongs in the same module as the types that implement it or the domain it defines.
 
 **Service trait pattern:**
 
@@ -108,60 +230,53 @@ use std::sync::Arc;
 use derive_more::Debug;
 
 #[derive(Debug, Clone)]
-pub struct ActorHostService {
-    #[debug("ActorHost<{}>", self.backend.name())]
-    host: Arc<dyn ActorHost>,
+pub struct BusService {
+    #[debug("BusService<{}>", self.name())]
+    inner: Arc<dyn BusBackend>,
 }
 
-impl ActorHostService {
-    pub fn new(host: Arc<dyn ActorHost>) -> Self {
-        Self { host }
+impl BusService {
+    pub fn new(inner: Arc<dyn BusBackend>) -> Self {
+        Self { inner }
     }
 }
 ```
 
 **Key trait design rules:**
 
-- Use `#[async_trait]` for async methods
-- Include a `name(&self) -> &'static str` method for debugging on service traits
-- Service structs wrap `Arc<dyn Trait>` for shared ownership
+- Use `#[async_trait]` for async methods.
+- Include a `name(&self) -> &'static str` method for debugging on service traits.
+- Service structs wrap `Arc<dyn Trait>` for shared ownership.
 
 ### Module System
 
-Use the new Rust module system throughout:
+There is no rule about *where* `mod.rs` goes, because the tree does not follow one. It uses three shapes, and all three are correct:
 
-- **Top-level feature directories** use `mod.rs` (e.g., `feat/chat_input/mod.rs`). This is the only exception.
-- **All other modules** use `foo.rs` alongside `foo/` directory — never `mod.rs` inside a non-feature directory.
-- The `feat/` directory itself has `feat.rs` at the `src/` level, not `feat/mod.rs`.
+- **Flat siblings** — `handler.rs`, `validator.rs`, `intent.rs` in one directory. The common case.
+- **`foo.rs` beside `foo/`** — the parent module's own code in `foo.rs`, its children under `foo/`. Used wherever a parent has real content of its own, such as `crates/jinn-kernel/src/feat.rs` beside `feat/`, and `crates/slices/jinn-session-store/src/session_store_actor.rs` beside `session_store_actor/`.
+- **`mod.rs`** — a directory of pure grouping, where the module doc and any shared constants belong. A `mod.rs` directory that also holds logic should have been a `foo.rs` + `foo/` pair.
+
+**Pick the shape that matches what the parent module actually is**, and do not convert one shape to another as a matter of tidiness. A rule that fits every `mod.rs` in the tree is a rule about grouping, not about `mod.rs` placement.
 
 ### Actor Naming
 
-Actors are domain logic that spans the entire application, so they have specific naming conventions for discoverability:
+Actors are domain logic that spans a whole slice, so they have conventions for discoverability:
 
-- **Actor-only features** are named with an `_actor` suffix.
-- **Within domain features**, each actor lives in its own `*_actor.rs` file.
-- **One actor per file.** Never combine multiple actors in a single file.
-- **Spawn functions live with their actor.** Each `*_actor.rs` file contains both the actor struct/impl and the `spawn_*()` function that creates it. Feature `mod.rs` files do not contain spawn functions.
+- **One actor per file**, named `*_actor.rs`.
+- **One `spawn` per actor**, living in that same file, next to the actor it builds. Composition calls `Actor::spawn(system, deps)`.
+- **Deps are a separate struct** named `<Actor>ActorDeps`, holding the `State` and cell handles the actor needs. A `CellHandle` the actor must write goes in `Deps`, not in a global.
+- **One `MsgHandler` impl per handled message**, each a one-line delegation to a function in the actor's `handlers.rs`.
 
 ### Dependency Injection
 
-**Services container (in `crates/jinn-kernel/src/common/services.rs`):**
+**`Services`** (`crates/jinn-kernel/src/common/services.rs`) is the DI container. It is built once at startup and cloned cheaply; every clone shares the same bus, cell registry, route table, and actor system.
 
-```rust
-#[derive(Debug, Clone)]
-pub struct Services {
-    // See crates/jinn-kernel/src/common/services.rs for the current fields.
-    // Services are added as the domain grows — the exact set of fields
-    // changes over time. The pattern is what matters, not the specific list.
-}
-```
+All services within `Services` must either:
 
-Created once at startup and shared throughout the application. `Services` is the DI container for the actor system — the frontend and intent handler don't need it because they work with `AppState` directly.
+- Be cheap to clone.
+- Use the "service wrapper" pattern above.
 
-All services within the `Services` struct must either:
-
-- Be cheap to clone
-- Use the "service wrapper" pattern detailed above.
+Read the file for the current field list — it is short and the set changes as the domain grows. The pattern matters, not the inventory.
 
 ### Block Scoping
 
@@ -208,85 +323,39 @@ let c = {
 
 ### TOML Persistence (Comment-Preserving)
 
-User-editable TOML files (`providers.toml`, `jinn.toml`) must be written via the
-`DocumentPatcher` in `crates/jinn-common/src/toml_patch.rs`, **never** via
-`toml::to_string_pretty` directly. The plain serializer wipes every comment,
-blank line, and field-ordering choice on every save.
+User-editable TOML files (`providers.toml`, `jinn.toml`) must be written through the `DocumentPatcher` in `crates/jinn-common/src/toml_patch.rs`, **never** by serializing the struct to a string directly. The plain serializer wipes every comment, blank line, and field-ordering choice on every save.
 
-Pattern: behind the `ConfigStorage` / `UserPreferencesStorage` traits, the
-`Filesystem*::save` impl reads the on-disk document, applies the new struct as
-a patch, and writes it back. `InMemory*` test impls stay simple.
+Pattern: behind a storage trait, the filesystem `save` impl reads the on-disk document, applies the new struct as a patch, and writes it back. The three user-editable files have three storage traits — `ConfigStorage` (`providers.toml`), `ConfigDocumentStorage` (`jinn.toml`), `AppStateStorage` (`state.toml`) — and the in-memory test impls behind them stay simple.
 
-Why: the trait is the mutation boundary; patching preserves user comments,
-ordering, and unknown keys (forward-compat for newer jinn versions) for free.
+Why: the trait is the mutation boundary; patching preserves user comments, ordering, and unknown keys (forward-compat for newer jinn versions) for free.
 
-Adding a new scalar or sub-table field to `ProvidersConfig` / `UserPreferences`
-requires **zero** storage-layer changes — `Serialize` produces the new key and
-the patcher writes it through. Adding a new array-of-tables requires one
-`DocumentPatcher::register_array_key` call so the patcher can match entries
-by their key field (`name`, `pattern`, etc.).
+Adding a new scalar or sub-table field to `ProvidersConfig` requires **zero** storage-layer changes — `Serialize` produces the new key and the patcher writes it through. Adding a new array-of-tables requires one `DocumentPatcher::register_array_key` call so the patcher can match entries by their key field.
 
 Read-only TOML files (themes, prompt frontmatter) are unaffected.
-
-## 3. Architecture
-
-### Data Flow
-
-```
-  Keyboard / Mouse / Script
-         │
-         ▼
-  Keymap (produces Intent)
-         │
-         ▼
-  IntentHandler (sync, single match block)
-    ├── validator  → passes or rejects
-    ├── mutate AppState directly (scroll, cursor, mode, etc.)
-    └── return IntentResult { commands }
-         │
-         ▼
-  AppCore.sender  →  async forwarding task  →  ActorHost
-                                                    │
-                                          ┌──────���──┴─────────┐
-                                          │                   │
-                                   Domain actors          other actors
-                                          │                   ���
-                                          ▼                   ▼
-                                    write AppState        Commands/Events
-                                    (shared RwLock)             │
-                                          │                    │
-                                          └─────────┬──────────┘
-                                                    ▼
-                                            TUI renderer reads AppState
-```
-
-Unidirectional: frontend → actor system. No feedback loop.
-The shared AppState is the feedback — domain actors write their fields,
-the renderer reads it on the next tick.
-
-### Command/Event System
-
-**Intents are for user input only.** The `IntentHandler` validates, mutates `AppState` directly, and returns commands. It never accesses external services and never emits events.
-
-**All domain logic goes through commands.** When something needs to happen — send a message, switch provider, run a tool — the IntentHandler returns a `Command`. Commands are routed by the actor host to exactly one subscribed actor.
-
-**Actors handle all async operations.** They communicate through the actor host's pub/sub routing. Events are broadcast to all subscribers; commands route to exactly one. Actors may emit events or commands back onto the bus in response.
-
-Each `AppState` field/sub-struct is written by **at most one actor** — its owner. "At most one" is an upper bound on co-writers, not a requirement that a dedicated writing actor exist. Writing state is ordinary inline work for whatever actor already owns that field's domain (it may also persist to disk, subscribe to the bus, forward to a channel, run business logic). Do not create an actor in order to write.
-
-The `IntentHandler` is **not an actor** and is exempt from this rule. It is the synchronous frontend mutator (user input → `AppState`). It may write any field, in frontend or elsewhere; it is never counted as a writer. An actor owning a field the `IntentHandler` also writes is not a conflict (e.g. optimistic IntentHandler write + authoritative actor write is fine).
-
-Ownership is per-field, not per-top-level-struct: a domain actor writing `frontend.pins` it owns is correct; the `IntentHandler` writing it too is also correct (exempt); a _second actor_ writing it is the red flag. A cross-boundary write is mutating a field you don't own, regardless of which top-level struct it lives under.
-
-**Anti-pattern — the "sync sibling."** Do not split one domain boundary across two actors where one persists/forwards and a second "sync" actor subscribes to the first's event just to write `AppState`. If you keep an actor "pure" (no `State`) and spawn a sibling to do the write, the sibling is the bug — give the first actor a `State` clone and write inline. One boundary = one actor.
 
 ## 4. Tests
 
 Important:
 
-- Tests should only verify _observable behavior_
+- Tests should only verify _observable behavior_.
 - Testing internal details is an _anti-pattern_.
 - Prefer testing observable behavior ONLY. If observable behavior cannot be tested, then an abstraction needs to be created. Ask the user how to proceed in this case.
+
+### The `rstest` Attribute Is Mandatory
+
+**Every test stacks `#[rstest::rstest]` above its test attribute.** A bare `#[test]` or `#[tokio::test]` escapes the per-test timeout, and `just lint-testattr` fails the build on it.
+
+```rust
+#[rstest::rstest]
+#[test]
+fn pop_returns_none_when_stack_empty() { /* ... */ }
+
+#[rstest::rstest]
+#[tokio::test]
+async fn publish_routes_to_declared_handler() { /* ... */ }
+```
+
+`RSTEST_TIMEOUT` is exported by the justfile and mirrored in the workspace's build configuration, so the timeout applies whether or not the run goes through `just`.
 
 ### One Test, One Behavior
 
@@ -303,7 +372,7 @@ This means each test has exactly **one** `// When` and **one** `// Then` block. 
 
 **What counts as separate concepts (split into separate tests):**
 
-- A handler that updates state **and** emits a command → two tests. State change and command emission are separate observable behaviors.
+- An action that updates state **and** publishes a message → two tests. State change and message emission are separate observable behaviors.
 - Processing a second input after a first → two tests. Each input triggers its own behavior.
 - Rendering multiple entry types from one widget → one test per entry type. Each entry type is a separate rendering behavior.
 - A multi-step lifecycle (start, complete, finalize, advance) → one test per step. Each step is a separate state transition.
@@ -312,6 +381,7 @@ This means each test has exactly **one** `// When` and **one** `// Then` block. 
 
 ```rust
 // ❌ BAD — two When/Then blocks in one test
+#[rstest::rstest]
 #[test]
 fn stream_token_appends_to_assistant_entry() {
     // ...setup...
@@ -324,6 +394,7 @@ fn stream_token_appends_to_assistant_entry() {
 
 ```rust
 // ✅ GOOD — split into two tests
+#[rstest::rstest]
 #[test]
 fn first_stream_token_creates_assistant_entry() {
     // ...setup...
@@ -331,6 +402,7 @@ fn first_stream_token_creates_assistant_entry() {
     // Then the session has an Assistant entry with "Hello".
 }
 
+#[rstest::rstest]
 #[test]
 fn subsequent_stream_token_appends_to_existing_entry() {
     // ...setup with one token already processed...
@@ -340,35 +412,39 @@ fn subsequent_stream_token_appends_to_existing_entry() {
 ```
 
 ```rust
-// ❌ BAD — checking state change AND command emission in one test
+// ❌ BAD — checking state change AND message emission in one test
+#[rstest::rstest]
 #[test]
-fn submit_message_clears_input_and_enqueues() {
+fn submit_message_clears_input_and_publishes() {
     // ...setup...
     // When submitting a message.
     // Then the input buffer is cleared.
-    // And EnqueueUserMessage was returned.
+    // And EnqueueUserMessage was published.
 }
 ```
 
 ```rust
 // ✅ GOOD — split into separate tests
+#[rstest::rstest]
 #[test]
 fn submit_message_clears_input_buffer() {
     // ...setup...
-    // When handling Intent::SubmitMessage.
+    // When handling the submit action.
     // Then the input buffer is empty.
 }
 
+#[rstest::rstest]
 #[test]
-fn submit_message_returns_enqueue_command() {
+fn submit_message_publishes_enqueue_command() {
     // ...setup...
-    // When handling Intent::SubmitMessage.
-    // Then the result contains EnqueueUserMessage.
+    // When handling the submit action.
+    // Then the result names EnqueueUserMessage.
 }
 ```
 
 ```rust
 // ❌ BAD — checking multiple entry type renders in one test
+#[rstest::rstest]
 #[test]
 fn render_mixed_entries() {
     // Given system, user, actor, and assistant entries.
@@ -382,6 +458,7 @@ fn render_mixed_entries() {
 
 ```rust
 // ✅ GOOD — one test per entry type
+#[rstest::rstest]
 #[test]
 fn render_system_entry_is_dark_gray() {
     // Given a ChatLogElement with a system entry.
@@ -389,6 +466,7 @@ fn render_system_entry_is_dark_gray() {
     // Then the system entry line has dark gray foreground.
 }
 
+#[rstest::rstest]
 #[test]
 fn render_user_entry_has_prefix() {
     // Given a ChatLogElement with a user entry.
@@ -404,6 +482,8 @@ fn render_user_entry_has_prefix() {
 Structure tests with clear Given/When/Then sections, and name the test so it can be read as a standalone program behavior in the test report:
 
 ```rust
+#[rstest::rstest]
+#[test]
 fn pop_returns_none_when_stack_empty() {
     // Given an empty stack.
     let mut stack = Stack::default();
@@ -416,27 +496,10 @@ fn pop_returns_none_when_stack_empty() {
 }
 ```
 
-**Example — testing the intent handler:**
-
-```rust
-#[test]
-fn quit_sets_should_quit_in_state() {
-    // Given default app state.
-    let mut state = AppState::default();
-
-    // When handling Intent::Quit.
-    let result = IntentHandler::handle(&Intent::Quit, &mut state);
-
-    // Then should_quit is set to true.
-    assert!(state.should_quit);
-    // And no commands are emitted.
-    assert!(result.commands.is_empty());
-}
-```
-
 **Example — testing a validator:**
 
 ```rust
+#[rstest::rstest]
 #[test]
 fn submit_message_rejected_when_buffer_empty() {
     // Given an empty input buffer.
@@ -450,15 +513,40 @@ fn submit_message_rejected_when_buffer_empty() {
 }
 ```
 
+**Example — testing a route action:**
+
+```rust
+#[rstest::rstest]
+#[test]
+fn bound_key_dispatches_through_the_slice_route_row() {
+    // Given a registry with the slice's route row attached.
+    let (slices, routes) = slices_with_sidebar_rows();
+    let mut state = AppState::default();
+
+    // When handling the key the row binds.
+    let result = IntentHandler::handle(
+        &KernelIntent::Dynamic(DynamicIntent::new(sidebar_scope(), "select", "select")),
+        &mut state,
+        &slices,
+        &routes,
+        &ConfigLayer::empty(),
+    );
+
+    // Then the row's action ran, not a built-in arm.
+    assert!(result.scope_signal.is_some());
+}
+```
+
 **Example — testing a domain actor:**
 
 ```rust
+#[rstest::rstest]
 #[test]
 fn stream_token_appends_to_assistant_entry() {
     // Given a projector with an active session.
     let state = State::new(AppState::default());
     let sink = RecordingSink::new();
-    let session_actor = SessionPersistenceActor::activate(&mut ctx);
+    let session_actor = SessionPersistenceActor::spawn(system, deps);
 
     // When handling StreamToken("Hello").
     session_actor.handle_stream_token(&StreamToken { /* ... */ }, &sink);
@@ -471,7 +559,7 @@ fn stream_token_appends_to_assistant_entry() {
 
 ### Parameterized Tests with rstest
 
-If a test has many inputs, prefer parametrizing with `rstest`:
+If a test has many inputs, prefer parametrizing:
 
 ```rust
 #[rstest::rstest]
@@ -490,27 +578,24 @@ Use rstest when you find yourself writing the same assertion logic against diffe
 ### Async Tests
 
 ```rust
+#[rstest::rstest]
 #[tokio::test]
-async fn actor_host_loads_manifest() {
-    // Given an in-memory actor host.
-    let host = InMemoryActorHost::new();
+async fn publish_reaches_a_declared_handler() {
+    // Given an actor spawned with .handles::<StreamToken>().
+    let system = ActorSystem::new();
 
-    // When loading actors.
-    let result = host.discover().await;
+    // When publishing a StreamToken.
+    let result = system.publish(StreamToken { /* ... */ });
 
-    // Then discovery succeeds.
+    // Then publication succeeds.
     assert!(result.is_ok());
 }
 ```
 
 ### Test Utilities
 
-**Test sinks:**
-
-- `RecordingSink` — a test-local `PublishSink` that keeps every payload published
-  through it, so a test can assert on what a command emitted. There is no shared
-  helper: each test that needs one declares its own, e.g.
-  `crates/slices/jinn-sidebar/src/sections/sessions/activate.rs`.
+- **Recording buses** — `BusService::new_recording()` returns the service plus a `BusAudit` of everything published through it. This is how you assert that an action emitted a message, and it exercises the same publish path production does. There is no shared test-local sink to hunt for; build whatever the test needs.
+- **Empty registries** — handler tests that don't exercise slices build a bare `Slices::new()` and `KeyRoutes::new()`. Slice tests that do build a registry with the catalog's `register_all_cells` or just the one cell they need.
 - Create domain-specific test builders as needed within each feature's test module.
 - Use ratatui's `TestBackend` directly for render tests.
 
@@ -527,6 +612,8 @@ Module level documentation should explain its purpose and high-level behaviors. 
 //! displaying the in-progress message, and switching between browsing and typing modes.
 ```
 
+A slice's `lib.rs` doc is the place a reader looks first to learn what the slice contributes and what it does not. Name the actors, the cell, and the route rows.
+
 ### Type Documentation
 
 ```rust
@@ -540,44 +627,55 @@ pub struct ChatInputBoxState {
 
 ## 6. Modification Guide
 
-When implementing features, locate each concern by convention rather than hardcoded paths — the exact crate layout may shift as the domain grows. Use `grep`/`rg` to find the current location if unsure.
+When implementing features, locate each concern by convention rather than hardcoded paths — the crate layout shifts as the domain grows. Use `grep` to find the current location if unsure.
 
-1. **Add Intent variant** — find the `Intent` enum and add a variant.
-2. **Add validator** — co-locate a `validator.rs` in the relevant feature directory. Infallible intents don't need a validator. Fallible ones return `Result<(), SpecificError>`.
-3. **Add handler match arm** — find the `IntentHandler`: call validator (if any), mutate `AppState`, return commands.
-4. **Add keymap binding** — bind key to `Intent` variant in the appropriate `Scope`.
-5. **Add Command/Event if needed** — define domain structs alongside the relevant `Command` or `Event` enum. Forgetting the enum variant is the most common oversight — the struct alone is not enough.
-6. **Add domain actor logic if needed** — find the appropriate actor within the relevant feature directory and subscribe to the new command/event.
-7. **Add UI element if needed** — add a new module under the UI feature directory and register it.
-8. **Write tests** — Use Given/When/Then structure: test validator in isolation, test intent handler for state changes and commands, test domain actor for event→state mapping.
-9. **Add documentation** — Module docs, type docs, error docs. Describe behavior and purpose, not technical implementation.
+**Adding a new slice:**
+
+1. **Create the pair** — `crates/slices/jinn-foo-msg/` first, with the cell payload, its `SlotKey`, and any command/event structs. Then `crates/slices/jinn-foo/`, depending on it.
+2. **Register the cell** — one `register!` entry in `crates/jinn-cell-catalog/src/lib.rs`, and bump `EXPECTED_CELL_COUNT`.
+3. **Write `activate`** — taking `&mut SliceHost<'_, jinn_slices::RenderFacts>` first, resolving the cell, attaching route rows, registering render regions.
+4. **Add the call to the boot list** in `src/bootstrap/slices.rs`, in the block whose constraints it satisfies, with a comment saying what it provides and what consumes it.
+5. **Add the actor** if the slice has async logic — `*_actor.rs`, a `spawn`, `<Actor>ActorDeps`, and one `MsgHandler` impl per message.
+
+**Adding a keybind to an existing slice:**
+
+1. **Attach a `RouteRow`** in the slice's route module. If the action belongs to the slice, use `RouteOutcome::Action` with an `ActionFn`. Only reach for `RouteOutcome::StaticIntent` for a shared-chrome key, and only after adding its route id to `static_intent` in `crates/jinn-tui/src/keymap_gen.rs`.
+
+**Adding a `KernelIntent` variant** (rare — prefer a route action):
+
+1. **Add the variant** to the `KernelIntent` enum in `crates/jinn-kernel/src/protocol/intent.rs`. It is a bus message, so it needs the derives that makes.
+2. **Add a validator** if the action has preconditions, co-located `validator.rs` in the relevant feature directory.
+3. **Add a handler arm** in `crates/jinn-kernel/src/feat/intent/handler.rs` — a thin delegation to a `handle_*` function in the owning feature, not inlined mutation.
+4. **Add a keymap binding** in `crates/jinn-tui/src/keymap.rs` under the right `Scope` and `KeyCategory`.
+
+**Adding a message type that crosses a slice boundary:**
+
+1. **Define the struct** in the owning slice's `-msg` crate, deriving the message schema the sibling structs use plus `BusMessage`.
+2. **Add the enum variant or struct** to whatever the boundary names — a `-msg` crate has no central enum, so the definition *is* the registration.
+3. **Declare it** on the sending side: for an actor, add `.emits::<M>()` to its spawn builder, or it will be dropped at runtime. For a route action, the `PublishClosure` carries it.
+
+**In every case:** write tests with Given/When/Then structure, stacking `#[rstest::rstest]`; add module docs, type docs, and error docs describing behavior and purpose, not implementation.
 
 ## 7. Tooling
 
-Read the `justfile` to determine what additional tooling is related to this project. Prioritize running commands from the `justfile` instead of manual invocation.
+Read the `justfile` to see what else is available. Prioritize running recipes from the `justfile` instead of manual invocation.
 
 ### Project Commands
 
 Skills refer to commands by **role**; the table below resolves each role to this project's actual command.
 
-| Role         | Command                   | Description                                                                                            |
-| ------------ | ------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `vcs`        | Fossil                    | This project uses Fossil for version control (`fossil status`, `fossil diff`, `fossil timeline`, ...). |
-| `check`      | `just check`              | `cargo check --workspace` — fast compilation without codegen.                                          |
-| `test`       | `just test`               | `cargo test --workspace` + e2e tests — **all tests must pass before committing**.                      |
-| `lint`       | `just lint`               | Lint checks.                                                                                           |
-| `format`     | `just fmt-fix`            | Apply formatting fixes.                                                                                |
-| `commit`     | `just commit '<message>'` | Commit changes (uses `--dotfiles` so `.agents/` is included).                                          |
-| `sync-trunk` | `fossil merge trunk`      | Sync latest changes with your branch (resolve conflicts, re-test, commit).                             |
-
-### Plan Directory
-
-Task plans live in `.plans/<task>/` where `<task>` is a slugified task name. Each task directory contains:
-
-- `plan.md` — the specification (source of truth for what to implement)
-- `phase-N.md` — execution plans and phase reviews for each phase
-
-The task list (managed via `todo_*` tools) tracks progress. The spec is an immutable reference — agents annotate it with divergence notes but never rewrite it.
+| Role          | Command                   | Description                                                                                       |
+| ------------- | ------------------------- | ------------------------------------------------------------------------------------------------- |
+| `vcs`         | Fossil                    | This project uses Fossil for version control (`fossil status`, `fossil diff`, `fossil timeline`, ...). |
+| `check`       | `just check`              | Compile-check the workspace without codegen. Fast; use it instead of a speculative test run.      |
+| `test`        | `just test`               | Run the workspace suite, capture to `target/test-output.log`, print a summary. **All tests must pass before committing.** |
+| `test-failures` | `just test-failures`    | Show failing test names from the last run. Reads the captured log; re-runs nothing.               |
+| `test-one`    | `just test-one <filter>`  | Run only tests matching a name filter, across the workspace. The cheap fix loop.                 |
+| `lint`        | `just lint`               | Compile check, clippy, format check, and the test-attribute guard.                                |
+| `test-attr`   | `just lint-testattr`      | Fail on a bare test attribute missing its `rstest` companion.                                     |
+| `format`      | `just fmt-fix`            | Apply formatting fixes.                                                                           |
+| `commit`      | `just commit '<message>'` | Commit changes (uses `--dotfiles` so `.agents/` is included).                                     |
+| `sync-trunk`  | `fossil merge trunk`      | Sync latest changes with your branch (resolve conflicts, re-test, commit).                        |
 
 ## 8. Misc
 

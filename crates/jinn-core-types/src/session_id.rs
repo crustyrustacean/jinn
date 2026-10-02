@@ -20,7 +20,7 @@ impl SessionId {
 
     /// Parses a session ID from its string form without panicking.
     ///
-    /// For untrusted input (e.g. plugin wire payloads): an unparseable
+    /// For untrusted input (e.g. a serialized message payload): an unparseable
     /// string yields `None` rather than the panic [`From::from`] would
     /// produce.
     #[must_use]
