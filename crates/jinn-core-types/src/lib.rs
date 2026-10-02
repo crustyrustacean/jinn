@@ -32,6 +32,7 @@ pub mod session_profile;
 pub mod tool_result_status;
 pub mod tool_types;
 pub mod url_citation;
+pub mod working_interval;
 
 #[cfg(test)]
 mod chat_entry_tests;
@@ -60,3 +61,6 @@ pub use tool_types::{
     TruncationMeta,
 };
 pub use url_citation::UrlCitation;
+pub use working_interval::{
+    CoalescingGap, WorkingInterval, coalesce, format_working_duration, total, union,
+};
