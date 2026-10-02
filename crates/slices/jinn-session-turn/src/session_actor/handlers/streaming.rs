@@ -169,11 +169,6 @@ impl SessionPersistenceActor {
             Some(outcome_from_history(last_entry))
         };
         if let Some(outcome) = outcome {
-            // The automation marker is deliberately NOT cleared here. It has
-            // to still be readable when the trigger actor sees this event,
-            // so a turn that automation started does not fire the
-            // completing session's own attendants. It is cleared at the next
-            // turn's dispatch instead — see `enqueue.rs`.
             self.bus()
                 .publish(TurnCompleted {
                     session_id: event.session_id.clone(),

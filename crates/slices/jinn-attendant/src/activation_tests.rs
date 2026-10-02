@@ -405,15 +405,6 @@ async fn succeeded_parent_turn_fires_its_triggered_attendant() {
         display.starts_with("verify: prior finding"),
         "the seeded prompt leads with the user's template: {display:?}"
     );
-    // And the attendant's turn is marked automated.
-    let s = state.read();
-    let attendant = s
-        .session
-        .iter()
-        .find(|(_, sess)| sess.is_attendant())
-        .map(|(_, sess)| sess)
-        .expect("attendant");
-    assert!(attendant.is_turn_automated());
 }
 
 #[rstest::rstest]
@@ -610,66 +601,6 @@ async fn manual_trigger_attendant_does_not_fire_on_parent_completion() {
 
     // Then nothing dispatches — the attendant only runs when asked.
     assert!(dispatched.is_empty());
-}
-
-#[rstest::rstest]
-#[tokio::test]
-async fn a_fired_attendant_turn_is_marked_automated() {
-    // Given a parent with a reset-activated ParentCompleted attendant.
-    let harness = jinn_testutil::bus_harness::TestHarness::new().await;
-    let dispatched = harness
-        .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
-        .await;
-    let state = State::new(AppState::default());
-    let parent_id = {
-        let mut s = state.write();
-        let parent = ChatSessionState::new();
-        let parent_id = parent.session_id().clone();
-        s.session.insert(parent);
-        let mut attendant = {
-            let read = s.session.get(&parent_id).expect("parent").clone();
-            composed_attendant_of(&read)
-        };
-        attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
-        s.session.insert(attendant);
-        parent_id
-    };
-    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
-        harness.system(),
-        crate::trigger_actor::AttendantTriggerActorDeps {
-            services: harness.services().await,
-            state: state.clone(),
-        },
-    );
-
-    // When the parent's turn completes successfully and the attendant fires.
-    harness
-        .publish(jinn_session_msg::TurnCompleted {
-            session_id: parent_id,
-            outcome: jinn_session_msg::TurnOutcome::Succeeded,
-        })
-        .await;
-    jinn_testutil::bus_harness::await_recorded::<jinn_chat_input_msg::EnqueueUserMessage>(
-        &dispatched,
-        1,
-        std::time::Duration::from_secs(10),
-    )
-    .await;
-
-    // Then the attendant's own turn is marked as automation-started — the
-    // marker the publisher consumes so the exchange cannot loop unattended.
-    let s = state.read();
-    let attendant = s
-        .session
-        .iter()
-        .find(|(_, sess)| sess.is_attendant())
-        .map(|(_, sess)| sess)
-        .expect("attendant");
-    assert!(
-        attendant.is_turn_automated(),
-        "a fired attendant's turn must be marked automated"
-    );
 }
 
 #[rstest::rstest]

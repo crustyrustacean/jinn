@@ -95,19 +95,22 @@ impl AttendantTriggerActor {
     /// a live event, so an attendant created after its parent completed
     /// never fires retroactively.
     ///
-    /// A turn that was itself started by automation does **not** fire the
-    /// completing session's own attendants. That suppression is what stops
-    /// an attendant that notified its parent from bouncing a mutually
-    /// triggering exchange back and forth unattended: the child's dispatch
-    /// marks the child automated, and when the child's turn finishes the
-    /// child must not wake anything of its own. The marker is set at
-    /// dispatch and stays set until the *next* turn begins, so it is
-    /// observable at the moment the outcome is decided.
+    /// There is no guard on how often an attendant may fire, and no record
+    /// of which turns automation started. An attendant that notified its
+    /// parent may fire on that parent's completion, and its own completion
+    /// fires its own attendants in turn. The exchange runs until the agent
+    /// stops driving it or the work is done — bounding it is the agent's
+    /// call, not the harness's.
     fn on_turn_completed(&self, event: &TurnCompleted) {
+        // No guard below on how this session's turn came to be running. An
+        // earlier design read a per-session "started by automation" marker
+        // here and returned early, which went inert for any session nobody
+        // typed into — the mark was only ever cleared by a human submission,
+        // so a parent woken by `notify_parent` silenced its whole subtree
+        // silently. There is no replacement guard on purpose: ending the
+        // exchange is the agent's decision, and a driver that is told to
+        // keep going keeps going.
         if event.outcome != TurnOutcome::Succeeded {
-            return;
-        }
-        if self.was_automated(&event.session_id) {
             return;
         }
         let attendants = self.attendants_of(&event.session_id);
@@ -125,17 +128,6 @@ impl AttendantTriggerActor {
                     });
                 }
             }
-        }
-    }
-
-    /// Whether the session's just-finished turn was started by automation.
-    fn was_automated(&self, session_id: &jinn_core_types::SessionId) -> bool {
-        {
-            let state = self.state.read();
-            state
-                .session
-                .get(session_id)
-                .is_some_and(jinn_session_state::ChatSessionState::is_turn_automated)
         }
     }
 
@@ -248,12 +240,9 @@ impl AttendantTriggerActor {
             // The mode decides what the run sees, not whether it happens.
             // Every mode that got past the guard above sends the template.
             let (entry, reset) = activation::prepare_trigger_run(session);
-            let dispatch = entry.map(|entry| {
-                session.mark_turn_automated();
-                EnqueueUserMessage {
-                    session_id: attendant_id.clone(),
-                    entry,
-                }
+            let dispatch = entry.map(|entry| EnqueueUserMessage {
+                session_id: attendant_id.clone(),
+                entry,
             });
 
             Some(Fired {

@@ -5173,6 +5173,44 @@ fn a_composed_attendant_submissions_dispatch_normally() {
     );
 }
 
+/// A submission from a session that has been running under automation emits
+/// the interaction mark and the enqueue — nothing else.
+///
+/// The enqueue branch used to also emit a message clearing a per-session
+/// automation marker, so a submission from a session that had already been
+/// dispatched put a second command on the bus ahead of its own enqueue.
+#[rstest::rstest]
+fn a_submission_emits_exactly_the_interaction_mark_and_the_enqueue() {
+    // Given a composed attendant — out of prep mode, so it is runnable — as
+    // the active session.
+    let mut state = AppState::default_with_scope_focus();
+    {
+        let session = state.active_session_mut();
+        let parent = jinn_session_state::ChatSessionState::new();
+        let mut attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
+        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
+        attendant.set_attendant_is_prepping(false);
+        *session = attendant;
+    }
+    state.update_active_input(|i| i.insert_text("go"));
+
+    // When the message is submitted.
+    let result = jinn_chat_input::intent::handle_submit_message(
+        &mut state,
+        jinn_kernel::common::render_ctx::empty_config_layer(),
+    );
+
+    // Then the submission is exactly those two messages.
+    assert_eq!(
+        result.message_names.len(),
+        2,
+        "got {:?}",
+        result.message_names
+    );
+    assert!(result.message_names[0].contains("MarkSessionInteracted"));
+    assert!(result.message_names[1].contains("EnqueueUserMessage"));
+}
+
 /// A seed-mode attendant's submission must leave a PINNED entry in the
 /// session's own history.
 ///
