@@ -160,7 +160,14 @@ fn to_lines_streaming(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<L
 
     let text = super::shared::unescape_newlines(arguments);
     let text = super::shared::strip_ansi(&text);
-    let display = format!("{name} {text}");
+    // A streaming call whose arguments have not started arriving renders as a
+    // bare tool name, which reads as a heading rather than work in progress.
+    // The ellipsis marks the call as still filling.
+    let display = if text.trim().is_empty() {
+        format!("{name} \u{2026}")
+    } else {
+        format!("{name} {text}")
+    };
     let all_lines: Vec<&str> = display.split('\n').collect();
 
     let mut lines = Vec::new();
@@ -526,6 +533,97 @@ mod tests {
         assert!(
             first.starts_with("write"),
             "first line should start with tool name, got: {first}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn streaming_empty_args_renders_ellipsis() {
+        // Given a streaming tool call whose arguments have not started arriving.
+        let ctx = streaming_context(6);
+
+        // When converting to lines.
+        let lines = to_lines("write", "", &ctx);
+
+        // Then the line carries an ellipsis, marking the call as still filling
+        // in rather than reading as a bare heading.
+        let first: String = lines[0].spans.iter().map(|s| s.content.clone()).collect();
+        assert_eq!(
+            first.trim_end(),
+            "write \u{2026}",
+            "an argument-less streaming call should read as `write …`, got: {first}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn streaming_whitespace_only_args_renders_ellipsis() {
+        // Given a streaming tool call whose arguments are only whitespace —
+        // the state before the first argument delta lands.
+        let ctx = streaming_context(6);
+
+        // When converting to lines.
+        let lines = to_lines("write", "  \n ", &ctx);
+
+        // Then it renders the ellipsis, not a blank body.
+        let first: String = lines[0].spans.iter().map(|s| s.content.clone()).collect();
+        assert!(
+            first.trim_end().ends_with('\u{2026}'),
+            "whitespace-only streaming args should render the ellipsis, got: {first}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn streaming_partial_args_render_content_without_ellipsis() {
+        // Given a streaming tool call with arguments mid-flight.
+        let ctx = streaming_context(6);
+        let args = r#"{"path":"src/mai"#;
+
+        // When converting to lines.
+        let lines = to_lines("write", args, &ctx);
+
+        // Then the partial arguments are shown as-is — the ellipsis marks
+        // only the not-yet-arrived case.
+        let first: String = lines[0].spans.iter().map(|s| s.content.clone()).collect();
+        assert!(
+            first.contains(r#"{"path":"src/mai"#),
+            "partial streaming args should be rendered, got: {first}"
+        );
+        assert!(
+            !first.contains('\u{2026}'),
+            "a call with arguments must not show the empty-args ellipsis, got: {first}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn streaming_bash_with_empty_args_is_unchanged() {
+        // Given a streaming bash tool call with empty arguments — bash renders
+        // through its own single-line path, which this change must not touch.
+        let ctx = streaming_context(6);
+
+        // When converting to lines.
+        let lines = to_lines("bash", "", &ctx);
+
+        // Then it still renders the bash form with no ellipsis.
+        let first: String = lines[0].spans.iter().map(|s| s.content.clone()).collect();
+        assert!(
+            !first.contains('\u{2026}'),
+            "bash rendering is out of scope and must be unchanged, got: {first}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn collapsed_non_bash_with_empty_args_is_unchanged() {
+        // Given a finalized (not streaming) tool call with empty arguments.
+        let ctx = render_context(6, false);
+
+        // When converting to lines.
+        let lines = to_lines("write", "", &ctx);
+
+        // Then it renders without an ellipsis — the affordance marks progress,
+        // not a missing argument.
+        let first: String = lines[0].spans.iter().map(|s| s.content.clone()).collect();
+        assert!(
+            !first.contains('\u{2026}'),
+            "a finalized call must not show the streaming ellipsis, got: {first}"
         );
     }
 

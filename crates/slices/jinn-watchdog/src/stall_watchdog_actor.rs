@@ -25,13 +25,17 @@
 //! stream ends in `ToolUse` before the tools run, and the watchdog disarms
 //! there. A `bash` or a subagent may take as long as it needs.
 //!
-//! Budget semantics (unchanged from the plugin): a stream ending in
-//! `Finished` clears the session entirely (genuine completion — fresh
-//! budget next turn); `ToolUse`, `Canceled`, and `Error` merely disarm
-//! the timer while retaining the count (the same turn or its retry
-//! continues). Any stream event after a restart proves the retry
-//! connected and resets the budget to zero — the budget counts
-//! *consecutive* silent stalls.
+//! Budget semantics: the budget counts silent stalls *between completed
+//! generations*. `Finished` and `ToolUse` both clear it — reaching either
+//! proves a response ran to a natural end. `Canceled` and `Error` merely
+//! disarm the timer while retaining the count (the turn did not complete, so
+//! its stall history belongs to whatever comes next). Stream activity
+//! resets the silence clock but **not** the budget: a provider that streams
+//! tokens for a minute and then dies is precisely the fault this watchdog
+//! exists to catch, and an earlier port reset on any activity, so such a
+//! provider re-tripped forever at "attempt 1 of 3". The consequence,
+//! accepted deliberately: a generation that stalls three times surrenders
+//! even if each retry streamed for a while first.
 //!
 //! The tick is self-addressed ([`StallTick`], kicked by a detached task
 //! after spawn and re-delivered after each processed tick — the
@@ -89,7 +93,8 @@ struct SessionStall {
     /// Elapsed-time timestamp of the last stream activity (or arm time),
     /// in milliseconds since spawn, from the monotonic clock.
     last_event_ms: u64,
-    /// Consecutive stall restarts since the last observed stream output.
+    /// Silent stalls since the last completed generation (`Finished` or
+    /// `ToolUse`). Stream activity does not clear it.
     restarts: u32,
 }
 
@@ -311,35 +316,52 @@ impl StallWatchdogActor {
         stall.last_event_ms = now_ms;
     }
 
-    /// Records stream output — the timer resets, and a recovered stall
-    /// clears the restart budget.
+    /// Records stream output — the timer resets, but the budget does not.
     ///
     /// Reached from [`StreamActivity`], so *any* non-terminal provider event
-    /// counts, not only text. Activity for a session with no timer is
-    /// harmless (the session may have been disarmed between publication and
-    /// this delivery arriving).
+    /// counts, not only text. Activity proves the connection works, which is
+    /// what the silence clock measures; it says nothing about whether the
+    /// generation will finish. A stream that emits tokens for a minute and
+    /// then dies is the failure mode this watchdog exists to catch, so the
+    /// budget deliberately survives it — see [`Self::on_stream_end`] for the
+    /// boundaries that do clear it.
+    ///
+    /// Activity for a session with no timer is harmless (the session may have
+    /// been disarmed between publication and this delivery arriving).
     pub fn on_stream_event(&mut self, session_id: &SessionId, now_ms: u64) {
         if let Some(stall) = self.sessions.get_mut(session_id) {
             stall.last_event_ms = now_ms;
-            stall.restarts = 0;
         }
     }
 
     /// Applies the stream-end policy per terminal reason.
     ///
     /// `Finished` removes the session entirely (budget reset — the turn
-    /// completed genuinely). Every other reason disarms the timer while
-    /// retaining the budget: `ToolUse` because the same turn continues
-    /// after the tool batch, `Canceled`/`Error` because the retry
-    /// inherits the turn's stall history.
+    /// completed genuinely). `ToolUse` disarms the timer and clears the
+    /// budget, because reaching it proves this generation completed cleanly:
+    /// the model finished its response and asked for tools. Every other
+    /// reason disarms the timer while retaining the budget — `Canceled` and
+    /// `Error` are endpoints of a turn that did not complete, and their
+    /// stall history belongs to whatever re-dispatches next.
+    ///
+    /// A stall is a fault of one *generation*: the connection died
+    /// mid-response. So the budget counts silent stalls between two completed
+    /// generations rather than across a whole turn. A tool-heavy turn may
+    /// stall once per generation and still never surrender; a single
+    /// generation that dies three times will, which is the intended reading
+    /// of "three retries".
     pub fn on_stream_end(&mut self, session_id: &SessionId, reason: StreamCompletedReason) {
         match reason {
             StreamCompletedReason::Finished => {
                 self.sessions.remove(session_id);
             }
-            StreamCompletedReason::Canceled
-            | StreamCompletedReason::ToolUse
-            | StreamCompletedReason::Error => {
+            StreamCompletedReason::ToolUse => {
+                if let Some(stall) = self.sessions.get_mut(session_id) {
+                    stall.armed = false;
+                    stall.restarts = 0;
+                }
+            }
+            StreamCompletedReason::Canceled | StreamCompletedReason::Error => {
                 if let Some(stall) = self.sessions.get_mut(session_id) {
                     stall.armed = false;
                 }
@@ -605,24 +627,117 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn tool_use_boundary_retains_the_budget() {
+    async fn tool_use_boundary_resets_the_budget() {
         // Given a watchdog at a budget of 2 that restarted once, then the
-        // stream paused for a tool batch and re-dispatched.
+        // generation completed by ending in tool use.
         let session = SessionId::new();
         let mut actor = watchdog(60, 2).await;
         actor.on_stream_start(&session, 0);
         assert_restart(&actor.on_tick(60_000), &session, 1);
         actor.on_stream_end(&session, StreamCompletedReason::ToolUse);
         actor.on_stream_start(&session, 61_000);
-        assert_restart(&actor.on_tick(121_000), &session, 2);
+        assert_restart(&actor.on_tick(121_000), &session, 1);
+
+        // When that generation also completes in tool use and the next one
+        // goes silent past the window.
         actor.on_stream_end(&session, StreamCompletedReason::ToolUse);
         actor.on_stream_start(&session, 122_000);
-
-        // When the third generation also goes silent past the window.
         let actions = actor.on_tick(182_000);
 
-        // Then it gives up — the tool-loop boundaries did not reset the
-        // consecutive-stall budget.
+        // Then it is attempt 1 again — each completed generation is a clean
+        // boundary, so a long tool-loop turn may stall once per generation
+        // without ever surrendering.
+        assert_restart(&actions, &session, 1);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn tool_use_end_resets_the_budget() {
+        // Given a watchdog at a budget of 2 that restarted twice, then a
+        // generation reached its tool-use end.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 2).await;
+        actor.on_stream_start(&session, 0);
+        assert_restart(&actor.on_tick(60_000), &session, 1);
+        actor.on_stream_start(&session, 61_000);
+        assert_restart(&actor.on_tick(121_000), &session, 2);
+        actor.on_stream_end(&session, StreamCompletedReason::ToolUse);
+
+        // When the generation after that boundary stalls past the window.
+        actor.on_stream_start(&session, 122_000);
+        let actions = actor.on_tick(182_000);
+
+        // Then it is attempt 1 — reaching the tool-use end proves this
+        // generation completed, which is what clears the budget.
+        assert_restart(&actions, &session, 1);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn activity_between_stalls_does_not_clear_the_budget() {
+        // Given a watchdog at a budget of 1 that restarted once and whose
+        // retry then produced output before dying again.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 1).await;
+        actor.on_stream_start(&session, 0);
+        assert_restart(&actor.on_tick(60_000), &session, 1);
+        actor.on_stream_start(&session, 61_000);
+        actor.on_stream_event(&session, 62_000);
+
+        // When that stream stalls again past the window.
+        let actions = actor.on_tick(122_000);
+
+        // Then the watchdog surrenders — output from a stream that is still
+        // dying is not a completed generation, so the budget stands.
+        assert_give_up(&actions, &session);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn activity_between_stalls_preserves_budget() {
+        // Given a watchdog at a budget of 3 that restarted once, after which
+        // the retried stream produced some output before going silent again.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 0);
+        assert_restart(&actor.on_tick(60_000), &session, 1);
+        actor.on_stream_start(&session, 61_000);
+        actor.on_stream_event(&session, 62_000);
+
+        // When the second generation also stalls past the window.
+        let actions = actor.on_tick(122_000);
+
+        // Then it is attempt 2, not a fresh attempt 1 — partial output proves
+        // the connection worked, not that the generation finished.
+        assert_restart(&actions, &session, 2);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn stalls_separated_by_tokens_still_exhaust_the_budget() {
+        // Given a watchdog at a budget of 3.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 0);
+
+        // When three generations each stream output for half a window and
+        // then go silent.
+        for window in 1..=3u32 {
+            actor.on_stream_start(&session, u64::from(window) * 60_000);
+            actor.on_stream_event(&session, u64::from(window) * 60_000 + 30_000);
+            assert_restart(
+                &actor.on_tick(u64::from(window) * 60_000 + 90_000),
+                &session,
+                window,
+            );
+        }
+
+        // And the fourth attempt also stalls.
+        actor.on_stream_start(&session, 270_000);
+        let actions = actor.on_tick(330_000);
+
+        // Then the watchdog surrenders — tokens on a stream that keeps dying
+        // never buy more attempts.
         assert_give_up(&actions, &session);
     }
 
@@ -856,26 +971,6 @@ mod tests {
         // Then the session restarts — the watchdog has one timer per session
         // and is not disarmed by the first call's completion, so a second
         // call that stalls is still caught.
-        assert_restart(&actions, &session, 1);
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn recovered_stream_clears_the_budget() {
-        // Given a watchdog at a budget of 1 that restarted once and then saw
-        // the retry produce output (the retry connected).
-        let session = SessionId::new();
-        let mut actor = watchdog(60, 1).await;
-        actor.on_stream_start(&session, 0);
-        assert_restart(&actor.on_tick(60_000), &session, 1);
-        actor.on_stream_start(&session, 61_000);
-        actor.on_stream_event(&session, 62_000);
-
-        // When the stream later stalls again past the window.
-        let actions = actor.on_tick(122_000);
-
-        // Then it restarts rather than giving up — the observed recovery
-        // reset the consecutive-stall budget.
         assert_restart(&actions, &session, 1);
     }
 

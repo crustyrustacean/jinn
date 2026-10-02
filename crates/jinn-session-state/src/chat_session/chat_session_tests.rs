@@ -2521,19 +2521,120 @@ fn begin_tool_result_does_not_push_when_not_streaming() {
 
 #[rstest::rstest]
 #[test]
-fn begin_tool_result_does_not_push_in_sending_phase() {
-    // Given a session in Sending phase (not Streaming).
+fn begin_tool_result_in_sending_creates_a_pending_entry() {
+    // Given a session in Sending phase — the ordinary case, since the stream
+    // ends in ToolUse before the tool batch runs.
     let mut session = ChatSessionState::new();
     session.begin_sending();
 
     // When beginning a tool result.
     session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
 
-    // Then no entry is pushed.
-    assert!(
-        session.history().is_empty(),
-        "expected no entry in Sending phase, got {} entries",
-        session.history().len()
+    // Then the pending entry is created rather than dropped.
+    assert_eq!(
+        session.history().len(),
+        1,
+        "a tool result in Sending must still be recorded"
+    );
+    match &session.history()[0].kind {
+        ChatEntryKind::ToolResult {
+            id,
+            content,
+            status,
+            ..
+        } => {
+            assert_eq!(id, "call_1");
+            assert!(content.is_empty());
+            assert_eq!(*status, ToolResultStatus::Pending);
+        }
+        other => panic!("expected ToolResult, got {other:?}"),
+    }
+}
+
+#[rstest::rstest]
+#[test]
+fn tool_result_output_appends_in_sending_phase() {
+    // Given a pending tool result created in Sending phase.
+    let mut session = ChatSessionState::new();
+    session.begin_sending();
+    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
+
+    // When streaming output arrives.
+    session.append_tool_result_output("call_1", "line 1\n", jinn_tools_msg::ToolOutputKind::Normal);
+
+    // Then the output lands in that same entry.
+    match &session.history()[0].kind {
+        ChatEntryKind::ToolResult { content, .. } => assert_eq!(content, "line 1\n"),
+        other => panic!("expected ToolResult, got {other:?}"),
+    }
+    assert_eq!(
+        session.history().len(),
+        1,
+        "output must not spawn a second entry"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn tool_result_finalizes_in_place_in_sending_phase() {
+    // Given a pending tool result created in Sending phase with streamed output.
+    let mut session = ChatSessionState::new();
+    session.begin_sending();
+    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
+    session.append_tool_result_output("call_1", "partial", jinn_tools_msg::ToolOutputKind::Normal);
+
+    // When the tool finishes.
+    session.finalize_tool_result("call_1", "bash", "final output", true, None, None, None);
+
+    // Then it is finalized in place — one entry, no duplicate pushed at the end.
+    assert_eq!(
+        session.history().len(),
+        1,
+        "finalize must reuse the pending entry"
+    );
+    match &session.history()[0].kind {
+        ChatEntryKind::ToolResult {
+            content, status, ..
+        } => {
+            assert_eq!(content, "final output");
+            assert_eq!(*status, ToolResultStatus::Success);
+        }
+        other => panic!("expected ToolResult, got {other:?}"),
+    }
+}
+
+#[rstest::rstest]
+#[test]
+fn tool_result_in_sending_stays_adjacent_to_its_tool_call() {
+    // Given a completed tool call followed by the tool batch executing in Sending.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("run it"));
+    session.push_entry(ChatEntry::assistant(""));
+    session.push_entry(ChatEntry::tool_call(
+        "call_1",
+        "bash",
+        r#"{"command":"ls"}"#,
+    ));
+    session.begin_sending();
+    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
+
+    // When the tool finishes.
+    session.finalize_tool_result("call_1", "bash", "file.txt", true, None, None, None);
+
+    // Then the result sits directly after its call — the pairing the user
+    // sees in the chat log, and that context assembly depends on.
+    let kinds: Vec<_> = session
+        .history()
+        .iter()
+        .map(|e| match &e.kind {
+            ChatEntryKind::ToolResult { id, .. } => format!("result:{id}"),
+            ChatEntryKind::ToolCall { id, .. } => format!("call:{id}"),
+            _ => "other".to_owned(),
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        vec!["other", "other", "call:call_1", "result:call_1"]
     );
 }
 
@@ -5645,7 +5746,7 @@ fn tool_call_entry_gets_dispatched_at_from_tool_use_started() {
 }
 
 #[rstest::rstest]
-fn reset_streaming_entries_for_retry_removes_partial_streaming_entry() {
+fn reset_streaming_entries_for_retry_keeps_partial_entry_out_of_context() {
     // Given a streaming session with a partial assistant entry.
     let mut session = streaming_session();
     session
@@ -5655,14 +5756,26 @@ fn reset_streaming_entries_for_retry_removes_partial_streaming_entry() {
     assert!(history_len_before >= 1, "streaming entry should exist");
 
     // When resetting streaming entries for retry.
-    let removed = session.reset_streaming_entries_for_retry();
+    let excluded = session.reset_streaming_entries_for_retry();
 
-    // Then the partial entry is removed and the session stays in Streaming phase.
-    assert_eq!(removed, 1, "exactly one streaming entry should be removed");
+    // Then the partial entry is still in history — the user must be able to
+    // see the attempt that was discarded.
     assert_eq!(
-        session.phase(),
-        jinn_session_msg::PhaseKind::Streaming,
-        "must stay in Streaming phase so the retry can reuse it"
+        session.history().len(),
+        history_len_before,
+        "the partial entry must survive the reset"
+    );
+    // And it is excluded from context so the retried prompt is valid.
+    assert_eq!(excluded.len(), 1, "exactly one entry was excluded");
+    let partial = session
+        .history()
+        .iter()
+        .find(|e| matches!(e.kind, ChatEntryKind::Assistant(_)))
+        .expect("partial assistant entry");
+    assert_eq!(partial.context_override(), ContextOverride::ForcedExclude);
+    assert!(
+        !partial.is_in_context(),
+        "the discarded attempt must not reach the provider"
     );
     assert_eq!(
         session.streaming_thinking_entry_index(),
@@ -5672,7 +5785,7 @@ fn reset_streaming_entries_for_retry_removes_partial_streaming_entry() {
 }
 
 #[rstest::rstest]
-fn reset_streaming_entries_for_retry_removes_partial_assistant_and_stays_streaming() {
+fn reset_streaming_entries_for_retry_keeps_partial_assistant_visible() {
     // Given a streaming session with a partial assistant entry.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
@@ -5680,39 +5793,25 @@ fn reset_streaming_entries_for_retry_removes_partial_assistant_and_stays_streami
     session
         .append_stream_token("partial", jiff::Timestamp::now())
         .expect("append token");
-    let history_len_before = session.history().len();
-    assert_eq!(history_len_before, 2, "user + partial assistant");
+    assert_eq!(session.history().len(), 2, "user + partial assistant");
 
     // When resetting streaming entries for retry.
-    let removed = session.reset_streaming_entries_for_retry();
+    session.reset_streaming_entries_for_retry();
 
-    // Then the partial assistant entry was removed.
-    assert_eq!(
-        removed, 1,
-        "only the partial assistant entry should be removed"
-    );
-    assert_eq!(
-        session.history().len(),
-        1,
-        "user entry should remain, partial assistant discarded"
-    );
-    assert!(
-        session
-            .history()
-            .iter()
-            .all(|e| !matches!(e.kind, ChatEntryKind::Assistant(_))),
-        "no assistant entry should remain after reset"
-    );
-    // And the session is still in the Streaming phase (no transition).
-    assert_eq!(
-        session.phase(),
-        PhaseKind::Streaming,
-        "reset must stay in Streaming phase for the retry"
-    );
+    // Then the partial assistant entry is still rendered in the chat log.
+    let partial = session
+        .history()
+        .iter()
+        .find(|e| matches!(e.kind, ChatEntryKind::Assistant(_)))
+        .expect("partial assistant entry survives for display");
+    let ChatEntryKind::Assistant(text) = &partial.kind else {
+        panic!("expected an assistant entry");
+    };
+    assert_eq!(text, "partial", "the streamed text must be readable");
 }
 
 #[rstest::rstest]
-fn reset_streaming_entries_for_retry_removes_partial_thinking_entry() {
+fn reset_streaming_entries_for_retry_excludes_partial_thinking_entry() {
     // Given a streaming session with committed user + assistant entries
     // and a partial thinking entry (e.g. a stalled reasoning stream).
     let mut session = ChatSessionState::builder()
@@ -5731,36 +5830,151 @@ fn reset_streaming_entries_for_retry_removes_partial_thinking_entry() {
     assert_eq!(history_len_before, 3, "user + assistant + thinking");
 
     // When resetting streaming entries for retry.
-    let removed = session.reset_streaming_entries_for_retry();
+    let excluded = session.reset_streaming_entries_for_retry();
 
-    // Then both streaming entries (assistant + thinking) are removed;
-    // the committed user entry survives.
-    assert_eq!(
-        removed, 2,
-        "partial assistant and thinking entries should be removed"
-    );
+    // Then nothing was deleted — the user can still see what was discarded.
     assert_eq!(
         session.history().len(),
-        1,
-        "only the committed user entry should remain"
+        history_len_before,
+        "partial assistant and thinking entries must survive the reset"
     );
-    assert!(
-        session
-            .history()
-            .iter()
-            .all(|e| matches!(e.kind, ChatEntryKind::User { .. })),
-        "no streaming entries should remain after reset"
+    // And every one of them is out of context, so the retried request does
+    // not carry a half-finished turn.
+    assert_eq!(excluded.len(), 2, "both streaming entries were excluded");
+    for entry in session.history().iter().skip(1) {
+        assert_eq!(
+            entry.context_override(),
+            ContextOverride::ForcedExclude,
+            "expected ForcedExclude for {:?}",
+            entry.kind
+        );
+        assert!(!entry.is_in_context());
+    }
+    assert_eq!(
+        session.history()[0].context_override(),
+        ContextOverride::Default,
+        "the committed user entry stays in context"
     );
     assert_eq!(
         session.streaming_thinking_entry_index(),
         None,
         "thinking streaming index cleared"
     );
-    assert_eq!(
-        session.phase(),
-        PhaseKind::Streaming,
-        "reset must stay in Streaming phase for the retry"
+}
+
+#[rstest::rstest]
+fn reset_streaming_entries_for_retry_excludes_a_partial_tool_call() {
+    // Given a stream that built a tool call before dying — the tool call is
+    // in flight, so there is no result to match it.
+    let mut session = streaming_session();
+    session.begin_tool_call(0, "call_1", "read", dispatched_at());
+    assert_eq!(session.history().len(), 2, "assistant + tool call");
+
+    // When resetting streaming entries for retry.
+    let excluded = session.reset_streaming_entries_for_retry();
+
+    // Then both entries stay visible but leave the context, because a
+    // `tool_calls` block with no matching result is rejected by providers.
+    assert_eq!(session.history().len(), 2, "the tool call stays visible");
+    assert_eq!(excluded.len(), 2);
+    for entry in session.history() {
+        assert_eq!(entry.context_override(), ContextOverride::ForcedExclude);
+        assert!(!entry.is_in_context());
+    }
+}
+
+#[rstest::rstest]
+fn reset_streaming_entries_for_retry_is_idempotent() {
+    // Given a stalled stream that was already reset once.
+    let mut session = streaming_session();
+    session
+        .append_stream_token("Partial", dispatched_at())
+        .expect("append token");
+    assert_eq!(session.reset_streaming_entries_for_retry().len(), 1);
+
+    // When resetting again.
+    let second = session.reset_streaming_entries_for_retry();
+
+    // Then nothing changed — no entry reports a second override change.
+    assert!(
+        second.is_empty(),
+        "the reset is a no-op when nothing is streaming"
     );
+}
+
+#[rstest::rstest]
+fn rewind_for_retry_returns_the_session_to_sending() {
+    // Given a stalled stream with a partial assistant entry.
+    let mut session = streaming_session();
+    session
+        .append_stream_token("Partial", dispatched_at())
+        .expect("append token");
+    assert_eq!(session.phase(), PhaseKind::Streaming);
+
+    // When rewinding for the retry.
+    session.rewind_for_retry();
+
+    // Then the session is back in Sending, ready for the retried dispatch's
+    // first token instead of wedged in Streaming.
+    assert_eq!(session.phase(), PhaseKind::Sending);
+}
+
+#[rstest::rstest]
+fn begin_streaming_after_rewind_for_retry_streams_cleanly() {
+    // Given a session rewound from a stalled stream.
+    let mut session = streaming_session();
+    session.rewind_for_retry();
+
+    // When the retried stream begins.
+    session.begin_streaming();
+
+    // Then it is streaming with a fresh assistant entry rather than logging
+    // a rejected transition.
+    assert_eq!(session.phase(), PhaseKind::Streaming);
+    session
+        .append_stream_token("Fresh", dispatched_at())
+        .expect("append token after rewind");
+    let assistants: Vec<_> = session
+        .history()
+        .iter()
+        .filter(|e| matches!(e.kind, ChatEntryKind::Assistant(_)))
+        .collect();
+    assert_eq!(assistants.len(), 1, "only the retried entry was written");
+}
+
+#[rstest::rstest]
+fn rewind_for_retry_from_idle_leaves_the_session_untouched() {
+    // Given a session that never dispatched.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+
+    // When rewinding for a retry.
+    session.rewind_for_retry();
+
+    // Then nothing changed — the invalid transition is warned about, not applied.
+    assert_eq!(session.phase(), PhaseKind::Idle);
+    assert_eq!(session.history().len(), 1);
+}
+
+#[rstest::rstest]
+fn reset_streaming_entries_for_retry_leaves_committed_history_in_context() {
+    // Given a session with a completed turn followed by a stalled one.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("first"));
+    session.push_entry(ChatEntry::assistant("done"));
+    session.begin_streaming();
+    session
+        .append_stream_token("stalled", jiff::Timestamp::now())
+        .expect("append token");
+
+    // When resetting streaming entries for retry.
+    session.reset_streaming_entries_for_retry();
+
+    // Then the completed turn is untouched and still in context.
+    for entry in session.history().iter().take(2) {
+        assert_eq!(entry.context_override(), ContextOverride::Default);
+        assert!(entry.is_in_context());
+    }
 }
 
 // ---------------------------------------------------------------------------

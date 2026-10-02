@@ -5,8 +5,9 @@
 //! in-flight provider stream and publishes
 //! [`RetryStalledSession`](jinn_session_msg::RetryStalledSession)
 //! (alongside the visible retry marker entry). A hung stream is treated like
-//! a hard provider error: partial streaming entries are discarded and the
-//! turn is re-dispatched.
+//! a hard provider error: the stalled attempt's partial entries are taken out
+//! of context but left visible in the chat log, the session phase is rewound
+//! to `Sending`, and the turn is re-dispatched.
 
 use jinn_inference_msg::SendToLlmProvider;
 use jinn_kernel::common::actor_deps::BusPublish;
@@ -72,27 +73,34 @@ impl SessionPersistenceActor {
         &self,
         payload: &RetryStalledSession,
     ) {
-        // Discard partial streaming entries — but only while a stream is
-        // genuinely in flight for this session.
+        // Take the partial streaming entries out of context — but only while
+        // a stream is genuinely in flight for this session.
         let acted = self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&payload.session_id);
             if matches!(session.phase(), PhaseKind::Sending | PhaseKind::Streaming)
                 && session.has_in_flight_stream()
             {
-                let removed = session.reset_streaming_entries_for_retry();
-                // Partial tool calls left by a starved/errored stream
-                // must be excluded from the retried request, otherwise
-                // the next provider call carries structurally invalid
-                // (truncated-arguments) entries. Mirrors the `Canceled`
-                // path.
-                let excluded = session.force_exclude_dangling_tool_calls();
+                // The stalled attempt's entries stay in history for the user
+                // to read; they are only excluded from the retried request.
+                // Must run before the rewind below, which drops the streaming
+                // indices it reads.
+                let excluded = session.reset_streaming_entries_for_retry();
+                // Belt-and-braces for a dangling loop the streaming indices
+                // do not cover (e.g. one left by an earlier interrupted
+                // generation). Mirrors the `Canceled` path.
+                let dangling = session.force_exclude_dangling_tool_calls();
                 tracing::warn!(
                     session_id = %payload.session_id,
-                    removed_entries = removed,
-                    excluded_dangling = excluded.len(),
+                    excluded_entries = excluded.len(),
+                    excluded_dangling = dangling.len(),
                     attempt = payload.attempt,
                     "retrying stalled turn"
                 );
+                // Rewind `Streaming → Sending` so the retried dispatch
+                // re-enters streaming through the legal path. Without this
+                // the session stays in `Streaming` and the retried first
+                // token is rejected as an invalid transition.
+                session.rewind_for_retry();
                 // The re-dispatch below emits a fresh `SendToLlmProvider`,
                 // whose receipt re-arms the stall watchdog for the new
                 // generation automatically.
@@ -115,9 +123,9 @@ impl SessionPersistenceActor {
             return;
         }
 
-        // Phase is already Streaming (we didn't change it above); emit a
-        // no-op-safe phase-changed event for consistency with other dispatch
-        // paths, then re-send the assembled history.
+        // The phase was rewound to `Sending` above; emit a no-op-safe
+        // phase-changed event for consistency with other dispatch paths, then
+        // re-send the assembled history.
         super::super::helpers::emit_history_appended(self.bus(), &payload.session_id).await;
 
         // Hand the prepared turn to the turn-dispatch slice: it assembles
@@ -149,6 +157,7 @@ mod tests {
     use crate::session_actor::SessionPersistenceActor;
     use jinn_core_types::ChatEntryKind;
     use jinn_core_types::SessionId;
+    use jinn_session_msg::PhaseKind;
     use jinn_session_msg::RetryStalledSession;
 
     /// A session in `Streaming` with a partial assistant entry, a dangling
@@ -201,7 +210,7 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn handler_discards_partial_entries_and_redispatches() {
+    async fn handler_keeps_partial_entries_but_excludes_them_and_redispatches() {
         // Given a stalled Streaming session holding a partial assistant entry
         // and an in-flight stream generation.
         let (actor, audit, payload) = stall_setup().await;
@@ -210,15 +219,27 @@ mod tests {
         // When the retry handler runs.
         actor.on_retry_stalled_session(&payload).await;
 
-        // Then the partial assistant entry is gone.
+        // Then the partial assistant entry is still in the chat log — the user
+        // can see the attempt that was discarded.
         {
             let state = actor.state.read();
             let session = state.session.get(&session_id).expect("session exists");
-            let has_partial = session
-                .history()
-                .iter()
-                .any(|e| matches!(e.kind, ChatEntryKind::Assistant(ref t) if t == "partial"));
-            assert!(!has_partial, "partial assistant entry must be discarded");
+            assert!(
+                session
+                    .history()
+                    .iter()
+                    .any(|e| matches!(e.kind, ChatEntryKind::Assistant(ref t) if t == "partial")),
+                "the discarded attempt must stay visible"
+            );
+            // And it is excluded from the retried request.
+            let still_in_context = session.history().iter().any(|e| {
+                matches!(e.kind, ChatEntryKind::Assistant(ref t) if t == "partial")
+                    && e.is_in_context()
+            });
+            assert!(
+                !still_in_context,
+                "the discarded attempt must not reach the provider"
+            );
         }
         // And the turn was handed to the turn-dispatch slice for
         // re-dispatch (the queue actor owns the `SendToLlmProvider`
@@ -228,6 +249,23 @@ mod tests {
             handed_off.iter().any(|s| s.session_id == session_id),
             "DispatchTurn must be published to re-dispatch the turn"
         );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn handler_rewinds_the_phase_so_the_retry_can_stream() {
+        // Given a stalled Streaming session.
+        let (actor, _audit, payload) = stall_setup().await;
+        let session_id = payload.session_id.clone();
+
+        // When the retry handler runs.
+        actor.on_retry_stalled_session(&payload).await;
+
+        // Then the session is back in Sending — staying in Streaming made the
+        // retried dispatch's first token an illegal transition.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert_eq!(session.phase(), PhaseKind::Sending);
     }
 
     #[rstest::rstest]
@@ -374,14 +412,15 @@ mod tests {
             1,
             "retry must hand off exactly one fresh dispatch"
         );
-        // And the partial assistant entry was discarded.
+        // And the partial assistant entry is out of context.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
-            !session.history().iter().any(|e| matches!(
-                e.kind, ChatEntryKind::Assistant(ref t) if t == "partial"
-            )),
-            "retry after dispatch receipt must discard partial entries"
+            !session.history().iter().any(|e| {
+                matches!(e.kind, ChatEntryKind::Assistant(ref t) if t == "partial")
+                    && e.is_in_context()
+            }),
+            "retry after dispatch receipt must exclude partial entries from the request"
         );
     }
 }

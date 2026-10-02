@@ -10,11 +10,13 @@
 //! Idle ──on_dispatch_message()──► Sending ──on_first_token()──► Streaming
 //!   ▲                               │                              │
 //!   │                               │     on_stream_completed_*()  │
+//!   │                               │◄─────────────────────────────┤
+//!   │                               │                              │
+//!   │         on_tool_batch_completed()      on_retry_rewind()      │
 //!   │                               │◄─────────────────────────────┘
 //!   │                               │
-//!   │         on_tool_batch_completed()
-//!   │                               │
-//!   └───────────────────────────────┘ (if tool_loop_disabled)
+//!   │                               │   (if tool_loop_disabled)
+//!   └───────────────────────────────┘
 //!
 //! ```
 
@@ -246,6 +248,38 @@ impl SessionPhaseMachine {
             .map(|sp| &mut sp.streaming_tool_result_indices)
     }
 
+    /// Read-only access to the tool-result tracking map of whichever busy
+    /// phase is current. Returns empty when neither is live.
+    ///
+    /// A tool result arrives in `Sending` for the ordinary case (the stream
+    /// ended in `ToolUse` before the batch ran) and in `Streaming` only when
+    /// a batch overlaps a live stream. Callers that do not care which one they
+    /// are in should use this; [`Self::streaming_tool_result_indices`] stays
+    /// for code that genuinely is phase-specific.
+    pub fn active_tool_result_indices(&self) -> &std::collections::HashMap<String, usize> {
+        match &self.phase {
+            Phase::Streaming(sp) => &sp.streaming_tool_result_indices,
+            Phase::Sending(sp) => &sp.streaming_tool_result_indices,
+            Phase::Idle(_) => {
+                use std::sync::OnceLock;
+                static EMPTY: OnceLock<std::collections::HashMap<String, usize>> = OnceLock::new();
+                EMPTY.get_or_init(std::collections::HashMap::new)
+            }
+        }
+    }
+
+    /// Mutable access to the tool-result tracking map of whichever busy phase
+    /// is current. Returns `None` in `Idle`.
+    pub fn active_tool_result_indices_mut(
+        &mut self,
+    ) -> Option<&mut std::collections::HashMap<String, usize>> {
+        match &mut self.phase {
+            Phase::Streaming(sp) => Some(&mut sp.streaming_tool_result_indices),
+            Phase::Sending(sp) => Some(&mut sp.streaming_tool_result_indices),
+            Phase::Idle(_) => None,
+        }
+    }
+
     /// Shift all streaming indices >= `inserted_at` by +1.
     ///
     /// Called after `insert_entry_at` to keep indices valid.
@@ -286,9 +320,9 @@ impl SessionPhaseMachine {
     /// Clear all streaming indices without leaving the `Streaming` phase.
     ///
     /// Zeros the assistant entry, thinking entry, tool-call, and tool-result
-    /// index tracking. Used by the stall-retry path after partial streaming
-    /// entries have been removed from history, so the retried stream's first
-    /// token creates fresh entries. No-op if not streaming.
+    /// index tracking. The stall-retry path calls this after taking the
+    /// partial entries out of context, so the retried stream's first token
+    /// creates fresh entries. No-op if not streaming.
     pub fn clear_streaming_indices(&mut self) {
         if let Some(sp) = self.streaming_phase_mut() {
             sp.streaming_entry_index = None;
