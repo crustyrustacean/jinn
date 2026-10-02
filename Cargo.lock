@@ -3411,6 +3411,7 @@ dependencies = [
  "jinn-theme",
  "jinn-token-count-msg",
  "jinn-tools-msg",
+ "jinn-work-time-msg",
  "parking_lot",
  "ratatui",
  "rstest",
@@ -3633,6 +3634,7 @@ dependencies = [
  "jinn-testutil",
  "jinn-theme",
  "jinn-token-count-msg",
+ "jinn-work-time-msg",
  "ratatui",
  "rstest",
  "tokio",
@@ -4008,6 +4010,8 @@ dependencies = [
  "jinn-core-types",
  "jinn-slices",
  "rstest",
+ "serde",
+ "trouper",
 ]
 
 [[package]]

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use jiff::Timestamp;
 use jinn_core_types::SessionId;
+use jinn_core_types::WorkingInterval;
 use serde::{Deserialize, Serialize};
 
 use crate::SessionState;
@@ -65,6 +66,12 @@ pub struct FrozenTreeNode {
     pub measured_sent: u64,
     /// Sum of provider-reported cache-hit counts.
     pub cached_total: u64,
+    /// The archived session's wall-clock working intervals.
+    ///
+    /// Carried on the frozen node so archiving a member does not shrink the
+    /// tree's working time: the aggregate unions members' intervals, and a
+    /// node that dropped them would take its share with it.
+    pub working_intervals: Vec<WorkingInterval>,
 }
 
 #[cfg(test)]

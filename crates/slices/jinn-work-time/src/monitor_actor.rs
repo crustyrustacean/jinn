@@ -10,9 +10,10 @@
 //! reaches this actor as `working: false` with no interval open, and
 //! `end_working` reports no close — so it is a no-op rather than a boundary.
 
+use jiff::Timestamp;
 use jinn_session_msg::WorkStateChanged;
 use jinn_slices::cell::TypedCell;
-use jinn_work_time_msg::WorkingTimeState;
+use jinn_work_time_msg::{RestoreWorkingTime, WorkingTimeState};
 use trouper::actor::ActorPath;
 use trouper::actor::{MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
@@ -55,8 +56,9 @@ impl WorkTimeMonitorActor {
     pub fn spawn(system: &ActorSystem, state: TypedCell<WorkingTimeState>) -> ActorPath {
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new(WORK_TIME_MONITOR_PATH))
-            .start_with({ move || Box::pin(async move { Ok(Self { state }) }) })
+            .start_with(move || Box::pin(async move { Ok(Self { state }) }))
             .handles::<WorkStateChanged>()
+            .handles::<RestoreWorkingTime>()
             .start()
     }
 
@@ -70,11 +72,29 @@ impl WorkTimeMonitorActor {
             }
         });
     }
+
+    /// Puts a loaded session's recorded intervals back into the cell.
+    ///
+    /// The interval the previous process left open is closed at load: the work
+    /// it was billing is gone, so billing continues past the point it stopped
+    /// would charge the user for time the session spent closed.
+    pub fn handle_restore(&self, event: &RestoreWorkingTime) {
+        self.state.update(|working| {
+            working.restore(event.session_id.clone(), event.intervals.clone());
+            working.end_working(&event.session_id, Timestamp::now());
+        });
+    }
 }
 
 impl MsgHandler<WorkStateChanged> for WorkTimeMonitorActor {
     async fn handle(&mut self, msg: &WorkStateChanged, _ctx: &mut MsgCtx<'_>) {
         self.handle_work_state_changed(msg);
+    }
+}
+
+impl MsgHandler<RestoreWorkingTime> for WorkTimeMonitorActor {
+    async fn handle(&mut self, msg: &RestoreWorkingTime, _ctx: &mut MsgCtx<'_>) {
+        self.handle_restore(msg);
     }
 }
 
@@ -87,7 +107,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use jiff::{SignedDuration, Timestamp};
+    use jiff::SignedDuration;
     use jinn_core_types::SessionId;
 
     use jinn_work_time_msg::work_time_slot;

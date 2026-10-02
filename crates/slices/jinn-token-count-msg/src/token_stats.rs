@@ -122,6 +122,12 @@ pub struct TreeAggregateStats {
     pub measured_sent: u64,
     /// Sum of provider-reported cache-hit counts.
     pub cached_total: u64,
+    /// Wall-clock time the tree was working, counting a second shared by
+    /// several members once.
+    ///
+    /// A union rather than a sum: a parent waiting on two subagents is itself
+    /// non-idle, so per-session totals would bill that second three times.
+    pub total_working: jiff::SignedDuration,
 }
 
 #[cfg(test)]

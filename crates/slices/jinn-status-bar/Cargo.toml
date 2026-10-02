@@ -10,9 +10,13 @@ jinn-status-bar-msg = { workspace = true }
 jinn-cwd-msg = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-token-count-msg = { workspace = true }
+# The work-time cell, read each frame for the per-session and tree clocks.
+jinn-work-time-msg = { workspace = true }
 jinn-kernel = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-theme = { workspace = true }
+# The live clock for a running turn: read at paint time, so no tick plumbing.
+jiff = { workspace = true }
 ratatui = { workspace = true }
 
 jinn-provider-config = { workspace = true }
@@ -22,7 +26,6 @@ rstest = { workspace = true }
 tokio = { workspace = true }
 jinn-testutil = { workspace = true }
 dirs = { workspace = true }
-jiff = { workspace = true }
 
 [lints]
 workspace = true

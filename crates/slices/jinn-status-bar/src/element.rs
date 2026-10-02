@@ -4,8 +4,12 @@
 //! on line 2: strategy, pinned count, token stats, turn count, and model.
 //! The model shows `({provider})/{model}` when set, or "no model selected" otherwise.
 
+use std::collections::HashMap;
+
+use jiff::{SignedDuration, Timestamp};
 use jinn_common::shorten_path;
 use jinn_core_types::model_selection::ModelSelection;
+use jinn_core_types::{SessionId, WorkingInterval, format_working_duration};
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_kernel::common::ui_element::UiElement;
@@ -17,6 +21,8 @@ use jinn_session_state::aggregate_tree_stats;
 use jinn_slices::DrawContext;
 use jinn_theme::Theme;
 use jinn_token_count_msg::TokenStats;
+use jinn_work_time_msg::WorkingTimeState;
+use jinn_work_time_msg::work_time_slot;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::Style;
@@ -108,7 +114,7 @@ pub fn paint(frame: &mut Frame<'_>, area: Rect, ctx: &dyn DrawContext<AppState>)
         let style = Style::default().fg(state.frontend.theme.muted_text);
 
         render_cwd_line(frame, cwd_area, state, style);
-        render_tree_aggregate(frame, cwd_area, state, style);
+        render_tree_aggregate(frame, cwd_area, state, style, ctx.slices());
         render_token_info_line(frame, info_area, state, ctx, style);
     }
 }
@@ -127,7 +133,7 @@ impl UiElement for StatusBarElement {
         let style = Style::default().fg(state.frontend.theme.muted_text);
 
         render_cwd_line(frame, cwd_area, state, style);
-        render_tree_aggregate(frame, cwd_area, state, style);
+        render_tree_aggregate(frame, cwd_area, state, style, ctx.slices());
         render_token_info_line(frame, info_area, state, ctx, style);
     }
 }
@@ -142,12 +148,41 @@ fn render_cwd_line(frame: &mut Frame<'_>, area: Rect, state: &AppState, style: S
     frame.render_widget(cwd_widget, area);
 }
 
+/// The working intervals of every live session, read from the work-time cell.
+///
+/// Resolved through the frontend's attached registry. An absent cell — the
+/// slice not activated, or a test that never ran the catalog — yields no
+/// intervals rather than a panic, so the bar degrades to showing no working
+/// time instead of failing to draw.
+fn live_working_intervals(slices: &jinn_slices::Slices) -> HashMap<SessionId, Vec<WorkingInterval>> {
+    slices
+        .reader::<WorkingTimeState>(&work_time_slot())
+        .map_or_else(HashMap::new, |cell| cell.read().snapshot())
+}
+
+/// This session's working time, measured live so a running turn ticks.
+fn active_working_time(state: &AppState, slices: &jinn_slices::Slices) -> SignedDuration {
+    let id = state.session.active_session_id();
+    slices
+        .reader::<WorkingTimeState>(&work_time_slot())
+        .map_or(SignedDuration::ZERO, |cell| {
+            cell.read().working_time(id, Timestamp::now())
+        })
+}
+
 /// Renders the tree aggregate (right-aligned on the CWD line) when the tree has >1 session.
-fn render_tree_aggregate(frame: &mut Frame<'_>, area: Rect, state: &AppState, style: Style) {
+fn render_tree_aggregate(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    state: &AppState,
+    style: Style,
+    slices: &jinn_slices::Slices,
+) {
     let tree = aggregate_tree_stats(
         state.session.sessions(),
         state.session.frozen_nodes(),
         state.session.active_session_id(),
+        &live_working_intervals(slices),
     );
     if tree.session_count <= 1 {
         return;
@@ -179,8 +214,12 @@ fn render_tree_aggregate(frame: &mut Frame<'_>, area: Rect, state: &AppState, st
         style,
     ));
     tree_spans.push(Span::styled(format!("${:.5} ", tree.total_cost), style));
-    tree_spans.push(Span::styled(format!("{turn_symbol}{turns} "), style));
-    tree_spans.push(Span::styled(format!("{session_symbol}{count}"), style));
+    tree_spans.push(Span::styled(format!("{turn_symbol}{turns}"), style));
+    tree_spans.push(Span::styled(
+        format!(" {}", format_working_duration(&tree.total_working)),
+        style,
+    ));
+    tree_spans.push(Span::styled(format!(" {session_symbol}{count}"), style));
     let tree_widget = Paragraph::new(Line::from(tree_spans)).alignment(Alignment::Right);
     frame.render_widget(tree_widget, area);
 }
@@ -217,7 +256,13 @@ fn render_token_info_line(
         }
         left_spans.push(Span::styled(token_info, style));
         left_spans.push(Span::styled(format!(" ${:.5}", total_cost.abs()), style));
-        left_spans.push(Span::styled(format!(" {turn_symbol}{turn_count}"), style));
+        left_spans.push(Span::styled(
+            format!(
+                " {turn_symbol}{turn_count} {}",
+                format_working_duration(&active_working_time(state, ctx.slices()))
+            ),
+            style,
+        ));
         Paragraph::new(Line::from(left_spans))
             .style(style)
             .alignment(Alignment::Left)

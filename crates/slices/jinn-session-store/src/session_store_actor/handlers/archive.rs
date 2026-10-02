@@ -265,12 +265,16 @@ impl SessionStoreActor {
 
     /// Captures immutable tree statistics before dropping the live session.
     fn snapshot_before_removal(&self, session_id: &SessionId) {
+        // Read the working intervals BEFORE the session is dropped, from the
+        // work-time cell. The frozen node carries them so archiving this
+        // member does not change the tree's working time.
+        let working = self.working_intervals(session_id);
         let frozen = self
             .state
             .read()
             .session
             .get(session_id)
-            .map(snapshot_frozen_node);
+            .map(|session| snapshot_frozen_node(session, working));
         if let Some(frozen) = frozen {
             self.state.with_session(|view| {
                 view.session.insert_frozen_node(frozen);

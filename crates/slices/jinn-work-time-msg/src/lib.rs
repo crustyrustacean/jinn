@@ -3,4 +3,4 @@
 
 pub mod working_time_state;
 
-pub use working_time_state::{WorkingTimeState, work_time_slot};
+pub use working_time_state::{RestoreWorkingTime, WorkingTimeState, work_time_slot};

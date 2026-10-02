@@ -11,6 +11,7 @@ use jinn_attendant_msg::{
     AttendantBehavior, AttendantReport, AttendantTrigger, default_seed_template,
 };
 use jinn_core_types::{ChatEntry, ChatEntryKind, NameFilter, SessionId, SessionProfile};
+use jinn_core_types::WorkingInterval;
 use jinn_session_lifecycle_msg::LifecycleScriptState;
 use jinn_session_msg::SessionOrigin;
 use jinn_session_store_msg::SessionState;
@@ -128,6 +129,17 @@ pub struct SessionSnapshotMetadata {
     /// The attendant's append-only report log.
     #[serde(default)]
     pub reports: Vec<AttendantReport>,
+    /// Wall-clock intervals during which this session was working.
+    ///
+    /// Persisted in the metadata blob, so working time survives a restart.
+    /// Absent in a snapshot written before working time was recorded, and
+    /// that session's pre-existing working time is not recoverable — it is
+    /// better to under-report than to invent a number.
+    ///
+    /// Omitted when empty, so a session that never worked persists a blob
+    /// byte-identical to one written before this field existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub working_intervals: Vec<WorkingInterval>,
 }
 
 impl From<&SessionCore> for SessionSnapshotMetadata {
@@ -156,6 +168,13 @@ impl From<&SessionCore> for SessionSnapshotMetadata {
             trigger: core.attendant.trigger,
             seed_template: core.attendant.seed_template.clone(),
             reports: core.attendant.reports.clone(),
+            // Working time is NOT read from the core. It lives in the
+            // work-time slice's cell, and copying it onto the core would give
+            // it a second home with a second writer. The store actor stamps it
+            // onto the snapshot after capture; a snapshot captured anywhere
+            // else carries none, which reads as "this session has not worked"
+            // rather than inventing a number.
+            working_intervals: Vec::new(),
         }
     }
 }
@@ -237,6 +256,10 @@ impl SessionSnapshot {
             .unwrap_or_else(NameFilter::inherited);
         forked_filter.permit(jinn_tools_msg::TASK_TOOL_NAME);
         metadata.profile.tool_filter = Some(forked_filter);
+        // Working time is per-session and is not inherited: a fork is a new
+        // session that has not worked yet. Inheriting the parent's span would
+        // bill the child for the parent's history.
+        metadata.working_intervals = Vec::new();
 
         Self {
             revision: SessionRevision::new(1),

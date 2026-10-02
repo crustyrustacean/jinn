@@ -8,6 +8,8 @@ description = "Work-time crossing contracts: the per-session working-interval ce
 jinn-core-types = { workspace = true }
 jinn-slices = { workspace = true }
 jiff = { workspace = true }
+serde = { workspace = true }
+trouper = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }

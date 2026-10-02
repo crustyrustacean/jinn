@@ -600,6 +600,13 @@ pub(crate) struct PersistableCore {
     /// The attendant's append-only report log.
     #[serde(default)]
     reports: Vec<AttendantReport>,
+    /// Wall-clock intervals during which this session was working.
+    /// Absent in blobs written before working time was recorded.
+    ///
+    /// Omitted when empty, so a session that never worked persists a blob
+    /// byte-identical to one written before this field existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    working_intervals: Vec<jinn_core_types::WorkingInterval>,
 }
 
 impl From<&SessionSnapshotMetadata> for PersistableCore {
@@ -627,6 +634,7 @@ impl From<&SessionSnapshotMetadata> for PersistableCore {
             trigger: metadata.trigger,
             seed_template: metadata.seed_template.clone(),
             reports: metadata.reports.clone(),
+            working_intervals: metadata.working_intervals.clone(),
         }
     }
 }
@@ -656,6 +664,7 @@ impl From<PersistableCore> for SessionSnapshotMetadata {
             trigger: core.trigger,
             seed_template: core.seed_template,
             reports: core.reports,
+            working_intervals: core.working_intervals,
             session_state: SessionState::Loaded,
         }
     }

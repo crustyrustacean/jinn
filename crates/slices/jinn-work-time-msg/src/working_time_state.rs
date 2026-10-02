@@ -114,6 +114,24 @@ pub fn work_time_slot() -> SlotKey {
     SlotKey::builtin("work-time", "intervals")
 }
 
+/// A session's recorded working intervals, as loaded from storage.
+///
+/// Published by the session-store actor when a session is restored, so the
+/// monitor — not the store — puts them back in the cell. The store reads
+/// working time to stamp a durable copy; letting it also write one would give
+/// working intervals a second writer, and the two would disagree about the
+/// open interval a killed session left behind.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, trouper::schema::Command)]
+#[schema(description = "A loaded session's recorded working intervals.")]
+pub struct RestoreWorkingTime {
+    /// The session whose intervals were loaded.
+    pub session_id: SessionId,
+    /// The intervals storage held for it.
+    pub intervals: Vec<WorkingInterval>,
+}
+
+impl jinn_slices::BusMessage for RestoreWorkingTime {}
+
 #[cfg(test)]
 mod tests {
     #![allow(

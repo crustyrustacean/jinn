@@ -27,6 +27,8 @@ pub mod turn_count;
 mod token_stats_tests;
 #[cfg(test)]
 mod tree_aggregate_tests;
+#[cfg(test)]
+mod working_time_persistence_tests;
 
 pub use assembly_projection::AssemblySessionProjection;
 pub use chat_session::{ChatSessionState, StreamingError};
