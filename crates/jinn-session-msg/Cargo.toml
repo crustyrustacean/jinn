@@ -13,6 +13,9 @@ trouper = { workspace = true }
 wherror = { workspace = true }
 
 jinn-config = { workspace = true }
+# `Timestamp` on the phase/working events: both cross as trouper schema
+# events, so the moment has to be a serde type the wire already carries.
+jiff = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }

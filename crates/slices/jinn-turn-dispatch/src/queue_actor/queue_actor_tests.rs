@@ -82,6 +82,7 @@ async fn idle_transition_dispatches_user_message() {
         session_id: sid.clone(),
         old_phase: PhaseKind::Sending,
         new_phase: PhaseKind::Idle,
+        at: jiff::Timestamp::now(),
     };
     actor.handle_session_phase_changed(&msg).await;
 
@@ -113,6 +114,7 @@ async fn idle_transition_dispatches_tool_continuation() {
         session_id: sid.clone(),
         old_phase: PhaseKind::Sending,
         new_phase: PhaseKind::Idle,
+        at: jiff::Timestamp::now(),
     };
     actor.handle_session_phase_changed(&msg).await;
 
@@ -141,6 +143,7 @@ async fn non_idle_transition_does_nothing() {
         session_id: sid.clone(),
         old_phase: PhaseKind::Idle,
         new_phase: PhaseKind::Sending,
+        at: jiff::Timestamp::now(),
     };
     actor.handle_session_phase_changed(&msg).await;
 
@@ -160,6 +163,7 @@ async fn idle_transition_with_empty_queue_does_nothing() {
         session_id: sid,
         old_phase: PhaseKind::Sending,
         new_phase: PhaseKind::Idle,
+        at: jiff::Timestamp::now(),
     };
     actor.handle_session_phase_changed(&msg).await;
 
@@ -184,6 +188,7 @@ async fn idle_with_empty_queue_and_steering_dispatches_steering() {
         session_id: sid.clone(),
         old_phase: PhaseKind::Streaming,
         new_phase: PhaseKind::Idle,
+        at: jiff::Timestamp::now(),
     };
     actor.handle_session_phase_changed(&msg).await;
 
@@ -218,6 +223,7 @@ async fn idle_with_empty_queue_and_empty_steering_does_nothing() {
         session_id: sid,
         old_phase: PhaseKind::Streaming,
         new_phase: PhaseKind::Idle,
+        at: jiff::Timestamp::now(),
     };
     actor.handle_session_phase_changed(&msg).await;
 
@@ -249,6 +255,7 @@ async fn idle_with_both_buffers_dispatches_steering_first_and_keeps_queue() {
             session_id: sid.clone(),
             old_phase: PhaseKind::Streaming,
             new_phase: PhaseKind::Idle,
+            at: jiff::Timestamp::now(),
         })
         .await;
 
@@ -314,6 +321,7 @@ async fn queued_item_dispatches_after_steering_turn_completes() {
                 session_id: sid.clone(),
                 old_phase: PhaseKind::Streaming,
                 new_phase: PhaseKind::Idle,
+                at: jiff::Timestamp::now(),
             })
             .await;
     }
@@ -361,6 +369,7 @@ async fn idle_transition_publishes_idle_to_sending_phase_change() {
         session_id: sid,
         old_phase: PhaseKind::Streaming,
         new_phase: PhaseKind::Idle,
+        at: jiff::Timestamp::now(),
     };
     actor.handle_session_phase_changed(&msg).await;
 

@@ -3318,6 +3318,7 @@ dependencies = [
 name = "jinn-session-msg"
 version = "1.2.1"
 dependencies = [
+ "jiff",
  "jinn-config",
  "jinn-core-types",
  "jinn-preferences-config",
