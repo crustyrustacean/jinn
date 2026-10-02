@@ -690,16 +690,16 @@ fn help_body(field: PropertyField, theme: &jinn_theme::Theme) -> Vec<Line<'stati
         ],
         PropertyField::Model => vec![
             Line::from(
-                "Whether the model the session already holds belongs to this attendant. This row does not change the model itself — change it from the status bar's model picker.",
+                "Whether to use the model in the parent session at spawn time, or one saved in the attendent config.",
             ),
             Line::from(""),
             line(
                 "inherit",
-                "the model is the one this attendant was created with; saving writes no model key, so the entry keeps inheriting",
+                "the model is the one this attendant was created with",
             ),
             line(
                 "fixed",
-                "the model is this attendant's own; saving writes it into the entry so it survives being recreated",
+                "the model selected in the attendant session will persist on all new attachments",
             ),
         ],
         PropertyField::SeedTemplate => vec![

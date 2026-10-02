@@ -4,6 +4,7 @@
 
 - Agents should be less likely to use the `interactive_term` `max_duration_seconds` parameter as a sleep function.
 - Paste now works properly across all input boxes.
+- Attendant model configuration can now be edited in the property panel.
 
 ## 2026-09-30 v1.2.1
 
