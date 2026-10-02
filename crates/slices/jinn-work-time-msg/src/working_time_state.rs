@@ -128,6 +128,14 @@ pub struct RestoreWorkingTime {
     pub session_id: SessionId,
     /// The intervals storage held for it.
     pub intervals: Vec<WorkingInterval>,
+    /// The snapshot's own last-update time: the last moment this process is
+    /// known to have been running.
+    ///
+    /// An interval left open is closed here rather than at load time, so a
+    /// session killed mid-turn bills up to its final durable write and not up
+    /// to whenever the user reopened it — otherwise the hours the app spent
+    /// closed would be charged as working time.
+    pub last_active_at: Timestamp,
 }
 
 impl jinn_slices::BusMessage for RestoreWorkingTime {}

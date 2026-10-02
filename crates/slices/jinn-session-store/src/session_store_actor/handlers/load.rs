@@ -101,10 +101,12 @@ impl SessionStoreActor {
             // Hand the recorded working intervals to the work-time monitor,
             // which owns them. Publishing rather than writing the cell keeps
             // the monitor the only writer, and carries the open interval a
-            // killed session left behind so the monitor can close it.
+            // killed session left behind so the monitor can close it at the
+            // snapshot's own last-update time rather than at load.
             self.publish(RestoreWorkingTime {
                 session_id: session_id.clone(),
                 intervals: snapshot.metadata.working_intervals.clone(),
+                last_active_at: snapshot.metadata.updated_at,
             })
             .await;
             self.publish(SessionLoadCompleted { session_id }).await;

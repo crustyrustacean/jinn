@@ -276,7 +276,6 @@ fn render_shows_token_counts_with_zero_values() {
 fn render_shows_token_counts_with_values() {
     // Given a session with token records.
     use jinn_token_count_msg::TokenRecord;
-    use jinn_work_time_msg::{WorkingTimeState, work_time_slot};
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
@@ -316,7 +315,6 @@ fn render_shows_token_counts_with_values() {
 fn render_shows_cache_percent_when_cached_tokens_present() {
     // Given a session with a measured turn reporting cache hits.
     use jinn_token_count_msg::TokenRecord;
-    use jinn_work_time_msg::{WorkingTimeState, work_time_slot};
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
@@ -491,7 +489,6 @@ fn render_info_line_cache_segment_is_warning_between_90_and_94_percent(
 fn render_hides_cache_glyph_when_no_cached_tokens() {
     // Given a session with no cache hits (cached_tokens = None).
     use jinn_token_count_msg::TokenRecord;
-    use jinn_work_time_msg::{WorkingTimeState, work_time_slot};
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
@@ -530,7 +527,6 @@ fn render_cache_percent_uses_measured_turns_only() {
     // cancelled turn (estimate=50, no usage). 400/1000 = 40%, not affected by
     // the cancelled turn's estimate.
     use jinn_token_count_msg::TokenRecord;
-    use jinn_work_time_msg::{WorkingTimeState, work_time_slot};
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
@@ -576,7 +572,6 @@ fn render_cache_percent_uses_measured_turns_only() {
 fn render_shows_zero_percent_max_when_context_size_but_no_limit() {
     // Given a session with a cached context size but no model cache.
     use jinn_token_count_msg::TokenRecord;
-    use jinn_work_time_msg::{WorkingTimeState, work_time_slot};
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
@@ -893,7 +888,6 @@ fn attach_model_cache(
 fn render_shows_context_limit_with_usage_and_percentage() {
     // Given a session with a cached context size and a model cache with context_length.
     use jinn_token_count_msg::TokenRecord;
-    use jinn_work_time_msg::{WorkingTimeState, work_time_slot};
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().set_model(ModelSelection::Single(
@@ -937,7 +931,6 @@ fn render_shows_context_limit_with_usage_and_percentage() {
 fn render_falls_back_when_no_context_limit_in_cache() {
     // Given a session with a cached context size but no context_length in the model cache.
     use jinn_token_count_msg::TokenRecord;
-    use jinn_work_time_msg::{WorkingTimeState, work_time_slot};
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
@@ -979,7 +972,6 @@ fn render_falls_back_when_no_context_limit_in_cache() {
 fn render_falls_back_when_no_model_cache() {
     // Given a session with a cached context size but no model cache at all.
     use jinn_token_count_msg::TokenRecord;
-    use jinn_work_time_msg::{WorkingTimeState, work_time_slot};
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
@@ -1117,7 +1109,6 @@ fn render_always_shows_cost_even_when_zero() {
 fn render_shows_cost_with_non_zero_value() {
     // Given a session with a token record that has cost data.
     use jinn_token_count_msg::TokenRecord;
-    use jinn_work_time_msg::{WorkingTimeState, work_time_slot};
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
@@ -1261,7 +1252,6 @@ fn render_tree_cache_segment_keeps_muted_neighbors() {
 fn render_shows_cost_before_turns_indicator() {
     // Given a state with history entries producing turns and a token record with cost.
     use jinn_token_count_msg::TokenRecord;
-    use jinn_work_time_msg::{WorkingTimeState, work_time_slot};
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
@@ -1340,7 +1330,6 @@ fn render_hides_tree_aggregate_for_single_session() {
 fn render_shows_tree_aggregate_when_parent_has_child() {
     // Given a parent session with a child session, neither reporting cache hits.
     use jinn_token_count_msg::TokenRecord;
-    use jinn_work_time_msg::{WorkingTimeState, work_time_slot};
 
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
@@ -1866,7 +1855,6 @@ fn status_bar_omits_indicator_when_no_model_selected() {
 #[rstest::rstest]
 fn status_bar_alloy_indicator_reflects_last_dispatched_member() {
     use jinn_token_count_msg::TokenRecord;
-    use jinn_work_time_msg::{WorkingTimeState, work_time_slot};
     // Given an alloy where the last-dispatched member is image-capable.
     let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().set_model(ModelSelection::Alloy {
