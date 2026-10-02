@@ -24,7 +24,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use jinn_chat_log_view_msg::{
     DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
@@ -57,6 +57,12 @@ use jinn_preferences_config::schemas::ChatLogConfig;
 
 /// Default number of lines to show for tool entries (calls and results) before truncating.
 const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
+
+/// Shortest gap between two renders of the streaming entry.
+///
+/// One frame at the TUI's redraw cadence. It is not configurable: if the
+/// interval ever needs to change, it changes here and nowhere else.
+pub(crate) const STREAM_RENDER_INTERVAL: Duration = Duration::from_millis(16);
 
 // alternatives: |❚┃╏⣿𜺏░▒▓
 const GUTTER_STR: &str = "𜺏 ";
@@ -170,6 +176,29 @@ pub struct ChatLogElement {
     /// Wall-clock of the last animation advance, so the spinner only steps
     /// once the animation interval has elapsed.
     last_advance: Option<Instant>,
+    /// The streaming entry's previous rendering, carried between frames so a
+    /// throttled frame can paint the previous text instead of re-deriving it.
+    ///
+    /// Held on the element rather than in `paint` because the element is one
+    /// long-lived instance registered with the registry: a local would not
+    /// survive to the next frame, and would throttle nothing.
+    stream_lines: Option<StreamedLines>,
+}
+
+/// The previous frame's rendering of the streaming entry.
+///
+/// Reused verbatim while a frame is throttled. Dropped as soon as the entry
+/// stops streaming, so a settled entry can never paint from it.
+#[derive(Debug)]
+struct StreamedLines {
+    /// The entry these lines belong to.
+    id: ChatEntryId,
+    /// The wrapped line count they occupy.
+    wrapped_count: u32,
+    /// The rendered lines themselves.
+    lines: Arc<Vec<Line<'static>>>,
+    /// When they were rendered.
+    rendered_at: Instant,
 }
 
 impl ChatLogElement {
@@ -179,7 +208,54 @@ impl ChatLogElement {
         Self {
             throbber_state: ThrobberState::default(),
             last_advance: None,
+            stream_lines: None,
         }
+    }
+
+    /// Whether the streaming entry is due a re-render.
+    ///
+    /// Every streamed token changes that entry's content fingerprint, so its
+    /// cache entry misses and the whole entry re-renders inline: markdown
+    /// parse, every code block re-highlighted, a wrap count, and a clone.
+    /// Bounding that to one render per frame interval keeps the redraw
+    /// cadence — which is what the eye tracks — rather than the token rate.
+    pub(crate) fn stream_render_due(&self) -> bool {
+        self.stream_lines
+            .as_ref()
+            .is_none_or(|streamed| streamed.rendered_at.elapsed() >= STREAM_RENDER_INTERVAL)
+    }
+
+    /// The throttled lines reusable for `id`, if any.
+    ///
+    /// `None` whenever there is no previous render to reuse, which sends the
+    /// caller down the real render path — suppression is an optimisation and
+    /// must never be the reason an entry has no lines to paint.
+    pub(crate) fn reusable_stream_lines(
+        &self,
+        id: &ChatEntryId,
+    ) -> Option<(u32, Arc<Vec<Line<'static>>>)> {
+        let streamed = self.stream_lines.as_ref()?;
+        (streamed.id == *id).then(|| (streamed.wrapped_count, Arc::clone(&streamed.lines)))
+    }
+
+    /// Record the streaming entry's rendering, stamped with this instant.
+    fn record_stream_lines(
+        &mut self,
+        id: ChatEntryId,
+        wrapped_count: u32,
+        lines: Arc<Vec<Line<'static>>>,
+    ) {
+        self.stream_lines = Some(StreamedLines {
+            id,
+            wrapped_count,
+            lines,
+            rendered_at: Instant::now(),
+        });
+    }
+
+    /// Forget the streaming entry's rendering.
+    fn forget_stream_lines(&mut self) {
+        self.stream_lines = None;
     }
 }
 
@@ -223,9 +299,25 @@ impl ChatLogElement {
         let mut render = HistoryRender::new(state, area, ctx.config());
         render.compute_visual_items();
         render.build_tool_result_map();
+
+        // The entry accumulating assistant content is the one entry whose
+        // content changes every frame, so it is the only one worth throttling.
+        // `None` when nothing is streaming, which disables the throttle
+        // entirely — settled history always renders when asked to.
+        let streaming_id = render.streaming_entry_id();
+        let throttled: Option<(u32, Arc<Vec<Line<'static>>>)> = match &streaming_id {
+            Some(id) if self.stream_render_due() => None,
+            Some(id) => self.reusable_stream_lines(id),
+            None => {
+                // Streaming stopped; never paint a settled entry from this.
+                self.forget_stream_lines();
+                None
+            }
+        };
+
         if let Some(cell) = state.frontend.line_cache_cell() {
             cell.update(|cache| {
-                render.compute_line_ranges(cache);
+                render.compute_line_ranges(cache, streaming_id.as_ref(), throttled.as_ref());
                 render.compute_scroll();
 
                 {
@@ -249,6 +341,15 @@ impl ChatLogElement {
                 render.build_blank_lines();
                 render.render_visible_entries(cache);
             });
+
+            // Only an actual render stamps the interval, and only for the
+            // entry that was actually rendered. A frame that fell through to
+            // render still produces reusable lines, so it stamps too.
+            if let (Some(id), Some((wrapped_count, lines))) =
+                (streaming_id, render.stream_rendered())
+            {
+                self.record_stream_lines(id, wrapped_count, lines);
+            }
         }
         render.paint(frame);
     }
@@ -579,6 +680,10 @@ struct HistoryRender<'a> {
     content_lines: Vec<Line<'static>>,
     gutter_lines: Vec<Line<'static>>,
     lines_before_viewport: u32,
+    /// The streaming entry's rendering, set only on a frame that actually
+    /// rendered it. Read back by [`Self::stream_rendered`] so the caller can
+    /// carry it into the next frame.
+    stream_rendered: Option<(u32, Arc<Vec<Line<'static>>>)>,
 }
 
 impl<'a> HistoryRender<'a> {
@@ -625,6 +730,7 @@ impl<'a> HistoryRender<'a> {
             gutter_lines: Vec::new(),
             lines_before_viewport: 0,
             visual_items: Vec::new(),
+            stream_rendered: None,
         }
     }
 
@@ -660,6 +766,30 @@ impl<'a> HistoryRender<'a> {
     // Step 1: Build tool result status map
     // -----------------------------------------------------------------------
 
+    /// The id of the entry currently accumulating assistant content, if the
+    /// session is streaming.
+    ///
+    /// This is the single entry whose content fingerprint changes on every
+    /// streamed token. Keying the throttle on the entry id rather than a
+    /// history index keeps it correct when the history shifts underneath a
+    /// frame.
+    fn streaming_entry_id(&self) -> Option<ChatEntryId> {
+        let session = self.state.active_session();
+        if !matches!(session.phase(), PhaseKind::Streaming) {
+            return None;
+        }
+        let hist_idx = session.streaming_entry_index()?;
+        self.history.get(hist_idx).map(|entry| entry.id.clone())
+    }
+
+    /// The streaming entry's rendering, if this frame actually rendered it.
+    ///
+    /// Consumed by the caller so it can carry the lines into the next frame.
+    /// `None` on a frame that reused the previous rendering instead.
+    fn stream_rendered(&mut self) -> Option<(u32, Arc<Vec<Line<'static>>>)> {
+        self.stream_rendered.take()
+    }
+
     /// Whether `entry` is a `ToolCall` still streaming arguments.
     fn is_streaming_tool_call(&self, entry: &ChatEntry) -> bool {
         is_streaming_tool_call(entry, &self.streaming_tool_call_ids)
@@ -680,8 +810,19 @@ impl<'a> HistoryRender<'a> {
     /// On a cache hit with rendered lines, the lines are stored in `cached_lines`
     /// for reuse in Pass 2. On a miss, lines are rendered, stored in both the cache
     /// (via `insert_with_lines`) and `miss_lines`.
+    ///
+    /// `streaming_id` names the entry accumulating assistant content, and
+    /// `throttled` carries the previous frame's rendering of it. When both are
+    /// present, that entry is painted from the previous rendering instead of
+    /// being re-rendered: its line range is still recorded, so scroll state,
+    /// the minimap, and the scrollbar stay in step with the entries around it.
     #[expect(clippy::expect_used, reason = "infallible")]
-    fn compute_line_ranges(&mut self, cache: &mut EntryLineCache) {
+    fn compute_line_ranges(
+        &mut self,
+        cache: &mut EntryLineCache,
+        streaming_id: Option<&ChatEntryId>,
+        throttled: Option<&(u32, Arc<Vec<Line<'static>>>)>,
+    ) {
         let mut wrapped_cursor: u32 = 0;
 
         for (vi_idx, item) in self.visual_items.iter().enumerate() {
@@ -692,6 +833,23 @@ impl<'a> HistoryRender<'a> {
                         .get(*hist_idx)
                         .expect("hist_idx from visual_items");
                     let is_expanded = self.state.active_session().is_entry_expanded(&entry.id);
+
+                    // Paint the streaming entry from the previous frame rather
+                    // than re-rendering it. Checked before the cache probe
+                    // because the probe would miss anyway: the content really
+                    // did change, which is the whole reason for throttling.
+                    if let (Some(throttle_id), Some((wrapped_count, lines))) =
+                        (streaming_id, throttled)
+                    {
+                        if entry.id == *throttle_id {
+                            let start = wrapped_cursor;
+                            let end = wrapped_cursor + wrapped_count;
+                            self.entry_line_ranges.push((start, end));
+                            wrapped_cursor = end;
+                            self.cached_lines.insert(vi_idx, Arc::clone(lines));
+                            continue;
+                        }
+                    }
 
                     // Variant hash covers status-derived look inputs; a
                     // changed variant forces a re-render even when the
@@ -739,6 +897,13 @@ impl<'a> HistoryRender<'a> {
                                 .wrap(Wrap { trim: false })
                                 .line_count(self.content_width) as u32
                         };
+
+                        // Handed back to the caller so the next frame has
+                        // something to reuse if this one is throttled.
+                        if streaming_id.is_some_and(|id| *id == entry.id) {
+                            self.stream_rendered = Some((wrapped_count, Arc::new(lines.clone())));
+                        }
+
                         cache.insert_with_lines(
                             entry,
                             probe.content,

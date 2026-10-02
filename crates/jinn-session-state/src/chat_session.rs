@@ -1150,6 +1150,15 @@ impl ChatSessionState {
         self.core.ephemeral.machine.streaming_thinking_entry_index()
     }
 
+    /// The index of the entry accumulating assistant content, if any.
+    ///
+    /// The renderer needs this to recognise the one entry whose content
+    /// changes on every streamed token, as distinct from settled history.
+    #[must_use]
+    pub fn streaming_entry_index(&self) -> Option<usize> {
+        self.core.ephemeral.machine.streaming_entry_index()
+    }
+
     /// Mark streaming as finished (normal completion).
     ///
     /// Delegates to [`PhaseTransitions::on_stream_completed_finished`].

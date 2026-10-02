@@ -7,12 +7,12 @@
 )]
 
 use crate::chat_log::GUTTER_WIDTH;
-use crate::kernel_element::history::ChatLogElement;
+use crate::kernel_element::history::{ChatLogElement, STREAM_RENDER_INTERVAL};
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_kernel::common::ui_element::UiElement;
 use jinn_kernel::protocol::ToolResultStatus;
-use jinn_kernel::protocol::{ChatEntry, PinPosition};
+use jinn_kernel::protocol::{ChatEntry, ChatEntryId, PinPosition};
 use jinn_slices::FocusScope;
 use jinn_testutil::setup_term;
 use ratatui::layout::Rect;
@@ -1145,6 +1145,16 @@ fn resize_clears_cache_and_rerenders() {
     );
 }
 
+/// How many full content fingerprints the shared line cache has computed.
+fn cache_fingerprint_count(state: &AppState) -> u64 {
+    state
+        .frontend
+        .line_cache_cell()
+        .expect("catalog registered the line-cache cell")
+        .read()
+        .fingerprint_computations()
+}
+
 /// A state mid-stream with `initial` already appended as the active entry.
 fn streaming_state() -> AppState {
     let mut state = AppState::default_with_scope_focus();
@@ -1243,11 +1253,12 @@ fn streaming_token_append_renders_updated_content() {
         })
         .unwrap();
 
-    // When more tokens arrive and the log is re-rendered.
+    // When more tokens arrive and the stream render interval has elapsed.
     state
         .active_session_mut()
         .append_stream_token(" + more text", jiff::Timestamp::now())
         .expect("ok");
+    std::thread::sleep(STREAM_RENDER_INTERVAL);
     terminal
         .draw(|frame| {
             let slices = jinn_slices::Slices::new();
@@ -1268,6 +1279,177 @@ fn streaming_token_append_renders_updated_content() {
     assert!(
         has_more,
         "updated content should be visible after streaming"
+    );
+}
+
+#[rstest::rstest]
+fn a_throttled_frame_reuses_the_previous_rendered_lines() {
+    // Given a ChatLogElement that rendered a stream one frame ago.
+    let mut element = ChatLogElement::new();
+    let mut state = streaming_state();
+    let (mut terminal, area) = setup_term(40, 10);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let before = cache_fingerprint_count(&state);
+
+    // When a token arrives and the log is re-rendered within the interval.
+    state
+        .active_session_mut()
+        .append_stream_token(" + more text", jiff::Timestamp::now())
+        .expect("ok");
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the frame did no work for the entry: the throttled path returns
+    // before the cache probe, so no fingerprint was hashed.
+    assert_eq!(
+        cache_fingerprint_count(&state),
+        before,
+        "a throttled frame should not re-hash the streaming entry"
+    );
+}
+
+#[rstest::rstest]
+fn a_throttled_frame_still_paints_the_streaming_entry() {
+    // Given a ChatLogElement that rendered a stream one frame ago.
+    let mut element = ChatLogElement::new();
+    let mut state = streaming_state();
+    let (mut terminal, area) = setup_term(40, 10);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // When a throttled frame is drawn.
+    state
+        .active_session_mut()
+        .append_stream_token(" + more text", jiff::Timestamp::now())
+        .expect("ok");
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the entry is still on screen rather than blanked — suppression
+    // reuses the previous lines, it never drops them.
+    let buffer = terminal.backend().buffer().clone();
+    let has_initial = (0..10).any(|row| {
+        let row_text: String = (2..40)
+            .filter_map(|col| buffer.cell((col, row)).map(|c| c.symbol().to_owned()))
+            .collect();
+        row_text.contains("initial")
+    });
+    assert!(
+        has_initial,
+        "a throttled frame must reuse the previous lines, not blank the entry"
+    );
+}
+
+#[rstest::rstest]
+fn a_settled_entry_is_never_throttled() {
+    // Given a ChatLogElement rendering history with nothing streaming.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = normal_state();
+        s.active_session_mut()
+            .push_entry(ChatEntry::assistant("settled text"));
+        s
+    };
+    let (mut terminal, area) = setup_term(40, 10);
+
+    // When the same settled content is rendered repeatedly with no interval.
+    for _ in 0..3 {
+        terminal
+            .draw(|frame| {
+                let slices = jinn_slices::Slices::new();
+                let overlay_views = jinn_slices::OverlayViews::new();
+                let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+                element.render(frame, area, &ctx);
+            })
+            .unwrap();
+    }
+
+    // Then it is painted on the very first frame, with no prior render to reuse.
+    let buffer = terminal.backend().buffer().clone();
+    let has_text = (0..10).any(|row| {
+        let row_text: String = (2..40)
+            .filter_map(|col| buffer.cell((col, row)).map(|c| c.symbol().to_owned()))
+            .collect();
+        row_text.contains("settled")
+    });
+    assert!(has_text, "a settled entry must render immediately");
+}
+
+#[rstest::rstest]
+fn the_stream_render_interval_elapses_between_frames() {
+    // Given an element that rendered the streaming entry just now.
+    let mut element = ChatLogElement::new();
+    let state = streaming_state();
+    let (mut terminal, area) = setup_term(40, 10);
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // When the render interval elapses.
+    std::thread::sleep(STREAM_RENDER_INTERVAL);
+
+    // Then the entry is due a render again.
+    assert!(
+        element.stream_render_due(),
+        "the throttle must reopen once the interval has passed"
+    );
+}
+
+#[rstest::rstest]
+fn the_stream_render_is_due_before_any_render_has_happened() {
+    // Given a fresh element that has never rendered.
+    let element = ChatLogElement::new();
+
+    // When asking whether a stream render is due.
+    let due = element.stream_render_due();
+
+    // Then it is, so the first frame is never suppressed.
+    assert!(due, "the first streaming frame must always render");
+}
+
+#[rstest::rstest]
+fn reusable_lines_are_withheld_for_a_different_entry() {
+    // Given an element holding a previous render of one entry.
+    let mut element = ChatLogElement::new();
+    let other = ChatEntryId::new();
+
+    // When asking whether those lines can serve a different entry.
+    let reusable = element.reusable_stream_lines(&other);
+
+    // Then nothing is offered, so a different entry renders normally.
+    assert!(
+        reusable.is_none(),
+        "one entry's lines must never be painted as another's"
     );
 }
 
