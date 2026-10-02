@@ -1,6 +1,6 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Do not make edits)**
 
-## (development)
+## 2026-10-02 v1.3.0
 
 - Agents should be less likely to use the `interactive_term` `max_duration_seconds` parameter as a sleep function.
 - Paste now works properly across all input boxes.
@@ -9,6 +9,10 @@
   - Aggregate wall time is calculated and deduplicated across the entire tree, so it shows the total wall time for the whole tree, _not_ the sum of the individual sessions.
 - Bugfix: Attendants can now re-trigger infinitely.
 - Bugfix: Stall watchdog broke in the v1 migration and has been fixed.
+- Improved rendering performance while streaming formatted LLM responses containing code blocks.
+- Attendant picker UX changes:
+  - `<c-a>` keybind will attach an attendant and keep the picker open
+  - `<enter>` now keeps the current session focused instead of switching to the attendant
 
 ## 2026-09-30 v1.2.1
 
