@@ -126,6 +126,12 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
     jinn_cwd::activate(&mut ctx.host());
     jinn_status_bar::activate(&mut ctx.host());
     jinn_quake_bar::activate(&mut ctx.host());
+    // The work-time monitor folds `WorkStateChanged`, which the session actor
+    // and the turn-dispatch queue actor both publish. Ordering is not
+    // load-bearing against the two below — they are below — but it must
+    // precede the first dispatch, or the opening edge of the first turn is
+    // published to no subscriber and that turn is unmeasured.
+    jinn_work_time::activate(&mut ctx.host());
     let services_snapshot = ctx.services().clone();
     jinn_citations::activate(&mut ctx.host(), services_snapshot.clone());
     jinn_skills::activate(&mut ctx.host());

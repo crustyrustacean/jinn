@@ -59,6 +59,7 @@ jinn-provider-selection = { workspace = true }
 jinn-provider-selection-msg = { workspace = true }
 jinn-token-count = { workspace = true }
 jinn-token-count-msg = { workspace = true }
+jinn-work-time = { workspace = true }
 jinn-session-store-msg = { workspace = true }
 jinn-context-curation = { workspace = true }
 jinn-context-curation-msg = { workspace = true }
@@ -285,6 +286,8 @@ jinn-export = { path = "crates/slices/jinn-export" }
 jinn-mcp-msg = { path = "crates/slices/jinn-mcp-msg" }
 jinn-context-assembly-msg = { path = "crates/slices/jinn-context-assembly-msg" }
 jinn-context-assembly = { path = "crates/slices/jinn-context-assembly" }
+jinn-work-time-msg = { path = "crates/slices/jinn-work-time-msg" }
+jinn-work-time = { path = "crates/slices/jinn-work-time" }
 wasm-encoder = "=0.252.0"
 wasmparser = "=0.252.0"
 

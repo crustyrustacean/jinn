@@ -1,0 +1,16 @@
+[package]
+name = "jinn-work-time-msg"
+version.workspace = true
+edition.workspace = true
+description = "Work-time crossing contracts: the per-session working-interval cell payload and its slot key."
+
+[dependencies]
+jinn-core-types = { workspace = true }
+jinn-slices = { workspace = true }
+jiff = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+
+[lints]
+workspace = true

@@ -2032,6 +2032,7 @@ dependencies = [
  "jinn-turn-dispatch",
  "jinn-turn-dispatch-msg",
  "jinn-watchdog",
+ "jinn-work-time",
  "kanal",
  "mockito",
  "nu-ansi-term",
@@ -2205,6 +2206,7 @@ dependencies = [
  "jinn-theme-msg",
  "jinn-token-count-msg",
  "jinn-tools-msg",
+ "jinn-work-time-msg",
 ]
 
 [[package]]
@@ -3979,6 +3981,33 @@ dependencies = [
  "tokio",
  "tracing",
  "trouper",
+]
+
+[[package]]
+name = "jinn-work-time"
+version = "1.2.1"
+dependencies = [
+ "error-stack",
+ "jiff",
+ "jinn-cell-catalog",
+ "jinn-core-types",
+ "jinn-kernel",
+ "jinn-session-msg",
+ "jinn-slices",
+ "jinn-work-time-msg",
+ "rstest",
+ "tracing",
+ "trouper",
+]
+
+[[package]]
+name = "jinn-work-time-msg"
+version = "1.2.1"
+dependencies = [
+ "jiff",
+ "jinn-core-types",
+ "jinn-slices",
+ "rstest",
 ]
 
 [[package]]

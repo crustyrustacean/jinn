@@ -74,6 +74,10 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_kernel::Services)
         activate_inference(&mut services).await;
         activate_watchdog(&mut services, &core.state).await;
         activate_citations(&mut services).await;
+        // The work-time monitor. Must precede the turn-dispatch and session
+        // actors' first publish, or the opening edge of the first turn
+        // reaches no subscriber.
+        activate_work_time(&mut services);
         // Every slice-owned picker, in the same order as `actor_wiring`.
         activate_every_picker(&mut services);
         jinn_tools::activate(&mut services, &core.state);
@@ -359,6 +363,21 @@ pub async fn activate_token_count(services: &mut jinn_kernel::Services, state: j
         &services.trouper_system,
     );
     jinn_token_count::activate(&mut host, state);
+}
+
+/// Activates the work-time slice on the harness services (the monitor actor
+/// bound to the catalogued interval cell). The cell comes from the same
+/// catalog production boot uses, so the monitor and any reader resolve the
+/// identical instance rather than a private one that records into nothing.
+pub fn activate_work_time(services: &mut jinn_kernel::Services) {
+    let mut host = jinn_slices::SliceHost::new(
+        &services.slices,
+        &mut services.viewport,
+        &mut services.overlay_views,
+        &mut services.key_routes,
+        &services.trouper_system,
+    );
+    jinn_work_time::activate(&mut host);
 }
 
 /// Activates the turn-dispatch slice on the harness services (the queue
