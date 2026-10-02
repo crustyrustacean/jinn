@@ -14,7 +14,7 @@ mod report;
 mod report_picker;
 mod saved_picker;
 
-pub use crate::behavior::{AttendantBehavior, AttendantTrigger};
+pub use crate::behavior::{AttendantBehavior, AttendantModelSetting, AttendantTrigger};
 pub use crate::properties::{
     AttendantPropertiesState, BEHAVIOR_CHOICES, OriginalValues, PickDirection, PopupStatus,
     PropertyField, SET_MODE_CHOICES, SetField, SetMode, TRIGGER_CHOICES,
