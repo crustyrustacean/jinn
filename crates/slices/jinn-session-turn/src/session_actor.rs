@@ -41,9 +41,7 @@ use jinn_session_history_msg::CitationsReceived;
 use jinn_session_history_msg::SubmitHistoryMutations;
 use jinn_session_history_msg::TaskListUpdated;
 use jinn_session_history_msg::{ChatEntryPinChanged, PinChatEntry, PushChatEntry, UnpinChatEntry};
-use jinn_session_msg::{
-    ClearTurnAutomation, MarkSessionInteracted, RetryStalledSession, TurnCompleted,
-};
+use jinn_session_msg::{MarkSessionInteracted, RetryStalledSession, TurnCompleted};
 use jinn_skills_msg::SkillsLoaded;
 use jinn_tools_msg::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
@@ -163,7 +161,6 @@ impl SessionPersistenceActor {
             .handles::<PushChatEntry>()
             .handles::<SubmitHistoryMutations>()
             .handles::<MarkSessionInteracted>()
-            .handles::<ClearTurnAutomation>()
             .handles::<RetryStalledSession>()
             // The actor arms the in-flight-stream guard on dispatch receipt —
             // the single write point covering every `SendToLlmProvider`
@@ -245,12 +242,6 @@ impl MsgHandler<UnpinChatEntry> for SessionPersistenceActor {
 impl MsgHandler<MarkSessionInteracted> for SessionPersistenceActor {
     async fn handle(&mut self, msg: &MarkSessionInteracted, _ctx: &mut MsgCtx<'_>) {
         self.handle_mark_session_interacted(msg).await;
-    }
-}
-
-impl MsgHandler<ClearTurnAutomation> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &ClearTurnAutomation, _ctx: &mut MsgCtx<'_>) {
-        self.handle_clear_turn_automation(msg);
     }
 }
 

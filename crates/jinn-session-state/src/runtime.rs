@@ -44,16 +44,6 @@ pub struct SessionCoreEphemeral {
     /// Tool results that arrived before the matching phase transition completed.
     #[serde(skip)]
     pub pending_tool_batch: Option<Vec<ToolResult>>,
-    /// Whether this session's current turn was started by automation rather
-    /// than by the user — an attendant trigger fire, or a `notify_parent`
-    /// enqueue into this session.
-    ///
-    /// Set when the automated dispatch happens and cleared when the turn's
-    /// outcome is published. While set, a `TurnCompleted` for this session
-    /// does not fire its own attendants, so an attendant that notified its
-    /// parent cannot spin a mutual exchange unattended.
-    #[serde(skip)]
-    pub turn_started_automatically: bool,
 }
 
 /// Presentation-owned state that is discarded when a session closes.
