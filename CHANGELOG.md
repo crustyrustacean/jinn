@@ -5,6 +5,10 @@
 - Agents should be less likely to use the `interactive_term` `max_duration_seconds` parameter as a sleep function.
 - Paste now works properly across all input boxes.
 - Attendant model configuration can now be edited in the property panel.
+- Add work timer to session that shows total wall time that a session was processing.
+  - Aggregate wall time is calculated and deduplicated across the entire tree, so it shows the total wall time for the whole tree, _not_ the sum of the individual sessions.
+- Bugfix: Attendants can now re-trigger infinitely.
+- Bugfix: Stall watchdog broke in the v1 migration and has been fixed.
 
 ## 2026-09-30 v1.2.1
 
