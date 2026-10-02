@@ -48,6 +48,9 @@ jinn-token-count-msg = { workspace = true }
 jinn-inference-msg = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-testutil = { workspace = true }
+# The picker tests read the published message payloads back as typed
+# messages to see which entries a key sent to which session.
+serde_json = { workspace = true }
 rstest = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }

@@ -75,11 +75,24 @@ pub fn build(entry: &AttendantEntryConfig, parent: &ChatSessionState) -> ChatSes
     attendant
 }
 
+/// The line the parent session is left with, naming what was attached to it.
+///
+/// Attaching is a load-up gesture: the entry was already saved, and the
+/// conversation the user is on is none of the new attendant's business. The
+/// parent's log is therefore where the new attendant is reported, rather
+/// than the user being moved into it.
+fn attached_notice(name: &str) -> String {
+    format!("🛰️ Attendant \"{name}\" attached to this session.")
+}
+
 /// The messages a creation publishes, in the order they must arrive.
 ///
 /// The parent is persisted first: an attendant's own row names the parent,
 /// and a parent that has never been written is an attendant pointing at a
 /// session the store has never heard of.
+///
+/// The two log lines bookend the sequence — the new attendant is told what
+/// it is, and the session it was created under is told what it gained.
 #[must_use]
 pub fn creation_messages(
     parent_id: &jinn_core_types::SessionId,
@@ -103,10 +116,20 @@ pub fn creation_messages(
             entry: ChatEntry::system(CREATED_NOTICE),
             pin: None,
         })
+        .with_message(jinn_session_history_msg::PushChatEntry {
+            session_id: parent_id.clone(),
+            entry: ChatEntry::system(attached_notice(attendant.title().unwrap_or_default())),
+            pin: None,
+        })
 }
 
 /// Creates `entry` on `state` under the active session, publishing the
-/// creation's messages and making the new attendant active.
+/// creation's messages.
+///
+/// The active session is left alone: attaching is a load-up gesture, and
+/// the session the picker was opened from is none of the new attendant's
+/// business. Nothing here touches the focus stack either — the caller
+/// decides what the user is looking at afterwards.
 ///
 /// Returns `None` when the active session is gone or is itself an
 /// attendant: an attendant of an attendant is not a thing this feature
@@ -125,7 +148,6 @@ pub fn create_in_state(
     let attendant = build(entry, &parent);
     let attendant_id = attendant.session_id().clone();
     state.session.insert(attendant);
-    state.session.set_active(attendant_id.clone());
     // The new attendant is created, not typed into: it is worth keeping
     // before it has said anything, exactly as a fresh `N` attendant is.
     if let Some(a) = state.session.get_mut(&attendant_id) {
@@ -134,8 +156,6 @@ pub fn create_in_state(
     if let Some(p) = state.session.get_mut(&parent_id) {
         p.mark_interacted();
     }
-    state.frontend.scope_clear_overlays();
-    state.frontend.scope_push(jinn_slices::FocusScope::Input);
     Some(creation_messages(
         &parent_id,
         state.session.get(&attendant_id)?,
