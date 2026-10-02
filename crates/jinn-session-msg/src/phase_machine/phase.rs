@@ -19,9 +19,17 @@ pub struct IdlePhase;
 
 /// Per-phase data for the Sending phase.
 ///
-/// Carries no state - exists for type-level consistency with the phase enum.
+/// Carries the in-flight tool batch's result tracking. A tool result does not
+/// arrive while the model is streaming — the stream ends in `ToolUse`, the
+/// phase becomes `Sending`, and *then* the tools run. Gating tool results on
+/// `Streaming` therefore dropped every one of them, leaving the finalized
+/// result to be pushed detached at the end of history.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct SendingPhase;
+pub struct SendingPhase {
+    /// Maps tool_call_id to history index for the in-flight tool batch's
+    /// `Pending` result entries.
+    pub streaming_tool_result_indices: HashMap<String, usize>,
+}
 
 /// Carries all streaming tracking state - ephemeral indices and maps
 /// that are only meaningful while the LLM is actively streaming tokens.

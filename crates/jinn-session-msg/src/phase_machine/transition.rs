@@ -55,6 +55,19 @@ pub trait PhaseTransitions {
     /// Returns [`TransitionError`] if not in `Streaming`.
     fn on_stream_completed_canceled(&mut self) -> Result<TransitionOutcome, TransitionError>;
 
+    /// `Streaming → Sending` - a stalled generation is being retried.
+    ///
+    /// Not a terminal transition: the turn continues, and the retried
+    /// dispatch re-enters `Streaming` through the normal
+    /// `Sending → Streaming` path. Dropping `StreamingPhase` discards the
+    /// stalled generation's indices, so the retry starts from a clean
+    /// `SendingPhase` — exactly what a fresh dispatch expects.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TransitionError`] if not in `Streaming`.
+    fn on_retry_rewind(&mut self) -> Result<TransitionOutcome, TransitionError>;
+
     /// `Sending → Streaming` or `Sending → Idle`.
     ///
     /// If `tool_loop_disabled` is set on the `SendingPhase`, transitions to
@@ -69,7 +82,7 @@ pub trait PhaseTransitions {
 
 impl PhaseTransitions for SessionPhaseMachine {
     fn on_dispatch_message(&mut self) -> Result<TransitionOutcome, TransitionError> {
-        self.transition(PhaseKind::Idle, Phase::Sending(SendingPhase))
+        self.transition(PhaseKind::Idle, Phase::Sending(SendingPhase::default()))
     }
 
     fn on_first_token(&mut self) -> Result<TransitionOutcome, TransitionError> {
@@ -87,7 +100,7 @@ impl PhaseTransitions for SessionPhaseMachine {
         let next = if soft_cancel {
             Phase::Idle(IdlePhase)
         } else {
-            Phase::Sending(SendingPhase)
+            Phase::Sending(SendingPhase::default())
         };
         self.transition(PhaseKind::Streaming, next)
     }
@@ -102,6 +115,13 @@ impl PhaseTransitions for SessionPhaseMachine {
 
     fn on_stream_completed_canceled(&mut self) -> Result<TransitionOutcome, TransitionError> {
         self.transition(PhaseKind::Streaming, Phase::Idle(IdlePhase))
+    }
+
+    fn on_retry_rewind(&mut self) -> Result<TransitionOutcome, TransitionError> {
+        self.transition(
+            PhaseKind::Streaming,
+            Phase::Sending(SendingPhase::default()),
+        )
     }
 
     fn on_tool_batch_completed(&mut self) -> Result<TransitionOutcome, TransitionError> {

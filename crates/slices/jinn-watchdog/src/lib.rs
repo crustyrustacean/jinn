@@ -5,11 +5,13 @@
 //! and `[tool_call_watchdog]` sections only tune when they intervene):
 //!
 //! - [`stall_watchdog_actor::StallWatchdogActor`] arms on every
-//!   `SendToLlmProvider`, resets on `StreamToken`, and applies the
-//!   end-reason policy on `StreamCompleted`. Silence past the configured
-//!   window publishes the visible retry marker and re-dispatches the turn
-//!   (`RetryStalledSession`); past the consecutive-restart budget it
-//!   surrenders (surrender marker + `CancelStream`).
+//!   `SendToLlmProvider`, resets the silence clock on every `StreamActivity`,
+//!   and applies the end-reason policy on `StreamCompleted` — which also
+//!   decides when the restart budget clears (a completed generation does).
+//!   Silence past the configured window publishes the visible retry marker
+//!   and re-dispatches the turn (`RetryStalledSession`); past the budget of
+//!   silent stalls between completed generations it surrenders (surrender
+//!   marker + `CancelStream`).
 //! - [`tool_call_watchdog_actor::ToolCallWatchdogActor`] accumulates
 //!   consecutive tool failures (`ToolExecutionCompleted`), trips at the
 //!   configured count (trip marker + `CancelStream`), and recovers on a

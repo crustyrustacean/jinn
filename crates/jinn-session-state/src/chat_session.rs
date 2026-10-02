@@ -1222,21 +1222,65 @@ impl ChatSessionState {
         }
     }
 
-    /// Discard partial streaming entries so a stalled stream can be retried.
+    /// Rewind a stalled generation so the retried dispatch can re-enter
+    /// `Streaming`.
     ///
-    /// Removes in-progress assistant and thinking entries from history and
-    /// clears all streaming indices (assistant, thinking, tool-call, tool-result),
-    /// while staying in the `Streaming` phase. The retried stream's first token
-    /// creates fresh entries. Committed history (completed user/assistant entries)
-    /// is untouched.
-    pub fn reset_streaming_entries_for_retry(&mut self) -> usize {
-        // Remove every history index we own, then clear the machine indices.
+    /// Called by the stall-retry path. The machine drops `StreamingPhase` —
+    /// and with it every streaming index — by construction, so the retried
+    /// stream starts from a clean slate. Warn-and-continue, like
+    /// [`Self::begin_sending`]: a rewind from the wrong phase is a lost race
+    /// with something that already resolved the turn, not a fault to abort on.
+    ///
+    /// Must run *after* [`Self::reset_streaming_entries_for_retry`], which
+    /// reads the streaming indices this transition discards.
+    pub fn rewind_for_retry(&mut self) {
+        if let Err(e) = self.core.ephemeral.machine.on_retry_rewind() {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.machine.kind(),
+                err = %e,
+                "rewind_for_retry: machine rejected transition - ignoring"
+            );
+        }
+    }
+
+    /// Prepare a stalled stream for retry: take the partial entries out of
+    /// context and clear the streaming bookkeeping so the retried generation
+    /// starts from scratch.
+    ///
+    /// Nothing is removed. A stalled attempt's partial assistant text, thinking
+    /// and tool calls stay in history exactly where the user watched them
+    /// appear, marked `ForcedExclude` so the retried prompt stays valid —
+    /// providers reject a request whose `tool_calls` have no matching results.
+    /// This mirrors what the hard-cancel path already does with
+    /// [`Self::force_exclude_dangling_tool_calls`].
+    ///
+    /// Must run while still in `Streaming`: it reads the streaming indices,
+    /// which no longer exist once the phase has moved on.
+    ///
+    /// The excluded entries are also registered as an expanded ignored block.
+    /// Exclusion alone is not enough to keep them readable: the chat log
+    /// collapses any contiguous run of `!is_in_context()` entries that is at
+    /// least `min_collapse_count` long and further than `proximity_count` from
+    /// the tail, and it cannot tell a discarded stall from a block the user
+    /// chose to ignore. Without this the whole attempt — three entries in the
+    /// common case, exactly the collapse threshold — reduces to a single "N
+    /// hidden entries" line, which is the invisibility this method exists to
+    /// prevent. Registering the ids is a default-expanded state, not a lock:
+    /// toggling the block collapses it like any other.
+    ///
+    /// Returns the ids whose context override changed.
+    pub fn reset_streaming_entries_for_retry(&mut self) -> Vec<ChatEntryId> {
+        // Collect first: clearing the indices below is what erases the only
+        // record of which entries this generation owned.
         let mut indices = self.collect_streaming_history_indices();
-        indices.sort_unstable_by(|a, b| b.cmp(a));
+        indices.sort_unstable();
         indices.dedup();
-        let removed = self.edit_history().remove_trailing(&indices);
+        let excluded = self.edit_history().force_exclude_at_indices(&indices);
+        if !excluded.is_empty() {
+            self.update_view(|v| v.shown_ignored_blocks.extend(excluded.iter().cloned()));
+        }
         self.core.ephemeral.machine.clear_streaming_indices();
-        removed
+        excluded
     }
 
     /// Every history entry index currently tracked by the streaming phase.
@@ -1260,7 +1304,7 @@ impl ChatSessionState {
             self.core
                 .ephemeral
                 .machine
-                .streaming_tool_result_indices()
+                .active_tool_result_indices()
                 .values()
                 .copied(),
         );
@@ -1405,24 +1449,34 @@ impl ChatSessionState {
     ///
     /// Creates the entry with `ToolResultStatus::Pending` and empty content,
     /// then tracks its history index for later content appends.
+    ///
+    /// Accepted in either busy phase. A tool result reaches the session in
+    /// `Sending` for the ordinary case — the stream ended in `ToolUse`, the
+    /// batch ran, and the tools report back while the next dispatch is being
+    /// prepared — and in `Streaming` when a batch overlaps a live stream.
+    /// Gating on `Streaming` alone dropped every result, and the finalized
+    /// result was then pushed detached at the end of history. `Idle` is still
+    /// refused so a canceled session does not accumulate orphan entries.
     pub fn begin_tool_result(
         &mut self,
         tool_call_id: &str,
         name: &str,
         dispatched_at: jiff::Timestamp,
     ) {
-        // Early return if not in Streaming phase — don't push orphaned entries.
+        // Early return if neither busy phase is live — don't push orphaned
+        // entries. Checked before the push so a refused result leaves no
+        // half-written entry behind.
         if self
             .core
             .ephemeral
             .machine
-            .streaming_tool_result_indices_mut()
+            .active_tool_result_indices_mut()
             .is_none()
         {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
                 tool_call_id,
-                "begin_tool_result called while not streaming - ignoring"
+                "begin_tool_result called while the session is not busy - ignoring"
             );
             return;
         }
@@ -1432,18 +1486,15 @@ impl ChatSessionState {
         entry.timing.set_first_token();
         let history_index = self.push_entry(entry);
 
-        // Re-acquire the streaming index map after push_entry releases &mut self.
-        if let Some(indices) = self
-            .core
-            .ephemeral
-            .machine
-            .streaming_tool_result_indices_mut()
-        {
+        // Re-acquire the tracking map after push_entry releases &mut self.
+        if let Some(indices) = self.core.ephemeral.machine.active_tool_result_indices_mut() {
             indices.insert(tool_call_id.to_owned(), history_index);
         }
     }
 
     /// Append incremental output to a pending ToolResult entry.
+    ///
+    /// Reads the pending entry from whichever busy phase is holding it.
     ///
     /// # Panics
     ///
@@ -1458,7 +1509,7 @@ impl ChatSessionState {
             .core
             .ephemeral
             .machine
-            .streaming_tool_result_indices()
+            .active_tool_result_indices()
             .get(tool_call_id)
         else {
             return;
@@ -1489,8 +1540,8 @@ impl ChatSessionState {
     /// Accepts optional truncation metadata and full content from the tool
     /// execution result. When truncation is present, stores both the truncated
     /// content and the original untruncated output.
-    /// Finalizes an existing pending ToolResult entry (streaming index first,
-    /// then a history scan), returning whether one was found.
+    /// Finalizes an existing pending ToolResult entry (whichever busy phase
+    /// tracks it, then a history scan), returning whether one was found.
     ///
     /// In-place finalization: never reorders entries or splits a tool loop.
     fn finalize_existing_tool_result(
@@ -1502,11 +1553,11 @@ impl ChatSessionState {
         truncation: Option<jinn_core_types::tool_types::TruncationMeta>,
         pin_position: Option<PinPosition>,
     ) -> bool {
-        let streaming_index = self
+        let tracked_index = self
             .core
             .ephemeral
             .machine
-            .streaming_tool_result_indices_mut()
+            .active_tool_result_indices_mut()
             .and_then(|map| map.remove(tool_call_id));
 
         let apply = |entry: &mut ChatEntry| {
@@ -1535,7 +1586,7 @@ impl ChatSessionState {
             }
         };
 
-        match streaming_index {
+        match tracked_index {
             Some(index) => self.edit_history().with_entry_at_mut(index, apply).is_some(),
             None => self
                 .edit_history()

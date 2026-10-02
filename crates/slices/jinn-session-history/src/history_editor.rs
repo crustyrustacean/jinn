@@ -388,8 +388,41 @@ where
         changed
     }
 
+    /// Force-excludes every entry at `indices`, bypassing precedence guards.
+    ///
+    /// The stall-retry counterpart to [`Self::exclude_incomplete_trailing_loops`]:
+    /// that sweep infers an incomplete loop from the shape of history, which
+    /// misses a stall that left only partial assistant text and no tool call
+    /// at all. This one takes the caller's explicit set — the streaming
+    /// indices the stalled generation actually owned — so text, thinking, and
+    /// tool entries are all covered.
+    ///
+    /// Entries survive for display; they are only taken out of context.
+    /// Returns the ids whose override changed.
+    pub fn force_exclude_at_indices(&mut self, indices: &[usize]) -> Vec<ChatEntryId> {
+        let ids: Vec<ChatEntryId> = {
+            let history = self.session.history();
+            indices
+                .iter()
+                .filter_map(|&i| history.get(i).map(|entry| entry.id.clone()))
+                .collect()
+        };
+        ids.iter()
+            .filter_map(|id| self.force_exclude_labelled(id, "stall_retry_exclude"))
+            .collect()
+    }
+
     /// Applies ForcedExclude to a single member, bypassing precedence guards.
     fn force_exclude(&mut self, id: &ChatEntryId) -> Option<ChatEntryId> {
+        self.force_exclude_labelled(id, "dangling_tool_call_sweep")
+    }
+
+    /// Applies ForcedExclude to a single member under `label`.
+    fn force_exclude_labelled(
+        &mut self,
+        id: &ChatEntryId,
+        label: &'static str,
+    ) -> Option<ChatEntryId> {
         self.session
             .with_history_entry_mut(id, |entry| {
                 let changed = entry.context_override() != ContextOverride::ForcedExclude;
@@ -397,7 +430,7 @@ where
                     entry.apply_context_override(
                         ContextOverride::ForcedExclude,
                         ChangeSource::Internal {
-                            label: "dangling_tool_call_sweep".into(),
+                            label: label.into(),
                         },
                     );
                 }

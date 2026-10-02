@@ -1054,6 +1054,125 @@ fn no_dangling_tool_calls_in_messages_after_hard_cancel() {
 
 #[rstest::rstest]
 #[test]
+fn retry_excluded_partial_tool_call_produces_valid_messages() {
+    // Given a history where a stalled attempt built a tool call before dying:
+    // the tool call is excluded from context rather than deleted.
+    let mut entries = vec![
+        ChatEntry::user("run it"),
+        ChatEntry::assistant("let me look"),
+        ChatEntry::tool_call("tc-stalled", "read", r#"{"path":"a"}"#),
+        ChatEntry::user("retry"),
+        ChatEntry::assistant("looking again"),
+    ];
+    for entry in entries.iter_mut().skip(1).take(2) {
+        force_exclude(entry);
+    }
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then every tool_call in the request has a matching tool result.
+    let mut call_ids = Vec::new();
+    let mut result_ids = Vec::new();
+    for msg in &messages {
+        match msg {
+            LlmMessage::Assistant {
+                tool_calls: Some(calls),
+                ..
+            } => call_ids.extend(calls.iter().map(|c| c.id.clone())),
+            LlmMessage::Tool { tool_call_id, .. } => result_ids.push(tool_call_id.clone()),
+            _ => {}
+        }
+    }
+    for id in &call_ids {
+        assert!(
+            result_ids.iter().any(|r| r == id),
+            "the discarded attempt left a dangling tool_call {id}"
+        );
+    }
+    assert!(
+        call_ids.is_empty(),
+        "the excluded tool call must not reach the provider, got: {call_ids:?}"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn retry_excluded_partial_assistant_absent_from_messages() {
+    // Given a history where a stalled attempt left partial assistant text,
+    // excluded from context.
+    let mut entries = vec![
+        ChatEntry::user("hello"),
+        ChatEntry::assistant("half a respon"),
+        ChatEntry::user("again"),
+        ChatEntry::assistant("full response"),
+    ];
+    force_exclude(&mut entries[1]);
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then the discarded partial text produces no message at all.
+    for msg in &messages {
+        let LlmMessage::Assistant { content, .. } = msg else {
+            continue;
+        };
+        assert!(
+            !content.contains("half a respon"),
+            "the excluded partial assistant leaked into the request"
+        );
+    }
+    assert_eq!(
+        messages.len(),
+        3,
+        "user, (excluded), user, assistant - one message dropped"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn retry_excluded_loop_does_not_disturb_prior_complete_loop() {
+    // Given a completed tool loop followed by a stalled attempt's partial loop.
+    let mut entries = vec![
+        ChatEntry::user("fix this"),
+        ChatEntry::assistant("checking"),
+        ChatEntry::tool_call("tc-1", "bash", "ls"),
+        ChatEntry::tool_result("tc-1", "bash", "file.txt", ToolResultStatus::Success),
+        ChatEntry::assistant("partial"),
+        ChatEntry::tool_call("tc-2", "read", "a.rs"),
+    ];
+    for entry in entries.iter_mut().skip(4) {
+        force_exclude(entry);
+    }
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then the earlier complete loop still assembles as a call/result pair.
+    let call_ids: Vec<&str> = messages
+        .iter()
+        .filter_map(|m| match m {
+            LlmMessage::Assistant {
+                tool_calls: Some(calls),
+                ..
+            } => Some(calls.iter().map(|c| c.id.as_str()).collect::<Vec<_>>()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    assert_eq!(call_ids, vec!["tc-1"], "only the committed call survives");
+    // And the tool result for it is present, so the pair is intact.
+    assert!(
+        messages.iter().any(|m| matches!(
+            m,
+            LlmMessage::Tool { tool_call_id, .. } if tool_call_id == "tc-1"
+        )),
+        "the committed tool result must survive the exclusion"
+    );
+}
+
+#[rstest::rstest]
+#[test]
 fn complete_tool_batch_produces_valid_messages() {
     // Given a history simulating auto-compaction during ToolUse where the tool batch
     // completed normally (all tool calls have matching results).

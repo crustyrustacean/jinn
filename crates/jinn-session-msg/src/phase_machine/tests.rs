@@ -663,6 +663,91 @@ fn sending_accessor_returns_none_when_not_sending() {
 
 #[rstest::rstest]
 #[test]
+fn rewind_from_streaming_goes_to_sending() {
+    // Given a machine streaming with an in-flight assistant entry.
+    let mut m = streaming_machine();
+    m.set_streaming_entry_index(3);
+
+    // When rewinding for a stall retry.
+    let outcome = m.on_retry_rewind().expect("rewind from Streaming");
+
+    // Then the machine lands in Sending, which is where a fresh dispatch
+    // re-enters Streaming from.
+    assert_eq!(outcome.old_phase, PhaseKind::Streaming);
+    assert_eq!(outcome.new_phase, PhaseKind::Sending);
+    assert_eq!(m.kind(), PhaseKind::Sending);
+}
+
+#[rstest::rstest]
+#[test]
+fn rewind_from_streaming_drops_streaming_indices() {
+    // Given a machine streaming with every streaming index populated.
+    let mut m = streaming_machine();
+    m.set_streaming_entry_index(1);
+    m.set_streaming_thinking_entry_index(2);
+    m.streaming_tool_call_indices_mut()
+        .expect("streaming")
+        .insert(0, 3);
+    m.streaming_tool_result_indices_mut()
+        .expect("streaming")
+        .insert("tc-1".to_owned(), 4);
+
+    // When rewinding for a stall retry.
+    m.on_retry_rewind().expect("rewind from Streaming");
+
+    // Then every index is gone — the StreamingPhase was dropped wholesale,
+    // so the retried stream starts from a clean slate.
+    assert_eq!(m.streaming_entry_index(), None);
+    assert_eq!(m.streaming_thinking_entry_index(), None);
+    assert!(m.streaming_tool_call_indices().is_empty());
+    assert!(m.streaming_tool_result_indices().is_empty());
+}
+
+#[rstest::rstest]
+#[test]
+fn begin_streaming_after_rewind_succeeds() {
+    // Given a machine rewound from a stalled stream.
+    let mut m = streaming_machine();
+    m.on_retry_rewind().expect("rewind from Streaming");
+
+    // When the retried stream's first token arrives.
+    let outcome = m.on_first_token().expect("Sending accepts the first token");
+
+    // Then it streams cleanly — this is the transition the retry path used
+    // to make illegal by staying in Streaming.
+    assert_eq!(outcome.old_phase, PhaseKind::Sending);
+    assert_eq!(m.kind(), PhaseKind::Streaming);
+}
+
+#[rstest::rstest]
+#[test]
+fn rewind_from_idle_is_rejected() {
+    // Given a machine that never dispatched.
+    let mut m = idle_machine();
+
+    // When rewinding for a stall retry.
+    let result = m.on_retry_rewind();
+
+    // Then the transition is refused rather than silently applied.
+    assert!(result.is_err(), "rewind from Idle must be rejected");
+}
+
+#[rstest::rstest]
+#[test]
+fn rewind_from_sending_is_rejected() {
+    // Given a machine in Sending — nothing is streaming to rewind.
+    let mut m = sending_machine();
+
+    // When rewinding for a stall retry.
+    let result = m.on_retry_rewind();
+
+    // Then the transition is refused — a Sending session has no in-flight
+    // stream, so the stall retry must not claim one.
+    assert!(result.is_err(), "rewind from Sending must be rejected");
+}
+
+#[rstest::rstest]
+#[test]
 fn phase_starts_as_idle() {
     // Given a freshly constructed machine.
     let m = SessionPhaseMachine::new();
