@@ -214,20 +214,52 @@ impl SessionPhaseMachine {
 
     /// Read-only access to tool-call tracking map. Returns empty if not streaming.
     pub fn streaming_tool_call_indices(&self) -> &std::collections::HashMap<usize, usize> {
-        use std::sync::OnceLock;
-        static EMPTY: OnceLock<std::collections::HashMap<usize, usize>> = OnceLock::new();
-        self.streaming_phase().map_or_else(
-            || EMPTY.get_or_init(std::collections::HashMap::new),
-            |sp| &sp.streaming_tool_call_indices,
-        )
+        self.active_tool_call_indices()
     }
 
     /// Mutable access to tool-call tracking map. Returns `None` if not streaming.
     pub fn streaming_tool_call_indices_mut(
         &mut self,
     ) -> Option<&mut std::collections::HashMap<usize, usize>> {
-        self.streaming_phase_mut()
-            .map(|sp| &mut sp.streaming_tool_call_indices)
+        self.active_tool_call_indices_mut()
+    }
+
+    /// Read-only access to the tool-call tracking map of whichever busy phase
+    /// is current. Returns empty when neither is live.
+    ///
+    /// A tool call's arguments stream in during the provider burst, which
+    /// spans **both** busy phases. `dispatch_user_message` leaves the session
+    /// `Sending`, and the only `Sending → Streaming` transition is driven by a
+    /// text token — so a model that opens by calling a tool emits no token and
+    /// never reaches `Streaming`. Gating the map on `Streaming` alone dropped
+    /// those calls on the floor: their entry was pushed, the registration was
+    /// refused, and every argument delta was discarded.
+    ///
+    /// Callers that do not care which busy phase they are in should use this;
+    /// [`Self::streaming_tool_call_indices`] stays for call sites that name
+    /// the phase they mean. Mirrors [`Self::active_tool_result_indices`].
+    pub fn active_tool_call_indices(&self) -> &std::collections::HashMap<usize, usize> {
+        match &self.phase {
+            Phase::Streaming(sp) => &sp.streaming_tool_call_indices,
+            Phase::Sending(sp) => &sp.streaming_tool_call_indices,
+            Phase::Idle(_) => {
+                use std::sync::OnceLock;
+                static EMPTY: OnceLock<std::collections::HashMap<usize, usize>> = OnceLock::new();
+                EMPTY.get_or_init(std::collections::HashMap::new)
+            }
+        }
+    }
+
+    /// Mutable access to the tool-call tracking map of whichever busy phase is
+    /// current. Returns `None` in `Idle`.
+    pub fn active_tool_call_indices_mut(
+        &mut self,
+    ) -> Option<&mut std::collections::HashMap<usize, usize>> {
+        match &mut self.phase {
+            Phase::Streaming(sp) => Some(&mut sp.streaming_tool_call_indices),
+            Phase::Sending(sp) => Some(&mut sp.streaming_tool_call_indices),
+            Phase::Idle(_) => None,
+        }
     }
 
     /// Read-only access to tool-result tracking map. Returns empty if not streaming.
@@ -282,9 +314,32 @@ impl SessionPhaseMachine {
 
     /// Shift all streaming indices >= `inserted_at` by +1.
     ///
-    /// Called after `insert_entry_at` to keep indices valid.
-    /// No-op if not streaming.
+    /// Called after `insert_entry_at` to keep indices valid. No-op in `Idle`.
+    ///
+    /// Tool-call and tool-result indices are shifted in whichever busy phase is
+    /// current: a tool call's arguments stream in during `Sending` as often as
+    /// during `Streaming`, so shifting only one of them would let an index
+    /// drift onto the wrong history entry.
     pub fn shift_streaming_indices_for_insert_at(&mut self, inserted_at: usize) {
+        // Two separate borrows: one mutable borrow per map, never overlapping.
+        for value in self
+            .active_tool_call_indices_mut()
+            .into_iter()
+            .flat_map(|m| m.values_mut())
+        {
+            if *value >= inserted_at {
+                *value += 1;
+            }
+        }
+        for value in self
+            .active_tool_result_indices_mut()
+            .into_iter()
+            .flat_map(|m| m.values_mut())
+        {
+            if *value >= inserted_at {
+                *value += 1;
+            }
+        }
         let Some(sp) = self.streaming_phase_mut() else {
             return;
         };
@@ -298,37 +353,60 @@ impl SessionPhaseMachine {
         {
             *i += 1;
         }
-        for v in sp.streaming_tool_result_indices.values_mut() {
-            if *v >= inserted_at {
-                *v += 1;
-            }
-        }
-        for key in sp
-            .streaming_tool_call_indices
-            .keys()
-            .copied()
-            .collect::<Vec<_>>()
-        {
-            if let Some(v) = sp.streaming_tool_call_indices.get_mut(&key)
-                && *v >= inserted_at
-            {
-                *v += 1;
-            }
-        }
     }
 
-    /// Clear all streaming indices without leaving the `Streaming` phase.
+    /// Shift every live streaming index above `removed_at` down by one.
+    ///
+    /// The mirror of [`Self::shift_streaming_indices_for_insert_at`], called
+    /// after a history entry is removed. Without it an index outlives the slot
+    /// it named and the next delta is applied to an unrelated entry — silently,
+    /// because the index is still in range.
+    ///
+    /// An index landing exactly on `removed_at` is the entry that was removed;
+    /// it is dropped rather than shifted, so no index ever names a position one
+    /// past the end. No-op in `Idle`.
+    pub fn shift_streaming_indices_after_remove_at(&mut self, removed_at: usize) {
+        for value in self
+            .active_tool_call_indices_mut()
+            .into_iter()
+            .flat_map(|m| m.values_mut())
+        {
+            *value = shift_removed_index(*value, removed_at);
+        }
+        for value in self
+            .active_tool_result_indices_mut()
+            .into_iter()
+            .flat_map(|m| m.values_mut())
+        {
+            *value = shift_removed_index(*value, removed_at);
+        }
+        let Some(sp) = self.streaming_phase_mut() else {
+            return;
+        };
+        sp.streaming_entry_index = sp
+            .streaming_entry_index
+            .map(|i| shift_removed_index(i, removed_at));
+        sp.streaming_thinking_entry_index = sp
+            .streaming_thinking_entry_index
+            .map(|i| shift_removed_index(i, removed_at));
+    }
+
+    /// Clear all streaming indices without leaving the current busy phase.
     ///
     /// Zeros the assistant entry, thinking entry, tool-call, and tool-result
     /// index tracking. The stall-retry path calls this after taking the
     /// partial entries out of context, so the retried stream's first token
-    /// creates fresh entries. No-op if not streaming.
+    /// creates fresh entries. No-op in `Idle`.
     pub fn clear_streaming_indices(&mut self) {
         if let Some(sp) = self.streaming_phase_mut() {
             sp.streaming_entry_index = None;
             sp.streaming_thinking_entry_index = None;
-            sp.streaming_tool_call_indices.clear();
-            sp.streaming_tool_result_indices.clear();
+        }
+        if let Some(m) = self.active_tool_call_indices_mut() {
+            m.clear();
+        }
+        if let Some(m) = self.active_tool_result_indices_mut() {
+            m.clear();
         }
     }
 
@@ -382,5 +460,26 @@ impl SessionPhaseMachine {
         } else {
             Err(TransitionError { from: actual })
         }
+    }
+}
+
+/// Where a stored history index points after the entry at `removed_at` is
+/// deleted.
+///
+/// An index *at* the removal site named the entry that just went away, so it
+/// becomes `usize::MAX` — a sentinel no entry occupies, and out of range for
+/// every `history.get(..)` that reads it. An index above it shifts down one.
+/// An index below it is untouched.
+///
+/// A removed live index leaves a stale `usize::MAX` in the map rather than a
+/// missing key. That is deliberate: `streaming_tool_call_ids` filters through
+/// `history.get(..)`, so a dangling key is already skipped by every read, and
+/// leaving the key preserves the call's identity for the next delta rather
+/// than making the map look as if the call had never begun.
+fn shift_removed_index(value: usize, removed_at: usize) -> usize {
+    match value.cmp(&removed_at) {
+        std::cmp::Ordering::Less => value,
+        std::cmp::Ordering::Equal => usize::MAX,
+        std::cmp::Ordering::Greater => value - 1,
     }
 }
