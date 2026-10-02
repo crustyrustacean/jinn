@@ -30,6 +30,7 @@ type SavedPickerCell = TypedCell<AttendantSavedPickerState>;
 /// The footer renders from this, so it cannot advertise a dead key.
 pub const SAVED_PICKER_BINDINGS: &[(&str, &str)] = &[
     ("<enter>", "attach"),
+    ("<c-a>", "attach & keep open"),
     ("<esc>", "close"),
     ("<c-c>", "clear filter or close"),
 ];
@@ -93,8 +94,15 @@ pub fn attach_saved_picker_rows(routes: &KeyRoutes, cell: &SavedPickerCell) {
         "confirm-attendant-saved-picker",
         "<enter>",
         "general",
-        "attach this attendant to the active session",
+        "attach this attendant to the active session and close",
         action(cell, confirm_saved_picker),
+    ));
+    routes.attach(row(
+        "attach-attendant-saved-picker-keeping-it-open",
+        "<c-a>",
+        "general",
+        "attach this attendant to the active session and keep the picker open",
+        action(cell, attach_and_keep_open),
     ));
     routes.attach(row(
         "cancel-attendant-saved-picker",
@@ -233,16 +241,44 @@ fn open_saved_picker(ctx: &mut ActionCtx<'_>, cell: &SavedPickerCell) -> IntentR
     IntentResult::empty().with_scope_signal(ScopeSignal::Push(attendant_saved_picker_scope()))
 }
 
-/// `<enter>`: create the highlighted saved attendant on the active session.
+/// `<enter>`: attach the highlighted saved attendant to the active session
+/// and close the picker.
+///
+/// Attaching leaves the active session where it was — the parent keeps the
+/// conversation, and the new attendant is reported in its log rather than
+/// replacing it.
 fn confirm_saved_picker(ctx: &mut ActionCtx<'_>, cell: &SavedPickerCell) -> IntentResult {
-    let Some(name) = cell
+    let Some(attached) = attach_highlighted(ctx, cell) else {
+        return IntentResult::empty();
+    };
+    IntentResult::empty()
+        .with_scope_signal(ScopeSignal::PopIf(attendant_saved_picker_scope()))
+        .merge(attached)
+}
+
+/// `<c-a>`: attach the highlighted saved attendant and leave the picker
+/// exactly as it was.
+///
+/// Attaching several in a row is the point: every entry is pre-saved, so
+/// loading a set of them is one gesture per entry rather than a reopen per
+/// entry. Nothing about the picker changes — not the filter, not the
+/// highlight, not the scope stack — so the next entry is one key away.
+fn attach_and_keep_open(ctx: &mut ActionCtx<'_>, cell: &SavedPickerCell) -> IntentResult {
+    attach_highlighted(ctx, cell).unwrap_or_else(IntentResult::empty)
+}
+
+/// Creates the highlighted entry's attendant under the active session,
+/// reading the entry from the live document.
+///
+/// `None` means nothing was created: no entry is highlighted, the document
+/// no longer lists the highlighted one, or the active session is gone or is
+/// itself an attendant.
+fn attach_highlighted(ctx: &mut ActionCtx<'_>, cell: &SavedPickerCell) -> Option<IntentResult> {
+    let name = cell
         .read()
         .selection
         .selected_item()
-        .map(|item| item.entry().name.clone())
-    else {
-        return IntentResult::empty();
-    };
+        .map(|item| item.entry().name.clone())?;
     // The entry is re-read from the live document rather than carried in
     // the cell: the cell holds a display summary, and creating from a
     // summary would be creating from a rendering.
@@ -258,21 +294,12 @@ fn confirm_saved_picker(ctx: &mut ActionCtx<'_>, cell: &SavedPickerCell) -> Inte
                     "Could not read jinn.toml to create that attendant — the [[attendant.entry]] list could not be parsed.",
                 );
             }
-            return IntentResult::empty();
+            return None;
         }
     };
-    let Some(entry) = entries.into_iter().find(|entry| entry.name == name) else {
-        return IntentResult::empty();
-    };
-    let Some(state) = app(ctx) else {
-        return IntentResult::empty();
-    };
-    let Some(created) = crate::saved_create::create_in_state(state, &entry) else {
-        return IntentResult::empty();
-    };
-    IntentResult::empty()
-        .with_scope_signal(ScopeSignal::PopIf(attendant_saved_picker_scope()))
-        .merge(created)
+    let entry = entries.into_iter().find(|entry| entry.name == name)?;
+    let state = app(ctx)?;
+    crate::saved_create::create_in_state(state, &entry)
 }
 
 /// `<esc>`: leave without creating an attendant.
