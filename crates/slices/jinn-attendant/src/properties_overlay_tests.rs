@@ -7,9 +7,9 @@ use std::collections::BTreeSet;
 
 use jinn_app_state::AppState;
 use jinn_attendant_msg::{
-    AttendantBehavior, AttendantPropertiesState, AttendantTrigger, OriginalValues, PickDirection,
-    PopupStatus, PropertyField, SetField, SetMode, attendant_properties_scope,
-    attendant_properties_slot, attendant_seed_template_scope,
+    AttendantBehavior, AttendantModelSetting, AttendantPropertiesState, AttendantTrigger,
+    OriginalValues, PickDirection, PopupStatus, PropertyField, SetField, SetMode,
+    attendant_properties_scope, attendant_properties_slot, attendant_seed_template_scope,
 };
 use jinn_session_state::ChatSessionState;
 use jinn_slices::KeyRoutes;
@@ -17,7 +17,8 @@ use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{ActionCtx, DynamicIntent, ScopeSignal};
 
 use crate::properties_overlay::{
-    attach_properties_rows, attach_seed_template_rows, register_seed_template_input_hook,
+    FIELDS_IN_DISPLAY_ORDER, attach_properties_rows, attach_seed_template_rows,
+    register_seed_template_input_hook,
 };
 
 /// The popup's cell over a fresh `Slices` registry, registered the same way
@@ -151,12 +152,14 @@ impl PopupFixture {
             frozen_tools: OriginalValues::names_of(session.tool_filter()),
             pending_skill_set: OriginalValues::mode_of(session.skill_filter()),
             frozen_skills: OriginalValues::names_of(session.skill_filter()),
+            pending_model_setting: session.attendant_model_setting(),
             original: Some(OriginalValues {
                 trigger: session.attendant_trigger(),
                 behavior: session.attendant_behavior(),
                 prep_mode,
                 tool_set: session.tool_filter().cloned(),
                 skill_set: session.skill_filter().cloned(),
+                model_setting: session.attendant_model_setting(),
                 template,
             }),
             // The opener's rule: a composing attendant opens on the prep
@@ -182,16 +185,50 @@ impl PopupFixture {
             .set_attendant_is_prepping(false);
     }
 
+    /// Gives the attendant a title, so a save has an entry name to write
+    /// under. A session with no title cannot be saved at all.
+    fn name_attendant(&mut self, name: &str) {
+        self.state
+            .session
+            .get_mut(&self.attendant_id)
+            .expect("attendant")
+            .set_title(name.to_owned());
+    }
+
+    /// Marks the attendant's model as its own, as moving the panel's model
+    /// row to `fixed` and applying would.
+    fn fix_its_model(&mut self) {
+        self.state
+            .session
+            .get_mut(&self.attendant_id)
+            .expect("attendant")
+            .set_attendant_model_setting(AttendantModelSetting::Fixed);
+    }
+
+    /// Reads the model setting the session itself holds.
+    fn session_model_setting(&self) -> AttendantModelSetting {
+        self.state
+            .session
+            .get(&self.attendant_id)
+            .expect("attendant")
+            .attendant_model_setting()
+    }
+
     /// Opens the popup and walks the cursor down to the seed-template field.
     ///
     /// A fresh attendant is composing, and the cage floors the walk at the
     /// prep row. These tests are about the rows below it, so the fixture
     /// ends composition before the walk — the walk is then one press per
-    /// field above the template, and the template is last of six.
+    /// field above the template, and the template is last of them all.
+    ///
+    /// The count comes from the view's own field list rather than a literal:
+    /// a walk written as "press `j` five times" is a number that a seventh
+    /// row falsifies silently, and the assert below would then fail on a
+    /// cursor that stopped on the wrong field rather than naming the row.
     fn open_on_the_template_field(&mut self) {
         self.finish_composing();
         self.open();
-        for _ in 0..5 {
+        for _ in 0..FIELDS_IN_DISPLAY_ORDER.len().saturating_sub(1) {
             self.press("attendant-properties-field-next");
         }
         assert_eq!(self.cell.read().focus, PropertyField::SeedTemplate);
@@ -247,11 +284,13 @@ fn j_and_k_stop_at_the_ends_of_the_form() {
     assert_eq!(fx.cell.read().focus, PropertyField::Trigger);
 
     // And when pressing j repeatedly past the bottom, it stops there too.
-    for _ in 0..5 {
+    for _ in 0..6 {
         fx.press("attendant-properties-field-next");
     }
     assert_eq!(fx.cell.read().focus, PropertyField::SeedTemplate);
     // And the rows above it are one press each, in reverse display order.
+    fx.press("attendant-properties-field-previous");
+    assert_eq!(fx.cell.read().focus, PropertyField::Model);
     fx.press("attendant-properties-field-previous");
     assert_eq!(fx.cell.read().focus, PropertyField::SkillSet);
     fx.press("attendant-properties-field-previous");
@@ -328,6 +367,119 @@ fn either_pick_key_turns_composition_off_from_the_prep_row() {
     // Then composition ended. A two-state field has no previous or next, so
     // both pick keys cycle it the same way.
     assert!(!fx.cell.read().pending_prep_mode);
+}
+
+#[rstest::rstest]
+#[test]
+fn the_model_row_is_reachable_while_composing() {
+    // Given an open popup over a composing attendant, whose cursor starts on
+    // the prep row.
+    let mut fx = PopupFixture::new();
+    fx.open();
+    assert!(fx.cell.read().pending_prep_mode);
+
+    // When walking down to the model row.
+    for _ in 0..3 {
+        fx.press("attendant-properties-field-next");
+    }
+
+    // Then the cursor lands on it. The cage covers only the two rows above
+    // the prep row: which model an attendant will run under is settled while
+    // it is being composed, not after.
+    assert_eq!(fx.cell.read().focus, PropertyField::Model);
+}
+
+#[rstest::rstest]
+#[test]
+fn a_pick_on_the_model_row_does_not_touch_the_session() {
+    // Given an open popup with the cursor on the model row.
+    let mut fx = PopupFixture::new();
+    fx.open();
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-field-next");
+    assert_eq!(fx.cell.read().focus, PropertyField::Model);
+
+    // When picking right, onto `fixed`.
+    fx.press("attendant-properties-pick-right");
+
+    // Then the cell moved but the session did not. The popup buffers every
+    // edit until `<enter>`, so a press cannot persist a setting on its own.
+    assert_eq!(
+        fx.cell.read().pending_model_setting,
+        AttendantModelSetting::Fixed
+    );
+    assert_eq!(fx.session_model_setting(), AttendantModelSetting::Inherit);
+}
+
+#[rstest::rstest]
+#[test]
+fn enter_commits_the_model_setting_to_the_session() {
+    // Given an open popup with the model row moved to `fixed`.
+    let mut fx = PopupFixture::new();
+    fx.open();
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-pick-right");
+
+    // When applying.
+    fx.press("attendant-properties-apply");
+
+    // Then the session records the setting, so the next save knows to write
+    // a model key.
+    assert_eq!(fx.session_model_setting(), AttendantModelSetting::Fixed);
+}
+
+#[rstest::rstest]
+#[test]
+fn the_save_row_commits_the_same_model_setting_as_enter() {
+    // Given an open popup with a named attendant and the model row moved to
+    // `fixed`.
+    let mut fx = PopupFixture::new();
+    fx.name_attendant("nightly");
+    fx.open();
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-pick-right");
+
+    // When saving.
+    fx.press("attendant-properties-save");
+
+    // Then the session holds the setting, exactly as `<enter>` would have.
+    // The two commit paths share one function; this is the test that keeps
+    // it that way.
+    assert_eq!(fx.session_model_setting(), AttendantModelSetting::Fixed);
+}
+
+#[rstest::rstest]
+#[case::esc("attendant-properties-leave")]
+#[case::ctrl_c("attendant-properties-cancel")]
+#[test]
+fn leaving_the_popup_restores_the_model_setting_it_opened_with(#[case] leave: &'static str) {
+    // Given an attendant that owns its model, with an open popup.
+    let mut fx = PopupFixture::new();
+    fx.fix_its_model();
+    fx.open();
+    assert_eq!(
+        fx.cell.read().pending_model_setting,
+        AttendantModelSetting::Fixed
+    );
+
+    // When moving the row to inherit and then leaving.
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-field-next");
+    fx.press("attendant-properties-pick-left");
+    fx.press(leave);
+
+    // Then the pending value is back to what the session held at open. The
+    // row means the same thing after a cancel as it did before it.
+    assert_eq!(
+        fx.cell.read().pending_model_setting,
+        AttendantModelSetting::Fixed
+    );
 }
 
 #[rstest::rstest]

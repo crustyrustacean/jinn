@@ -13,7 +13,9 @@ use std::ops::Range;
 use std::sync::atomic::Ordering;
 
 use jiff::Timestamp;
-use jinn_attendant_msg::{AttendantBehavior, AttendantReport, AttendantTrigger};
+use jinn_attendant_msg::{
+    AttendantBehavior, AttendantModelSetting, AttendantReport, AttendantTrigger,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
@@ -511,6 +513,21 @@ impl ChatSessionState {
     /// Set the user-editable seed text injected ahead of the prior report.
     pub fn set_seed_template(&mut self, template: String) {
         self.core.attendant.seed_template = template;
+    }
+
+    /// Whether this attendant's model is its own or the one it inherited.
+    ///
+    /// A fact about the attendant's configuration rather than a reading of
+    /// its model: the model is always concrete, and this says whether the
+    /// attendant claimed it. Never infer one from the other.
+    #[must_use]
+    pub fn attendant_model_setting(&self) -> AttendantModelSetting {
+        self.core.attendant.model_setting
+    }
+
+    /// Set whether this attendant's model is its own or inherited.
+    pub fn set_attendant_model_setting(&mut self, setting: AttendantModelSetting) {
+        self.core.attendant.model_setting = setting;
     }
 
     /// The attendant's append-only report log, oldest first.

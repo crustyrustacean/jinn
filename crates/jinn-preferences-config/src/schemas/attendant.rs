@@ -14,7 +14,7 @@
 //! and never "translate field by field" — a divergence between the entry
 //! shape and the session shape cannot compile.
 
-use jinn_attendant_msg::{AttendantBehavior, AttendantTrigger};
+use jinn_attendant_msg::{AttendantBehavior, AttendantModelSetting, AttendantTrigger};
 use jinn_core_types::{Endpoint, ModelSelection, NameFilter, ReasoningEffort};
 use serde::{Deserialize, Serialize};
 
@@ -210,6 +210,12 @@ impl AttendantEntryConfig {
     /// else reads off the session state types the fields mirror. Pin
     /// entries pass through as-is — serialization drops what TOML cannot
     /// carry and restore regenerates IDs.
+    ///
+    /// `model_setting` is the attendant's *claim* to its model, not the model
+    /// itself: both are passed, and only the setting decides whether the entry
+    /// keeps a `model` key. A session with no provider configured is a
+    /// separate reason to store nothing — there is no model to record as its
+    /// own — and the two do not collapse into one another.
     #[must_use]
     pub fn from_parts(
         name: String,
@@ -217,6 +223,7 @@ impl AttendantEntryConfig {
         trigger: AttendantTrigger,
         prep_mode: bool,
         seed_template: String,
+        model_setting: AttendantModelSetting,
         model: &ModelSelection,
         persona_name: &str,
         tool_filter: Option<&NameFilter>,
@@ -231,10 +238,13 @@ impl AttendantEntryConfig {
             trigger,
             prep_mode,
             seed_template,
-            // A session with no provider configured has nothing worth
-            // saving: the created attendant would refuse to dispatch, so
-            // the field stays absent and inherits the parent's model.
-            model: (!model.is_no_provider()).then(|| model.clone()),
+            // The attendant's own model, stored whole. An inheriting
+            // attendant stores nothing: without this test a hand-written
+            // entry with no `model` key would acquire a pinned one the first
+            // time it was saved from the panel. A session with no provider
+            // stores nothing either — it would refuse to dispatch, so there
+            // is no model to record as its own.
+            model: (model_setting.is_fixed() && !model.is_no_provider()).then(|| model.clone()),
             // The default persona is the default on restore too; storing
             // it would only pin the entry to today's default value.
             persona_name: (!jinn_core_types::DEFAULT_PERSONA_NAME.eq(persona_name))
@@ -276,7 +286,7 @@ mod tests {
 
     use std::sync::Arc;
 
-    use jinn_attendant_msg::{AttendantBehavior, AttendantTrigger};
+    use jinn_attendant_msg::{AttendantBehavior, AttendantModelSetting, AttendantTrigger};
     use jinn_config::{ConfigLayer, InMemoryConfigStorage};
     use jinn_core_types::{
         Endpoint, FilterMode, ModelSelection, NO_PROVIDER_ID, NameFilter, ReasoningEffort,
@@ -299,6 +309,7 @@ mod tests {
             AttendantTrigger::Manual,
             false,
             jinn_attendant_msg::default_seed_template(),
+            AttendantModelSetting::Inherit,
             &ModelSelection::Single(NO_PROVIDER_ID.to_owned()),
             jinn_core_types::DEFAULT_PERSONA_NAME,
             None,
@@ -328,6 +339,7 @@ mod tests {
             AttendantTrigger::ParentCompleted,
             false,
             "prior: <prior report>".to_owned(),
+            AttendantModelSetting::Fixed,
             &ModelSelection::Single("zai/glm-4.7".to_owned()),
             "reviewer",
             tool_filter,
@@ -771,6 +783,202 @@ mod tests {
             storage.text().contains("# nightly reviewer"),
             "lost:\n{}",
             storage.text()
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_fixed_attendant_stores_its_model() {
+        // Given a session that owns its model.
+        let entry = AttendantEntryConfig::from_parts(
+            "reviewer".to_owned(),
+            AttendantBehavior::Reset,
+            AttendantTrigger::Manual,
+            false,
+            "prior: <prior report>".to_owned(),
+            AttendantModelSetting::Fixed,
+            &ModelSelection::Single("zai/glm-4.7".to_owned()),
+            jinn_core_types::DEFAULT_PERSONA_NAME,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+        );
+
+        // When reading its configured model.
+        let configured = entry.configured_model();
+
+        // Then the model is stored, so recreating the attendant from this
+        // entry runs on the same provider.
+        assert_eq!(
+            configured,
+            Some(&ModelSelection::Single("zai/glm-4.7".to_owned()))
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn an_inheriting_attendant_stores_no_model() {
+        // Given a session holding a concrete model but not claiming it.
+        let entry = AttendantEntryConfig::from_parts(
+            "reviewer".to_owned(),
+            AttendantBehavior::Reset,
+            AttendantTrigger::Manual,
+            false,
+            "prior: <prior report>".to_owned(),
+            AttendantModelSetting::Inherit,
+            &ModelSelection::Single("zai/glm-4.7".to_owned()),
+            jinn_core_types::DEFAULT_PERSONA_NAME,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+        );
+
+        // When reading its configured model.
+        let configured = entry.configured_model();
+
+        // Then it stores none. The session always holds a model, so storing
+        // whatever it holds is what would silently pin an inheriting
+        // attendant on its first save.
+        assert_eq!(configured, None);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_fixed_attendant_with_no_provider_stores_no_model() {
+        // Given a session that owns its model but has no provider.
+        let entry = AttendantEntryConfig::from_parts(
+            "reviewer".to_owned(),
+            AttendantBehavior::Reset,
+            AttendantTrigger::Manual,
+            false,
+            "prior: <prior report>".to_owned(),
+            AttendantModelSetting::Fixed,
+            &ModelSelection::Single(NO_PROVIDER_ID.to_owned()),
+            jinn_core_types::DEFAULT_PERSONA_NAME,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+        );
+
+        // When reading its configured model.
+        let configured = entry.configured_model();
+
+        // Then it stores none — for a different reason than an inheriting
+        // attendant. There is no model here to record as its own, and the
+        // placeholder must never be written into the file.
+        assert_eq!(configured, None);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn saving_an_inheriting_attendant_leaves_a_hand_written_entry_without_a_model() {
+        // Given a document holding a hand-written entry that names no model.
+        let storage = Arc::new(InMemoryConfigStorage::new(
+            "[[attendant.entry]]\nname = \"reviewer\"\nbehavior = \"reset\"\n"
+                .parse()
+                .expect("parses"),
+        ));
+        let layer = ConfigLayer::load(storage.clone()).expect("load");
+        let mut entry = layer
+            .get_list::<AttendantEntryConfig>()
+            .expect("read")
+            .remove(0);
+        // The entry inherits, by the absence of the key.
+        entry.model = None;
+
+        // When it is saved back from the panel.
+        layer
+            .put_list::<AttendantEntryConfig>(&[entry])
+            .expect("list writes");
+
+        // Then no `model` key appears. This is the whole point of the
+        // setting: the panel writes the entry's own configuration, and an
+        // entry that never claimed a model must not acquire one.
+        let text = storage.text();
+        assert!(
+            !text.contains("model"),
+            "an inheriting entry gained a model on save:\n{text}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn switching_the_setting_touches_only_the_model_key() {
+        // Given a document holding a complete entry whose model is its own.
+        // Every declared key is present, so the save's only possible
+        // difference is the one this test is about.
+        let storage = Arc::new(InMemoryConfigStorage::new(
+            "[[attendant.entry]]\nname = \"reviewer\"\nbehavior = \"reset\"\n\
+             trigger = \"manual\"\nprep_mode = false\n\
+             seed_template = \"prior: <prior report>\"\n\
+             model = { single = \"zai/glm-4.7\" }\n"
+                .parse()
+                .expect("parses"),
+        ));
+        let layer = ConfigLayer::load(storage.clone()).expect("load");
+        let mut entry = layer
+            .get_list::<AttendantEntryConfig>()
+            .expect("read")
+            .remove(0);
+        let before = storage.text();
+
+        // When the user moves the panel's model row to inherit and saves.
+        entry.model = None;
+        layer
+            .put_list::<AttendantEntryConfig>(&[entry])
+            .expect("list writes");
+
+        // Then the only difference is the model line — the rest of the
+        // entry, and the user's own comment above it, are untouched.
+        let after = storage.text();
+        assert!(!after.contains("model"), "the model key survived:\n{after}");
+        assert_eq!(
+            before.replace("model = { single = \"zai/glm-4.7\" }\n", ""),
+            after,
+            "something other than the model key changed:\nbefore:\n{before}\nafter:\n{after}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn two_saves_of_a_fixed_entry_are_byte_identical() {
+        // Given a layer holding a fixed entry with a model and a pin.
+        let storage = Arc::new(InMemoryConfigStorage::new(
+            "# user header\n".parse().expect("parses"),
+        ));
+        let layer = ConfigLayer::load(storage.clone()).expect("load");
+        let mut entry = entry_with_filters(None, None);
+        entry.pins = vec![AttendantPinConfig {
+            role: AttendantPinRole::User,
+            text: "always in context".to_owned(),
+        }];
+
+        // When saving it twice.
+        layer
+            .put_list::<AttendantEntryConfig>(std::slice::from_ref(&entry))
+            .expect("first save");
+        let once = storage.text();
+        layer
+            .put_list::<AttendantEntryConfig>(std::slice::from_ref(&entry))
+            .expect("second save");
+        let twice = storage.text();
+
+        // Then the document did not move, and the model key is in it — the
+        // inline rendering of a `model` has to be stable for a fixed
+        // attendant, or every save would churn the user's file.
+        assert_eq!(
+            once, twice,
+            "document moved:\nonce:\n{once}\ntwice:\n{twice}"
+        );
+        assert!(
+            once.contains("model = { single = \"zai/glm-4.7\" }"),
+            "a fixed attendant must write its model:\n{once}"
         );
     }
 

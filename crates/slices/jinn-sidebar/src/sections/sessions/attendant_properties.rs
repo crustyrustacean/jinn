@@ -1,10 +1,11 @@
 //! Attendant properties popup — opening, closing, and cell seeding.
 //!
-//! The popup lives on its own dynamic scope with the six controls
-//! (trigger, behavior, prep mode, tool set, skill set, seed template) as a
-//! single form. This module is the sidebar-side glue: `P` seeds the popup's
-//! cell from the highlighted attendant and pushes the scope; the popup's own
-//! rows (in `jinn-attendant`) handle editing, applying, and leaving.
+//! The popup lives on its own dynamic scope with the seven controls
+//! (trigger, behavior, prep mode, tool set, skill set, model, seed template)
+//! as a single form. This module is the sidebar-side glue: `P` seeds the
+//! popup's cell from the highlighted attendant and pushes the scope; the
+//! popup's own rows (in `jinn-attendant`) handle editing, applying, and
+//! leaving.
 //!
 //! `P` answers for two sections, because there are two places a user stands
 //! when they decide an attendant needs editing. The sessions section lists
@@ -80,6 +81,7 @@ fn open_properties_for(state: &mut AppState, id: &jinn_core_types::SessionId) ->
     // the pickers write — still opens as Live.
     let tool_set = session.tool_filter().cloned();
     let skill_set = session.skill_filter().cloned();
+    let model_setting = session.attendant_model_setting();
     let popup = AttendantPropertiesState {
         session_id: Some(id.clone()),
         seed_template: jinn_slices::LineInput {
@@ -93,12 +95,14 @@ fn open_properties_for(state: &mut AppState, id: &jinn_core_types::SessionId) ->
         frozen_tools: OriginalValues::names_of(tool_set.as_ref()),
         pending_skill_set: OriginalValues::mode_of(skill_set.as_ref()),
         frozen_skills: OriginalValues::names_of(skill_set.as_ref()),
+        pending_model_setting: model_setting,
         original: Some(OriginalValues {
             trigger: session.attendant_trigger(),
             behavior: session.attendant_behavior(),
             prep_mode,
             tool_set,
             skill_set,
+            model_setting,
             template,
         }),
         // A composing attendant opens on the prep row: the two rows above

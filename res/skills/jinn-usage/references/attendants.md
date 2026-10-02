@@ -41,7 +41,7 @@ section.
 
 `P` opens the attendant's properties over the highlighted session — bound
 identically in the **Sessions** and the **Attendants** sidebar sections; only
-the highlighted row differs. The popup is a form of six fields, in this
+the highlighted row differs. The popup is a form of seven fields, in this
 order:
 
 | Field             | Values                       | What it governs                                                       |
@@ -51,15 +51,24 @@ order:
 | **Prep mode**     | on / off                     | Whether the attendant is still being composed — a gate, not a setting |
 | **Tool set**      | `live`, `frozen`             | Whether new tools are admitted automatically or refused               |
 | **Skill set**     | `live`, `frozen`             | Same, over skills                                                     |
+| **Model**         | `inherit`, `fixed`           | Whether the model the session already holds belongs to this attendant |
 | **Seed template** | text                         | The instructions injected ahead of each run's prior report            |
 
 `frozen` sets act as an allowlist, `live` sets act as a blocklist.
+
+The **Model** row declares ownership; it does not choose a model. Every
+attendant holds a concrete model — it has to, in order to run — and this row
+only says whether that model is the attendant's own or the copy it inherited
+when it was created. `inherit` (the default) writes no `model` key when the
+attendant is saved; `fixed` writes the model it holds, so recreating the
+attendant from its entry keeps it. Change the model itself from the status
+bar's model picker, not from here.
 
 ### Popup keys
 
 | Key               | Action                                                                 |
 | ----------------- | ---------------------------------------------------------------------- |
-| `j` / `k`         | Move the form cursor between the six fields                            |
+| `j` / `k`         | Move the form cursor between the seven fields                           |
 | `h` / `l`         | Pick a choice on the focused field (walk the row, clamped at its ends) |
 | `i`               | Edit the seed template — only from the seed-template field             |
 | `?`               | Toggle the help overlay                                                |
@@ -209,7 +218,7 @@ the parent's). Do not strip empty arrays.
 | `trigger`          | `"manual"` \| `"parent_completed"`                                       | `manual`                                                         |
 | `prep_mode`        | bool                                                                     | `true` (still composing)                                         |
 | `seed_template`    | string                                                                   | `"The previous run of this attendant reported: <prior report>."` |
-| `model`            | `{ single = "..." }` or alloy                                            | Inherit the creating session's model                             |
+| `model`            | `{ single = "..." }` or alloy                                            | Inherit the creating session's model — the panel's Model row reads `inherit` |
 | `persona_name`     | string                                                                   | Inherit the creating session's persona                           |
 | `tool_filter`      | `{ mode = "deny"\|"allow", names = [...] }`                              | Inherit the parent's tool filter                                 |
 | `skill_filter`     | `{ mode = "deny"\|"allow", names = [...] }`                              | Inherit the parent's skill filter                                |
@@ -233,6 +242,13 @@ Notes on the less obvious fields:
 - Model selection can be important for attendants, so if you are making one on
   behalf of the user, ask if they want to use a specific model or if they want to
   inherit the session model.
+- `model` is the panel's **Model** row, and the two stay in step: a `fixed`
+  attendant writes this key, an `inherit`ing attendant writes nothing, and an
+  entry that carries the key recreates as `fixed`. So a hand-written entry
+  without a `model` key survives being saved from the popup unchanged, rather
+  than acquiring a pinned model on that first save. Note the consequence of
+  inheriting: the attendant keeps whatever model it was created with, which is
+  not re-read from the creating session on a later run.
 
 ### A complete example
 
@@ -289,8 +305,9 @@ What the example demonstrates, field by field:
   needs to read the parent, and **no skills at all** (`names = []` is the
   meaningful empty allow-list — the "may use no skills" case, not an absent
   filter).
-- `reasoning_effort = "high"` and an explicit `model` — an attendant is
-  usually worth running on a cheaper, faster model than the parent's.
+- `reasoning_effort = "high"` — an attendant is usually worth running on a
+  cheaper, faster model than the parent's, which is what the missing `model`
+  key below is about.
 
 Note the `tool_filter` allow-list names `conclude` and `notify_parent`
 explicitly. The harness keeps those two tools available to an attendant
@@ -298,8 +315,9 @@ regardless of what a filter says, so the two entries are not strictly
 required — but they document the intent, and a `deny` filter naming them
 would really withhold them.
 
-Also note the lack of a `model` field: it will inherit whatever model the user
-has selected in their current session.
+Also note the lack of a `model` field: the attendant takes whatever model the
+user has selected when it is created, and its Model row reads `inherit` — so
+saving it back adds no `model` key, and the entry keeps inheriting.
 
 ## Picker and sidebar keys
 

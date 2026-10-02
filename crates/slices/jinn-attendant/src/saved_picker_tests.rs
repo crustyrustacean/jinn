@@ -16,8 +16,8 @@ use std::sync::Arc;
 
 use jinn_app_state::AppState;
 use jinn_attendant_msg::{
-    AttendantBehavior, AttendantSavedPickerState, AttendantTrigger, attendant_saved_picker_scope,
-    attendant_saved_picker_slot,
+    AttendantBehavior, AttendantModelSetting, AttendantSavedPickerState, AttendantTrigger,
+    attendant_saved_picker_scope, attendant_saved_picker_slot,
 };
 use jinn_config::{ConfigLayer, InMemoryConfigStorage};
 use jinn_core_types::{PinPosition, SessionId};
@@ -53,6 +53,7 @@ fn configured_entry(name: &str) -> AttendantEntryConfig {
         AttendantTrigger::ParentCompleted,
         false,
         "review: <prior report>".to_owned(),
+        AttendantModelSetting::Fixed,
         &jinn_core_types::ModelSelection::Single("zai/glm-4.7".to_owned()),
         "reviewer",
         Some(&jinn_core_types::NameFilter::deny(["write".to_owned()])),
