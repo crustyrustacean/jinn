@@ -886,7 +886,10 @@ fn tree_working_time_counts_a_shared_second_once() {
         parent_id.clone(),
         vec![WorkingInterval::closed(at(0), at(10))],
     );
-    live.insert(child_id.clone(), vec![WorkingInterval::closed(at(4), at(14))]);
+    live.insert(
+        child_id.clone(),
+        vec![WorkingInterval::closed(at(4), at(14))],
+    );
 
     // When aggregating the tree.
     let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id, &live);
@@ -911,7 +914,10 @@ fn tree_working_time_sums_members_that_worked_apart() {
         parent_id.clone(),
         vec![WorkingInterval::closed(at(0), at(10))],
     );
-    live.insert(child_id.clone(), vec![WorkingInterval::closed(at(20), at(25))]);
+    live.insert(
+        child_id.clone(),
+        vec![WorkingInterval::closed(at(20), at(25))],
+    );
 
     // When aggregating the tree.
     let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id, &live);

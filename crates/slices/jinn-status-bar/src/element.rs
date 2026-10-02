@@ -154,7 +154,9 @@ fn render_cwd_line(frame: &mut Frame<'_>, area: Rect, state: &AppState, style: S
 /// slice not activated, or a test that never ran the catalog — yields no
 /// intervals rather than a panic, so the bar degrades to showing no working
 /// time instead of failing to draw.
-fn live_working_intervals(slices: &jinn_slices::Slices) -> HashMap<SessionId, Vec<WorkingInterval>> {
+fn live_working_intervals(
+    slices: &jinn_slices::Slices,
+) -> HashMap<SessionId, Vec<WorkingInterval>> {
     slices
         .reader::<WorkingTimeState>(&work_time_slot())
         .map_or_else(HashMap::new, |cell| cell.read().snapshot())

@@ -10,8 +10,8 @@ use serde_json::Value as JsonValue;
 use jinn_attendant_msg::{
     AttendantBehavior, AttendantReport, AttendantTrigger, default_seed_template,
 };
-use jinn_core_types::{ChatEntry, ChatEntryKind, NameFilter, SessionId, SessionProfile};
 use jinn_core_types::WorkingInterval;
+use jinn_core_types::{ChatEntry, ChatEntryKind, NameFilter, SessionId, SessionProfile};
 use jinn_session_lifecycle_msg::LifecycleScriptState;
 use jinn_session_msg::SessionOrigin;
 use jinn_session_store_msg::SessionState;
