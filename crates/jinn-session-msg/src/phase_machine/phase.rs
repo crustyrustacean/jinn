@@ -19,13 +19,22 @@ pub struct IdlePhase;
 
 /// Per-phase data for the Sending phase.
 ///
-/// Carries the in-flight tool batch's result tracking. A tool result does not
-/// arrive while the model is streaming — the stream ends in `ToolUse`, the
-/// phase becomes `Sending`, and *then* the tools run. Gating tool results on
-/// `Streaming` therefore dropped every one of them, leaving the finalized
-/// result to be pushed detached at the end of history.
+/// Carries the in-flight tool batch's result tracking, plus any tool calls
+/// whose arguments are streaming in. A tool result does not arrive while the
+/// model is streaming — the stream ends in `ToolUse`, the phase becomes
+/// `Sending`, and *then* the tools run. Gating tool results on `Streaming`
+/// therefore dropped every one of them, leaving the finalized result to be
+/// pushed detached at the end of history.
+///
+/// Tool-call arguments stream in across the whole provider burst, which
+/// begins in this phase: a model that opens by calling a tool emits no text
+/// token, so it never reaches `Streaming`. The same mistake made here would
+/// discard every argument delta for such a turn.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SendingPhase {
+    /// Maps stream tool-call index to history index for in-progress tool
+    /// calls whose arguments are still arriving.
+    pub streaming_tool_call_indices: HashMap<usize, usize>,
     /// Maps tool_call_id to history index for the in-flight tool batch's
     /// `Pending` result entries.
     pub streaming_tool_result_indices: HashMap<String, usize>,
