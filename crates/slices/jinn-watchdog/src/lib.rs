@@ -1,7 +1,7 @@
 //! The watchdog slice — always-on behavioral supervision of in-flight turns.
 //!
 //! Hosts the trouper [`ServiceActor`] watchdogs ported verbatim from the
-//! dormant first-party plugins (no `enabled` gates; the `[stall_watchdog]`
+//! retired first-party components (no `enabled` gates; the `[stall_watchdog]`
 //! and `[tool_call_watchdog]` sections only tune when they intervene):
 //!
 //! - [`stall_watchdog_actor::StallWatchdogActor`] arms on every
@@ -37,7 +37,7 @@ use jinn_slices::SliceHost;
 /// from the configuration layer at activation (the term-slice precedent)
 /// and injected into the actors. Nonsensical values (zero window / zero
 /// budget / zero maximum) are floored by the config accessors — the
-/// plugin-era parse-clamp semantics.
+/// inherited parse-clamp semantics.
 pub fn activate(host: &mut SliceHost<'_, RenderFacts>, _state: &State, services: Services) {
     let stall_cfg = services
         .config
@@ -50,7 +50,7 @@ pub fn activate(host: &mut SliceHost<'_, RenderFacts>, _state: &State, services:
 
     // The stall watchdog needs the system for its self-addressed tick;
     // the config floors make a zero window or budget behave like the
-    // plugin-era parse clamps (≥ 1).
+    // inherited parse clamps (≥ 1).
     let stall_timeout_secs = stall_cfg.effective_timeout_secs();
     let stall_max_restarts = stall_cfg.effective_max_restarts();
     stall_watchdog_actor::StallWatchdogActor::spawn(

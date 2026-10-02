@@ -158,7 +158,7 @@ mod tests {
         // When deserializing.
         let wrapper: Wrapper = toml::from_str("").expect("empty toml parses");
 
-        // Then the plugin-era defaults apply (60s window, 3 restarts).
+        // Then the inherited defaults apply (60s window, 3 restarts).
         assert_eq!(wrapper.stall_watchdog.timeout_secs, 60);
         assert_eq!(wrapper.stall_watchdog.max_restarts, 3);
     }

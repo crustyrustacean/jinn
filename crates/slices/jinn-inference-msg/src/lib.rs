@@ -7,10 +7,10 @@
 //!
 //! Kernel publishers of the commands: the queue actor's dispatch bodies
 //! (user turns, tool-loop continuations, resume turns) and the stall
-//! re-dispatch; the intent handler's cancel arm and the plugin
+//! re-dispatch; the intent handler's cancel arm and the external
 //! coordinator's mirrored cancel request. Kernel consumers of the
-//! events: the session actor's stream/tool folds and the plugin
-//! coordinator's stream mirror (string-based wire).
+//! events: the session actor's stream/tool folds and that coordinator's
+//! stream mirror (string-based wire).
 //!
 //! The stream-phase tool events (`ToolUseStarted`/`ToolCallReceived`/
 //! `ToolCallStreaming`) are *also* published by the inference actor but

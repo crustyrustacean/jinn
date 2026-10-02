@@ -1,9 +1,8 @@
 //! Stall watchdog actor — restarts turns whose LLM stream went silent.
 //!
-//! Verbatim trouper port of the dormant `stall-watchdog` plugin's state
-//! machine (`plugins/stall-watchdog/src/watchdog.rs`): one timer per
-//! session, armed by [`SendToLlmProvider`] and reset by every
-//! [`StreamActivity`]. When the actor's own [`StallTick`] reveals a session
+//! Verbatim trouper port of the retired `stall-watchdog` component's state
+//! machine: one timer per session, armed by [`SendToLlmProvider`] and
+//! reset by every [`StreamActivity`]. When the actor's own [`StallTick`] reveals a session
 //! has been silent past the configured timeout, the watchdog pushes the
 //! visible retry marker ([`PushChatEntry`]) and re-dispatches the turn
 //! ([`RetryStalledSession`]) — up to `max_restarts` consecutive times.

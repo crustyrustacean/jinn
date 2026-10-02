@@ -2,7 +2,7 @@
 //! traffic.
 //!
 //! Hosts the trouper [`ServiceActor`] citations actor (converted from the
-//! dormant `url-citations` plugin). It consumes the tool-loop facts
+//! retired `url-citations` component). It consumes the tool-loop facts
 //! ([`ToolCallReceived`], [`ToolExecutionCompleted`]) and the stream
 //! terminal ([`StreamCompleted`]), detects citable URLs by shape
 //! ([`detect`]) with no I/O, and publishes one [`CitationsReceived`]

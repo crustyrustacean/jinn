@@ -91,7 +91,7 @@ mod tests {
         // When deserializing.
         let wrapper: Wrapper = toml::from_str("").expect("empty toml parses");
 
-        // Then the plugin-era default applies (4 failures).
+        // Then the inherited default applies (4 failures).
         assert_eq!(wrapper.tool_call_watchdog.max_failures, 4);
     }
 
