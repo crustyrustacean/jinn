@@ -505,6 +505,7 @@ mod tests {
                 session_id: sid.clone(),
                 old_phase: PhaseKind::Streaming,
                 new_phase: PhaseKind::Idle,
+                at: jinn_session_msg::PhaseEventAt::now(),
             })
             .await;
 
@@ -541,6 +542,7 @@ mod tests {
                 session_id: sid.clone(),
                 old_phase: PhaseKind::Idle,
                 new_phase: PhaseKind::Streaming,
+                at: jinn_session_msg::PhaseEventAt::now(),
             })
             .await;
 

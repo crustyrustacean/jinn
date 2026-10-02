@@ -1,0 +1,27 @@
+[package]
+name = "jinn-work-time"
+version.workspace = true
+edition.workspace = true
+description = "The work-time slice: the monitor actor that records per-session wall-clock working time."
+
+[dependencies]
+jinn-work-time-msg = { workspace = true }
+# The trouper runtime: ServiceActors, topics, schemas.
+trouper = { workspace = true }
+# The event the monitor folds, and the shared interval vocabulary it stores.
+jinn-session-msg = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-kernel = { workspace = true }
+jinn-slices = { workspace = true }
+error-stack = { workspace = true }
+jiff = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+# The test seeds its registry through the same catalog production boot uses,
+# so `activate` is exercised against the real wiring.
+jinn-cell-catalog = { workspace = true }
+
+[lints]
+workspace = true

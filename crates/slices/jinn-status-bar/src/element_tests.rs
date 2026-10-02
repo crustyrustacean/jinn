@@ -9,11 +9,13 @@
 use jinn_testutil::{buffer_row, setup_term};
 
 use crate::element::StatusBarElement;
+use jinn_core_types::WorkingInterval;
 use jinn_core_types::model_selection::{AlloyStrategy, ModelSelection};
 use jinn_kernel::AppState;
 use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_kernel::common::ui_element::UiElement;
 use jinn_token_count_msg::TokenRecord;
+use jinn_work_time_msg::{WorkingTimeState, work_time_slot};
 
 #[rstest::rstest]
 fn name_returns_status_bar() {
@@ -1908,5 +1910,157 @@ fn status_bar_alloy_indicator_reflects_last_dispatched_member() {
     assert!(
         row.contains("(ollama)/gpt-4o <ti>"),
         "should show last-dispatched member modalities, got: {row}"
+    );
+}
+
+// ── Working-time clocks ──────────────────────────────────────────────
+//
+// Both clocks are read from the work-time cell at paint time, so a running
+// turn ticks with no extra plumbing. A test that renders with a bare
+// `Slices` sees no clock at all; registering the cell is what makes one.
+
+/// A `Slices` with the work-time cell registered, seeded for `session_id`.
+///
+/// Registers rather than constructing the actor: the bar only reads the cell,
+/// and the monitor's own write path is tested where the monitor lives.
+fn slices_with_working_time(
+    session_id: &jinn_core_types::SessionId,
+    intervals: Vec<WorkingInterval>,
+) -> jinn_slices::Slices {
+    let slices = jinn_slices::Slices::new();
+    let cell = slices
+        .register(work_time_slot(), WorkingTimeState::default())
+        .expect("fresh Slices never has the work-time cell registered");
+    cell.update(|s| s.restore(session_id.clone(), intervals));
+    slices
+}
+
+fn at(offset_secs: i64) -> jiff::Timestamp {
+    jiff::Timestamp::from_second(1_000_000_000 + offset_secs).expect("valid offset")
+}
+
+/// Renders the bar and returns row `row` as a string.
+fn render_rows(
+    state: &AppState,
+    slices: &jinn_slices::Slices,
+    width: u16,
+    height: u16,
+) -> Vec<String> {
+    let mut element = StatusBarElement;
+    let (mut terminal, area) = setup_term(width, height);
+    terminal
+        .draw(|frame| {
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(state, slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .expect("draw status bar");
+    let buffer = terminal.backend().buffer().clone();
+    (0..height).map(|r| buffer_row(&buffer, r, width)).collect()
+}
+
+#[rstest::rstest]
+fn info_line_shows_working_time_beside_the_turn_counter() {
+    // Given a session that has worked for nine seconds.
+    let state = AppState::default_with_scope_focus();
+    let id = state.session.active_session_id().clone();
+    let slices = slices_with_working_time(&id, vec![WorkingInterval::closed(at(0), at(9))]);
+
+    // When rendering.
+    let rows = render_rows(&state, &slices, 90, 2);
+
+    // Then the info line shows the working time in HH:MM:SS form.
+    assert!(rows[1].contains("00:00:09"), "row was: {}", rows[1]);
+}
+
+#[rstest::rstest]
+fn info_line_pads_working_time_to_two_digits() {
+    // Given a session that has worked for one hour, two minutes, three seconds.
+    let state = AppState::default_with_scope_focus();
+    let id = state.session.active_session_id().clone();
+    let slices = slices_with_working_time(&id, vec![WorkingInterval::closed(at(0), at(3723))]);
+
+    // When rendering.
+    let rows = render_rows(&state, &slices, 90, 2);
+
+    // Then the clock is zero-padded and never abbreviated.
+    assert!(rows[1].contains("01:02:03"), "row was: {}", rows[1]);
+}
+
+#[rstest::rstest]
+fn info_line_working_time_sits_after_the_turn_counter() {
+    // Given a session that has worked for five seconds.
+    let state = AppState::default_with_scope_focus();
+    let id = state.session.active_session_id().clone();
+    let slices = slices_with_working_time(&id, vec![WorkingInterval::closed(at(0), at(5))]);
+
+    // When rendering.
+    let rows = render_rows(&state, &slices, 90, 2);
+
+    // Then the clock follows the turn counter rather than preceding it.
+    let info = &rows[1];
+    let turn = info.find('\u{21BB}').expect("turn counter rendered");
+    let clock = info.find("00:00:05").expect("working time rendered");
+    assert!(turn < clock, "row was: {info}");
+}
+
+#[rstest::rstest]
+fn info_line_working_time_is_zero_before_any_work() {
+    // Given a session that has never worked.
+    let state = AppState::default_with_scope_focus();
+    let id = state.session.active_session_id().clone();
+    let slices = slices_with_working_time(&id, Vec::new());
+
+    // When rendering.
+    let rows = render_rows(&state, &slices, 90, 2);
+
+    // Then the clock reads zero, holding the column's width so the bar does
+    // not reflow the moment a turn starts.
+    assert!(rows[1].contains("00:00:00"), "row was: {}", rows[1]);
+}
+
+#[rstest::rstest]
+fn tree_block_shows_working_time_beside_the_turn_counter() {
+    // Given a tree of a parent and a child that worked the same ten seconds.
+    let mut state = AppState::default_with_scope_focus();
+    let parent_id = state.session.active_session_id().clone();
+    let child = jinn_session_state::ChatSessionState::new_child(&parent_id, true);
+    let child_id = child.session_id().clone();
+    state.session.insert(child);
+
+    let shared = WorkingInterval::closed(at(0), at(10));
+    let slices = jinn_slices::Slices::new();
+    let cell = slices
+        .register(work_time_slot(), WorkingTimeState::default())
+        .expect("fresh Slices never has the work-time cell registered");
+    cell.update(|s| {
+        s.restore(parent_id.clone(), vec![shared.clone()]);
+        s.restore(child_id, vec![shared]);
+    });
+
+    // When rendering.
+    let rows = render_rows(&state, &slices, 120, 2);
+
+    // Then the tree block shows the union — ten seconds, not twenty.
+    assert!(rows[0].contains("00:00:10"), "row was: {}", rows[0]);
+}
+
+#[rstest::rstest]
+fn a_single_session_tree_renders_no_tree_working_time() {
+    // Given a lone session that has worked, so the tree block is suppressed.
+    let state = AppState::default_with_scope_focus();
+    let id = state.session.active_session_id().clone();
+    let slices = slices_with_working_time(&id, vec![WorkingInterval::closed(at(0), at(30))]);
+
+    // When rendering.
+    let rows = render_rows(&state, &slices, 120, 2);
+
+    // Then no tree glyph block carries a second, unprefixed clock.
+    assert!(!rows[0].contains('\u{1F333}'), "row was: {}", rows[0]);
+    assert_eq!(
+        rows[1].matches("00:00:30").count(),
+        1,
+        "exactly one clock, on the info line: {}",
+        rows[1]
     );
 }

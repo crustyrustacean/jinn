@@ -1,8 +1,8 @@
 use jinn_core_types::SessionId;
 use jinn_kernel::BusService;
+use jinn_kernel::common::phase_events::publish_phase_change;
 use jinn_session_history_msg::HistoryAppended;
 use jinn_session_msg::PhaseKind;
-use jinn_session_msg::SessionPhaseChanged;
 
 /// Emit a `SessionPhaseChanged` event if the phase actually changed.
 ///
@@ -15,14 +15,26 @@ pub(in crate::session_actor) async fn emit_phase_changed(
 ) {
     let old_phase = old_phase.into();
     let new_phase = new_phase.into();
-    if old_phase != new_phase {
-        bus.publish(SessionPhaseChanged {
-            session_id: session_id.clone(),
-            old_phase,
-            new_phase,
-        })
-        .await;
+    if old_phase == new_phase {
+        return;
     }
+    publish_phase_change(bus, session_id, old_phase, new_phase).await;
+}
+
+/// Publishes a phase change and its working-state consequence unconditionally.
+///
+/// For the cancel race, where the transition already happened synchronously
+/// in shared state and subscribers still need to learn the turn ended. The
+/// working flag is derived from the new phase, so an `Idle → Idle` force
+/// publish carries `working: false` and closes nothing a subscriber had
+/// already closed.
+pub(in crate::session_actor) async fn publish_phase_changed(
+    bus: &BusService,
+    session_id: &SessionId,
+    old_phase: PhaseKind,
+    new_phase: PhaseKind,
+) {
+    publish_phase_change(bus, session_id, old_phase, new_phase).await;
 }
 
 /// Emit a `HistoryAppended` event.

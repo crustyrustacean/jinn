@@ -14,6 +14,7 @@ use jinn_session_state::SessionStoreService;
 use jinn_session_state::{ChatSessionState, SessionSnapshot, snapshot_frozen_node_from_snapshot};
 use jinn_session_store_msg::SessionForkRequested;
 use jinn_session_store_msg::{SessionLoadCompleted, SessionLoadRequested, SessionState};
+use jinn_work_time_msg::RestoreWorkingTime;
 use trouper::actor::{ActorPath, MsgHandler};
 use trouper::context::MsgCtx;
 use trouper::envelope::Address;
@@ -93,10 +94,21 @@ impl SessionStoreActor {
         }
         if let Some(snapshot) = msg.snapshot.clone() {
             let session_id = self.insert_loaded_session({
-                let mut session = self.restore_seeded(snapshot).await;
+                let mut session = self.restore_seeded(snapshot.clone()).await;
                 session.mark_interacted();
                 session
             });
+            // Hand the recorded working intervals to the work-time monitor,
+            // which owns them. Publishing rather than writing the cell keeps
+            // the monitor the only writer, and carries the open interval a
+            // killed session left behind so the monitor can close it at the
+            // snapshot's own last-update time rather than at load.
+            self.publish(RestoreWorkingTime {
+                session_id: session_id.clone(),
+                intervals: snapshot.metadata.working_intervals.clone(),
+                last_active_at: snapshot.metadata.updated_at,
+            })
+            .await;
             self.publish(SessionLoadCompleted { session_id }).await;
         }
         if self.note_hydration_completion() {

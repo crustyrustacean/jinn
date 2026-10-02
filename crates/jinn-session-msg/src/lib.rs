@@ -17,6 +17,11 @@ pub mod phase_machine;
 pub mod session_origin;
 mod session_seed;
 
+/// The wall-clock moment carried by [`SessionPhaseChanged`] and
+/// [`WorkStateChanged`], re-exported so a consumer publishing either event
+/// does not need its own `jiff` dependency just to stamp it.
+pub use jiff::Timestamp as PhaseEventAt;
+
 pub use session_origin::SessionOrigin;
 pub use session_seed::SessionSeed;
 
@@ -48,6 +53,21 @@ impl std::str::FromStr for PhaseKind {
     }
 }
 
+impl PhaseKind {
+    /// Whether a session in this phase is working.
+    ///
+    /// The single definition of "working" in the codebase: a session is busy
+    /// whenever its phase is not [`PhaseKind::Idle`]. There are deliberately
+    /// no carve-outs for a parent orchestrating subagents, an attendant
+    /// composing a report, or a turn running its tool loop — those *are* the
+    /// time the user is waiting, and a separate `is_busy` notion with four
+    /// writers already exists and disagrees with this one.
+    #[must_use]
+    pub const fn is_working(self) -> bool {
+        !matches!(self, Self::Idle)
+    }
+}
+
 /// Error returned when a string does not match any [`PhaseKind`] variant.
 #[derive(Debug, wherror::Error)]
 #[error("unknown phase kind: {0}")]
@@ -71,6 +91,34 @@ pub struct SessionPhaseChanged {
     pub old_phase: PhaseKind,
     /// The new phase after the transition.
     pub new_phase: PhaseKind,
+    /// When the transition was observed.
+    ///
+    /// Carried on the event rather than left to a consumer's clock so every
+    /// subscriber measures the same boundary: a recorder that timestamps on
+    /// receipt bills the time its own mailbox took, which differs per
+    /// subscriber.
+    pub at: jiff::Timestamp,
+}
+
+/// A session started or stopped working.
+///
+/// Published alongside every [`SessionPhaseChanged`] by the writers that
+/// mutate a phase. The working-time monitor folds these into wall-clock
+/// intervals; it never reads a phase, so a session whose phase it never
+/// observes still costs it nothing.
+///
+/// Distinct from [`SessionPhaseChanged`] because the phase event is a
+/// no-op on equal phases while this one states the fact directly, and because
+/// the monitor needs the moment rather than the phases around it.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A session started or stopped working.")]
+pub struct WorkStateChanged {
+    /// The session whose working state changed.
+    pub session_id: SessionId,
+    /// Whether the session is now working.
+    pub working: bool,
+    /// When the change was observed.
+    pub at: jiff::Timestamp,
 }
 
 /// A session's turn has ended, with the outcome read from its history.
@@ -203,6 +251,7 @@ impl jinn_slices::BusMessage for RetryStalledSession {}
 impl jinn_slices::BusMessage for SessionClosed {}
 impl jinn_slices::BusMessage for SessionRemoved {}
 impl jinn_slices::BusMessage for SessionPhaseChanged {}
+impl jinn_slices::BusMessage for WorkStateChanged {}
 impl jinn_slices::BusMessage for TurnCompleted {}
 impl jinn_slices::BusMessage for SessionArchived {}
 impl jinn_slices::BusMessage for SessionArchiveFailed {}
@@ -221,6 +270,8 @@ mod tests {
     use super::SessionPhaseChanged;
     use super::SessionRemoved;
     use super::UserInteracted;
+    use super::WorkStateChanged;
+    use jiff::Timestamp;
     use jinn_core_types::SessionId;
     use std::str::FromStr;
 
@@ -247,6 +298,60 @@ mod tests {
     }
 
     #[rstest::rstest]
+    #[case(PhaseKind::Idle, false)]
+    #[case(PhaseKind::Sending, true)]
+    #[case(PhaseKind::Streaming, true)]
+    fn only_idle_is_not_working(#[case] phase: PhaseKind, #[case] expected: bool) {
+        // Given any phase.
+        // When asking whether a session in it is working.
+        let working = phase.is_working();
+        // Then working is exactly "the phase is not idle".
+        assert_eq!(working, expected);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn phase_change_roundtrips_its_moment_through_json() {
+        // Given a phase change stamped with a moment.
+        let at = Timestamp::now();
+        let event = SessionPhaseChanged {
+            session_id: SessionId::new(),
+            old_phase: PhaseKind::Idle,
+            new_phase: PhaseKind::Sending,
+            at,
+        };
+
+        // When serializing and deserializing.
+        let json = serde_json::to_string(&event).unwrap();
+        let round: SessionPhaseChanged = serde_json::from_str(&json).unwrap();
+
+        // Then the moment survives, so a subscriber measures the boundary the
+        // publisher observed rather than its own clock.
+        assert_eq!(round.at, at);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn work_state_change_roundtrips_through_json() {
+        // Given a work-state change.
+        let at = Timestamp::now();
+        let event = WorkStateChanged {
+            session_id: SessionId::new(),
+            working: true,
+            at,
+        };
+
+        // When serializing and deserializing.
+        let json = serde_json::to_string(&event).unwrap();
+        let round: WorkStateChanged = serde_json::from_str(&json).unwrap();
+
+        // Then every field survives the wire.
+        assert_eq!(round.session_id, event.session_id);
+        assert!(round.working);
+        assert_eq!(round.at, at);
+    }
+
+    #[rstest::rstest]
     #[test]
     fn session_events_roundtrip_through_json() {
         // Given the session events this crate owns.
@@ -256,6 +361,7 @@ mod tests {
                 session_id: id.clone(),
                 old_phase: PhaseKind::Streaming,
                 new_phase: PhaseKind::Idle,
+                at: jiff::Timestamp::now(),
             },
             SessionArchived {
                 session_id: id.clone(),

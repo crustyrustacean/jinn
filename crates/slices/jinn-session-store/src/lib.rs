@@ -20,6 +20,7 @@ pub mod session_picker_render;
 pub mod session_picker_routes;
 pub mod session_store_actor;
 pub mod sqlite;
+pub mod working_time;
 
 // The search/transcript data model belongs to the store family's msg crate
 // because the kernel's store seam consumes it too. Re-exported as this slice's

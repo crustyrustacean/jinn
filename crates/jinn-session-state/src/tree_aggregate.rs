@@ -9,7 +9,10 @@
 
 use std::collections::{HashMap, HashSet};
 
+use jiff::Timestamp;
 use jinn_core_types::SessionId;
+use jinn_core_types::WorkingInterval;
+use jinn_core_types::union;
 use jinn_token_count_msg::{TokenStats, TreeAggregateStats};
 
 use crate::{ChatSessionState, compute_turn_count};
@@ -68,6 +71,13 @@ pub fn find_tree_root<S: ::std::hash::BuildHasher>(
 /// 1. Finds the tree root via [`find_tree_root`].
 /// 2. Collects ALL sessions in the tree (BFS from root), including frozen nodes.
 /// 3. Sums token stats, cost, and turns.
+///
+/// `live_intervals` carries the working intervals of the *live* members, which
+/// the aggregate cannot read from the sessions themselves: they live in the
+/// work-time slice's cell, and duplicating them onto the session would give
+/// working time a second home with a second writer. Frozen members carry their
+/// own, stamped at freeze time. A member absent from `live_intervals`
+/// contributes no working time.
 #[expect(
     clippy::else_if_without_else,
     reason = "no-op on fallthrough is intentional"
@@ -76,12 +86,14 @@ pub fn aggregate_tree_stats<S: ::std::hash::BuildHasher>(
     sessions: &HashMap<SessionId, ChatSessionState, S>,
     frozen_nodes: &HashMap<SessionId, FrozenTreeNode, S>,
     session_id: &SessionId,
+    live_intervals: &HashMap<SessionId, Vec<WorkingInterval>>,
 ) -> TreeAggregateStats {
     let root = find_tree_root(sessions, frozen_nodes, session_id);
 
     // BFS to collect all sessions and frozen nodes in the tree.
     let mut tree_sessions = Vec::new();
     let mut tree_frozen = Vec::new();
+    let mut member_intervals: Vec<Vec<WorkingInterval>> = Vec::new();
     let mut queue = vec![root];
     let mut visited = HashSet::new();
 
@@ -92,6 +104,9 @@ pub fn aggregate_tree_stats<S: ::std::hash::BuildHasher>(
 
         if let Some(session) = sessions.get(&id) {
             tree_sessions.push(session);
+            if let Some(intervals) = live_intervals.get(&id) {
+                member_intervals.push(intervals.clone());
+            }
             // Find live children.
             for (child_id, child) in sessions {
                 if child.parent_session().as_ref() == Some(&id) && !visited.contains(child_id) {
@@ -106,6 +121,7 @@ pub fn aggregate_tree_stats<S: ::std::hash::BuildHasher>(
             }
         } else if let Some(frozen) = frozen_nodes.get(&id) {
             tree_frozen.push(frozen);
+            member_intervals.push(frozen.working_intervals.clone());
             // Find live children of this frozen node.
             for (child_id, child) in sessions {
                 if child.parent_session().as_ref() == Some(&id) && !visited.contains(child_id) {
@@ -149,6 +165,15 @@ pub fn aggregate_tree_stats<S: ::std::hash::BuildHasher>(
     }
 
     stats.session_count = tree_sessions.len() + tree_frozen.len();
+
+    // Working time is the UNION of every member's intervals, not their sum.
+    // A parent blocked on two subagents is itself non-idle, so summing would
+    // bill the same wall-clock second three times. Union is also what makes
+    // archiving a member harmless: its frozen node carries the intervals it
+    // contributed while live, so the total does not move.
+    let at = Timestamp::now();
+    let borrowed: Vec<&[WorkingInterval]> = member_intervals.iter().map(Vec::as_slice).collect();
+    stats.total_working = union(&borrowed, at);
 
     stats
 }

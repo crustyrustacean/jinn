@@ -62,6 +62,7 @@ use jinn_core_types::model_selection::ModelSelection;
 use jinn_core_types::{ChatEntry, ChatEntryKind, ReasoningEffort, SessionId};
 use jinn_inference_msg::{SendToLlmProvider, StreamOrigin};
 use jinn_kernel::common::actor_deps::BusPublish;
+use jinn_kernel::common::phase_events::publish_phase_change;
 use jinn_kernel::common::services::Services;
 use jinn_kernel::common::services::bus_service::BusService;
 use jinn_kernel::common::state::State;
@@ -139,6 +140,22 @@ impl QueueActor {
         if payload.new_phase == PhaseKind::Idle {
             self.handle_idle_transition(&payload.session_id).await;
         }
+    }
+
+    /// Announces a phase change this actor's own write just made, together
+    /// with the working-state change it implies.
+    ///
+    /// Routed through the kernel's shared helper rather than publishing
+    /// `SessionPhaseChanged` here: the working-time monitor measures one
+    /// boundary, and a queue actor that published only the phase event would
+    /// leave a turn it dispatched unmeasured.
+    async fn publish_phase_change(
+        &self,
+        session_id: &SessionId,
+        old_phase: PhaseKind,
+        new_phase: PhaseKind,
+    ) {
+        publish_phase_change(self.bus(), session_id, old_phase, new_phase).await;
     }
 
     /// Handle [`DispatchTurn`] — dispatch the session's prepared turn.
@@ -264,12 +281,8 @@ impl QueueActor {
         };
 
         if old_phase != new_phase {
-            self.publish(SessionPhaseChanged {
-                session_id: session_id.clone(),
-                old_phase,
-                new_phase,
-            })
-            .await;
+            self.publish_phase_change(session_id, old_phase, new_phase)
+                .await;
         }
 
         let Some(assembled) = self.assemble(session_id, "user message").await else {
@@ -484,12 +497,8 @@ impl QueueActor {
         };
 
         if old_phase != new_phase {
-            self.publish(SessionPhaseChanged {
-                session_id: session_id.clone(),
-                old_phase,
-                new_phase,
-            })
-            .await;
+            self.publish_phase_change(session_id, old_phase, new_phase)
+                .await;
         }
 
         self.publish(SendToLlmProvider {

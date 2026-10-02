@@ -14,7 +14,6 @@ use jinn_kernel::common::actor_deps::BusPublish;
 use jinn_kernel::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 use jinn_llm_support::token_estimator::{TiktokenCounter, TokenCounter};
 use jinn_session_history_msg::CitationsReceived;
-use jinn_session_msg::SessionPhaseChanged;
 use jinn_session_msg::TurnCompleted;
 use jinn_session_msg::TurnOutcome;
 use jinn_session_state::ChatSessionState;
@@ -136,13 +135,13 @@ impl SessionPersistenceActor {
             && state_change.old_phase == PhaseKind::Idle
             && state_change.new_phase == PhaseKind::Idle
         {
-            self.bus()
-                .publish(SessionPhaseChanged {
-                    session_id: event.session_id.clone(),
-                    old_phase: PhaseKind::Idle,
-                    new_phase: PhaseKind::Idle,
-                })
-                .await;
+            super::super::helpers::publish_phase_changed(
+                self.bus(),
+                &event.session_id,
+                PhaseKind::Idle,
+                PhaseKind::Idle,
+            )
+            .await;
         }
 
         // Publish the turn outcome. Exactly once per dispatched turn:

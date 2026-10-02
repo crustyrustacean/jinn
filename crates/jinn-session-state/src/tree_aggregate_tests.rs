@@ -12,7 +12,7 @@ use std::collections::HashMap;
 
 use crate::tree_aggregate::{FrozenTreeNode, aggregate_tree_stats, find_tree_root};
 use crate::{ChatSessionState, SessionMap};
-use jinn_core_types::{ChatEntry, SessionId};
+use jinn_core_types::{ChatEntry, SessionId, WorkingInterval};
 use jinn_token_count_msg::TokenRecord;
 
 /// Helper: create an empty session with the given ID.
@@ -153,7 +153,7 @@ fn single_session_returns_own_stats() {
     );
 
     // When aggregating tree stats.
-    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &id);
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &id, &HashMap::new());
 
     // Then it returns the session's own stats.
     assert_eq!(stats.session_count, 1);
@@ -188,7 +188,7 @@ fn parent_with_children_sums_all() {
     set_parent(&mut sessions, &child2_id, &parent_id);
 
     // When aggregating from parent.
-    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id);
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id, &HashMap::new());
 
     // Then all sessions are summed.
     assert_eq!(stats.session_count, 3);
@@ -223,7 +223,7 @@ fn child_sees_entire_tree() {
     set_parent(&mut sessions, &child2_id, &parent_id);
 
     // When aggregating from child1.
-    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &child1_id);
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &child1_id, &HashMap::new());
 
     // Then the result includes parent + both children.
     assert_eq!(stats.session_count, 3);
@@ -257,7 +257,7 @@ fn deeply_nested_tree_sums_all() {
     set_parent(&mut sessions, &child_id, &parent_id);
 
     // When aggregating from the child.
-    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &child_id);
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &child_id, &HashMap::new());
 
     // Then all 3 sessions are included.
     assert_eq!(stats.session_count, 3);
@@ -290,7 +290,7 @@ fn disconnected_sessions_excluded() {
     set_parent(&mut sessions, &child_id, &parent_id);
 
     // When aggregating from parent.
-    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id);
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id, &HashMap::new());
 
     // Then disconnected is excluded.
     assert_eq!(stats.session_count, 2);
@@ -326,6 +326,7 @@ fn frozen_parent_is_found_as_root() {
             effective_sent: 0,
             measured_sent: 0,
             cached_total: 0,
+            working_intervals: Vec::new(),
         },
     );
 
@@ -361,11 +362,12 @@ fn frozen_child_included_in_aggregate() {
             effective_sent: 0,
             measured_sent: 0,
             cached_total: 0,
+            working_intervals: Vec::new(),
         },
     );
 
     // When aggregating from the root.
-    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &root_id);
+    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &root_id, &HashMap::new());
 
     // Then the frozen child's stats are included.
     assert_eq!(stats.session_count, 2); // 1 live + 1 frozen
@@ -404,11 +406,12 @@ fn child_of_frozen_included_in_aggregate() {
             effective_sent: 0,
             measured_sent: 0,
             cached_total: 0,
+            working_intervals: Vec::new(),
         },
     );
 
     // When aggregating from the live child.
-    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &child_id);
+    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &child_id, &HashMap::new());
 
     // Then both the frozen root and live child are included.
     assert_eq!(stats.session_count, 2);
@@ -452,11 +455,12 @@ fn deeply_nested_with_frozen_in_middle() {
             effective_sent: 0,
             measured_sent: 0,
             cached_total: 0,
+            working_intervals: Vec::new(),
         },
     );
 
     // When aggregating from the grandchild.
-    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &child_id);
+    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &child_id, &HashMap::new());
 
     // Then all three are included.
     assert_eq!(stats.session_count, 3);
@@ -488,6 +492,7 @@ fn session_count_includes_frozen_nodes() {
             effective_sent: 0,
             measured_sent: 0,
             cached_total: 0,
+            working_intervals: Vec::new(),
         },
     );
     frozen_nodes.insert(
@@ -502,11 +507,12 @@ fn session_count_includes_frozen_nodes() {
             effective_sent: 0,
             measured_sent: 0,
             cached_total: 0,
+            working_intervals: Vec::new(),
         },
     );
 
     // When aggregating.
-    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &root_id);
+    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &root_id, &HashMap::new());
 
     // Then session_count is 3 (1 live + 2 frozen).
     assert_eq!(stats.session_count, 3);
@@ -541,6 +547,7 @@ fn frozen_node_not_in_tree_is_excluded() {
             effective_sent: 0,
             measured_sent: 0,
             cached_total: 0,
+            working_intervals: Vec::new(),
         },
     );
     frozen_nodes.insert(
@@ -555,11 +562,12 @@ fn frozen_node_not_in_tree_is_excluded() {
             effective_sent: 0,
             measured_sent: 0,
             cached_total: 0,
+            working_intervals: Vec::new(),
         },
     );
 
     // When aggregating the live session's tree.
-    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &live_id);
+    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &live_id, &HashMap::new());
 
     // Then only the live session is included.
     assert_eq!(stats.session_count, 1);
@@ -589,6 +597,7 @@ fn all_frozen_tree_aggregates() {
             effective_sent: 0,
             measured_sent: 0,
             cached_total: 0,
+            working_intervals: Vec::new(),
         },
     );
     frozen_nodes.insert(
@@ -603,11 +612,12 @@ fn all_frozen_tree_aggregates() {
             effective_sent: 0,
             measured_sent: 0,
             cached_total: 0,
+            working_intervals: Vec::new(),
         },
     );
 
     // When aggregating from the frozen root.
-    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &root_id);
+    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &root_id, &HashMap::new());
 
     // Then both frozen nodes are included.
     assert_eq!(stats.session_count, 2);
@@ -631,7 +641,7 @@ fn empty_sessions_produce_zeros() {
     sessions.insert(child_id, child);
 
     // When aggregating.
-    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id);
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id, &HashMap::new());
 
     // Then all values are zero.
     assert_eq!(stats.session_count, 2);
@@ -660,7 +670,7 @@ fn forked_session_excluded_from_tree_turn_count() {
     sessions.insert(child_id, child);
 
     // When aggregating from the parent.
-    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id);
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id, &HashMap::new());
 
     // Then parent contributes 2 turns, forked child contributes 0.
     assert_eq!(stats.session_count, 2);
@@ -694,7 +704,7 @@ fn fork_from_fork_turns_counted_correctly() {
     sessions.insert(fork_b_id, fork_b);
 
     // When aggregating from root.
-    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &root_id);
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &root_id, &HashMap::new());
 
     // Then root=2 turns, fork_a=1 turn (entry 2), fork_b=0 turns.
     // No double-counting: each session counts only its own entries.
@@ -735,11 +745,12 @@ fn tree_aggregate_sums_cached_total_across_live_and_frozen() {
             effective_sent: 1000,
             measured_sent: 1000,
             cached_total: 600,
+            working_intervals: Vec::new(),
         },
     );
 
     // When aggregating from the root.
-    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &root_id);
+    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &root_id, &HashMap::new());
 
     // Then cached_total sums live + frozen (400 + 600 = 1000).
     assert_eq!(stats.cached_total, 1000);
@@ -769,7 +780,7 @@ fn tree_aggregate_includes_subagent_usage() {
     set_parent(&mut sessions, &child_id, &parent_id);
 
     // When aggregating from the parent.
-    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id);
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id, &HashMap::new());
 
     // Then the subagent's usage rolls into the tree totals.
     assert_eq!(stats.session_count, 2);
@@ -792,6 +803,7 @@ fn spawned_child_crosses_tree_display_threshold() {
         session_map.sessions(),
         session_map.frozen_nodes(),
         session_map.active_session_id(),
+        &HashMap::new(),
     );
 
     // Then the count crosses the >1 display threshold of the status bar.
@@ -818,7 +830,7 @@ fn empty_pre_dispatch_child_contributes_zeros_but_counts() {
     sessions.insert(child_id, child);
 
     // When aggregating from the parent.
-    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id);
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id, &HashMap::new());
 
     // Then the totals are unchanged but the child counts as a session.
     assert_eq!(stats.session_count, 2);
@@ -826,4 +838,168 @@ fn empty_pre_dispatch_child_contributes_zeros_but_counts() {
     assert_eq!(stats.total_received, 50);
     assert!(stats.total_cost - 0.01 < 1e-10);
     assert_eq!(stats.total_turns, 2);
+}
+
+// ── Tree working time ─────────────────────────────────────────────────
+//
+// Working time is the UNION of members' intervals, not the sum. A parent
+// blocked on a subagent is itself non-idle, so summing per-session totals
+// would bill the shared second once per member.
+
+/// A frozen node carrying only working intervals, for archive tests.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test helper builds the struct literal it names"
+)]
+fn frozen_with_working(
+    id: SessionId,
+    parent: Option<SessionId>,
+    intervals: Vec<WorkingInterval>,
+) -> FrozenTreeNode {
+    FrozenTreeNode {
+        session_id: id.clone(),
+        parent_session_id: parent,
+        total_sent: 0,
+        total_received: 0,
+        total_cost: 0.0,
+        total_turns: 0,
+        effective_sent: 0,
+        measured_sent: 0,
+        cached_total: 0,
+        working_intervals: intervals,
+    }
+}
+
+fn at(offset_secs: i64) -> jiff::Timestamp {
+    jiff::Timestamp::from_second(1_000_000_000 + offset_secs).expect("valid offset")
+}
+
+#[rstest::rstest]
+fn tree_working_time_counts_a_shared_second_once() {
+    // Given a parent working 0..10 and a child working 4..14 entirely inside it.
+    let parent_id = SessionId::new();
+    let child = ChatSessionState::new_child(&parent_id, true);
+    let child_id = child.session_id().clone();
+
+    let mut sessions = HashMap::new();
+    sessions.insert(parent_id.clone(), make_session(parent_id.clone()));
+    sessions.insert(child_id.clone(), child);
+
+    let mut live = HashMap::new();
+    live.insert(
+        parent_id.clone(),
+        vec![WorkingInterval::closed(at(0), at(10))],
+    );
+    live.insert(
+        child_id.clone(),
+        vec![WorkingInterval::closed(at(4), at(14))],
+    );
+
+    // When aggregating the tree.
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id, &live);
+
+    // Then the total is the 14-second span, not 10 + 10.
+    assert_eq!(stats.total_working, jiff::SignedDuration::from_secs(14));
+}
+
+#[rstest::rstest]
+fn tree_working_time_sums_members_that_worked_apart() {
+    // Given a parent working 0..10 and a child working 20..25, well clear.
+    let parent_id = SessionId::new();
+    let child = ChatSessionState::new_child(&parent_id, true);
+    let child_id = child.session_id().clone();
+
+    let mut sessions = HashMap::new();
+    sessions.insert(parent_id.clone(), make_session(parent_id.clone()));
+    sessions.insert(child_id.clone(), child);
+
+    let mut live = HashMap::new();
+    live.insert(
+        parent_id.clone(),
+        vec![WorkingInterval::closed(at(0), at(10))],
+    );
+    live.insert(
+        child_id.clone(),
+        vec![WorkingInterval::closed(at(20), at(25))],
+    );
+
+    // When aggregating the tree.
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id, &live);
+
+    // Then the disjoint spans add up.
+    assert_eq!(stats.total_working, jiff::SignedDuration::from_secs(15));
+}
+
+#[rstest::rstest]
+fn archiving_a_member_does_not_change_the_trees_working_time() {
+    // Given a parent that worked 10 seconds with a child that worked the
+    // same 10 seconds, entirely inside it.
+    let parent_id = SessionId::new();
+    let child_id = SessionId::new();
+    let shared = WorkingInterval::closed(at(0), at(10));
+
+    let mut live = HashMap::new();
+    live.insert(parent_id.clone(), vec![shared.clone()]);
+    live.insert(child_id.clone(), vec![shared.clone()]);
+
+    let mut sessions = HashMap::new();
+    sessions.insert(parent_id.clone(), make_session(parent_id.clone()));
+    sessions.insert(child_id.clone(), make_session(child_id.clone()));
+
+    // When aggregating with both members live.
+    let before = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id, &live);
+
+    // And then the child is archived, becoming a frozen node that carries the
+    // intervals it contributed.
+    sessions.remove(&child_id);
+    let mut frozen = HashMap::new();
+    frozen.insert(
+        child_id.clone(),
+        frozen_with_working(child_id, Some(parent_id.clone()), vec![shared]),
+    );
+
+    // When aggregating again.
+    let after = aggregate_tree_stats(&sessions, &frozen, &parent_id, &live);
+
+    // Then the tree's working time is unchanged by the archive.
+    assert_eq!(after.total_working, before.total_working);
+    assert_eq!(after.total_working, jiff::SignedDuration::from_secs(10));
+}
+
+#[rstest::rstest]
+fn a_frozen_member_alone_still_contributes_its_working_time() {
+    // Given a tree whose only member is a frozen node.
+    let root_id = SessionId::new();
+    let mut frozen = HashMap::new();
+    frozen.insert(
+        root_id.clone(),
+        frozen_with_working(
+            root_id.clone(),
+            None,
+            vec![WorkingInterval::closed(at(0), at(42))],
+        ),
+    );
+
+    // When aggregating.
+    let stats = aggregate_tree_stats(&HashMap::new(), &frozen, &root_id, &HashMap::new());
+
+    // Then the archived member's time is counted.
+    assert_eq!(stats.total_working, jiff::SignedDuration::from_secs(42));
+}
+
+#[rstest::rstest]
+fn a_tree_with_no_recorded_working_time_totals_zero() {
+    // Given a tree whose members have never worked.
+    let parent_id = SessionId::new();
+    let child = ChatSessionState::new_child(&parent_id, true);
+    let child_id = child.session_id().clone();
+    let mut sessions = HashMap::new();
+    sessions.insert(parent_id.clone(), make_session(parent_id.clone()));
+    sessions.insert(child_id, child);
+
+    // When aggregating.
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id, &HashMap::new());
+
+    // Then the total is zero.
+    assert_eq!(stats.total_working, jiff::SignedDuration::ZERO);
 }

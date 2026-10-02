@@ -27,6 +27,9 @@ jinn-attendant-msg = { workspace = true }
 jinn-chat-input-msg = { workspace = true }
 jinn-chat-log-view-msg = { workspace = true }
 jinn-token-count-msg = { workspace = true }
+# The work-time cell, read at the two points a durable copy of a session's
+# working intervals is stamped. Read-only: the monitor is the sole writer.
+jinn-work-time-msg = { workspace = true }
 jinn-tools-msg = { workspace = true }
 jinn-slices = { workspace = true }
 # The status bar's hint cell, so a failed archive reaches the screen

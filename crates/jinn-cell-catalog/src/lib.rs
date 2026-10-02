@@ -76,7 +76,7 @@ pub fn register_all_cells(slices: &Slices) {
 /// The `jinn-slices` infrastructure slots are not counted: they are
 /// registered lazily by the first caller that resolves one, and a harness
 /// that never renders never creates them.
-const EXPECTED_CELL_COUNT: usize = 37;
+const EXPECTED_CELL_COUNT: usize = 38;
 
 // ── The catalog ─────────────────────────────────────────────────────
 //
@@ -381,6 +381,14 @@ fn register_catalog(slices: &Slices) -> usize {
         count,
         jinn_tools_msg::task_list_picker_slot(),
         jinn_tools_msg::TaskListPickerState::default()
+    );
+
+    // jinn-work-time — the per-session wall-clock working intervals.
+    register!(
+        slices,
+        count,
+        jinn_work_time_msg::work_time_slot(),
+        jinn_work_time_msg::WorkingTimeState::default()
     );
 
     count

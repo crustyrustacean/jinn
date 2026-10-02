@@ -27,8 +27,10 @@ use jinn_turn_dispatch_msg::DispatchTurn;
 /// Decision returned after inspecting session state in `EnqueueUserMessage`.
 enum EnqueueAction {
     /// Session is idle - the entry is pushed and the turn is dispatched
-    /// via the turn-dispatch slice.
-    DispatchDirectly,
+    /// via the turn-dispatch slice. Carries the phase observed before the
+    /// write so the `Idle → Sending` edge is published from the transition
+    /// that actually happened rather than a hardcoded literal.
+    DispatchDirectly { old_phase: PhaseKind },
     /// Session is busy - message was queued.
     Queued,
 }
@@ -76,6 +78,7 @@ impl SessionPersistenceActor {
                 match session.phase() {
                     PhaseKind::Idle => {
                         // Normal path: set title, push entry, begin_sending.
+                        let old_phase = session.phase();
                         if session.title().is_none() {
                             let title = match &entry.kind {
                                 ChatEntryKind::User { display, .. } => {
@@ -87,7 +90,7 @@ impl SessionPersistenceActor {
                         }
                         session.push_entry(entry.clone());
                         session.begin_sending();
-                        EnqueueAction::DispatchDirectly
+                        EnqueueAction::DispatchDirectly { old_phase }
                     }
                     PhaseKind::Sending | PhaseKind::Streaming => {
                         session.enqueue(jinn_turn_dispatch_msg::QueueItem::UserMessage(Box::new(
@@ -100,7 +103,7 @@ impl SessionPersistenceActor {
         };
 
         match action {
-            EnqueueAction::DispatchDirectly => {
+            EnqueueAction::DispatchDirectly { old_phase } => {
                 super::super::helpers::emit_history_appended(self.bus(), &payload.session_id).await;
 
                 self.publish(ChatEntrySubmitted {
@@ -113,9 +116,21 @@ impl SessionPersistenceActor {
 
                 // Hand the prepared turn to the turn-dispatch slice: it
                 // drains steering, normalizes loop layout, assembles, and
-                // publishes SendToLlmProvider. The Idle→Sending transition
-                // event is published there (from its own push/begin_sending
-                // write); nothing to emit here.
+                // publishes SendToLlmProvider. That path publishes the *next*
+                // edge (`Sending → Streaming`) from its own
+                // begin_streaming write, so the `Idle → Sending` edge that
+                // happened above — inside the same write lock, before this
+                // point — has to be published here or it is never announced
+                // at all. A subscriber watching for a session to start
+                // working would otherwise see it go busy with no event.
+                super::super::helpers::publish_phase_changed(
+                    self.bus(),
+                    &payload.session_id,
+                    old_phase,
+                    PhaseKind::Sending,
+                )
+                .await;
+
                 self.publish(DispatchTurn {
                     session_id: payload.session_id.clone(),
                 })
@@ -303,7 +318,6 @@ impl SessionPersistenceActor {
         payload: &EnqueueResumeTurn,
     ) {
         use jinn_core_types::ChatEntry;
-        use jinn_session_msg::SessionPhaseChanged;
 
         // Only dispatch from Idle. Busy sessions ignore resume (no queuing).
         let should_dispatch = {
@@ -328,11 +342,12 @@ impl SessionPersistenceActor {
         };
 
         if old_phase != new_phase {
-            self.publish(SessionPhaseChanged {
-                session_id: payload.session_id.clone(),
+            super::super::helpers::publish_phase_changed(
+                self.bus(),
+                &payload.session_id,
                 old_phase,
                 new_phase,
-            })
+            )
             .await;
         }
 
@@ -487,6 +502,65 @@ mod tests {
             !audit.contains_name("SendToLlmProvider"),
             "SendToLlmProvider belongs to the turn-dispatch slice"
         );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn direct_dispatch_publishes_the_idle_to_sending_edge() {
+        // Given an idle session.
+        let (actor, state, audit) = create_actor().await;
+        let session_id = {
+            let mut guard = state.write();
+            let _session = guard.active_session_mut();
+            guard.session.active_session_id().clone()
+        };
+
+        // When enqueuing a user message.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user("hello world"),
+            })
+            .await;
+
+        // Then the Idle -> Sending edge is announced. The write happens in
+        // this handler, and the turn-dispatch slice publishes only the *next*
+        // edge, so without this the transition is never published at all and
+        // a subscriber watches the session go busy with no event.
+        let phases = audit.of_type::<jinn_session_msg::SessionPhaseChanged>();
+        assert!(
+            phases
+                .iter()
+                .any(|p| p.old_phase == PhaseKind::Idle && p.new_phase == PhaseKind::Sending),
+            "expected SessionPhaseChanged(Idle -> Sending); got: {phases:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn direct_dispatch_publishes_the_session_starting_to_work() {
+        // Given an idle session.
+        let (actor, state, audit) = create_actor().await;
+        let session_id = {
+            let mut guard = state.write();
+            let _session = guard.active_session_mut();
+            guard.session.active_session_id().clone()
+        };
+
+        // When enqueuing a user message.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user("hello world"),
+            })
+            .await;
+
+        // Then the session is announced as working, which is the boundary the
+        // working-time monitor opens its interval on.
+        let work = audit.of_type::<jinn_session_msg::WorkStateChanged>();
+        assert_eq!(work.len(), 1, "{work:?}");
+        assert!(work[0].working, "{work:?}");
+        assert_eq!(work[0].session_id, session_id);
     }
 
     #[rstest::rstest]

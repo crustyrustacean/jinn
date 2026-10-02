@@ -116,6 +116,7 @@ async fn finish_child_like_session_actor(
         session_id: child_id.clone(),
         old_phase: old,
         new_phase: PhaseKind::Idle,
+        at: jiff::Timestamp::now(),
     })
     .await;
 }
@@ -140,6 +141,7 @@ async fn cancel_child_like_user(
         session_id: child_id.clone(),
         old_phase: PhaseKind::Idle,
         new_phase: PhaseKind::Idle,
+        at: jiff::Timestamp::now(),
     })
     .await;
 }
@@ -785,6 +787,7 @@ async fn listener_signals_on_idle_to_idle_transition() {
             session_id: child_id.clone(),
             old_phase: PhaseKind::Idle,
             new_phase: PhaseKind::Idle,
+            at: jiff::Timestamp::now(),
         })
         .await;
 
