@@ -49,6 +49,7 @@ pub async fn publish_phase_change(
 mod tests {
     #![allow(
         clippy::expect_used,
+        clippy::indexing_slicing,
         clippy::panic,
         clippy::unreachable,
         reason = "test code"

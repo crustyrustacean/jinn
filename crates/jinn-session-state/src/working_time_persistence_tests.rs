@@ -78,7 +78,13 @@ fn an_open_interval_survives_a_json_roundtrip() {
 
     // Then it is still open, so the load path can close it and bill only up to
     // the moment the work stopped.
-    assert!(round.working_intervals[0].is_open());
+    assert!(
+        round
+            .working_intervals
+            .first()
+            .expect("interval survived")
+            .is_open()
+    );
 }
 
 #[rstest::rstest]

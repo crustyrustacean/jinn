@@ -161,7 +161,13 @@ mod tests {
         // Then it holds one open interval from that moment.
         assert!(state.is_working(&id));
         assert_eq!(state.intervals(&id).len(), 1);
-        assert!(state.intervals(&id)[0].is_open());
+        assert!(
+            state
+                .intervals(&id)
+                .first()
+                .expect("interval opened")
+                .is_open()
+        );
     }
 
     #[rstest::rstest]

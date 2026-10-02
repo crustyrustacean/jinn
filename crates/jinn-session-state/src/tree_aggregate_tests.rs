@@ -847,6 +847,10 @@ fn empty_pre_dispatch_child_contributes_zeros_but_counts() {
 // would bill the shared second once per member.
 
 /// A frozen node carrying only working intervals, for archive tests.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test helper builds the struct literal it names"
+)]
 fn frozen_with_working(
     id: SessionId,
     parent: Option<SessionId>,
