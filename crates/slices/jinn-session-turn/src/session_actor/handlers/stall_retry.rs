@@ -193,6 +193,43 @@ mod tests {
         )
     }
 
+    /// A stalled session whose failed attempt left the full three-entry shape
+    /// a real stall produces — partial assistant text, a thinking entry, and a
+    /// tool call — which is exactly the run length the chat log collapses.
+    async fn stall_setup_with_full_attempt()
+    -> (SessionPersistenceActor, BusAudit, RetryStalledSession) {
+        let (actor, audit) = test_actor_recording().await;
+        let _ = jinn_context_assembly::service::ensure_spawned(&actor.services.trouper_system);
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session
+                .append_stream_token("partial", jiff::Timestamp::now())
+                .expect("append first token");
+            session.begin_thinking(jiff::Timestamp::now());
+            session
+                .append_thinking_token("weighing options")
+                .expect("append thinking token");
+            if let Some(idx) = session.streaming_thinking_entry_index() {
+                session.finish_thinking_entry(idx);
+            }
+            let tool_call_index = session.history().len();
+            session.begin_tool_call(tool_call_index, "call_1", "read", jiff::Timestamp::now());
+            session.arm_stream(jiff::Timestamp::now());
+            state.session.active_session_id().clone()
+        };
+        (
+            actor,
+            audit,
+            RetryStalledSession {
+                session_id,
+                attempt: 2,
+                max_restarts: 3,
+            },
+        )
+    }
+
     /// A `SendToLlmProvider` dispatch for `session_id` at `dispatched_at`,
     /// built by deserializing the minimal payload shape (mirrors production:
     /// most fields default).
@@ -249,6 +286,54 @@ mod tests {
             handed_off.iter().any(|s| s.session_id == session_id),
             "DispatchTurn must be published to re-dispatch the turn"
         );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn handler_registers_the_discarded_attempt_as_an_expanded_block() {
+        // Given a stalled session whose attempt produced an assistant entry, a
+        // thinking entry, and a tool call — three entries, exactly the run
+        // length the chat log collapses by default.
+        let (actor, _audit, payload) = stall_setup_with_full_attempt().await;
+        let session_id = payload.session_id.clone();
+
+        // When the retry handler runs.
+        actor.on_retry_stalled_session(&payload).await;
+
+        // Then the whole attempt is excluded from context AND registered as a
+        // shown (expanded) block.
+        //
+        // The registration is the half that keeps the attempt readable: the
+        // chat log collapses any contiguous run of `!is_in_context()` entries
+        // at or past its collapse threshold and further than its proximity
+        // window from the tail, and it cannot tell a discarded stall from a
+        // block the user chose to ignore. Asserting membership rather than a
+        // rendered `VisualItem` list keeps this seam free of a dependency on
+        // the view slice — `build_visual_items` reads exactly this set to
+        // decide whether a block is shown.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let excluded: Vec<_> = session
+            .history()
+            .iter()
+            .filter(|e| !e.is_in_context())
+            .map(|e| e.id.clone())
+            .collect();
+        assert!(
+            excluded.len() >= 3,
+            "expected the whole attempt excluded, got {}",
+            excluded.len()
+        );
+
+        let shown = session.shown_ignored_blocks_snapshot();
+        for id in &excluded {
+            assert!(
+                shown.contains(id),
+                "discarded attempt entry {id:?} must be registered as an expanded \
+                 block, or it collapses into a hidden-entries line once the retried \
+                 generation runs past the proximity window"
+            );
+        }
     }
 
     #[rstest::rstest]
