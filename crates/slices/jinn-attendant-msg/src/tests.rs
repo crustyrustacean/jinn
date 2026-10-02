@@ -95,9 +95,10 @@ mod properties_tests {
     #![allow(clippy::expect_used, reason = "test code")]
 
     use crate::{
-        AttendantBehavior, AttendantPropertiesState, AttendantTrigger, BEHAVIOR_CHOICES,
-        OriginalValues, PickDirection, PropertyField, SetField, SetMode, TRIGGER_CHOICES,
-        attendant_properties_scope, attendant_seed_template_scope, pick_behavior, pick_trigger,
+        AttendantBehavior, AttendantModelSetting, AttendantPropertiesState, AttendantTrigger,
+        BEHAVIOR_CHOICES, MODEL_CHOICES, OriginalValues, PickDirection, PropertyField, SetField,
+        SetMode, TRIGGER_CHOICES, attendant_properties_scope, attendant_seed_template_scope,
+        pick_behavior, pick_model_setting, pick_trigger,
     };
     use jinn_core_types::{FilterMode, NameFilter};
     use std::collections::BTreeSet;
@@ -157,24 +158,89 @@ mod properties_tests {
     }
 
     #[rstest::rstest]
-    fn the_form_has_its_four_rows_in_display_order() {
+    fn model_choices_are_ordered_inherit_fixed() {
+        // Given the model choice row.
+
+        // When reading its values in display order.
+        let values: Vec<_> = MODEL_CHOICES.iter().map(|(v, _)| *v).collect();
+
+        // Then the row reads inherit, fixed — the default first, because the
+        // commonest reading of the row is "this attendant has no model of
+        // its own".
+        assert_eq!(
+            values,
+            vec![
+                AttendantModelSetting::Inherit,
+                AttendantModelSetting::Fixed
+            ]
+        );
+    }
+
+    #[rstest::rstest]
+    fn the_model_row_walks_one_choice_per_key() {
+        // Given a popup focused on the model row, reading the first choice.
+
+        // When picking right.
+        let mut popup = AttendantPropertiesState {
+            focus: PropertyField::Model,
+            ..AttendantPropertiesState::default()
+        };
+        popup.pick(PickDirection::Right);
+
+        // Then the setting moves one choice along, as on every other choice
+        // row — and only the setting moved.
+        assert_eq!(
+            popup.pending_model_setting,
+            AttendantModelSetting::Fixed
+        );
+        assert_eq!(popup.pending_trigger, AttendantTrigger::Manual);
+        assert_eq!(popup.pending_behavior, AttendantBehavior::Reset);
+    }
+
+    #[rstest::rstest]
+    fn picking_past_the_model_row_ends_clamps() {
+        // Given a popup focused on the model row, reading the last choice.
+
+        // When picking right.
+        let picked = pick_model_setting(AttendantModelSetting::Fixed, PickDirection::Right);
+
+        // Then the choice does not move: `l` means "right", and there is
+        // nothing to the right of the rightmost choice.
+        assert_eq!(picked, AttendantModelSetting::Fixed);
+    }
+
+    #[rstest::rstest]
+    fn the_model_row_is_never_caged_by_prep_mode() {
+        // Given a composing attendant's model row.
+
+        // When asking whether the row applies.
+        let applies = PropertyField::Model.applies_while_prepping();
+
+        // Then it does. Which provider an attendant runs under is settled
+        // while it is being composed, not after it is finished.
+        assert!(applies);
+    }
+
+    #[rstest::rstest]
+    fn the_form_has_its_rows_in_display_order() {
         // Given a popup whose cursor is on the first row.
 
-        // When moving down one row per press.
+        // When moving down one row per press, until the last row stops it.
         let mut popup = AttendantPropertiesState {
             pending_prep_mode: false,
             ..AttendantPropertiesState::default()
         };
         let mut visited = vec![popup.focus];
-        for _ in 0..5 {
+        for _ in 0..6 {
             popup.focus_next();
             visited.push(popup.focus);
         }
 
-        // Then the rows are the six the panel shows, in the order it shows
+        // Then the rows are the seven the panel shows, in the order it shows
         // them: what fires, what it sees, whether it is still being
-        // composed, what it may reach for, what it may know, and the text a
-        // run injects.
+        // composed, what it may reach for, what it may know, whose model it
+        // runs on, and the text a run injects. The template is last, because
+        // its editor places the text cursor at "every field above it".
         assert_eq!(
             visited,
             vec![
@@ -183,6 +249,7 @@ mod properties_tests {
                 PropertyField::PrepMode,
                 PropertyField::ToolSet,
                 PropertyField::SkillSet,
+                PropertyField::Model,
                 PropertyField::SeedTemplate,
             ]
         );
@@ -290,10 +357,11 @@ mod properties_tests {
             ..AttendantPropertiesState::default()
         };
 
-        // When moving up twice — enough to cross both dimmed rows.
-        popup.focus_previous();
-        popup.focus_previous();
-        popup.focus_previous();
+        // When moving up four times — enough to cross the model and skill
+        // rows and then both dimmed rows above the prep row.
+        for _ in 0..4 {
+            popup.focus_previous();
+        }
 
         // Then the cursor never lands above the prep row. The rows are on
         // screen but do not apply, so a cursor on one of them would be on a
@@ -311,8 +379,8 @@ mod properties_tests {
             ..AttendantPropertiesState::default()
         };
 
-        // When moving up five times — once per remaining row.
-        for _ in 0..5 {
+        // When moving up six times — once per remaining row.
+        for _ in 0..6 {
             popup.focus_previous();
         }
 
@@ -461,6 +529,7 @@ mod properties_tests {
                 prep_mode: false,
                 tool_set: None,
                 skill_set: None,
+                model_setting: AttendantModelSetting::Fixed,
                 template: "original".to_owned(),
             }),
             pending_trigger: AttendantTrigger::Manual,

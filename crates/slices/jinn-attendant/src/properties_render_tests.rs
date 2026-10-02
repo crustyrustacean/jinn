@@ -9,8 +9,8 @@
 )]
 
 use jinn_attendant_msg::{
-    AttendantBehavior, AttendantPropertiesState, AttendantTrigger, PopupStatus, PropertyField,
-    attendant_properties_slot,
+    AttendantBehavior, AttendantModelSetting, AttendantPropertiesState, AttendantTrigger,
+    MODEL_CHOICES, PopupStatus, PropertyField, attendant_properties_slot,
 };
 use jinn_slices::RenderFacts;
 use jinn_slices::cell::TypedCell;
@@ -284,6 +284,11 @@ fn popup_focused(focus: PropertyField) -> AttendantPropertiesState {
     }
 }
 
+/// The model every session carries, whether or not it owns it. Named here so
+/// the row tests can assert the string is *absent* rather than merely absent
+/// from an empty session.
+const A_SESSION_MODEL: &str = "zai/glm-4.7";
+
 #[rstest::rstest]
 #[test]
 fn focused_row_marker_and_label_are_yellow_only() {
@@ -378,7 +383,8 @@ fn selected_choice_uses_the_new_green_key() {
 #[case(2, "prep mode:")]
 #[case(3, "tool set:")]
 #[case(4, "skill set:")]
-#[case(5, "seed template:")]
+#[case(5, "model:")]
+#[case(6, "seed template:")]
 fn the_form_shows_a_row_at_a_given_offset(#[case] offset: u16, #[case] label: &str) {
     // Given a popup over a composed attendant.
     let buffer = render_properties(popup_focused(PropertyField::SeedTemplate));
@@ -391,6 +397,93 @@ fn the_form_shows_a_row_at_a_given_offset(#[case] offset: u16, #[case] label: &s
     assert!(
         row.contains(label),
         "expected {label:?} at offset {offset}, read: {row}"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn the_model_row_shows_only_the_setting_and_not_the_model() {
+    // Given a popup focused on the model row of an attendant holding a
+    // concrete model — every session has one, whether or not it owns it.
+    let popup = popup_focused(PropertyField::Model);
+    let buffer = render_properties(popup);
+    let row = highlighted_row_of(&buffer, PropertyField::Model);
+
+    // When reading that row.
+    let text = row_from_border(&buffer, row);
+
+    // Then it offers both settings and nothing else. The row declares
+    // ownership; printing the model would make it read as the control that
+    // chooses one, and there is no key here that does.
+    assert!(
+        text.contains("inherit / fixed"),
+        "the model row must offer both settings; read: {text}"
+    );
+    assert!(
+        !text.contains(A_SESSION_MODEL),
+        "the model row must not print the session's model; read: {text}"
+    );
+}
+
+#[rstest::rstest]
+#[case::inheriting(AttendantModelSetting::Inherit)]
+#[case::fixed(AttendantModelSetting::Fixed)]
+#[test]
+fn the_model_row_marks_its_current_setting_green(
+    #[case] setting: AttendantModelSetting,
+) {
+    // Given a popup whose model row reads one setting.
+    let popup = AttendantPropertiesState {
+        pending_model_setting: setting,
+        ..popup_focused(PropertyField::Model)
+    };
+    let buffer = render_properties(popup);
+    let row = highlighted_row_of(&buffer, PropertyField::Model);
+
+    // When reading the selected setting's foreground.
+    let chosen = MODEL_CHOICES
+        .iter()
+        .find(|(value, _)| *value == setting)
+        .map(|(_, label)| *label)
+        .expect("the setting is one of the row's choices");
+    let x = find_in_row(&buffer, row, chosen).expect("the chosen setting");
+
+    // Then it wears the selected-choice green, exactly as the trigger,
+    // behavior and set rows do.
+    assert_eq!(
+        fg_at(&buffer, x, row),
+        jinn_theme::default_theme().attendant_option_active,
+    );
+    // And the other is plain text.
+    let other = find_in_row(&buffer, row, "fixed").expect("a fixed choice");
+    let other = if other == x { find_in_row(&buffer, row, "inherit") } else { Some(other) };
+    if let Some(other) = other {
+        assert_eq!(fg_at(&buffer, other, row), PRIMARY_TEXT);
+    }
+}
+
+#[rstest::rstest]
+#[test]
+fn the_model_row_sits_between_the_skill_set_and_the_seed_template() {
+    // Given a popup with the cursor on the model row.
+    let buffer = render_properties(popup_focused(PropertyField::Model));
+    let top = body_top(&buffer);
+
+    // When reading the rows around it.
+    let above = row_from_border(&buffer, top + 4);
+    let below = row_from_border(&buffer, top + 6);
+
+    // Then it is last-but-one: the set rows stay together above it and the
+    // template stays last, because the template editor's row is computed as
+    // "every field above the template" and a row below it would put the text
+    // cursor a row off its own draft.
+    assert!(
+        above.contains("skill set:"),
+        "the skill set stays directly above the model row; read: {above}"
+    );
+    assert!(
+        below.contains("seed template:"),
+        "the seed template stays the last row; read: {below}"
     );
 }
 
@@ -425,6 +518,7 @@ fn row_is_card(buffer: &ratatui::buffer::Buffer, y: u16) -> bool {
 #[case::prep(PropertyField::PrepMode)]
 #[case::tools(PropertyField::ToolSet)]
 #[case::skills(PropertyField::SkillSet)]
+#[case::model(PropertyField::Model)]
 #[case::template(PropertyField::SeedTemplate)]
 #[test]
 fn help_overlay_shows_the_focused_field_when_toggled(#[case] field: PropertyField) {
@@ -452,6 +546,7 @@ fn help_overlay_shows_the_focused_field_when_toggled(#[case] field: PropertyFiel
 #[case::prep(PropertyField::PrepMode)]
 #[case::tools(PropertyField::ToolSet)]
 #[case::skills(PropertyField::SkillSet)]
+#[case::model(PropertyField::Model)]
 #[case::template(PropertyField::SeedTemplate)]
 #[test]
 fn the_help_card_is_not_on_screen_before_help_is_toggled(#[case] field: PropertyField) {
@@ -806,6 +901,7 @@ fn theme_key_defaults_to_the_age_fresh_green() {
 #[case::prep(PropertyField::PrepMode)]
 #[case::tools(PropertyField::ToolSet)]
 #[case::skills(PropertyField::SkillSet)]
+#[case::model(PropertyField::Model)]
 #[case::template(PropertyField::SeedTemplate)]
 #[test]
 fn the_help_card_leaves_the_field_it_describes_readable(#[case] field: PropertyField) {
@@ -833,6 +929,7 @@ fn the_help_card_leaves_the_field_it_describes_readable(#[case] field: PropertyF
 #[case::prep(PropertyField::PrepMode)]
 #[case::tools(PropertyField::ToolSet)]
 #[case::skills(PropertyField::SkillSet)]
+#[case::model(PropertyField::Model)]
 #[case::template(PropertyField::SeedTemplate)]
 #[test]
 fn the_help_card_sits_below_the_form_on_every_field(#[case] field: PropertyField) {
@@ -1164,6 +1261,7 @@ fn the_help_card_keeps_the_blank_line_between_its_lead_and_its_list(
 #[case::prep(PropertyField::PrepMode)]
 #[case::tools(PropertyField::ToolSet)]
 #[case::skills(PropertyField::SkillSet)]
+#[case::model(PropertyField::Model)]
 #[case::template(PropertyField::SeedTemplate)]
 #[test]
 fn every_field_has_a_help_card_even_on_a_short_terminal(#[case] field: PropertyField) {
@@ -1289,6 +1387,7 @@ fn highlighted_row_of(buffer: &ratatui::buffer::Buffer, field: PropertyField) ->
         PropertyField::PrepMode => "prep mode:",
         PropertyField::ToolSet => "tool set:",
         PropertyField::SkillSet => "skill set:",
+        PropertyField::Model => "model:",
         PropertyField::SeedTemplate => "seed template:",
     };
     for y in body_top(buffer)..buffer.area.height {
@@ -1305,6 +1404,7 @@ fn highlighted_row_of(buffer: &ratatui::buffer::Buffer, field: PropertyField) ->
 #[case::prep(PropertyField::PrepMode)]
 #[case::tools(PropertyField::ToolSet)]
 #[case::skills(PropertyField::SkillSet)]
+#[case::model(PropertyField::Model)]
 #[case::template(PropertyField::SeedTemplate)]
 #[test]
 fn the_help_card_is_framed_in_the_attendants_own_pink(#[case] field: PropertyField) {

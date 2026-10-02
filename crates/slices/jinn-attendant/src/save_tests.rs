@@ -105,12 +105,14 @@ impl SaveFixture {
             frozen_tools: OriginalValues::names_of(session.tool_filter()),
             pending_skill_set: OriginalValues::mode_of(session.skill_filter()),
             frozen_skills: OriginalValues::names_of(session.skill_filter()),
+            pending_model_setting: session.attendant_model_setting(),
             original: Some(OriginalValues {
                 trigger: session.attendant_trigger(),
                 behavior: session.attendant_behavior(),
                 prep_mode: session.attendant_is_prepping(),
                 tool_set: session.tool_filter().cloned(),
                 skill_set: session.skill_filter().cloned(),
+                model_setting: session.attendant_model_setting(),
                 template,
             }),
             ..AttendantPropertiesState::default()

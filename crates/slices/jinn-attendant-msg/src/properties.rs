@@ -1,12 +1,12 @@
-//! Attendant properties popup — the edit state for its six fields.
+//! Attendant properties popup — the edit state for its seven fields.
 //!
 //! The popup is a two-phase vim-style form over an attendant's trigger,
-//! behavior, prep mode, tool set, skill set, and seed template. `j`/`k` move
-//! the form cursor between fields, `h`/`l` act within the focused field, and
-//! `i` opens the seed-template editor on its own scope. Every edit stays
-//! pending — the popup never touches the session — until the user applies
-//! every field at once. The values the session had at open are snapshotted so
-//! leaving restores them exactly.
+//! behavior, prep mode, tool set, skill set, model, and seed template.
+//! `j`/`k` move the form cursor between fields, `h`/`l` act within the
+//! focused field, and `i` opens the seed-template editor on its own scope.
+//! Every edit stays pending — the popup never touches the session — until
+//! the user applies every field at once. The values the session had at open
+//! are snapshotted so leaving restores them exactly.
 //!
 //! Prep mode cages the two rows above it. While the attendant is being
 //! composed nothing runs, so its trigger and behavior are values the user
@@ -15,15 +15,18 @@
 //! cursor arrive and having the pick do nothing. The tool and skill rows sit
 //! *below* the prep row and are never caged: an attendant being composed
 //! still has a tool budget, and a frozen set is what the attendant is being
-//! composed *for*.
+//! composed *for*. The model row is never caged for the same reason: which
+//! provider an attendant will run under is settled while composing it, not
+//! after.
 //!
 //! Choice rows carry their display order and labels here ([`TRIGGER_CHOICES`],
-//! [`BEHAVIOR_CHOICES`]) so the renderer and the pick helpers share one
-//! source of truth; nothing downstream hardcodes a choice string.
+//! [`BEHAVIOR_CHOICES`], [`MODEL_CHOICES`]) so the renderer and the pick
+//! helpers share one source of truth; nothing downstream hardcodes a choice
+//! string.
 
 use std::collections::BTreeSet;
 
-use crate::{AttendantBehavior, AttendantTrigger};
+use crate::{AttendantBehavior, AttendantModelSetting, AttendantTrigger};
 use jinn_core_types::{FilterMode, NameFilter};
 use jinn_slices::LineInput;
 use jinn_slices::SlotKey;
@@ -79,6 +82,17 @@ pub const BEHAVIOR_CHOICES: &[(AttendantBehavior, &str)] = &[
 pub const SET_MODE_CHOICES: &[(SetMode, &str)] =
     &[(SetMode::Live, "live"), (SetMode::Frozen, "frozen")];
 
+/// The model row's choices in display order: first shown leftmost.
+///
+/// `inherit` is first because it is the default and the row is read far more
+/// often as "this attendant has no model of its own" than as "and it does".
+/// The labels are the settings' own names, so the row, the session blob, and
+/// the choice all say one word rather than two that have to be kept in step.
+pub const MODEL_CHOICES: &[(AttendantModelSetting, &str)] = &[
+    (AttendantModelSetting::Inherit, "inherit"),
+    (AttendantModelSetting::Fixed, "fixed"),
+];
+
 /// Whether an attendant's tools or skills are held fixed or keep growing.
 ///
 /// The two rows this names are the only place an attendant's capability set
@@ -115,6 +129,10 @@ pub enum PropertyField {
     /// Whether new skills are admitted automatically or refused. A two-state
     /// field, over the same shape as the tool set.
     SkillSet,
+    /// Whether the session's model belongs to this attendant or was inherited
+    /// with the parent's. A choice field, over two choices that are not
+    /// peers — the one on screen is what the session already holds.
+    Model,
     /// The seed text, edited through the template editor (`i`).
     SeedTemplate,
 }
@@ -135,7 +153,8 @@ impl PropertyField {
             Self::Behavior => Self::PrepMode,
             Self::PrepMode => Self::ToolSet,
             Self::ToolSet => Self::SkillSet,
-            Self::SkillSet | Self::SeedTemplate => Self::SeedTemplate,
+            Self::SkillSet => Self::Model,
+            Self::Model | Self::SeedTemplate => Self::SeedTemplate,
         };
         match stepped {
             Self::Trigger | Self::Behavior if prep_mode => self,
@@ -161,7 +180,8 @@ impl PropertyField {
             Self::PrepMode => Self::Behavior,
             Self::ToolSet => Self::PrepMode,
             Self::SkillSet => Self::ToolSet,
-            Self::SeedTemplate => Self::SkillSet,
+            Self::Model => Self::SkillSet,
+            Self::SeedTemplate => Self::Model,
         }
         .clamp_to(floor)
     }
@@ -203,6 +223,9 @@ impl PropertyField {
     /// should inject. So do the two set rows — a frozen tool or skill set is
     /// precisely the constraint a user composes an attendant *under*, so
     /// caging them would make the row useless for as long as it is needed.
+    /// And so does the model row: it says whether the attendant's model is
+    /// its own, which is one of the first things an attendant is being
+    /// composed *with* — the provider a future run will use.
     #[must_use]
     pub fn applies_while_prepping(self) -> bool {
         !matches!(self, Self::Trigger | Self::Behavior)
@@ -217,6 +240,7 @@ impl PropertyField {
             Self::PrepMode => "prep mode",
             Self::ToolSet => "tool set",
             Self::SkillSet => "skill set",
+            Self::Model => "model",
             Self::SeedTemplate => "seed template",
         }
     }
@@ -225,7 +249,7 @@ impl PropertyField {
 /// A field's position in display order, for comparing two of them.
 ///
 /// Declared after the enum rather than as a `rank` on it because a field's
-/// place in the *form* is the form's business: the enum names six settings,
+/// place in the *form* is the form's business: the enum names seven settings,
 /// and nothing about the settings themselves says which row they sit on.
 fn rank(field: PropertyField) -> u8 {
     match field {
@@ -234,7 +258,8 @@ fn rank(field: PropertyField) -> u8 {
         PropertyField::PrepMode => 2,
         PropertyField::ToolSet => 3,
         PropertyField::SkillSet => 4,
-        PropertyField::SeedTemplate => 5,
+        PropertyField::Model => 5,
+        PropertyField::SeedTemplate => 6,
     }
 }
 
@@ -286,6 +311,17 @@ pub fn pick_behavior(current: AttendantBehavior, direction: PickDirection) -> At
         .unwrap_or(current)
 }
 
+/// Picks the adjacent model choice, clamped at the row's ends.
+#[must_use]
+pub fn pick_model_setting(
+    current: AttendantModelSetting,
+    direction: PickDirection,
+) -> AttendantModelSetting {
+    pick_choice(MODEL_CHOICES, &current, direction)
+        .copied()
+        .unwrap_or(current)
+}
+
 /// The values an attendant had when the properties popup opened.
 ///
 /// Leaving the popup restores these; applying replaces them.
@@ -307,6 +343,12 @@ pub struct OriginalValues {
     pub tool_set: Option<NameFilter>,
     /// The frozen skill set at open time, as above.
     pub skill_set: Option<NameFilter>,
+    /// Whether the attendant's model was its own at open time.
+    ///
+    /// Held as the setting rather than as the model it decides about: the
+    /// setting is the fact, and the model is the value every session already
+    /// has whether or not it owns it.
+    pub model_setting: AttendantModelSetting,
     /// The seed template at open time.
     pub template: String,
 }
@@ -390,6 +432,8 @@ pub struct AttendantPropertiesState {
     pub skill_set_touched: bool,
     /// The skill names a Frozen skill set would be pinned to, as above.
     pub frozen_skills: Option<BTreeSet<String>>,
+    /// Whether `<enter>` would store the attendant's model into its entry.
+    pub pending_model_setting: AttendantModelSetting,
     /// The values the session had at open; `<esc>`/`<c-c>` restore them.
     /// `None` while the popup is closed.
     pub original: Option<OriginalValues>,
@@ -505,6 +549,10 @@ impl AttendantPropertiesState {
     /// live capability set, which this cell cannot reach; [`Self::set_mode`]
     /// is that operation, and a bare cycle here would freeze the row
     /// against nothing.
+    ///
+    /// The model row *is* pickable: it says whether the attendant owns the
+    /// model the session already holds, and every answer to that is decided
+    /// here — nothing outside the panel has to be read to make it.
     pub fn pick(&mut self, direction: PickDirection) {
         match self.focus {
             PropertyField::Trigger | PropertyField::Behavior if self.pending_prep_mode => {}
@@ -516,6 +564,9 @@ impl AttendantPropertiesState {
             }
             PropertyField::PrepMode => {
                 self.pending_prep_mode = !self.pending_prep_mode;
+            }
+            PropertyField::Model => {
+                self.pending_model_setting = pick_model_setting(self.pending_model_setting, direction);
             }
             PropertyField::ToolSet | PropertyField::SkillSet | PropertyField::SeedTemplate => {}
         }
@@ -623,6 +674,7 @@ impl AttendantPropertiesState {
         self.pending_prep_mode = original.prep_mode;
         self.restore_set(SetField::Tool, original.tool_set.as_ref());
         self.restore_set(SetField::Skill, original.skill_set.as_ref());
+        self.pending_model_setting = original.model_setting;
         self.seed_template = LineInput {
             input: original.template,
             cursor_pos,
@@ -736,6 +788,7 @@ impl AttendantPropertiesState {
                 self.frozen_skills.as_ref(),
                 self.original.as_ref().and_then(|o| o.skill_set.as_ref()),
             ),
+            model_setting: self.pending_model_setting,
             template: self.seed_template.input.clone(),
         });
         self.editor_original = None;
