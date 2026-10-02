@@ -77,12 +77,9 @@ pub fn rerun_in_state(
         }
     });
     let (entry, reset) = activation::prepare_manual_run(session);
-    let dispatch = entry.map(|entry| {
-        session.mark_turn_automated();
-        EnqueueUserMessage {
-            session_id: attendant_id.clone(),
-            entry,
-        }
+    let dispatch = entry.map(|entry| EnqueueUserMessage {
+        session_id: attendant_id.clone(),
+        entry,
     });
     Some((cancel, dispatch, reset))
 }

@@ -7,7 +7,6 @@
 //! others' conclusions.
 
 use crate::tool_types::ToolContext;
-use jinn_attendant_msg::AttendantTrigger;
 use jinn_chat_input_msg::EnqueueUserMessage;
 use jinn_core_types::chat_entry::ChatEntry;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
@@ -107,9 +106,9 @@ pub fn conclude_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 ///
 /// Marks the parent interacted — a programmatic enqueue does not, and without
 /// the mark `is_persistable()` gates every save, so the parent's turn would
-/// run and silently never reach disk. Also marks the parent's turn automated,
-/// so its completion does not fire its own attendants (the suppression that
-/// keeps a notify loop from spinning unattended).
+/// run and silently never reach disk. Nothing else about the parent's turn is
+/// altered: the notification is an ordinary user turn that may complete
+/// however many times the agent chooses to send another.
 pub fn notify_parent_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
         let Some(message) = argument(&call, "message") else {
@@ -128,7 +127,7 @@ pub fn notify_parent_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFutur
             return failed(call, "notify_parent is unavailable without a bus");
         };
 
-        let (parent_id, wake) = {
+        let parent_id = {
             let guard = state.read();
             let Some(caller) = guard.session.get(&session_id) else {
                 return failed(call, "calling session is not live");
@@ -141,23 +140,16 @@ pub fn notify_parent_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFutur
             let Some(parent_id) = caller.parent_session().clone() else {
                 return failed(call, "calling attendant has no parent session");
             };
-            (
-                parent_id,
-                caller.attendant_trigger() == AttendantTrigger::ParentCompleted,
-            )
+            parent_id
         };
 
-        // Mutate the parent: mark interacted (persistence gate) and mark the
-        // turn automated (self-retrigger suppression).
+        // Mark the parent interacted so its turn is persistable.
         {
             let mut guard = state.write();
             let Some(parent) = guard.session.get_mut(&parent_id) else {
                 return failed(call, "parent session is not live");
             };
             parent.mark_interacted();
-            if wake {
-                parent.mark_turn_automated();
-            }
         }
 
         // Wake the parent with a normal user turn. A `User`-kind entry is

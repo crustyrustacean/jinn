@@ -16,6 +16,9 @@ use jinn_kernel::common::state::State;
 use jinn_session_msg::{TurnCompleted, TurnOutcome};
 use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 
+/// The wait budget for a dispatch to land on the bus.
+const LONG: Duration = Duration::from_secs(10);
+
 /// The actor half of a bus-harness test, driven through the bus.
 struct TriggerBusActor {
     harness: TestHarness,
@@ -130,6 +133,68 @@ async fn trigger_does_not_cancel_the_attendants_descendants() {
         cancels.is_empty(),
         "the trigger must not cascade a cancel, got {cancels:?}"
     );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_triggered_attendant_fires_again_after_a_prior_fire() {
+    // Given a parent with a dispatchable parent-completed attendant, and the
+    // trigger actor live on the bus.
+    let harness = TestHarness::new().await;
+    let dispatched = harness
+        .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
+        .await;
+    let state = State::new(AppState::default());
+    let parent_id = {
+        let mut s = state.write();
+        let parent = jinn_session_state::ChatSessionState::new();
+        let parent_id = parent.session_id().clone();
+        s.session.insert(parent.clone());
+        let mut attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
+        // A fresh attendant is in prep mode, which is inert by design; a
+        // dispatchable one has to have been composed.
+        attendant.set_attendant_is_prepping(false);
+        attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
+        attendant.set_seed_template("check: <prior report>".to_owned());
+        attendant.append_attendant_report("prior finding".to_owned());
+        s.session.insert(attendant);
+        parent_id
+    };
+    let _actor = AttendantTriggerActor::spawn(
+        harness.system(),
+        AttendantTriggerActorDeps {
+            services: harness.services().await,
+            state: state.clone(),
+        },
+    );
+
+    // When the parent's turn completes successfully.
+    harness
+        .publish(TurnCompleted {
+            session_id: parent_id.clone(),
+            outcome: TurnOutcome::Succeeded,
+        })
+        .await;
+    let first =
+        await_recorded::<jinn_chat_input_msg::EnqueueUserMessage>(&dispatched, 1, LONG).await;
+
+    // When it completes a second time.
+    harness
+        .publish(TurnCompleted {
+            session_id: parent_id,
+            outcome: TurnOutcome::Succeeded,
+        })
+        .await;
+    let second =
+        await_recorded::<jinn_chat_input_msg::EnqueueUserMessage>(&dispatched, 1, LONG).await;
+
+    // Then the second completion fired the same attendant again. Nothing
+    // records that the first fire was automated, so a second one is not
+    // suppressed — ending the exchange is the agent's call, not the harness's.
+    assert_eq!(first.len(), 1);
+    assert_eq!(second.len(), 1);
+    assert_eq!(second[0].session_id, first[0].session_id);
 }
 
 #[rstest::rstest]

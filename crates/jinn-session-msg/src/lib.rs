@@ -154,19 +154,6 @@ pub enum TurnOutcome {
     Canceled,
 }
 
-/// Clear a session's automation marker so its next completed turn fires
-/// attendants again.
-///
-/// Published when a *user* submission supersedes an automated turn. The
-/// marker is otherwise set at an automated dispatch and survives until the
-/// next turn, so the trigger actor can read it when the outcome is decided.
-#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
-#[schema(description = "Clear a session's automation marker on user submission.")]
-pub struct ClearTurnAutomation {
-    /// The session whose marker should be cleared.
-    pub session_id: SessionId,
-}
-
 /// Session archived in persistent storage.
 /// Emitted by the session-store actor after marking a session as archived in
 /// SQLite. Emitted before the session-closed event so consumers can distinguish
@@ -246,7 +233,6 @@ pub struct SessionArchiveFailed {
 
 impl jinn_slices::BusMessage for PhaseKind {}
 impl jinn_slices::BusMessage for MarkSessionInteracted {}
-impl jinn_slices::BusMessage for ClearTurnAutomation {}
 impl jinn_slices::BusMessage for RetryStalledSession {}
 impl jinn_slices::BusMessage for SessionClosed {}
 impl jinn_slices::BusMessage for SessionRemoved {}

@@ -164,7 +164,7 @@ async fn notify_parent_enqueues_a_user_message_into_the_parent() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn notify_parent_marks_the_parent_interacted_and_automated() {
+async fn notify_parent_marks_the_parent_interacted() {
     // Given an attendant with a ParentCompleted trigger and a fresh parent.
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
@@ -182,18 +182,15 @@ async fn notify_parent_marks_the_parent_interacted_and_automated() {
     // When the notify tool runs.
     let result =
         notify_parent_execute(call("notify_parent", r#"{"message":"wake up"}"#), tool_ctx).await;
-    let _ = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
+    let wakes = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
 
-    // Then the parent is interacted (persistable) and its turn is marked
-    // automated (self-retrigger suppression).
+    // Then the parent is interacted (persistable) and its turn is a normal
+    // enqueue — the notification is not a suppressed, internal wake.
     assert!(result.success);
+    assert_eq!(wakes.len(), 1);
     let guard = state.read();
     let parent = guard.session.get(&parent_id).expect("parent");
     assert!(parent.has_interacted(), "parent must be persistable");
-    assert!(
-        parent.is_turn_automated(),
-        "parent's turn must be automated"
-    );
 }
 
 #[rstest::rstest]
