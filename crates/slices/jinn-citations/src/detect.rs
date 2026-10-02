@@ -1,7 +1,6 @@
 //! Shape-based citation detection — pure functions, no I/O.
 //!
-//! Verbatim port of the dormant `url-citations` plugin's detector
-//! (`plugins/url-citations/src/detect.rs`), over
+//! Port of the retired `url-citations` component's detector, over
 //! [`jinn_core_types::UrlCitation`] (span fields stay `None` — shape
 //! detection has no assistant-text offsets).
 //!

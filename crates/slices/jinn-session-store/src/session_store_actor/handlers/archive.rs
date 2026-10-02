@@ -80,8 +80,8 @@ impl SessionStoreActor {
             .reader::<jinn_status_bar_msg::StatusBarState>(&jinn_status_bar_msg::status_bar_slot())
         else {
             // The status bar is not activated in every host (a headless test
-            // app, a plugin runtime). A hint with nowhere to land must not be
-            // an error of its own.
+            // app, an embedder running a bare actor set). A hint with nowhere
+            // to land must not be an error of its own.
             tracing::debug!(%error, "no status bar to report a failed archive to");
             return;
         };

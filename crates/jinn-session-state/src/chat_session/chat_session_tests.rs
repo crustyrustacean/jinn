@@ -6888,3 +6888,44 @@ fn the_behavior_does_not_change_the_trigger_question() {
     // two independent facts, and the sidebar marks them separately.
     assert_eq!(fires, [true, true]);
 }
+
+#[rstest::rstest]
+#[test]
+fn a_history_removal_ahead_of_a_streaming_tool_call_does_not_strand_its_delta() {
+    // Given a sending session with a tool call mid-argument-stream and an
+    // entry ahead of it that is about to be removed.
+    let mut session = ChatSessionState::new();
+    session.begin_sending();
+    session.push_entry(ChatEntry::user("edit the file"));
+    session.push_entry(ChatEntry::tool_call(
+        "tc-keep",
+        "write",
+        r#"{"content":"first"}"#,
+    ));
+    session.begin_tool_call(0, "tc-live", "write", jiff::Timestamp::now());
+    let live = session
+        .history()
+        .iter()
+        .position(|e| matches!(&e.kind, jinn_core_types::ChatEntryKind::ToolCall { id, .. } if id == "tc-live"))
+        .expect("live tool call entry");
+
+    // When an entry ahead of it is removed, shrinking every later index.
+    session.remove_history_entry_at(0);
+
+    // Then the delta still lands on the entry it started on.
+    let r = session.append_tool_call_delta(0, r#"-second"}"#);
+    assert!(r.is_ok(), "delta refused after a removal: {r:?}");
+    let moved = session
+        .history()
+        .iter()
+        .position(|e| matches!(&e.kind, jinn_core_types::ChatEntryKind::ToolCall { id, .. } if id == "tc-live"))
+        .expect("live tool call entry after removal");
+    assert_eq!(moved, live - 1, "the entry did not move with the removal");
+    if let jinn_core_types::ChatEntryKind::ToolCall { arguments, .. } =
+        &session.history()[moved].kind
+    {
+        assert_eq!(arguments, r#"-second"}"#, "delta landed on the wrong entry");
+    } else {
+        panic!("expected a ToolCall entry");
+    }
+}

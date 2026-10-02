@@ -333,6 +333,11 @@ impl ChatSessionState {
     /// Removes the history entry at `index`. Returns whether it existed.
     ///
     /// Editor-only. Callers must remove in descending index order.
+    ///
+    /// Every live streaming index above `index` is shifted down by one, because
+    /// the removal moves those entries with it. Skipping this would silently
+    /// aim the next argument delta at whatever entry slid into the vacated
+    /// slot — the delta is accepted, so nothing reports the mistake.
     #[expect(
         clippy::same_name_method,
         reason = "trait impl delegates to this inherent method; callers use both"
@@ -340,6 +345,10 @@ impl ChatSessionState {
     pub(crate) fn remove_history_entry_at(&mut self, index: usize) -> bool {
         if index < self.core.history_work.history.len() {
             self.core.history_work.history.remove(index);
+            self.core
+                .ephemeral
+                .machine
+                .shift_streaming_indices_after_remove_at(index);
             true
         } else {
             false
@@ -1350,6 +1359,11 @@ impl ChatSessionState {
     ///
     /// Called when `ToolUseStarted` arrives - the tool name is known but arguments
     /// are still streaming in.
+    ///
+    /// Registration happens in whichever busy phase is current, not only in
+    /// `Streaming`: a model that opens by calling a tool emits no text token, so
+    /// it never reaches `Streaming` and its entire argument stream would
+    /// otherwise be discarded.
     pub fn begin_tool_call(
         &mut self,
         index: usize,
@@ -1359,20 +1373,26 @@ impl ChatSessionState {
     ) {
         self.ensure_assistant_entry(dispatched_at);
         self.core.identity.last_provider_activity_at = Timestamp::now();
+        // Bail out *before* pushing the entry. A registration that cannot
+        // succeed must not leave an orphaned entry behind: it would render as a
+        // bare tool name for the rest of the stream, and every later delta
+        // addressed to it would be refused.
+        if matches!(self.core.ephemeral.machine.kind(), PhaseKind::Idle) {
+            tracing::warn!(
+                index,
+                "begin_tool_call called with no turn in flight - ignoring"
+            );
+            return;
+        }
         let mut entry = ChatEntry::tool_call(id, name, "");
         entry.timing = EntryTiming::streamed(dispatched_at);
         entry.timing.set_first_token();
         let history_index = self.push_entry(entry);
-        let Some(indices) = self
-            .core
-            .ephemeral
-            .machine
-            .streaming_tool_call_indices_mut()
-        else {
+        let Some(indices) = self.core.ephemeral.machine.active_tool_call_indices_mut() else {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
                 index,
-                "begin_tool_call called while not streaming - ignoring"
+                "begin_tool_call had no tool-call map - index will not receive deltas"
             );
             return;
         };

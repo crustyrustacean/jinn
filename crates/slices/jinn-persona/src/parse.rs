@@ -1,6 +1,6 @@
 //! Persona markdown parsing.
 //!
-//! Ported from the retired `persona-loader` plugin: `+++`-delimited TOML
+//! Ported from the retired `persona-loader` component: `+++`-delimited TOML
 //! frontmatter (`name`, optional `description`) followed by the body.
 //! The wire hop's `Option<String>` description is collapsed here — the
 //! domain `Persona` carries an empty string when the frontmatter omits

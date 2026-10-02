@@ -1,8 +1,8 @@
 //! Tool-call watchdog actor — cancels turns stuck in a tool-failure spiral.
 //!
-//! Verbatim trouper port of the dormant `tool-call-watchdog` plugin's
-//! accumulator (`plugins/tool-call-watchdog/src/watchdog.rs`): one
-//! saturating counter per session. A failed [`ToolExecutionCompleted`]
+//! Verbatim trouper port of the retired `tool-call-watchdog` component's
+//! accumulator: one saturating counter per session. A failed
+//! [`ToolExecutionCompleted`]
 //! increments it, a successful one debits it by one (floor at zero), and
 //! reaching the configured maximum trips the watchdog — the actor pushes
 //! the trip marker ([`PushChatEntry`]) followed by

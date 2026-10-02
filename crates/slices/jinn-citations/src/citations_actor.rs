@@ -1,9 +1,8 @@
 //! Citations actor — detects citable web sources in tool traffic and
 //! flushes them once per finished turn.
 //!
-//! Verbatim trouper port of the dormant `url-citations` plugin's
-//! lifecycle (`plugins/url-citations/src/main.rs`): subscribes to
-//! [`ToolCallReceived`] / [`ToolExecutionCompleted`] / [`StreamCompleted`]
+//! Port of the retired `url-citations` component's lifecycle: subscribes
+//! to [`ToolCallReceived`] / [`ToolExecutionCompleted`] / [`StreamCompleted`]
 //! and detects citations by shape (see [`crate::detect`]) — URLs in
 //! tool-call arguments, `{url/link, title}` objects in successful
 //! result JSON, and the `web-search` DuckDuckGo carve-out. Detections
@@ -12,7 +11,7 @@
 //! aborted turns retain the buffer so a later successful turn still
 //! surfaces the sources.
 //!
-//! Ordering note (carried from the plugin era): the fabric delivers
+//! Ordering note (inherited from the retired component): the fabric delivers
 //! events per-publishing-actor in order, and the tool orchestrator
 //! publishes `ToolCallReceived`/`ToolExecutionCompleted` along the tool
 //! loop ahead of the stream's terminal `StreamCompleted` — so a flush

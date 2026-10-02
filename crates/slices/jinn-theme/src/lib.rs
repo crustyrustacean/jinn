@@ -4,7 +4,7 @@
 //! [`jinn_theme_msg::ThemeEntries`]: the ordered theme selection the theme
 //! picker displays and the app-state actor resolves the persisted theme
 //! name against. `activate` scans the user and system theme directories
-//! once — the same behavior the retired themes plugin had: one
+//! once — the same behavior the retired themes component had: one
 //! bad file never drops the batch, and the user directory shadows the
 //! system directory for same-name themes.
 

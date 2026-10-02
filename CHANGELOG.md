@@ -1,5 +1,9 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Do not make edits)**
 
+## (development)
+
+- Fix display bug wrt `write` tool. It should now display immediately as tokens stream in.
+
 ## 2026-10-02 v1.3.0
 
 - Agents should be less likely to use the `interactive_term` `max_duration_seconds` parameter as a sleep function.
