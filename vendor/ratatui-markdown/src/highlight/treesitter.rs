@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::sync::{Arc, OnceLock};
+
 use parking_lot::Mutex;
 
 use tree_sitter_highlight::Highlighter;
@@ -313,6 +316,60 @@ fn build_config(entry: &LangEntry) -> Option<tree_sitter_highlight::HighlightCon
     Some(config)
 }
 
+/// Compiled highlight configurations, keyed by grammar and query.
+///
+/// `HighlightConfiguration::new` parses *and compiles* the highlight query at
+/// runtime — a fixed cost of several milliseconds for a large grammar, paid in
+/// full on every `highlight()` call. It is the dominant cost of highlighting and
+/// it does not depend on the code being highlighted, so a configuration is built
+/// once per grammar and reused thereafter.
+///
+/// Bounded by the set of grammars compiled into the binary (fixed by cargo
+/// features), so the map cannot grow without bound. A query that fails to build
+/// is deliberately not cached, leaving that path to degrade on every call
+/// exactly as it did before.
+fn config_cache() -> &'static Mutex<
+    HashMap<
+        (tree_sitter::Language, &'static str),
+        Arc<tree_sitter_highlight::HighlightConfiguration>,
+    >,
+> {
+    static CACHE: OnceLock<
+        Mutex<
+            HashMap<
+                (tree_sitter::Language, &'static str),
+                Arc<tree_sitter_highlight::HighlightConfiguration>,
+            >,
+        >,
+    > = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// The compiled configuration for `entry`, built once per grammar.
+fn cached_config(entry: &LangEntry) -> Option<Arc<tree_sitter_highlight::HighlightConfiguration>> {
+    let mut cache = config_cache().lock();
+    let key = (entry.language.clone(), entry.highlights_query);
+    if let Some(config) = cache.get(&key) {
+        return Some(Arc::clone(config));
+    }
+    let config = Arc::new(build_config(entry)?);
+    cache.insert(key, Arc::clone(&config));
+    Some(config)
+}
+
+// Compile-time proof that a cached configuration can be shared across threads:
+// `HighlightConfiguration` is immutable and its fields are all `Send + Sync`, so
+// the `Arc` it lives behind is safe to hand to any thread. A `Highlighter` is
+// not, which is why the cache stores configurations rather than highlighters.
+#[cfg(test)]
+const _: fn() = || {
+    fn _assert_shared_config(c: &Arc<tree_sitter_highlight::HighlightConfiguration>) {
+        fn require_send_sync<T: Send + Sync>() {}
+        require_send_sync::<Arc<tree_sitter_highlight::HighlightConfiguration>>();
+        let _ = c;
+    }
+};
+
 pub struct TreeSitterHighlighter {
     highlighter: Mutex<Highlighter>,
 }
@@ -349,7 +406,7 @@ impl CodeHighlighter for TreeSitterHighlighter {
             Some(e) => e,
             None => return Vec::new(),
         };
-        let config = match build_config(&entry) {
+        let config = match cached_config(&entry) {
             Some(c) => c,
             None => return Vec::new(),
         };
@@ -392,6 +449,8 @@ impl CodeHighlighter for TreeSitterHighlighter {
 
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, Instant};
+
     use super::*;
     use ratatui::style::{Color, Modifier, Style};
 
@@ -481,5 +540,95 @@ mod tests {
         let _ = hl.highlight("rust", "fn a() {}");
         let _ = hl.highlight("rust", "fn b() {}");
         // If we got here, the second lock() did not panic.
+    }
+
+    /// Ceiling on a repeat highlight in an unoptimized test build. The cached
+    /// path costs well under a tenth of a millisecond here; recompiling the
+    /// query costs tens of milliseconds. Anything near this bound means the
+    /// configuration cache stopped working.
+    const WARM_HIGHLIGHT_BUDGET: Duration = Duration::from_millis(1);
+
+    #[test]
+    fn repeat_highlight_reuses_the_compiled_configuration() {
+        // Given a highlighter that has already compiled the rust configuration.
+        let hl = TreeSitterHighlighter::new();
+        let code = "fn main() { println!(\"hi\"); }";
+        assert!(!hl.highlight("rust", code).is_empty());
+
+        // When highlighting the same language again.
+        let started = Instant::now();
+        let segments = hl.highlight("rust", code);
+        let elapsed = started.elapsed();
+
+        // Then the segments are still produced, and no query compilation was paid.
+        assert!(!segments.is_empty(), "rust should still highlight");
+        assert!(
+            elapsed < WARM_HIGHLIGHT_BUDGET,
+            "a cached configuration must make a repeat highlight cheap, took {elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn a_repeated_highlight_produces_identical_segments() {
+        // Given a highlighter warmed on a snippet.
+        let hl = TreeSitterHighlighter::new();
+        let code = "fn main() { let x: u32 = 1; }";
+        let first = hl.highlight("rust", code);
+
+        // When highlighting the same snippet again.
+        let second = hl.highlight("rust", code);
+
+        // Then the cached configuration renders exactly what the fresh one did:
+        // same segment boundaries, same styles.
+        let shape = |segments: &[StyleSegment]| -> Vec<(usize, usize, Style)> {
+            segments.iter().map(|s| (s.start, s.end, s.style)).collect()
+        };
+        assert_eq!(shape(&first), shape(&second));
+    }
+
+    #[test]
+    fn a_query_that_fails_to_build_is_not_cached() {
+        // Given an entry whose query does not compile.
+        let entry = LangEntry {
+            language: tree_sitter_rust::LANGUAGE.into(),
+            highlights_query: "(does_not_exist) @comment",
+        };
+        let first = cached_config(&entry);
+        let second = cached_config(&entry);
+
+        // Then both attempts fail, so the failure path degrades on every call
+        // rather than being memoised into a permanent miss.
+        assert!(first.is_none());
+        assert!(second.is_none());
+        // And nothing was stored for it.
+        assert_eq!(
+            config_cache()
+                .lock()
+                .keys()
+                .filter(|(lang, _)| *lang == entry.language)
+                .count(),
+            1,
+            "only the valid rust query should be cached for this grammar"
+        );
+    }
+
+    #[test]
+    fn a_cached_configuration_is_shared_between_highlighters() {
+        // Given two independent highlighters.
+        let first = TreeSitterHighlighter::new();
+        let second = TreeSitterHighlighter::new();
+        first.highlight("rust", "fn a() {}");
+
+        // When the second one highlights the same language.
+        let started = Instant::now();
+        let segments = second.highlight("rust", "fn b() {}");
+        let elapsed = started.elapsed();
+
+        // Then the cache is process-wide, not per highlighter, so it is cheap too.
+        assert!(!segments.is_empty(), "rust should still highlight");
+        assert!(
+            elapsed < WARM_HIGHLIGHT_BUDGET,
+            "the configuration cache must be shared across highlighters, took {elapsed:?}"
+        );
     }
 }

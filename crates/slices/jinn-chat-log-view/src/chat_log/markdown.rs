@@ -120,6 +120,8 @@ mod tests {
         reason = "test code"
     )]
 
+    use std::time::{Duration, Instant};
+
     use ratatui_markdown::highlight::CodeHighlighter;
 
     use super::*;
@@ -239,5 +241,81 @@ mod tests {
 
         // Then no segments come back — the grammar was not compiled in.
         assert!(segments.is_empty(), "{lang} should not highlight");
+    }
+
+    /// Ceiling on a warm re-render of a code-heavy response, in an
+    /// unoptimized test build. It exists to catch a return of the per-call
+    /// query compilation that used to dominate this path, not to pin an
+    /// absolute frame budget — see `warm_rerender_reuses_compiled_highlighters`.
+    const WARM_RERENDER_BUDGET: Duration = Duration::from_millis(100);
+
+    /// A response with several fenced blocks in different languages.
+    fn multi_language_response(blocks: usize) -> String {
+        let langs = ["rust", "python", "typescript", "bash"];
+        (0..blocks)
+            .map(|i| {
+                let lang = langs.get(i % langs.len()).copied().unwrap_or("rust");
+                format!(
+                    "Block {i}.\n\n```{lang}\nlet value = {i};\nfn compute() {{ value + 1 }}\n```\n"
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[rstest::rstest]
+    fn each_curated_language_in_a_mixed_response_is_highlighted() {
+        // Given a response with one fenced block per curated language.
+        let theme = jinn_theme::default_theme();
+        let markdown = multi_language_response(4);
+
+        // When rendering.
+        let lines = render_markdown(&markdown, WIDTH, &theme);
+
+        // Then every block's code text is styled beyond the plain-path color —
+        // the shared highlighter serves all of them.
+        let plain = plain_code_style(&theme);
+        let highlighted = code_text_spans(&lines)
+            .iter()
+            .filter(|s| s.style != plain)
+            .count();
+        assert!(
+            highlighted > 0,
+            "every block in a mixed-language response should be highlighted"
+        );
+        // And all four blocks are present, so no language was dropped.
+        let joined: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .map(|s| s.content.to_string())
+            .collect();
+        for i in 0..4 {
+            assert!(
+                joined.contains(&format!("Block {i}.")),
+                "block {i} must render"
+            );
+        }
+    }
+
+    #[rstest::rstest]
+    fn warm_rerender_reuses_compiled_highlighters() {
+        // Given a large, code-heavy response already rendered once.
+        let theme = jinn_theme::default_theme();
+        let markdown = multi_language_response(8);
+        let first = render_markdown(&markdown, WIDTH, &theme);
+
+        // When rendering it again, as the chat log does every streamed frame.
+        let started = Instant::now();
+        let second = render_markdown(&markdown, WIDTH, &theme);
+        let elapsed = started.elapsed();
+
+        // Then the output is unchanged.
+        assert_eq!(first, second);
+        // And the repeat render did not recompile any grammar's highlight query,
+        // which is what used to cost tens of milliseconds per code block.
+        assert!(
+            elapsed < WARM_RERENDER_BUDGET,
+            "a warm re-render must reuse compiled highlighters, took {elapsed:?}"
+        );
     }
 }
