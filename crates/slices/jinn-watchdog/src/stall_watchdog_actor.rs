@@ -307,9 +307,14 @@ impl StallWatchdogActor {
     ///
     /// Arming at dispatch — not first token — covers the silent
     /// HTTP-handshake gap. A tool-loop turn produces one dispatch per
-    /// generation, so each re-dispatch re-arms naturally. The restart
-    /// budget survives the re-arm: consecutive stalls within one turn
-    /// accumulate.
+    /// generation, so each re-dispatch re-arms naturally. Consecutive stalls
+    /// within one turn accumulate against the budget.
+    ///
+    /// The budget is deliberately *not* cleared here. A stall retry re-dispatches
+    /// through a fresh `SendToLlmProvider`, which lands in this same method —
+    /// so clearing the count on arm would restart every retry at attempt 1 and
+    /// the budget could never exhaust. The budget is therefore cleared by the
+    /// surrender path instead, where the turn is genuinely over.
     pub fn on_stream_start(&mut self, session_id: &SessionId, now_ms: u64) {
         let stall = self.sessions.entry(session_id.clone()).or_default();
         stall.armed = true;
@@ -413,6 +418,16 @@ fn trip(
         ];
     }
     stall.armed = false;
+    // The turn is over and the stream is being cancelled. Drop the exhausted
+    // budget so the session starts clean: the watchdog cancels the dispatch
+    // it emits here, and that cancellation arrives as a `Canceled`
+    // `StreamCompleted`, which only disarms — it cannot distinguish this
+    // self-inflicted cancel from a user's ESC. Leaving `restarts` at its
+    // ceiling would carry into the next turn the user starts, and every
+    // subsequent stream would be cancelled on its first tick without ever
+    // being given a stall window. A user who sends a new message after a
+    // give-up is re-establishing control, not retrying the failed turn.
+    stall.restarts = 0;
     vec![
         StallAction::Marker(session.clone(), give_up_text(max_restarts)),
         StallAction::CancelStream(session),
@@ -739,6 +754,38 @@ mod tests {
         // Then the watchdog surrenders — tokens on a stream that keeps dying
         // never buy more attempts.
         assert_give_up(&actions, &session);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn give_up_does_not_poison_a_later_dispatched_turn() {
+        // Given a session that exhausted the budget and was given up on.
+        let session = SessionId::new();
+        let mut actor = watchdog(60, 3).await;
+        actor.on_stream_start(&session, 0);
+        // Each restart re-windows the clock from its own tick, so the give-up
+        // lands one window after the third restart.
+        assert_restart(&actor.on_tick(60_000), &session, 1);
+        assert_restart(&actor.on_tick(120_000), &session, 2);
+        assert_restart(&actor.on_tick(180_000), &session, 3);
+        assert_give_up(&actor.on_tick(240_000), &session);
+
+        // When the user sends a brand new message and the session dispatches a
+        // fresh generation.
+        actor.on_stream_start(&session, 600_000);
+
+        // Then that new generation gets the full stall window before the
+        // watchdog judges it — the exhausted budget belonged to the turn that
+        // already surrendered.
+        let actions = actor.on_tick(659_000);
+        assert!(
+            actions.is_empty(),
+            "a newly dispatched turn must not be killed immediately; got: {actions:?}"
+        );
+
+        // And if it does stall, it is a first offense, so it is retried rather
+        // than surrendered.
+        assert_restart(&actor.on_tick(720_000), &session, 1);
     }
 
     #[rstest::rstest]
