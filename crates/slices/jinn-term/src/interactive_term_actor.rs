@@ -41,6 +41,7 @@ use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
 
+use crate::key_encoding::encode_input;
 use crate::pty_session::{PtySession, TermExitInfo};
 use crate::screen_task::{ScreenHandle, ScreenWiring};
 use jinn_kernel::common::services::bus_service::BusService;
@@ -50,7 +51,7 @@ use jinn_term_msg::command::{
     SendTermOutcome, SpawnTerm, SpawnTermOutcome, TermScreen,
 };
 use jinn_term_msg::event::TermScreenUpdated;
-use jinn_term_msg::settle::{encode_input, should_settle};
+use jinn_term_msg::settle::should_settle;
 use jinn_term_msg::takeover::TermControls;
 
 /// How many transcript screens the kill result reports.

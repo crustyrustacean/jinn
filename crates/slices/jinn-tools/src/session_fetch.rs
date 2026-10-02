@@ -6,6 +6,7 @@
 //! (live state), never addresses.
 
 use crate::tool_types::ToolContext;
+use crate::tool_types::failed_result;
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_session_store_msg::TranscriptWindow;
@@ -246,15 +247,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     let tool_name = call.name;
 
     Box::pin(async move {
-        let fail = |msg: String| ToolResult {
-            tool_call_id: tool_call_id.clone(),
-            name: tool_name.clone(),
-            content: format!("Error: {msg}"),
-            success: false,
-            full_content: None,
-            truncation: None,
-            pin_position: None,
-        };
+        let fail = |msg: String| failed_result(&tool_call_id, &tool_name, &msg);
 
         let args = match parse_args(&args_str) {
             Ok(v) => v,

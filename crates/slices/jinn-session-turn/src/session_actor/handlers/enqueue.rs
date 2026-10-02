@@ -615,7 +615,7 @@ mod tests {
         // No history entry because the message was queued, not pushed.
         assert_eq!(session.history().len(), 0);
         // The queue should have the message.
-        assert_eq!(session.queue().len(), 1);
+        assert_eq!(session.message_queue().len(), 1);
     }
 
     #[rstest::rstest]
@@ -987,7 +987,7 @@ mod tests {
 
         // And no item was queued (we dispatched inline, not via the queue).
         assert!(
-            session.queue().is_empty(),
+            session.message_queue().is_empty(),
             "resume from Idle should not enqueue; it dispatches inline"
         );
 

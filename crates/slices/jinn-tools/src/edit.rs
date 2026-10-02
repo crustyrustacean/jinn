@@ -10,28 +10,17 @@ mod engine;
 mod line_ending;
 mod response;
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
+use crate::tool_paths::resolve_path;
 use crate::tool_types::ToolContext;
+use crate::tool_types::unprefixed_failure;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 
 use super::BoxedToolFuture;
 use super::input_bounds;
 use line_ending::{detect_line_ending, normalize_to_lf, restore_line_endings, strip_bom};
 use response::{build_changed_snippet, format_success_response};
-
-/// Construct a failure [`ToolResult`] from a `call` and error `content`.
-fn err_result(call: &ToolCall, content: String) -> ToolResult {
-    ToolResult {
-        tool_call_id: call.id.clone(),
-        name: call.name.clone(),
-        content,
-        success: false,
-        full_content: None,
-        truncation: None,
-        pin_position: None,
-    }
-}
 
 /// Construct a success [`ToolResult`] from a `call` and `content`.
 fn ok_result(call: &ToolCall, content: String) -> ToolResult {
@@ -96,33 +85,23 @@ Prefer editing existing files; never write new files unless required."#
     }
 }
 
-/// Resolves a path against the CWD if relative, returns absolute as-is.
-fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
-    let p = Path::new(path);
-    if p.is_absolute() {
-        p.to_owned()
-    } else {
-        cwd.join(p)
-    }
-}
-
 /// Executes the `edit` built-in tool.
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
         let args = match parse_args(&call.arguments) {
             Ok(v) => v,
-            Err(e) => return err_result(&call, e),
+            Err(e) => return unprefixed_failure(&call, e),
         };
 
         if args.file_path.is_empty() {
-            return err_result(
+            return unprefixed_failure(
                 &call,
                 "`file_path` is required. Provide the file path, e.g. \"src/main.rs\".".to_owned(),
             );
         }
 
         if args.old_string.is_empty() {
-            return err_result(
+            return unprefixed_failure(
                 &call,
                 "`old_string` must be non-empty and match existing file content exactly."
                     .to_owned(),
@@ -144,7 +123,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         {
             let new_lines: Vec<&str> = args.new_string.split('\n').collect();
             if input_bounds::check_repetition(&new_lines).is_err() {
-                return err_result(
+                return unprefixed_failure(
                     &call,
                     format!(
                         "[E_EDIT_DEGENERATE] `new_string` has a run of ≥{} identical \n                         consecutive lines. This is usually a model \n                         decoding loop. Re-issue the edit without the repeated lines.",
@@ -159,7 +138,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let raw_content = match tokio::fs::read_to_string(&resolved).await {
             Ok(c) => c,
             Err(e) => {
-                return err_result(
+                return unprefixed_failure(
                     &call,
                     format!("failed to read file '{}': {e}", resolved.display()),
                 );
@@ -181,10 +160,10 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
         let occurrences = engine::count_occurrences(&normalized, &old_string);
         if occurrences == 0 {
-            return err_result(&call, engine::not_found_error(&old_string));
+            return unprefixed_failure(&call, engine::not_found_error(&old_string));
         }
         if occurrences > 1 && !args.replace_all {
-            return err_result(&call, engine::not_unique_error(&old_string, occurrences));
+            return unprefixed_failure(&call, engine::not_unique_error(&old_string, occurrences));
         }
 
         let new_content =
@@ -202,7 +181,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         };
 
         if let Err(msg) = write_atomic(&resolved, &final_content, orig_mode.as_ref()).await {
-            return err_result(&call, msg);
+            return unprefixed_failure(&call, msg);
         }
 
         // Build a cat -n snippet of the changed region for chaining.

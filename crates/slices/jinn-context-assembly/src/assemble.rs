@@ -24,30 +24,26 @@ use jinn_skills::format_skills_for_prompt;
 use jinn_slices::AssembledPrompt;
 use jinn_slices::SystemPrompt;
 
-///
-/// Reads all context (skills, persona, context files, tools, history) from
-/// [`AppState`] in one read-lock scope, produces messages and counts tokens.
-///
-/// # Assembly pipeline
-///
-/// 1. Read skills, persona, context files, tools, history from state.
-/// 2. Split history into TOP/BOTTOM pins and working history.
-/// 3. Compose the system prompt from per-section builders.
-/// 4. Convert history (pins and working) to messages via [`entries_to_messages`].
-/// 5. Re-inject pins in correct positions.
-/// 6. Count tokens in the system prompt and all assembled messages.
-/// 7. Return [`AssembledPrompt`].
-///
-/// # Panics
-///
-/// Panics if the given `session_id` does not exist in the session map.
-#[must_use]
 /// Assembles a complete LLM prompt from caller-provided inputs, in a
 /// single pure pass.
 ///
 /// Reads nothing from any shared state: every field comes from
-/// [`AssemblyInputs`]. Splits pinned entries, builds the system prompt,
-/// converts history to messages, and counts tokens.
+/// [`AssemblyInputs`]. A caller that wants state-derived inputs builds them
+/// first — see [`crate::inputs::build_assembly_inputs`] — so a missing
+/// session surfaces there, where it can be handled, rather than here.
+///
+/// # Assembly pipeline
+///
+/// 1. Split history into TOP/BOTTOM pins and working history.
+/// 2. Compose the system prompt from per-section builders.
+/// 3. Convert history (pins and working) to messages via [`entries_to_messages`].
+/// 4. Re-inject pins in correct positions.
+/// 5. Count tokens in the system prompt and all assembled messages.
+/// 6. Return [`AssembledPrompt`].
+///
+/// This function does not panic; it cannot fail.
+///
+/// [`entries_to_messages`]: jinn_kernel::protocol::entries_to_messages
 pub fn assemble(inputs: &AssemblyInputs, counter: &dyn TokenCounter) -> AssembledPrompt {
     let AssemblyInputs {
         session_id,

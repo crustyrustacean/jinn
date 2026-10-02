@@ -19,6 +19,7 @@ pub mod layout_supervisor;
 #[cfg(test)]
 mod layout_tests;
 pub(crate) mod layout_worker;
+pub(crate) mod loading_indicator;
 
 pub use activate_session::activate_session;
 pub use history::ChatLogElement;

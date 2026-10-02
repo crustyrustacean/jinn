@@ -38,7 +38,8 @@
 //! include is not gated by `min_age` — the latest pair is protected even
 //! when it is the only pair.
 
-use super::min_age::is_within_min_age;
+use super::is_within_min_age;
+use super::worker_skeleton::{override_mutation, prune_mutation};
 
 use crate::worker::HistoryWorker;
 use jinn_core_types::HistoryMutation;
@@ -295,35 +296,17 @@ fn prune_older_pairs(
 
 /// A worker-sourced `ForcedInclude` mutation.
 fn include_mutation(entry_id: jinn_core_types::ChatEntryId, worker_name: &str) -> HistoryMutation {
-    HistoryMutation::SetContextOverride {
-        entry_id,
-        value: ContextOverride::ForcedInclude,
-        source: ChangeSource::Worker {
-            name: worker_name.to_owned(),
-        },
-    }
+    override_mutation(&entry_id, ContextOverride::ForcedInclude, worker_name)
 }
 
 /// A worker-sourced `Default` mutation (demotes an include this worker owns).
 fn demote_mutation(entry_id: jinn_core_types::ChatEntryId, worker_name: &str) -> HistoryMutation {
-    HistoryMutation::SetContextOverride {
-        entry_id,
-        value: ContextOverride::Default,
-        source: ChangeSource::Worker {
-            name: worker_name.to_owned(),
-        },
-    }
+    override_mutation(&entry_id, ContextOverride::Default, worker_name)
 }
 
 /// A worker-sourced `ForcedExclude` mutation.
 fn exclude_mutation(entry_id: jinn_core_types::ChatEntryId, worker_name: &str) -> HistoryMutation {
-    HistoryMutation::SetContextOverride {
-        entry_id,
-        value: ContextOverride::ForcedExclude,
-        source: ChangeSource::Worker {
-            name: worker_name.to_owned(),
-        },
-    }
+    prune_mutation(&entry_id, worker_name)
 }
 
 impl TodoAutoPruneWorker {
@@ -383,6 +366,7 @@ mod tests {
     use super::*;
     use jinn_core_types::SessionId;
     use jinn_core_types::ToolResultStatus;
+    use jinn_core_types::{ChangeSource, ContextOverride};
     use jinn_core_types::{ChatEntry, ChatEntryId};
 
     /// Helper: create a `todo_get_task_list` ToolCall + ToolResult pair.

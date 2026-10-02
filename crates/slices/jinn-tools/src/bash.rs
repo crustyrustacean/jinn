@@ -12,6 +12,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use crate::tool_types::ToolContext;
+use crate::tool_types::failed;
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_kernel::common::process_kill::kill_process_tree;
@@ -168,19 +169,6 @@ async fn emit_stream_event(
 ) {
     if let (Some(bus), Some(_)) = (bus, session_id) {
         bus.publish(event).await;
-    }
-}
-
-/// Creates an error [`ToolResult`] with the given fields and `success: false`.
-fn error_tool_result(tool_call_id: String, name: String, content: String) -> ToolResult {
-    ToolResult {
-        tool_call_id,
-        name,
-        content,
-        success: false,
-        full_content: None,
-        truncation: None,
-        pin_position: None,
     }
 }
 
@@ -478,7 +466,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let command = match parse_args(&call.arguments) {
             Ok(c) => c,
             Err(e) => {
-                return error_tool_result(
+                return failed(
                     call.id,
                     call.name,
                     format!("failed to parse arguments: {e}"),
@@ -487,14 +475,14 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         };
 
         if command.is_empty() {
-            return error_tool_result(call.id, call.name, "command is empty".to_owned());
+            return failed(call.id, call.name, "command is empty".to_owned());
         }
 
         // Project command policy gate: a matching rule denies the command
         // before any child spawns (same feedback shape as the empty-command
         // check — nothing started, so no `ToolExecutionStarted` is emitted).
         if let Some((pattern, message)) = ctx.command_policy.matched_message(&command) {
-            return error_tool_result(
+            return failed(
                 call.id,
                 call.name,
                 format!("Blocked by project command policy (pattern: `{pattern}`): {message}"),
@@ -521,7 +509,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let mut child = match spawn_result {
             Ok(child) => child,
             Err(e) => {
-                return error_tool_result(
+                return failed(
                     call.id,
                     call.name,
                     format!("failed to execute command: {e}"),
@@ -530,14 +518,14 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         };
 
         let Some(stdout) = child.stdout.take() else {
-            return error_tool_result(
+            return failed(
                 call.id,
                 call.name,
                 "failed to capture stdout: pipe was not set up".to_owned(),
             );
         };
         let Some(stderr) = child.stderr.take() else {
-            return error_tool_result(
+            return failed(
                 call.id,
                 call.name,
                 "failed to capture stderr: pipe was not set up".to_owned(),

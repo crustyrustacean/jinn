@@ -649,10 +649,15 @@ fn ensure_table<'d>(
 /// Removes array-of-tables entries at `key` whose `entry_field` value is
 /// not present in `keep`.
 ///
-/// The patcher matches a registered array by its entry key and leaves
-/// unmatched entries alone, which is what preserves a sibling's comment.
-/// The flip side is that an entry the caller *deleted* would survive
-/// forever, so removal is explicit here.
+/// Not redundant with the patcher, despite the overlap. The patcher's
+/// `mark_matched_entries` treats an entry carrying *no* key field as a match
+/// and keeps it; a hand-written entry with a blank `name` would therefore
+/// survive every save and accumulate. This pass removes it, which is why it
+/// runs after the patcher rather than instead of it.
+///
+/// The keyed case — an entry whose key the caller dropped — is already the
+/// patcher's job (`remove_unmatched_entries`), and this agrees with it; only
+/// the keyless case is a genuine second policy.
 fn drop_unmatched_entries<T: ConfigList>(
     doc: &mut DocumentMut,
     key: &str,
@@ -1144,6 +1149,34 @@ mod tests {
         assert!(
             !text.contains("retired_setting"),
             "a dropped key must not linger:\n{text}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn repeated_put_list_does_not_accumulate_keyless_entries() {
+        // Given a document carrying a hand-written entry with no `name` at
+        // all — the shape a user editing the file by hand can leave behind.
+        let (layer, storage) =
+            layer("[[session_lifecycle.script]]\n# the user's own entry\nsetup = \"mine\"\n");
+
+        // When the same keyed list is saved three times.
+        let value = [LifecycleEntry {
+            name: "alpha".to_owned(),
+            setup: "one".to_owned(),
+        }];
+        for _ in 0..3 {
+            layer
+                .put_list::<LifecycleEntry>(&value)
+                .expect("list writes");
+        }
+
+        // Then the keyless entry is gone rather than accumulating one copy
+        // per save.
+        let text = storage.text();
+        assert!(
+            !text.contains("mine"),
+            "a keyless entry survived repeated saves:\n{text}"
         );
     }
 

@@ -16,6 +16,7 @@ use std::time::Duration;
 use futures::FutureExt;
 
 use crate::tool_types::ToolContext;
+use crate::tool_types::failed;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_mcp_msg::RestartError;
 
@@ -67,9 +68,9 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
     // Resolve prerequisites up front; surface clear failures.
     let Some(coordinator) = ctx.mcp_coordinator else {
-        return futures::future::ready(failure_result(
-            &tool_call_id,
-            &tool_name,
+        return futures::future::ready(failed(
+            tool_call_id,
+            tool_name,
             "MCP coordinator is unavailable (this should only happen in tests)",
         ))
         .boxed();
@@ -95,9 +96,9 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         match coordinator.restart(session_id.clone(), server.clone()).await {
             // Outer timeout: coordinator never replied.
             Err(RestartError::Timeout) => {
-                return failure_result(
-                    &tool_call_id,
-                    &tool_name,
+                return failed(
+                    tool_call_id,
+                    tool_name,
                     &format!(
                         "MCP restart timed out after {ASK_TIMEOUT:?} with no reply from the coordinator. \
                          **STOP and wait for user instruction.**"
@@ -106,9 +107,9 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             }
             // Delivery failure (actor stopped / mailbox full / ask timeout).
             Err(RestartError::Mailbox) => {
-                return failure_result(
-                    &tool_call_id,
-                    &tool_name,
+                return failed(
+                    tool_call_id,
+                    tool_name,
                     "MCP coordinator is unreachable (mailbox failure). \
                      **STOP and wait for user instruction.**",
                 );
@@ -194,19 +195,7 @@ fn resolve_server(input: &str, configured: &[String]) -> Option<String> {
 // ---------------------------------------------------------------------------
 
 fn failure_future(call_id: &str, name: &str, message: &str) -> BoxedToolFuture {
-    futures::future::ready(failure_result(call_id, name, message)).boxed()
-}
-
-fn failure_result(call_id: &str, name: &str, message: &str) -> ToolResult {
-    ToolResult {
-        tool_call_id: call_id.to_owned(),
-        name: name.to_owned(),
-        content: message.to_owned(),
-        success: false,
-        full_content: None,
-        truncation: None,
-        pin_position: None,
-    }
+    futures::future::ready(failed(call_id, name, message)).boxed()
 }
 
 /// Maps a domain-level `RestartError` from the coordinator into a failure
@@ -234,7 +223,7 @@ fn domain_failure_result(
              **STOP and wait for user instruction.**"
             .to_owned(),
     };
-    failure_result(call_id, name, &content)
+    failed(call_id, name, &content)
 }
 
 #[cfg(test)]

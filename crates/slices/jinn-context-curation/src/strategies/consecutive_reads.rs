@@ -31,11 +31,13 @@ use std::collections::HashMap;
 pub use jinn_preferences_config::schemas::auto_prune::ConsecutiveReadsAutoPruneConfig;
 use std::sync::Arc;
 
-use super::min_age::is_within_min_age;
+use super::is_within_min_age;
+use super::tool_pair::{extract_path_from_arguments, find_matching_result};
+use super::worker_skeleton::prune_mutation;
 use crate::worker::HistoryWorker;
 use jinn_core_types::HistoryMutation;
 use jinn_core_types::SessionId;
-use jinn_core_types::{ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
+use jinn_core_types::{ChatEntry, ChatEntryId, ChatEntryKind};
 
 /// Default number of consecutive read pairs to keep per file path.
 /// Default enabled state for consecutive-reads auto-prune.
@@ -60,39 +62,7 @@ pub struct ConsecutiveReadsAutoPruneWorker {
     pub config: ConsecutiveReadsAutoPruneConfig,
 }
 
-/// Extract the `path` field from a tool call's JSON arguments string.
-///
-/// Returns `None` if the arguments cannot be parsed or the `path` field is
-/// missing or not a string.
-fn extract_path_from_arguments(arguments: &str) -> Option<String> {
-    let value: serde_json::Value = serde_json::from_str(arguments).ok()?;
-    value
-        .get("path")?
-        .as_str()
-        .map(std::borrow::ToOwned::to_owned)
-}
-
-/// Walk forward from a read ToolCall to find its matching ToolResult.
-///
-/// Returns `None` if no matching result exists (pending/orphaned call).
-fn find_matching_result(
-    history: &[ChatEntry],
-    call_idx: usize,
-    tool_call_id: &str,
-) -> Option<ChatEntryId> {
-    // ToolResults appear after their ToolCall, so scan forward only.
-    for entry in history.iter().skip(call_idx + 1) {
-        if let ChatEntryKind::ToolResult { id, .. } = &entry.kind
-            && id == tool_call_id
-        {
-            return Some(entry.id.clone());
-        }
-    }
-    // No matching result found — the call is still pending or orphaned.
-    None
-}
-
-/** A matched read pair (ToolCall + its corresponding ToolResult). */
+/// A matched read pair (ToolCall + its corresponding ToolResult). */
 struct ReadPair {
     call_idx: usize,
     call_entry_id: ChatEntryId,
@@ -126,7 +96,7 @@ fn collect_read_pairs_by_path(history: &[ChatEntry]) -> HashMap<String, Vec<Read
         // Walk forward to find the ToolResult for this read call.
         // If none found (pending/orphaned), skip — incomplete pairs
         // don't count toward the file's total.
-        let Some(result_id) = find_matching_result(history, i, &tool_call_id) else {
+        let Some((result_id, _)) = find_matching_result(history, i, &tool_call_id) else {
             continue;
         };
 
@@ -173,22 +143,10 @@ fn build_prune_mutations(
                 .any(|e| e.id == pair.result_entry_id && e.is_protected_from_prune());
 
             if !call_protected {
-                mutations.push(HistoryMutation::SetContextOverride {
-                    entry_id: pair.call_entry_id.clone(),
-                    value: ContextOverride::ForcedExclude,
-                    source: ChangeSource::Worker {
-                        name: worker_name.to_owned(),
-                    },
-                });
+                mutations.push(prune_mutation(&pair.call_entry_id, worker_name));
             }
             if !result_protected {
-                mutations.push(HistoryMutation::SetContextOverride {
-                    entry_id: pair.result_entry_id.clone(),
-                    value: ContextOverride::ForcedExclude,
-                    source: ChangeSource::Worker {
-                        name: worker_name.to_owned(),
-                    },
-                });
+                mutations.push(prune_mutation(&pair.result_entry_id, worker_name));
             }
         }
     }
@@ -244,6 +202,7 @@ mod tests {
     use jinn_core_types::ChatEntry;
     use jinn_core_types::SessionId;
     use jinn_core_types::ToolResultStatus;
+    use jinn_core_types::{ChangeSource, ContextOverride};
 
     /// Helper: create a read ToolCall + ToolResult pair.
     fn read_call_result(call_id: &str, path: &str, content: &str) -> [ChatEntry; 2] {

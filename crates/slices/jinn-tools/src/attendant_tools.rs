@@ -7,6 +7,7 @@
 //! others' conclusions.
 
 use crate::tool_types::ToolContext;
+use crate::tool_types::tool_error;
 use jinn_chat_input_msg::EnqueueUserMessage;
 use jinn_core_types::chat_entry::ChatEntry;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
@@ -79,16 +80,16 @@ pub fn conclude_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             return missing_argument(call, "body");
         };
         let Some(state) = ctx.state.clone() else {
-            return failed(call, "conclude is unavailable without shared state");
+            return tool_error(&call, "conclude is unavailable without shared state");
         };
         let Some(session_id) = ctx.session_id.clone() else {
-            return failed(call, "conclude is unavailable without a session context");
+            return tool_error(&call, "conclude is unavailable without a session context");
         };
 
         {
             let mut guard = state.write();
             let Some(session) = guard.session.get_mut(&session_id) else {
-                return failed(call, "calling session is not live");
+                return tool_error(&call, "calling session is not live");
             };
             session.append_attendant_report(body);
         }
@@ -115,30 +116,30 @@ pub fn notify_parent_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFutur
             return missing_argument(call, "message");
         };
         let Some(state) = ctx.state.clone() else {
-            return failed(call, "notify_parent is unavailable without shared state");
+            return tool_error(&call, "notify_parent is unavailable without shared state");
         };
         let Some(session_id) = ctx.session_id.clone() else {
-            return failed(
-                call,
+            return tool_error(
+                &call,
                 "notify_parent is unavailable without a session context",
             );
         };
         let Some(bus) = ctx.bus.clone() else {
-            return failed(call, "notify_parent is unavailable without a bus");
+            return tool_error(&call, "notify_parent is unavailable without a bus");
         };
 
         let parent_id = {
             let guard = state.read();
             let Some(caller) = guard.session.get(&session_id) else {
-                return failed(call, "calling session is not live");
+                return tool_error(&call, "calling session is not live");
             };
             // Only an attendant may notify a parent, and there is no way to
             // name a target: the direction is fixed by the caller's own link.
             if caller.origin() != SessionOrigin::Attendant {
-                return failed(call, "only an attendant session can notify a parent");
+                return tool_error(&call, "only an attendant session can notify a parent");
             }
             let Some(parent_id) = caller.parent_session().clone() else {
-                return failed(call, "calling attendant has no parent session");
+                return tool_error(&call, "calling attendant has no parent session");
             };
             parent_id
         };
@@ -147,7 +148,7 @@ pub fn notify_parent_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFutur
         {
             let mut guard = state.write();
             let Some(parent) = guard.session.get_mut(&parent_id) else {
-                return failed(call, "parent session is not live");
+                return tool_error(&call, "parent session is not live");
             };
             parent.mark_interacted();
         }
@@ -175,22 +176,9 @@ fn argument(call: &ToolCall, key: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// Builds a failed result with a short reason for the model.
-fn failed(call: ToolCall, reason: &str) -> ToolResult {
-    ToolResult {
-        tool_call_id: call.id,
-        name: call.name,
-        content: format!("Error: {reason}"),
-        success: false,
-        full_content: None,
-        truncation: None,
-        pin_position: None,
-    }
-}
-
 /// Builds a failed result for a missing argument, naming the schema slot.
 fn missing_argument(call: ToolCall, key: &str) -> ToolResult {
-    failed(call, &format!("missing required argument: {key}"))
+    tool_error(&call, &format!("missing required argument: {key}"))
 }
 
 /// Builds a successful result.

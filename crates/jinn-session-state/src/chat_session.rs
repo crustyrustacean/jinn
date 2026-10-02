@@ -321,7 +321,7 @@ impl ChatSessionState {
         let index = self.core.history_work.history.len();
         self.core.history_work.history.push(entry.clone());
         if cursor_at_last {
-            self.reset_scroll();
+            self.scroll_to_bottom();
             if let Some(entry) = self.core.history_work.history.last() {
                 let id = entry.id.clone();
                 self.update_view(|v| v.selected_cursor_id = Some(id));
@@ -1328,7 +1328,7 @@ impl ChatSessionState {
     /// caller applies whatever separator it wants.
     fn drain_cancel_chunks(&mut self) -> Vec<String> {
         let steering = self.steering_buffer_mut().drain_fragments();
-        let queue = self.drain_queue();
+        let queue = self.message_queue_mut().drain();
         steering
             .into_iter()
             .chain(queue.into_iter().filter_map(|item| match item {
@@ -1686,12 +1686,33 @@ impl ChatSessionState {
         }
     }
 
-    /// Read-only access to the turn dispatch queue items.
-    pub fn queue(&self) -> &std::collections::VecDeque<jinn_turn_dispatch_msg::QueueItem> {
-        self.core.ephemeral.message_queue.items()
+    /// The turn dispatch queue.
+    ///
+    /// The queue is a [`TurnQueue`] and this hands back that type rather than
+    /// unwrapping it into a bare `VecDeque`: the six methods it used to proxy
+    /// (`queue`, `queue_len`, `enqueue`, `enqueue_front`, `dequeue`,
+    /// `drain_queue`) were one forwarding call each, so every caller was one
+    /// step further from the type that owns the behavior. Callers reach the
+    /// operations they need directly on the queue instead.
+    ///
+    #[must_use]
+    pub fn message_queue(&self) -> &jinn_turn_dispatch_msg::TurnQueue {
+        &self.core.ephemeral.message_queue
+    }
+
+    /// Mutable access to the turn dispatch queue.
+    ///
+    /// For the operations that consume the queue rather than inspect it —
+    /// `drain` and `pop` — which cannot be reached through a shared borrow.
+    /// The turn-dispatch actor still pops through [`Self::dequeue`]; this
+    /// exists for the paths that take the whole queue at once, such as a
+    /// cancel draining everything queued behind the turn it is aborting.
+    pub fn message_queue_mut(&mut self) -> &mut jinn_turn_dispatch_msg::TurnQueue {
+        &mut self.core.ephemeral.message_queue
     }
 
     /// Number of items waiting in the queue.
+    #[must_use]
     pub fn queue_len(&self) -> usize {
         self.core.ephemeral.message_queue.len()
     }
@@ -1712,11 +1733,6 @@ impl ChatSessionState {
     /// queue lives on the session, so the pop must be reachable there.
     pub fn dequeue(&mut self) -> Option<jinn_turn_dispatch_msg::QueueItem> {
         self.core.ephemeral.message_queue.pop()
-    }
-
-    /// Drain all queued items, returning them in order.
-    pub fn drain_queue(&mut self) -> std::collections::VecDeque<jinn_turn_dispatch_msg::QueueItem> {
-        self.core.ephemeral.message_queue.drain()
     }
 
     /// Read-only access to the session profile.
@@ -2005,17 +2021,17 @@ impl ChatSessionState {
         });
     }
 
-    /// Reset scroll to show the bottom of the conversation.
-    pub fn reset_scroll(&mut self) {
-        self.update_view(|v| v.scroll_offset = None);
-    }
-
     /// Scroll to the very top of the conversation.
     pub fn scroll_to_top(&mut self) {
         self.update_view(|v| v.scroll_offset = Some(0));
     }
 
     /// Scroll to the very bottom of the conversation (auto-scroll).
+    ///
+    /// `None` is the bottom sentinel, not an unset scroll: a session that has
+    /// never been scrolled and one scrolled to its last line render the same,
+    /// and both follow the streaming entry. This absorbed a second method that
+    /// did exactly this and was called the same thing.
     pub fn scroll_to_bottom(&mut self) {
         self.update_view(|v| v.scroll_offset = None);
     }
@@ -2334,7 +2350,7 @@ impl ChatSessionState {
         self.core.history_work.history.replace_all(entries);
         let new_cursor = self.core.history_work.history.last().map(|e| e.id.clone());
         self.update_view(|v| v.selected_cursor_id = new_cursor);
-        self.reset_scroll();
+        self.scroll_to_bottom();
     }
 
     /// Pin an entry by ID, setting its pin position.
@@ -2947,13 +2963,31 @@ impl ChatSessionState {
     /// The visual item at the currently selected position, if any.
     pub fn selected_visual_item(&self) -> Option<VisualItem> {
         let idx = self.selected_entry_index()?;
-        self.visual_items_snapshot().get(idx).cloned()
+        self.with_view(|v| v.visual_items.read().get(idx).cloned(), || None)
     }
 
     /// Whether the cursor is currently on a collapsed ignored block.
+    ///
+    /// Reads the one item it needs under the view lock instead of copying the
+    /// whole list first. The snapshot exists so navigation can resolve indices
+    /// against a stable copy while the renderer publishes underneath — but this
+    /// asks a yes/no question about one slot, so there is nothing to stabilize:
+    /// copying several thousand visual items to discard all but one bought
+    /// nothing that holding the lock for one lookup does not already give.
+    #[must_use]
     pub fn is_selected_collapsed_block(&self) -> bool {
-        self.selected_visual_item()
-            .is_some_and(|item| matches!(item, VisualItem::CollapsedIgnoredBlock { .. }))
+        let Some(idx) = self.selected_entry_index() else {
+            return false;
+        };
+        self.with_view(
+            |v| {
+                v.visual_items
+                    .read()
+                    .get(idx)
+                    .is_some_and(|item| matches!(item, VisualItem::CollapsedIgnoredBlock { .. }))
+            },
+            || false,
+        )
     }
 
     /// Resolve the selected visual-item index to a history index.

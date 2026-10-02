@@ -25,7 +25,7 @@ use jinn_term_msg::control_scope;
 #[must_use]
 pub fn send_key_hook() -> KeyHook {
     std::sync::Arc::new(|event: &jinn_slices::KeyEvent| {
-        let bytes = jinn_term_msg::settle::encode_key_event(event);
+        let bytes = crate::key_encoding::encode_key_event(event);
         if bytes.is_empty() {
             return None;
         }
@@ -99,7 +99,7 @@ mod tests {
             key: Key::F(13),
             modifiers: Modifiers::none(),
         };
-        assert!(jinn_term_msg::settle::encode_key_event(&unencodable).is_empty());
+        assert!(crate::key_encoding::encode_key_event(&unencodable).is_empty());
 
         // When encoding it.
         let intent = hook(&unencodable);

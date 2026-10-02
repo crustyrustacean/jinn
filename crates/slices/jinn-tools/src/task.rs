@@ -48,6 +48,7 @@ use crate::BoxedToolFuture;
 use crate::task_phase_listener_actor::{TaskPhaseListenerActor, TaskPhaseListenerDeps};
 use crate::task_settle_listener_actor::{TaskSettleListenerActor, TaskSettleListenerDeps};
 use crate::tool_types::ToolContext;
+use crate::tool_types::tool_error;
 use jinn_chat_input_msg::EnqueueUserMessage;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_core_types::{ChatEntry, ChatEntryKind, ModelSelection, NameFilter, SessionId};
@@ -397,17 +398,17 @@ fn classify_final_entry(entry: &ChatEntry) -> (bool, String) {
 async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
     // Fail fast on missing context, mirroring restart_mcp.
     let Some(state) = ctx.state else {
-        return tool_error(call, "no application state available");
+        return tool_error(&call, "no application state available");
     };
     let Some(parent_id) = ctx.session_id else {
-        return tool_error(call, "no session ID available");
+        return tool_error(&call, "no session ID available");
     };
     let Some(bus) = ctx.bus else {
-        return tool_error(call, "no message bus available");
+        return tool_error(&call, "no message bus available");
     };
     let args = match parse_args(&call.arguments) {
         Ok(args) => args,
-        Err(msg) => return tool_error(call, &msg),
+        Err(msg) => return tool_error(&call, &msg),
     };
     let deadline = args
         .max_duration_secs
@@ -418,7 +419,7 @@ async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
     let child = {
         let guard = state.read();
         let Some(parent) = guard.session.get(&parent_id) else {
-            return tool_error(call, "parent session not found in state");
+            return tool_error(&call, "parent session not found in state");
         };
         build_child(parent, &parent_id, &args, ctx.app_paths.home_dir())
     };
@@ -463,7 +464,7 @@ async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
     // before SessionCreated/EnqueueUserMessage can trigger any phase change.
     let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
     let Some(system) = ctx.trouper_system.clone() else {
-        return tool_error(call, "no actor system available");
+        return tool_error(&call, "no actor system available");
     };
     let _phase_listener = TaskPhaseListenerActor::spawn(TaskPhaseListenerDeps {
         system: system.clone(),
@@ -538,8 +539,4 @@ fn forward(call: ToolCall, success: bool, content: String) -> ToolResult {
         truncation: None,
         pin_position: None,
     }
-}
-
-fn tool_error(call: ToolCall, msg: &str) -> ToolResult {
-    forward(call, false, format!("Error: {msg}"))
 }

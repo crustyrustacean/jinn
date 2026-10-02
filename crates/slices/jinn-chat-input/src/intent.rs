@@ -21,7 +21,7 @@ use crate::ChatInputBoxState;
 use crate::InputMode;
 use jinn_chat_input_msg::{
     AutocompleteState, EnqueueUserMessage, ListDirectory, SlashCommand, SubmitSteeringMessage,
-    resolve_list_dir,
+    home_dir, resolve_list_dir,
 };
 use jinn_context::PromptTemplateStore;
 use jinn_core_types::PinPosition;
@@ -34,6 +34,11 @@ use jinn_session_msg::PhaseKind;
 use jinn_session_store_msg::PersistSession;
 use unicode_segmentation::UnicodeSegmentation as _;
 
+use super::token::{
+    compute_token_end, find_at_token_at_cursor, find_hash_token_at_cursor,
+    find_slash_token_at_cursor, is_valid_at_trigger_position, is_valid_hash_trigger_position,
+    is_valid_slash_trigger_position,
+};
 use super::validator;
 
 /// Handles `InsertChar` - inserts a character and manages autocomplete.
@@ -726,42 +731,6 @@ pub fn handle_enter_normal_mode(
     IntentResult::empty()
 }
 
-/// Checks whether the `#` at the cursor is in a valid position to trigger autocomplete.
-fn is_valid_hash_trigger_position(input: &ChatInputBoxState) -> bool {
-    let dollar_pos = input.cursor_pos() - 1;
-    if dollar_pos == 0 {
-        return true;
-    }
-    let prev = input.grapheme_at(dollar_pos - 1);
-    prev == Some(" ") || prev == Some("\n")
-}
-
-/// Checks whether the `/` at the cursor is in a valid position to trigger slash autocomplete.
-///
-/// Valid only at position 0 (start of buffer).
-fn is_valid_slash_trigger_position(input: &ChatInputBoxState) -> bool {
-    input.cursor_pos() == 1 && input.text().starts_with('/')
-}
-
-/// Checks whether the `@` at the cursor is in a valid position to trigger
-/// the `@path` file popup.
-///
-/// Mirrors the hash rule: start-of-buffer, or preceded by a space/newline.
-/// Additionally reserves the `@@` seam: if the grapheme before this `@` is
-/// another `@`, this returns false so `@@` stays literal.
-fn is_valid_at_trigger_position(input: &ChatInputBoxState) -> bool {
-    let at_pos = input.cursor_pos() - 1;
-    if at_pos == 0 {
-        return true;
-    }
-    let prev = input.grapheme_at(at_pos - 1);
-    // `@@` seam: do not activate `At` on the second `@`.
-    if prev == Some("@") {
-        return false;
-    }
-    prev == Some(" ") || prev == Some("\n")
-}
-
 /// Returns true if the cursor has moved outside the autocomplete token region,
 /// requiring deactivation.
 ///
@@ -778,24 +747,6 @@ fn should_deactivate_on_cursor_move(state: &AppState) -> bool {
     }
     let token_end = state.with_active_input(|i| compute_token_end(i, token_start), || 0);
     cursor > token_end
-}
-
-/// Computes the grapheme index one past the last character of the token
-/// that starts at `token_start` (the `#` position).
-///
-/// Scans forward from `token_start + 1` until whitespace, `#`, or end of buffer.
-fn compute_token_end(input: &ChatInputBoxState, token_start: usize) -> usize {
-    let graphemes: Vec<&str> = input.text().graphemes(true).collect();
-    let len = graphemes.len();
-    let mut end = token_start + 1;
-    while end < len {
-        let g = graphemes.get(end);
-        if g.is_none_or(|c| c.trim().is_empty() || *c == "#") {
-            break;
-        }
-        end += 1;
-    }
-    end
 }
 
 /// Performs a fuzzy search against the prompt template store and returns matching entries.
@@ -847,150 +798,6 @@ fn compute_slash_matches(filter: &str) -> Vec<AutocompleteMatch> {
             description: e.description,
         })
         .collect()
-}
-
-/// Scans the buffer to detect if the cursor sits inside a `#token` region.
-///
-/// Returns `Some((token_start, filter_text))` if the cursor is within a valid
-/// token, where `token_start` is the grapheme index of the `#` and `filter_text`
-/// is the text between `#+1` and the cursor position.
-fn find_hash_token_at_cursor(input: &ChatInputBoxState) -> Option<(usize, String)> {
-    use unicode_segmentation::UnicodeSegmentation as _;
-
-    let cursor = input.cursor_pos();
-    let graphemes: Vec<&str> = input.text().graphemes(true).collect();
-    let len = graphemes.len();
-
-    // Scan leftward from the cursor to find a '#' at a valid trigger position.
-    let mut i = cursor;
-    loop {
-        if graphemes.get(i) == Some(&"#") {
-            // Check that the '#' is at a valid trigger position.
-            let preceded_by_boundary = i == 0
-                || graphemes.get(i.wrapping_sub(1)) == Some(&" ")
-                || graphemes.get(i.wrapping_sub(1)) == Some(&"\n");
-            if !preceded_by_boundary {
-                return None;
-            }
-            // The token extends from i+1 to the next whitespace, '#', or end.
-            let mut token_end = i + 1;
-            while token_end < len {
-                let g = graphemes.get(token_end);
-                if g.is_none_or(|c| c.trim().is_empty() || *c == "#") {
-                    break;
-                }
-                token_end += 1;
-            }
-            // The cursor must be >= i (on the '#' or within the token) and <= token_end.
-            if cursor >= i && cursor <= token_end {
-                let filter: String = graphemes
-                    .get((i + 1)..cursor)
-                    .map(|s| s.join(""))
-                    .unwrap_or_default();
-                return Some((i, filter));
-            }
-            return None;
-        }
-        // If we hit whitespace going left, stop - no valid token.
-        let g = graphemes.get(i);
-        if g.is_some_and(|c| c.trim().is_empty()) {
-            return None;
-        }
-        if i == 0 {
-            return None;
-        }
-        i -= 1;
-    }
-}
-
-/// Scans the buffer to detect if the cursor sits inside a `/command` region at position 0.
-///
-/// Returns `Some((token_start, filter_text))` if the buffer starts with `/` and the
-/// cursor is within the token, where `token_start` is 0 and `filter_text` is the text
-/// between position 1 and the cursor.
-fn find_slash_token_at_cursor(input: &ChatInputBoxState) -> Option<(usize, String)> {
-    use unicode_segmentation::UnicodeSegmentation as _;
-
-    if !input.text().starts_with('/') {
-        return None;
-    }
-
-    let cursor = input.cursor_pos();
-    let graphemes: Vec<&str> = input.text().graphemes(true).collect();
-    let len = graphemes.len();
-
-    // The token extends from 1 to the next whitespace or end.
-    let mut token_end = 1;
-    while token_end < len {
-        let g = graphemes.get(token_end);
-        if g.is_none_or(|c| c.trim().is_empty()) {
-            break;
-        }
-        token_end += 1;
-    }
-
-    // The cursor must be >= 0 and <= token_end.
-    if cursor <= token_end {
-        let filter: String = graphemes
-            .get(1..cursor)
-            .map(|s| s.join(""))
-            .unwrap_or_default();
-        return Some((0, filter));
-    }
-    None
-}
-
-/// Scans the buffer to detect if the cursor sits inside an `@path` region.
-///
-/// Mirrors [`find_hash_token_at_cursor`] but for `@`. The token extends from
-/// the `@` to the next whitespace. The `@@` seam is reserved: an `@` preceded
-/// by another `@` is not a valid `At` trigger (so `@@` stays literal).
-fn find_at_token_at_cursor(input: &ChatInputBoxState) -> Option<(usize, String)> {
-    use unicode_segmentation::UnicodeSegmentation as _;
-
-    let cursor = input.cursor_pos();
-    let graphemes: Vec<&str> = input.text().graphemes(true).collect();
-    let len = graphemes.len();
-
-    // Scan leftward from the cursor to find an `@` at a valid trigger position.
-    let mut i = cursor;
-    loop {
-        if graphemes.get(i) == Some(&"@") {
-            let preceded_by_boundary = i == 0
-                || graphemes.get(i.wrapping_sub(1)) == Some(&" ")
-                || graphemes.get(i.wrapping_sub(1)) == Some(&"\n");
-            // `@@` seam: the second `@` is not an `At` trigger.
-            let is_at_at = graphemes.get(i.wrapping_sub(1)) == Some(&"@");
-            if !preceded_by_boundary || is_at_at {
-                return None;
-            }
-            // The token extends from i+1 to the next whitespace, `@`, or end.
-            let mut token_end = i + 1;
-            while token_end < len {
-                let g = graphemes.get(token_end);
-                if g.is_none_or(|c| c.trim().is_empty() || *c == "@") {
-                    break;
-                }
-                token_end += 1;
-            }
-            if cursor >= i && cursor <= token_end {
-                let filter: String = graphemes
-                    .get((i + 1)..cursor)
-                    .map(|s| s.join(""))
-                    .unwrap_or_default();
-                return Some((i, filter));
-            }
-            return None;
-        }
-        let g = graphemes.get(i);
-        if g.is_some_and(|c| c.trim().is_empty()) {
-            return None;
-        }
-        if i == 0 {
-            return None;
-        }
-        i -= 1;
-    }
 }
 
 /// Attempts to re-activate autocomplete if the cursor sits inside a token region.
@@ -1068,14 +875,6 @@ fn emit_list_directory(state: &mut AppState, filter: &str) -> ListDirectory {
         path: dir,
         request_id,
     }
-}
-
-/// Returns the user's home directory. Falls back to cwd if $HOME is unset.
-fn home_dir() -> std::path::PathBuf {
-    std::env::var_os("HOME").map_or_else(
-        || std::env::current_dir().unwrap_or_default(),
-        std::path::PathBuf::from,
-    )
 }
 
 /// Returns true if the active autocomplete is the `@path` file popup.

@@ -13,6 +13,7 @@
 
 pub mod emulator;
 pub mod interactive_term_actor;
+pub mod key_encoding;
 pub mod key_hook;
 pub mod overlay;
 pub mod pty_session;

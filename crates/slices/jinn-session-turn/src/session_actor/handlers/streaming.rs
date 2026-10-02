@@ -323,7 +323,7 @@ impl SessionPersistenceActor {
                     event.reason,
                     StreamCompletedReason::Error | StreamCompletedReason::Canceled
                 ) {
-                    let drained = session.drain_queue();
+                    let drained = session.message_queue_mut().drain();
                     if let Some(text) = drained_queue_to_text(&drained) {
                         session.update_input(|input| input.replace_all(text));
                     }

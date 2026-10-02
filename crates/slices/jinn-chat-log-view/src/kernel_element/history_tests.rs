@@ -1440,7 +1440,7 @@ fn the_stream_render_is_due_before_any_render_has_happened() {
 #[rstest::rstest]
 fn reusable_lines_are_withheld_for_a_different_entry() {
     // Given an element holding a previous render of one entry.
-    let mut element = ChatLogElement::new();
+    let element = ChatLogElement::new();
     let other = ChatEntryId::new();
 
     // When asking whether those lines can serve a different entry.

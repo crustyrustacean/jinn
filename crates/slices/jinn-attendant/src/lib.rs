@@ -7,7 +7,10 @@
 //! behaviors that shape each run.
 
 pub mod activation;
+pub(crate) mod properties_help_card;
 pub mod properties_overlay;
+pub(crate) mod properties_permissions;
+pub(crate) mod properties_save;
 pub mod report_picker_actions;
 pub mod report_picker_render;
 pub mod report_picker_routes;
@@ -20,6 +23,7 @@ pub mod saved_picker_render;
 pub mod saved_picker_routes;
 pub mod saved_picker_viewport;
 pub mod section_rows;
+pub(crate) mod seed_template_overlay;
 pub mod trigger_actor;
 
 #[cfg(test)]
@@ -209,6 +213,6 @@ pub fn activate_properties(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
         std::sync::Arc::new(properties_overlay::render_attendant_seed_template),
     );
     properties_overlay::attach_properties_rows(host.key_routes(), &cell);
-    properties_overlay::attach_seed_template_rows(host.key_routes(), &cell);
-    properties_overlay::register_seed_template_input_hook(host.key_routes(), &cell);
+    seed_template_overlay::attach_seed_template_rows(host.key_routes(), &cell);
+    seed_template_overlay::register_seed_template_input_hook(host.key_routes(), &cell);
 }

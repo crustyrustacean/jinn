@@ -30,7 +30,10 @@ use jinn_tools_msg::truncation::format_size;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 
-use super::shared::{RenderContext, pad_line_to_width, truncate_to_width};
+use super::shared::{
+    RenderContext, content_style, pad_line_to_width, pad_lines, repaint_task_block,
+    truncate_to_width,
+};
 use super::tool_call::ENTER_HINT;
 
 /// Text shown on the outcome row of a successful task result.
@@ -87,7 +90,7 @@ fn to_lines_task(
 
     lines.push(task_status_row(ctx.paired_status, ctx));
 
-    repaint_task_block(&mut lines, ctx);
+    repaint_task_block(&mut lines, ctx, true);
     lines
 }
 
@@ -111,25 +114,6 @@ fn task_status_row(paired: Option<ToolResultStatus>, ctx: &RenderContext) -> Lin
         padded,
         Style::default().fg(Color::White).bg(bg),
     ))
-}
-
-/// Restyle task-entry lines onto the subagent block background, preserving
-/// the status row's own colors (it carries the outcome).
-fn repaint_task_block(lines: &mut [Line<'static>], ctx: &RenderContext) {
-    let style = Style::default()
-        .fg(ctx.theme.primary_text)
-        .bg(ctx.theme.subagent_bg);
-    let pad_style = Style::default().bg(ctx.theme.subagent_bg);
-    let last = lines.len().saturating_sub(1);
-    for (i, line) in lines.iter_mut().enumerate() {
-        if i == last {
-            continue;
-        }
-        for span in &mut line.spans {
-            span.style = style;
-        }
-        pad_line_to_width(line, ctx.content_width, pad_style);
-    }
 }
 
 /// Render a pending alert (e.g. a detected bot challenge) as an unmissable
@@ -174,7 +158,7 @@ fn alert_lines(content: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
 /// and padded so the success/failure background spans the row.
 fn skill_summary_lines(content: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
     let label = loaded_skill_summary_label(content);
-    let style = content_style(ctx);
+    let style = content_style(ctx, ctx.theme.tool_fg);
     let mut lines = vec![Line::from(Span::styled(
         truncate_to_width(&label, ctx.content_width as usize),
         style,
@@ -189,7 +173,7 @@ fn to_lines_collapsed(
     truncation: Option<&TruncationMeta>,
     ctx: &RenderContext,
 ) -> Vec<Line<'static>> {
-    let style = content_style(ctx);
+    let style = content_style(ctx, ctx.theme.tool_fg);
 
     let text = super::shared::unescape_newlines(content);
     let text = super::shared::strip_ansi(&text);
@@ -246,7 +230,7 @@ fn to_lines_expanded(
     truncation: Option<&TruncationMeta>,
     ctx: &RenderContext,
 ) -> Vec<Line<'static>> {
-    let style = content_style(ctx);
+    let style = content_style(ctx, ctx.theme.tool_fg);
 
     let mut lines = Vec::new();
 
@@ -272,19 +256,6 @@ fn to_lines_expanded(
     lines
 }
 
-/// Build the content style based on paired status.
-///
-/// Uses `tool_fg` for foreground. Background is set from paired status:
-/// no background for pending/unpaired, green for success, red for failure.
-fn content_style(ctx: &RenderContext) -> Style {
-    let fg = ctx.theme.tool_fg;
-    match ctx.paired_status {
-        Some(ToolResultStatus::Success) => Style::default().fg(fg).bg(ctx.theme.tool_success_bg),
-        Some(ToolResultStatus::Failure) => Style::default().fg(fg).bg(ctx.theme.tool_failure_bg),
-        Some(ToolResultStatus::Pending) | None => Style::default().fg(fg),
-    }
-}
-
 /// Build the content truncation indicator style.
 ///
 /// Uses `focus_accent` for foreground with the same background as content.
@@ -294,27 +265,6 @@ fn content_truncation_style(ctx: &RenderContext) -> Style {
         Some(ToolResultStatus::Success) => Style::default().fg(fg).bg(ctx.theme.tool_success_bg),
         Some(ToolResultStatus::Failure) => Style::default().fg(fg).bg(ctx.theme.tool_failure_bg),
         Some(ToolResultStatus::Pending) | None => Style::default().fg(fg),
-    }
-}
-
-/// Get the status background color, if any.
-fn status_bg(ctx: &RenderContext) -> Option<ratatui::style::Color> {
-    match ctx.paired_status {
-        Some(ToolResultStatus::Success) => Some(ctx.theme.tool_success_bg),
-        Some(ToolResultStatus::Failure) => Some(ctx.theme.tool_failure_bg),
-        Some(ToolResultStatus::Pending) | None => None,
-    }
-}
-
-/// Pad all lines to full content width so the background spans the entire row.
-///
-/// Only pads when there is a status background. Pending/unpaired entries are left as-is.
-fn pad_lines(lines: &mut [Line<'static>], ctx: &RenderContext) {
-    if let Some(bg) = status_bg(ctx) {
-        let bg_style = Style::default().bg(bg);
-        for line in lines.iter_mut() {
-            pad_line_to_width(line, ctx.content_width, bg_style);
-        }
     }
 }
 

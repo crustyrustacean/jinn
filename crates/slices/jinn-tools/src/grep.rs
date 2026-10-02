@@ -9,6 +9,7 @@ use std::fmt::Write as _;
 use std::process::Stdio;
 
 use crate::tool_types::ToolContext;
+use crate::tool_types::failed;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 
 use jinn_tools_msg::truncation::{
@@ -65,19 +66,6 @@ struct GrepArgs {
 /// Parses the arguments from the tool call JSON.
 fn parse_args(raw: &str) -> Result<GrepArgs, serde_json::Error> {
     serde_json::from_str(raw)
-}
-
-/// Creates an error [`ToolResult`] with the given fields and `success: false`.
-fn error_tool_result(tool_call_id: String, name: String, content: String) -> ToolResult {
-    ToolResult {
-        tool_call_id,
-        name,
-        content,
-        success: false,
-        full_content: None,
-        truncation: None,
-        pin_position: None,
-    }
 }
 
 /// Formats the final [`ToolResult`] from the process output, applying
@@ -160,7 +148,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let args = match parse_args(&call.arguments) {
             Ok(v) => v,
             Err(e) => {
-                return error_tool_result(
+                return failed(
                     call.id,
                     call.name,
                     format!("failed to parse arguments: {e}"),
@@ -169,7 +157,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         };
 
         if args.pattern.is_empty() {
-            return error_tool_result(call.id, call.name, "pattern is empty".to_owned());
+            return failed(call.id, call.name, "pattern is empty".to_owned());
         }
 
         let mut std_cmd = std::process::Command::new("rg");
@@ -205,7 +193,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let output = match cmd.output().await {
             Ok(o) => o,
             Err(e) => {
-                return error_tool_result(call.id, call.name, format!("failed to execute rg: {e}"));
+                return failed(call.id, call.name, format!("failed to execute rg: {e}"));
             }
         };
 

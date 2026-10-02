@@ -51,7 +51,9 @@ use crate::worker::HistoryWorker;
 use jinn_core_types::HistoryMutation;
 use jinn_core_types::SessionId;
 use jinn_core_types::ToolResultStatus;
-use jinn_core_types::{ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
+use jinn_core_types::{ChatEntry, ChatEntryId, ChatEntryKind};
+
+use super::worker_skeleton::prune_mutation;
 
 /// Default enabled state for tool-age-window auto-prune.
 /// Default `min_age` for tool-age-window auto-prune.
@@ -204,13 +206,7 @@ fn build_age_window_mutations(
                 prune_region_start,
                 "tool_age_window: excluding old tool call"
             );
-            mutations.push(HistoryMutation::SetContextOverride {
-                entry_id: call_id,
-                value: ContextOverride::ForcedExclude,
-                source: ChangeSource::Worker {
-                    name: worker_name.to_owned(),
-                },
-            });
+            mutations.push(prune_mutation(&call_id, worker_name));
         }
         if !result_protected {
             tracing::debug!(
@@ -218,13 +214,7 @@ fn build_age_window_mutations(
                 prune_region_start,
                 "tool_age_window: excluding old tool result"
             );
-            mutations.push(HistoryMutation::SetContextOverride {
-                entry_id: result_id,
-                value: ContextOverride::ForcedExclude,
-                source: ChangeSource::Worker {
-                    name: worker_name.to_owned(),
-                },
-            });
+            mutations.push(prune_mutation(&result_id, worker_name));
         }
     }
 
@@ -281,6 +271,7 @@ mod tests {
     use jinn_core_types::ChatEntry;
     use jinn_core_types::SessionId;
     use jinn_core_types::ToolResultStatus;
+    use jinn_core_types::{ChangeSource, ContextOverride};
 
     /// Build a worker with the given `min_age` (enabled = true).
     fn worker(min_age: usize) -> ToolAgeWindowAutoPruneWorker {

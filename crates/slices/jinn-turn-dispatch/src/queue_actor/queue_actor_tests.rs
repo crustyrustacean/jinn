@@ -344,7 +344,7 @@ async fn queued_item_dispatches_after_steering_turn_completes() {
     // And the queue is empty after both turns.
     let state = state.read();
     let session = state.session(&sid);
-    assert!(session.queue().is_empty(), "queue fully consumed");
+    assert!(session.message_queue().is_empty(), "queue fully consumed");
     // And the steering buffer is empty after both turns.
     assert!(
         session.steering_buffer().is_empty(),

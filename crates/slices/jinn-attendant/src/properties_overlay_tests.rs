@@ -16,10 +16,8 @@ use jinn_slices::KeyRoutes;
 use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{ActionCtx, DynamicIntent, ScopeSignal};
 
-use crate::properties_overlay::{
-    FIELDS_IN_DISPLAY_ORDER, attach_properties_rows, attach_seed_template_rows,
-    register_seed_template_input_hook,
-};
+use crate::properties_overlay::{FIELDS_IN_DISPLAY_ORDER, attach_properties_rows};
+use crate::seed_template_overlay::{attach_seed_template_rows, register_seed_template_input_hook};
 
 /// The popup's cell over a fresh `Slices` registry, registered the same way
 /// the cell catalog does.

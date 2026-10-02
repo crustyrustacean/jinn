@@ -4,9 +4,8 @@
 //! `offset` (1-indexed) and `limit` parameters. Relative paths are resolved
 //! against the session's CWD.
 
-use std::path::{Path, PathBuf};
-
 use crate::tool_types::ToolContext;
+use crate::tool_types::unprefixed_failure;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 
 use super::visible_lines;
@@ -15,6 +14,7 @@ use jinn_tools_msg::truncation::{
 };
 
 use super::BoxedToolFuture;
+use crate::tool_paths::resolve_path;
 
 /// Returns the tool definition for the `read` built-in tool.
 pub fn definition() -> ToolDefinition {
@@ -51,14 +51,6 @@ pub fn definition() -> ToolDefinition {
 }
 
 /// Resolves a path against the CWD if relative, returns absolute as-is.
-fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
-    let p = Path::new(path);
-    if p.is_absolute() {
-        p.to_owned()
-    } else {
-        cwd.join(p)
-    }
-}
 
 /// Executes the `read` built-in tool.
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
@@ -66,15 +58,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let (path, offset, limit) = match parse_args(&call.arguments) {
             Ok(v) => v,
             Err(e) => {
-                return ToolResult {
-                    tool_call_id: call.id,
-                    name: call.name,
-                    content: format!("failed to parse arguments: {e}"),
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                };
+                return unprefixed_failure(&call, format!("failed to parse arguments: {e}"));
             }
         };
 
@@ -83,15 +67,10 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let content = match tokio::fs::read_to_string(&resolved).await {
             Ok(c) => c,
             Err(e) => {
-                return ToolResult {
-                    tool_call_id: call.id,
-                    name: call.name,
-                    content: format!("failed to read file '{}': {e}", resolved.display()),
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                };
+                return unprefixed_failure(
+                    &call,
+                    format!("failed to read file '{}': {e}", resolved.display()),
+                );
             }
         };
 
@@ -240,7 +219,6 @@ fn apply_offset_limit(content: &str, offset: Option<usize>, limit: Option<usize>
     result
 }
 
-// #[cfg(test)]
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -312,30 +290,6 @@ mod tests {
 
         // Then an error message is returned.
         assert!(result.contains("offset 10 exceeds file length (2 lines)"));
-    }
-
-    #[rstest::rstest]
-    fn resolve_path_relative() {
-        // Given a relative path and a CWD.
-        let cwd = Path::new("/home/user/project");
-
-        // When resolving the path against that CWD.
-        let resolved = resolve_path("foo/bar.txt", cwd);
-
-        // Then it's joined against CWD.
-        assert_eq!(resolved, PathBuf::from("/home/user/project/foo/bar.txt"));
-    }
-
-    #[rstest::rstest]
-    fn resolve_path_absolute() {
-        // Given an absolute path.
-        let cwd = Path::new("/home/user/project");
-
-        // When resolving it against that CWD.
-        let resolved = resolve_path("/etc/hosts", cwd);
-
-        // Then it's returned as-is.
-        assert_eq!(resolved, PathBuf::from("/etc/hosts"));
     }
 
     fn test_ctx() -> crate::tool_types::ToolContext {

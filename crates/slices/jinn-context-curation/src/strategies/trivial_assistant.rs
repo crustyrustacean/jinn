@@ -66,11 +66,12 @@ use std::sync::Arc;
 
 pub use jinn_preferences_config::schemas::auto_prune::TrivialAssistantAutoPruneConfig;
 
-use super::min_age::is_within_min_age;
+use super::is_within_min_age;
+use super::worker_skeleton::prune_mutation;
 use crate::worker::HistoryWorker;
 use jinn_core_types::HistoryMutation;
 use jinn_core_types::SessionId;
-use jinn_core_types::{ChangeSource, ChatEntry, ChatEntryKind, ContextOverride};
+use jinn_core_types::{ChatEntry, ChatEntryKind};
 use jinn_llm_support::token_estimator::{TiktokenCounter, TokenCounter};
 use jinn_token_count_msg::HistoryWorkerChatEntryTokenCache;
 
@@ -189,13 +190,7 @@ fn build_trivial_assistant_mutations(
                 min_age,
                 "trivial_assistant: excluding old trivial assistant entry",
             );
-            mutations.push(HistoryMutation::SetContextOverride {
-                entry_id: entry.id.clone(),
-                value: ContextOverride::ForcedExclude,
-                source: ChangeSource::Worker {
-                    name: worker_name.to_owned(),
-                },
-            });
+            mutations.push(prune_mutation(&entry.id.clone(), worker_name));
         }
     }
 
@@ -260,6 +255,7 @@ mod tests {
     use super::*;
     use jinn_core_types::ChatEntry;
     use jinn_core_types::SessionId;
+    use jinn_core_types::{ChangeSource, ContextOverride};
 
     /// Build a worker with the given thresholds (enabled = true).
     fn worker(min_age: usize, max_tokens: usize) -> TrivialAssistantAutoPruneWorker {

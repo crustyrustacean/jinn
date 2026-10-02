@@ -17,6 +17,7 @@
 
 use crate::BoxedToolFuture;
 use crate::tool_types::ToolContext;
+use crate::tool_types::tool_error;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 
 /// Returns the tool definition for `get_list`.
@@ -41,10 +42,10 @@ pub fn definition() -> ToolDefinition {
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
         let Some(state) = ctx.state else {
-            return tool_error(call, "no application state available");
+            return tool_error(&call, "no application state available");
         };
         let Some(session_id) = ctx.session_id else {
-            return tool_error(call, "no session ID available");
+            return tool_error(&call, "no session ID available");
         };
 
         let rendered = {
@@ -69,18 +70,6 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             pin_position: None,
         }
     })
-}
-
-fn tool_error(call: ToolCall, msg: &str) -> ToolResult {
-    ToolResult {
-        tool_call_id: call.id,
-        name: call.name,
-        content: format!("Error: {msg}"),
-        success: false,
-        full_content: None,
-        truncation: None,
-        pin_position: None,
-    }
 }
 
 #[cfg(test)]

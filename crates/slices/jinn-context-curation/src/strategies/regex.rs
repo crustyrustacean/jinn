@@ -14,12 +14,14 @@
 //!
 //! [`ForcedExclude`]: jinn_core_types::ContextOverride::ForcedExclude
 
-use super::min_age::is_within_min_age;
+use super::is_within_min_age;
 
+use super::tool_pair::find_matching_result;
+use super::worker_skeleton::prune_mutation;
 use crate::worker::HistoryWorker;
 use jinn_core_types::HistoryMutation;
 use jinn_core_types::SessionId;
-use jinn_core_types::{ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
+use jinn_core_types::{ChatEntry, ChatEntryId, ChatEntryKind};
 pub use jinn_preferences_config::schemas::auto_prune::{RegexAutoPruneConfig, RegexPruneRule};
 
 /// Default regex prune rule tool name.
@@ -123,26 +125,6 @@ impl Clone for CompiledRegexRule {
     }
 }
 
-/// Walk forward from a ToolCall to find its matching ToolResult by tool call ID.
-///
-/// Returns `None` if no matching result exists (pending/orphaned call).
-fn find_matching_result(
-    history: &[ChatEntry],
-    call_idx: usize,
-    tool_call_id: &str,
-) -> Option<ChatEntryId> {
-    // ToolResults appear after their ToolCall, so scan forward only.
-    for entry in history.iter().skip(call_idx + 1) {
-        if let ChatEntryKind::ToolResult { id, .. } = &entry.kind
-            && id == tool_call_id
-        {
-            return Some(entry.id.clone());
-        }
-    }
-    // No matching result found — the call is still pending or orphaned.
-    None
-}
-
 /// Scan history for ToolCalls matching a single regex rule and collect
 /// `(call_idx, call_entry_id, result_entry_id)` tuples.
 ///
@@ -181,7 +163,7 @@ fn collect_matching_pairs(
         // Walk forward to find the ToolResult for this matching call.
         // If none found (pending/orphaned), skip — incomplete pairs don't
         // count toward keep_last positioning.
-        if let Some(result_id) = find_matching_result(history, i, &tool_call_id) {
+        if let Some((result_id, _)) = find_matching_result(history, i, &tool_call_id) {
             tracing::debug!(
                 call_id = %entry.id,
                 result_id = %result_id,
@@ -248,13 +230,7 @@ fn build_prune_mutations(
                     entry_id = %call_id,
                     "emitting ForcedExclude for call"
                 );
-                mutations.push(HistoryMutation::SetContextOverride {
-                    entry_id: call_id.clone(),
-                    value: ContextOverride::ForcedExclude,
-                    source: ChangeSource::Worker {
-                        name: worker_name.to_owned(),
-                    },
-                });
+                mutations.push(prune_mutation(call_id, worker_name));
             }
             if !result_protected {
                 tracing::debug!(
@@ -263,13 +239,7 @@ fn build_prune_mutations(
                     entry_id = %result_id,
                     "emitting ForcedExclude for result"
                 );
-                mutations.push(HistoryMutation::SetContextOverride {
-                    entry_id: result_id.clone(),
-                    value: ContextOverride::ForcedExclude,
-                    source: ChangeSource::Worker {
-                        name: worker_name.to_owned(),
-                    },
-                });
+                mutations.push(prune_mutation(result_id, worker_name));
             }
         }
     }
