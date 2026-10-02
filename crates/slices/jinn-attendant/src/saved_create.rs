@@ -7,6 +7,7 @@
 //! sidebar or the session store: the commands it emits are the ordinary
 //! ones an attendant creation publishes.
 
+use jinn_attendant_msg::AttendantModelSetting;
 use jinn_core_types::ChatEntry;
 use jinn_preferences_config::schemas::AttendantEntryConfig;
 use jinn_session_lifecycle_msg::event::SessionCreated;
@@ -60,6 +61,12 @@ pub fn build(entry: &AttendantEntryConfig, parent: &ChatSessionState) -> ChatSes
     attendant.set_attendant_behavior(entry.behavior);
     attendant.set_attendant_trigger(entry.trigger);
     attendant.set_attendant_is_prepping(entry.prep_mode);
+    // The entry's `model` key is the attendant's claim to its model, so the
+    // created attendant records the same claim. Without this an entry saved
+    // with a model would read as inheriting on the next save and lose it.
+    attendant.set_attendant_model_setting(AttendantModelSetting::of_configured_entry(
+        entry.configured_model().is_some(),
+    ));
     attendant.set_seed_template(entry.seed_template.clone());
     // The entry's name is the attendant's identity, both in the picker and
     // in the sessions list.
@@ -139,6 +146,7 @@ pub fn create_in_state(
 mod tests {
     #![allow(clippy::expect_used, reason = "test code")]
 
+    use jinn_attendant_msg::AttendantModelSetting;
     use jinn_core_types::{FilterMode, ModelSelection, NameFilter};
     use jinn_preferences_config::schemas::AttendantEntryConfig;
     use jinn_session_state::ChatSessionState;
@@ -282,6 +290,59 @@ mod tests {
         assert_eq!(
             attendant.model_selection(),
             &ModelSelection::Single("zai/glm-4.7".to_owned())
+        );
+    }
+
+    #[rstest::rstest]
+    fn an_attendant_created_from_an_entry_without_a_model_inherits_its_model() {
+        // Given an entry that names no model.
+        let entry = entry_with(None, None);
+
+        // When an attendant is created from it.
+        let attendant = build(&entry, &ChatSessionState::new());
+
+        // Then it records that its model is inherited. The model itself is
+        // whatever it was created with; the setting is the attendant's claim
+        // to it, and an entry that made no claim must not produce one.
+        assert_eq!(
+            attendant.attendant_model_setting(),
+            AttendantModelSetting::Inherit
+        );
+    }
+
+    #[rstest::rstest]
+    fn an_attendant_created_from_an_entry_with_a_model_owns_it() {
+        // Given an entry that names a model.
+        let entry = AttendantEntryConfig {
+            model: Some(ModelSelection::Single("zai/glm-4.7".to_owned())),
+            ..entry_with(None, None)
+        };
+
+        // When an attendant is created from it.
+        let attendant = build(&entry, &ChatSessionState::new());
+
+        // Then it records that its model is its own. Without this the very
+        // next save of that attendant would drop the key the entry was
+        // created from.
+        assert_eq!(
+            attendant.attendant_model_setting(),
+            AttendantModelSetting::Fixed
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_fresh_attendant_owns_no_model_of_its_own() {
+        // Given the parent a fresh `N` attendant is created under.
+
+        // When it is created.
+        let parent = ChatSessionState::new();
+        let attendant = ChatSessionState::new_attendant(&parent, true);
+
+        // Then it inherits. An attendant nobody created from a saved entry
+        // was nobody's `model` key, so it starts the default way.
+        assert_eq!(
+            attendant.attendant_model_setting(),
+            AttendantModelSetting::Inherit
         );
     }
 }
