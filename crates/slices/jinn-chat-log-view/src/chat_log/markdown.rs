@@ -312,26 +312,36 @@ mod tests {
     }
 
     #[rstest::rstest]
+    #[timeout(Duration::from_secs(3))]
     fn warm_rerender_reuses_compiled_highlighters() {
         // Given a large, code-heavy response already rendered once.
         let theme = jinn_theme::default_theme();
         let markdown = response_of(8, 465_000);
         let first = render_markdown(&markdown, WIDTH, &theme);
 
-        // When rendering it again, as the chat log does every streamed frame.
-        let started = Instant::now();
-        let second = render_markdown(&markdown, WIDTH, &theme);
-        let elapsed = started.elapsed();
+        // And a few more warm runs, so the measurement below is not a
+        // best-of-two against a single scheduling accident.
+        for _ in 0..WARMUP_RUNS {
+            let _ = render_markdown(&markdown, WIDTH, &theme);
+        }
 
-        // Then the output is unchanged.
-        assert_eq!(first, second);
-        // And the repeat render did not recompile any grammar's highlight query,
-        // which is what used to cost tens of milliseconds *per code block*.
-        // Recompilation would put this far above the ~122ms this document costs
-        // warm with its configurations already built.
+        // When rendering it again, as the chat log does every streamed frame.
+        let mut elapsed = Duration::MAX;
+        for _ in 0..TIMED_RUNS {
+            let started = Instant::now();
+            let second = render_markdown(&markdown, WIDTH, &theme);
+            elapsed = elapsed.min(started.elapsed());
+            // And each warm render matches the cold one.
+            assert_eq!(first, second);
+        }
+
+        // Then the repeat render did not recompile any grammar's highlight
+        // query, which is what used to cost tens of milliseconds *per code
+        // block*. Recompilation would put this far above the ~122ms this
+        // document costs warm with its configurations already built.
         assert!(
             elapsed < MAX_RECORDED_RERENDER,
-            "a warm re-render must reuse compiled highlighters, took {elapsed:?}"
+            "a warm re-render must reuse compiled highlighters, best of {TIMED_RUNS} took {elapsed:?}"
         );
     }
 
@@ -345,33 +355,62 @@ mod tests {
     /// per-call query compilation, which would add ~160ms on its own.
     const MAX_RECORDED_RERENDER: Duration = Duration::from_millis(250);
 
+    /// Warm renders sampled before the measurement. These are not the subject
+    /// of the assertion; they exist so the timed run is not the second-ever
+    /// call, where highlighter setup for this document's languages may still
+    /// be finishing on another thread.
+    const WARMUP_RUNS: usize = 3;
+
+    /// Timed runs the measurement takes the best of.
+    ///
+    /// One sample of a wall-clock measurement is a statement about the machine
+    /// as much as the code. Under a parallel `cargo test` the OS may preempt
+    /// the render thread mid-parse, which turned a ~8ms render into a 120ms
+    /// one and failed this test intermittently — three times in one session,
+    /// each passing in isolation. Taking the minimum discards exactly those
+    /// preemptions: the render's own cost is the floor, and a scheduler
+    /// interruption can only ever add to it.
+    const TIMED_RUNS: usize = 5;
+
     #[rstest::rstest]
+    #[timeout(Duration::from_secs(3))]
     fn a_typical_streamed_response_renders_inside_a_frame() {
         // Given a realistic streamed response: a real code block plus prose.
         let theme = jinn_theme::default_theme();
         let markdown = response_of(1, 5_000);
-        let _ = render_markdown(&markdown, WIDTH, &theme);
+
+        // And a highlighter already warm for this document's languages.
+        for _ in 0..WARMUP_RUNS {
+            let _ = render_markdown(&markdown, WIDTH, &theme);
+        }
 
         // When re-rendering it warm, which is what a streaming frame does.
-        let started = Instant::now();
-        let _ = render_markdown(&markdown, WIDTH, &theme);
-        let elapsed = started.elapsed();
+        let mut elapsed = Duration::MAX;
+        for _ in 0..TIMED_RUNS {
+            let started = Instant::now();
+            let _ = render_markdown(&markdown, WIDTH, &theme);
+            elapsed = elapsed.min(started.elapsed());
+        }
 
         // Then it fits in a 33ms frame, so a frame that does render stays
         // inside the redraw budget the throttle is pacing against.
         assert!(
             elapsed < FRAME_BUDGET,
-            "a typical streamed response must render inside one frame, took {elapsed:?}"
+            "a typical streamed response must render inside one frame, best of {TIMED_RUNS} took {elapsed:?}"
         );
     }
 
-    /// Ceiling for a single render of a typical streamed response: one 33ms
-    /// frame at the TUI's redraw cadence.
+    /// Ceiling for a single warm render of a typical streamed response: one
+    /// 33ms frame at the TUI's redraw cadence.
     ///
     /// The contract claimed this held for *every* frame. It does, for
     /// responses up to roughly 100KB — measured 8.3ms at 5KB, 14.4ms at
     /// 20KB, 40.4ms at 120KB, 122ms at 465KB — so it stops holding for the
     /// largest responses and is pinned here at the size where the streaming
     /// user actually is.
+    ///
+    /// Sibling to [`MAX_RECORDED_RERENDER`], which governs the same
+    /// measurement on a 465KB document. Both are asserted as a best-of-N, for
+    /// the reason given on [`TIMED_RUNS`].
     const FRAME_BUDGET: Duration = Duration::from_millis(33);
 }

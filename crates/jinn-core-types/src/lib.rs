@@ -9,15 +9,25 @@
 //!
 //! `chat_entry`/`chat_history`/`history_mutation`/`tool_result_status`/
 //! `entry_timing` (the `ChatEntry` vocabulary, promoted from the kernel
-//! session feature, 2026-09-19) are serde-only data: every field is a
-//! `jinn-core-types` value or a plain serde scalar. Their tests and the
-//! `HistoryEditor` write path stay kernel-side (the editor mutates session
-//! state, not these types).
+//! session feature, 2026-09-19) hold only vocabulary: every field is a
+//! `jinn-core-types` value or a plain serde scalar. They carry methods —
+//! constructors, predicates, content hashing, and the context-override state
+//! machine — but every one of those is a question about the value itself, with
+//! no dependency on actors, sessions, or app state. What they deliberately do
+//! not contain is domain behavior: the `HistoryEditor` write path stays
+//! kernel-side, because that mutates session state rather than these types.
+//!
+//! Three modules split this out by job rather than by kind:
+//! `chat_entry_constructors` builds entries, `chat_entry_serde` fixes their
+//! on-disk representation, and `chat_entry` itself answers questions about
+//! entries that already exist.
 
 pub mod actor_lifecycle;
 pub mod attachment;
 pub mod chat_entry;
+mod chat_entry_constructors;
 pub mod chat_entry_id;
+mod chat_entry_serde;
 pub mod chat_history;
 pub mod context_override;
 pub mod endpoint;

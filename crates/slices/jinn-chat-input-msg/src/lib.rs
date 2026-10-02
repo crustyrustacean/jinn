@@ -8,7 +8,9 @@ pub mod slash_command;
 pub use chat_input_state::*;
 pub use command::{EnqueueResumeTurn, EnqueueUserMessage, ListDirectory, SubmitSteeringMessage};
 pub use event::ChatEntrySubmitted;
-pub use file_picker_state::{FileEntry, FilePickerState, file_picker_slot, resolve_list_dir};
+pub use file_picker_state::{
+    FileEntry, FilePickerState, file_picker_slot, home_dir, resolve_list_dir,
+};
 pub use scope::chat_input_scope;
 pub use slash_command::{SlashCommand, SlashCommandEntry};
 

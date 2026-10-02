@@ -14,6 +14,7 @@ pub mod element;
 pub mod intent;
 pub mod key_hook;
 pub mod routes;
+pub(crate) mod token;
 pub mod validator;
 
 /// The box's state vocabulary, re-exported so slice consumers (and the

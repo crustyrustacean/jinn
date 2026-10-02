@@ -35,52 +35,11 @@ use std::sync::Arc;
 use crate::worker::HistoryWorker;
 use jinn_core_types::HistoryMutation;
 use jinn_core_types::SessionId;
-use jinn_core_types::{ChangeSource, ChatEntry, ChatEntryKind, ContextOverride};
+use jinn_core_types::{ChatEntry, ChatEntryKind};
 
 use super::is_within_min_age;
-
-// ── Shared helpers (used by both edit-read and read-edit workers) ──────
-
-/// Tool names that modify files.
-pub(super) const MODIFY_TOOLS: &[&str] = &["edit", "write"];
-
-/// Returns `true` if the tool name is a file-modifying tool (`edit` or `write`).
-pub(super) fn is_modify_tool(name: &str) -> bool {
-    MODIFY_TOOLS.contains(&name)
-}
-
-/// Extract the `path` field from a tool call's JSON arguments string.
-///
-/// Returns `None` if the arguments cannot be parsed or the `path` field is
-/// missing or not a string.
-pub(super) fn extract_path_from_arguments(arguments: &str) -> Option<String> {
-    let value: serde_json::Value = serde_json::from_str(arguments).ok()?;
-    value
-        .get("path")?
-        .as_str()
-        .map(std::borrow::ToOwned::to_owned)
-}
-
-/// Walk forward from a `ToolCall` at `call_idx` to find its matching `ToolResult`.
-///
-/// Returns `Some((result_entry_id, result_index))` if a match is found.
-/// Returns `None` if no result exists (pending/orphaned).
-pub(super) fn find_matching_result(
-    history: &[ChatEntry],
-    call_idx: usize,
-    tool_call_id: &str,
-) -> Option<(jinn_core_types::ChatEntryId, usize)> {
-    // ToolResults appear after their ToolCall, so scan forward only.
-    for (j, entry) in history.iter().enumerate().skip(call_idx + 1) {
-        if let ChatEntryKind::ToolResult { id, .. } = &entry.kind
-            && id == tool_call_id
-        {
-            return Some((entry.id.clone(), j));
-        }
-    }
-    // No matching result found — the call is still pending or orphaned.
-    None
-}
+use super::tool_pair::{extract_path_from_arguments, find_matching_result, is_modify_tool};
+use super::worker_skeleton::prune_mutation;
 
 // ── Worker ─────────────────────────��──────────────────────────────────
 
@@ -226,22 +185,10 @@ fn prune_backward(
         }
 
         if !back_call_protected {
-            mutations.push(HistoryMutation::SetContextOverride {
-                entry_id: back_call_entry_id,
-                value: ContextOverride::ForcedExclude,
-                source: ChangeSource::Worker {
-                    name: worker_name.to_owned(),
-                },
-            });
+            mutations.push(prune_mutation(&back_call_entry_id, worker_name));
         }
         if let Some((result_id, _)) = back_result.filter(|_| !back_result_protected) {
-            mutations.push(HistoryMutation::SetContextOverride {
-                entry_id: result_id,
-                value: ContextOverride::ForcedExclude,
-                source: ChangeSource::Worker {
-                    name: worker_name.to_owned(),
-                },
-            });
+            mutations.push(prune_mutation(&result_id, worker_name));
         }
     }
 }
@@ -261,6 +208,7 @@ mod tests {
     use jinn_core_types::ChatEntry;
     use jinn_core_types::SessionId;
     use jinn_core_types::ToolResultStatus;
+    use jinn_core_types::{ChangeSource, ContextOverride};
 
     /// Helper: create a read ToolCall + ToolResult pair.
     fn read_call_result(call_id: &str, path: &str, content: &str) -> [ChatEntry; 2] {

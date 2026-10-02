@@ -22,7 +22,7 @@
 
 #![allow(
     clippy::missing_docs_in_private_items,
-    reason = "Phase 2 transitional - Phase 4 refactors handler into per-intent modules"
+    reason = "the dispatch match documents its arms inline rather than per-arm"
 )]
 #![allow(
     clippy::doc_markdown,
@@ -35,8 +35,12 @@ use jinn_term_msg::command::ControlHolder;
 
 use crate::protocol::ScopeSignal;
 
+use super::cancel::try_handle_cancel_stream_prompt;
+use super::paste::{route_paste, try_slice_input_hook};
+use super::prompt_dismissal::{dismiss_unrelated_prompts, stream_in_flight};
 use crate::KernelIntent;
 use crate::feat;
+use crate::feat::navigation::tab_cycle::next_tab_base;
 
 use crate::IntentResult;
 
@@ -62,7 +66,7 @@ pub struct IntentHandler;
 /// the entering slice initializes its per-open state here rather than in
 /// whichever caller happened to request the transition. The hook runs after
 /// the push, so the scope is already the active one.
-fn apply_scope_signal(
+pub(crate) fn apply_scope_signal(
     result: &mut IntentResult,
     state: &mut AppState,
     slices: &jinn_slices::Slices,
@@ -113,232 +117,6 @@ fn clear_ignore_sweep_unless_ignoring(state: &mut AppState, intent: &KernelInten
     if action != jinn_chat_log_view_msg::IGNORE_SELECTED_ACTION {
         state.active_session_mut().clear_ignore_sweep();
     }
-}
-
-/// Dispatches the active dynamic scope's registered input hook.
-///
-/// A hit means the keystroke belonged to the slice's own input surface:
-/// the hook performed the synchronous write and the intent is consumed.
-/// Returns `None` outside dynamic scopes or when no hook is registered
-/// (or the hook declines the intent) — the caller falls through to the
-/// built-in arms.
-fn try_slice_input_hook(
-    intent: &KernelIntent,
-    state: &mut AppState,
-    routes: &jinn_slices::route::KeyRoutes,
-) -> Option<IntentResult> {
-    use jinn_slices::FocusScope;
-    let FocusScope::Dynamic(scope) = &state.frontend.scope() else {
-        return None;
-    };
-    let hook = routes.input_hook(scope)?;
-    // Hooks speak the slice-level editing vocabulary, not the kernel's
-    // full intent enum: translate, and skip hooks for non-editing
-    // intents entirely.
-    let edit = edit_intent_for(intent)?;
-    hook(&edit)
-}
-
-/// Translates an intent into the slice-hook editing vocabulary.
-///
-/// Every editing key arrives as a dynamic intent the keymap minted for the
-/// hook's scope, with a printable character carried in the byte payload.
-/// `None` means the intent is not an editing surface action — hooks are
-/// never consulted for it.
-#[must_use]
-fn edit_intent_for(intent: &KernelIntent) -> Option<jinn_slices::EditIntent> {
-    let KernelIntent::Dynamic(dynamic) = intent else {
-        return None;
-    };
-    Some(match dynamic.action.as_str() {
-        "insert-char" => jinn_slices::EditIntent::InsertChar(
-            std::str::from_utf8(&dynamic.bytes)
-                .ok()
-                .and_then(|text| text.chars().next())
-                .unwrap_or_default(),
-        ),
-        "delete-backward" => jinn_slices::EditIntent::DeleteBackward,
-        "delete-forward" => jinn_slices::EditIntent::DeleteForward,
-        "move-cursor-left" => jinn_slices::EditIntent::CursorLeft,
-        "move-cursor-right" => jinn_slices::EditIntent::CursorRight,
-        "move-cursor-home" => jinn_slices::EditIntent::CursorHome,
-        "move-cursor-end" => jinn_slices::EditIntent::CursorEnd,
-        jinn_chat_input_msg::PASTE_TEXT_ACTION => jinn_slices::EditIntent::Paste(
-            std::str::from_utf8(&dynamic.bytes)
-                .map(std::borrow::ToOwned::to_owned)
-                .unwrap_or_default(),
-        ),
-        _ => return None,
-    })
-}
-
-/// Mints the dynamic intent a bracketed paste travels as.
-///
-/// A paste is not a keystroke and no keymap row can produce it: the
-/// terminal reports the event, the TUI mints this intent, and the kernel's
-/// paste branch decides which surface claims the text. A paste carries
-/// nothing but its bytes, so `scope` is supplied by the routing step rather
-/// than chosen here.
-fn paste_intent(scope: jinn_slices::SliceScopeId, text: String) -> jinn_slices::DynamicIntent {
-    jinn_slices::DynamicIntent::with_bytes(
-        scope,
-        jinn_chat_input_msg::PASTE_TEXT_ACTION,
-        "paste text",
-        text.into_bytes(),
-    )
-}
-
-/// Reads a paste intent's payload back as text.
-///
-/// Invalid UTF-8 is dropped: a paste that cannot be decoded has nothing
-/// well-defined to insert anywhere.
-fn paste_text_of(intent: &KernelIntent) -> Option<String> {
-    let KernelIntent::Dynamic(dynamic) = intent else {
-        return None;
-    };
-    (dynamic.action == jinn_chat_input_msg::PASTE_TEXT_ACTION)
-        .then(|| String::from_utf8_lossy(&dynamic.bytes).into_owned())
-        .filter(|text| !text.is_empty())
-}
-
-/// Delivers a bracketed paste to the surface that holds focus.
-///
-/// Returns [`None`] when `intent` is not a paste, so the caller falls
-/// through to ordinary dispatch. Otherwise it returns the paste's whole
-/// outcome — a paste never falls through.
-///
-/// Resolution order, first match wins:
-///
-/// 1. The focused dynamic scope's input hook, as
-///    [`jinn_slices::EditIntent::Paste`]. A hook that returns [`None`] has
-///    *declined*: the paste is consumed and dropped there, never re-offered.
-///    A surface that says "not mine" must not have its text land somewhere
-///    the user is not looking. (A scope with no hook at all has not
-///    declined — that is case 4, not this one.)
-/// 2. The focused scope's own paste row, when that slice attached one.
-///    The intent is re-minted against the focused scope so
-///    [`jinn_slices::route::KeyRoutes::action_for`] — which matches on
-///    `(row.scope, action)`, not on focus — finds it.
-/// 3. The chat input box, when focus is not a dynamic slice scope: in
-///    [`jinn_slices::FocusScope::Normal`] and
-///    [`jinn_slices::FocusScope::Input`] the box is the surface under the
-///    cursor. The box's own `paste-text` row performs the insert, so this is
-///    the one path where the box is named — as a dispatch target, not as a
-///    routing decision.
-/// 4. Dropped, for a dynamic scope with neither a hook nor a row.
-///
-/// A paste is not a keypress, so it deliberately does not run
-/// [`dismiss_unrelated_prompts`]'s dismissal: a confirmation prompt is
-/// dismissed by the key that follows the paste, not by the paste itself.
-fn route_paste(
-    intent: &KernelIntent,
-    state: &mut AppState,
-    slices: &jinn_slices::Slices,
-    routes: &jinn_slices::route::KeyRoutes,
-    config: &jinn_config::ConfigLayer,
-) -> Option<IntentResult> {
-    use jinn_slices::FocusScope;
-    let text = paste_text_of(intent)?;
-    let bytes = text.clone().into_bytes();
-
-    let focused = state.frontend.scope().clone();
-    let Some(scope) = (match &focused {
-        FocusScope::Dynamic(scope) => Some(scope.clone()),
-        _ => None,
-    }) else {
-        // 3. Not a dynamic slice scope: the chat input box owns the paste.
-        return Some(dispatch_paste_row(
-            jinn_chat_input_msg::chat_input_scope(),
-            text,
-            state,
-            slices,
-            routes,
-            config,
-            bytes,
-        ));
-    };
-
-    // 1. The focused scope's own input hook. A decline is final.
-    let probe = KernelIntent::Dynamic(paste_intent(scope.clone(), text.clone()));
-    if let Some(result) = try_slice_input_hook(&probe, state, routes) {
-        return Some(result);
-    }
-
-    // 2 then 4. The focused scope's own paste row; dropped when there is none.
-    Some(dispatch_paste_row(
-        scope, text, state, slices, routes, config, bytes,
-    ))
-}
-
-/// Runs the paste row attached to `scope`, if there is one.
-///
-/// A row reads its payload from the ctx rather than from the intent, so
-/// the bytes travel twice: in the intent (the route-table key is
-/// `(row.scope, action)`) and in the ctx (the action's input). No row
-/// means no surface claimed the paste, and the result is empty.
-fn dispatch_paste_row(
-    scope: jinn_slices::SliceScopeId,
-    text: String,
-    state: &mut AppState,
-    slices: &jinn_slices::Slices,
-    routes: &jinn_slices::route::KeyRoutes,
-    config: &jinn_config::ConfigLayer,
-    bytes: Vec<u8>,
-) -> IntentResult {
-    routes
-        .action_for(
-            &paste_intent(scope, text),
-            jinn_slices::route::ActionCtx {
-                state,
-                slices,
-                config,
-                key_bytes: bytes,
-            },
-        )
-        .map_or_else(jinn_slices::route::RouteResult::empty, |mut result| {
-            apply_scope_signal(&mut result, state, slices, routes, config);
-            result
-        })
-}
-
-/// Resolves the base scope after a `<Tab>` switch, walking the
-/// registered tab scopes.
-///
-/// Tabs are declared by slices (tab descriptors registered at
-/// activation); composition keeps the ordered list on `Slices`. With no
-/// dynamic tab registered, `<Tab>` is a no-op round-trip to Normal —
-/// the chat tab is the only tab.
-fn next_tab_base(state: &AppState, slices: &jinn_slices::Slices) -> jinn_slices::FocusScope {
-    use jinn_slices::FocusScope;
-
-    // The chat tab (Normal) is always first in the cycle, so the walk
-    // is: Normal → tab[0] → … → tab[n-1] → Normal.
-    let tabs = tab_scopes(slices);
-    if tabs.is_empty() {
-        return FocusScope::Normal;
-    }
-    let position = match state.frontend.scope_base() {
-        FocusScope::Dynamic(id) => tabs.iter().position(|tab| tab == &id),
-        _ => None,
-    };
-    match position {
-        // Currently on a dynamic tab: advance, wrapping back to chat.
-        Some(i) => match tabs.get(i + 1) {
-            Some(next) => FocusScope::Dynamic(next.clone()),
-            // Last tab: wrap to chat.
-            None => FocusScope::Normal,
-        },
-        // On chat (or any other base): enter the first dynamic tab.
-        None => match tabs.first() {
-            Some(first) => FocusScope::Dynamic(first.clone()),
-            None => FocusScope::Normal,
-        },
-    }
-}
-
-/// The registered tab scope ids, in tab order.
-fn tab_scopes(slices: &jinn_slices::Slices) -> Vec<jinn_slices::SliceScopeId> {
-    slices.tab_scopes()
 }
 
 /// Closes the terminal overlay after an active-session switch and returns
@@ -613,187 +391,6 @@ impl IntentHandler {
     }
 }
 
-/// Cancel stream prompt intercept.
-///
-/// If the cancel-stream confirmation prompt is showing:
-/// - `NormalEscape` confirms the cancel (and returns the appropriate commands).
-/// - Any other intent dismisses the prompt and returns `None` (fall through to normal processing).
-///
-/// Returns `None` if the prompt is not showing or was dismissed.
-fn try_handle_cancel_stream_prompt(
-    intent: &KernelIntent,
-    state: &mut AppState,
-) -> Option<IntentResult> {
-    if !state.frontend.cancel_stream_prompt {
-        return None;
-    }
-
-    // Dismiss the prompt regardless of which intent triggered it.
-    state.frontend.cancel_stream_prompt = false;
-
-    if !matches!(intent, KernelIntent::NormalEscape) {
-        // Any other key — dismiss prompt, fall through to normal processing.
-        return None;
-    }
-
-    let session_id = state.session.active_session_id().clone();
-
-    // Check busy state before resetting.
-    let was_busy = state.active_session().is_busy();
-
-    // Cancel busy background operations (lifecycle, etc.).
-    if was_busy {
-        state.active_session_mut().cancel_busy();
-    }
-
-    // Cancel stream.
-    state.active_session_mut().cancel_stream_and_drain();
-    let mut result = IntentResult::empty().with_message(jinn_inference_msg::CancelStream {
-        session_id: session_id.clone(),
-    });
-
-    // Also cancel any running lifecycle command.
-    if was_busy {
-        result =
-            result.with_message(jinn_session_lifecycle_msg::CancelLifecycleCommand { session_id });
-    }
-
-    // The cascade: every subagent or attendant beneath this session stops
-    // with it, recursively. Forks are boundaries — their descendants are
-    // independent threads, out of the cancel's scope.
-    let mut visited = std::collections::HashSet::new();
-    visited.insert(state.session.active_session_id().clone());
-    result =
-        cascade_descendants(state, state.session.active_session_id(), &mut visited).merge(result);
-
-    Some(result)
-}
-
-/// Collects the cancel messages for every running descendant of `session_id`.
-///
-/// Immediate children come from two sources: the in-flight task-spawn
-/// registry (subagents) and the live session map (attendants). A child is
-/// followed on its origin — `Subagent` and `Attendant` recurse, `Fork` is a
-/// hard boundary, `User` is skipped. The `visited` set terminates the walk
-/// on a cyclic parent link (the same defence the visible session tree uses).
-///
-/// Descendant cancels are messages, not synchronous state writes: the
-/// session actor owns each child's phase. A caller that also owns its own
-/// session's phase must drive it to `Idle` itself, or a user message it
-/// dispatches immediately after will be queued rather than sent.
-///
-/// The walk is shared by every caller that stops a subtree — `Esc` on the
-/// active session, and the attendant slice's manual re-run.
-#[must_use]
-pub fn cascade_descendants(
-    state: &AppState,
-    session_id: &jinn_core_types::SessionId,
-    visited: &mut std::collections::HashSet<jinn_core_types::SessionId>,
-) -> IntentResult {
-    let mut result = IntentResult::empty();
-    let registry = state.task_spawns.clone();
-
-    // Union of both child sources, deduplicated.
-    let mut child_ids: Vec<jinn_core_types::SessionId> = registry.children_of(session_id);
-    for (id, session) in state.session.iter() {
-        if session.parent_session().as_ref() == Some(session_id) && session.is_attendant() {
-            child_ids.push(id.clone());
-        }
-    }
-    child_ids.sort();
-    child_ids.dedup();
-
-    for child_id in child_ids {
-        if !visited.insert(child_id.clone()) {
-            continue;
-        }
-        let child_origin = state
-            .try_session(&child_id)
-            .map(jinn_session_state::ChatSessionState::origin);
-        match child_origin {
-            // The child's result is only valid in the context of the parent
-            // turn that asked the question — stop it and follow its own
-            // subtree.
-            Some(
-                jinn_session_msg::SessionOrigin::Subagent
-                | jinn_session_msg::SessionOrigin::Attendant,
-            ) => {
-                result = result
-                    .with_message(jinn_inference_msg::CancelStream {
-                        session_id: child_id.clone(),
-                    })
-                    .merge(cascade_descendants(state, &child_id, visited));
-            }
-            // A fork is an independent thread: its own descendants are out
-            // of scope. The walk stops here, deliberately. A user-created
-            // child is not the cancel's to stop either.
-            None
-            | Some(jinn_session_msg::SessionOrigin::Fork | jinn_session_msg::SessionOrigin::User) =>
-                {}
-        }
-    }
-
-    result
-}
-
-/// Dismisses armed confirmation prompts when an unrelated action arrives.
-///
-/// Runs as the first statement of [`IntentHandler::handle_inner`], ahead of
-/// every dispatch path — including the slice route rows and the slice input
-/// hooks, which both return early. A prompt cleared here cannot survive a
-/// keystroke, which is the whole point: a prompt still on screen advertises a
-/// confirmation the user never made.
-///
-/// The sidebar route actions that arm and confirm a prompt keep it intact and
-/// perform their own revalidation and confirmation inside `jinn-sidebar`; the
-/// cancel prompt is confirmed by the escape that raised it.
-fn dismiss_unrelated_prompts(intent: &KernelIntent, state: &mut AppState) {
-    let sidebar_action = match intent {
-        KernelIntent::Dynamic(dynamic)
-            if dynamic.slice == jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id() =>
-        {
-            Some(dynamic.action.as_str())
-        }
-        _ => None,
-    };
-
-    if state.frontend.close_session_prompt && sidebar_action != Some("session-close") {
-        state.frontend.close_session_prompt = false;
-    }
-
-    if state.frontend.archive_tree_prompt.is_some() {
-        let matching_tree_action = matches!(
-            sidebar_action,
-            Some(jinn_sidebar_msg::TREE_ARCHIVE_ACTION | jinn_sidebar_msg::TREE_TEARDOWN_ACTION)
-        );
-        if !matching_tree_action {
-            state.frontend.archive_tree_prompt = None;
-        }
-    }
-
-    // The cancel prompt belongs to the session, not the sidebar: only the
-    // confirming escape may leave it standing, and a turn that finished on
-    // its own leaves nothing to cancel.
-    if state.frontend.cancel_stream_prompt
-        && (!matches!(intent, KernelIntent::NormalEscape) || !stream_in_flight(state))
-    {
-        state.frontend.cancel_stream_prompt = false;
-    }
-}
-
-/// Whether a turn is in flight — the one condition that both raises the
-/// cancel-stream prompt and keeps it standing.
-///
-/// Shared by the arming path and the dismissal above so the two can never
-/// disagree: a prompt must not outlive the work it asks to abort.
-fn stream_in_flight(state: &AppState) -> bool {
-    state.active_session().is_busy()
-        || !matches!(
-            state.active_session().phase(),
-            jinn_session_msg::PhaseKind::Idle
-        )
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -808,33 +405,6 @@ mod tests {
 
     /// Empty slice registry + route table for handler tests that don't
     /// exercise slices or route rows.
-    fn empty_slices() -> jinn_slices::Slices {
-        jinn_slices::Slices::new()
-    }
-
-    /// `Slices` with the status-bar cell registered (as the slice's
-    /// `activate` does), for hint write/read assertions.
-    fn status_bar_slices() -> jinn_slices::Slices {
-        let slices = jinn_slices::Slices::new();
-        #[expect(
-            clippy::expect_used,
-            reason = "test seam: a fresh Slices never has the status-bar cell registered"
-        )]
-        {
-            slices
-                .register(status_bar_slot(), StatusBarState::default())
-                .expect("fresh Slices never has the status-bar cell registered");
-        }
-        slices
-    }
-
-    fn status_hint(slices: &jinn_slices::Slices) -> Option<String> {
-        slices
-            .reader::<StatusBarState>(&status_bar_slot())?
-            .read()
-            .hint
-            .clone()
-    }
 
     fn empty_routes() -> jinn_slices::route::KeyRoutes {
         jinn_slices::route::KeyRoutes::new()
@@ -876,9 +446,6 @@ mod tests {
         ))
     }
 
-    /// A state holding a child session linked from the active one, a live
-    /// terminal for the parent, and the term view overlay pushed on top of
-    /// a `Normal` base — i.e. everything the switch guard reacts to.
     fn state_with_linked_child_and_terminal_overlay(
         entry_id: &str,
     ) -> (AppState, jinn_core_types::SessionId) {
@@ -916,8 +483,6 @@ mod tests {
         (state, child_id)
     }
 
-    /// A state whose only session is live in the terminal, with the
-    /// Sessions sidebar section selected and the base swapped to it.
     fn state_with_live_terminal_session_selected() -> (AppState, jinn_core_types::SessionId) {
         use jinn_session_state::ChatSessionState;
 
@@ -939,6 +504,78 @@ mod tests {
         (state, second_id)
     }
 
+    fn transitioning_routes(
+        scope: jinn_slices::SliceScopeId,
+        signal: ScopeSignal,
+        enters: &std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    ) -> (jinn_slices::route::KeyRoutes, KernelIntent) {
+        use jinn_slices::route::{ActionFn, BindSite, RouteId, RouteOutcome, RouteRow};
+        use std::sync::atomic::Ordering;
+
+        let routes = empty_routes();
+        routes.attach(RouteRow {
+            route_id: RouteId::new("test:transition"),
+            scope: scope.clone(),
+            key: "<enter>",
+            category: "general",
+            site: BindSite::OwnScope,
+            feature: "test",
+            outcome: RouteOutcome::Action {
+                action: "transition",
+                display: "request a scope transition",
+                run: ActionFn::new(move |_ctx| {
+                    IntentResult::empty().with_scope_signal(signal.clone())
+                }),
+            },
+        });
+        let counted = std::sync::Arc::clone(enters);
+        routes.register_scope_enter_hook(
+            &scope,
+            std::sync::Arc::new(move |_ctx: jinn_slices::route::ActionCtx<'_>| {
+                counted.fetch_add(1, Ordering::SeqCst);
+            }),
+        );
+        let intent = KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
+            scope,
+            "transition",
+            "request a scope transition",
+        ));
+        (routes, intent)
+    }
+
+    fn empty_slices() -> jinn_slices::Slices {
+        jinn_slices::Slices::new()
+    }
+
+    /// `Slices` with the status-bar cell registered (as the slice's
+    /// `activate` does), for hint write/read assertions.
+    fn status_bar_slices() -> jinn_slices::Slices {
+        let slices = jinn_slices::Slices::new();
+        #[expect(
+            clippy::expect_used,
+            reason = "test seam: a fresh Slices never has the status-bar cell registered"
+        )]
+        {
+            slices
+                .register(status_bar_slot(), StatusBarState::default())
+                .expect("fresh Slices never has the status-bar cell registered");
+        }
+        slices
+    }
+
+    fn status_hint(slices: &jinn_slices::Slices) -> Option<String> {
+        slices
+            .reader::<StatusBarState>(&status_bar_slot())?
+            .read()
+            .hint
+            .clone()
+    }
+
+    /// A state holding a child session linked from the active one, a live
+    /// terminal for the parent, and the term view overlay pushed on top of
+    /// a `Normal` base — i.e. everything the switch guard reacts to.
+    /// A state whose only session is live in the terminal, with the
+    /// Sessions sidebar section selected and the base swapped to it.
     /// A dynamic intent plus the route table that activates `second_id` and
     /// then toggles the terminal view overlay for the newly active session.
     fn activate_and_toggle_overlay_routes(
@@ -1000,44 +637,6 @@ mod tests {
 
     /// Route table whose single row requests `signal` for `scope`, plus a
     /// scope-enter hook for that same scope that bumps `enters`.
-    fn transitioning_routes(
-        scope: jinn_slices::SliceScopeId,
-        signal: ScopeSignal,
-        enters: &std::sync::Arc<std::sync::atomic::AtomicUsize>,
-    ) -> (jinn_slices::route::KeyRoutes, KernelIntent) {
-        use jinn_slices::route::{ActionFn, BindSite, RouteId, RouteOutcome, RouteRow};
-        use std::sync::atomic::Ordering;
-
-        let routes = empty_routes();
-        routes.attach(RouteRow {
-            route_id: RouteId::new("test:transition"),
-            scope: scope.clone(),
-            key: "<enter>",
-            category: "general",
-            site: BindSite::OwnScope,
-            feature: "test",
-            outcome: RouteOutcome::Action {
-                action: "transition",
-                display: "request a scope transition",
-                run: ActionFn::new(move |_ctx| {
-                    IntentResult::empty().with_scope_signal(signal.clone())
-                }),
-            },
-        });
-        let counted = std::sync::Arc::clone(enters);
-        routes.register_scope_enter_hook(
-            &scope,
-            std::sync::Arc::new(move |_ctx: jinn_slices::route::ActionCtx<'_>| {
-                counted.fetch_add(1, Ordering::SeqCst);
-            }),
-        );
-        let intent = KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
-            scope,
-            "transition",
-            "request a scope transition",
-        ));
-        (routes, intent)
-    }
     use crate::common::app_state::AppState;
     use crate::feat::intent::IntentHandler;
     use crate::protocol::IntentResult;
@@ -1046,86 +645,12 @@ mod tests {
     use jinn_slices::FocusScope;
 
     /// The chat input box's text, as a paste leaves it.
-    fn chat_input_text(state: &AppState) -> String {
-        state.with_active_input(
-            |input| jinn_chat_input_msg::ChatInputBoxState::text(input).to_owned(),
-            String::new,
-        )
-    }
-
     /// A bracketed-paste intent carrying `text`, as the TUI mints it.
-    fn paste_intent_for(text: &str) -> KernelIntent {
-        KernelIntent::Dynamic(jinn_slices::DynamicIntent::with_bytes(
-            jinn_chat_input_msg::chat_input_scope(),
-            jinn_chat_input_msg::PASTE_TEXT_ACTION,
-            "paste text",
-            text.as_bytes().to_vec(),
-        ))
-    }
-
     /// A route table whose `scope` has an input hook that accepts a paste
     /// and records the text it saw.
-    fn routes_with_paste_hook(
-        scope: &jinn_slices::SliceScopeId,
-        seen: &std::sync::Arc<std::sync::Mutex<Vec<String>>>,
-    ) -> jinn_slices::route::KeyRoutes {
-        let routes = empty_routes();
-        let seen = std::sync::Arc::clone(seen);
-        routes.register_input_hook(
-            scope,
-            std::sync::Arc::new(move |edit: &jinn_slices::EditIntent| {
-                if let jinn_slices::EditIntent::Paste(text) = edit {
-                    seen.lock().expect("recording lock").push(text.clone());
-                    return Some(jinn_slices::route::RouteResult::empty());
-                }
-                None
-            }),
-        );
-        routes
-    }
-
     /// A route table whose `scope` has an input hook that *declines* a
     /// paste by returning `None`.
-    fn routes_with_declining_hook(
-        scope: &jinn_slices::SliceScopeId,
-    ) -> jinn_slices::route::KeyRoutes {
-        let routes = empty_routes();
-        routes.register_input_hook(
-            scope,
-            std::sync::Arc::new(|_: &jinn_slices::EditIntent| None),
-        );
-        routes
-    }
-
     /// A route table with a keyless `paste-text` row attached to `scope`.
-    fn routes_with_paste_row(
-        scope: &jinn_slices::SliceScopeId,
-        seen: &std::sync::Arc<std::sync::Mutex<Vec<String>>>,
-    ) -> jinn_slices::route::KeyRoutes {
-        use jinn_slices::route::{ActionFn, BindSite, RouteId, RouteOutcome, RouteRow};
-        let routes = empty_routes();
-        let seen = std::sync::Arc::clone(seen);
-        routes.attach(RouteRow {
-            route_id: RouteId::new("test:paste-row"),
-            scope: scope.clone(),
-            key: "",
-            category: "test",
-            site: BindSite::OwnScope,
-            feature: "test",
-            outcome: RouteOutcome::Action {
-                action: jinn_chat_input_msg::PASTE_TEXT_ACTION,
-                display: "paste text",
-                run: ActionFn::new(move |mut ctx| {
-                    let text =
-                        String::from_utf8_lossy(&std::mem::take(&mut ctx.key_bytes)).into_owned();
-                    seen.lock().expect("recording lock").push(text);
-                    jinn_slices::route::RouteResult::empty()
-                }),
-            },
-        });
-        routes
-    }
-
     /// A route table with a keyless `paste-text` row standing in for the
     /// chat input box's own row.
     ///
@@ -1134,397 +659,8 @@ mod tests {
     /// keyless binding, same read of the payload off the ctx. What these
     /// tests pin is the *routing* — that a paste in a static scope reaches
     /// this row — not the box's insert, which its own tests cover.
-    fn attach_chat_input_paste_row(routes: &jinn_slices::route::KeyRoutes) {
-        use jinn_slices::route::{ActionFn, BindSite, RouteId, RouteOutcome, RouteRow};
-        routes.attach(RouteRow {
-            route_id: RouteId::new("test:chat-input-paste"),
-            scope: jinn_chat_input_msg::chat_input_scope(),
-            key: "",
-            category: "test",
-            site: BindSite::StaticScopes(&["Input"]),
-            feature: "test",
-            outcome: RouteOutcome::Action {
-                action: jinn_chat_input_msg::PASTE_TEXT_ACTION,
-                display: "paste text",
-                run: ActionFn::new(|mut ctx| {
-                    let text =
-                        String::from_utf8_lossy(&std::mem::take(&mut ctx.key_bytes)).into_owned();
-                    let Some(state) = ctx
-                        .state
-                        .as_any_mut()
-                        .and_then(|any| any.downcast_mut::<AppState>())
-                    else {
-                        return jinn_slices::route::RouteResult::empty();
-                    };
-                    state.update_active_input(|input| input.insert_text(&text));
-                    jinn_slices::route::RouteResult::empty()
-                }),
-            },
-        });
-    }
-
-    #[rstest::rstest]
-    fn paste_reaches_the_focused_scope_input_hook() {
-        // Given a dynamic scope focused whose input hook accepts pastes.
-        let scope = jinn_slices::SliceScopeId::navigation("test", "paste-hook");
-        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let routes = routes_with_paste_hook(&scope, &seen);
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Dynamic(scope));
-
-        // When handling a bracketed paste.
-        IntentHandler::handle(
-            &paste_intent_for("hooked"),
-            &mut state,
-            &empty_slices(),
-            &routes,
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then the focused hook received the pasted text.
-        assert_eq!(
-            seen.lock().expect("recording lock").as_slice(),
-            ["hooked".to_owned()]
-        );
-    }
-
-    #[rstest::rstest]
-    fn paste_to_a_hook_leaves_the_chat_input_buffer_untouched() {
-        // Given a dynamic scope focused whose input hook accepts pastes.
-        let scope = jinn_slices::SliceScopeId::navigation("test", "paste-hook");
-        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let routes = routes_with_paste_hook(&scope, &seen);
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Dynamic(scope));
-
-        // When handling a bracketed paste.
-        IntentHandler::handle(
-            &paste_intent_for("hooked"),
-            &mut state,
-            &empty_slices(),
-            &routes,
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then the paste did not fall through to the chat input box.
-        assert!(chat_input_text(&state).is_empty());
-    }
-
-    #[rstest::rstest]
-    fn paste_declined_by_a_hook_is_dropped() {
-        // Given a dynamic scope focused whose input hook declines pastes.
-        let scope = jinn_slices::SliceScopeId::navigation("test", "declining-hook");
-        let routes = routes_with_declining_hook(&scope);
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Dynamic(scope));
-
-        // When handling a bracketed paste.
-        let result = IntentHandler::handle(
-            &paste_intent_for("declined"),
-            &mut state,
-            &empty_slices(),
-            &routes,
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then no message was published.
-        assert!(result.message_names.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn paste_declined_by_a_hook_does_not_reach_the_chat_input_box() {
-        // Given a dynamic scope focused whose input hook declines pastes.
-        let scope = jinn_slices::SliceScopeId::navigation("test", "declining-hook");
-        let routes = routes_with_declining_hook(&scope);
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Dynamic(scope));
-
-        // When handling a bracketed paste.
-        IntentHandler::handle(
-            &paste_intent_for("declined"),
-            &mut state,
-            &empty_slices(),
-            &routes,
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then the text was not re-offered to the chat input box.
-        assert!(chat_input_text(&state).is_empty());
-    }
-
-    #[rstest::rstest]
-    fn paste_reaches_the_focused_scopes_own_paste_row() {
-        // Given a dynamic scope focused that attached a paste row of its
-        // own and no input hook.
-        let scope = jinn_slices::SliceScopeId::navigation("test", "paste-row");
-        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let routes = routes_with_paste_row(&scope, &seen);
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Dynamic(scope));
-
-        // When handling a bracketed paste.
-        IntentHandler::handle(
-            &paste_intent_for("rowed"),
-            &mut state,
-            &empty_slices(),
-            &routes,
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then that row received the pasted text.
-        assert_eq!(
-            seen.lock().expect("recording lock").as_slice(),
-            ["rowed".to_owned()]
-        );
-    }
-
-    #[rstest::rstest]
-    fn paste_in_input_scope_fills_the_chat_input_buffer() {
-        // Given focus in the static Input scope, with the chat box's own
-        // paste row attached.
-        let routes = empty_routes();
-        attach_chat_input_paste_row(&routes);
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_clear_overlays();
-
-        // When handling a bracketed paste.
-        IntentHandler::handle(
-            &paste_intent_for("in the box"),
-            &mut state,
-            &empty_slices(),
-            &routes,
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then the text landed in the chat input buffer.
-        assert_eq!(chat_input_text(&state), "in the box");
-    }
-
-    #[rstest::rstest]
-    fn paste_in_normal_scope_fills_the_chat_input_buffer() {
-        // Given focus in the static Normal scope, with the chat box's own
-        // paste row attached.
-        let routes = empty_routes();
-        attach_chat_input_paste_row(&routes);
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_swap_base(FocusScope::Normal);
-
-        // When handling a bracketed paste.
-        IntentHandler::handle(
-            &paste_intent_for("normal scope"),
-            &mut state,
-            &empty_slices(),
-            &routes,
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then the text landed in the chat input buffer.
-        assert_eq!(chat_input_text(&state), "normal scope");
-    }
-
-    #[rstest::rstest]
-    fn paste_in_a_scope_with_no_hook_and_no_row_is_dropped() {
-        // Given a dynamic scope focused that attached neither an input
-        // hook nor a paste row, and the chat box's row is attached.
-        let routes = empty_routes();
-        attach_chat_input_paste_row(&routes);
-        let scope = jinn_slices::SliceScopeId::navigation("test", "no-surface");
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Dynamic(scope));
-
-        // When handling a bracketed paste.
-        let result = IntentHandler::handle(
-            &paste_intent_for("nowhere"),
-            &mut state,
-            &empty_slices(),
-            &routes,
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then no message was published.
-        assert!(result.message_names.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn paste_in_a_scope_with_no_surface_does_not_fill_the_chat_input_buffer() {
-        // Given a dynamic scope focused that attached neither an input
-        // hook nor a paste row, and the chat box's row is attached.
-        let routes = empty_routes();
-        attach_chat_input_paste_row(&routes);
-        let scope = jinn_slices::SliceScopeId::navigation("test", "no-surface");
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_push(FocusScope::Dynamic(scope));
-
-        // When handling a bracketed paste.
-        IntentHandler::handle(
-            &paste_intent_for("nowhere"),
-            &mut state,
-            &empty_slices(),
-            &routes,
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then the text did not fall through to the chat input box.
-        assert!(chat_input_text(&state).is_empty());
-    }
-
     #[rstest::rstest]
     #[test]
-    fn cancel_stream_prompt_esc_confirms() {
-        // Given cancel_stream_prompt is showing over a turn in flight.
-        let mut state = AppState::default_with_scope_focus();
-        state.active_session_mut().begin_streaming();
-        state.frontend.cancel_stream_prompt = true;
-
-        // When handling NormalEscape.
-        let result = IntentHandler::handle(
-            &KernelIntent::NormalEscape,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then the prompt is dismissed and a CancelStream command is emitted.
-        assert!(!state.frontend.cancel_stream_prompt);
-        assert!(
-            result
-                .message_names
-                .iter()
-                .any(|n| n.contains("CancelStream")),
-            "should emit CancelStream: {:?}",
-            result.message_names
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn cancel_stream_prompt_other_intent_dismisses() {
-        // Given cancel_stream_prompt is showing.
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.cancel_stream_prompt = true;
-
-        // When handling a different intent (NoOp).
-        let _result = IntentHandler::handle(
-            &KernelIntent::NoOp,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then the prompt is dismissed but no CancelStream command.
-        assert!(!state.frontend.cancel_stream_prompt);
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn cancel_stream_prompt_not_showing_returns_none() {
-        // Given cancel_stream_prompt is NOT showing.
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.cancel_stream_prompt = false;
-
-        // When handling NormalEscape.
-        let _result = IntentHandler::handle(
-            &KernelIntent::NormalEscape,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then no cancel command is emitted (falls through to normal escape handling).
-        // The prompt remains false.
-        assert!(!state.frontend.cancel_stream_prompt);
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn close_session_prompt_other_intent_dismisses() {
-        // Given close_session_prompt is showing.
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.close_session_prompt = true;
-
-        // When handling a different intent (NoOp).
-        let _result = IntentHandler::handle(
-            &KernelIntent::NoOp,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then the prompt is dismissed.
-        assert!(!state.frontend.close_session_prompt);
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn cancel_stream_prompt_noop_dismisses() {
-        // Given cancel_stream_prompt is showing.
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.cancel_stream_prompt = true;
-
-        // When handling NoOp (unmapped key).
-        let result = IntentHandler::handle(
-            &KernelIntent::NoOp,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then the prompt is dismissed and no CancelStream command is emitted.
-        assert!(!state.frontend.cancel_stream_prompt);
-        assert!(
-            !result
-                .message_names
-                .iter()
-                .any(|n| n.contains("CancelStream")),
-            "should not emit CancelStream: {:?}",
-            result.message_names
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn close_session_prompt_noop_dismisses() {
-        // Given close_session_prompt is showing.
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.close_session_prompt = true;
-
-        // When handling NoOp (unmapped key).
-        let _result = IntentHandler::handle(
-            &KernelIntent::NoOp,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then the prompt is dismissed.
-        assert!(!state.frontend.close_session_prompt);
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn noop_is_empty_when_no_prompt() {
-        // Given default state with no prompts showing.
-        let mut state = AppState::default_with_scope_focus();
-
-        // When handling NoOp.
-        let result = IntentHandler::handle(
-            &KernelIntent::NoOp,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then result is empty.
-        assert!(result.message_names.is_empty());
-    }
-
     #[rstest::rstest]
     fn active_session_changed_emitted_on_session_switch() {
         // Given a state with two sessions.
@@ -1560,31 +696,6 @@ mod tests {
         assert!(
             !has_event,
             "should not emit ActiveSessionChanged when session unchanged"
-        );
-    }
-
-    #[rstest::rstest]
-    fn switch_tab_is_inert_while_user_holds_terminal_control() {
-        // Given the terminal-control overlay open (user holds control).
-        let mut state = AppState::default_with_scope_focus();
-        state.frontend.scope_clear_overlays();
-        state
-            .frontend
-            .scope_push(FocusScope::Dynamic(jinn_term_msg::control_scope()));
-
-        // When switching tabs.
-        IntentHandler::handle(
-            &KernelIntent::SwitchTab,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then the scope stays on term:control — handback is the only exit.
-        assert_eq!(
-            state.frontend.scope(),
-            FocusScope::Dynamic(jinn_term_msg::control_scope())
         );
     }
 
@@ -1648,106 +759,6 @@ mod tests {
 
         // Then the hint is cleared.
         assert!(status_hint(&slices).is_none());
-    }
-
-    #[rstest::rstest]
-    fn switch_tab_with_no_registered_tab_stays_normal() {
-        // Given default (Normal) state and no dynamic tab registered.
-        let mut state = AppState::default_with_scope_focus();
-
-        // When switching tabs.
-        IntentHandler::handle(
-            &KernelIntent::SwitchTab,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then the base is Normal (chat is the only tab).
-        assert_eq!(state.frontend.scope_base(), FocusScope::Normal);
-    }
-
-    #[rstest::rstest]
-    fn switch_tab_activates_the_registered_tab() {
-        // Given a slices registry with one dynamic tab registered.
-        let slices = jinn_slices::Slices::new();
-        let tab = jinn_slices::SliceScopeId::new("dashboard", "tab");
-        slices.register_tab_scope(
-            tab.clone(),
-            jinn_slices::SlotKey::builtin("dashboard", "tab"),
-        );
-        let mut state = AppState::default_with_scope_focus();
-
-        // When switching tabs.
-        IntentHandler::handle(
-            &KernelIntent::SwitchTab,
-            &mut state,
-            &slices,
-            &empty_routes(),
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then the base is the registered tab.
-        assert_eq!(
-            state.frontend.scope_base(),
-            FocusScope::Dynamic(tab.clone())
-        );
-    }
-
-    #[rstest::rstest]
-    fn switch_tab_wraps_to_normal_after_the_last_tab() {
-        // Given a state whose base is the only registered tab.
-        let slices = jinn_slices::Slices::new();
-        let tab = jinn_slices::SliceScopeId::new("dashboard", "tab");
-        slices.register_tab_scope(
-            tab.clone(),
-            jinn_slices::SlotKey::builtin("dashboard", "tab"),
-        );
-        let mut state = AppState::default_with_scope_focus();
-        state
-            .frontend
-            .scope_swap_base(FocusScope::Dynamic(tab.clone()));
-
-        // When switching tabs again.
-        IntentHandler::handle(
-            &KernelIntent::SwitchTab,
-            &mut state,
-            &slices,
-            &empty_routes(),
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then the cycle wraps to Normal.
-        assert_eq!(state.frontend.scope_base(), FocusScope::Normal);
-    }
-
-    #[rstest::rstest]
-    fn switch_tab_while_overlay_open_closes_it() {
-        // Given an open terminal overlay over the Normal base.
-        let mut state = AppState::default_with_scope_focus();
-        let chat = state.session.active_session_id().clone();
-        state
-            .term_tabs()
-            .expect("term tabs cell")
-            .update(|t| t.set_live(&chat, true));
-        state.frontend.scope_swap_base(FocusScope::Normal);
-        state
-            .frontend
-            .scope_push(FocusScope::Dynamic(jinn_term_msg::view_scope()));
-
-        // When switching tabs.
-        IntentHandler::handle(
-            &KernelIntent::SwitchTab,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then the overlay closed (back to base, not a tab flip).
-        assert_eq!(state.frontend.scope(), FocusScope::Normal);
-        assert_eq!(state.frontend.scope_base(), FocusScope::Normal);
     }
 
     #[rstest::rstest]
@@ -2007,187 +1018,5 @@ mod tests {
 
         // Then the hook never ran — a pop is not an entry.
         assert_eq!(enters.load(Ordering::SeqCst), 0);
-    }
-
-    // -- Confirmed-cancel cascade ----------------------------------------
-
-    use jinn_core_types::SessionId;
-    use jinn_session_msg::SessionOrigin;
-    use jinn_session_state::ChatSessionState;
-
-    /// Builds a confirmed-cancel intent over `state` and returns the result.
-    ///
-    /// Arms the prompt only while a turn is in flight — the same invariant
-    /// the dismissal sweep enforces — so the fixture starts a stream first.
-    fn confirmed_cancel(state: &mut AppState) -> IntentResult {
-        state.active_session_mut().begin_streaming();
-        state.frontend.cancel_stream_prompt = true;
-        IntentHandler::handle(
-            &KernelIntent::NormalEscape,
-            state,
-            &empty_slices(),
-            &empty_routes(),
-            jinn_slices::empty_config_layer(),
-        )
-    }
-
-    /// Counts the CancelStream messages in a result.
-    fn cancel_count(result: &IntentResult) -> usize {
-        result
-            .message_names
-            .iter()
-            .filter(|name| name.contains("CancelStream"))
-            .count()
-    }
-
-    /// Links `child` under `parent` with the given origin and inserts both.
-    fn link_child(state: &mut AppState, parent_id: &SessionId, origin: SessionOrigin) -> SessionId {
-        let parent = state.session.get(parent_id).expect("parent").clone();
-        let child = match origin {
-            SessionOrigin::Attendant => ChatSessionState::new_attendant(&parent, false),
-            _ => {
-                let mut child = ChatSessionState::new_child(parent_id, false);
-                child.set_origin(origin);
-                child
-            }
-        };
-        let child_id = child.session_id().clone();
-        state.session.insert(child);
-        child_id
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn confirmed_cancel_stops_immediate_subagents_and_attendants() {
-        // Given a parent with a running subagent and a running attendant.
-        let mut state = AppState::default_with_scope_focus();
-        let parent_id = state.session.active_session_id().clone();
-        let subagent = link_child(&mut state, &parent_id, SessionOrigin::Subagent);
-        let _attendant = link_child(&mut state, &parent_id, SessionOrigin::Attendant);
-        state
-            .task_spawns
-            .register(parent_id.clone(), subagent.clone());
-
-        // When the confirmed cancel runs.
-        let result = confirmed_cancel(&mut state);
-
-        // Then both children receive a cancel (plus the parent's own).
-        assert_eq!(cancel_count(&result), 3, "parent + subagent + attendant");
-        // And the registry is untouched by the walk itself: it empties when
-        // the task future's guard drops, not when the cancel publishes (the
-        // registry-layer assertion lives in task_tests).
-        assert!(state.task_spawns.has_in_flight(&parent_id));
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn confirmed_cancel_recurses_through_nested_subagents() {
-        // Given a depth-2 subagent tree.
-        let mut state = AppState::default_with_scope_focus();
-        let root_id = state.session.active_session_id().clone();
-        let mid = link_child(&mut state, &root_id, SessionOrigin::Subagent);
-        let leaf = link_child(&mut state, &mid, SessionOrigin::Subagent);
-        state.task_spawns.register(root_id.clone(), mid.clone());
-        state.task_spawns.register(mid.clone(), leaf);
-
-        // When the confirmed cancel runs at the root.
-        let result = confirmed_cancel(&mut state);
-
-        // Then every level cancelled — the walk is real recursion.
-        assert_eq!(cancel_count(&result), 3, "root + mid + leaf");
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn confirmed_cancel_stops_at_fork_boundary() {
-        // Given a parent with a fork child and a fork grandchild under it.
-        let mut state = AppState::default_with_scope_focus();
-        let root_id = state.session.active_session_id().clone();
-        let fork = link_child(&mut state, &root_id, SessionOrigin::Fork);
-        let fork_child = link_child(&mut state, &fork, SessionOrigin::Subagent);
-        state.task_spawns.register(fork.clone(), fork_child.clone());
-
-        // When the confirmed cancel runs at the root.
-        let result = confirmed_cancel(&mut state);
-
-        // Then only the parent cancelled — the fork subtree is untouched.
-        assert_eq!(cancel_count(&result), 1, "parent only; fork is a boundary");
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn fork_child_subagents_survive_cancelling_grandparent() {
-        // Given a fork whose own subagent is running, under a busy root.
-        let mut state = AppState::default_with_scope_focus();
-        let root_id = state.session.active_session_id().clone();
-        let fork = link_child(&mut state, &root_id, SessionOrigin::Fork);
-        let fork_subagent = link_child(&mut state, &fork, SessionOrigin::Subagent);
-        state
-            .task_spawns
-            .register(fork.clone(), fork_subagent.clone());
-
-        // When the confirmed cancel runs at the root.
-        let _result = confirmed_cancel(&mut state);
-
-        // Then the fork's subagent is still registered as in-flight.
-        assert!(
-            state.task_spawns.has_in_flight(&fork),
-            "the fork's own subagent must survive a grandparent cancel"
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn single_escape_does_not_cascade() {
-        // Given a parent with a running subagent and the prompt NOT armed.
-        let mut state = AppState::default_with_scope_focus();
-        let parent_id = state.session.active_session_id().clone();
-        let subagent = link_child(&mut state, &parent_id, SessionOrigin::Subagent);
-        state
-            .task_spawns
-            .register(parent_id.clone(), subagent.clone());
-
-        // When a single (unconfirmed) escape arrives — over a turn in
-        // flight, so arming is allowed.
-        state.active_session_mut().begin_streaming();
-        let result = IntentHandler::handle(
-            &KernelIntent::NormalEscape,
-            &mut state,
-            &empty_slices(),
-            &empty_routes(),
-            jinn_slices::empty_config_layer(),
-        );
-
-        // Then nothing cancelled — the prompt merely armed.
-        assert!(state.frontend.cancel_stream_prompt);
-        assert_eq!(cancel_count(&result), 0);
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn cancel_walk_terminates_on_cyclic_parent_links() {
-        // Given two sessions whose parent links form a cycle, every edge
-        // reachable through the registry.
-        let mut state = AppState::default_with_scope_focus();
-        let root_id = state.session.active_session_id().clone();
-        let a = link_child(&mut state, &root_id, SessionOrigin::Subagent);
-        let b = link_child(&mut state, &a, SessionOrigin::Subagent);
-        // Close the cycle: a's parent becomes b — and register both edges so
-        // the walk would loop without the visited guard.
-        state
-            .session
-            .get_mut(&a)
-            .expect("a")
-            .set_parent_session(b.clone());
-        state.task_spawns.register(root_id.clone(), a.clone());
-        state.task_spawns.register(a.clone(), b.clone());
-        state.task_spawns.register(b.clone(), a.clone());
-
-        // When the confirmed cancel runs at the root.
-        let result = confirmed_cancel(&mut state);
-
-        // Then the walk terminated (root + a + b, no repeat) — reaching here
-        // at all proves termination; the count proves no double-cancel.
-        assert_eq!(cancel_count(&result), 3);
     }
 }

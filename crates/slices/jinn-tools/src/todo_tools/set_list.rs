@@ -17,6 +17,7 @@
 
 use crate::BoxedToolFuture;
 use crate::tool_types::ToolContext;
+use crate::tool_types::tool_error;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 
 /// Returns the tool definition for `set_list`.
@@ -105,29 +106,29 @@ pub fn definition() -> ToolDefinition {
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
         let Some(state) = ctx.state else {
-            return tool_error(call, "no application state available");
+            return tool_error(&call, "no application state available");
         };
         let Some(session_id) = ctx.session_id else {
-            return tool_error(call, "no session ID available");
+            return tool_error(&call, "no session ID available");
         };
 
         let args: serde_json::Value = match serde_json::from_str(&call.arguments) {
             Ok(args) => args,
-            Err(_) => return tool_error(call, "arguments are not valid JSON"),
+            Err(_) => return tool_error(&call, "arguments are not valid JSON"),
         };
         let Some(object) = args.as_object() else {
-            return tool_error(call, "arguments must be a JSON object");
+            return tool_error(&call, "arguments must be a JSON object");
         };
 
         // The presence check comes first: an absent 'phases' key is a caller
         // mistake worth reporting, and must never be normalised into an
         // empty list that wipes the plan.
         let Some(phases_val) = object.get("phases") else {
-            return tool_error(call, "missing 'phases' argument");
+            return tool_error(&call, "missing 'phases' argument");
         };
         let phases_arr = match super::task_payload::normalize_array(phases_val, "phases") {
             Ok(entries) => entries,
-            Err(msg) => return tool_error(call, &msg),
+            Err(msg) => return tool_error(&call, &msg),
         };
 
         // Parse into declarative phase inputs (bare strings → Pending; objects
@@ -138,7 +139,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             let parsed = super::task_payload::parse_phases_array(&phases_arr);
             match parsed {
                 Ok(inputs) => inputs,
-                Err(msg) => return tool_error(call, &msg),
+                Err(msg) => return tool_error(&call, &msg),
             }
         };
 
@@ -176,7 +177,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             Err(content) => ToolResult {
                 tool_call_id: call.id,
                 name: call.name,
-                content,
+                content: content,
                 success: false,
                 full_content: None,
                 truncation: None,
@@ -184,18 +185,6 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             },
         }
     })
-}
-
-fn tool_error(call: ToolCall, msg: &str) -> ToolResult {
-    ToolResult {
-        tool_call_id: call.id,
-        name: call.name,
-        content: format!("Error: {msg}"),
-        success: false,
-        full_content: None,
-        truncation: None,
-        pin_position: None,
-    }
 }
 
 #[cfg(test)]

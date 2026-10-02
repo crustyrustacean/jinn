@@ -23,12 +23,14 @@
 //! Background color is determined by the paired tool result's status:
 //! no background while pending, green on success, red on failure.
 
-use jinn_core_types::ToolResultStatus;
 use jinn_tools_msg::TASK_TOOL_NAME;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use super::shared::{RenderContext, pad_line_to_width, truncate_to_width};
+use super::shared::{
+    RenderContext, content_style, pad_line_to_width, pad_lines, repaint_task_block,
+    status_background, truncate_to_width,
+};
 
 /// Status line shown under a `task` call whose subagent session is running.
 const WAITING_TEXT: &str = "Waiting for subagent session to complete";
@@ -69,7 +71,7 @@ fn to_lines_task(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'
         to_lines_collapsed(name, arguments, ctx)
     };
 
-    repaint_task_block(&mut lines, ctx);
+    repaint_task_block(&mut lines, ctx, false);
 
     if ctx.is_waiting_on_subagent {
         let full = format!("{WAITING_TEXT}{ENTER_HINT}");
@@ -88,24 +90,6 @@ fn to_lines_task(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'
     }
 
     lines
-}
-
-/// Restyle task-entry lines onto the subagent block background.
-///
-/// Task entries drop the status-derived backgrounds entirely — the block's
-/// light purple is the identity signal, and the outcome is reported by the
-/// status row appended to the task result.
-fn repaint_task_block(lines: &mut [Line<'static>], ctx: &RenderContext) {
-    let style = Style::default()
-        .fg(ctx.theme.primary_text)
-        .bg(ctx.theme.subagent_bg);
-    let pad_style = Style::default().bg(ctx.theme.subagent_bg);
-    for line in lines.iter_mut() {
-        for span in &mut line.spans {
-            span.style = style;
-        }
-        pad_line_to_width(line, ctx.content_width, pad_style);
-    }
 }
 
 /// Bash tool call: single line `$ <command>`, truncated to content width.
@@ -156,7 +140,7 @@ fn to_lines_collapsed(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<L
 /// shows the last N lines with a truncation indicator when content exceeds
 /// `tool_entry_max_lines`.
 fn to_lines_streaming(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
-    let style = content_style(ctx);
+    let style = content_style(ctx, ctx.theme.primary_text);
 
     let text = super::shared::unescape_newlines(arguments);
     let text = super::shared::strip_ansi(&text);
@@ -203,7 +187,7 @@ fn to_lines_streaming(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<L
 
 /// Non-bash finalized + expanded: full arguments with newlines, no truncation.
 fn to_lines_expanded(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
-    let style = content_style(ctx);
+    let style = content_style(ctx, ctx.theme.primary_text);
 
     let text = super::shared::unescape_newlines(arguments);
     let text = super::shared::strip_ansi(&text);
@@ -247,36 +231,6 @@ fn extract_bash_command(arguments: &str) -> Option<String> {
         .get("command")?
         .as_str()
         .map(std::borrow::ToOwned::to_owned)
-}
-
-/// Determine the background color from the paired result status.
-fn status_background(ctx: &RenderContext) -> Option<ratatui::style::Color> {
-    match ctx.paired_status? {
-        ToolResultStatus::Success => Some(ctx.theme.tool_success_bg),
-        ToolResultStatus::Failure => Some(ctx.theme.tool_failure_bg),
-        ToolResultStatus::Pending => None,
-    }
-}
-
-/// Build the content style based on paired status.
-fn content_style(ctx: &RenderContext) -> Style {
-    let fg = ctx.theme.primary_text;
-    match ctx.paired_status {
-        Some(ToolResultStatus::Success) => Style::default().fg(fg).bg(ctx.theme.tool_success_bg),
-        Some(ToolResultStatus::Failure) => Style::default().fg(fg).bg(ctx.theme.tool_failure_bg),
-        Some(ToolResultStatus::Pending) | None => Style::default().fg(fg),
-    }
-}
-
-/// Pad all lines to full content width so the background spans the entire row.
-fn pad_lines(lines: &mut [Line<'static>], ctx: &RenderContext) {
-    let bg = status_background(ctx);
-    if let Some(bg) = bg {
-        let bg_style = Style::default().bg(bg);
-        for line in lines.iter_mut() {
-            pad_line_to_width(line, ctx.content_width, bg_style);
-        }
-    }
 }
 
 #[cfg(test)]

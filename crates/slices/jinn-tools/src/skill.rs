@@ -4,6 +4,7 @@
 //! survives compaction).
 
 use crate::tool_types::ToolContext;
+use crate::tool_types::unprefixed_failure;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult, ToolResultPinPosition};
 use jinn_skills::frontmatter::strip_frontmatter;
 use jinn_skills_msg::Skill;
@@ -29,19 +30,6 @@ pub fn definition() -> ToolDefinition {
             "required": ["name"]
         }),
         server_tool_type: None,
-    }
-}
-
-/// Builds a failure `ToolResult` for the given call with a human-facing message.
-fn failure_result(call: &ToolCall, message: impl Into<String>) -> ToolResult {
-    ToolResult {
-        tool_call_id: call.id.clone(),
-        name: call.name.clone(),
-        content: message.into(),
-        success: false,
-        full_content: None,
-        truncation: None,
-        pin_position: None,
     }
 }
 
@@ -85,11 +73,11 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
         let name = match parse_args(&call.arguments) {
             Ok(n) => n,
-            Err(e) => return failure_result(&call, format!("failed to parse arguments: {e}")),
+            Err(e) => return unprefixed_failure(&call, format!("failed to parse arguments: {e}")),
         };
 
         if name.is_empty() {
-            return failure_result(&call, "skill name must not be empty");
+            return unprefixed_failure(&call, "skill name must not be empty");
         }
 
         // Reject skills the session's filter withholds.
@@ -98,7 +86,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             if let Some(session) = guard.session.get(session_id)
                 && !session.is_skill_enabled(&name)
             {
-                return failure_result(
+                return unprefixed_failure(
                     &call,
                     // The message names the filter, not the picker: under an
                     // allow-mode filter there is no per-skill toggle to flip,
@@ -118,7 +106,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             if let Some(session) = guard.session.get(session_id)
                 && session.loaded_skills().contains(&name)
             {
-                return failure_result(
+                return unprefixed_failure(
                     &call,
                     format!(
                         "skill '{name}' is already loaded; its content is in context as a pinned tool result"
@@ -133,14 +121,14 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let skill = match resolve_skill(&ctx, &name) {
             Ok(s) => s,
             Err(msg) => {
-                return failure_result(&call, msg);
+                return unprefixed_failure(&call, msg);
             }
         };
 
         let content = match tokio::fs::read_to_string(&skill.file_path).await {
             Ok(c) => c,
             Err(e) => {
-                return failure_result(
+                return unprefixed_failure(
                     &call,
                     format!("failed to read skill '{}': {e}", skill.file_path.display()),
                 );

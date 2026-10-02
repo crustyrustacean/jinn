@@ -4,23 +4,27 @@
 //! tool call state tracking across multiple delta chunks and deduplication
 //! of `Done` events (OpenRouter sends `finish_reason` then `[DONE]`).
 //!
-//! ## Usage enrichment across chunks
+//! Of the four state machines a streaming parser needs, two live here and
+//! two are separate modules because they are separable on their own terms:
 //!
-//! Some providers (notably OpenRouter with `X-OpenRouter-Experimental-Metadata: enabled`)
-//! send `finish_reason` in one SSE chunk and `usage` in a subsequent chunk. The parser
-//! defers emitting the `Done` event until `[DONE]` arrives (via [`handle_done`]),
-//! allowing usage data from any intermediate chunk to be attached before emission.
+//! - [`super::usage`] owns the deferred `Done` and its usage accounting,
+//!   including the split-chunk case where a provider sends `finish_reason`
+//!   and `usage` in different chunks.
+//! - [`super::citations`] owns OpenRouter's `url_citation` annotations,
+//!   which are a vendor extension rather than part of the OpenAI-compatible
+//!   protocol.
 //!
-//! For providers that send `finish_reason` and `usage` in the same chunk, the enrichment
-//! happens inline - the pending `Done` is created and enriched in a single `parse_data` call,
-//! then emitted by `handle_done`.
+//! What stays here is the tool-call accumulation and the shape of the stream
+//! itself — neither of which makes sense without the other, and both of
+//! which are the generic protocol rather than a vendor's dialect.
 
 use std::collections::HashMap;
 
+use super::citations::CitationAccumulator;
+use super::usage::PendingDoneBuffer;
 use crate::StreamEvent;
-use crate::stream_event::{StopReason, StreamUsage};
+use crate::stream_event::StopReason;
 use jinn_core_types::tool_types::ToolCall;
-use jinn_core_types::url_citation::UrlCitation;
 
 /// State tracked per tool call index during streaming.
 #[derive(Debug, Default)]
@@ -35,15 +39,6 @@ struct ToolCallState {
     started: bool,
 }
 
-/// A pending `Done` event awaiting usage enrichment.
-#[derive(Debug, Clone, PartialEq)]
-struct PendingDone {
-    /// Why the stream stopped.
-    stop_reason: StopReason,
-    /// Usage data collected so far (may be enriched across multiple chunks).
-    usage: Option<StreamUsage>,
-}
-
 /// Stateful parser that tracks tool call accumulation across SSE chunks.
 #[derive(Debug, Default)]
 pub struct StreamResponseParser {
@@ -51,13 +46,12 @@ pub struct StreamResponseParser {
     tool_states: HashMap<usize, ToolCallState>,
     /// Whether a Done event has been finalized (prevents duplicates).
     done_finalized: bool,
-    /// A pending Done event, buffered until `[DONE]` arrives.
-    /// This allows usage data from subsequent SSE chunks (e.g. OpenRouter's
-    /// split-chunk format) to be attached before emission.
-    pending_done: Option<PendingDone>,
-    /// Accumulated `url_citation` annotations gathered across chunks. Emitted
-    /// once as a single [`StreamEvent::Citations`] immediately before `Done`.
-    accumulated_citations: Vec<UrlCitation>,
+    /// The terminal `Done`, held until `[DONE]` arrives so usage from a
+    /// later chunk can still be attached.
+    done: PendingDoneBuffer,
+    /// `url_citation` annotations gathered across chunks, emitted once as a
+    /// single [`StreamEvent::Citations`] immediately before `Done`.
+    citations: CitationAccumulator,
 }
 
 impl StreamResponseParser {
@@ -93,8 +87,8 @@ impl StreamResponseParser {
         }
 
         let Some(choices) = chunk.get("choices").and_then(|c| c.as_array()) else {
-            // No choices - but we can still enrich pending_done with usage.
-            self.try_enrich_pending_usage(&chunk);
+            // No choices - but the chunk may still carry usage to attach.
+            self.done.enrich_from(&chunk);
             return results;
         };
 
@@ -103,7 +97,7 @@ impl StreamResponseParser {
         }
 
         // Enrich the pending Done with usage data from this chunk.
-        self.try_enrich_pending_usage(&chunk);
+        self.done.enrich_from(&chunk);
 
         results
     }
@@ -134,7 +128,7 @@ impl StreamResponseParser {
         // Annotation deltas (e.g. OpenRouter `url_citation` web-search sources).
         if let Some(annotations) = delta.get("annotations").and_then(|a| a.as_array()) {
             for ann in annotations {
-                self.accumulate_citation(ann);
+                self.citations.absorb(ann);
             }
         }
 
@@ -142,68 +136,9 @@ impl StreamResponseParser {
         let Some(finish_reason) = choice.get("finish_reason").and_then(|f| f.as_str()) else {
             return;
         };
-        if !finish_reason.is_empty() && self.pending_done.is_none() && !self.done_finalized {
+        if !finish_reason.is_empty() && !self.done.is_pending() && !self.done_finalized {
             self.handle_finish_reason(finish_reason, results);
         }
-    }
-
-    /// Parse a single annotation entry; if it is a `url_citation`, push it into
-    /// the accumulated citations. Non-matching annotation types are ignored.
-    fn accumulate_citation(&mut self, annotation: &serde_json::Value) {
-        if annotation.get("type").and_then(|t| t.as_str()) != Some("url_citation") {
-            return;
-        }
-        let Some(citation) = annotation.get("url_citation") else {
-            return;
-        };
-        let Some(url) = citation.get("url").and_then(|u| u.as_str()) else {
-            return;
-        };
-        let title = citation
-            .get("title")
-            .and_then(|t| t.as_str())
-            .unwrap_or(url)
-            .to_owned();
-        self.accumulated_citations.push(crate::UrlCitation {
-            url: url.to_owned(),
-            title,
-            content: citation
-                .get("content")
-                .and_then(|c| c.as_str())
-                .map(std::string::String::from),
-            start_index: citation
-                .get("start_index")
-                .and_then(serde_json::Value::as_u64)
-                .and_then(|n| u32::try_from(n).ok()),
-            end_index: citation
-                .get("end_index")
-                .and_then(serde_json::Value::as_u64)
-                .and_then(|n| u32::try_from(n).ok()),
-        });
-    }
-
-    /// Try to attach usage data from a chunk to the pending Done event.
-    fn try_enrich_pending_usage(&mut self, chunk: &serde_json::Value) {
-        let Some(pending) = &mut self.pending_done else {
-            return;
-        };
-        let Some(usage_val) = chunk.get("usage") else {
-            return;
-        };
-        let usage = StreamUsage {
-            prompt_tokens: usage_val
-                .get("prompt_tokens")
-                .and_then(serde_json::Value::as_u64),
-            completion_tokens: usage_val
-                .get("completion_tokens")
-                .and_then(serde_json::Value::as_u64),
-            cost: usage_val.get("cost").and_then(serde_json::Value::as_f64),
-            cached_tokens: usage_val
-                .get("prompt_tokens_details")
-                .and_then(|d| d.get("cached_tokens"))
-                .and_then(serde_json::Value::as_u64),
-        };
-        pending.usage = Some(usage);
     }
 
     fn handle_tool_call_delta(&mut self, tc: &serde_json::Value, results: &mut Vec<StreamEvent>) {
@@ -284,13 +219,11 @@ impl StreamResponseParser {
             other => StopReason::Other(other.to_string()),
         };
 
-        // Buffer the Done event instead of emitting immediately.
-        // It will be enriched with usage data from subsequent chunks
-        // and emitted when handle_done() is called.
-        self.pending_done = Some(PendingDone {
-            stop_reason,
-            usage: None,
-        });
+        // Buffer the Done event instead of emitting immediately. It will be
+        // enriched with usage data from subsequent chunks and emitted when
+        // `handle_done` runs. A repeat of the same finish_reason is a no-op,
+        // which is what keeps the first one's usage from being reset.
+        self.done.park(stop_reason);
     }
 
     /// Handle the `[DONE]` sentinel from SSE.
@@ -303,10 +236,10 @@ impl StreamResponseParser {
             return vec![];
         }
 
-        let mut done_events = self.emit_citations_if_any();
+        let mut done_events = self.citations.drain();
 
         // If we have a pending Done (from finish_reason), emit it now.
-        if let Some(pending) = self.pending_done.take() {
+        if let Some(pending) = self.done.take() {
             self.done_finalized = true;
             done_events.push(StreamEvent::Done {
                 stop_reason: pending.stop_reason,
@@ -324,8 +257,8 @@ impl StreamResponseParser {
         };
 
         // Emit accumulated citations before the terminal Done, mirroring the
-        // pending_done branch.
-        results.splice(0..0, self.emit_citations_if_any());
+        // buffered-Done branch.
+        results.splice(0..0, self.citations.drain());
 
         results.push(StreamEvent::Done {
             stop_reason,
@@ -333,19 +266,6 @@ impl StreamResponseParser {
         });
         self.done_finalized = true;
         results
-    }
-
-    /// Drain accumulated citations into a single `StreamEvent::Citations`, if any.
-    ///
-    /// OpenRouter may spread `url_citation` annotations across many delta chunks;
-    /// we accumulate them and emit once, immediately before the terminal `Done`.
-    fn emit_citations_if_any(&mut self) -> Vec<StreamEvent> {
-        let citations = std::mem::take(&mut self.accumulated_citations);
-        if citations.is_empty() {
-            vec![]
-        } else {
-            vec![StreamEvent::Citations(citations)]
-        }
     }
 }
 
@@ -972,7 +892,7 @@ mod tests {
     fn only_one_done_event_emitted_for_repeated_finish_reasons() {
         // Given a stream that sends finish_reason in two consecutive chunks
         // (OpenRouter does this). The guard `!finish_reason.is_empty() &&
-        // self.pending_done.is_none() && !self.done_finalized` must prevent
+        // !self.done.is_pending() && !self.done_finalized` must prevent
         // duplicates.
         let mut parser = StreamResponseParser::new();
         let chunk1 = serde_json::json!({

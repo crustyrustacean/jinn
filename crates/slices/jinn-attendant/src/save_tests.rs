@@ -27,7 +27,8 @@ use jinn_slices::KeyRoutes;
 use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{ActionCtx, DynamicIntent, ScopeSignal};
 
-use crate::properties_overlay::{attach_properties_rows, attach_seed_template_rows};
+use crate::properties_overlay::attach_properties_rows;
+use crate::seed_template_overlay::attach_seed_template_rows;
 
 /// An AppState with one titled attendant, a popup cell seeded from it, and
 /// a properties document the save writes to.
@@ -71,8 +72,8 @@ impl SaveFixture {
             .expect("unclaimed slot");
         let routes = KeyRoutes::new();
         attach_properties_rows(&routes, &cell);
-        crate::properties_overlay::attach_seed_template_rows(&routes, &cell);
-        crate::properties_overlay::register_seed_template_input_hook(&routes, &cell);
+        crate::seed_template_overlay::attach_seed_template_rows(&routes, &cell);
+        crate::seed_template_overlay::register_seed_template_input_hook(&routes, &cell);
         attach_seed_template_rows(&routes, &cell);
         Self {
             state,

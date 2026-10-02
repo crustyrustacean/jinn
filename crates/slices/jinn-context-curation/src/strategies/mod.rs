@@ -15,7 +15,9 @@ pub mod read_edit;
 pub mod regex;
 pub mod todo_prune;
 pub mod tool_age_window;
+pub(crate) mod tool_pair;
 pub mod trivial_assistant;
+pub(crate) mod worker_skeleton;
 
 pub(crate) use min_age::is_within_min_age;
 

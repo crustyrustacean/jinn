@@ -27,12 +27,13 @@ use std::sync::Arc;
 
 pub use jinn_preferences_config::schemas::auto_prune::BrokenEditAutoPruneConfig;
 
-use super::min_age::is_within_min_age;
+use super::is_within_min_age;
+use super::worker_skeleton::prune_mutation;
 use crate::worker::HistoryWorker;
 use jinn_core_types::HistoryMutation;
 use jinn_core_types::SessionId;
 use jinn_core_types::ToolResultStatus;
-use jinn_core_types::{ChangeSource, ChatEntry, ChatEntryKind, ContextOverride};
+use jinn_core_types::{ChatEntry, ChatEntryKind};
 
 /// Default minimum age for broken-edit auto-prune.
 /// Default enabled state for broken-edit auto-prune.
@@ -155,20 +156,8 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
                 continue;
             }
 
-            mutations.push(HistoryMutation::SetContextOverride {
-                entry_id: edit_call_entry_id,
-                value: ContextOverride::ForcedExclude,
-                source: ChangeSource::Worker {
-                    name: self.name().to_owned(),
-                },
-            });
-            mutations.push(HistoryMutation::SetContextOverride {
-                entry_id: result_id,
-                value: ContextOverride::ForcedExclude,
-                source: ChangeSource::Worker {
-                    name: self.name().to_owned(),
-                },
-            });
+            mutations.push(prune_mutation(&edit_call_entry_id, self.name()));
+            mutations.push(prune_mutation(&result_id, self.name()));
         }
 
         mutations
@@ -189,6 +178,7 @@ mod tests {
     use jinn_core_types::ChatEntry;
     use jinn_core_types::SessionId;
     use jinn_core_types::ToolResultStatus;
+    use jinn_core_types::{ChangeSource, ContextOverride};
 
     /// Helper: create a failed edit ToolCall + ToolResult pair.
     fn failed_edit_call_result(call_id: &str, path: &str, error_msg: &str) -> [ChatEntry; 2] {

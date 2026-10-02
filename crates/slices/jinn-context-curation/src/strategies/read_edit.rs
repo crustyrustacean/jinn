@@ -31,10 +31,11 @@ pub use jinn_preferences_config::schemas::auto_prune::ReadEditAutoPruneConfig;
 use crate::worker::HistoryWorker;
 use jinn_core_types::HistoryMutation;
 use jinn_core_types::SessionId;
-use jinn_core_types::{ChangeSource, ChatEntry, ChatEntryKind, ContextOverride};
+use jinn_core_types::{ChatEntry, ChatEntryKind};
 
-use super::edit_read::{extract_path_from_arguments, find_matching_result, is_modify_tool};
 use super::is_within_min_age;
+use super::tool_pair::{extract_path_from_arguments, find_matching_result, is_modify_tool};
+use super::worker_skeleton::prune_mutation;
 
 /// Default enabled state for read-edit auto-prune.
 /// Default `min_age` for read-edit auto-prune.
@@ -175,22 +176,10 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
                     is_within_min_age(history_len, result_idx, config.min_age);
 
                 if !call_protected && !call_within_min_age {
-                    mutations.push(HistoryMutation::SetContextOverride {
-                        entry_id: read_call_entry_id,
-                        value: ContextOverride::ForcedExclude,
-                        source: ChangeSource::Worker {
-                            name: self.name().to_owned(),
-                        },
-                    });
+                    mutations.push(prune_mutation(&read_call_entry_id, self.name()));
                 }
                 if !result_protected && !result_within_min_age {
-                    mutations.push(HistoryMutation::SetContextOverride {
-                        entry_id: result_entry_id,
-                        value: ContextOverride::ForcedExclude,
-                        source: ChangeSource::Worker {
-                            name: self.name().to_owned(),
-                        },
-                    });
+                    mutations.push(prune_mutation(&result_entry_id, self.name()));
                 }
             }
         }
@@ -214,6 +203,7 @@ mod tests {
     use jinn_core_types::ChatEntry;
     use jinn_core_types::SessionId;
     use jinn_core_types::ToolResultStatus;
+    use jinn_core_types::{ChangeSource, ContextOverride};
 
     /// Helper: create a read ToolCall + ToolResult pair.
     fn read_call_result(call_id: &str, path: &str, content: &str) -> [ChatEntry; 2] {

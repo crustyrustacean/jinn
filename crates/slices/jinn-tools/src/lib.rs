@@ -44,6 +44,7 @@ pub mod task_list_picker_viewport;
 pub mod task_phase_listener_actor;
 pub mod task_settle_listener_actor;
 pub mod todo_tools;
+pub mod tool_paths;
 pub mod tool_picker_actions;
 pub mod tool_picker_render;
 pub mod tool_picker_routes;

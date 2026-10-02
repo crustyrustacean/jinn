@@ -98,6 +98,25 @@ impl FilePickerState {
 ///
 /// In practice the caller passes the **directory portion** (text up to and
 /// including the last `/`), so this is a join against the resolved root.
+/// The user's home directory, read once at program startup.
+///
+/// `resolve_list_dir` resolves `~`, and `~` means whatever `$HOME` was when
+/// the program started. Reading it per keystroke would make the answer depend
+/// on when it was asked rather than on the user's environment, and would put
+/// a process-global read in the middle of an intent handler — so this reads it
+/// once, at the boundary where the process environment legitimately belongs,
+/// and every later lookup reads this instead.
+///
+/// Falls back to the current directory when `$HOME` is unset, which keeps the
+/// popup usable rather than failing a `@` insertion over a missing variable.
+#[must_use]
+pub fn home_dir() -> PathBuf {
+    std::env::var_os("HOME").map_or_else(
+        || std::env::current_dir().unwrap_or_default(),
+        PathBuf::from,
+    )
+}
+
 #[must_use]
 pub fn resolve_list_dir(filter: &str, cwd: &std::path::Path, home: &std::path::Path) -> PathBuf {
     if filter.is_empty() {

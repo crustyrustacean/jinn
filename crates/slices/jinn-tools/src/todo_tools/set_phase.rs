@@ -22,6 +22,7 @@
 
 use crate::BoxedToolFuture;
 use crate::tool_types::ToolContext;
+use crate::tool_types::tool_error;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 
 /// Returns the tool definition for `set_phase`.
@@ -99,10 +100,10 @@ pub fn definition() -> ToolDefinition {
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
         let Some(state) = ctx.state else {
-            return tool_error(call, "no application state available");
+            return tool_error(&call, "no application state available");
         };
         let Some(session_id) = ctx.session_id else {
-            return tool_error(call, "no session ID available");
+            return tool_error(&call, "no session ID available");
         };
 
         let args: serde_json::Value =
@@ -112,7 +113,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         // payload error aborts before task list state is touched.
         let phase_input = match super::task_payload::parse_phase_body(&args, "phase") {
             Ok(input) => input,
-            Err(msg) => return tool_error(call, &msg),
+            Err(msg) => return tool_error(&call, &msg),
         };
 
         let phase_description = phase_input.description.clone();
@@ -151,7 +152,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             Err(content) => ToolResult {
                 tool_call_id: call.id,
                 name: call.name,
-                content,
+                content: content,
                 success: false,
                 full_content: None,
                 truncation: None,
@@ -159,18 +160,6 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             },
         }
     })
-}
-
-fn tool_error(call: ToolCall, msg: &str) -> ToolResult {
-    ToolResult {
-        tool_call_id: call.id,
-        name: call.name,
-        content: format!("Error: {msg}"),
-        success: false,
-        full_content: None,
-        truncation: None,
-        pin_position: None,
-    }
 }
 
 #[cfg(test)]

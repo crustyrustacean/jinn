@@ -9,8 +9,82 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use jinn_core_types::SessionId;
+use jinn_core_types::tool_types::{ToolCall, ToolResult};
 use jinn_kernel::common::services::bus_service::BusService;
 use jinn_kernel::common::state::State;
+
+/// Builds the failed [`ToolResult`] a tool returns when it cannot proceed.
+///
+/// The `Error: ` prefix is a de-facto wire contract with the model, so it is
+/// stamped here once rather than restated by each tool: a tool that spelled the
+/// failure differently would be indistinguishable to the model from one that
+/// failed for a different reason.
+///
+/// The optional fields stay `None` — a failure is not truncated and is not
+/// pinned, so nothing downstream has to treat it as either.
+#[must_use]
+pub fn tool_error(call: &ToolCall, msg: &str) -> ToolResult {
+    failed_result(&call.id, &call.name, msg)
+}
+
+/// [`tool_error`] for a tool that has already destructured its call and holds
+/// only the two ids a result needs to answer it.
+#[must_use]
+pub fn failed_result(tool_call_id: &str, name: &str, msg: &str) -> ToolResult {
+    ToolResult {
+        tool_call_id: tool_call_id.to_owned(),
+        name: name.to_owned(),
+        content: format!("Error: {msg}"),
+        success: false,
+        full_content: None,
+        truncation: None,
+        pin_position: None,
+    }
+}
+
+/// Builds a failed [`ToolResult`] whose content is passed through verbatim.
+///
+/// The counterpart to [`tool_error`], and the reason the two are separate: a
+/// few tools build their own failure text and must not have `Error: ` stamped
+/// onto it a second time. `bash` and `grep` phrase a failure as a sentence
+/// about the command (`"command is empty"`, `"pattern is empty"`), and the
+/// command-policy denial reads as a block reason rather than an error
+/// message. Prepending a prefix to those would double it up and change what
+/// the model sees.
+///
+/// This is *not* the wire contract [`tool_error`] establishes. The optional
+/// fields stay `None` for the same reason — a failure is neither truncated nor
+/// pinned — but `content` here means exactly what the caller passed, so a
+/// caller that omits `Error: ` ships a failure the model reads as a plain
+/// result string. Use [`tool_error`] unless the tool owns its phrasing.
+#[must_use]
+pub fn unprefixed_failure(call: &ToolCall, content: impl Into<String>) -> ToolResult {
+    failed(call.id.clone(), call.name.clone(), content)
+}
+
+/// [`unprefixed_failure`] for a tool that has already destructured its call.
+///
+/// `bash` and `grep` own the `ToolCall` outright by the point they fail —
+/// it has been moved into their process orchestration — so they hold the two
+/// ids rather than the call. `restart_mcp` likewise holds the ids, because
+/// its failure text is built from a coordinator reply it has already
+/// destructured.
+#[must_use]
+pub fn failed(
+    tool_call_id: impl Into<String>,
+    name: impl Into<String>,
+    content: impl Into<String>,
+) -> ToolResult {
+    ToolResult {
+        tool_call_id: tool_call_id.into(),
+        name: name.into(),
+        content: content.into(),
+        success: false,
+        full_content: None,
+        truncation: None,
+        pin_position: None,
+    }
+}
 
 /// Context provided to every built-in tool at execution time.
 ///

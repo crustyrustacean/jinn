@@ -2,7 +2,7 @@
 
 use jinn_core_types::ToolResultStatus;
 use jinn_theme::Theme;
-use ratatui::style::Style;
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 
 /// Width of the left gutter column (2 cells for emoji support).
@@ -69,6 +69,63 @@ pub fn pad_line_to_width(line: &mut Line<'static>, width: u16, bg_style: Style) 
     if padding > 0 {
         line.spans
             .push(Span::styled(" ".repeat(padding as usize), bg_style));
+    }
+}
+
+/// The background a tool entry takes from the status of its paired result.
+///
+/// `Pending` gets no background of its own so the entry does not flash a
+/// failure color while it is still running.
+pub fn status_background(ctx: &RenderContext) -> Option<Color> {
+    match ctx.paired_status {
+        Some(ToolResultStatus::Success) => Some(ctx.theme.tool_success_bg),
+        Some(ToolResultStatus::Failure) => Some(ctx.theme.tool_failure_bg),
+        Some(ToolResultStatus::Pending) | None => None,
+    }
+}
+
+/// Style for a tool entry's content, given the foreground it should read in.
+///
+/// The two tool adapters differ only in which foreground they pass: a tool
+/// call is restyled to the primary text color so its long argument block does
+/// not read as output, while a tool result keeps the dimmer tool foreground.
+/// The status half is shared, so the two cannot drift apart.
+pub fn content_style(ctx: &RenderContext, fg: Color) -> Style {
+    match status_background(ctx) {
+        Some(bg) => Style::default().fg(fg).bg(bg),
+        None => Style::default().fg(fg),
+    }
+}
+
+/// Pad every line to the full content width so a status background spans the
+/// entire row rather than stopping at the end of the text.
+pub fn pad_lines(lines: &mut [Line<'static>], ctx: &RenderContext) {
+    if let Some(bg) = status_background(ctx) {
+        let bg_style = Style::default().bg(bg);
+        for line in lines.iter_mut() {
+            pad_line_to_width(line, ctx.content_width, bg_style);
+        }
+    }
+}
+
+/// Restyle a subagent task block onto its own background.
+///
+/// `skip_last` spares the trailing status row, which carries the outcome in
+/// its own colors and must not be flattened into the block's background.
+pub fn repaint_task_block(lines: &mut [Line<'static>], ctx: &RenderContext, skip_last: bool) {
+    let style = Style::default()
+        .fg(ctx.theme.primary_text)
+        .bg(ctx.theme.subagent_bg);
+    let pad_style = Style::default().bg(ctx.theme.subagent_bg);
+    let last = lines.len().saturating_sub(1);
+    for (i, line) in lines.iter_mut().enumerate() {
+        if skip_last && i == last {
+            continue;
+        }
+        for span in &mut line.spans {
+            span.style = style;
+        }
+        pad_line_to_width(line, ctx.content_width, pad_style);
     }
 }
 

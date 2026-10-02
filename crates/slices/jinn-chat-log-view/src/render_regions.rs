@@ -99,7 +99,7 @@ pub fn minimap_region(
     );
 
     if let Some(ref arrow) = arrow {
-        crate::vertical_minimap::render_minimap_arrow(frame, chat_log_area, arrow, arrow_color);
+        crate::minimap_arrow::render_minimap_arrow(frame, chat_log_area, arrow, arrow_color);
     }
 }
 

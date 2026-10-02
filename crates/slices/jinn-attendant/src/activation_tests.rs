@@ -1091,7 +1091,8 @@ async fn a_trigger_on_a_busy_attendant_queues_its_seeded_turn_for_after_the_curr
     let guard = state.read();
     let session = guard.session.get(&attendant_id).expect("exists");
     let queued: Vec<String> = session
-        .queue()
+        .message_queue()
+        .items()
         .iter()
         .map(|item| match item {
             jinn_turn_dispatch_msg::QueueItem::UserMessage(entry) => entry.text().clone(),

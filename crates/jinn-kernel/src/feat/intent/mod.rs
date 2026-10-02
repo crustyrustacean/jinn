@@ -11,7 +11,10 @@
 //! This crate has no TUI or async dependency. It supports headless and
 //! script modes identically to the TUI mode.
 
+pub mod cancel;
 pub mod handler;
+pub(crate) mod paste;
+pub mod prompt_dismissal;
 
 pub use crate::IntentResult;
 pub use crate::protocol::KernelIntent;

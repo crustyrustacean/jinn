@@ -5,12 +5,12 @@
 //! compaction. The tool description encourages the `.plans/<task>/`
 //! path convention via guidelines but does not enforce it.
 
-use std::path::{Path, PathBuf};
-
 use crate::tool_types::ToolContext;
+use crate::tool_types::unprefixed_failure;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult, ToolResultPinPosition};
 
 use super::BoxedToolFuture;
+use crate::tool_paths::resolve_path;
 
 /// Returns the tool definition for the `save_plan` built-in tool.
 pub fn definition() -> ToolDefinition {
@@ -47,14 +47,6 @@ pub fn definition() -> ToolDefinition {
 }
 
 /// Resolves a path against the CWD if relative, returns absolute as-is.
-fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
-    let p = Path::new(path);
-    if p.is_absolute() {
-        p.to_owned()
-    } else {
-        cwd.join(p)
-    }
-}
 
 /// Executes the `save_plan` built-in tool.
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
@@ -62,15 +54,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let (path, content) = match parse_args(&call.arguments) {
             Ok(v) => v,
             Err(e) => {
-                return ToolResult {
-                    tool_call_id: call.id,
-                    name: call.name,
-                    content: format!("failed to parse arguments: {e}"),
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                };
+                return unprefixed_failure(&call, format!("failed to parse arguments: {e}"));
             }
         };
 
@@ -80,18 +64,13 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             && !parent.as_os_str().is_empty()
             && let Err(e) = tokio::fs::create_dir_all(parent).await
         {
-            return ToolResult {
-                tool_call_id: call.id,
-                name: call.name,
-                content: format!(
+            return unprefixed_failure(
+                &call,
+                format!(
                     "failed to create parent directories for '{}': {e}",
                     resolved.display()
                 ),
-                success: false,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-            };
+            );
         }
 
         match tokio::fs::write(&resolved, &content).await {
@@ -108,15 +87,10 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 truncation: None,
                 pin_position: Some(ToolResultPinPosition::Relative),
             },
-            Err(e) => ToolResult {
-                tool_call_id: call.id,
-                name: call.name,
-                content: format!("failed to write file '{}': {e}", resolved.display()),
-                success: false,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-            },
+            Err(e) => unprefixed_failure(
+                &call,
+                format!("failed to write file '{}': {e}", resolved.display()),
+            ),
         }
     })
 }

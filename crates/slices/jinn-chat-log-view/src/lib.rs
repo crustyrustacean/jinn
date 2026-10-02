@@ -17,6 +17,7 @@ pub mod audit_popup;
 pub mod chat_entry_selection;
 pub mod chat_log;
 pub mod kernel_element;
+pub mod minimap_arrow;
 pub mod render_regions;
 pub mod routes;
 pub mod vertical_minimap;

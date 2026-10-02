@@ -37,11 +37,12 @@
 
 use std::sync::Arc;
 
-use super::min_age::is_within_min_age;
+use super::is_within_min_age;
+use super::worker_skeleton::prune_mutation;
 use crate::worker::HistoryWorker;
 use jinn_core_types::HistoryMutation;
 use jinn_core_types::SessionId;
-use jinn_core_types::{ChangeSource, ChatEntry, ChatEntryKind, ContextOverride};
+use jinn_core_types::{ChatEntry, ChatEntryKind};
 use jinn_llm_support::token_estimator::{TiktokenCounter, TokenCounter};
 pub use jinn_preferences_config::schemas::auto_prune::AnchoredAssistantAutoPruneConfig;
 
@@ -253,13 +254,7 @@ fn build_prune_mutations(ctx: &PruneCtx<'_>) -> Vec<HistoryMutation> {
                 d_fwd = ?d_fwd,
                 "anchored_assistant: excluding stale large assistant entry",
             );
-            mutations.push(HistoryMutation::SetContextOverride {
-                entry_id: entry.id.clone(),
-                value: ContextOverride::ForcedExclude,
-                source: ChangeSource::Worker {
-                    name: ctx.worker_name.to_owned(),
-                },
-            });
+            mutations.push(prune_mutation(&entry.id.clone(), ctx.worker_name));
         }
     }
 
@@ -334,6 +329,7 @@ mod tests {
     const TEST_MIN_CANDIDATE_TOKENS: u32 = 81;
 
     use jinn_core_types::SessionId;
+    use jinn_core_types::{ChangeSource, ContextOverride};
 
     // ------------------------------------------------------------------
     // Test helpers

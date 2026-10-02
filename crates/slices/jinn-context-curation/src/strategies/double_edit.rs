@@ -25,11 +25,13 @@ use std::collections::HashMap;
 pub use jinn_preferences_config::schemas::auto_prune::DoubleEditAutoPruneConfig;
 use std::sync::Arc;
 
-use super::min_age::is_within_min_age;
+use super::is_within_min_age;
+use super::tool_pair::{extract_path_from_arguments, find_matching_result};
+use super::worker_skeleton::prune_mutation;
 use crate::worker::HistoryWorker;
 use jinn_core_types::HistoryMutation;
 use jinn_core_types::SessionId;
-use jinn_core_types::{ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
+use jinn_core_types::{ChatEntry, ChatEntryId, ChatEntryKind};
 
 /// Default max file edits for double-edit auto-prune.
 /// Default enabled state for double-edit auto-prune.
@@ -57,44 +59,6 @@ pub struct DoubleEditAutoPruneWorker {
     pub layer: jinn_config::ConfigLayer,
     /// Configuration for the double-edit auto-prune strategy.
     pub config: DoubleEditAutoPruneConfig,
-}
-
-/// Extract the `path` field from a tool call's JSON arguments string.
-///
-/// Returns `None` if the arguments cannot be parsed or the `path` field is
-/// missing or not a string.
-fn extract_path_from_arguments(arguments: &str) -> Option<String> {
-    let value: serde_json::Value = serde_json::from_str(arguments).ok()?;
-    value
-        .get("path")?
-        .as_str()
-        .map(std::borrow::ToOwned::to_owned)
-}
-
-/// Walk forward from a ToolCall to find its matching ToolResult.
-///
-/// Returns `None` if no ToolResult with the given `tool_call_id` exists after
-/// the call index (e.g. pending, orphaned, or pruned-from-history).
-///
-/// Override state is intentionally **not** consulted here — the helper is
-/// purely a structural lookup. Mutation-emission guards that need to skip
-/// protected entries happen in [`build_prune_mutations`], mirroring the other
-/// auto-prune workers.
-fn find_matching_result(
-    history: &[ChatEntry],
-    call_idx: usize,
-    tool_call_id: &str,
-) -> Option<ChatEntryId> {
-    // ToolResults appear after their ToolCall, so scan forward only.
-    for entry in history.iter().skip(call_idx + 1) {
-        if let ChatEntryKind::ToolResult { id, .. } = &entry.kind
-            && id == tool_call_id
-        {
-            return Some(entry.id.clone());
-        }
-    }
-    // No matching result found — the call is still pending or orphaned.
-    None
 }
 
 /// A collected edit/write tool call paired with its result.
@@ -195,7 +159,7 @@ fn collect_edit_write_pairs_by_path(history: &[ChatEntry]) -> HashMap<String, Ve
         // Walk forward to find the ToolResult that matches this call.
         // If none found (pending or orphaned), skip it — incomplete pairs
         // don't count toward the file's total.
-        let Some(result_id) = find_matching_result(history, *call_idx, tool_call_id) else {
+        let Some((result_id, _)) = find_matching_result(history, *call_idx, tool_call_id) else {
             continue;
         };
 
@@ -254,22 +218,10 @@ fn build_prune_mutations(
             let result_protected = pair.result_protected;
 
             if !call_protected {
-                mutations.push(HistoryMutation::SetContextOverride {
-                    entry_id: pair.call_entry_id.clone(),
-                    value: ContextOverride::ForcedExclude,
-                    source: ChangeSource::Worker {
-                        name: worker_name.to_owned(),
-                    },
-                });
+                mutations.push(prune_mutation(&pair.call_entry_id, worker_name));
             }
             if !result_protected {
-                mutations.push(HistoryMutation::SetContextOverride {
-                    entry_id: pair.result_entry_id.clone(),
-                    value: ContextOverride::ForcedExclude,
-                    source: ChangeSource::Worker {
-                        name: worker_name.to_owned(),
-                    },
-                });
+                mutations.push(prune_mutation(&pair.result_entry_id, worker_name));
             }
         }
     }
@@ -291,6 +243,7 @@ mod tests {
     use jinn_core_types::ChatEntry;
     use jinn_core_types::SessionId;
     use jinn_core_types::ToolResultStatus;
+    use jinn_core_types::{ChangeSource, ContextOverride};
 
     /// Helper: create an edit ToolCall + ToolResult pair.
     fn edit_call_result(call_id: &str, path: &str, content: &str) -> [ChatEntry; 2] {

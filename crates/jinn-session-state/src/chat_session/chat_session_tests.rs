@@ -386,7 +386,7 @@ fn scroll_up_from_bottom_decrements_offset() {
     // Given a session at the bottom with last_max_offset = 100.
     let mut session = ChatSessionState::new();
     session.set_last_max_offset(100);
-    session.reset_scroll();
+    session.scroll_to_bottom();
     assert!(session.scroll_offset().is_none());
 
     // When scrolling up by 10.
@@ -487,7 +487,7 @@ fn reset_scroll_clears_offset() {
     session.set_scroll_offset(Some(50));
 
     // When resetting scroll.
-    session.reset_scroll();
+    session.scroll_to_bottom();
 
     // Then the offset is None (at bottom).
     assert!(session.scroll_offset().is_none());
@@ -541,7 +541,7 @@ fn enqueue_message_adds_to_queue() {
     // Then the queue has one message.
     assert_eq!(session.queue_len(), 1);
     assert!(matches!(
-        &session.queue()[0],
+        &session.message_queue().items()[0],
         jinn_turn_dispatch_msg::QueueItem::UserMessage(e) if e.kind == ChatEntryKind::User {
             display: "hello".to_owned(),
             expanded: "hello".to_owned(),
@@ -610,7 +610,7 @@ fn drain_returns_all_in_order() {
     )));
 
     // When draining the queue.
-    let drained = session.drain_queue();
+    let drained = session.message_queue_mut().drain();
 
     // Then all messages are returned in order.
     assert_eq!(drained.len(), 3);
@@ -668,7 +668,7 @@ fn drain_empties_queue() {
     )));
 
     // When draining the queue.
-    let _ = session.drain_queue();
+    let _ = session.message_queue_mut().drain();
 
     // Then the queue is empty.
     assert_eq!(session.queue_len(), 0);

@@ -162,7 +162,7 @@ pub fn handle_rerun_attendant(state: &mut AppState) -> IntentResult {
     // boundaries; the walk stops there.
     let mut visited = std::collections::HashSet::new();
     visited.insert(attendant_id.clone());
-    result = result.merge(jinn_kernel::feat::intent::handler::cascade_descendants(
+    result = result.merge(jinn_kernel::feat::intent::cancel::cascade_descendants(
         state,
         &attendant_id,
         &mut visited,
