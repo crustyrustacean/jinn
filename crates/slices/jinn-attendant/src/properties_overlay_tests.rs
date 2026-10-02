@@ -457,9 +457,7 @@ fn the_save_row_commits_the_same_model_setting_as_enter() {
 #[case::esc("attendant-properties-leave")]
 #[case::ctrl_c("attendant-properties-cancel")]
 #[test]
-fn leaving_the_popup_restores_the_model_setting_it_opened_with(
-    #[case] leave: &'static str,
-) {
+fn leaving_the_popup_restores_the_model_setting_it_opened_with(#[case] leave: &'static str) {
     // Given an attendant that owns its model, with an open popup.
     let mut fx = PopupFixture::new();
     fx.fix_its_model();

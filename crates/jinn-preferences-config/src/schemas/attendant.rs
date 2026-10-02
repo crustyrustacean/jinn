@@ -880,7 +880,9 @@ mod tests {
     fn saving_an_inheriting_attendant_leaves_a_hand_written_entry_without_a_model() {
         // Given a document holding a hand-written entry that names no model.
         let storage = Arc::new(InMemoryConfigStorage::new(
-            "[[attendant.entry]]\nname = \"reviewer\"\nbehavior = \"reset\"\n".parse().expect("parses"),
+            "[[attendant.entry]]\nname = \"reviewer\"\nbehavior = \"reset\"\n"
+                .parse()
+                .expect("parses"),
         ));
         let layer = ConfigLayer::load(storage.clone()).expect("load");
         let mut entry = layer
@@ -970,7 +972,10 @@ mod tests {
         // Then the document did not move, and the model key is in it — the
         // inline rendering of a `model` has to be stable for a fixed
         // attendant, or every save would churn the user's file.
-        assert_eq!(once, twice, "document moved:\nonce:\n{once}\ntwice:\n{twice}");
+        assert_eq!(
+            once, twice,
+            "document moved:\nonce:\n{once}\ntwice:\n{twice}"
+        );
         assert!(
             once.contains("model = { single = \"zai/glm-4.7\" }"),
             "a fixed attendant must write its model:\n{once}"

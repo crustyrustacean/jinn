@@ -169,10 +169,7 @@ mod properties_tests {
         // its own".
         assert_eq!(
             values,
-            vec![
-                AttendantModelSetting::Inherit,
-                AttendantModelSetting::Fixed
-            ]
+            vec![AttendantModelSetting::Inherit, AttendantModelSetting::Fixed]
         );
     }
 
@@ -189,10 +186,7 @@ mod properties_tests {
 
         // Then the setting moves one choice along, as on every other choice
         // row — and only the setting moved.
-        assert_eq!(
-            popup.pending_model_setting,
-            AttendantModelSetting::Fixed
-        );
+        assert_eq!(popup.pending_model_setting, AttendantModelSetting::Fixed);
         assert_eq!(popup.pending_trigger, AttendantTrigger::Manual);
         assert_eq!(popup.pending_behavior, AttendantBehavior::Reset);
     }

@@ -566,7 +566,8 @@ impl AttendantPropertiesState {
                 self.pending_prep_mode = !self.pending_prep_mode;
             }
             PropertyField::Model => {
-                self.pending_model_setting = pick_model_setting(self.pending_model_setting, direction);
+                self.pending_model_setting =
+                    pick_model_setting(self.pending_model_setting, direction);
             }
             PropertyField::ToolSet | PropertyField::SkillSet | PropertyField::SeedTemplate => {}
         }

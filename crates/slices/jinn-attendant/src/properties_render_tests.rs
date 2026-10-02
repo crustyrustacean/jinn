@@ -429,9 +429,7 @@ fn the_model_row_shows_only_the_setting_and_not_the_model() {
 #[case::inheriting(AttendantModelSetting::Inherit)]
 #[case::fixed(AttendantModelSetting::Fixed)]
 #[test]
-fn the_model_row_marks_its_current_setting_green(
-    #[case] setting: AttendantModelSetting,
-) {
+fn the_model_row_marks_its_current_setting_green(#[case] setting: AttendantModelSetting) {
     // Given a popup whose model row reads one setting.
     let popup = AttendantPropertiesState {
         pending_model_setting: setting,
@@ -456,7 +454,11 @@ fn the_model_row_marks_its_current_setting_green(
     );
     // And the other is plain text.
     let other = find_in_row(&buffer, row, "fixed").expect("a fixed choice");
-    let other = if other == x { find_in_row(&buffer, row, "inherit") } else { Some(other) };
+    let other = if other == x {
+        find_in_row(&buffer, row, "inherit")
+    } else {
+        Some(other)
+    };
     if let Some(other) = other {
         assert_eq!(fg_at(&buffer, other, row), PRIMARY_TEXT);
     }
