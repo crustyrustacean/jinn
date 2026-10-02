@@ -5785,6 +5785,112 @@ fn reset_streaming_entries_for_retry_keeps_partial_entry_out_of_context() {
 }
 
 #[rstest::rstest]
+fn reset_streaming_entries_for_retry_keeps_a_discarded_attempt_from_collapsing_away() {
+    // Given a streaming session whose stalled attempt produced an assistant
+    // entry, a thinking entry, and a tool call — three entries, which is
+    // exactly the block size the chat log collapses by default.
+    let mut session = streaming_session();
+    session
+        .append_stream_token("Partial", dispatched_at())
+        .expect("append token");
+    session.begin_thinking(dispatched_at());
+    session
+        .append_thinking_token("thinking")
+        .expect("append thinking token");
+    session.finish_thinking_entry(session.streaming_thinking_entry_index().unwrap());
+    let tool_call_history_len = session.history().len();
+    session.begin_tool_call(tool_call_history_len, "call_1", "read", dispatched_at());
+    let excluded_ids = session
+        .reset_streaming_entries_for_retry()
+        .into_iter()
+        .collect::<std::collections::HashSet<_>>();
+    assert!(
+        excluded_ids.len() >= 3,
+        "expected assistant+thinking+tool call to be excluded, got {}",
+        excluded_ids.len()
+    );
+
+    // When the retried generation appends enough entries to push the stalled
+    // attempt out of the proximity window (3) at the tail.
+    for n in 0..8 {
+        session.push_entry(ChatEntry::assistant(format!("retry{n}")));
+    }
+
+    // Then building visual items does NOT collapse the discarded attempt into
+    // a single "N hidden entries" line — the user's evidence stays readable.
+    let items = jinn_chat_log_view_msg::build_visual_items(
+        session.history(),
+        &session.shown_ignored_blocks_snapshot(),
+        PROXIMITY_COUNT,
+        DEFAULT_MIN_COLLAPSE_COUNT,
+    );
+
+    for id in &excluded_ids {
+        let entry_index = session
+            .history()
+            .iter()
+            .position(|e| &e.id == id)
+            .expect("excluded entry is still in history");
+        let rendered_individually = items.contains(&VisualItem::Entry(entry_index));
+        assert!(
+            rendered_individually,
+            "the discarded attempt must stay visible on screen, not collapse into a \
+             hidden-entries block; entry at history index {entry_index} was swallowed \
+             by {items:?}"
+        );
+    }
+    assert!(
+        !items
+            .iter()
+            .any(|i| matches!(i, VisualItem::CollapsedIgnoredBlock { .. })),
+        "no ignored block may be collapsed, since every excluded entry belongs to \
+         the discarded attempt that must stay visible; got {items:?}"
+    );
+}
+
+#[rstest::rstest]
+fn reset_streaming_entries_for_retry_block_can_still_be_collapsed_by_the_user() {
+    // Given a discarded attempt registered as a shown (expanded) block.
+    let mut session = streaming_session();
+    session
+        .append_stream_token("Partial", dispatched_at())
+        .expect("append token");
+    session.begin_thinking(dispatched_at());
+    session
+        .append_thinking_token("thinking")
+        .expect("append thinking token");
+    session.finish_thinking_entry(session.streaming_thinking_entry_index().unwrap());
+    let tool_call_history_len = session.history().len();
+    session.begin_tool_call(tool_call_history_len, "call_1", "read", dispatched_at());
+    let excluded_ids = session.reset_streaming_entries_for_retry();
+    for n in 0..8 {
+        session.push_entry(ChatEntry::assistant(format!("retry{n}")));
+    }
+
+    // When the user toggles the block shut.
+    let last_excluded = excluded_ids
+        .last()
+        .expect("at least one excluded entry")
+        .clone();
+    session.toggle_ignored_block_visibility(&last_excluded);
+
+    // Then it collapses like any other ignored block — the stall path set a
+    // default-expanded state, it did not lock the block open.
+    let items = jinn_chat_log_view_msg::build_visual_items(
+        session.history(),
+        &session.shown_ignored_blocks_snapshot(),
+        PROXIMITY_COUNT,
+        DEFAULT_MIN_COLLAPSE_COUNT,
+    );
+    assert!(
+        items
+            .iter()
+            .any(|i| matches!(i, VisualItem::CollapsedIgnoredBlock { .. })),
+        "toggling the discarded attempt's block must collapse it, got {items:?}"
+    );
+}
+
+#[rstest::rstest]
 fn reset_streaming_entries_for_retry_keeps_partial_assistant_visible() {
     // Given a streaming session with a partial assistant entry.
     let mut session = ChatSessionState::new();

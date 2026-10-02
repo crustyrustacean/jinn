@@ -1257,6 +1257,17 @@ impl ChatSessionState {
     /// Must run while still in `Streaming`: it reads the streaming indices,
     /// which no longer exist once the phase has moved on.
     ///
+    /// The excluded entries are also registered as an expanded ignored block.
+    /// Exclusion alone is not enough to keep them readable: the chat log
+    /// collapses any contiguous run of `!is_in_context()` entries that is at
+    /// least `min_collapse_count` long and further than `proximity_count` from
+    /// the tail, and it cannot tell a discarded stall from a block the user
+    /// chose to ignore. Without this the whole attempt — three entries in the
+    /// common case, exactly the collapse threshold — reduces to a single "N
+    /// hidden entries" line, which is the invisibility this method exists to
+    /// prevent. Registering the ids is a default-expanded state, not a lock:
+    /// toggling the block collapses it like any other.
+    ///
     /// Returns the ids whose context override changed.
     pub fn reset_streaming_entries_for_retry(&mut self) -> Vec<ChatEntryId> {
         // Collect first: clearing the indices below is what erases the only
@@ -1265,6 +1276,9 @@ impl ChatSessionState {
         indices.sort_unstable();
         indices.dedup();
         let excluded = self.edit_history().force_exclude_at_indices(&indices);
+        if !excluded.is_empty() {
+            self.update_view(|v| v.shown_ignored_blocks.extend(excluded.iter().cloned()));
+        }
         self.core.ephemeral.machine.clear_streaming_indices();
         excluded
     }
