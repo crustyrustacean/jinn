@@ -8,8 +8,8 @@
 
 use std::ops::Range;
 
+use ratatui::symbols;
 use ratatui::text::{Line, Span};
-use ratatui::{style::Style, symbols};
 
 use jinn_picker::picker_style::{dim_style, selected_style};
 use jinn_theme::Theme;
@@ -173,7 +173,6 @@ pub fn render_task_list_row(
     };
 
     let mut spans = vec![glyph_span];
-    let _ = Style::default; // keep Style in scope for future styling tweaks
     spans.extend(desc_spans);
     Line::from(spans)
 }

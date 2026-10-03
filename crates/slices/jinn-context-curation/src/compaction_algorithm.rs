@@ -1,6 +1,6 @@
 //! Compaction algorithm - boundary finding, token accumulation, entry gathering.
 //!
-//! Extracted from the old `CompactionActor` for reuse by `CompactionWorker`.
+//! Pure logic shared by the compaction worker.
 
 use jinn_core_types::{ChatEntry, ChatEntryKind};
 use jinn_llm_support::token_estimator::CharRatioEstimator;

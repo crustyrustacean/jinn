@@ -226,7 +226,7 @@ async fn failed_drain_leaves_marker_and_next_drain_recovers() {
 #[test]
 fn production_interval_is_five_seconds() {
     // Given the production interval constant.
-    // When comparing it against the record/plan contract.
+    // When reading its configured value.
     // Then it is exactly 5 seconds.
     assert_eq!(REINDEX_INTERVAL, Duration::from_secs(5));
 }

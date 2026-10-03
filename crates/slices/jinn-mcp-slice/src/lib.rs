@@ -3,8 +3,7 @@
 //! One [`coordinator::McpCoordinatorActor`] lives for the whole app; it keeps
 //! exactly one [`connection::McpActor`] alive per (session × enabled-server)
 //! pair, reconciling session lifecycle events against the session's enablement
-//! set. Both actors moved here verbatim from the kernel's
-//! `feat/{mcp_actor,mcp_coordinator_actor}` modules.
+//! set.
 //!
 //! Kernel dependency: the coordinator consumes shared application state
 //! and session lifecycle events (`SessionCreated`, `SessionClosed`, …);

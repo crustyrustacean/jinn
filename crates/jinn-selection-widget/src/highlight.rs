@@ -11,19 +11,6 @@ use ratatui::text::Span;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Highlight style for fuzzy-matched characters in picker rows.
-///
-/// Dark gray background with underline; foreground is inherited from the base style.
-///
-/// This constant is kept for backward compatibility. Production code should use
-/// [`highlight_text_with_bg`] with a theme-provided color instead.
-pub const PICKER_HIGHLIGHT_STYLE: Style = Style::new()
-    .bg(Color::DarkGray)
-    .add_modifier(Modifier::UNDERLINED);
-
-/// Builds a highlight style for the given background color.
-///
-/// Uses the provided color as background with underline modifier.
-/// Foreground is inherited from the base style via patching.
 pub fn highlight_style(highlight_bg: Color) -> Style {
     Style::new()
         .bg(highlight_bg)
@@ -33,7 +20,7 @@ pub fn highlight_style(highlight_bg: Color) -> Style {
 /// Splits `text` into spans, applying the highlight style to characters whose
 /// byte offset falls within one of `match_indices`.
 ///
-/// Matched characters get [`PICKER_HIGHLIGHT_STYLE`] patched onto the base style
+/// Matched characters get [`highlight_style`] patched onto the base style
 /// (preserving the base foreground color).
 ///
 /// # Panics

@@ -5,8 +5,8 @@
 //! file exists only to adapt the schema crate's synchronous `run_migrations`
 //! (which takes a raw `&mut rusqlite::Connection`) to jinn's async dao pool.
 //!
-//! See `.plans/dao-validation-story/plan.md` for the rationale (the schema-crate
-//! pattern; single source of truth; no `dao_schema.sql` to drift).
+//! The schema-crate pattern gives a single source of truth: there is no
+//! `dao_schema.sql` for the checked-in copy to drift against.
 //!
 //! # Version tracking
 //!

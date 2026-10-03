@@ -644,9 +644,10 @@ mod key_event_tests {
     }
 
     /// The user-takeover path and the agent path must agree on every key they
-    /// both handle. The two used to be independent copies of the same table,
-    /// which is how the user path ended up emitting the CSI arrow form while
-    /// the agent path emitted the SS3 form for the same logical key.
+    /// both handle. These are two entry points onto one table precisely
+    /// because independent copies drift — the user path emitting the CSI
+    /// arrow form while the agent path emitted the SS3 form for the same
+    /// logical key.
     #[rstest::rstest]
     #[case(Key::Up, "up")]
     #[case(Key::Down, "down")]

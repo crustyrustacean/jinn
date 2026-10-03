@@ -202,12 +202,6 @@ impl TestServices {
         self
     }
 
-    /// Alias for [`providers`](Self::providers) for backward compat.
-    #[must_use]
-    pub fn with_providers(self, providers: ProvidersConfig) -> Self {
-        self.providers(providers)
-    }
-
     /// Set a custom runtime handle.
     #[must_use]
     pub fn handle(mut self, handle: Handle) -> Self {

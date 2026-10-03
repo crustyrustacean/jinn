@@ -280,8 +280,8 @@ async fn execute_tool_truncates_large_response_to_orchestrator_limits() {
 /// liveness-watch task detects it and publishes `McpServerStatus(Dead)` — the
 /// exact fix for the "kill -9 leaves it stuck on running" bug.
 ///
-/// Covers AC1, AC2, AC4: detection works (transport-level), the dead status is
-/// published, and the final tail is published alongside it.
+/// Detection works at the transport level, the dead status is published, and
+/// the final tail is published alongside it.
 #[rstest::rstest]
 #[tokio::test]
 async fn transport_close_publishes_dead_status() {
@@ -448,8 +448,6 @@ async fn normal_teardown_publishes_tools_unregistered() {
 /// On normal teardown (`on_stop`), the liveness watcher exits without
 /// double-publishing `Dead` beyond `on_stop`'s own publish — the shutdown-flag
 /// ordering prevents the race.
-///
-/// Covers AC3.
 #[rstest::rstest]
 #[tokio::test]
 async fn normal_teardown_publishes_exactly_one_dead() {

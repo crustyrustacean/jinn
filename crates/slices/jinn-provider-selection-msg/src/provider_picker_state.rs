@@ -28,8 +28,9 @@ use jinn_slices::SlotKey;
 /// The row count to assume before the first render pass.
 ///
 /// A *fallback*, not a default: the render pass overwrites it on the first
-/// frame. It matches the value the kernel's pre-migration measurement used, so
-/// paging behaves identically in the frame or two before a measurement lands.
+/// frame. It matches the row count the picker assumes before any
+/// measurement lands, so paging behaves identically in the frame or two
+/// before one arrives.
 pub const RESULTS_VIEWPORT_FALLBACK: usize = 20;
 
 /// The model picker's dynamic scope.

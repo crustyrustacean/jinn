@@ -137,7 +137,7 @@ pub struct Services {
     /// Actor-canvas runtime system hosting the ported slice actors
     /// (dashboard, quake-bar). Built once here; slice `activate` functions
     /// spawn their canvas actors onto it and subscribe them to topics fed
-    /// by the fabric canvas actor. See `.plans/actor-canvas/plan.md`.
+    /// by the fabric canvas actor.
     #[debug(skip)]
     pub trouper_system: trouper::system::ActorSystem,
 

@@ -67,8 +67,7 @@ tempfile = { workspace = true }
 
 # Actor framework
 
-# Actor canvas runtime (jinn slice actors ported onto it — see
-# .plans/actor-canvas/plan.md)
+# Actor canvas runtime hosting the jinn slice actors
 trouper = { workspace = true }
 
 [dev-dependencies]

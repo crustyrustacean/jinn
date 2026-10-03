@@ -1,8 +1,7 @@
 //! OpenRouter endpoint loading — target resolution, fetch, and entry
 //! building.
 //!
-//! Re-homed from the kernel `feat/provider/loader.rs` (the endpoint
-//! half). The fetch has no fake seam — `list_endpoints_default_client`
+//! The fetch has no fake seam — `list_endpoints_default_client`
 //! is a direct HTTP call — so the entry-building functions are pure and
 //! the fetch stays behind the actor's cache.
 

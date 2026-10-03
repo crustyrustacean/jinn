@@ -1,8 +1,8 @@
 //! The watchdog slice — always-on behavioral supervision of in-flight turns.
 //!
-//! Hosts the trouper [`ServiceActor`] watchdogs ported verbatim from the
-//! retired first-party components (no `enabled` gates; the `[stall_watchdog]`
-//! and `[tool_call_watchdog]` sections only tune when they intervene):
+//! Hosts the always-on trouper [`ServiceActor`] watchdogs (no `enabled`
+//! gates; the `[stall_watchdog]` and `[tool_call_watchdog]` sections only
+//! tune when they intervene):
 //!
 //! - [`stall_watchdog_actor::StallWatchdogActor`] arms on every
 //!   `SendToLlmProvider`, resets the silence clock on every `StreamActivity`,

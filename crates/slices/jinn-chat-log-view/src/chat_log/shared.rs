@@ -181,25 +181,6 @@ pub fn unescape_newlines(s: &str) -> String {
     s.replace("\\n", "\n")
 }
 
-/// Compute the display width of a string using Unicode grapheme clusters.
-#[expect(dead_code, reason = "public API available for future use")]
-pub fn unicode_segementation_display_width(s: &str) -> usize {
-    use unicode_segmentation::UnicodeSegmentation;
-    s.graphemes(true)
-        .map(|g| {
-            // Emoji and wide characters take 2 columns; everything else takes 1.
-            // This is a simplified heuristic - full-width detection would need
-            // unicode-width, but for our use case (provider names, counts, status)
-            // this is sufficient.
-            if g.chars().any(|c| c as u32 > 0x2000) {
-                2
-            } else {
-                1
-            }
-        })
-        .sum()
-}
-
 /// Truncate a string to `max_width` graphemes.
 ///
 /// Returns the string unchanged if it fits.

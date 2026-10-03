@@ -1,9 +1,7 @@
 //! Provider picker entry type and rendering.
 //!
-//! Re-homed from the kernel `feat/provider/picker_entry.rs` in the
-//! provider-selection window; the `selected_style` helper was copied from
-//! the kernel-free `jinn_picker::picker_style` (kept there for the other
-//! specs) so this crate stays kernel-free.
+//! Kernel-free: the `selected_style` helper comes from
+//! `jinn_picker::picker_style` (kept there for the other specs).
 
 use std::ops::Range;
 
