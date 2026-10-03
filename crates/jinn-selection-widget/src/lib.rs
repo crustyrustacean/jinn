@@ -28,9 +28,7 @@ pub mod widget;
 #[cfg(test)]
 mod widget_tests;
 
-pub use highlight::{
-    PICKER_HIGHLIGHT_STYLE, highlight_style, highlight_text, highlight_text_with_bg,
-};
+pub use highlight::{highlight_style, highlight_text, highlight_text_with_bg};
 pub use item::{MatchRanges, PickerItem};
 pub use picker_ops::PickerOps;
 pub use preview_content::{PreviewCache, PreviewContent, SharedPreviewLines};

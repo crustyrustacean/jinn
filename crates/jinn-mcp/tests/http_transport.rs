@@ -3,12 +3,12 @@
 //! These verify the load-bearing properties of the managed-HTTP path that are
 //! independent of any particular MCP server implementation:
 //!
-//! - **Bad command** (AC4): a nonexistent binary fails to spawn, surfacing the
+//! - **Bad command**: a nonexistent binary fails to spawn, surfacing the
 //!   error rather than hanging.
-//! - **Process exits before connect** (AC4): a short-lived process (e.g.
+//! - **Process exits before connect**: a short-lived process (e.g.
 //!   `false`) exits immediately; `connect_with_retry` returns `Err` carrying
 //!   the captured output, not a hang.
-//! - **Slow boot, no false Dead** (AC5): a long-running process that never
+//! - **Slow boot, no false Dead**: a long-running process that never
 //!   speaks HTTP keeps the connect loop retrying indefinitely — the bounded
 //!   timeout below proves the loop is *still trying* rather than having
 //!   flipped to `Dead`.
@@ -33,7 +33,7 @@ fn install_rustls_provider_for_tests() {
 
 use jinn_mcp::client::McpClient;
 
-/// A nonexistent command fails at spawn time with a clear error (AC4).
+/// A nonexistent command fails at spawn time with a clear error.
 #[rstest::rstest]
 #[tokio::test]
 async fn connect_http_rejects_nonexistent_command() {
@@ -51,7 +51,7 @@ async fn connect_http_rejects_nonexistent_command() {
 }
 
 /// A child that exits immediately causes connect to return `Err` with the
-/// captured output, never hanging (AC4).
+/// captured output, never hanging.
 #[rstest::rstest]
 #[tokio::test]
 async fn connect_with_retry_returns_err_when_child_exits_immediately() {
@@ -77,8 +77,7 @@ async fn connect_with_retry_returns_err_when_child_exits_immediately() {
 }
 
 /// A slow-booting process (one that never speaks HTTP) keeps the retry loop
-/// trying indefinitely — proving no false `Dead` from a wall-clock timeout
-/// (AC5).
+/// trying indefinitely — proving no false `Dead` from a wall-clock timeout.
 #[rstest::rstest]
 #[tokio::test]
 async fn connect_with_retry_keeps_trying_when_server_never_listens() {

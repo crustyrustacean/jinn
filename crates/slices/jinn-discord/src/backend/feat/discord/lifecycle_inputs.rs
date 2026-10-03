@@ -71,8 +71,7 @@ pub fn resolve_lifecycle_inputs(
 ///
 /// Unlike [`CommandTemplate::display`] (which echoes the whole command string
 /// including static text like `script.sh`), this yields only the param tokens —
-/// `<branch>`, `<1>`, `<args>` — matching the approved acceptance criteria:
-/// `Please enter: <1> <2>`.
+/// `<branch>`, `<1>`, `<args>` — producing `Please enter: <1> <2>`.
 fn prompt_tokens(template: &CommandTemplate) -> String {
     template
         .params()

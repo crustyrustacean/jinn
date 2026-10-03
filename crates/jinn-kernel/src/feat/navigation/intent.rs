@@ -1,8 +1,8 @@
 //! Navigation intent handlers - editor and working directory.
 //!
-//! The chat log's scroll handlers moved to the `jinn-chat-log-view`
-//! slice, which owns them as route rows; what remains here is the
-//! platform concerns the kernel still holds.
+//! What remains here is the platform concerns the kernel still holds; the
+//! chat log's scroll handlers belong to the `jinn-chat-log-view` slice,
+//! which owns them as route rows.
 
 use crate::common::app_state::AppState;
 use jinn_slices::RouteResult as IntentResult;

@@ -322,7 +322,7 @@ futures = "0.3"
 # Actor framework
 
 # The trouper actor runtime (published to crates.io; the SDK workspace
-# remains the development home — see .plans/actor-canvas/plan.md)
+# remains the development home)
 trouper = "0.12.0"
 
 

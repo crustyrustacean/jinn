@@ -2,9 +2,9 @@
 //! consume. The scanning actor lives in the session-init slice; kernel
 //! consumers (the session actor, the task settle listener) reference
 //! these types and the reverse bridge carries these exact Rust types.
-//! Re-homed from the kernel `feat/skills/protocol.rs` in the
-//! session-history window; the crossing-schema ids ("SkillsLoaded",
-//! "ScanSkills") are unchanged.
+//!
+//! The crossing-schema ids ("SkillsLoaded", "ScanSkills") are wire
+//! contract and must not be renamed.
 
 use std::path::PathBuf;
 

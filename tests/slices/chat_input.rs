@@ -3154,7 +3154,7 @@ fn slash_autocomplete_populates_matches_from_slash_commands() {
     );
 }
 
-// ---------- CtrlClear on the chat-input scope (AC6 coverage) ----------
+// ---------- CtrlClear on the chat-input scope ----------
 
 #[rstest::rstest]
 fn ctrl_clear_input_empties_chat_input_via_handler() {

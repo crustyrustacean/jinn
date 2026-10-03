@@ -85,15 +85,15 @@ pub use jinn_provider_config::{
 // Re-export context types
 
 // Re-export session types
-// The SQLite implementation moved to the jinn-session-store slice crate —
+// The SQLite implementation lives in the jinn-session-store slice crate —
 // import it from there (`jinn_session_store::sqlite::SqliteSessionStore`).
 
 pub use jinn_session_msg::PhaseKind;
 
 // Re-export reasoning types
-// The reasoning-effort vocabulary is owned by the provider-selection
-// slice's msg crate (kernel→msg direction); re-exported here so the
-// long-standing `jinn_kernel::ReasoningEffort` paths keep resolving.
+// The reasoning-effort vocabulary is owned by the provider-selection slice's
+// msg crate (kernel→msg direction); re-exported here so the long-standing
+// `jinn_kernel::ReasoningEffort` paths keep resolving.
 pub use jinn_provider_selection_msg::ReasoningEffort;
 pub use jinn_provider_selection_msg::resolve_effort;
 

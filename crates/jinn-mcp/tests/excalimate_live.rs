@@ -8,12 +8,12 @@
 //! Run with:
 //!   `cargo test -p jinn-mcp --features testkit --test excalimate_live -- --ignored --nocapture`
 //!
-//! What this validates (acceptance criteria from `.plans/mcp-integration/plan.md`):
-//!   - AC1: a real MCP server connects, advertises `create_scene`, and a
+//! What this validates:
+//!   - A real MCP server connects, advertises `create_scene`, and a
 //!     `tools/call` to it returns a result.
-//!   - AC2: two independent connections to the same server hold isolated state
+//!   - Two independent connections to the same server hold isolated state
 //!     (each connection is its own process with its own scene).
-//!   - AC4: the server is reachable on its own; tool names do not collide with
+//!   - The server is reachable on its own; tool names do not collide with
 //!     the stub server's namespace because namespacing is applied by the actor
 //!     layer, not here.
 
@@ -63,7 +63,7 @@ async fn connect_with_timeout(cmd: &ServerCommand) -> McpClient {
         .expect("connect handshake failed")
 }
 
-/// AC1: excalimate advertises `create_scene`, and calling it returns content.
+/// Excalimate advertises `create_scene`, and calling it returns content.
 // > 10s workspace default: hits a live Node MCP server over stdio; only run
 // with --ignored, never in-suite.
 #[rstest::rstest]
@@ -129,7 +129,7 @@ async fn excalimate_lists_create_scene_and_calls_it() {
     client.shutdown().await;
 }
 
-/// AC2: two connections to the same server are independent processes.
+/// Two connections to the same server are independent processes.
 ///
 /// excalimate keeps scene state per connection. We confirm the two connections
 /// are distinct processes (their own scene state) by verifying both see the

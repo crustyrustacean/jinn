@@ -1,7 +1,6 @@
 //! Reasoning effort — how hard a reasoning-capable model thinks before answering.
 //!
-//! Re-homed from the kernel `feat/reasoning/` in the provider-selection
-//! window. This module re-exports the [`ReasoningEffort`] type
+//! This module re-exports the [`ReasoningEffort`] type
 //! (defined in `jinn-core-types`, the foundational value-type crate) and
 //! provides [`resolve_effort`], which surfaces a session's own effort.
 //!

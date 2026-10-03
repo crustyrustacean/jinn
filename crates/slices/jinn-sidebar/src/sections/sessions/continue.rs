@@ -1,7 +1,6 @@
 //! Resume the session under the sidebar cursor without injecting a new user message.
 //!
-//! See `.plans/retry-continue/plan.md` for the dialectical background: this
-//! intent exists for two scenarios — resuming after a rate-limited / errored
+//! This intent exists for two scenarios: resuming after a rate-limited or errored
 //! turn, and resuming a session that was rehydrated from disk after an app
 //! kill. In both cases the model needs only the existing history; no new
 //! `User` entry is required.

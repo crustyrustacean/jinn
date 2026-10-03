@@ -142,20 +142,6 @@ fn find_block_index(selected_vi_idx: Option<usize>, visible: &[VisibleEntry]) ->
         None => visible.len().checked_sub(1),
     }
 }
-#[expect(
-    clippy::allow_attributes,
-    reason = "dead_code is a compiler lint, not clippy"
-)]
-#[allow(dead_code, reason = "available for future use")]
-fn compute_minimap_scroll(
-    selected_block: usize,
-    _total_blocks: usize,
-    viewport_height: usize,
-) -> usize {
-    let midpoint = viewport_height / 2;
-    selected_block.saturating_sub(midpoint)
-}
-
 pub fn render_vertical_minimap(
     frame: &mut Frame<'_>,
     area: Rect,
@@ -352,71 +338,6 @@ mod tests {
 
         // Then there is no block.
         assert!(block.is_none());
-    }
-
-    #[rstest::rstest]
-    fn scroll_is_midpoint_based() {
-        // Given a 10-row viewport (midpoint 5) and a selection at block 4.
-        let viewport_height = 10;
-        let selected_block = 4;
-
-        // When computing the scroll offset.
-        let offset = compute_minimap_scroll(selected_block, 5, viewport_height);
-
-        // Then the offset is zero because the selection sits above the midpoint.
-        assert_eq!(offset, 0);
-    }
-
-    #[rstest::rstest]
-    fn scroll_centers_selected() {
-        // Given a 10-row viewport (midpoint 5) and a selection at block 45.
-        let viewport_height = 10;
-        let selected_block = 45;
-
-        // When computing the scroll offset.
-        let offset = compute_minimap_scroll(selected_block, 50, viewport_height);
-
-        // Then the selected block lands on the midpoint.
-        assert_eq!(offset, 40);
-    }
-
-    #[rstest::rstest]
-    fn scroll_at_start_is_zero() {
-        // Given a 10-row viewport (midpoint 5) and a selection at block 0.
-        let viewport_height = 10;
-        let selected_block = 0;
-
-        // When computing the scroll offset.
-        let offset = compute_minimap_scroll(selected_block, 50, viewport_height);
-
-        // Then the offset is zero.
-        assert_eq!(offset, 0);
-    }
-
-    #[rstest::rstest]
-    fn scroll_at_last_block() {
-        // Given a 10-row viewport (midpoint 5) and a selection on the last block.
-        let viewport_height = 10;
-        let selected_block = 49;
-
-        // When computing the scroll offset.
-        let offset = compute_minimap_scroll(selected_block, 50, viewport_height);
-
-        // Then the offset places the last block on the midpoint.
-        assert_eq!(offset, 44);
-    }
-
-    #[rstest::rstest]
-    fn scroll_near_midpoint() {
-        // Given a 10-row viewport (midpoint 5) and a selection at block 5.
-        let viewport_height = 10;
-        let selected_block = 5;
-
-        // When computing the scroll offset.
-        let offset = compute_minimap_scroll(selected_block, 50, viewport_height);
-
-        // Then the offset is zero.
-        assert_eq!(offset, 0);
     }
 
     /// A layer holding no config, for tests that do not exercise the

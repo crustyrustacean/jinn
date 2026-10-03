@@ -1,13 +1,10 @@
 //! Provider-selection crossing contracts — the commands and events other
 //! actors and slices consume, plus the provider cell vocabulary.
 //!
-//! Re-homed from the kernel `feat/provider/protocol/` in the
-//! provider-selection window. The crossing-schema ids ("ProviderSwitch",
-//! "ModelsRefreshed", …) are unchanged — they derive from the type names,
-//! which did not move semantically. The dead `SendMessage` backward-compat
-//! shim was deleted outright (zero publishers; the session actor
-//! republishes `EnqueueUserMessage`), and the prompt-scan pair
-//! (`RescanPromptTemplates`/`PromptTemplatesLoaded`) re-homed to
+//! The crossing-schema ids ("ProviderSwitch", "ModelsRefreshed", …) derive
+//! from the type names, so they are part of the wire contract and must not be
+//! renamed. The prompt-scan pair
+//! (`RescanPromptTemplates`/`PromptTemplatesLoaded`) belongs to
 //! `jinn-session-init-msg`, its producer's crate.
 //!
 //! The cell vocabulary ([`ProviderCell`], [`provider_state_slot`]) lives

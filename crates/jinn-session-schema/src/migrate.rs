@@ -1,7 +1,7 @@
 //! The migration runner and individual migrations (v0..=v28).
 //!
-//! Ported verbatim from jinn-kernel's `migrator.rs` so the schema crate is the
-//! single source of truth. Three mechanical changes from the original:
+//! This crate is the single source of truth for the session schema. Note the
+//! deliberate version pins, which keep the migrations immutable:
 //!
 //! - error type `SessionStoreError` → [`crate::SchemaMigrationError`]
 //! - `super::sqlite::LegacySessionColumns` → [`crate::legacy::LegacySessionColumns`]

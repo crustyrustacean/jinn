@@ -8,8 +8,6 @@
 //! to report success/failure deterministically. No bus eavesdropping, no
 //! event-ordering race. The coordinator owns the timeout (60s); this tool just
 //! awaits the reply.
-//!
-//! See the plan at `.plans/mcp-restart-tool/plan.md`.
 
 use std::time::Duration;
 

@@ -1,6 +1,4 @@
-//! Provider events — re-homed verbatim from the kernel
-//! `feat/provider/protocol/event.rs` (minus the prompt-scan pair, which
-//! lives in `jinn-session-init-msg`).
+//! Provider events. The prompt-scan pair lives in `jinn-session-init-msg`.
 
 use serde::{Deserialize, Serialize};
 

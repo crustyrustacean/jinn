@@ -5,8 +5,6 @@
 //! message splitter, bridge actor) live in the slice's top-level modules
 //! ([`crate::authorize`], [`crate::thread_map`], [`crate::message_split`],
 //! [`crate::bridge_subscriber`]).
-//!
-//! See `.plans/discord/plan.md` for the full architecture.
 
 pub mod commands;
 pub mod feat;

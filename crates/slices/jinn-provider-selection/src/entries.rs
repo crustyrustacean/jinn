@@ -1,9 +1,7 @@
 //! Provider entries - loading, sorting, and formatting.
 //!
-//! Re-homed from the kernel `feat/provider/entries.rs` minus the two
-//! `promote_active_to_top`/theme helpers that stay kernel-side (the
-//! kernel picker style module). The loader wrapper lives in the slice's
-//! `loader.rs`.
+//! The `promote_active_to_top`/theme helpers stay kernel-side (the kernel
+//! picker style module). The loader wrapper lives in the slice's `loader.rs`.
 
 use jinn_picker::picker_style::promote_active_to_top;
 use jinn_provider_selection_msg::ProviderPickerEntry;

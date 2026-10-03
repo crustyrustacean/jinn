@@ -1,9 +1,7 @@
 //! Provider picker loader — builds provider picker entries into the
 //! picker's `SelectionState`.
 //!
-//! Re-homed from the kernel `feat/provider/loader.rs`; its inputs are
-//! explicit (cell model-cache snapshot + theme + session model snapshot), and
-//! `set_endpoint_picker_items` helper moved to
+//! The `set_endpoint_picker_items` helper lives in
 //! [`crate::endpoint_loader`] as actor methods.
 
 use jinn_core_types::ModelSelection;

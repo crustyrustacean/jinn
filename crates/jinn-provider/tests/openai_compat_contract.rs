@@ -796,7 +796,7 @@ async fn openrouter_attribution_headers_are_sent_on_chat_requests() {
 }
 
 // ---------------------------------------------------------------------------
-// Reasoning effort wire shape (AC3)
+// Reasoning effort wire shape
 // ---------------------------------------------------------------------------
 
 #[rstest::rstest]

@@ -39,9 +39,8 @@ pub struct BootHandles {
 /// Spawns the boot trio onto the trouper system and returns the
 /// startup-tail handles.
 ///
-/// Spawn order matters and matches the pre-slice wiring: system-ready →
-/// env-init → provider-init. Each actor's subscription is live when its
-/// spawn returns.
+/// Spawn order matters: system-ready → env-init → provider-init. Each
+/// actor's subscription is live when its spawn returns.
 ///
 /// # Panics
 ///

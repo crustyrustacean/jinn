@@ -112,7 +112,8 @@ pub struct ChatSessionState {
     slices: std::sync::OnceLock<jinn_slices::Slices>,
     /// In-struct stand-in for this session's view state while
     /// `slices` is unattached. Reads see it, writes mutate it, so an
-    /// unattached configuration behaves exactly like the pre-slice layout.
+    /// unattached configuration behaves exactly like a session with the
+    /// handle attached.
     /// Ignored entirely once the handle is attached.
     #[serde(skip)]
     view_fallback: parking_lot::RwLock<jinn_chat_log_view_msg::ChatLogViewUi>,
@@ -3219,8 +3220,7 @@ impl ChatSessionState {
     // ----- Discovered resources (per-session, cwd-scoped) -----
     //
     // These are populated by the scan actors and read by prompt assembly and
-    // the skill tool. They are NOT persisted — see `.plans/project-locals/plan.md`
-    // decision D3 for the per-session isolation rationale.
+    // the skill tool. They are NOT persisted.
 
     /// Returns the skills discovered for this session's cwd tree.
     pub fn discovered_skills(&self) -> &[Skill] {

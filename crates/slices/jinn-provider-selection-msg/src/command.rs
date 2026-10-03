@@ -1,6 +1,4 @@
-//! Provider commands — re-homed verbatim from the kernel
-//! `feat/provider/protocol/command.rs` (minus the deleted `SendMessage`
-//! shim and the prompt-scan pair, which lives in `jinn-session-init-msg`).
+//! Provider commands. The prompt-scan pair lives in `jinn-session-init-msg`.
 
 use jinn_core_types::ModelSelection;
 use jinn_core_types::SessionId;

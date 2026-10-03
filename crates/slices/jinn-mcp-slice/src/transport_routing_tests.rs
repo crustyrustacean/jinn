@@ -28,7 +28,7 @@ use jinn_preferences_config::schemas::mcp::TransportKind;
 
 /// `RemoteHttp` to an unreachable URL keeps retrying instead of failing fast.
 ///
-/// This is the no-wall-clock-timeout guarantee (AC5/AC7): a slow or down
+/// This is the no-wall-clock-timeout guarantee: a slow or down
 /// endpoint never produces an early `Err`. We verify by racing the connect
 /// against a short timeout — if the connect returned `Err` immediately, the
 /// timeout arm would not fire.
