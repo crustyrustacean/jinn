@@ -350,6 +350,12 @@ Cancelling a session recursively cancels its attendant and subagent
 descendants. The cascade **stops at forks**: a fork is an independent thread,
 so a cancel does not reach a fork's own descendants.
 
+The double-`Esc` prompt appears whenever the session, or anything a cancel
+would reach beneath it, is still running — including when the session's own
+turn has already finished and an attendant is what remains. Confirming over
+such a session stops the descendants below it and leaves the session itself
+untouched.
+
 ## See also
 
 - `keybindings.md` — the Attendants sidebar section's key table

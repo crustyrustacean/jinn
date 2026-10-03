@@ -29,9 +29,103 @@
 //! caller — `Esc` here, and the attendant slice's manual re-run — and its
 //! fork-boundary rule deserves exactly one owner.
 
+use std::collections::HashSet;
+
 use crate::AppState;
 use crate::IntentResult;
 use crate::protocol::KernelIntent;
+use jinn_core_types::SessionId;
+
+/// Whether `session_id`, or any descendant a cancel would reach, has running
+/// work — the one condition that raises the cancel-stream prompt, keeps it
+/// standing, and decides whether the renderer draws the prompt bar.
+///
+/// "Cancellable" is the load-bearing word: the answer is scoped to the same
+/// subtree [`cascade_descendants`] would walk. A prompt therefore never
+/// advertises a cancel the kernel would decline to perform.
+///
+/// The session itself counts when it is busy or out of `Idle`; a descendant
+/// counts when a cancel would reach it *and* it is actively running. A
+/// subagent counts on presence in the task-spawn registry, which is
+/// authoritative — the guard's `Drop` unregisters a finished call. An attendant
+/// has no registry, so it counts on its own phase or busy counter. An idle,
+/// finished attendant does not arm the prompt.
+///
+/// This function answers only. It emits nothing and mutates nothing: a
+/// predicate that cancelled would be a second writer of the cascade's
+/// decisions, free to drift from the walk.
+#[must_use]
+pub fn subtree_has_running_work(state: &AppState, session_id: &SessionId) -> bool {
+    if let Some(session) = state.try_session(session_id)
+        && (session.is_busy() || !matches!(session.phase(), jinn_session_msg::PhaseKind::Idle))
+    {
+        return true;
+    }
+
+    let mut visited = HashSet::new();
+    visited.insert(session_id.clone());
+    descendant_has_running_work(state, session_id, &mut visited)
+}
+
+/// Whether any reachable descendant below `session_id` is actively running.
+///
+/// A child is followed on its origin, exactly as the cascade follows it:
+/// `Subagent` and `Attendant` recurse, `Fork` is a hard boundary, `User` is
+/// skipped. The `visited` set terminates the walk on a cyclic parent link.
+fn descendant_has_running_work(
+    state: &AppState,
+    session_id: &SessionId,
+    visited: &mut HashSet<SessionId>,
+) -> bool {
+    cancellable_children(state, session_id)
+        .into_iter()
+        .any(|child_id| child_is_running(state, &child_id, visited))
+}
+
+/// Whether one child reached through [`cancellable_children`] is running, or
+/// has something running beneath it.
+///
+/// A subagent reached here came out of the in-flight registry, so its presence
+/// is already the answer — no phase read, and no walk below it. An attendant
+/// is reached through the live session map, so its own liveness must be read,
+/// and only an idle one is worth walking into.
+fn child_is_running(
+    state: &AppState,
+    child_id: &SessionId,
+    visited: &mut HashSet<SessionId>,
+) -> bool {
+    if !visited.insert(child_id.clone()) {
+        return false;
+    }
+    let Some(session) = state.try_session(child_id) else {
+        return false;
+    };
+    match session.origin() {
+        jinn_session_msg::SessionOrigin::Subagent => true,
+        jinn_session_msg::SessionOrigin::Attendant => {
+            session.is_busy()
+                || !matches!(session.phase(), jinn_session_msg::PhaseKind::Idle)
+                || descendant_has_running_work(state, child_id, visited)
+        }
+        jinn_session_msg::SessionOrigin::Fork | jinn_session_msg::SessionOrigin::User => false,
+    }
+}
+
+/// Every child a cancel of `session_id` would consider, from both sources: the
+/// in-flight task-spawn registry (subagents) and the live session map
+/// (attendants). Sorted and deduplicated so the walk visits a child once even
+/// when both sources know it.
+fn cancellable_children(state: &AppState, session_id: &SessionId) -> Vec<SessionId> {
+    let mut child_ids = state.task_spawns.children_of(session_id);
+    for (id, session) in state.session.iter() {
+        if session.parent_session().as_ref() == Some(session_id) && session.is_attendant() {
+            child_ids.push(id.clone());
+        }
+    }
+    child_ids.sort();
+    child_ids.dedup();
+    child_ids
+}
 
 pub(crate) fn try_handle_cancel_stream_prompt(
     intent: &KernelIntent,
@@ -51,35 +145,52 @@ pub(crate) fn try_handle_cancel_stream_prompt(
 
     let session_id = state.session.active_session_id().clone();
 
-    // Check busy state before resetting.
+    // Check busy state before resetting. Busy and phase are separate: a
+    // lifecycle command in flight sets the counter while the phase is still
+    // `Idle`, and either one means there is the session's own work to stop.
     let was_busy = state.active_session().is_busy();
+    let has_own_turn = was_busy
+        || !matches!(
+            state.active_session().phase(),
+            jinn_session_msg::PhaseKind::Idle
+        );
 
-    // Cancel busy background operations (lifecycle, etc.).
-    if was_busy {
-        state.active_session_mut().cancel_busy();
-    }
+    // An idle session's own turn already produced nothing to salvage, so the
+    // cascade reaches down into its running descendants and leaves the parent
+    // alone. Sending it a `CancelStream` would be actively harmful: the
+    // inference actor tombstones a session id before it checks for a live
+    // stream, which would drop this session's `ToolContinuation` sends until
+    // its next user message. Cancelling it inline would drain its steering
+    // fragments and queue over a draft the user is typing.
+    let result = if has_own_turn {
+        // Cancel busy background operations (lifecycle, etc.).
+        if was_busy {
+            state.active_session_mut().cancel_busy();
+        }
 
-    // Cancel stream.
-    state.active_session_mut().cancel_stream_and_drain();
-    let mut result = IntentResult::empty().with_message(jinn_inference_msg::CancelStream {
-        session_id: session_id.clone(),
-    });
+        // Cancel stream.
+        state.active_session_mut().cancel_stream_and_drain();
+        let mut result = IntentResult::empty().with_message(jinn_inference_msg::CancelStream {
+            session_id: session_id.clone(),
+        });
 
-    // Also cancel any running lifecycle command.
-    if was_busy {
-        result =
-            result.with_message(jinn_session_lifecycle_msg::CancelLifecycleCommand { session_id });
-    }
+        // Also cancel any running lifecycle command.
+        if was_busy {
+            result = result.with_message(jinn_session_lifecycle_msg::CancelLifecycleCommand {
+                session_id: session_id.clone(),
+            });
+        }
+        result
+    } else {
+        IntentResult::empty()
+    };
 
     // The cascade: every subagent or attendant beneath this session stops
     // with it, recursively. Forks are boundaries — their descendants are
     // independent threads, out of the cancel's scope.
-    let mut visited = std::collections::HashSet::new();
-    visited.insert(state.session.active_session_id().clone());
-    result =
-        cascade_descendants(state, state.session.active_session_id(), &mut visited).merge(result);
-
-    Some(result)
+    let mut visited = HashSet::new();
+    visited.insert(session_id.clone());
+    Some(cascade_descendants(state, &session_id, &mut visited).merge(result))
 }
 
 /// Collects the cancel messages for every running descendant of `session_id`.
@@ -104,19 +215,8 @@ pub fn cascade_descendants(
     visited: &mut std::collections::HashSet<jinn_core_types::SessionId>,
 ) -> IntentResult {
     let mut result = IntentResult::empty();
-    let registry = state.task_spawns.clone();
 
-    // Union of both child sources, deduplicated.
-    let mut child_ids: Vec<jinn_core_types::SessionId> = registry.children_of(session_id);
-    for (id, session) in state.session.iter() {
-        if session.parent_session().as_ref() == Some(session_id) && session.is_attendant() {
-            child_ids.push(id.clone());
-        }
-    }
-    child_ids.sort();
-    child_ids.dedup();
-
-    for child_id in child_ids {
+    for child_id in cancellable_children(state, session_id) {
         if !visited.insert(child_id.clone()) {
             continue;
         }
@@ -169,6 +269,14 @@ mod tests {
         jinn_slices::route::KeyRoutes::new()
     }
 
+    /// A registry with every slice cell registered — the same catalog
+    /// production boot uses, for the one assertion that reads a cell.
+    fn cell_backed_slices() -> jinn_slices::Slices {
+        let slices = jinn_slices::Slices::new();
+        jinn_cell_catalog::register_all_cells(&slices);
+        slices
+    }
+
     fn confirmed_cancel(state: &mut AppState) -> IntentResult {
         state.active_session_mut().begin_streaming();
         state.frontend.cancel_stream_prompt = true;
@@ -187,6 +295,14 @@ mod tests {
             .iter()
             .filter(|name| name.contains("CancelStream"))
             .count()
+    }
+
+    /// Whether the result includes a lifecycle-command cancel.
+    fn names_lifecycle_cancel(result: &IntentResult) -> bool {
+        result
+            .message_names
+            .iter()
+            .any(|name| name.contains("CancelLifecycleCommand"))
     }
 
     fn link_child(state: &mut AppState, parent_id: &SessionId, origin: SessionOrigin) -> SessionId {
@@ -331,5 +447,358 @@ mod tests {
         // Then the walk terminated (root + a + b, no repeat) — reaching here
         // at all proves termination; the count proves no double-cancel.
         assert_eq!(cancel_count(&result), 3);
+    }
+
+    // ── What the cancel prompt is offered over ──
+    //
+    // One predicate answers "is there anything a cancel would reach that is
+    // running". It gates arming, dismissal, and the renderer's bar, so a
+    // prompt cannot appear over a session the confirming half would decline
+    // to cancel.
+
+    #[rstest::rstest]
+    fn idle_session_with_running_attendant_has_cancellable_work() {
+        // Given an idle session with an attendant that is still working.
+        let mut state = AppState::default_with_scope_focus();
+        let parent_id = state.session.active_session_id().clone();
+        let attendant = link_child(&mut state, &parent_id, SessionOrigin::Attendant);
+        state
+            .session
+            .get_mut(&attendant)
+            .expect("attendant")
+            .begin_streaming();
+
+        // When the predicate is asked about the active session.
+        let cancellable = subtree_has_running_work(&state, &parent_id);
+
+        // Then the subtree is cancellable even though the session itself is idle.
+        assert!(cancellable);
+        assert!(
+            matches!(
+                state.active_session().phase(),
+                jinn_session_msg::PhaseKind::Idle
+            ),
+            "the fixture must really be idle, else this test proves nothing"
+        );
+    }
+
+    #[rstest::rstest]
+    fn idle_session_with_finished_attendant_has_no_cancellable_work() {
+        // Given an idle session with an attendant that has already finished.
+        let mut state = AppState::default_with_scope_focus();
+        let parent_id = state.session.active_session_id().clone();
+        link_child(&mut state, &parent_id, SessionOrigin::Attendant);
+
+        // When the predicate is asked about the active session.
+        let cancellable = subtree_has_running_work(&state, &parent_id);
+
+        // Then nothing is running, so there is nothing to offer a cancel for.
+        assert!(!cancellable);
+    }
+
+    #[rstest::rstest]
+    fn idle_session_with_running_subagent_has_cancellable_work() {
+        // Given an idle session blocked on nothing, but with a subagent in
+        // flight under it.
+        let mut state = AppState::default_with_scope_focus();
+        let parent_id = state.session.active_session_id().clone();
+        let subagent = link_child(&mut state, &parent_id, SessionOrigin::Subagent);
+        state.task_spawns.register(parent_id.clone(), subagent);
+
+        // When the predicate is asked about the active session.
+        let cancellable = subtree_has_running_work(&state, &parent_id);
+
+        // Then the in-flight subagent makes the subtree cancellable.
+        assert!(cancellable);
+    }
+
+    #[rstest::rstest]
+    fn running_work_under_a_fork_is_not_cancellable() {
+        // Given a subagent running under a fork of the active session.
+        let mut state = AppState::default_with_scope_focus();
+        let parent_id = state.session.active_session_id().clone();
+        let fork = link_child(&mut state, &parent_id, SessionOrigin::Fork);
+        let fork_child = link_child(&mut state, &fork, SessionOrigin::Subagent);
+        state.task_spawns.register(fork.clone(), fork_child);
+
+        // When the predicate is asked about the active session.
+        let cancellable = subtree_has_running_work(&state, &parent_id);
+
+        // Then the fork's subagent is out of scope, so nothing is cancellable.
+        assert!(!cancellable);
+    }
+
+    #[rstest::rstest]
+    fn idle_attendant_with_running_subagent_below_it_is_cancellable() {
+        // Given an idle attendant whose own subagent is in flight.
+        let mut state = AppState::default_with_scope_focus();
+        let parent_id = state.session.active_session_id().clone();
+        let attendant = link_child(&mut state, &parent_id, SessionOrigin::Attendant);
+        let subagent = link_child(&mut state, &attendant, SessionOrigin::Subagent);
+        state.task_spawns.register(attendant.clone(), subagent);
+
+        // When the predicate is asked about the active session.
+        let cancellable = subtree_has_running_work(&state, &parent_id);
+
+        // Then the walk recursed through the idle attendant to its subagent.
+        assert!(cancellable);
+    }
+
+    #[rstest::rstest]
+    fn running_work_check_terminates_on_cyclic_parent_links() {
+        // Given two descendants whose parent links form a cycle.
+        let mut state = AppState::default_with_scope_focus();
+        let parent_id = state.session.active_session_id().clone();
+        let a = link_child(&mut state, &parent_id, SessionOrigin::Subagent);
+        let b = link_child(&mut state, &a, SessionOrigin::Subagent);
+        state
+            .session
+            .get_mut(&a)
+            .expect("a")
+            .set_parent_session(b.clone());
+
+        // When the predicate is asked about the active session.
+        let cancellable = subtree_has_running_work(&state, &parent_id);
+
+        // Then the walk terminated rather than looping; reaching here proves it.
+        assert!(!cancellable, "no child in the cycle is in flight");
+    }
+
+    #[rstest::rstest]
+    fn escape_arms_the_prompt_over_an_idle_session_with_running_attendant() {
+        // Given an idle session with a running attendant and no armed prompt.
+        let mut state = AppState::default_with_scope_focus();
+        let parent_id = state.session.active_session_id().clone();
+        let attendant = link_child(&mut state, &parent_id, SessionOrigin::Attendant);
+        state
+            .session
+            .get_mut(&attendant)
+            .expect("attendant")
+            .begin_streaming();
+
+        // When a single escape arrives.
+        let result = IntentHandler::handle(
+            &KernelIntent::NormalEscape,
+            &mut state,
+            &empty_slices(),
+            &empty_routes(),
+            jinn_slices::empty_config_layer(),
+        );
+
+        // Then the prompt is armed, and nothing was cancelled yet.
+        assert!(state.frontend.cancel_stream_prompt);
+        assert_eq!(cancel_count(&result), 0);
+    }
+
+    #[rstest::rstest]
+    fn armed_prompt_survives_the_session_turn_finishing() {
+        // Given the prompt armed over a running attendant, with the session's
+        // own turn finishing while it is up.
+        let mut state = AppState::default_with_scope_focus();
+        let parent_id = state.session.active_session_id().clone();
+        let attendant = link_child(&mut state, &parent_id, SessionOrigin::Attendant);
+        state
+            .session
+            .get_mut(&attendant)
+            .expect("attendant")
+            .begin_streaming();
+        state.active_session_mut().begin_streaming();
+        state.frontend.cancel_stream_prompt = true;
+
+        // When that session's own turn finishes and the escape confirms.
+        state
+            .active_session_mut()
+            .finish_streaming(false, jiff::Timestamp::now());
+        let result = IntentHandler::handle(
+            &KernelIntent::NormalEscape,
+            &mut state,
+            &empty_slices(),
+            &empty_routes(),
+            jinn_slices::empty_config_layer(),
+        );
+
+        // Then the prompt was not dismissed as stale, and the attendant's work
+        // was still cancellable — the only thing that stood it down.
+        assert_eq!(cancel_count(&result), 1, "the attendant is still running");
+    }
+
+    // ── What a confirmed cancel sends when the session itself is idle ──
+
+    #[rstest::rstest]
+    fn confirmed_cancel_on_idle_session_targets_only_its_running_descendants() {
+        // Given an idle session with a running attendant and no subagents.
+        let mut state = AppState::default_with_scope_focus();
+        let parent_id = state.session.active_session_id().clone();
+        let attendant = link_child(&mut state, &parent_id, SessionOrigin::Attendant);
+        state
+            .session
+            .get_mut(&attendant)
+            .expect("attendant")
+            .begin_streaming();
+        state.frontend.cancel_stream_prompt = true;
+
+        // When the confirmed cancel runs.
+        let result = IntentHandler::handle(
+            &KernelIntent::NormalEscape,
+            &mut state,
+            &empty_slices(),
+            &empty_routes(),
+            jinn_slices::empty_config_layer(),
+        );
+
+        // Then exactly one cancel is sent — the attendant's.
+        assert_eq!(
+            cancel_count(&result),
+            1,
+            "the attendant only, not the parent"
+        );
+    }
+
+    #[rstest::rstest]
+    fn confirmed_cancel_on_idle_session_sends_no_lifecycle_cancel() {
+        // Given the same idle session with a running attendant.
+        let mut state = AppState::default_with_scope_focus();
+        let parent_id = state.session.active_session_id().clone();
+        let attendant = link_child(&mut state, &parent_id, SessionOrigin::Attendant);
+        state
+            .session
+            .get_mut(&attendant)
+            .expect("attendant")
+            .begin_streaming();
+        state.frontend.cancel_stream_prompt = true;
+
+        // When the confirmed cancel runs.
+        let result = IntentHandler::handle(
+            &KernelIntent::NormalEscape,
+            &mut state,
+            &empty_slices(),
+            &empty_routes(),
+            jinn_slices::empty_config_layer(),
+        );
+
+        // Then no lifecycle command is cancelled — the idle parent ran none.
+        assert!(!names_lifecycle_cancel(&result));
+    }
+
+    #[rstest::rstest]
+    fn confirmed_cancel_on_idle_session_leaves_its_phase_untouched() {
+        // Given an idle session with a running attendant.
+        let mut state = AppState::default_with_scope_focus();
+        let parent_id = state.session.active_session_id().clone();
+        let attendant = link_child(&mut state, &parent_id, SessionOrigin::Attendant);
+        state
+            .session
+            .get_mut(&attendant)
+            .expect("attendant")
+            .begin_streaming();
+        state.frontend.cancel_stream_prompt = true;
+
+        // When the confirmed cancel runs.
+        let _result = IntentHandler::handle(
+            &KernelIntent::NormalEscape,
+            &mut state,
+            &empty_slices(),
+            &empty_routes(),
+            jinn_slices::empty_config_layer(),
+        );
+
+        // Then the parent's phase is unchanged — its own turn was never ours to stop.
+        assert!(matches!(
+            state.active_session().phase(),
+            jinn_session_msg::PhaseKind::Idle
+        ));
+    }
+
+    #[rstest::rstest]
+    fn confirmed_cancel_on_idle_session_leaves_its_draft_untouched() {
+        // Given an idle session with a typed draft and a running attendant.
+        let mut state = AppState::default_with_scope_focus();
+        // The draft lives in the chat-input cell, which a session only reaches
+        // through an attached registry — the same handle composition hands it.
+        let slices = cell_backed_slices();
+        state.session.attach_slices(slices);
+        let parent_id = state.session.active_session_id().clone();
+        let attendant = link_child(&mut state, &parent_id, SessionOrigin::Attendant);
+        state
+            .session
+            .get_mut(&attendant)
+            .expect("attendant")
+            .begin_streaming();
+        state
+            .active_session_mut()
+            .update_input(|input| input.insert_text("a draft the user is typing"));
+        state.frontend.cancel_stream_prompt = true;
+
+        // When the confirmed cancel runs.
+        let _result = IntentHandler::handle(
+            &KernelIntent::NormalEscape,
+            &mut state,
+            &empty_slices(),
+            &empty_routes(),
+            jinn_slices::empty_config_layer(),
+        );
+
+        // Then the draft is still the user's — a cancel with nothing to drain
+        // must not overwrite it.
+        let draft = state
+            .active_session()
+            .with_input(|input| input.text().to_owned(), String::new);
+        assert_eq!(draft, "a draft the user is typing");
+    }
+
+    #[rstest::rstest]
+    fn confirmed_cancel_on_busy_session_still_cancels_the_session_itself() {
+        // Given a busy session with a running attendant beneath it.
+        let mut state = AppState::default_with_scope_focus();
+        let parent_id = state.session.active_session_id().clone();
+        let attendant = link_child(&mut state, &parent_id, SessionOrigin::Attendant);
+        state
+            .session
+            .get_mut(&attendant)
+            .expect("attendant")
+            .begin_streaming();
+        state.active_session_mut().begin_busy();
+        state.active_session_mut().begin_streaming();
+        state.frontend.cancel_stream_prompt = true;
+
+        // When the confirmed cancel runs.
+        let result = IntentHandler::handle(
+            &KernelIntent::NormalEscape,
+            &mut state,
+            &empty_slices(),
+            &empty_routes(),
+            jinn_slices::empty_config_layer(),
+        );
+
+        // Then the parent is cancelled alongside the attendant.
+        assert_eq!(cancel_count(&result), 2, "parent + attendant");
+    }
+
+    #[rstest::rstest]
+    fn confirmed_cancel_on_busy_session_still_cancels_its_lifecycle_command() {
+        // Given a busy session with a running attendant beneath it.
+        let mut state = AppState::default_with_scope_focus();
+        let parent_id = state.session.active_session_id().clone();
+        let attendant = link_child(&mut state, &parent_id, SessionOrigin::Attendant);
+        state
+            .session
+            .get_mut(&attendant)
+            .expect("attendant")
+            .begin_streaming();
+        state.active_session_mut().begin_busy();
+        state.active_session_mut().begin_streaming();
+        state.frontend.cancel_stream_prompt = true;
+
+        // When the confirmed cancel runs.
+        let result = IntentHandler::handle(
+            &KernelIntent::NormalEscape,
+            &mut state,
+            &empty_slices(),
+            &empty_routes(),
+            jinn_slices::empty_config_layer(),
+        );
+
+        // Then the busy session's lifecycle command is cancelled too.
+        assert!(names_lifecycle_cancel(&result));
     }
 }
