@@ -2,7 +2,7 @@
 
 ## (development)
 
-- Fix display bug wrt `write` tool. It should now display immediately as tokens stream in.
+- Fix display bug with `write` tool. It should now display immediately as tokens stream in.
 
 ## 2026-10-02 v1.3.0
 
