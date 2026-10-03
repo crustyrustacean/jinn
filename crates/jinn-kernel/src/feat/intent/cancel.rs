@@ -127,6 +127,30 @@ fn cancellable_children(state: &AppState, session_id: &SessionId) -> Vec<Session
     child_ids
 }
 
+/// Disarms the cancel prompt when nothing a cancel would reach is running.
+///
+/// The prompt is armed by a keystroke, but the work it refers to ends on its
+/// own — a turn finishes, an attendant returns — and no keystroke is involved.
+/// Left standing, the flag would advertise a confirmation the user cannot
+/// act on. Keystroke-driven dismissal cannot catch that: it runs only when a
+/// key arrives, so a prompt whose work ended in silence would sit armed
+/// indefinitely.
+///
+/// Call this from whatever polls the session while the app is idle. It is a
+/// no-op unless the flag is armed, and it disarms on exactly the condition the
+/// renderer gates the bar on — so the flag and the bar can never disagree.
+///
+/// The predicate is scoped to the subtree the cascade walks, so work the
+/// cascade would decline to cancel (a fork's own descendants) never armed the
+/// prompt in the first place and cannot disarm it here.
+pub fn disarm_stale_cancel_prompt(state: &mut AppState) {
+    if state.frontend.cancel_stream_prompt
+        && !subtree_has_running_work(state, state.session.active_session_id())
+    {
+        state.frontend.cancel_stream_prompt = false;
+    }
+}
+
 pub(crate) fn try_handle_cancel_stream_prompt(
     intent: &KernelIntent,
     state: &mut AppState,
@@ -620,6 +644,64 @@ mod tests {
         // Then the prompt was not dismissed as stale, and the attendant's work
         // was still cancellable — the only thing that stood it down.
         assert_eq!(cancel_count(&result), 1, "the attendant is still running");
+    }
+
+    // ── A prompt whose work ends in silence must not stay armed ──
+
+    #[rstest::rstest]
+    fn armed_prompt_disarms_when_the_turn_finishes_without_a_keystroke() {
+        // Given the prompt armed over a live turn.
+        let mut state = AppState::default_with_scope_focus();
+        state.active_session_mut().begin_streaming();
+        state.frontend.cancel_stream_prompt = true;
+
+        // When the turn finishes and the app polls.
+        state
+            .active_session_mut()
+            .finish_streaming(false, jiff::Timestamp::now());
+        disarm_stale_cancel_prompt(&mut state);
+
+        // Then the flag is cleared, not merely hidden.
+        assert!(!state.frontend.cancel_stream_prompt);
+    }
+
+    #[rstest::rstest]
+    fn armed_prompt_stays_armed_while_a_descendant_is_still_running() {
+        // Given the prompt armed over an idle session with a running attendant.
+        let mut state = AppState::default_with_scope_focus();
+        let parent_id = state.session.active_session_id().clone();
+        let attendant = link_child(&mut state, &parent_id, SessionOrigin::Attendant);
+        state
+            .session
+            .get_mut(&attendant)
+            .expect("attendant")
+            .begin_streaming();
+        state.frontend.cancel_stream_prompt = true;
+
+        // When the app polls.
+        disarm_stale_cancel_prompt(&mut state);
+
+        // Then the flag stands — the attendant is still cancellable.
+        assert!(state.frontend.cancel_stream_prompt);
+    }
+
+    #[rstest::rstest]
+    fn armed_prompt_stays_armed_over_work_the_cascade_would_not_reach() {
+        // Given the prompt armed over a fork whose own subagent is running.
+        let mut state = AppState::default_with_scope_focus();
+        let parent_id = state.session.active_session_id().clone();
+        let fork = link_child(&mut state, &parent_id, SessionOrigin::Fork);
+        let fork_child = link_child(&mut state, &fork, SessionOrigin::Subagent);
+        state.task_spawns.register(fork.clone(), fork_child);
+        state.active_session_mut().begin_streaming();
+        state.frontend.cancel_stream_prompt = true;
+
+        // When the app polls.
+        disarm_stale_cancel_prompt(&mut state);
+
+        // Then the prompt stands — the session's own turn is still live, and
+        // the fork's work is not something this sweep may judge.
+        assert!(state.frontend.cancel_stream_prompt);
     }
 
     // ── What a confirmed cancel sends when the session itself is idle ──

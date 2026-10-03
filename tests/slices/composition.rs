@@ -898,6 +898,34 @@ async fn a_session_with_nothing_running_shows_no_cancel_prompt() {
     );
 }
 
+/// A prompt whose work ends with no keystroke decays on its own.
+///
+/// The flag is frontend state the kernel owns, and the only things that clear
+/// it are keystroke-driven — so without the tick, a turn that finished in
+/// silence left the prompt armed until the user happened to press something.
+#[rstest::rstest]
+#[tokio::test]
+async fn the_cancel_prompt_disarms_when_the_turn_ends_without_a_keystroke() {
+    // Given the armed prompt, with the turn now complete.
+    let app = app_with_cancel_prompt_armed().await;
+    {
+        let mut state = app.core.state.write();
+        state
+            .active_session_mut()
+            .finish_streaming(false, jiff::Timestamp::now());
+    }
+
+    // When the app ticks, as the 100ms poll loop does.
+    let mut app = app;
+    app.handle_msg(jinn_tui::msg::Msg::Tick);
+
+    // Then the flag itself is cleared, not merely hidden by the renderer.
+    assert!(
+        !app.core.state.read().frontend.cancel_stream_prompt,
+        "the tick must decay a prompt whose work has ended"
+    );
+}
+
 /// Renders one frame of the whole app and returns its visible text.
 fn render_chat_tab(app: &mut jinn_tui::TuiApp) -> String {
     use ratatui::Terminal;
