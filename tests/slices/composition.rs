@@ -823,6 +823,109 @@ async fn an_idle_session_suppresses_the_cancel_prompt() {
     );
 }
 
+/// The real app, with an attendant still working under an idle session and
+/// the cancel prompt armed over it. Returns the attendant's id with it.
+///
+/// Attendants fire on the parent's *completion*, so this is the shape the
+/// single-predicate rule exists for: the session's own turn is long finished,
+/// and the only running work is beneath it.
+async fn app_with_idle_session_and_running_attendant()
+-> (jinn_tui::TuiApp, jinn_core_types::SessionId) {
+    let app = test_app().await;
+    let attendant_id = {
+        let mut state = app.core.state.write();
+        state.frontend.scope_push(jinn_slices::FocusScope::Normal);
+        let parent = state.active_session().clone();
+        let mut attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, false);
+        attendant.begin_streaming();
+        let attendant_id = attendant.session_id().clone();
+        state.session.insert(attendant);
+        attendant_id
+    };
+    jinn_kernel::feat::intent::IntentHandler::handle(
+        &jinn_kernel::KernelIntent::NormalEscape,
+        &mut app.core.state.write(),
+        &app.services.slices,
+        &app.services.key_routes,
+        &app.services.config,
+    );
+    assert!(
+        app.core.state.read().frontend.cancel_stream_prompt,
+        "an idle session with a running attendant must still offer the cancel"
+    );
+    (app, attendant_id)
+}
+
+/// The bar is offered over running work that is not the session's own turn.
+#[rstest::rstest]
+#[tokio::test]
+async fn an_idle_session_with_a_running_attendant_shows_the_cancel_prompt() {
+    // Given the prompt armed over an idle session with a running attendant.
+    let (mut app, _attendant) = app_with_idle_session_and_running_attendant().await;
+
+    // When the chat tab renders that frame.
+    let rendered = render_chat_tab(&mut app);
+
+    // Then the bar is drawn.
+    assert!(
+        rendered.contains("Press ESC again to cancel"),
+        "an idle session with a running attendant must display the bar, got: {rendered}"
+    );
+}
+
+/// Nothing running means nothing to offer, whether or not a prompt was armed.
+#[rstest::rstest]
+#[tokio::test]
+async fn a_session_with_nothing_running_shows_no_cancel_prompt() {
+    // Given the prompt armed over an idle session whose attendant has finished.
+    let (mut app, attendant) = app_with_idle_session_and_running_attendant().await;
+    {
+        let mut state = app.core.state.write();
+        state
+            .session
+            .get_mut(&attendant)
+            .expect("the attendant inserted by the fixture")
+            .finish_streaming(false, jiff::Timestamp::now());
+    }
+
+    // When the chat tab renders that frame.
+    let rendered = render_chat_tab(&mut app);
+
+    // Then the bar is absent.
+    assert!(
+        !rendered.contains("Press ESC again to cancel"),
+        "a finished attendant must not keep the bar up, got: {rendered}"
+    );
+}
+
+/// A prompt whose work ends with no keystroke decays on its own.
+///
+/// The flag is frontend state the kernel owns, and the only things that clear
+/// it are keystroke-driven — so without the tick, a turn that finished in
+/// silence left the prompt armed until the user happened to press something.
+#[rstest::rstest]
+#[tokio::test]
+async fn the_cancel_prompt_disarms_when_the_turn_ends_without_a_keystroke() {
+    // Given the armed prompt, with the turn now complete.
+    let app = app_with_cancel_prompt_armed().await;
+    {
+        let mut state = app.core.state.write();
+        state
+            .active_session_mut()
+            .finish_streaming(false, jiff::Timestamp::now());
+    }
+
+    // When the app ticks, as the 100ms poll loop does.
+    let mut app = app;
+    app.handle_msg(jinn_tui::msg::Msg::Tick);
+
+    // Then the flag itself is cleared, not merely hidden by the renderer.
+    assert!(
+        !app.core.state.read().frontend.cancel_stream_prompt,
+        "the tick must decay a prompt whose work has ended"
+    );
+}
+
 /// Renders one frame of the whole app and returns its visible text.
 fn render_chat_tab(app: &mut jinn_tui::TuiApp) -> String {
     use ratatui::Terminal;

@@ -75,22 +75,16 @@ pub(crate) fn dismiss_unrelated_prompts(intent: &KernelIntent, state: &mut AppSt
     }
 }
 
-/// Whether a turn is in flight — the one condition that both raises the
-/// cancel-stream prompt and keeps it standing.
+/// Whether the active session, or any descendant a cancel would reach, has
+/// running work — the one condition that both raises the cancel-stream prompt
+/// and keeps it standing.
 ///
-/// Shared by the arming path and the dismissal above so the two can never
-
-/// Whether a turn is in flight — the one condition that both raises the
-/// cancel-stream prompt and keeps it standing.
-///
-/// Shared by the arming path and the dismissal above so the two can never
-/// disagree: a prompt must not outlive the work it asks to abort.
+/// Delegates to [`super::cancel::subtree_has_running_work`], which owns the
+/// condition and the subtree boundaries it is scoped to, so the prompt can
+/// never advertise a cancel the confirming half would decline to perform.
+/// The renderer draws the bar from the same predicate.
 pub(crate) fn stream_in_flight(state: &AppState) -> bool {
-    state.active_session().is_busy()
-        || !matches!(
-            state.active_session().phase(),
-            jinn_session_msg::PhaseKind::Idle
-        )
+    super::cancel::subtree_has_running_work(state, state.session.active_session_id())
 }
 
 #[cfg(test)]

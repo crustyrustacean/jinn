@@ -75,7 +75,15 @@ impl TuiApp {
             // which releases the loading indication and — unlike the watchdog
             // this replaces — writes nothing into the conversation, because a
             // measurement that could not be taken is not a conversation event.
-            Msg::Tick => {}
+            //
+            // It does decay the cancel prompt. A prompt is armed by a
+            // keystroke, but the work it refers to ends on its own; keystroke
+            // dismissal cannot catch that, since it only runs when a key
+            // arrives. The kernel owns the condition, and this is the tick
+            // that notices — keeping the app layer out of the decision.
+            Msg::Tick => jinn_kernel::feat::intent::cancel::disarm_stale_cancel_prompt(
+                &mut self.core.state.write(),
+            ),
             Msg::Input(event) => {
                 // Sync scope from state before processing key.
                 // This ensures the which-key scope matches the actual scope stack,
