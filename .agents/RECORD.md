@@ -375,8 +375,11 @@ Entries are added or amended **only with human approval**.
 - (attendant) Turn completion is published as `TurnCompleted`, with its outcome derived from the session's last history entry rather than the provider's stop reason.
 - (attendant) A turn that completes after the user already cancelled resolves as cancelled, so a cancelled turn never fires an attendant.
 - (attendant) Attendant rows in the session tree use a dedicated theme token distinct from the error colour.
-- (tools) Cancelling a turn stops every subagent or attendant beneath it, recursively; a fork is a boundary whose own descendants are never cancelled. The same walk backs a manual attendant re-run, and the automatic trigger deliberately does not use it.
+- (tools) Cancelling a session stops every subagent or attendant beneath it, recursively; a fork is a boundary whose own descendants are never cancelled. The same walk backs a manual attendant re-run, and the automatic trigger deliberately does not use it.
 - (tools) A single Escape cancels nothing — it arms the cancel confirmation; the cascade rides the confirmed second Escape.
+- (tools) The cancel confirmation arms when the active session or any cancellable descendant beneath it has running work, so a session whose own turn has finished still offers the cascade over its running descendants.
+- (tools) Confirming the cancel on an idle session stops its running descendants without sending a cancel for the idle session itself, because the inference actor tombstones a session id before it checks for a live stream.
+- (tools) Whether anything is cancellable is answered by one kernel predicate shared by the arming path, the prompt-dismissal interceptor, and the renderer's prompt bar, so the bar cannot appear over a session the kernel will not cancel.
 - (tools) The in-flight task-spawn registry exposes both a presence check and a child-list reader, and is the only live source of a session's running subagents.
 - (attendant) The attendant properties popup navigates vim-style: j/k moves between fields and h/l picks a choice in place, with no per-field confirm.
 - (attendant) The properties panel buffers every field until commit — `<enter>` applies and closes, `<c-s>` saves and stays, and `<esc>`/`<c-c>` restore the values the session had at open.
