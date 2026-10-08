@@ -139,6 +139,14 @@ impl App {
         #[cfg(debug_assertions)]
         let _db_path = cli.db_path_opt().cloned();
         match cli.command.unwrap_or(Commands::Tui) {
+            // Handled earlier in `bootstrap::config::run_server_subcommand`
+            // (before config parsing and the session store open); reaching
+            // this arm means that interception did not run.
+            Commands::Mcp { .. } => {
+                return Err(Report::new(AppError).attach(
+                    "mcp subcommand fell through to dispatch; bootstrap interception skipped",
+                ));
+            }
             Commands::Completions { shell } => {
                 use clap::CommandFactory;
                 let mut cmd = Cli::command();

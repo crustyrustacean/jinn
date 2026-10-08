@@ -80,6 +80,10 @@ pub fn prepare(
         return Ok(handled);
     }
 
+    if let Some(handled) = run_server_subcommand(cli)? {
+        return Ok(handled);
+    }
+
     let (config_storage, config, app_state_storage) = read_config(cli)?;
     let (session_store, session_pool) = open_session_store(cli, runtime)?;
 
@@ -216,6 +220,40 @@ fn run_recovery_subcommand(cli: &jinn_cli::cli::Cli) -> Result<Option<Prepared>,
     }
 
     Ok(None)
+}
+
+/// Serves the bundled graphs MCP server (`jinn mcp graphs`).
+///
+/// Runs before `read_config` and the session store on purpose: the server
+/// must start with a broken `jinn.toml`, no `providers.toml`, and no
+/// sessions database, because jinn spawns it as a child while the main
+/// process is still booting and it is also a debugging surface for other
+/// MCP clients. The runtime exists by this point (the caller owns it), so
+/// the server blocks on it until killed.
+fn run_server_subcommand(cli: &jinn_cli::cli::Cli) -> Result<Option<Prepared>, Report<AppError>> {
+    use jinn_cli::cli::Commands;
+    use jinn_cli::cli::McpCommands;
+
+    let Some(Commands::Mcp {
+        subcommand: McpCommands::Graphs { host, port },
+    }) = &cli.command
+    else {
+        return Ok(None);
+    };
+
+    let graphs_dir = jinn_kernel::AppPaths::default().graphs_dir();
+    let host = host.clone();
+    let port = *port;
+    match tokio::runtime::Runtime::new() {
+        Ok(runtime) => {
+            if let Err(report) = runtime.block_on(jinn_graphs::run(&host, port, graphs_dir)) {
+                eprintln!("error: graphs server failed: {report:?}");
+                return Err(report.change_context(AppError));
+            }
+            Ok(Some(Prepared::Handled))
+        }
+        Err(e) => Err(Report::new(AppError).attach(format!("async runtime failed to start: {e}"))),
+    }
 }
 
 /// Checks that `providers.toml` loads and parses, producing a fail-fast report.

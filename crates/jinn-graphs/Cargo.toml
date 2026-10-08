@@ -1,0 +1,39 @@
+[package]
+name = "jinn-graphs"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# The embedded bi-temporal graph database behind the four tools. All minigraf
+# calls run inside `spawn_blocking` (its `execute` is synchronous and its
+# `WriteTransaction` is `!Send`), and handles live for the server's life —
+# a second in-process open of one file is refused, not queued (STG-025).
+minigraf = { workspace = true }
+# Streamable-HTTP MCP server: rmcp's `StreamableHttpService` mounts on axum.
+axum = { workspace = true }
+rmcp = { workspace = true, features = ["server", "transport-streamable-http-server"] }
+# rmcp's tool-macro derives argument schemas with schemars (already in the
+# lockfile as an rmcp dependency; pinned here so the derive resolves).
+schemars = "1.2"
+tokio = { workspace = true, features = ["rt", "sync", "macros"] }
+parking_lot = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+wherror = { workspace = true }
+error-stack = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+tempfile = { workspace = true }
+# The HTTP roundtrip tests drive the served endpoint with a real MCP client
+# (jinn's own, from jinn-mcp) and mount the same axum stack `run` serves.
+jinn-mcp = { workspace = true }
+axum = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tokio-util = { workspace = true }
+ctor = "0.8"
+rustls = { workspace = true }
+
+[lints]
+workspace = true

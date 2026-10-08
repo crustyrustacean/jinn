@@ -128,6 +128,16 @@ impl AppPaths {
         self.browser_profile_base_dir().join(mode.as_str())
     }
 
+    /// Graphs directory (`~/.local/share/jinn/graphs`).
+    ///
+    /// One `<name>.graph` minigraf file per named graph, written by the
+    /// bundled graphs MCP server. Lives under the app data dir like the
+    /// browser profiles: durable state, not config, not cache.
+    #[must_use]
+    pub fn graphs_dir(&self) -> PathBuf {
+        self.app_data_dir().join("graphs")
+    }
+
     /// Prompt templates directory (`~/.config/jinn/prompts`).
     #[must_use]
     pub fn prompts_dir(&self) -> PathBuf {
@@ -566,5 +576,18 @@ mod tests {
             headless,
             root.path().join("data/jinn/browser-profile/headless")
         );
+    }
+
+    #[rstest::rstest]
+    fn graphs_dir_lands_under_app_data_dir() {
+        // Given an AppPaths rooted at a temp dir.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        let paths = AppPaths::new_in(root.path());
+
+        // When resolving the graphs dir.
+        let graphs = paths.graphs_dir();
+
+        // Then it is data/jinn/graphs (app data dir, not config, not cache).
+        assert_eq!(graphs, root.path().join("data/jinn/graphs"));
     }
 }
