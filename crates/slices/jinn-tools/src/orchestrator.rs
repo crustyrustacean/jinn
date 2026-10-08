@@ -12,6 +12,7 @@
 //! (for resolving relative paths) and an optional timeout. The orchestrator
 //! reads CWD from shared [`State`] at dispatch time.
 
+use jinn_preferences_config::schemas::McpServersConfig;
 use jinn_preferences_config::schemas::ToolsConfig;
 use jinn_preferences_config::schemas::WebSearchConfig;
 
@@ -893,6 +894,13 @@ impl ToolOrchestratorActor {
     /// gone — publishing `ExecuteTool` would find no subscriber and hang the
     /// pending batch), then connection status (an enabled-but-not-Running
     /// server cannot take the call yet).
+    ///
+    /// Enablement stays per-session for every server: a singleton's tools are
+    /// visible to many sessions, and each of them must still have the server
+    /// in its own enabled set to call it. Connection status, though, is read
+    /// from the singleton bucket for a singleton-configured server — the
+    /// shared actor has no per-session runtime entry, and pinning the lookup
+    /// to the calling session would report "still starting" forever.
     fn mcp_rejection_reason(&self, session_id: &SessionId, provider: &str) -> Option<String> {
         let server = server_name_of_provider(provider)?;
         let enabled = {
@@ -906,13 +914,26 @@ impl ToolOrchestratorActor {
                  ask the user to re-enable it via the MCP server picker"
             ));
         }
+        let singleton_configured = self
+            .services
+            .config
+            .get::<McpServersConfig>()
+            .unwrap_or_default()
+            .get(server)
+            .is_some_and(|config| config.singleton);
         let runtime = self
             .services
             .slices
             .reader::<jinn_mcp_msg::McpRuntimeState>(&jinn_mcp_msg::mcp_runtime_slot());
-        let status = runtime
-            .as_ref()
-            .and_then(|runtime| runtime.read().status(session_id, server));
+        let status = if singleton_configured {
+            runtime
+                .as_ref()
+                .and_then(|runtime| runtime.read().singleton_status(server))
+        } else {
+            runtime
+                .as_ref()
+                .and_then(|runtime| runtime.read().status(session_id, server))
+        };
         match status {
             Some(McpConnectionStatus::Running) => None,
             Some(McpConnectionStatus::Dead) => Some(format!(
@@ -1787,6 +1808,66 @@ mod mcp_dispatch_gate_tests {
         // Then an ExecuteTool is published on the bus as before (no gate
         // rejection short-circuits the dispatch).
         let messages = await_recorded(&dispatched, 1, Duration::from_secs(3)).await;
+        assert_eq!(messages[0].tool_call.name, "mcp__stub__echo");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn singleton_status_is_visible_without_a_session_scoped_entry() {
+        // Given a session where the stub server is enabled, its tools
+        // registered globally (the singleton registration shape), the server
+        // configured singleton, and its status written to the singleton
+        // bucket — not under this session's id.
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+        state
+            .write()
+            .session
+            .get_or_create(&session_id)
+            .enable_mcp_server("stub");
+        let (harness, services) = spawn_orchestrator(&state).await;
+        // The gate reads singleton-ness from the config layer, so the seed
+        // goes through the same path production reads.
+        use jinn_preferences_config::schemas::McpServersConfig as SeedConfig;
+        services
+            .config
+            .put::<SeedConfig>(&SeedConfig(
+                std::iter::once((
+                    "stub".to_owned(),
+                    jinn_preferences_config::schemas::mcp::McpServerConfig {
+                        singleton: true,
+                        ..Default::default()
+                    },
+                ))
+                .collect(),
+            ))
+            .expect("seed the mcp section");
+        mcp_runtime(&services).update(|runtime| {
+            runtime.set_singleton_status("stub", McpConnectionStatus::Running);
+        });
+        harness
+            .publish(RegisterTools {
+                provider: PROVIDER.to_owned(),
+                definitions: vec![mcp_tool_def()],
+                session_id: None,
+            })
+            .await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let dispatched = harness.spawn_recorder::<ExecuteTool>().await;
+
+        // When dispatching a call from a session that has no per-session
+        // runtime entry for the server.
+        publish_batch(&harness, &session_id).await;
+
+        // Then the gate resolves Running from the singleton bucket and
+        // dispatches — it must not report "still starting" for a shared
+        // server just because this session never spawned it.
+        let messages = await_recorded(&dispatched, 1, Duration::from_secs(3)).await;
+        assert_eq!(
+            messages.len(),
+            1,
+            "expected an ExecuteTool dispatch (no gate rejection); got {messages:?}"
+        );
         assert_eq!(messages[0].tool_call.name, "mcp__stub__echo");
     }
 }

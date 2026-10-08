@@ -132,6 +132,19 @@ pub struct McpServerConfig {
     /// re-enables itself on existing sessions.
     #[serde(default)]
     pub auto_enable: bool,
+    /// Serve every session through one shared connection instead of one
+    /// connection per session.
+    ///
+    /// Off by default: a server without this flag behaves exactly as before,
+    /// spawning one actor (and, for spawned transports, one child process)
+    /// per enabled session. `true` spawns a single actor the first time any
+    /// session enables the server, registers its tools globally, and keeps
+    /// the actor alive across session close/archive/teardown — it stops only
+    /// at app exit or an explicit restart. State-bearing servers that several
+    /// sessions must see identically (databases, shared workspace servers)
+    /// need this; a per-session server would give each session its own state.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub singleton: bool,
     /// HTTP headers sent on `StreamableHTTP` connections
     /// ([`LocalHttp`](TransportKind::LocalHttp) and
     /// [`RemoteHttp`](TransportKind::RemoteHttp)).
@@ -372,6 +385,7 @@ mod tests {
             url: Some("http://localhost:3001/mcp".to_owned()),
             headers: BTreeMap::new(),
             auto_enable: false,
+            singleton: false,
         };
 
         // When serializing and deserializing.
@@ -663,5 +677,82 @@ mod tests {
         assert!(config.auto_enable);
         // And it survives re-serialization.
         assert!(back.auto_enable);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn absent_singleton_defaults_to_false() {
+        // Given a config TOML with no singleton field.
+        let toml = r#"
+            command = "npx"
+            args = ["@excalimate/mcp-server", "--stdio"]
+        "#;
+
+        // When deserializing.
+        let config: McpServerConfig = toml::from_str(toml).expect("parse");
+
+        // Then singleton defaults to false (backward-compat regression guard:
+        // every existing config behaves exactly as before).
+        assert!(!config.singleton);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn explicit_singleton_false_deserializes() {
+        // Given a config TOML with singleton explicitly false.
+        let toml = r#"
+            command = "npx"
+            singleton = false
+        "#;
+
+        // When deserializing.
+        let config: McpServerConfig = toml::from_str(toml).expect("parse");
+
+        // Then the flag reads back false.
+        assert!(!config.singleton);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn explicit_singleton_true_deserializes_and_round_trips() {
+        // Given a config TOML with singleton enabled.
+        let toml = r#"
+            command = "npx"
+            args = ["--port", "<port>"]
+            transport = "local_http"
+            url = "http://127.0.0.1:<port>/mcp"
+            singleton = true
+        "#;
+
+        // When deserializing and re-serializing.
+        let config: McpServerConfig = toml::from_str(toml).expect("parse");
+        let serialized = toml::to_string(&config).expect("serialize");
+        let back: McpServerConfig = toml::from_str(&serialized).expect("deserialize");
+
+        // Then the flag is preserved as true through the round-trip.
+        assert!(config.singleton);
+        // And it survives re-serialization.
+        assert!(back.singleton);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn config_without_singleton_serializes_without_a_singleton_key() {
+        // Given a config whose singleton is the default (false).
+        let config = McpServerConfig {
+            command: Some("npx".to_owned()),
+            ..Default::default()
+        };
+
+        // When serializing.
+        let serialized = toml::to_string(&config).expect("serialize");
+
+        // Then no `singleton` key is emitted — a document written today stays
+        // byte-shaped as today and the comment-preserving patcher diff stays
+        // empty for users who never set the flag.
+        assert!(
+            !serialized.contains("singleton"),
+            "default singleton must not serialize; got: {serialized}"
+        );
     }
 }

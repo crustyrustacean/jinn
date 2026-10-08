@@ -24,6 +24,12 @@ pub struct McpSessionRuntimeState {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct McpRuntimeState {
     sessions: HashMap<SessionId, McpSessionRuntimeState>,
+    /// Runtime status and stderr for singleton servers, keyed by server name.
+    ///
+    /// A singleton serves every session through one connection, so its
+    /// projections are not owned by any session: they live here, readable
+    /// without a session id, and are never removed by session teardown.
+    singletons: BTreeMap<String, McpSessionRuntimeState>,
 }
 
 impl McpRuntimeState {
@@ -101,6 +107,50 @@ impl McpRuntimeState {
     pub fn clear_session(&mut self, session_id: &SessionId) {
         self.sessions.remove(session_id);
     }
+
+    /// Sets one singleton server's connection status.
+    ///
+    /// Deliberately ignores any session-scoped entry the same server name
+    /// might carry: a server is either singleton or per-session, never both.
+    pub fn set_singleton_status(&mut self, server: &str, status: McpConnectionStatus) {
+        self.singletons
+            .entry(server.to_owned())
+            .or_default()
+            .status
+            .insert(server.to_owned(), status);
+    }
+
+    /// Returns one singleton server's connection status.
+    #[must_use]
+    pub fn singleton_status(&self, server: &str) -> Option<McpConnectionStatus> {
+        self.singletons
+            .get(server)
+            .and_then(|s| s.status.get(server))
+            .copied()
+    }
+
+    /// Replaces one singleton server's captured stderr tail.
+    pub fn set_singleton_stderr(&mut self, server: &str, tail: String) {
+        self.singletons
+            .entry(server.to_owned())
+            .or_default()
+            .stderr
+            .insert(server.to_owned(), tail);
+    }
+
+    /// Returns one singleton server's captured stderr tail.
+    #[must_use]
+    pub fn singleton_stderr(&self, server: &str) -> Option<&str> {
+        self.singletons
+            .get(server)
+            .and_then(|s| s.stderr.get(server))
+            .map(String::as_str)
+    }
+
+    /// Clears one singleton server's runtime data (restart, disable, stop).
+    pub fn clear_singleton(&mut self, server: &str) {
+        self.singletons.remove(server);
+    }
 }
 
 /// Stable cell slot for the live MCP runtime projection.
@@ -167,5 +217,70 @@ mod tests {
             runtime.status(&second, "weather"),
             Some(McpConnectionStatus::Dead)
         );
+    }
+
+    #[rstest::rstest]
+    fn singleton_status_is_readable_without_a_session() {
+        // Given an empty MCP runtime projection.
+        let mut runtime = McpRuntimeState::default();
+
+        // When setting one singleton server's status.
+        runtime.set_singleton_status("graphs", McpConnectionStatus::Running);
+
+        // Then that status reads back under the server name alone.
+        assert_eq!(
+            runtime.singleton_status("graphs"),
+            Some(McpConnectionStatus::Running)
+        );
+    }
+
+    #[rstest::rstest]
+    fn clear_session_leaves_singleton_data_alone() {
+        // Given a singleton server's runtime data.
+        let mut runtime = McpRuntimeState::default();
+        runtime.set_singleton_status("graphs", McpConnectionStatus::Running);
+        runtime.set_singleton_stderr("graphs", "listening".to_owned());
+        let session_id = SessionId::new();
+        runtime.set_status(&session_id, "other", McpConnectionStatus::Dead);
+
+        // When any session's runtime data is cleared.
+        runtime.clear_session(&session_id);
+
+        // Then the singleton's projections survive untouched.
+        assert_eq!(
+            runtime.singleton_status("graphs"),
+            Some(McpConnectionStatus::Running)
+        );
+        assert_eq!(runtime.singleton_stderr("graphs"), Some("listening"));
+    }
+
+    #[rstest::rstest]
+    fn clear_singleton_removes_only_that_server() {
+        // Given two singleton servers carrying runtime data.
+        let mut runtime = McpRuntimeState::default();
+        runtime.set_singleton_status("graphs", McpConnectionStatus::Running);
+        runtime.set_singleton_status("other", McpConnectionStatus::Dead);
+
+        // When clearing one singleton server.
+        runtime.clear_singleton("graphs");
+
+        // Then its projections are gone and the other server's remain.
+        assert_eq!(runtime.singleton_status("graphs"), None);
+        assert_eq!(
+            runtime.singleton_status("other"),
+            Some(McpConnectionStatus::Dead)
+        );
+    }
+
+    #[rstest::rstest]
+    fn singleton_stderr_round_trips() {
+        // Given an empty projection.
+        let mut runtime = McpRuntimeState::default();
+
+        // When writing a singleton stderr tail.
+        runtime.set_singleton_stderr("graphs", "npm warn".to_owned());
+
+        // Then the tail reads back under the server name.
+        assert_eq!(runtime.singleton_stderr("graphs"), Some("npm warn"));
     }
 }
