@@ -80,10 +80,7 @@ async fn connect(url: &str) -> McpClient {
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
     // Test fixture: unreachable past the bounded retry.
-    #[expect(
-        clippy::panic,
-        reason = "test fixture exhaustion is a hard stop"
-    )]
+    #[expect(clippy::panic, reason = "test fixture exhaustion is a hard stop")]
     {
         panic!("client never connected to {url}");
     }

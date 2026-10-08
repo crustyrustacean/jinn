@@ -271,7 +271,6 @@ Entries are added or amended **only with human approval**.
 - (slices) The discord slice reads its [discord] section from the configuration layer, and an absent section activates the slice disabled.
 
 - (config) ModelSelection, AlloyStrategy, and ReasoningEffort live in jinn-core-types; they persist across state.toml, SessionCore, and the SQLite legacy schema.
-- (mcp) MCP server config nouns (McpServerConfig, TransportKind, and header-value expansion) live in jinn-mcp-msg; the MCP slice and the preferences config crate consume them from there.
 - (slices) The entry token cache was pruned-family vocabulary misfiled under auto_prune_worker; it lives in jinn-slices and the prune family consumes it from the token-count slice's cell.
 - (slices) The mcp slice is a crate owning both MCP actors (coordinator and per-connection); its wire contracts live in jinn-mcp-msg and the kernel reaches the coordinator through the McpCoordinatorHandle trait.
 - (slices) Slice vocabulary lives in per-family -msg crates under crates/slices; jinn-slices holds only shared infrastructure and multi-party vocabulary such as the cell registry, routes, focus, render facts, and the persona record.
@@ -476,3 +475,10 @@ Entries are added or amended **only with human approval**.
 - (session) A cancel ends the turn for every component observing it, so a watchdog, a resumed dispatch, and a phase read cannot each reach a different conclusion about a cancelled turn.
 - (cancel) The inference actor keeps no per-session cancellation state; a cancel names a generation, and the inference actor acts only on streams it is currently running.
 - (session) "Working" is answered by the phase alone; the separate busy counter that disagreed with it is gone.
+- (config) An MCP server config may declare `singleton = true`, and a singleton server spawns once per app run rather than once per session.
+- (config) An MCP server's config schema (`McpServerConfig`, `TransportKind`) lives in jinn-preferences-config's schemas, not in jinn-mcp-msg.
+- (mcp) A singleton MCP server's tools register globally, so every session whose enablement admits the server dispatches to the one shared process.
+- (mcp) A singleton MCP server survives session close, archive, and teardown, and stops only at app exit or an explicit restart.
+- (graphs) The bundled graphs MCP server persists graphs as one `.graph` file per named graph under the app data dir's graphs directory, and only `create_graph` creates one.
+- (graphs) Transact or query against an unknown graph name is refused with an error naming `create_graph` as the remedy.
+- (skills) jinn ships a bundled minigraf skill that teaches the graphs server's data model and Datalog surface, with deep-dive references beside `SKILL.md`.

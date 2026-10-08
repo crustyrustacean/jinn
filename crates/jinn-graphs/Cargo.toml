@@ -34,6 +34,8 @@ tokio = { workspace = true, features = ["full"] }
 tokio-util = { workspace = true }
 ctor = "0.8"
 rustls = { workspace = true }
+# The skill-validity test parses SKILL.md with jinn's own frontmatter parser.
+jinn-skills = { workspace = true }
 
 [lints]
 workspace = true
