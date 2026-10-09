@@ -117,14 +117,14 @@ async fn singleton_server_spawns_once_across_two_sessions() {
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<McpServerStatus>().await;
     let (_actor, _services, _state) =
-        spawn_lifecycle(&harness, &[("graphs", unrunnable_singleton())]).await;
+        spawn_lifecycle(&harness, &[("minigraf", unrunnable_singleton())]).await;
 
     // When two different sessions both enable it.
     let first = SessionId::new();
     harness
         .publish(jinn_mcp_msg::McpEnablementChanged {
             session_id: first,
-            enabled: single_enabled("graphs"),
+            enabled: single_enabled("minigraf"),
         })
         .await;
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -133,7 +133,7 @@ async fn singleton_server_spawns_once_across_two_sessions() {
     harness
         .publish(jinn_mcp_msg::McpEnablementChanged {
             session_id: second,
-            enabled: single_enabled("graphs"),
+            enabled: single_enabled("minigraf"),
         })
         .await;
     tokio::time::sleep(std::time::Duration::from_millis(800)).await;
@@ -158,12 +158,12 @@ async fn singleton_server_survives_closing_every_session() {
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<McpServerStatus>().await;
     let (_actor, _services, _state) =
-        spawn_lifecycle(&harness, &[("graphs", unrunnable_singleton())]).await;
+        spawn_lifecycle(&harness, &[("minigraf", unrunnable_singleton())]).await;
     let session_a = SessionId::new();
     harness
         .publish(jinn_mcp_msg::McpEnablementChanged {
             session_id: session_a.clone(),
-            enabled: single_enabled("graphs"),
+            enabled: single_enabled("minigraf"),
         })
         .await;
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -185,7 +185,7 @@ async fn singleton_server_survives_closing_every_session() {
     harness
         .publish(jinn_mcp_msg::McpEnablementChanged {
             session_id: SessionId::new(),
-            enabled: single_enabled("graphs"),
+            enabled: single_enabled("minigraf"),
         })
         .await;
     tokio::time::sleep(std::time::Duration::from_millis(800)).await;
@@ -210,12 +210,12 @@ async fn singleton_server_survives_teardown_finished() {
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<McpServerStatus>().await;
     let (_actor, _services, _state) =
-        spawn_lifecycle(&harness, &[("graphs", unrunnable_singleton())]).await;
+        spawn_lifecycle(&harness, &[("minigraf", unrunnable_singleton())]).await;
     let session_a = SessionId::new();
     harness
         .publish(jinn_mcp_msg::McpEnablementChanged {
             session_id: session_a.clone(),
-            enabled: single_enabled("graphs"),
+            enabled: single_enabled("minigraf"),
         })
         .await;
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -233,7 +233,7 @@ async fn singleton_server_survives_teardown_finished() {
     harness
         .publish(jinn_mcp_msg::McpEnablementChanged {
             session_id: SessionId::new(),
-            enabled: single_enabled("graphs"),
+            enabled: single_enabled("minigraf"),
         })
         .await;
     tokio::time::sleep(std::time::Duration::from_millis(800)).await;
@@ -259,8 +259,8 @@ async fn singleton_server_is_spawned_on_session_load_completed() {
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<McpServerStatus>().await;
     let (_actor, services, state) =
-        spawn_lifecycle(&harness, &[("graphs", unrunnable_singleton())]).await;
-    let session_id = insert_session_with_enablement(&state, &single_enabled("graphs"));
+        spawn_lifecycle(&harness, &[("minigraf", unrunnable_singleton())]).await;
+    let session_id = insert_session_with_enablement(&state, &single_enabled("minigraf"));
 
     // When the session finishes loading from disk.
     harness
@@ -274,7 +274,7 @@ async fn singleton_server_is_spawned_on_session_load_completed() {
     assert!(
         events
             .iter()
-            .any(|e| e.status == McpConnectionStatus::Starting && e.server == "graphs"),
+            .any(|e| e.status == McpConnectionStatus::Starting && e.server == "minigraf"),
         "SessionLoadCompleted must spawn the singleton; got {events:?}"
     );
     let _ = services; // kept for parity with the sibling harnesses
@@ -325,7 +325,7 @@ async fn singleton_spawn_is_visible_in_runtime_status_for_any_session() {
     // Given a coordinator whose singleton spawned via session A.
     let harness = TestHarness::new().await;
     let (_actor, services, _state) =
-        spawn_lifecycle(&harness, &[("graphs", unrunnable_singleton())]).await;
+        spawn_lifecycle(&harness, &[("minigraf", unrunnable_singleton())]).await;
     let runtime = services
         .slices
         .reader::<jinn_mcp_msg::McpRuntimeState>(&jinn_mcp_msg::mcp_runtime_slot())
@@ -334,7 +334,7 @@ async fn singleton_spawn_is_visible_in_runtime_status_for_any_session() {
     harness
         .publish(jinn_mcp_msg::McpEnablementChanged {
             session_id: session_a.clone(),
-            enabled: single_enabled("graphs"),
+            enabled: single_enabled("minigraf"),
         })
         .await;
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -345,12 +345,12 @@ async fn singleton_spawn_is_visible_in_runtime_status_for_any_session() {
     // Then the lookup resolves for session B too — the status is not pinned
     // to the session that spawned it (the orchestrator's dispatch gate reads
     // it for whichever session the tool call came from).
-    let status_for_b = runtime.read().singleton_status("graphs");
+    let status_for_b = runtime.read().singleton_status("minigraf");
     assert!(
         status_for_b.is_some(),
         "singleton runtime status must be readable without a session id; \
          got {:?} for session b lookup",
-        runtime.read().status(&session_b, "graphs")
+        runtime.read().status(&session_b, "minigraf")
     );
 }
 
@@ -363,12 +363,12 @@ async fn restarting_a_singleton_respawns_it_by_name() {
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<McpServerStatus>().await;
     let (actor, services, _state) =
-        spawn_lifecycle(&harness, &[("graphs", unrunnable_singleton())]).await;
+        spawn_lifecycle(&harness, &[("minigraf", unrunnable_singleton())]).await;
     let session_a = SessionId::new();
     harness
         .publish(jinn_mcp_msg::McpEnablementChanged {
             session_id: session_a.clone(),
-            enabled: single_enabled("graphs"),
+            enabled: single_enabled("minigraf"),
         })
         .await;
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -380,7 +380,7 @@ async fn restarting_a_singleton_respawns_it_by_name() {
             actor,
             crate::coordinator::McpRestartForTest {
                 session_id: session_a,
-                server: "graphs".to_owned(),
+                server: "minigraf".to_owned(),
                 timeout: std::time::Duration::from_secs(5),
             },
             std::time::Duration::from_secs(10),
@@ -410,7 +410,7 @@ async fn restarting_a_singleton_respawns_it_by_name() {
     harness
         .publish(jinn_mcp_msg::McpEnablementChanged {
             session_id: SessionId::new(),
-            enabled: single_enabled("graphs"),
+            enabled: single_enabled("minigraf"),
         })
         .await;
     tokio::time::sleep(std::time::Duration::from_millis(800)).await;

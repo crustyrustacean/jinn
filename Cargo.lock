@@ -2033,7 +2033,6 @@ dependencies = [
  "jinn-discord-msg",
  "jinn-export",
  "jinn-export-msg",
- "jinn-graphs",
  "jinn-inference",
  "jinn-inference-msg",
  "jinn-install",
@@ -2041,6 +2040,7 @@ dependencies = [
  "jinn-llm-support",
  "jinn-mcp-msg",
  "jinn-mcp-slice",
+ "jinn-minigraf",
  "jinn-persona",
  "jinn-persona-msg",
  "jinn-picker",
@@ -2706,30 +2706,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jinn-graphs"
-version = "1.5.0"
-dependencies = [
- "axum",
- "ctor",
- "error-stack",
- "jinn-mcp",
- "jinn-skills",
- "minigraf",
- "parking_lot",
- "rmcp",
- "rstest",
- "rustls 0.23.45",
- "schemars",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-util",
- "tracing",
- "wherror",
-]
-
-[[package]]
 name = "jinn-inference"
 version = "1.5.0"
 dependencies = [
@@ -2962,6 +2938,30 @@ dependencies = [
  "tracing",
  "trouper",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "jinn-minigraf"
+version = "1.5.0"
+dependencies = [
+ "axum",
+ "ctor",
+ "error-stack",
+ "jinn-mcp",
+ "jinn-skills",
+ "minigraf",
+ "parking_lot",
+ "rmcp",
+ "rstest",
+ "rustls 0.23.45",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "wherror",
 ]
 
 [[package]]

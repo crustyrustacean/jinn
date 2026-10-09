@@ -1,7 +1,7 @@
-# Datalog reference — the graphs server's full surface
+# Datalog reference — the minigraf server's full surface
 
-Everything here executes through `mcp__graphs__transact` and
-`mcp__graphs__query` with `graph` set to an existing graph name. Each code
+Everything here executes through `mcp__minigraf__transact` and
+`mcp__minigraf__query` with `graph` set to an existing graph name. Each code
 block is one call.
 
 ## Commands

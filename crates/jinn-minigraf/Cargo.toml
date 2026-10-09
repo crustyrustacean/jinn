@@ -1,5 +1,5 @@
 [package]
-name = "jinn-graphs"
+name = "jinn-minigraf"
 version.workspace = true
 edition.workspace = true
 

@@ -1,18 +1,18 @@
-//! Errors from the graphs server, and the minigraf-code-preserving render
+//! Errors from the minigraf server, and the minigraf-code-preserving render
 //! the tools return.
 
 use wherror::Error;
 
-/// Anything the graphs server refuses.
+/// Anything the minigraf server refuses.
 ///
 /// The wire message embeds minigraf's own stable code (`STG-026`, `PRS-001`,
 /// …) verbatim, so a model reading the error can look the code up in the
 /// minigraf error reference; remedies are appended where one exists.
 #[derive(Debug, Error)]
 #[error(debug)]
-pub enum GraphsError {
-    /// The graphs directory could not be created or read.
-    #[error("graphs directory is unusable: {0}")]
+pub enum MinigrafServerError {
+    /// The minigraf directory could not be created or read.
+    #[error("minigraf directory is unusable: {0}")]
     StoreDir(String),
     /// The graph name failed validation.
     #[error("invalid graph name: {0}")]
@@ -30,7 +30,7 @@ pub enum GraphsError {
     Minigraf(String),
 }
 
-impl GraphsError {
+impl MinigrafServerError {
     /// minigraf's stable error code for a store failure, when one is present.
     ///
     /// `MinigrafError` renders as `[CODE] message`; this extracts the code so

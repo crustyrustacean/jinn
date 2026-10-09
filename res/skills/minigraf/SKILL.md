@@ -1,22 +1,22 @@
 ---
 name: minigraf
-description: Write and query durable graph state through the jinn graphs MCP server (mcp__graphs__* tools) — bi-temporal facts, Datalog transacts/queries, time travel. Use when creating or updating graphs, recording workflow or task state that must survive restarts, or asking what is still pending/true/history in a shared graph.
+description: Write and query durable graph state through the jinn minigraf MCP server (mcp__minigraf__* tools) — bi-temporal facts, Datalog transacts/queries, time travel. Use when creating or updating graphs, recording workflow or task state that must survive restarts, or asking what is still pending/true/history in a shared graph.
 ---
 
-# minigraf — the jinn graphs server
+# minigraf — the jinn minigraf server
 
 You are writing durable, structured state to a shared bi-temporal graph through
-the `mcp__graphs__*` tools. Every session of this jinn process shares the same
+the `mcp__minigraf__*` tools. Every session of this jinn process shares the same
 graphs: what you write, other sessions and subagents can read.
 
 ## The four tools
 
 | Tool | Does |
 |---|---|
-| `mcp__graphs__create_graph(name)` | Creates `<name>.graph`. **Fails if it exists** — the existing graph is untouched. Names: `a-z 0-9 _ -` only. |
-| `mcp__graphs__transact(graph, datalog)` | One write command: `(transact ...)`, `(retract ...)`, or `(rule ...)`. Returns the tx id. |
-| `mcp__graphs__query(graph, datalog)` | One `(query ...)`, including time travel. Rows come back as JSON. |
-| `mcp__graphs__list_graphs()` | Graph names that exist. |
+| `mcp__minigraf__create_graph(name)` | Creates `<name>.graph`. **Fails if it exists** — the existing graph is untouched. Names: `a-z 0-9 _ -` only. |
+| `mcp__minigraf__transact(graph, datalog)` | One write command: `(transact ...)`, `(retract ...)`, or `(rule ...)`. Returns the tx id. |
+| `mcp__minigraf__query(graph, datalog)` | One `(query ...)`, including time travel. Rows come back as JSON. |
+| `mcp__minigraf__list_graphs()` | Graph names that exist. |
 
 `create_graph` before first use of a name; `transact`/`query` on an unknown
 name are refused with an error telling you to create it. There is no delete
@@ -42,7 +42,7 @@ and it never replaces one. Nothing else you can do corrupts existing state.
 ## Minimal cycle
 
 ```datalog
-(transact [[:task/1 :task/title "ship graphs server"]
+(transact [[:task/1 :task/title "ship minigraf server"]
            [:task/1 :task/status :open]])
 ```
 

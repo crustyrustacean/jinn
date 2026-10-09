@@ -1,12 +1,12 @@
-//! The bundled graphs MCP server — shared, durable, graph-shaped state.
+//! The bundled minigraf MCP server — shared, durable, graph-shaped state.
 //!
 //! One streamable-HTTP MCP server (mounted on axum at `/mcp`) over one
-//! minigraf database directory. Configured in `jinn.toml` under `[mcp.graphs]`
+//! minigraf database directory. Configured in `jinn.toml` under `[mcp.minigraf]`
 //! with `singleton = true`, so jinn spawns exactly one server process for the
 //! whole app and every session that enables the server reads and writes the
 //! same graphs through it.
 //!
-//! Four tools, all namespaced `mcp__graphs__*`:
+//! Four tools, all namespaced `mcp__minigraf__*`:
 //!
 //! - [`create_graph`](tools::CreateGraphTool) — create `<name>.graph`; fails
 //!   if it already exists, leaving the file untouched.
@@ -56,14 +56,14 @@ pub mod json_rows;
 pub mod naming;
 pub mod store;
 
-use store::GraphStore;
+use store::MinigrafStore;
 
 /// The `ServerHandler` served at `/mcp`: the four graph tools over one
-/// [`GraphStore`]. The tool router is the associated function the
+/// [`MinigrafStore`]. The tool router is the associated function the
 /// `#[tool_router]`/`#[tool_handler]` pair generates (`Self::tool_router()`).
 #[derive(Clone)]
-pub struct GraphsServer {
-    store: Arc<GraphStore>,
+pub struct MinigrafServer {
+    store: Arc<MinigrafStore>,
 }
 
 /// Request payload for the `create_graph` tool.
@@ -92,15 +92,15 @@ pub struct QueryArgs {
 }
 
 #[tool_router]
-impl GraphsServer {
-    /// Builds the server over `graphs_dir`, creating the directory if needed.
+impl MinigrafServer {
+    /// Builds the server over `minigraf_dir`, creating the directory if needed.
     ///
     /// # Errors
     ///
-    /// Returns an error if the graphs directory cannot be created.
-    pub fn new(graphs_dir: PathBuf) -> Result<Self, Report<errors::GraphsError>> {
+    /// Returns an error if the minigraf directory cannot be created.
+    pub fn new(minigraf_dir: PathBuf) -> Result<Self, Report<errors::MinigrafServerError>> {
         let server = Self {
-            store: Arc::new(GraphStore::new(graphs_dir)),
+            store: Arc::new(MinigrafStore::new(minigraf_dir)),
         };
         server.store.ensure_dir()?;
         Ok(server)
@@ -169,7 +169,7 @@ impl GraphsServer {
     }
 
     #[tool(
-        description = "List every graph in the graphs directory (names only, sorted). Use a listed name with transact/query; create a missing graph with create_graph."
+        description = "List every graph in the minigraf directory (names only, sorted). Use a listed name with transact/query; create a missing graph with create_graph."
     )]
     async fn list_graphs(&self) -> Result<CallToolResult, ErrorData> {
         let store = self.store.clone();
@@ -195,7 +195,7 @@ impl GraphsServer {
     clippy::unused_async_trait_impl,
     reason = "rmcp's tool_handler generates the async ServerHandler methods; none await"
 )]
-impl ServerHandler for GraphsServer {
+impl ServerHandler for MinigrafServer {
     fn get_info(&self) -> InitializeResult {
         // `InitializeResult`/`ServerCapabilities` are `#[non_exhaustive]`:
         // build through `new` + the `with_*` setters, and enable tools
@@ -203,7 +203,7 @@ impl ServerHandler for GraphsServer {
         let capabilities = ServerCapabilities::builder().enable_tools().build();
         InitializeResult::new(capabilities)
             .with_server_info(Implementation::new(
-                "jinn-graphs",
+                "jinn-minigraf",
                 env!("CARGO_PKG_VERSION"),
             ))
             .with_instructions(
@@ -224,16 +224,16 @@ impl ServerHandler for GraphsServer {
 ///
 /// # Errors
 ///
-/// Returns an error if the graphs directory cannot be created or the
+/// Returns an error if the minigraf directory cannot be created or the
 /// listener cannot bind.
 pub async fn run(
     host: &str,
     port: u16,
-    graphs_dir: PathBuf,
-) -> Result<(), Report<errors::GraphsError>> {
-    let server = GraphsServer::new(graphs_dir)?;
+    minigraf_dir: PathBuf,
+) -> Result<(), Report<errors::MinigrafServerError>> {
+    let server = MinigrafServer::new(minigraf_dir)?;
     let service: rmcp::transport::streamable_http_server::StreamableHttpService<
-        GraphsServer,
+        MinigrafServer,
         rmcp::transport::streamable_http_server::session::local::LocalSessionManager,
     > = rmcp::transport::streamable_http_server::StreamableHttpService::new(
         move || Ok(server.clone()),
@@ -246,18 +246,18 @@ pub async fn run(
     let router = axum::Router::new().nest_service("/mcp", service);
     let listener = tokio::net::TcpListener::bind((host, port))
         .await
-        .change_context(errors::GraphsError::StoreDir(format!(
+        .change_context(errors::MinigrafServerError::StoreDir(format!(
             "could not bind {host}:{port}"
         )))?;
     let bound = listener.local_addr().ok();
-    tracing::info!(addr = ?bound, "jinn-graphs: serving MCP at /mcp");
+    tracing::info!(addr = ?bound, "jinn-minigraf: serving MCP at /mcp");
 
     axum::serve(listener, router)
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })
         .await
-        .change_context(errors::GraphsError::StoreDir(
+        .change_context(errors::MinigrafServerError::StoreDir(
             "serving /mcp failed".to_owned(),
         ))?;
     Ok(())

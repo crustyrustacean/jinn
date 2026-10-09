@@ -5,15 +5,15 @@ use error_stack::Report;
 
 /// Validates a graph name to filesystem-safe `[a-z0-9_-]`.
 ///
-/// The name becomes `<name>.graph` under the graphs directory; anything that
+/// The name becomes `<name>.graph` under the minigraf directory; anything that
 /// could escape that directory (path separators, `..`, leading dots) or that
 /// would render ambiguously on the wire (uppercase, unicode, whitespace) is
 /// rejected with the offending name carried back.
 ///
 /// # Errors
 ///
-/// Returns [`GraphsError::BadName`] describing why the name is rejected.
-pub fn validate(name: &str) -> Result<(), Report<crate::errors::GraphsError>> {
+/// Returns [`MinigrafServerError::BadName`] describing why the name is rejected.
+pub fn validate(name: &str) -> Result<(), Report<crate::errors::MinigrafServerError>> {
     let ok = !name.is_empty()
         && name.len() <= 64
         && name
@@ -23,7 +23,7 @@ pub fn validate(name: &str) -> Result<(), Report<crate::errors::GraphsError>> {
         Ok(())
     } else {
         Err(error_stack::Report::new(
-            crate::errors::GraphsError::BadName(format!(
+            crate::errors::MinigrafServerError::BadName(format!(
                 "`{name}` must be 1-64 chars of [a-z0-9_-]"
             )),
         ))

@@ -3,7 +3,7 @@
 ## 2026-10-08 — singleton MCP servers + bundled graphs server
 
 - MCP servers can declare `singleton = true` in `jinn.toml`: the server spawns once per jinn run and its tools are shared by every session, surviving session close/archive/teardown.
-- New bundled `graphs` MCP server (`[mcp.graphs]` example in the template, `jinn mcp graphs` to run by hand): durable bi-temporal graph state backed by minigraf, with `create_graph`/`transact`/`query`/`list_graphs` tools and a bundled `minigraf` skill teaching the Datalog surface.
+- New bundled `minigraf` MCP server (`[mcp.minigraf]` example in the template, `jinn mcp minigraf` to run by hand): durable bi-temporal graph state backed by minigraf, with `create_graph`/`transact`/`query`/`list_graphs` tools and a bundled `minigraf` skill teaching the Datalog surface.
 
 ## 2026-10-05 v1.5.0
 

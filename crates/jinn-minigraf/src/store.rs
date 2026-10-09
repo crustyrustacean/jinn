@@ -16,39 +16,39 @@ use std::sync::Arc;
 use error_stack::Report;
 use parking_lot::Mutex;
 
-use crate::errors::GraphsError;
+use crate::errors::MinigrafServerError;
 use crate::json_rows;
 use crate::naming;
 
 /// One minigraf handle per graph name, plus the directory the `.graph` files
 /// live in. Cheap to clone; every clone sees the same handle cache.
 #[derive(Clone)]
-pub struct GraphStore {
-    graphs_dir: PathBuf,
+pub struct MinigrafStore {
+    minigraf_dir: PathBuf,
     handles: Arc<Mutex<HashMap<String, minigraf::Minigraf>>>,
 }
 
-impl GraphStore {
-    /// Builds a store over `graphs_dir` without touching the filesystem;
+impl MinigrafStore {
+    /// Builds a store over `minigraf_dir` without touching the filesystem;
     /// call [`ensure_dir`](Self::ensure_dir) to create the directory.
     #[must_use]
-    pub fn new(graphs_dir: PathBuf) -> Self {
+    pub fn new(minigraf_dir: PathBuf) -> Self {
         Self {
-            graphs_dir,
+            minigraf_dir,
             handles: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
-    /// Creates the graphs directory if it does not exist.
+    /// Creates the minigraf directory if it does not exist.
     ///
     /// # Errors
     ///
     /// Returns an error if the directory cannot be created.
-    pub fn ensure_dir(&self) -> Result<(), Report<GraphsError>> {
-        fs::create_dir_all(&self.graphs_dir).map_err(|e| {
-            Report::new(GraphsError::StoreDir(format!(
+    pub fn ensure_dir(&self) -> Result<(), Report<MinigrafServerError>> {
+        fs::create_dir_all(&self.minigraf_dir).map_err(|e| {
+            Report::new(MinigrafServerError::StoreDir(format!(
                 "{}: {e}",
-                self.graphs_dir.display()
+                self.minigraf_dir.display()
             )))
         })?;
         Ok(())
@@ -64,11 +64,11 @@ impl GraphStore {
     ///
     /// # Errors
     ///
-    /// [`GraphsError::BadName`] for an unsafe name,
-    /// [`GraphsError::AlreadyExists`] when the graph exists (never
-    /// truncating the existing one), [`GraphsError::Minigraf`] when minigraf
-    /// refuses the open, and [`GraphsError::StoreDir`] on filesystem errors.
-    pub fn create_graph(&self, name: &str) -> Result<(), Report<GraphsError>> {
+    /// [`MinigrafServerError::BadName`] for an unsafe name,
+    /// [`MinigrafServerError::AlreadyExists`] when the graph exists (never
+    /// truncating the existing one), [`MinigrafServerError::Minigraf`] when minigraf
+    /// refuses the open, and [`MinigrafServerError::StoreDir`] on filesystem errors.
+    pub fn create_graph(&self, name: &str) -> Result<(), Report<MinigrafServerError>> {
         naming::validate(name)?;
 
         let path = self.graph_file(name);
@@ -80,9 +80,12 @@ impl GraphStore {
             .open(&path)
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::AlreadyExists {
-                    Report::new(GraphsError::AlreadyExists(name.to_owned()))
+                    Report::new(MinigrafServerError::AlreadyExists(name.to_owned()))
                 } else {
-                    Report::new(GraphsError::StoreDir(format!("{}: {e}", path.display())))
+                    Report::new(MinigrafServerError::StoreDir(format!(
+                        "{}: {e}",
+                        path.display()
+                    )))
                 }
             })?;
 
@@ -90,7 +93,7 @@ impl GraphStore {
         // file behind — the name still reads as "created" to a later
         // create_graph refusal, and the file is recoverable by deleting it.
         let db = minigraf::Minigraf::open(&path)
-            .map_err(|e| Report::new(GraphsError::Minigraf(e.to_string())))?;
+            .map_err(|e| Report::new(MinigrafServerError::Minigraf(e.to_string())))?;
         self.handles.lock().insert(name.to_owned(), db);
         Ok(())
     }
@@ -101,21 +104,21 @@ impl GraphStore {
     ///
     /// # Errors
     ///
-    /// [`GraphsError::UnknownGraph`] when the graph was never created (the
-    /// remedy is `create_graph`), [`GraphsError::BadName`] for an unsafe
-    /// name, [`GraphsError::Minigraf`] for parse or execution failures.
-    pub fn transact(&self, graph: &str, datalog: &str) -> Result<u64, Report<GraphsError>> {
+    /// [`MinigrafServerError::UnknownGraph`] when the graph was never created (the
+    /// remedy is `create_graph`), [`MinigrafServerError::BadName`] for an unsafe
+    /// name, [`MinigrafServerError::Minigraf`] for parse or execution failures.
+    pub fn transact(&self, graph: &str, datalog: &str) -> Result<u64, Report<MinigrafServerError>> {
         let db = self.existing_handle(graph)?;
         let result = db
             .execute(datalog)
-            .map_err(|e| Report::new(GraphsError::Minigraf(e.to_string())))?;
+            .map_err(|e| Report::new(MinigrafServerError::Minigraf(e.to_string())))?;
         match result {
             minigraf::QueryResult::Transacted(tx) | minigraf::QueryResult::Retracted(tx) => Ok(tx),
             // `(rule ...)` and degenerate writes acknowledge with `Ok`.
             minigraf::QueryResult::Ok => Ok(0),
             // A write command never produces rows; render honestly if one
             // ever does rather than guessing.
-            other => Err(Report::new(GraphsError::Minigraf(format!(
+            other => Err(Report::new(MinigrafServerError::Minigraf(format!(
                 "write command produced {other:?}"
             )))),
         }
@@ -126,14 +129,14 @@ impl GraphStore {
     ///
     /// # Errors
     ///
-    /// [`GraphsError::UnknownGraph`] when the graph was never created (the
-    /// remedy is `create_graph`), [`GraphsError::BadName`] for an unsafe
-    /// name, [`GraphsError::Minigraf`] for parse or execution failures.
-    pub fn query(&self, graph: &str, datalog: &str) -> Result<String, Report<GraphsError>> {
+    /// [`MinigrafServerError::UnknownGraph`] when the graph was never created (the
+    /// remedy is `create_graph`), [`MinigrafServerError::BadName`] for an unsafe
+    /// name, [`MinigrafServerError::Minigraf`] for parse or execution failures.
+    pub fn query(&self, graph: &str, datalog: &str) -> Result<String, Report<MinigrafServerError>> {
         let db = self.existing_handle(graph)?;
         let result = db
             .execute(datalog)
-            .map_err(|e| Report::new(GraphsError::Minigraf(e.to_string())))?;
+            .map_err(|e| Report::new(MinigrafServerError::Minigraf(e.to_string())))?;
         Ok(json_rows::render(&result))
     }
 
@@ -141,14 +144,14 @@ impl GraphStore {
     ///
     /// # Errors
     ///
-    /// [`GraphsError::StoreDir`] when the directory cannot be read; an empty
+    /// [`MinigrafServerError::StoreDir`] when the directory cannot be read; an empty
     /// directory is an empty list, not an error.
-    pub fn list_graphs(&self) -> Result<Vec<String>, Report<GraphsError>> {
+    pub fn list_graphs(&self) -> Result<Vec<String>, Report<MinigrafServerError>> {
         let mut names = Vec::new();
-        let entries = fs::read_dir(&self.graphs_dir).map_err(|e| {
-            Report::new(GraphsError::StoreDir(format!(
+        let entries = fs::read_dir(&self.minigraf_dir).map_err(|e| {
+            Report::new(MinigrafServerError::StoreDir(format!(
                 "{}: {e}",
-                self.graphs_dir.display()
+                self.minigraf_dir.display()
             )))
         })?;
         for entry in entries.flatten() {
@@ -168,7 +171,10 @@ impl GraphStore {
     /// Cache hit returns the held handle; a miss checks the file exists
     /// first — a plain minigraf open would *create* the file, which would
     /// silently violate create-before-use.
-    fn existing_handle(&self, name: &str) -> Result<minigraf::Minigraf, Report<GraphsError>> {
+    fn existing_handle(
+        &self,
+        name: &str,
+    ) -> Result<minigraf::Minigraf, Report<MinigrafServerError>> {
         naming::validate(name)?;
         {
             let handles = self.handles.lock();
@@ -177,19 +183,21 @@ impl GraphStore {
             }
         }
         if !self.graph_file(name).exists() {
-            return Err(Report::new(GraphsError::UnknownGraph(name.to_owned())));
+            return Err(Report::new(MinigrafServerError::UnknownGraph(
+                name.to_owned(),
+            )));
         }
         // Second process guard: another jinn instance holding this file is
         // minigraf's own lock refusal (STG-026, bounded retry then refusal) —
         // it surfaces as a Minigraf error, never a hang or corruption.
         let db = minigraf::Minigraf::open(self.graph_file(name))
-            .map_err(|e| Report::new(GraphsError::Minigraf(e.to_string())))?;
+            .map_err(|e| Report::new(MinigrafServerError::Minigraf(e.to_string())))?;
         self.handles.lock().insert(name.to_owned(), db.clone());
         Ok(db)
     }
 
     fn graph_file(&self, name: &str) -> PathBuf {
-        self.graphs_dir.join(format!("{name}.graph"))
+        self.minigraf_dir.join(format!("{name}.graph"))
     }
 }
 
@@ -204,9 +212,9 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    fn store() -> (TempDir, GraphStore) {
+    fn store() -> (TempDir, MinigrafStore) {
         let dir = tempfile::TempDir::new().expect("tempdir");
-        let store = GraphStore::new(dir.path().to_path_buf());
+        let store = MinigrafStore::new(dir.path().to_path_buf());
         store.ensure_dir().expect("ensure_dir");
         (dir, store)
     }
@@ -336,7 +344,7 @@ mod tests {
         // Given a directory with a stray non-.graph file.
         let (_dir, store) = store();
         store.create_graph("real").expect("create");
-        fs::write(store.graphs_dir.join("notes.txt"), "not a graph").expect("stray");
+        fs::write(store.minigraf_dir.join("notes.txt"), "not a graph").expect("stray");
 
         // When listing.
         let names = store.list_graphs().expect("list");
@@ -352,7 +360,7 @@ mod tests {
         let dir = TempDir::new().expect("tempdir");
         let path = dir.path().to_path_buf();
         {
-            let store = GraphStore::new(path.clone());
+            let store = MinigrafStore::new(path.clone());
             store.ensure_dir().expect("ensure_dir");
             store.create_graph("durable").expect("create");
             store
@@ -361,7 +369,7 @@ mod tests {
         }
 
         // When a fresh store over the same directory opens the same graph.
-        let store = GraphStore::new(path);
+        let store = MinigrafStore::new(path);
         let json = store
             .query("durable", "(query [:find ?n :where [?e :task/name ?n]])")
             .expect("query");
@@ -379,7 +387,7 @@ mod tests {
         let db = minigraf::Minigraf::open(dir.path().join("held.graph")).expect("open");
 
         // When the store discovers the file on a cache miss.
-        let store = GraphStore::new(dir.path().to_path_buf());
+        let store = MinigrafStore::new(dir.path().to_path_buf());
         let result = store.query("held", "(query [:find ?e :where [?e _ _]])");
 
         // Then the open is refused with minigraf's already-open code, not a
@@ -399,7 +407,7 @@ mod tests {
         // Given a graph held open by one store (its file locked).
         let dir = TempDir::new().expect("tempdir");
         let path = dir.path().to_path_buf();
-        let holder = GraphStore::new(path.clone());
+        let holder = MinigrafStore::new(path.clone());
         holder.ensure_dir().expect("ensure_dir");
         holder.create_graph("locked").expect("create");
 
@@ -407,7 +415,7 @@ mod tests {
         // (a fresh handle cache — the shape a second process presents; a
         // same-process contender would hit the STG-025 already-open guard,
         // which is the same hard-refusal surface).
-        let contender = GraphStore::new(path);
+        let contender = MinigrafStore::new(path);
         let result = contender.transact("locked", "(transact [[:a :b \"c\"]])");
 
         // Then minigraf's coded refusal comes back promptly: an error

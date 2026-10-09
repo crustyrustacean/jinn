@@ -279,16 +279,16 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 # > admits the server — sessions share the one connection instead of each
 # > getting their own. It survives session close/archive/teardown and stops
 # > only at app exit or an explicit restart. Use it for servers holding
-# > shared state. The bundled graphs server (below) requires it.
+# > shared state. The bundled minigraf server (below) requires it.
 #
-# > Bundled graphs server example — durable, shared, graph-shaped state
-# > backed by minigraf (create_graph / transact / query / list_graphs over
-# > `<name>.graph` files under the app data dir). jinn ships the server;
-# > uncomment to enable it. `jinn` must be on PATH for the child spawn to
-# > find it (or use an absolute path).
-# [mcp.graphs]
+# > Bundled minigraf server example — durable, shared, graph-shaped state
+# > (create_graph / transact / query / list_graphs over `<name>.graph`
+# > files under the app data dir). jinn ships the server; uncomment to
+# > enable it. `jinn` must be on PATH for the child spawn to find it (or
+# > use an absolute path).
+# [mcp.minigraf]
 # command = "jinn"
-# args = ["mcp", "graphs", "--port", "<port>", "--host", "<ip>"]
+# args = ["mcp", "minigraf", "--port", "<port>", "--host", "<ip>"]
 # transport = "local_http"
 # url = "http://127.0.0.1:<port>/mcp"
 # singleton = true

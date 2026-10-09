@@ -1,7 +1,7 @@
-//! `jinn mcp graphs` isolation and tool roundtrip over real HTTP.
+//! `jinn mcp minigraf` isolation and tool roundtrip over real HTTP.
 //!
-//! Serves the real [`jinn_graphs::run`] entrypoint (axum + rmcp's
-//! `StreamableHttpService`) on an ephemeral port over a temp graphs dir,
+//! Serves the real [`jinn_minigraf::run`] entrypoint (axum + rmcp's
+//! `StreamableHttpService`) on an ephemeral port over a temp minigraf dir,
 //! then drives it with jinn's own `McpClient`. No `jinn.toml`, no
 //! `providers.toml`, no session store: the subcommand must run without any
 //! of them. Proves connect, tool advertisement, the full
@@ -36,17 +36,17 @@ use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, Stream
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
-/// A graphs server bound to an ephemeral port, plus the URL to reach it.
+/// A minigraf server bound to an ephemeral port, plus the URL to reach it.
 ///
 /// Mirrors `jinn-mcp/tests/http_roundtrip.rs`: bind first (the port is known
-/// before serving starts), then serve the real `GraphsServer` stack on the
-/// bound listener. `jinn_graphs::run` itself owns its listener, so the test
+/// before serving starts), then serve the real `MinigrafServer` stack on the
+/// bound listener. `jinn_minigraf::run` itself owns its listener, so the test
 /// mounts the identical service stack the entrypoint builds —
-/// `GraphsServer::new` over the temp dir on axum at `/mcp` — which is the
+/// `MinigrafServer::new` over the temp dir on axum at `/mcp` — which is the
 /// same code path minus the listener plumbing.
-async fn spawn_graphs_server(graphs_dir: PathBuf) -> (String, CancellationToken) {
-    let server = jinn_graphs::GraphsServer::new(graphs_dir).expect("server builds");
-    let service: StreamableHttpService<jinn_graphs::GraphsServer, LocalSessionManager> =
+async fn spawn_minigraf_server(minigraf_dir: PathBuf) -> (String, CancellationToken) {
+    let server = jinn_minigraf::MinigrafServer::new(minigraf_dir).expect("server builds");
+    let service: StreamableHttpService<jinn_minigraf::MinigrafServer, LocalSessionManager> =
         StreamableHttpService::new(
             move || Ok(server.clone()),
             Arc::new(LocalSessionManager::default()),
@@ -108,9 +108,9 @@ async fn call_text(client: &McpClient, name: &str, args: serde_json::Value) -> S
 #[rstest::rstest]
 #[tokio::test]
 async fn server_lists_exactly_the_four_graph_tools() {
-    // Given a live graphs server over a temp dir.
+    // Given a live minigraf server over a temp dir.
     let dir = tempfile::TempDir::new().expect("tempdir");
-    let (url, shutdown) = spawn_graphs_server(dir.path().to_path_buf()).await;
+    let (url, shutdown) = spawn_minigraf_server(dir.path().to_path_buf()).await;
     let mut client = connect(&url).await;
 
     // When listing tools.
@@ -131,9 +131,9 @@ async fn server_lists_exactly_the_four_graph_tools() {
 #[rstest::rstest]
 #[tokio::test]
 async fn create_transact_query_cycle_roundtrips_over_http() {
-    // Given a live graphs server.
+    // Given a live minigraf server.
     let dir = tempfile::TempDir::new().expect("tempdir");
-    let (url, shutdown) = spawn_graphs_server(dir.path().to_path_buf()).await;
+    let (url, shutdown) = spawn_minigraf_server(dir.path().to_path_buf()).await;
     let mut client = connect(&url).await;
 
     // When creating, transacting, and querying a graph through the tools.
@@ -169,7 +169,7 @@ async fn create_transact_query_cycle_roundtrips_over_http() {
 async fn create_graph_on_existing_name_fails_without_touching_the_file() {
     // Given a live server with a created graph holding one fact.
     let dir = tempfile::TempDir::new().expect("tempdir");
-    let (url, shutdown) = spawn_graphs_server(dir.path().to_path_buf()).await;
+    let (url, shutdown) = spawn_minigraf_server(dir.path().to_path_buf()).await;
     let mut client = connect(&url).await;
     call_text(&client, "create_graph", json!({ "name": "dup" })).await;
     call_text(
@@ -211,7 +211,7 @@ async fn create_graph_on_existing_name_fails_without_touching_the_file() {
 async fn transact_on_unknown_graph_names_create_graph_as_remedy_over_http() {
     // Given a live server with no graphs.
     let dir = tempfile::TempDir::new().expect("tempdir");
-    let (url, shutdown) = spawn_graphs_server(dir.path().to_path_buf()).await;
+    let (url, shutdown) = spawn_minigraf_server(dir.path().to_path_buf()).await;
     let mut client = connect(&url).await;
 
     // When transacting into an unknown graph.
@@ -241,7 +241,7 @@ async fn transact_on_unknown_graph_names_create_graph_as_remedy_over_http() {
 async fn list_graphs_reflects_created_graphs_over_http() {
     // Given a live server where two graphs were created.
     let dir = tempfile::TempDir::new().expect("tempdir");
-    let (url, shutdown) = spawn_graphs_server(dir.path().to_path_buf()).await;
+    let (url, shutdown) = spawn_minigraf_server(dir.path().to_path_buf()).await;
     let mut client = connect(&url).await;
     call_text(&client, "create_graph", json!({ "name": "beta" })).await;
     call_text(&client, "create_graph", json!({ "name": "alpha" })).await;
@@ -262,9 +262,9 @@ async fn list_graphs_reflects_created_graphs_over_http() {
 async fn graphs_persist_across_a_server_restart() {
     // Given a server that created and wrote a graph, then stopped.
     let dir = tempfile::TempDir::new().expect("tempdir");
-    let graphs_dir = dir.path().to_path_buf();
+    let minigraf_dir = dir.path().to_path_buf();
     {
-        let (url, shutdown) = spawn_graphs_server(graphs_dir.clone()).await;
+        let (url, shutdown) = spawn_minigraf_server(minigraf_dir.clone()).await;
         let mut client = connect(&url).await;
         call_text(&client, "create_graph", json!({ "name": "durable" })).await;
         call_text(
@@ -278,7 +278,7 @@ async fn graphs_persist_across_a_server_restart() {
     }
 
     // When a fresh server over the same directory serves the same graph.
-    let (url, shutdown) = spawn_graphs_server(graphs_dir).await;
+    let (url, shutdown) = spawn_minigraf_server(minigraf_dir).await;
     let mut client = connect(&url).await;
     let rows = call_text(
         &client,
@@ -300,10 +300,10 @@ async fn lock_refusal_surfaces_as_clean_tool_error() {
     // Given a graph file held open by a direct minigraf handle (simulating
     // another jinn instance holding the same graph).
     let dir = tempfile::TempDir::new().expect("tempdir");
-    let graphs_dir = dir.path().to_path_buf();
-    std::fs::create_dir_all(&graphs_dir).expect("dir");
-    let holder = minigraf::Minigraf::open(graphs_dir.join("locked.graph")).expect("held open");
-    let (url, shutdown) = spawn_graphs_server(graphs_dir).await;
+    let minigraf_dir = dir.path().to_path_buf();
+    std::fs::create_dir_all(&minigraf_dir).expect("dir");
+    let holder = minigraf::Minigraf::open(minigraf_dir.join("locked.graph")).expect("held open");
+    let (url, shutdown) = spawn_minigraf_server(minigraf_dir).await;
     let mut client = connect(&url).await;
 
     // When the server transacts into that graph.

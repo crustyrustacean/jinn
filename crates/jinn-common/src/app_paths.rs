@@ -128,14 +128,14 @@ impl AppPaths {
         self.browser_profile_base_dir().join(mode.as_str())
     }
 
-    /// Graphs directory (`~/.local/share/jinn/graphs`).
+    /// Minigraf directory (`~/.local/share/jinn/minigraf`).
     ///
-    /// One `<name>.graph` minigraf file per named graph, written by the
-    /// bundled graphs MCP server. Lives under the app data dir like the
-    /// browser profiles: durable state, not config, not cache.
+    /// One `<name>.graph` file per named graph, written by the bundled
+    /// minigraf MCP server. Lives under the app data dir like the browser
+    /// profiles: durable state, not config, not cache.
     #[must_use]
-    pub fn graphs_dir(&self) -> PathBuf {
-        self.app_data_dir().join("graphs")
+    pub fn minigraf_dir(&self) -> PathBuf {
+        self.app_data_dir().join("minigraf")
     }
 
     /// Prompt templates directory (`~/.config/jinn/prompts`).
@@ -579,15 +579,15 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn graphs_dir_lands_under_app_data_dir() {
+    fn minigraf_dir_lands_under_app_data_dir() {
         // Given an AppPaths rooted at a temp dir.
         let root = tempfile::TempDir::new().expect("temp dir");
         let paths = AppPaths::new_in(root.path());
 
-        // When resolving the graphs dir.
-        let graphs = paths.graphs_dir();
+        // When resolving the minigraf dir.
+        let dir = paths.minigraf_dir();
 
-        // Then it is data/jinn/graphs (app data dir, not config, not cache).
-        assert_eq!(graphs, root.path().join("data/jinn/graphs"));
+        // Then it is data/jinn/minigraf (app data dir, not config, not cache).
+        assert_eq!(dir, root.path().join("data/jinn/minigraf"));
     }
 }

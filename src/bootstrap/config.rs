@@ -222,7 +222,7 @@ fn run_recovery_subcommand(cli: &jinn_cli::cli::Cli) -> Result<Option<Prepared>,
     Ok(None)
 }
 
-/// Serves the bundled graphs MCP server (`jinn mcp graphs`).
+/// Serves the bundled minigraf MCP server (`jinn mcp minigraf`).
 ///
 /// Runs before `read_config` and the session store on purpose: the server
 /// must start with a broken `jinn.toml`, no `providers.toml`, and no
@@ -235,19 +235,19 @@ fn run_server_subcommand(cli: &jinn_cli::cli::Cli) -> Result<Option<Prepared>, R
     use jinn_cli::cli::McpCommands;
 
     let Some(Commands::Mcp {
-        subcommand: McpCommands::Graphs { host, port },
+        subcommand: McpCommands::Minigraf { host, port },
     }) = &cli.command
     else {
         return Ok(None);
     };
 
-    let graphs_dir = jinn_kernel::AppPaths::default().graphs_dir();
+    let minigraf_dir = jinn_kernel::AppPaths::default().minigraf_dir();
     let host = host.clone();
     let port = *port;
     match tokio::runtime::Runtime::new() {
         Ok(runtime) => {
-            if let Err(report) = runtime.block_on(jinn_graphs::run(&host, port, graphs_dir)) {
-                eprintln!("error: graphs server failed: {report:?}");
+            if let Err(report) = runtime.block_on(jinn_minigraf::run(&host, port, minigraf_dir)) {
+                eprintln!("error: minigraf server failed: {report:?}");
                 return Err(report.change_context(AppError));
             }
             Ok(Some(Prepared::Handled))

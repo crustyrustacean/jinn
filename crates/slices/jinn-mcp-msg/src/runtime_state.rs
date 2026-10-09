@@ -225,11 +225,11 @@ mod tests {
         let mut runtime = McpRuntimeState::default();
 
         // When setting one singleton server's status.
-        runtime.set_singleton_status("graphs", McpConnectionStatus::Running);
+        runtime.set_singleton_status("minigraf", McpConnectionStatus::Running);
 
         // Then that status reads back under the server name alone.
         assert_eq!(
-            runtime.singleton_status("graphs"),
+            runtime.singleton_status("minigraf"),
             Some(McpConnectionStatus::Running)
         );
     }
@@ -238,8 +238,8 @@ mod tests {
     fn clear_session_leaves_singleton_data_alone() {
         // Given a singleton server's runtime data.
         let mut runtime = McpRuntimeState::default();
-        runtime.set_singleton_status("graphs", McpConnectionStatus::Running);
-        runtime.set_singleton_stderr("graphs", "listening".to_owned());
+        runtime.set_singleton_status("minigraf", McpConnectionStatus::Running);
+        runtime.set_singleton_stderr("minigraf", "listening".to_owned());
         let session_id = SessionId::new();
         runtime.set_status(&session_id, "other", McpConnectionStatus::Dead);
 
@@ -248,24 +248,24 @@ mod tests {
 
         // Then the singleton's projections survive untouched.
         assert_eq!(
-            runtime.singleton_status("graphs"),
+            runtime.singleton_status("minigraf"),
             Some(McpConnectionStatus::Running)
         );
-        assert_eq!(runtime.singleton_stderr("graphs"), Some("listening"));
+        assert_eq!(runtime.singleton_stderr("minigraf"), Some("listening"));
     }
 
     #[rstest::rstest]
     fn clear_singleton_removes_only_that_server() {
         // Given two singleton servers carrying runtime data.
         let mut runtime = McpRuntimeState::default();
-        runtime.set_singleton_status("graphs", McpConnectionStatus::Running);
+        runtime.set_singleton_status("minigraf", McpConnectionStatus::Running);
         runtime.set_singleton_status("other", McpConnectionStatus::Dead);
 
         // When clearing one singleton server.
-        runtime.clear_singleton("graphs");
+        runtime.clear_singleton("minigraf");
 
         // Then its projections are gone and the other server's remain.
-        assert_eq!(runtime.singleton_status("graphs"), None);
+        assert_eq!(runtime.singleton_status("minigraf"), None);
         assert_eq!(
             runtime.singleton_status("other"),
             Some(McpConnectionStatus::Dead)
@@ -278,9 +278,9 @@ mod tests {
         let mut runtime = McpRuntimeState::default();
 
         // When writing a singleton stderr tail.
-        runtime.set_singleton_stderr("graphs", "npm warn".to_owned());
+        runtime.set_singleton_stderr("minigraf", "npm warn".to_owned());
 
         // Then the tail reads back under the server name.
-        assert_eq!(runtime.singleton_stderr("graphs"), Some("npm warn"));
+        assert_eq!(runtime.singleton_stderr("minigraf"), Some("npm warn"));
     }
 }

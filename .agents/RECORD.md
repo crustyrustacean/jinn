@@ -479,6 +479,6 @@ Entries are added or amended **only with human approval**.
 - (config) An MCP server's config schema (`McpServerConfig`, `TransportKind`) lives in jinn-preferences-config's schemas, not in jinn-mcp-msg.
 - (mcp) A singleton MCP server's tools register globally, so every session whose enablement admits the server dispatches to the one shared process.
 - (mcp) A singleton MCP server survives session close, archive, and teardown, and stops only at app exit or an explicit restart.
-- (graphs) The bundled graphs MCP server persists graphs as one `.graph` file per named graph under the app data dir's graphs directory, and only `create_graph` creates one.
-- (graphs) Transact or query against an unknown graph name is refused with an error naming `create_graph` as the remedy.
-- (skills) jinn ships a bundled minigraf skill that teaches the graphs server's data model and Datalog surface, with deep-dive references beside `SKILL.md`.
+- (minigraf) The bundled minigraf MCP server persists graphs as one `.graph` file per named graph under the app data dir's minigraf directory, and only `create_graph` creates one.
+- (minigraf) Transact or query against an unknown graph name is refused with an error naming `create_graph` as the remedy.
+- (skills) jinn ships a bundled minigraf skill that teaches the minigraf server's data model and Datalog surface, with deep-dive references beside `SKILL.md`.

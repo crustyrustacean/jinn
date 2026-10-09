@@ -15,7 +15,7 @@
 
 use std::path::PathBuf;
 
-/// Repo root: this test lives at `crates/jinn-graphs/tests/`.
+/// Repo root: this test lives at `crates/jinn-minigraf/tests/`.
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
