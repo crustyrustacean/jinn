@@ -288,10 +288,13 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 # > find it (or use an absolute path).
 [mcp.minigraf]
 command = "./target/debug/jinn"
-args = ["mcp", "minigraf", "--port", "<port>", "--host", "<ip>"]
+# debug builds require --db-path (production-db guard), so the child gets
+# the same dev db path this config is run with.
+args = ["--db-path", "./sessions.db", "mcp", "minigraf", "--port", "<port>", "--host", "<ip>"]
 transport = "local_http"
 url = "http://127.0.0.1:<port>/mcp"
 singleton = true
+auto_enable = true
 
 # > Compaction command + auto compaction.
 [context_curation.compaction]

@@ -65,6 +65,28 @@ impl McpRuntimeState {
             .unwrap_or_default()
     }
 
+    /// Returns the status projection a session actually observes: its own
+    /// per-session statuses with every singleton overlaid.
+    ///
+    /// A singleton serves every session through one shared connection, so its
+    /// status is not owned by the session that spawned it — every session
+    /// sees the same value. Overlaying (rather than merging into one bucket)
+    /// keeps `statuses` a pure per-session projection for callers that need
+    /// exactly that.
+    #[must_use]
+    pub fn effective_statuses(
+        &self,
+        session_id: &SessionId,
+    ) -> BTreeMap<String, McpConnectionStatus> {
+        let mut merged = self.statuses(session_id);
+        for (server, state) in &self.singletons {
+            if let Some(status) = state.status.get(server) {
+                merged.insert(server.clone(), *status);
+            }
+        }
+        merged
+    }
+
     /// Replaces one server's captured stderr tail for a session.
     pub fn set_stderr(&mut self, session_id: &SessionId, server: &str, tail: String) {
         self.sessions
@@ -72,6 +94,24 @@ impl McpRuntimeState {
             .or_default()
             .stderr
             .insert(server.to_owned(), tail);
+    }
+
+    /// Returns the stderr projection a session actually observes: its own
+    /// per-session tails with every singleton overlaid. See
+    /// [`Self::effective_statuses`] for why singletons overlay.
+    #[must_use]
+    pub fn effective_stderr(&self, session_id: &SessionId) -> BTreeMap<String, String> {
+        let mut merged = self
+            .sessions
+            .get(session_id)
+            .map(|session| session.stderr.clone())
+            .unwrap_or_default();
+        for (server, state) in &self.singletons {
+            if let Some(tail) = state.stderr.get(server) {
+                merged.insert(server.clone(), tail.clone());
+            }
+        }
+        merged
     }
 
     /// Returns one server's captured stderr tail.
@@ -151,6 +191,12 @@ impl McpRuntimeState {
     pub fn clear_singleton(&mut self, server: &str) {
         self.singletons.remove(server);
     }
+
+    /// Returns whether the named server has a singleton runtime entry.
+    #[must_use]
+    pub fn is_singleton_tracked(&self, server: &str) -> bool {
+        self.singletons.contains_key(server)
+    }
 }
 
 /// Stable cell slot for the live MCP runtime projection.
@@ -176,6 +222,67 @@ mod tests {
         assert_eq!(
             runtime.status(&session_id, "weather"),
             Some(McpConnectionStatus::Running)
+        );
+    }
+
+    #[rstest::rstest]
+    fn effective_statuses_overlay_singletons_for_any_session() {
+        // Given a singleton Running and a per-session server Starting.
+        let mut runtime = McpRuntimeState::default();
+        runtime.set_singleton_status("minigraf", McpConnectionStatus::Running);
+        let session_id = SessionId::new();
+        runtime.set_status(&session_id, "weather", McpConnectionStatus::Starting);
+
+        // When reading the effective projection for that session...
+        let statuses = runtime.effective_statuses(&session_id);
+
+        // Then the singleton's status appears in it.
+        assert_eq!(
+            statuses.get("minigraf"),
+            Some(&McpConnectionStatus::Running)
+        );
+        // And the per-session status is preserved.
+        assert_eq!(
+            statuses.get("weather"),
+            Some(&McpConnectionStatus::Starting)
+        );
+    }
+
+    #[rstest::rstest]
+    fn effective_statuses_are_session_independent_for_singletons() {
+        // Given a singleton Running, spawned "under" session A.
+        let mut runtime = McpRuntimeState::default();
+        runtime.set_singleton_status("minigraf", McpConnectionStatus::Running);
+
+        // When reading the effective projection for an unrelated session.
+        let statuses = runtime.effective_statuses(&SessionId::new());
+
+        // Then the singleton's status resolves for it too.
+        assert_eq!(
+            statuses.get("minigraf"),
+            Some(&McpConnectionStatus::Running)
+        );
+    }
+
+    #[rstest::rstest]
+    fn effective_stderr_overlays_singletons() {
+        // Given a singleton stderr tail and a per-session one.
+        let mut runtime = McpRuntimeState::default();
+        runtime.set_singleton_stderr("minigraf", "singleton tail".to_owned());
+        let session_id = SessionId::new();
+        runtime.set_stderr(&session_id, "weather", "session tail".to_owned());
+
+        // When reading the effective stderr projection.
+        let stderr = runtime.effective_stderr(&session_id);
+
+        // Then both are present.
+        assert_eq!(
+            stderr.get("minigraf").map(String::as_str),
+            Some("singleton tail")
+        );
+        assert_eq!(
+            stderr.get("weather").map(String::as_str),
+            Some("session tail")
         );
     }
 
