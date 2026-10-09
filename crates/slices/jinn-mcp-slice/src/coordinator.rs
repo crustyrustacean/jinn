@@ -152,6 +152,10 @@ impl McpCoordinatorActor {
             // Restart-ask replies leave the handler through ctx.reply; the
             // flush gate drops any outbound type not declared here.
             .emits::<McpRestartOutcome>()
+            // The singleton visibility pass publishes per-session opt-outs
+            // when a reconcile finds a singleton absent from (or back in) a
+            // session's enabled set.
+            .emits::<jinn_tools_msg::ProviderVisibilityChanged>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block);
         // Test-only ask surface: `RestartForTest` carries the injectable
         // startup budget the production `RestartMcpServer` message has no
@@ -196,10 +200,26 @@ impl McpCoordinatorActor {
 
         // Singleton pass: spawn each configured singleton found in the
         // desired set, at most once per process. Absence from `desired`
-        // never kills — only an explicit restart does.
-        for name in singleton_names.iter().filter(|n| desired.contains(**n)) {
-            let _ = self
-                .spawn_singleton_if_absent(configs.as_slice(), name)
+        // never kills — only an explicit restart does. But absence changes
+        // what the session *sees*: the singleton registers globally, so a
+        // session that disabled it needs its view of that provider withheld
+        // (and a session that re-enabled it needs the view restored).
+        for name in singleton_names.iter() {
+            if desired.contains(*name) {
+                let _ = self
+                    .spawn_singleton_if_absent(configs.as_slice(), name)
+                    .await;
+            }
+            let provider = jinn_mcp::tool_mapping::provider_name(name);
+            let hidden = !desired.contains(*name);
+            self.deps
+                .services
+                .bus
+                .publish(jinn_tools_msg::ProviderVisibilityChanged {
+                    provider: provider.clone(),
+                    session_id: session_id.clone(),
+                    hidden,
+                })
                 .await;
         }
 

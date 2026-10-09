@@ -32,7 +32,8 @@ use jinn_mcp_msg::McpConnectionStatus;
 use jinn_session_msg::SessionClosed;
 use jinn_tools_msg::{CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools};
 use jinn_tools_msg::{
-    ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered, ToolsUnregistered,
+    ProviderVisibilityChanged, ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
+    ToolsUnregistered,
 };
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
@@ -238,6 +239,7 @@ impl ToolOrchestratorActor {
             .handles::<ToolExecutionCompleted>()
             .handles::<SessionClosed>()
             .handles::<ToolsUnregistered>()
+            .handles::<ProviderVisibilityChanged>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
     }
@@ -402,6 +404,32 @@ impl MsgHandler<ToolsUnregistered> for ToolOrchestratorActor {
     }
 }
 
+impl MsgHandler<ProviderVisibilityChanged> for ToolOrchestratorActor {
+    async fn handle(&mut self, msg: &ProviderVisibilityChanged, _ctx: &mut MsgCtx<'_>) {
+        // Given a session's view of a globally-registered provider changing
+        // (a singleton the session disabled or re-enabled).
+        // When recording the opt-out in the context-facing registry.
+        if let Some(cell) = self
+            .services
+            .slices
+            .reader::<jinn_tools_msg::ToolRegistry>(&jinn_tools_msg::tools_registry_slot())
+        {
+            cell.update(|registry| {
+                if msg.hidden {
+                    registry.deny_provider_for_session(&msg.session_id, &msg.provider);
+                } else {
+                    registry.admit_provider_for_session(&msg.session_id, &msg.provider);
+                }
+            });
+        }
+
+        // Then `tools_for_session` withholds (or restores) that provider's
+        // global tools for exactly this session. Dispatch needs no gate
+        // change: `mcp_rejection_reason` already refuses calls to a server
+        // the calling session has disabled.
+    }
+}
+
 impl BusPublish for ToolOrchestratorActor {
     fn bus(&self) -> &BusService {
         &self.deps.services.bus
@@ -511,6 +539,9 @@ impl ToolOrchestratorActor {
         {
             cell.update(|registry| {
                 registry.session.remove(session_id);
+                // A closed session's singleton opt-outs are meaningless —
+                // nothing with that id will assemble context again.
+                registry.clear_denials_for_session(session_id);
             });
         }
     }

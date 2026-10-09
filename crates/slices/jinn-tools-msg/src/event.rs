@@ -65,6 +65,27 @@ pub struct ToolsUnregistered {
     pub session_id: SessionId,
 }
 
+/// One session's view of a globally-registered provider changed.
+///
+/// A singleton MCP server registers its tools globally — one shared
+/// connection serves every session — so a session disabling it cannot
+/// remove the registration (other sessions still use it). The MCP
+/// coordinator emits this when a reconcile finds the singleton absent
+/// from (`hidden = true`) or present in (`hidden = false`) a session's
+/// enabled set. Tool registries withhold (or restore) that provider's
+/// global tools for exactly this session.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "A session's view of a globally-registered provider changed.")]
+pub struct ProviderVisibilityChanged {
+    /// The globally-registered provider (e.g. `mcp__minigraf`).
+    pub provider: String,
+    /// The session whose view changed.
+    pub session_id: SessionId,
+    /// `true` withholds the provider's global tools from this session;
+    /// `false` restores them.
+    pub hidden: bool,
+}
+
 /// A tool call has started in the LLM stream (name and ID known, arguments pending).
 ///
 /// Emitted by the LLM actor when the backend signals tool use start.
@@ -172,6 +193,8 @@ impl jinn_slices::BusMessage for ToolExecutionCompleted {}
 impl jinn_slices::BusMessage for ToolsRegistered {}
 
 impl jinn_slices::BusMessage for ToolsUnregistered {}
+
+impl jinn_slices::BusMessage for ProviderVisibilityChanged {}
 
 impl jinn_slices::BusMessage for ToolUseStarted {}
 

@@ -422,3 +422,78 @@ async fn restarting_a_singleton_respawns_it_by_name() {
          and later re-enables spawn nothing more; got {spawns}: {events:?}"
     );
 }
+
+#[rstest::rstest]
+#[tokio::test]
+async fn disabling_a_singleton_hides_its_provider_for_that_session() {
+    // Given a coordinator with one singleton, enabled by session A.
+    let harness = TestHarness::new().await;
+    let recorder = harness
+        .spawn_recorder::<jinn_tools_msg::ProviderVisibilityChanged>()
+        .await;
+    let (_actor, _services, _state) =
+        spawn_lifecycle(&harness, &[("minigraf", unrunnable_singleton())]).await;
+    let session_a = SessionId::new();
+    harness
+        .publish(jinn_mcp_msg::McpEnablementChanged {
+            session_id: session_a.clone(),
+            enabled: single_enabled("minigraf"),
+        })
+        .await;
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    // When session A reconciles with an empty enabled set (the picker
+    // commit after unchecking the server).
+    harness
+        .publish(jinn_mcp_msg::McpEnablementChanged {
+            session_id: session_a.clone(),
+            enabled: BTreeSet::new(),
+        })
+        .await;
+
+    // Then a visibility change hides the provider for session A.
+    let events = await_recorded(&recorder, 2, std::time::Duration::from_secs(2)).await;
+    assert!(
+        events
+            .iter()
+            .any(|e| e.session_id == session_a && e.provider == "mcp__minigraf__" && e.hidden),
+        "disabling a singleton must hide its provider for that session; got {events:?}"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn reenabling_a_singleton_restores_its_provider_visibility() {
+    // Given a coordinator whose singleton was hidden for session A.
+    let harness = TestHarness::new().await;
+    let recorder = harness
+        .spawn_recorder::<jinn_tools_msg::ProviderVisibilityChanged>()
+        .await;
+    let (_actor, _services, _state) =
+        spawn_lifecycle(&harness, &[("minigraf", unrunnable_singleton())]).await;
+    let session_a = SessionId::new();
+    harness
+        .publish(jinn_mcp_msg::McpEnablementChanged {
+            session_id: session_a.clone(),
+            enabled: BTreeSet::new(),
+        })
+        .await;
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    // When session A re-enables the singleton.
+    harness
+        .publish(jinn_mcp_msg::McpEnablementChanged {
+            session_id: session_a.clone(),
+            enabled: single_enabled("minigraf"),
+        })
+        .await;
+
+    // Then a visibility change restores the provider for session A.
+    let events = await_recorded(&recorder, 2, std::time::Duration::from_secs(2)).await;
+    assert!(
+        events
+            .iter()
+            .any(|e| e.session_id == session_a && e.provider == "mcp__minigraf__" && !e.hidden),
+        "re-enabling a singleton must restore its provider; got {events:?}"
+    );
+}
