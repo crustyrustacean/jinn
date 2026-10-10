@@ -490,3 +490,6 @@ Entries are added or amended **only with human approval**.
 - (tools) Minigraf transact and query tools carry no model-facing graph argument; dispatch injects the session's active graph and the session id, rejecting locally when no graph is active.
 - (minigraf) The minigraf server's storage backend trait is private in minigraf 2.0.3, so custom persistence (e.g. sessions-database-backed graphs) requires an upstream fork; the sanctioned alternative is all-facts snapshot export and replay.
 - (skills) The bundled minigraf skill teaches the template workflow: seed/rules split, instantiate and attach, and per-step instruction files referenced by pointer facts.
+
+- (workflows) Workflow definitions are authored by convention under the config dir's workflows folder: one directory per workflow holding a workflow.md flow description and per-step prompt files.
+- (skills) The bundled workflows skill teaches running workflows on the session task list: stamping steps as task entries, dispatching each step to a subagent as an orchestrator, and materializing loop iterations by adding task entries.
