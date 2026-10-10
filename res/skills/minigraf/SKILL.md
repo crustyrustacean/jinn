@@ -1,6 +1,6 @@
 ---
 name: minigraf
-description: Write and query durable graph state through the jinn minigraf MCP server (mcp__minigraf__* tools) — bi-temporal facts, Datalog transacts/queries, time travel. Use when creating or updating graphs, recording workflow or task state that must survive restarts, or asking what is still pending/true/history in a shared graph.
+description: Write and query durable graph state through the jinn minigraf MCP server (mcp__minigraf__* tools) — bi-temporal facts, Datalog transacts/queries, time travel, and reusable graph templates with replay-on-open rules. Use when creating or updating graphs, recording workflow or task state that must survive restarts, or asking what is still pending/true/history in a shared graph.
 ---
 
 # minigraf — the jinn minigraf server
@@ -9,24 +9,33 @@ You are writing durable, structured state to a shared bi-temporal graph through
 the `mcp__minigraf__*` tools. Every session of this jinn process shares the same
 graphs: what you write, other sessions and subagents can read.
 
-## The four tools
+## Your active graph
+
+You always have at most **one active graph**. Calls to `transact` and `query`
+take no graph argument — they hit your active graph. jinn binds it for you:
+instantiate, create, or attach once, then just transact and query. If a call
+comes back "no graph active", bind one first.
+
+## The six tools
 
 | Tool | Does |
 |---|---|
-| `mcp__minigraf__create_graph(name)` | Creates `<name>.graph`. **Fails if it exists** — the existing graph is untouched. Names: `a-z 0-9 _ -` only. |
-| `mcp__minigraf__transact(graph, datalog)` | One write command: `(transact ...)`, `(retract ...)`, or `(rule ...)`. Returns the tx id. |
-| `mcp__minigraf__query(graph, datalog)` | One `(query ...)`, including time travel. Rows come back as JSON. |
-| `mcp__minigraf__list_graphs()` | Graph names that exist. |
+| `mcp__minigraf__list_templates()` | Templates available for instantiation. |
+| `mcp__minigraf__instantiate_graph(template, name)` | Creates `<name>.graph` from a template's seed script and binds it as your active graph. **Fails if the name exists** — the existing file is untouched. |
+| `mcp__minigraf__create_graph(name)` | Same, but a blank graph (no template). |
+| `mcp__minigraf__attach_graph(name)` | Binds an **existing** graph as your active graph. |
+| `mcp__minigraf__transact(datalog)` | One write command against your active graph: `(transact ...)`, `(retract ...)`, or `(rule ...)`. Returns the tx id. |
+| `mcp__minigraf__query(datalog)` | One `(query ...)` against your active graph, including time travel. Rows come back as JSON. |
 
-`create_graph` before first use of a name; `transact`/`query` on an unknown
-name are refused with an error telling you to create it. There is no delete
-tool — graphs persist forever by design.
+Names: `a-z 0-9 _ -` only. There is no delete tool — graphs persist forever by
+design.
 
 ## The three rules that keep state correct
 
 **1. One value per (entity, attribute) per transact.** Two values for the same
-attribute written in one call can read back as one (minigraf #371, fixed in
-v3). Multi-valued attributes take one `transact` call per value:
+attribute written in one call can read back as one (minigraf #371). This bites
+template authors constantly — see the template section below. Multi-valued
+attributes take one `transact` call per value:
 
 ```
 (transact [[:order/42 :order/tag "urgent"]])     ← call 1
@@ -36,8 +45,9 @@ v3). Multi-valued attributes take one `transact` call per value:
 **2. Facts are small — pointers, not payloads.** A fact must stay well under
 4 KB. Store a file path or URL in the fact, not the file contents.
 
-**3. Create before use, never overwrite.** Only `create_graph` makes a graph,
-and it never replaces one. Nothing else you can do corrupts existing state.
+**3. Create before use, never overwrite.** Only `instantiate_graph` and
+`create_graph` make graphs, and neither replaces one. Nothing else you can do
+corrupts existing state.
 
 ## Minimal cycle
 
@@ -70,16 +80,50 @@ remain queryable in the past (see `references/datalog.md` for time travel).
 (transact [[:task/1 :task/status :done]])
 ```
 
-## After a server restart: rules are gone
+## Templates — repeatable workflows
 
-`(rule ...)` definitions live in memory only — a jinn restart (or
-`restart_mcp_server`) forgets them, and the facts are all still there.
-Re-register any rule your queries need before querying. Prefer writing the
-facts a question needs over leaning on rules.
+A template is a directory under the jinn config dir's `graphs/` folder holding
+a hand-editable `template.dl` script. `list_templates` lists what exists;
+`instantiate_graph` stamps out an instance per workflow run (or per session)
+so every run starts from the same shape.
+
+A template script has two kinds of forms:
+
+- **Seed forms** — `(transact ...)`/`(retract ...)`. Run **once**, when the
+  graph is instantiated. They never run again: re-running them would overwrite
+  timestamped facts and re-fire retracts.
+- **Rule forms** — wrapped in one top-level `(rules [...])`. Registered at
+  instantiate time **and re-applied automatically every time the graph is
+  opened fresh** (server restart, jinn restart). Facts live in the file; rules
+  live in memory — the replay is what makes a template's derived relations
+  survive restarts.
+
+```datalog
+;; seed: runs once at instantiate_graph
+(transact [[:step/1 :step/status :ready]])
+(rules [
+  (rule [(ready? ?s) [?s :step/status :ready]])
+])
+```
+
+You can author a template yourself: write the directory and `template.dl` with
+the `write` tool (each top-level form must be a `(transact ...)`,
+`(retract ...)`, or the single `(rules [...])` wrapper), then instantiate from
+it. If a template directory carries sibling files — commonly
+`steps/01-do-something.md` — they belong to the workflow: a step entity can
+point at its instructions with a fact like
+`[:step/1 :step/instructions "/path/to/template/steps/01-do-something.md"]`,
+and whoever executes the step reads that file. The server ignores everything
+but `template.dl`.
+
+**After a restart**: an instantiated graph's rules come back on their own (the
+server replays the template). Rules you registered by hand with a bare
+`(rule ...)` transact do **not** — they are gone; re-register them or move them
+into a template.
 
 ## Where to look next
 
 | File | Covers |
 |---|---|
-| `references/datalog.md` | Full command grammar, `:as-of`/`:valid-at` time travel, audit patterns, aggregate/`not` clauses, error codes |
-| `references/modeling.md` | Entity identity conventions, state machines, DAGs, naming, the all-facts export idiom |
+| `references/datalog.md` | Full command grammar, `(rules [...])` shape, `:as-of`/`:valid-at` time travel, audit patterns, aggregate/`not` clauses, error codes |
+| `references/modeling.md` | Entity identity conventions, state machines, DAGs, naming, template design, the all-facts export idiom |

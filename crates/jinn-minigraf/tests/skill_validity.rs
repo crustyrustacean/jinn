@@ -2,9 +2,12 @@
 //!
 //! Every ```datalog block in `res/skills/minigraf/**.md` is executed against
 //! a fresh in-memory minigraf, sequentially, in file order — a block that
-//! errors fails the suite. `SKILL.md` frontmatter must parse with jinn's own
-//! hand-rolled parser and carry only `name` + `description` (the parser
-//! admits nothing else, so extra keys would silently vanish).
+//! errors fails the suite. A `(rules [ ... ])` wrapper is split first and its
+//! inner `(rule ...)` forms are executed individually (that is the shape the
+//! server's template loader accepts, so the skill must teach it in runnable
+//! form). `SKILL.md` frontmatter must parse with jinn's own hand-rolled
+//! parser and carry only `name` + `description` (the parser admits nothing
+//! else, so extra keys would silently vanish).
 
 #![allow(
     clippy::expect_used,
@@ -102,6 +105,31 @@ fn top_level_forms(block: &str) -> Vec<String> {
     forms
 }
 
+/// Expands one top-level form into the commands to execute: a `(rules [...])`
+/// wrapper contributes each inner `(rule ...)` form on its own; anything else
+/// executes as-is.
+fn executable_forms(form: &str) -> Vec<String> {
+    let trimmed = form.trim();
+    if trimmed.starts_with("(rules") {
+        // Cut the wrapper body between the first `[` and the matching final
+        // `]`, then split it into `(rule ...)` forms.
+        let chars: Vec<char> = trimmed.chars().collect();
+        let (open, close) = match (
+            chars.iter().position(|c| *c == '['),
+            chars.iter().rposition(|c| *c == ']'),
+        ) {
+            (Some(o), Some(c)) if c > o => (o, c),
+            _ => return vec![trimmed.to_owned()],
+        };
+        let inner: String = chars
+            .get(open + 1..close)
+            .map(|slice| slice.iter().collect())
+            .unwrap_or_default();
+        return top_level_forms(&inner).into_iter().collect();
+    }
+    vec![trimmed.to_owned()]
+}
+
 #[rstest::rstest]
 #[test]
 fn skill_ships_at_least_one_markdown_file() {
@@ -136,14 +164,19 @@ fn every_datalog_example_in_the_skill_executes() {
 
         // When executing each block top-to-bottom against one fresh
         // in-memory minigraf (blocks within a file build on each other;
-        // each file starts clean).
+        // each file starts clean). A `(rules [...])` wrapper is split and its
+        // inner `(rule ...)` forms run individually — the same shape the
+        // template loader replays.
         let db = minigraf::Minigraf::in_memory().expect("in-memory db");
         for block in &blocks {
             for form in top_level_forms(block) {
                 checked += 1;
                 // Then the command is accepted.
-                db.execute(&form)
-                    .unwrap_or_else(|e| panic!("{} failed: {e}\nform: {form}", file.display()));
+                for executable in executable_forms(&form) {
+                    db.execute(&executable).unwrap_or_else(|e| {
+                        panic!("{} failed: {e}\nform: {executable}", file.display())
+                    });
+                }
             }
         }
     }

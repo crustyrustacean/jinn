@@ -54,8 +54,9 @@ because it makes "everything in state X" a single pattern.
 
 ## DAGs and trees
 
-Edges are facts; traversal is a recursive rule. Remember rules are
-memory-only — register at the start of a session that needs them.
+Edges are facts; traversal is a recursive rule. Inside a template the rules
+live in the `(rules [...])` wrapper so they come back on every reopen; a bare
+`(rule ...)` transact is memory-only and dies with the process.
 
 ```datalog
 (transact [[:step/a :edge/to :step/b]
@@ -63,11 +64,10 @@ memory-only — register at the start of a session that needs them.
 ```
 
 ```datalog
-(rule [(reach ?x ?y) [?x :edge/to ?y]])
-```
-
-```datalog
-(rule [(reach ?x ?y) [?x :edge/to ?m] (reach ?m ?y)])
+(rules [
+  (rule [(reach ?x ?y) [?x :edge/to ?y]])
+  (rule [(reach ?x ?y) [?x :edge/to ?m] (reach ?m ?y)])
+])
 ```
 
 ```datalog
@@ -76,6 +76,40 @@ memory-only — register at the start of a session that needs them.
 
 Cycles are safe (the rule engine memoizes), but model what is actually a DAG
 as one — add a `:depth` or `:rank` fact when order matters.
+
+## Designing a template
+
+A template is one directory under the config dir's `graphs/` folder:
+
+```
+~/.config/jinn/graphs/stoplight/
+├── template.dl          ← the script the server reads
+└── steps/               ← workflow assets; the server ignores these
+    ├── 01-check-light.md
+    └── 02-advance.md
+```
+
+`template.dl` rules of the road:
+
+- Top-level forms are `(transact ...)`, `(retract ...)`, or exactly one
+  `(rules [...])` wrapper. Anything else is refused at instantiate time.
+- Seeds run **once** — never put anything in a seed whose re-execution you
+  could not tolerate, because it will not re-execute at all. Timestamps and
+  retracts belong in seeds precisely because they run once.
+- Rules in the wrapper replay on **every fresh open** — keep them pure
+  derivations. A rule that transacted would re-run that write on every open.
+- Remember #371: one value per (entity, attribute) per seed `transact`. Two
+  seed lines writing the same attribute of one entity in one call can lose a
+  value silently.
+
+Point steps at their instructions so an executor never needs to guess:
+
+```datalog
+(transact [[:step/1 :step/instructions "/home/me/.config/jinn/graphs/stoplight/steps/01-check-light.md"]])
+```
+
+The instruction file is plain markdown for whoever executes the step; the
+graph carries only the pointer.
 
 ## Recording without blocking
 
@@ -94,4 +128,4 @@ There is no export tool. The all-facts read is:
 
 Add `:as-of <counter>` for a point-in-time snapshot. This is the basis for
 copying a graph's data (write it into a fresh graph with new `transact`
-calls).
+calls). Rules do not ride along — a copy gets its rules from its template.

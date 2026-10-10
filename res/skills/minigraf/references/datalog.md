@@ -1,19 +1,33 @@
 # Datalog reference — the minigraf server's full surface
 
 Everything here executes through `mcp__minigraf__transact` and
-`mcp__minigraf__query` with `graph` set to an existing graph name. Each code
-block is one call.
+`mcp__minigraf__query` against your active graph. Each code block is one call.
 
 ## Commands
 
 - `(transact [[:e :a v] ...])` — assert facts. Returns a tx id (unix millis).
 - `(retract [[:e :a v]])` — remove a fact. The removal itself is history.
 - `(rule [(name ?a ?b) body...])` — register a named derived relation.
-  **Memory-only**: gone after a server restart; re-register before use.
+  **Memory-only**: gone after a server restart unless the graph's template
+  carries it in its `(rules [...])` wrapper — templates replay on open.
 - `(query [:find ?vars... :where patterns...])` — read rows.
 
-One command per call. The `graph` argument picks which `.graph` file the
-command runs against.
+One command per call.
+
+## The (rules [...]) wrapper
+
+Templates separate seed from rules with one top-level wrapper form. Its
+contents are `(rule ...)` forms, each registered on its own:
+
+```datalog
+(rules [
+  (rule [(ready? ?s) [?s :step/status :ready]])
+])
+```
+
+Inside the wrapper, one rule per line is the readable shape. A bare `(rule
+...)` transact outside a template works too — it just will not survive a
+restart unless a template replays it.
 
 ## Facts
 
@@ -109,8 +123,9 @@ fact's life, query it with `:valid-at :any-valid-time` at successive
 | `STG-025` | Already open in this process | Internal guard; report it if you see it |
 | size errors | Fact over ~4 KB | Store a path/URL, not the payload |
 
-Tool errors render as `[CODE] message`. `transact`/`query` on an unknown
-graph refuse with "create it with create_graph first".
+Tool errors render as `[CODE] message`. A transact or query with no active
+graph is refused before reaching the server — instantiate, create, or attach
+first.
 
 ## Multi-valued attributes — the #371 workaround
 
