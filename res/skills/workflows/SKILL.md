@@ -104,7 +104,13 @@ whole point of gating the write. For users without it, approving is one word,
 and the preview stays in the transcript: a week later, "wait, can it do
 captions?" has the answer sitting above.
 
-### 4. Write
+**Every judgment call surfaces here or never.** Choice-shaped facts —
+platform limits, defaults picked, an instruction baked into a step, an
+extra you considered — appear *in the preview*, where they can still change
+the thing. After approval there is nothing left to choose; announcing them
+after the write is too late and is banned (see the anti-patterns).
+
+### 4. Write — and stop
 
 After approval — and only after — create the directory with the `write`
 tool:
@@ -118,13 +124,22 @@ tool:
     └── ...
 ```
 
+**The gate is the conversation's last stop.** The sequence is: preview →
+user approves → write → one closing sentence naming what was created →
+done. No follow-up menu. Not "want me to run it?", not "want me to tweak
+anything?", not "choices you may want to adjust" — those are choices, and
+choices were stage 3's job. Running the workflow is a separate decision the
+user makes (or doesn't) in their own next message, and the workflow's own
+inline scope step collects its run-time inputs. When the writes land, the
+task is over; end the turn.
+
 ### Pre-approval
 
 "Just make it," "don't ask," "I don't care" — the user has pre-approved.
 Collapse stages 2 and 3: build with your best defaults, write, and report
-what you made (flow, parameters, defaults chosen) so they can correct it
-later. Silence after your question round is *not* pre-approval; only an
-explicit statement is.
+what you made (flow, parameters, defaults chosen) in the closing summary —
+then stop, same as any approval path. Silence after your question round is
+*not* pre-approval; only an explicit statement is.
 
 ### The format
 

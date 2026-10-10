@@ -109,19 +109,32 @@ The preview is a chat message, not a file. Shape:
 > Steps: 01-scope, 02-install-engine, 03-write-script, 04-generate-audio,
 > 05-report.
 >
+> Judgment calls baked in: durations reported by ffprobe; one voice
+> throughout; audio saved as `voiceover.wav` next to the video.
+>
 > Approve, or tell me what to change.
 
 Defaults appear as named parameters so an approval covers them explicitly —
 the user who does not care has still seen, in one glance, what they are
-agreeing to, and can correct any single line by replying.
+agreeing to, and can correct any single line by replying. The **judgment
+calls** line is mandatory whenever the flow bakes in a choice-shaped fact a
+domain-aware user might override (limits, file conventions, a style
+instruction inside a step): it surfaces here or it does not surface at all.
 
-### After the write
+### After approval
 
-Edits are cheap by design: adding a step is a new step file plus a flow
+The authoring session ends one sentence after the writes land: what was
+created, full stop. The gate was the last conversation stop — no "want me
+to run it?", no "tweaks you may want", no menu of adjustments. Choices
+belong to the preview, where they can still change the workflow; after
+approval they are announcements of the already-chosen, and the user's next
+message decides whatever comes next (run it, edit a step, nothing).
+
+Edits stay cheap by design: adding a step is a new step file plus a flow
 line; changing a default is editing one parameter line. Post-run "can it
 also…" requests are edits to the existing workflow, not re-authoring — and
-the preview in the transcript is the record of what was offered and declined,
-so nothing needs re-asking.
+the preview in the transcript is the record of what was offered and
+declined, so nothing needs re-asking.
 
 ## `workflow.md`
 
@@ -324,3 +337,12 @@ task list, and returns only its final message.
   (an SEO pass, caption timestamps) without offering it. The user does not
   know what they do not know; the extras menu exists so that not knowing
   costs nothing.
+- **The trailing menu.** "Want me to run it?", "tweaks you may want to
+  adjust", a bulleted list of choices after the writes landed. Every such
+  choice belonged in the preview, where it could still change the thing;
+  surfacing it after completion is too late by construction and reopens a
+  conversation that approval closed. End one sentence after the write.
+- **Post-hoc disclosure.** "Heads up, I also decided X" in the completion
+  message. A decision made during authoring was either previewed (then it
+  is not news) or it was not (then it was made outside the gate). Disclose
+  at the gate or do not decide.
