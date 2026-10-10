@@ -1428,8 +1428,14 @@ mod tests {
             .count();
 
         // Then every entry carries exactly one attribution pair.
-        assert_eq!(source_comments, entries, "each entry needs a source comment");
-        assert_eq!(license_comments, entries, "each entry needs a license comment");
+        assert_eq!(
+            source_comments, entries,
+            "each entry needs a source comment"
+        );
+        assert_eq!(
+            license_comments, entries,
+            "each entry needs a license comment"
+        );
     }
 
     #[rstest::rstest]

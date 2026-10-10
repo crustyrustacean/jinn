@@ -201,7 +201,9 @@ impl StreamRulesSeedOutcome {
 ///
 /// Returns [`Report<InitDefaultConfigError>`] if directory creation or
 /// file writing fails.
-pub fn init_stream_rules_for_install<P>(path: P) -> Result<StreamRulesSeedOutcome, Report<InitDefaultConfigError>>
+pub fn init_stream_rules_for_install<P>(
+    path: P,
+) -> Result<StreamRulesSeedOutcome, Report<InitDefaultConfigError>>
 where
     P: AsRef<Path>,
 {

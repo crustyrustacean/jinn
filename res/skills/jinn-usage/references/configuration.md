@@ -167,7 +167,9 @@ body = 'Force-pushing main rewrites published history — open a PR instead.'
 A match interrupts the response as the arguments stream, so the call is never
 dispatched and the command never runs. `body` comes back as guidance and the
 agent sees the abandoned call, explained, in the resumed request. It works for
-any tool you name a scope for — not bash alone.
+any tool you name a scope for — not bash alone. `jinn.toml` rules append after
+the base set (see **Stream rules** below for the shipped file and its
+replace/append semantics).
 
 > The older `[[tools.bash_command_policy]]` section is read at load time and
 > converted to exactly this form, carrying its pattern and message across, so
@@ -175,17 +177,49 @@ any tool you name a scope for — not bash alone.
 > rule scoped with `project`. A file still carrying the old `on_trigger` key is
 > read fine — the key is ignored and the rule interrupts as normal.
 
-A fresh install ships five tool-scoped rules: the combined ripgrep-flag guard,
-plus four guards against unbounded whole-filesystem searches — a bare-root
-`find`, a bare-home `find`, and the recursive-listing equivalents for `/` and
-`~`. The listing guards additionally pin the *recursive* flag: `-R` in
-any combined cluster (`-lR`, `-1R`, `-Rt`) or `--recursive`, never lowercase
-`-r`, which is `--reverse` and only flips sort order. Both tolerate other
-flags and a leading `cd <dir> &&` chain, and still catch the root walk when it
-is dressed up. Bounded forms keep working: a `find` under a real directory,
-and a recursive listing of a bounded path, are all allowed, because the guard
-is about the *path*, not the flag cluster. Delete or edit the entries in your
-`jinn.toml` if a project legitimately needs one.
+A fresh install ships a whole set of command guards in an embedded
+`stream_rules.toml` (compiled into the binary). That file is the base rule set:
+filesystem destruction (`rm` aimed at a root, home, variable, or glob; `mkfs`,
+`dd if=`, `shred`, `truncate -s`, `wipefs`, `fdisk`/`diskutil` on a device,
+redirects into root-owned paths), destructive git (force-push, `clean -f`,
+reflog expire, `gc --prune`, history rewrite, stash drop), publishing and cloud
+destruction (`npm publish`/`unpublish`, `gh repo delete`, `gcloud`/`aws`/
+`terraform destroy`/`pulumi`/`kubectl` broad deletes, Heroku/Vercel/fly
+destroys, docker volume removal and `compose down -v`), database wipes (`DROP
+DATABASE/TABLE`, `TRUNCATE`, `DELETE FROM` with no `WHERE`, `FLUSHALL`/
+`FLUSHDB`, `dropdb`/`dropuser`), machine state (`shutdown`, `reboot`, crontab
+replacement), credential and privacy reads (macOS keychain reads/dumps, shell
+history files), machine-hangers (interactive editors, pagers, `tail -f`,
+`gdb`, which would block the tool call until timeout), and pipe-to-shell.
+
+The curation stance: the guards exist for commands an agent emits **by
+accident** while doing ordinary work, where running it once destroys data,
+leaks private material, or hangs the machine. Deliberate-but-destructive
+operations a competent agent runs legitimately on a normal week — `git reset
+--hard`, `git branch -D`, `chmod -R`, `docker system prune`, `make`, a plain
+`rm -rf` of a named build directory — are deliberately absent, because
+interrupting them weekly would make jinn useless out of the box.
+
+`jinn install` and `jinn config init` each write that file, once, as
+**`stream_rules.toml` beside `jinn.toml`**, so you can own it:
+
+- An existing `stream_rules.toml` **replaces the embedded set wholesale**.
+  An empty file therefore disarms every shipped guard — that is the intended
+  off switch. `jinn install` never modifies an existing one (even with
+  `--force`); `jinn config init --force` overwrites it with the current
+  shipped set, which is the supported path for pulling in updated guards.
+- A malformed user file warns and falls back to the embedded set, so a typo
+  never leaves jinn unguarded.
+- `[[stream_rules.entry]]` rules in `jinn.toml` are **appended after** the
+  base set, so your own rules layer on top of whichever base won.
+
+The shipped entries also carry `positive` and `negative` fixture lists (bare
+command strings that must / must not trip the declaring rule) and a
+source/license comment each — jinn ignores those fields at runtime; they drive
+the test suite. Each entry names its upstream source: the shipped defaults
+this file grew out of, dylancaponi/claude-code-permissions,
+openai/codex (Apache-2.0), SWE-agent/SWE-agent (MIT), and the command-line
+folklore canon.
 
 **MCP servers** — see `mcp-servers.md` for the full transport matrix:
 

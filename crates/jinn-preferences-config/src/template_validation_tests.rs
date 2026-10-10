@@ -36,8 +36,7 @@ use jinn_common::template_check::collect_toml_key_paths;
 use crate::config_template::{DEFAULT_CONFIG, STREAM_RULES_TEMPLATE};
 use crate::registration::register_all_sections;
 use crate::schemas::{
-    DiscordConfig, McpServersConfig, StreamRuleConfig, StreamRuleFileEntry,
-    parse_stream_rules_file,
+    DiscordConfig, McpServersConfig, StreamRuleConfig, StreamRuleFileEntry, parse_stream_rules_file,
 };
 
 /// The template with every `(uncomment below to activate)` region expanded.

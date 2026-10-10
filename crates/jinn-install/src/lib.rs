@@ -718,7 +718,10 @@ mod tests {
         );
         // And the file is byte-identical — the proof nothing read or
         // rewrote it.
-        assert_eq!(std::fs::read_to_string(&rules_path).expect("read"), original);
+        assert_eq!(
+            std::fs::read_to_string(&rules_path).expect("read"),
+            original
+        );
     }
 
     #[rstest::rstest]

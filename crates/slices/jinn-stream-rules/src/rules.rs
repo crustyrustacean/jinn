@@ -25,12 +25,12 @@
 
 use std::path::Path;
 
+use jinn_config::ConfigLayer;
 use jinn_preferences_config::schemas::{
     LegacyCommandPolicyRule, LegacyProjectConfig, StreamRuleConfig, StreamRuleFileEntry,
     parse_stream_rules_file,
 };
 use jinn_preferences_config::{STREAM_RULES_FILE_NAME, STREAM_RULES_TEMPLATE};
-use jinn_config::ConfigLayer;
 
 /// Reads the configured stream rules for a run.
 ///
@@ -51,7 +51,11 @@ pub fn read_rules(config: &ConfigLayer, preferences_path: &Path) -> Vec<StreamRu
         match std::fs::read_to_string(&user_file) {
             Ok(text) => match parse_stream_rules_file(&text) {
                 Ok(file) => {
-                    rules = file.entries().iter().map(StreamRuleFileEntry::live_rule).collect();
+                    rules = file
+                        .entries()
+                        .iter()
+                        .map(StreamRuleFileEntry::live_rule)
+                        .collect();
                     tracing::debug!(
                         path = %user_file.display(),
                         rules = rules.len(),
@@ -89,7 +93,11 @@ pub fn read_rules(config: &ConfigLayer, preferences_path: &Path) -> Vec<StreamRu
 /// the launch".
 fn embedded_rules() -> Vec<StreamRuleConfig> {
     match parse_stream_rules_file(STREAM_RULES_TEMPLATE) {
-        Ok(file) => file.entries().iter().map(StreamRuleFileEntry::live_rule).collect(),
+        Ok(file) => file
+            .entries()
+            .iter()
+            .map(StreamRuleFileEntry::live_rule)
+            .collect(),
         Err(error) => {
             tracing::error!(
                 error = %error,
@@ -206,7 +214,7 @@ mod tests {
         jinn_config::testutil::config_layer(doc)
     }
 
-/// A `jinn.toml` path in a temp dir with no sibling rules file, for the
+    /// A `jinn.toml` path in a temp dir with no sibling rules file, for the
     /// pre-existing tests that only exercise the jinn.toml half of the read.
     fn temp_prefs() -> std::path::PathBuf {
         let dir = tempfile::tempdir().expect("temp dir");
@@ -236,7 +244,10 @@ mod tests {
 
     /// The names of the rules a read assembles, in order.
     fn assembled_names(config: &ConfigLayer, prefs: &std::path::Path) -> Vec<String> {
-        read_rules(config, prefs).into_iter().map(|r| r.name).collect()
+        read_rules(config, prefs)
+            .into_iter()
+            .map(|r| r.name)
+            .collect()
     }
 
     #[rstest::rstest]
@@ -299,7 +310,10 @@ mod tests {
 
         // Then the assembly is empty: an existing file owns the base set,
         // and empty means the user disarmed it.
-        assert!(names.is_empty(), "an empty user file disarms, got: {names:?}");
+        assert!(
+            names.is_empty(),
+            "an empty user file disarms, got: {names:?}"
+        );
     }
 
     #[rstest::rstest]
@@ -380,7 +394,10 @@ mod tests {
         let names = assembled_names(&config, &prefs);
 
         // Then the order is user file first, jinn.toml second, embedded gone.
-        assert_eq!(names, vec!["user-base".to_owned(), "from-jinn-toml".to_owned()]);
+        assert_eq!(
+            names,
+            vec!["user-base".to_owned(), "from-jinn-toml".to_owned()]
+        );
     }
 
     #[rstest::rstest]
@@ -428,7 +445,10 @@ mod tests {
         let set = CompiledSet::build(&read_rules(&config, &temp_prefs()));
         let mut session = set.new_session(&jinn_core_types::SessionId::new());
         let fired = session
-            .check(r#"{"command":"LEGACY-MARKER-CMD now"}"#, StreamContext::tool(0, "bash"))
+            .check(
+                r#"{"command":"LEGACY-MARKER-CMD now"}"#,
+                StreamContext::tool(0, "bash"),
+            )
             .map(|hit| hit.name.clone());
 
         // Then it fires, which is what stops the call from running.
@@ -534,7 +554,10 @@ mod tests {
         let set = CompiledSet::build(&read_rules(&config, &temp_prefs()));
         let mut session = set.new_session(&jinn_core_types::SessionId::new());
         let fired = session
-            .check(r#"{"command":"LEGACY-TRIGGER-CMD"}"#, StreamContext::tool(0, "bash"))
+            .check(
+                r#"{"command":"LEGACY-TRIGGER-CMD"}"#,
+                StreamContext::tool(0, "bash"),
+            )
             .map(|hit| hit.name.clone());
 
         // Then it fires as a plain interrupt: the key is simply unknown now,
@@ -589,7 +612,10 @@ mod tests {
         let global = {
             let mut session = set.new_session(&jinn_core_types::SessionId::new());
             session
-                .check(r#"{"command":"GLOBAL-MARKER-CMD"}"#, StreamContext::tool(0, "bash"))
+                .check(
+                    r#"{"command":"GLOBAL-MARKER-CMD"}"#,
+                    StreamContext::tool(0, "bash"),
+                )
                 .map(|hit| hit.name.clone())
         };
         let scoped = {
@@ -612,14 +638,18 @@ mod tests {
     #[test]
     fn a_project_rule_merged_with_a_global_rule_is_silent_outside_its_project() {
         // Given the same two rules, resolved for a project that is not myapp.
-        let set = crate::matcher::CompiledSet::build(&read_rules(&mixed_project_config(), &temp_prefs()))
-            .for_project(std::path::Path::new("/home/dev/code/other"));
+        let set =
+            crate::matcher::CompiledSet::build(&read_rules(&mixed_project_config(), &temp_prefs()))
+                .for_project(std::path::Path::new("/home/dev/code/other"));
 
         // When the global rule's command's arguments stream there.
         let global = {
             let mut session = set.new_session(&jinn_core_types::SessionId::new());
             session
-                .check(r#"{"command":"GLOBAL-MARKER-CMD"}"#, StreamContext::tool(0, "bash"))
+                .check(
+                    r#"{"command":"GLOBAL-MARKER-CMD"}"#,
+                    StreamContext::tool(0, "bash"),
+                )
                 .map(|hit| hit.name.clone())
         };
 
