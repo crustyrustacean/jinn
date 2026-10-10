@@ -1272,4 +1272,192 @@ mod tests {
         // Then the rule applies over-broad rather than being disarmed.
         assert!(!set.is_empty());
     }
+
+    /// Builds the production rule list from the shipped template: the
+    /// embedded file parsed through the superset schema, fixtures stripped,
+    /// exactly as `read_rules` assembles it when no user file exists.
+    fn shipped_set() -> CompiledSet {
+        let file = jinn_preferences_config::schemas::parse_stream_rules_file(
+            jinn_preferences_config::STREAM_RULES_TEMPLATE,
+        )
+        .expect("the embedded template parses; the template tests pin this");
+        let configs: Vec<StreamRuleConfig> = file
+            .entries()
+            .iter()
+            .map(jinn_preferences_config::schemas::StreamRuleFileEntry::live_rule)
+            .collect();
+        CompiledSet::build(&configs)
+    }
+
+    /// The name of the rule that fires when `command` streams into one
+    /// `tool:bash` call, through the production matcher.
+    fn fired_for(set: &CompiledSet, command: &str) -> Option<String> {
+        let mut session = set.new_session(&SessionId::new());
+        session
+            .check(
+                &format!(r#"{{"command":{}}}"#, serde_json_string(command)),
+                StreamContext::tool(0, "bash"),
+            )
+            .map(|hit| hit.name.clone())
+    }
+
+    /// The JSON string literal for `raw`, so a fixture's quotes and
+    /// backslashes ride the buffer the way a real tool call serializes them.
+    fn serde_json_string(raw: &str) -> String {
+        let mut out = String::with_capacity(raw.len() + 2);
+        out.push('"');
+        for ch in raw.chars() {
+            match ch {
+                '"' => out.push_str("\\\""),
+                '\\' => out.push_str("\\\\"),
+                other => out.push(other),
+            }
+        }
+        out.push('"');
+        out
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn every_shipped_positive_fixture_fires_its_own_rule() {
+        // Given the shipped set and its embedded fixtures.
+        let file = jinn_preferences_config::schemas::parse_stream_rules_file(
+            jinn_preferences_config::STREAM_RULES_TEMPLATE,
+        )
+        .expect("the embedded template parses");
+        let set = shipped_set();
+
+        // When every positive command of every entry streams through the
+        // production matcher.
+        let mut failures = Vec::new();
+        for entry in file.entries() {
+            for positive in &entry.positive {
+                if let Some(rule_name) = fired_for(&set, positive)
+                    && rule_name != entry.name
+                {
+                    failures.push(format!(
+                        "{positive:?} fired {rule_name} instead of {}",
+                        entry.name
+                    ));
+                }
+            }
+        }
+
+        // Then each positive fired, and it fired the rule that declared it —
+        // an earlier rule shadowing a later one is exactly the kind of
+        // ordering bug this file's fixtures exist to catch.
+        assert!(
+            failures.is_empty(),
+            "positive fixtures that failed ({}):\n  {}",
+            failures.len(),
+            failures.join("\n  ")
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn no_shipped_negative_fixture_fires_any_rule() {
+        // Given the shipped set and its embedded fixtures.
+        let file = jinn_preferences_config::schemas::parse_stream_rules_file(
+            jinn_preferences_config::STREAM_RULES_TEMPLATE,
+        )
+        .expect("the embedded template parses");
+        let set = shipped_set();
+
+        // When every negative command of every entry streams through the
+        // production matcher.
+        let mut failures = Vec::new();
+        for entry in file.entries() {
+            for negative in &entry.negative {
+                if let Some(rule_name) = fired_for(&set, negative) {
+                    failures.push(format!("{negative:?} fired {rule_name}"));
+                }
+            }
+        }
+
+        // Then none of them tripped anything: a negative that fires means a
+        // shipped rule interrupts ordinary work.
+        assert!(
+            failures.is_empty(),
+            "negative fixtures that fired ({}):\n  {}",
+            failures.len(),
+            failures.join("\n  ")
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn every_shipped_entry_carries_fixtures_of_both_kinds() {
+        // Given the shipped template parsed through the superset schema.
+        let file = jinn_preferences_config::schemas::parse_stream_rules_file(
+            jinn_preferences_config::STREAM_RULES_TEMPLATE,
+        )
+        .expect("the embedded template parses");
+
+        // When each entry's fixture lists are consulted.
+        let missing: Vec<&str> = file
+            .entries()
+            .iter()
+            .filter(|e| e.positive.is_empty() || e.negative.is_empty())
+            .map(|e| e.name.as_str())
+            .collect();
+
+        // Then every entry carries at least one of each — the completeness
+        // invariant is structural, not a pinned count, so the set can grow.
+        assert!(
+            missing.is_empty(),
+            "entries missing positive or negative fixtures: {missing:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn every_shipped_entry_names_its_source_and_license_in_comments() {
+        // Given the raw template text and its parsed entry count.
+        let raw = jinn_preferences_config::STREAM_RULES_TEMPLATE;
+        let file = jinn_preferences_config::schemas::parse_stream_rules_file(raw)
+            .expect("the embedded template parses");
+        let entries = file.entries().len();
+        let source_comments = raw
+            .lines()
+            .filter(|line| line.trim_start().starts_with("# source:"))
+            .count();
+        let license_comments = raw
+            .lines()
+            .filter(|line| line.trim_start().starts_with("# license:"))
+            .count();
+
+        // Then every entry carries exactly one attribution pair.
+        assert_eq!(
+            source_comments, entries,
+            "each entry needs a source comment"
+        );
+        assert_eq!(
+            license_comments, entries,
+            "each entry needs a license comment"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn shipped_rules_survive_a_streamed_in_pieces_arrival() {
+        // Given the shipped set and one of its positive commands.
+        let set = shipped_set();
+        let command = "rm -rf /";
+        let delta = format!(r#"{{"command":{}}}"#, serde_json_string(command));
+
+        // When the same buffer arrives one character at a time.
+        let mut session = set.new_session(&SessionId::new());
+        let fired = delta
+            .chars()
+            .find_map(|ch| {
+                session
+                    .check(&ch.to_string(), StreamContext::tool(0, "bash"))
+                    .map(|hit| hit.name)
+            })
+            .expect("the piecemeal command must fire once the buffer is complete");
+
+        // Then the declaring rule fires, however the arguments were delivered.
+        assert_eq!(fired, "no-unbounded-recursive-rm");
+    }
 }
