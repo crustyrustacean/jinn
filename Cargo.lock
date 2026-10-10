@@ -2344,14 +2344,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jinn-command-guard"
-version = "0.1.0"
-dependencies = [
- "regex",
- "rstest",
-]
-
-[[package]]
 name = "jinn-common"
 version = "1.5.0"
 dependencies = [

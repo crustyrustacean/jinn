@@ -1498,12 +1498,7 @@ impl ChatSessionState {
         let carriers = self.entries_hosting_retained_calls(&answered);
         indices.retain(|index| {
             let entry = self.core.history_work.history.get(*index);
-            match entry {
-                Some(entry) if answered.contains(&entry.id) || carriers.contains(&entry.id) => {
-                    false
-                }
-                _ => true,
-            }
+            !entry.is_some_and(|entry| answered.contains(&entry.id) || carriers.contains(&entry.id))
         });
         let excluded = self.edit_history().force_exclude_at_indices(&indices);
         if !excluded.is_empty() {

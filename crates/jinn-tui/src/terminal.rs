@@ -11,7 +11,7 @@ use crossterm::event::{
     KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
 use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture},
+    event::{DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -66,6 +66,7 @@ impl Drop for TerminalGuard<'_> {
         let _ = enable_raw_mode();
         let _ = execute!(self.terminal.backend_mut(), EnterAlternateScreen);
         let _ = enable_keyboard_enhancement(self.terminal.backend_mut());
+        let _ = enable_bracketed_paste(self.terminal.backend_mut());
         let _ = execute!(self.terminal.backend_mut(), EnableMouseCapture);
         let _ = self.terminal.hide_cursor();
         let _ = self.terminal.clear();
@@ -165,6 +166,29 @@ where
     Ok(())
 }
 
+/// Re-enables bracketed paste after a terminal suspension, restoring the
+/// mode [`crate::run`] sets at startup.
+///
+/// A terminal suspension exits raw mode, and most terminals reset DECSET
+/// modes when raw mode ends — so after the guard tears down, paste bytes
+/// arrive as individual key events instead of one `Event::Paste`. Re-enabling
+/// here keeps multi-line pastes intact across an external-editor session.
+///
+/// Emitted unconditionally on every platform, mirroring the startup and
+/// teardown sequence in [`crate::run`]: crossterm routes the command through
+/// the ANSI writer or the Windows console API on its own, so unlike the
+/// kitty keyboard flags this command needs no cfg split.
+///
+/// # Errors
+///
+/// Returns an error if writing the sequence to the terminal fails.
+pub(crate) fn enable_bracketed_paste<W>(writer: &mut W) -> io::Result<()>
+where
+    W: io::Write,
+{
+    execute!(writer, EnableBracketedPaste)
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -218,6 +242,19 @@ mod tests {
         // Then the kitty pop sequence is written.
         assert!(result.is_ok());
         assert_eq!(writer.bytes, b"\x1b[<1u");
+    }
+
+    #[rstest::rstest]
+    fn enable_bracketed_paste_writes_paste_enable_sequence() {
+        // Given a recording writer.
+        let mut writer = RecordingWriter::default();
+
+        // When enabling bracketed paste.
+        let result = enable_bracketed_paste(&mut writer);
+
+        // Then the DECSET sequence that turns bracketed paste on is written.
+        assert!(result.is_ok());
+        assert_eq!(writer.bytes, b"\x1b[?2004h");
     }
 
     #[cfg(windows)]

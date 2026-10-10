@@ -373,8 +373,8 @@ pub fn activate_work_time(services: &mut jinn_kernel::Services) {
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
         &mut services.viewport,
-        &mut services.overlay_views,
-        &mut services.key_routes,
+        &services.overlay_views,
+        &services.key_routes,
         &services.trouper_system,
     );
     jinn_work_time::activate(&mut host);

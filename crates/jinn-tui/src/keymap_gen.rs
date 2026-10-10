@@ -370,16 +370,107 @@ impl EditIntentChar for DynamicIntent {
 /// box's `insert-char` row, with the character carried in the intent's
 /// byte payload. Every other `Scope::Input` key — including all the other
 /// chat input keys — arrives through that slice's route rows instead.
+///
+/// Modified characters are declined, so they resolve to nothing: the
+/// which-key state dismisses and the key inserts no text. This is what
+/// makes a pasted newline a noop rather than a `j` — in raw mode the
+/// terminal reports the newline byte (`0x0A`) as Ctrl+J, and without the
+/// guard the catch-all would insert that `j`. The guard also keeps unbound
+/// chords (`<c-x>`, `<M-q>`) from inserting text instead of falling
+/// through, mirroring the chat-input slice's own key hook, which only
+/// claims unmodified chars.
 pub fn bind_chat_input_catch_all(keymap: &mut Keymap<KeyEvent, Scope, KernelIntent, KeyCategory>) {
     keymap.scope(Scope::Input, |b| {
         b.catch_all(|key: KeyEvent| match key.key {
-            Key::Char(c) => Some(KernelIntent::Dynamic(DynamicIntent::with_bytes(
-                jinn_chat_input_msg::chat_input_scope(),
-                "insert-char",
-                "type a character",
-                c.to_string().into_bytes(),
-            ))),
+            Key::Char(c) if key.modifiers.is_none() => {
+                Some(KernelIntent::Dynamic(DynamicIntent::with_bytes(
+                    jinn_chat_input_msg::chat_input_scope(),
+                    "insert-char",
+                    "type a character",
+                    c.to_string().into_bytes(),
+                )))
+            }
             _ => None,
         });
     });
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+    use super::*;
+    use ratatui_which_key::WhichKeyState;
+
+    /// Builds a fresh keymap with the full composition (static binds,
+    /// route-row spread, chat-input catch-all) and sets it to the Input
+    /// scope — the same resolution path production dispatch uses.
+    fn input_scope_state() -> WhichKeyState<KeyEvent, Scope, KernelIntent, KeyCategory> {
+        let keymap = crate::keymap::init();
+        WhichKeyState::new(keymap, Scope::Input)
+    }
+
+    #[rstest::rstest]
+    fn ctrl_j_in_the_input_scope_resolves_to_nothing() {
+        // Given the Input scope's keymap state.
+        let mut state = input_scope_state();
+
+        // When pressing Ctrl+J — the event a pasted newline becomes in raw mode.
+        let intent = state.handle_key(KeyEvent {
+            key: Key::Char('j'),
+            modifiers: jinn_kernel::Modifiers::ctrl(),
+        });
+
+        // Then nothing resolves: the key inserts no text.
+        assert!(intent.is_none(), "Ctrl+J must not insert anything");
+    }
+
+    #[rstest::rstest]
+    fn unbound_ctrl_chars_in_the_input_scope_resolve_to_nothing() {
+        // Given the Input scope's keymap state.
+        let mut state = input_scope_state();
+
+        // When pressing an unbound ctrl chord.
+        let intent = state.handle_key(KeyEvent {
+            key: Key::Char('x'),
+            modifiers: jinn_kernel::Modifiers::ctrl(),
+        });
+
+        // Then nothing resolves: an unbound chord must not type its letter.
+        assert!(intent.is_none(), "unbound ctrl chord must not insert text");
+    }
+
+    #[rstest::rstest]
+    fn alt_chars_in_the_input_scope_resolve_to_nothing() {
+        // Given the Input scope's keymap state.
+        let mut state = input_scope_state();
+
+        // When pressing an unbound alt chord.
+        let intent = state.handle_key(KeyEvent {
+            key: Key::Char('a'),
+            modifiers: jinn_kernel::Modifiers::alt(),
+        });
+
+        // Then nothing resolves: the catch-all matches the slice key hook's
+        // contract that only unmodified chars insert.
+        assert!(intent.is_none(), "unbound alt chord must not insert text");
+    }
+
+    #[rstest::rstest]
+    fn plain_chars_still_insert_through_the_catch_all() {
+        // Given the Input scope's keymap state.
+        let mut state = input_scope_state();
+
+        // When typing an unmodified character.
+        let intent = state.handle_key(KeyEvent {
+            key: Key::Char('a'),
+            modifiers: jinn_kernel::Modifiers::none(),
+        });
+
+        // Then it resolves to the box's insert-char intent carrying the char.
+        let KernelIntent::Dynamic(intent) = intent.expect("plain char must insert") else {
+            panic!("expected a dynamic insert-char intent");
+        };
+        assert_eq!(intent.action, "insert-char");
+        assert_eq!(intent.bytes, b"a");
+    }
 }

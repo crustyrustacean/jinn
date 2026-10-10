@@ -480,3 +480,7 @@ Entries are added or amended **only with human approval**.
 - (session) A cancel ends the turn for every component observing it, so a watchdog, a resumed dispatch, and a phase read cannot each reach a different conclusion about a cancelled turn.
 - (cancel) The inference actor keeps no per-session cancellation state; a cancel names a generation, and the inference actor acts only on streams it is currently running.
 - (session) "Working" is answered by the phase alone; the separate busy counter that disagreed with it is gone.
+
+- (input) The terminal reports a newline byte as Ctrl+J: raw mode makes crossterm parse 0x0A as Char('j') with ctrl rather than Enter.
+- (input) The chat input's Input-scope catch-all declines every ctrl- or alt-modified character, so a pasted newline (reported as Ctrl+J) inserts nothing.
+- (ui) Resuming from a terminal suspension re-enables bracketed paste along with raw mode, the alternate screen, the kitty keyboard flags, and mouse capture.
