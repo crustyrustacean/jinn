@@ -24,7 +24,9 @@ disabled-strategies = ["quick-install", "compile"]
 [workspace]
 # `crates/jinn-*` (not `crates/*`) so the glob never matches the `crates/slices/`
 # container directory, which holds the slice crates matched by `crates/slices/*`.
-members = ["crates/jinn-*", "crates/slices/*", "vendor/*"]
+# research/command-guard is the unlicensed-patterns research crate; remove this
+# member line and the directory together when the research is folded in.
+members = ["crates/jinn-*", "crates/slices/*", "vendor/*", "research/command-guard"]
 
 
 [workspace.package]

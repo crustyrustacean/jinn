@@ -70,6 +70,7 @@ pub use stall_watchdog::StallWatchdogConfig;
 pub use stream_rule_watchdog::{STREAM_RULE_WATCHDOG_KEY, StreamRuleWatchdogConfig};
 pub use stream_rules::{
     LegacyStreamRulesBudget, STREAM_RULES_BUDGET_KEY, STREAM_RULES_KEY, StreamRuleConfig,
+    StreamRuleFileEntry, StreamRulesFile, parse_stream_rules_file,
 };
 pub use term::{
     DEFAULT_CONTROL_TOGGLE_KEY, DEFAULT_SETTLE_MAX_WAIT_MS, DEFAULT_SETTLE_QUIET_MS,

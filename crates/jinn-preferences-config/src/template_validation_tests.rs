@@ -33,9 +33,12 @@
 
 use jinn_common::template_check::collect_toml_key_paths;
 
-use crate::config_template::DEFAULT_CONFIG;
+use crate::config_template::{DEFAULT_CONFIG, STREAM_RULES_TEMPLATE};
 use crate::registration::register_all_sections;
-use crate::schemas::{DiscordConfig, McpServersConfig, StreamRuleConfig};
+use crate::schemas::{
+    DiscordConfig, McpServersConfig, StreamRuleConfig, StreamRuleFileEntry,
+    parse_stream_rules_file,
+};
 
 /// The template with every `(uncomment below to activate)` region expanded.
 fn expanded_template() -> String {
@@ -161,32 +164,148 @@ const OWNED_KEYS: &[&str] = &[
 
 #[rstest::rstest]
 #[test]
-fn shipped_shell_rules_all_compile() {
-    // Given the shipped rules exactly as the template ships them.
-    let config = jinn_config::testutil::config_layer(DEFAULT_CONFIG);
+fn shipped_rules_parse_through_the_production_schema() {
+    // Given the shipped rules file exactly as the runtime embeds it.
+    // When reading it back through the production `StreamRuleConfig` list
+    // type.
+    let rules = parse_stream_rules_file(STREAM_RULES_TEMPLATE)
+        .expect("shipped stream_rules.toml must parse")
+        .entries()
+        .to_vec()
+        .iter()
+        .map(StreamRuleFileEntry::live_rule)
+        .collect::<Vec<StreamRuleConfig>>();
 
-    // When reading them back out of the config layer.
-    let rules = config.get_list::<StreamRuleConfig>();
-
-    // Then the list reads and every pattern compiles. An uncompilable
-    // pattern is inert at runtime (warned, never fires), so a typo here would
-    // silently ship a rule that enforces nothing.
-    let Ok(rules) = rules else {
-        panic!("stream rules list does not read: {rules:?}");
-    };
+    // Then every entry reads as a live rule, ignoring the fixture fields —
+    // production deserialization never sees `positive`/`negative`.
     assert!(
         !rules.is_empty(),
-        "the template ships rules that guard real footguns"
+        "the shipped set guards real footguns; an empty file disarms jinn"
     );
-    for rule in &rules {
-        for pattern in &rule.conditions {
+}
+
+#[rstest::rstest]
+#[test]
+fn shipped_rules_fixture_fields_are_unknown_to_the_production_list() {
+    // Given the shipped file read as a `jinn.toml`-style config layer.
+    let config = jinn_config::testutil::config_layer(STREAM_RULES_TEMPLATE);
+
+    // When the production list type deserializes it.
+    let rules = config.get_list::<StreamRuleConfig>();
+
+    // Then it succeeds: `positive` and `negative` are unknown keys to the
+    // live schema and are ignored, so a user pasting an entry between files
+    // needs no cleanup.
+    let Ok(rules) = rules else {
+        panic!("production deserialization must ignore the fixture fields: {rules:?}");
+    };
+    assert!(!rules.is_empty());
+}
+
+#[rstest::rstest]
+#[test]
+fn shipped_rules_carry_complete_fixtures() {
+    // Given the shipped rules document.
+    let entries = parse_stream_rules_file(STREAM_RULES_TEMPLATE)
+        .expect("shipped stream_rules.toml must parse")
+        .entries()
+        .to_vec();
+
+    // When every entry is checked for its fixture obligations.
+    // Then each carries at least one positive and one negative — this is
+    // per-entry, deliberately NOT a count assertion: the set is curated and
+    // expected to grow.
+    for entry in &entries {
+        assert!(
+            !entry.positive.is_empty(),
+            "rule {:?} ships no positive fixture",
+            entry.name
+        );
+        assert!(
+            !entry.negative.is_empty(),
+            "rule {:?} ships no negative fixture",
+            entry.name
+        );
+    }
+}
+
+#[rstest::rstest]
+#[test]
+fn shipped_rules_all_compile() {
+    // Given the shipped rules exactly as the runtime embeds them.
+    let rules = parse_stream_rules_file(STREAM_RULES_TEMPLATE)
+        .expect("shipped stream_rules.toml must parse")
+        .entries()
+        .to_vec();
+
+    // When every condition is compiled.
+    // Then each compiles. An uncompilable pattern is inert at runtime
+    // (warned, never fires), so a typo here would silently ship a rule that
+    // enforces nothing.
+    for entry in &rules {
+        for pattern in &entry.conditions {
             assert!(
                 regex::Regex::new(pattern).is_ok(),
                 "stream rule pattern does not compile: {:?} in rule {:?}",
                 pattern,
-                rule.name
+                entry.name
             );
         }
+    }
+}
+
+#[rstest::rstest]
+#[test]
+fn shipped_rules_carry_source_and_license_attribution() {
+    // Given the raw text of the shipped file and the entries parsed from it.
+    let entries = parse_stream_rules_file(STREAM_RULES_TEMPLATE)
+        .expect("shipped stream_rules.toml must parse")
+        .entries()
+        .to_vec();
+
+    // When the comment lines are counted.
+    // Then the attribution comments are total: one `source:` and one
+    // `license:` line per entry, neither more nor less.
+    let count = |marker: &str| {
+        STREAM_RULES_TEMPLATE
+            .lines()
+            .filter(|line| line.trim_start().starts_with(&format!("# {marker}:")))
+            .count()
+    };
+    assert_eq!(
+        count("source"),
+        entries.len(),
+        "every entry needs exactly one `# source:` comment"
+    );
+    assert_eq!(
+        count("license"),
+        entries.len(),
+        "every entry needs exactly one `# license:` comment"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn shipped_rules_drop_the_removed_trigger_key() {
+    // Given the shipped file, parsed as bare TOML.
+    let doc = STREAM_RULES_TEMPLATE
+        .parse::<toml::Table>()
+        .expect("shipped stream_rules.toml parses as TOML");
+
+    // When every entry table is checked for the removed key.
+    // Then no entry carries it: the two-mode trigger system is gone, and
+    // the shipped set must not teach it. (Parsed, not raw-text: the header
+    // prose is allowed to explain that the key was removed.)
+    let entries = doc
+        .get("stream_rules")
+        .and_then(|t| t.get("entry"))
+        .and_then(|e| e.as_array())
+        .expect("shipped file carries the stream_rules.entry list");
+    for entry in entries {
+        assert!(
+            entry.get("on_trigger").is_none(),
+            "shipped entry carries the removed on_trigger key: {entry}"
+        );
     }
 }
 

@@ -136,6 +136,107 @@ impl jinn_config::ConfigList for StreamRuleConfig {
     ];
 }
 
+/// One rule, as written in the standalone `stream_rules.toml` document.
+///
+/// A superset of [`StreamRuleConfig`]: the same live fields, plus the two
+/// test-fixture lists the standalone file carries. The production reader
+/// never uses this type — it deserializes through [`StreamRuleConfig`],
+/// whose serde treats the fixture fields as unknown keys and ignores them.
+/// Only the test harness deserializes through this type, to drive the
+/// fixtures through the matcher.
+///
+/// The standalone document wraps the list in the same `[[stream_rules.entry]]`
+/// table key `jinn.toml` uses, so an entry pastes in either direction without
+/// learning a second key name.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StreamRuleFileEntry {
+    /// The rule's identity, unique across the set, and the name the
+    /// interruption reports. Fixtures assert against it by name.
+    #[serde(default)]
+    pub name: String,
+    /// Prose description of what the rule forbids.
+    #[serde(default)]
+    pub description: String,
+    /// Regexes tested against the accumulated stream buffer.
+    #[serde(default)]
+    pub conditions: Vec<String>,
+    /// Scope tokens naming where the rule applies.
+    #[serde(default)]
+    pub scopes: Vec<String>,
+    /// The guidance injected when the rule fires.
+    #[serde(default)]
+    pub body: String,
+    /// A path glob selecting the projects this rule applies in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+    /// Command strings that MUST trip this rule. Ignored by the runtime.
+    #[serde(default)]
+    pub positive: Vec<String>,
+    /// Command strings that MUST NOT trip this rule. Ignored by the runtime.
+    #[serde(default)]
+    pub negative: Vec<String>,
+}
+
+impl StreamRuleFileEntry {
+    /// The live rule this entry contributes, with its fixtures stripped.
+    ///
+    /// This is the projection the production reader effectively performs by
+    /// deserializing through [`StreamRuleConfig`] instead; it exists for the
+    /// harness, which checks that the projection is faithful.
+    #[must_use]
+    pub fn live_rule(&self) -> StreamRuleConfig {
+        StreamRuleConfig {
+            name: self.name.clone(),
+            description: self.description.clone(),
+            conditions: self.conditions.clone(),
+            scopes: self.scopes.clone(),
+            body: self.body.clone(),
+            project: self.project.clone(),
+        }
+    }
+}
+
+/// The standalone `stream_rules.toml` document shape.
+///
+/// The file carries the same `[[stream_rules.entry]]` key `jinn.toml` uses,
+/// which in document terms is a top-level `stream_rules` table holding an
+/// `entry` array-of-tables — hence the nesting here.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct StreamRulesFile {
+    /// The `stream_rules` table: this file's only content.
+    #[serde(default)]
+    pub stream_rules: StreamRulesTable,
+}
+
+/// The `stream_rules` table of a standalone rules document.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct StreamRulesTable {
+    /// The rules, in file order.
+    #[serde(default)]
+    pub entry: Vec<StreamRuleFileEntry>,
+}
+
+impl StreamRulesFile {
+    /// The rules, in file order.
+    #[must_use]
+    pub fn entries(&self) -> &[StreamRuleFileEntry] {
+        &self.stream_rules.entry
+    }
+}
+
+/// Parses a standalone `stream_rules.toml` document into its entries.
+///
+/// The document carries the same `[[stream_rules.entry]]` key `jinn.toml`
+/// uses. Fixture fields (`positive`, `negative`) survive here and are the
+/// caller's to strip via [`StreamRuleFileEntry::live_rule`].
+///
+/// # Errors
+///
+/// Returns the TOML error when `text` is not a parseable rules document.
+pub fn parse_stream_rules_file(text: &str) -> Result<StreamRulesFile, toml::de::Error> {
+    toml::from_str(text)
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
