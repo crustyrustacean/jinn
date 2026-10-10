@@ -33,4 +33,5 @@ chat-export*
 jinn.toml
 test.toml
 research/
+research/*
 stream_rules.toml

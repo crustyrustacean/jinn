@@ -230,11 +230,8 @@ pub fn union(lists: &[&[WorkingInterval]], at: Timestamp) -> SignedDuration {
 /// zero.
 #[must_use]
 pub fn format_working_duration(duration: &SignedDuration) -> String {
-    let total_seconds = match u64::try_from(duration.as_secs()) {
-        Ok(seconds) => seconds,
-        // A negative duration is a wall-clock step, not a negative duration.
-        Err(_) => 0,
-    };
+    // A negative duration is a wall-clock step, not a negative duration.
+    let total_seconds = u64::try_from(duration.as_secs()).unwrap_or_default();
     let hours = total_seconds / 3600;
     let minutes = (total_seconds % 3600) / 60;
     let seconds = total_seconds % 60;
