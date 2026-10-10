@@ -551,7 +551,8 @@ mod tests {
         );
         assert!(!segs.is_empty(), "Slate should produce styled segments");
         assert!(
-            segs.iter().any(|s| s.style != ratatui::style::Style::default()),
+            segs.iter()
+                .any(|s| s.style != ratatui::style::Style::default()),
             "Slate output must contain at least one non-default style"
         );
     }
