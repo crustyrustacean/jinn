@@ -217,7 +217,7 @@ impl MinigrafStore {
         created_by: &str,
     ) -> Result<GraphProvenance, Report<MinigrafServerError>> {
         let db = self.existing_handle(name)?;
-        let template = self.template_of(&db)?;
+        let template = Self::template_of(&db)?;
         let form = format!(
             "(transact [[:graph/self :graph/attached-by \"{created_by}\"] \
              [:graph/self :graph/attached-at \"{}\"]])",
@@ -320,10 +320,7 @@ impl MinigrafStore {
 
     /// The template this graph's provenance names, or `None` for a graph
     /// without provenance (legacy or blank).
-    fn template_of(
-        &self,
-        db: &minigraf::Minigraf,
-    ) -> Result<Option<String>, Report<MinigrafServerError>> {
+    fn template_of(db: &minigraf::Minigraf) -> Result<Option<String>, Report<MinigrafServerError>> {
         let result = db
             .execute(&format!(
                 "(query [:find ?t :where [{PROVENANCE_ENTITY} :graph/instance-of ?t]])"
@@ -346,7 +343,7 @@ impl MinigrafStore {
     /// execution failing) degrades to a per-graph warning; the graph still
     /// opens. Replay is a no-op for a graph whose provenance names no template.
     fn replay_rules(&self, name: &str, db: &minigraf::Minigraf) {
-        let template_name = match self.template_of(db) {
+        let template_name = match Self::template_of(db) {
             Ok(Some(name)) => name,
             Ok(None) => return,
             Err(report) => {

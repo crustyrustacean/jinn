@@ -10,6 +10,7 @@ pub mod assembly_projection;
 pub mod chat_session;
 pub mod core;
 pub mod fields;
+pub mod minigraf_binding;
 pub mod mutation_accumulator;
 pub mod read_projection;
 mod runtime;
@@ -37,6 +38,9 @@ pub use fields::{
     SessionHistoryWorkFields, SessionIdentityMetadataFields, SessionIntegrationFields,
     SessionLifecycleLocationFields, SessionProfile, SessionStorageFields, default_cwd,
     default_persist, default_prep_mode,
+};
+pub use minigraf_binding::{
+    ACTIVE_GRAPH_BLOB_KEY, MinigrafActiveGraph, read_active_graph, write_active_graph,
 };
 pub use read_projection::SessionReadProjection;
 pub use runtime::{SessionCoreEphemeral, SessionUi};
