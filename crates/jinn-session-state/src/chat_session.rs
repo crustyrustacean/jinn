@@ -39,6 +39,7 @@ use jinn_session_store_msg::SessionState;
 use jinn_skills_msg::Skill;
 use jinn_skills_msg::parse_loaded_skill_name;
 use jinn_token_count_msg::TokenRecord;
+use jinn_workflows_msg::Workflow;
 
 use jinn_chat_log_view_msg::SavedHistoryPosition;
 use jinn_session_lifecycle_msg::LifecycleScriptState;
@@ -3458,6 +3459,11 @@ impl ChatSessionState {
         &self.core.ephemeral.discovered_context_files
     }
 
+    /// Returns the workflows discovered for this session (launch-global).
+    pub fn discovered_workflows(&self) -> &[Workflow] {
+        &self.core.ephemeral.discovered_workflows
+    }
+
     /// Replaces the discovered skills set for this session (scan-actor write path).
     pub fn set_discovered_skills(&mut self, skills: Vec<Skill>) {
         self.core.ephemeral.discovered_skills = skills;
@@ -3471,6 +3477,11 @@ impl ChatSessionState {
     /// Replaces the discovered context files for this session.
     pub fn set_discovered_context_files(&mut self, files: Vec<jinn_context::ContextFile>) {
         self.core.ephemeral.discovered_context_files = files;
+    }
+
+    /// Replaces the discovered workflows set for this session (scan-actor write path).
+    pub fn set_discovered_workflows(&mut self, workflows: Vec<Workflow>) {
+        self.core.ephemeral.discovered_workflows = workflows;
     }
 
     /// Restore the token ledger from persisted data.

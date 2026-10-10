@@ -143,16 +143,21 @@ then stop, same as any approval path. Silence after your question round is
 
 ### The format
 
-`workflow.md` states the name, a one-line description, then the flow as an
-ordered list where **loops and conditionals are explicit lines, not
-prose hints**. `steps/NN-slug.md` files sort in execution order (zero-padded
+`workflow.md` opens with `+++` TOML frontmatter stating the name and a
+one-line description — the only machine-read part (it is what makes the
+workflow appear in the `<leader>sw` picker; a `workflow.md` without valid
+frontmatter is invisible to discovery) — then the flow as an ordered list
+where **loops and conditionals are explicit lines, not prose hints**.
+`steps/NN-slug.md` files sort in execution order (zero-padded
 numbers) and each one is a complete prompt for whoever executes the step —
 assume the reader is a subagent that can see nothing else. Sketch of a
 `workflow.md` (not a shippable example — just the shape):
 
 ```markdown
-# Name: research-report
-# Description: Research a topic and deliver a cited brief.
++++
+name = "research-report"
+description = "Research a topic and deliver a cited brief."
++++
 
 ## Flow
 

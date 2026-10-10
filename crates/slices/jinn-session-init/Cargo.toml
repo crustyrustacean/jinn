@@ -10,6 +10,8 @@ jinn-core-types = { workspace = true }
 jinn-context = { workspace = true }
 jinn-skills-msg = { workspace = true }
 jinn-skills = { workspace = true }
+jinn-workflows-msg = { workspace = true }
+jinn-workflows = { workspace = true }
 # Slice host verbs (`forward`/`reverse` staging, AppSliceHost) and the
 # crossing_schema! macro.
 jinn-slices = { workspace = true }

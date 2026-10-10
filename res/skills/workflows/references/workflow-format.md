@@ -22,7 +22,9 @@ example ships with jinn.
 - One directory per workflow, named in kebab-case (`research-report`).
 - `workflow.md` is required; `steps/` is required (a workflow with no steps
   is a note, not a workflow).
-- No frontmatter, no config files, no schema — a workflow is plain markdown.
+- `workflow.md` opens with `+++` TOML frontmatter (`name`, `description`) —
+  the only machine-read part of a workflow. Everything else is plain
+  markdown.
 
 ## The authoring dialogue
 
@@ -140,8 +142,23 @@ declined, so nothing needs re-asking.
 
 Three parts, in order:
 
-1. **Header** — `# Name: <name>` then `# Description: <one line>`. The name
-   must match the directory name.
+1. **Frontmatter** — a `+++`-fenced TOML block naming the workflow and
+   describing it:
+
+   ```markdown
+   +++
+   name = "research-report"
+   description = "Research a topic and deliver a cited brief."
+   +++
+   ```
+
+   `description` is required: a `workflow.md` with a missing or empty
+   description, a malformed `+++` block, or no frontmatter at all is
+   **skipped by discovery** — the workflow never appears in the
+   `<leader>sw` picker. `name` is optional: when absent, the directory
+   name is the workflow's name, and a frontmatter `name` need not match
+   the directory (the directory is the on-disk identity; the name is what
+   the picker displays and what the launch message uses).
 2. **Flow** — an ordered list. One entry per step. Plain entries are prose
    phrases; two entry kinds are special and both are **explicit lines**:
    - `*(inline — conversation)*` — the step runs in the orchestrator
@@ -162,8 +179,10 @@ should grow.
 ### `workflow.md` field-by-field sketch
 
 ```markdown
-# Name: research-report
-# Description: Research a topic and deliver a cited brief.
++++
+name = "research-report"
+description = "Research a topic and deliver a cited brief."
++++
 
 ## Flow
 

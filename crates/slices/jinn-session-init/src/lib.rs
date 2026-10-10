@@ -4,14 +4,14 @@
 //! A keyed-actor topology: one supervisor
 //! translates session-lifecycle triggers and manual rescan commands
 //! into keyed commands, and a partition set activates one discovery
-//! worker per session, owning that session's skills, prompt, and
-//! context-file scans plus settle coalescing. A notifier actor posts
-//! the settled summary entry into the session's chat log.
+//! worker per session, owning that session's skills, prompt,
+//! context-file, and workflow scans plus settle coalescing. A notifier
+//! actor posts the settled summary entry into the session's chat log.
 //!
 //! Discovery results broadcast as `SkillsLoaded`,
-//! `PromptTemplatesLoaded`, and `ContextFilesLoaded` events, so kernel
-//! consumers — the session actor and the subagent task-settle
-//! listener — are unchanged.
+//! `PromptTemplatesLoaded`, `ContextFilesLoaded`, and `WorkflowsLoaded`
+//! events, so kernel consumers — the session actor and the subagent
+//! task-settle listener — are unchanged.
 
 pub mod commands;
 pub mod contracts;
@@ -23,6 +23,7 @@ pub mod worker;
 pub use commands::RescanContext;
 pub use commands::RescanPrompts;
 pub use commands::RescanSkills;
+pub use commands::RescanWorkflows;
 pub use commands::RunDiscovery;
 pub use contracts::DiscoverySnapshot;
 pub use contracts::SessionDiscoverySettled;
@@ -96,6 +97,7 @@ pub fn install_actors(
     system.register_schema::<crate::commands::RescanSkills>();
     system.register_schema::<crate::commands::RescanPrompts>();
     system.register_schema::<crate::commands::RescanContext>();
+    system.register_schema::<crate::commands::RescanWorkflows>();
 
     // Partition set before any send: the supervisor addresses its
     // public path, and install validates the shard-key contract.
@@ -179,6 +181,7 @@ pub fn install_partition_set_with_args(
     system.register_schema::<crate::commands::RescanSkills>();
     system.register_schema::<crate::commands::RescanPrompts>();
     system.register_schema::<crate::commands::RescanContext>();
+    system.register_schema::<crate::commands::RescanWorkflows>();
     system
         .install_partition_set(partition_spec_with_args(
             system,

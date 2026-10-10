@@ -1,15 +1,15 @@
 //! The keyed discovery worker — one ServiceActor per session, activated
 //! on demand by the trouper partition set.
 //!
-//! The worker owns a session's whole discovery boundary: the three
-//! resource scans (skills, prompt templates, context files), the state
-//! writes for each result, the per-resource `*Loaded` publications, and
-//! the settle coalescing across the three resource scans. Keying by
+//! The worker owns a session's whole discovery boundary: the four
+//! resource scans (skills, prompt templates, context files, workflows),
+//! the state writes for each result, the per-resource `*Loaded` publications, and
+//! the settle coalescing across the four resource scans. Keying by
 //! session id makes per-session settlement native: the latch is a local
 //! join.
 //!
 //! Settle semantics (recorded behavior, preserved):
-//! - a [`RunDiscovery`] arms a settle waiter joining the three scans
+//! - a [`RunDiscovery`] arms a settle waiter joining the four scans
 //!   under a fixed budget ([`SETTLE_BUDGET`]);
 //! - settling within the budget publishes [`SessionDiscoverySettled`]
 //!   with `delayed: None`; the budget firing publishes the
@@ -18,7 +18,7 @@
 //!   scans that finished in time;
 //! - scans that finish after a timed settle still write state and
 //!   publish their event (the waiter never cancels them);
-//! - manual rescans run one resource only, with the other two
+//! - manual rescans run one resource only, with the other three
 //!   pre-`Skipped`, so they settle and post a summary too (the
 //!   coordinator's safety-net behavior for `RescanPromptTemplates`);
 //! - a second `RunDiscovery` supersedes the running one: the stale
@@ -47,8 +47,9 @@ use jinn_core_types::SessionId;
 use jinn_kernel::common::state::State;
 use jinn_session_init_msg::{ContextFilesLoaded, PromptTemplatesLoaded};
 use jinn_skills_msg::Skill;
+use jinn_workflows_msg::Workflow;
 
-use crate::commands::{RescanContext, RescanPrompts, RescanSkills, RunDiscovery};
+use crate::commands::{RescanContext, RescanPrompts, RescanSkills, RescanWorkflows, RunDiscovery};
 use crate::contracts::{DiscoverySnapshot, SessionDiscoverySettled};
 use crate::scans;
 
@@ -70,18 +71,21 @@ pub const IDLE_LIFETIME: std::time::Duration = std::time::Duration::from_secs(5)
 
 /// The resources a discovery run collects, in the order the delayed
 /// reason names them (the coordinator's `missing_names` order).
-const RESOURCES: [(&Resource, &str); 3] = [
+/// Workflows are appended fourth; the order before it is unchanged.
+const RESOURCES: [(&Resource, &str); 4] = [
     (&Resource::Skills, "skills"),
     (&Resource::Prompts, "prompts"),
     (&Resource::Context, "context"),
+    (&Resource::Workflows, "workflows"),
 ];
 
-/// One of the three discovery resources.
+/// One of the four discovery resources.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Resource {
     Skills,
     Prompts,
     Context,
+    Workflows,
 }
 
 /// The per-session discovery worker.
@@ -111,6 +115,8 @@ pub struct SessionDiscoveryWorker {
     user_prompts_dir: PathBuf,
     /// The system-installed prompts dir.
     system_prompts_dir: PathBuf,
+    /// The workflows dir (launch-global: the config dir's workflows folder).
+    workflows_dir: PathBuf,
     /// How long a discovery run waits for all three scans. The
     /// production default ([`SETTLE_BUDGET`]); tests may shorten it via
     /// the entity's genesis args.
@@ -136,6 +142,8 @@ pub struct WorkerDeps {
     pub user_prompts_dir: PathBuf,
     /// The system-installed prompts dir.
     pub system_prompts_dir: PathBuf,
+    /// The workflows dir (launch-global: the config dir's workflows folder).
+    pub workflows_dir: PathBuf,
     /// The settle budget (production default unless overridden).
     pub settle_budget: std::time::Duration,
 }
@@ -163,6 +171,7 @@ impl WorkerDeps {
             global_skills_dir: paths.skills_dir(),
             user_prompts_dir: paths.prompts_dir(),
             system_prompts_dir: paths.system_prompts_dir(),
+            workflows_dir: paths.workflows_dir(),
             settle_budget: settle_budget.unwrap_or(SETTLE_BUDGET),
         }
     }
@@ -215,6 +224,7 @@ impl SessionDiscoveryWorker {
                         global_skills_dir,
                         user_prompts_dir,
                         system_prompts_dir,
+                        workflows_dir,
                         system,
                         settle_budget,
                     } = deps.to_builder(&system_handle);
@@ -228,6 +238,7 @@ impl SessionDiscoveryWorker {
                         global_skills_dir,
                         user_prompts_dir,
                         system_prompts_dir,
+                        workflows_dir,
                         settle_budget,
                     })
                 })
@@ -236,10 +247,11 @@ impl SessionDiscoveryWorker {
             .handles::<RescanSkills>()
             .handles::<RescanPrompts>()
             .handles::<RescanContext>()
+            .handles::<RescanWorkflows>()
             .start()
     }
 
-    /// Begins a full discovery run: all three resource scans
+    /// Begins a full discovery run: all four resource scans
     /// concurrently, each writing state + publishing as it completes,
     /// plus the settle waiter for this run.
     fn run_discovery(&mut self, cwd: &std::path::Path) {
@@ -247,25 +259,44 @@ impl SessionDiscoveryWorker {
         let skills = self.spawn_skills_task(cwd);
         let prompts = self.spawn_prompts_task(cwd);
         let context = self.spawn_context_task(cwd);
-        self.spawn_settle_waiter(run, skills, prompts, context);
+        let workflows = self.spawn_workflows_task();
+        self.spawn_settle_waiter(run, skills, prompts, context, workflows);
     }
 
     /// Re-runs a single resource (manual rescan) and still settles:
-    /// the two unscanned resources start pre-`Skipped` so the settle
+    /// the unscanned resources start pre-`Skipped` so the settle
     /// waiter fires as soon as the scanned resource completes — or at
     /// the settle budget, naming it as delayed — and the notifier
     /// posts the summary entry (the old coordinator's safety-net
     /// behavior for `RescanPromptTemplates` and friends).
     fn rescan_one(&mut self, scanned: Resource, cwd: PathBuf) {
         let run = self.run.fetch_add(1, Ordering::AcqRel) + 1;
-        // Positional: skills, prompts, context — exactly what
+        // Positional: skills, prompts, context, workflows — exactly what
         // `spawn_settle_waiter` expects.
-        let (skills, prompts, context) = match scanned {
-            Resource::Skills => (self.spawn_skills_task(&cwd), skipped(), skipped()),
-            Resource::Prompts => (skipped(), self.spawn_prompts_task(&cwd), skipped()),
-            Resource::Context => (skipped(), skipped(), self.spawn_context_task(&cwd)),
+        let (skills, prompts, context, workflows) = match scanned {
+            Resource::Skills => (
+                self.spawn_skills_task(&cwd),
+                skipped(),
+                skipped(),
+                skipped(),
+            ),
+            Resource::Prompts => (
+                skipped(),
+                self.spawn_prompts_task(&cwd),
+                skipped(),
+                skipped(),
+            ),
+            Resource::Context => (
+                skipped(),
+                skipped(),
+                self.spawn_context_task(&cwd),
+                skipped(),
+            ),
+            // Workflows are launch-global: no cwd gate, and the command's
+            // cwd is ignored — the worker scans its configured dir.
+            Resource::Workflows => (skipped(), skipped(), skipped(), self.spawn_workflows_task()),
         };
-        self.spawn_settle_waiter(run, skills, prompts, context);
+        self.spawn_settle_waiter(run, skills, prompts, context, workflows);
     }
 
     /// The defensive cwd gate: the supervisor already suppressed the
@@ -442,7 +473,55 @@ impl SessionDiscoveryWorker {
         })
     }
 
-    /// Arms the settle waiter: joins the three resource tasks under the
+    /// The workflows resource scan.
+    ///
+    /// Unlike the three cwd-driven scans this one is launch-global: the
+    /// cwd gate does not apply, and the scan reads the worker's configured
+    /// workflows dir (the config dir's `workflows` folder) rather than
+    /// anything derived from the session cwd. A home-directory session
+    /// must still see its workflows.
+    fn spawn_workflows_task(&self) -> tokio::task::JoinHandle<ResourceOutcome> {
+        let system = self.system.clone();
+        let state = self.state.clone();
+        let session_id = self.session_id.clone();
+        let workflows_dir = self.workflows_dir.clone();
+        tokio::spawn(async move {
+            let joined =
+                tokio::task::spawn_blocking(move || scans::scan_workflows(&workflows_dir)).await;
+            match joined {
+                Ok(workflows) => {
+                    tracing::info!(count = workflows.len(), "scanned workflows");
+                    write_workflows(&state, &session_id, &workflows);
+                    publish(
+                        &system,
+                        jinn_workflows_msg::WorkflowsLoaded {
+                            session_id: session_id.clone(),
+                            workflows: workflows.clone(),
+                            error: None,
+                        },
+                    )
+                    .await;
+                    ResourceOutcome::Done(workflows.len(), None)
+                }
+                Err(join_error) => {
+                    tracing::error!("workflows scan task panicked: {join_error}");
+                    let error = format!("workflows scan task failed: {join_error}");
+                    publish(
+                        &system,
+                        jinn_workflows_msg::WorkflowsLoaded {
+                            session_id: session_id.clone(),
+                            workflows: vec![],
+                            error: Some(error.clone()),
+                        },
+                    )
+                    .await;
+                    ResourceOutcome::Done(0, Some(error))
+                }
+            }
+        })
+    }
+
+    /// Arms the settle waiter: joins the four resource tasks under the
     /// budget, then publishes the settled event for this run.
     ///
     /// A waiter whose run has been superseded no-ops. The resource
@@ -454,6 +533,7 @@ impl SessionDiscoveryWorker {
         skills: tokio::task::JoinHandle<ResourceOutcome>,
         prompts: tokio::task::JoinHandle<ResourceOutcome>,
         context: tokio::task::JoinHandle<ResourceOutcome>,
+        workflows: tokio::task::JoinHandle<ResourceOutcome>,
     ) {
         let current_run = self.run.clone();
         let system = self.system.clone();
@@ -472,6 +552,7 @@ impl SessionDiscoveryWorker {
                     waiter.join(Resource::Skills, skills),
                     waiter.join(Resource::Prompts, prompts),
                     waiter.join(Resource::Context, context),
+                    waiter.join(Resource::Workflows, workflows),
                 )
             })
             .await;
@@ -482,7 +563,9 @@ impl SessionDiscoveryWorker {
             }
 
             let (snapshot, delayed) = match waited {
-                Ok((skills, prompts, context)) => (snapshot_of(skills, prompts, context), None),
+                Ok((skills, prompts, context, workflows)) => {
+                    (snapshot_of(skills, prompts, context, workflows), None)
+                }
                 Err(_elapsed) => {
                     // The budget fired: settle now with the outcomes
                     // already recorded; the still-running resources are
@@ -523,6 +606,7 @@ struct SessionDiscoveryWorkerDepsBuilder {
     global_skills_dir: PathBuf,
     user_prompts_dir: PathBuf,
     system_prompts_dir: PathBuf,
+    workflows_dir: PathBuf,
     system: ActorSystem,
     settle_budget: std::time::Duration,
 }
@@ -538,6 +622,7 @@ impl WorkerDeps {
             global_skills_dir: self.global_skills_dir.clone(),
             user_prompts_dir: self.user_prompts_dir.clone(),
             system_prompts_dir: self.system_prompts_dir.clone(),
+            workflows_dir: self.workflows_dir.clone(),
             system: system.clone(),
             settle_budget: self.settle_budget,
         }
@@ -571,11 +656,12 @@ impl SettleWaiter {
     }
 }
 
-/// Folds the three outcomes into the settle snapshot.
+/// Folds the four outcomes into the settle snapshot.
 fn snapshot_of(
     skills: ResourceOutcome,
     prompts: ResourceOutcome,
     context: ResourceOutcome,
+    workflows: ResourceOutcome,
 ) -> DiscoverySnapshot {
     DiscoverySnapshot {
         skill_count: skills.count(),
@@ -584,6 +670,8 @@ fn snapshot_of(
         prompt_error: prompts.error(),
         context_file_count: context.count(),
         context_error: context.error(),
+        workflow_count: workflows.count(),
+        workflow_error: workflows.error(),
     }
 }
 
@@ -604,6 +692,7 @@ fn snapshot_of_finished(finished: &Mutex<Vec<(Resource, ResourceOutcome)>>) -> D
         pull(Resource::Skills),
         pull(Resource::Prompts),
         pull(Resource::Context),
+        pull(Resource::Workflows),
     )
 }
 
@@ -680,6 +769,21 @@ fn write_context(state: &State, session_id: &SessionId, files: &[ContextFile]) {
     });
 }
 
+/// Writes the discovered workflows into the session.
+///
+/// Same shape as [`write_skills`]: the workflows picker is repainted by the
+/// workflows slice's republisher actor, which subscribes to the
+/// [`WorkflowsLoaded`](jinn_workflows_msg::WorkflowsLoaded) event this scan
+/// broadcasts. The worker holds no handle to the picker and names no part
+/// of it.
+fn write_workflows(state: &State, session_id: &SessionId, workflows: &[Workflow]) {
+    state.with_session(|view| {
+        if let Some(session) = view.session.map().get_mut(session_id) {
+            session.set_discovered_workflows(workflows.to_vec());
+        }
+    });
+}
+
 /// Publishes `msg` onto the shared kernel topic (`jinn.domain`) — the
 /// topic every kernel consumer of these results subscribes (the same
 /// resolution `BusService::publish` performs with no route override).
@@ -726,5 +830,13 @@ impl MsgHandler<RescanPrompts> for SessionDiscoveryWorker {
 impl MsgHandler<RescanContext> for SessionDiscoveryWorker {
     async fn handle(&mut self, msg: &RescanContext, _ctx: &mut MsgCtx<'_>) {
         self.rescan_one(Resource::Context, msg.cwd.clone());
+    }
+}
+
+impl MsgHandler<RescanWorkflows> for SessionDiscoveryWorker {
+    async fn handle(&mut self, msg: &RescanWorkflows, _ctx: &mut MsgCtx<'_>) {
+        // The cwd rides the command for shape parity; workflows scan the
+        // worker's configured dir regardless.
+        self.rescan_one(Resource::Workflows, msg.cwd.clone());
     }
 }

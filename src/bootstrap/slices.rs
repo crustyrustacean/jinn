@@ -136,6 +136,11 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
     jinn_citations::activate(&mut ctx.host(), services_snapshot.clone());
     jinn_skills::activate(&mut ctx.host());
     jinn_project::activate(&mut ctx.host());
+    // The workflows picker repaints from `WorkflowsLoaded`, which the
+    // session-init discovery worker (activated below) publishes; its
+    // subscription must exist first, and nothing below resolves a
+    // workflows cell it does not already have from the catalog.
+    jinn_workflows::activate(&mut ctx.host());
     let state_snapshot = ctx.state().clone();
     jinn_sidebar::activate(&mut ctx.host(), state_snapshot);
     let state_snapshot = ctx.state().clone();

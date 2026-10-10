@@ -2034,6 +2034,8 @@ dependencies = [
  "jinn-turn-dispatch-msg",
  "jinn-watchdog",
  "jinn-work-time",
+ "jinn-workflows",
+ "jinn-workflows-msg",
  "kanal",
  "mockito",
  "nu-ansi-term",
@@ -2209,6 +2211,7 @@ dependencies = [
  "jinn-token-count-msg",
  "jinn-tools-msg",
  "jinn-work-time-msg",
+ "jinn-workflows-msg",
 ]
 
 [[package]]
@@ -3229,6 +3232,8 @@ dependencies = [
  "jinn-skills-msg",
  "jinn-slices",
  "jinn-testutil",
+ "jinn-workflows",
+ "jinn-workflows-msg",
  "rstest",
  "serde",
  "serde_json",
@@ -3375,6 +3380,7 @@ dependencies = [
  "jinn-token-count-msg",
  "jinn-tools-msg",
  "jinn-turn-dispatch-msg",
+ "jinn-workflows-msg",
  "parking_lot",
  "rstest",
  "serde",
@@ -4037,6 +4043,48 @@ dependencies = [
  "jinn-slices",
  "rstest",
  "serde",
+ "trouper",
+]
+
+[[package]]
+name = "jinn-workflows"
+version = "1.5.0"
+dependencies = [
+ "error-stack",
+ "jinn-cell-catalog",
+ "jinn-chat-input-msg",
+ "jinn-context",
+ "jinn-core-types",
+ "jinn-kernel",
+ "jinn-picker",
+ "jinn-selection-widget",
+ "jinn-session-init-msg",
+ "jinn-slices",
+ "jinn-theme",
+ "jinn-workflows-msg",
+ "ratatui",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "trouper",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-workflows-msg"
+version = "1.5.0"
+dependencies = [
+ "jinn-core-types",
+ "jinn-picker",
+ "jinn-selection-widget",
+ "jinn-slices",
+ "jinn-theme",
+ "ratatui",
+ "rstest",
+ "serde",
+ "serde_json",
  "trouper",
 ]
 
