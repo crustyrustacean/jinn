@@ -3,6 +3,7 @@
 ## (development)
 
 - Add `capabilities_*` tools which allow `jinn` to enable/disable tools/skills/MCP servers when prompted.
+- Change "tool call failure watchdog" trigger condition from 4 to 6.
 
 ## 2026-10-05 v1.5.0
 
