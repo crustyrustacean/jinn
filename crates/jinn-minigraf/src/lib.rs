@@ -67,7 +67,7 @@ pub mod templates;
 
 use store::MinigrafStore;
 
-/// The `ServerHandler` served at `/mcp`: the four graph tools over one
+/// The `ServerHandler` served at `/mcp`: the six graph tools over one
 /// [`MinigrafStore`]. The tool router is the associated function the
 /// `#[tool_router]`/`#[tool_handler]` pair generates (`Self::tool_router()`).
 #[derive(Clone)]

@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-# The embedded bi-temporal graph database behind the four tools. All minigraf
+# The embedded bi-temporal graph database behind the graph tools. All minigraf
 # calls run inside `spawn_blocking` (its `execute` is synchronous and its
 # `WriteTransaction` is `!Send`), and handles live for the server's life —
 # a second in-process open of one file is refused, not queued (STG-025).
