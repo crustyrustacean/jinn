@@ -117,23 +117,23 @@ mod registry_tests {
         let session_id = SessionId::new();
         let mut registry = ToolRegistry::default();
         registry.global.insert(
-            "mcp__minigraf__create_graph".to_owned(),
-            definition("mcp__minigraf__create_graph"),
+            "mcp__bundled-example__create_graph".to_owned(),
+            definition("mcp__bundled-example__create_graph"),
         );
         registry.global.insert(
             "mcp__other__tool".to_owned(),
             definition("mcp__other__tool"),
         );
 
-        // When the session denies the minigraf provider.
-        registry.deny_provider_for_session(&session_id, "mcp__minigraf");
+        // When the session denies the bundled-example provider.
+        registry.deny_provider_for_session(&session_id, "mcp__bundled-example");
         let tools = registry.tools_for_session(&session_id);
 
-        // Then the minigraf tool is withheld and the other provider's is not.
+        // Then the bundled-example tool is withheld and the other provider's is not.
         assert!(
             !tools
                 .iter()
-                .any(|d| d.name == "mcp__minigraf__create_graph")
+                .any(|d| d.name == "mcp__bundled-example__create_graph")
         );
         assert!(tools.iter().any(|d| d.name == "mcp__other__tool"));
     }
@@ -145,16 +145,20 @@ mod registry_tests {
         let other_session = SessionId::new();
         let mut registry = ToolRegistry::default();
         registry.global.insert(
-            "mcp__minigraf__query".to_owned(),
-            definition("mcp__minigraf__query"),
+            "mcp__bundled-example__query".to_owned(),
+            definition("mcp__bundled-example__query"),
         );
-        registry.deny_provider_for_session(&denied_session, "mcp__minigraf");
+        registry.deny_provider_for_session(&denied_session, "mcp__bundled-example");
 
         // When reading the other session's tools.
         let tools = registry.tools_for_session(&other_session);
 
         // Then the other session still sees the global tool.
-        assert!(tools.iter().any(|d| d.name == "mcp__minigraf__query"));
+        assert!(
+            tools
+                .iter()
+                .any(|d| d.name == "mcp__bundled-example__query")
+        );
     }
 
     #[rstest::rstest]
@@ -163,17 +167,21 @@ mod registry_tests {
         let session_id = SessionId::new();
         let mut registry = ToolRegistry::default();
         registry.global.insert(
-            "mcp__minigraf__transact".to_owned(),
-            definition("mcp__minigraf__transact"),
+            "mcp__bundled-example__transact".to_owned(),
+            definition("mcp__bundled-example__transact"),
         );
-        registry.deny_provider_for_session(&session_id, "mcp__minigraf");
+        registry.deny_provider_for_session(&session_id, "mcp__bundled-example");
 
         // When the session re-admits the provider.
-        registry.admit_provider_for_session(&session_id, "mcp__minigraf");
+        registry.admit_provider_for_session(&session_id, "mcp__bundled-example");
         let tools = registry.tools_for_session(&session_id);
 
         // Then the global tool is visible again.
-        assert!(tools.iter().any(|d| d.name == "mcp__minigraf__transact"));
+        assert!(
+            tools
+                .iter()
+                .any(|d| d.name == "mcp__bundled-example__transact")
+        );
     }
 
     #[rstest::rstest]
@@ -205,8 +213,8 @@ mod registry_tests {
         let session_id = SessionId::new();
         let mut registry = ToolRegistry::default();
         registry.global.insert(
-            "mcp__minigraf__query".to_owned(),
-            definition("mcp__minigraf__query"),
+            "mcp__bundled-example__query".to_owned(),
+            definition("mcp__bundled-example__query"),
         );
         registry
             .session
@@ -215,12 +223,16 @@ mod registry_tests {
             .insert("my_session_tool".to_owned(), definition("my_session_tool"));
 
         // When denying the provider and reading the session's tools.
-        registry.deny_provider_for_session(&session_id, "mcp__minigraf");
+        registry.deny_provider_for_session(&session_id, "mcp__bundled-example");
         let tools = registry.tools_for_session(&session_id);
 
         // Then the session-scoped tool remains — the denial only withholds
         // global registrations.
         assert!(tools.iter().any(|d| d.name == "my_session_tool"));
-        assert!(!tools.iter().any(|d| d.name == "mcp__minigraf__query"));
+        assert!(
+            !tools
+                .iter()
+                .any(|d| d.name == "mcp__bundled-example__query")
+        );
     }
 }

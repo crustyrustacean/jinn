@@ -117,12 +117,12 @@ pub enum Commands {
         subcommand: ConfigCommands,
     },
 
-    /// Serve the bundled minigraf MCP server (streamable HTTP at /mcp).
+    /// Placeholder for future bundled MCP servers.
     ///
-    /// Runs without reading jinn.toml or the session store, so it stays
-    /// usable when either is broken. jinn spawns this itself when an
-    /// `[mcp.minigraf]` server is configured; the subcommand exists for
-    /// debugging and for serving graphs to other MCP clients.
+    /// jinn bundles no MCP server today; the command and its subcommand
+    /// exist so a future bundled server has a spawn point, and so a
+    /// configured child's argv shape stays stable. Running it starts jinn
+    /// normally.
     Mcp {
         /// The mcp subcommand to run.
         #[command(subcommand)]
@@ -131,18 +131,13 @@ pub enum Commands {
 }
 
 /// MCP server subcommands.
+///
+/// No bundled MCP server ships today; variants are added here alongside
+/// the server they spawn.
 #[derive(Debug, Subcommand)]
 pub enum McpCommands {
-    /// Serve the bundled minigraf-backed graph server on <ip>:<port>.
-    Minigraf {
-        /// Address to bind (the config's `<ip>` token expands to this).
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
-
-        /// Port to bind (the config's `<port>` token expands to this).
-        #[arg(long)]
-        port: u16,
-    },
+    /// Does nothing; starts jinn normally.
+    Noop,
 }
 
 /// Headless subcommands.

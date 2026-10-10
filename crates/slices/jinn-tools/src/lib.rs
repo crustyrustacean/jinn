@@ -57,12 +57,6 @@ mod orchestrator;
 #[cfg(test)]
 mod interactive_term_tests;
 #[cfg(test)]
-#[path = "minigraf_dispatch_tests.rs"]
-mod minigraf_dispatch_tests;
-#[cfg(test)]
-#[path = "minigraf_schema_tests.rs"]
-mod minigraf_schema_tests;
-#[cfg(test)]
 #[path = "orchestrator_filter_tests.rs"]
 mod orchestrator_filter_tests;
 #[cfg(test)]

@@ -30,7 +30,6 @@ use jinn_kernel::common::services::bus_service::BusService;
 use jinn_kernel::common::state::State;
 use jinn_mcp_msg::McpConnectionStatus;
 use jinn_session_msg::SessionClosed;
-use jinn_session_state::{MinigrafActiveGraph, read_active_graph, write_active_graph};
 use jinn_tools_msg::{CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools};
 use jinn_tools_msg::{
     ProviderVisibilityChanged, ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
@@ -44,71 +43,6 @@ use trouper::registry::RegistryError;
 /// `mcp__excalimate` namespaces that server's tools (`mcp__excalimate__<tool>`)
 /// and is routed to MCP client actors via the generic [`ExecuteTool`] command.
 pub(crate) const MCP_PROVIDER_PREFIX: &str = "mcp__";
-
-/// The one MCP server whose calls jinn rewrites at dispatch: the active-graph
-/// binding and the calling session id are injected into its arguments, so the
-/// model never addresses a graph without a session binding. Every other MCP
-/// server's calls pass through untouched.
-pub(crate) const MINIGRAF_SERVER: &str = "minigraf";
-
-/// Minigraf tool names whose results bind the session's active graph on
-/// success (the activate-type contract: creating/attaching is activating).
-const MINIGRAF_ACTIVATE_TOOLS: [&str; 3] = ["create_graph", "instantiate_graph", "attach_graph"];
-
-/// Minigraf tool names that address the session's active graph and therefore
-/// require one: dispatch injects the bound name, and with no binding the call
-/// is refused locally, before any server traffic.
-const MINIGRAF_GRAPH_TOOLS: [&str; 2] = ["transact", "query"];
-
-/// The argument names dispatch injects into minigraf calls. The server accepts
-/// them (they exist at the wire level for hand-driven clients), but the
-/// model-facing schema omits them: `strip_injected_args` removes them at
-/// registration so the model cannot pass a graph or a session id.
-const INJECTED_ARGS: [&str; 2] = ["graph", "created_by"];
-
-/// True when `tool_name` belongs to the minigraf server.
-fn is_minigraf_tool(tool_name: &str) -> bool {
-    tool_name.starts_with(&format!("{MCP_PROVIDER_PREFIX}{MINIGRAF_SERVER}__"))
-}
-
-/// The bare tool name inside the minigraf namespace (`transact`, `query`, …).
-fn minigraf_tool_suffix(tool_name: &str) -> Option<&str> {
-    tool_name
-        .strip_prefix(MCP_PROVIDER_PREFIX)?
-        .strip_prefix(MINIGRAF_SERVER)?
-        .strip_prefix("__")
-}
-
-/// Removes dispatch-injected arguments from a minigraf tool definition so the
-/// advertised schema never names them.
-///
-/// A model that could pass `graph` directly would bypass the session binding —
-/// the whole point of the interception — and `created_by` is jinn's knowledge,
-/// not the model's. The server keeps both arguments at the wire level for
-/// hand-driven clients; only the advertised shape hides them.
-#[must_use]
-pub fn strip_injected_args(mut definition: ToolDefinition) -> ToolDefinition {
-    if !is_minigraf_tool(&definition.name) {
-        return definition;
-    }
-    if let Some(properties) = definition
-        .parameters
-        .get_mut("properties")
-        .and_then(serde_json::Value::as_object_mut)
-    {
-        for arg in INJECTED_ARGS {
-            properties.remove(arg);
-        }
-    }
-    if let Some(required) = definition
-        .parameters
-        .get_mut("required")
-        .and_then(serde_json::Value::as_array_mut)
-    {
-        required.retain(|name| !name.as_str().is_some_and(|n| INJECTED_ARGS.contains(&n)));
-    }
-    definition
-}
 
 /// A boxed future returned by built-in tool execute functions.
 pub type BoxedToolFuture = Pin<Box<dyn Future<Output = ToolResult> + Send>>;
@@ -207,11 +141,6 @@ pub struct ToolOrchestratorActor {
     session_tools: HashMap<SessionId, HashMap<String, ToolRegistration>>,
     /// Session ID → pending batch tracker.
     pending: HashMap<SessionId, PendingBatch>,
-    /// Activate-type calls awaiting their result: (session, call id) → the
-    /// binding to write into the session's blob on success. Filled at
-    /// dispatch, consumed in `handle_tool_execution_completed` — this actor
-    /// is the blob's only writer and only reader.
-    pending_activations: HashMap<(SessionId, String), MinigrafActiveGraph>,
     /// Shared application state for reading session CWD.
     state: State,
     /// Runtime services.
@@ -329,7 +258,6 @@ impl ToolOrchestratorActor {
             tools: HashMap::new(),
             session_tools: HashMap::new(),
             pending: HashMap::new(),
-            pending_activations: HashMap::new(),
             state: deps.state,
             services: deps.services,
         };
@@ -630,16 +558,7 @@ impl ToolOrchestratorActor {
         definitions: &[ToolDefinition],
         session_id: Option<SessionId>,
     ) {
-        // Dispatch injects `graph`/`created_by` into minigraf calls, so the
-        // advertised schema must not name them: the model would otherwise see
-        // parameters it is never supposed to pass. Stripping here means the
-        // routed definitions, the context registry, and the ToolsRegistered
-        // event all carry the model-facing shape.
-        let definitions: Vec<ToolDefinition> = definitions
-            .iter()
-            .map(|def| strip_injected_args(def.clone()))
-            .collect();
-        for def in &definitions {
+        for def in definitions {
             let registration = ToolRegistration::Actor {
                 definition: def.clone(),
                 provider: provider.to_owned(),
@@ -657,7 +576,7 @@ impl ToolOrchestratorActor {
             }
         }
 
-        self.cache_registered_tools(&definitions, session_id.as_ref());
+        self.cache_registered_tools(definitions, session_id.as_ref());
         self.publish(ToolsRegistered {
             provider: provider.to_owned(),
             definitions: definitions.to_vec(),
@@ -934,7 +853,7 @@ impl ToolOrchestratorActor {
     async fn dispatch_actor(
         &mut self,
         session_id: SessionId,
-        mut tool_call: ToolCall,
+        tool_call: ToolCall,
         provider: &str,
         dispatched_at: Timestamp,
     ) -> Option<tokio::task::JoinHandle<()>> {
@@ -950,33 +869,6 @@ impl ToolOrchestratorActor {
                     })
                     .await;
                     return None;
-                }
-
-                // Minigraf interception: the session's active graph and the
-                // calling session id are jinn's knowledge, injected here —
-                // never model arguments. A graph-addressing call with no
-                // binding is refused before any server traffic; an activate
-                // call arms the blob write its success will trigger.
-                if is_minigraf_tool(&tool_call.name) {
-                    match self.prepare_minigraf_call(&session_id, tool_call.clone()) {
-                        Ok(prepared) => {
-                            if let Some(binding) = prepared.binding {
-                                self.pending_activations.insert(
-                                    (session_id.clone(), prepared.tool_call.id.clone()),
-                                    binding,
-                                );
-                            }
-                            tool_call = prepared.tool_call;
-                        }
-                        Err(reason) => {
-                            self.publish(ToolExecutionCompleted {
-                                session_id,
-                                result: rejected_mcp_result(&tool_call, &reason),
-                            })
-                            .await;
-                            return None;
-                        }
-                    }
                 }
 
                 // Read the same truncation limits builtins use so MCP results
@@ -1025,92 +917,6 @@ impl ToolOrchestratorActor {
         self.publish(ToolExecutionCompleted { session_id, result })
             .await;
         None
-    }
-
-    /// Rewrites one minigraf tool call for dispatch: injects the session's
-    /// active graph into graph-addressing calls and the calling session id
-    /// into activate-type calls.
-    ///
-    /// Returns the possibly-rewritten call plus, for activate-type calls, the
-    /// binding to write into the session's blob when the result comes back
-    /// successful. An `Err` is a local rejection reason — the call must not
-    /// reach the server.
-    fn prepare_minigraf_call(
-        &self,
-        session_id: &SessionId,
-        mut tool_call: ToolCall,
-    ) -> Result<PreparedMinigrafCall, String> {
-        let Some(suffix) = minigraf_tool_suffix(&tool_call.name) else {
-            return Ok(PreparedMinigrafCall {
-                tool_call,
-                binding: None,
-            });
-        };
-        let created_by = session_id.to_string();
-
-        if MINIGRAF_ACTIVATE_TOOLS.contains(&suffix) {
-            let args = parse_minigraf_arguments(&tool_call.arguments)?;
-            // For instantiate/create the target graph name rides the call; for
-            // attach it names an existing graph that now becomes this
-            // session's active graph. Either way the binding is written only
-            // if the server confirms.
-            let name = args
-                .get("name")
-                .and_then(serde_json::Value::as_str)
-                .ok_or_else(|| {
-                    format!("minigraf `{suffix}` requires a `name` argument naming the graph")
-                })?
-                .to_owned();
-            let template = args
-                .get("template")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned);
-            let mut args = args;
-            // The model has no `created_by` parameter; jinn is the only source.
-            args.insert("created_by".to_owned(), serde_json::json!(created_by));
-            tool_call.arguments = serde_json::Value::Object(args).to_string();
-            return Ok(PreparedMinigrafCall {
-                tool_call,
-                binding: Some(MinigrafActiveGraph {
-                    name,
-                    template,
-                    created_by,
-                }),
-            });
-        }
-
-        if MINIGRAF_GRAPH_TOOLS.contains(&suffix) {
-            let binding = self.active_graph(session_id).ok_or_else(|| {
-                "no graph active — instantiate_graph or attach_graph first".to_owned()
-            })?;
-            let mut args = parse_minigraf_arguments(&tool_call.arguments)?;
-            // Always the session's binding: the tool addresses *this*
-            // session's graph, whatever a stray argument says.
-            args.insert("graph".to_owned(), serde_json::json!(binding.name));
-            tool_call.arguments = serde_json::Value::Object(args).to_string();
-        }
-
-        Ok(PreparedMinigrafCall {
-            tool_call,
-            binding: None,
-        })
-    }
-
-    /// The session's active minigraf graph, read from its blob at call time.
-    /// Never cached elsewhere; this is the binding's only reader.
-    fn active_graph(&self, session_id: &SessionId) -> Option<MinigrafActiveGraph> {
-        let guard = self.state.read();
-        let session = guard.session.get(session_id)?;
-        read_active_graph(session.blobs())
-    }
-
-    /// Writes the session's active-graph binding (or clears it with `None`).
-    /// Called only from the completion path below, on a successful activate.
-    fn write_binding(&self, session_id: &SessionId, binding: Option<&MinigrafActiveGraph>) {
-        let mut guard = self.state.write();
-        if let Some(session) = guard.session.get_mut(session_id) {
-            write_active_graph(session.blobs_mut(), binding);
-        }
     }
 
     /// Returns a legible rejection reason when an MCP tool call cannot be
@@ -1177,29 +983,6 @@ impl ToolOrchestratorActor {
     ///
     /// When all calls in a batch have completed, emits [`ToolBatchCompleted`]
     async fn handle_tool_execution_completed(&mut self, session_id: SessionId, result: ToolResult) {
-        // An activate-type call's success is what binds the session to its
-        // new graph. Consumed here — the same actor that armed it at
-        // dispatch — so the blob has exactly one writer and one reader.
-        if let Some(binding) = self
-            .pending_activations
-            .remove(&(session_id.clone(), result.tool_call_id.clone()))
-        {
-            if result.success {
-                tracing::info!(
-                    session_id = ?session_id,
-                    graph = %binding.name,
-                    "minigraf activate succeeded — binding the session's active graph"
-                );
-                self.write_binding(&session_id, Some(&binding));
-            } else {
-                tracing::info!(
-                    session_id = ?session_id,
-                    tool = %result.name,
-                    "minigraf activate failed — no binding written"
-                );
-            }
-        }
-
         let Some(batch) = self.pending.get_mut(&session_id) else {
             tracing::warn!(
                 session_id = ?session_id,
@@ -1283,33 +1066,6 @@ fn rejected_mcp_result(tool_call: &ToolCall, reason: &str) -> ToolResult {
         full_content: None,
         truncation: None,
         pin_position: None,
-    }
-}
-
-/// A minigraf call after dispatch interception: the possibly-rewritten call
-/// and the activate binding its success will commit.
-struct PreparedMinigrafCall {
-    /// The call to publish (arguments may carry injected values).
-    tool_call: ToolCall,
-    /// The binding to write into the session's blob on success; `None` for
-    /// non-activate calls.
-    binding: Option<MinigrafActiveGraph>,
-}
-
-/// Parses a minigraf call's JSON arguments into a mutable object, or names the
-/// defect for the local rejection. Blank arguments are an empty object.
-fn parse_minigraf_arguments(
-    raw: &str,
-) -> Result<serde_json::Map<String, serde_json::Value>, String> {
-    if raw.trim().is_empty() {
-        return Ok(serde_json::Map::new());
-    }
-    match serde_json::from_str::<serde_json::Value>(raw) {
-        Ok(serde_json::Value::Object(map)) => Ok(map),
-        Ok(other) => Err(format!(
-            "minigraf tool arguments must be a JSON object, got {other}"
-        )),
-        Err(e) => Err(format!("invalid minigraf tool arguments: {e}")),
     }
 }
 

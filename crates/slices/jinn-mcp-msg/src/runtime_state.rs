@@ -229,7 +229,7 @@ mod tests {
     fn effective_statuses_overlay_singletons_for_any_session() {
         // Given a singleton Running and a per-session server Starting.
         let mut runtime = McpRuntimeState::default();
-        runtime.set_singleton_status("minigraf", McpConnectionStatus::Running);
+        runtime.set_singleton_status("bundled-example", McpConnectionStatus::Running);
         let session_id = SessionId::new();
         runtime.set_status(&session_id, "weather", McpConnectionStatus::Starting);
 
@@ -238,7 +238,7 @@ mod tests {
 
         // Then the singleton's status appears in it.
         assert_eq!(
-            statuses.get("minigraf"),
+            statuses.get("bundled-example"),
             Some(&McpConnectionStatus::Running)
         );
         // And the per-session status is preserved.
@@ -252,14 +252,14 @@ mod tests {
     fn effective_statuses_are_session_independent_for_singletons() {
         // Given a singleton Running, spawned "under" session A.
         let mut runtime = McpRuntimeState::default();
-        runtime.set_singleton_status("minigraf", McpConnectionStatus::Running);
+        runtime.set_singleton_status("bundled-example", McpConnectionStatus::Running);
 
         // When reading the effective projection for an unrelated session.
         let statuses = runtime.effective_statuses(&SessionId::new());
 
         // Then the singleton's status resolves for it too.
         assert_eq!(
-            statuses.get("minigraf"),
+            statuses.get("bundled-example"),
             Some(&McpConnectionStatus::Running)
         );
     }
@@ -268,7 +268,7 @@ mod tests {
     fn effective_stderr_overlays_singletons() {
         // Given a singleton stderr tail and a per-session one.
         let mut runtime = McpRuntimeState::default();
-        runtime.set_singleton_stderr("minigraf", "singleton tail".to_owned());
+        runtime.set_singleton_stderr("bundled-example", "singleton tail".to_owned());
         let session_id = SessionId::new();
         runtime.set_stderr(&session_id, "weather", "session tail".to_owned());
 
@@ -277,7 +277,7 @@ mod tests {
 
         // Then both are present.
         assert_eq!(
-            stderr.get("minigraf").map(String::as_str),
+            stderr.get("bundled-example").map(String::as_str),
             Some("singleton tail")
         );
         assert_eq!(
@@ -332,11 +332,11 @@ mod tests {
         let mut runtime = McpRuntimeState::default();
 
         // When setting one singleton server's status.
-        runtime.set_singleton_status("minigraf", McpConnectionStatus::Running);
+        runtime.set_singleton_status("bundled-example", McpConnectionStatus::Running);
 
         // Then that status reads back under the server name alone.
         assert_eq!(
-            runtime.singleton_status("minigraf"),
+            runtime.singleton_status("bundled-example"),
             Some(McpConnectionStatus::Running)
         );
     }
@@ -345,8 +345,8 @@ mod tests {
     fn clear_session_leaves_singleton_data_alone() {
         // Given a singleton server's runtime data.
         let mut runtime = McpRuntimeState::default();
-        runtime.set_singleton_status("minigraf", McpConnectionStatus::Running);
-        runtime.set_singleton_stderr("minigraf", "listening".to_owned());
+        runtime.set_singleton_status("bundled-example", McpConnectionStatus::Running);
+        runtime.set_singleton_stderr("bundled-example", "listening".to_owned());
         let session_id = SessionId::new();
         runtime.set_status(&session_id, "other", McpConnectionStatus::Dead);
 
@@ -355,24 +355,27 @@ mod tests {
 
         // Then the singleton's projections survive untouched.
         assert_eq!(
-            runtime.singleton_status("minigraf"),
+            runtime.singleton_status("bundled-example"),
             Some(McpConnectionStatus::Running)
         );
-        assert_eq!(runtime.singleton_stderr("minigraf"), Some("listening"));
+        assert_eq!(
+            runtime.singleton_stderr("bundled-example"),
+            Some("listening")
+        );
     }
 
     #[rstest::rstest]
     fn clear_singleton_removes_only_that_server() {
         // Given two singleton servers carrying runtime data.
         let mut runtime = McpRuntimeState::default();
-        runtime.set_singleton_status("minigraf", McpConnectionStatus::Running);
+        runtime.set_singleton_status("bundled-example", McpConnectionStatus::Running);
         runtime.set_singleton_status("other", McpConnectionStatus::Dead);
 
         // When clearing one singleton server.
-        runtime.clear_singleton("minigraf");
+        runtime.clear_singleton("bundled-example");
 
         // Then its projections are gone and the other server's remain.
-        assert_eq!(runtime.singleton_status("minigraf"), None);
+        assert_eq!(runtime.singleton_status("bundled-example"), None);
         assert_eq!(
             runtime.singleton_status("other"),
             Some(McpConnectionStatus::Dead)
@@ -385,9 +388,12 @@ mod tests {
         let mut runtime = McpRuntimeState::default();
 
         // When writing a singleton stderr tail.
-        runtime.set_singleton_stderr("minigraf", "npm warn".to_owned());
+        runtime.set_singleton_stderr("bundled-example", "npm warn".to_owned());
 
         // Then the tail reads back under the server name.
-        assert_eq!(runtime.singleton_stderr("minigraf"), Some("npm warn"));
+        assert_eq!(
+            runtime.singleton_stderr("bundled-example"),
+            Some("npm warn")
+        );
     }
 }

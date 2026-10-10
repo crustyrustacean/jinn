@@ -99,7 +99,6 @@ jinn-tui = { workspace = true }
 jinn-kernel = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-config = { workspace = true }
-jinn-minigraf = { workspace = true }
 jinn-preferences = { workspace = true }
 jinn-project = { workspace = true }
 jinn-dashboard = { workspace = true }
@@ -255,7 +254,6 @@ jinn-testutil = { path = "crates/jinn-testutil" }
 
 jinn-theme = { path = "crates/jinn-theme" }
 jinn-mcp = { path = "crates/jinn-mcp" }
-jinn-minigraf = { path = "crates/jinn-minigraf" }
 jinn-mcp-slice = { path = "crates/slices/jinn-mcp-slice" }
 jinn-chat-input-msg = { path = "crates/slices/jinn-chat-input-msg" }
 jinn-chat-log-view-msg = { path = "crates/slices/jinn-chat-log-view-msg" }
@@ -315,14 +313,6 @@ globset = "0.4"
 
 # MCP client protocol
 rmcp = { version = "3.0.0-beta.2", features = ["client", "transport-child-process", "transport-streamable-http-client", "transport-streamable-http-client-reqwest"] }
-
-# The bundled minigraf MCP server (crates/jinn-minigraf): rmcp's streamable-HTTP
-# server is mounted on axum, and minigraf is the embedded bi-temporal graph
-# database behind the four tools. minigraf is pinned exact: 2.0.3 is the
-# known-issues-pinned release (see its README — #371 ships fixed in v3), and
-# a floating version would change the data-format and bug surface.
-minigraf = "=2.0.3"
-axum = "0.8"
 
 # Async / channels
 tokio = { version = "1", features = ["full"] }

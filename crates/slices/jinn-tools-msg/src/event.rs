@@ -77,7 +77,7 @@ pub struct ToolsUnregistered {
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
 #[schema(description = "A session's view of a globally-registered provider changed.")]
 pub struct ProviderVisibilityChanged {
-    /// The globally-registered provider (e.g. `mcp__minigraf`).
+    /// The globally-registered provider (e.g. `mcp__bundled-example`).
     pub provider: String,
     /// The session whose view changed.
     pub session_id: SessionId,

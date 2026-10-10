@@ -455,8 +455,10 @@ mod tests {
     fn render_singleton_status_shows_running_without_a_session_entry() {
         // Given an enabled server whose Running status was published to the
         // singleton bucket (a singleton actor has no owning session).
-        let (mut state, config) = state_with_servers(&[server("minigraf")]);
-        state.active_session_mut().enable_mcp_server("minigraf");
+        let (mut state, config) = state_with_servers(&[server("bundled-example")]);
+        state
+            .active_session_mut()
+            .enable_mcp_server("bundled-example");
         let slices = jinn_slices::Slices::new();
         let runtime = slices
             .register(
@@ -465,7 +467,7 @@ mod tests {
             )
             .expect("MCP runtime cell");
         runtime.update(|runtime| {
-            runtime.set_singleton_status("minigraf", McpConnectionStatus::Running);
+            runtime.set_singleton_status("bundled-example", McpConnectionStatus::Running);
         });
 
         // When rendering.

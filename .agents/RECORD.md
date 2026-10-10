@@ -480,16 +480,7 @@ Entries are added or amended **only with human approval**.
 - (mcp) A singleton MCP server's tools register globally, so every session whose enablement admits the server dispatches to the one shared process.
 - (mcp) A singleton MCP server survives session close, archive, and teardown, and stops only at app exit or an explicit restart.
 - (mcp) A singleton MCP server's global registration is per-session withdrawable: disabling it in one session hides its tools there while other sessions keep them.
-- (minigraf) The bundled minigraf MCP server persists graphs as one `.graph` file per named graph under the app data dir's minigraf directory, and only `instantiate_graph` and `create_graph` create one.
-- (minigraf) Transact or query against an unknown graph name is refused with an error naming `instantiate_graph` or `attach_graph` as the remedy.
-- (skills) jinn ships a bundled minigraf skill that teaches the minigraf server's data model and Datalog surface, with deep-dive references beside `SKILL.md`.
-- (minigraf) The bundled minigraf server instantiates graphs from hand-editable template scripts under the config dir's graphs directory, splitting each script into instantiate-once seed forms and replay-on-every-open rule forms.
-- (minigraf) Graph facts persist in files while graph rules are memory-only in minigraf 2.0.3, so the server replays a graph's template rules on reopen and warns instead of failing when the template is unavailable.
-- (minigraf) A minigraf template validates in memory before any file is claimed, and instantiate fails without touching disk when the name exists or the script is invalid.
-- (sessions) Each session's active minigraf graph persists in the session's blob map as `minigraf.active_graph`, written and read only by the tool dispatch path.
-- (tools) Minigraf transact and query tools carry no model-facing graph argument; dispatch injects the session's active graph and the session id, rejecting locally when no graph is active.
-- (minigraf) The minigraf server's storage backend trait is private in minigraf 2.0.3, so custom persistence (e.g. sessions-database-backed graphs) requires an upstream fork; the sanctioned alternative is all-facts snapshot export and replay.
-- (skills) The bundled minigraf skill teaches the template workflow: seed/rules split, instantiate and attach, and per-step instruction files referenced by pointer facts.
+- (mcp) jinn bundles no MCP server: the jinn mcp CLI subcommand parses with a no-op variant and exists as the spawn point for future bundled servers.
 
 - (workflows) Workflow definitions are authored by convention under the config dir's workflows folder: one directory per workflow holding a workflow.md flow description and per-step prompt files.
 - (skills) The bundled workflows skill teaches running workflows on the session task list: stamping steps as task entries, dispatching each step to a subagent as an orchestrator, and materializing loop iterations by adding task entries.

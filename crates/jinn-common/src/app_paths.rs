@@ -128,16 +128,6 @@ impl AppPaths {
         self.browser_profile_base_dir().join(mode.as_str())
     }
 
-    /// Minigraf directory (`~/.local/share/jinn/minigraf`).
-    ///
-    /// One `<name>.graph` file per named graph, written by the bundled
-    /// minigraf MCP server. Lives under the app data dir like the browser
-    /// profiles: durable state, not config, not cache.
-    #[must_use]
-    pub fn minigraf_dir(&self) -> PathBuf {
-        self.app_data_dir().join("minigraf")
-    }
-
     /// Prompt templates directory (`~/.config/jinn/prompts`).
     #[must_use]
     pub fn prompts_dir(&self) -> PathBuf {
@@ -236,16 +226,6 @@ impl AppPaths {
     #[must_use]
     pub fn app_data_dir(&self) -> PathBuf {
         self.data_dir.join(APP_NAME)
-    }
-
-    /// Graph templates root (`~/.config/jinn/graphs`) — one directory per
-    /// hand-editable minigraf template, each holding a `template.dl` seed
-    /// script (sibling assets beside it are the template's own business).
-    ///
-    /// Config, not data: templates are hand-authored like themes and personas.
-    #[must_use]
-    pub fn graph_templates_dir(&self) -> PathBuf {
-        self.app_config_dir().join("graphs")
     }
 
     /// System themes directory (`/usr/share/jinn/themes`).
@@ -586,31 +566,5 @@ mod tests {
             headless,
             root.path().join("data/jinn/browser-profile/headless")
         );
-    }
-
-    #[rstest::rstest]
-    fn minigraf_dir_lands_under_app_data_dir() {
-        // Given an AppPaths rooted at a temp dir.
-        let root = tempfile::TempDir::new().expect("temp dir");
-        let paths = AppPaths::new_in(root.path());
-
-        // When resolving the minigraf dir.
-        let dir = paths.minigraf_dir();
-
-        // Then it is data/jinn/minigraf (app data dir, not config, not cache).
-        assert_eq!(dir, root.path().join("data/jinn/minigraf"));
-    }
-
-    #[rstest::rstest]
-    fn graph_templates_dir_lands_under_app_config_dir() {
-        // Given an AppPaths rooted at a temp dir.
-        let root = tempfile::TempDir::new().expect("temp dir");
-        let paths = AppPaths::new_in(root.path());
-
-        // When resolving the graph templates root.
-        let dir = paths.graph_templates_dir();
-
-        // Then it is config/jinn/graphs (app config dir: hand-authored).
-        assert_eq!(dir, root.path().join("config/jinn/graphs"));
     }
 }
