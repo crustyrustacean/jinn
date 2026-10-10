@@ -7,7 +7,7 @@ use crate::tool_types::ToolContext;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition};
 
 use super::{
-    BoxedToolFuture, attendant_tools, bash, edit, get_time, grep, interactive_term,
+    BoxedToolFuture, attendant_tools, bash, capabilities, edit, get_time, grep, interactive_term,
     interactive_term_kill, interactive_term_send, read, restart_mcp, save_plan, session_fetch,
     session_search, skill, task, write,
 };
@@ -87,6 +87,16 @@ pub fn builtin_tools(default_timeout_secs: u64) -> Vec<BuiltinToolEntry> {
             false,
         ),
         (
+            capabilities::query_definition(),
+            capabilities::query_execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
+        ),
+        (
+            capabilities::apply_definition(),
+            capabilities::apply_execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
+        ),
+        (
             attendant_tools::conclude_definition(),
             attendant_tools::conclude_execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
             false,
@@ -136,6 +146,28 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
+    fn capabilities_tools_are_registered() {
+        // Given the builtin tool list.
+        let tools = builtin_tools(30);
+
+        // When collecting the registered tool names.
+        let names: Vec<&str> = tools.iter().map(|(d, _, _)| d.name.as_str()).collect();
+
+        // Then both capability adjustment tools are present, query before
+        // apply as the registry lists them.
+        let query_pos = names
+            .iter()
+            .position(|n| *n == "capabilities_query")
+            .expect("capabilities_query must be registered");
+        let apply_pos = names
+            .iter()
+            .position(|n| *n == "capabilities_apply")
+            .expect("capabilities_apply must be registered");
+        assert!(query_pos < apply_pos);
+    }
+
+    #[rstest::rstest]
+    #[test]
     fn restart_mcp_server_is_registered() {
         // Given the builtin tool list.
         let tools = builtin_tools(30);
@@ -158,6 +190,8 @@ mod tests {
             "save_plan",
             "session_search",
             "session_fetch",
+            "capabilities_query",
+            "capabilities_apply",
             "grep",
             "task",
             "interactive_term",

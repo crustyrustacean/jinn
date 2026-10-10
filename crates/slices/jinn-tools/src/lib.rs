@@ -17,6 +17,7 @@ pub use jinn_tools_msg::BoxedToolFuture;
 
 pub mod attendant_tools;
 pub mod bash;
+pub mod capabilities;
 
 #[cfg(test)]
 mod attendant_tools_tests;
@@ -68,6 +69,8 @@ mod tool_picker_tests;
 #[cfg(test)]
 mod tools_actor_tests;
 pub use orchestrator::{ToolOrchestratorActor, ToolOrchestratorActorDeps};
+
+pub use capabilities::{apply_definition, apply_execute, query_definition, query_execute};
 
 pub use jinn_tools_msg::tool_picker_scope;
 pub use tool_picker_routes::open_from_scope as open_tool_picker_from_scope;
