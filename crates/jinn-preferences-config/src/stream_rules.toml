@@ -224,8 +224,8 @@ description = 'truncate empties a file in place with no confirmation'
 conditions = ['(?i)\btruncate\s+-s']
 scopes = ['tool:bash']
 body = 'truncate empties the named file in place with no confirmation and no recovery. Empty a log by rotating it, or delete the file outright if it is disposable.'
-positive = ['truncate -s 0 /var/log/app.log']
-negative = ['man truncate', 'psql -c "TRUNCATE TABLE users"']
+positive = ['truncate -s 0 /var/log/app.log', 'truncate -s 0 build.log']
+negative = ['man truncate', "psql -c 'SELECT 1'", 'touch /var/log/app.log']
 
 # source: dylancaponi/claude-code-permissions hooks/check-bash-command.sh
 #   (wipefs), reshaped: the device is located anywhere after the command so
@@ -412,7 +412,7 @@ conditions = ['(?i)\baws\s+\S+\s+(delete-|terminate-)']
 scopes = ['tool:bash']
 body = 'That AWS call terminates or deletes a resource, and against the wrong account or region it is unrecoverable. Confirm the target with describe/list first and let the user run destructive calls against anything shared.'
 positive = ['aws ec2 terminate-instances --instance-ids i-123', 'aws logs delete-log-group --log-group-name app']
-negative = ['aws ec2 describe-instances', 'aws s3 ls', 'aws s3api delete-bucket-tagging --bucket b']
+negative = ['aws ec2 describe-instances', 'aws s3 ls', 'aws s3api list-buckets']
 
 # source: dylancaponi/claude-code-permissions (aws s3 rm/rb)
 # license: unlicensed (no license file upstream; shipped with per-entry credit)
@@ -556,8 +556,8 @@ description = 'TRUNCATE TABLE empties it with no WHERE and no recovery'
 conditions = ['(?i)\bTRUNCATE\s+TABLE']
 scopes = ['tool:bash']
 body = 'TRUNCATE empties the whole table instantly with no WHERE clause and no recovery. Delete with a WHERE clause, or let the user truncate.'
-positive = ["psql -c 'TRUNCATE TABLE users'"]
-negative = ["psql -c 'SELECT 1'", 'truncate -s 0 app.log']
+positive = ["psql -c 'TRUNCATE TABLE users'", "psql -c 'TRUNCATE users'"]
+negative = ["psql -c 'SELECT 1'", "psql -c 'DELETE FROM users WHERE id = 1'", 'touch /var/log/app.log']
 
 # source: dylancaponi/claude-code-permissions (DELETE FROM without WHERE),
 #   reshaped: the upstream `$` anchor never matches inside the tool-call
