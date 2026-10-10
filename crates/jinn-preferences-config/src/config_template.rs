@@ -160,7 +160,7 @@ where
 /// `--force` treats it as a soft skip worth reporting and carrying on
 /// from — the command's own target is `jinn.toml`, which may still have
 /// been created successfully.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StreamRulesSeedOutcome {
     /// Template was written to a previously-missing path.
     Created(PathBuf),

@@ -113,7 +113,10 @@ fn run_recovery_subcommand(cli: &jinn_cli::cli::Cli) -> Result<Option<Prepared>,
 
     if let Some(Commands::Config { subcommand }) = &cli.command {
         use jinn_cli::cli::ConfigCommands;
-        use jinn_preferences_config::{InitOutcome, init_default_config_to, preferences_path};
+        use jinn_preferences_config::{
+            InitOutcome, StreamRulesSeedOutcome, init_default_config_to, init_stream_rules_to,
+            preferences_path,
+        };
 
         match subcommand {
             ConfigCommands::Init { force } => {
@@ -129,6 +132,32 @@ fn run_recovery_subcommand(cli: &jinn_cli::cli::Cli) -> Result<Option<Prepared>,
                     }
                     Ok(InitOutcome::Overwritten) => {
                         println!("Overwrote {}", path.display());
+                    }
+                    Err(report) => {
+                        eprintln!("{report:?}");
+                        return Err(report.change_context(AppError));
+                    }
+                }
+
+                // The stream-rules file lives beside `jinn.toml`, wherever
+                // this command just put that document. `--force` overwrites
+                // it too — that is the supported path for pulling in an
+                // updated shipped set. Without `--force` an existing file is
+                // left alone and reported as skipped, not failed: the
+                // command's primary target (`jinn.toml`) already succeeded.
+                let rules_path = path
+                    .parent()
+                    .unwrap_or_else(|| std::path::Path::new("."))
+                    .join(jinn_preferences_config::STREAM_RULES_FILE_NAME);
+                match init_stream_rules_to(&rules_path, force) {
+                    Ok(StreamRulesSeedOutcome::Created(p)) => {
+                        println!("Created {}", p.display());
+                    }
+                    Ok(StreamRulesSeedOutcome::Overwritten(p)) => {
+                        println!("Overwrote {}", p.display());
+                    }
+                    Ok(StreamRulesSeedOutcome::Untouched(p)) => {
+                        println!("Already present, skipped {}", p.display());
                     }
                     Err(report) => {
                         eprintln!("{report:?}");
@@ -167,6 +196,7 @@ fn run_recovery_subcommand(cli: &jinn_cli::cli::Cli) -> Result<Option<Prepared>,
             Destinations, InstallOutcome, InstallReport, JinnTomlOutcome, install_defaults_to,
         };
         use jinn_kernel::AppPaths;
+        use jinn_preferences_config::StreamRulesSeedOutcome;
 
         let app_paths = AppPaths::default();
         let config_path = jinn_config::FilesystemConfigStorage::default_path()
@@ -183,6 +213,7 @@ fn run_recovery_subcommand(cli: &jinn_cli::cli::Cli) -> Result<Option<Prepared>,
                 let InstallReport {
                     outcomes,
                     jinn_toml,
+                    stream_rules,
                 } = report;
                 for outcome in outcomes {
                     match &outcome {
@@ -202,6 +233,17 @@ fn run_recovery_subcommand(cli: &jinn_cli::cli::Cli) -> Result<Option<Prepared>,
                         println!("Created {}", path.display());
                     }
                     JinnTomlOutcome::Untouched(path) => {
+                        println!("Already present, skipped {}", path.display());
+                    }
+                }
+                match &stream_rules {
+                    StreamRulesSeedOutcome::Created(path) => {
+                        println!("Created {}", path.display());
+                    }
+                    // Install never modifies an existing rules file, so
+                    // Untouched is the only other reachable variant here.
+                    StreamRulesSeedOutcome::Untouched(path)
+                    | StreamRulesSeedOutcome::Overwritten(path) => {
                         println!("Already present, skipped {}", path.display());
                     }
                 }
