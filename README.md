@@ -46,11 +46,24 @@ Attach "attendants" to sessions that fire on agent turn end (or manually with `R
 - Ensure implementation is done (shipped by default as `gap-check`)
 - Task completion checker
 - Code quality gate
-- Automatically fetch issues from a tracker for continuous bugfixing
 
-They can be created entirely in-app by typing in the instructions, turning it on, and optionally saving to your `jinn.toml` so they can be attached to other sessions.
+They can be created entirely in-app by typing in the instructions in the attendant session and then turning it on. Attendants can be optionally saved to your `jinn.toml` via keybind so you can attach them to any session.
 
 ![Attendants](doc/screenshots/attendant.png)
+
+### Workflows
+
+Workflows are repeatable automated task lists that can be created and ran by `jinn`. To create a workflow, ask `jinn`:
+
+- "I need a code review workflow"
+- "I want to burn captions into my videos, can you make a workflow to do that?
+- "Create a workflow to generate an article about a user-provided topic"
+
+`jinn` will walk you through the brief creation process and then save the workflow to your `~/.config/jinn/workflows/` directory.
+
+To run a workflow, create a new session and ask `jinn` to run the workflow. This will turn the session into a _workflow orchestrator_ and you'll be asked any relevant information before the workflow begins.
+
+Each step in a workflow has a custom prompt that describes what should happen during that step. This makes it easy (ask `jinn`!) to tune specific steps to achieve the desired result.
 
 ### Task/todo list
 
@@ -58,7 +71,7 @@ Agent-managed task list with task search.
 
 ![Task List](doc/screenshots/task-list.png)
 
-### Interative term
+### Interactive term
 
 Run TUI apps in a separate task that an agent can interact with.
 
