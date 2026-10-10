@@ -364,7 +364,7 @@ max_restarts = 3
 # > Tool failures before the turn is cancelled. The calculation uses a simple
 # > accumulator that increments on fail and decrements on success. So the
 # > failures may or may not be consecutive.
-max_failures = 4
+max_failures = 6
 
 # ###########################################################################
 # Interactive terminal panes
