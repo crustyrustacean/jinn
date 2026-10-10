@@ -238,6 +238,16 @@ impl AppPaths {
         self.data_dir.join(APP_NAME)
     }
 
+    /// Graph templates root (`~/.config/jinn/graphs`) — one directory per
+    /// hand-editable minigraf template, each holding a `template.dl` seed
+    /// script (sibling assets beside it are the template's own business).
+    ///
+    /// Config, not data: templates are hand-authored like themes and personas.
+    #[must_use]
+    pub fn graph_templates_dir(&self) -> PathBuf {
+        self.app_config_dir().join("graphs")
+    }
+
     /// System themes directory (`/usr/share/jinn/themes`).
     #[must_use]
     pub fn system_themes_dir(&self) -> PathBuf {
@@ -589,5 +599,18 @@ mod tests {
 
         // Then it is data/jinn/minigraf (app data dir, not config, not cache).
         assert_eq!(dir, root.path().join("data/jinn/minigraf"));
+    }
+
+    #[rstest::rstest]
+    fn graph_templates_dir_lands_under_app_config_dir() {
+        // Given an AppPaths rooted at a temp dir.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        let paths = AppPaths::new_in(root.path());
+
+        // When resolving the graph templates root.
+        let dir = paths.graph_templates_dir();
+
+        // Then it is config/jinn/graphs (app config dir: hand-authored).
+        assert_eq!(dir, root.path().join("config/jinn/graphs"));
     }
 }

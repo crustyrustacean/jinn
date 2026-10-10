@@ -241,12 +241,16 @@ fn run_server_subcommand(cli: &jinn_cli::cli::Cli) -> Result<Option<Prepared>, R
         return Ok(None);
     };
 
-    let minigraf_dir = jinn_kernel::AppPaths::default().minigraf_dir();
+    let paths = jinn_kernel::AppPaths::default();
+    let minigraf_dir = paths.minigraf_dir();
+    let templates_dir = paths.graph_templates_dir();
     let host = host.clone();
     let port = *port;
     match tokio::runtime::Runtime::new() {
         Ok(runtime) => {
-            if let Err(report) = runtime.block_on(jinn_minigraf::run(&host, port, minigraf_dir)) {
+            if let Err(report) =
+                runtime.block_on(jinn_minigraf::run(&host, port, minigraf_dir, templates_dir))
+            {
                 eprintln!("error: minigraf server failed: {report:?}");
                 return Err(report.change_context(AppError));
             }

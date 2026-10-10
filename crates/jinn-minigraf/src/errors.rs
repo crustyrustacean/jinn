@@ -18,13 +18,21 @@ pub enum MinigrafServerError {
     #[error("invalid graph name: {0}")]
     BadName(String),
     /// The named graph does not exist.
-    #[error("no graph named `{0}` — create it with create_graph first")]
+    #[error(
+        "no graph named `{0}` — instantiate_graph or create_graph makes one; attach_graph binds an existing one"
+    )]
     UnknownGraph(String),
     /// The graph already exists (create_graph only ever creates).
     #[error(
         "graph `{0}` already exists — open it by using transact/query; the existing file was left untouched"
     )]
     AlreadyExists(String),
+    /// A template script failed to parse or failed validation.
+    #[error("invalid template: {0}")]
+    BadTemplate(String),
+    /// The named template does not exist (list_templates lists what does).
+    #[error("no template named `{0}` — list_templates shows the available templates")]
+    UnknownTemplate(String),
     /// minigraf refused the operation (carries its rendered `[CODE] message`).
     #[error("minigraf error: {0}")]
     Minigraf(String),

@@ -44,8 +44,12 @@ use tokio_util::sync::CancellationToken;
 /// mounts the identical service stack the entrypoint builds —
 /// `MinigrafServer::new` over the temp dir on axum at `/mcp` — which is the
 /// same code path minus the listener plumbing.
-async fn spawn_minigraf_server(minigraf_dir: PathBuf) -> (String, CancellationToken) {
-    let server = jinn_minigraf::MinigrafServer::new(minigraf_dir).expect("server builds");
+async fn spawn_minigraf_server(
+    minigraf_dir: PathBuf,
+    templates_dir: PathBuf,
+) -> (String, CancellationToken) {
+    let server =
+        jinn_minigraf::MinigrafServer::new(minigraf_dir, templates_dir).expect("server builds");
     let service: StreamableHttpService<jinn_minigraf::MinigrafServer, LocalSessionManager> =
         StreamableHttpService::new(
             move || Ok(server.clone()),
@@ -69,6 +73,15 @@ async fn spawn_minigraf_server(minigraf_dir: PathBuf) -> (String, CancellationTo
     });
 
     (format!("http://{addr}/mcp"), cancellation_token)
+}
+
+/// An empty templates root (most tests need no templates).
+fn templates_dir() -> PathBuf {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    // Leak the guard: the server reads the dir lazily; tests are short-lived.
+    let path = dir.path().to_path_buf();
+    std::mem::forget(dir);
+    path
 }
 
 /// Connects with retry so a just-bound server is not flaked on.
@@ -107,21 +120,29 @@ async fn call_text(client: &McpClient, name: &str, args: serde_json::Value) -> S
 
 #[rstest::rstest]
 #[tokio::test]
-async fn server_lists_exactly_the_four_graph_tools() {
+async fn server_lists_exactly_the_six_graph_tools() {
     // Given a live minigraf server over a temp dir.
     let dir = tempfile::TempDir::new().expect("tempdir");
-    let (url, shutdown) = spawn_minigraf_server(dir.path().to_path_buf()).await;
+    let (url, shutdown) = spawn_minigraf_server(dir.path().to_path_buf(), templates_dir()).await;
     let mut client = connect(&url).await;
 
     // When listing tools.
     let tools = client.list_tools().await.expect("tools/list");
 
-    // Then exactly the four graph tools are advertised.
+    // Then exactly the six graph tools are advertised (list_graphs is gone;
+    // its replacement surface is list_templates).
     let mut names: Vec<String> = tools.iter().map(|t| t.name.to_string()).collect();
     names.sort();
     assert_eq!(
         names,
-        vec!["create_graph", "list_graphs", "query", "transact"]
+        vec![
+            "attach_graph",
+            "create_graph",
+            "instantiate_graph",
+            "list_templates",
+            "query",
+            "transact"
+        ]
     );
 
     client.shutdown().await;
@@ -133,7 +154,7 @@ async fn server_lists_exactly_the_four_graph_tools() {
 async fn create_transact_query_cycle_roundtrips_over_http() {
     // Given a live minigraf server.
     let dir = tempfile::TempDir::new().expect("tempdir");
-    let (url, shutdown) = spawn_minigraf_server(dir.path().to_path_buf()).await;
+    let (url, shutdown) = spawn_minigraf_server(dir.path().to_path_buf(), templates_dir()).await;
     let mut client = connect(&url).await;
 
     // When creating, transacting, and querying a graph through the tools.
@@ -169,7 +190,7 @@ async fn create_transact_query_cycle_roundtrips_over_http() {
 async fn create_graph_on_existing_name_fails_without_touching_the_file() {
     // Given a live server with a created graph holding one fact.
     let dir = tempfile::TempDir::new().expect("tempdir");
-    let (url, shutdown) = spawn_minigraf_server(dir.path().to_path_buf()).await;
+    let (url, shutdown) = spawn_minigraf_server(dir.path().to_path_buf(), templates_dir()).await;
     let mut client = connect(&url).await;
     call_text(&client, "create_graph", json!({ "name": "dup" })).await;
     call_text(
@@ -211,7 +232,7 @@ async fn create_graph_on_existing_name_fails_without_touching_the_file() {
 async fn transact_on_unknown_graph_names_create_graph_as_remedy_over_http() {
     // Given a live server with no graphs.
     let dir = tempfile::TempDir::new().expect("tempdir");
-    let (url, shutdown) = spawn_minigraf_server(dir.path().to_path_buf()).await;
+    let (url, shutdown) = spawn_minigraf_server(dir.path().to_path_buf(), templates_dir()).await;
     let mut client = connect(&url).await;
 
     // When transacting into an unknown graph.
@@ -238,18 +259,23 @@ async fn transact_on_unknown_graph_names_create_graph_as_remedy_over_http() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn list_graphs_reflects_created_graphs_over_http() {
-    // Given a live server where two graphs were created.
+async fn list_templates_reflects_template_directories_over_http() {
+    // Given a live server whose templates root holds two templates.
     let dir = tempfile::TempDir::new().expect("tempdir");
-    let (url, shutdown) = spawn_minigraf_server(dir.path().to_path_buf()).await;
+    let tdir = tempfile::TempDir::new().expect("tempdir");
+    for name in ["beta", "alpha"] {
+        let d = tdir.path().join(name);
+        std::fs::create_dir_all(&d).expect("mkdir");
+        std::fs::write(d.join("template.dl"), "(transact [[:a :b 1]])").expect("write");
+    }
+    let (url, shutdown) =
+        spawn_minigraf_server(dir.path().to_path_buf(), tdir.path().to_path_buf()).await;
     let mut client = connect(&url).await;
-    call_text(&client, "create_graph", json!({ "name": "beta" })).await;
-    call_text(&client, "create_graph", json!({ "name": "alpha" })).await;
 
-    // When listing graphs.
-    let listing = call_text(&client, "list_graphs", json!({})).await;
+    // When listing templates.
+    let listing = call_text(&client, "list_templates", json!({})).await;
 
-    // Then both names come back.
+    // Then both names come back, sorted.
     assert!(listing.contains("alpha"), "listing: {listing}");
     assert!(listing.contains("beta"), "listing: {listing}");
 
@@ -264,7 +290,7 @@ async fn graphs_persist_across_a_server_restart() {
     let dir = tempfile::TempDir::new().expect("tempdir");
     let minigraf_dir = dir.path().to_path_buf();
     {
-        let (url, shutdown) = spawn_minigraf_server(minigraf_dir.clone()).await;
+        let (url, shutdown) = spawn_minigraf_server(minigraf_dir.clone(), templates_dir()).await;
         let mut client = connect(&url).await;
         call_text(&client, "create_graph", json!({ "name": "durable" })).await;
         call_text(
@@ -278,7 +304,7 @@ async fn graphs_persist_across_a_server_restart() {
     }
 
     // When a fresh server over the same directory serves the same graph.
-    let (url, shutdown) = spawn_minigraf_server(minigraf_dir).await;
+    let (url, shutdown) = spawn_minigraf_server(minigraf_dir, templates_dir()).await;
     let mut client = connect(&url).await;
     let rows = call_text(
         &client,
@@ -303,7 +329,7 @@ async fn lock_refusal_surfaces_as_clean_tool_error() {
     let minigraf_dir = dir.path().to_path_buf();
     std::fs::create_dir_all(&minigraf_dir).expect("dir");
     let holder = minigraf::Minigraf::open(minigraf_dir.join("locked.graph")).expect("held open");
-    let (url, shutdown) = spawn_minigraf_server(minigraf_dir).await;
+    let (url, shutdown) = spawn_minigraf_server(minigraf_dir, templates_dir()).await;
     let mut client = connect(&url).await;
 
     // When the server transacts into that graph.
@@ -335,4 +361,208 @@ async fn lock_refusal_surfaces_as_clean_tool_error() {
     client.shutdown().await;
     shutdown.cancel();
     drop(holder);
+}
+
+/// Writes a `stoplight` template (seed + rules) into a fresh templates root
+/// and returns its path (leaked, like `templates_dir`).
+fn stoplight_templates_dir() -> PathBuf {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let template = dir.path().join("stoplight");
+    std::fs::create_dir_all(&template).expect("mkdir");
+    std::fs::write(
+        template.join("template.dl"),
+        concat!(
+            ";; one light, seeded red, with a green? derived relation\n",
+            "(transact [[:light/1 :state :red]])\n",
+            "(rules [ (rule [(green? ?l) [?l :state :green]]) ])\n"
+        ),
+    )
+    .expect("write");
+    let path = dir.path().to_path_buf();
+    std::mem::forget(dir);
+    path
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn template_lifecycle_over_http_instantiate_transact_query() {
+    // Given a live server with a stoplight template.
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let (url, shutdown) =
+        spawn_minigraf_server(dir.path().to_path_buf(), stoplight_templates_dir()).await;
+    let mut client = connect(&url).await;
+
+    // When instantiating, transacting (no graph argument — the instance is
+    // the caller's active graph in jinn; over the wire the explicit-arg
+    // fallback carries it), and querying.
+    let created = call_text(
+        &client,
+        "instantiate_graph",
+        json!({ "template": "stoplight", "name": "sl-a", "created_by": "session-a" }),
+    )
+    .await;
+    assert!(created.contains("sl-a"), "created: {created}");
+    assert!(created.contains("session-a"), "created: {created}");
+    call_text(
+        &client,
+        "transact",
+        json!({ "graph": "sl-a", "datalog": "(transact [[:light/1 :state :green]])" }),
+    )
+    .await;
+    let rows = call_text(
+        &client,
+        "query",
+        json!({ "graph": "sl-a", "datalog": "(query [:find ?s :where [?e :state ?s]])" }),
+    )
+    .await;
+
+    // Then the moved state reads back and the template's rule resolves
+    // (keyword entities render as their deterministic UUID).
+    assert!(rows.contains("green"), "rows: {rows}");
+    let derived = call_text(
+        &client,
+        "query",
+        json!({ "graph": "sl-a", "datalog": "(query [:find ?l :where (green? ?l)])" }),
+    )
+    .await;
+    assert!(
+        derived.contains("f092904b-533c-535d-8f37-a1630a60d5cd")
+            || !derived.contains("\"rows\":[]"),
+        "derived rows must be non-empty: {derived}"
+    );
+
+    client.shutdown().await;
+    shutdown.cancel();
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn instantiate_replays_template_rules_after_a_server_restart() {
+    // Given a server that instantiated a template graph (seed + rules), then
+    // stopped. The seed moved the light off its seeded value first.
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let minigraf_dir = dir.path().to_path_buf();
+    let templates = stoplight_templates_dir();
+    {
+        let (url, shutdown) = spawn_minigraf_server(minigraf_dir.clone(), templates.clone()).await;
+        let mut client = connect(&url).await;
+        call_text(
+            &client,
+            "instantiate_graph",
+            json!({ "template": "stoplight", "name": "sl-a", "created_by": "session-a" }),
+        )
+        .await;
+        call_text(
+            &client,
+            "transact",
+            json!({ "graph": "sl-a", "datalog": "(transact [[:light/1 :state :green]])" }),
+        )
+        .await;
+        client.shutdown().await;
+        shutdown.cancel();
+    }
+
+    // When a fresh server over the same directories serves the same graph
+    // (the replay path: facts come from the file, rules from the template).
+    let (url, shutdown) = spawn_minigraf_server(minigraf_dir, templates).await;
+    let mut client = connect(&url).await;
+
+    // Then the fact survived (green, not a re-seeded red)...
+    let rows = call_text(
+        &client,
+        "query",
+        json!({ "graph": "sl-a", "datalog": "(query [:find ?s :where [?e :state ?s]])" }),
+    )
+    .await;
+    assert!(rows.contains("green"), "rows: {rows}");
+    // ...and the rules compute again without re-registration (keyword
+    // entities render as their deterministic UUID).
+    let derived = call_text(
+        &client,
+        "query",
+        json!({ "graph": "sl-a", "datalog": "(query [:find ?l :where (green? ?l)])" }),
+    )
+    .await;
+    assert!(
+        derived.contains("f092904b-533c-535d-8f37-a1630a60d5cd"),
+        "derived: {derived}"
+    );
+
+    client.shutdown().await;
+    shutdown.cancel();
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn bare_transact_without_a_graph_names_the_remedy_over_http() {
+    // Given a live server.
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let (url, shutdown) = spawn_minigraf_server(dir.path().to_path_buf(), templates_dir()).await;
+    let mut client = connect(&url).await;
+
+    // When transacting with no graph argument at all (the shape jinn's
+    // dispatch must never produce; the server still refuses honestly).
+    let result = client
+        .call_tool(
+            "transact",
+            Some(
+                json!({ "datalog": "(transact [[:a :b 1]])" })
+                    .as_object()
+                    .expect("o")
+                    .clone(),
+            ),
+        )
+        .await;
+
+    // Then the error names the remedy.
+    let err = result.expect_err("no-graph transact must be refused");
+    let rendered = format!("{err:?}");
+    assert!(
+        rendered.contains("instantiate_graph") || rendered.contains("attach_graph"),
+        "rendered: {rendered}"
+    );
+
+    client.shutdown().await;
+    shutdown.cancel();
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn attach_graph_binds_and_stamps_provenance_over_http() {
+    // Given a live server with an instantiated graph.
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let (url, shutdown) =
+        spawn_minigraf_server(dir.path().to_path_buf(), stoplight_templates_dir()).await;
+    let mut client = connect(&url).await;
+    call_text(
+        &client,
+        "instantiate_graph",
+        json!({ "template": "stoplight", "name": "shared", "created_by": "session-a" }),
+    )
+    .await;
+
+    // When a second session attaches to the same graph over the wire.
+    let attached = call_text(
+        &client,
+        "attach_graph",
+        json!({ "name": "shared", "created_by": "session-b" }),
+    )
+    .await;
+
+    // Then the attach names the graph and its template.
+    assert!(attached.contains("shared"), "attached: {attached}");
+    assert!(attached.contains("stoplight"), "attached: {attached}");
+
+    // And a transact into it lands (the provenance fact write did not wedge
+    // the handle).
+    let rows = call_text(
+        &client,
+        "query",
+        json!({ "graph": "shared", "datalog": "(query [:find ?s :where [?e :state ?s]])" }),
+    )
+    .await;
+    assert!(rows.contains("red"), "rows: {rows}");
+
+    client.shutdown().await;
+    shutdown.cancel();
 }

@@ -22,6 +22,9 @@ serde_json = { workspace = true }
 wherror = { workspace = true }
 error-stack = { workspace = true }
 tracing = { workspace = true }
+# Provenance timestamps (`:graph/created-at`) and attach stamps, rendered as
+# ISO-8601 strings like every other timestamp in a graph.
+jiff = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
