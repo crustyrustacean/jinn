@@ -1,5 +1,10 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Do not make edits)**
 
+## (development)
+
+- Add `capabilities_*` tools which allow `jinn` to enable/disable tools/skills/MCP servers when prompted.
+- Change "tool call failure watchdog" trigger condition from 4 to 6.
+
 ## 2026-10-05 v1.5.0
 
 - Display bug fix from v1.4.0 applied generically so all tool calls should display properly.

@@ -29,6 +29,31 @@ running it right now.
 5. **If the answer isn't covered**, say so rather than inventing bindings —
    wrong binds are worse than no answer.
 
+## Adjusting your own session's capabilities
+
+An agent running inside jinn can turn its own tools, skills, and MCP servers
+on or off with two built-in tools — no user trip to the pickers required.
+
+1. Call `capabilities_query` (no arguments). It returns the session's complete
+   on/off buffer as JSON: `{"tools": {...}, "skills": {...}, "mcp_servers":
+   {...}}`, one entry per registered tool (including `mcp__<server>__<tool>`
+   entries), per discovered skill, and per configured MCP server, `true` =
+   available, `false` = withheld.
+2. Edit that buffer — flip only the states you want to change — and pass the
+   WHOLE thing to `capabilities_apply` under `capabilities`. **Echo the entire
+   buffer**: an apply missing any entry, or naming an unknown one, is rejected
+   whole with the current buffer attached to the rejection; nothing changes
+   until every entry is present.
+3. A successful apply is atomic and takes effect immediately: off tools and
+   skills vanish from the next prompt, off MCP servers are disconnected, and
+   the change persists with the session. It commits deny-list filters, so a
+   session under an allow-mode filter is demoted to the mask's deny list.
+   Turning the adjustment tools themselves off is allowed and honored.
+
+If an apply is rejected because the session changed (tools registered or
+removed since your query), re-run `capabilities_query` — it always returns
+the current truth — and echo that.
+
 ## References
 
 | File                                   | Covers                                                                                     |
