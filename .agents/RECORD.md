@@ -493,3 +493,4 @@ Entries are added or amended **only with human approval**.
 
 - (workflows) Workflow definitions are authored by convention under the config dir's workflows folder: one directory per workflow holding a workflow.md flow description and per-step prompt files.
 - (skills) The bundled workflows skill teaches running workflows on the session task list: stamping steps as task entries, dispatching each step to a subagent as an orchestrator, and materializing loop iterations by adding task entries.
+- (skills) The bundled workflows skill gates authoring on a user-approved preview: orient with searches on unmapped or fast-moving domains, one batched question round for structural forks and environment prerequisites and steps the user did not name, then nothing is written to disk until the user approves the preview; an explicit pre-approval collapses the gates.

@@ -1,8 +1,10 @@
 # Workflow format — the full spec
 
 Everything a workflow directory may contain, and every convention the
-workflows skill applies when running one. Sketches here are shapes to copy,
-not shippable workflows — no example ships with jinn.
+workflows skill applies when running one. Also covers the authoring
+dialogue: how a workflow gets built with the user before anything lands on
+disk. Sketches here are shapes to copy, not shippable workflows — no
+example ships with jinn.
 
 ## Directory layout
 
@@ -21,6 +23,105 @@ not shippable workflows — no example ships with jinn.
 - `workflow.md` is required; `steps/` is required (a workflow with no steps
   is a note, not a workflow).
 - No frontmatter, no config files, no schema — a workflow is plain markdown.
+
+## The authoring dialogue
+
+The SKILL.md protocol — orient, ask, preview, write — expanded. The gates:
+
+- **One question round, ever.** Every question in a single message. After it,
+  build — unanswered items become named defaults in the artifact, visible and
+  editable later. Nothing is ever held hostage to a missing answer.
+- **Nothing is written before preview approval.** The user sees the whole
+  workflow — flow, parameters with defaults, step list — before the first
+  `write`. A user with domain knowledge catches gaps here; a user without it
+  approves in one word.
+- **Pre-approval collapses the gates.** An explicit "just make it" means
+  build with best defaults and write immediately, reporting the choices made.
+  Silence is never pre-approval.
+- **The skill never questions the form factor.** The user asked for a
+  workflow; a workflow is the deliverable, even if one step would do. Burned
+  tokens on a trivial workflow are the user's explicit choice, and
+  repeat-runs are the point of the surface.
+
+### What a question may be
+
+Three kinds of content earn a place in the round; everything else defaults:
+
+1. **Structural forks** — answers that change which steps exist, not just
+   what values they get. Presented as lettered options with cost/implication
+   and a one-sentence recommendation:
+
+   > 1. Voice engine — A: cloud service (best quality, paid per character,
+   >    needs an API key from you, adds a key-setup step); B: local engine
+   >    (free, offline, weaker quality, adds an install step). Recommended:
+   >    A if you'll set up an account, B if this must run offline.
+
+   The test for "structural": could no later edit of a parameter value
+   produce this option? Then it is a fork, and it belongs in the round.
+
+2. **Environment prerequisites** — API keys, accounts, local installs,
+   anything the workflow dies without that the prompt cannot confirm. Each
+   option above names its prerequisite so the choice carries it.
+
+3. **The steps the user would not have thought to name** — the additive
+   menu drawn from domain knowledge:
+
+   > Usual for this kind of job, not mentioned: word-level timestamps for
+   > captions, per-scene voice changes, a background music bed. Want any?
+
+   Include this whenever candidates exist, including when the user
+   enumerated steps — their list bounds what they imagined, not what the
+   domain offers. Omission is invisible to the user in a way a wrong choice
+   never is.
+
+Never in the round: parameter gaps with sensible defaults (assume, and let
+the default appear as a named parameter); anything the prompt already
+settled (enumerated steps are closed questions; build them as given);
+anything inferable (infer, then confirm in the preview).
+
+### Orient before asking
+
+Questions are only as good as the landscape behind them. When the domain is
+unmapped or fast-moving — AI services, pricing, tooling ecosystems — the
+user cannot answer questions they have no terrain for, and the asker's
+knowledge may be months stale. Run a few cheap searches first: the main
+options, what each costs, what each requires, local versus cloud. Then the
+question round offers *researched* options, not blank asking. Skip the scan
+for stable, well-known domains (document writing, repo chores); searching
+there is ceremony.
+
+### The preview
+
+The preview is a chat message, not a file. Shape:
+
+> **Workflow: ai-voiceover**
+> 1. Scope — confirm engine choice and script source. *(inline — conversation)*
+> 2. Install engine (only for a local engine — skipped otherwise).
+> 3. Write narration script from the video outline.
+> 4. Generate voiceover audio from the script.
+>    - If the audio failed synthesis → step 5, then back to step 4 (repeat
+>      until it renders or fails twice).
+> 5. Report output paths and durations. *(inline — conversation)*
+>
+> Parameters: engine = cloud (from your answer); script = from outline;
+> voice = default of the chosen engine; timestamps = none (not requested).
+>
+> Steps: 01-scope, 02-install-engine, 03-write-script, 04-generate-audio,
+> 05-report.
+>
+> Approve, or tell me what to change.
+
+Defaults appear as named parameters so an approval covers them explicitly —
+the user who does not care has still seen, in one glance, what they are
+agreeing to, and can correct any single line by replying.
+
+### After the write
+
+Edits are cheap by design: adding a step is a new step file plus a flow
+line; changing a default is editing one parameter line. Post-run "can it
+also…" requests are edits to the existing workflow, not re-authoring — and
+the preview in the transcript is the record of what was offered and declined,
+so nothing needs re-asking.
 
 ## `workflow.md`
 
@@ -208,3 +309,18 @@ task list, and returns only its final message.
 - **Growing the format.** Adding schema fields, a manifest, or status
   vocabulary a runner would have to implement. The format is markdown and
   naming conventions; its executor is a disciplined session.
+- **Questioning the form factor.** "This is simple enough to not need a
+  workflow" — the user asked for one; build it.
+- **Writing before approval.** Creating the directory because the flow
+  "seems settled." The preview gate is the only place a user with domain
+  knowledge can catch a gap; writing first deletes that chance.
+- **The open-ended interview.** More than one question round, or open
+  questions ("what tone do you want?") where a named default would do.
+  Interrogation is this skill's cost center; defaults are free.
+- **Blank asking on unmapped domains.** "Which service do you want to use?"
+  without having searched what the services are. The user cannot answer
+  what no option has made answerable; orient first.
+- **The silent omission.** Leaving out a step the domain says is usual
+  (an SEO pass, caption timestamps) without offering it. The user does not
+  know what they do not know; the extras menu exists so that not knowing
+  costs nothing.

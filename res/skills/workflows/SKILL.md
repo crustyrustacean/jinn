@@ -13,8 +13,9 @@ one is a discipline the session applies, using only the ordinary task tools
 and the `task` dispatch tool.
 
 This skill covers the whole lifecycle: author a workflow from a prose
-description, stamp it onto the task list, run it as an orchestrator, and
-close it out. `references/workflow-format.md` is the full format spec.
+description (orient → one batched question round → user-approved preview →
+write), stamp it onto the task list, run it as an orchestrator, and close
+it out. `references/workflow-format.md` is the full format spec.
 
 ## You are the orchestrator
 
@@ -42,8 +43,71 @@ runs inline — there is nothing to isolate.
 
 ## Authoring
 
-A prose description is enough to author a workflow. Write the directory with
-the `write` tool — no scaffold, no template, no command:
+Authoring follows one protocol, ending in a **preview the user approves
+before anything is written to disk**. The user invoked the skill, so the
+output is always a workflow — judgment about the flow is the job; judgment
+about *whether* it should be a workflow is not. Even a trivial one-step
+workflow gets built as asked.
+
+### 1. Orient (only when you have to)
+
+Before composing questions, ask yourself: **can I form the right questions
+about this domain?** A README for a code repo — yes, the domain is stable
+and well known; skip this stage. An AI voiceover pipeline — no: services,
+pricing, and licensing shift constantly, and the user cannot answer questions
+they have no landscape for. When the domain is unmapped or fast-moving, run a
+few cheap searches first (what are the options, what do they cost, what do
+they require, what are the local-vs-cloud tradeoffs) so your questions carry
+concrete options instead of blank asking. Minutes, not an hour — you are
+mapping territory, not doing the task.
+
+### 2. Ask (one round, batched, hard-capped)
+
+Put **every question in one message**, then build regardless of what happens.
+Never more than one round. What goes in it:
+
+- **Structural forks as lettered options, not open questions.** Only when the
+  flow's shape genuinely depends on the answer — "write the article from
+  research first (A), or from model knowledge and verify after (B)?" Each
+  option states what it does, what it costs/implies, and which you recommend
+  in one sentence.
+- **Environment prerequisites.** Anything the workflow cannot survive without
+  that you cannot verify from the prompt: API keys, accounts, local installs.
+  "Which voice engine?" is unanswerable without knowing what's installed.
+- **The steps they wouldn't have thought to name.** Your domain knowledge is
+  the value here: "usual for this kind of job, not mentioned: word-level
+  timestamps, per-scene voices, a music bed — want any?" This is the list the
+  user could not have written themselves. Always include it when you know of
+  candidates, even if the user enumerated their steps — enumerating steps is
+  not the same as knowing the domain.
+
+What does **not** go in the round:
+
+- **Parameter gaps with sensible defaults** (tone, audience, length). Make
+  the assumption; it becomes a named default in the preview.
+- **Anything the prompt already answered.** Steps the user enumerated are
+  settled — build them, never re-litigate their content. Infer what you can;
+  never ask cold for something inferable.
+
+If there is genuinely nothing worth asking (the README case), skip the round
+entirely and go straight to the preview.
+
+### 3. Preview (always)
+
+Show the workflow in chat **before writing anything** — name, the flow list
+with its loop/branch lines, parameters with their defaults, one line per step
+file. It must be readable in under a minute; that is what makes an approval
+meaningful. End with: approve, or say what to change.
+
+The preview is where users with domain knowledge catch what's missing — the
+whole point of gating the write. For users without it, approving is one word,
+and the preview stays in the transcript: a week later, "wait, can it do
+captions?" has the answer sitting above.
+
+### 4. Write
+
+After approval — and only after — create the directory with the `write`
+tool:
 
 ```
 ~/.config/jinn/workflows/<name>/
@@ -53,6 +117,16 @@ the `write` tool — no scaffold, no template, no command:
     ├── 02-research.md
     └── ...
 ```
+
+### Pre-approval
+
+"Just make it," "don't ask," "I don't care" — the user has pre-approved.
+Collapse stages 2 and 3: build with your best defaults, write, and report
+what you made (flow, parameters, defaults chosen) so they can correct it
+later. Silence after your question round is *not* pre-approval; only an
+explicit statement is.
+
+### The format
 
 `workflow.md` states the name, a one-line description, then the flow as an
 ordered list where **loops and conditionals are explicit lines, not
@@ -163,4 +237,4 @@ loop count if the flow iterated.
 
 | File | Covers |
 |---|---|
-| `references/workflow-format.md` | Full format spec: `workflow.md` fields, step-file anatomy, the loop/conditional notation, naming rules, dispatch-prompt assembly, anti-patterns |
+| `references/workflow-format.md` | Full format spec: `workflow.md` fields, step-file anatomy, the loop/conditional notation, naming rules, the authoring dialogue (orient/ask/preview/write, question types, pre-approval), dispatch-prompt assembly, anti-patterns |
