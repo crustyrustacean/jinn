@@ -60,8 +60,8 @@
 
 # source: jinn shipped defaults (default_jinn.toml, before this file)
 # license: AGPL-3.0 (this project)
-# > Ripgrep is recursive already; `-r` takes a replacement value and the
-# > combined form silently rewrites every match to a letter -- and exits 0.
+# Ripgrep is recursive already; `-r` takes a replacement value and the
+# combined form silently rewrites every match to a letter -- and exits 0.
 [[stream_rules.entry]]
 name = 'no-recursive-flag-rewrite'
 description = 'a combined ripgrep flag rewrites matches instead of listing them'
@@ -75,10 +75,10 @@ negative = ['rg -n pattern src/', 'rg pattern src/']
 #   boundary extended past the shipped `(\s|$)` so the bare form also trips
 #   inside the tool-call JSON envelope, where the command ends at a quote.
 # license: AGPL-3.0 (this project)
-# > Anchors on the command word and its search path, ending at whitespace,
-# > end-of-buffer, or the envelope quote so a *bounded* path is never
-# > caught. The regex is searched anywhere in the buffer, so a leading
-# > `cd <dir> &&` chain is caught too.
+# Anchors on the command word and its search path, ending at whitespace,
+# end-of-buffer, or the envelope quote so a *bounded* path is never
+# caught. The regex is searched anywhere in the buffer, so a leading
+# `cd <dir> &&` chain is caught too.
 [[stream_rules.entry]]
 name = 'no-bare-find-root'
 description = 'a bare find at the filesystem root walks everything'
@@ -103,13 +103,13 @@ negative = ['find ~/.cache -name x', 'find ./src -name x']
 # source: jinn shipped defaults (default_jinn.toml, before this file);
 #   terminal boundary extended with the envelope quote as above.
 # license: AGPL-3.0 (this project)
-# > Guards the recursive flag: a short cluster containing an uppercase `R`
-# > (or the long `--recursive`). Lowercase `-r` is `--reverse` and
-# > deliberately not matched, which is why the pattern carries no `(?i)`.
-# > The path is a bare root reference (optionally quoted, with an optional
-# > glob or trailing slash) followed by a boundary that is never a path
-# > character. Double-quoted TOML string: the quoted path forms contain a
-# > single quote, which a literal string cannot hold.
+# Guards the recursive flag: a short cluster containing an uppercase `R`
+# (or the long `--recursive`). Lowercase `-r` is `--reverse` and
+# deliberately not matched, which is why the pattern carries no `(?i)`.
+# The path is a bare root reference (optionally quoted, with an optional
+# glob or trailing slash) followed by a boundary that is never a path
+# character. Double-quoted TOML string: the quoted path forms contain a
+# single quote, which a literal string cannot hold.
 [[stream_rules.entry]]
 name = 'no-recursive-listing-root'
 description = 'a recursive listing of the filesystem root dumps everything'
@@ -139,13 +139,13 @@ negative = ['ls -R ~/code', 'ls -R target/']
 #   openai/codex is_dangerous_command.rs (ForcedRm) for the JSON envelope.
 # license: unlicensed (no license file upstream; shipped with per-entry
 #   credit) / Apache-2.0 (codex)
-# > The upstream ask-severity rule fires on ANY recursive rm; that class
-# > includes the weekly-legitimate build-directory clean, so it is reshaped
-# > here to the accidentally-lethal targets only: a bare root or home, a
-# > variable operand (the Steam incident: rm -rf "$STEAMROOT/"*), or a glob
-# > operand (the Bumblebee one-token class). A named directory is never
-# > caught. Condition 1 is the root/home form; 2 the variable form; 3 the
-# > glob form.
+# The upstream ask-severity rule fires on ANY recursive rm; that class
+# includes the weekly-legitimate build-directory clean, so it is reshaped
+# here to the accidentally-lethal targets only: a bare root or home, a
+# variable operand (the Steam incident: rm -rf "$STEAMROOT/"*), or a glob
+# operand (the Bumblebee one-token class). A named directory is never
+# caught. Condition 1 is the root/home form; 2 the variable form; 3 the
+# glob form.
 [[stream_rules.entry]]
 name = 'no-unbounded-recursive-rm'
 description = 'a recursive rm aimed at a root, home, variable, or glob deletes far more than intended'
@@ -163,10 +163,10 @@ negative = ['rm -rf /tmp/build', 'rm -r node_modules', 'rm build.log', 'rm -f pa
 #   root path outside tmp/dev/null) for the regex crate (no lookaround).
 # license: unlicensed (no license file upstream; shipped with per-entry
 #   credit)
-# > Condition 1 is the raw device / proc-sysrq write (lethal regardless of
-# > what upstream's approximation did). Condition 2 is any other root path,
-# > with the safe first letters excluded by class: d (dev), h (home), p
-# > (private, proc, and pixel buffers), t (tmp), v (var).
+# Condition 1 is the raw device / proc-sysrq write (lethal regardless of
+# what upstream's approximation did). Condition 2 is any other root path,
+# with the safe first letters excluded by class: d (dev), h (home), p
+# (private, proc, and pixel buffers), t (tmp), v (var).
 [[stream_rules.entry]]
 name = 'no-redirect-to-root-path'
 description = 'a redirect into a root-owned path or raw device overwrites system state'
@@ -427,9 +427,9 @@ negative = ['aws s3 ls s3://bucket', 'aws s3 cp local s3://bucket/key']
 
 # source: dylancaponi/claude-code-permissions (terraform destroy)
 # license: unlicensed (no license file upstream; shipped with per-entry credit)
-# > `terraform apply -auto-approve` is deliberately absent: in an infra repo
-# > it is the weekly-legitimate apply form, and the guard would fire every
-# > week. The destroy form is the accidental-catastrophe one.
+# `terraform apply -auto-approve` is deliberately absent: in an infra repo
+# it is the weekly-legitimate apply form, and the guard would fire every
+# week. The destroy form is the accidental-catastrophe one.
 [[stream_rules.entry]]
 name = 'no-terraform-destroy'
 description = 'terraform destroy tears down real infrastructure'
@@ -511,8 +511,8 @@ negative = ['fly apps list', 'fly status']
 
 # source: dylancaponi/claude-code-permissions (docker volume rm/prune)
 # license: unlicensed (no license file upstream; shipped with per-entry credit)
-# > Kept while the prune families (system/container prune) were dropped:
-# > volumes hold data, the other prunes hold cache.
+# Kept while the prune families (system/container prune) were dropped:
+# volumes hold data, the other prunes hold cache.
 [[stream_rules.entry]]
 name = 'no-docker-volume-remove'
 description = 'docker volume rm/prune deletes volume data'

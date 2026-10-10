@@ -4,6 +4,8 @@
 
 - Add `capabilities_*` tools which allow `jinn` to enable/disable tools/skills/MCP servers when prompted.
 - Change "tool call failure watchdog" trigger condition from 4 to 6.
+- Add `stream_rules.toml` file, installed by default with `jinn install`.
+  - Existing stream rules in `jinn.toml` will continue to work and are appended to the `stream_rules.toml` list.
 
 ## 2026-10-05 v1.5.0
 
