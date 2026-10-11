@@ -52,6 +52,23 @@ pub(super) fn save_attendant(
     let Some(session) = state.session.get(&attendant_id) else {
         return IntentResult::empty();
     };
+    // A workflow-cast attendant refuses: its configuration is owned by the
+    // workflow-local file it was loaded from, and writing it into jinn.toml
+    // would fork the two apart the first time either changed. Tuning a cast
+    // member mid-run is run-local by design; the fix belongs in its source
+    // file. The refusal names that file so the hint is actionable.
+    if let Some(source) = session.workflow_cast() {
+        cell.update(|p| {
+            p.report(PopupStatus::SaveFailed {
+                reason: format!(
+                    "This attendant is a workflow cast member loaded from {source}. \
+                     It cannot be saved to jinn.toml — edit its cast file instead; \
+                     changes here apply to this run only."
+                ),
+            });
+        });
+        return IntentResult::empty();
+    }
     let Some(name) = session
         .title()
         .map(str::trim)

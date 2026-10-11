@@ -195,6 +195,17 @@ pub struct SessionAttendantFields {
     /// Append-only; the harness never removes or edits a report.
     #[serde(default)]
     pub reports: Vec<AttendantReport>,
+    /// The workflow-local cast file this attendant was loaded from, when it
+    /// is a workflow-cast member rather than a personal attendant.
+    ///
+    /// `None` for personal attendants. A cast member refuses to be saved
+    /// into jinn.toml — its source file is the only writer of its
+    /// configuration — and the marker never crosses to children: an
+    /// attendant created by a cast member is an ordinary personal one.
+    /// Omitted when absent, so a session that never carried the marker
+    /// persists a blob byte-identical to one written before it existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_cast: Option<String>,
 }
 
 impl Default for SessionAttendantFields {
@@ -206,6 +217,7 @@ impl Default for SessionAttendantFields {
             seed_template: default_seed_template(),
             model_setting: AttendantModelSetting::default(),
             reports: Vec::new(),
+            workflow_cast: None,
         }
     }
 }

@@ -1193,3 +1193,59 @@ fn a_created_attendant_inherits_the_parents_empty_allow_filter_as_nothing_allowe
     // Then it inherits nothing-allowed rather than inheriting nothing at all.
     assert!(!child.is_tool_enabled("read"));
 }
+
+#[rstest::rstest]
+#[test]
+fn a_workflow_cast_member_refuses_the_save_naming_its_source() {
+    // Given an open popup over a titled attendant stamped as loaded from a
+    // workflow cast file.
+    let source = ".config/jinn/workflows/pipelines/attendants/implementer.toml";
+    let mut fx = SaveFixture::new(Some("implementer"));
+    fx.state
+        .session
+        .get_mut(&fx.attendant_id)
+        .expect("attendant")
+        .set_workflow_cast(source.to_owned());
+    fx.open();
+
+    // When pressing the save key.
+    fx.press("attendant-properties-save");
+
+    // Then the popup refuses and names the cast file the attendant came
+    // from, rather than writing it into jinn.toml.
+    match fx.cell.read().status.clone() {
+        Some(PopupStatus::SaveFailed { reason }) => {
+            assert!(
+                reason.contains("workflow cast member") && reason.contains(source),
+                "the refusal names the source file: {reason}"
+            );
+        }
+        other => panic!("the line reports a refusal: {other:?}"),
+    }
+    // And the document gained no entry.
+    let saved = fx
+        .config
+        .get_list::<AttendantEntryConfig>()
+        .expect("list reads");
+    assert!(saved.is_empty(), "nothing may be written: {saved:?}");
+}
+
+#[rstest::rstest]
+#[test]
+fn a_personal_attendant_saves_exactly_as_before_the_marker_existed() {
+    // Given an open popup over a titled attendant with no cast marker.
+    let mut fx = SaveFixture::new(Some("nightly"));
+    fx.open();
+
+    // When pressing the save key twice (arm, then overwrite-confirm is not
+    // needed on an empty document — the first press writes).
+    fx.press("attendant-properties-save");
+
+    // Then the save lands as it always did.
+    let saved = fx
+        .config
+        .get_list::<AttendantEntryConfig>()
+        .expect("list reads");
+    assert_eq!(saved.len(), 1);
+    assert_eq!(saved[0].name, "nightly");
+}

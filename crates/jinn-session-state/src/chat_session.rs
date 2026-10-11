@@ -595,6 +595,18 @@ impl ChatSessionState {
         self.core.attendant.reports.last()
     }
 
+    /// The workflow-local cast file this attendant was loaded from, when it
+    /// is a workflow-cast member. `None` for personal attendants.
+    #[must_use]
+    pub fn workflow_cast(&self) -> Option<&str> {
+        self.core.attendant.workflow_cast.as_deref()
+    }
+
+    /// Stamp this attendant as a workflow-cast member loaded from `source`.
+    pub fn set_workflow_cast(&mut self, source: String) {
+        self.core.attendant.workflow_cast = Some(source);
+    }
+
     /// Immutable access to this session's steering buffer.
     pub fn steering_buffer(&self) -> &SteeringBuffer {
         &self.ui.steering_buffer

@@ -600,6 +600,10 @@ pub(crate) struct PersistableCore {
     /// The attendant's append-only report log.
     #[serde(default)]
     reports: Vec<AttendantReport>,
+    /// The workflow-local cast file a workflow-cast attendant loaded from.
+    /// Absent for personal attendants.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    workflow_cast: Option<String>,
     /// Wall-clock intervals during which this session was working.
     /// Absent in blobs written before working time was recorded.
     ///
@@ -634,6 +638,7 @@ impl From<&SessionSnapshotMetadata> for PersistableCore {
             trigger: metadata.trigger,
             seed_template: metadata.seed_template.clone(),
             reports: metadata.reports.clone(),
+            workflow_cast: metadata.workflow_cast.clone(),
             working_intervals: metadata.working_intervals.clone(),
         }
     }
@@ -664,6 +669,7 @@ impl From<PersistableCore> for SessionSnapshotMetadata {
             trigger: core.trigger,
             seed_template: core.seed_template,
             reports: core.reports,
+            workflow_cast: core.workflow_cast,
             working_intervals: core.working_intervals,
             session_state: SessionState::Loaded,
         }

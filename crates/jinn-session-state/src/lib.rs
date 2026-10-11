@@ -28,6 +28,9 @@ mod token_stats_tests;
 #[cfg(test)]
 mod tree_aggregate_tests;
 #[cfg(test)]
+#[path = "workflow_cast_persistence_tests.rs"]
+mod workflow_cast_persistence_tests;
+#[cfg(test)]
 mod working_time_persistence_tests;
 
 pub use assembly_projection::AssemblySessionProjection;
