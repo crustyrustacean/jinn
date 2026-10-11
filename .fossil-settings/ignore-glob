@@ -18,6 +18,7 @@ pkg
 *.tar.zst
 .kilo
 .opencode
+*.graph
 .git-fossil-marks
 bench-results.csv
 mutants.out

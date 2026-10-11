@@ -61,7 +61,7 @@ Workflows are repeatable automated task lists that can be created and ran by `ji
 
 `jinn` will walk you through the brief creation process and then save the workflow to your `~/.config/jinn/workflows/` directory.
 
-To run a workflow, create a new session and ask `jinn` to run the workflow. This will turn the session into a _workflow orchestrator_ and you'll be asked any relevant information before the workflow begins.
+Run a workflow using `<leader>sw` and then select your workflow.
 
 Each step in a workflow has a custom prompt that describes what should happen during that step. This makes it easy (ask `jinn`!) to tune specific steps to achieve the desired result.
 

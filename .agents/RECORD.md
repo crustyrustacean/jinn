@@ -275,7 +275,6 @@ Entries are added or amended **only with human approval**.
 - (slices) The discord slice reads its [discord] section from the configuration layer, and an absent section activates the slice disabled.
 
 - (config) ModelSelection, AlloyStrategy, and ReasoningEffort live in jinn-core-types; they persist across state.toml, SessionCore, and the SQLite legacy schema.
-- (mcp) MCP server config nouns (McpServerConfig, TransportKind, and header-value expansion) live in jinn-mcp-msg; the MCP slice and the preferences config crate consume them from there.
 - (slices) The entry token cache was pruned-family vocabulary misfiled under auto_prune_worker; it lives in jinn-slices and the prune family consumes it from the token-count slice's cell.
 - (slices) The mcp slice is a crate owning both MCP actors (coordinator and per-connection); its wire contracts live in jinn-mcp-msg and the kernel reaches the coordinator through the McpCoordinatorHandle trait.
 - (slices) Slice vocabulary lives in per-family -msg crates under crates/slices; jinn-slices holds only shared infrastructure and multi-party vocabulary such as the cell registry, routes, focus, render facts, and the persona record.
@@ -480,7 +479,19 @@ Entries are added or amended **only with human approval**.
 - (session) A cancel ends the turn for every component observing it, so a watchdog, a resumed dispatch, and a phase read cannot each reach a different conclusion about a cancelled turn.
 - (cancel) The inference actor keeps no per-session cancellation state; a cancel names a generation, and the inference actor acts only on streams it is currently running.
 - (session) "Working" is answered by the phase alone; the separate busy counter that disagreed with it is gone.
+- (config) An MCP server config may declare `singleton = true`, and a singleton server spawns once per app run rather than once per session.
+- (config) An MCP server's config schema (`McpServerConfig`, `TransportKind`) lives in jinn-preferences-config's schemas, not in jinn-mcp-msg.
+- (mcp) A singleton MCP server's tools register globally, so every session whose enablement admits the server dispatches to the one shared process.
+- (mcp) A singleton MCP server survives session close, archive, and teardown, and stops only at app exit or an explicit restart.
+- (mcp) A singleton MCP server's global registration is per-session withdrawable: disabling it in one session hides its tools there while other sessions keep them.
+- (mcp) jinn bundles no MCP server: the jinn mcp CLI subcommand parses with a no-op variant and exists as the spawn point for future bundled servers.
 
+- (workflows) Workflow definitions are authored by convention under the config dir's workflows folder: one directory per workflow holding a workflow.md flow description and per-step prompt files.
+- (skills) The bundled workflows skill teaches running workflows on the session task list: stamping steps as task entries, dispatching each step to a subagent as an orchestrator, and materializing loop iterations by adding task entries.
+- (skills) The bundled workflows skill gates authoring on a user-approved preview: orient with searches on unmapped or fast-moving domains, one batched question round for structural forks and environment prerequisites and steps the user did not name, then nothing is written to disk until the user approves the preview; an explicit pre-approval collapses the gates.
+- (workflows) The `<leader>sw` picker lists the active session's discovered workflows, and enter on a row creates a new session whose first user message reads "start <name> workflow".
+- (workflows) A workflow's workflow.md begins with +++ TOML frontmatter naming the workflow and describing it; discovery skips a workflow.md without valid frontmatter and falls back to the directory name when the name field is absent.
+- (workflows) A session's workflow list is discovered by the session-init discovery run alongside skills, prompt templates, and context files.
 - (input) The terminal reports a newline byte as Ctrl+J: raw mode makes crossterm parse 0x0A as Char('j') with ctrl rather than Enter.
 - (input) The chat input's Input-scope catch-all declines every ctrl- or alt-modified character, so a pasted newline (reported as Ctrl+J) inserts nothing.
 - (ui) Resuming from a terminal suspension re-enables bracketed paste along with raw mode, the alternate screen, the kitty keyboard flags, and mouse capture.

@@ -19,7 +19,8 @@
 //! - [`stream_rule_watchdog_actor::StreamRuleWatchdogActor`] accumulates
 //!   consecutive stream-rule interrupts (`StreamCompleted` with
 //!   `RuleIntercept`), trips at the configured count (trip marker +
-//!   `CancelTurn`), and repays one interrupt per finished response.
+//!   `CancelTurn`), and repays one interrupt per response that completes
+//!   without an interrupt (`Finished` or `ToolUse`).
 //!
 //! All three actors publish through `Services`' bus (kernel dependency, see
 //! Cargo.toml) and write no shared state.

@@ -95,6 +95,8 @@ jinn-sidebar = { workspace = true }
 jinn-cwd = { workspace = true }
 jinn-attendant = { workspace = true }
 jinn-skills = { workspace = true }
+jinn-workflows = { workspace = true }
+jinn-workflows-msg = { workspace = true }
 jinn-tui = { workspace = true }
 jinn-kernel = { workspace = true }
 jinn-preferences-config = { workspace = true }
@@ -274,6 +276,8 @@ jinn-session-history = { path = "crates/slices/jinn-session-history" }
 jinn-session-history-msg = { path = "crates/slices/jinn-session-history-msg" }
 jinn-skills = { path = "crates/slices/jinn-skills" }
 jinn-skills-msg = { path = "crates/slices/jinn-skills-msg" }
+jinn-workflows = { path = "crates/slices/jinn-workflows" }
+jinn-workflows-msg = { path = "crates/slices/jinn-workflows-msg" }
 jinn-provider-selection-msg = { path = "crates/slices/jinn-provider-selection-msg" }
 jinn-provider-selection = { path = "crates/slices/jinn-provider-selection" }
 jinn-session-init-msg = { path = "crates/slices/jinn-session-init-msg" }
