@@ -30,14 +30,14 @@ The division of labor:
 
 **Running steps in your own context is the failure mode this skill exists to
 prevent.** If you catch yourself researching, drafting, reviewing, or
-refactoring *inside the orchestrator session*, stop and dispatch instead.
+refactoring _inside the orchestrator session_, stop and dispatch instead.
 Why it matters: the step's working material floods your context and degrades
 everything after it; the user cannot see per-step progress; steps lose their
 isolation from each other; and the task list stops meaning anything, because
 tasks get marked done with no visible work behind them.
 
-**The tiebreak**: *would doing this fill my context with the step's working
-material?* Any yes → dispatch. The one exception: a step whose entire body
+**The tiebreak**: _would doing this fill my context with the step's working
+material?_ Any yes → dispatch. The one exception: a step whose entire body
 is conversation with the user (asking for the topic, confirming a choice)
 runs inline — there is nothing to isolate.
 
@@ -46,7 +46,7 @@ runs inline — there is nothing to isolate.
 Authoring follows one protocol, ending in a **preview the user approves
 before anything is written to disk**. The user invoked the skill, so the
 output is always a workflow — judgment about the flow is the job; judgment
-about *whether* it should be a workflow is not. Even a trivial one-step
+about _whether_ it should be a workflow is not. Even a trivial one-step
 workflow gets built as asked.
 
 ### 1. Orient (only when you have to)
@@ -106,7 +106,7 @@ captions?" has the answer sitting above.
 
 **Every judgment call surfaces here or never.** Choice-shaped facts —
 platform limits, defaults picked, an instruction baked into a step, an
-extra you considered — appear *in the preview*, where they can still change
+extra you considered — appear _in the preview_, where they can still change
 the thing. After approval there is nothing left to choose; announcing them
 after the write is too late and is banned (see the anti-patterns).
 
@@ -139,7 +139,7 @@ task is over; end the turn.
 Collapse stages 2 and 3: build with your best defaults, write, and report
 what you made (flow, parameters, defaults chosen) in the closing summary —
 then stop, same as any approval path. Silence after your question round is
-*not* pre-approval; only an explicit statement is.
+_not_ pre-approval; only an explicit statement is.
 
 ### The format
 
@@ -161,14 +161,14 @@ description = "Research a topic and deliver a cited brief."
 
 ## Flow
 
-1. Scope — ask the user for the topic and depth. *(inline — conversation)*
+1. Scope — ask the user for the topic and depth. _(inline — conversation)_
 2. Research the topic.
 3. Draft the brief from the research notes.
 4. Review the draft against the scope.
    - If the review found issues → step 5, then back to step 4 (repeat until clean).
    - If the review was clean → step 6.
 5. Fix the issues the review found.
-6. Deliver the brief. *(inline — conversation)*
+6. Deliver the brief. _(inline — conversation)_
 ```
 
 And one step file, `steps/02-research.md`:
@@ -211,10 +211,10 @@ Then the loop and conditional conventions, applied while the run is live:
 
 - **Loop iterations are instances.** When a round produces another round,
   **you add the next instance to the task list yourself** (a `todo_set_phase`
-  rewrite) *before* marking the current one done — the loop exists on the
+  rewrite) _before_ marking the current one done — the loop exists on the
   list, not in your memory. Instance naming: step number + letter + round,
   e.g. after round 1's review finds issues, add `4b. Review draft
-  (round 2)` and `5b. Fix issues (round 2)`.
+(round 2)` and `5b. Fix issues (round 2)`.
 - **Conditionals resolve in place.** When a branch decision lands, record it
   on the list: a taken branch becomes ordinary instances; a skipped step is
   rewritten as e.g. `5. Correction pass — skipped` with status `cancelled`.
@@ -246,12 +246,12 @@ For each task, in order:
 5. **Move on** to the next pending task. Steps dispatch sequentially; run
    them in the list's order.
 
-Steps marked *(inline — conversation)* you handle yourself, in seconds, and
+Steps marked _(inline — conversation)_ you handle yourself, in seconds, and
 then flip to `completed` like any other task: ask, get the answer, record it
 as a parameter for the next dispatch. Do not let an inline step grow work.
 
-**Model pinning:** pass `model` on a `task` call only when the user
-explicitly pinned a step to a model — never to pick one you prefer. The
+**Model pinning:** pass `model` on a `task` call **only when the user
+explicitly pinned a step to a model** — never to pick one you prefer. The
 value is an expanded provider/model id or a configured alias name; an
 unknown name fails the dispatch without spawning a subagent.
 
@@ -260,6 +260,6 @@ loop count if the flow iterated.
 
 ## Where to look next
 
-| File | Covers |
-|---|---|
+| File                            | Covers                                                                                                                                                                                                                           |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `references/workflow-format.md` | Full format spec: `workflow.md` fields, step-file anatomy, the loop/conditional notation, naming rules, the authoring dialogue (orient/ask/preview/write, question types, pre-approval), dispatch-prompt assembly, anti-patterns |

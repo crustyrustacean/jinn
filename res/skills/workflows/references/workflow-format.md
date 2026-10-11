@@ -8,6 +8,8 @@ example ships with jinn.
 
 ## Directory layout
 
+(example)
+
 ```
 ~/.config/jinn/workflows/<name>/
 ├── workflow.md
@@ -88,7 +90,7 @@ unmapped or fast-moving — AI services, pricing, tooling ecosystems — the
 user cannot answer questions they have no terrain for, and the asker's
 knowledge may be months stale. Run a few cheap searches first: the main
 options, what each costs, what each requires, local versus cloud. Then the
-question round offers *researched* options, not blank asking. Skip the scan
+question round offers _researched_ options, not blank asking. Skip the scan
 for stable, well-known domains (document writing, repo chores); searching
 there is ceremony.
 
@@ -97,13 +99,14 @@ there is ceremony.
 The preview is a chat message, not a file. Shape:
 
 > **Workflow: ai-voiceover**
-> 1. Scope — confirm engine choice and script source. *(inline — conversation)*
+>
+> 1. Scope — confirm engine choice and script source. _(inline — conversation)_
 > 2. Install engine (only for a local engine — skipped otherwise).
 > 3. Write narration script from the video outline.
 > 4. Generate voiceover audio from the script.
 >    - If the audio failed synthesis → step 5, then back to step 4 (repeat
 >      until it renders or fails twice).
-> 5. Report output paths and durations. *(inline — conversation)*
+> 5. Report output paths and durations. _(inline — conversation)_
 >
 > Parameters: engine = cloud (from your answer); script = from outline;
 > voice = default of the chosen engine; timestamps = none (not requested).
@@ -159,13 +162,14 @@ Three parts, in order:
    name is the workflow's name, and a frontmatter `name` need not match
    the directory (the directory is the on-disk identity; the name is what
    the picker displays and what the launch message uses).
+
 2. **Flow** — an ordered list. One entry per step. Plain entries are prose
    phrases; two entry kinds are special and both are **explicit lines**:
    - `*(inline — conversation)*` — the step runs in the orchestrator
      session because its entire body is talking to the user.
    - Loop/branch lines, indented under the step they follow, written as
      `- If <condition> → <target step>, then back to <step> (repeat until
-     <condition>)` or `- If <condition> → <target step>`.
+<condition>)` or `- If <condition> → <target step>`.
 3. **Parameters** (optional) — a short list of values the workflow needs at
    run time (a topic, a path, a depth). If present, each parameter names the
    step that consumes it.
@@ -186,14 +190,14 @@ description = "Research a topic and deliver a cited brief."
 
 ## Flow
 
-1. Scope — ask the user for the topic and depth. *(inline — conversation)*
+1. Scope — ask the user for the topic and depth. _(inline — conversation)_
 2. Research the topic.
 3. Draft the brief from the research notes.
 4. Review the draft against the scope.
    - If the review found issues → step 5, then back to step 4 (repeat until clean).
    - If the review was clean → step 6.
 5. Fix the issues the review found.
-6. Deliver the brief. *(inline — conversation)*
+6. Deliver the brief. _(inline — conversation)_
 
 ## Parameters
 
@@ -218,7 +222,7 @@ Structure of a step file:
    message instead.
 3. **Done when** — the last line, one sentence, stating how the runner knows
    the step finished: `Done when: research-notes.md exists and every claim
-   in it carries a source.`
+in it carries a source.`
 
 Two control conventions live inside step files, as plain lines:
 
