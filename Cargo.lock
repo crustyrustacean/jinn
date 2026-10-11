@@ -3840,6 +3840,7 @@ dependencies = [
  "error-stack",
  "futures",
  "jiff",
+ "jinn-attendant",
  "jinn-attendant-msg",
  "jinn-cell-catalog",
  "jinn-chat-input-msg",

@@ -16,6 +16,7 @@ pub mod report_picker_render;
 pub mod report_picker_routes;
 pub mod report_picker_viewport;
 pub mod rerun;
+pub mod run_runtime;
 pub mod saved_create;
 pub mod saved_entry;
 pub mod saved_picker_actions;
