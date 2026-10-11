@@ -187,6 +187,7 @@ fn ctx_with(store: StubStore) -> (ToolContext, std::sync::Arc<StubStore>) {
         task_spawns: None,
         session_store: Some(SessionStoreService::new(arc.clone())),
         trouper_system: None,
+        model_name_resolver: None,
     };
     (ctx, arc)
 }
@@ -391,6 +392,7 @@ async fn no_session_and_no_current_is_an_error() {
         task_spawns: None,
         session_store: Some(SessionStoreService::new(arc)),
         trouper_system: None,
+        model_name_resolver: None,
     };
 
     // When fetching without a session_id.
@@ -446,6 +448,7 @@ async fn outer_truncated_result_carries_full_content() {
             task_spawns: None,
             session_store: Some(SessionStoreService::new(arc.clone())),
             trouper_system: None,
+            model_name_resolver: None,
         };
         (ctx, arc)
     };

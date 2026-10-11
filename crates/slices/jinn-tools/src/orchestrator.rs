@@ -687,6 +687,11 @@ impl ToolOrchestratorActor {
             task_spawns: Some(self.services.task_spawns.clone()),
             session_store: Some(self.services.session_store.clone()),
             trouper_system: Some(self.services.trouper_system.clone()),
+            model_name_resolver: Some(
+                jinn_kernel::common::provider_resolution::registry_model_name_resolver(
+                    &self.services.provider_registry,
+                ),
+            ),
         }
     }
 
@@ -1164,6 +1169,7 @@ mod timeout_tests {
             task_spawns: None,
             session_store: None,
             trouper_system: None,
+            model_name_resolver: None,
         }
     }
 
@@ -1420,6 +1426,7 @@ mod panic_safety_tests {
                 task_spawns: None,
                 session_store: None,
                 trouper_system: None,
+                model_name_resolver: None,
             },
         ))
         .catch_unwind()

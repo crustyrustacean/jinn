@@ -495,3 +495,6 @@ Entries are added or amended **only with human approval**.
 - (input) The terminal reports a newline byte as Ctrl+J: raw mode makes crossterm parse 0x0A as Char('j') with ctrl rather than Enter.
 - (input) The chat input's Input-scope catch-all declines every ctrl- or alt-modified character, so a pasted newline (reported as Ctrl+J) inserts nothing.
 - (ui) Resuming from a terminal suspension re-enables bracketed paste along with raw mode, the alternate screen, the kitty keyboard flags, and mouse capture.
+- (tools) The task tool accepts a `model` argument naming an expanded provider/model id or a configured alias, validated against the provider registry before the child session is created; an unknown name fails the call without spawning.
+- (tools) A task-tool subagent spawned without `model` inherits the parent's whole ModelSelection, alloy included; a valid `model` becomes Single on the child.
+- (config) A provider alias resolves through one registry resolver to its target expanded id, an expanded id resolves to itself, and a name that is both resolves as the expanded id.

@@ -216,6 +216,7 @@ fn tool_ctx(store: SessionStoreService, session_id: Option<SessionId>) -> ToolCo
         task_spawns: None,
         session_store: Some(store),
         trouper_system: None,
+        model_name_resolver: None,
     }
 }
 
@@ -599,6 +600,7 @@ async fn missing_session_store_fails_gracefully() {
         config: jinn_config::testutil::config_layer(""),
         session_store: None,
         trouper_system: None,
+        model_name_resolver: None,
         ..ctx
     };
 

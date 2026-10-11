@@ -145,6 +145,13 @@ pub struct ToolContext {
     /// `services.trouper_system` at dispatch time. `None` in tests that
     /// build a bare `ToolContext` (the `task` tool fails fast then).
     pub trouper_system: Option<trouper::system::ActorSystem>,
+    /// Model-name resolver — `Some` only for the `task` tool, which
+    /// validates and resolves its `model` argument against the provider
+    /// registry through it before spawning the child session. Resolved
+    /// from `services.provider_registry` at dispatch time. `None` in
+    /// tests that build a bare `ToolContext` (the `task` tool then skips
+    /// validation and treats any given name as final).
+    pub model_name_resolver: Option<std::sync::Arc<dyn jinn_core_types::ModelNameResolver>>,
 }
 
 impl fmt::Debug for ToolContext {
@@ -190,6 +197,7 @@ mod tests {
             task_spawns: None,
             session_store: None,
             trouper_system: None,
+            model_name_resolver: None,
         };
 
         // When debugging.

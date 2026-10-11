@@ -581,6 +581,7 @@ mod tests {
             task_spawns: None,
             session_store: None,
             trouper_system: None,
+            model_name_resolver: None,
         }
     }
 
@@ -692,6 +693,7 @@ mod tests {
             task_spawns: None,
             session_store: None,
             trouper_system: None,
+            model_name_resolver: None,
         };
 
         let call = ToolCall {

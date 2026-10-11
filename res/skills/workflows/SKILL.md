@@ -250,6 +250,11 @@ Steps marked *(inline — conversation)* you handle yourself, in seconds, and
 then flip to `completed` like any other task: ask, get the answer, record it
 as a parameter for the next dispatch. Do not let an inline step grow work.
 
+**Model pinning:** pass `model` on a `task` call only when the user
+explicitly pinned a step to a model — never to pick one you prefer. The
+value is an expanded provider/model id or a configured alias name; an
+unknown name fails the dispatch without spawning a subagent.
+
 Close the run by reporting to the user: what was produced (paths), and the
 loop count if the flow iterated.
 

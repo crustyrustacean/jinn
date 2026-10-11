@@ -46,6 +46,7 @@ async fn ctx(harness: &TestHarness, state: &State, session_id: SessionId) -> Too
         task_spawns: None,
         session_store: None,
         trouper_system: Some(harness.system().clone()),
+        model_name_resolver: None,
     }
 }
 
