@@ -1,0 +1,34 @@
+[package]
+name = "jinn-workflows"
+version.workspace = true
+edition.workspace = true
+description = "The workflows slice: workflow.md frontmatter parsing, the directory scan, and the <leader>sw picker."
+
+[dependencies]
+jinn-chat-input-msg = { workspace = true }
+jinn-context = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-kernel = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-session-init-msg = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-theme = { workspace = true }
+jinn-workflows-msg = { workspace = true }
+error-stack = { workspace = true }
+ratatui = { workspace = true }
+serde = { workspace = true }
+trouper = { workspace = true }
+wherror = { workspace = true }
+
+[dev-dependencies]
+# `activate` resolves the workflows picker cell the catalog owns, so the
+# tests seed their registry through the same list production boot uses.
+jinn-cell-catalog = { workspace = true }
+rstest = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

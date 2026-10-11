@@ -99,6 +99,7 @@ Misc:
 | `<leader>sE` | OpenRouter endpoint picker       |
 | `<leader>sp` | Project picker                   |
 | `<leader>sl` | Session lifecycle recipe picker  |
+| `<leader>sw` | Workflow picker                  |
 | `<leader>cd` | CWD input (type a path directly) |
 
 ## Input mode (typing a message)

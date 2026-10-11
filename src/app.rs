@@ -146,7 +146,10 @@ impl App {
                 clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
                 return Ok(());
             }
-            Commands::Tui => {
+            // No bundled MCP server ships today, so `jinn mcp noop` falls
+            // through to a normal startup: the command exists as the spawn
+            // point for future bundled servers (see `McpCommands`).
+            Commands::Tui | Commands::Mcp { .. } => {
                 let compaction_prompt = jinn_tui::load_compaction_prompt(
                     &jinn_kernel::AppPaths::default().prompts_dir(),
                     &jinn_kernel::AppPaths::default().system_prompts_dir(),

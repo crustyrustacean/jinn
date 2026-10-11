@@ -37,8 +37,9 @@ use jinn_session_lifecycle_msg::SessionSetupCompleted;
 use jinn_session_lifecycle_msg::{SessionCreated, SessionCwdChanged};
 use jinn_session_store_msg::SessionLoadCompleted;
 use jinn_skills_msg::ScanSkills;
+use jinn_workflows_msg::ScanWorkflows;
 
-use crate::commands::{RescanContext, RescanPrompts, RescanSkills, RunDiscovery};
+use crate::commands::{RescanContext, RescanPrompts, RescanSkills, RescanWorkflows, RunDiscovery};
 
 /// The cwd sentinel meaning "the real working directory is not known
 /// yet" — a lifecycle setup is still pending. Scans gated on it are
@@ -107,12 +108,14 @@ impl SessionInitSupervisor {
             .handles::<ScanSkills>()
             .handles::<RescanPromptTemplates>()
             .handles::<ScanContextFiles>()
+            .handles::<ScanWorkflows>()
             // Discovery commands leave the handler through ctx.send; the
             // flush gate drops any outbound type not declared here.
             .emits::<RunDiscovery>()
             .emits::<RescanSkills>()
             .emits::<RescanPrompts>()
             .emits::<RescanContext>()
+            .emits::<RescanWorkflows>()
             .start()
     }
 
@@ -222,6 +225,20 @@ impl MsgHandler<ScanContextFiles> for SessionInitSupervisor {
             self.send_to_worker(
                 ctx,
                 &RescanContext {
+                    session_id: msg.session_id.clone(),
+                    cwd: msg.cwd.clone(),
+                },
+            );
+        }
+    }
+}
+
+impl MsgHandler<ScanWorkflows> for SessionInitSupervisor {
+    async fn handle(&mut self, msg: &ScanWorkflows, ctx: &mut MsgCtx<'_>) {
+        if Self::gate_open(&msg.cwd) {
+            self.send_to_worker(
+                ctx,
+                &RescanWorkflows {
                     session_id: msg.session_id.clone(),
                     cwd: msg.cwd.clone(),
                 },

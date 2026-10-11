@@ -44,6 +44,7 @@ async fn remote_http_to_unreachable_url_loops_instead_of_failing() {
         url: Some("http://127.0.0.1:1/mcp".to_owned()),
         headers: std::collections::BTreeMap::default(),
         auto_enable: false,
+        singleton: false,
     };
 
     // When attempting to connect, bounded by a short timeout.
