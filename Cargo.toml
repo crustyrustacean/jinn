@@ -150,6 +150,7 @@ rstest = { workspace = true }
 mockito = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tempfile = { workspace = true }
+jinn-preferences-config = { workspace = true }
 ctor = "0.8"
 rustls = { workspace = true }
 # Slice-composition integration tests (tests/slices.rs) drive the real

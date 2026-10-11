@@ -9,3 +9,25 @@ This file lists third-party software bundled with jinn.
 - **Source:** https://github.com/celestia-island/ratatui-markdown
 
 A Markdown rendering library for ratatui.
+
+---
+
+## Stream-rule patterns (embedded `stream_rules.toml`)
+
+- **Location:** `crates/jinn-preferences-config/src/stream_rules.toml` (one
+  file; every entry carries its own `# source:` / `# license:` comment pair)
+- **Licenses:** see the per-entry comments — MIT (SWE-agent), Apache-2.0
+  (openai/codex), AGPL-3.0 (jinn's own shipped defaults), and unlicensed
+  patterns shipped with per-entry credit by decision
+
+Command-guard patterns adapted from:
+
+- **dylancaponi/claude-code-permissions** — most of the shipped entries.
+  No license file exists upstream; the patterns are short, ordinary regexes
+  that would be re-derived to the same form, and each entry credits the
+  source it came from.
+- **openai/codex** (`codex-rs` command-safety checks) — Apache-2.0.
+- **SWE-agent/SWE-agent** (`sweagent/tools/tools.py` blocklist) — MIT.
+- **jinn's original five** (`default_jinn.toml`, this project, AGPL-3.0).
+- The remainder are unattributable command-line folklore (the `curl | sh`
+  class and the Steam `rm -rf "$STEAMROOT/"*` incident).

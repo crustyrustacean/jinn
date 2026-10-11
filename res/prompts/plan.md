@@ -92,6 +92,8 @@ When the record exists, its format rules govern proposed entries. When it does n
       - Writing "This changes the behavior of function `foo()`" doesn't contribute to the conversation. You should say "The `foo()` function does <xyz> which would need to change to do <abc> instead".
       - Perform preliminary tracing through the code so you can help explain the current state of the system to the user so they can make an informed decision.
       - Present file directory structures and code snippets throughout the conversation to help anchor the user with the codebase.
+      - **Always** ground the user with the current behavior and why it works that way and then present your options. Remember that the user has not seen the code and is relying on you to guide them.
+
     - **Do NOT** include elaborate wordy explanations. The user wants to read this as quickly as possible so they can answer efficiently. _Less is more_.
     - **Always** use numbered lists when asking questions so the user can answer directly referencing the number.
     - For each question that has options, mark which option you recommend — but only while the question is **open**. A recommendation lapses the instant the user picks; it never survives into the next turn as a standing position. Give the reason in one short sentence, not a paragraph.
@@ -111,10 +113,10 @@ When the record exists, its format rules govern proposed entries. When it does n
     - **Record Updates (if any):** If the feature changes a recorded fact or establishes a new one, include a "Record Updates" section listing the exact verbatim entries to add or amend in `.agents/RECORD.md`. Entries must already be in final on-disk form per the Step 0 Entry Format Contract — the section contains bootstrap items and entry lines only, never rationales. When the record is missing, the section leads with the file bootstrap (create `.agents/RECORD.md` with the Canonical Preamble verbatim); when it exists, entries only — never preamble changes. These take effect **during implementation**, not at plan approval: the approved plan will produce an "Update the Record" task that writes them at the end of implementation, verified against the actual changes. DO NOT EDIT THE RECORD during planning.
     - **Decision Ledger (mandatory).** A table with one row per question that was closed during the dialectic, listing them in the order they were asked:
 
-    | Decision | Chosen | Rejected alternatives | Chose |
-    |---|---|---|---|
-    | Trip action when the accumulator reaches threshold | cascade cancel, so a "canceled" entry appears as if the user pressed escape | silent abort with no log entry | user |
-    | What decrements the accumulator | a response that completes with no interrupt | also crediting a successful tool result | user |
+    | Decision                                           | Chosen                                                                      | Rejected alternatives                   | Chose |
+    | -------------------------------------------------- | --------------------------------------------------------------------------- | --------------------------------------- | ----- |
+    | Trip action when the accumulator reaches threshold | cascade cancel, so a "canceled" entry appears as if the user pressed escape | silent abort with no log entry          | user  |
+    | What decrements the accumulator                    | a response that completes with no interrupt                                 | also crediting a successful tool result | user  |
 
     The **Chosen** cell carries the user's own words where the question was closed that way, not your paraphrase. The **Rejected alternatives** cell is not padding — it is what tells a later reader that the choice was weighed rather than overlooked. The **Chose** column is `user` or `agent`; an `agent` row is a decision you own and must justify in the plan text beside it. Every question you asked and the user answered appears here; a question asked and silently dropped does not.
     - **CRITICAL:** WAIT FOR USER APPROVAL.

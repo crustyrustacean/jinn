@@ -457,7 +457,9 @@ something unreachable, say so and ask what to do instead.
     - **The user has not seen the code.** "This changes `foo()`" contributes
       nothing. Say what `foo()` does now and what it would need to become. Trace
       the code before explaining it; show directory structures and short snippets
-      to anchor them.
+      to anchor them. **Always** ground the user with the current behavior and
+      why it works that way and then present your options. Remember that the
+      user has not seen the code and is relying on you to guide them.
     - **Do NOT** write elaborate explanations. The user reads fast so they can
       answer efficiently. _Less is more_.
     - **Always** number your questions so the user can answer by number.
@@ -511,9 +513,9 @@ A **Task Contract**: dense in content.
 - **Decision Ledger** — mandatory, and not an appendix. One row per question
   closed during the dialectic, in the order asked:
 
-| Decision | Chosen | Rejected alternatives | Chose |
-|---|---|---|---|
-| Termination action on threshold | cascade cancel, so a "canceled" entry appears as if the user pressed escape | silent abort with no log entry | user |
+| Decision                        | Chosen                                                                      | Rejected alternatives          | Chose |
+| ------------------------------- | --------------------------------------------------------------------------- | ------------------------------ | ----- |
+| Termination action on threshold | cascade cancel, so a "canceled" entry appears as if the user pressed escape | silent abort with no log entry | user  |
 
 The **Chosen** cell carries the user's own words where the question was closed
 that way. The **Rejected alternatives** cell is what distinguishes a weighed
@@ -582,8 +584,8 @@ Two rules make the handoff safe:
   If you reference a format, a path, a helper, or a section, that thing is in the
   document.
 - **Carry each decision with its rationale, the alternatives rejected, and who
-  chose it.** Do not make the implementer re-derive *facts* — that is what this
-  document exists to prevent. But do preserve *why*, because the conversation
+  chose it.** Do not make the implementer re-derive _facts_ — that is what this
+  document exists to prevent. But do preserve _why_, because the conversation
   holding the why is discarded on approval, and a decision stripped of its
   rationale is indistinguishable from one an agent invented. That distinction is
   the user's protection against quiet substitution, and it lives or dies with the

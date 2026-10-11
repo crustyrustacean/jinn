@@ -33,8 +33,10 @@ pub use app_state_storage::{
     AppStateStorage, AppStateStorageService, FilesystemAppStateStorage, InMemoryAppStateStorage,
 };
 pub use config_template::{
-    DEFAULT_CONFIG, InitDefaultConfigError, InitOutcome, UserPreferencesError,
-    create_default_preferences_to, init_default_config_to, preferences_path,
+    DEFAULT_CONFIG, InitDefaultConfigError, InitOutcome, STREAM_RULES_FILE_NAME,
+    STREAM_RULES_TEMPLATE, StreamRulesSeedOutcome, UserPreferencesError,
+    create_default_preferences_to, init_default_config_to, init_stream_rules_for_install,
+    init_stream_rules_to, preferences_path,
 };
 pub use registration::register_all_sections;
 // The `todo` + `anchored_assistant` auto-prune child configs are schema

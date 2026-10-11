@@ -166,7 +166,8 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
     // when a stream starts, not at spawn — but it must precede any dispatch,
     // which the boot tail guarantees.
     let config_snapshot = ctx.services().config.clone();
-    jinn_stream_rules::activate(&mut ctx.host(), &config_snapshot);
+    let prefs_snapshot = ctx.services().paths.preferences_path();
+    jinn_stream_rules::activate(&mut ctx.host(), &config_snapshot, &prefs_snapshot);
     let services_snapshot = ctx.services().clone();
     let state_snapshot = ctx.state().clone();
     jinn_session_init::activate(&services_snapshot, state_snapshot)

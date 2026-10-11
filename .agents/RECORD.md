@@ -244,6 +244,10 @@ Entries are added or amended **only with human approval**.
 - (tools) Terminal control (user takeover) is tracked per chat session; a takeover or handback in one session never affects another session's in-flight interactive_term calls.
 - (tools) Closing a session kills its live interactive_term terminal; the coordinator subscribes to SessionClosed.
 - (tools) The interactive_term tool guidance warns models not to append shell redirections, pipes, or grep (the tool returns the rendered screen, so piped output is silently lost) and advertises the no-argument interactive_term_send call as an anytime screen snapshot; the usage footer on every result repeats both.
+- (tools) An agent adjusts its session's own tools, skills, and MCP servers through the `capabilities_query`/`capabilities_apply` built-in tools, which exchange the complete on/off buffer as one atomic set.
+- (tools) A capabilities apply commits deny-list tool and skill filters plus the enabled-server set, demoting any allow-mode filter, and changes MCP servers by publishing `McpEnablementChanged`.
+- (tools) Capability changes an agent makes persist with the session through the same `PersistSession` path picker-made changes use.
+- (skills) The `jinn-usage` skill's top-level body documents the agent-facing capability adjustment tools.
 - (slices) The theme slice is a kernel-free crate loading theme files from the configured directories at activation into one cell; the theme picker and the app-state actor read the cell.
 - (theme) Themes load directly from disk at boot.
 - (theme) A passivated dashboard actor's State cell uses the `dormant_fg` theme token, distinct from the error colour.
@@ -488,3 +492,6 @@ Entries are added or amended **only with human approval**.
 - (workflows) The `<leader>sw` picker lists the active session's discovered workflows, and enter on a row creates a new session whose first user message reads "start <name> workflow".
 - (workflows) A workflow's workflow.md begins with +++ TOML frontmatter naming the workflow and describing it; discovery skips a workflow.md without valid frontmatter and falls back to the directory name when the name field is absent.
 - (workflows) A session's workflow list is discovered by the session-init discovery run alongside skills, prompt templates, and context files.
+- (input) The terminal reports a newline byte as Ctrl+J: raw mode makes crossterm parse 0x0A as Char('j') with ctrl rather than Enter.
+- (input) The chat input's Input-scope catch-all declines every ctrl- or alt-modified character, so a pasted newline (reported as Ctrl+J) inserts nothing.
+- (ui) Resuming from a terminal suspension re-enables bracketed paste along with raw mode, the alternate screen, the kitty keyboard flags, and mouse capture.

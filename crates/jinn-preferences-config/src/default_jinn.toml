@@ -25,31 +25,38 @@ tool_filter = { mode = "deny", names = ["grep"] }
 # Stream rules
 # ---------------------------------------------------------------------------
 #
+# > The shipped command guards used to live here as five entries; they now
+# > live in stream_rules.toml, beside this file — written once by `jinn
+# > install`, replaced wholesale by `jinn config init --force`, and embedded
+# > in the binary so the guards work with no file at all. Rules you write
+# > here are APPENDED to that set. See the header of the shipped file (or
+# > the docs) for the full field reference.
+#
 # > A rule pairs regex `conditions` with a `body` of corrective guidance. The
 # > conditions are tested against what the model actually produced, so they
 # > catch a mistake however the provider happened to chunk it.
 #
-# > `on_trigger` decides what happens on a match. Absent, the turn is
-# > interrupted and resumed with `body` as guidance -- the model is told and
-# > tries again. `on_trigger = "fail_tool"` instead denies the matched tool call
-# > outright, which is what these shell rules use: a command that will be
-# > refused anyway is better refused than merely discouraged, and the guidance
-# > becomes the error the model reads.
+# > On a match the turn is interrupted and resumed with `body` as guidance —
+# > the model is told and tries again. There is no second behaviour: the
+# > old `on_trigger = "fail_tool"` key is gone (files still carrying it read
+# > fine — it is ignored). A rule scoped to `tool:<name>` interrupts that
+# > call's arguments as they stream, which is what stops the command.
 #
 # > `scopes` narrows where a rule applies:
 # > - `text`: regular LLM response
 # > - `thinking`: thinking/reasoning block
 # > - `tool`: any tool call
 # > - `tool:<name>(<glob>)`: specific tool call with optional parameter matching.
-# > A `fail_tool` rule must name a tool, since otherwise it would have no call
-# > to deny. `project` confines a rule to matching working directories; absent
+# > `project` confines a rule to matching working directories; absent
 # > means every project, and a global rule is a floor a project-scoped one can
 # > add to but never lift.
 #
 # > Use single-quoted strings so regex metacharacters survive without escape
 # > processing. A pattern the regex engine cannot compile is inert (logged, no
 # > block) and the engine has no lookaround, so `(?<!...)` and `(?=...)` will
-# > not work.
+# > not work. Note the matcher sees the tool call's serialized arguments, so a
+# > bash command arrives inside a JSON envelope: {"command":"..."} — a command
+# > start is anchored on the envelope head, not `^`.
 #
 # > The `project` field is a single glob that matches a project. If provided,
 # > the stream_rules will only trigger when `project` glob matches the CWD of
@@ -60,83 +67,15 @@ tool_filter = { mode = "deny", names = ["grep"] }
 # project = "/workspace/*"      # glob
 # project = "stuff"             # any path containing `stuff`
 #
+# > Example — a project-local rule that cannot fire anywhere else:
 #
-# > The rule below guards a real footgun: ripgrep is recursive already, so `-r`
-# > takes a replacement value and the combined form silently rewrites every
-# > match to a letter -- and exits 0.
-[[stream_rules.entry]]
-name = 'no-recursive-flag-rewrite'
-description = 'a combined ripgrep flag rewrites matches instead of listing them'
-conditions = ['rg -rn']
-scopes = ['tool:bash']
-on_trigger = 'fail_tool'
-body = 'ripgrep is already recursive and `-r` takes a replacement value, so combining it with `-n` rewrites every match instead of listing it, and still exits 0 -- use `-n` alone for line numbers.'
-
-# > The next four rules block whole-filesystem search habits. An agent that
-# > cannot find something reaches for a bare-root find or a recursive listing
-# > and walks the entire machine, hanging for minutes and returning thousands
-# > of irrelevant hits.
-# >
-# > Each pattern anchors on the command word and its search path, ending at a
-# > space or end-of-command so a *bounded* path is never caught: a find under a
-# > real directory does not match, but a bare root search followed by more
-# > arguments does. Because the regex is searched anywhere in the command
-# > string, a leading `cd <dir> &&` chain is caught too -- only the argument
-# > shape is constrained, not the whole line.
-[[stream_rules.entry]]
-name = 'no-bare-find-root'
-description = 'a bare find at the filesystem root walks everything'
-conditions = ['\bfind\s+/(\s|$)']
-scopes = ['tool:bash']
-on_trigger = 'fail_tool'
-body = 'A bare find at the filesystem root walks the entire disk -- it will hang for minutes and bury the answer in noise. Search a bounded root instead: find under the project directory with `-name`, or use `rg --files -g <glob>` which is recursive by default and much faster. If you truly need a system-wide search, scope it with `-maxdepth` and prune noise.'
-
-[[stream_rules.entry]]
-name = 'no-bare-find-home'
-description = 'a bare find at the home root walks everything'
-conditions = ['\bfind\s+~(\s|$)']
-scopes = ['tool:bash']
-on_trigger = 'fail_tool'
-body = 'A bare find at the home root walks your entire home directory, including caches, build trees, and dotfile folders. Search a bounded path instead: find under the project directory with `-name`, or use `rg --files -g <glob>`. If you truly need a home-wide search, scope it with `-maxdepth` and prune build directories.'
-
-# > The listing rules guard the recursive flag. The flag is matched as a short
-# > cluster containing an uppercase `R` (and combined forms like `-lR`) or as
-# > the long `--recursive`. Lowercase `-r` is `--reverse` -- it only flips sort
-# > order within one directory and dumps nothing -- so it is deliberately not
-# > matched, and the uppercase letter is why the pattern carries no `(?i)`.
-# >
-# > Anything may sit between the command and the flag, and between the flag and
-# > the path: other flags, colour options, quoted values. The argument run that
-# > absorbs them cannot start with the characters a bare path starts with, and
-# > cannot cross a separator or a pipe, which is what keeps a bounded path from
-# > matching while stopping a chained command from letting the run reach into
-# > the next one.
-# >
-# > The path is then a bare root or home reference (optionally quoted, with an
-# > optional glob or trailing slash), followed by a boundary that is
-# > whitespace, a separator, a redirect, a closing paren, or end of command --
-# > never a path character. That boundary is what stops a bounded path from
-# > matching on its bare-root prefix, while still catching a piped or
-# > parenthesised variant.
-# >
-# > These two patterns are double-quoted rather than single-quoted: the quoted
-# > path forms contain a single quote, which a literal TOML string cannot
-# > hold. Everywhere else in this file, prefer single-quoted.
-[[stream_rules.entry]]
-name = 'no-recursive-listing-root'
-description = 'a recursive listing of the filesystem root dumps everything'
-conditions = ["\\bls\\b\\s*(?:[^\\s;&|/~$'\\\"][^\\s;&|]*\\s+)*(-\\w*R\\w*|--recursive)\\s+(?:[^\\s;&|/~$'\\\"][^\\s;&|]*\\s+)*(?:/|'\\/'|\\\"/\\\")(?:\\*+|/+)?(?:\\s|;|&|\\||\\)|\\]|\\}|<|>|$)"]
-scopes = ['tool:bash']
-on_trigger = 'fail_tool'
-body = 'Listing a bare root or home directory recursively dumps the whole tree into the transcript -- thousands of irrelevant lines and a slow tool call. Scope it to the directory you actually care about (`-I target` to skip build output), or search with `rg --files -g <glob>` / `fd`.'
-
-[[stream_rules.entry]]
-name = 'no-recursive-listing-home'
-description = 'a recursive listing of the home root dumps everything'
-conditions = ["\\bls\\b\\s*(?:[^\\s;&|/~$'\\\"][^\\s;&|]*\\s+)*(-\\w*R\\w*|--recursive)\\s+(?:[^\\s;&|/~$'\\\"][^\\s;&|]*\\s+)*(?:~|\\$HOME|\\\"\\$HOME\\\"|'~'|'\\$HOME'|\\$\\{HOME\\}|\\\"\\$\\{HOME\\}\\\")(?:\\*+|/+)*(?:\\s|;|&|\\||\\)|\\]|\\}|<|>|$)"]
-scopes = ['tool:bash']
-on_trigger = 'fail_tool'
-body = 'Listing a bare home directory recursively dumps your whole tree -- caches, build outputs, and dotfile folders. Scope it to the directory you actually care about (`-I target` to skip build output), or search with `rg --files -g <glob>` / `fd`.'
+# [[stream_rules.entry]]
+# name = "no-release-from-worktree"
+# description = "the release script must run from the main checkout"
+# conditions = ['npm\s+run\s+release']
+# scopes = ['tool:bash']
+# project = "myapp"
+# body = "Run the release from the main checkout, not this worktree."
 
 # ###########################################################################
 # Chat log
@@ -382,7 +321,7 @@ max_restarts = 3
 # > Tool failures before the turn is cancelled. The calculation uses a simple
 # > accumulator that increments on fail and decrements on success. So the
 # > failures may or may not be consecutive.
-max_failures = 4
+max_failures = 6
 
 # ###########################################################################
 # Interactive terminal panes

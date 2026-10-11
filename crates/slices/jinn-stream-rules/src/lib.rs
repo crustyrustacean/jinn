@@ -21,6 +21,7 @@
 pub mod matcher;
 pub mod rules;
 
+use std::path::Path;
 use std::sync::Arc;
 
 use jinn_slices::{RenderFacts, SliceHost, StreamRules};
@@ -28,16 +29,25 @@ use jinn_slices::{RenderFacts, SliceHost, StreamRules};
 use crate::matcher::CompiledSet;
 use crate::rules::read_rules;
 
-/// Activates the slice: reads `[[stream_rules.entry]]` from `jinn.toml`,
-/// compiles the rules, and installs the matcher into its cell.
+/// Activates the slice: assembles the rule set (embedded shipped set,
+/// replaced by a user `stream_rules.toml` beside the preferences file,
+/// plus `[[stream_rules.entry]]` from `jinn.toml`), compiles the rules,
+/// and installs the matcher into its cell.
+///
+/// `preferences_path` is where this run's `jinn.toml` lives — the user
+/// rules file is its `stream_rules.toml` sibling.
 ///
 /// Every configured rule that fails to compile is warned and skipped; a
 /// configuration with no usable rule installs an empty set, which the stream
 /// loop treats as "no rules" and costs nothing per delta.
-pub fn activate(host: &mut SliceHost<'_, RenderFacts>, config: &jinn_config::ConfigLayer) {
+pub fn activate(
+    host: &mut SliceHost<'_, RenderFacts>,
+    config: &jinn_config::ConfigLayer,
+    preferences_path: &Path,
+) {
     // Read at the point of use rather than cached, matching the rules
     // themselves: a reload is observed by the next launch.
-    let rules = read_rules(config);
+    let rules = read_rules(config, preferences_path);
     let set = Arc::new(CompiledSet::build(&rules));
 
     // The cell was minted by the catalog before any activation ran, so a

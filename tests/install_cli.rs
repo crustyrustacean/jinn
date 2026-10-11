@@ -1,9 +1,10 @@
-//! CLI-level integration tests for `jinn install`.
+//! CLI-level integration tests for `jinn install` and `jinn config init`.
 //!
-//! Runs the real `install` dispatch against a temp XDG environment and
-//! asserts the on-disk result: resource files and the write-once
-//! `jinn.toml` semantics (created only when absent; an existing file is
-//! never modified, even with `--force`).
+//! Runs the real dispatch against a temp XDG environment and asserts the
+//! on-disk result: resource files and the write-once `jinn.toml` and
+//! `stream_rules.toml` semantics (created only when absent for install;
+//! an existing file is never modified, even with `--force` — `config init
+//! --force` is the overwrite path for both).
 
 use std::path::PathBuf;
 
@@ -160,6 +161,116 @@ fn install_succeeds_with_malformed_jinn_toml() {
     assert_eq!(
         on_disk, "NOT [valid toml",
         "install must not touch the file"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn config_init_creates_the_stream_rules_file_beside_jinn_toml() {
+    // Given a fresh temp environment with no config at all.
+    let bin = jinn_bin();
+    let (home, _guard) = temp_env();
+    let config = home.join("config");
+    let data = home.join("data");
+
+    // When running `jinn config init`.
+    let output = run_jinn(&bin, &config, &data, &["config", "init"]);
+
+    // Then it succeeds and reports both files created.
+    assert!(
+        output.status.success(),
+        "config init failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let rules_line = stdout
+        .lines()
+        .find(|l| l.contains("stream_rules.toml"))
+        .expect("config init must report the rules file");
+    assert!(
+        rules_line.starts_with("Created"),
+        "fresh init must create the rules file, got: {rules_line}"
+    );
+    // And the rules file exists beside jinn.toml with the embedded template.
+    let rules_path = config.join("jinn/stream_rules.toml");
+    assert!(rules_path.is_file(), "rules file must be beside jinn.toml");
+    assert_eq!(
+        std::fs::read_to_string(&rules_path).expect("read rules file"),
+        jinn_preferences_config::STREAM_RULES_TEMPLATE,
+        "the created rules file is the embedded template, verbatim"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn config_init_force_overwrites_the_stream_rules_file() {
+    // Given a completed init whose rules file the user replaced with edits.
+    let bin = jinn_bin();
+    let (home, _guard) = temp_env();
+    let config = home.join("config");
+    let data = home.join("data");
+
+    let first = run_jinn(&bin, &config, &data, &["config", "init"]);
+    assert!(first.status.success());
+    let rules_path = config.join("jinn/stream_rules.toml");
+    std::fs::write(&rules_path, "# only mine\n").expect("write edited rules");
+
+    // When running `jinn config init --force`.
+    let forced = run_jinn(&bin, &config, &data, &["config", "init", "--force"]);
+
+    // Then it succeeds and the rules file is back to the shipped template:
+    // --force is the supported path for pulling in an updated shipped set.
+    assert!(forced.status.success());
+    let stdout = String::from_utf8_lossy(&forced.stdout);
+    let rules_line = stdout
+        .lines()
+        .find(|l| l.contains("stream_rules.toml"))
+        .expect("forced init must report the rules file");
+    assert!(
+        rules_line.starts_with("Overwrote"),
+        "--force must overwrite the rules file, got: {rules_line}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&rules_path).expect("read rules file"),
+        jinn_preferences_config::STREAM_RULES_TEMPLATE
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn config_init_without_force_skips_an_existing_stream_rules_file() {
+    // Given a rules file already present (e.g. from `jinn install`) but no
+    // jinn.toml beside it.
+    let bin = jinn_bin();
+    let (home, _guard) = temp_env();
+    let config = home.join("config");
+    let data = home.join("data");
+    let toml_dir = config.join("jinn");
+    std::fs::create_dir_all(&toml_dir).expect("create config dir");
+    std::fs::write(toml_dir.join("stream_rules.toml"), "# only mine\n").expect("write rules");
+
+    // When running `jinn config init` without --force.
+    let output = run_jinn(&bin, &config, &data, &["config", "init"]);
+
+    // Then it succeeds — jinn.toml is created — and the rules file is
+    // listed as skipped, content intact.
+    assert!(
+        output.status.success(),
+        "init failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let rules_line = stdout
+        .lines()
+        .find(|l| l.contains("stream_rules.toml"))
+        .expect("init must mention the rules file");
+    assert!(
+        rules_line.starts_with("Already present, skipped"),
+        "plain init must not touch an existing rules file, got: {rules_line}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(toml_dir.join("stream_rules.toml")).expect("read rules file"),
+        "# only mine\n"
     );
 }
 

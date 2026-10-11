@@ -5,16 +5,17 @@
 //! [`bundled`]), so the binary is self-contained.
 //!
 //! [`install_defaults_to`] (`jinn install`) is a pure seeder. Payload files
-//! follow skip/`--force` rules; `jinn.toml` is written **exactly once**,
-//! only when it does not exist. An existing file is never read or modified —
-//! even with `--force` — so user edits survive and a malformed file never
-//! fails the install.
+//! follow skip/`--force` rules; `jinn.toml` and the stream-rules file are
+//! written **exactly once**, only when they do not exist. An existing file
+//! is never read or modified — even with `--force` — so user edits survive
+//! and a malformed file never fails the install.
 
 mod bundled;
 
 use std::path::{Path, PathBuf};
 
 use error_stack::{Report, ResultExt};
+use jinn_preferences_config::StreamRulesSeedOutcome;
 use wherror::Error;
 
 use bundled::{Bundled, bundled_catalogue};
@@ -101,6 +102,9 @@ pub struct InstallReport {
     pub outcomes: Vec<InstallOutcome>,
     /// Outcome for the user preferences file itself.
     pub jinn_toml: JinnTomlOutcome,
+    /// Outcome for the shipped stream-rules file, written once next to
+    /// `jinn.toml`.
+    pub stream_rules: StreamRulesSeedOutcome,
 }
 
 /// Outcome for `jinn.toml` during a default install.
@@ -167,9 +171,24 @@ pub fn install_defaults_to(
         JinnTomlOutcome::Created(prefs_path.to_path_buf())
     };
 
+    // The stream-rules file follows the same exactly-once contract as
+    // `jinn.toml`: written when missing, never read or modified when
+    // present — including under `overwrite`. The sibling location is the
+    // same directory the preferences file lives in, which is what the
+    // runtime read path resolves against.
+    let stream_rules = jinn_preferences_config::init_stream_rules_for_install(
+        prefs_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(jinn_preferences_config::STREAM_RULES_FILE_NAME),
+    )
+    .change_context(InstallError)
+    .attach("failed to create stream_rules.toml with the embedded template")?;
+
     Ok(InstallReport {
         outcomes,
         jinn_toml,
+        stream_rules,
     })
 }
 
@@ -644,6 +663,97 @@ mod tests {
             matches!(theme_outcome, InstallOutcome::Overwritten(_)),
             "resource files must still follow --force"
         );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn install_creates_the_stream_rules_file_on_a_fresh_env() {
+        // Given a fresh environment with no stream_rules.toml.
+        let env = TestEnv::fresh();
+
+        // When installing defaults.
+        let report = env.run(false);
+
+        // Then the rules file is created beside jinn.toml with the embedded
+        // template.
+        let expected = env
+            .prefs_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(jinn_preferences_config::STREAM_RULES_FILE_NAME);
+        assert_eq!(
+            report.stream_rules,
+            StreamRulesSeedOutcome::Created(expected.clone())
+        );
+        let on_disk = std::fs::read_to_string(&expected).expect("read rules file");
+        assert_eq!(
+            on_disk,
+            jinn_preferences_config::STREAM_RULES_TEMPLATE,
+            "the created file is the embedded template, verbatim"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn install_never_touches_an_existing_stream_rules_file() {
+        // Given an environment where stream_rules.toml exists with user
+        // content (malformed on purpose: it must never even be read).
+        let env = TestEnv::fresh();
+        let rules_path = env
+            .prefs_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(jinn_preferences_config::STREAM_RULES_FILE_NAME);
+        std::fs::create_dir_all(rules_path.parent().unwrap()).unwrap();
+        let original = "# my rules\nNOT [valid toml\n";
+        std::fs::write(&rules_path, original).unwrap();
+
+        // When installing defaults.
+        let report = env.run(false);
+
+        // Then it is reported untouched.
+        assert_eq!(
+            report.stream_rules,
+            StreamRulesSeedOutcome::Untouched(rules_path.clone())
+        );
+        // And the file is byte-identical — the proof nothing read or
+        // rewrote it.
+        assert_eq!(
+            std::fs::read_to_string(&rules_path).expect("read"),
+            original
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn install_force_leaves_an_existing_stream_rules_file_byte_identical() {
+        // Given an installed environment whose rules file carries user edits.
+        let env = TestEnv::fresh();
+        env.run(false);
+        let rules_path = env
+            .prefs_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(jinn_preferences_config::STREAM_RULES_FILE_NAME);
+        let edited = "# my edits\n[[stream_rules.entry]]\nname = 'mine'\nconditions = ['X']\nscopes = ['tool:bash']\nbody = 'x'\n";
+        std::fs::write(&rules_path, edited).unwrap();
+        let existing = env.destinations.themes().join("default.toml");
+        std::fs::create_dir_all(env.destinations.themes()).unwrap();
+        std::fs::write(&existing, "PRE-EXISTING").unwrap();
+
+        // When installing with force.
+        let report = env.run(true);
+
+        // Then resource files were overwritten but the rules file is
+        // untouched and byte-identical: force does not apply to it, the
+        // same contract as jinn.toml.
+        let theme_outcome = outcome_for(&report.outcomes, "default.toml");
+        assert!(matches!(theme_outcome, InstallOutcome::Overwritten(_)));
+        assert_eq!(
+            report.stream_rules,
+            StreamRulesSeedOutcome::Untouched(rules_path.clone())
+        );
+        assert_eq!(std::fs::read_to_string(&rules_path).expect("read"), edited);
     }
 
     /// A nested skill reference (a file beneath a skill's own directory)

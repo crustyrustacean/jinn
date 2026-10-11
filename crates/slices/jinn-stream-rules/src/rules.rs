@@ -1,25 +1,120 @@
-//! Reading `[[stream_rules.entry]]` from `jinn.toml`.
+//! Reading the assembled stream rules.
 //!
-//! One function, because the section is read once at activation and never
-//! cached: a reload is observed by the next launch, and a rule the user
-//! deleted is not left armed by a stale copy.
+//! Three sources, in order:
 //!
-//! This is also where the removed `[[tools.bash_command_policy]]` section is
-//! read. Its rules became stream rules scoped to `tool:bash`, which is the
-//! same behaviour under a name that also covers the rest of the rule surface —
-//! so a user's existing patterns keep working without their file being
-//! rewritten.
+//! 1. the **embedded** shipped set (`stream_rules.toml`, compiled into the
+//!    binary) — always present, so the command guards work with no user
+//!    file at all;
+//! 2. a **user `stream_rules.toml`** beside `jinn.toml` — when the file
+//!    exists it *replaces* the embedded set wholesale. An empty file is
+//!    therefore a deliberate off switch; a malformed file warns and falls
+//!    back to the embedded set, because a typo must never leave jinn
+//!    unguarded;
+//! 3. `[[stream_rules.entry]]` in **`jinn.toml`** — appended after, so a
+//!    user's own rules layer on top of whichever base set won.
+//!
+//! Each source is read once at activation and never cached: a reload is
+//! observed by the next launch, and a rule the user deleted is not left
+//! armed by a stale copy.
+//!
+//! This is also where the removed `[[tools.bash_command_policy]]` section
+//! is read. Its rules became stream rules scoped to `tool:bash`, which is
+//! the same behaviour under a name that also covers the rest of the rule
+//! surface — so a user's existing patterns keep working without their file
+//! being rewritten.
+
+use std::path::Path;
 
 use jinn_config::ConfigLayer;
 use jinn_preferences_config::schemas::{
-    LegacyCommandPolicyRule, LegacyProjectConfig, StreamRuleConfig,
+    LegacyCommandPolicyRule, LegacyProjectConfig, StreamRuleConfig, StreamRuleFileEntry,
+    parse_stream_rules_file,
 };
+use jinn_preferences_config::{STREAM_RULES_FILE_NAME, STREAM_RULES_TEMPLATE};
 
-/// Reads the configured stream rules, in file order.
+/// Reads the configured stream rules for a run.
+///
+/// `preferences_path` is where this run's `jinn.toml` lives; the optional
+/// user rules file is the `stream_rules.toml` sibling of that document.
+///
+/// The assembled order is: embedded set, replaced wholesale by an existing
+/// user file (malformed → warn and keep the embedded set), then everything
+/// `jinn.toml` and the legacy sections contribute appended after.
+pub fn read_rules(config: &ConfigLayer, preferences_path: &Path) -> Vec<StreamRuleConfig> {
+    let user_file = preferences_path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join(STREAM_RULES_FILE_NAME);
+
+    let mut rules = embedded_rules();
+    if user_file.exists() {
+        match std::fs::read_to_string(&user_file) {
+            Ok(text) => match parse_stream_rules_file(&text) {
+                Ok(file) => {
+                    rules = file
+                        .entries()
+                        .iter()
+                        .map(StreamRuleFileEntry::live_rule)
+                        .collect();
+                    tracing::debug!(
+                        path = %user_file.display(),
+                        rules = rules.len(),
+                        "user stream_rules.toml replaces the embedded set"
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        path = %user_file.display(),
+                        error = %error,
+                        "user stream_rules.toml is malformed, continuing with the embedded set"
+                    );
+                }
+            },
+            Err(error) => {
+                tracing::warn!(
+                    path = %user_file.display(),
+                    error = %error,
+                    "user stream_rules.toml could not be read, continuing with the embedded set"
+                );
+            }
+        }
+    }
+
+    rules.extend(jinn_toml_rules(config));
+    rules
+}
+
+/// The embedded shipped set, with its fixtures stripped.
+///
+/// The template is compile-time-embedded and pinned by the preferences
+/// crate's template tests, so a parse failure here is unreachable in a
+/// shipped build; it is still handled rather than unwrapped, because the
+/// failure mode of a guard set must be "warn and continue", never "break
+/// the launch".
+fn embedded_rules() -> Vec<StreamRuleConfig> {
+    match parse_stream_rules_file(STREAM_RULES_TEMPLATE) {
+        Ok(file) => file
+            .entries()
+            .iter()
+            .map(StreamRuleFileEntry::live_rule)
+            .collect(),
+        Err(error) => {
+            tracing::error!(
+                error = %error,
+                "the embedded stream rules template does not parse; \
+                 shipping with no base set"
+            );
+            Vec::new()
+        }
+    }
+}
+
+/// Reads the `[[stream_rules.entry]]` list and the removed
+/// `[[tools.bash_command_policy]]` section out of `jinn.toml`.
 ///
 /// A malformed section reads as no rules rather than failing activation: a
 /// typo in the rules list must not stop jinn from starting.
-pub fn read_rules(config: &ConfigLayer) -> Vec<StreamRuleConfig> {
+fn jinn_toml_rules(config: &ConfigLayer) -> Vec<StreamRuleConfig> {
     let mut rules = match config.get_list::<StreamRuleConfig>() {
         Ok(rules) => rules,
         Err(error) => {
@@ -111,11 +206,198 @@ mod tests {
     use super::read_rules;
     use crate::matcher::CompiledSet;
     use jinn_config::ConfigLayer;
+    use jinn_preferences_config::STREAM_RULES_FILE_NAME;
     use jinn_slices::{StreamContext, StreamRuleSet};
 
     /// Reads `doc` as a config layer.
     fn layer(doc: &str) -> ConfigLayer {
         jinn_config::testutil::config_layer(doc)
+    }
+
+    /// A `jinn.toml` path in a temp dir with no sibling rules file, for the
+    /// pre-existing tests that only exercise the jinn.toml half of the read.
+    fn temp_prefs() -> std::path::PathBuf {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("jinn.toml");
+        // Leak the temp dir: the file must outlive the test's read, and the
+        // read never writes to it, so a leaked empty dir is the cheapest
+        // correct lifetime answer here.
+        std::mem::forget(dir);
+        path
+    }
+
+    /// A `jinn.toml` path inside `dir`, so the sibling rules file resolves
+    /// inside the same temp directory.
+    fn prefs_path_in(dir: &std::path::Path) -> std::path::PathBuf {
+        dir.join("jinn.toml")
+    }
+
+    /// Writes a user `stream_rules.toml` beside `prefs`, returning its path.
+    fn write_user_rules(prefs: &std::path::Path, body: &str) -> std::path::PathBuf {
+        let path = prefs
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join(STREAM_RULES_FILE_NAME);
+        std::fs::write(&path, body).expect("write user rules file");
+        path
+    }
+
+    /// The names of the rules a read assembles, in order.
+    fn assembled_names(config: &ConfigLayer, prefs: &std::path::Path) -> Vec<String> {
+        read_rules(config, prefs)
+            .into_iter()
+            .map(|r| r.name)
+            .collect()
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn the_embedded_set_loads_when_no_user_file_exists() {
+        // Given an empty temp dir (no user rules file) and an empty config.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let config = layer("");
+
+        // When the rules are read.
+        let names = assembled_names(&config, &prefs_path_in(dir.path()));
+
+        // Then the embedded shipped set is armed with no user configuration.
+        assert!(
+            names.iter().any(|n| n == "no-unbounded-recursive-rm"),
+            "the embedded guards must load with no user file, got: {names:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_user_file_replaces_the_embedded_set_wholesale() {
+        // Given a user rules file carrying exactly one rule.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let prefs = prefs_path_in(dir.path());
+        write_user_rules(
+            &prefs,
+            r#"
+            [[stream_rules.entry]]
+            name = 'user-only-rule'
+            description = 'mine'
+            conditions = ['NEVER-TYPE-this']
+            scopes = ['tool:bash']
+            body = 'Mine.'
+            positive = ['NEVER-TYPE-this now']
+            negative = ['echo hi']
+        "#,
+        );
+        let config = layer("");
+
+        // When the rules are read.
+        let names = assembled_names(&config, &prefs);
+
+        // Then only the user's rule is present — the embedded set is
+        // replaced, not merged.
+        assert_eq!(names, vec!["user-only-rule".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn an_existing_but_empty_user_file_disarms_every_shipped_guard() {
+        // Given an existing but empty user rules file.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let prefs = prefs_path_in(dir.path());
+        write_user_rules(&prefs, "");
+        let config = layer("");
+
+        // When the rules are read.
+        let names = assembled_names(&config, &prefs);
+
+        // Then the assembly is empty: an existing file owns the base set,
+        // and empty means the user disarmed it.
+        assert!(
+            names.is_empty(),
+            "an empty user file disarms, got: {names:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_malformed_user_file_falls_back_to_the_embedded_set() {
+        // Given a user rules file that is not valid TOML.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let prefs = prefs_path_in(dir.path());
+        write_user_rules(&prefs, "NOT [valid toml");
+        let config = layer("");
+
+        // When the rules are read.
+        let names = assembled_names(&config, &prefs);
+
+        // Then the embedded set is still armed: a typo must never leave
+        // jinn unguarded.
+        assert!(
+            names.iter().any(|n| n == "no-unbounded-recursive-rm"),
+            "a malformed user file must fall back to the embedded set, got: {names:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_jinn_toml_rule_appends_after_the_base_set() {
+        // Given a jinn.toml carrying one rule and no user file.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let prefs = prefs_path_in(dir.path());
+        let config = layer(
+            r#"
+            [[stream_rules.entry]]
+            name = "from-jinn-toml"
+            conditions = ['TODO']
+            scopes = ['text']
+            body = 'Finish it.'
+        "#,
+        );
+
+        // When the rules are read.
+        let names = assembled_names(&config, &prefs);
+
+        // Then the jinn.toml rule follows the embedded set, so its own
+        // conditions still see every stream.
+        assert_eq!(names.last().map(String::as_str), Some("from-jinn-toml"));
+        assert!(
+            names.iter().any(|n| n == "no-unbounded-recursive-rm"),
+            "the embedded set must precede the appended rule"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_jinn_toml_rule_appends_after_a_user_file_set() {
+        // Given a user file and a jinn.toml rule.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let prefs = prefs_path_in(dir.path());
+        write_user_rules(
+            &prefs,
+            r#"
+            [[stream_rules.entry]]
+            name = 'user-base'
+            conditions = ['AAA-MARKER']
+            scopes = ['tool:bash']
+            body = 'User base.'
+        "#,
+        );
+        let config = layer(
+            r#"
+            [[stream_rules.entry]]
+            name = "from-jinn-toml"
+            conditions = ['TODO']
+            scopes = ['text']
+            body = 'Finish it.'
+        "#,
+        );
+
+        // When the rules are read.
+        let names = assembled_names(&config, &prefs);
+
+        // Then the order is user file first, jinn.toml second, embedded gone.
+        assert_eq!(
+            names,
+            vec!["user-base".to_owned(), "from-jinn-toml".to_owned()]
+        );
     }
 
     #[rstest::rstest]
@@ -125,19 +407,22 @@ mod tests {
         let config = layer(
             r#"
             [[tools.bash_command_policy]]
-            pattern = 'rm -rf /'
+            pattern = 'LEGACY-MARKER-CMD'
             message = 'That is the whole filesystem.'
         "#,
         );
 
         // When the rules are read.
-        let rules = read_rules(&config);
+        let rules = read_rules(&config, &temp_prefs());
 
         // Then it is a stream rule scoped to the bash tool.
-        assert_eq!(rules.len(), 1);
-        assert_eq!(rules[0].conditions, vec!["rm -rf /".to_owned()]);
+        let converted = rules
+            .iter()
+            .find(|r| r.name == "bash-policy: LEGACY-MARKER-CMD")
+            .expect("the converted rule is in the assembled set");
+        assert_eq!(converted.conditions, vec!["LEGACY-MARKER-CMD".to_owned()]);
         assert_eq!(
-            rules[0].scopes,
+            converted.scopes,
             vec!["tool:bash".to_owned()],
             "a legacy rule was about one tool, so it must scope to it"
         );
@@ -146,24 +431,28 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn a_legacy_command_policy_rule_still_stops_the_command() {
-        // Given the removed section, with one rule.
+        // Given the removed section, with one rule naming a command the
+        // embedded base set does not guard.
         let config = layer(
             r#"
             [[tools.bash_command_policy]]
-            pattern = 'rm -rf /'
+            pattern = 'LEGACY-MARKER-CMD'
             message = 'That is the whole filesystem.'
         "#,
         );
 
         // When the converted rule is compiled and the offending command streams.
-        let set = CompiledSet::build(&read_rules(&config));
+        let set = CompiledSet::build(&read_rules(&config, &temp_prefs()));
         let mut session = set.new_session(&jinn_core_types::SessionId::new());
         let fired = session
-            .check(r#"{"command":"rm -rf /"}"#, StreamContext::tool(0, "bash"))
+            .check(
+                r#"{"command":"LEGACY-MARKER-CMD now"}"#,
+                StreamContext::tool(0, "bash"),
+            )
             .map(|hit| hit.name.clone());
 
         // Then it fires, which is what stops the call from running.
-        assert_eq!(fired, Some("bash-policy: rm -rf /".to_owned()));
+        assert_eq!(fired, Some("bash-policy: LEGACY-MARKER-CMD".to_owned()));
     }
 
     #[rstest::rstest]
@@ -179,10 +468,14 @@ mod tests {
         );
 
         // When the rules are read.
-        let rules = read_rules(&config);
+        let rules = read_rules(&config, &temp_prefs());
 
         // Then the guidance the author wrote is what the model will be told.
-        assert_eq!(rules[0].body, "That makes the file world-writable.");
+        let converted = rules
+            .iter()
+            .find(|r| r.name == "bash-policy: chmod 777")
+            .expect("the converted rule is in the assembled set");
+        assert_eq!(converted.body, "That makes the file world-writable.");
     }
 
     #[rstest::rstest]
@@ -203,7 +496,7 @@ mod tests {
         );
 
         // When the rules are read.
-        let rules = read_rules(&config);
+        let rules = read_rules(&config, &temp_prefs());
 
         // Then the rule is scoped to the project that declared it.
         assert!(
@@ -234,11 +527,13 @@ mod tests {
         );
 
         // When the rules are read.
-        let rules = read_rules(&config);
+        let rules = read_rules(&config, &temp_prefs());
 
         // Then the rule is there and the migration contributed nothing.
-        assert_eq!(rules.len(), 1);
-        assert_eq!(rules[0].name, "no-todo");
+        assert!(
+            rules.iter().any(|r| r.name == "no-todo"),
+            "the jinn.toml rule must read alongside the base set"
+        );
     }
 
     #[rstest::rstest]
@@ -249,17 +544,20 @@ mod tests {
             r#"
             [[stream_rules.entry]]
             name = "no-rm"
-            conditions = ['rm -rf']
+            conditions = ['LEGACY-TRIGGER-CMD']
             scopes = ['tool:bash']
             body = 'Never.'
         "#,
         );
 
         // When the rule is compiled and the offending command streams.
-        let set = CompiledSet::build(&read_rules(&config));
+        let set = CompiledSet::build(&read_rules(&config, &temp_prefs()));
         let mut session = set.new_session(&jinn_core_types::SessionId::new());
         let fired = session
-            .check(r#"{"command":"rm -rf /"}"#, StreamContext::tool(0, "bash"))
+            .check(
+                r#"{"command":"LEGACY-TRIGGER-CMD"}"#,
+                StreamContext::tool(0, "bash"),
+            )
             .map(|hit| hit.name.clone());
 
         // Then it fires as a plain interrupt: the key is simply unknown now,
@@ -273,7 +571,7 @@ mod tests {
             r#"
             [[stream_rules.entry]]
             name = 'global-rule'
-            conditions = ['rm -rf']
+            conditions = ['GLOBAL-MARKER-CMD']
             scopes = ['tool:bash']
             body = 'Never.'
 
@@ -294,10 +592,9 @@ mod tests {
         let config = mixed_project_config();
 
         // When the rules are read.
-        let rules = read_rules(&config);
+        let rules = read_rules(&config, &temp_prefs());
 
         // Then both are present, each with its own scope intact.
-        assert_eq!(rules.len(), 2);
         let global = rules.iter().find(|r| r.name == "global-rule");
         assert_eq!(global.and_then(|r| r.project.as_deref()), None);
         let scoped = rules.iter().find(|r| r.name == "myapp-rule");
@@ -308,14 +605,17 @@ mod tests {
     #[test]
     fn a_global_rule_merged_with_a_project_rule_keeps_both_blocks() {
         // Given the same two rules, compiled for the scoped project.
-        let set = CompiledSet::build(&read_rules(&mixed_project_config()))
+        let set = CompiledSet::build(&read_rules(&mixed_project_config(), &temp_prefs()))
             .for_project(std::path::Path::new("/home/dev/code/myapp"));
 
         // When each command's arguments stream in that project.
         let global = {
             let mut session = set.new_session(&jinn_core_types::SessionId::new());
             session
-                .check(r#"{"command":"rm -rf /"}"#, StreamContext::tool(0, "bash"))
+                .check(
+                    r#"{"command":"GLOBAL-MARKER-CMD"}"#,
+                    StreamContext::tool(0, "bash"),
+                )
                 .map(|hit| hit.name.clone())
         };
         let scoped = {
@@ -338,14 +638,18 @@ mod tests {
     #[test]
     fn a_project_rule_merged_with_a_global_rule_is_silent_outside_its_project() {
         // Given the same two rules, resolved for a project that is not myapp.
-        let set = crate::matcher::CompiledSet::build(&read_rules(&mixed_project_config()))
-            .for_project(std::path::Path::new("/home/dev/code/other"));
+        let set =
+            crate::matcher::CompiledSet::build(&read_rules(&mixed_project_config(), &temp_prefs()))
+                .for_project(std::path::Path::new("/home/dev/code/other"));
 
         // When the global rule's command's arguments stream there.
         let global = {
             let mut session = set.new_session(&jinn_core_types::SessionId::new());
             session
-                .check(r#"{"command":"rm -rf /"}"#, StreamContext::tool(0, "bash"))
+                .check(
+                    r#"{"command":"GLOBAL-MARKER-CMD"}"#,
+                    StreamContext::tool(0, "bash"),
+                )
                 .map(|hit| hit.name.clone())
         };
 
@@ -372,7 +676,7 @@ mod tests {
         );
 
         // When the rules are read and compiled.
-        let rules = read_rules(&config);
+        let rules = read_rules(&config, &temp_prefs());
         let set = crate::matcher::CompiledSet::build(&rules);
 
         // Then both are live: the legacy one fires on the tool stream, the
@@ -410,7 +714,7 @@ mod tests {
         );
 
         // When the rules are read and compiled for that project.
-        let set = crate::matcher::CompiledSet::build(&read_rules(&config))
+        let set = crate::matcher::CompiledSet::build(&read_rules(&config, &temp_prefs()))
             .for_project(std::path::Path::new("/home/dev/code/myapp"));
 
         // Then both fire: the project rule adds its block beside the global.
