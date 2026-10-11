@@ -7,9 +7,10 @@
 //! actor is where that loop is bounded.
 //!
 //! One counter per session. A [`StreamCompleted`] carrying
-//! [`StreamCompletedReason::RuleIntercept`] increments it; a response that ran
-//! to completion ([`StreamCompletedReason::Finished`]) debits it by one, floor
-//! at zero; reaching the configured maximum trips the watchdog — a system
+//! [`StreamCompletedReason::RuleIntercept`] increments it; a response that
+//! completes without an interrupt ([`StreamCompletedReason::Finished`] or
+//! [`StreamCompletedReason::ToolUse`]) debits it by one, floor at zero;
+//! reaching the configured maximum trips the watchdog — a system
 //! entry naming the rule, then a [`CancelTurn`] that also drops the looping
 //! turn's pending resume, then the counter is
 //! zeroed so the same session is not re-killed immediately.
@@ -23,13 +24,15 @@
 //! *per-response* budget would be cleared by the very event it counts, since
 //! an interrupt is itself a response boundary.
 //!
-//! # Why a `Finished` response debits rather than resets
+//! # Why a completed response debits rather than resets
 //!
 //! The failure being bounded is a model that trips, resumes, and trips again.
-//! A model that completes a response after being corrected has heard the
-//! correction, so it earns its budget back one step at a time. Debiting rather
-//! than clearing is what makes two early slips survivable while a sustained
-//! refusal is not.
+//! A model that completes a response after being corrected — a whole answer,
+//! or a clean stop to run the turn's tools — has heard the correction, so it
+//! earns its budget back one step at a time. Debiting rather than clearing is
+//! what makes two early slips survivable while a sustained refusal is not.
+//! (`Canceled` and `Error` are excluded: the model completed nothing, so
+//! debiting there would repay the debt on the very path the budget bounds.)
 //!
 //! # Why this actor and not the matcher
 //!
@@ -233,15 +236,16 @@ impl StreamRuleWatchdogActor {
     ///
     /// The three reasons split three ways, and each split is the design:
     ///
-    /// - `Finished` — the model produced a whole response after being
-    ///   corrected. It heard the correction, so the debt is repaid one step,
-    ///   clamped at zero.
+    /// - `Finished` / `ToolUse` — the model completed a response after being
+    ///   corrected: a whole answer, or a stop to run the tools the turn asked
+    ///   for. Either is compliance — it heard the correction — so the debt is
+    ///   repaid one step, clamped at zero.
     /// - `RuleIntercept` — a rule fired again. The count rises, and exceeding
     ///   the maximum produces the watchdog pair.
-    /// - everything else (`ToolUse`, `Canceled`, `Error`) — the response ended
-    ///   without a final answer. Retained deliberately: debiting on every
-    ///   non-clean end would repay the debt on exactly the path the budget
-    ///   exists to bound, and the count could never be spent.
+    /// - `Canceled` / `Error` — the response ended without the model
+    ///   completing anything. Retained deliberately: debiting on those would
+    ///   repay the debt on exactly the path the budget exists to bound, and
+    ///   the count could never be spent.
     #[must_use]
     pub fn on_response_end(
         &mut self,
@@ -250,15 +254,13 @@ impl StreamRuleWatchdogActor {
     ) -> Vec<StreamRuleWatchdogAction> {
         match reason {
             StreamCompletedReason::RuleIntercept => self.record_interrupt(session_id),
-            StreamCompletedReason::Finished => {
+            StreamCompletedReason::Finished | StreamCompletedReason::ToolUse => {
                 if let Some(count) = self.accumulators.get_mut(session_id) {
                     *count = count.saturating_sub(1);
                 }
                 Vec::new()
             }
-            StreamCompletedReason::ToolUse
-            | StreamCompletedReason::Canceled
-            | StreamCompletedReason::Error => Vec::new(),
+            StreamCompletedReason::Canceled | StreamCompletedReason::Error => Vec::new(),
         }
     }
 
@@ -540,9 +542,9 @@ mod tests {
             let _ = actor.on_response_end(&session, StreamCompletedReason::RuleIntercept);
         }
 
-        // When two responses end for a non-interrupt, non-finish reason, and
+        // When two responses end without the model completing anything, and
         // two more interrupts arrive.
-        let _ = actor.on_response_end(&session, StreamCompletedReason::ToolUse);
+        let _ = actor.on_response_end(&session, StreamCompletedReason::Canceled);
         let _ = actor.on_response_end(&session, StreamCompletedReason::Error);
         let actions: Vec<_> = (0..2)
             .flat_map(|_| actor.on_response_end(&session, StreamCompletedReason::RuleIntercept))
@@ -553,8 +555,52 @@ mod tests {
         assert_eq!(
             actions.len(),
             2,
-            "an interrupted response must not repay its own interrupt"
+            "a cancelled or errored response must not repay its own interrupt"
         );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_tool_use_response_debits_and_floors_at_zero() {
+        // Given a watchdog that has seen two interrupts.
+        let session = SessionId::new();
+        let mut actor = watchdog(4).await;
+        for _ in 0..2 {
+            let _ = actor.on_response_end(&session, StreamCompletedReason::RuleIntercept);
+        }
+
+        // When four more responses stop cleanly to run the turn's tools.
+        for _ in 0..4 {
+            let _ = actor.on_response_end(&session, StreamCompletedReason::ToolUse);
+        }
+
+        // Then the count clamped at zero rather than wrapping: two further
+        // interrupts leave the watchdog one short of its maximum.
+        let actions: Vec<_> = (0..3)
+            .flat_map(|_| actor.on_response_end(&session, StreamCompletedReason::RuleIntercept))
+            .collect();
+        assert!(actions.is_empty(), "the count must have floored at zero");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_tool_use_response_before_the_maximum_prevents_the_trip() {
+        // Given a watchdog that saw three interrupts then one tool-use stop.
+        let session = SessionId::new();
+        let mut actor = watchdog(4).await;
+        for _ in 0..3 {
+            let _ = actor.on_response_end(&session, StreamCompletedReason::RuleIntercept);
+        }
+        let _ = actor.on_response_end(&session, StreamCompletedReason::ToolUse);
+
+        // When two more interrupts arrive.
+        let actions: Vec<_> = (0..2)
+            .flat_map(|_| actor.on_response_end(&session, StreamCompletedReason::RuleIntercept))
+            .collect();
+
+        // Then the watchdog did not trip: only three interrupts are counted —
+        // the tool-use stop repaid one of them.
+        assert!(actions.is_empty());
     }
 
     #[rstest::rstest]
