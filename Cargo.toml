@@ -148,6 +148,7 @@ dotenvy = { workspace = true }
 [dev-dependencies]
 rstest = { workspace = true }
 mockito = { workspace = true }
+toml = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tempfile = { workspace = true }
 jinn-preferences-config = { workspace = true }

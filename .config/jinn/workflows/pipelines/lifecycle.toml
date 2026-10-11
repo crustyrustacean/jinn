@@ -1,0 +1,53 @@
+# Session lifecycle scripts for pipeline runs.
+#
+# Paste these `[[session_lifecycle.script]]` entries into your user
+# `jinn.toml` (the file the workflow-cast stages and the orchestrator
+# resolve through `run_lifecycle_script`). They are pipeline-only: your
+# existing interactive lifecycle entries stay untouched, and neither
+# entry ever writes trunk — the only trunk write in a run is the
+# orchestrator's G2 merge, which is a workflow step, not a script.
+#
+# Placeholders: `$1` = worktree path (relative, under the project
+# directory), `$2` = branch name, `$3` = base branch (stage fork point).
+# Values are shell-quoted by the template renderer before substitution.
+#
+# Fossil layout assumed: the project checkout holds its `.fslckout` and
+# the repository file named in `REPO_FILE` (adjust if yours differs).
+
+# ── Pipeline root ────────────────────────────────────────────────
+# Setup: fork the run branch off trunk and open it as a worktree inside
+# the project directory. Prints the worktree path — the session adopts
+# it as CWD. Teardown is inert: the root worktree is kept for
+# inspection; the G2 merge step (workflow.md) is what touches trunk.
+[[session_lifecycle.script]]
+name = "pipeline-fossil-root"
+description = "Fork a pipeline run branch off trunk (fossil)"
+setup_command = "fossil branch new $2 trunk -R pipeline.fossil && mkdir -p $1 && cd $1 && fossil open ../pipeline.fossil $2 && echo $PWD"
+teardown_command = "true"
+
+# ── Pipeline stage ───────────────────────────────────────────────
+# Setup: fork the stage's own branch off the named base branch (the
+# root branch — or any branch the dispatch message names) and open it as
+# a worktree inside the project directory. Prints the worktree path for
+# CWD adoption. Teardown: close the stage checkout and remove the
+# worktree directory. It never merges and never writes trunk — merging
+# into the root branch is the stage's own finishing step, done in its
+# worktree before it reports done.
+[[session_lifecycle.script]]
+name = "pipeline-fossil-stage"
+description = "Fork a stage branch off a base branch (fossil)"
+setup_command = "fossil branch new $2 $3 -R pipeline.fossil && mkdir -p $1 && cd $1 && fossil open ../pipeline.fossil $2 && echo $PWD"
+teardown_command = "cd $1/.. && fossil close && cd .. && rm -rf $1"
+
+# ── Git siblings (secondary; same contracts) ─────────────────────
+[[session_lifecycle.script]]
+name = "pipeline-git-root"
+description = "Fork a pipeline run branch off main (git worktree)"
+setup_command = "git worktree add -b $2 $1 main && cd $1 && echo $PWD"
+teardown_command = "true"
+
+[[session_lifecycle.script]]
+name = "pipeline-git-stage"
+description = "Fork a stage branch off a base branch (git worktree)"
+setup_command = "git worktree add -b $2 $1 $3 && cd $1 && echo $PWD"
+teardown_command = "git worktree remove $1"

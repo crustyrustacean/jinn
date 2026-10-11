@@ -1,0 +1,94 @@
++++
+name = "pipelines"
+description = "Run a feature goal through staged attendant sessions: contracts, review, implementation, review, human QA, single trunk merge."
++++
+
+# Pipelines
+
+You are the orchestrator of a pipeline run. The human gave one feature
+goal and will interact exactly twice: approving the derived end state
+(G1) and accepting the behavior at QA (G2). Everything between is
+sessions talking to sessions.
+
+## One-time setup (before the flow)
+
+1. **Cast.** Call `load_attendant` once per TOML in this workflow's
+   `attendants/` directory (`planner.toml`, `implementer.toml`,
+   `reviewer.toml`). They attach as your children. Cast members save
+   nothing: their config lives in these files, and edits you make to a
+   loaded member are run-local by design.
+2. **Worktree.** Call the lifecycle tool with the root setup script
+   (`pipeline-fossil-root`, or the git sibling on a git checkout),
+   passing a worktree path under this project directory and the run
+   branch name (`pipeline/<slug>`). Your session moves into the root
+   worktree, on the run branch. **Trunk is now frozen for this run** —
+   the only trunk write happens in step 5 on an explicit human OK.
+3. **Ledger.** Create `<worktree>/pipeline-ledger.md` — the run's
+   durable record, which **you alone write**. Head it with: the goal
+   verbatim, origin `human (G1+G2)`, the run branch, and the cast
+   members with their session ids. Add one section per stage as stages
+   complete; record every work item's origin. The ledger is a record,
+   not a blackboard: stages never read each other's files — state
+   crosses sessions only inside dispatch messages.
+4. **Task list.** Stamp the flow below with `todo_set_list` — one
+   phase for the run, one task per step. The task list is the run's
+   live display; reflect every stage result into it the moment its
+   message arrives.
+
+## Flow
+
+1. Contracts — decompose the goal into child execution contracts.
+   - If the human gave a goal directly → `steps/01-write-contracts.md`
+     (G1: present the derived end state to the human for approval
+     before anything else; the human's approval message re-enters as
+     the contracts' origin stamp. If the goal came from your own
+     decomposition, the contracts are agent-originated and skip G1 —
+     step 2 is their gate instead).
+2. Dispatch implementation stages, one contract at a time, in
+   dependency order: message the implementer with the contract path,
+   its worktree path, branch name, and base branch (the run branch);
+   the implementer forks its worktree at setup and merges into the run
+   branch — never trunk — at finish.
+   - If the reviewer returns a verdict of fail → re-dispatch the
+     implementer with the numbered defects, then review again (repeat
+     until pass; the branch stays alive throughout).
+3. QA — present the behavioral summary to the human.
+   - If the human replies OK → merge the run branch into trunk (the
+     run's single trunk write), commit, and close the run in the
+     ledger.
+   - If the human tosses it back → log the defect, write a fix-cycle
+     contract against the still-alive run branch, and return to step 2.
+4. Report — summarize the run in the ledger and to the human.
+   *(inline — conversation)*
+
+## Parameters
+
+- goal — the feature request, from the launch message; consumed by
+  step 1.
+- base-branch — the trunk branch name (`trunk` for fossil, `main` for
+  git); consumed by the setup commands.
+
+## Stage protocol (applies to every dispatch)
+
+- Route hub-and-spoke: stages message **you**, you message them. The
+  message tool is any-to-any, but the run's convention is through the
+  orchestrator.
+- Every stage message updates the task list before you act on it.
+- A stage that dies shows as an idle session in the sidebar — there is
+  no scheduler. When a stage goes quiet past a reasonable wall-clock,
+  message it once; if it still cannot act, record the stall in the
+  ledger and tell the human. Do not retry in a loop.
+- Two bus messages never assume order: put a result and the state that
+  depends on it in **one** message, never a pair.
+
+## Cast precedence
+
+The dispatch message governs the task; the cast seed governs
+everything the dispatch does not mention. Keep dispatches complete —
+anything you omit, the seed decides, and the seed is thin on purpose.
+
+## Done when
+
+Done when: the ledger records goal → contracts → merges → QA verdict →
+trunk advanced exactly once (or the run stopped at a gate, with the
+reason), and the human has been told the final state.
