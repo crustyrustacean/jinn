@@ -153,32 +153,100 @@ fn lifecycle_snippet_deserializes_through_the_lifecycle_schema() {
     let wrapper: Wrapper = parse_toml(&text).expect("lifecycle snippet deserializes");
     let scripts = wrapper.session_lifecycle.script;
 
-    // Then all four scripts ship paired commands, and neither stage
-    // teardown writes trunk: fossil teardown closes and removes only;
-    // the trunk merge exists nowhere in the file.
+    // Then all the pipeline scripts ship, every command uses named
+    // placeholders only, and no script writes trunk or deletes a
+    // variable path outside the trash mechanism.
     let names: Vec<&str> = scripts.iter().map(|s| s.name.as_str()).collect();
     for expected in [
         "pipeline-fossil-root",
         "pipeline-fossil-stage",
+        "pipeline-trash-stage",
+        "pipeline-trash-purge",
         "pipeline-git-root",
         "pipeline-git-stage",
     ] {
         assert!(names.contains(&expected), "missing script {expected}");
     }
+    let find = |name: &str| {
+        scripts
+            .iter()
+            .find(|s| s.name == name)
+            .unwrap_or_else(|| panic!("missing script {name}"))
+    };
+
+    // The purge is un-aimable: no placeholders, and `rm` names exactly
+    // one fixed path.
+    let purge = find("pipeline-trash-purge");
+    let jinn_preferences_config::schemas::session_lifecycle::LifecycleCommand::Shell(purge_setup) =
+        purge.setup.as_ref().expect("purge setup exists")
+    else {
+        panic!("purge setup is a shell command");
+    };
+    assert!(
+        !purge_setup.contains('<'),
+        "the purge carries no placeholders, so the agent cannot aim it: {purge_setup}"
+    );
+    assert!(
+        purge_setup.contains(".jinn-pipeline-trash"),
+        "the purge deletes the fixed trash path: {purge_setup}"
+    );
+
+    // The guarded move is the only command that ever relocates a
+    // variable path, and it is gated: checkout marker, repo file
+    // match, and a worktrees/ prefix — with a refusal branch.
+    let trash = find("pipeline-trash-stage");
+    let jinn_preferences_config::schemas::session_lifecycle::LifecycleCommand::Shell(trash_setup) =
+        trash.setup.as_ref().expect("trash setup exists")
+    else {
+        panic!("trash setup is a shell command");
+    };
+    for gate in [".fslckout", "grep -qF", "grep -q '^worktrees/'", "|| false"] {
+        assert!(
+            trash_setup.contains(gate),
+            "the guarded move checks {gate}: {trash_setup}"
+        );
+    }
+    assert!(
+        trash_setup.contains("mv") && !trash_setup.contains("rm "),
+        "the guarded move relocates, never deletes: {trash_setup}"
+    );
+
+    // No script anywhere merges to trunk or writes trunk; the only
+    // `rm` in the whole file is the purge's fixed path.
     for script in &scripts {
-        if script.name.ends_with("-stage") {
-            let jinn_preferences_config::schemas::session_lifecycle::LifecycleCommand::Shell(
-                teardown,
-            ) = script.teardown.as_ref().expect("stage teardown exists")
+        for command in [script.setup.as_ref(), script.teardown.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            let jinn_preferences_config::schemas::session_lifecycle::LifecycleCommand::Shell(text) =
+                command
             else {
-                panic!("stage teardown is a shell command");
+                continue;
             };
             assert!(
-                !teardown.contains("merge")
-                    && !teardown.contains("trunk")
-                    && !teardown.contains(" main"),
-                "stage teardown must never write trunk: {} -> {teardown}",
+                !text.contains("fossil merge"),
+                "{} must never merge — merging is a workflow step, not a script: {text}",
                 script.name
+            );
+            if let Some(pos) = text.find("rm ") {
+                assert!(
+                    script.name == "pipeline-trash-purge"
+                        && text[pos..].contains(".jinn-pipeline-trash"),
+                    "only the purge deletes, and only the fixed trash path: {} -> {text}",
+                    script.name
+                );
+            }
+        }
+        if script.name == "pipeline-fossil-stage" {
+            let inert = matches!(
+                script.teardown.as_ref(),
+                Some(jinn_preferences_config::schemas::session_lifecycle::LifecycleCommand::Shell(
+                    t
+                )) if t == "true"
+            );
+            assert!(
+                inert,
+                "fossil stage teardown is inert (retirement is the orchestrator's guarded move)"
             );
         }
     }

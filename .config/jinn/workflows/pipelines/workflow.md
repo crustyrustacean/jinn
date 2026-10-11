@@ -12,25 +12,35 @@ sessions talking to sessions.
 
 ## One-time setup (before the flow)
 
-1. **Cast.** Call `load_attendant` once per TOML in this workflow's
+Run in this order — the purge first, deliberately: emptying last
+run's trash is a human-started action, so the cooling-off window of
+the previous run closes here and only here.
+
+1. **Purge.** Call the lifecycle tool with `pipeline-trash-purge`
+   (setup). No arguments — the command is fixed. It deletes
+   `.jinn-pipeline-trash/`, the previous run's moved-out stage
+   worktrees. Skip it only if the human said to keep the last run's
+   trash.
+2. **Cast.** Call `load_attendant` once per TOML in this workflow's
    `attendants/` directory (`planner.toml`, `implementer.toml`,
    `reviewer.toml`). They attach as your children. Cast members save
    nothing: their config lives in these files, and edits you make to a
    loaded member are run-local by design.
-2. **Worktree.** Call the lifecycle tool with the root setup script
+3. **Worktree.** Call the lifecycle tool with the root setup script
    (`pipeline-fossil-root`, or the git sibling on a git checkout),
-   passing a worktree path under this project directory and the run
-   branch name (`pipeline/<slug>`). Your session moves into the root
+   passing `worktrees/<slug>` as the worktree path and the run branch
+   name (`pipeline/<slug>`). Your session moves into the root
    worktree, on the run branch. **Trunk is now frozen for this run** —
-   the only trunk write happens in step 5 on an explicit human OK.
-3. **Ledger.** Create `<worktree>/pipeline-ledger.md` — the run's
-   durable record, which **you alone write**. Head it with: the goal
-   verbatim, origin `human (G1+G2)`, the run branch, and the cast
+   the only trunk write happens in step 3 of the flow on an explicit
+   human OK.
+4. **Ledger.** Create `pipeline-ledger.md` in the root worktree — the
+   run's durable record, which **you alone write**. Head it with: the
+   goal verbatim, origin `human (G1+G2)`, the run branch, and the cast
    members with their session ids. Add one section per stage as stages
    complete; record every work item's origin. The ledger is a record,
    not a blackboard: stages never read each other's files — state
    crosses sessions only inside dispatch messages.
-4. **Task list.** Stamp the flow below with `todo_set_list` — one
+5. **Task list.** Stamp the flow below with `todo_set_list` — one
    phase for the run, one task per step. The task list is the run's
    live display; reflect every stage result into it the moment its
    message arrives.
@@ -46,9 +56,9 @@ sessions talking to sessions.
      step 2 is their gate instead).
 2. Dispatch implementation stages, one contract at a time, in
    dependency order: message the implementer with the contract path,
-   its worktree path, branch name, and base branch (the run branch);
-   the implementer forks its worktree at setup and merges into the run
-   branch — never trunk — at finish.
+   its worktree path (`worktrees/<child-slug>`), branch name, and base
+   branch (the run branch); the implementer forks its worktree at
+   setup and merges into the run branch — never trunk — at finish.
    - If the reviewer returns a verdict of fail → re-dispatch the
      implementer with the numbered defects, then review again (repeat
      until pass; the branch stays alive throughout).
@@ -58,7 +68,19 @@ sessions talking to sessions.
      ledger.
    - If the human tosses it back → log the defect, write a fix-cycle
      contract against the still-alive run branch, and return to step 2.
-4. Report — summarize the run in the ledger and to the human.
+4. Run-end cleanup — retire the stage worktrees.
+   - For each stage worktree used this run, call the lifecycle tool
+     with `pipeline-trash-stage` (fossil; `git worktree remove` has
+     already handled git stages at their teardown), passing the
+     worktree path exactly as dispatched (`worktrees/<child-slug>`).
+     The script verifies the path is an open checkout of this
+     repository under `worktrees/` and **moves** it into
+     `.jinn-pipeline-trash/`; if it refuses, do not retry with a
+     different spelling — log the refusal in the ledger and tell the
+     human. Never delete anything yourself; the trash is emptied at
+     the *next* run's purge, by the human's act of starting it.
+5. Report — summarize the run in the ledger and to the human,
+   including the list of trashed worktrees and the trash path.
    *(inline — conversation)*
 
 ## Parameters
@@ -80,6 +102,17 @@ sessions talking to sessions.
   ledger and tell the human. Do not retry in a loop.
 - Two bus messages never assume order: put a result and the state that
   depends on it in **one** message, never a pair.
+- Stage teardown is inert by design: a stage closes nothing and
+  deletes nothing. Its worktree is retired by your run-end cleanup,
+  its branch lives until the human prunes.
+
+## Housekeeping
+
+- `worktrees/` and `.jinn-pipeline-trash/` must be ignored by the VCS
+  (`fossil settings ignore-glob` listing `worktrees/*` and
+  `.jinn-pipeline-trash/*`, or `.git/info/exclude`). Add this once
+  during the first run on a project if it is not already set, and note
+  it in the ledger.
 
 ## Cast precedence
 
@@ -90,5 +123,5 @@ anything you omit, the seed decides, and the seed is thin on purpose.
 ## Done when
 
 Done when: the ledger records goal → contracts → merges → QA verdict →
-trunk advanced exactly once (or the run stopped at a gate, with the
-reason), and the human has been told the final state.
+trunk advanced exactly once → cleanup done (or the run stopped at a
+gate, with the reason), and the human has been told the final state.

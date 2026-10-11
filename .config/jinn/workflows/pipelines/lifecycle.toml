@@ -1,18 +1,40 @@
 # Session lifecycle scripts for pipeline runs.
 #
 # Paste these `[[session_lifecycle.script]]` entries into your user
-# `jinn.toml` (the file the workflow-cast stages and the orchestrator
+# `jinn.toml` (the entries the workflow-cast stages and the orchestrator
 # resolve through `run_lifecycle_script`). They are pipeline-only: your
 # existing interactive lifecycle entries stay untouched, and neither
 # entry ever writes trunk — the only trunk write in a run is the
 # orchestrator's G2 merge, which is a workflow step, not a script.
 #
-# Placeholders: `$1` = worktree path (relative, under the project
-# directory), `$2` = branch name, `$3` = base branch (stage fork point).
-# Values are shell-quoted by the template renderer before substitution.
+# Placeholders: `<dir>` = worktree path (relative to the project
+# directory, always under `worktrees/`), `<branch>` = branch name,
+# `<base>` = base branch (the stage fork point). Named placeholders
+# only — the lifecycle tool supplies named arguments and refuses
+# positional `$n` ones. Values are shell-quoted by the template
+# renderer before substitution, so an argument cannot restructure the
+# command.
+#
+# Deletion policy — protected removal, two halves:
+#
+#   1. `pipeline-trash-stage` moves a checked-out, verified stage
+#      worktree into `.jinn-pipeline-trash/`. The agent-supplied path
+#      is quoted by the template renderer and gated twice — it must be
+#      an open checkout of this repository (`.fslckout` naming this
+#      repo file) and it must live under the run's `worktrees/` area —
+#      so a mis-recalled path is refused, and the worst case that
+#      survives both gates is a move, not a deletion. Fully
+#      recoverable by hand.
+#   2. `pipeline-trash-purge` carries no placeholders at all, so the
+#      tool renders it verbatim: there is no string the agent controls
+#      anywhere in it. It can be invoked; it cannot be aimed. It
+#      deletes the one fixed trash directory, and the workflow calls it
+#      only at the next run's start — a human action closes the
+#      cooling-off window. Prefer purging by hand; the entry exists so
+#      the start-of-run sweep is one visible tool call.
 #
 # Fossil layout assumed: the project checkout holds its `.fslckout` and
-# the repository file named in `REPO_FILE` (adjust if yours differs).
+# the repository file named in the commands (adjust to yours).
 
 # ── Pipeline root ────────────────────────────────────────────────
 # Setup: fork the run branch off trunk and open it as a worktree inside
@@ -22,32 +44,53 @@
 [[session_lifecycle.script]]
 name = "pipeline-fossil-root"
 description = "Fork a pipeline run branch off trunk (fossil)"
-setup_command = "fossil branch new $2 trunk -R pipeline.fossil && mkdir -p $1 && cd $1 && fossil open ../pipeline.fossil $2 && echo $PWD"
+setup_command = "fossil branch new <branch> trunk -R pipeline.fossil && mkdir -p worktrees && mkdir -p <dir> && cd <dir> && fossil open ../../pipeline.fossil <branch> && echo $PWD"
 teardown_command = "true"
 
 # ── Pipeline stage ───────────────────────────────────────────────
 # Setup: fork the stage's own branch off the named base branch (the
-# root branch — or any branch the dispatch message names) and open it as
-# a worktree inside the project directory. Prints the worktree path for
-# CWD adoption. Teardown: close the stage checkout and remove the
-# worktree directory. It never merges and never writes trunk — merging
-# into the root branch is the stage's own finishing step, done in its
-# worktree before it reports done.
+# run branch — or any branch the dispatch message names) and open it
+# as a worktree under the run's `worktrees/` area. Prints the worktree
+# path for CWD adoption. Teardown is inert: closing the checkout and
+# removing the directory are deliberately separate, human-visible
+# steps (the trash entry, then the purge at next run start) — this
+# script never merges and never deletes and never writes trunk.
+# Merging into the run branch is the stage's own finishing step, done
+# from the root worktree before the stage reports done.
 [[session_lifecycle.script]]
 name = "pipeline-fossil-stage"
 description = "Fork a stage branch off a base branch (fossil)"
-setup_command = "fossil branch new $2 $3 -R pipeline.fossil && mkdir -p $1 && cd $1 && fossil open ../pipeline.fossil $2 && echo $PWD"
-teardown_command = "cd $1/.. && fossil close && cd .. && rm -rf $1"
+setup_command = "fossil branch new <branch> <base> -R pipeline.fossil && mkdir -p worktrees && mkdir -p <dir> && cd <dir> && fossil open ../../pipeline.fossil <branch> && echo $PWD"
+teardown_command = "true"
+
+# ── Protected removal (both VCSes) ───────────────────────────────
+# Move one stage worktree into the trash. Setup runs the guarded move
+# so the session sees the outcome; teardown is inert. The <dir> value
+# is quoted by the renderer; the two gates do the real work.
+[[session_lifecycle.script]]
+name = "pipeline-trash-stage"
+description = "Move a finished stage worktree into the pipeline trash (guarded)"
+setup_command = "mkdir -p .jinn-pipeline-trash && test -f <dir>/.fslckout && grep -qF 'pipeline.fossil' <dir>/.fslckout && printf '%s' <dir> | grep -q '^worktrees/' && mv <dir> .jinn-pipeline-trash/ && echo 'trashed: <dir>' || false"
+teardown_command = "true"
+
+# The purge. No placeholders — rendered verbatim, un-aimable. Called
+# at the start of a run (never at its end, so the orchestrator that
+# filled the trash never empties it in the same breath).
+[[session_lifecycle.script]]
+name = "pipeline-trash-purge"
+description = "Delete the pipeline trash (last run's staged worktree copies)"
+setup_command = "rm -rf .jinn-pipeline-trash"
+teardown_command = "true"
 
 # ── Git siblings (secondary; same contracts) ─────────────────────
 [[session_lifecycle.script]]
 name = "pipeline-git-root"
 description = "Fork a pipeline run branch off main (git worktree)"
-setup_command = "git worktree add -b $2 $1 main && cd $1 && echo $PWD"
+setup_command = "mkdir -p worktrees && git worktree add -b <branch> <dir> main && cd <dir> && echo $PWD"
 teardown_command = "true"
 
 [[session_lifecycle.script]]
 name = "pipeline-git-stage"
 description = "Fork a stage branch off a base branch (git worktree)"
-setup_command = "git worktree add -b $2 $1 $3 && cd $1 && echo $PWD"
-teardown_command = "git worktree remove $1"
+setup_command = "mkdir -p worktrees && git worktree add -b <branch> <dir> <base> && cd <dir> && echo $PWD"
+teardown_command = "git worktree remove <dir>"
