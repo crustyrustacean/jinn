@@ -189,10 +189,9 @@ fn the_picker_binds_navigation_start_rescan_and_cancel() {
     let (_cell, routes) = wired();
     let keys: Vec<&str> = routes.rows().iter().map(|row| row.key).collect();
 
-    // Then the picker walks, pages, starts, rescans, makes sessions, and
-    // cancels.
+    // Then the picker walks, pages, starts, rescans, and cancels.
     for key in [
-        "<up>", "<down>", "<pgup>", "<pgdn>", "<enter>", "<esc>", "<c-r>", "<c-n>",
+        "<up>", "<down>", "<pgup>", "<pgdn>", "<enter>", "<esc>", "<c-r>",
     ] {
         assert!(
             keys.contains(&key),

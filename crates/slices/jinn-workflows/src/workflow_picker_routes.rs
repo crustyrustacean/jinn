@@ -44,7 +44,6 @@ type WorkflowPickerCell = TypedCell<WorkflowPickerState>;
 pub const WORKFLOW_PICKER_BINDINGS: &[(&str, &str)] = &[
     ("<enter>", "start"),
     ("<c-r>", "rescan"),
-    ("<c-n>", "new session"),
     ("<esc>", "cancel"),
 ];
 
@@ -137,19 +136,6 @@ pub fn attach_workflow_picker_rows(routes: &KeyRoutes, cell: &WorkflowPickerCell
         "general",
         "rescan the workflows directory",
         action(cell, rescan_workflows),
-    ));
-    routes.attach(row(
-        "new-session-from-workflow-picker",
-        "<c-n>",
-        "general",
-        "start a new session",
-        action(cell, |ctx, _cell| {
-            let config = ctx.config;
-            let Some(state) = app(ctx) else {
-                return IntentResult::empty();
-            };
-            jinn_kernel::session_lifecycle::intent::handle_session_new(state, config)
-        }),
     ));
     routes.attach(row(
         "cancel-workflow-picker",
@@ -283,7 +269,7 @@ fn open_workflow_picker(ctx: &mut ActionCtx<'_>, cell: &WorkflowPickerCell) -> I
 /// workflow`, read by the orchestrating agent the way any prompt is.
 fn start_highlighted_workflow(ctx: &mut ActionCtx<'_>, cell: &WorkflowPickerCell) -> IntentResult {
     // Capture the config first: `app(ctx)` holds a mutable borrow of the
-    // context for the rest of the action (the `<c-n>` row's shape).
+    // context for the rest of the action.
     let config = ctx.config;
     let Some(state) = app(ctx) else {
         return IntentResult::empty();
@@ -297,8 +283,8 @@ fn start_highlighted_workflow(ctx: &mut ActionCtx<'_>, cell: &WorkflowPickerCell
     };
 
     // A fresh session for the workflow to run in — the same blank
-    // lifecycle setup `<c-n>` performs, inherited cwd and all — plus the
-    // launch message enqueued into that new session.
+    // lifecycle setup `handle_session_new` always performs, inherited cwd
+    // and all — plus the launch message enqueued into that new session.
     let created = jinn_kernel::session_lifecycle::intent::handle_session_new(state, config);
     let session_id = state.session.active_session_id().clone();
     created.with_message(EnqueueUserMessage {
