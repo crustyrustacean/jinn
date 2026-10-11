@@ -23,6 +23,7 @@ pub mod capabilities;
 mod attendant_tools_tests;
 
 pub mod edit;
+pub(crate) mod file_locks;
 pub mod get_time;
 pub mod grep;
 pub(crate) mod input_bounds;

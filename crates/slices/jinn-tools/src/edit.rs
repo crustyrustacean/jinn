@@ -135,6 +135,12 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
         let resolved = resolve_path(&args.file_path, &ctx.cwd);
 
+        // Serialize against every other file-mutating tool call on this
+        // path: the guard is held from the content read through the atomic
+        // write, so a batched sibling edit applies against this call's
+        // result instead of racing it on a stale read.
+        let _path_lock = crate::file_locks::acquire(&resolved).await;
+
         let raw_content = match tokio::fs::read_to_string(&resolved).await {
             Ok(c) => c,
             Err(e) => {
@@ -195,12 +201,23 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 }
 
 /// Writes `content` to `resolved` atomically via temp-file + rename, preserving permissions.
+///
+/// The temp path is the target's full file name plus a suffix, so two files
+/// in one directory that differ only by extension can never share a temp
+/// path. Same-path writes are serialized by [`crate::file_locks`], so the
+/// deterministic name is never contended.
 async fn write_atomic(
     resolved: &Path,
     content: &str,
     orig_mode: Option<&std::fs::Permissions>,
 ) -> Result<(), String> {
-    let tmp_path = resolved.with_extension("jinn-edit-tmp");
+    let file_name = resolved
+        .file_name()
+        .map_or_else(|| std::ffi::OsString::from("file"), ToOwned::to_owned);
+    let mut tmp_name = file_name;
+    tmp_name.push(".jinn-edit-tmp");
+
+    let tmp_path = resolved.with_file_name(tmp_name);
     if let Err(e) = tokio::fs::write(&tmp_path, content).await {
         return Err(format!(
             "failed to write temp file '{}': {e}",
@@ -682,6 +699,153 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(&file_path).expect("read file"),
             "hello rust"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn concurrent_non_overlapping_edits_all_land() {
+        // Given a temp file two concurrent edits will anchor on separately.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("batch.txt");
+        std::fs::write(&file_path, "alpha\nbeta\n").expect("write temp file");
+        let path_str = file_path.to_string_lossy().into_owned();
+
+        // When both edits run concurrently on the same path.
+        let (first, second) = tokio::join!(
+            execute(make_call(&path_str, "alpha", "ALPHA"), test_ctx()),
+            execute(make_call(&path_str, "beta", "BETA"), test_ctx()),
+        );
+
+        // Then both edits succeed.
+        assert!(first.success, "first edit failed: {}", first.content);
+        assert!(second.success, "second edit failed: {}", second.content);
+
+        // And the final content contains both replacements — neither edit
+        // was applied against a stale read.
+        let final_content = std::fs::read_to_string(&file_path).expect("read file");
+        assert_eq!(final_content, "ALPHA\nBETA\n");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn concurrent_edits_two_files_same_extension_both_succeed() {
+        // Given two files in one directory with the same extension.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let rust_path = dir.path().join("notes.rs");
+        let text_path = dir.path().join("notes.txt");
+        std::fs::write(&rust_path, "let x = 1;\n").expect("write temp file");
+        std::fs::write(&text_path, "x = 1\n").expect("write temp file");
+        let rust_str = rust_path.to_string_lossy().into_owned();
+        let text_str = text_path.to_string_lossy().into_owned();
+
+        // When both are edited concurrently.
+        let (rust_result, text_result) = tokio::join!(
+            execute(make_call(&rust_str, "let x = 1;", "let y = 2;"), test_ctx()),
+            execute(make_call(&text_str, "x = 1", "x = 2"), test_ctx()),
+        );
+
+        // Then neither edit hits a shared temp path — both succeed.
+        assert!(
+            rust_result.success,
+            "rust edit failed: {}",
+            rust_result.content
+        );
+        assert!(
+            text_result.success,
+            "text edit failed: {}",
+            text_result.content
+        );
+
+        // And each file carries only its own replacement.
+        assert_eq!(
+            std::fs::read_to_string(&rust_path).expect("read rust file"),
+            "let y = 2;\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&text_path).expect("read text file"),
+            "x = 2\n"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn concurrent_edits_second_overlap_fails_with_not_found() {
+        // Given a temp file with a single anchor.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("single.txt");
+        std::fs::write(&file_path, "only anchor\n").expect("write temp file");
+        let path_str = file_path.to_string_lossy().into_owned();
+
+        // When two concurrent edits both target that anchor.
+        let (first, second) = tokio::join!(
+            execute(make_call(&path_str, "only anchor", "changed"), test_ctx()),
+            execute(
+                make_call(&path_str, "only anchor", "also changed"),
+                test_ctx()
+            ),
+        );
+
+        // Then exactly one succeeded and the other failed.
+        let successes = [first.success, second.success]
+            .into_iter()
+            .filter(|ok| *ok)
+            .count();
+        assert_eq!(successes, 1, "expected exactly one success");
+
+        // And the failure names the anchor, not a temp-file rename error.
+        let failure = if first.success { &second } else { &first };
+        assert!(
+            failure.content.contains("E_NOT_FOUND"),
+            "expected E_NOT_FOUND, got: {}",
+            failure.content
+        );
+        assert!(
+            !failure.content.contains("rename"),
+            "failure should not be a rename error: {}",
+            failure.content
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn concurrent_edit_and_write_file_is_exactly_one_tools_output() {
+        // Given a temp file an edit and a write will race on.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("race.txt");
+        std::fs::write(&file_path, "anchor\n").expect("write temp file");
+        let path_str = file_path.to_string_lossy().into_owned();
+
+        let write_call = ToolCall {
+            id: "call_race_write".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "file_path": path_str,
+                "content": "complete write output\n"
+            })
+            .to_string(),
+        };
+
+        // When the edit and the write run concurrently on the same path.
+        let (edit_result, write_result) = tokio::join!(
+            execute(make_call(&path_str, "anchor", "ANCHOR"), test_ctx()),
+            { super::super::write::execute(write_call, test_ctx()) }
+        );
+
+        // Then both tools report success.
+        assert!(edit_result.success, "edit failed: {}", edit_result.content);
+        assert!(
+            write_result.success,
+            "write failed: {}",
+            write_result.content
+        );
+
+        // And the file is exactly one tool's complete output — never a
+        // tear or merge of the two.
+        let final_content = std::fs::read_to_string(&file_path).expect("read file");
+        assert!(
+            final_content == "ANCHOR\n" || final_content == "complete write output\n",
+            "torn or merged state: {final_content:?}"
         );
     }
 }
