@@ -216,6 +216,7 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 # > Singleton servers. A server marked `singleton = true` spawns one instance
 # > that has a shared connection across all sessions. Use this for servers that
 # > consume a lot of resources, or are already designed to support multiple clients.
+# > This only applies for `local_http` servers.
 #
 # > Singleton example — one shared process speaking streamable HTTP. The
 # > child binds the port jinn picks; `<port>` and `<ip>` expand to the

@@ -71,6 +71,12 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
         let resolved = resolve_path(&path, &ctx.cwd);
 
+        // Serialize against every other file-mutating tool call on this
+        // path: the guard is held from directory creation through the
+        // write, so a concurrent edit can't interleave between this call's
+        // read of the world and its write.
+        let _path_lock = crate::file_locks::acquire(&resolved).await;
+
         if let Some(parent) = resolved.parent()
             && !parent.as_os_str().is_empty()
             && let Err(e) = tokio::fs::create_dir_all(parent).await

@@ -22,6 +22,22 @@ url = "http://localhost:3001/mcp"
 
 [mcp.remote.headers]                 # local_http / remote_http only
 Authorization = "Bearer ${MY_API_KEY}" # ${VAR} expanded once at startup
+
+# Singleton servers. A server marked `singleton = true` spawns one instance
+# that has a shared connection across all sessions. Use this for servers that
+# consume a lot of resources, or are already designed to support multiple clients.
+# This only applies for `local_http` servers.
+#
+# Singleton example — one shared process speaking streamable HTTP. The
+# child binds the port jinn picks; `<port>` and `<ip>` expand to the
+# chosen port and loopback address in both `args` and `url`.
+#
+[mcp.shared_tools]
+command = "some-mcp-server"
+args = ["serve", "--port", "<port>", "--host", "<ip>"]
+transport = "local_http"
+url = "http://127.0.0.1:<port>/mcp"
+singleton = true
 ```
 
 Transport options: `stdio` (spawn + pipes), `local_http` (spawn, then connect
