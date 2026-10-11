@@ -340,6 +340,16 @@ fn entry_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
             let content = format!("[{}] {}", source, truncate_str(text, 30));
             ("", content)
         }
+        ChatEntryKind::Intersession {
+            source_name, text, ..
+        } => {
+            let content = format!(
+                "[↔ {}] {}",
+                source_name.clone().unwrap_or_else(|| "session".to_owned()),
+                truncate_str(text, 25)
+            );
+            ("", content)
+        }
         ChatEntryKind::ToolCall { name, .. } => {
             ("\u{2692} ", format!("{}(...)", truncate_str(name, 20)))
         }

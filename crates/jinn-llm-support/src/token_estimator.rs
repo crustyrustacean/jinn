@@ -91,8 +91,9 @@ pub fn estimate_entry_content_tokens(estimator: &dyn TokenEstimator, entry: &Cha
         ChatEntryKind::Thinking(text) => estimator.estimate(&format!("[Thinking] {text}")),
         // Transient entries produce LlmMessage::User with [Transient] prefix when in context.
         ChatEntryKind::Transient(text) => estimator.estimate(&format!("[Transient] {text}")),
-        // Annotations are display-only and excluded from context (0 tokens).
-        ChatEntryKind::Annotation { .. } => 0,
+        // Annotations and inter-session messages are display-only and
+        // excluded from context (0 tokens).
+        ChatEntryKind::Annotation { .. } | ChatEntryKind::Intersession { .. } => 0,
         // Rule guidance rides as a bare user turn, matching entries_to_messages.
         ChatEntryKind::RuleInterrupt { body, .. } => estimator.estimate(body),
     }

@@ -61,8 +61,9 @@ impl ChatEntry {
             ChatEntryKind::Actor { text, .. } => Some(text.as_str()),
             ChatEntryKind::ToolCall { arguments, .. } => Some(arguments.as_str()),
             ChatEntryKind::ToolResult { content, .. } => Some(content.as_str()),
-            // Annotations are display-only: no prompt contribution.
-            ChatEntryKind::Annotation { .. } => None,
+            // Annotations and inter-session messages are display-only: no prompt
+            // contribution (the delivery entry carries the text).
+            ChatEntryKind::Annotation { .. } | ChatEntryKind::Intersession { .. } => None,
         }
     }
 
@@ -155,6 +156,36 @@ impl ChatEntry {
             timing: crate::entry_timing::EntryTiming::instant_now(),
             kind: ChatEntryKind::Actor {
                 source: source.into(),
+                text: text.into(),
+            },
+            pin_position: None,
+            context_override: ContextOverride::Default,
+            context_history: Vec::new(),
+            token_count: None,
+        }
+    }
+
+    /// Create a new inter-session message entry with the current timestamp.
+    ///
+    /// `source_name` is the source session's display name at send time,
+    /// when it had one; the ids are what persist and what render.
+    #[must_use]
+    pub fn intersession<T>(
+        source_session: crate::session_id::SessionId,
+        source_name: Option<String>,
+        target_session: crate::session_id::SessionId,
+        text: T,
+    ) -> Self
+    where
+        T: Into<String>,
+    {
+        Self {
+            id: ChatEntryId::new(),
+            timing: crate::entry_timing::EntryTiming::instant_now(),
+            kind: ChatEntryKind::Intersession {
+                source_session,
+                source_name,
+                target_session,
                 text: text.into(),
             },
             pin_position: None,

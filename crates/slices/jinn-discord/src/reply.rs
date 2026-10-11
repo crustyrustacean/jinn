@@ -41,6 +41,7 @@ pub fn read_final_reply(history: &[ChatEntry]) -> Option<FinalReply> {
             // generated nothing.
             ChatEntryKind::System(_)
             | ChatEntryKind::Actor { .. }
+            | ChatEntryKind::Intersession { .. }
             | ChatEntryKind::Thinking(_)
             | ChatEntryKind::ToolCall { .. }
             | ChatEntryKind::ToolResult { .. }

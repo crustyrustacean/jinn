@@ -169,8 +169,9 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
             ChatEntryKind::Compaction { summary, .. } => {
                 messages.push(compaction_to_user_message(summary));
             }
-            // Annotations are display-only and never enter LLM context.
-            ChatEntryKind::Annotation { .. } => {}
+            // Annotations and inter-session messages are display-only and
+            // never enter LLM context (the delivery entry carries the text).
+            ChatEntryKind::Annotation { .. } | ChatEntryKind::Intersession { .. } => {}
             // Rule guidance is sent as a plain user turn, unprefixed: the body
             // is already the rendered `<system-interrupt>` block, so this is
             // byte-identical to the prompt shape the entry had as a `User`.

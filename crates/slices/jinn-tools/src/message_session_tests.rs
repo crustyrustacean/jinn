@@ -210,12 +210,15 @@ async fn busy_attendant_queues_and_never_cancels() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn plain_session_receives_the_message_as_a_user_turn() {
-    // Given a non-attendant session with no title yet.
+async fn plain_session_receives_an_intersession_entry_naming_both_ends() {
+    // Given a non-attendant target and a distinct calling session.
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
-    let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
+    let caller = ChatSessionState::new();
+    let caller_id = caller.session_id().clone();
+    state.write().session.insert(caller);
+    let tool_ctx = ctx(&harness, &state, caller_id.clone()).await;
 
     // When a message is sent to it.
     let result = execute(
@@ -226,17 +229,23 @@ async fn plain_session_receives_the_message_as_a_user_turn() {
     )
     .await;
 
-    // Then the enqueue carries a plain User entry addressed to that session.
+    // Then the enqueue is an inter-session entry addressed to that session,
+    // carrying the caller as the source.
     assert!(result.success, "{}", result.content);
     let recorded = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
     assert_eq!(recorded[0].session_id, user_id);
-    assert!(
-        matches!(
-            &recorded[0].entry.kind,
-            jinn_core_types::chat_entry::ChatEntryKind::User { .. }
-        ),
-        "plain delivery must be a User entry or it mints an empty title"
-    );
+    let jinn_core_types::chat_entry::ChatEntryKind::Intersession {
+        source_session,
+        target_session,
+        text,
+        ..
+    } = &recorded[0].entry.kind
+    else {
+        panic!("plain delivery must be an Intersession entry");
+    };
+    assert_eq!(source_session, &caller_id, "the caller is the source");
+    assert_eq!(target_session, &user_id, "the target is addressed");
+    assert_eq!(text, "orchestrator says hello");
 }
 
 #[rstest::rstest]

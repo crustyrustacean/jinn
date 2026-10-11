@@ -304,6 +304,23 @@ pub enum ChatEntryKind {
         /// The rendered guidance handed to the model.
         body: String,
     },
+    /// A message one session sent another, shown in the target's transcript.
+    ///
+    /// Display-only by default (like `Actor`): the model-visible copy of the
+    /// message is the delivery entry it arrived as — a seeded run or a user
+    /// turn — so including this kind in context would show the model its
+    /// own inbound mail twice. The identity fields are the point: a log
+    /// that shows who was talking to whom.
+    Intersession {
+        /// The session the message came from.
+        source_session: crate::session_id::SessionId,
+        /// The source's display name at send time, when it had one.
+        source_name: Option<String>,
+        /// The session the message was addressed to.
+        target_session: crate::session_id::SessionId,
+        /// The message text.
+        text: String,
+    },
 }
 
 impl ChatEntry {
@@ -594,6 +611,7 @@ impl ChatEntry {
             ChatEntryKind::Compaction { .. } => "compaction",
             ChatEntryKind::Annotation { .. } => "annotation",
             ChatEntryKind::RuleInterrupt { .. } => "rule_interrupt",
+            ChatEntryKind::Intersession { .. } => "intersession",
         }
     }
 
@@ -611,7 +629,9 @@ impl ChatEntry {
             | ChatEntryKind::Assistant(t)
             | ChatEntryKind::Thinking(t) => t.clone(),
             ChatEntryKind::Transient(s) => s.clone(),
-            ChatEntryKind::Actor { text, .. } => text.clone(),
+            ChatEntryKind::Actor { text, .. } | ChatEntryKind::Intersession { text, .. } => {
+                text.clone()
+            }
             ChatEntryKind::ToolCall {
                 name, arguments, ..
             } => {
@@ -717,6 +737,17 @@ impl ChatEntry {
                 rule.hash(&mut hasher);
                 body.hash(&mut hasher);
             }
+            ChatEntryKind::Intersession {
+                source_session,
+                source_name,
+                target_session,
+                text,
+            } => {
+                source_session.hash(&mut hasher);
+                source_name.hash(&mut hasher);
+                target_session.hash(&mut hasher);
+                text.hash(&mut hasher);
+            }
         }
         hasher.finish()
     }
@@ -785,6 +816,12 @@ impl ChatEntry {
             ChatEntryKind::RuleInterrupt { rule, body } => {
                 rule.len().hash(&mut hasher);
                 body.len().hash(&mut hasher);
+            }
+            ChatEntryKind::Intersession {
+                source_name, text, ..
+            } => {
+                source_name.is_some().hash(&mut hasher);
+                text.len().hash(&mut hasher);
             }
         }
         hasher.finish()
@@ -969,5 +1006,101 @@ mod tests {
         assert!(attachments[0].is_image());
         assert_eq!(attachments[0].media_type(), "image/png");
         assert_eq!(attachments[0].data(), &[1, 2, 3]);
+    }
+}
+
+#[cfg(test)]
+mod intersession_tests {
+    #![allow(clippy::expect_used, reason = "test code")]
+    use super::*;
+
+    #[rstest::rstest]
+    #[test]
+    fn intersession_entry_round_trips_through_serde_with_both_ids() {
+        // Given an inter-session entry naming source and target.
+        let source =
+            crate::session_id::SessionId::try_from_string("aaaaaaa1-0000-0000-0000-00000000000a")
+                .expect("fixed id");
+        let target =
+            crate::session_id::SessionId::try_from_string("bbbbbbb2-0000-0000-0000-00000000000b")
+                .expect("fixed id");
+        let entry = ChatEntry::intersession(
+            source.clone(),
+            Some("implementer".to_owned()),
+            target.clone(),
+            "stage finished",
+        );
+
+        // When serializing and deserializing.
+        let json = serde_json::to_string(&entry).expect("serialize");
+        let round: ChatEntry = serde_json::from_str(&json).expect("deserialize");
+
+        // Then both ids, the name, and the text survive — and the tag is
+        // the kind's own.
+        assert!(json.contains("Intersession"), "tagged: {json}");
+        let ChatEntryKind::Intersession {
+            source_session,
+            source_name,
+            target_session,
+            text,
+        } = round.kind
+        else {
+            panic!("kind must round-trip");
+        };
+        assert_eq!(source_session, source);
+        assert_eq!(source_name.as_deref(), Some("implementer"));
+        assert_eq!(target_session, target);
+        assert_eq!(text, "stage finished");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn intersession_without_a_name_round_trips() {
+        // Given an inter-session entry with an unnamed source.
+        let source = crate::session_id::SessionId::new();
+        let target = crate::session_id::SessionId::new();
+        let entry = ChatEntry::intersession(source, None, target, "ping");
+
+        // When serializing and deserializing.
+        let json = serde_json::to_string(&entry).expect("serialize");
+        let round: ChatEntry = serde_json::from_str(&json).expect("deserialize");
+
+        // Then the absent name survives as absent.
+        let ChatEntryKind::Intersession { source_name, .. } = round.kind else {
+            panic!("kind must round-trip");
+        };
+        assert_eq!(source_name, None);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn intersession_is_excluded_from_default_context() {
+        // Given an inter-session entry.
+        let entry = ChatEntry::intersession(
+            crate::session_id::SessionId::new(),
+            None,
+            crate::session_id::SessionId::new(),
+            "hello",
+        );
+
+        // Then it is display-only by default, and contributes no prompt
+        // text: the delivery entry carries the model-visible copy.
+        assert!(!entry.kind.is_included_by_default());
+        assert_eq!(entry.prompt_text(), None);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn intersession_kind_str_is_intersession() {
+        // Given an inter-session entry.
+        let entry = ChatEntry::intersession(
+            crate::session_id::SessionId::new(),
+            None,
+            crate::session_id::SessionId::new(),
+            "hi",
+        );
+
+        // Then its kind string names the kind.
+        assert_eq!(entry.kind_str(), "intersession");
     }
 }

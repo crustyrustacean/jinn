@@ -88,10 +88,15 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
         let outcome = {
             let mut guard = state.write();
+            let caller_id = ctx.session_id.clone().unwrap_or_else(|| {
+                // No calling session (headless/scripted send): the source is
+                // the target's own id, rendered as an unnamed origin.
+                target_id.clone()
+            });
             let Some(target) = guard.session.get_mut(&target_id) else {
                 return tool_error(&call, &format!("unknown session: {target_id}"));
             };
-            let delivery = delivery_for(target, &message);
+            let delivery = delivery_for(&caller_id, target, &message);
             // A delivered message marks the target interacted: a programmatic
             // enqueue does not, and without the mark `is_persistable()` gates
             // every save — the run would turn and silently never reach disk.
@@ -168,7 +173,7 @@ enum Delivery {
 }
 
 /// Decides the delivery path for `message` against the target's live state.
-fn delivery_for(target: &mut ChatSessionState, message: &str) -> Delivery {
+fn delivery_for(source_id: &SessionId, target: &mut ChatSessionState, message: &str) -> Delivery {
     if target.is_attendant() {
         if target.attendant_is_prepping() {
             return Delivery::Refused("attendant is in prep mode; nothing runs for it yet");
@@ -185,10 +190,16 @@ fn delivery_for(target: &mut ChatSessionState, message: &str) -> Delivery {
             Delivery::QueuedRun { entry }
         };
     }
-    // Non-attendant: an ordinary user turn. `ChatEntry::user` is deliberate —
-    // a non-User entry through the Idle enqueue path would mint an empty
-    // title on an untitled session and block a real title forever.
-    Delivery::Turn(ChatEntry::user(message))
+    // Non-attendant: the message rides as an inter-session entry, carrying
+    // who sent it and who it was for — the transcript shows the route, not
+    // just the text. The entry is excluded from LLM context by default, so
+    // the model sees the delivery exactly once.
+    Delivery::Turn(ChatEntry::intersession(
+        source_id.clone(),
+        None,
+        target.session_id().clone(),
+        message,
+    ))
 }
 
 /// Reads one string argument from the call's JSON arguments.

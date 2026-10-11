@@ -571,7 +571,8 @@ fn truncate_entry_text(entry: &mut jinn_core_types::ChatEntry, text: &str) {
         | jinn_core_types::ChatEntryKind::System(t)
         | jinn_core_types::ChatEntryKind::Error(t)
         | jinn_core_types::ChatEntryKind::Transient(t)
-        | jinn_core_types::ChatEntryKind::Actor { text: t, .. } => t.clone_from(&tail),
+        | jinn_core_types::ChatEntryKind::Actor { text: t, .. }
+        | jinn_core_types::ChatEntryKind::Intersession { text: t, .. } => t.clone_from(&tail),
         jinn_core_types::ChatEntryKind::ToolCall { arguments, .. } => {
             arguments.clone_from(&tail);
         }

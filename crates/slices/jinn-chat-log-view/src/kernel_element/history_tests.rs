@@ -3268,3 +3268,62 @@ fn a_render_publishes_the_collapse_count_the_coverage_probe_reads_back() {
         "the coverage probe reads this back; if the frame did not publish it, the probe builds different visual items than the frame did"
     );
 }
+
+#[rstest::rstest]
+fn render_intersession_message_carries_source_and_target_identity() {
+    // Given a log holding an inter-session message from session A to
+    // session B, with fixed ids so both short forms are distinguishable.
+    let source =
+        jinn_core_types::SessionId::try_from_string("aaaaaaa1-0000-0000-0000-00000000000a")
+            .expect("fixed id");
+    let target =
+        jinn_core_types::SessionId::try_from_string("bbbbbbb2-0000-0000-0000-00000000000b")
+            .expect("fixed id");
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = normal_state();
+        s.active_session_mut().push_entry(ChatEntry::intersession(
+            source,
+            None,
+            target,
+            "handing the qa stage to you",
+        ));
+        s
+    };
+
+    let (mut terminal, area) = setup_term(60, 10);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the transcript shows both session identities and the text.
+    let buffer = terminal.backend().buffer().clone();
+    let mut rendered = String::new();
+    for y in 0..area.height {
+        for x in 0..area.width {
+            if let Some(cell) = buffer.cell((x, y)) {
+                rendered.push_str(cell.symbol());
+            }
+        }
+        rendered.push('\n');
+    }
+    assert!(
+        rendered.contains("aaaaaaa1"),
+        "the source id must render, got {rendered:?}"
+    );
+    assert!(
+        rendered.contains("bbbbbbb2"),
+        "the target id must render, got {rendered:?}"
+    );
+    assert!(
+        rendered.contains("handing the qa stage"),
+        "the message text must render, got {rendered:?}"
+    );
+}
