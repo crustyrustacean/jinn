@@ -20,13 +20,16 @@ use crate::task::execute;
 use crate::tool_types::ToolContext;
 use jinn_chat_input_msg::EnqueueUserMessage;
 use jinn_core_types::SessionId;
+use jinn_core_types::model_selection::{AlloyStrategy, ModelSelection};
 use jinn_core_types::tool_types::{ToolCall, ToolResult};
 use jinn_inference_msg::CancelTurn;
 use jinn_kernel::common::app_paths::AppPaths;
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::bus::HarnessServices;
+use jinn_kernel::common::provider_resolution::registry_model_name_resolver;
 use jinn_kernel::common::state::State;
 use jinn_kernel::protocol::{ChatEntry, ChatEntryKind};
+use jinn_kernel::{ProviderRegistry, ProvidersConfig};
 use jinn_session_init_msg::{ContextFilesLoaded, PromptTemplatesLoaded};
 use jinn_session_lifecycle_msg::SessionCreated;
 use jinn_session_msg::PhaseKind;
@@ -48,9 +51,22 @@ fn task_call(arguments: &str) -> ToolCall {
 }
 
 /// Builds a tool context wired to the harness bus, shared state, and runtime
-/// services — the production wiring minus the MCP coordinator.
-async fn task_ctx(harness: &TestHarness, state: &State, session_id: SessionId) -> ToolContext {
+/// services — the production wiring minus the MCP coordinator. With
+/// `seed_registry`, also seeds the provider registry and wires the
+/// registry-backed model-name resolver, the production wiring for the
+/// `model` argument.
+async fn task_ctx_with(
+    harness: &TestHarness,
+    state: &State,
+    session_id: SessionId,
+    seed_registry: bool,
+) -> ToolContext {
     let services = harness.services().await;
+    if seed_registry {
+        seed_provider_registry(&services);
+    }
+    let model_name_resolver =
+        seed_registry.then(|| registry_model_name_resolver(&services.provider_registry));
     ToolContext {
         cwd: std::path::PathBuf::from("/tmp"),
         config: jinn_config::testutil::config_layer(""),
@@ -67,7 +83,23 @@ async fn task_ctx(harness: &TestHarness, state: &State, session_id: SessionId) -
         task_spawns: Some(services.task_spawns.clone()),
         session_store: Some(services.session_store.clone()),
         trouper_system: Some(harness.system().clone()),
+        model_name_resolver,
     }
+}
+
+/// [`task_ctx`] without the model-name resolver — the bare-fixture wiring.
+async fn task_ctx(harness: &TestHarness, state: &State, session_id: SessionId) -> ToolContext {
+    task_ctx_with(harness, state, session_id, false).await
+}
+
+/// [`task_ctx`] carrying the registry-backed resolver over a seeded
+/// provider registry — the production wiring for the `model` argument.
+async fn task_ctx_with_resolver(
+    harness: &TestHarness,
+    state: &State,
+    session_id: SessionId,
+) -> ToolContext {
+    task_ctx_with(harness, state, session_id, true).await
 }
 
 /// Seeds a parent session with a distinctive model, cwd, persona, disabled
@@ -157,6 +189,44 @@ async fn cancel_child_like_user(
 /// it is also the settle gate's expectation set.
 fn parent_servers() -> BTreeSet<String> {
     BTreeSet::from(["stub".to_owned()])
+}
+
+/// A providers config naming two providers (`ollama`, `openrouter`) and one
+/// alias (`fast` → `ollama/llama3`), written as the TOML a user would write —
+/// `ProvidersConfig` deserializes it and `ProviderRegistry::from_config`
+/// validates it, alias target included.
+fn two_providers_and_alias_toml() -> String {
+    r#"
+[providers.ollama]
+backend = "ollama"
+models = ["llama3"]
+base_url = "http://localhost:11434"
+requires_key = false
+
+[providers.openrouter]
+backend = "openrouter"
+models = ["anthropic/claude-sonnet-4"]
+requires_key = true
+
+[[aliases]]
+name = "fast"
+target = "ollama/llama3"
+"#
+    .to_owned()
+}
+
+/// Parses the fixture TOML into a validated registry.
+fn registry_from_toml(toml_text: &str) -> ProviderRegistry {
+    let config: ProvidersConfig =
+        toml::from_str(toml_text).expect("fixture TOML parses into ProvidersConfig");
+    ProviderRegistry::from_config(config).expect("fixture config validates")
+}
+
+/// Swaps the fixture registry into the harness services' provider registry.
+fn seed_provider_registry(services: &jinn_kernel::common::services::Services) {
+    services
+        .provider_registry
+        .replace(registry_from_toml(&two_providers_and_alias_toml()));
 }
 
 /// Extracts the (success, content) pair from a finished tool result.
@@ -571,6 +641,209 @@ async fn task_title_falls_back_to_the_prompt_first_line() {
     let snapshot = state.read();
     let child = snapshot.session.get(&created[0].session_id).expect("child");
     assert_eq!(child.title(), Some("Search the tree for the answer."));
+}
+
+// ---------------------------------------------------------------------------
+// Model argument: validation, alias resolution, inheritance
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
+#[tokio::test]
+async fn task_model_unknown_name_fails_without_spawning() {
+    // Given a parent session with the production resolver wiring and
+    // recorders on the bus.
+    let harness = TestHarness::new().await;
+    let (state, parent_id) = parent_fixture();
+    let baseline_sessions = state.read().session.session_count();
+    let ctx = task_ctx_with_resolver(&harness, &state, parent_id).await;
+    let created_rec = harness.spawn_recorder::<SessionCreated>().await;
+    let enqueue_rec = harness.spawn_recorder::<EnqueueUserMessage>().await;
+
+    // When executing a task call whose model names neither an expanded id
+    // nor an alias.
+    let result = execute(
+        task_call(r#"{"prompt": "Ghost run.", "model": "no-such-model"}"#),
+        ctx,
+    )
+    .await;
+
+    // Then the call fails, naming the offending value and the accepted forms.
+    let (success, content) = result_parts(&result);
+    assert!(!success);
+    assert!(content.contains("no-such-model"), "got: {content}");
+    assert!(content.contains("alias"), "got: {content}");
+
+    // And nothing was spawned: no session inserted, no events published.
+    assert_eq!(
+        state.read().session.session_count(),
+        baseline_sessions,
+        "a rejected model must not add a session"
+    );
+    let created = await_recorded(&created_rec, 0, Duration::from_millis(300)).await;
+    assert!(created.is_empty(), "SessionCreated must not publish");
+    let enqueued = await_recorded(&enqueue_rec, 0, Duration::from_millis(300)).await;
+    assert!(enqueued.is_empty(), "EnqueueUserMessage must not publish");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn task_model_alias_spawns_child_on_alias_target() {
+    // Given a parent session with the production resolver wiring over a
+    // registry that configures `fast` → `ollama/llama3`.
+    let harness = TestHarness::new().await;
+    let (state, parent_id) = parent_fixture();
+    let ctx = task_ctx_with_resolver(&harness, &state, parent_id.clone()).await;
+    let created_rec = harness.spawn_recorder::<SessionCreated>().await;
+
+    // When executing a task call with the alias name.
+    let pending = tokio::spawn(execute(
+        task_call(r#"{"prompt": "Run fast.", "model": "fast"}"#),
+        ctx,
+    ));
+    let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
+    let child_id = created[0].session_id.clone();
+    settle_child_discovery(&harness.bus(), &child_id, &parent_servers()).await;
+    finish_child_like_session_actor(&harness.bus(), &state, &child_id, "Fast done.").await;
+    let result = pending.await.expect("task join");
+    assert!(result.success, "expected success; got: {}", result.content);
+
+    // Then the child's model is the alias's target expanded id.
+    let snapshot = state.read();
+    let child = snapshot.session.get(&child_id).expect("child present");
+    assert_eq!(
+        child.profile().model,
+        ModelSelection::Single("ollama/llama3".to_owned()),
+        "alias must resolve to its target on the child"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn task_model_expanded_id_spawns_child_on_that_id() {
+    // Given a parent session with the production resolver wiring.
+    let harness = TestHarness::new().await;
+    let (state, parent_id) = parent_fixture();
+    let ctx = task_ctx_with_resolver(&harness, &state, parent_id.clone()).await;
+    let created_rec = harness.spawn_recorder::<SessionCreated>().await;
+
+    // When executing a task call with an expanded provider/model id.
+    let pending = tokio::spawn(execute(
+        task_call(r#"{"prompt": "Run big.", "model": "openrouter/anthropic/claude-sonnet-4"}"#),
+        ctx,
+    ));
+    let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
+    let child_id = created[0].session_id.clone();
+    settle_child_discovery(&harness.bus(), &child_id, &parent_servers()).await;
+    finish_child_like_session_actor(&harness.bus(), &state, &child_id, "Big done.").await;
+    let result = pending.await.expect("task join");
+    assert!(result.success, "expected success; got: {}", result.content);
+
+    // Then the child's model is exactly that id.
+    let snapshot = state.read();
+    let child = snapshot.session.get(&child_id).expect("child present");
+    assert_eq!(
+        child.profile().model,
+        ModelSelection::Single("openrouter/anthropic/claude-sonnet-4".to_owned()),
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn task_without_model_inherits_parent_whole_model_selection() {
+    // Given a parent session running an alloy.
+    let harness = TestHarness::new().await;
+    let (state, parent_id) = parent_fixture();
+    let alloy = ModelSelection::Alloy {
+        models: vec!["a/one".to_owned(), "b/two".to_owned()],
+        strategy: AlloyStrategy::RoundRobin { index: 0 },
+    };
+    {
+        let mut w = state.write();
+        let parent = w.session.get_mut(&parent_id).expect("parent seeded");
+        parent.set_model(alloy.clone());
+    }
+    let ctx = task_ctx_with_resolver(&harness, &state, parent_id.clone()).await;
+    let created_rec = harness.spawn_recorder::<SessionCreated>().await;
+
+    // When executing a task call with no model argument.
+    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Explore."}"#), ctx));
+    let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
+    let child_id = created[0].session_id.clone();
+    settle_child_discovery(&harness.bus(), &child_id, &parent_servers()).await;
+    finish_child_like_session_actor(&harness.bus(), &state, &child_id, "Done.").await;
+    let result = pending.await.expect("task join");
+    assert!(result.success, "expected success; got: {}", result.content);
+
+    // Then the child carries the parent's whole selection, alloy included.
+    let snapshot = state.read();
+    let child = snapshot.session.get(&child_id).expect("child present");
+    assert_eq!(
+        child.profile().model,
+        alloy,
+        "inheritance must preserve the alloy, not flatten it"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn task_blank_model_argument_inherits_parent_model() {
+    // Given a parent session on a single model with the resolver wired.
+    let harness = TestHarness::new().await;
+    let (state, parent_id) = parent_fixture();
+    let ctx = task_ctx_with_resolver(&harness, &state, parent_id.clone()).await;
+    let created_rec = harness.spawn_recorder::<SessionCreated>().await;
+
+    // When executing a task call whose model argument is blank.
+    let pending = tokio::spawn(execute(
+        task_call(r#"{"prompt": "Explore.", "model": "   "}"#),
+        ctx,
+    ));
+    let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
+    let child_id = created[0].session_id.clone();
+    settle_child_discovery(&harness.bus(), &child_id, &parent_servers()).await;
+    finish_child_like_session_actor(&harness.bus(), &state, &child_id, "Done.").await;
+    let result = pending.await.expect("task join");
+    assert!(result.success, "expected success; got: {}", result.content);
+
+    // Then the blank argument is treated as absent: the parent's model.
+    let snapshot = state.read();
+    let child = snapshot.session.get(&child_id).expect("child present");
+    assert_eq!(
+        child.profile().model,
+        ModelSelection::Single("test-provider/test-model".to_owned()),
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn task_without_resolver_takes_explicit_model_name_as_final() {
+    // Given a bare test context carrying no resolver — the fixture wiring,
+    // which production never produces.
+    let harness = TestHarness::new().await;
+    let (state, parent_id) = parent_fixture();
+    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let created_rec = harness.spawn_recorder::<SessionCreated>().await;
+
+    // When executing a task call with an explicit model argument.
+    let pending = tokio::spawn(execute(
+        task_call(r#"{"prompt": "Unverified.", "model": "some/model"}"#),
+        ctx,
+    ));
+    let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
+    let child_id = created[0].session_id.clone();
+    settle_child_discovery(&harness.bus(), &child_id, &parent_servers()).await;
+    finish_child_like_session_actor(&harness.bus(), &state, &child_id, "Done.").await;
+    let result = pending.await.expect("task join");
+    assert!(result.success, "expected success; got: {}", result.content);
+
+    // Then the name is taken as final: no registry was wired to answer, so
+    // validation was skipped and the child carries the name verbatim.
+    let snapshot = state.read();
+    let child = snapshot.session.get(&child_id).expect("child present");
+    assert_eq!(
+        child.profile().model,
+        ModelSelection::Single("some/model".to_owned()),
+    );
 }
 
 // ---------------------------------------------------------------------------

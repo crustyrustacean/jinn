@@ -41,6 +41,14 @@
 //! prompt-template scans plus a terminal status from every enabled MCP
 //! server — bounded by [`SETTLE_BUDGET`]. The gate only delays: on expiry the
 //! message is sent regardless, so a hung discovery never blocks the child.
+//!
+//! The optional `model` argument is resolved before anything is created: an
+//! expanded `provider/model` id resolves to itself, a configured alias
+//! resolves to its target, and an unknown name fails the call with no child
+//! session inserted and no event published. The resolution is existence
+//! only — a known id with a missing API key still spawns, because keys
+//! arrive late and local backends need none. With no `model`, the child
+//! inherits the parent's whole [`ModelSelection`], alloys included.
 
 use std::time::Duration;
 
@@ -170,6 +178,9 @@ subagent; on expiry the subagent is cancelled and a failure is returned.
 
        r#"A subagent starts with an empty task list; it does not see yours. Put the entire assignment in the prompt — the subagent must not be expected to read context from your task list, and its todo mutations never propagate back to you."#
             .to_owned(),
+
+       r#"The model argument is only for when the user explicitly instructs a model for a subagent — you almost never need it. Its value must be an expanded provider/model id or a configured alias name; an unknown name fails the call without spawning anything."#
+            .to_owned(),
     ],
         parameters: serde_json::json!({
             "type": "object",
@@ -184,7 +195,7 @@ subagent; on expiry the subagent is cancelled and a failure is returned.
                 },
                 "model": {
                     "type": "string",
-                    "description": "Optional model override for the subagent. Defaults to this session's model. Omit field to inherit current session model. Do not provide empty strings or use 'inherit' as the model. This field is only when you need to explicitly set the model (you almost never need to do this)."
+                    "description": "Optional model override for the subagent. The value must name an expanded provider/model id (e.g. \"openrouter/anthropic/claude-sonnet-4\") or a configured alias name (e.g. \"fast\"); anything else fails the call before any subagent is created. Defaults to this session's model. Do not provide empty strings or use 'inherit' as the model. Use this field only when the user explicitly instructs a model for the subagent — you almost never need to do this."
                 },
             },
             "required": ["prompt"]
@@ -406,10 +417,31 @@ async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
     let Some(bus) = ctx.bus else {
         return tool_error(&call, "no message bus available");
     };
-    let args = match parse_args(&call.arguments) {
+    let mut args = match parse_args(&call.arguments) {
         Ok(args) => args,
         Err(msg) => return tool_error(&call, &msg),
     };
+
+    // Resolve the model override before anything exists to roll back: an
+    // unknown name must fail the call without inserting a session or
+    // publishing an event. A `None` resolver is the bare-fixture case —
+    // production always wires the registry — so validation is skipped
+    // there and the given name is taken as final.
+    if let (Some(requested), Some(resolver)) =
+        (args.model.as_deref(), ctx.model_name_resolver.as_ref())
+    {
+        let Some(resolved) = resolver.resolve(requested) else {
+            return tool_error(
+                &call,
+                &format!(
+                    "unknown model `{requested}`: not an expanded provider/model id \
+                     and not a configured alias; no subagent was created"
+                ),
+            );
+        };
+        args.model = Some(resolved);
+    }
+
     let deadline = args
         .max_duration_secs
         .filter(|s| *s > 0)

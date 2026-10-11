@@ -117,6 +117,7 @@ fn ctx_with_coordinator(
         task_spawns: None,
         session_store: None,
         trouper_system: None,
+        model_name_resolver: None,
     }
 }
 
@@ -192,6 +193,7 @@ async fn execute_fails_when_coordinator_ref_is_none() {
         task_spawns: None,
         session_store: None,
         trouper_system: None,
+        model_name_resolver: None,
     };
 
     // When executing.
