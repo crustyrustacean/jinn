@@ -33,6 +33,7 @@ wherror = { workspace = true }
 [dev-dependencies]
 rstest = { workspace = true }
 tokio = { workspace = true }
+trouper = { workspace = true }
 
 [lints]
 workspace = true

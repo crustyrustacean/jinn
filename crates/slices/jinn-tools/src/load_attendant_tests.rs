@@ -239,6 +239,54 @@ fn parse_refuses_a_wrapped_file_carrying_several_entries() {
 }
 
 #[rstest::rstest]
+#[test]
+fn parse_accepts_the_full_document_shape_jinn_toml_uses() {
+    // Given a cast file in the shape jinn.toml itself uses — the array
+    // nested under an `attendant` table (`[[attendant.entry]]`) — which
+    // is the shape the tool's description and the shipped pipeline cast
+    // files both promise.
+    let one = CAST_BODY.trim_start_matches('\n');
+    let body = format!("[[attendant.entry]]\n{one}\n");
+
+    // When parsing.
+    let entry = parse_cast_entry(&body).expect("the jinn.toml shape parses");
+
+    // Then the single member comes across with its fields intact.
+    assert_eq!(entry.name, "implementer");
+}
+
+#[rstest::rstest]
+#[test]
+fn every_shipped_pipeline_cast_file_parses_through_the_tool_parser() {
+    // Given the shipped pipeline workflow's cast directory — the real
+    // files a real run loads. This is the pin that keeps the tool's
+    // parser and the shipped content from drifting apart: the content
+    // test in the root crate uses its own wrapper, so only this test
+    // exercises the shipped bytes through the tool's own parse path.
+    let cast_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../.config/jinn/workflows/pipelines/attendants");
+    let mut names = Vec::new();
+    for entry in std::fs::read_dir(&cast_dir).expect("cast directory ships") {
+        let entry = entry.expect("dir entry");
+        if entry.path().extension().is_some_and(|x| x != "toml") {
+            continue;
+        }
+        let text = std::fs::read_to_string(entry.path()).expect("cast file reads");
+        let parsed = parse_cast_entry(&text)
+            .unwrap_or_else(|e| panic!("{} must parse: {e}", entry.path().display()));
+        names.push(parsed.name);
+    }
+
+    // Then the thin-seed trio comes across.
+    for expected in ["planner", "implementer", "reviewer"] {
+        assert!(
+            names.iter().any(|n| n == expected),
+            "cast must include {expected}, got {names:?}"
+        );
+    }
+}
+
+#[rstest::rstest]
 #[tokio::test]
 async fn personal_attendants_still_save_and_cast_members_refuse() {
     // Given a personal attendant (no marker) and a cast member, both live.

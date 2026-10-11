@@ -148,12 +148,13 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     })
 }
 
-/// Parses a cast file: either one bare entry or `{ entry = [ ... ] }`.
-///
-/// The bare shape is what a cast file wants to be — one member, one file —
-/// while the wrapped shape lets a single file carry a small cast for
-/// callers that prefer it. Both reject anything ambiguous (multiple
-/// entries under the bare shape is a plain type error).
+/// Parses a cast file in any of the three shapes a cast file might
+/// reasonably carry: the full document shape jinn.toml uses
+/// (`[[attendant.entry]]`, which nests the array under an `attendant`
+/// table — the shape the shipped pipeline cast files and the tool's own
+/// description promise), the flat single-member document (`{ entry =
+/// [ ... ] }`), or one bare entry's keys. All converge on exactly one
+/// member; anything else is refused with the reason.
 pub(crate) fn parse_cast_entry(text: &str) -> Result<AttendantEntryConfig, String> {
     if let Ok(entry) = toml::from_str::<AttendantEntryConfig>(text) {
         if entry.name.trim().is_empty() {
@@ -162,24 +163,40 @@ pub(crate) fn parse_cast_entry(text: &str) -> Result<AttendantEntryConfig, Strin
         return Ok(entry);
     }
     #[derive(serde::Deserialize)]
+    struct Document {
+        attendant: Section,
+    }
+    #[derive(serde::Deserialize)]
+    struct Section {
+        entry: Vec<AttendantEntryConfig>,
+    }
+    if let Ok(doc) = toml::from_str::<Document>(text) {
+        return one_member(&doc.attendant.entry);
+    }
+    #[derive(serde::Deserialize)]
     struct Wrapped {
         entry: Vec<AttendantEntryConfig>,
     }
     match toml::from_str::<Wrapped>(text) {
-        Ok(wrapped) => match wrapped.entry.as_slice() {
-            [one] => {
-                if one.name.trim().is_empty() {
-                    return Err("cast entry has no name".to_owned());
-                }
-                Ok(one.clone())
-            }
-            [] => Err("cast file names no entry".to_owned()),
-            _ => Err(format!(
-                "cast file carries {} entries; load them one file per member",
-                wrapped.entry.len()
-            )),
-        },
+        Ok(wrapped) => one_member(&wrapped.entry),
         Err(error) => Err(format!("not a valid cast entry: {error}")),
+    }
+}
+
+/// Requires exactly one named member from a parsed entry list.
+fn one_member(entries: &[AttendantEntryConfig]) -> Result<AttendantEntryConfig, String> {
+    match entries {
+        [one] => {
+            if one.name.trim().is_empty() {
+                return Err("cast entry has no name".to_owned());
+            }
+            Ok(one.clone())
+        }
+        [] => Err("cast file names no entry".to_owned()),
+        _ => Err(format!(
+            "cast file carries {} entries; load them one file per member",
+            entries.len()
+        )),
     }
 }
 

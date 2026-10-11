@@ -14,12 +14,16 @@
 
 use crate::app_state::AppState;
 use jinn_config::ConfigLayer;
-use jinn_core_types::{DEFAULT_PERSONA_NAME, SessionId, SessionProfile};
+use jinn_core_types::{
+    ContextOverride, DEFAULT_PERSONA_NAME, PinPosition, SessionId, SessionProfile,
+};
 use jinn_preferences_config::schemas::SessionLifecycle;
 use jinn_session_history_msg::PushChatEntry;
+use jinn_session_lifecycle_msg::CommandTemplate;
 use jinn_session_lifecycle_msg::command::{RunSessionSetup, RunSessionTeardown};
 use jinn_session_lifecycle_msg::event::SessionCreated;
-use jinn_session_lifecycle_msg::{CommandTemplate, setup_running_msg};
+
+use jinn_core_types::ChatEntry;
 use jinn_session_msg::SessionSeed;
 use jinn_session_state::ChatSessionState;
 use jinn_session_store_msg::PersistSession;
@@ -118,6 +122,17 @@ pub fn handle_session_lifecycle_setup(
     state.frontend.scope_clear_overlays();
     state.frontend.scope_push(jinn_slices::FocusScope::Input);
 
+    // The session's identity entry: every session can name itself, so an
+    // agent addressed by `message_session` knows its own id, and the human
+    // can copy one out of the transcript. Pinned Top and forced into the
+    // LLM context, so it is always the first thing the model reads and
+    // never falls out of the conversation.
+    let identity_entry = ChatEntry::system(format!(
+        "This session's id is {new_id}. Address messages to this session with \
+         message_session using this id."
+    ))
+    .with_context_override(ContextOverride::ForcedInclude);
+
     // Build the session-created event.
     let created_event = SessionCreated {
         session_id: new_id.clone(),
@@ -144,8 +159,8 @@ pub fn handle_session_lifecycle_setup(
             })
             .with_message(PushChatEntry {
                 session_id: new_id.clone(),
-                entry: setup_running_msg(),
-                pin: None,
+                entry: identity_entry,
+                pin: Some(PinPosition::Top),
             })
             .with_message(RunSessionSetup {
                 session_id: new_id.clone(),
@@ -284,7 +299,30 @@ mod tests {
     )]
     use super::*;
     use crate::app_state::AppState;
-    use jinn_core_types::ChatEntry;
+    use jinn_core_types::chat_entry::ChatEntryKind;
+    use jinn_slices::route_publish::PublishSink;
+    use std::sync::Mutex;
+
+    /// A publish sink that keeps every payload published through it.
+    #[derive(Default)]
+    struct RecordingSink {
+        published: Mutex<Vec<(String, serde_json::Value)>>,
+    }
+
+    impl PublishSink for RecordingSink {
+        fn publish_schema(
+            &self,
+            schema_id: ::trouper::schema::SchemaId,
+            payload: serde_json::Value,
+            name: &'static str,
+        ) {
+            self.published
+                .lock()
+                .expect("sink lock")
+                .push((format!("{schema_id}"), payload));
+            let _ = name;
+        }
+    }
 
     /// A layer carrying a single lifecycle, as a user's `jinn.toml` holds
     /// one under `[[session_lifecycle.script]]`.
@@ -871,6 +909,49 @@ mod tests {
         assert!(result.message_names[0].contains("PersistSession"));
         assert!(result.message_names[1].contains("PushChatEntry"));
         assert!(result.message_names[2].contains("RunSessionSetup"));
+    }
+
+    #[rstest::rstest]
+    fn a_new_session_pushes_an_identity_entry_naming_its_id() {
+        use jinn_session_history_msg::PushChatEntry;
+
+        // Given a single empty session (app just started).
+        let mut state = AppState::default_with_scope_focus();
+
+        // When creating a new session.
+        let config = lifecycle_config("fossil branch", Some("echo /tmp/workdir"), None);
+        let result =
+            handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None, &config);
+
+        // Then the PushChatEntry payload is a pinned system entry naming
+        // the new session's id, forced into the LLM context — so an agent
+        // in the session can always answer "what is your session id", and
+        // the human can copy the id out of the transcript.
+        let new_id = state.active_session().session_id().clone();
+        let sink = RecordingSink::default();
+        for closure in result.messages {
+            closure(&sink);
+        }
+        let published = sink.published.lock().expect("sink lock");
+        let (_, payload) = published
+            .iter()
+            .find(|(id, _)| id.ends_with("PushChatEntry"))
+            .expect("the identity entry is published");
+        let push: PushChatEntry = serde_json::from_value(payload.clone()).expect("decodes");
+        assert_eq!(push.session_id, new_id);
+        assert_eq!(push.pin, Some(PinPosition::Top));
+        let ChatEntryKind::System(text) = &push.entry.kind else {
+            panic!("the identity entry is a system entry");
+        };
+        assert!(
+            text.contains(&new_id.to_string()),
+            "the entry names this session's own id: {text}"
+        );
+        assert_eq!(
+            push.entry.context_override(),
+            ContextOverride::ForcedInclude,
+            "the identity survives compaction and is always in the prompt"
+        );
     }
 
     #[rstest::rstest]

@@ -2087,6 +2087,7 @@ dependencies = [
  "rstest",
  "serde_json",
  "tokio",
+ "trouper",
  "wherror",
 ]
 
