@@ -196,11 +196,20 @@ pub fn refresh_inspector_snapshot(cell: &McpPickerCell, facts: &RenderFacts) {
             .reader::<jinn_mcp_msg::McpRuntimeState>(&jinn_mcp_msg::mcp_runtime_slot());
         let (status, stderr_tail) = runtime.map_or((None, String::new()), |runtime| {
             let runtime = runtime.read();
+            // Singleton status lives outside the per-session bucket (the
+            // shared actor has no owning session), so read through the
+            // effective projection — otherwise the inspector shows a running
+            // singleton as perpetually starting.
             (
-                runtime.status(&session_id, &server_name),
                 runtime
-                    .stderr(&session_id, &server_name)
-                    .map_or_else(String::new, str::to_owned),
+                    .effective_statuses(&session_id)
+                    .get(&server_name)
+                    .copied(),
+                runtime
+                    .effective_stderr(&session_id)
+                    .get(&server_name)
+                    .cloned()
+                    .unwrap_or_default(),
             )
         });
         let defs = facts

@@ -6,6 +6,7 @@ use jinn_core_types::{HistoryMutation, tool_types::ToolResult};
 use jinn_session_msg::phase_machine::SessionPhaseMachine;
 use jinn_skills_msg::Skill;
 use jinn_turn_dispatch_msg::TurnQueue;
+use jinn_workflows_msg::Workflow;
 use serde::{Deserialize, Serialize};
 
 use crate::mutation_accumulator::MutationAccumulator;
@@ -38,6 +39,9 @@ pub struct SessionCoreEphemeral {
     /// Project context files discovered for this session's working directory.
     #[serde(skip)]
     pub discovered_context_files: Vec<ContextFile>,
+    /// Workflows discovered for this session (launch-global, config dir).
+    #[serde(skip)]
+    pub discovered_workflows: Vec<Workflow>,
     /// Tool results that arrived before the matching phase transition completed.
     #[serde(skip)]
     pub pending_tool_batch: Option<Vec<ToolResult>>,

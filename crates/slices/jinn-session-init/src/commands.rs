@@ -57,10 +57,27 @@ pub struct RescanContext {
     pub cwd: PathBuf,
 }
 
+/// Re-run only the workflows scan for a session.
+///
+/// Workflows are launch-global (the config dir), so `cwd` rides along only
+/// to keep the command shape identical to its three siblings; the worker
+/// ignores it and scans the configured workflows dir.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Re-run the workflows scan for a session.")]
+pub struct RescanWorkflows {
+    /// The session whose environment drives the scan.
+    #[schema(ty = "uuid", shard_key)]
+    pub session_id: SessionId,
+    /// The working directory driving the scan (unused by the workflows
+    /// resource; carried for shape parity with the other rescans).
+    pub cwd: PathBuf,
+}
+
 impl jinn_slices::BusMessage for RunDiscovery {}
 impl jinn_slices::BusMessage for RescanSkills {}
 impl jinn_slices::BusMessage for RescanPrompts {}
 impl jinn_slices::BusMessage for RescanContext {}
+impl jinn_slices::BusMessage for RescanWorkflows {}
 
 #[cfg(test)]
 mod tests {
@@ -75,6 +92,7 @@ mod tests {
     #[case::rescan_skills(RescanSkills::schema_def())]
     #[case::rescan_prompts(RescanPrompts::schema_def())]
     #[case::rescan_context(RescanContext::schema_def())]
+    #[case::rescan_workflows(RescanWorkflows::schema_def())]
     fn slice_commands_declare_the_session_shard_key(#[case] schema: trouper::schema::SchemaDef) {
         // Given one of the slice's keyed commands' schemas.
 

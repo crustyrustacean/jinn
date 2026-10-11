@@ -29,6 +29,12 @@ pub struct DiscoverySnapshot {
     /// Error description if the context-files scan failed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_error: Option<String>,
+    /// Number of workflows discovered.
+    #[serde(default)]
+    pub workflow_count: usize,
+    /// Error description if the workflows scan failed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_error: Option<String>,
 }
 
 /// Emitted when a session's three resource scans have settled.
@@ -73,6 +79,8 @@ mod tests {
                 prompt_error: None,
                 context_file_count: 2,
                 context_error: None,
+                workflow_count: 0,
+                workflow_error: None,
             },
             delayed: Some("discovery delayed by skills".to_owned()),
         };
@@ -104,5 +112,26 @@ mod tests {
             !json.contains("delayed"),
             "delayed should be omitted when None, got: {json}"
         );
+    }
+
+    #[rstest::rstest]
+    fn a_snapshot_without_workflow_fields_still_deserializes() {
+        // Given a serialized snapshot from before the workflows resource
+        // existed — no workflow_count or workflow_error keys.
+        let json = r#"{
+            "skill_count": 2,
+            "prompt_count": 1,
+            "context_file_count": 0
+        }"#;
+
+        // When deserializing it as today's snapshot type.
+        let snapshot: DiscoverySnapshot = serde_json::from_str(json).expect("deserialize");
+
+        // Then the old fields come through and the new ones default.
+        assert_eq!(snapshot.skill_count, 2);
+        assert_eq!(snapshot.prompt_count, 1);
+        assert_eq!(snapshot.context_file_count, 0);
+        assert_eq!(snapshot.workflow_count, 0);
+        assert_eq!(snapshot.workflow_error, None);
     }
 }

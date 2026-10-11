@@ -185,10 +185,11 @@ impl SidebarSection for McpServersSection {
 
         let lines = {
             let enabled = state.active_session().enabled_mcp_servers().clone();
+            let session_id = state.active_session().session_id().clone();
             let statuses = ctx
                 .slices()
                 .reader::<jinn_mcp_msg::McpRuntimeState>(&jinn_mcp_msg::mcp_runtime_slot())
-                .map(|runtime| runtime.read().statuses(state.active_session().session_id()))
+                .map(|runtime| runtime.read().effective_statuses(&session_id))
                 .unwrap_or_default();
             // Only enabled servers are surfaced; disabled ones are omitted entirely.
             let configured = ctx.config().get::<McpServersConfig>().unwrap_or_default();
@@ -448,6 +449,37 @@ mod tests {
         // Then the row shows the running label.
         let combined = rows.join("\n");
         assert!(combined.contains("running"));
+    }
+
+    #[rstest::rstest]
+    fn render_singleton_status_shows_running_without_a_session_entry() {
+        // Given an enabled server whose Running status was published to the
+        // singleton bucket (a singleton actor has no owning session).
+        let (mut state, config) = state_with_servers(&[server("bundled-example")]);
+        state
+            .active_session_mut()
+            .enable_mcp_server("bundled-example");
+        let slices = jinn_slices::Slices::new();
+        let runtime = slices
+            .register(
+                jinn_mcp_msg::mcp_runtime_slot(),
+                jinn_mcp_msg::McpRuntimeState::default(),
+            )
+            .expect("MCP runtime cell");
+        runtime.update(|runtime| {
+            runtime.set_singleton_status("bundled-example", McpConnectionStatus::Running);
+        });
+
+        // When rendering.
+        let rows = render_rows_with_slices(&state, &config, 40, 5, &slices);
+
+        // Then the row shows running — the singleton status resolves for
+        // every session, not just the one that spawned it.
+        let combined = rows.join("\n");
+        assert!(
+            combined.contains("running"),
+            "singleton Running must render as running; got: {combined}"
+        );
     }
 
     #[rstest::rstest]

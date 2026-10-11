@@ -14,6 +14,17 @@
 //! - [`SessionClosed`] / [`SessionArchived`] / [`SessionTeardownFinished`] —
 //!   the session is gone; kill all its actors.
 //!
+//! A server configured with `singleton = true` is exempt from all of the
+//! above session coupling: it spawns at most once per process, on the first
+//! reconcile that finds it in any session's enablement set, and the teardown
+//! events never kill it (they only ever walk the per-session map). Its status
+//! and stderr land in the runtime cell's singleton bucket, readable without a
+//! session id — which is also what the orchestrator's dispatch gate reads for
+//! calls arriving from any session. The one behavior the singleton UI does not
+//! get is a per-session inspector entry: the inspector renders session-keyed
+//! state, so a singleton's live status shows only in the runtime cell, not in
+//! the picker's connection list (an accepted gap, documented here).
+//!
 //! Each `McpActor` is spawned on the trouper system with no restart
 //! policy, so a single dead server's crash never cascades and never
 //! restarts (the user re-enables it). Disabling a server (or closing the
@@ -68,6 +79,13 @@ pub struct McpCoordinatorActor {
     /// Guarded by a mutex so spawn/kill helpers can borrow `self` while
     /// mutating the map without fighting the borrow checker.
     spawned: Mutex<HashMap<SpawnKey, ActorPath>>,
+    /// Tracks every live singleton `McpActor` by server name.
+    ///
+    /// Deliberately a separate namespace from [`Self::spawned`]: a singleton
+    /// has no owning session, so keying it under a synthetic `SessionId`
+    /// would put it in the path every teardown handler sweeps — exactly the
+    /// coupling the flag exists to break.
+    singleton_spawned: Mutex<HashMap<String, ActorPath>>,
 }
 
 /// Dependencies for [`McpCoordinatorActor`].
@@ -117,6 +135,7 @@ impl McpCoordinatorActor {
                             state: deps.state,
                             runtime: deps.runtime,
                             spawned: Mutex::new(HashMap::new()),
+                            singleton_spawned: Mutex::new(HashMap::new()),
                         })
                     })
                 }
@@ -133,6 +152,10 @@ impl McpCoordinatorActor {
             // Restart-ask replies leave the handler through ctx.reply; the
             // flush gate drops any outbound type not declared here.
             .emits::<McpRestartOutcome>()
+            // The singleton visibility pass publishes per-session opt-outs
+            // when a reconcile finds a singleton absent from (or back in) a
+            // session's enabled set.
+            .emits::<jinn_tools_msg::ProviderVisibilityChanged>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block);
         // Test-only ask surface: `RestartForTest` carries the injectable
         // startup budget the production `RestartMcpServer` message has no
@@ -163,8 +186,52 @@ impl McpCoordinatorActor {
     /// Spawns actors for newly-enabled servers, kills actors for
     /// newly-disabled servers. Idempotent: calling with the current set is a
     /// no-op.
+    ///
+    /// Singleton-configured servers never enter this per-session pass: any
+    /// appearance in `desired` instead triggers the once-per-process
+    /// singleton spawn, and their absence here never kills the shared actor.
     async fn reconcile(&self, session_id: &SessionId, desired: &BTreeSet<String>) {
         let configs = configured_servers(&self.deps.services);
+        let singleton_names: Vec<&str> = configs
+            .iter()
+            .filter(|(_, config)| config.singleton)
+            .map(|(name, _)| name.as_str())
+            .collect();
+
+        // Singleton pass: spawn each configured singleton found in the
+        // desired set, at most once per process. Absence from `desired`
+        // never kills — only an explicit restart does. But absence changes
+        // what the session *sees*: the singleton registers globally, so a
+        // session that disabled it needs its view of that provider withheld
+        // (and a session that re-enabled it needs the view restored).
+        for name in singleton_names.iter() {
+            if desired.contains(*name) {
+                let _ = self
+                    .spawn_singleton_if_absent(configs.as_slice(), name)
+                    .await;
+            }
+            let provider = jinn_mcp::tool_mapping::provider_name(name);
+            let hidden = !desired.contains(*name);
+            self.deps
+                .services
+                .bus
+                .publish(jinn_tools_msg::ProviderVisibilityChanged {
+                    provider: provider.clone(),
+                    session_id: session_id.clone(),
+                    hidden,
+                })
+                .await;
+        }
+
+        let per_session: BTreeSet<String> = desired
+            .iter()
+            .filter(|server| {
+                !configs
+                    .iter()
+                    .any(|(n, config)| n == *server && config.singleton)
+            })
+            .cloned()
+            .collect();
 
         // Partition the current spawned entries for this session into
         // to-keep and to-kill, based on the desired set.
@@ -173,7 +240,7 @@ impl McpCoordinatorActor {
             spawned
                 .keys()
                 .filter(|(sid, _)| sid == session_id)
-                .filter(|(_, server)| !desired.contains(server))
+                .filter(|(_, server)| !per_session.contains(server))
                 .cloned()
                 .collect()
         };
@@ -182,7 +249,7 @@ impl McpCoordinatorActor {
         // spawns: if an entry already exists for this key, skip it.
         let to_spawn: Vec<String> = {
             let spawned = self.spawned.lock();
-            desired
+            per_session
                 .iter()
                 .filter(|server| !spawned.contains_key(&(session_id.clone(), (*server).clone())))
                 .cloned()
@@ -196,7 +263,7 @@ impl McpCoordinatorActor {
                 tracing::warn!(
                     server = %server,
                     %session_id,
-                    "MCP lifecycle: enabled server not found in jinn.toml [mcp_server.<name>], skipping spawn"
+                    "MCP lifecycle: enabled server not found in jinn.toml [mcp.<name>], skipping spawn"
                 );
             }
         }
@@ -204,6 +271,45 @@ impl McpCoordinatorActor {
         for key in to_kill {
             self.kill_one(&key).await;
         }
+    }
+
+    /// Spawns the singleton actor for `name` unless it is already running.
+    ///
+    /// The duplicate-spawn guard makes every reconcile converge: the first
+    /// enablement that mentions the server spawns it, all later ones are
+    /// no-ops regardless of which session they come from.
+    async fn spawn_singleton_if_absent(
+        &self,
+        configs: &[(String, McpServerConfig)],
+        name: &str,
+    ) -> Option<ActorPath> {
+        // Duplicate-spawn guard: a singleton is spawned at most once per
+        // process — even while another reconcile is in flight (the same
+        // guard window `spawn_one` closes for the per-session map).
+        if self.singleton_spawned.lock().contains_key(name) {
+            return None;
+        }
+
+        let (_, config) = configs.iter().find(|(n, _)| n == name)?;
+        let path = McpActor::spawn(
+            &self.system,
+            McpActorDeps::new(
+                self.deps.clone(),
+                // The owning-session id only feeds status/log addressing and
+                // the singleton actor ignores it; see `connection.rs`.
+                SessionId::new(),
+                name.to_owned(),
+                config.clone(),
+            )
+            .as_singleton(),
+        )
+        .await;
+
+        self.singleton_spawned
+            .lock()
+            .insert(name.to_owned(), path.clone());
+        tracing::info!(server = %name, "MCP lifecycle: spawned singleton McpActor");
+        Some(path)
     }
 
     /// Spawns a single `McpActor` for a (session, server) pair and records it.
@@ -296,17 +402,30 @@ impl McpCoordinatorActor {
         server: &str,
         timeout: std::time::Duration,
     ) -> Result<(), RestartError> {
-        let key = (session_id.clone(), server.to_owned());
-        self.kill_one(&key).await;
-
         let config = configured_servers(&self.deps.services)
             .into_iter()
             .find(|(n, _)| n == server)
             .ok_or(RestartError::UnknownServer)?;
 
-        let actor_path = self.spawn_one(session_id, &config.0, &config.1).await;
-
-        let actor_path = actor_path.ok_or(RestartError::UnknownServer)?;
+        // A singleton restarts in its own namespace: kill/respawn the shared
+        // actor by name, never the (session × server) per-session key.
+        let actor_path = if config.1.singleton {
+            {
+                let existing = self.singleton_spawned.lock().remove(server);
+                if let Some(path) = existing {
+                    self.system.stop(&path).await;
+                }
+            }
+            self.spawn_singleton_if_absent(&configured_servers(&self.deps.services), server)
+                .await
+                .ok_or(RestartError::UnknownServer)?
+        } else {
+            let key = (session_id.clone(), server.to_owned());
+            self.kill_one(&key).await;
+            self.spawn_one(session_id, &config.0, &config.1)
+                .await
+                .ok_or(RestartError::UnknownServer)?
+        };
 
         // `on_start` blocks on acquire_client (connect + tools/list); we wait
         // for it to complete, bounded by the restart timeout so a slow-boot
@@ -479,19 +598,40 @@ impl MsgHandler<McpRestartForTest> for McpCoordinatorActor {
 ///
 /// The coordinator is the sole writer of status and stderr projections. They
 /// remain outside the durable session aggregate and snapshot.
+///
+/// Singleton-configured servers write the singleton bucket instead of the
+/// spawning session's entry — the shared server has no owning session, and
+/// the dispatch gate must resolve its status for whichever session called.
 impl MsgHandler<McpServerStatus> for McpCoordinatorActor {
     async fn handle(&mut self, msg: &McpServerStatus, _ctx: &mut MsgCtx<'_>) {
+        let singleton = configured_servers(&self.deps.services)
+            .into_iter()
+            .any(|(name, config)| name == msg.server && config.singleton);
         self.runtime.update(|runtime| {
-            runtime.set_status(&msg.session_id, &msg.server, msg.status);
+            if singleton {
+                runtime.set_singleton_status(&msg.server, msg.status);
+            } else {
+                runtime.set_status(&msg.session_id, &msg.server, msg.status);
+            }
         });
     }
 }
 
 /// Writes a captured stderr tail into the MCP runtime cell.
+///
+/// Singleton servers land in the singleton bucket (see [`McpServerStatus`]'s
+/// handler for why).
 impl MsgHandler<McpServerLog> for McpCoordinatorActor {
     async fn handle(&mut self, msg: &McpServerLog, _ctx: &mut MsgCtx<'_>) {
+        let singleton = configured_servers(&self.deps.services)
+            .into_iter()
+            .any(|(name, config)| name == msg.server && config.singleton);
         self.runtime.update(|runtime| {
-            runtime.set_stderr(&msg.session_id, &msg.server, msg.tail.clone());
+            if singleton {
+                runtime.set_singleton_stderr(&msg.server, msg.tail.clone());
+            } else {
+                runtime.set_stderr(&msg.session_id, &msg.server, msg.tail.clone());
+            }
         });
     }
 }

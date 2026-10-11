@@ -116,6 +116,28 @@ pub enum Commands {
         #[command(subcommand)]
         subcommand: ConfigCommands,
     },
+
+    /// Placeholder for future bundled MCP servers.
+    ///
+    /// jinn bundles no MCP server today; the command and its subcommand
+    /// exist so a future bundled server has a spawn point, and so a
+    /// configured child's argv shape stays stable. Running it starts jinn
+    /// normally.
+    Mcp {
+        /// The mcp subcommand to run.
+        #[command(subcommand)]
+        subcommand: McpCommands,
+    },
+}
+
+/// MCP server subcommands.
+///
+/// No bundled MCP server ships today; variants are added here alongside
+/// the server they spawn.
+#[derive(Debug, Subcommand)]
+pub enum McpCommands {
+    /// Does nothing; starts jinn normally.
+    Noop,
 }
 
 /// Headless subcommands.

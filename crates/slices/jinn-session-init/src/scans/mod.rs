@@ -10,13 +10,17 @@
 //!   inclusive VCS root) plus per-resource dir/file resolution.
 //! - [`skills`] — per-dir skill scanning and the system→global→project
 //!   merged result (project overrides, most-local wins).
+//! - [`workflows`] — the launch-global workflows dir scan, delegating to
+//!   the workflows slice's exported kernel.
 
 pub mod skills;
 pub mod vcs;
 pub mod walk;
+pub mod workflows;
 
 pub use skills::scan_skills_merged;
 pub use walk::{project_context_files, project_prompts_dirs, project_skills_dirs};
+pub use workflows::scan_workflows;
 
 use jinn_context::PromptTemplateStore;
 use jinn_context::env_context::ContextFile;

@@ -152,6 +152,16 @@ impl AppPaths {
         self.config_dir.join(APP_NAME).join("personas")
     }
 
+    /// Workflows directory (`~/.config/jinn/workflows`).
+    ///
+    /// One directory per workflow, each holding a `workflow.md`. Launch-global:
+    /// unlike skills and prompts, workflows are not project-scoped, so the
+    /// discovery scan reads this one directory regardless of session cwd.
+    #[must_use]
+    pub fn workflows_dir(&self) -> PathBuf {
+        self.config_dir.join(APP_NAME).join("workflows")
+    }
+
     /// Model cache file (`~/.cache/jinn/model_cache.json`).
     #[must_use]
     pub fn cache_path(&self) -> PathBuf {
@@ -337,6 +347,33 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+
+    #[rstest::rstest]
+    fn workflows_dir_sits_beside_personas_under_config() {
+        // Given an AppPaths rooted at a temp tree.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        let paths = AppPaths::new_in(root.path());
+
+        // When resolving the workflows dir.
+        let dir = paths.workflows_dir();
+
+        // Then it is the config dir's workflows folder, beside personas.
+        assert_eq!(
+            dir,
+            root.path().join("config").join("jinn").join("workflows")
+        );
+        // And it is a sibling of the personas dir.
+        assert_eq!(
+            dir.parent().map(std::path::Path::to_path_buf),
+            Some(
+                paths
+                    .personas_dir()
+                    .parent()
+                    .map(std::path::Path::to_path_buf)
+                    .expect("parent")
+            )
+        );
+    }
 
     #[rstest::rstest]
     fn resolve_theme_paths_returns_empty_when_both_dirs_missing() {

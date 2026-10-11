@@ -54,8 +54,13 @@ const STDERR_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(25
 pub struct McpActor {
     deps: ActorDeps,
     /// The session this actor serves.
+    ///
+    /// For a singleton actor this is only a status/log addressing label the
+    /// coordinator ignores (singleton projections go to the runtime cell's
+    /// singleton bucket); the session filter below is what admits any
+    /// session's calls.
     session_id: SessionId,
-    /// The server's name — the `[mcp_server.<name>]` table key.
+    /// The server's name — the `[mcp.<name>]` table key.
     name: String,
     /// The live MCP client connection, established during `on_start`.
     client: Option<McpClient>,
@@ -71,6 +76,14 @@ pub struct McpActor {
     /// `on_stop` before `client.shutdown()` so the watcher exits and drops
     /// the `Child` (`kill_on_drop` terminates a still-alive process).
     child_task_shutdown: Option<Arc<AtomicBool>>,
+    /// Serves every session through this one connection.
+    ///
+    /// `true` for singleton-configured servers: tools register globally
+    /// (`RegisterTools { session_id: None }`), the `ExecuteTool` session
+    /// filter admits any session, and `on_stop` skips `ToolsUnregistered` —
+    /// the registration was global, and a restart re-registers over the same
+    /// provider key, so publishing the event would strand the global tools.
+    singleton: bool,
 }
 
 /// Dependencies for [`McpActor`].
@@ -85,7 +98,7 @@ pub struct McpActorDeps {
     deps: ActorDeps,
     /// The session this actor serves.
     session_id: SessionId,
-    /// The server's name — the `[mcp_server.<name>]` table key. Carried
+    /// The server's name — the `[mcp.<name>]` table key. Carried
     /// separately because `McpServerConfig` no longer has a `name` field.
     name: String,
     /// The configured server to connect to.
@@ -96,6 +109,10 @@ pub struct McpActorDeps {
     /// A test injects a client connected to an in-process stub so the full
     /// subscribe → list → register → dispatch path runs without a child.
     client_override: Arc<Mutex<Option<McpClient>>>,
+    /// Serves every session through this one connection (see [`McpActor`]'s
+    /// `singleton` field). `false` from `new`; singleton spawners flip it
+    /// with [`as_singleton`](Self::as_singleton).
+    singleton: bool,
 }
 
 impl McpActorDeps {
@@ -113,7 +130,15 @@ impl McpActorDeps {
             name,
             server,
             client_override: Arc::new(Mutex::new(None)),
+            singleton: false,
         }
+    }
+
+    /// Marks these deps as serving a singleton-configured server.
+    #[must_use]
+    pub fn as_singleton(mut self) -> Self {
+        self.singleton = true;
+        self
     }
 
     /// Test-only constructor: inject a pre-connected [`McpClient`] so `on_start`
@@ -133,6 +158,29 @@ impl McpActorDeps {
             name,
             server,
             client_override: Arc::new(Mutex::new(Some(client))),
+            singleton: false,
+        }
+    }
+
+    /// Test-only singleton constructor: an injected client plus the singleton
+    /// flag, so tests can drive the global-registration/any-session path
+    /// without a child process.
+    #[cfg(test)]
+    #[must_use]
+    pub fn with_client_as_singleton(
+        deps: ActorDeps,
+        session_id: SessionId,
+        name: String,
+        server: McpServerConfig,
+        client: McpClient,
+    ) -> Self {
+        Self {
+            deps,
+            session_id,
+            name,
+            server,
+            client_override: Arc::new(Mutex::new(Some(client))),
+            singleton: true,
         }
     }
 }
@@ -350,15 +398,24 @@ impl ServiceActor for McpActor {
         // Teardown removes this server's session-scoped tool registrations
         // everywhere they were cached. Harmless no-op when startup failed
         // before any `RegisterTools` fired (subscribers prune by key).
-        let () = self
-            .deps
-            .services
-            .bus
-            .publish(ToolsUnregistered {
-                provider: provider_name(&self.name),
-                session_id: self.session_id.clone(),
-            })
-            .await;
+        //
+        // A singleton skips this entirely: its registration was global
+        // (`session_id: None`), and `ToolsUnregistered` prunes session-scoped
+        // keys only — publishing one would be a lie about what was removed
+        // while the global entries stayed. A restart re-registers over the
+        // same provider key (overwrite, never duplicate); app exit drops
+        // everything process-wide.
+        if !self.singleton {
+            let () = self
+                .deps
+                .services
+                .bus
+                .publish(ToolsUnregistered {
+                    provider: provider_name(&self.name),
+                    session_id: self.session_id.clone(),
+                })
+                .await;
+        }
     }
 }
 
@@ -371,6 +428,7 @@ async fn start_mcp(args: McpActorDeps) -> Result<McpActor, std::convert::Infalli
         name,
         server,
         client_override,
+        singleton,
     } = args;
 
     publish_status(&deps, &session_id, &name, McpConnectionStatus::Starting).await;
@@ -400,6 +458,7 @@ async fn start_mcp(args: McpActorDeps) -> Result<McpActor, std::convert::Infalli
                     stderr_task_shutdown: Arc::new(AtomicBool::new(false)),
                     liveness_task_shutdown: Arc::new(AtomicBool::new(false)),
                     child_task_shutdown: None,
+                    singleton,
                 });
             }
         };
@@ -408,9 +467,14 @@ async fn start_mcp(args: McpActorDeps) -> Result<McpActor, std::convert::Infalli
     tracing::info!(
         server = %name,
         session_id = %session_id,
+        singleton,
         tool_count = definitions.len(),
         "MCP actor: connected, registering tools"
     );
+
+    // A singleton registers globally: every session whose enablement gate
+    // admits the server dispatches to this one connection.
+    let registration_session = (!singleton).then(|| session_id.clone());
 
     let () = deps
         .services
@@ -418,7 +482,7 @@ async fn start_mcp(args: McpActorDeps) -> Result<McpActor, std::convert::Infalli
         .publish(RegisterTools {
             provider,
             definitions,
-            session_id: Some(session_id.clone()),
+            session_id: registration_session,
         })
         .await;
 
@@ -480,6 +544,7 @@ async fn start_mcp(args: McpActorDeps) -> Result<McpActor, std::convert::Infalli
         stderr_task_shutdown,
         liveness_task_shutdown,
         child_task_shutdown,
+        singleton,
     })
 }
 
@@ -686,9 +751,11 @@ impl BusPublish for McpActor {
 
 impl MsgHandler<ExecuteTool> for McpActor {
     async fn handle(&mut self, msg: &ExecuteTool, _ctx: &mut MsgCtx<'_>) {
-        // Only handle calls for this session whose tool name carries this
-        // server's namespace prefix.
-        if msg.session_id != self.session_id {
+        // Only handle calls whose tool name carries this server's namespace
+        // prefix, from a session this actor serves: the owning session for a
+        // per-session actor, any session for a singleton (its tools are
+        // registered globally, so every enabled session routes here).
+        if !self.singleton && msg.session_id != self.session_id {
             return;
         }
         let Some(tool_name) = strip_namespace(&self.name, &msg.tool_call.name).map(str::to_owned)

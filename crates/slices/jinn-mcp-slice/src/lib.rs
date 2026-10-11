@@ -36,6 +36,10 @@ mod mcp_picker_tests;
 #[cfg(test)]
 mod restart_mcp_tests;
 #[cfg(test)]
+mod singleton_connection_tests;
+#[cfg(test)]
+mod singleton_lifecycle_tests;
+#[cfg(test)]
 mod transport_routing_tests;
 
 pub mod connection;

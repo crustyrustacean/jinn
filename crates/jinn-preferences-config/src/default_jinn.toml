@@ -213,6 +213,24 @@ teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git c
 # Authorization = "Bearer ${MY_API_KEY}"
 # X-Api-Key = "${OTHER_KEY}"
 
+# > Singleton servers. A server marked `singleton = true` spawns ONCE per
+# > jinn run and its tools are visible to every session whose enablement
+# > admits the server — sessions share the one connection instead of each
+# > getting their own. It survives session close/archive/teardown and stops
+# > only at app exit or an explicit restart. Use it for servers holding
+# > shared state.
+#
+# > Singleton example — one shared process speaking streamable HTTP. The
+# > child binds the port jinn picks; `<port>` and `<ip>` expand to the
+# > chosen port and loopback address in both `args` and `url`.
+#
+# [mcp.shared_tools]
+# command = "some-mcp-server"
+# args = ["serve", "--port", "<port>", "--host", "<ip>"]
+# transport = "local_http"
+# url = "http://127.0.0.1:<port>/mcp"
+# singleton = true
+
 # > Compaction command + auto compaction.
 [context_curation.compaction]
 # > Provider/model used for compaction summarization. Falls back to the session model
