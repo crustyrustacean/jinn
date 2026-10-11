@@ -12,6 +12,8 @@
 - Bugfix: pasting text with newlines into the chat input box will no longer convert them to the letter `j`.
 - Bugfix: `stream_rule` watchdog now properly manages the tracking window on successful tool calls. It should no longer terminate sessions prematurely.
 - Batched tool calls for `edit`, `write`, and `save_plan` are now serialized, preventing concurrent write errors.
+- Agents can now set a specific provider+model combo when spawning a subagent.
+  - The agent must be _explicitly told_ to use a custom model. This is to reduce the chance of accidentally incurring additional charges.
 
 ## 2026-10-05 v1.5.0
 
