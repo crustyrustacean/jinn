@@ -6,8 +6,10 @@
 - Change "tool call failure watchdog" trigger condition from 4 to 6.
 - Add `stream_rules.toml` file, installed by default with `jinn install`.
   - Existing stream rules in `jinn.toml` will continue to work and are appended to the `stream_rules.toml` list.
-- Add new `workflow` skill.
+- Add new `workflow` skill + picker (`<leader>sw`).
+  - Workflows are a fancy way to create repeatable workflows. `jinn` can manage them completely, just ask it to make a workflow.
 - Bugfix: pasting text with newlines into the chat input box will no longer convert them to `j`.
+- Add `singleton` flag to `local_http` configured MCP servers. Setting to `true` will spawn only 1 instance of the MCP server and all sessions will share the connection.
 
 ## 2026-10-05 v1.5.0
 
