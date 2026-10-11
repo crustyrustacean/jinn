@@ -28,6 +28,10 @@ mod attendant_tools_tests;
 mod load_attendant_tests;
 
 #[cfg(test)]
+#[path = "run_lifecycle_script_tests.rs"]
+mod run_lifecycle_script_tests;
+
+#[cfg(test)]
 #[path = "message_session_tests.rs"]
 mod message_session_tests;
 
@@ -39,10 +43,12 @@ pub(crate) mod input_bounds;
 pub mod interactive_term;
 pub mod interactive_term_kill;
 pub mod interactive_term_send;
+pub mod lifecycle_completion_listener_actor;
 pub mod load_attendant;
 pub mod read;
 pub mod registry;
 pub mod restart_mcp;
+pub mod run_lifecycle_script;
 pub mod save_plan;
 pub mod session_fetch;
 pub mod session_search;
