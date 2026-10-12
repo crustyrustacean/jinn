@@ -504,3 +504,5 @@ Entries are added or amended **only with human approval**.
 - (tools) The task tool accepts a `model` argument naming an expanded provider/model id or a configured alias, validated against the provider registry before the child session is created; an unknown name fails the call without spawning.
 - (tools) A task-tool subagent spawned without `model` inherits the parent's whole ModelSelection, alloy included; a valid `model` becomes Single on the child.
 - (config) A provider alias resolves through one registry resolver to its target expanded id, an expanded id resolves to itself, and a name that is both resolves as the expanded id.
+- (tools) The `run_lifecycle` tool runs a lifecycle script by name from jinn.toml or, given a `path`, from that exact file with the name selecting the entry inside it; the two sources are never combined, and supplying neither is a tool error.
+- (sessions) A session run through a workflow-local lifecycle file persists that file and entry name, so teardown re-reads the file on close from any close path; a missing or unparseable file at teardown time fails visibly naming the file.

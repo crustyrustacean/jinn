@@ -1,10 +1,10 @@
 # Session lifecycle scripts for autocoder runs.
 #
-# Paste these `[[session_lifecycle.script]]` entries into your user
-# `jinn.toml` (the entries the workflow's stages and the orchestrator
-# resolve through `run_lifecycle_script`). They are autocoder-only: your
-# existing interactive lifecycle entries stay untouched, and neither
-# entry ever writes trunk — the only trunk write in a run is the
+# This file is loaded by path, never pasted: the workflow's prompts call
+# the `run_lifecycle` tool with `path` pointed at this file and `script`
+# naming the entry to run. Nothing here belongs in your user `jinn.toml`
+# — your existing interactive lifecycle entries stay untouched, and
+# neither entry ever writes trunk — the only trunk write in a run is the
 # orchestrator's G2 merge, which is a workflow step, not a script.
 #
 # Placeholders: `<dir>` = worktree path (relative to the project

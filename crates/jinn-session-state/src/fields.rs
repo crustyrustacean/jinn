@@ -102,6 +102,21 @@ pub struct SessionLifecycleLocationFields {
     /// Arguments replayed during teardown.
     #[serde(default)]
     pub lifecycle_args: Vec<String>,
+    /// The workflow-local TOML file this session's lifecycle was resolved
+    /// from, when it came from a workflow rather than from the user's
+    /// jinn.toml.
+    ///
+    /// `None` for jinn.toml lifecycles. When set, teardown resolves the
+    /// entry named by `lifecycle_name` from this file instead of from
+    /// jinn.toml, so closing the session re-reads the workflow's own
+    /// script. Omitted when absent, so a session that never carried a
+    /// source persists a blob byte-identical to one written before the
+    /// field existed. The marker crosses forks together with the name and
+    /// args it qualifies: a fork that inherits the replayed lifecycle must
+    /// resolve it from the same file, or its close would look the name up
+    /// in the wrong place and skip silently.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lifecycle_source: Option<String>,
     /// One-way lifecycle script progression.
     #[serde(default)]
     pub lifecycle_script_state: LifecycleScriptState,
@@ -114,6 +129,7 @@ impl Default for SessionLifecycleLocationFields {
             home: PathBuf::from("."),
             lifecycle_name: None,
             lifecycle_args: Vec::new(),
+            lifecycle_source: None,
             lifecycle_script_state: LifecycleScriptState::NothingRan,
         }
     }

@@ -186,6 +186,119 @@ impl jinn_config::ConfigList for SessionLifecycle {
     const ENTRY_FIELDS: &'static [&'static str] = &["name", "description", "setup", "teardown"];
 }
 
+/// Parses a lifecycle TOML *file* into its script entries.
+///
+/// The schema [`SessionLifecycle`] declares; this function is the one read
+/// of a standalone lifecycle file that every consumer shares — the
+/// `run_lifecycle` tool resolving a workflow script, and the teardown
+/// resolvers re-reading the file a session recorded as its source. The
+/// document shape is the bare `[[session_lifecycle.script]]` section a
+/// workflow file ships; the wrapped `[[script]]` form is accepted too, the
+/// same dual shape `load_attendant`'s parser honors.
+///
+/// # Errors
+///
+/// Returns the parse reason when the text is not a lifecycle document.
+pub fn parse_lifecycle_document(text: &str) -> Result<Vec<SessionLifecycle>, String> {
+    #[derive(serde::Deserialize)]
+    struct Bare {
+        session_lifecycle: Section,
+    }
+    #[derive(serde::Deserialize)]
+    struct Section {
+        script: Vec<SessionLifecycle>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Wrapped {
+        script: Vec<SessionLifecycle>,
+    }
+    if let Ok(bare) = toml::from_str::<Bare>(text) {
+        return Ok(bare.session_lifecycle.script);
+    }
+    toml::from_str::<Wrapped>(text)
+        .map(|wrapped| wrapped.script)
+        .map_err(|error| format!("not a lifecycle document: {error}"))
+}
+
+#[cfg(test)]
+mod parse_lifecycle_document_tests {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+    use super::*;
+
+    #[rstest::rstest]
+    #[test]
+    fn the_shipped_section_shape_parses() {
+        // Given the bare section shape a workflow's lifecycle.toml ships.
+        let text = "[[session_lifecycle.script]]\nname = \"stage\"\n\
+                    setup_command = \"echo <dir>\"\n";
+
+        // When parsing.
+        let scripts = parse_lifecycle_document(text).expect("parses");
+
+        // Then the one entry comes across whole.
+        assert_eq!(scripts.len(), 1);
+        assert_eq!(scripts.first().expect("one entry").name, "stage");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn the_wrapped_script_shape_parses_too() {
+        // Given the wrapped shape (no `session_lifecycle` wrapper table).
+        let text = "[[script]]\nname = \"solo\"\ntearup = false\n\
+                    teardown_command = \"true\"\n";
+
+        // When parsing.
+        let scripts = parse_lifecycle_document(text).expect("parses");
+
+        // Then the entry comes across.
+        assert_eq!(scripts.len(), 1);
+        assert_eq!(scripts.first().expect("one entry").name, "solo");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_multi_entry_file_keeps_every_entry_in_order() {
+        // Given the shipped autocoder shape: six entries in one file.
+        let text = "[[session_lifecycle.script]]\nname = \"a\"\n\
+                    [[session_lifecycle.script]]\nname = \"b\"\n\
+                    [[session_lifecycle.script]]\nname = \"c\"\n";
+
+        // When parsing.
+        let scripts = parse_lifecycle_document(text).expect("parses");
+
+        // Then all entries arrive in document order.
+        let names: Vec<&str> = scripts.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["a", "b", "c"]);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn non_lifecycle_text_is_refused_with_a_reason() {
+        // Given text that is neither shape.
+        let text = "not = [a lifecycle";
+
+        // When parsing.
+        let result = parse_lifecycle_document(text);
+
+        // Then it fails naming the document problem.
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not a lifecycle document"));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn an_entry_failing_the_schema_is_refused() {
+        // Given a well-shaped document whose entry breaks the schema.
+        let text = "[[script]]\nsetup_command = \"echo hi\"\n";
+
+        // When parsing.
+        let result = parse_lifecycle_document(text);
+
+        // Then it fails — no nameless entry can be resolved later.
+        assert!(result.is_err());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(

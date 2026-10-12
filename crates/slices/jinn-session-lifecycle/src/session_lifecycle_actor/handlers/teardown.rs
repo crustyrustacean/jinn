@@ -236,14 +236,21 @@ impl SessionLifecycleActor {
     ) -> Option<jinn_preferences_config::schemas::LifecycleCommand> {
         // Bound, not returned directly: the state read guard must drop
         // before the `?` unwinds, or it outlives the borrow.
-        let name = self
-            .state
-            .read()
-            .session
-            .get(session_id)?
-            .lifecycle_name()?
-            .to_owned();
-        jinn_kernel::session_lifecycle::intent::lifecycle_teardown(&self.services.config, &name)
+        let (name, source) = {
+            let session = {
+                let guard = self.state.read();
+                guard.session.get(session_id)?.clone()
+            };
+            (
+                session.lifecycle_name()?.to_owned(),
+                session.lifecycle_source().map(String::from),
+            )
+        };
+        jinn_kernel::session_lifecycle::intent::lifecycle_command_for(
+            &self.services.config,
+            &name,
+            source.as_deref(),
+        )
     }
 
     async fn guarded_tree_closure(&self, root: &SessionId) -> Option<Vec<SessionId>> {

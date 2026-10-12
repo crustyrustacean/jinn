@@ -1,12 +1,19 @@
-//! The `run_lifecycle_script` tool — run a named session lifecycle script.
+//! The `run_lifecycle` tool — run a session lifecycle script by name or path.
 //!
-//! jinn.toml's `[[session_lifecycle.script]]` entries are creation-coupled
-//! today: the picker runs setup only for a brand-new session, and teardown
-//! replays the args stored at creation. A workflow needs neither constraint
-//! — its orchestrator forks worktrees for *existing* stage sessions and
-//! merges them down when a stage finishes — so this tool runs a named
-//! script's setup or teardown for a session the agent names, with the
-//! script's arguments supplied in the call.
+//! Two script sources exist and are never combined. The user's `jinn.toml`
+//! holds their own `[[session_lifecycle.script]]` entries, resolved by name;
+//! a workflow ships its own `lifecycle.toml` beside its prompts, and the
+//! tool reads that exact file when the call carries a `path`, with the name
+//! selecting the entry inside it — one multi-entry workflow file works as
+//! shipped. The sources never merge: a `path` bypasses the user's config
+//! entirely, and a call supplying neither source is refused.
+//!
+//! jinn.toml scripts are creation-coupled: the picker runs setup only for a
+//! brand-new session, and teardown replays the args stored at creation. A
+//! workflow needs neither constraint — its orchestrator forks worktrees for
+//! *existing* stage sessions and merges them down when a stage finishes — so
+//! this tool runs a named script's setup or teardown for a session the agent
+//! names, with the script's arguments supplied in the call.
 //!
 //! Everything dangerous is borrowed, not reimplemented: argument values
 //! render through `CommandTemplate`'s shell-quoted path (the same one the
@@ -32,24 +39,28 @@ use jinn_preferences_config::schemas::{LifecycleCommand, SessionLifecycle};
 use jinn_session_lifecycle_msg::command_template::CommandTemplate;
 use jinn_session_lifecycle_msg::{RunSessionSetup, RunSessionTeardown};
 
-/// The `run_lifecycle_script` tool definition.
+/// The `run_lifecycle` tool definition.
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
-        name: "run_lifecycle_script".to_owned(),
-        description: "Run a named session lifecycle script's setup or teardown for a \
-             session, with the script's arguments supplied here. Setup adopts the last \
-             path the script prints as the session's working directory. Values are \
-             shell-quoted before substitution, so they cannot alter the command."
+        name: "run_lifecycle".to_owned(),
+        description: "Run a session lifecycle script's setup or teardown for a session, \
+             with the script's arguments supplied here. The script comes from jinn.toml \
+             by name, or — when a path is given — from that exact file, with the name \
+             selecting the entry inside it. Setup adopts the last path the script \
+             prints as the session's working directory. Values are shell-quoted \
+             before substitution, so they cannot alter the command."
             .to_owned(),
         prompt_snippet: Some(
-            "Run a lifecycle script: `run_lifecycle_script` with the script name, the \
-             action, and its arguments."
+            "Run a lifecycle script: `run_lifecycle` with the script name (and its \
+             file's path for a workflow script), the action, and its arguments."
                 .to_owned(),
         ),
         prompt_guidelines: vec![
-            "Use `run_lifecycle_script` to give a session its scripted environment — \
-             a worktree, a checkout — or to tear that environment down. Supply every \
-             argument the script's placeholders name; values are quoted for you."
+            "Use `run_lifecycle` to give a session its scripted environment — a \
+             worktree, a checkout — or to tear that environment down. Supply every \
+             argument the script's placeholders name; values are quoted for you. \
+             A workflow's scripts live in its `lifecycle.toml`: pass that path and \
+             the script's name."
                 .to_owned(),
         ],
         parameters: serde_json::json!({
@@ -57,7 +68,13 @@ pub fn definition() -> ToolDefinition {
             "properties": {
                 "script": {
                     "type": "string",
-                    "description": "The lifecycle script's name from jinn.toml."
+                    "description": "The lifecycle script's name — from jinn.toml, or \
+                         from the file the path argument names."
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Path to a lifecycle TOML file to read the script \
+                         from instead of jinn.toml (e.g. a workflow's lifecycle.toml)."
                 },
                 "action": {
                     "type": "string",
@@ -81,11 +98,28 @@ pub fn definition() -> ToolDefinition {
     }
 }
 
-/// Executes `run_lifecycle_script`.
+/// Executes `run_lifecycle`.
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
-        let Some(script_name) = string_argument(&call, "script") else {
-            return tool_error(&call, "missing required argument: script");
+        // The optional path must be read first: a blank script with a path
+        // present is a different refusal than a blank script alone.
+        let raw_path = string_argument(&call, "path").filter(|p| !p.trim().is_empty());
+        let raw_script = string_argument(&call, "script");
+        let script_name = match (&raw_script, &raw_path) {
+            (Some(name), _) if !name.trim().is_empty() => name.clone(),
+            (Some(_), Some(_)) => {
+                return tool_error(
+                    &call,
+                    "script is required with path: the name selects the entry inside \
+                     the file",
+                );
+            }
+            // A present-but-blank name without a path is not a schema miss —
+            // JSON `""` satisfies `required` — so it keeps the historic
+            // refusal: the config resolution reports the unknown script ""
+            // with the known list.
+            (Some(name), None) => name.clone(),
+            (None, _) => return tool_error(&call, "missing required argument: script"),
         };
         let Some(action) = string_argument(&call, "action") else {
             return tool_error(&call, "missing required argument: action");
@@ -111,70 +145,43 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             Err(reason) => return tool_error(&call, &reason),
         };
         let Some(state) = ctx.state.clone() else {
-            return tool_error(
-                &call,
-                "run_lifecycle_script is unavailable without shared state",
-            );
+            return tool_error(&call, "run_lifecycle is unavailable without shared state");
         };
         let Some(bus) = ctx.bus.clone() else {
-            return tool_error(&call, "run_lifecycle_script is unavailable without a bus");
+            return tool_error(&call, "run_lifecycle is unavailable without a bus");
         };
         let Some(system) = ctx.trouper_system.clone() else {
             return tool_error(
                 &call,
-                "run_lifecycle_script is unavailable without the actor system",
+                "run_lifecycle is unavailable without the actor system",
             );
         };
 
         // Resolve the script and render the command before touching state:
-        // an unknown script or a missing argument must fail without any
-        // side effect.
-        let (command, raw_command) = match ctx.config.get_list::<SessionLifecycle>() {
-            Ok(scripts) => {
-                let Some(script) = scripts.iter().find(|s| s.name == script_name) else {
-                    return tool_error(
-                        &call,
-                        &format!(
-                            "unknown lifecycle script \"{script_name}\"; known: {}",
-                            scripts
-                                .iter()
-                                .map(|s| s.name.as_str())
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        ),
-                    );
-                };
-                let Some(raw) = half_of(script, kind) else {
-                    return tool_error(
-                        &call,
-                        &format!("lifecycle script \"{script_name}\" defines no {action} command"),
-                    );
-                };
-                let raw_command = raw.to_owned();
-                match LifecycleCommand::Shell(raw_command.clone()) {
-                    LifecycleCommand::Shell(cmd) => match render_command(&cmd, &args) {
-                        Ok(rendered) => (rendered, raw_command),
-                        Err(reason) => return tool_error(&call, &reason),
-                    },
-                    LifecycleCommand::Builtin(_) => {
-                        return tool_error(
-                            &call,
-                            &format!(
-                                "lifecycle script \"{script_name}\" uses a builtin \
-                                 {action}, which this tool does not run"
-                            ),
-                        );
-                    }
-                }
-            }
-            Err(error) => {
-                return tool_error(&call, &format!("cannot read lifecycle scripts: {error}"));
-            }
+        // an unreadable file, an unknown script, or a missing argument must
+        // fail without any side effect. The two sources never combine: a
+        // path reads that file and never consults the user's config. The
+        // source is recorded with the session so its teardown re-reads the
+        // same place after a restart.
+        let (raw_command, source_path) = match raw_path {
+            Some(path) => match resolve_from_path(&path, &ctx, &script_name, &action, kind) {
+                Ok(resolved) => resolved,
+                Err(reason) => return tool_error(&call, &reason),
+            },
+            None => match resolve_from_config(&ctx, &script_name, &action, kind) {
+                Ok(resolved) => resolved,
+                Err(reason) => return tool_error(&call, &reason),
+            },
+        };
+        let command = match render_command(&raw_command, &args) {
+            Ok(rendered) => rendered,
+            Err(reason) => return tool_error(&call, &reason),
         };
 
         // Teardown replays the session's *stored* args (the actor re-renders
-        // from config and ignores the command we publish), so the tool's args
-        // must land on the session before the command does.
+        // from the recorded source and ignores the command we publish), so
+        // the tool's coordinates must land on the session before the command
+        // does. State-before-publish ordering is load-bearing.
         if kind == AwaitKind::Teardown {
             let mut guard = state.write();
             let Some(session) = guard.session.get_mut(&target_id) else {
@@ -187,6 +194,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             let ordered = order_args(&CommandTemplate::parse(&raw_command), &args);
             session.set_lifecycle_name(Some(script_name.clone()));
             session.set_lifecycle_args(ordered);
+            session.set_lifecycle_source(source_path);
         }
 
         // Listener before publication: no completion event can slip past
@@ -259,17 +267,86 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     })
 }
 
-/// The script's command for one half, as the raw template string.
-fn half_of<'a>(script: &'a SessionLifecycle, kind: AwaitKind) -> Option<&'a str> {
-    match kind {
-        AwaitKind::Setup => script.setup.as_ref().and_then(|c| match c {
-            LifecycleCommand::Shell(cmd) => Some(cmd.as_str()),
-            LifecycleCommand::Builtin(_) => None,
-        }),
-        AwaitKind::Teardown => script.teardown.as_ref().and_then(|c| match c {
-            LifecycleCommand::Shell(cmd) => Some(cmd.as_str()),
-            LifecycleCommand::Builtin(_) => None,
-        }),
+/// Resolves the script's raw command from the user's jinn.toml by name.
+///
+/// The only reader of the config source: a call carrying a `path` never
+/// reaches this function. The source is `None` — jinn.toml is the ambient
+/// source, not one a session records.
+fn resolve_from_config(
+    ctx: &ToolContext,
+    script_name: &str,
+    action: &str,
+    kind: AwaitKind,
+) -> Result<(String, Option<String>), String> {
+    let scripts = ctx
+        .config
+        .get_list::<SessionLifecycle>()
+        .map_err(|error| format!("cannot read lifecycle scripts: {error}"))?;
+    let Some(script) = scripts.iter().find(|s| s.name == script_name) else {
+        return Err(format!(
+            "unknown lifecycle script \"{script_name}\"; known: {}",
+            scripts
+                .iter()
+                .map(|s| s.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    };
+    half_of(script, script_name, action, kind).map(|raw| (raw.to_owned(), None))
+}
+
+/// Resolves the script's raw command from the file at `path`, resolved
+/// against the calling session's cwd the way every file-facing tool
+/// resolves a path argument. The resolved path is returned as the source —
+/// the session records it so teardown re-reads the same file.
+fn resolve_from_path(
+    path: &str,
+    ctx: &ToolContext,
+    script_name: &str,
+    action: &str,
+    kind: AwaitKind,
+) -> Result<(String, Option<String>), String> {
+    let resolved = crate::tool_paths::resolve_path(path, &ctx.cwd);
+    let source = resolved.display().to_string();
+    let text = std::fs::read_to_string(&resolved)
+        .map_err(|error| format!("cannot read {source}: {error}"))?;
+    let scripts =
+        jinn_preferences_config::schemas::session_lifecycle::parse_lifecycle_document(&text)
+            .map_err(|error| format!("{source}: {error}"))?;
+    let Some(script) = scripts.iter().find(|s| s.name == script_name) else {
+        return Err(format!(
+            "{source}: no lifecycle script named \"{script_name}\"; the file defines: {}",
+            scripts
+                .iter()
+                .map(|s| s.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    };
+    half_of(script, script_name, action, kind).map(|raw| (raw.to_owned(), Some(source)))
+}
+
+/// Takes the requested half of a script as the raw template string,
+/// refusing a builtin command — the tool runs shell, not builtins.
+fn half_of<'a>(
+    script: &'a SessionLifecycle,
+    script_name: &str,
+    action: &str,
+    kind: AwaitKind,
+) -> Result<&'a str, String> {
+    let half = match kind {
+        AwaitKind::Setup => script.setup.as_ref(),
+        AwaitKind::Teardown => script.teardown.as_ref(),
+    };
+    match half {
+        Some(LifecycleCommand::Shell(cmd)) => Ok(cmd.as_str()),
+        Some(LifecycleCommand::Builtin(_)) => Err(format!(
+            "lifecycle script \"{script_name}\" uses a builtin {action}, \
+             which this tool does not run"
+        )),
+        None => Err(format!(
+            "lifecycle script \"{script_name}\" defines no {action} command"
+        )),
     }
 }
 

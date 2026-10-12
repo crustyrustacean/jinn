@@ -1,5 +1,7 @@
 //! Session teardown handler.
 
+use jinn_session_history_msg::PushChatEntry;
+
 use crate::sections::sessions::close::validate_session_close;
 use jinn_kernel::IntentResult;
 use jinn_kernel::common::app_state::AppState;
@@ -10,7 +12,10 @@ use jinn_kernel::session_lifecycle::intent::build_run_session_teardown;
 /// Validates that the close can proceed (UI preconditions), resolves the
 /// sidebar-selected session's ID, then delegates to
 /// [`build_run_session_teardown`] which resolves + renders the teardown command
-/// by session ID. If the session has no teardown command, this is a no-op.
+/// by session ID. If the session has no teardown command, this is a no-op. A
+/// session whose recorded lifecycle file stopped resolving pushes a visible
+/// error entry naming the file — a silent skip would leak whatever the
+/// teardown was guarding.
 ///
 /// # Panics
 ///
@@ -31,8 +36,17 @@ pub fn handle_session_teardown(
         return IntentResult::empty();
     };
 
-    let Some(msg) = build_run_session_teardown(state, &target_id, config) else {
+    let Some(outcome) = build_run_session_teardown(state, &target_id, config) else {
         return IntentResult::empty();
     };
-    IntentResult::new_message(msg)
+    match outcome {
+        Ok(msg) => IntentResult::new_message(msg),
+        Err(failure) => IntentResult::new_message(PushChatEntry {
+            session_id: target_id,
+            entry: jinn_core_types::ChatEntry::error(format!(
+                "Teardown could not be resolved: {failure}"
+            )),
+            pin: None,
+        }),
+    }
 }

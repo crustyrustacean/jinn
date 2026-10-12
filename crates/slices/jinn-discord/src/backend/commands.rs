@@ -192,31 +192,32 @@ pub async fn teardown(ctx: BotContext<'_>) -> Result<(), BotError> {
     let session_id = SessionId::from(session_id_str);
 
     // Resolve + render under a short-lived read guard so it never spans an await.
-    let Some(publish) =
-        build_teardown_publish(&data.state.read(), &session_id, &data.services.config)
-    else {
-        ctx.say("This session has no teardown command configured.")
-            .await?;
-        return Ok(());
+    let outcome = jinn_kernel::session_lifecycle::intent::build_run_session_teardown(
+        &data.state.read(),
+        &session_id,
+        &data.services.config,
+    );
+    let msg = match outcome {
+        None => {
+            ctx.say("This session has no teardown command configured.")
+                .await?;
+            return Ok(());
+        }
+        // A recorded lifecycle that cannot be resolved is named to the
+        // thread, not skipped: worktrees leak when a teardown quietly
+        // doesn't run.
+        Some(Err(failure)) => {
+            ctx.say(format!("Teardown could not be resolved: {failure}"))
+                .await?;
+            return Ok(());
+        }
+        Some(Ok(msg)) => msg,
     };
 
-    data.bridge.send(publish)?;
+    data.bridge.send(Bridge::publish_closure(msg))?;
     ctx.say(format!("Running teardown for session `{session_id}`…"))
         .await?;
     Ok(())
-}
-
-/// Resolve + render the teardown command for `session_id` and wrap it as a
-/// publish closure. Returns `None` when the session has no teardown command.
-fn build_teardown_publish(
-    state: &jinn_kernel::StateReadGuard<'_>,
-    session_id: &SessionId,
-    config: &jinn_config::ConfigLayer,
-) -> Option<jinn_kernel::BridgeClosure> {
-    let msg = jinn_kernel::session_lifecycle::intent::build_run_session_teardown(
-        state, session_id, config,
-    )?;
-    Some(Bridge::publish_closure(msg))
 }
 
 /// Archive the session bound to this thread without running teardown.

@@ -2087,6 +2087,7 @@ dependencies = [
  "parking_lot",
  "rstest",
  "serde_json",
+ "tempfile",
  "tokio",
  "trouper",
  "wherror",

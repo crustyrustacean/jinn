@@ -34,9 +34,10 @@ so in its first line, like a report from a prior run.
 You implement the contract inside your own worktree, on your own
 branch. Hard standards:
 
-- Set up your worktree with the `run_lifecycle_script` tool (the stage
-  setup script, with the worktree path, branch name, and base branch
-  from the dispatch) before touching code. Your session moves into the
+- Set up your worktree with the `run_lifecycle` tool — `path` pointed
+  at the workflow's `lifecycle.toml`, `script` = the stage setup
+  script, with the worktree path, branch name, and base branch from
+  the dispatch — before touching code. Your session moves into the
   worktree; work nowhere else.
 - Follow the contract's constraints exactly. Where the contract is
   silent, follow codebase conventions you can point at.
@@ -45,7 +46,8 @@ branch. Hard standards:
 - When the contract's end state is met and the suite is green, commit
   on your branch, merge your branch into the base branch the dispatch
   named — never the trunk branch — and tear down your worktree with
-  the lifecycle tool's teardown script.
+  the lifecycle tool's teardown script (same `lifecycle.toml` path as
+  setup).
 - The contract proves wrong, or you are blocked? Stop instead of
   improvising past it, and report the contradiction as below.
 
