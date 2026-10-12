@@ -96,7 +96,7 @@ fn attached_notice(name: &str) -> String {
 /// what it is (its identity line first, then its notice), and the session
 /// it was created under is told what it gained. The identity line is the
 /// same `ChatEntry::session_identity` entry every creation path pushes, so
-/// a restored or loaded attendant can name itself to `message_session`
+/// a restored or loaded attendant can name itself to `tell_session`
 /// exactly as a fresh session can.
 #[must_use]
 pub fn creation_messages(
@@ -395,7 +395,7 @@ mod tests {
         // Then the pushes aimed at the attendant carry the identity entry:
         // pinned Top, a system entry naming the attendant's own id, forced
         // into the LLM context — a restored attendant names itself to
-        // `message_session` exactly as a fresh session does.
+        // `tell_session` exactly as a fresh session does.
         let attendant_id = attendant.session_id().clone();
         let published = sink.published.lock().expect("sink lock");
         let identity: Vec<jinn_session_history_msg::PushChatEntry> = published

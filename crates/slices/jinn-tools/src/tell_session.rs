@@ -1,4 +1,4 @@
-//! The `message_session` tool — send a text message to another session.
+//! The `tell_session` tool — send a text message to another session.
 //!
 //! One tool, four deliveries, none of them silent:
 //!
@@ -29,22 +29,22 @@ use crate::tool_types::{ToolContext, tool_error};
 
 use super::BoxedToolFuture;
 
-/// The `message_session` tool definition.
+/// The `tell_session` tool definition.
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
-        name: "message_session".to_owned(),
+        name: "tell_session".to_owned(),
         description: "Send a text message to another session by its session id. An idle \
              attendant starts a run seeded from its template plus your message; a busy \
              attendant receives it when its current turn finishes; any other session \
              receives it as a new user turn."
             .to_owned(),
         prompt_snippet: Some(
-            "Deliver a message to a named session: `message_session` with the target \
+            "Deliver a message to a named session: `tell_session` with the target \
              session id and the text."
                 .to_owned(),
         ),
         prompt_guidelines: vec![
-            "Use `message_session` to hand work to a specific session — a stage \
+            "Use `tell_session` to hand work to a specific session — a stage \
              attendant in a workflow run, or any session whose id you know. Never guess \
              an id; use one you were given or can read."
                 .to_owned(),
@@ -67,7 +67,7 @@ pub fn definition() -> ToolDefinition {
     }
 }
 
-/// Executes `message_session`.
+/// Executes `tell_session`.
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
         let Some(message) = string_argument(&call, "message") else {
@@ -80,10 +80,10 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             return tool_error(&call, &format!("unknown session: {raw_id}"));
         };
         let Some(state) = ctx.state.clone() else {
-            return tool_error(&call, "message_session is unavailable without shared state");
+            return tool_error(&call, "tell_session is unavailable without shared state");
         };
         let Some(bus) = ctx.bus.clone() else {
-            return tool_error(&call, "message_session is unavailable without a bus");
+            return tool_error(&call, "tell_session is unavailable without a bus");
         };
 
         let outcome = {

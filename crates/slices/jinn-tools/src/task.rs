@@ -517,7 +517,7 @@ async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
 
     // The identity entry every created session opens with: a subagent can
     // name its own id in reports, so a parent (or a sibling, via
-    // `message_session`) can address it again later. Pinned Top and forced
+    // `tell_session`) can address it again later. Pinned Top and forced
     // into the LLM context by the shared constructor, same as every other
     // creation path.
     bus.publish(jinn_session_history_msg::PushChatEntry {

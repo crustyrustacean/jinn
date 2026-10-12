@@ -256,7 +256,7 @@ impl ActorSystemBuilder {
 
             // The boot session opens its transcript with the same identity
             // entry every other creation path pushes, so the session jinn
-            // starts with can name itself to `message_session` without any
+            // starts with can name itself to `tell_session` without any
             // user action. Pinned Top + forced include by the shared
             // constructor; PushChatEntry uses get_or_create on the target,
             // so ordering against SessionCwdChanged is safe.

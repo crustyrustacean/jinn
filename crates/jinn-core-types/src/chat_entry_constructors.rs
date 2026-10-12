@@ -115,7 +115,7 @@ impl ChatEntry {
     ///
     /// A system entry naming the session's own id, so an agent inside the
     /// session can answer "what is your session id" and address
-    /// `message_session` at itself or its siblings, and a human can copy
+    /// `tell_session` at itself or its siblings, and a human can copy
     /// the id out of the transcript. Forced into the LLM context: the
     /// identity must survive compaction and lead the prompt on every
     /// creation path, which is why the text lives here rather than at a
@@ -125,11 +125,8 @@ impl ChatEntry {
     /// [`PinPosition::Top`](super::chat_entry::PinPosition::Top).
     #[must_use]
     pub fn session_identity(session_id: &SessionId) -> Self {
-        Self::system(format!(
-            "This session's id is {session_id}. Address messages to this session with \
-             message_session using this id."
-        ))
-        .with_context_override(ContextOverride::ForcedInclude)
+        Self::system(format!("This session id is {session_id}."))
+            .with_context_override(ContextOverride::ForcedInclude)
     }
 
     /// Create a new error chat entry with the current timestamp.

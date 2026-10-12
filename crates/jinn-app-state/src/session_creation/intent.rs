@@ -121,7 +121,7 @@ pub fn handle_session_lifecycle_setup(
     state.frontend.scope_push(jinn_slices::FocusScope::Input);
 
     // The session's identity entry: every session can name itself, so an
-    // agent addressed by `message_session` knows its own id, and the human
+    // agent addressed by `tell_session` knows its own id, and the human
     // can copy one out of the transcript. Pinned Top and forced into the
     // LLM context, so it is always the first thing the model reads and
     // never falls out of the conversation. Built by the shared constructor

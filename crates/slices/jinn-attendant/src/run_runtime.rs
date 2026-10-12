@@ -1,6 +1,6 @@
 //! Delivering a message to an attendant as a run.
 //!
-//! The `message_session` tool in jinn-tools lands here. This module owns
+//! The `tell_session` tool in jinn-tools lands here. This module owns
 //! the *composition* of the run — what the dispatched entry says — while
 //! the tool owns the *decision* of which delivery path a target takes.
 //!

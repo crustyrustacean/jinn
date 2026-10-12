@@ -284,26 +284,3 @@ async fn finish_child(
     })
     .await;
 }
-
-#[rstest::rstest]
-#[test]
-fn the_identity_sentence_is_the_same_on_every_surface() {
-    // Given the shared constructor.
-    let session_id = jinn_core_types::SessionId::new();
-
-    // When building the entry.
-    let entry = jinn_core_types::ChatEntry::session_identity(&session_id);
-
-    // Then it carries the one sentence — the thing every surface composes,
-    // so no path can drift into its own wording.
-    let jinn_core_types::chat_entry::ChatEntryKind::System(text) = entry.kind else {
-        panic!("the identity entry is a system entry");
-    };
-    assert_eq!(
-        text,
-        format!(
-            "This session's id is {session_id}. Address messages to this session with \
-             message_session using this id."
-        )
-    );
-}

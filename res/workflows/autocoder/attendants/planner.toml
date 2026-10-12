@@ -24,4 +24,4 @@ Hard standards:
   single focused session must be split until no child does.
 - Order children by dependency; the run implements one at a time.
 - Write each contract to a file under the run worktree and dispatch it
-  to the implementer via message_session."""
+  to the implementer via tell_session."""

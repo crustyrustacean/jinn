@@ -1,4 +1,4 @@
-//! Tests for the `message_session` tool — the four delivery paths and the
+//! Tests for the `tell_session` tool — the four delivery paths and the
 //! no-silent-drop invariant.
 
 #![allow(clippy::expect_used, reason = "test code")]
@@ -16,14 +16,14 @@ use jinn_session_state::ChatSessionState;
 use jinn_session_store_msg::PersistSession;
 use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 
-use crate::message_session::{definition, execute};
+use crate::tell_session::{definition, execute};
 use crate::tool_types::ToolContext;
 
 /// Builds a tool call with the given JSON arguments.
 fn call(arguments: &str) -> ToolCall {
     ToolCall {
         id: "tc_msg_1".to_owned(),
-        name: "message_session".to_owned(),
+        name: "tell_session".to_owned(),
         arguments: arguments.to_owned(),
     }
 }
@@ -377,8 +377,8 @@ fn definition_requires_both_arguments_and_names_the_tool() {
     // Given the tool definition.
     let def = definition();
 
-    // Then it is named message_session with both parameters required.
-    assert_eq!(def.name, "message_session");
+    // Then it is named tell_session with both parameters required.
+    assert_eq!(def.name, "tell_session");
     let required = def.parameters["required"].as_array().expect("required");
     assert_eq!(required.len(), 2);
 }

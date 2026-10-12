@@ -110,7 +110,7 @@ pub fn handle_new_attendant(state: &mut AppState, config: &ConfigLayer) -> Inten
             cwd: attendant_cwd,
         })
         // The identity entry every created session opens with: the
-        // attendant can name itself to `message_session`, and the pinned
+        // attendant can name itself to `tell_session`, and the pinned
         // Top + forced-include construction means it reads it back after a
         // reload or compaction. It rides ahead of the prep-mode notice so
         // the transcript's first line is the id.

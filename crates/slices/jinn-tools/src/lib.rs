@@ -18,7 +18,7 @@ pub use jinn_tools_msg::BoxedToolFuture;
 pub mod attendant_tools;
 pub mod bash;
 pub mod capabilities;
-pub mod message_session;
+pub mod tell_session;
 
 #[cfg(test)]
 mod attendant_tools_tests;
@@ -32,8 +32,8 @@ mod load_attendant_tests;
 mod run_lifecycle_script_tests;
 
 #[cfg(test)]
-#[path = "message_session_tests.rs"]
-mod message_session_tests;
+#[path = "tell_session_tests.rs"]
+mod tell_session_tests;
 
 pub mod edit;
 pub(crate) mod file_locks;
