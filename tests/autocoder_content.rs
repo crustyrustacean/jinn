@@ -1,6 +1,6 @@
-//! Pipeline workflow content-loading checks.
+//! Autocoder workflow content-loading checks.
 //!
-//! The pipeline is data — a workflow directory plus cast TOML files.
+//! The workflow is data — a workflow directory plus cast TOML files.
 //! These tests load that content through the real production paths:
 //! [`jinn_workflows::scan_workflows`] discovers the workflow (frontmatter
 //! admission included), and the cast files deserialize through the real
@@ -8,45 +8,45 @@
 //! them. A typo in shipped content fails here, not at the owner's first
 //! run.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use toml::from_str as parse_toml;
 
-/// The repo-local pipeline workflow directory.
-fn pipeline_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".config/jinn/workflows/pipelines")
+/// The shipped autocoder workflow directory, under the repo's `res/` tree.
+fn autocoder_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("res/workflows/autocoder")
 }
 
 #[rstest::rstest]
 #[test]
-fn pipeline_workflow_admits_through_real_discovery() {
-    // Given the shipped pipeline workflow directory and its parent.
-    let parent = pipeline_dir()
+fn autocoder_workflow_admits_through_real_discovery() {
+    // Given the shipped autocoder workflow directory and its parent.
+    let parent = autocoder_dir()
         .parent()
-        .expect("pipelines has a workflows parent")
+        .expect("autocoder has a workflows parent")
         .to_path_buf();
 
     // When scanning through the real discovery path.
     let found: Vec<jinn_workflows_msg::Workflow> = jinn_workflows::scan_workflows(&parent);
 
-    // Then the pipeline admits: frontmatter present, description
+    // Then the autocoder admits: frontmatter present, description
     // non-blank, directory resolved.
-    let pipeline = found
+    let autocoder = found
         .iter()
-        .find(|w| w.dir == pipeline_dir())
-        .expect("pipelines workflow must be discovered");
-    assert_eq!(pipeline.name, "pipelines");
+        .find(|w| w.dir == autocoder_dir())
+        .expect("autocoder workflow must be discovered");
+    assert_eq!(autocoder.name, "autocoder");
     assert!(
-        pipeline.description.contains("staged attendant sessions"),
+        autocoder.description.contains("staged attendant sessions"),
         "description carries the run's shape: {}",
-        pipeline.description
+        autocoder.description
     );
 }
 
 #[rstest::rstest]
 #[test]
-fn pipeline_steps_and_flow_lines_correspond() {
+fn autocoder_steps_and_flow_lines_correspond() {
     // Given the shipped workflow.md and its steps directory.
-    let dir = pipeline_dir();
+    let dir = autocoder_dir();
     let workflow_md = std::fs::read_to_string(dir.join("workflow.md")).expect("workflow.md");
     let steps = std::fs::read_dir(dir.join("steps"))
         .expect("steps directory")
@@ -81,7 +81,7 @@ fn pipeline_steps_and_flow_lines_correspond() {
 #[test]
 fn cast_files_deserialize_through_the_saved_entry_schema() {
     // Given the shipped cast TOMLs.
-    let attendants = std::fs::read_dir(pipeline_dir().join("attendants"))
+    let attendants = std::fs::read_dir(autocoder_dir().join("attendants"))
         .expect("attendants directory")
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().is_some_and(|x| x == "toml"))
@@ -99,7 +99,7 @@ fn cast_files_deserialize_through_the_saved_entry_schema() {
         entry: Vec<jinn_preferences_config::schemas::attendant::AttendantEntryConfig>,
     }
     let mut names = Vec::new();
-    for entry in std::fs::read_dir(pipeline_dir().join("attendants")).expect("attendants") {
+    for entry in std::fs::read_dir(autocoder_dir().join("attendants")).expect("attendants") {
         let entry = entry.expect("dir entry");
         if entry.path().extension().is_some_and(|x| x != "toml") {
             continue;
@@ -137,7 +137,7 @@ fn cast_files_deserialize_through_the_saved_entry_schema() {
 fn lifecycle_snippet_deserializes_through_the_lifecycle_schema() {
     // Given the shipped lifecycle snippet.
     let text =
-        std::fs::read_to_string(pipeline_dir().join("lifecycle.toml")).expect("lifecycle.toml");
+        std::fs::read_to_string(autocoder_dir().join("lifecycle.toml")).expect("lifecycle.toml");
 
     // When deserializing its entries through the production list schema —
     // the snippet is the `[[session_lifecycle.script]]` section verbatim,
@@ -153,17 +153,17 @@ fn lifecycle_snippet_deserializes_through_the_lifecycle_schema() {
     let wrapper: Wrapper = parse_toml(&text).expect("lifecycle snippet deserializes");
     let scripts = wrapper.session_lifecycle.script;
 
-    // Then all the pipeline scripts ship, every command uses named
+    // Then all the autocoder scripts ship, every command uses named
     // placeholders only, and no script writes trunk or deletes a
     // variable path outside the trash mechanism.
     let names: Vec<&str> = scripts.iter().map(|s| s.name.as_str()).collect();
     for expected in [
-        "pipeline-fossil-root",
-        "pipeline-fossil-stage",
-        "pipeline-trash-stage",
-        "pipeline-trash-purge",
-        "pipeline-git-root",
-        "pipeline-git-stage",
+        "autocoder-fossil-root",
+        "autocoder-fossil-stage",
+        "autocoder-trash-stage",
+        "autocoder-trash-purge",
+        "autocoder-git-root",
+        "autocoder-git-stage",
     ] {
         assert!(names.contains(&expected), "missing script {expected}");
     }
@@ -176,7 +176,7 @@ fn lifecycle_snippet_deserializes_through_the_lifecycle_schema() {
 
     // The purge is un-aimable: no placeholders, and `rm` names exactly
     // one fixed path.
-    let purge = find("pipeline-trash-purge");
+    let purge = find("autocoder-trash-purge");
     let jinn_preferences_config::schemas::session_lifecycle::LifecycleCommand::Shell(purge_setup) =
         purge.setup.as_ref().expect("purge setup exists")
     else {
@@ -187,14 +187,14 @@ fn lifecycle_snippet_deserializes_through_the_lifecycle_schema() {
         "the purge carries no placeholders, so the agent cannot aim it: {purge_setup}"
     );
     assert!(
-        purge_setup.contains(".jinn-pipeline-trash"),
+        purge_setup.contains(".jinn-autocoder-trash"),
         "the purge deletes the fixed trash path: {purge_setup}"
     );
 
     // The guarded move is the only command that ever relocates a
     // variable path, and it is gated: checkout marker, repo file
     // match, and a worktrees/ prefix — with a refusal branch.
-    let trash = find("pipeline-trash-stage");
+    let trash = find("autocoder-trash-stage");
     let jinn_preferences_config::schemas::session_lifecycle::LifecycleCommand::Shell(trash_setup) =
         trash.setup.as_ref().expect("trash setup exists")
     else {
@@ -230,14 +230,14 @@ fn lifecycle_snippet_deserializes_through_the_lifecycle_schema() {
             );
             if let Some(pos) = text.find("rm ") {
                 assert!(
-                    script.name == "pipeline-trash-purge"
-                        && text[pos..].contains(".jinn-pipeline-trash"),
+                    script.name == "autocoder-trash-purge"
+                        && text[pos..].contains(".jinn-autocoder-trash"),
                     "only the purge deletes, and only the fixed trash path: {} -> {text}",
                     script.name
                 );
             }
         }
-        if script.name == "pipeline-fossil-stage" {
+        if script.name == "autocoder-fossil-stage" {
             let inert = matches!(
                 script.teardown.as_ref(),
                 Some(jinn_preferences_config::schemas::session_lifecycle::LifecycleCommand::Shell(
@@ -255,8 +255,8 @@ fn lifecycle_snippet_deserializes_through_the_lifecycle_schema() {
 #[rstest::rstest]
 #[test]
 fn stage_prompts_never_instruct_sibling_file_reads() {
-    // Given every step file in the pipeline.
-    let dir = pipeline_dir().join("steps");
+    // Given every step file in the autocoder workflow.
+    let dir = autocoder_dir().join("steps");
 
     // When reading them all.
     for entry in std::fs::read_dir(&dir).expect("steps") {

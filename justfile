@@ -266,11 +266,14 @@ install-defaults:
     cp -r res/personas/*.md ~/.config/jinn/personas/
     mkdir -p ~/.config/jinn/prompts
     cp -r res/prompts/*.md ~/.config/jinn/prompts/
+    mkdir -p ~/.config/jinn/workflows
+    cp -r res/workflows/* ~/.config/jinn/workflows/
     mkdir -p ~/.agents/skills
     cp -r res/skills/* ~/.agents/skills/
     @echo "Themes installed to ~/.config/jinn/themes/"
     @echo "Personas installed to ~/.config/jinn/personas/"
     @echo "Prompts installed to ~/.config/jinn/prompts/"
+    @echo "Workflows installed to ~/.config/jinn/workflows/"
     @echo "Skills installed to ~/.agents/skills/"
 
 # Report stale Fossil locks (hung processes + stale journal files)

@@ -258,9 +258,7 @@ async fn a_created_attendant_pushes_an_identity_entry() {
         .iter()
         .filter(|(id, _)| id.ends_with("PushChatEntry"))
         .filter_map(|(_, payload)| serde_json::from_value(payload.clone()).ok())
-        .filter(|push: &jinn_session_history_msg::PushChatEntry| {
-            push.session_id == attendant_id
-        })
+        .filter(|push: &jinn_session_history_msg::PushChatEntry| push.session_id == attendant_id)
         .collect();
     let identity = identity
         .iter()

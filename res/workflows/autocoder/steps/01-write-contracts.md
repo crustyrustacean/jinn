@@ -1,6 +1,6 @@
 Write the execution contract for a human-approved goal.
 
-You are dispatched inside the pipeline run's root worktree, on the run
+You are dispatched inside the autocoder run's root worktree, on the run
 branch. The dispatch message carries the goal verbatim and the ledger
 path.
 

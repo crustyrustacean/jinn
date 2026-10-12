@@ -1,11 +1,11 @@
 +++
-name = "pipelines"
+name = "autocoder"
 description = "Run a feature goal through staged attendant sessions: contracts, review, implementation, review, human QA, single trunk merge."
 +++
 
-# Pipelines
+# Autocoder
 
-You are the orchestrator of a pipeline run. The human gave one feature
+You are the orchestrator of an autocoder run. The human gave one feature
 goal and will interact exactly twice: approving the derived end state
 (G1) and accepting the behavior at QA (G2). Everything between is
 sessions talking to sessions.
@@ -16,9 +16,9 @@ Run in this order — the purge first, deliberately: emptying last
 run's trash is a human-started action, so the cooling-off window of
 the previous run closes here and only here.
 
-1. **Purge.** Call the lifecycle tool with `pipeline-trash-purge`
+1. **Purge.** Call the lifecycle tool with `autocoder-trash-purge`
    (setup). No arguments — the command is fixed. It deletes
-   `.jinn-pipeline-trash/`, the previous run's moved-out stage
+   `.jinn-autocoder-trash/`, the previous run's moved-out stage
    worktrees. Skip it only if the human said to keep the last run's
    trash.
 2. **Cast.** Call `load_attendant` once per TOML in this workflow's
@@ -27,13 +27,13 @@ the previous run closes here and only here.
    nothing: their config lives in these files, and edits you make to a
    loaded member are run-local by design.
 3. **Worktree.** Call the lifecycle tool with the root setup script
-   (`pipeline-fossil-root`, or the git sibling on a git checkout),
+   (`autocoder-fossil-root`, or the git sibling on a git checkout),
    passing `worktrees/<slug>` as the worktree path and the run branch
-   name (`pipeline/<slug>`). Your session moves into the root
+   name (`autocoder/<slug>`). Your session moves into the root
    worktree, on the run branch. **Trunk is now frozen for this run** —
    the only trunk write happens in step 3 of the flow on an explicit
    human OK.
-4. **Ledger.** Create `pipeline-ledger.md` in the root worktree — the
+4. **Ledger.** Create `autocoder-ledger.md` in the root worktree — the
    run's durable record, which **you alone write**. Head it with: the
    goal verbatim, origin `human (G1+G2)`, the run branch, and the cast
    members with their session ids. Add one section per stage as stages
@@ -70,12 +70,12 @@ the previous run closes here and only here.
      contract against the still-alive run branch, and return to step 2.
 4. Run-end cleanup — retire the stage worktrees.
    - For each stage worktree used this run, call the lifecycle tool
-     with `pipeline-trash-stage` (fossil; `git worktree remove` has
+     with `autocoder-trash-stage` (fossil; `git worktree remove` has
      already handled git stages at their teardown), passing the
      worktree path exactly as dispatched (`worktrees/<child-slug>`).
      The script verifies the path is an open checkout of this
      repository under `worktrees/` and **moves** it into
-     `.jinn-pipeline-trash/`; if it refuses, do not retry with a
+     `.jinn-autocoder-trash/`; if it refuses, do not retry with a
      different spelling — log the refusal in the ledger and tell the
      human. Never delete anything yourself; the trash is emptied at
      the *next* run's purge, by the human's act of starting it.
@@ -108,9 +108,9 @@ the previous run closes here and only here.
 
 ## Housekeeping
 
-- `worktrees/` and `.jinn-pipeline-trash/` must be ignored by the VCS
+- `worktrees/` and `.jinn-autocoder-trash/` must be ignored by the VCS
   (`fossil settings ignore-glob` listing `worktrees/*` and
-  `.jinn-pipeline-trash/*`, or `.git/info/exclude`). Add this once
+  `.jinn-autocoder-trash/*`, or `.git/info/exclude`). Add this once
   during the first run on a project if it is not already set, and note
   it in the ledger.
 

@@ -206,6 +206,7 @@ fn run_recovery_subcommand(cli: &jinn_cli::cli::Cli) -> Result<Option<Prepared>,
             app_paths.themes_dir(),
             app_paths.personas_dir(),
             app_paths.prompts_dir(),
+            app_paths.workflows_dir(),
             app_paths.skills_dir(),
         );
         match install_defaults_to(&destinations, *force, &config_path) {

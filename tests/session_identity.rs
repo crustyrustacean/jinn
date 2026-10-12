@@ -53,9 +53,7 @@ fn pushed_entries(result: jinn_slices::RouteResult) -> Vec<PushChatEntry> {
 fn assert_identity_entry(pushes: &[PushChatEntry], session_id: &jinn_core_types::SessionId) {
     let identity = pushes
         .iter()
-        .find(|push| {
-            push.session_id == *session_id && push.pin == Some(PinPosition::Top)
-        })
+        .find(|push| push.session_id == *session_id && push.pin == Some(PinPosition::Top))
         .unwrap_or_else(|| {
             panic!(
                 "{session_id} must receive an identity entry pinned Top; pushes: {}",

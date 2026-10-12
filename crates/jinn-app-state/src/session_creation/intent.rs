@@ -307,8 +307,8 @@ mod tests {
     )]
     use super::*;
     use crate::app_state::AppState;
-    use jinn_core_types::chat_entry::ChatEntryKind;
     use jinn_core_types::ContextOverride;
+    use jinn_core_types::chat_entry::ChatEntryKind;
     use jinn_slices::route_publish::PublishSink;
     use std::sync::Mutex;
 
@@ -1008,7 +1008,10 @@ mod tests {
             text.contains(&new_id.to_string()),
             "the entry names this session's own id: {text}"
         );
-        assert_eq!(push.entry.context_override(), ContextOverride::ForcedInclude);
+        assert_eq!(
+            push.entry.context_override(),
+            ContextOverride::ForcedInclude
+        );
     }
 
     #[rstest::rstest]

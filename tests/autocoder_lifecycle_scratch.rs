@@ -1,7 +1,9 @@
-//! Scratch-repo integration tests for the pipeline lifecycle scripts.
+//! Scratch-repo integration tests for the autocoder lifecycle scripts.
 //!
-//! The shipped `pipeline-fossil-root` and `pipeline-fossil-stage`
-//! commands are rendered through the real [`CommandTemplate`] path with
+//! The shipped `autocoder-fossil-root` and `autocoder-fossil-stage`
+//! commands are read from the shipped `res/workflows/autocoder/lifecycle.toml`
+//! — parsed through the production lifecycle schema, never copied into test
+//! constants — rendered through the real [`CommandTemplate`] path with
 //! tool-supplied arguments, then executed against a real fossil
 //! repository in a temp directory. They assert the run's trunk
 //! invariant at the level that matters — the repository itself:
@@ -21,20 +23,71 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use jinn_preferences_config::schemas::session_lifecycle::LifecycleCommand;
 use jinn_session_lifecycle_msg::CommandTemplate;
 use jinn_session_lifecycle_msg::command_template::Param;
 
-/// The shipped pipeline scripts, byte-identical to `lifecycle.toml` —
-/// these constants are what make the content test's "renders through
-/// the real path" claim true for the commands themselves.
-const ROOT_SETUP: &str = "fossil branch new <branch> trunk -R pipeline.fossil && mkdir -p worktrees && mkdir -p <dir> && cd <dir> && fossil open ../../pipeline.fossil <branch> && echo $PWD";
-const STAGE_SETUP: &str = "fossil branch new <branch> <base> -R pipeline.fossil && mkdir -p worktrees && mkdir -p <dir> && cd <dir> && fossil open ../../pipeline.fossil <branch> && echo $PWD";
-const STAGE_TEARDOWN: &str = "true";
-const TRASH_STAGE: &str = "mkdir -p .jinn-pipeline-trash && test -f <dir>/.fslckout && grep -qF 'pipeline.fossil' <dir>/.fslckout && printf '%s' <dir> | grep -q '^worktrees/' && mv <dir> .jinn-pipeline-trash/ && echo 'trashed: <dir>' || false";
-const TRASH_PURGE: &str = "rm -rf .jinn-pipeline-trash";
+/// Reads the shipped `lifecycle.toml` and returns the named script's
+/// setup command, parsed through the production schema — the same read
+/// `run_lifecycle_script` resolves entries through, so the tests can
+/// never drift from the bytes that ship.
+fn shipped_setup(name: &str) -> String {
+    let text = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("res/workflows/autocoder/lifecycle.toml"),
+    )
+    .expect("shipped lifecycle.toml reads");
+    #[derive(serde::Deserialize)]
+    struct Wrapper {
+        session_lifecycle: Section,
+    }
+    #[derive(serde::Deserialize)]
+    struct Section {
+        script: Vec<jinn_preferences_config::schemas::session_lifecycle::SessionLifecycle>,
+    }
+    let wrapper: Wrapper = toml::from_str(&text).expect("shipped lifecycle.toml deserializes");
+    let script = wrapper
+        .session_lifecycle
+        .script
+        .into_iter()
+        .find(|s| s.name == name)
+        .unwrap_or_else(|| panic!("shipped lifecycle.toml carries {name}"));
+    match script.setup.expect("setup exists") {
+        LifecycleCommand::Shell(command) => command,
+        LifecycleCommand::Builtin(id) => panic!("{name} ships a shell command, not builtin {id}"),
+    }
+}
+
+/// Reads the shipped `lifecycle.toml` and returns the named script's
+/// teardown command, through the same production-schema parse as
+/// [`shipped_setup`].
+fn shipped_teardown(name: &str) -> String {
+    let text = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("res/workflows/autocoder/lifecycle.toml"),
+    )
+    .expect("shipped lifecycle.toml reads");
+    #[derive(serde::Deserialize)]
+    struct Wrapper {
+        session_lifecycle: Section,
+    }
+    #[derive(serde::Deserialize)]
+    struct Section {
+        script: Vec<jinn_preferences_config::schemas::session_lifecycle::SessionLifecycle>,
+    }
+    let wrapper: Wrapper = toml::from_str(&text).expect("shipped lifecycle.toml deserializes");
+    let script = wrapper
+        .session_lifecycle
+        .script
+        .into_iter()
+        .find(|s| s.name == name)
+        .unwrap_or_else(|| panic!("shipped lifecycle.toml carries {name}"));
+    match script.teardown.expect("teardown exists") {
+        LifecycleCommand::Shell(command) => command,
+        LifecycleCommand::Builtin(id) => panic!("{name} ships a shell teardown, not builtin {id}"),
+    }
+}
 
 /// A scratch fossil repository with a seeded trunk and a root worktree,
-/// shaped like a pipeline run mid-flight.
+/// shaped like an autocoder run mid-flight.
 struct ScratchRepo {
     root: PathBuf,
     repo_file: PathBuf,
@@ -45,7 +98,7 @@ struct ScratchRepo {
 impl ScratchRepo {
     /// Creates the repo, seeds trunk with one check-in, forks the run
     /// branch, and opens the root worktree — the state after step 0 of
-    /// a pipeline run.
+    /// an autocoder run.
     fn new(tag: &str) -> Self {
         let root = tempfile::tempdir().expect("tempdir").into_path().join(tag);
         std::fs::create_dir_all(&root).expect("mkdir");
@@ -65,8 +118,8 @@ impl ScratchRepo {
         // The run branch: what the root script's setup produces.
         run_script(
             render(
-                ROOT_SETUP,
-                &[("dir", "worktrees/run-wt"), ("branch", "pipeline/scratch")],
+                &shipped_setup("autocoder-fossil-root"),
+                &[("dir", "worktrees/run-wt"), ("branch", "autocoder/scratch")],
             ),
             &root,
         );
@@ -162,7 +215,7 @@ fn order(template: &CommandTemplate, pairs: &BTreeMap<String, String>) -> Vec<St
 
 /// Renders a raw script against named args through the real template
 /// path — parse, order, render (which shell-quotes every value) — the
-/// exact pipeline `run_lifecycle_script` applies.
+/// exact `run_lifecycle_script` path applies.
 fn render(raw: &str, pairs: &[(&str, &str)]) -> String {
     let template = CommandTemplate::parse(raw);
     template.render(&order(&template, &args(pairs)))
@@ -210,7 +263,7 @@ fn root_setup_forks_run_branch_off_trunk_and_trunk_stands() {
     // When the root setup has run (it did, in new()).
     // Then the run branch exists, its worktree is open, and trunk's
     // leaf is exactly the seed check-in.
-    assert!(repo.branch_exists("pipeline/scratch"));
+    assert!(repo.branch_exists("autocoder/scratch"));
     assert!(repo.worktree_exists("worktrees/run-wt"));
     assert_eq!(
         repo.trunk_leaf_now(),
@@ -232,11 +285,11 @@ fn stage_lifecycle_forks_from_base_and_never_writes_trunk() {
     // deleting nothing.
     let stdout = run_script(
         render(
-            STAGE_SETUP,
+            &shipped_setup("autocoder-fossil-stage"),
             &[
                 ("dir", "worktrees/impl-wt"),
-                ("branch", "pipeline/scratch/impl"),
-                ("base", "pipeline/scratch"),
+                ("branch", "autocoder/scratch/impl"),
+                ("base", "autocoder/scratch"),
             ],
         ),
         &repo.root,
@@ -251,7 +304,7 @@ fn stage_lifecycle_forks_from_base_and_never_writes_trunk() {
     fossil(&stage_wt, &["commit", "-m", "stage work"]);
     fossil(
         &repo.root.join("worktrees/run-wt"),
-        &["merge", "pipeline/scratch/impl"],
+        &["merge", "autocoder/scratch/impl"],
     );
     fossil(
         &repo.root.join("worktrees/run-wt"),
@@ -259,7 +312,10 @@ fn stage_lifecycle_forks_from_base_and_never_writes_trunk() {
     );
 
     run_script(
-        render(STAGE_TEARDOWN, &[("dir", "worktrees/impl-wt")]),
+        render(
+            &shipped_teardown("autocoder-fossil-stage"),
+            &[("dir", "worktrees/impl-wt")],
+        ),
         &repo.root,
     );
 
@@ -272,7 +328,7 @@ fn stage_lifecycle_forks_from_base_and_never_writes_trunk() {
     );
     assert!(stage_wt.join("work.txt").is_file(), "files are kept");
     assert!(
-        repo.branch_exists("pipeline/scratch/impl"),
+        repo.branch_exists("autocoder/scratch/impl"),
         "the stage branch is kept"
     );
     assert_eq!(
@@ -289,11 +345,11 @@ fn guarded_move_accepts_a_real_stage_worktree_into_the_trash() {
     let repo = ScratchRepo::new("trash-accept");
     run_script(
         render(
-            STAGE_SETUP,
+            &shipped_setup("autocoder-fossil-stage"),
             &[
                 ("dir", "worktrees/impl-wt"),
-                ("branch", "pipeline/scratch/impl"),
-                ("base", "pipeline/scratch"),
+                ("branch", "autocoder/scratch/impl"),
+                ("base", "autocoder/scratch"),
             ],
         ),
         &repo.root,
@@ -301,7 +357,10 @@ fn guarded_move_accepts_a_real_stage_worktree_into_the_trash() {
 
     // When the run-end cleanup runs the guarded move.
     let stdout = run_script(
-        render(TRASH_STAGE, &[("dir", "worktrees/impl-wt")]),
+        render(
+            &shipped_setup("autocoder-trash-stage"),
+            &[("dir", "worktrees/impl-wt")],
+        ),
         &repo.root,
     );
 
@@ -314,12 +373,12 @@ fn guarded_move_accepts_a_real_stage_worktree_into_the_trash() {
         !repo.root.join("worktrees/impl-wt").exists(),
         "the worktree left its dispatch path"
     );
-    let trashed = repo.root.join(".jinn-pipeline-trash/impl-wt");
+    let trashed = repo.root.join(".jinn-autocoder-trash/impl-wt");
     assert!(
         trashed.join(".fslckout").is_file() && trashed.join("checkout").is_dir()
             || trashed.exists(),
         "the worktree sits in the trash, recoverable: {:?}",
-        std::fs::read_dir(repo.root.join(".jinn-pipeline-trash"))
+        std::fs::read_dir(repo.root.join(".jinn-autocoder-trash"))
             .map(|d| d.flatten().map(|e| e.path()).collect::<Vec<_>>())
     );
     assert_eq!(
@@ -348,7 +407,10 @@ fn guarded_move_refuses_paths_outside_the_run_area() {
     // When the guarded move is aimed at a non-checkout under
     // worktrees/, it must refuse — and leave everything in place.
     let failed = try_run(
-        render(TRASH_STAGE, &[("dir", "worktrees/decoy")]),
+        render(
+            &shipped_setup("autocoder-trash-stage"),
+            &[("dir", "worktrees/decoy")],
+        ),
         &repo.root,
     );
     assert!(failed.is_err(), "a directory without .fslckout is refused");
@@ -361,7 +423,13 @@ fn guarded_move_refuses_paths_outside_the_run_area() {
     // the fixture's trunk `checkout/` is exactly that — it must refuse
     // too: the prefix gate fires even though the checkout marker gate
     // would pass.
-    let escaped = try_run(render(TRASH_STAGE, &[("dir", "checkout")]), &repo.root);
+    let escaped = try_run(
+        render(
+            &shipped_setup("autocoder-trash-stage"),
+            &[("dir", "checkout")],
+        ),
+        &repo.root,
+    );
     assert!(
         escaped.is_err(),
         "a real checkout outside worktrees/ must be refused"
@@ -371,7 +439,7 @@ fn guarded_move_refuses_paths_outside_the_run_area() {
         "the refused trunk checkout is untouched"
     );
     assert!(
-        bystander.join("lib.rs").is_file() && !bystander.join(".jinn-pipeline-trash").exists(),
+        bystander.join("lib.rs").is_file() && !bystander.join(".jinn-autocoder-trash").exists(),
         "nothing outside the trash was moved or removed"
     );
     assert_eq!(
@@ -389,32 +457,38 @@ fn purge_deletes_the_fixed_trash_and_nothing_else() {
     for slug in ["a-wt", "b-wt"] {
         run_script(
             render(
-                STAGE_SETUP,
+                &shipped_setup("autocoder-fossil-stage"),
                 &[
                     ("dir", &format!("worktrees/{slug}")),
-                    ("branch", &format!("pipeline/scratch/{slug}")),
-                    ("base", "pipeline/scratch"),
+                    ("branch", &format!("autocoder/scratch/{slug}")),
+                    ("base", "autocoder/scratch"),
                 ],
             ),
             &repo.root,
         );
         run_script(
-            render(TRASH_STAGE, &[("dir", &format!("worktrees/{slug}"))]),
+            render(
+                &shipped_setup("autocoder-trash-stage"),
+                &[("dir", &format!("worktrees/{slug}"))],
+            ),
             &repo.root,
         );
     }
     let bystander = repo.root.join("worktrees/still-here");
     std::fs::create_dir_all(&bystander).expect("mkdir bystander");
     std::fs::write(bystander.join("keep.txt"), "keep\n").expect("keep file");
-    assert!(repo.root.join(".jinn-pipeline-trash").is_dir());
+    assert!(repo.root.join(".jinn-autocoder-trash").is_dir());
 
     // When the purge runs — the literal, placeholder-free command.
-    let stdout = run_script(render(TRASH_PURGE, &[]), &repo.root);
+    let stdout = run_script(
+        render(&shipped_setup("autocoder-trash-purge"), &[]),
+        &repo.root,
+    );
 
     // Then the trash is gone, everything else stands, and trunk is
     // exactly where it started.
     assert!(
-        !repo.root.join(".jinn-pipeline-trash").exists(),
+        !repo.root.join(".jinn-autocoder-trash").exists(),
         "the trash directory is removed"
     );
     assert!(
@@ -440,11 +514,11 @@ fn g2_merge_is_the_single_trunk_advance() {
     let repo = ScratchRepo::new("g2-merge");
     run_script(
         render(
-            STAGE_SETUP,
+            &shipped_setup("autocoder-fossil-stage"),
             &[
                 ("dir", "worktrees/qa-wt"),
-                ("branch", "pipeline/scratch/qa"),
-                ("base", "pipeline/scratch"),
+                ("branch", "autocoder/scratch/qa"),
+                ("base", "autocoder/scratch"),
             ],
         ),
         &repo.root,
@@ -455,7 +529,7 @@ fn g2_merge_is_the_single_trunk_advance() {
     fossil(&stage_wt, &["commit", "-m", "feature"]);
     fossil(
         &repo.root.join("worktrees/run-wt"),
-        &["merge", "pipeline/scratch/qa"],
+        &["merge", "autocoder/scratch/qa"],
     );
     fossil(
         &repo.root.join("worktrees/run-wt"),
@@ -466,7 +540,7 @@ fn g2_merge_is_the_single_trunk_advance() {
     // trunk checkout, exactly once, as the workflow's QA-acceptance
     // step prescribes.
     let checkout = repo.root.join("checkout");
-    fossil(&checkout, &["merge", "pipeline/scratch"]);
+    fossil(&checkout, &["merge", "autocoder/scratch"]);
     fossil(
         &checkout,
         &["commit", "-m", "G2: merge run branch into trunk"],

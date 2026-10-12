@@ -482,8 +482,15 @@ fn session_new_works_when_sidebar_sessions_focused() {
     );
 
     // Then a new session is created.
-    // And SessionCreated and ActiveSessionChanged are emitted.
-    assert_eq!(result.message_names.len(), 2);
+    // And the identity push, SessionCreated, and ActiveSessionChanged are
+    // emitted — the plain branch carries the identity entry too.
+    assert_eq!(result.message_names.len(), 3);
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("PushChatEntry"))
+    );
     assert!(
         result
             .message_names

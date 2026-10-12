@@ -20,10 +20,10 @@ use wherror::Error;
 
 use bundled::{Bundled, bundled_catalogue};
 
-/// Relative destinations for the four resource kinds.
+/// Relative destinations for the five resource kinds.
 ///
-/// Each field is a root directory: themes/personas/prompts live under the
-/// config dir (`~/.config/jinn`), skills live under the agent dir
+/// Each field is a root directory: themes/personas/prompts/workflows live
+/// under the config dir (`~/.config/jinn`), skills live under the agent dir
 /// (`~/.agents/skills`). Passed by value into [`install_defaults_to`] so
 /// tests can point at temp dirs.
 #[derive(Debug, Clone)]
@@ -31,17 +31,25 @@ pub struct Destinations {
     themes: PathBuf,
     personas: PathBuf,
     prompts: PathBuf,
+    workflows: PathBuf,
     skills: PathBuf,
 }
 
 impl Destinations {
-    /// Creates a destination set from the four root directories.
+    /// Creates a destination set from the five root directories.
     #[must_use]
-    pub fn new(themes: PathBuf, personas: PathBuf, prompts: PathBuf, skills: PathBuf) -> Self {
+    pub fn new(
+        themes: PathBuf,
+        personas: PathBuf,
+        prompts: PathBuf,
+        workflows: PathBuf,
+        skills: PathBuf,
+    ) -> Self {
         Self {
             themes,
             personas,
             prompts,
+            workflows,
             skills,
         }
     }
@@ -59,6 +67,12 @@ impl Destinations {
     /// The root directory prompts install into.
     pub(crate) fn prompts(&self) -> &Path {
         &self.prompts
+    }
+
+    /// The root directory workflows install into — one subdirectory per
+    /// workflow, the shape `scan_workflows` discovers.
+    pub(crate) fn workflows(&self) -> &Path {
+        &self.workflows
     }
 
     /// The root directory skills install into.
@@ -249,20 +263,22 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    /// Builds a [`Destinations`] rooted at four distinct temp dirs. The
+    /// Builds a [`Destinations`] rooted at five distinct temp dirs. The
     /// returned temps must outlive the destinations.
     fn fresh_destinations() -> (Destinations, Vec<TempDir>) {
         let themes = TempDir::new().unwrap();
         let personas = TempDir::new().unwrap();
         let prompts = TempDir::new().unwrap();
+        let workflows = TempDir::new().unwrap();
         let skills = TempDir::new().unwrap();
         let destinations = Destinations::new(
             themes.path().to_path_buf(),
             personas.path().to_path_buf(),
             prompts.path().to_path_buf(),
+            workflows.path().to_path_buf(),
             skills.path().to_path_buf(),
         );
-        let temps = vec![themes, personas, prompts, skills];
+        let temps = vec![themes, personas, prompts, workflows, skills];
         (destinations, temps)
     }
 
@@ -352,6 +368,7 @@ mod tests {
         let themes = TempDir::new().unwrap();
         let personas = TempDir::new().unwrap();
         let prompts = TempDir::new().unwrap();
+        let workflows = TempDir::new().unwrap();
         let skills = TempDir::new().unwrap();
         let prefs_dir = TempDir::new().unwrap();
         // Non-existent subdirs under each temp root.
@@ -359,6 +376,7 @@ mod tests {
             themes.path().join("themes"),
             personas.path().join("personas"),
             prompts.path().join("prompts"),
+            workflows.path().join("workflows"),
             skills.path().join("skills"),
         );
         let prefs_path = prefs_dir.path().join("nested").join("jinn.toml");
@@ -801,6 +819,7 @@ mod tests {
             ("themes", env.destinations.themes()),
             ("personas", env.destinations.personas()),
             ("prompts", env.destinations.prompts()),
+            ("workflows", env.destinations.workflows()),
             ("skills", env.destinations.skills()),
         ];
         for outcome in &report.outcomes {

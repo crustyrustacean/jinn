@@ -1,8 +1,8 @@
-# Session lifecycle scripts for pipeline runs.
+# Session lifecycle scripts for autocoder runs.
 #
 # Paste these `[[session_lifecycle.script]]` entries into your user
 # `jinn.toml` (the entries the workflow-cast stages and the orchestrator
-# resolve through `run_lifecycle_script`). They are pipeline-only: your
+# resolve through `run_lifecycle_script`). They are autocoder-only: your
 # existing interactive lifecycle entries stay untouched, and neither
 # entry ever writes trunk — the only trunk write in a run is the
 # orchestrator's G2 merge, which is a workflow step, not a script.
@@ -17,15 +17,15 @@
 #
 # Deletion policy — protected removal, two halves:
 #
-#   1. `pipeline-trash-stage` moves a checked-out, verified stage
-#      worktree into `.jinn-pipeline-trash/`. The agent-supplied path
+#   1. `autocoder-trash-stage` moves a checked-out, verified stage
+#      worktree into `.jinn-autocoder-trash/`. The agent-supplied path
 #      is quoted by the template renderer and gated twice — it must be
 #      an open checkout of this repository (`.fslckout` naming this
 #      repo file) and it must live under the run's `worktrees/` area —
 #      so a mis-recalled path is refused, and the worst case that
 #      survives both gates is a move, not a deletion. Fully
 #      recoverable by hand.
-#   2. `pipeline-trash-purge` carries no placeholders at all, so the
+#   2. `autocoder-trash-purge` carries no placeholders at all, so the
 #      tool renders it verbatim: there is no string the agent controls
 #      anywhere in it. It can be invoked; it cannot be aimed. It
 #      deletes the one fixed trash directory, and the workflow calls it
@@ -36,18 +36,18 @@
 # Fossil layout assumed: the project checkout holds its `.fslckout` and
 # the repository file named in the commands (adjust to yours).
 
-# ── Pipeline root ────────────────────────────────────────────────
+# ── Autocoder root ───────────────────────────────────────────────
 # Setup: fork the run branch off trunk and open it as a worktree inside
 # the project directory. Prints the worktree path — the session adopts
 # it as CWD. Teardown is inert: the root worktree is kept for
 # inspection; the G2 merge step (workflow.md) is what touches trunk.
 [[session_lifecycle.script]]
-name = "pipeline-fossil-root"
-description = "Fork a pipeline run branch off trunk (fossil)"
+name = "autocoder-fossil-root"
+description = "Fork an autocoder run branch off trunk (fossil)"
 setup_command = "fossil branch new <branch> trunk -R pipeline.fossil && mkdir -p worktrees && mkdir -p <dir> && cd <dir> && fossil open ../../pipeline.fossil <branch> && echo $PWD"
 teardown_command = "true"
 
-# ── Pipeline stage ───────────────────────────────────────────────
+# ── Autocoder stage ──────────────────────────────────────────────
 # Setup: fork the stage's own branch off the named base branch (the
 # run branch — or any branch the dispatch message names) and open it
 # as a worktree under the run's `worktrees/` area. Prints the worktree
@@ -58,7 +58,7 @@ teardown_command = "true"
 # Merging into the run branch is the stage's own finishing step, done
 # from the root worktree before the stage reports done.
 [[session_lifecycle.script]]
-name = "pipeline-fossil-stage"
+name = "autocoder-fossil-stage"
 description = "Fork a stage branch off a base branch (fossil)"
 setup_command = "fossil branch new <branch> <base> -R pipeline.fossil && mkdir -p worktrees && mkdir -p <dir> && cd <dir> && fossil open ../../pipeline.fossil <branch> && echo $PWD"
 teardown_command = "true"
@@ -68,29 +68,29 @@ teardown_command = "true"
 # so the session sees the outcome; teardown is inert. The <dir> value
 # is quoted by the renderer; the two gates do the real work.
 [[session_lifecycle.script]]
-name = "pipeline-trash-stage"
-description = "Move a finished stage worktree into the pipeline trash (guarded)"
-setup_command = "mkdir -p .jinn-pipeline-trash && test -f <dir>/.fslckout && grep -qF 'pipeline.fossil' <dir>/.fslckout && printf '%s' <dir> | grep -q '^worktrees/' && mv <dir> .jinn-pipeline-trash/ && echo 'trashed: <dir>' || false"
+name = "autocoder-trash-stage"
+description = "Move a finished stage worktree into the autocoder trash (guarded)"
+setup_command = "mkdir -p .jinn-autocoder-trash && test -f <dir>/.fslckout && grep -qF 'pipeline.fossil' <dir>/.fslckout && printf '%s' <dir> | grep -q '^worktrees/' && mv <dir> .jinn-autocoder-trash/ && echo 'trashed: <dir>' || false"
 teardown_command = "true"
 
 # The purge. No placeholders — rendered verbatim, un-aimable. Called
 # at the start of a run (never at its end, so the orchestrator that
 # filled the trash never empties it in the same breath).
 [[session_lifecycle.script]]
-name = "pipeline-trash-purge"
-description = "Delete the pipeline trash (last run's staged worktree copies)"
-setup_command = "rm -rf .jinn-pipeline-trash"
+name = "autocoder-trash-purge"
+description = "Delete the autocoder trash (last run's staged worktree copies)"
+setup_command = "rm -rf .jinn-autocoder-trash"
 teardown_command = "true"
 
 # ── Git siblings (secondary; same contracts) ─────────────────────
 [[session_lifecycle.script]]
-name = "pipeline-git-root"
-description = "Fork a pipeline run branch off main (git worktree)"
+name = "autocoder-git-root"
+description = "Fork an autocoder run branch off main (git worktree)"
 setup_command = "mkdir -p worktrees && git worktree add -b <branch> <dir> main && cd <dir> && echo $PWD"
 teardown_command = "true"
 
 [[session_lifecycle.script]]
-name = "pipeline-git-stage"
+name = "autocoder-git-stage"
 description = "Fork a stage branch off a base branch (git worktree)"
 setup_command = "mkdir -p worktrees && git worktree add -b <branch> <dir> <base> && cd <dir> && echo $PWD"
 teardown_command = "git worktree remove <dir>"

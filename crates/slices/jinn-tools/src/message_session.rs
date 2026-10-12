@@ -45,7 +45,7 @@ pub fn definition() -> ToolDefinition {
         ),
         prompt_guidelines: vec![
             "Use `message_session` to hand work to a specific session — a stage \
-             attendant in a pipeline, or any session whose id you know. Never guess \
+             attendant in a workflow run, or any session whose id you know. Never guess \
              an id; use one you were given or can read."
                 .to_owned(),
         ],

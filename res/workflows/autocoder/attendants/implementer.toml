@@ -1,4 +1,4 @@
-# Pipeline cast — the implementer stage's thin seed.
+# Autocoder cast — the implementer stage's thin seed.
 #
 # Precedence: the dispatch message governs the task; this seed governs
 # everything the dispatch does not mention.
@@ -7,7 +7,7 @@ name = "implementer"
 behavior = "reset"
 trigger = "manual"
 prep_mode = false
-seed_template = """You are the implementer stage of a pipeline run.
+seed_template = """You are the implementer stage of an autocoder run.
 
 You work inside your own worktree, on your own branch, from the
 execution contract the dispatch message carries. You never talk to the

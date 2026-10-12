@@ -40,6 +40,9 @@ pub(crate) enum Kind {
     Persona,
     /// A prompt template, installed to the prompts root.
     Prompt,
+    /// A workflow (one directory per workflow), installed to the workflows
+    /// root — the directory workflow discovery scans.
+    Workflow,
     /// A skill, installed to the skills root.
     Skill,
 }
@@ -51,6 +54,7 @@ impl Kind {
             Kind::Theme => "themes",
             Kind::Persona => "personas",
             Kind::Prompt => "prompts",
+            Kind::Workflow => "workflows",
             Kind::Skill => "skills",
         }
     }
@@ -61,18 +65,20 @@ impl Kind {
             Kind::Theme => destinations.themes(),
             Kind::Persona => destinations.personas(),
             Kind::Prompt => destinations.prompts(),
+            Kind::Workflow => destinations.workflows(),
             Kind::Skill => destinations.skills(),
         }
     }
 
     /// This kind's position in the install order: themes, then personas, then
-    /// prompts, then skills.
+    /// prompts, then workflows, then skills.
     const fn rank(self) -> u8 {
         match self {
             Kind::Theme => 0,
             Kind::Persona => 1,
             Kind::Prompt => 2,
-            Kind::Skill => 3,
+            Kind::Workflow => 3,
+            Kind::Skill => 4,
         }
     }
 }
@@ -182,7 +188,13 @@ fn resource(file: &'static File<'static>) -> Result<Bundled, Report<InstallError
 /// kind; neither does a file sitting directly in `res/`, which has no top-level
 /// directory to name a kind.
 fn split_kind(path: &Path) -> Result<(Kind, &Path), UnknownKind> {
-    const KINDS: [Kind; 4] = [Kind::Theme, Kind::Persona, Kind::Prompt, Kind::Skill];
+    const KINDS: [Kind; 5] = [
+        Kind::Theme,
+        Kind::Persona,
+        Kind::Prompt,
+        Kind::Workflow,
+        Kind::Skill,
+    ];
 
     KINDS
         .iter()

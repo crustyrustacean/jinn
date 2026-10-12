@@ -2,7 +2,7 @@
 //! TOML file as a child of the calling session.
 //!
 //! A workflow needs attendants that belong to the *workflow*, not to the
-//! user's jinn.toml: a pipeline's stage cast ships beside the workflow's
+//! user's jinn.toml: a run's stage cast ships beside the workflow's
 //! prompt files, and starting the workflow is what brings them alive. This
 //! tool loads one cast file, builds the attendant through the same path
 //! the saved-attendant picker uses, attaches it as a child of the loading
@@ -151,7 +151,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 /// Parses a cast file in any of the three shapes a cast file might
 /// reasonably carry: the full document shape jinn.toml uses
 /// (`[[attendant.entry]]`, which nests the array under an `attendant`
-/// table — the shape the shipped pipeline cast files and the tool's own
+/// table — the shape the shipped autocoder cast files and the tool's own
 /// description promise), the flat single-member document (`{ entry =
 /// [ ... ] }`), or one bare entry's keys. All converge on exactly one
 /// member; anything else is refused with the reason.

@@ -1,4 +1,4 @@
-# Pipeline cast — the reviewer stage's thin seed.
+# Autocoder cast — the reviewer stage's thin seed.
 #
 # Precedence: the dispatch message governs the task; this seed governs
 # everything the dispatch does not mention.
@@ -7,7 +7,7 @@ name = "reviewer"
 behavior = "reset"
 trigger = "manual"
 prep_mode = false
-seed_template = """You are the reviewer stage of a pipeline run.
+seed_template = """You are the reviewer stage of an autocoder run.
 
 You judge an implementation against the contract the dispatch message
 carries. You read the diff and run the verification the contract names;
