@@ -171,8 +171,7 @@ impl SessionLifecycleActor {
             jinn_preferences_config::schemas::LifecycleCommand,
             jinn_kernel::session_lifecycle::intent::TeardownFailure,
         >,
-    >
-    {
+    > {
         let (name, source) = {
             let state = self.state.read();
             let session = state.session.get(session_id)?;

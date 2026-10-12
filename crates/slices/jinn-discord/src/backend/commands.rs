@@ -192,12 +192,11 @@ pub async fn teardown(ctx: BotContext<'_>) -> Result<(), BotError> {
     let session_id = SessionId::from(session_id_str);
 
     // Resolve + render under a short-lived read guard so it never spans an await.
-    let outcome =
-        jinn_kernel::session_lifecycle::intent::build_run_session_teardown(
-            &data.state.read(),
-            &session_id,
-            &data.services.config,
-        );
+    let outcome = jinn_kernel::session_lifecycle::intent::build_run_session_teardown(
+        &data.state.read(),
+        &session_id,
+        &data.services.config,
+    );
     let msg = match outcome {
         None => {
             ctx.say("This session has no teardown command configured.")

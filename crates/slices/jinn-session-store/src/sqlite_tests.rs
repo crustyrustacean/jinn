@@ -1401,7 +1401,10 @@ async fn sessions_without_a_lifecycle_source_persist_without_the_key() {
 }
 
 /// Reads one session's raw metadata blob out of the store's table.
-async fn raw_metadata_blob(store: &crate::sqlite::SqliteSessionStore, session_id: &SessionId) -> String {
+async fn raw_metadata_blob(
+    store: &crate::sqlite::SqliteSessionStore,
+    session_id: &SessionId,
+) -> String {
     let id = session_id.to_string();
     store
         .pool()

@@ -287,7 +287,10 @@ impl std::fmt::Display for TeardownFailure {
                 write!(f, "{source}: no lifecycle script named \"{name}\"")
             }
             TeardownFailure::NoTeardown { source, name } => {
-                write!(f, "{source}: lifecycle script \"{name}\" defines no teardown command")
+                write!(
+                    f,
+                    "{source}: lifecycle script \"{name}\" defines no teardown command"
+                )
             }
         }
     }
@@ -327,7 +330,11 @@ pub fn lifecycle_command_for(
     match source {
         Some(path) => {
             let text = std::fs::read_to_string(path).ok()?;
-            let scripts = jinn_preferences_config::schemas::session_lifecycle::parse_lifecycle_document(&text).ok()?;
+            let scripts =
+                jinn_preferences_config::schemas::session_lifecycle::parse_lifecycle_document(
+                    &text,
+                )
+                .ok()?;
             scripts
                 .iter()
                 .find(|lifecycle| lifecycle.name == name)?
@@ -1178,7 +1185,9 @@ mod tests {
         let msg = build_run_session_teardown(&state, &session_id, &config);
 
         // Then a rendered RunSessionTeardown is returned.
-        let msg = msg.expect("teardown command should be built").expect("resolves");
+        let msg = msg
+            .expect("teardown command should be built")
+            .expect("resolves");
         assert_eq!(msg.session_id, session_id);
         assert_eq!(msg.command, "cleanup.sh my-branch");
         assert_eq!(msg.args, vec!["my-branch".to_owned()]);
@@ -1232,7 +1241,9 @@ mod tests {
         let msg = build_run_session_teardown(&state, &session_id, &config);
 
         // Then the $1 positional is rendered with the stored arg.
-        let msg = msg.expect("teardown command should be built").expect("resolves");
+        let msg = msg
+            .expect("teardown command should be built")
+            .expect("resolves");
         assert_eq!(msg.command, "cleanup.sh feature-x");
     }
 
@@ -1257,11 +1268,8 @@ mod tests {
             .set_lifecycle_source(Some(path.display().to_string()));
 
         // When building the teardown command against an empty config.
-        let msg = build_run_session_teardown(
-            &state,
-            &session_id,
-            jinn_config::empty_config_layer(),
-        );
+        let msg =
+            build_run_session_teardown(&state, &session_id, jinn_config::empty_config_layer());
 
         // Then the command re-renders from the file's entry, replaying the
         // stored args.
@@ -1283,18 +1291,17 @@ mod tests {
             .set_lifecycle_source(Some("/gone/workflow/lifecycle.toml".to_owned()));
 
         // When building the teardown command.
-        let outcome = build_run_session_teardown(
-            &state,
-            &session_id,
-            jinn_config::empty_config_layer(),
-        );
+        let outcome =
+            build_run_session_teardown(&state, &session_id, jinn_config::empty_config_layer());
 
         // Then the failure is visible and names the file — not the silent
         // skip `None` produces, which would leak the session's worktree.
         let outcome = outcome.expect("a recorded lifecycle is not a skip");
         let failure = outcome.expect_err("the file is gone");
         assert!(
-            failure.to_string().contains("/gone/workflow/lifecycle.toml"),
+            failure
+                .to_string()
+                .contains("/gone/workflow/lifecycle.toml"),
             "{failure}"
         );
     }
@@ -1316,11 +1323,8 @@ mod tests {
             .set_lifecycle_source(Some(path.display().to_string()));
 
         // When building the teardown command.
-        let outcome = build_run_session_teardown(
-            &state,
-            &session_id,
-            jinn_config::empty_config_layer(),
-        );
+        let outcome =
+            build_run_session_teardown(&state, &session_id, jinn_config::empty_config_layer());
 
         // Then the failure names both the file and the entry.
         let failure = outcome

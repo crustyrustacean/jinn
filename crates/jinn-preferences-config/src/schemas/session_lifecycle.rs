@@ -222,11 +222,7 @@ pub fn parse_lifecycle_document(text: &str) -> Result<Vec<SessionLifecycle>, Str
 
 #[cfg(test)]
 mod parse_lifecycle_document_tests {
-    #![allow(
-        clippy::expect_used,
-        clippy::panic,
-        reason = "test code"
-    )]
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
     use super::*;
 
     #[rstest::rstest]
@@ -241,7 +237,7 @@ mod parse_lifecycle_document_tests {
 
         // Then the one entry comes across whole.
         assert_eq!(scripts.len(), 1);
-        assert_eq!(scripts[0].name, "stage");
+        assert_eq!(scripts.first().expect("one entry").name, "stage");
     }
 
     #[rstest::rstest]
@@ -256,7 +252,7 @@ mod parse_lifecycle_document_tests {
 
         // Then the entry comes across.
         assert_eq!(scripts.len(), 1);
-        assert_eq!(scripts[0].name, "solo");
+        assert_eq!(scripts.first().expect("one entry").name, "solo");
     }
 
     #[rstest::rstest]

@@ -292,8 +292,7 @@ fn resolve_from_config(
                 .join(", ")
         ));
     };
-    half_of(script, script_name, action, kind)
-        .map(|raw| (raw.to_owned(), None))
+    half_of(script, script_name, action, kind).map(|raw| (raw.to_owned(), None))
 }
 
 /// Resolves the script's raw command from the file at `path`, resolved
