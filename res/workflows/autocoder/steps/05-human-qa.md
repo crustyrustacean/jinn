@@ -25,9 +25,9 @@ and in your message to the human:
   ledger and root worktree in place. The run is complete.
 - The human reports a defect (toss-back) → log it in the ledger under
   `## QA toss-back`, write a fix-cycle contract against the **still
-  alive** run branch, and re-enter the implementer. The run branch was
-  never deleted; a fix cycle is stage 3 again with the new contract.
-  Repeat this gate on every toss-back.
+  alive** run branch, and re-enter the implementer via step 3. The run
+  branch was never deleted; a fix cycle is implementation again with
+  the new contract. Repeat this gate on every toss-back.
 
 Never merge to trunk without the human's explicit OK, and never merge
 anything but the run branch.

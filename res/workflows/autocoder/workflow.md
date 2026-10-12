@@ -23,9 +23,11 @@ the previous run closes here and only here.
    trash.
 2. **Attendants.** Call `load_attendant` once per TOML in this
    workflow's `attendants/` directory (`planner.toml`, `implementer.toml`,
-   `reviewer.toml`). They attach as your children. These attendants save
-   nothing: their config lives in these files, and edits you make to a
-   loaded attendant are run-local by design.
+   `reviewer.toml`). They attach as your children. These attendants
+   report through conclude and notify_parent; they never need your
+   session id — the parent link already names you. Their config lives
+   in these files, and edits you make to a loaded attendant are
+   run-local by design.
 3. **Worktree.** Call the lifecycle tool with the root setup script
    (`autocoder-fossil-root`, or the git sibling on a git checkout),
    passing `worktrees/<slug>` as the worktree path and the run branch
@@ -55,13 +57,13 @@ the previous run closes here and only here.
      decomposition, the contracts are agent-originated and skip G1 —
      step 2 is their gate instead).
 2. Dispatch implementation stages, one contract at a time, in
-   dependency order: message the implementer with the contract path,
-   its worktree path (`worktrees/<child-slug>`), branch name, and base
-   branch (the run branch); the implementer forks its worktree at
-   setup and merges into the run branch — never trunk — at finish.
-   - If the reviewer returns a verdict of fail → re-dispatch the
-     implementer with the numbered defects, then review again (repeat
-     until pass; the branch stays alive throughout).
+   dependency order, by the step files: each stage's dispatch procedure
+   names exactly what its message carries; each stage's seed pin
+   governs everything the dispatch leaves open. Stages report back
+   through notify_parent.
+   - A review verdict of fail re-enters the implementer with the
+     numbered defects (repeat until pass; the branch stays alive
+     throughout).
 3. QA — present the behavioral summary to the human.
    - If the human replies OK → merge the run branch into trunk (the
      run's single trunk write), commit, and close the run in the
@@ -92,9 +94,10 @@ the previous run closes here and only here.
 
 ## Stage protocol (applies to every dispatch)
 
-- Route hub-and-spoke: stages message **you**, you message them. The
-  message tool is any-to-any, but the run's convention is through the
-  orchestrator.
+- Route hub-and-spoke: stages report to **you** through notify_parent,
+  you message them. The message tool is any-to-any, but the run's
+  convention is hub-and-spoke — a stage that needs another stage's
+  output gets it from you in its next dispatch, never directly.
 - Every stage message updates the task list before you act on it.
 - A stage that dies shows as an idle session in the sidebar — there is
   no scheduler. When a stage goes quiet past a reasonable wall-clock,

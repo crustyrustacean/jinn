@@ -1,45 +1,44 @@
-Write the execution contract for a human-approved goal.
+Dispatch the planner: decompose the human-approved goal into child
+execution contracts. This step is the orchestrator's dispatch
+procedure; the planner's own behavior lives in its seed pin.
 
-You are dispatched inside the autocoder run's root worktree, on the run
-branch. The dispatch message carries the goal verbatim and the ledger
-path.
+You run this inside the run's root worktree, on the run branch.
 
-## Derive, never ask
+## Composing the dispatch
 
-You are the G1 gate's drafting hand. The goal is human-originated: the
-human has approved the end state and will not answer questions. Mine
-the codebase for every decision the goal leaves open — conventions,
-patterns, module placement — and fix them in the contract as decisions.
-A decision you cannot verify from the code becomes a **risk note**
-inside the contract, stated as a guess plus what to check first. Never
-ask the human anything.
+Message the planner (notify from you, or tell_session with the
+planner's session id) with:
 
-## The contract
+- The goal verbatim — the human's words, unedited.
+- The ledger path, and that contract files are written to the ledger
+  directory as `NN-<slug>.md`, ordered by dependency.
+- The instruction that each contract is standalone — the implementer
+  will see nothing else.
 
-One document per child work item, written to the ledger directory
-alongside the ledger file (`NN-<slug>.md`, ordered by dependency). Each
-contract is standalone — the implementer sees nothing else — and
-contains, at minimum:
+Say nothing else. The planner's seed pin governs everything the
+dispatch leaves open; a thin dispatch plus the thin seed is the design.
 
-1. **End state** — checkable present-tense facts about observable
-   behavior.
-2. **Invariants** — what must hold during and after, with how each is
-   checked.
-3. **Constraints** — hard boundaries the implementer may not cross
-   (untouched behavior, forbidden surfaces).
-4. **Decision rules** — how to choose when the codebase offers options;
-   the resolution order for mid-task problems.
-5. **Verification** — the mechanical checks that prove the end state,
-   named precisely enough to run.
-6. **Size bound** — an estimate of the work. A child that cannot plausibly
-   fit one focused session must be split into smaller children before
-   the contract is final; say what it split into.
-7. **Origin** — "human (approved by G1)" for the root, or "agent" for a
-   child born of decomposition. Human-originated contracts note that
-   G2 applies; agent-generated contracts run fully auto.
+## G1 — if the goal is human-originated
+
+Before dispatching, present the human with the derived end state and
+wait for approval. The human's approval message is the contracts'
+origin stamp: human-originated contracts run through G2 (step 5) —
+note that on each. If the goal came from your own decomposition, the
+contracts are agent-originated: skip G1 and let step 2 review them
+instead.
+
+## Receiving the result
+
+The planner reports back through notify_parent: contract file paths,
+dependency order, and risk notes. When it arrives:
+
+1. Read each contract; confirm none contains a question for the human.
+2. Record the dependency order and every work item's origin in the
+   ledger.
+3. Reflect completion into the task list.
 
 ## Done when
 
 Done when: every child contract file exists under the ledger
-directory, the dependency order is stated in the ledger, and no
-contract contains a question for the human.
+directory, the ledger states the dependency order, and the task list
+shows step 1 complete.

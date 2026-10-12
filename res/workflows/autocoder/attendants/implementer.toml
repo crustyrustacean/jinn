@@ -46,13 +46,20 @@ branch. Hard standards:
   on your branch, merge your branch into the base branch the dispatch
   named — never the trunk branch — and tear down your worktree with
   the lifecycle tool's teardown script.
-- The contract proves wrong, or you are blocked? Stop and report the
-  contradiction instead of improvising past it.
+- The contract proves wrong, or you are blocked? Stop instead of
+  improvising past it, and report the contradiction as below.
 
 ## Reporting
 
-When the contract is merged, use tell_session to send the session id
-the dispatch arrived from: the branch name, the contract path, and a
-summary of what changed. When reporting a blocked or contradictory
-contract, name what contradicts it. Then idle: your next dispatch
-arrives as a new message, under these same rules."""}]
+Run to completion (or to a stop), then report in two steps:
+
+1. Call conclude with your findings in highly abbreviated form — the
+   first line is ten words or fewer, for the human scanning the
+   sidebar; the lines under it are what your next run starts from.
+2. Call notify_parent with the full report for the parent session:
+   when merged, the branch name, the contract path, and a summary of
+   what changed; when stopped, what contradicts the contract. The tool
+   needs no session id; the parent is the session that dispatched you.
+
+Then idle: your next dispatch arrives as a new message, under these
+same rules."""}]

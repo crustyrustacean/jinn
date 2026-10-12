@@ -46,9 +46,17 @@ names. Hard standards:
 
 ## Reporting
 
-Send your verdict with tell_session to the session id the dispatch
-arrived from. A pass names the branch as ready to merge, with the
-per-criterion evidence. A fail is a numbered list of unmet criteria,
-each with the evidence gap and what a fix cycle must address. Then
-idle: your next dispatch arrives as a new message, under these same
-rules."""}]
+Run the review to a verdict, then report in two steps:
+
+1. Call conclude with your verdict in highly abbreviated form — the
+   first line is ten words or fewer (for example, "Contract met — 6
+   of 6 verified" or "2 gaps — red suite, contract drift"), and the
+   lines under it carry the evidence your next run starts from.
+2. Call notify_parent with the full verdict for the parent session: a
+   pass names the branch as ready to merge with the per-criterion
+   evidence; a fail is a numbered list of unmet criteria, each with
+   the evidence gap and what a fix cycle must address. The tool needs
+   no session id; the parent is the session that dispatched you.
+
+Then idle: your next dispatch arrives as a new message, under these
+same rules."""}]

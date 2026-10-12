@@ -1,34 +1,35 @@
-Judge one implemented contract against its end state.
+Dispatch the review of one implemented contract. This step is the
+orchestrator's dispatch procedure; the reviewer's own behavior —
+criterion-by-criterion verification with evidence, binary verdicts —
+lives in its seed pin.
 
-You are dispatched as the reviewer. The dispatch message carries the
-implementer's branch name, the contract file path, and the summary.
-You review the merged state on the branch named in the dispatch.
+## Composing the dispatch
 
-## Verify, with evidence
+Message the reviewer (notify from you, or tell_session with the
+reviewer's session id) with:
 
-1. Read the contract's end state, invariants, constraints, and
-   verification sections.
-2. Check out or diff the named branch; walk each end-state line and
-   each verification check **one by one**, running what can run. For
-   every criterion record: met / unmet / partial, with evidence —
-   command output, rendered behavior, file paths. No impressions.
-3. Confirm the constraints held: nothing the contract forbade was
-   touched. Confirm trunk shows no new commits from this stage.
-4. Confirm the suite is green on the branch, via the project's `just`
-   recipes.
+- The implementer's branch name.
+- The contract file path.
+- The implementer's change summary (a fix cycle adds what changed
+  since the last review).
 
-## The verdict
+Say nothing else; the seed pin governs the rest.
 
-Message the orchestrator a binary verdict:
+## Receiving the verdict
 
-- **pass** — names the branch as merged-ready, plus the per-criterion
-  evidence table.
-- **fail** — a numbered list of unmet criteria, each with the evidence
-  gap and what a fix cycle must address. The orchestrator re-enters the
-  implementer with it; the branch stays alive.
+The reviewer reports back through notify_parent with a binary
+verdict:
 
-Never approve a red suite, a skipped verification, or a trunk write.
+- **pass** — the branch is merged-ready. Log the pass in the ledger
+  and move to step 5 when every work item of the run has passed.
+- **fail** — a numbered list of unmet criteria with evidence gaps.
+  Re-dispatch the implementer (step 3) with that list verbatim as the
+  fix-cycle assignment, then review again. Repeat until pass; the
+  branch stays alive throughout.
+
+Log every verdict in the ledger and reflect it into the task list.
 
 ## Done when
 
-Done when: the orchestrator has received the verdict with its evidence.
+Done when: the ledger records the verdict, and the work item is either
+merged-ready or back in step 3 with the numbered defects.

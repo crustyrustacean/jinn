@@ -1,36 +1,33 @@
-Review the planner's execution contracts before any code is written.
+Dispatch the contract review for one agent-generated child — the gate
+that stands in for the human the child never meets. This step is the
+orchestrator's dispatch procedure; the reviewer's own behavior lives
+in its seed pin.
 
-You are the plan-review gate for one agent-generated child. The
-dispatch message carries the contract file path and the branch it will
-be implemented on. Agent children never see a human: this review is
-their gate.
+## Composing the dispatch
 
-## Check the contract
+Message the reviewer (notify from you, or tell_session with the
+reviewer's session id) with:
 
-Read the contract, then check, in order:
+- The contract file path.
+- The branch the child will be implemented on.
+- That this is a plan review, before any code exists.
 
-1. **End state is checkable** — every line is a present-tense fact a
-   verifier could confirm without reading the diff. Rewrite vague lines
-   by proposing precise replacements in your review.
-2. **Verification actually verifies** — the named checks would fail if
-   the end state were not met. Run any check that can run cheaply
-   against the current tree to confirm it is well-formed.
-3. **Invariants name their checks** — each invariant says how it holds
-   or how it is tested.
-4. **Size bound is honest** — the scope fits one focused session. If
-   not, say it must be split and name the split.
-5. **Risk notes are checkable first** — each unverifiable guess names
-   what to check before building on it.
+Say nothing else; the seed pin governs the rest.
 
-## The verdict
+## Receiving the verdict
 
-Write the review to the reviewer's message back to the orchestrator:
-binary verdict — `contract approved`, or `contract returned` with a
-numbered list of defects, each naming the contract section and the fix.
-Never approve a contract whose verification cannot fail.
+The reviewer reports back through notify_parent with a binary
+verdict:
+
+- `contract approved` → proceed to step 3 with this contract.
+- `contract returned`, with a numbered defect list → return the list
+  to the planner via notify_parent and re-run step 1 for that
+  contract. Never implement against a returned contract.
+
+Log the verdict in the ledger and reflect it into the task list.
 
 ## Done when
 
-Done when: the orchestrator has received either `contract approved`
-for the contract as written, or `contract returned` with numbered
-defects.
+Done when: the ledger records either `contract approved` for the
+contract as written, or `contract returned` with the defects routed
+back to the planner.
