@@ -1,4 +1,4 @@
-//! One-shot completion listener for the `run_lifecycle_script` tool.
+//! One-shot completion listener for the `run_lifecycle` tool.
 //!
 //! Bridges `SessionSetupCompleted` / `SessionTeardownFinished` bus traffic
 //! to the awaiting tool future through a oneshot channel, keyed on the

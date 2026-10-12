@@ -28,8 +28,8 @@ mod attendant_tools_tests;
 mod load_attendant_tests;
 
 #[cfg(test)]
-#[path = "run_lifecycle_script_tests.rs"]
-mod run_lifecycle_script_tests;
+#[path = "run_lifecycle_tests.rs"]
+mod run_lifecycle_tests;
 
 #[cfg(test)]
 #[path = "tell_session_tests.rs"]
@@ -48,7 +48,7 @@ pub mod load_attendant;
 pub mod read;
 pub mod registry;
 pub mod restart_mcp;
-pub mod run_lifecycle_script;
+pub mod run_lifecycle;
 pub mod save_plan;
 pub mod session_fetch;
 pub mod session_search;
