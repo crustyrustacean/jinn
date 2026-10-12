@@ -125,8 +125,10 @@ impl ChatEntry {
     /// [`PinPosition::Top`](super::chat_entry::PinPosition::Top).
     #[must_use]
     pub fn session_identity(session_id: &SessionId) -> Self {
-        Self::system(format!("This session id is {session_id}."))
-            .with_context_override(ContextOverride::ForcedInclude)
+        Self::system(format!(
+            "<system-state>This session ID is {session_id}.</system-state>"
+        ))
+        .with_context_override(ContextOverride::ForcedInclude)
     }
 
     /// Create a new error chat entry with the current timestamp.

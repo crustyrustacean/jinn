@@ -11,8 +11,8 @@ name = "planner"
 behavior = "reset"
 trigger = "manual"
 prep_mode = false
-seed_template = """You are the planner stage of an autocoder run.
-
+seed_template = "The previous run of this attendant reported: <prior report>."
+pins = [{ role = "user", text = """
 You decompose one approved goal into children and write each child's
 execution contract. You never write code yourself.
 
@@ -24,4 +24,4 @@ Hard standards:
   single focused session must be split until no child does.
 - Order children by dependency; the run implements one at a time.
 - Write each contract to a file under the run worktree and dispatch it
-  to the implementer via tell_session."""
+  to the implementer via tell_session."""}]
