@@ -16,23 +16,25 @@ Run in this order — the purge first, deliberately: emptying last
 run's trash is a human-started action, so the cooling-off window of
 the previous run closes here and only here.
 
-1. **Purge.** Call the lifecycle tool with `autocoder-trash-purge`
-   (setup). No arguments — the command is fixed. It deletes
-   `.jinn-autocoder-trash/`, the previous run's moved-out stage
-   worktrees. Skip it only if the human said to keep the last run's
-   trash.
+1. **Purge.** Call the lifecycle tool (`run_lifecycle`) with `path`
+   set to this workflow's `lifecycle.toml`, `script` set to
+   `autocoder-trash-purge`, action setup. No arguments — the command
+   is fixed. It deletes `.jinn-autocoder-trash/`, the previous run's
+   moved-out stage worktrees. Skip it only if the human said to keep
+   the last run's trash.
 2. **Attendants.** Call `load_attendant` once per TOML in this
    workflow's `attendants/` directory (`planner.toml`, `implementer.toml`,
    `reviewer.toml`). They attach as your children. These attendants save
    nothing: their config lives in these files, and edits you make to a
    loaded attendant are run-local by design.
-3. **Worktree.** Call the lifecycle tool with the root setup script
-   (`autocoder-fossil-root`, or the git sibling on a git checkout),
-   passing `worktrees/<slug>` as the worktree path and the run branch
-   name (`autocoder/<slug>`). Your session moves into the root
-   worktree, on the run branch. **Trunk is now frozen for this run** —
-   the only trunk write happens in step 3 of the flow on an explicit
-   human OK.
+3. **Worktree.** Call the lifecycle tool (`run_lifecycle`) with `path`
+   set to this workflow's `lifecycle.toml` and the root setup script
+   (`autocoder-fossil-root`, or the git sibling on a git checkout) as
+   `script`, passing `worktrees/<slug>` as the worktree path and the
+   run branch name (`autocoder/<slug>`). Your session moves into the
+   root worktree, on the run branch. **Trunk is now frozen for this
+   run** — the only trunk write happens in step 3 of the flow on an
+   explicit human OK.
 4. **Ledger.** Create `autocoder-ledger.md` in the root worktree — the
    run's durable record, which **you alone write**. Head it with: the
    goal verbatim, origin `human (G1+G2)`, the run branch, and the
@@ -70,7 +72,8 @@ the previous run closes here and only here.
      contract against the still-alive run branch, and return to step 2.
 4. Run-end cleanup — retire the stage worktrees.
    - For each stage worktree used this run, call the lifecycle tool
-     with `autocoder-trash-stage` (fossil; `git worktree remove` has
+     (`run_lifecycle`, `path` = this workflow's `lifecycle.toml`) with
+     `autocoder-trash-stage` (fossil; `git worktree remove` has
      already handled git stages at their teardown), passing the
      worktree path exactly as dispatched (`worktrees/<child-slug>`).
      The script verifies the path is an open checkout of this

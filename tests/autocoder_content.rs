@@ -282,3 +282,54 @@ fn stage_prompts_never_instruct_sibling_file_reads() {
         }
     }
 }
+
+#[rstest::rstest]
+#[test]
+fn lifecycle_prose_loads_by_path_and_never_by_paste() {
+    // Given every shipped autocoder prompt file that names the lifecycle
+    // tool: workflow.md, the stage step, and the implementer attendant.
+    let dir = autocoder_dir();
+    let prose_files = [
+        dir.join("workflow.md"),
+        dir.join("steps/03-implement.md"),
+        dir.join("attendants/implementer.toml"),
+    ];
+
+    // When reading them all.
+    for path in &prose_files {
+        let text = std::fs::read_to_string(path).expect("prose file");
+
+        // Then the path form is present — the tool is called by its wire
+        // name with the workflow's own lifecycle.toml as the source — and
+        // no paste instruction or old tool name survives anywhere in the
+        // workflow's content.
+        assert!(
+            text.contains("run_lifecycle"),
+            "{} names the lifecycle tool by its wire name",
+            path.display()
+        );
+        assert!(
+            text.contains("lifecycle.toml"),
+            "{} points at the workflow's lifecycle.toml",
+            path.display()
+        );
+        assert!(
+            !text.contains("run_lifecycle_script"),
+            "{} must not carry the retired tool name",
+            path.display()
+        );
+        assert!(
+            !text.to_lowercase().contains("paste"),
+            "{} must not instruct pasting scripts into jinn.toml",
+            path.display()
+        );
+    }
+
+    // And the lifecycle.toml header documents path loading, not pasting.
+    let header = std::fs::read_to_string(dir.join("lifecycle.toml")).expect("lifecycle.toml");
+    assert!(
+        header.contains("loaded by path"),
+        "the header documents path loading: {}",
+        header.lines().take(10).collect::<Vec<_>>().join("\n")
+    );
+}

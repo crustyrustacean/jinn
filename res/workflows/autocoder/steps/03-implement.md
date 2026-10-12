@@ -7,9 +7,11 @@ first, end to end.
 
 ## Setup
 
-1. Run the lifecycle tool with the stage setup script, passing your
-   worktree path, branch name, and the base branch from the dispatch.
-   Your session moves into the worktree. Work nowhere else.
+1. Run the lifecycle tool (`run_lifecycle`) with `path` set to the
+   workflow's `lifecycle.toml`, `script` set to the stage setup script
+   (`autocoder-fossil-stage`), passing your worktree path, branch
+   name, and the base branch from the dispatch. Your session moves
+   into the worktree. Work nowhere else.
 2. Read the contract. If any part of it is wrong about the codebase,
    stop and message the orchestrator with the contradiction — do not
    improvise past a broken contract.
@@ -28,7 +30,8 @@ order. Build through the project's `just` recipes; iterate with
 3. From inside your worktree, merge your branch into the base branch
    the dispatch named. **Never trunk** — trunk is written once per run,
    by the orchestrator at QA acceptance.
-4. Run the lifecycle tool with the stage teardown script to close your
+4. Run the lifecycle tool with `script` set to the stage teardown
+   script (same `lifecycle.toml` path as setup) to close your
    checkout and remove the worktree.
 5. Message the reviewer: your branch name, the contract path, and a
    summary of what changed. A fix cycle adds what changed since the
