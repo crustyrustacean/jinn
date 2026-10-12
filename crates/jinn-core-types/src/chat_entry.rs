@@ -306,11 +306,13 @@ pub enum ChatEntryKind {
     },
     /// A message one session sent another, shown in the target's transcript.
     ///
-    /// Display-only by default (like `Actor`): the model-visible copy of the
-    /// message is the delivery entry it arrived as — a seeded run or a user
-    /// turn — so including this kind in context would show the model its
-    /// own inbound mail twice. The identity fields are the point: a log
-    /// that shows who was talking to whom.
+    /// Equivalent to a user message everywhere except rendering: the text is
+    /// self-describing (the sender bakes the
+    /// `[Message from session <id> (<title>)]: ` prefix into it at send
+    /// time), so it enters LLM context as a user turn, is indexed, and is
+    /// summarized like any user entry. The identity fields
+    /// are kept for provenance; the transcript is the only consumer that
+    /// renders the kind differently.
     Intersession {
         /// The session the message came from.
         source_session: crate::session_id::SessionId,
@@ -835,7 +837,7 @@ impl ChatEntryKind {
     /// (before considering pin or user override).
     ///
     /// Kinds included by default: User, Assistant, ToolCall, ToolResult,
-    /// Compaction, RuleInterrupt.
+    /// Compaction, RuleInterrupt, Intersession.
     ///
     /// Kinds excluded by default: Error, Thinking, Transient, System, Actor,
     /// Annotation.
@@ -849,6 +851,7 @@ impl ChatEntryKind {
                 | ChatEntryKind::ToolResult { .. }
                 | ChatEntryKind::Compaction { .. }
                 | ChatEntryKind::RuleInterrupt { .. }
+                | ChatEntryKind::Intersession { .. }
         )
     }
 }
@@ -1074,7 +1077,7 @@ mod intersession_tests {
 
     #[rstest::rstest]
     #[test]
-    fn intersession_is_excluded_from_default_context() {
+    fn intersession_is_included_in_default_context() {
         // Given an inter-session entry.
         let entry = ChatEntry::intersession(
             crate::session_id::SessionId::new(),
@@ -1083,10 +1086,10 @@ mod intersession_tests {
             "hello",
         );
 
-        // Then it is display-only by default, and contributes no prompt
-        // text: the delivery entry carries the model-visible copy.
-        assert!(!entry.kind.is_included_by_default());
-        assert_eq!(entry.prompt_text(), None);
+        // Then it is user-equivalent by default, and its prompt text is the
+        // message itself (the sender bakes the attribution prefix in).
+        assert!(entry.kind.is_included_by_default());
+        assert_eq!(entry.prompt_text(), Some("hello"));
     }
 
     #[rstest::rstest]

@@ -91,9 +91,11 @@ pub fn estimate_entry_content_tokens(estimator: &dyn TokenEstimator, entry: &Cha
         ChatEntryKind::Thinking(text) => estimator.estimate(&format!("[Thinking] {text}")),
         // Transient entries produce LlmMessage::User with [Transient] prefix when in context.
         ChatEntryKind::Transient(text) => estimator.estimate(&format!("[Transient] {text}")),
-        // Annotations and inter-session messages are display-only and
-        // excluded from context (0 tokens).
-        ChatEntryKind::Annotation { .. } | ChatEntryKind::Intersession { .. } => 0,
+        // Annotations are display-only and excluded from context (0 tokens).
+        ChatEntryKind::Annotation { .. } => 0,
+        // Inter-session mail rides as a bare user turn, matching
+        // entries_to_messages: the attribution prefix is already in the text.
+        ChatEntryKind::Intersession { text, .. } => estimator.estimate(text),
         // Rule guidance rides as a bare user turn, matching entries_to_messages.
         ChatEntryKind::RuleInterrupt { body, .. } => estimator.estimate(body),
     }
@@ -331,6 +333,30 @@ mod tests {
 
         // And the budget-facing estimator still returns 0 for the same entry.
         assert_eq!(estimate_entry_tokens(&estimator, &entry), 0);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn estimate_entry_tokens_counts_intersession_text() {
+        // Given an inter-session entry whose text carries the sender's
+        // attribution prefix.
+        let estimator = ByteLenEstimator;
+        let entry = ChatEntry::intersession(
+            jinn_core_types::SessionId::new(),
+            None,
+            jinn_core_types::SessionId::new(),
+            "[Message from session abc]: hello",
+        );
+
+        // When estimating tokens.
+        let tokens = estimate_entry_tokens(&estimator, &entry);
+
+        // Then the estimate matches the full text byte length: the entry is
+        // in context by default and counted like a user entry.
+        assert_eq!(
+            tokens,
+            estimator.estimate("[Message from session abc]: hello")
+        );
     }
 
     #[rstest::rstest]

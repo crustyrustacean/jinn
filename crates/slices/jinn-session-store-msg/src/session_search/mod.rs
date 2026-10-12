@@ -14,6 +14,9 @@
 mod extract;
 pub mod model;
 
+#[cfg(test)]
+mod extract_tests;
+
 pub use extract::{SearchableEntry, entry_ts_key, extract_searchable};
 pub use model::{
     SearchHit, SearchOutcome, SearchParams, SearchableRole, TranscriptEntry, TranscriptWindow,

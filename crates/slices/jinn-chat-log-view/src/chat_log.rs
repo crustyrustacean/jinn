@@ -90,17 +90,6 @@ pub fn entry_to_lines(entry: &ChatEntry, ctx: &RenderContext) -> Vec<Line<'stati
             ctx,
         ),
         ChatEntryKind::RuleInterrupt { rule, body } => rule_interrupt::to_lines(rule, body, ctx),
-        ChatEntryKind::Intersession {
-            source_session,
-            source_name,
-            target_session,
-            text,
-        } => intersession::to_lines(
-            source_session,
-            source_name.as_deref(),
-            target_session,
-            text,
-            ctx,
-        ),
+        ChatEntryKind::Intersession { text, .. } => intersession::to_lines(text, ctx),
     }
 }

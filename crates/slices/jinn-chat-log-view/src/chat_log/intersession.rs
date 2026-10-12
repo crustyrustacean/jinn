@@ -1,39 +1,18 @@
-//! Inter-session message rendering — who sent what to whom.
+//! Inter-session message rendering — the message, in the subagent color.
 //!
-//! The transcript already shows the message's text (the delivery entry is
-//! an ordinary run or turn); this kind exists so the log also shows the
-//! *route*: the source session, by name when it had one, and the target.
-//! The header carries both short ids so a cross-session exchange can be
-//! followed from either side's log.
+//! The entry's text is self-describing: the sender bakes the
+//! `[Message from session <id> (<title>)]: ` attribution into it at send
+//! time, so rendering is the plain text, styled like subagent chatter. The
+//! kind survives as the styling key; no header, no ids, no route chrome.
 
 use ratatui::style::Style;
 use ratatui::text::Line;
 
 use super::shared::{Pad, RenderContext, multiline_styled, pad_entry};
 
-/// A session id's display form: the short hash, like the rest of the UI.
-fn short_id(id: &jinn_core_types::SessionId) -> String {
-    id.to_string().chars().take(8).collect()
-}
-
-pub fn to_lines(
-    source_session: &jinn_core_types::SessionId,
-    source_name: Option<&str>,
-    target_session: &jinn_core_types::SessionId,
-    text: &str,
-    ctx: &RenderContext,
-) -> Vec<Line<'static>> {
+pub fn to_lines(text: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
     let text = super::shared::strip_ansi(text);
-    let source = source_name
-        .map(str::to_owned)
-        .unwrap_or_else(|| short_id(source_session));
-    let prefix = format!("[↔ {source} → {}] ", short_id(target_session));
-    let mut lines = multiline_styled(
-        &text,
-        &prefix,
-        "",
-        Style::default().fg(ctx.theme.focus_accent),
-    );
+    let mut lines = multiline_styled(&text, "", "", Style::default().fg(ctx.theme.subagent_fg));
     pad_entry(&mut lines, Pad::Both);
     lines
 }
@@ -48,7 +27,6 @@ mod tests {
     )]
 
     use super::*;
-    use jinn_core_types::SessionId;
     use jinn_theme::default_theme;
 
     fn render_ctx() -> RenderContext {
@@ -72,45 +50,64 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn header_carries_both_session_identities() {
-        // Given a message from session A to session B.
+    fn the_text_renders_plain_with_no_header() {
+        // Given a message whose text already carries the sender's attribution.
         let ctx = render_ctx();
-        let source = SessionId::new();
-        let target = SessionId::new();
 
         // When rendering.
-        let lines = to_lines(&source, None, &target, "handing off the stage", &ctx);
+        let lines = to_lines(
+            "[Message from session abc-123]: handing off the stage",
+            &ctx,
+        );
 
-        // Then the header carries both short ids.
+        // Then the full text renders and no route chrome is added.
         let text = all_text(&lines);
-        let source_short: String = source.to_string().chars().take(8).collect();
-        let target_short: String = target.to_string().chars().take(8).collect();
         assert!(
-            text.contains(&source_short) && text.contains(&target_short),
-            "both identities must render, got {text:?}"
+            text.contains("[Message from session abc-123]: handing off the stage"),
+            "the attributed text renders: {text:?}"
+        );
+        assert!(!text.contains('↔'), "no header arrow: {text:?}");
+        assert!(!text.contains("→"), "no route arrow: {text:?}");
+    }
+
+    #[rstest::rstest]
+    fn the_text_renders_in_the_subagent_color() {
+        // Given a rendered inter-session message.
+        let ctx = render_ctx();
+
+        // When rendering.
+        let lines = to_lines("[Message from session abc]: stage done", &ctx);
+
+        // Then every content span carries the subagent foreground.
+        let theme = default_theme();
+        assert!(
+            lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .all(|span| span.style.fg == Some(theme.subagent_fg)),
+            "text should be subagent_fg"
         );
     }
 
     #[rstest::rstest]
-    fn a_named_source_renders_by_name() {
-        // Given a source with a display name, using fixed ids so the two
-        // sessions cannot share a UUIDv7 millisecond prefix.
+    fn multiline_text_renders_one_line_per_segment() {
+        // Given a message with an embedded newline.
         let ctx = render_ctx();
-        let source =
-            SessionId::try_from_string("aaaaaaa1-0000-0000-0000-00000000000a").expect("fixed id");
-        let target =
-            SessionId::try_from_string("bbbbbbb2-0000-0000-0000-00000000000b").expect("fixed id");
 
-        // When rendering with the name.
-        let lines = to_lines(&source, Some("implementer"), &target, "stage done", &ctx);
+        // When rendering.
+        let lines = to_lines("[Message from session abc]: first\nsecond", &ctx);
 
-        // Then the header names the source and carries the target's short id.
-        let text = all_text(&lines);
-        assert!(text.contains("implementer"), "name renders: {text:?}");
-        assert!(text.contains("bbbbbbb2"), "target id renders: {text:?}");
+        // Then the two content segments render as two styled lines (padded
+        // above and below by the shared entry padding).
+        let content: Vec<&Line<'static>> =
+            lines.iter().filter(|line| !line.spans.is_empty()).collect();
+        assert_eq!(content.len(), 2);
+        let theme = default_theme();
         assert!(
-            !text.contains("aaaaaaa1"),
-            "the raw source id is replaced by the name: {text:?}"
+            content
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .all(|span| span.style.fg == Some(theme.subagent_fg))
         );
     }
 }

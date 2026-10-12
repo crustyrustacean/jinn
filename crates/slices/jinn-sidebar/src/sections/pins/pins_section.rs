@@ -340,16 +340,9 @@ fn entry_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
             let content = format!("[{}] {}", source, truncate_str(text, 30));
             ("", content)
         }
-        ChatEntryKind::Intersession {
-            source_name, text, ..
-        } => {
-            let content = format!(
-                "[↔ {}] {}",
-                source_name.clone().unwrap_or_else(|| "session".to_owned()),
-                truncate_str(text, 25)
-            );
-            ("", content)
-        }
+        // Inter-session mail is self-describing: the text already carries the
+        // sender's attribution, so the preview is the text alone.
+        ChatEntryKind::Intersession { text, .. } => ("", truncate_str(text, 25)),
         ChatEntryKind::ToolCall { name, .. } => {
             ("\u{2692} ", format!("{}(...)", truncate_str(name, 20)))
         }

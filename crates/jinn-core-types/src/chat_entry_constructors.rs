@@ -62,9 +62,9 @@ impl ChatEntry {
             ChatEntryKind::Actor { text, .. } => Some(text.as_str()),
             ChatEntryKind::ToolCall { arguments, .. } => Some(arguments.as_str()),
             ChatEntryKind::ToolResult { content, .. } => Some(content.as_str()),
-            // Annotations and inter-session messages are display-only: no prompt
-            // contribution (the delivery entry carries the text).
-            ChatEntryKind::Annotation { .. } | ChatEntryKind::Intersession { .. } => None,
+            ChatEntryKind::Intersession { text, .. } => Some(text.as_str()),
+            // Annotations are display-only: no prompt contribution.
+            ChatEntryKind::Annotation { .. } => None,
         }
     }
 
@@ -188,8 +188,9 @@ impl ChatEntry {
 
     /// Create a new inter-session message entry with the current timestamp.
     ///
-    /// `source_name` is the source session's display name at send time,
-    /// when it had one; the ids are what persist and what render.
+    /// `source_name` is the source session's display title at send time,
+    /// when it had one; the text should already carry its attribution
+    /// prefix — the sender composes it, this constructor does not.
     #[must_use]
     pub fn intersession<T>(
         source_session: crate::session_id::SessionId,

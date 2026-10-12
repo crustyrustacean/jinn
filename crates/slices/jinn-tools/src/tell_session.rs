@@ -8,8 +8,10 @@
 //! - **Busy attendant** — the seeded entry queues behind the in-flight
 //!   turn through the ordinary enqueue handler. A busy attendant is doing
 //!   real work; delivery never cancels it.
-//! - **Any other live session** — receives the message as an ordinary
-//!   user turn, the `notify_parent` shape.
+//! - **Any other live session** — receives an inter-session entry whose
+//!   text names its origin: `[Message from session <id> (<title>)]: `
+//!   followed by the message. The prefix is baked in here, once, so the
+//!   model, the transcript, search, and export all read the same string.
 //! - **Unknown id** — a failed result naming the target. No send is ever
 //!   silently dropped.
 //!
@@ -25,9 +27,41 @@ use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_session_msg::PhaseKind;
 use jinn_session_state::ChatSessionState;
 
+use unicode_segmentation::UnicodeSegmentation;
+
 use crate::tool_types::{ToolContext, tool_error};
 
 use super::BoxedToolFuture;
+
+/// Maximum grapheme clusters of the source title carried in the attribution
+/// prefix before it is truncated.
+const MAX_TITLE_GRAPHEMES: usize = 32;
+
+/// The attribution prefix marking where an inter-session message came from:
+/// `[Message from session <id> (<title>)]: `. The title part is omitted when
+/// there is no usable title. The one composition site for the format.
+fn attribution_prefix(source_id: &SessionId, title: Option<&str>) -> String {
+    match title {
+        Some(title) => format!("[Message from session {source_id} ({title})]: "),
+        None => format!("[Message from session {source_id}]: "),
+    }
+}
+
+/// The source title carried into the entry: `None` when absent, empty, or
+/// itself an attribution prefix (a relayed message's title would nest the
+/// header inside itself); otherwise clipped to [`MAX_TITLE_GRAPHEMES`]
+/// grapheme clusters with a single ellipsis when clipped.
+fn processed_title(title: Option<&str>) -> Option<String> {
+    title
+        .filter(|t| !t.is_empty() && !t.starts_with("[Message"))
+        .map(|t| {
+            if t.graphemes(true).count() <= MAX_TITLE_GRAPHEMES {
+                return t.to_owned();
+            }
+            let head: String = t.graphemes(true).take(MAX_TITLE_GRAPHEMES).collect();
+            format!("{head}…")
+        })
+}
 
 /// The `tell_session` tool definition.
 pub fn definition() -> ToolDefinition {
@@ -93,10 +127,16 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 // the target's own id, rendered as an unnamed origin.
                 target_id.clone()
             });
+            // The caller's title feeds the attribution prefix; clone it out
+            // before the map is borrowed mutably for the target.
+            let caller_title = guard
+                .session
+                .get(&caller_id)
+                .and_then(|caller| caller.title().map(str::to_owned));
             let Some(target) = guard.session.get_mut(&target_id) else {
                 return tool_error(&call, &format!("unknown session: {target_id}"));
             };
-            let delivery = delivery_for(&caller_id, target, &message);
+            let delivery = delivery_for(&caller_id, caller_title.as_deref(), target, &message);
             // A delivered message marks the target interacted: a programmatic
             // enqueue does not, and without the mark `is_persistable()` gates
             // every save — the run would turn and silently never reach disk.
@@ -173,7 +213,12 @@ enum Delivery {
 }
 
 /// Decides the delivery path for `message` against the target's live state.
-fn delivery_for(source_id: &SessionId, target: &mut ChatSessionState, message: &str) -> Delivery {
+fn delivery_for(
+    source_id: &SessionId,
+    source_title: Option<&str>,
+    target: &mut ChatSessionState,
+    message: &str,
+) -> Delivery {
     if target.is_attendant() {
         if target.attendant_is_prepping() {
             return Delivery::Refused("attendant is in prep mode; nothing runs for it yet");
@@ -190,15 +235,21 @@ fn delivery_for(source_id: &SessionId, target: &mut ChatSessionState, message: &
             Delivery::QueuedRun { entry }
         };
     }
-    // Non-attendant: the message rides as an inter-session entry, carrying
-    // who sent it and who it was for — the transcript shows the route, not
-    // just the text. The entry is excluded from LLM context by default, so
-    // the model sees the delivery exactly once.
+    // Non-attendant: the message rides as an inter-session entry whose text
+    // names its origin. The prefix is baked in here — the one composition
+    // site — so the model, the transcript, search, and export all read the
+    // same self-describing string. The title is not minted by delivery:
+    // title minting stays keyed to genuine user entries.
+    let title = processed_title(source_title);
+    let text = format!(
+        "{}{message}",
+        attribution_prefix(source_id, title.as_deref())
+    );
     Delivery::Turn(ChatEntry::intersession(
         source_id.clone(),
-        None,
+        title,
         target.session_id().clone(),
-        message,
+        text,
     ))
 }
 

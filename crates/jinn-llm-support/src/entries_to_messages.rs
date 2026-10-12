@@ -20,6 +20,7 @@ use jinn_provider::LlmMessage;
 /// | ToolResult | `LlmMessage::Tool` | |
 /// | System | `LlmMessage::User` with `[System]` prefix | Only when in context (pinned or forced-include) |
 /// | Actor | `LlmMessage::User` with `[Actor: source]` prefix | Only when in context |
+/// | Intersession | `LlmMessage::User` with the text verbatim | Attribution prefix is baked into the text by the sender |
 /// | Error | `LlmMessage::User` with `[Error]` prefix or actionable framing | `[Error]` prefix when `Default` (incl. pinned); actionable framing (`The user has shared...`) when `ForcedInclude` |
 /// | Thinking | `LlmMessage::User` with `[Thinking]` prefix | Only when in context |
 /// | Transient | `LlmMessage::User` with `[Transient]` prefix | Only when in context |
@@ -147,6 +148,16 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                     attachments: Vec::new(),
                 });
             }
+            // Inter-session mail rides as a plain user turn: the sender
+            // bakes the `[Message from session …]: ` attribution into the
+            // text at send time, so no prefix is added here — the model sees
+            // exactly what the transcript stores.
+            ChatEntryKind::Intersession { text, .. } => {
+                messages.push(LlmMessage::User {
+                    content: text.clone(),
+                    attachments: Vec::new(),
+                });
+            }
             ChatEntryKind::Error(text) => {
                 messages.push(error_to_user_message(text, entry.context_override()));
             }
@@ -169,9 +180,8 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
             ChatEntryKind::Compaction { summary, .. } => {
                 messages.push(compaction_to_user_message(summary));
             }
-            // Annotations and inter-session messages are display-only and
-            // never enter LLM context (the delivery entry carries the text).
-            ChatEntryKind::Annotation { .. } | ChatEntryKind::Intersession { .. } => {}
+            // Annotations are display-only and never enter LLM context.
+            ChatEntryKind::Annotation { .. } => {}
             // Rule guidance is sent as a plain user turn, unprefixed: the body
             // is already the rendered `<system-interrupt>` block, so this is
             // byte-identical to the prompt shape the entry had as a `User`.

@@ -49,14 +49,13 @@ pub fn extract_searchable(kind: &ChatEntryKind) -> Option<(SearchableRole, Strin
         ChatEntryKind::System(text) => (SearchableRole::System, text.clone()),
         ChatEntryKind::Error(text) => (SearchableRole::Error, text.clone()),
         ChatEntryKind::Compaction { summary, .. } => (SearchableRole::Compaction, summary.clone()),
+        ChatEntryKind::Intersession { text, .. } => (SearchableRole::User, text.clone()),
         // Never indexed: test-era chatter, hidden reasoning, UI-only hints,
-        // display-only citation lists, harness-injected rule guidance, and
-        // inter-session mail (the delivery entry carries the searchable text).
+        // display-only citation lists, and harness-injected rule guidance.
         ChatEntryKind::Actor { .. }
         | ChatEntryKind::Thinking(_)
         | ChatEntryKind::Transient(_)
         | ChatEntryKind::Annotation { .. }
-        | ChatEntryKind::Intersession { .. }
         | ChatEntryKind::RuleInterrupt { .. } => return None,
     };
     Some((role, body))

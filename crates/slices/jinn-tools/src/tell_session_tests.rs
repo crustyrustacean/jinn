@@ -210,8 +210,9 @@ async fn busy_attendant_queues_and_never_cancels() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn plain_session_receives_an_intersession_entry_naming_both_ends() {
-    // Given a non-attendant target and a distinct calling session.
+async fn plain_session_receives_a_context_carrying_entry_from_the_caller() {
+    // Given a non-attendant target with no title and a distinct calling
+    // session.
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
@@ -230,7 +231,8 @@ async fn plain_session_receives_an_intersession_entry_naming_both_ends() {
     .await;
 
     // Then the enqueue is an inter-session entry addressed to that session,
-    // carrying the caller as the source.
+    // carrying the caller as the source and the attribution prefix baked
+    // into the text.
     assert!(result.success, "{}", result.content);
     let recorded = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
     assert_eq!(recorded[0].session_id, user_id);
@@ -245,7 +247,232 @@ async fn plain_session_receives_an_intersession_entry_naming_both_ends() {
     };
     assert_eq!(source_session, &caller_id, "the caller is the source");
     assert_eq!(target_session, &user_id, "the target is addressed");
-    assert_eq!(text, "orchestrator says hello");
+    // And the text is the attributed format, byte-exact.
+    assert_eq!(
+        text.as_str(),
+        format!("[Message from session {caller_id}]: orchestrator says hello")
+    );
+    // And the entry is in LLM context by default — the model reads it.
+    assert!(recorded[0].entry.is_in_context());
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn plain_delivery_carries_a_titled_caller_in_the_prefix() {
+    // Given a calling session with a title.
+    let harness = TestHarness::new().await;
+    let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
+    let (state, user_id, _attendant_id) = fixture();
+    let mut caller = ChatSessionState::new();
+    caller.set_title("Workflow Run 42".to_owned());
+    let caller_id = caller.session_id().clone();
+    state.write().session.insert(caller);
+    let tool_ctx = ctx(&harness, &state, caller_id.clone()).await;
+
+    // When a message is sent.
+    let result = execute(
+        call(&format!(r#"{{"session_id":"{user_id}","message":"go"}}"#)),
+        tool_ctx,
+    )
+    .await;
+
+    // Then the text names the source id and its title.
+    assert!(result.success, "{}", result.content);
+    let recorded = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
+    let jinn_core_types::chat_entry::ChatEntryKind::Intersession { text, .. } =
+        &recorded[0].entry.kind
+    else {
+        panic!("plain delivery must be an Intersession entry");
+    };
+    assert_eq!(
+        text.as_str(),
+        format!("[Message from session {caller_id} (Workflow Run 42)]: go")
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn plain_delivery_excludes_an_empty_caller_title() {
+    // Given a calling session whose title is the empty string.
+    let harness = TestHarness::new().await;
+    let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
+    let (state, user_id, _attendant_id) = fixture();
+    let mut caller = ChatSessionState::new();
+    caller.set_title(String::new());
+    let caller_id = caller.session_id().clone();
+    state.write().session.insert(caller);
+    let tool_ctx = ctx(&harness, &state, caller_id.clone()).await;
+
+    // When a message is sent.
+    let result = execute(
+        call(&format!(r#"{{"session_id":"{user_id}","message":"go"}}"#)),
+        tool_ctx,
+    )
+    .await;
+
+    // Then the text carries no parenthesized title.
+    assert!(result.success, "{}", result.content);
+    let recorded = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
+    let jinn_core_types::chat_entry::ChatEntryKind::Intersession { text, .. } =
+        &recorded[0].entry.kind
+    else {
+        panic!("plain delivery must be an Intersession entry");
+    };
+    assert_eq!(
+        text.as_str(),
+        format!("[Message from session {caller_id}]: go"),
+        "an empty title must be omitted, not rendered as ()"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn plain_delivery_excludes_a_relayed_caller_title() {
+    // Given a calling session whose title already looks like an attribution
+    // header (it received a relayed message that minted nothing — the title
+    // was set to mimic the format).
+    let harness = TestHarness::new().await;
+    let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
+    let (state, user_id, _attendant_id) = fixture();
+    let mut caller = ChatSessionState::new();
+    caller.set_title("[Message from session dead-beef]: stage 1".to_owned());
+    let caller_id = caller.session_id().clone();
+    state.write().session.insert(caller);
+    let tool_ctx = ctx(&harness, &state, caller_id.clone()).await;
+
+    // When a message is sent onward.
+    let result = execute(
+        call(&format!(
+            r#"{{"session_id":"{user_id}","message":"next stage"}}"#
+        )),
+        tool_ctx,
+    )
+    .await;
+
+    // Then the text omits the title rather than nesting one header in another.
+    assert!(result.success, "{}", result.content);
+    let recorded = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
+    let jinn_core_types::chat_entry::ChatEntryKind::Intersession { text, .. } =
+        &recorded[0].entry.kind
+    else {
+        panic!("plain delivery must be an Intersession entry");
+    };
+    assert_eq!(
+        text.as_str(),
+        format!("[Message from session {caller_id}]: next stage"),
+        "a [Message-prefixed title must not nest inside the prefix"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn plain_delivery_truncates_a_long_caller_title_with_an_ellipsis() {
+    // Given a calling session whose title is 40 ASCII graphemes.
+    let harness = TestHarness::new().await;
+    let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
+    let (state, user_id, _attendant_id) = fixture();
+    let mut caller = ChatSessionState::new();
+    caller.set_title("t".repeat(40));
+    let caller_id = caller.session_id().clone();
+    state.write().session.insert(caller);
+    let tool_ctx = ctx(&harness, &state, caller_id.clone()).await;
+
+    // When a message is sent.
+    let result = execute(
+        call(&format!(r#"{{"session_id":"{user_id}","message":"go"}}"#)),
+        tool_ctx,
+    )
+    .await;
+
+    // Then the title is clipped to 32 graphemes plus one ellipsis.
+    assert!(result.success, "{}", result.content);
+    let recorded = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
+    let jinn_core_types::chat_entry::ChatEntryKind::Intersession { text, .. } =
+        &recorded[0].entry.kind
+    else {
+        panic!("plain delivery must be an Intersession entry");
+    };
+    assert_eq!(
+        text.as_str(),
+        format!(
+            "[Message from session {caller_id} ({}…)]: go",
+            "t".repeat(32)
+        )
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn plain_delivery_truncation_counts_graphemes_not_bytes() {
+    // Given a title where 32 grapheme clusters span more than 32 bytes
+    // (family emoji are single graphemes of 8 bytes each).
+    let harness = TestHarness::new().await;
+    let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
+    let (state, user_id, _attendant_id) = fixture();
+    let mut caller = ChatSessionState::new();
+    caller.set_title("👨‍👩‍👧‍👦".repeat(34));
+    let caller_id = caller.session_id().clone();
+    state.write().session.insert(caller);
+    let tool_ctx = ctx(&harness, &state, caller_id.clone()).await;
+
+    // When a message is sent.
+    let result = execute(
+        call(&format!(r#"{{"session_id":"{user_id}","message":"go"}}"#)),
+        tool_ctx,
+    )
+    .await;
+
+    // Then exactly 32 clusters survive, each intact — not 32 bytes, which
+    // would have split mid-emoji.
+    assert!(result.success, "{}", result.content);
+    let recorded = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
+    let jinn_core_types::chat_entry::ChatEntryKind::Intersession { text, .. } =
+        &recorded[0].entry.kind
+    else {
+        panic!("plain delivery must be an Intersession entry");
+    };
+    let families = "👨‍👩‍👧‍👦".repeat(32);
+    assert_eq!(
+        text.as_str(),
+        format!("[Message from session {caller_id} ({families}…)]: go")
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn plain_delivery_keeps_a_boundary_length_title_whole() {
+    // Given a calling session whose title is exactly 32 graphemes.
+    let harness = TestHarness::new().await;
+    let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
+    let (state, user_id, _attendant_id) = fixture();
+    let mut caller = ChatSessionState::new();
+    caller.set_title("y".repeat(32));
+    let caller_id = caller.session_id().clone();
+    state.write().session.insert(caller);
+    let tool_ctx = ctx(&harness, &state, caller_id.clone()).await;
+
+    // When a message is sent.
+    let result = execute(
+        call(&format!(r#"{{"session_id":"{user_id}","message":"go"}}"#)),
+        tool_ctx,
+    )
+    .await;
+
+    // Then the title is not truncated and carries no ellipsis.
+    assert!(result.success, "{}", result.content);
+    let recorded = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
+    let jinn_core_types::chat_entry::ChatEntryKind::Intersession { text, .. } =
+        &recorded[0].entry.kind
+    else {
+        panic!("plain delivery must be an Intersession entry");
+    };
+    assert_eq!(
+        text.as_str(),
+        format!(
+            "[Message from session {caller_id} ({})]: go",
+            "y".repeat(32)
+        )
+    );
 }
 
 #[rstest::rstest]

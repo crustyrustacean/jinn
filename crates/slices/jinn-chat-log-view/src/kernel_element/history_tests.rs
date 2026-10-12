@@ -3270,23 +3270,17 @@ fn a_render_publishes_the_collapse_count_the_coverage_probe_reads_back() {
 }
 
 #[rstest::rstest]
-fn render_intersession_message_carries_source_and_target_identity() {
-    // Given a log holding an inter-session message from session A to
-    // session B, with fixed ids so both short forms are distinguishable.
-    let source =
-        jinn_core_types::SessionId::try_from_string("aaaaaaa1-0000-0000-0000-00000000000a")
-            .expect("fixed id");
-    let target =
-        jinn_core_types::SessionId::try_from_string("bbbbbbb2-0000-0000-0000-00000000000b")
-            .expect("fixed id");
+fn render_intersession_message_shows_the_attributed_text_in_the_subagent_color() {
+    // Given a log holding an inter-session message whose text already
+    // carries the sender's attribution.
     let mut element = ChatLogElement::new();
     let state = {
         let mut s = normal_state();
         s.active_session_mut().push_entry(ChatEntry::intersession(
-            source,
+            jinn_core_types::SessionId::new(),
             None,
-            target,
-            "handing the qa stage to you",
+            jinn_core_types::SessionId::new(),
+            "[Message from session abc-123]: handing the qa stage to you",
         ));
         s
     };
@@ -3303,7 +3297,8 @@ fn render_intersession_message_carries_source_and_target_identity() {
         })
         .unwrap();
 
-    // Then the transcript shows both session identities and the text.
+    // Then the transcript shows the attributed text, in the subagent color,
+    // with no route chrome.
     let buffer = terminal.backend().buffer().clone();
     let mut rendered = String::new();
     for y in 0..area.height {
@@ -3315,15 +3310,15 @@ fn render_intersession_message_carries_source_and_target_identity() {
         rendered.push('\n');
     }
     assert!(
-        rendered.contains("aaaaaaa1"),
-        "the source id must render, got {rendered:?}"
-    );
-    assert!(
-        rendered.contains("bbbbbbb2"),
-        "the target id must render, got {rendered:?}"
+        rendered.contains("Message from session abc-123"),
+        "the attribution renders, got {rendered:?}"
     );
     assert!(
         rendered.contains("handing the qa stage"),
-        "the message text must render, got {rendered:?}"
+        "the message text renders, got {rendered:?}"
+    );
+    assert!(
+        !rendered.contains('↔'),
+        "no header arrow renders, got {rendered:?}"
     );
 }
