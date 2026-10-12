@@ -50,6 +50,7 @@ the previous run closes here and only here.
 
 ## Flow
 
+0. Ask the user for the goal and the name of the feature branch name to use.
 1. Contracts — decompose the goal into child execution contracts.
    - If the human gave a goal directly → `steps/01-write-contracts.md`
      (G1: present the derived end state to the human for approval
@@ -83,10 +84,10 @@ the previous run closes here and only here.
      `.jinn-autocoder-trash/`; if it refuses, do not retry with a
      different spelling — log the refusal in the ledger and tell the
      human. Never delete anything yourself; the trash is emptied at
-     the *next* run's purge, by the human's act of starting it.
+     the _next_ run's purge, by the human's act of starting it.
 5. Report — summarize the run in the ledger and to the human,
    including the list of trashed worktrees and the trash path.
-   *(inline — conversation)*
+   _(inline — conversation)_
 
 ## Parameters
 
