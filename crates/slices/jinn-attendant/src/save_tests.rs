@@ -1196,27 +1196,27 @@ fn a_created_attendant_inherits_the_parents_empty_allow_filter_as_nothing_allowe
 
 #[rstest::rstest]
 #[test]
-fn a_workflow_cast_member_refuses_the_save_naming_its_source() {
+fn a_workflow_loaded_attendant_refuses_the_save_naming_its_source() {
     // Given an open popup over a titled attendant stamped as loaded from a
-    // workflow cast file.
+    // workflow-local file.
     let source = "res/workflows/autocoder/attendants/implementer.toml";
     let mut fx = SaveFixture::new(Some("implementer"));
     fx.state
         .session
         .get_mut(&fx.attendant_id)
         .expect("attendant")
-        .set_workflow_cast(source.to_owned());
+        .set_workflow_source(jinn_core_types::AttendantSourcePath::new(source.to_owned()));
     fx.open();
 
     // When pressing the save key.
     fx.press("attendant-properties-save");
 
-    // Then the popup refuses and names the cast file the attendant came
+    // Then the popup refuses and names the source file the attendant came
     // from, rather than writing it into jinn.toml.
     match fx.cell.read().status.clone() {
         Some(PopupStatus::SaveFailed { reason }) => {
             assert!(
-                reason.contains("workflow cast member") && reason.contains(source),
+                reason.contains("loaded from") && reason.contains(source),
                 "the refusal names the source file: {reason}"
             );
         }
@@ -1233,7 +1233,7 @@ fn a_workflow_cast_member_refuses_the_save_naming_its_source() {
 #[rstest::rstest]
 #[test]
 fn a_personal_attendant_saves_exactly_as_before_the_marker_existed() {
-    // Given an open popup over a titled attendant with no cast marker.
+    // Given an open popup over a titled attendant with no workflow marker.
     let mut fx = SaveFixture::new(Some("nightly"));
     fx.open();
 

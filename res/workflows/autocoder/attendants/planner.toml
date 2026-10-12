@@ -1,6 +1,6 @@
-# Autocoder cast — the planner stage's thin seed.
+# Autocoder attendant — the planner stage's thin seed.
 #
-# A cast file carries identity and framing only. Everything behavioral —
+# An attendant file carries identity and framing only. Everything behavioral —
 # the stage protocol, gates, escalation, ledger format — lives in the
 # workflow's step files and travels in the dispatch message.
 #

@@ -595,16 +595,16 @@ impl ChatSessionState {
         self.core.attendant.reports.last()
     }
 
-    /// The workflow-local cast file this attendant was loaded from, when it
-    /// is a workflow-cast member. `None` for personal attendants.
+    /// The workflow-local TOML file this attendant was loaded from, when
+    /// it belongs to a workflow. `None` for personal attendants.
     #[must_use]
-    pub fn workflow_cast(&self) -> Option<&str> {
-        self.core.attendant.workflow_cast.as_deref()
+    pub fn workflow_source(&self) -> Option<&jinn_core_types::AttendantSourcePath> {
+        self.core.attendant.workflow_source.as_ref()
     }
 
-    /// Stamp this attendant as a workflow-cast member loaded from `source`.
-    pub fn set_workflow_cast(&mut self, source: String) {
-        self.core.attendant.workflow_cast = Some(source);
+    /// Stamp this attendant as loaded from the workflow-local file `source`.
+    pub fn set_workflow_source(&mut self, source: jinn_core_types::AttendantSourcePath) {
+        self.core.attendant.workflow_source = Some(source);
     }
 
     /// Immutable access to this session's steering buffer.

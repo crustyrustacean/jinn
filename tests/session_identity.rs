@@ -1,8 +1,9 @@
 //! Session-identity entry tests.
 //!
 //! Every session-creation surface — plain new session, scripted lifecycle,
-//! picker-attached attendant, `load_attendant` cast member (both through
-//! `saved_create::creation_messages`), and the `task` tool's subagent
+//! picker-attached attendant, an attendant loaded by `load_attendant`
+//! (both through `saved_create::creation_messages`), and the `task` tool's
+//! subagent child
 //! child — must publish the same identity `PushChatEntry`: a pinned `Top`
 //! system entry naming that session's own id, forced into the LLM
 //! context. The boot session is covered source-level in
@@ -147,17 +148,19 @@ fn scripted_lifecycle_publishes_the_identity_entry() {
 
 #[rstest::rstest]
 #[test]
-fn picker_attendant_and_loaded_cast_member_publish_the_identity_entry() {
+fn picker_attendant_and_workflow_loaded_attendant_publish_the_identity_entry() {
     // Given a parent and an attendant built the way the picker's save
     // path and `load_attendant` both build them.
     let parent = ChatSessionState::new();
     let entry = jinn_preferences_config::schemas::AttendantEntryConfig {
-        name: "cast-member".to_owned(),
+        name: "workflow-attendant".to_owned(),
         ..jinn_preferences_config::schemas::AttendantEntryConfig::default()
     };
     let mut attendant = jinn_attendant::saved_create::build(&entry, &parent);
     // The load_attendant stamp, on top of the same build path.
-    attendant.set_workflow_cast("res/workflows/autocoder/attendants/echo.toml".to_owned());
+    attendant.set_workflow_source(jinn_core_types::AttendantSourcePath::new(
+        "res/workflows/autocoder/attendants/echo.toml",
+    ));
 
     // When the creation's messages are built.
     let pushes = pushed_entries(jinn_attendant::saved_create::creation_messages(

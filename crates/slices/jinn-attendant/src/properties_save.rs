@@ -52,18 +52,18 @@ pub(super) fn save_attendant(
     let Some(session) = state.session.get(&attendant_id) else {
         return IntentResult::empty();
     };
-    // A workflow-cast attendant refuses: its configuration is owned by the
-    // workflow-local file it was loaded from, and writing it into jinn.toml
-    // would fork the two apart the first time either changed. Tuning a cast
-    // member mid-run is run-local by design; the fix belongs in its source
-    // file. The refusal names that file so the hint is actionable.
-    if let Some(source) = session.workflow_cast() {
+    // An attendant loaded from a workflow-local file refuses: its
+    // configuration is owned by that file, and writing it into jinn.toml
+    // would fork the two apart the first time either changed. Tuning the
+    // attendant mid-run is run-local by design; the fix belongs in its
+    // source file. The refusal names that file so the hint is actionable.
+    if let Some(source) = session.workflow_source() {
         cell.update(|p| {
             p.report(PopupStatus::SaveFailed {
                 reason: format!(
-                    "This attendant is a workflow cast member loaded from {source}. \
-                     It cannot be saved to jinn.toml — edit its cast file instead; \
-                     changes here apply to this run only."
+                    "This attendant was loaded from {source} and belongs to that \
+                     workflow. It cannot be saved to jinn.toml — edit its source \
+                     file instead; changes here apply to this run only."
                 ),
             });
         });

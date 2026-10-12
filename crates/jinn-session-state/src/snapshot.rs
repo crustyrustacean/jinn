@@ -129,10 +129,10 @@ pub struct SessionSnapshotMetadata {
     /// The attendant's append-only report log.
     #[serde(default)]
     pub reports: Vec<AttendantReport>,
-    /// The workflow-local cast file a workflow-cast attendant loaded from.
+    /// The workflow-local TOML file a workflow attendant loaded from.
     /// Absent for personal attendants.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workflow_cast: Option<String>,
+    pub workflow_source: Option<jinn_core_types::AttendantSourcePath>,
     /// Wall-clock intervals during which this session was working.
     ///
     /// Persisted in the metadata blob, so working time survives a restart.
@@ -172,7 +172,7 @@ impl From<&SessionCore> for SessionSnapshotMetadata {
             trigger: core.attendant.trigger,
             seed_template: core.attendant.seed_template.clone(),
             reports: core.attendant.reports.clone(),
-            workflow_cast: core.attendant.workflow_cast.clone(),
+            workflow_source: core.attendant.workflow_source.clone(),
             // Working time is NOT read from the core. It lives in the
             // work-time slice's cell, and copying it onto the core would give
             // it a second home with a second writer. The store actor stamps it
@@ -210,7 +210,7 @@ impl From<SessionSnapshotMetadata> for SessionCore {
         core.attendant.trigger = metadata.trigger;
         core.attendant.seed_template = metadata.seed_template;
         core.attendant.reports = metadata.reports;
-        core.attendant.workflow_cast = metadata.workflow_cast;
+        core.attendant.workflow_source = metadata.workflow_source;
         core
     }
 }

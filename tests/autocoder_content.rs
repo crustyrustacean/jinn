@@ -1,9 +1,9 @@
 //! Autocoder workflow content-loading checks.
 //!
-//! The workflow is data — a workflow directory plus cast TOML files.
+//! The workflow is data — a workflow directory plus attendant TOML files.
 //! These tests load that content through the real production paths:
 //! [`jinn_workflows::scan_workflows`] discovers the workflow (frontmatter
-//! admission included), and the cast files deserialize through the real
+//! admission included), and the attendant files deserialize through the real
 //! [`AttendantEntryConfig`] schema, exactly as `load_attendant` parses
 //! them. A typo in shipped content fails here, not at the owner's first
 //! run.
@@ -79,8 +79,8 @@ fn autocoder_steps_and_flow_lines_correspond() {
 
 #[rstest::rstest]
 #[test]
-fn cast_files_deserialize_through_the_saved_entry_schema() {
-    // Given the shipped cast TOMLs.
+fn attendant_files_deserialize_through_the_saved_entry_schema() {
+    // Given the shipped attendant TOMLs.
     let attendants = std::fs::read_dir(autocoder_dir().join("attendants"))
         .expect("attendants directory")
         .filter_map(|e| e.ok())
@@ -91,7 +91,7 @@ fn cast_files_deserialize_through_the_saved_entry_schema() {
     // `load_attendant` uses — the files carry the real document shape
     // (`[[attendant.entry]]`), so the wrapper mirrors that shape.
     #[derive(serde::Deserialize)]
-    struct CastFile {
+    struct AttendantFile {
         attendant: AttendantSection,
     }
     #[derive(serde::Deserialize)]
@@ -104,16 +104,16 @@ fn cast_files_deserialize_through_the_saved_entry_schema() {
         if entry.path().extension().is_some_and(|x| x != "toml") {
             continue;
         }
-        let text = std::fs::read_to_string(entry.path()).expect("cast file");
-        let cast: CastFile = parse_toml(&text)
+        let text = std::fs::read_to_string(entry.path()).expect("attendant file");
+        let file: AttendantFile = parse_toml(&text)
             .unwrap_or_else(|e| panic!("{} does not deserialize: {e}", entry.path().display()));
         assert_eq!(
-            cast.attendant.entry.len(),
+            file.attendant.entry.len(),
             1,
-            "{} declares exactly one member",
+            "{} declares exactly one attendant",
             entry.path().display()
         );
-        let config = &cast.attendant.entry[0];
+        let config = &file.attendant.entry[0];
         assert!(
             !config.name.is_empty(),
             "{} carries a name",
@@ -122,12 +122,12 @@ fn cast_files_deserialize_through_the_saved_entry_schema() {
         names.push(config.name.clone());
     }
 
-    // Then the cast is the thin-seed trio.
+    // Then the shipped set is the thin-seed trio.
     assert_eq!(attendants, 3, "planner, implementer, reviewer");
     for expected in ["planner", "implementer", "reviewer"] {
         assert!(
             names.iter().any(|n| n == expected),
-            "cast must include {expected}, got {names:?}"
+            "the shipped attendants must include {expected}, got {names:?}"
         );
     }
 }

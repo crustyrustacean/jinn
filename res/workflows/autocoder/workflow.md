@@ -21,11 +21,11 @@ the previous run closes here and only here.
    `.jinn-autocoder-trash/`, the previous run's moved-out stage
    worktrees. Skip it only if the human said to keep the last run's
    trash.
-2. **Cast.** Call `load_attendant` once per TOML in this workflow's
-   `attendants/` directory (`planner.toml`, `implementer.toml`,
-   `reviewer.toml`). They attach as your children. Cast members save
+2. **Attendants.** Call `load_attendant` once per TOML in this
+   workflow's `attendants/` directory (`planner.toml`, `implementer.toml`,
+   `reviewer.toml`). They attach as your children. These attendants save
    nothing: their config lives in these files, and edits you make to a
-   loaded member are run-local by design.
+   loaded attendant are run-local by design.
 3. **Worktree.** Call the lifecycle tool with the root setup script
    (`autocoder-fossil-root`, or the git sibling on a git checkout),
    passing `worktrees/<slug>` as the worktree path and the run branch
@@ -35,8 +35,8 @@ the previous run closes here and only here.
    human OK.
 4. **Ledger.** Create `autocoder-ledger.md` in the root worktree — the
    run's durable record, which **you alone write**. Head it with: the
-   goal verbatim, origin `human (G1+G2)`, the run branch, and the cast
-   members with their session ids. Add one section per stage as stages
+   goal verbatim, origin `human (G1+G2)`, the run branch, and the
+   attendants with their session ids. Add one section per stage as stages
    complete; record every work item's origin. The ledger is a record,
    not a blackboard: stages never read each other's files — state
    crosses sessions only inside dispatch messages.
@@ -114,9 +114,9 @@ the previous run closes here and only here.
   during the first run on a project if it is not already set, and note
   it in the ledger.
 
-## Cast precedence
+## Attendant precedence
 
-The dispatch message governs the task; the cast seed governs
+The dispatch message governs the task; the attendant's seed governs
 everything the dispatch does not mention. Keep dispatches complete —
 anything you omit, the seed decides, and the seed is thin on purpose.
 
