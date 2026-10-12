@@ -690,13 +690,17 @@ async fn teardown_via_path_stamps_the_name_and_args_for_the_replay() {
         .await;
     let result = tool.await.expect("tool task");
 
-    // Then the session carries the entry name and ordered args — what a
-    // path-aware teardown replay will re-read alongside the source path.
+    // Then the session carries the entry name, ordered args, and the
+    // source file — the coordinates a path-aware teardown replay re-reads.
     assert!(result.success, "{}", result.content);
     let guard = state.read();
     let session = guard.session.get(&id).expect("session");
     assert_eq!(session.lifecycle_name(), Some("stage"));
     assert_eq!(session.lifecycle_args(), &["wt".to_owned()]);
+    assert_eq!(
+        session.lifecycle_source(),
+        Some(path.display().to_string().as_str())
+    );
     drop(guard);
     let recorded =
         await_recorded::<RunSessionTeardown>(&teardowns, 1, Duration::from_secs(2)).await;

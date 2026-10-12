@@ -160,14 +160,16 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         // Resolve the script and render the command before touching state:
         // an unreadable file, an unknown script, or a missing argument must
         // fail without any side effect. The two sources never combine: a
-        // path reads that file and never consults the user's config.
-        let raw_command = match raw_path {
+        // path reads that file and never consults the user's config. The
+        // source is recorded with the session so its teardown re-reads the
+        // same place after a restart.
+        let (raw_command, source_path) = match raw_path {
             Some(path) => match resolve_from_path(&path, &ctx, &script_name, &action, kind) {
-                Ok(raw) => raw,
+                Ok(resolved) => resolved,
                 Err(reason) => return tool_error(&call, &reason),
             },
             None => match resolve_from_config(&ctx, &script_name, &action, kind) {
-                Ok(raw) => raw,
+                Ok(resolved) => resolved,
                 Err(reason) => return tool_error(&call, &reason),
             },
         };
@@ -177,8 +179,9 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         };
 
         // Teardown replays the session's *stored* args (the actor re-renders
-        // from config and ignores the command we publish), so the tool's args
-        // must land on the session before the command does.
+        // from the recorded source and ignores the command we publish), so
+        // the tool's coordinates must land on the session before the command
+        // does. State-before-publish ordering is load-bearing.
         if kind == AwaitKind::Teardown {
             let mut guard = state.write();
             let Some(session) = guard.session.get_mut(&target_id) else {
@@ -191,6 +194,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             let ordered = order_args(&CommandTemplate::parse(&raw_command), &args);
             session.set_lifecycle_name(Some(script_name.clone()));
             session.set_lifecycle_args(ordered);
+            session.set_lifecycle_source(source_path);
         }
 
         // Listener before publication: no completion event can slip past
@@ -266,13 +270,14 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 /// Resolves the script's raw command from the user's jinn.toml by name.
 ///
 /// The only reader of the config source: a call carrying a `path` never
-/// reaches this function.
+/// reaches this function. The source is `None` — jinn.toml is the ambient
+/// source, not one a session records.
 fn resolve_from_config(
     ctx: &ToolContext,
     script_name: &str,
     action: &str,
     kind: AwaitKind,
-) -> Result<String, String> {
+) -> Result<(String, Option<String>), String> {
     let scripts = ctx
         .config
         .get_list::<SessionLifecycle>()
@@ -287,24 +292,28 @@ fn resolve_from_config(
                 .join(", ")
         ));
     };
-    half_of(script, script_name, action, kind).map(str::to_owned)
+    half_of(script, script_name, action, kind)
+        .map(|raw| (raw.to_owned(), None))
 }
 
 /// Resolves the script's raw command from the file at `path`, resolved
 /// against the calling session's cwd the way every file-facing tool
-/// resolves a path argument.
+/// resolves a path argument. The resolved path is returned as the source —
+/// the session records it so teardown re-reads the same file.
 fn resolve_from_path(
     path: &str,
     ctx: &ToolContext,
     script_name: &str,
     action: &str,
     kind: AwaitKind,
-) -> Result<String, String> {
+) -> Result<(String, Option<String>), String> {
     let resolved = crate::tool_paths::resolve_path(path, &ctx.cwd);
     let source = resolved.display().to_string();
     let text = std::fs::read_to_string(&resolved)
         .map_err(|error| format!("cannot read {source}: {error}"))?;
-    let scripts = parse_lifecycle_document(&text).map_err(|error| format!("{source}: {error}"))?;
+    let scripts =
+        jinn_preferences_config::schemas::session_lifecycle::parse_lifecycle_document(&text)
+            .map_err(|error| format!("{source}: {error}"))?;
     let Some(script) = scripts.iter().find(|s| s.name == script_name) else {
         return Err(format!(
             "{source}: no lifecycle script named \"{script_name}\"; the file defines: {}",
@@ -315,33 +324,7 @@ fn resolve_from_path(
                 .join(", ")
         ));
     };
-    half_of(script, script_name, action, kind).map(str::to_owned)
-}
-
-/// Parses a lifecycle TOML document through the production schema.
-///
-/// Accepts the bare `[[session_lifecycle.script]]` section a workflow file
-/// ships, and — for parity with `load_attendant`'s parser — the wrapped
-/// `[[script]]` shape.
-fn parse_lifecycle_document(text: &str) -> Result<Vec<SessionLifecycle>, String> {
-    #[derive(serde::Deserialize)]
-    struct Bare {
-        session_lifecycle: Section,
-    }
-    #[derive(serde::Deserialize)]
-    struct Section {
-        script: Vec<SessionLifecycle>,
-    }
-    #[derive(serde::Deserialize)]
-    struct Wrapped {
-        script: Vec<SessionLifecycle>,
-    }
-    if let Ok(bare) = toml::from_str::<Bare>(text) {
-        return Ok(bare.session_lifecycle.script);
-    }
-    toml::from_str::<Wrapped>(text)
-        .map(|wrapped| wrapped.script)
-        .map_err(|error| format!("not a lifecycle document: {error}"))
+    half_of(script, script_name, action, kind).map(|raw| (raw.to_owned(), Some(source)))
 }
 
 /// Takes the requested half of a script as the raw template string,
