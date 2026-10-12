@@ -184,6 +184,13 @@ jinn-testutil = { workspace = true }
 jinn-theme = { workspace = true }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
+# tests/session_identity.rs drives every creation surface — the plain and
+# scripted lifecycle branches, the attendant creation path, and the task
+# tool's child — so its invariants are asserted once, over all of them.
+jinn-app-state = { workspace = true }
+jinn-attendant = { workspace = true }
+jinn-sidebar = { workspace = true }
+jinn-tools = { workspace = true }
 
 [workspace.dependencies]
 

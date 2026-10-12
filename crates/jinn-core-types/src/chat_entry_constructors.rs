@@ -15,6 +15,7 @@
 use super::chat_entry::{AttachmentOutcome, ChatEntry, ChatEntryKind};
 use super::chat_entry_id::ChatEntryId;
 use super::context_override::ContextOverride;
+use super::session_id::SessionId;
 use super::tool_result_status::ToolResultStatus;
 
 impl ChatEntry {
@@ -108,6 +109,27 @@ impl ChatEntry {
             context_history: Vec::new(),
             token_count: None,
         }
+    }
+
+    /// Create the session-identity entry every created session opens with.
+    ///
+    /// A system entry naming the session's own id, so an agent inside the
+    /// session can answer "what is your session id" and address
+    /// `message_session` at itself or its siblings, and a human can copy
+    /// the id out of the transcript. Forced into the LLM context: the
+    /// identity must survive compaction and lead the prompt on every
+    /// creation path, which is why the text lives here rather than at a
+    /// call site — one constructor, no per-path drift in the sentence.
+    ///
+    /// Callers publish it as a `PushChatEntry` pinned
+    /// [`PinPosition::Top`](super::chat_entry::PinPosition::Top).
+    #[must_use]
+    pub fn session_identity(session_id: &SessionId) -> Self {
+        Self::system(format!(
+            "This session's id is {session_id}. Address messages to this session with \
+             message_session using this id."
+        ))
+        .with_context_override(ContextOverride::ForcedInclude)
     }
 
     /// Create a new error chat entry with the current timestamp.

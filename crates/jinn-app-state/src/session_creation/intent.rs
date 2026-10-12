@@ -14,9 +14,7 @@
 
 use crate::app_state::AppState;
 use jinn_config::ConfigLayer;
-use jinn_core_types::{
-    ContextOverride, DEFAULT_PERSONA_NAME, PinPosition, SessionId, SessionProfile,
-};
+use jinn_core_types::{DEFAULT_PERSONA_NAME, PinPosition, SessionId, SessionProfile};
 use jinn_preferences_config::schemas::SessionLifecycle;
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_lifecycle_msg::CommandTemplate;
@@ -126,12 +124,9 @@ pub fn handle_session_lifecycle_setup(
     // agent addressed by `message_session` knows its own id, and the human
     // can copy one out of the transcript. Pinned Top and forced into the
     // LLM context, so it is always the first thing the model reads and
-    // never falls out of the conversation.
-    let identity_entry = ChatEntry::system(format!(
-        "This session's id is {new_id}. Address messages to this session with \
-         message_session using this id."
-    ))
-    .with_context_override(ContextOverride::ForcedInclude);
+    // never falls out of the conversation. Built by the shared constructor
+    // on `ChatEntry`, so every creation path composes the same sentence.
+    let identity_entry = ChatEntry::session_identity(&new_id);
 
     // Build the session-created event.
     let created_event = SessionCreated {
@@ -184,11 +179,24 @@ pub fn handle_session_lifecycle_setup(
     }
 
     // No setup command — the starting CWD was already set on the new session
-    // before insert (above), so there's nothing more to do here.
+    // before insert (above), so there's nothing more to do here. The
+    // identity entry rides this branch too: a blank session announces its
+    // id the same way a scripted one does.
     if !seed.has_auto_enabled_mcp() {
-        return IntentResult::new_message(created_event);
+        return IntentResult::new_message(PushChatEntry {
+            session_id: new_id.clone(),
+            entry: identity_entry,
+            pin: Some(PinPosition::Top),
+        })
+        .with_message(created_event);
     }
-    IntentResult::new_message(created_event).with_message(jinn_mcp_msg::McpEnablementChanged {
+    IntentResult::new_message(PushChatEntry {
+        session_id: new_id.clone(),
+        entry: identity_entry,
+        pin: Some(PinPosition::Top),
+    })
+    .with_message(created_event)
+    .with_message(jinn_mcp_msg::McpEnablementChanged {
         session_id: new_id,
         enabled: seed.enabled_mcp,
     })
@@ -300,6 +308,7 @@ mod tests {
     use super::*;
     use crate::app_state::AppState;
     use jinn_core_types::chat_entry::ChatEntryKind;
+    use jinn_core_types::ContextOverride;
     use jinn_slices::route_publish::PublishSink;
     use std::sync::Mutex;
 
@@ -361,9 +370,11 @@ mod tests {
         assert!(state.session.contains(&old_id));
         // And two sessions exist.
         assert_eq!(state.session.session_count(), 2);
-        // And one message emitted (SessionCreated).
-        assert_eq!(result.message_names.len(), 1);
-        assert!(result.message_names[0].contains("SessionCreated"));
+        // And two messages are emitted: the identity entry push, then
+        // SessionCreated.
+        assert_eq!(result.message_names.len(), 2);
+        assert!(result.message_names[0].contains("PushChatEntry"));
+        assert!(result.message_names[1].contains("SessionCreated"));
         // And the session has no lifecycle name.
         assert!(state.active_session().lifecycle_name().is_none());
         // And the new session inherited the active session's CWD, not the app
@@ -681,9 +692,11 @@ mod tests {
 
         // Then a new session is created (same behavior as before).
         assert_ne!(*state.session.active_session_id(), old_id);
-        // And one message emitted (SessionCreated).
-        assert_eq!(result.message_names.len(), 1);
-        assert!(result.message_names[0].contains("SessionCreated"));
+        // And two messages emitted: the identity entry push, then
+        // SessionCreated.
+        assert_eq!(result.message_names.len(), 2);
+        assert!(result.message_names[0].contains("PushChatEntry"));
+        assert!(result.message_names[1].contains("SessionCreated"));
     }
 
     #[rstest::rstest]
@@ -952,6 +965,50 @@ mod tests {
             ContextOverride::ForcedInclude,
             "the identity survives compaction and is always in the prompt"
         );
+    }
+
+    #[rstest::rstest]
+    fn a_blank_session_pushes_an_identity_entry_too() {
+        use jinn_session_history_msg::PushChatEntry;
+
+        // Given a single empty session (app just started).
+        let mut state = AppState::default_with_scope_focus();
+
+        // When creating a new session with NO lifecycle setup command —
+        // the plain new-session branch, which returns early.
+        let result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            jinn_config::empty_config_layer(),
+        );
+
+        // Then the branch still publishes the identity entry: pinned Top,
+        // a system entry naming the new session's own id, forced into the
+        // LLM context — the no-setup branch announces the id the same way
+        // the scripted branch does.
+        let new_id = state.active_session().session_id().clone();
+        let sink = RecordingSink::default();
+        for closure in result.messages {
+            closure(&sink);
+        }
+        let published = sink.published.lock().expect("sink lock");
+        let (_, payload) = published
+            .iter()
+            .find(|(id, _)| id.ends_with("PushChatEntry"))
+            .expect("the identity entry is published on the no-setup branch");
+        let push: PushChatEntry = serde_json::from_value(payload.clone()).expect("decodes");
+        assert_eq!(push.session_id, new_id);
+        assert_eq!(push.pin, Some(PinPosition::Top));
+        let ChatEntryKind::System(text) = &push.entry.kind else {
+            panic!("the identity entry is a system entry");
+        };
+        assert!(
+            text.contains(&new_id.to_string()),
+            "the entry names this session's own id: {text}"
+        );
+        assert_eq!(push.entry.context_override(), ContextOverride::ForcedInclude);
     }
 
     #[rstest::rstest]

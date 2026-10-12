@@ -1956,6 +1956,7 @@ dependencies = [
  "dotenvy",
  "error-stack",
  "jiff",
+ "jinn-app-state",
  "jinn-attendant",
  "jinn-attendant-msg",
  "jinn-boot",
