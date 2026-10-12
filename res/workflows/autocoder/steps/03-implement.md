@@ -5,9 +5,9 @@ pin.
 
 ## Composing the dispatch
 
-Message the implementer (notify from you, or tell_session with the
-implementer's session id) with everything it needs, since it invents
-nothing:
+Message the implementer with tell_session, using the implementer's
+session id (recorded in your ledger at setup), with everything it
+needs, since it invents nothing:
 
 - The contract file path.
 - Its worktree path: `worktrees/<child-slug>`.
@@ -20,7 +20,8 @@ Say nothing else; the seed pin governs the rest.
 
 ## Receiving the report
 
-The implementer reports back through notify_parent:
+The implementer concludes its abbreviated findings and reports back
+through tell_session to your session id:
 
 - **Merged** — branch name, contract path, change summary. Dispatch
   step 4 with the same three facts.

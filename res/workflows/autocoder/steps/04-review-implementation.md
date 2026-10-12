@@ -5,8 +5,8 @@ lives in its seed pin.
 
 ## Composing the dispatch
 
-Message the reviewer (notify from you, or tell_session with the
-reviewer's session id) with:
+Message the reviewer with tell_session, using the reviewer's session
+id (recorded in your ledger at setup) with:
 
 - The implementer's branch name.
 - The contract file path.
@@ -17,8 +17,8 @@ Say nothing else; the seed pin governs the rest.
 
 ## Receiving the verdict
 
-The reviewer reports back through notify_parent with a binary
-verdict:
+The reviewer concludes its abbreviated verdict and reports back
+through tell_session to your session id, binary:
 
 - **pass** — the branch is merged-ready. Log the pass in the ledger
   and move to step 5 when every work item of the run has passed.

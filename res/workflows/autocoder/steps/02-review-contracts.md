@@ -5,8 +5,8 @@ in its seed pin.
 
 ## Composing the dispatch
 
-Message the reviewer (notify from you, or tell_session with the
-reviewer's session id) with:
+Message the reviewer with tell_session, using the reviewer's session
+id (recorded in your ledger at setup) with:
 
 - The contract file path.
 - The branch the child will be implemented on.
@@ -16,12 +16,12 @@ Say nothing else; the seed pin governs the rest.
 
 ## Receiving the verdict
 
-The reviewer reports back through notify_parent with a binary
-verdict:
+The reviewer concludes its abbreviated verdict and reports back
+through tell_session to your session id, binary:
 
 - `contract approved` → proceed to step 3 with this contract.
-- `contract returned`, with a numbered defect list → return the list
-  to the planner via notify_parent and re-run step 1 for that
+- `contract returned`, with a numbered defect list → send the list
+  to the planner with tell_session and re-run step 1 for that
   contract. Never implement against a returned contract.
 
 Log the verdict in the ledger and reflect it into the task list.

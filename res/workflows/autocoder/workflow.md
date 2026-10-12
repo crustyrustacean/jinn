@@ -24,10 +24,9 @@ the previous run closes here and only here.
 2. **Attendants.** Call `load_attendant` once per TOML in this
    workflow's `attendants/` directory (`planner.toml`, `implementer.toml`,
    `reviewer.toml`). They attach as your children. These attendants
-   report through conclude and notify_parent; they never need your
-   session id — the parent link already names you. Their config lives
-   in these files, and edits you make to a loaded attendant are
-   run-local by design.
+   report through conclude plus tell_session back to your session id.
+   Their config lives in these files, and edits you make to a loaded
+   attendant are run-local by design.
 3. **Worktree.** Call the lifecycle tool with the root setup script
    (`autocoder-fossil-root`, or the git sibling on a git checkout),
    passing `worktrees/<slug>` as the worktree path and the run branch
@@ -59,8 +58,9 @@ the previous run closes here and only here.
 2. Dispatch implementation stages, one contract at a time, in
    dependency order, by the step files: each stage's dispatch procedure
    names exactly what its message carries; each stage's seed pin
-   governs everything the dispatch leaves open. Stages report back
-   through notify_parent.
+   governs everything the dispatch leaves open. Stages conclude their
+   abbreviated findings and report back through tell_session to your
+   session id.
    - A review verdict of fail re-enters the implementer with the
      numbered defects (repeat until pass; the branch stays alive
      throughout).
@@ -94,10 +94,11 @@ the previous run closes here and only here.
 
 ## Stage protocol (applies to every dispatch)
 
-- Route hub-and-spoke: stages report to **you** through notify_parent,
-  you message them. The message tool is any-to-any, but the run's
-  convention is hub-and-spoke — a stage that needs another stage's
-  output gets it from you in its next dispatch, never directly.
+- Route hub-and-spoke: stages report to **you** through tell_session
+  (the parent id their seed carries), you message them the same way.
+  The tool is any-to-any, but the run's convention is hub-and-spoke —
+  a stage that needs another stage's output gets it from you in its
+  next dispatch, never directly.
 - Every stage message updates the task list before you act on it.
 - A stage that dies shows as an idle session in the sidebar — there is
   no scheduler. When a stage goes quiet past a reasonable wall-clock,

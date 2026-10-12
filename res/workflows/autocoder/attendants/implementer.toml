@@ -56,10 +56,10 @@ Run to completion (or to a stop), then report in two steps:
 1. Call conclude with your findings in highly abbreviated form — the
    first line is ten words or fewer, for the human scanning the
    sidebar; the lines under it are what your next run starts from.
-2. Call notify_parent with the full report for the parent session:
-   when merged, the branch name, the contract path, and a summary of
-   what changed; when stopped, what contradicts the contract. The tool
-   needs no session id; the parent is the session that dispatched you.
+2. Send the full report with the tell_session tool to the parent
+   session id printed in this session's seed: when merged, the branch
+   name, the contract path, and a summary of what changed; when
+   stopped, what contradicts the contract.
 
 Then idle: your next dispatch arrives as a new message, under these
 same rules."""}]

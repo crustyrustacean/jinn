@@ -6,8 +6,8 @@ You run this inside the run's root worktree, on the run branch.
 
 ## Composing the dispatch
 
-Message the planner (notify from you, or tell_session with the
-planner's session id) with:
+Message the planner with tell_session, using the planner's session
+id (recorded in your ledger at setup) with:
 
 - The goal verbatim — the human's words, unedited.
 - The ledger path, and that contract files are written to the ledger
@@ -29,7 +29,8 @@ instead.
 
 ## Receiving the result
 
-The planner reports back through notify_parent: contract file paths,
+The planner concludes its abbreviated findings and reports back
+through tell_session to your session id: contract file paths,
 dependency order, and risk notes. When it arrives:
 
 1. Read each contract; confirm none contains a question for the human.
