@@ -1,96 +1,227 @@
 # Session lifecycle scripts for autocoder runs.
 #
-# This file is loaded by path, never pasted: the workflow's prompts call
-# the `run_lifecycle` tool with `path` pointed at this file and `script`
-# naming the entry to run. Nothing here belongs in your user `jinn.toml`
-# — your existing interactive lifecycle entries stay untouched, and
-# neither entry ever writes trunk — the only trunk write in a run is the
-# orchestrator's G2 merge, which is a workflow step, not a script.
+# Loaded by path: the workflow's prompts call the `run_lifecycle` tool with
+# `path` pointed at this file and `script` naming the entry to run. Nothing
+# here belongs in a user `jinn.toml`.
 #
-# Placeholders: `<dir>` = worktree path (relative to the project
-# directory, always under `worktrees/`), `<branch>` = branch name,
-# `<base>` = base branch (the stage fork point). Named placeholders
-# only — the lifecycle tool supplies named arguments and refuses
-# positional `$n` ones. Values are shell-quoted by the template
-# renderer before substitution, so an argument cannot restructure the
-# command.
+# Portability contract:
+#
+#   - POSIX sh only (jinn runs lifecycle commands with `$SHELL -c`).
+#   - Every script probes its checkout — fossil first, then git — and
+#     refuses when neither is present. No repository file, path, branch,
+#     or VCS name is baked in anywhere.
+#   - Values render through the lifecycle tool's shell-quoting renderer;
+#     named `<placeholder>` arguments only, so an argument cannot
+#     restructure a command.
+#
+# Layout: worktrees are SIBLINGS of the checkout that spawned them, never
+# nested inside one. The workflow derives sibling paths from `verify`'s
+# `root:` line. Commit mechanics never depend on layout — every checkout
+# is a window onto the one shared repository — but the sibling rule keeps
+# trash placement stable and ignore rules unnecessary.
 #
 # Deletion policy — protected removal, two halves:
 #
-#   1. `autocoder-trash-stage` moves a checked-out, verified stage
-#      worktree into `.jinn-autocoder-trash/`. The agent-supplied path
-#      is quoted by the template renderer and gated twice — it must be
-#      an open checkout of this repository (`.fslckout` naming this
-#      repo file) and it must live under the run's `worktrees/` area —
-#      so a mis-recalled path is refused, and the worst case that
-#      survives both gates is a move, not a deletion. Fully
-#      recoverable by hand.
-#   2. `autocoder-trash-purge` carries no placeholders at all, so the
-#      tool renders it verbatim: there is no string the agent controls
-#      anywhere in it. It can be invoked; it cannot be aimed. It
-#      deletes the one fixed trash directory, and the workflow calls it
-#      only at the next run's start — a human action closes the
-#      cooling-off window. Prefer purging by hand; the entry exists so
-#      the start-of-run sweep is one visible tool call.
+#   1. `trash-stage` MOVES a verified worktree into a `.jinn-autocoder-trash/`
+#      beside it. Gates: the target may not be the caller's checkout, its
+#      ancestor, or its descendant; it must be a checkout root itself; and
+#      its repository identity must match the caller's. The worst case that
+#      passes every gate is a move, not a deletion — recoverable by hand.
+#   2. `trash-purge` carries no placeholders, so it renders verbatim and
+#      cannot be aimed. The workflow calls it only at the next run's start —
+#      a human action closes the cooling-off window.
+
+# ── Verify the session's position ────────────────────────────────
+# The run-entry probe. No placeholders; safe to call with empty args.
+# Exits nonzero unless the caller sits in an open checkout. Prints three
+# lines the orchestrator records in its ledger: `branch:` (the checked-out
+# branch), `repo-id:` (the repository identity trash-stage checks), and
+# `root:` (the checkout's absolute path — the base for deriving sibling
+# worktree dirs).
+[[session_lifecycle.script]]
+name = "verify"
+description = "Confirm this session is inside an open checkout; print its branch, repository id, and checkout root"
+setup_command = """
+if [ -f .fslckout ]; then
+  B="$(fossil branch current 2>/dev/null)"
+  WID="$(fossil info 2>/dev/null | sed -n 's/^project-code: *//p')"
+  ROOT="$(fossil info 2>/dev/null | sed -n 's/^local-root: *//p')"
+elif [ -e .git ]; then
+  B="$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse HEAD 2>/dev/null)"
+  WID="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+  ROOT="$(git rev-parse --path-format=absolute --show-toplevel 2>/dev/null)"
+else
+  echo "not inside a supported VCS checkout" >&2; exit 1
+fi
+if [ -z "$B" ] || [ -z "$WID" ] || [ -z "$ROOT" ]; then
+  echo "could not read branch, repository id, and checkout root" >&2; exit 1
+fi
+echo "branch: $B"
+echo "repo-id: $WID"
+echo "root: ${ROOT%/}"
+"""
+teardown_command = "true"
+
+# ── Fork and open ────────────────────────────────────────────────
+# New branch <branch> forked from <from>, opened as a worktree at <dir>.
+# <dir> is the dispatch's choice — the workflow always passes an absolute
+# sibling path. Prints the worktree path as the last line; the lifecycle
+# actor adopts it as the session's CWD. Refuses a path that is already an
+# open checkout.
+[[session_lifecycle.script]]
+name = "worktree-new"
+description = "Fork a branch off a source branch and open it as a worktree"
+setup_command = """
+if [ -f .fslckout ]; then
+  REPO="$(fossil info 2>/dev/null | sed -n 's/^repository: *//p')"
+  if [ -z "$REPO" ]; then echo "not inside an open fossil checkout" >&2; exit 1; fi
+  if [ -e <dir>/.fslckout ]; then echo "<dir> is already an open checkout" >&2; exit 1; fi
+  mkdir -p <dir> \
+    && fossil branch new <branch> <from> && cd <dir> \
+    && fossil open --nested "$REPO" <branch> && echo "$PWD"
+elif [ -e .git ]; then
+  git worktree add -b <branch> <dir> <from> \
+    && cd <dir> && echo "$PWD"
+else
+  echo "not inside a supported VCS checkout" >&2; exit 1
+fi"""
+teardown_command = "true"
+
+# ── Open an existing branch ──────────────────────────────────────
+# Open an existing branch <branch> in a new worktree at <dir>. Used when a
+# branch exists but no session holds it: reattaching after a stage died, or
+# the run-end base-branch merge. On git, a branch already checked out in
+# another worktree opens detached at its tip — enough to merge from.
+[[session_lifecycle.script]]
+name = "worktree-open"
+description = "Open an existing branch as a worktree"
+setup_command = """
+if [ -f .fslckout ]; then
+  REPO="$(fossil info 2>/dev/null | sed -n 's/^repository: *//p')"
+  if [ -z "$REPO" ]; then echo "not inside an open fossil checkout" >&2; exit 1; fi
+  if [ -e <dir>/.fslckout ]; then echo "<dir> is already an open checkout" >&2; exit 1; fi
+  mkdir -p <dir> && cd <dir> \
+    && fossil open --nested "$REPO" <branch> && echo "$PWD"
+elif [ -e .git ]; then
+  git worktree add <dir> <branch> 2>/dev/null \
+    || git worktree add --detach <dir> <branch> \
+    && cd <dir> && echo "$PWD"
+else
+  echo "not inside a supported VCS checkout" >&2; exit 1
+fi"""
+teardown_command = "true"
+
+# ── Merge into the current checkout ──────────────────────────────
+# One primitive for every merge in the run: a stage syncs the run branch
+# into its own checkout, the orchestrator merges a passed stage branch
+# into the run branch, and the base-branch merge brings the run branch
+# into the temporary base checkout. Always merges INTO WHERE THE CALLER
+# SITS; who may merge what is workflow policy, not script mechanics.
+[[session_lifecycle.script]]
+name = "merge"
+description = "Merge a branch into the current checkout"
+setup_command = """
+if [ -f .fslckout ]; then
+  fossil merge <branch>
+elif [ -e .git ]; then
+  git merge <branch>
+else
+  echo "not inside a supported VCS checkout" >&2; exit 1
+fi"""
+teardown_command = "true"
+
+# ── Advance the base branch ──────────────────────────────────────
+# The run's single base-branch write. Two steps, both values rendered
+# shell-quoted into a shell VARIABLE. First, from your checkout, open
+# the land worktree: <branch>-land is a NEW branch at the base tip (the
+# base itself may be checked out elsewhere — a new branch next to it is
+# fine). After the land checkout merges the run branch and commits, run
+# this from YOUR checkout: fast-forward <branch> to the land branch's
+# commit, refusing a non-fast-forward. The main checkout's worktree
+# updates cleanly; nothing is detached, nothing forced.
+[[session_lifecycle.script]]
+name = "worktree-land"
+description = "Open a land worktree: a new branch at the base branch's tip"
+setup_command = """
+DIR=<dir>
+if [ -e .git ]; then
+  git worktree add -b <branch>-land "$DIR" <branch> && cd "$DIR" && echo "$PWD"
+else
+  echo "worktree-land is git-only; fossil lands by opening the base branch directly" >&2; exit 1
+fi"""
+teardown_command = "true"
+
+[[session_lifecycle.script]]
+name = "advance"
+description = "Fast-forward the base branch to the land branch's commit"
+setup_command = """
+BR=<branch>
+if [ -f .fslckout ]; then
+  B="$(fossil branch current 2>/dev/null)"
+  if [ "$B" != "$BR" ]; then echo "current checkout is on '$B', not $BR" >&2; exit 1; fi
+  echo "base branch $BR carries the run (fossil commits advance it directly)"
+elif [ -e .git ]; then
+  git merge --ff-only "$BR-land" \
+    || { echo "base branch $BR cannot fast-forward to $BR-land" >&2; exit 1; }
+  echo "base branch $BR advanced to the land commit"
+else
+  echo "not inside a supported VCS checkout" >&2; exit 1
+fi"""
+teardown_command = "true"
+
+# ── Protected removal ────────────────────────────────────────────
+# Move one finished worktree into the trash. <dir> is the worktree path
+# exactly as dispatched; <repo-id> is the caller's repository identity
+# from `verify`. Gates, all required:
 #
-# Fossil layout assumed: the project checkout holds its `.fslckout` and
-# the repository file named in the commands (adjust to yours).
-
-# ── Autocoder root ───────────────────────────────────────────────
-# Setup: fork the run branch off trunk and open it as a worktree inside
-# the project directory. Prints the worktree path — the session adopts
-# it as CWD. Teardown is inert: the root worktree is kept for
-# inspection; the G2 merge step (workflow.md) is what touches trunk.
+#   1. The target may not resolve inside the caller's checkout, contain
+#      it, or be its VCS ancestor/descendant — you cannot trash the tree
+#      you sit in.
+#   2. The target must BE a checkout root (fossil `local-root` / git
+#      `--show-toplevel` must resolve to the target itself — VCS identity
+#      otherwise walks up and would inherit an enclosing checkout's).
+#   3. Its repository identity must equal <repo-id>.
+#
+# The trash directory is created beside the worktree (its parent), so the
+# layout the user's session lifecycle chose is respected and the trash
+# stays findable regardless of where later sessions sit.
 [[session_lifecycle.script]]
-name = "autocoder-fossil-root"
-description = "Fork an autocoder run branch off trunk (fossil)"
-setup_command = "fossil branch new <branch> trunk -R pipeline.fossil && mkdir -p worktrees && mkdir -p <dir> && cd <dir> && fossil open ../../pipeline.fossil <branch> && echo $PWD"
+name = "trash-stage"
+description = "Move a finished worktree into the autocoder trash (guarded)"
+setup_command = """
+ADIR="$(cd <dir> && pwd)" || { echo "<dir> does not exist" >&2; exit 1; }
+SELF="$(pwd -P)"
+SELF="${SELF%/}"; ADIR="${ADIR%/}"
+case "$ADIR/" in "$SELF"/*) echo "<dir> is inside this checkout" >&2; exit 1;; esac
+case "$SELF/" in "$ADIR"/*) echo "<dir> contains this checkout" >&2; exit 1;; esac
+if [ -f <dir>/.fslckout ]; then
+  ROOT="$(cd <dir> && fossil info 2>/dev/null | sed -n 's/^local-root: *//p')"
+  WID="$(cd <dir> && fossil info 2>/dev/null | sed -n 's/^project-code: *//p')"
+elif [ -e <dir>/.git ]; then
+  ROOT="$(git -C <dir> rev-parse --path-format=absolute --show-toplevel 2>/dev/null)"
+  WID="$(git -C <dir> rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+else
+  echo "<dir> is not an open checkout" >&2; exit 1
+fi
+ADIR="${ADIR%/}"; ROOT="${ROOT%/}"
+if [ -z "$ROOT" ] || [ "$ROOT" != "$ADIR" ]; then
+  echo "<dir> is not itself a checkout root" >&2; exit 1
+fi
+if [ -z "$WID" ] || [ "$WID" != <repo-id> ]; then
+  echo "<dir> does not belong to this repository" >&2; exit 1
+fi
+PARENT="$(dirname "$ADIR")"
+mkdir -p "$PARENT/.jinn-autocoder-trash"
+mv "$ADIR" "$PARENT/.jinn-autocoder-trash/" && echo "trashed: $ADIR"
+"""
 teardown_command = "true"
 
-# ── Autocoder stage ──────────────────────────────────────────────
-# Setup: fork the stage's own branch off the named base branch (the
-# run branch — or any branch the dispatch message names) and open it
-# as a worktree under the run's `worktrees/` area. Prints the worktree
-# path for CWD adoption. Teardown is inert: closing the checkout and
-# removing the directory are deliberately separate, human-visible
-# steps (the trash entry, then the purge at next run start) — this
-# script never merges and never deletes and never writes trunk.
-# Merging into the run branch is the stage's own finishing step, done
-# from the root worktree before the stage reports done.
+# The purge. No placeholders — rendered verbatim, un-aimable. The caller
+# must sit where the trash lives (the shared parent of the checkouts).
+# Called at the start of a run, never at its end, so the orchestrator
+# that filled the trash never empties it in the same breath.
 [[session_lifecycle.script]]
-name = "autocoder-fossil-stage"
-description = "Fork a stage branch off a base branch (fossil)"
-setup_command = "fossil branch new <branch> <base> -R pipeline.fossil && mkdir -p worktrees && mkdir -p <dir> && cd <dir> && fossil open ../../pipeline.fossil <branch> && echo $PWD"
-teardown_command = "true"
-
-# ── Protected removal (both VCSes) ───────────────────────────────
-# Move one stage worktree into the trash. Setup runs the guarded move
-# so the session sees the outcome; teardown is inert. The <dir> value
-# is quoted by the renderer; the two gates do the real work.
-[[session_lifecycle.script]]
-name = "autocoder-trash-stage"
-description = "Move a finished stage worktree into the autocoder trash (guarded)"
-setup_command = "mkdir -p .jinn-autocoder-trash && test -f <dir>/.fslckout && grep -qF 'pipeline.fossil' <dir>/.fslckout && printf '%s' <dir> | grep -q '^worktrees/' && mv <dir> .jinn-autocoder-trash/ && echo 'trashed: <dir>' || false"
-teardown_command = "true"
-
-# The purge. No placeholders — rendered verbatim, un-aimable. Called
-# at the start of a run (never at its end, so the orchestrator that
-# filled the trash never empties it in the same breath).
-[[session_lifecycle.script]]
-name = "autocoder-trash-purge"
-description = "Delete the autocoder trash (last run's staged worktree copies)"
+name = "trash-purge"
+description = "Delete the autocoder trash (last run's archived worktree copies)"
 setup_command = "rm -rf .jinn-autocoder-trash"
 teardown_command = "true"
-
-# ── Git siblings (secondary; same contracts) ─────────────────────
-[[session_lifecycle.script]]
-name = "autocoder-git-root"
-description = "Fork an autocoder run branch off main (git worktree)"
-setup_command = "mkdir -p worktrees && git worktree add -b <branch> <dir> main && cd <dir> && echo $PWD"
-teardown_command = "true"
-
-[[session_lifecycle.script]]
-name = "autocoder-git-stage"
-description = "Fork a stage branch off a base branch (git worktree)"
-setup_command = "mkdir -p worktrees && git worktree add -b <branch> <dir> <base> && cd <dir> && echo $PWD"
-teardown_command = "git worktree remove <dir>"
