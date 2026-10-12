@@ -40,3 +40,5 @@ stream_rules.toml
 # and install into the user's config directory. Ignore the whole subtree so
 # a local .config can never be tracked again.
 .config/*
+worktrees/*
+.jinn-autocoder-trash/*
