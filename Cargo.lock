@@ -2020,6 +2020,8 @@ dependencies = [
  "jinn-slices",
  "jinn-status-bar",
  "jinn-status-bar-msg",
+ "jinn-stream-rule-picker",
+ "jinn-stream-rule-picker-msg",
  "jinn-stream-rules",
  "jinn-term",
  "jinn-term-msg",
@@ -2211,6 +2213,7 @@ dependencies = [
  "jinn-skills-msg",
  "jinn-slices",
  "jinn-status-bar-msg",
+ "jinn-stream-rule-picker-msg",
  "jinn-term-msg",
  "jinn-theme-msg",
  "jinn-token-count-msg",
@@ -3666,6 +3669,38 @@ dependencies = [
  "jinn-core-types",
  "jinn-slices",
  "serde",
+]
+
+[[package]]
+name = "jinn-stream-rule-picker"
+version = "1.6.0"
+dependencies = [
+ "error-stack",
+ "jinn-cell-catalog",
+ "jinn-config",
+ "jinn-kernel",
+ "jinn-picker",
+ "jinn-preferences-config",
+ "jinn-selection-widget",
+ "jinn-slices",
+ "jinn-stream-rule-picker-msg",
+ "jinn-theme",
+ "ratatui",
+ "rstest",
+ "tokio",
+]
+
+[[package]]
+name = "jinn-stream-rule-picker-msg"
+version = "1.6.0"
+dependencies = [
+ "jinn-picker",
+ "jinn-preferences-config",
+ "jinn-selection-widget",
+ "jinn-slices",
+ "jinn-theme",
+ "ratatui",
+ "rstest",
 ]
 
 [[package]]

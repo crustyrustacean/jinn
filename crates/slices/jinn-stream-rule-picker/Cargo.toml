@@ -1,0 +1,27 @@
+[package]
+name = "jinn-stream-rule-picker"
+version.workspace = true
+edition.workspace = true
+description = "The stream-rule disable picker: list the rules, toggle a rule off or on, confirm the set."
+
+[dependencies]
+jinn-config = { workspace = true }
+jinn-kernel = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-preferences-config = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-theme = { workspace = true }
+jinn-stream-rule-picker-msg = { workspace = true }
+error-stack = { workspace = true }
+ratatui = { workspace = true }
+
+[dev-dependencies]
+# `activate` resolves the picker cell the catalog owns, so the tests seed
+# their registry through the same list production boot uses.
+jinn-cell-catalog = { workspace = true }
+rstest = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true
