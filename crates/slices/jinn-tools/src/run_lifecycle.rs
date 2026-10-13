@@ -1,26 +1,32 @@
-//! The `run_lifecycle` tool — run a session lifecycle script by name or path.
+//! The `run_lifecycle` tool — run a session lifecycle script's setup, or
+//! replay a session's recorded teardown.
 //!
-//! Two script sources exist and are never combined. The user's `jinn.toml`
-//! holds their own `[[session_lifecycle.script]]` entries, resolved by name;
-//! a workflow ships its own `lifecycle.toml` beside its prompts, and the
-//! tool reads that exact file when the call carries a `path`, with the name
-//! selecting the entry inside it — one multi-entry workflow file works as
-//! shipped. The sources never merge: a `path` bypasses the user's config
-//! entirely, and a call supplying neither source is refused.
+//! The two actions read their coordinates from different places, and the
+//! schema says so: `action` and `session_id` are the only required
+//! arguments, and everything else is setup-only.
 //!
-//! jinn.toml scripts are creation-coupled: the picker runs setup only for a
-//! brand-new session, and teardown replays the args stored at creation. A
-//! workflow needs neither constraint — its orchestrator forks worktrees for
-//! *existing* stage sessions and merges them down when a stage finishes — so
-//! this tool runs a named script's setup or teardown for a session the agent
-//! names, with the script's arguments supplied in the call.
+//! **Setup** carries the script coordinates in the call: the user's
+//! `jinn.toml` by name, or — when a `path` is given — that exact file, with
+//! the name selecting the entry inside it (the sources never combine). The
+//! script's named arguments are supplied in the call and shell-quoted
+//! before substitution. Setup records the script name, the arguments in
+//! the raw template's parameter order, and the source file on the session
+//! *before* the run command publishes, and persists the session — those
+//! coordinates are what teardown replays, and they must survive a restart.
+//!
+//! **Teardown** takes only the session id. Script, path, and argument
+//! arguments are ignored — every one of them — and the command re-renders
+//! from the session's stored coordinates, the same ones a close would
+//! replay. A caller cannot teardown a session with coordinates the session
+//! never recorded.
 //!
 //! Everything dangerous is borrowed, not reimplemented: argument values
 //! render through `CommandTemplate`'s shell-quoted path (the same one the
 //! arg-input popup feeds), execution goes through the lifecycle actor's
-//! terminal-isolated runner, and a setup that prints a directory still
-//! moves the session there. The tool contributes exactly one new thing —
-//! named arguments reaching an existing session — and composes the rest.
+//! terminal-isolated runner, a setup that prints a directory still moves
+//! the session there, and the actor enforces one lifecycle command per
+//! session at a time — a second call for a busy session is refused with a
+//! visible failure, not queued and not clobbered.
 
 use std::collections::BTreeMap;
 
@@ -35,7 +41,9 @@ use crate::tool_types::{ToolContext, tool_error};
 use super::BoxedToolFuture;
 use jinn_core_types::session_id::SessionId;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use jinn_kernel::common::state::State;
 use jinn_preferences_config::schemas::{LifecycleCommand, SessionLifecycle};
+use jinn_session_lifecycle_msg::LifecycleScriptState;
 use jinn_session_lifecycle_msg::command_template::CommandTemplate;
 use jinn_session_lifecycle_msg::{RunSessionSetup, RunSessionTeardown};
 
@@ -43,56 +51,67 @@ use jinn_session_lifecycle_msg::{RunSessionSetup, RunSessionTeardown};
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
         name: "run_lifecycle".to_owned(),
-        description: "Run a session lifecycle script's setup or teardown for a session, \
-             with the script's arguments supplied here. The script comes from jinn.toml \
-             by name, or — when a path is given — from that exact file, with the name \
-             selecting the entry inside it. Setup adopts the last path the script \
-             prints as the session's working directory. Values are shell-quoted \
-             before substitution, so they cannot alter the command."
+        description: "Run a session lifecycle script's setup, or replay a session's recorded \
+             teardown. Setup names the script — from jinn.toml, or from the exact file a \
+             path argument names — and supplies its arguments; the recorded coordinates \
+             land on the session before the script runs, so teardown can replay them after \
+             a restart. Teardown needs only the session id: it re-runs the teardown the \
+             session's stored coordinates name, and any script/path/args supplied with it \
+             are ignored. Setup adopts the last path the script prints as the session's \
+             working directory. Values are shell-quoted before substitution, so they \
+             cannot alter the command."
             .to_owned(),
         prompt_snippet: Some(
-            "Run a lifecycle script: `run_lifecycle` with the script name (and its \
-             file's path for a workflow script), the action, and its arguments."
+            "Run a lifecycle script: `run_lifecycle` with the action and session id — \
+             for setup add the script name (and its file's path for a workflow script) \
+             and its arguments; for teardown add nothing else, the session's recorded \
+             coordinates drive it."
                 .to_owned(),
         ),
         prompt_guidelines: vec![
             "Use `run_lifecycle` to give a session its scripted environment — a \
-             worktree, a checkout — or to tear that environment down. Supply every \
-             argument the script's placeholders name; values are quoted for you. \
-             A workflow's scripts live in its `lifecycle.toml`: pass that path and \
-             the script's name."
+             worktree, a checkout — or to tear that environment down. Setup: supply \
+             every argument the script's placeholders name; values are quoted for you; \
+             the coordinates are recorded on the session. Teardown: pass only the \
+             session id — the recorded coordinates replay, and supplied script/path/args \
+             are ignored. A workflow's scripts live in its `lifecycle.toml`: pass that \
+             path and the script's name."
                 .to_owned(),
         ],
         parameters: serde_json::json!({
             "type": "object",
             "properties": {
-                "script": {
-                    "type": "string",
-                    "description": "The lifecycle script's name — from jinn.toml, or \
-                         from the file the path argument names."
-                },
-                "path": {
-                    "type": "string",
-                    "description": "Path to a lifecycle TOML file to read the script \
-                         from instead of jinn.toml (e.g. a workflow's lifecycle.toml)."
-                },
                 "action": {
                     "type": "string",
                     "enum": ["setup", "teardown"],
-                    "description": "Which half of the script to run."
+                    "description": "Which half to run: setup reads the script named \
+                         below; teardown replays the session's recorded coordinates."
                 },
                 "session_id": {
                     "type": "string",
                     "description": "The session the script runs for."
                 },
+                "script": {
+                    "type": "string",
+                    "description": "Setup only. The lifecycle script's name — from \
+                         jinn.toml, or from the file the path argument names. Ignored \
+                         by teardown."
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Setup only. Path to a lifecycle TOML file to read \
+                         the script from instead of jinn.toml (e.g. a workflow's \
+                         lifecycle.toml). Ignored by teardown."
+                },
                 "args": {
                     "type": "object",
-                    "description": "Named arguments for the script's <placeholder> \
-                         parameters, keyed by placeholder name.",
+                    "description": "Setup only. Named arguments for the script's \
+                         <placeholder> parameters, keyed by placeholder name. Ignored \
+                         by teardown, which replays the session's stored arguments.",
                     "additionalProperties": { "type": "string" }
                 }
             },
-            "required": ["script", "action", "session_id", "args"]
+            "required": ["action", "session_id"]
         }),
         server_tool_type: None,
     }
@@ -101,26 +120,6 @@ pub fn definition() -> ToolDefinition {
 /// Executes `run_lifecycle`.
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
-        // The optional path must be read first: a blank script with a path
-        // present is a different refusal than a blank script alone.
-        let raw_path = string_argument(&call, "path").filter(|p| !p.trim().is_empty());
-        let raw_script = string_argument(&call, "script");
-        let script_name = match (&raw_script, &raw_path) {
-            (Some(name), _) if !name.trim().is_empty() => name.clone(),
-            (Some(_), Some(_)) => {
-                return tool_error(
-                    &call,
-                    "script is required with path: the name selects the entry inside \
-                     the file",
-                );
-            }
-            // A present-but-blank name without a path is not a schema miss —
-            // JSON `""` satisfies `required` — so it keeps the historic
-            // refusal: the config resolution reports the unknown script ""
-            // with the known list.
-            (Some(name), None) => name.clone(),
-            (None, _) => return tool_error(&call, "missing required argument: script"),
-        };
         let Some(action) = string_argument(&call, "action") else {
             return tool_error(&call, "missing required argument: action");
         };
@@ -140,10 +139,6 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let Some(target_id) = SessionId::try_from_string(&raw_id) else {
             return tool_error(&call, &format!("unknown session: {raw_id}"));
         };
-        let args = match map_argument(&call, "args") {
-            Ok(args) => args,
-            Err(reason) => return tool_error(&call, &reason),
-        };
         let Some(state) = ctx.state.clone() else {
             return tool_error(&call, "run_lifecycle is unavailable without shared state");
         };
@@ -157,114 +152,284 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             );
         };
 
-        // Resolve the script and render the command before touching state:
-        // an unreadable file, an unknown script, or a missing argument must
-        // fail without any side effect. The two sources never combine: a
-        // path reads that file and never consults the user's config. The
-        // source is recorded with the session so its teardown re-reads the
-        // same place after a restart.
-        let (raw_command, source_path) = match raw_path {
-            Some(path) => match resolve_from_path(&path, &ctx, &script_name, &action, kind) {
-                Ok(resolved) => resolved,
-                Err(reason) => return tool_error(&call, &reason),
-            },
-            None => match resolve_from_config(&ctx, &script_name, &action, kind) {
-                Ok(resolved) => resolved,
-                Err(reason) => return tool_error(&call, &reason),
-            },
-        };
-        let command = match render_command(&raw_command, &args) {
-            Ok(rendered) => rendered,
-            Err(reason) => return tool_error(&call, &reason),
-        };
-
-        // Teardown replays the session's *stored* args (the actor re-renders
-        // from the recorded source and ignores the command we publish), so
-        // the tool's coordinates must land on the session before the command
-        // does. State-before-publish ordering is load-bearing.
-        if kind == AwaitKind::Teardown {
-            let mut guard = state.write();
-            let Some(session) = guard.session.get_mut(&target_id) else {
-                return tool_error(&call, &format!("unknown session: {target_id}"));
-            };
-            // The actor re-renders teardown from the RAW template plus
-            // these stored args, so the args are ordered against the raw
-            // template's parameter order — not the rendered command, which
-            // has no placeholders left.
-            let ordered = order_args(&CommandTemplate::parse(&raw_command), &args);
-            session.set_lifecycle_name(Some(script_name.clone()));
-            session.set_lifecycle_args(ordered);
-            session.set_lifecycle_source(source_path);
-        }
-
-        // Listener before publication: no completion event can slip past
-        // the subscription.
-        let (tx, rx) = tokio::sync::oneshot::channel::<LifecycleCompletion>();
-        LifecycleCompletionListenerActor::spawn(LifecycleCompletionListenerDeps {
-            system: system.clone(),
-            bus: bus.clone(),
-            session_id: target_id.clone(),
-            kind,
-            completion: tx,
-        })
-        .await;
-
+        // Per-action validation: the schema requires only action and
+        // session_id; every other argument is validated by the action that
+        // reads it. Teardown reads none of them.
         match kind {
-            AwaitKind::Setup => {
-                // The actor honors the command we publish: it spawns the
-                // rendered command terminal-isolated in the session's cwd
-                // and adopts the last stdout line as the session's cwd.
-                // Args ride in raw-template parameter order, matching what
-                // a teardown replay would read back.
-                let template = CommandTemplate::parse(&raw_command);
-                bus.publish(RunSessionSetup {
-                    session_id: target_id.clone(),
-                    command: command.clone(),
-                    args: order_args(&template, &args),
-                    lifecycle_command: Some(LifecycleCommand::Shell(command.clone())),
-                })
-                .await;
-            }
+            AwaitKind::Setup => run_setup(call, ctx, state, bus, system, target_id, action).await,
             AwaitKind::Teardown => {
-                bus.publish(RunSessionTeardown {
-                    session_id: target_id.clone(),
-                    command: command.clone(),
-                    args: Vec::new(),
-                })
-                .await;
+                run_teardown(call, ctx, state, bus, system, target_id, action).await
             }
-        }
-
-        // Bound the wait: a script that hangs cannot hang the tool batch
-        // forever. The script keeps running past the timeout either way —
-        // this reports, it does not kill.
-        let completion = tokio::time::timeout(std::time::Duration::from_secs(300), rx).await;
-        match completion {
-            Ok(Ok(done)) => match done.error {
-                None => {
-                    let where_to = done
-                        .cwd
-                        .map(|cwd| format!(" Session cwd: {}.", cwd.display()))
-                        .unwrap_or_default();
-                    succeeded(
-                        call,
-                        &format!("{action} for \"{script_name}\" completed.{where_to}"),
-                    )
-                }
-                Some(error) => failed(
-                    call,
-                    &format!("{action} for \"{script_name}\" failed: {error}"),
-                ),
-            },
-            _ => failed(
-                call,
-                &format!(
-                    "{action} for \"{script_name}\" did not report completion within \
-                     the wait budget; it may still be running"
-                ),
-            ),
         }
     })
+}
+
+/// Runs the setup half: resolve the script, render, stamp the session's
+/// coordinates, persist, then publish the run command.
+///
+/// Validation and resolution happen before any side effect: an unreadable
+/// file, an unknown script, a missing argument, or a session in the wrong
+/// lifecycle state must fail without stamping anything — a stamp onto a
+/// session that already ran setup would corrupt the coordinates its
+/// teardown will replay.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the execute split passes the validated call pieces through"
+)]
+async fn run_setup(
+    call: ToolCall,
+    ctx: ToolContext,
+    state: State,
+    bus: jinn_kernel::common::services::bus_service::BusService,
+    system: trouper::system::ActorSystem,
+    target_id: SessionId,
+    action: String,
+) -> ToolResult {
+    // The optional path must be read first: a blank script with a path
+    // present is a different refusal than a blank script alone.
+    let raw_path = string_argument(&call, "path").filter(|p| !p.trim().is_empty());
+    let raw_script = string_argument(&call, "script");
+    let script_name = match (&raw_script, &raw_path) {
+        (Some(name), _) if !name.trim().is_empty() => name.clone(),
+        (Some(_), Some(_)) => {
+            return tool_error(
+                &call,
+                "script is required with path: the name selects the entry inside \
+                 the file",
+            );
+        }
+        // A present-but-blank name without a path is not a schema miss —
+        // JSON `""` satisfies `required`-shaped expectations — so it keeps
+        // the historic refusal: the config resolution reports the unknown
+        // script "" with the known list.
+        (Some(name), None) => name.clone(),
+        (None, _) => return tool_error(&call, "setup requires the script argument"),
+    };
+    let args = match map_argument(&call, "args") {
+        Ok(args) => args,
+        Err(reason) => return tool_error(&call, &reason),
+    };
+
+    // Resolve the script and render the command before touching state. The
+    // two sources never combine: a path reads that file and never consults
+    // the user's config. The source is recorded with the session so its
+    // teardown re-reads the same place after a restart.
+    let (raw_command, source_path) = match raw_path {
+        Some(path) => match resolve_from_path(&path, &ctx, &script_name, &action, AwaitKind::Setup)
+        {
+            Ok(resolved) => resolved,
+            Err(reason) => return tool_error(&call, &reason),
+        },
+        None => match resolve_from_config(&ctx, &script_name, &action, AwaitKind::Setup) {
+            Ok(resolved) => resolved,
+            Err(reason) => return tool_error(&call, &reason),
+        },
+    };
+    let command = match render_command(&raw_command, &args) {
+        Ok(rendered) => rendered,
+        Err(reason) => return tool_error(&call, &reason),
+    };
+
+    // State gate before the stamp: setup only from a session that has run
+    // nothing yet, and the session must exist to carry the coordinates.
+    {
+        let guard = state.read();
+        let Some(session) = guard.session.get(&target_id) else {
+            return tool_error(&call, &format!("unknown session: {target_id}"));
+        };
+        let current = session.lifecycle_script_state();
+        if current != LifecycleScriptState::NothingRan {
+            return tool_error(
+                &call,
+                &format!(
+                    "setup refused for session {target_id}: lifecycle state is {current}, \
+                     setup requires nothing_ran"
+                ),
+            );
+        }
+    }
+
+    // Stamp the coordinates the teardown will replay, ordered against the
+    // RAW template's parameter order — the rendered string has no
+    // placeholders left to order against — and persist so they survive a
+    // restart. Both land before the run command publishes: the actor may
+    // process the command before this call returns.
+    let ordered = order_args(&CommandTemplate::parse(&raw_command), &args);
+    {
+        let mut guard = state.write();
+        if let Some(session) = guard.session.get_mut(&target_id) {
+            session.set_lifecycle_name(Some(script_name.clone()));
+            session.set_lifecycle_args(ordered.clone());
+            session.set_lifecycle_source(source_path.clone());
+        }
+    }
+    bus.publish(jinn_session_store_msg::PersistSession {
+        session_id: target_id.clone(),
+    })
+    .await;
+
+    // Listener before publication: no completion event can slip past
+    // the subscription.
+    let (tx, rx) = tokio::sync::oneshot::channel::<LifecycleCompletion>();
+    LifecycleCompletionListenerActor::spawn(LifecycleCompletionListenerDeps {
+        system: system.clone(),
+        bus: bus.clone(),
+        session_id: target_id.clone(),
+        kind: AwaitKind::Setup,
+        completion: tx,
+    })
+    .await;
+
+    // The actor honors the command we publish: it spawns the rendered
+    // command terminal-isolated in the session's cwd and adopts the last
+    // stdout line as the session's cwd.
+    bus.publish(RunSessionSetup {
+        session_id: target_id.clone(),
+        command: command.clone(),
+        args: ordered,
+        lifecycle_command: Some(LifecycleCommand::Shell(command.clone())),
+    })
+    .await;
+
+    await_completion(call, rx, AwaitKind::Setup, &action, &script_name).await
+}
+
+/// Runs the teardown half: replay the session's recorded coordinates.
+///
+/// Script, path, and argument arguments are read from the call by nobody —
+/// not validated, not consulted. The command re-resolves from the session's
+/// recorded name and source and re-renders from its stored args, exactly
+/// what a close replays; the published command names that replay so the
+/// wire payload matches what will run. A session with nothing recorded, a
+/// session that has not run setup, or a recorded lifecycle that no longer
+/// resolves fails naming the session or source — fast, without spending
+/// the wait budget on a silent no-op.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the execute split passes the validated call pieces through"
+)]
+async fn run_teardown(
+    call: ToolCall,
+    ctx: ToolContext,
+    state: State,
+    bus: jinn_kernel::common::services::bus_service::BusService,
+    system: trouper::system::ActorSystem,
+    target_id: SessionId,
+    action: String,
+) -> ToolResult {
+    // Replay the recorded coordinates. The stored coordinates are read and
+    // never written: a teardown call cannot reshape what it replays.
+    let (replayed, recorded_name) = {
+        let guard = state.read();
+        let Some(session) = guard.session.get(&target_id) else {
+            return tool_error(&call, &format!("unknown session: {target_id}"));
+        };
+        let current = session.lifecycle_script_state();
+        if current != LifecycleScriptState::SetupRan {
+            return tool_error(
+                &call,
+                &format!(
+                    "teardown refused for session {target_id}: lifecycle state is {current}, \
+                     teardown requires setup_ran"
+                ),
+            );
+        }
+        match jinn_kernel::session_lifecycle::intent::build_run_session_teardown(
+            &guard,
+            &target_id,
+            &ctx.config,
+        ) {
+            Some(Ok(replayed)) => {
+                let name = session
+                    .lifecycle_name()
+                    .map(str::to_owned)
+                    .unwrap_or_default();
+                (replayed, name)
+            }
+            Some(Err(failure)) => {
+                return tool_error(
+                    &call,
+                    &format!("teardown could not be resolved for session {target_id}: {failure}"),
+                );
+            }
+            None => {
+                return tool_error(
+                    &call,
+                    &format!(
+                        "teardown refused for session {target_id}: no lifecycle script recorded"
+                    ),
+                );
+            }
+        }
+    };
+
+    // Listener before publication: no completion event can slip past
+    // the subscription.
+    let (tx, rx) = tokio::sync::oneshot::channel::<LifecycleCompletion>();
+    LifecycleCompletionListenerActor::spawn(LifecycleCompletionListenerDeps {
+        system: system.clone(),
+        bus: bus.clone(),
+        session_id: target_id.clone(),
+        kind: AwaitKind::Teardown,
+        completion: tx,
+    })
+    .await;
+
+    // The actor ignores the published command and args — it re-resolves
+    // and re-renders from the session's stored coordinates, which this
+    // call did not touch. The payload names the replay so the wire matches
+    // what will run.
+    bus.publish(RunSessionTeardown {
+        session_id: target_id.clone(),
+        command: replayed.command,
+        args: replayed.args,
+    })
+    .await;
+
+    await_completion(call, rx, AwaitKind::Teardown, &action, &recorded_name).await
+}
+
+/// Awaits the completion event, bounding the wait.
+///
+/// A script that hangs cannot hang the tool batch forever, but the script
+/// keeps running past the timeout either way — the budget reports, it does
+/// not kill.
+async fn await_completion(
+    call: ToolCall,
+    rx: tokio::sync::oneshot::Receiver<LifecycleCompletion>,
+    kind: AwaitKind,
+    action: &str,
+    name: &str,
+) -> ToolResult {
+    let completion = tokio::time::timeout(std::time::Duration::from_secs(300), rx).await;
+    match completion {
+        Ok(Ok(done)) => match done.error {
+            None => {
+                let where_to = match kind {
+                    AwaitKind::Setup => done
+                        .cwd
+                        .map(|cwd| format!(" Session cwd: {}.", cwd.display()))
+                        .unwrap_or_default(),
+                    AwaitKind::Teardown => String::new(),
+                };
+                succeeded(
+                    call,
+                    &format!("{action} for \"{name}\" completed.{where_to}"),
+                )
+            }
+            Some(error) => failed(call, &format!("{action} for \"{name}\" failed: {error}")),
+        },
+        _ => failed(call, &wait_budget_message(action, name)),
+    }
+}
+
+/// The message a wait-budget timeout reports: the command may still be
+/// running — the budget bounds the tool's wait, not the script's life.
+pub(crate) fn wait_budget_message(action: &str, name: &str) -> String {
+    format!(
+        "{action} for \"{name}\" did not report completion within the wait budget; \
+         the command may still be running"
+    )
 }
 
 /// Resolves the script's raw command from the user's jinn.toml by name.

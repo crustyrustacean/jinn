@@ -1,6 +1,7 @@
 //! Tests for the `run_lifecycle` tool: hostile-argument quoting,
-//! named→positional ordering, unknown-script refusal, teardown
-//! arg-stamping, and the two script sources — jinn.toml by name, a
+//! named→positional ordering, unknown-script refusal, setup coordinate
+//! stamping + persistence, teardown replay-from-stored (options ignored),
+//! state gates, and the two script sources — jinn.toml by name, a
 //! workflow file by path — never combined. The quoting assertions call
 //! the same render path the tool calls, against the lifecycle crate's
 //! already-tested implementation.
@@ -18,9 +19,10 @@ use jinn_kernel::common::state::State;
 use jinn_session_lifecycle_msg::command_template::CommandTemplate;
 use jinn_session_lifecycle_msg::{RunSessionSetup, RunSessionTeardown};
 use jinn_session_state::ChatSessionState;
+use jinn_session_store_msg::PersistSession;
 use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 
-use crate::run_lifecycle::{execute, render_command};
+use crate::run_lifecycle::{execute, render_command, wait_budget_message};
 use crate::tool_types::ToolContext;
 
 /// Builds a tool call with the given JSON arguments.
@@ -69,6 +71,22 @@ fn fixture() -> (State, SessionId) {
     let session = ChatSessionState::new();
     let id = session.session_id().clone();
     state.write().session.insert(session);
+    (state, id)
+}
+
+/// Seeds one session whose lifecycle already ran setup: the worktree
+/// coordinates stamped at setup time (args in raw-template order) and the
+/// state advanced past `nothing_ran` — the state a teardown replay meets.
+fn setup_ran_fixture() -> (State, SessionId) {
+    let (state, id) = fixture();
+    {
+        let mut guard = state.write();
+        let session = guard.session.get_mut(&id).expect("session");
+        session.set_lifecycle_name(Some("worktree".to_owned()));
+        session.set_lifecycle_args(vec!["wt-a".to_owned()]);
+        session.set_lifecycle_source(None);
+        session.advance_lifecycle_after_setup();
+    }
     (state, id)
 }
 
@@ -148,10 +166,11 @@ fn ordering_places_named_args_in_template_parameter_order() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn setup_publishes_the_rendered_command_and_awaits_completion() {
-    // Given a session and a harness recording lifecycle commands.
+async fn setup_stamps_coordinates_and_persists_before_the_run_command() {
+    // Given a session and a harness recording setup commands and persists.
     let harness = TestHarness::new().await;
     let setups = harness.spawn_recorder::<RunSessionSetup>().await;
+    let persists = harness.spawn_recorder::<PersistSession>().await;
     let (state, id) = fixture();
     let tool_ctx = ctx(&harness, &state, id.clone()).await;
 
@@ -175,9 +194,28 @@ async fn setup_publishes_the_rendered_command_and_awaits_completion() {
         .await;
     let result = tool.await.expect("tool task");
 
-    // Then the tool succeeded and the published command carries the
-    // rendered, quoted command with ordered args.
+    // Then the tool succeeded, the session carries the script name, the
+    // args in raw-template parameter order, and the source — stamped by
+    // the time the call completed — and a persist was published so the
+    // coordinates survive a restart.
     assert!(result.success, "{}", result.content);
+    let guard = state.read();
+    let session = guard.session.get(&id).expect("session");
+    assert_eq!(session.lifecycle_name(), Some("worktree"));
+    assert_eq!(
+        session.lifecycle_args(),
+        &["wt-a".to_owned(), "trunk".to_owned()]
+    );
+    assert_eq!(session.lifecycle_source(), None);
+    drop(guard);
+    let persisted = await_recorded::<PersistSession>(&persists, 1, Duration::from_secs(2)).await;
+    assert!(
+        persisted.iter().any(|m| m.session_id == id),
+        "the stamped coordinates must be persisted"
+    );
+
+    // And the published command carries the rendered, quoted command with
+    // ordered args.
     let recorded = await_recorded::<RunSessionSetup>(&setups, 1, Duration::from_secs(2)).await;
     assert_eq!(recorded[0].session_id, id);
     // Safe values pass through unquoted (shell_quote quotes only specials).
@@ -201,18 +239,19 @@ async fn setup_publishes_the_rendered_command_and_awaits_completion() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn teardown_stamps_lifecycle_name_and_args_before_publishing() {
-    // Given a session and a harness recording teardown commands.
+async fn teardown_ignores_supplied_options_and_replays_the_stored_coordinates() {
+    // Given a session whose lifecycle already ran setup, with stored
+    // coordinates, and a harness recording teardown commands.
     let harness = TestHarness::new().await;
     let teardowns = harness.spawn_recorder::<RunSessionTeardown>().await;
-    let (state, id) = fixture();
+    let (state, id) = setup_ran_fixture();
     let tool_ctx = ctx(&harness, &state, id.clone()).await;
 
-    // When the tool runs teardown, answered by the event the actor would
-    // publish.
+    // When the tool runs teardown with a WRONG script, a WRONG path, and
+    // WRONG args — none of which the call's stored coordinates agree with.
     let tool = tokio::spawn(execute(
         call(&format!(
-            r#"{{"script":"worktree","action":"teardown","session_id":"{id}","args":{{"dir":"wt-a","base":"trunk"}}}}"#
+            r#"{{"script":"stage","path":"/gone/workflow/lifecycle.toml","action":"teardown","session_id":"{id}","args":{{"dir":"WRONG","base":"WRONGER"}}}}"#
         )),
         tool_ctx,
     ));
@@ -225,24 +264,179 @@ async fn teardown_stamps_lifecycle_name_and_args_before_publishing() {
         .await;
     let result = tool.await.expect("tool task");
 
-    // Then the session now carries the script name and ordered args — the
-    // actor re-renders teardown from these, so they must be stamped.
+    // Then the call succeeded: every supplied option was ignored, the
+    // stored coordinates are intact, and the published command is the
+    // replay rendered from the stored args — the worktree teardown with
+    // the stored "wt-a", not the wrong "WRONG".
     assert!(result.success, "{}", result.content);
     let guard = state.read();
     let session = guard.session.get(&id).expect("session");
     assert_eq!(session.lifecycle_name(), Some("worktree"));
-    // The teardown template only names <dir>, so the stored args carry
-    // exactly what the teardown replay will substitute.
     assert_eq!(session.lifecycle_args(), &["wt-a".to_owned()]);
-    // And the published command named the script's teardown template.
+    assert_eq!(session.lifecycle_source(), None);
     drop(guard);
     let recorded =
         await_recorded::<RunSessionTeardown>(&teardowns, 1, Duration::from_secs(2)).await;
+    assert_eq!(recorded[0].session_id, id);
     assert!(
-        recorded[0].command.contains("rm -rf"),
-        "{}",
+        recorded[0].command.contains("rm -rf 'wt-a'")
+            || recorded[0].command.contains("rm -rf wt-a"),
+        "the replay must render from the STORED args: {}",
         recorded[0].command
     );
+    assert!(
+        !recorded[0].command.contains("WRONG"),
+        "a supplied option leaked into the replay: {}",
+        recorded[0].command
+    );
+}
+
+/// Seeds one session whose lifecycle state is `SetupRan` but which
+/// recorded no lifecycle name — the "nothing recorded at teardown" shape
+/// (advanced past setup, coordinates never stamped).
+fn setup_ran_without_record_fixture() -> (State, SessionId) {
+    let (state, id) = fixture();
+    state
+        .write()
+        .session
+        .get_mut(&id)
+        .expect("session")
+        .advance_lifecycle_after_setup();
+    (state, id)
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn teardown_for_a_session_with_nothing_recorded_fails_fast() {
+    // Given a harness with a session that ran setup but recorded no
+    // lifecycle — and no listener answer, so a hang would consume the
+    // whole wait budget.
+    let harness = TestHarness::new().await;
+    let teardowns = harness.spawn_recorder::<RunSessionTeardown>().await;
+    let (state, id) = setup_ran_without_record_fixture();
+    let tool_ctx = ctx(&harness, &state, id.clone()).await;
+
+    // When the tool runs teardown for that session.
+    let started = std::time::Instant::now();
+    let result = execute(
+        call(&format!(r#"{{"action":"teardown","session_id":"{id}"}}"#)),
+        tool_ctx,
+    )
+    .await;
+
+    // Then it fails fast naming the session, and publishes nothing.
+    assert!(!result.success);
+    assert!(
+        result.content.contains("no lifecycle script recorded"),
+        "{}",
+        result.content
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "the refusal must not spend the wait budget"
+    );
+    assert!(teardowns.is_empty());
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn teardown_before_setup_fails_naming_the_state() {
+    // Given a session whose lifecycle state is still nothing_ran.
+    let harness = TestHarness::new().await;
+    let (state, id) = fixture();
+    let tool_ctx = ctx(&harness, &state, id.clone()).await;
+
+    // When the tool runs teardown for that session.
+    let result = execute(
+        call(&format!(r#"{{"action":"teardown","session_id":"{id}"}}"#)),
+        tool_ctx,
+    )
+    .await;
+
+    // Then it fails naming the state gate, not the missing record — the
+    // state is the nearer refusal.
+    assert!(!result.success);
+    assert!(
+        result.content.contains("teardown requires setup_ran"),
+        "{}",
+        result.content
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn setup_on_a_session_that_already_ran_setup_fails_naming_the_state() {
+    // Given a session whose lifecycle already ran setup.
+    let harness = TestHarness::new().await;
+    let setups = harness.spawn_recorder::<RunSessionSetup>().await;
+    let (state, id) = setup_ran_fixture();
+    let tool_ctx = ctx(&harness, &state, id.clone()).await;
+
+    // When the tool runs setup for that session.
+    let result = execute(
+        call(&format!(
+            r#"{{"script":"worktree","action":"setup","session_id":"{id}","args":{{"dir":"wt-b","base":"trunk"}}}}"#
+        )),
+        tool_ctx,
+    )
+    .await;
+
+    // Then it fails naming the state gate, and nothing was stamped or
+    // published.
+    assert!(!result.success);
+    assert!(
+        result.content.contains("setup requires nothing_ran"),
+        "{}",
+        result.content
+    );
+    let guard = state.read();
+    let session = guard.session.get(&id).expect("session");
+    assert_eq!(session.lifecycle_args(), &["wt-a".to_owned()]);
+    drop(guard);
+    assert!(setups.is_empty());
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn setup_without_the_script_argument_refuses() {
+    // Given a harness with a plain session and the schema no longer
+    // requiring script at the schema level.
+    let harness = TestHarness::new().await;
+    let (state, id) = fixture();
+    let tool_ctx = ctx(&harness, &state, id.clone()).await;
+
+    // When the tool runs setup with no script argument.
+    let result = execute(
+        call(&format!(
+            r#"{{"action":"setup","session_id":"{id}","args":{{}}}}"#
+        )),
+        tool_ctx,
+    )
+    .await;
+
+    // Then it refuses naming the requirement, before any state write.
+    assert!(!result.success);
+    assert!(
+        result
+            .content
+            .contains("setup requires the script argument"),
+        "{}",
+        result.content
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn the_wait_budget_message_says_the_command_may_still_be_running() {
+    // Given an action and script name.
+    // When building the wait-budget message.
+    let message = wait_budget_message("setup", "worktree");
+
+    // Then it names the pair and states honestly that the command may
+    // still be running — the budget bounds the wait, not the script.
+    assert!(message.contains("setup"), "{message}");
+    assert!(message.contains("worktree"), "{message}");
+    assert!(message.contains("may still be running"), "{message}");
 }
 
 #[rstest::rstest]
@@ -549,19 +743,19 @@ async fn a_name_missing_from_the_path_file_fails_naming_the_file_and_entries() {
 #[rstest::rstest]
 #[tokio::test]
 async fn an_entry_without_the_requested_half_fails() {
-    // Given a workflow file whose entry has no teardown.
+    // Given a workflow file whose entry has no setup.
     let (_dir, path) = workflow_file(
         "[[session_lifecycle.script]]\nname = \"solo\"\n\
-         setup_command = \"echo hi\"\n",
+         teardown_command = \"echo bye\"\n",
     );
     let harness = TestHarness::new().await;
     let (state, id) = fixture();
     let tool_ctx = ctx(&harness, &state, id.clone()).await;
 
-    // When the tool runs the entry's teardown.
+    // When the tool runs the entry's setup.
     let result = execute(
         call(&format!(
-            r#"{{"script":"solo","path":"{}","action":"teardown","session_id":"{id}","args":{{}}}}"#,
+            r#"{{"script":"solo","path":"{}","action":"setup","session_id":"{id}","args":{{}}}}"#,
             path.display()
         )),
         tool_ctx,
@@ -572,7 +766,7 @@ async fn an_entry_without_the_requested_half_fails() {
     assert!(!result.success);
     assert!(result.content.contains("solo"), "{}", result.content);
     assert!(
-        result.content.contains("no teardown command"),
+        result.content.contains("no setup command"),
         "{}",
         result.content
     );
@@ -665,15 +859,18 @@ async fn neither_source_refuses() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn teardown_via_path_stamps_the_name_and_args_for_the_replay() {
-    // Given a workflow file whose teardown names one placeholder.
+async fn teardown_replays_even_when_the_call_carries_a_path() {
+    // Given a session whose lifecycle already ran setup from the user's
+    // config, and a workflow file whose stage entry exists but is NOT the
+    // session's lifecycle.
     let (_dir, path) = workflow_file(WORKFLOW_DOC);
     let harness = TestHarness::new().await;
     let teardowns = harness.spawn_recorder::<RunSessionTeardown>().await;
-    let (state, id) = fixture();
+    let (state, id) = setup_ran_fixture();
     let tool_ctx = ctx(&harness, &state, id.clone()).await;
 
-    // When the tool runs teardown by path, answered by the finish event.
+    // When the tool runs teardown carrying that path and the file's entry
+    // name, answered by the finish event.
     let tool = tokio::spawn(execute(
         call(&format!(
             r#"{{"script":"stage","path":"{}","action":"teardown","session_id":"{id}","args":{{"dir":"wt"}}}}"#,
@@ -690,23 +887,21 @@ async fn teardown_via_path_stamps_the_name_and_args_for_the_replay() {
         .await;
     let result = tool.await.expect("tool task");
 
-    // Then the session carries the entry name, ordered args, and the
-    // source file — the coordinates a path-aware teardown replay re-reads.
+    // Then the call succeeded and the replay is the session's OWN recorded
+    // lifecycle — the worktree teardown from jinn.toml with the stored
+    // "wt-a" — not the file's stage entry. The path and name were ignored;
+    // the stored coordinates are untouched.
     assert!(result.success, "{}", result.content);
     let guard = state.read();
     let session = guard.session.get(&id).expect("session");
-    assert_eq!(session.lifecycle_name(), Some("stage"));
-    assert_eq!(session.lifecycle_args(), &["wt".to_owned()]);
-    assert_eq!(
-        session.lifecycle_source(),
-        Some(path.display().to_string().as_str())
-    );
+    assert_eq!(session.lifecycle_name(), Some("worktree"));
+    assert_eq!(session.lifecycle_source(), None);
     drop(guard);
     let recorded =
         await_recorded::<RunSessionTeardown>(&teardowns, 1, Duration::from_secs(2)).await;
     assert!(
-        recorded[0].command.contains("closing wt"),
-        "{}",
+        recorded[0].command.contains("rm -rf") && !recorded[0].command.contains("closing"),
+        "the replay must come from the recorded lifecycle, not the call's file: {}",
         recorded[0].command
     );
 }

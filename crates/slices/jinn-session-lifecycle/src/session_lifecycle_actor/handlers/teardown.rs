@@ -25,9 +25,22 @@ impl SessionLifecycleActor {
         &mut self,
         payload: &RunSessionTeardown,
     ) {
-        let teardown = self.lifecycle_teardown(&payload.session_id);
-        let Some(teardown) = teardown else {
-            return;
+        // Backstop guards before anything spawns: one lifecycle command per
+        // session, teardown only after setup ran, something recorded, and a
+        // recorded lifecycle that still resolves. The refusal rides the
+        // finished event — never a chat entry — so a caller error surfaces
+        // to the caller alone, and a waiting tool call fails instead of
+        // hanging out its whole wait budget on a silent no-op.
+        let teardown = match self.teardown_for_session(&payload.session_id) {
+            Ok(teardown) => teardown,
+            Err(reason) => {
+                self.publish(SessionTeardownFinished {
+                    session_id: payload.session_id.clone(),
+                    error: Some(reason),
+                })
+                .await;
+                return;
+            }
         };
 
         match teardown {
@@ -61,6 +74,66 @@ impl SessionLifecycleActor {
                 })
                 .await;
             }
+        }
+    }
+
+    /// The session's recorded teardown command, or the reason it may not
+    /// run now.
+    ///
+    /// The published `RunSessionTeardown.command` is never consulted: the
+    /// command always re-resolves from the session's recorded name and
+    /// source and re-renders from its stored args, so a caller cannot
+    /// teardown a session with coordinates it did not record. The refusal
+    /// reasons, in order: a lifecycle command already in flight, an
+    /// unknown session, a lifecycle state before `setup_ran`, nothing
+    /// recorded, or a recorded lifecycle that no longer resolves.
+    fn teardown_for_session(
+        &self,
+        session_id: &SessionId,
+    ) -> Result<jinn_preferences_config::schemas::LifecycleCommand, String> {
+        if self.has_in_flight(session_id) {
+            return Err(format!(
+                "teardown refused for session {session_id}: a lifecycle command is already in flight"
+            ));
+        }
+        let (current, name, source) = {
+            let state = self.state.read();
+            let Some(session) = state.session.get(session_id) else {
+                return Err(format!("teardown refused: unknown session {session_id}"));
+            };
+            (
+                session.lifecycle_script_state(),
+                session.lifecycle_name().map(str::to_owned),
+                session.lifecycle_source().map(str::to_owned),
+            )
+        };
+        if current != LifecycleScriptState::SetupRan {
+            return Err(format!(
+                "teardown refused for session {session_id}: lifecycle state is {current}, \
+                 teardown requires setup_ran"
+            ));
+        }
+        let Some(name) = name else {
+            return Err(format!(
+                "teardown refused for session {session_id}: no lifecycle script recorded"
+            ));
+        };
+        match jinn_kernel::session_lifecycle::intent::lifecycle_teardown_visible(
+            &self.services.config,
+            &name,
+            source.as_deref(),
+        ) {
+            Some(Ok(command)) => Ok(command),
+            Some(Err(failure)) => Err(format!(
+                "teardown could not be resolved for session {session_id}: {failure}"
+            )),
+            // A recorded name with no source resolves through jinn.toml; a
+            // miss there — or an entry without a teardown half — is the
+            // same visible failure the file-sourced path produces.
+            None => Err(format!(
+                "teardown could not be resolved for session {session_id}: no teardown \
+                 command for lifecycle script \"{name}\""
+            )),
         }
     }
 
@@ -143,7 +216,7 @@ impl SessionLifecycleActor {
             }
         };
 
-        let session_id = session_id.clone();
+        let spawned_id = session_id.clone();
         let bus = self.bus().clone();
         tokio::spawn(async move {
             let error = match handle.await {
@@ -152,13 +225,13 @@ impl SessionLifecycleActor {
                 Err(_) => Some("Teardown command was cancelled".to_owned()),
             };
             bus.publish(FinishSessionTeardown {
-                session_id,
+                session_id: spawned_id,
                 follow_up,
                 error,
             })
             .await;
         });
-        self.lifecycle_child = Some(cancel_handle);
+        self.insert_in_flight(session_id.clone(), cancel_handle);
     }
 
     pub(super) fn begin_teardown(

@@ -71,7 +71,7 @@ impl SessionLifecycleActor {
         &mut self,
         payload: &FinishSessionTeardown,
     ) {
-        self.lifecycle_child = None;
+        self.take_in_flight(&payload.session_id);
         let session_exists = {
             self.state
                 .with_session(|view| view.session.map().contains(&payload.session_id))
