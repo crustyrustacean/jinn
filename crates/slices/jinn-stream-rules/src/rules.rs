@@ -190,6 +190,7 @@ fn convert(rule: &LegacyCommandPolicyRule, project: Option<&std::path::Path>) ->
         // Interrupting that call's argument stream is what stops it running.
         scopes: vec!["tool:bash".to_owned()],
         body: rule.message.clone(),
+        disabled: false,
         project: project.map(|p| p.to_string_lossy().into_owned()),
     }
 }

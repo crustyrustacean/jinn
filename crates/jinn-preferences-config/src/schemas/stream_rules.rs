@@ -79,7 +79,8 @@ impl jinn_config::Configurable for LegacyStreamRulesBudget {
 /// belongs on tool arguments, not on prose.
 ///
 /// A rule missing a usable `body` is skipped with a warning rather than
-/// interrupting a turn with nothing to say.
+/// interrupting a turn with nothing to say. A rule marked `disabled` is
+/// skipped silently — switching a rule off is deliberate, not a defect.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StreamRuleConfig {
     /// The rule's identity, unique per session, and the name the
@@ -121,6 +122,13 @@ pub struct StreamRuleConfig {
     /// that a project-scoped rule can add to, never lift.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
+    /// Whether the rule is switched off.
+    ///
+    /// A disabled rule never compiles into the matcher: it cannot fire,
+    /// however well its patterns would match. Absent in an older file reads
+    /// `false` — every pre-existing rule stays armed, no migration.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub disabled: bool,
 }
 
 impl jinn_config::ConfigList for StreamRuleConfig {
@@ -133,6 +141,7 @@ impl jinn_config::ConfigList for StreamRuleConfig {
         "scopes",
         "body",
         "project",
+        "disabled",
     ];
 }
 
@@ -166,6 +175,10 @@ pub struct StreamRuleFileEntry {
     /// The guidance injected when the rule fires.
     #[serde(default)]
     pub body: String,
+    /// Whether the rule is switched off; see
+    /// [`StreamRuleConfig::disabled`].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub disabled: bool,
     /// A path glob selecting the projects this rule applies in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
@@ -191,6 +204,7 @@ impl StreamRuleFileEntry {
             conditions: self.conditions.clone(),
             scopes: self.scopes.clone(),
             body: self.body.clone(),
+            disabled: self.disabled,
             project: self.project.clone(),
         }
     }

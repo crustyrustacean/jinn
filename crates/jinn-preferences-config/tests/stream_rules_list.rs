@@ -78,6 +78,68 @@ fn absent_scopes_read_as_empty() {
 }
 
 #[rstest::rstest]
+fn an_absent_disabled_key_reads_as_armed() {
+    // Given a rule written before the disabled key existed.
+    let (config, _path, _dir) = layer_over(
+        "[[stream_rules.entry]]\nname = \"no-todos\"\nconditions = ['TODO']\nbody = \"No TODOs.\"\n",
+    );
+
+    // When reading the list.
+    let rules = config.get_list::<StreamRuleConfig>().expect("rules read");
+
+    // Then the rule is armed: absent means false, so every pre-existing
+    // rule keeps working with no migration.
+    assert!(!rules[0].disabled);
+}
+
+#[rstest::rstest]
+fn put_stream_rule_list_gains_the_disabled_field_without_losing_comments() {
+    // Given a commented jinn.toml whose rule carries no disabled key.
+    let original = "# keep this explanation\n[[stream_rules.entry]]\nname = \"ts-no-any\"\nconditions = [': any']\nbody = \"Use unknown.\"\n";
+    let (config, path, _dir) = layer_over(original);
+
+    // When the rule is read, switched off, and saved back through the layer.
+    let mut rules = config.get_list::<StreamRuleConfig>().expect("rules read");
+    rules[0].disabled = true;
+    config
+        .put_list::<StreamRuleConfig>(&rules)
+        .expect("rules write");
+
+    // Then the file gained the key beside the comment it had to keep — the
+    // field flows through the patcher with no storage-layer changes.
+    let written = std::fs::read_to_string(&path).expect("read");
+    assert!(
+        written.contains("disabled = true"),
+        "disabled key lost on save: {written}"
+    );
+    assert!(
+        written.contains("# keep this explanation"),
+        "comment lost on save: {written}"
+    );
+}
+
+#[rstest::rstest]
+fn a_disabled_rule_survives_a_save_and_reread_still_disabled() {
+    // Given a jinn.toml whose rule is written disabled.
+    let (config, path, _dir) = layer_over(
+        "# keep\n[[stream_rules.entry]]\nname = \"ts-no-any\"\nconditions = [': any']\nbody = \"Use unknown.\"\ndisabled = true\n",
+    );
+
+    // When the list is saved back untouched and read again.
+    let rules = config.get_list::<StreamRuleConfig>().expect("rules read");
+    config
+        .put_list::<StreamRuleConfig>(&rules)
+        .expect("rules write");
+    let reread = config.get_list::<StreamRuleConfig>().expect("rules reread");
+
+    // Then the rule is still disabled: the state survives the write, so a
+    // restart reads back the set the picker confirmed.
+    assert!(reread[0].disabled);
+    let written = std::fs::read_to_string(&path).expect("read");
+    assert!(written.contains("# keep"), "comment lost: {written}");
+}
+
+#[rstest::rstest]
 fn put_stream_rule_list_preserves_entry_block_and_comments() {
     // Given a jinn.toml with a commented stream rule.
     let original = "# keep this explanation\n[[stream_rules.entry]]\nname = \"ts-no-any\"\ndescription = \"no any\"\nconditions = [': any']\nbody = \"Use unknown.\"\n";
