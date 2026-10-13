@@ -25,6 +25,7 @@ pub mod config_template;
 pub mod protocol;
 pub mod registration;
 pub mod schemas;
+pub mod stream_rules_storage;
 #[cfg(test)]
 mod template_validation_tests;
 
@@ -39,6 +40,7 @@ pub use config_template::{
     init_stream_rules_to, preferences_path,
 };
 pub use registration::register_all_sections;
+pub use stream_rules_storage::{StreamRulesStorage, StreamRulesStorageError};
 // The `todo` + `anchored_assistant` auto-prune child configs are schema
 // types re-exported so the kernel's workers and every consumer keep one
 // import home for the `[context_curation.auto_prune]` section.
