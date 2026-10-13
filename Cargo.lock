@@ -2023,6 +2023,7 @@ dependencies = [
  "jinn-stream-rule-picker",
  "jinn-stream-rule-picker-msg",
  "jinn-stream-rules",
+ "jinn-stream-rules-msg",
  "jinn-term",
  "jinn-term-msg",
  "jinn-testutil",
@@ -3684,6 +3685,7 @@ dependencies = [
  "jinn-selection-widget",
  "jinn-slices",
  "jinn-stream-rule-picker-msg",
+ "jinn-stream-rules-msg",
  "jinn-theme",
  "ratatui",
  "rstest",
@@ -3707,15 +3709,31 @@ dependencies = [
 name = "jinn-stream-rules"
 version = "1.6.0"
 dependencies = [
+ "error-stack",
  "globset",
+ "jinn-cell-catalog",
  "jinn-config",
  "jinn-core-types",
  "jinn-preferences-config",
  "jinn-slices",
+ "jinn-stream-rules-msg",
  "regex",
  "rstest",
  "tempfile",
+ "tokio",
  "tracing",
+ "trouper",
+]
+
+[[package]]
+name = "jinn-stream-rules-msg"
+version = "1.6.0"
+dependencies = [
+ "jinn-slices",
+ "rstest",
+ "serde",
+ "serde_json",
+ "trouper",
 ]
 
 [[package]]

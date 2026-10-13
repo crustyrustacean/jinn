@@ -539,8 +539,105 @@ async fn confirm_leaves_a_status_line_in_the_cell() {
     let status = cell.read().status.clone();
     assert_eq!(
         status.as_deref(),
-        Some("stream rules: disabled no-todos (takes effect on restart)"),
+        Some("stream rules: disabled no-todos (takes effect shortly)"),
         "confirm must report the outcome in the picker's status line"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn confirm_publishes_the_matcher_refresh_command() {
+    // Given an open picker with one rule toggled pending-off.
+    let (slices, key_routes, config) = activated().await;
+    let mut state = AppState::default_with_scope_focus();
+    dispatch(
+        "open-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+    dispatch(
+        "toggle-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // When confirming.
+    let result = dispatch(
+        "confirm-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // Then the result carries the refresh command for the bridge to
+    // publish — the live matcher's re-arm is asked for on the bus, not
+    // performed by the picker.
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|name| name.contains("RefreshStreamRuleMatcher")),
+        "a successful confirm must ask for the matcher refresh, got {:?}",
+        result.message_names
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_failed_confirm_publishes_no_refresh() {
+    // Given an open picker whose rows name rules the config no longer
+    // holds — the file changed underneath the picker.
+    let (slices, key_routes, config) = activated().await;
+    let cell: TypedCell<StreamRulePickerState> = slices
+        .reader(&stream_rule_picker_slot())
+        .expect("stream-rule picker cell registered at activation");
+    let mut state = AppState::default_with_scope_focus();
+    dispatch(
+        "open-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+    cell.update(|picker| {
+        let mut rules = config
+            .get_list::<jinn_preferences_config::schemas::StreamRuleConfig>()
+            .expect("read");
+        rules[0].name = "renamed-under-us".to_owned();
+        picker
+            .selection
+            .set_items(jinn_stream_rule_picker_msg::build_stream_rule_entries(
+                &rules,
+                &picker.theme,
+            ));
+    });
+
+    // When confirming — the write targets an entry that is not there.
+    let result = dispatch(
+        "confirm-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // Then nothing was published: the live matcher is only refreshed for
+    // a set that actually landed.
+    assert!(
+        result.messages.is_empty(),
+        "a failed confirm must not publish a refresh, got {:?}",
+        result.message_names
+    );
+    // And the picker stayed open over the unsaved set.
+    assert_eq!(
+        state.frontend.scope(),
+        jinn_slices::FocusScope::Dynamic(stream_rule_picker_scope()),
+        "a failed confirm must keep the picker open"
     );
 }
 
@@ -797,8 +894,7 @@ async fn render_draws_the_confirm_status_line() {
         .expect("stream-rule picker cell registered at activation");
     cell.update(|picker| {
         stream_rule_picker_actions::open(picker, &[], &jinn_theme::default_theme());
-        picker.status =
-            Some("stream rules: disabled no-todos (takes effect on restart)".to_owned());
+        picker.status = Some("stream rules: disabled no-todos (takes effect shortly)".to_owned());
     });
 
     // When the overlay view renders the picker.
@@ -807,7 +903,7 @@ async fn render_draws_the_confirm_status_line() {
     // Then the status line is on screen — the confirm's feedback reaches
     // the user.
     assert!(
-        screen.contains("takes effect on restart"),
+        screen.contains("takes effect shortly"),
         "the confirm's status must render; got {screen:?}"
     );
 }

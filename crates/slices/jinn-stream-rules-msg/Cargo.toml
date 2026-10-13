@@ -1,0 +1,17 @@
+[package]
+name = "jinn-stream-rules-msg"
+version.workspace = true
+edition.workspace = true
+description = "Stream-rules crossing contracts: the matcher-refresh command the picker publishes."
+
+[dependencies]
+jinn-slices = { workspace = true }
+serde = { workspace = true }
+trouper = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

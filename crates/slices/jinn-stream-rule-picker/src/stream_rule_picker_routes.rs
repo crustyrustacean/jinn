@@ -276,6 +276,14 @@ fn toggle_highlighted_rule(_ctx: &mut ActionCtx<'_>, cell: &StreamRulePickerCell
 /// A rule dropped between open and confirm (the file edited underneath the
 /// session) surfaces as [`StreamRulesStorageError::UnknownRule`] and lands
 /// in the same status line — never a panic.
+///
+/// A successful confirm also publishes
+/// [`jinn_stream_rules_msg::RefreshStreamRuleMatcher`], which
+/// the stream-rules slice's matcher actor answers by recompiling and
+/// reinstalling the live matcher — so the confirmed set takes effect for
+/// the next stream, not the next launch. The publish rides the result's
+/// message list, so a failed confirm (which returns before this point)
+/// publishes nothing.
 fn confirm_stream_rule_picker(
     ctx: &mut ActionCtx<'_>,
     cell: &StreamRulePickerCell,
@@ -291,7 +299,9 @@ fn confirm_stream_rule_picker(
             cell.update(|picker| {
                 picker.status = Some(confirmation_status(&pending));
             });
-            IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(stream_rule_picker_scope()))
+            IntentResult::empty()
+                .with_message(jinn_stream_rules_msg::RefreshStreamRuleMatcher)
+                .with_scope_signal(ScopeSignal::PopIf(stream_rule_picker_scope()))
         }
         Err(report) => {
             let message = failure_status(report.current_context());
@@ -318,6 +328,12 @@ fn write_pending_set(
 
 /// The status line a successful confirm leaves: what the set now is, and
 /// when it bites.
+///
+/// "Shortly", not "on restart": the confirm publishes the matcher-refresh
+/// command after the write lands, and the stream-rules slice's matcher
+/// actor recompiles then — the next stream's rules are the confirmed ones.
+/// The refresh is eventual, so the wording claims immediacy only as far as
+/// the code guarantees it.
 fn confirmation_status(pending: &[(String, bool)]) -> String {
     let disabled: Vec<&str> = pending
         .iter()
@@ -325,10 +341,10 @@ fn confirmation_status(pending: &[(String, bool)]) -> String {
         .map(|(name, _)| name.as_str())
         .collect();
     if disabled.is_empty() {
-        "stream rules: all armed (takes effect on restart)".to_owned()
+        "stream rules: all armed (takes effect shortly)".to_owned()
     } else {
         format!(
-            "stream rules: disabled {} (takes effect on restart)",
+            "stream rules: disabled {} (takes effect shortly)",
             disabled.join(", ")
         )
     }
