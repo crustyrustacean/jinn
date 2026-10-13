@@ -1,5 +1,9 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Do not make edits)**
 
+## 2026-10-13 v1.6.1
+
+- Remove unused `slate` path dependency.
+
 ## 2026-10-10 v1.6.0
 
 - Add `capabilities_*` tools which allow `jinn` to enable/disable tools/skills/MCP servers when prompted.
