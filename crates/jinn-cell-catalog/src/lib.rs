@@ -76,7 +76,7 @@ pub fn register_all_cells(slices: &Slices) {
 /// The `jinn-slices` infrastructure slots are not counted: they are
 /// registered lazily by the first caller that resolves one, and a harness
 /// that never renders never creates them.
-const EXPECTED_CELL_COUNT: usize = 40;
+const EXPECTED_CELL_COUNT: usize = 41;
 
 // ── The catalog ─────────────────────────────────────────────────────
 //
@@ -406,6 +406,14 @@ fn register_catalog(slices: &Slices) -> usize {
         count,
         jinn_workflows_msg::workflows_picker_slot(),
         jinn_workflows_msg::WorkflowPickerState::default()
+    );
+
+    // jinn-stream-rule-picker — the stream-rule disable picker.
+    register!(
+        slices,
+        count,
+        jinn_stream_rule_picker_msg::stream_rule_picker_slot(),
+        jinn_stream_rule_picker_msg::StreamRulePickerState::default()
     );
 
     count
