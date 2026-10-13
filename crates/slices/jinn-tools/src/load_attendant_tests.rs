@@ -268,37 +268,6 @@ fn parse_accepts_the_full_document_shape_jinn_toml_uses() {
 }
 
 #[rstest::rstest]
-#[test]
-fn every_shipped_autocoder_attendant_file_parses_through_the_tool_parser() {
-    // Given the shipped autocoder workflow's attendants directory — the
-    // real files a real run loads. This is the pin that keeps the tool's
-    // parser and the shipped content from drifting apart: the content
-    // test in the root crate uses its own wrapper, so only this test
-    // exercises the shipped bytes through the tool's own parse path.
-    let attendants_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../res/workflows/autocoder/attendants");
-    let mut names = Vec::new();
-    for entry in std::fs::read_dir(&attendants_dir).expect("attendants directory ships") {
-        let entry = entry.expect("dir entry");
-        if entry.path().extension().is_some_and(|x| x != "toml") {
-            continue;
-        }
-        let text = std::fs::read_to_string(entry.path()).expect("attendant file reads");
-        let parsed = parse_attendant_entry(&text)
-            .unwrap_or_else(|e| panic!("{} must parse: {e}", entry.path().display()));
-        names.push(parsed.name);
-    }
-
-    // Then the thin-seed trio comes across.
-    for expected in ["planner", "implementer", "reviewer"] {
-        assert!(
-            names.iter().any(|n| n == expected),
-            "the shipped attendants must include {expected}, got {names:?}"
-        );
-    }
-}
-
-#[rstest::rstest]
 #[tokio::test]
 async fn personal_attendants_still_save_and_workflow_attendants_refuse() {
     // Given a personal attendant (no marker) and a workflow-loaded

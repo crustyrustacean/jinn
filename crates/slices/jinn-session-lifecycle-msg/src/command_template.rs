@@ -455,7 +455,8 @@ fn substitute_spans(spans: Vec<Span>, params: &[Param], args: &[String]) -> Vec<
         .collect()
 }
 
-/// Shell-quote a value for safe interpolation into a `$SHELL -c` command.
+/// Shell-quote a value for safe interpolation into a `bash -c` command
+/// (the shell lifecycle commands run under — see `jinn_common::bash_shell`).
 ///
 /// Uses single-quote wrapping with `\'\'\'` escape for embedded single quotes.
 /// Only applies quoting when the value contains spaces or shell-special characters.

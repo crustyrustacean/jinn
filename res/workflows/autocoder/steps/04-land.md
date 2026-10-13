@@ -2,7 +2,9 @@ Land the run: the single base-branch write, on the human's OK.
 
 ## The merge
 
-Work from your checkout (you hold the run branch):
+Work from your checkout (you hold the run branch). Every call is
+`run_lifecycle` with `path` = this workflow's `lifecycle.toml` and
+`action` = `setup`:
 
 1. Open the land checkout as a sibling (`<root>-land`):
    - **Fossil** — `run_lifecycle`, `script` = `worktree-open`, `args` =

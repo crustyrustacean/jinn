@@ -1199,7 +1199,7 @@ fn a_created_attendant_inherits_the_parents_empty_allow_filter_as_nothing_allowe
 fn a_workflow_loaded_attendant_refuses_the_save_naming_its_source() {
     // Given an open popup over a titled attendant stamped as loaded from a
     // workflow-local file.
-    let source = "res/workflows/autocoder/attendants/implementer.toml";
+    let source = "res/workflows/sample/attendants/implementer.toml";
     let mut fx = SaveFixture::new(Some("implementer"));
     fx.state
         .session

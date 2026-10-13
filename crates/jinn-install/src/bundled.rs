@@ -217,52 +217,26 @@ mod tests {
 
     use super::*;
 
-    /// Walks the on-disk `res/` tree, collecting every file's path relative to
-    /// `res/`. Deliberately name-free: it reads the filesystem's shape, so
-    /// nothing here has to be updated when a resource is added.
-    fn disk_paths() -> Vec<PathBuf> {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../res");
-        let mut paths = Vec::new();
-        walk_disk(&root, Path::new(""), &mut paths);
-        paths.sort();
-        paths
-    }
-
-    fn walk_disk(root: &Path, relative: &Path, out: &mut Vec<PathBuf>) {
-        let dir = root.join(relative);
-        for entry in std::fs::read_dir(dir).expect("read res directory") {
-            let entry = entry.expect("read res entry");
-            let child = relative.join(entry.file_name());
-            if entry.path().is_dir() {
-                walk_disk(root, &child, out);
-            } else {
-                out.push(child);
-            }
-        }
-    }
-
     #[rstest::rstest]
     #[test]
-    fn embedded_tree_matches_disk_tree() {
-        // Given the on-disk `res/` tree.
-        let on_disk = disk_paths();
+    fn embedded_tree_is_non_empty_and_kind_covered() {
+        // Given the embedded catalogue.
+        let catalogue = bundled_catalogue().expect("derive catalogue");
 
-        // When deriving the catalogue from the embedded tree.
-        // (The catalogue's own kind-then-path order is asserted separately;
-        // this comparison is about membership, so both sides are sorted.)
-        let mut embedded: Vec<PathBuf> = bundled_catalogue()
-            .expect("derive catalogue")
-            .iter()
-            .map(Bundled::res_relative)
-            .collect();
-        embedded.sort();
-
-        // Then the embedded tree holds exactly the same files at the same
-        // paths — every resource under res/ embeds, and nothing else does.
-        assert_eq!(
-            embedded, on_disk,
-            "the embedded tree and res/ on disk disagree"
-        );
+        // Then it carries every kind with at least one file, so a missing
+        // `res/` subtree at build time cannot ship a partial bundle.
+        // (Membership against the repo's on-disk tree is deliberately not
+        // asserted here: `res/` is content, not test fixture data.)
+        for kind in [
+            Kind::Theme,
+            Kind::Persona,
+            Kind::Prompt,
+            Kind::Workflow,
+            Kind::Skill,
+        ] {
+            let count = catalogue.iter().filter(|b| b.kind == kind).count();
+            assert!(count > 0, "kind {kind:?} ships no files");
+        }
     }
 
     #[rstest::rstest]

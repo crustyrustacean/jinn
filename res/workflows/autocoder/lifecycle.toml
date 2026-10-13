@@ -6,7 +6,8 @@
 #
 # Portability contract:
 #
-#   - POSIX sh only (jinn runs lifecycle commands with `$SHELL -c`).
+#   - POSIX sh with bash extensions (jinn runs lifecycle commands with
+#     `bash -c`).
 #   - Every script probes its checkout — fossil first, then git — and
 #     refuses when neither is present. No repository file, path, branch,
 #     or VCS name is baked in anywhere.

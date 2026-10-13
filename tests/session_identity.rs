@@ -159,7 +159,7 @@ fn picker_attendant_and_workflow_loaded_attendant_publish_the_identity_entry() {
     let mut attendant = jinn_attendant::saved_create::build(&entry, &parent);
     // The load_attendant stamp, on top of the same build path.
     attendant.set_workflow_source(jinn_core_types::AttendantSourcePath::new(
-        "res/workflows/autocoder/attendants/echo.toml",
+        "res/workflows/sample/attendants/witness.toml",
     ));
 
     // When the creation's messages are built.

@@ -1968,6 +1968,7 @@ dependencies = [
  "jinn-chat-log-view-msg",
  "jinn-citations",
  "jinn-cli",
+ "jinn-common",
  "jinn-config",
  "jinn-context",
  "jinn-context-assembly",

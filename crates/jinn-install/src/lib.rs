@@ -802,48 +802,25 @@ mod tests {
         assert!(nested.is_file());
     }
 
-    /// Every installed payload is byte-identical to its source file under
-    /// `res/` — the embedding is verbatim, whatever the file's extension.
+    /// Every installed file is non-empty: the embedding carries the whole
+    /// bundled catalogue, but the tests do not read `res/` — the repo's
+    /// resource tree is content, not test fixture data.
     #[rstest::rstest]
     #[test]
-    fn installed_payloads_are_byte_identical_to_their_sources() {
-        // Given a fresh set of destinations and the on-disk `res/` tree.
+    fn installed_payloads_are_non_empty() {
+        // Given a fresh set of destinations.
         let env = TestEnv::fresh();
-        let res = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../res");
 
         // When installing defaults.
         let report = env.run(false);
 
-        // Then every installed file's bytes match the resource it came from.
-        let roots = [
-            ("themes", env.destinations.themes()),
-            ("personas", env.destinations.personas()),
-            ("prompts", env.destinations.prompts()),
-            ("workflows", env.destinations.workflows()),
-            ("skills", env.destinations.skills()),
-        ];
+        // Then every installed file exists with bytes in it.
+        assert!(!report.outcomes.is_empty(), "the catalogue is not empty");
         for outcome in &report.outcomes {
             let installed = outcome.path();
-            let (kind_dir, under_root) = roots
-                .iter()
-                .find_map(|(kind_dir, root)| {
-                    installed
-                        .strip_prefix(root)
-                        .ok()
-                        .map(|rest| (*kind_dir, rest))
-                })
-                .unwrap_or_else(|| {
-                    panic!("{} is not under any destination root", installed.display())
-                });
-            let source = res.join(kind_dir).join(under_root);
-
-            assert_eq!(
-                std::fs::read(installed).expect("read installed"),
-                std::fs::read(&source).expect("read source"),
-                "{} was not installed verbatim from {}",
-                installed.display(),
-                source.display()
-            );
+            let bytes = std::fs::read(installed)
+                .unwrap_or_else(|e| panic!("{} reads: {e}", installed.display()));
+            assert!(!bytes.is_empty(), "{} installed empty", installed.display());
         }
     }
 

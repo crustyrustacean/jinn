@@ -418,29 +418,13 @@ async fn read_child_output_and_wait(
 /// same invariant the kill-on-drop guard relies on to terminate the whole
 /// group (child + all descendants) on cancel.
 fn spawn_shell_command(command: &str, cwd: &std::path::Path) -> std::io::Result<KillOnDrop> {
-    // On Windows, bare "bash" resolves to C:\Windows\System32\bash.exe which
-    // is the WSL launcher — it routes commands into a Linux VM. This breaks
-    // native Windows tooling (cargo produces Linux binaries, process trees
-    // become invisible to the Windows kill path, etc.), so prefer Git Bash
-    // when available, falling back to the SHELL env var or bare "bash".
-    // Unix keeps PATH resolution: this tool promises bash semantics, and
-    // $SHELL may be fish, dash, or zsh — shells that reject bash syntax
-    // such as brace expansion and `$$`.
-    let shell = {
-        #[cfg(target_os = "windows")]
-        {
-            let git_bash = "C:\\Program Files\\Git\\bin\\bash.exe";
-            if std::path::Path::new(git_bash).exists() {
-                git_bash.to_owned()
-            } else {
-                std::env::var("SHELL").unwrap_or_else(|_| "bash".to_owned())
-            }
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            "bash".to_owned()
-        }
-    };
+    // Resolution lives in `jinn_common::bash_shell`: bash semantics are the
+    // contract here, and $SHELL may be fish, dash, or zsh — shells that
+    // reject bash syntax such as brace expansion and `[[`. On Windows the
+    // resolver prefers Git Bash, because bare `bash` resolves to the WSL
+    // launcher and routes commands into a Linux VM (breaking native tooling
+    // and the Windows kill path).
+    let shell = jinn_common::bash_shell::bash_shell();
     let mut std_cmd = std::process::Command::new(&shell);
     std_cmd
         .arg("-c")

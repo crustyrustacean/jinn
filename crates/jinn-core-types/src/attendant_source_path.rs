@@ -59,13 +59,13 @@ mod tests {
     #[rstest::rstest]
     fn a_source_path_displays_as_the_path_it_was_built_from() {
         // Given a source path built from a workflow-local file.
-        let source = AttendantSourcePath::new("res/workflows/autocoder/attendants/qa.toml");
+        let source = AttendantSourcePath::new("res/workflows/sample/attendants/qa.toml");
 
         // When displaying it.
         let displayed = source.to_string();
 
         // Then the display form is the path verbatim.
-        assert_eq!(displayed, "res/workflows/autocoder/attendants/qa.toml");
+        assert_eq!(displayed, "res/workflows/sample/attendants/qa.toml");
     }
 
     #[rstest::rstest]

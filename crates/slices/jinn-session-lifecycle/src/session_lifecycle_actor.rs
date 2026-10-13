@@ -38,7 +38,8 @@ pub struct SessionLifecycleActorDeps {
     pub services: Services,
     /// Registry of compiled lifecycle handlers.
     pub builtin_registry: BuiltinRegistry,
-    /// Shell captured at startup for scripted lifecycle commands.
+    /// Shell captured at startup for scripted lifecycle commands (bash
+    /// semantics; see `jinn_common::bash_shell`).
     pub shell: String,
 }
 

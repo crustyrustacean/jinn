@@ -181,14 +181,22 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn shipped_learning_tutor_persona_parses_with_its_grounding() {
-        // Given the shipped learning-tutor persona bundled into the repo.
-        let content = include_str!("../../../../res/personas/learning-tutor.md");
+    fn shipped_persona_shape_parses_with_its_grounding() {
+        // Given persona content shaped like the shipped ones: quoted
+        // frontmatter fields and a description naming the method it is
+        // grounded in.
+        let content = concat!(
+            "+++\n",
+            "name = \"learning-tutor\"\n",
+            "description = \"Evidence-based tutor using intelligent-tutoring dialogue moves (AutoTutor)\"\n",
+            "+++\n\n",
+            "Body.\n",
+        );
 
         // When parsing it.
         let persona = parse_persona_content(content).expect("parse");
 
-        // Then it keeps its shipped name and an evidence-grounded description.
+        // Then it keeps its name and an evidence-grounded description.
         assert_eq!(persona.name, "learning-tutor");
         assert!(
             persona.description.contains("intelligent-tutoring"),
