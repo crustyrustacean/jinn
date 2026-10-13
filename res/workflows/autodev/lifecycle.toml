@@ -1,0 +1,57 @@
+# Session lifecycle scripts for autodev runs.
+#
+# Loaded by path: the `run_lifecycle` tool, with `path` pointed at this
+# file and `script` naming the entry. Nothing here belongs in a user
+# `jinn.toml`.
+#
+# Lifecycle setup is ONE-TIME-PER-SESSION: the tool refuses a second
+# setup on a session that has run one. These two scripts are the run's
+# entire lifecycle budget, and each exists because it does something
+# plain shell cannot — the runner adopts the printed path as the
+# session's working directory, so each session lands IN its checkout:
+#
+#   - integration-open: the orchestrator's one setup. Every later
+#     command it runs executes in the integration checkout.
+#   - worker-open: each worker's one setup, issued by the orchestrator
+#     right after loading it. Every command the worker runs afterwards
+#     executes in its own checkout.
+#
+# Every other repository procedure is plain shell in steps/scm.md —
+# including the run's other checkouts (the land checkout is opened by a
+# one-shot subshell there, because no session has budget left for a
+# lifecycle setup by the time landing happens). Those two files are the
+# only places in this workflow that name the SCM.
+
+# ── Integration checkout ─────────────────────────────────────────
+# Caller: the orchestrator, still sitting in the run's starting
+# checkout. Fork the integration branch <branch> (per steps/scm.md)
+# BEFORE this setup — the branch must exist. Opens it as a checkout at
+# <dir> and moves the calling session there. Prints the path as the
+# last line.
+[[session_lifecycle.script]]
+name = "integration-open"
+description = "Open the integration branch as the orchestrator's checkout"
+setup_command = """
+REPO="$(fossil info 2>/dev/null | sed -n 's/^repository: *//p')"
+if [ -z "$REPO" ]; then echo "not inside an open fossil checkout" >&2; exit 1; fi
+if [ -e <dir>/.fslckout ]; then echo "<dir> is already an open checkout" >&2; exit 1; fi
+mkdir -p <dir> && cd <dir> && fossil open --nested "$REPO" <branch> && echo "$PWD"
+"""
+teardown_command = "true"
+
+# ── Worker checkout ──────────────────────────────────────────────
+# Caller: the orchestrator, targeting a freshly loaded worker session
+# (session_id = the worker's id; the worker itself has run nothing).
+# Fork the worker's standing branch <branch> (per steps/scm.md) BEFORE
+# this setup. Opens it as a checkout at <dir> and moves the WORKER's
+# session there — its every later command runs in its own checkout.
+[[session_lifecycle.script]]
+name = "worker-open"
+description = "Open a worker's standing branch as its checkout"
+setup_command = """
+REPO="$(fossil info 2>/dev/null | sed -n 's/^repository: *//p')"
+if [ -z "$REPO" ]; then echo "not inside an open fossil checkout" >&2; exit 1; fi
+if [ -e <dir>/.fslckout ]; then echo "<dir> is already an open checkout" >&2; exit 1; fi
+mkdir -p <dir> && cd <dir> && fossil open --nested "$REPO" <branch> && echo "$PWD"
+"""
+teardown_command = "true"
