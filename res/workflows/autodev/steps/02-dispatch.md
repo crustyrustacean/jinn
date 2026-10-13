@@ -34,8 +34,9 @@ Mark the issue file the moment the dispatch is sent: `assignee: N`,
 
 ## The tracker file
 
-One file per issue, `.issues/<NNN>-<slug>.md` in the target repo's
-root, numbered sequentially by you. Frontmatter carries the state:
+One file per issue, `.issues/<NNN>-<slug>.md` inside the orchestrator's
+integration checkout, numbered sequentially by you. Frontmatter carries
+the state:
 
     ---
     id: NNN

@@ -35,7 +35,7 @@ setup_command = """
 REPO="$(fossil info 2>/dev/null | sed -n 's/^repository: *//p')"
 if [ -z "$REPO" ]; then echo "not inside an open fossil checkout" >&2; exit 1; fi
 if [ -e <dir>/.fslckout ]; then echo "<dir> is already an open checkout" >&2; exit 1; fi
-mkdir -p <dir> && cd <dir> && fossil open --nested "$REPO" <branch> && echo "$PWD"
+mkdir -p <dir> && cd <dir> && fossil open "$REPO" <branch> && echo "$PWD"
 """
 teardown_command = "true"
 
@@ -52,6 +52,6 @@ setup_command = """
 REPO="$(fossil info 2>/dev/null | sed -n 's/^repository: *//p')"
 if [ -z "$REPO" ]; then echo "not inside an open fossil checkout" >&2; exit 1; fi
 if [ -e <dir>/.fslckout ]; then echo "<dir> is already an open checkout" >&2; exit 1; fi
-mkdir -p <dir> && cd <dir> && fossil open --nested "$REPO" <branch> && echo "$PWD"
+mkdir -p <dir> && cd <dir> && fossil open "$REPO" <branch> && echo "$PWD"
 """
 teardown_command = "true"

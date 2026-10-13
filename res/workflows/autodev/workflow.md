@@ -27,8 +27,13 @@ below always wins over a step file.
 - **Integration branch = `autodev-main`** — forked from wherever the run
   starts. Worker standing branches `autodev-worker-1..3`; per-issue
   branches `autodev-issue-<id>`.
-- **Tracker = `.issues/`** — at the target repo's root, created if
-  absent.
+- **Base branch** — the branch the run started on (recorded at
+  startup). Landing merges `autodev-main` into it. Not necessarily the
+  project's main branch; for a feature-branch run it is that feature
+  branch.
+- **Tracker = `<root>-integration/.issues/`** — inside your integration
+  checkout, created at startup if absent. It is working state, not
+  product code: never commit it, never run a sweeping add there.
 
 ## Startup
 

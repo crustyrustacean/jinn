@@ -38,7 +38,7 @@ compares it.
 ## subshell, never moving its own session)
 
     ( mkdir -p <root>-land && cd <root>-land \
-      && fossil open --nested "$(fossil info | sed -n 's/^repository: *//p')" <base-branch> )
+      && fossil open "$(fossil info | sed -n 's/^repository: *//p')" <base-branch> )
 
 ## Fork a fresh work branch for a new issue (worker, in own checkout)
 
@@ -65,6 +65,15 @@ committing one.
     fossil addremove
     fossil commit -m "<what and why>"
     fossil branch current   # confirm the commit landed on YOUR branch
+
+The worker's checkout holds only its own work, so a sweeping add there
+is safe. The ORCHESTRATOR's checkout holds the tracker (`.issues/`) and
+the ledger as untracked files — plain merge+commit ignores untracked
+files (verified), so never run `addremove` or a bare `fossil add .` in
+that tree; the integrate/land commits need no add at all, because a
+merge stages its own changes:
+
+    fossil commit -m "integrate <issue-branch>"   # merge already staged the changes
 
 ## Merge a finished worker branch (orchestrator, in its integration checkout)
 
@@ -114,6 +123,9 @@ run's startup purge is the only thing that empties it.
 
 The directory remains as plain files; name it in the run report so the
 human can delete it at leisure. Never trash-move the tree you sit in.
+`fossil close` acts on the tree you are IN — it takes no path argument —
+so the subshell form above is the only safe way to touch another
+checkout.
 
 ## Purge the trash (orchestrator, startup only — a human-started run
 ## closes the cooling-off window)
