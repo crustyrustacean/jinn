@@ -169,7 +169,10 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
     // so a turn dispatched after boot is already guarded. Installing it after
     // inference's activation is fine — inference only *resolves* the matcher
     // when a stream starts, not at spawn — but it must precede any dispatch,
-    // which the boot tail guarantees.
+    // which the boot tail guarantees. The same activation also spawns the
+    // matcher-refresh actor, whose subscription must exist before the picker
+    // can confirm a toggle; no confirm can happen before any slice is
+    // interactive, so boot order covers it.
     let config_snapshot = ctx.services().config.clone();
     let prefs_snapshot = ctx.services().paths.preferences_path();
     jinn_stream_rules::activate(&mut ctx.host(), &config_snapshot, &prefs_snapshot);

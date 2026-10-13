@@ -16,11 +16,13 @@
 //! carries — through
 //! [`jinn_preferences_config::StreamRulesStorage::set_stream_rule_disabled`],
 //! which patches the on-disk document entry-by-entry. A confirmed toggle is
-//! therefore on disk before the picker closes, but the *live* matcher cell
-//! is not refreshed: the stream-rules slice reads its rules once at
-//! activation and nothing publishes a matcher re-install. A confirmed
-//! disable takes effect at the next launch; nothing else observes the write
-//! mid-session.
+//! therefore on disk before the picker closes, and the confirm publishes
+//! [`jinn_stream_rules_msg::RefreshStreamRuleMatcher`] on the bus — the
+//! stream-rules slice's matcher actor answers it by recompiling the rules
+//! from the layer and reinstalling the live matcher, so the confirmed set
+//! reaches the next stream without a restart. The refresh is eventual: the
+//! status line says "takes effect shortly", and a failed confirm publishes
+//! nothing at all.
 
 pub mod stream_rule_picker_actions;
 pub mod stream_rule_picker_render;

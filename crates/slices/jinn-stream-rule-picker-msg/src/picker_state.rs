@@ -56,7 +56,10 @@ pub fn stream_rule_row(entry: &StreamRuleEntry, ctx: &RowCtx<'_>) -> Line<'stati
     let mut spans = vec![active_marker(ctx.is_selected, &entry.theme)];
 
     let (marker, marker_color) = if entry.disabled {
-        ("\u{2717} ", entry.theme.error_text) // ✗
+        // Dormant, not failed: a rule the user switched off is deliberate,
+        // so it borrows the theme's dormant-but-healthy color rather than
+        // reading like an error.
+        ("\u{2717} ", entry.theme.dormant_fg) // ✗
     } else {
         ("\u{2713} ", entry.theme.focus_accent) // ✓
     };
@@ -234,6 +237,26 @@ mod tests {
         let text = line.to_string();
         assert!(text.contains('\u{2717}'), "off rule must show ✗: {text}");
         assert!(!text.contains('\u{2713}'), "got: {text}");
+    }
+
+    #[rstest::rstest]
+    fn a_disabled_rule_mark_is_dormant_colored_not_error_colored() {
+        // Given one switched-off rule entry.
+        let mut config = rule("no-todos", "no TODOs");
+        config.disabled = true;
+        let entry = StreamRuleEntry::from_config(&config, &default_theme());
+
+        // When rendering its row.
+        let line = stream_rule_row(&entry, &RowCtx::flat(false, &Vec::new()));
+
+        // Then the ✗ mark carries the theme's dormant-but-healthy color —
+        // a deliberate switch-off is not a failure to be painted red.
+        let mark = line
+            .spans
+            .iter()
+            .find(|span| span.content.contains('\u{2717}'))
+            .expect("the disabled mark is on the row");
+        assert_eq!(mark.style.fg, Some(entry.theme.dormant_fg));
     }
 
     #[rstest::rstest]
