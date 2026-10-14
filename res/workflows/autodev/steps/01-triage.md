@@ -45,10 +45,16 @@ orchestrator turns.
 ## The tracker file
 
 One file per issue, `.issues/<NNN>-<slug>.md` inside your own
-checkout, numbered sequentially by you. Frontmatter carries the state:
+checkout, numbered sequentially by you. **The id is always written
+`NNN-<slug>` wherever it appears** — task list, reports, dispatches,
+review verdicts, the ledger — never the bare number: the human reads
+those surfaces too, and `003` alone tells them nothing. The slug is
+two to five words, kebab-case, from the issue's title. Frontmatter
+carries the state:
 
     ---
     id: NNN
+    title: the issue in one line
     status: triage | open | dispatched | done | parent | closed
     parent: NNN            # absent on top-level issues
     blocked-by: NNN, NNN   # absent when nothing blocks

@@ -33,8 +33,8 @@ fossil branch current              # git: git branch --show-current
 ```
 
 An implementor session should always be inside its own checkout
-(`<dir>`, on `autodev-issue-<id>`); the orchestrator is inside its own
-seat, on the parent branch.
+(`<dir>`, on `<your-branch>-issue-<id>`); the orchestrator is inside
+its own seat, on the parent branch.
 
 ## Repository identity
 
@@ -121,3 +121,22 @@ after its merge-back succeeds — branch retirement is not a separate
 step. A branch left open means its teardown never succeeded; the fix
 is a successful teardown (see steps/03-integrate.md's conflict loop),
 not branch surgery.
+
+## Refreshing your own checkout (orchestrator, after every teardown)
+
+A teardown merges the implementor's branch in the **repository** — your
+session's checkout does not move by itself. Its working files are stale
+the moment a teardown succeeds; update before you read, review, or QA
+anything:
+
+```sh
+fossil update                       # git: git pull --ff-only
+```
+
+Fast, idempotent, and safe at any time on a clean tree. If it reports
+nothing to do, nothing landed since your last update. Do this once per
+successful teardown as part of the teardown step — the issue is not
+`done` in your tree until your checkout shows the work. Never `fossil
+update --force` / `git reset --hard` to "fix" a stale checkout: a dirty
+tree means uncommitted run state or real work; resolve that first (see
+"Clean status before teardown").

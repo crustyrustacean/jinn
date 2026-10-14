@@ -1,17 +1,17 @@
 # Event-driven workflows — sessions that react, not steps that follow
 
 The second jinn workflow architecture. Where a sequential workflow is a
-pipeline of one-shot subagents, an event-driven workflow is a **topology of
-standing sessions** that exchange messages and react to completion events:
-an orchestrator session, a bounded pool of workers, and any number of
-specialist attendants. Use it when the flow needs concurrency, recursion,
-or long-lived workers; use the sequential architecture otherwise.
+pipeline of one-shot subagents, an event-driven workflow is a **topology
+of sessions** that exchange messages and react to completion events: an
+orchestrator session, specialist attendants, and workers spawned on
+demand. Use it when the flow needs concurrency, recursion, or
+long-lived workers; use the sequential architecture otherwise.
 
 **`res/workflows/autodev/` ships as the worked example** — an autonomous
-development loop with a planner, a reviewer, and a three-worker pool. This
-file states the general rules; that directory shows all of them in
-working code. Read both before authoring your first event-driven
-workflow.
+development loop with a planner, a reviewer, and implementors spawned
+per issue. This file states the general rules; that directory shows all
+of them in working code. Read both before authoring your first
+event-driven workflow.
 
 ## The topology
 
@@ -20,7 +20,7 @@ Every event-driven workflow has the same shape:
 ```
                  ┌── tell_session ──▶ planner (1)
    orchestrator ─┼── tell_session ──▶ reviewer (1)
-                 └── tell_session ──▶ workers (K)
+                 └── tell_session ──▶ workers (spawned on demand)
         ▲                     │
         └──── notify_parent ──┘        (all reports ride one channel)
 ```
@@ -28,10 +28,10 @@ Every event-driven workflow has the same shape:
 - **One orchestrator** — the human-facing session that started the
   workflow. It holds the task list, the ledger, and every decision. It
   is the only session that talks to every other session.
-- **Attendants** — child sessions, each loaded from one TOML seed file.
-  Workers (the fanout pool, loaded K times from one seed), and
-  specialists loaded once each (planner, reviewer, any other role whose
-  procedure is too big to be dispatch data).
+- **Attendants** — child sessions, each from one TOML seed file.
+  Specialists load once each (planner, reviewer, any other role whose
+  procedure is too big to be dispatch data); workers spawn on demand,
+  one session per unit of work, from one shared seed.
 - **Hub-and-spoke messaging.** Every arrow goes through the
   orchestrator. Attendants learn only their parent's id (the harness
   appends it to every dispatch); sibling ids never enter their context,
@@ -41,9 +41,10 @@ Every event-driven workflow has the same shape:
   hub.
 
 The fanout bound is structural: only the orchestrator spawns, only from
-the workflow's fixed set of seed files, and the pool size is a declared
-constant. An orchestrator that loads a fifth worker is broken; an
-attendant that spawns anything is impossible.
+the workflow's fixed set of seed files, and concurrency is bounded by
+the work actually claimable — an idle pre-spawned pool is waste, and an
+orchestrator spawning sessions with no dispatch behind them is broken.
+An attendant that spawns anything is impossible.
 
 ## The wake model — how work actually moves
 
@@ -126,27 +127,49 @@ create sessions), the procedure or artifact it produces, and the exact
 report format — including that it reports via `notify_parent` and never
 lets information travel any other way.
 
-## One-shot lifecycle budgets
+## Lifecycle scripts: setup and teardown are the whole contract
 
-`run_lifecycle` setup is **one per session, ever**. An event-driven
-workflow therefore spends its budget at startup and only at startup:
+`run_lifecycle` setup is **one per session, ever**; teardown is the
+playback of what setup recorded. Together they are the workflow's
+checkout machine — use them fully or not at all:
 
-- The orchestrator spends its one setup moving itself into its working
-  checkout (autodev's `integration-open`).
-- Each worker's setup is issued **by the orchestrator, targeting the
-  worker's session id**, immediately after loading it — the worker
-  wakes up already sitting in its own checkout (autodev's
-  `worker-open`).
+- **Spawning a worker = create session → lifecycle setup → dispatch.**
+  The setup is issued **by the orchestrator, targeting the new
+  session's id**, immediately after creating it — the worker wakes up
+  already sitting in its own checkout or worktree. There is no standing
+  pool to pre-open seats for: on-demand spawn per unit of work keeps
+  every seat owned by a live session, and teardown retires it.
+- **Landing = lifecycle teardown.** The script's teardown command does
+  the merge-back, the commit, the checkout removal, and the branch
+  retirement, replaying setup's recorded coordinates (session id only —
+  the args are remembered). Because teardown is the cleanup, cleanup
+  cannot be skipped, forgotten, or aimed at the wrong run's seat: a
+  session that never existed holds no coordinates, so there is nothing
+  to mis-teardown.
+- **Order teardown's steps so conflicts fail before anything
+  irreversible.** Both `fossil merge` and `git merge` exit 0 on
+  conflict — gate on markers/unmerged paths and exit nonzero *before*
+  the branch close/delete. Everything before that point is retryable
+  (a re-run's merges are no-ops); a closed branch cannot accept the
+  retry. A conflicted teardown should leave the worker session alive:
+  it knows the code, so the fix dispatch goes to it, and teardown is
+  re-issued after its report.
+- **Never nest `bash -c` in a lifecycle command.** The runner already
+  executes every command through `bash -c`; a wrapper spawns a second
+  shell for nothing, and its single quotes clash with the shell-quoted
+  values the runner substitutes for placeholders.
+- **Script variants are workflow-local.** The defaults in
+  `default_jinn.toml` branch and land on main/trunk — the human's
+  own checkout flow. A workflow that needs a different parent ships
+  its own script with the parent as a third parameter (autodev's
+  branch the feature branch and merge back onto it).
 - Specialists that need no filesystem seat (readers who work through
   paths, or through a repository file with read-only SCM commands) get
   no setup — saving the budget is the point of giving them no checkout.
 
-Anything a session needs *later* — a fresh checkout for a one-shot task,
-a teardown — is plain shell in a step file, often in a subshell so the
-session never leaves its seat. The lifecycle TOML and one crib-sheet
-step file are the only places a workflow should name SCM commands;
-every other file stays SCM-blind so porting to another SCM touches two
-files.
+The lifecycle TOML and one crib-sheet step file are the only places a
+workflow should name SCM commands; every other file stays SCM-blind so
+porting to another SCM touches two files.
 
 ## State files
 
@@ -171,50 +194,88 @@ Single-writer is what makes file-based coordination safe in a
 multi-session run. Every state file gets exactly one owner; everyone
 else reads or requests.
 
-## The orchestrator's constitution
+## The orchestrator instructions
 
 A sequential workflow's `workflow.md` is a flow list; an event-driven
-one is a **constitution**. It must carry, in order:
+one is instructions. It must carry, in order:
 
 1. **Frontmatter** — same as always (`name`, `description`; discovery
    reads nothing else).
-2. **Constants** — the declared numbers and names: pool size K, branch
-   names, tracker and artifact paths, stall thresholds. Every number a
-   session could otherwise improvise.
-3. **Startup** — the ordered setup: probe the seat, purge stale state,
-   file the goal, spend the lifecycle budget, load the attendants
-   (which file, how many times, in what order), stamp the task list.
+2. **Constants** — the declared numbers and names: branch-naming
+   conventions, tracker and artifact paths, stall thresholds, retry
+   bounds. Every number a session could otherwise improvise.
+3. **Startup** — the ordered setup: probe the seat, record the ledger,
+   ensure run state is ignored (never committable), file the goal, load
+   the standing attendants, stamp the task list.
 4. **The loop** — numbered stages naming their step files, with the
    turn-end rule stated explicitly: end the turn after dispatching and
    whenever nothing is left to do; reports wake you.
 5. **Amendment** — how the run behaves when the human edits the
-   workflow mid-run: re-read everything, migrate the pool (load new
-   seeds, retire old sessions by never messaging them again, reuse
-   their seats), append a cycle section to the ledger, and continue —
-   a prompt update is never a restart.
+   workflow mid-run: re-read everything, migrate the standing
+   attendants (load new seeds, retire old sessions by never messaging
+   them again), let in-flight workers finish under the old seed, append
+   a cycle section to the ledger, and continue — a prompt update is
+   never a restart.
 6. **Boundaries** — who writes what, what no session may do, what
    gates exist (and the statement that none exist beyond the declared
    human contacts).
 
 ## Steps, reports, and routing
 
-- Step files are per-stage procedures the constitution names — written
+- Step files are per-stage procedures the instructions name — written
   for the orchestrator executing them, not for a stranger subagent
   (the attendants get their procedures through their seed pins and
   their dispatches).
 - Every dispatch states the **report format** the orchestrator will
-  parse (autodev: `DONE <issue-id> <branch>` / `BLOCKED <issue-id>`;
-  `READY <issue-id> <contract-path>`; `APPROVE|REJECT <issue-id>`).
-  Short, greppable, first-line-parseable.
+  parse (autodev: `DONE <issue-id>-<slug> <branch>` /
+  `BLOCKED <issue-id>-<slug>`; `READY <issue-id>-<slug>
+  <contract-path>`; `APPROVE|REJECT <issue-id>-<slug>`). Short,
+  greppable, first-line-parseable. **Work-item ids carry a title slug
+  everywhere a human might read** — task lists, reports, verdicts,
+  ledgers — never a bare number: `003` alone is opaque to the person
+  watching the run, and every surface is a surface they can watch.
 - Every non-success report routes somewhere explicit: a BLOCKED report
   files its facts as new work items; a REJECT re-dispatches the same
   worker with the findings verbatim; a stall re-queues the work.
   Nothing ever just disappears, and the orchestrator never does the
   worker's job itself to unblock a stage.
 - **No escalation paths.** If the flow must assume attendants can do
-  what is asked, say so in the pins and the constitution: a dead end
+  what is asked, say so in the pins and the instructions: a dead end
   is reported as facts (BLOCKED), not as a request for a human. The
   orchestrator files the facts and re-sequences.
+
+## The human's real presence, gates, and baselines
+
+- **Scheduled contacts are not the only contacts.** A design that says
+  "the human appears only at the goal ask and the QA brief" describes
+  the schedule, not reality: the human can open any attendant session,
+  read its work live, and message it directly. Write the seed pins to
+  match — a direct human message is authoritative input, followed and
+  then disclosed in the next report ("the human told me directly"),
+  never silently folded into the plan. An orchestrator that receives a
+  surprising claim ("the human approved this") checks the channel
+  before doubting the reporter: the human *can* have said it.
+- **Human sequencing remarks are quality guidance, not scheduling
+  orders.** "Fix X before landing Y" gets a one-sentence reading at
+  the top of the next turn, then the normal loop proceeds — never a
+  re-ordering into a ceremony the workflow doesn't have.
+- **State the feature-model sentence.** The orchestrator should know
+  in one line what "the feature" physically is (autodev: the human's
+  own branch, assembled incrementally by teardowns; no landing step).
+  Without it, an orchestrator invents big-bang landing ceremonies and
+  ordering constraints from ambiguous phrasing.
+- **Gates are measured against a recorded baseline.** Any "green
+  before you commit" rule needs the starting state recorded: run the
+  gate on the parent once during planning, write pre-existing
+  failures into the contract, and measure the worker against that.
+  Without a baseline the worker faces an impossible dilemma — commit
+  on red (a rule violation) or stall forever on failures it didn't
+  cause — and it will invent a justification, which reads as
+  dishonesty.
+- **Verification verdicts belong to the verifier.** An orchestrator
+  with doubts about a worker's report attaches them to the review
+  dispatch, attributed and verbatim, and never pre-empts the verdict
+  itself (no self-REJECT, no self-APPROVE).
 
 ## Failure and stall handling
 
@@ -249,8 +310,21 @@ attention signal, and no watchdog for wedged turns. Design for it:
 - **The held turn.** Sleeping in a loop to "wait" for reports. Turn-end
   is the delivery mechanism; a turn that never ends never receives
   them.
-- **A pool of duplicate files.** K workers is one seed loaded K times.
-  Three copies of one TOML drift.
+- **A pool of duplicate files.** Workers are one seed; on-demand spawns
+  load the same file per session. N copies of one TOML drift.
+- **The ad-hoc cleanup carve-out.** Lifecycle scripts used for setup
+  but teardown-as-checklist — "trash-move it with this shell recipe."
+  Halfway usage means cleanup correctness rides on the orchestrator's
+  diligence instead of recorded coordinates; use the scripts fully or
+  not at all.
+- **Branch/seat names a second run would collide with.** Fixed names
+  (`autodev-main`, a shared trash dir) make two concurrent runs merge
+  into each other silently or purge each other's seats. Name per-run
+  artifacts after the run — or better, derive them from the session's
+  own branch so runs on different branches can never share a seat.
+- **The startup purge.** A run that deletes "stale" state at startup
+  cannot tell stale from active. Cleanup belongs to teardown of the
+  run that created the debris — never to the next run's morning.
 - **The preserve everything seed.** Preserve without a
   geography-not-verdict hygiene rule turns a specialist into a
   grudges-by-email machine: it starts judging from its history instead
@@ -258,12 +332,27 @@ attention signal, and no watchdog for wedged turns. Design for it:
 - **Completion triggers on dispatch-driven attendants.** The attendant
   fires on every orchestrator turn end and invents work. Manual
   trigger, always, for anything the orchestrator dispatches.
-- **The improvise number.** A pool size, retry count, or timeout that
-  lives in the orchestrator's judgment instead of the constitution's
+- **Reset where re-dispatch loops exist.** A worker that will receive
+  fix-rounds (review rejects, teardown conflicts) must be preserve —
+  a reset seed re-explores its own code on every round.
+- **The improvise number.** A retry count, or timeout that
+  lives in the orchestrator's judgment instead of the instructions'
   constants. Every number is data.
 - **Tracker writes from workers.** Single-writer is what makes the
   file-based queue safe. A worker that edits its own issue file is a
   race the tracker cannot survive.
+- **"The human only sees X."** Any pin or instruction asserting the
+  human cannot reach a session. They can reach every session. Writing
+  the fiction in forces orchestrators to read truthful reports as
+  fabrications and workers to hide real contact. Say "no scheduled
+  contact" and require disclosure instead.
+- **Bare-number work-item ids.** `003` in a task list, report, or
+  verdict is opaque to the human watching the run. `003-fix-picker`
+  everywhere ids travel.
+- **Gate rules with no baseline.** "All green before commit" with no
+  recorded starting state punishes workers for pre-existing failures
+  and teaches them to invent justifications. Record the parent's gate
+  state in the plan; measure against it.
 - **The silent second queue.** Holding undelivered work in session
   inboxes instead of state files. The tracker holds the queue; inboxes
   hold at most one message.
