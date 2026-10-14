@@ -498,3 +498,7 @@ Entries are added or amended **only with human approval**.
 - (tools) The task tool accepts a `model` argument naming an expanded provider/model id or a configured alias, validated against the provider registry before the child session is created; an unknown name fails the call without spawning.
 - (tools) A task-tool subagent spawned without `model` inherits the parent's whole ModelSelection, alloy included; a valid `model` becomes Single on the child.
 - (config) A provider alias resolves through one registry resolver to its target expanded id, an expanded id resolves to itself, and a name that is both resolves as the expanded id.
+- (rules) A stream rule cannot fire on a match that ends at the still-growing buffer's edge.
+- (rules) A match held at the buffer's edge becomes eligible when the next delta arrives or when the stream finalizes.
+- (rules) A stream-rule session finalizes when the stream completes, re-testing every open buffer without edge suppression; cancelled, errored, and aborted streams never finalize.
+- (rules) Shipped `tool:bash` conditions delimit a command with real boundary bytes — the envelope's closing quote or shell delimiters — never the end of the accumulated buffer.
