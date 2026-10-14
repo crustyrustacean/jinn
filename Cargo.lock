@@ -3689,6 +3689,7 @@ dependencies = [
  "jinn-theme",
  "ratatui",
  "rstest",
+ "tempfile",
  "tokio",
 ]
 

@@ -18,6 +18,7 @@
 //! snapshots the pending set, drops the guard, writes through the config
 //! layer, then reports the outcome back into the cell.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use jinn_preferences_config::StreamRulesStorage;
@@ -57,14 +58,18 @@ pub fn bound_keys() -> Vec<&'static str> {
         .collect()
 }
 
-/// Wraps a picker action in an [`ActionFn`], handing it both the dispatch
-/// context and the cell.
-fn action<F>(cell: &StreamRulePickerCell, f: F) -> ActionFn
+/// Wraps a picker action in an [`ActionFn`], handing it the dispatch
+/// context, the cell, and the run's preferences path captured at activation.
+fn action<F>(cell: &StreamRulePickerCell, preferences_path: &PathBuf, f: F) -> ActionFn
 where
-    F: Fn(&mut ActionCtx<'_>, &StreamRulePickerCell) -> IntentResult + Send + Sync + 'static,
+    F: Fn(&mut ActionCtx<'_>, &StreamRulePickerCell, &PathBuf) -> IntentResult
+        + Send
+        + Sync
+        + 'static,
 {
     let cell = cell.clone();
-    ActionFn::new(move |mut ctx| f(&mut ctx, &cell))
+    let preferences_path = preferences_path.clone();
+    ActionFn::new(move |mut ctx| f(&mut ctx, &cell, &preferences_path))
 }
 
 /// Builds one `Action` row binding `key` in the picker's own scope.
@@ -96,7 +101,11 @@ fn row(
 /// own: a key that opens the picker cannot live inside the scope it opens.
 /// The remaining rows are `OwnScope`, so they bind only while the picker is
 /// on top and cannot shadow another slice's keys.
-pub fn attach_stream_rule_picker_rows(routes: &KeyRoutes, cell: &StreamRulePickerCell) {
+pub fn attach_stream_rule_picker_rows(
+    routes: &KeyRoutes,
+    cell: &StreamRulePickerCell,
+    preferences_path: &PathBuf,
+) {
     routes.attach(RouteRow {
         route_id: RouteId::new("stream-rule-picker:open"),
         scope: stream_rule_picker_scope(),
@@ -107,7 +116,7 @@ pub fn attach_stream_rule_picker_rows(routes: &KeyRoutes, cell: &StreamRulePicke
         outcome: RouteOutcome::Action {
             action: "open-stream-rule-picker",
             display: "toggle stream rules",
-            run: action(cell, open_stream_rule_picker),
+            run: action(cell, preferences_path, open_stream_rule_picker),
         },
     });
 
@@ -116,24 +125,24 @@ pub fn attach_stream_rule_picker_rows(routes: &KeyRoutes, cell: &StreamRulePicke
         "<tab>",
         "general",
         "toggle the highlighted rule",
-        action(cell, toggle_highlighted_rule),
+        action(cell, preferences_path, toggle_highlighted_rule),
     ));
     routes.attach(row(
         "confirm-stream-rule-picker",
         "<enter>",
         "general",
         "save the pending disabled set",
-        action(cell, confirm_stream_rule_picker),
+        action(cell, preferences_path, confirm_stream_rule_picker),
     ));
     routes.attach(row(
         "cancel-stream-rule-picker",
         "<esc>",
         "general",
         "close without changing any rule",
-        action(cell, cancel_stream_rule_picker),
+        action(cell, preferences_path, cancel_stream_rule_picker),
     ));
 
-    attach_navigation_rows(routes, cell);
+    attach_navigation_rows(routes, cell, preferences_path);
 }
 
 /// Attaches the four list-navigation rows.
@@ -143,7 +152,11 @@ pub fn attach_stream_rule_picker_rows(routes: &KeyRoutes, cell: &StreamRulePicke
 /// row naming an unknown id is silently dropped with a warning. So the
 /// picker implements its own navigation, the same shape the skill picker
 /// uses.
-fn attach_navigation_rows(routes: &KeyRoutes, cell: &StreamRulePickerCell) {
+fn attach_navigation_rows(
+    routes: &KeyRoutes,
+    cell: &StreamRulePickerCell,
+    preferences_path: &PathBuf,
+) {
     for (name, key, display, step) in [
         ("move-stream-rule-picker-up", "<up>", "move up", Nav::Up),
         (
@@ -170,7 +183,7 @@ fn attach_navigation_rows(routes: &KeyRoutes, cell: &StreamRulePickerCell) {
             key,
             "navigation",
             display,
-            action(cell, move |ctx, cell| {
+            action(cell, preferences_path, move |ctx, cell, _| {
                 navigate(ctx, cell, step);
                 IntentResult::empty()
             }),
@@ -231,21 +244,24 @@ pub fn register_stream_rule_picker_input_hook(routes: &KeyRoutes, cell: &StreamR
 
 // ── Actions ─────────────────────────────────────────────────────────────
 
-/// Opens the picker: seed the rows from the configured rules and push the
+/// Opens the picker: seed the rows from the assembled rules and push the
 /// picker's scope.
 ///
 /// The rule list is launch-global — one `jinn.toml`, every session — so the
-/// seed reads the configuration layer the dispatch hands every route
-/// action, not any session's state. A malformed section reads as no rules
-/// (`unwrap_or_default`), matching how the stream-rules slice itself treats
-/// one. The `disabled_rules` array rides the same layer and seeds each
-/// row's pending state at the persisted value, so reopening after a
-/// confirm shows what the file holds.
-fn open_stream_rule_picker(ctx: &mut ActionCtx<'_>, cell: &StreamRulePickerCell) -> IntentResult {
-    let rules = ctx
-        .config
-        .get_list::<jinn_preferences_config::schemas::StreamRuleConfig>()
-        .unwrap_or_default();
+/// seed reads the same assembly the matcher enforces: the embedded shipped
+/// set when no user file exists, the user `stream_rules.toml` set when it
+/// does, the jinn.toml entries, and the legacy conversions, deduped by
+/// name. A listed rule is an enforced rule, which is what makes "toggle it
+/// off" mean anything. The preferences path arrives captured at activation
+/// — the same path the confirm writes through. The `disabled_rules` array
+/// rides the same layer and seeds each row's pending state at the persisted
+/// value, so reopening after a confirm shows what the file holds.
+fn open_stream_rule_picker(
+    ctx: &mut ActionCtx<'_>,
+    cell: &StreamRulePickerCell,
+    preferences_path: &PathBuf,
+) -> IntentResult {
+    let rules = jinn_preferences_config::assemble_stream_rules(&ctx.config, preferences_path);
     let disabled_names: std::collections::HashSet<String> = ctx
         .config
         .get::<jinn_preferences_config::StreamRulesConfig>()
@@ -266,7 +282,11 @@ fn open_stream_rule_picker(ctx: &mut ActionCtx<'_>, cell: &StreamRulePickerCell)
 
 /// `<tab>`: flip the highlighted rule's pending state. The picker stays
 /// open and the file is untouched — the write belongs to the confirm.
-fn toggle_highlighted_rule(_ctx: &mut ActionCtx<'_>, cell: &StreamRulePickerCell) -> IntentResult {
+fn toggle_highlighted_rule(
+    _ctx: &mut ActionCtx<'_>,
+    cell: &StreamRulePickerCell,
+    _preferences_path: &PathBuf,
+) -> IntentResult {
     cell.update(stream_rule_picker_actions::toggle_highlighted);
     IntentResult::empty()
 }
@@ -295,6 +315,7 @@ fn toggle_highlighted_rule(_ctx: &mut ActionCtx<'_>, cell: &StreamRulePickerCell
 fn confirm_stream_rule_picker(
     ctx: &mut ActionCtx<'_>,
     cell: &StreamRulePickerCell,
+    preferences_path: &PathBuf,
 ) -> IntentResult {
     // Snapshot the pending set and drop the guard before writing: the
     // storage call takes its own locks on the document.
@@ -302,7 +323,7 @@ fn confirm_stream_rule_picker(
         cell.update(|picker| stream_rule_picker_actions::pending_set(picker));
 
     let config = ctx.config;
-    match write_pending_set(config, &pending) {
+    match write_pending_set(config, preferences_path, &pending) {
         Ok(()) => {
             cell.update(|picker| {
                 picker.status = Some(confirmation_status(&pending));
@@ -326,10 +347,11 @@ fn confirm_stream_rule_picker(
 /// user sees which confirm broke.
 fn write_pending_set(
     config: &jinn_config::ConfigLayer,
+    preferences_path: &PathBuf,
     pending: &[(String, bool)],
 ) -> Result<(), error_stack::Report<StreamRulesStorageError>> {
     for (name, disabled) in pending {
-        config.set_stream_rule_disabled(name, *disabled)?;
+        config.set_stream_rule_disabled(preferences_path, name, *disabled)?;
     }
     Ok(())
 }
@@ -381,6 +403,7 @@ fn failure_status(error: &StreamRulesStorageError) -> String {
 fn cancel_stream_rule_picker(
     _ctx: &mut ActionCtx<'_>,
     _cell: &StreamRulePickerCell,
+    _preferences_path: &PathBuf,
 ) -> IntentResult {
     IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(stream_rule_picker_scope()))
 }

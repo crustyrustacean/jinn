@@ -181,7 +181,7 @@ mod tests {
         // runs — the picker-confirm shape.
         actor
             .config
-            .set_stream_rule_disabled("rebuildable", true)
+            .set_stream_rule_disabled(&actor.preferences_path, "rebuildable", true)
             .expect("the write lands");
         actor.handle_refresh();
 
@@ -195,7 +195,7 @@ mod tests {
         let (actor, cell) = actor();
         actor
             .config
-            .set_stream_rule_disabled("rebuildable", true)
+            .set_stream_rule_disabled(&actor.preferences_path, "rebuildable", true)
             .expect("the write lands");
         actor.handle_refresh();
         assert!(fires(&cell, "REBUILD-MARKER-rebuildable").is_none());
@@ -203,7 +203,7 @@ mod tests {
         // When the rule is re-armed and a refresh runs.
         actor
             .config
-            .set_stream_rule_disabled("rebuildable", false)
+            .set_stream_rule_disabled(&actor.preferences_path, "rebuildable", false)
             .expect("the write lands");
         actor.handle_refresh();
 

@@ -141,11 +141,13 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
     // subscription must exist first, and nothing below resolves a
     // workflows cell it does not already have from the catalog.
     jinn_workflows::activate(&mut ctx.host());
-    // The stream-rule picker lists and toggles rules it reads from the
-    // config layer at open time and writes through the same layer at
-    // confirm; its cell came from the catalog, and nothing below resolves a
-    // picker cell it does not already have.
-    jinn_stream_rule_picker::activate(&mut ctx.host());
+    // The stream-rule picker lists the assembled ruleset — the same one the
+    // matcher enforces — by reading it through the preferences path captured
+    // here, and writes through the same path at confirm; its cell came from
+    // the catalog, and nothing below resolves a picker cell it does not
+    // already have.
+    let prefs_snapshot = ctx.services().paths.preferences_path();
+    jinn_stream_rule_picker::activate(&mut ctx.host(), prefs_snapshot);
     let state_snapshot = ctx.state().clone();
     jinn_sidebar::activate(&mut ctx.host(), state_snapshot);
     let state_snapshot = ctx.state().clone();

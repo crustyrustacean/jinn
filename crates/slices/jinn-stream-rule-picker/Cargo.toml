@@ -23,6 +23,10 @@ ratatui = { workspace = true }
 jinn-cell-catalog = { workspace = true }
 rstest = { workspace = true }
 tokio = { workspace = true }
+# The merged-list tests build a temp preferences dir with a sibling
+# `stream_rules.toml`, leaked with `mem::forget` — the established
+# pattern the rules.rs tests use.
+tempfile = { workspace = true }
 
 [lints]
 workspace = true
