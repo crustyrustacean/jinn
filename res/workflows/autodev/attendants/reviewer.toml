@@ -1,7 +1,7 @@
 # Attendant: reviewer. One per run; the second pair of eyes.
 #
 # Loaded ONCE by the orchestrator via `load_attendant` at run start.
-# Dispatched after every implementor DONE report, BEFORE integration.
+# Dispatched after every implementor DONE report, BEFORE any teardown.
 #
 # behavior = preserve: the reviewer KEEPS its conversation across
 # dispatches, deliberately — proper review takes exploring the code

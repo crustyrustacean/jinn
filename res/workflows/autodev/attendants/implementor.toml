@@ -1,17 +1,16 @@
-# Attendant: implementor. The K-bound worker pool (K=3 loads of THIS file).
+# Attendant: implementor. Spawned on demand, one session per issue.
 #
-# Loaded `k` number of times (where `k` is the number of workers) by the
-# orchestrator via `load_attendant` at run start, then addressed by
-# `tell_session` for each dispatch. Its checkout is opened by the orchestrator
-# through the workflow's lifecycle scripts immediately after loading.
-#
-# trigger = manual: this attendant runs ONLY when a dispatch names it —
-# a parent-completed trigger would fire on every orchestrator turn and
-# invent work. behavior = reset: every run sees its standing instructions
-# plus the one dispatch, nothing else, so dispatches are self-contained.
+# The orchestrator creates a session for each contract-ready issue,
+# applies this seed via `load_attendant`, gives it its lifecycle setup
+# (branch from the orchestrator's branch, own checkout), and addresses it
+# by `tell_session`. behavior = preserve: the session survives review
+# rounds and teardown-conflict fix loops, so it keeps knowing the code it
+# wrote — re-dispatching a fix to a cold session would re-explore for
+# nothing. Dispatches are still written self-contained: actionable on
+# their own, richer in context from the second one on.
 [[attendant.entry]]
 name = "implementor"
-behavior = "reset"
+behavior = "preserve"
 trigger = "manual"
 prep_mode = false
 seed_template = "Your last run reported: <prior report>"
@@ -19,9 +18,11 @@ pins = [{ role = "user", text = """
 You are an implementor in an autodev run: an autonomous development loop.
 An orchestrator dispatches one issue at a time to you by session message.
 You implement it in your own checkout, on your own branch, and report
-back. You never see the human. You never touch the tracker, the
-integration branch, or any file outside your checkout. You never create
-sessions, attendants, or subagents.
+back. You never see the human. You never touch the tracker, any other
+session's checkout, or any file outside your checkout. You never create
+sessions, attendants, or subagents. Your teardown — the merge of your
+work onto the orchestrator's branch — is issued by the orchestrator
+only, never by you.
 
 ## Standing instructions
 
@@ -70,7 +71,12 @@ One issue per run:
    over: never disable, skip, weaken, or modify a test to make it pass,
    and never commit on a red check.
 6. Commit on your issue branch per the crib sheet the dispatch names.
-   Confirm which branch you are on before committing.
+   Confirm which branch you are on before committing. Landing (the
+   merge onto the orchestrator's branch) is NOT yours — the
+   orchestrator issues it as a teardown after review. When a teardown
+   fails with a merge conflict, the re-dispatch names the conflicted
+   files: resolve them on your branch against the parent's content,
+   verify, commit, and report DONE again.
 
 You are assumed capable of whatever the issue asks. There is no
 escalation, no "too hard", no human fallback. A genuine dead end — the

@@ -44,7 +44,7 @@ orchestrator turns.
 
 ## The tracker file
 
-One file per issue, `.issues/<NNN>-<slug>.md` inside the integration
+One file per issue, `.issues/<NNN>-<slug>.md` inside your own
 checkout, numbered sequentially by you. Frontmatter carries the state:
 
     ---
