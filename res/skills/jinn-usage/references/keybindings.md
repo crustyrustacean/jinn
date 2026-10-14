@@ -234,6 +234,8 @@ Read-only navigation (status view). Manage servers via the MCP picker — see
 | Project    | `<c-n>`           | Start a new session (leaves the picker)              |
 | Project    | `<c-d>`           | Remove the highlighted project                          |
 | Project    | `<c-enter>`       | New session at the highlighted project with a lifecycle |
+| Workflow   | `<enter>`         | Load the highlighted workflow into the current session |
+| Workflow   | `<c-enter>`       | New session running the highlighted workflow          |
 | Task list  | —                 | Read-only browser                                       |
 
 ## Text-input scopes
