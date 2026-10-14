@@ -18,9 +18,22 @@ pub use jinn_tools_msg::BoxedToolFuture;
 pub mod attendant_tools;
 pub mod bash;
 pub mod capabilities;
+pub mod tell_session;
 
 #[cfg(test)]
 mod attendant_tools_tests;
+
+#[cfg(test)]
+#[path = "load_attendant_tests.rs"]
+mod load_attendant_tests;
+
+#[cfg(test)]
+#[path = "run_lifecycle_tests.rs"]
+mod run_lifecycle_tests;
+
+#[cfg(test)]
+#[path = "tell_session_tests.rs"]
+mod tell_session_tests;
 
 pub mod edit;
 pub(crate) mod file_locks;
@@ -30,9 +43,12 @@ pub(crate) mod input_bounds;
 pub mod interactive_term;
 pub mod interactive_term_kill;
 pub mod interactive_term_send;
+pub mod lifecycle_completion_listener_actor;
+pub mod load_attendant;
 pub mod read;
 pub mod registry;
 pub mod restart_mcp;
+pub mod run_lifecycle;
 pub mod save_plan;
 pub mod session_fetch;
 pub mod session_search;

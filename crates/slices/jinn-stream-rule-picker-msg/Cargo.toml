@@ -1,0 +1,23 @@
+[package]
+name = "jinn-stream-rule-picker-msg"
+version.workspace = true
+edition.workspace = true
+description = "Stream-rule picker crossing contracts: the picker's state, slot, scope, and entry type."
+
+[dependencies]
+jinn-core-types = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-preferences-config = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-theme = { workspace = true }
+ratatui = { workspace = true }
+serde = { workspace = true }
+trouper = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

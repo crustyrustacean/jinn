@@ -36,3 +36,9 @@ test.toml*
 research/
 research/*
 stream_rules.toml
+# jinn never reads a repo-local config tree; shipped defaults live in res/
+# and install into the user's config directory. Ignore the whole subtree so
+# a local .config can never be tracked again.
+.config/*
+worktrees/*
+.jinn-autocoder-trash/*

@@ -95,6 +95,10 @@ pub struct SessionSnapshotMetadata {
     /// Replayed lifecycle arguments.
     #[serde(default)]
     pub lifecycle_args: Vec<String>,
+    /// The workflow-local TOML file the lifecycle was resolved from.
+    /// Absent for jinn.toml lifecycles.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lifecycle_source: Option<String>,
     /// One-way lifecycle script progress.
     #[serde(default)]
     pub lifecycle_script_state: LifecycleScriptState,
@@ -129,6 +133,10 @@ pub struct SessionSnapshotMetadata {
     /// The attendant's append-only report log.
     #[serde(default)]
     pub reports: Vec<AttendantReport>,
+    /// The workflow-local TOML file a workflow attendant loaded from.
+    /// Absent for personal attendants.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_source: Option<jinn_core_types::AttendantSourcePath>,
     /// Wall-clock intervals during which this session was working.
     ///
     /// Persisted in the metadata blob, so working time survives a restart.
@@ -158,6 +166,7 @@ impl From<&SessionCore> for SessionSnapshotMetadata {
             blobs: core.integrations.blobs.clone(),
             lifecycle_name: core.lifecycle.lifecycle_name.clone(),
             lifecycle_args: core.lifecycle.lifecycle_args.clone(),
+            lifecycle_source: core.lifecycle.lifecycle_source.clone(),
             lifecycle_script_state: core.lifecycle.lifecycle_script_state,
             task_list: core.history_work.task_list.clone(),
             enabled_mcp_servers: core.integrations.enabled_mcp_servers.clone(),
@@ -168,6 +177,7 @@ impl From<&SessionCore> for SessionSnapshotMetadata {
             trigger: core.attendant.trigger,
             seed_template: core.attendant.seed_template.clone(),
             reports: core.attendant.reports.clone(),
+            workflow_source: core.attendant.workflow_source.clone(),
             // Working time is NOT read from the core. It lives in the
             // work-time slice's cell, and copying it onto the core would give
             // it a second home with a second writer. The store actor stamps it
@@ -195,6 +205,7 @@ impl From<SessionSnapshotMetadata> for SessionCore {
         core.integrations.blobs = metadata.blobs;
         core.lifecycle.lifecycle_name = metadata.lifecycle_name;
         core.lifecycle.lifecycle_args = metadata.lifecycle_args;
+        core.lifecycle.lifecycle_source = metadata.lifecycle_source;
         core.lifecycle.lifecycle_script_state = metadata.lifecycle_script_state;
         core.history_work.task_list = metadata.task_list;
         core.integrations.enabled_mcp_servers = metadata.enabled_mcp_servers;
@@ -205,6 +216,7 @@ impl From<SessionSnapshotMetadata> for SessionCore {
         core.attendant.trigger = metadata.trigger;
         core.attendant.seed_template = metadata.seed_template;
         core.attendant.reports = metadata.reports;
+        core.attendant.workflow_source = metadata.workflow_source;
         core
     }
 }
@@ -342,6 +354,13 @@ impl SessionSnapshot {
     #[must_use]
     pub fn lifecycle_args(&self) -> &[String] {
         &self.metadata.lifecycle_args
+    }
+
+    /// Returns the workflow-local lifecycle file the lifecycle resolved
+    /// from, if any.
+    #[must_use]
+    pub fn lifecycle_source(&self) -> Option<&str> {
+        self.metadata.lifecycle_source.as_deref()
     }
 
     /// Returns the lifecycle script progression.

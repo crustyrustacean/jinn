@@ -1,0 +1,47 @@
+[package]
+name = "jinn-stream-rule-picker"
+version.workspace = true
+edition.workspace = true
+description = "The stream-rule disable picker: list the rules, toggle a rule off or on, confirm the set."
+
+[dependencies]
+jinn-config = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-kernel = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-preferences-config = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-stream-rules-msg = { workspace = true }
+jinn-theme = { workspace = true }
+jinn-stream-rule-picker-msg = { workspace = true }
+# The persist actor's chat-error channel: the same message every slice's
+# failure report rides.
+jinn-session-history-msg = { workspace = true }
+# The trouper runtime: the persist actor that writes off the key thread.
+trouper = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+error-stack = { workspace = true }
+ratatui = { workspace = true }
+
+[dev-dependencies]
+# `activate` resolves the picker cell the catalog owns, so the tests seed
+# their registry through the same list production boot uses.
+jinn-cell-catalog = { workspace = true }
+jinn-testutil = { workspace = true }
+rstest = { workspace = true }
+tokio = { workspace = true }
+# The merged-list tests build a temp preferences dir with a sibling
+# `stream_rules.toml`, leaked with `mem::forget` — the established
+# pattern the rules.rs tests use.
+tempfile = { workspace = true }
+# The persist tests' failing backend implements `ConfigDocumentStorage`,
+# whose signature names `toml_edit::DocumentMut`.
+toml_edit = { workspace = true }
+# The dispatch tests decode the confirm's persist command out of the
+# result's publish closures.
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

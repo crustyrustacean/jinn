@@ -1353,6 +1353,77 @@ async fn lifecycle_script_state_setup_ran_round_trips() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn lifecycle_source_round_trips() {
+    // Given a session stamped with a workflow-local lifecycle source.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("Sourced".to_owned());
+    session.push_entry(ChatEntry::user("hello"));
+    session.set_lifecycle_name(Some("stage".to_owned()));
+    session.set_lifecycle_source(Some("workflows/autocoder/lifecycle.toml".to_owned()));
+
+    // When saving and loading.
+    store.save(&session.capture_snapshot()).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then the source survives, so teardown after a restart re-reads the
+    // workflow's own file.
+    assert_eq!(
+        loaded.lifecycle_source(),
+        Some("workflows/autocoder/lifecycle.toml")
+    );
+    assert_eq!(loaded.lifecycle_name(), Some("stage"));
+}
+#[rstest::rstest]
+#[tokio::test]
+async fn sessions_without_a_lifecycle_source_persist_without_the_key() {
+    // Given a plain session (jinn.toml lifecycle or none).
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("Plain".to_owned());
+    session.push_entry(ChatEntry::user("hello"));
+
+    // When saving and reading the persisted metadata blob back.
+    store.save(&session.capture_snapshot()).await.expect("save");
+    let raw = raw_metadata_blob(&store, &session_id).await;
+
+    // Then the blob omits the key entirely — byte-identical to a blob
+    // written before the marker existed.
+    assert!(!raw.contains("lifecycle_source"), "{raw}");
+}
+
+/// Reads one session's raw metadata blob out of the store's table.
+async fn raw_metadata_blob(
+    store: &crate::sqlite::SqliteSessionStore,
+    session_id: &SessionId,
+) -> String {
+    let id = session_id.to_string();
+    store
+        .pool()
+        .with_conn(move |conn| {
+            let blob: Option<String> = conn
+                .query_row(
+                    "SELECT metadata FROM sessions WHERE id = ?1",
+                    rusqlite::params![id],
+                    |row| row.get(0),
+                )
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            Ok(blob.unwrap_or_default())
+        })
+        .await
+        .expect("query blob")
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn lifecycle_script_state_nothing_ran_round_trips() {
     // Given a session with NothingRan (default).
     let (_dir, store) = make_store().await;

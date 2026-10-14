@@ -8,8 +8,8 @@ use jinn_core_types::tool_types::{ToolCall, ToolDefinition};
 
 use super::{
     BoxedToolFuture, attendant_tools, bash, capabilities, edit, get_time, grep, interactive_term,
-    interactive_term_kill, interactive_term_send, read, restart_mcp, save_plan, session_fetch,
-    session_search, skill, task, write,
+    interactive_term_kill, interactive_term_send, load_attendant, read, restart_mcp, run_lifecycle,
+    save_plan, session_fetch, session_search, skill, task, tell_session, write,
 };
 
 /// A built-in tool entry: its definition paired with its execute function,
@@ -114,6 +114,23 @@ pub fn builtin_tools(default_timeout_secs: u64) -> Vec<BuiltinToolEntry> {
             true,
         ),
         (
+            tell_session::definition(),
+            tell_session::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
+        ),
+        (
+            load_attendant::definition(),
+            load_attendant::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            false,
+        ),
+        (
+            run_lifecycle::definition(),
+            run_lifecycle::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            // The tool awaits the script's completion event; the dispatcher's
+            // outer timeout would abort that wait mid-script.
+            true,
+        ),
+        (
             grep::definition(),
             grep::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
             false,
@@ -192,6 +209,9 @@ mod tests {
             "session_fetch",
             "capabilities_query",
             "capabilities_apply",
+            "tell_session",
+            "load_attendant",
+            "run_lifecycle",
             "grep",
             "task",
             "interactive_term",

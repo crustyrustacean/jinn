@@ -16,6 +16,8 @@ use jinn_core_types::{ChatEntry, ChatEntryKind};
 /// Tool calls, tool results, System, Error, Thinking, Transient, Skill, Annotation, and Compaction
 /// entries are skipped - they are not relevant to the summarization prompt.
 /// entries are skipped - they are not relevant to the summarization prompt.
+/// Inter-session messages serialize as `[User]` lines: their text already
+/// carries the sender attribution.
 pub fn serialize_entries_for_compaction(entries: &[ChatEntry]) -> String {
     let mut lines = Vec::new();
 
@@ -29,6 +31,11 @@ pub fn serialize_entries_for_compaction(entries: &[ChatEntry]) -> String {
             }
             ChatEntryKind::Actor { source, text } => {
                 lines.push(format!("[Actor: {source}]: {text}"));
+            }
+            // Inter-session mail is user-equivalent: the sender bakes the
+            // attribution into the text, so it is summarized as a user line.
+            ChatEntryKind::Intersession { text, .. } => {
+                lines.push(format!("[User]: {text}"));
             }
             // Skip entries that don't contribute to the conversation summary.
             ChatEntryKind::System(_)
@@ -94,6 +101,27 @@ mod tests {
 
         // Then it produces no output (tool calls are skipped).
         assert!(result.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn serializes_intersession_entry_as_a_user_line() {
+        // Given an inter-session entry whose text carries the attribution.
+        let entries = vec![ChatEntry::intersession(
+            jinn_core_types::session_id::SessionId::new(),
+            None,
+            jinn_core_types::session_id::SessionId::new(),
+            "[Message from session abc]: hand me the diff",
+        )];
+
+        // When serializing for compaction.
+        let result = serialize_entries_for_compaction(&entries);
+
+        // Then it is labelled `[User]` with the full text: user-equivalent.
+        assert_eq!(
+            result,
+            "[User]: [Message from session abc]: hand me the diff"
+        );
     }
 
     #[rstest::rstest]

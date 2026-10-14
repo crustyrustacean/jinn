@@ -9,6 +9,10 @@ jinn-core-types = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-config = { workspace = true }
+jinn-stream-rules-msg = { workspace = true }
+# The trouper runtime: the matcher actor that re-installs the compiled set.
+trouper = { workspace = true }
+error-stack = { workspace = true }
 # Compiling the rules' `conditions` into regexes. Already in the tree for the
 # bash command policy; a stream rule that could not compile would be inert, so
 # the same engine is the one that has to do the work.
@@ -22,6 +26,12 @@ tracing = { workspace = true }
 [dev-dependencies]
 rstest = { workspace = true }
 tempfile = { workspace = true }
+# The end-to-end wiring test publishes over the real fabric; the test's
+# tokio runtime comes from the workspace dev-deps.
+tokio = { workspace = true }
+# The wiring test seeds its registry through the same catalog production
+# boot uses, so `activate` is exercised against the real wiring.
+jinn-cell-catalog = { workspace = true }
 
 [lints]
 workspace = true

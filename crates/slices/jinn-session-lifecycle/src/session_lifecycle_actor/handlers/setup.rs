@@ -1,8 +1,10 @@
 //! Setup lifecycle command handling.
 
 use jinn_chat_input_msg::ChatEntrySubmitted;
+use jinn_core_types::SessionId;
 use jinn_kernel::common::actor_deps::BusPublish;
 use jinn_session_history_msg::PushChatEntry;
+use jinn_session_lifecycle_msg::LifecycleScriptState;
 use jinn_session_lifecycle_msg::builtin::BuiltinId;
 use jinn_session_lifecycle_msg::{FinishSessionSetup, RunSessionSetup, SessionSetupCompleted};
 
@@ -16,6 +18,19 @@ impl SessionLifecycleActor {
         &mut self,
         payload: &RunSessionSetup,
     ) {
+        // Backstop guards before anything spawns: one lifecycle command per
+        // session at a time, and setup only from a session that has run
+        // nothing yet. The refusal rides the completion event — never a chat
+        // entry — so a caller error surfaces to the caller alone.
+        if let Some(reason) = self.setup_refusal(&payload.session_id) {
+            self.publish(SessionSetupCompleted {
+                session_id: payload.session_id.clone(),
+                cwd: self.existing_cwd(&payload.session_id),
+                error: Some(reason),
+            })
+            .await;
+            return;
+        }
         match &payload.lifecycle_command {
             Some(jinn_preferences_config::schemas::LifecycleCommand::Builtin(id)) => {
                 self.run_builtin_setup(&payload.session_id, id, &payload.args)
@@ -27,11 +42,33 @@ impl SessionLifecycleActor {
         }
     }
 
+    /// Why the session may not run a setup now: a lifecycle command already
+    /// in flight for it, or a lifecycle state past `nothing_ran`. `None`
+    /// means the setup may proceed — including for a session that does not
+    /// exist, whose setup is harmless (nothing advances, nothing stamps).
+    fn setup_refusal(&self, session_id: &SessionId) -> Option<String> {
+        if self.has_in_flight(session_id) {
+            return Some(format!(
+                "setup refused for session {session_id}: a lifecycle command is already in flight"
+            ));
+        }
+        let state = self.state.read();
+        let session = state.session.get(session_id)?;
+        if session.lifecycle_script_state() == LifecycleScriptState::NothingRan {
+            return None;
+        }
+        Some(format!(
+            "setup refused for session {session_id}: lifecycle state is {}, \
+             setup requires nothing_ran",
+            session.lifecycle_script_state()
+        ))
+    }
+
     pub(in crate::session_lifecycle_actor) async fn handle_finish_session_setup(
         &mut self,
         payload: &FinishSessionSetup,
     ) {
-        self.lifecycle_child = None;
+        self.take_in_flight(&payload.session_id);
 
         match (&payload.cwd, &payload.error) {
             (Some(cwd), None) => {
@@ -143,7 +180,7 @@ impl SessionLifecycleActor {
             .await;
         });
 
-        self.lifecycle_child = Some(cancel_handle);
+        self.insert_in_flight(payload.session_id.clone(), cancel_handle);
     }
 
     async fn run_builtin_setup(

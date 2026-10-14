@@ -1,265 +1,213 @@
 ---
 name: workflows
-description: Author and run jinn workflows — named multi-step procedures stored as markdown under ~/.config/jinn/workflows/, stamped onto the session task list and executed by dispatching each step to a subagent while the session orchestrates. Use when the user asks to run a workflow, author or create one, or describes a repeatable multi-step procedure (draft-review-fix cycles, research pipelines, staged refactors) to be carried out step by step.
+description: Author and run jinn workflows — named multi-step procedures stored as markdown under ~/.config/jinn/workflows/, stamped onto the session task list and executed while the session orchestrates. Covers both execution architectures (sequential step dispatch via `task`, and event-driven session pools via attendants) and the harness primitives they ride (`task`, attendants, `tell_session`/`notify_parent`, lifecycle scripts). Use when the user asks to run a workflow, author or create one, or describes a repeatable multi-step procedure (draft-review-fix cycles, research pipelines, staged refactors, autonomous development loops) to be carried out step by step.
 ---
 
 # workflows — author and run multi-step procedures
 
 A **workflow** is a named, reusable procedure: one directory under
 `~/.config/jinn/workflows/<name>/` holding a `workflow.md` (the flow, with
-loops and conditionals spelled out) and a `steps/` directory of prompt files,
-one per step. Nothing runs by itself — a workflow is inert markdown. Running
-one is a discipline the session applies, using only the ordinary task tools
-and the `task` dispatch tool.
+loops and conditionals spelled out) and a `steps/` directory of prompt files.
+Nothing runs by itself — a workflow is inert markdown. Running one is a
+discipline the session applies.
 
 This skill covers the whole lifecycle: author a workflow from a prose
 description (orient → one batched question round → user-approved preview →
-write), stamp it onto the task list, run it as an orchestrator, and close
-it out. `references/workflow-format.md` is the full format spec.
+write), stamp it onto the task list, run it, close it out. Depth lives in
+references; the must-knows are in this file.
 
-## You are the orchestrator
+## Pick the architecture first
 
-When a workflow runs, your session **orchestrates; it does not execute**.
-The division of labor:
+A workflow is either **sequential** or **event-driven**, and the choice is
+the first authoring decision — it changes the directory layout, the
+execution model, and what the session must supervise.
 
-- **You** — read the workflow, maintain the task list, load each step's
-  prompt file, dispatch it to a subagent with the `task` tool, check the
-  result against the step's done-when line, update the list, move on.
-- **Subagents** — do the actual work of each step, in their own fresh
-  context. They see nothing but the prompt you send.
+- **Sequential** — steps run one after another; each step is one unit of
+  work; when it's done, the next starts. Use when the flow is a pipeline:
+  research → draft → review → fix → deliver. Execution: the orchestrator
+  dispatches each step to a fresh subagent with the `task` tool.
+- **Event-driven** — a set of named worker sessions runs concurrently and
+  reacts to events: messages between sessions, turn completions, task
+  completion. Use when the flow has concurrency, recursion, or long-lived
+  workers: fanout, an issue queue that spawns more issues, workers that
+  report back asynchronously. Execution: the orchestrator loads
+  **attendants** (workflow-local session seeds), dispatches them with
+  `tell_session`, and receives their reports via `notify_parent`.
 
-**Running steps in your own context is the failure mode this skill exists to
-prevent.** If you catch yourself researching, drafting, reviewing, or
-refactoring _inside the orchestrator session_, stop and dispatch instead.
-Why it matters: the step's working material floods your context and degrades
-everything after it; the user cannot see per-step progress; steps lose their
-isolation from each other; and the task list stops meaning anything, because
-tasks get marked done with no visible work behind them.
+When both fit, prefer sequential — it is simpler to author and to debug.
+Event-driven earns its cost only when the flow genuinely needs
+concurrency or recursion. The worked examples: `res/workflows/autodev/`
+is the reference event-driven workflow (an autonomous development loop —
+the most sophisticated workflow that ships with jinn); the sketches in
+`references/workflow-format.md` are the reference sequential shape.
 
-**The tiebreak**: _would doing this fill my context with the step's working
-material?_ Any yes → dispatch. The one exception: a step whose entire body
-is conversation with the user (asking for the topic, confirming a choice)
-runs inline — there is nothing to isolate.
+## The harness primitives (both architectures)
+
+These are the tools a workflow run can rely on. Know what each one
+actually does — authoring against a wrong mental model is the main way a
+workflow dies on first contact.
+
+- **`task`** — spawn a one-shot subagent that runs a single prompt to
+  completion and returns only its final message. **Blocking**: the call
+  does not return until the subagent finishes. Subagents are isolation,
+  not compression: they start from an empty context, see nothing but the
+  prompt, and are the right tool for bounded, self-contained steps.
+- **Attendants** — standing child sessions defined by a TOML seed file.
+  `trigger = "manual"` attendants run only when messaged;
+  `behavior = "reset"` gives each dispatch a fresh context (pinned
+  instructions only); `behavior = "preserve"` keeps the conversation so
+  later dispatches reuse earlier exploration. An attendant cannot create
+  attendants, cannot run lifecycle scripts on itself mid-run, and has
+  exactly one inbound channel (its parent) and one outbound tool
+  (`notify_parent`).
+- **`tell_session` / `notify_parent`** — the inter-session channels.
+  Messaging an idle attendant starts a run seeded from its template plus
+  your message; messaging a busy one **queues** the message behind its
+  current turn — nothing is ever cancelled, nothing races. An attendant's
+  `notify_parent` starts a turn in its parent, **if the parent is
+  idle** — a busy parent has it queued for its next turn. This
+  turn-boundary delivery is why event-driven orchestrators end their
+  turns: **a turn that never ends is a turn whose reports never land.**
+- **`conclude`** — an attendant records one summary per run into a
+  history log. Its text re-enters context **only** through the
+  `<prior report>` token in the seed template. A template without the
+  token never sees reports; do not put the token in a seed whose
+  attendants would receive out-of-order conclusions (e.g. a reviewer
+  judging many issues in arbitrary order).
+- **Session lifecycle scripts** — a TOML of setup/teardown commands,
+  run via `run_lifecycle` with the script's name and file path.
+  **Setup is one-shot per session**: the tool refuses a second setup, so
+  a workflow gets exactly one scripted environment per session and must
+  spend it at startup. Setup adopts the last path the script prints as
+  the session's working directory — this is how a session "moves into"
+  its own checkout or worktree. Placeholders (`<dir>`, `<branch>`) are
+  filled from named args, shell-quoted.
+- **`save_plan`** — persists a plan file that survives context
+  compaction. The right vehicle for any artifact a later dispatch must
+  read (contracts, specs, decompositions).
+
+## The laws (hold in every architecture)
+
+1. **You orchestrate; you do not execute.** Working material — research,
+   drafts, code, reviews — belongs in dispatched sessions, never in the
+   orchestrator's context. The one exception: a step whose entire body
+   is conversation with the user.
+2. **Dispatches are self-contained.** The receiver sees the prompt and
+   the filesystem, nothing else. Every dispatch carries: what to do
+   (the step file or contract), the absolute paths of everything it
+   reads and writes, and the expected report format. Paste paths,
+   never retype them.
+3. **State lives in files, not in memory.** Anything that must survive
+   a context compaction, a turn boundary, or a session restart is a
+   file with its path recorded in a known place. The orchestrator's
+   memory is not a queue, not a ledger, not a cache.
+4. **The task list is the run's visible state.** Stamp it at start,
+   update it the moment anything happens — never batched. A reader
+   watching the list should be able to reconstruct where the run is.
+5. **Bound the fanout.** Concurrent workers are a declared constant of
+   the workflow (a pool size), not an open door. Every recursion has a
+   structural ceiling: only the orchestrator spawns, and only from a
+   fixed set of seed files.
+6. **No silent failure.** A report format (DONE/BLOCKED, APPROVE/
+   REJECT) is part of every dispatch, and every non-success report is
+   routed somewhere: re-dispatch, re-triage, or a filed issue. A
+   message that arrived and changed nothing is a bug in the workflow.
+7. **The form factor is settled.** The user asked for a workflow; a
+   workflow is the deliverable even when one step would do. The only
+   open question is which architecture — and that one is asked in the
+   preview round, not re-litigated after.
 
 ## Authoring
 
 Authoring follows one protocol, ending in a **preview the user approves
 before anything is written to disk**. The user invoked the skill, so the
-output is always a workflow — judgment about the flow is the job; judgment
-about _whether_ it should be a workflow is not. Even a trivial one-step
-workflow gets built as asked.
+output is always a workflow — judgment about the flow is the job;
+judgment about _whether_ it should be a workflow is not.
 
 ### 1. Orient (only when you have to)
 
-Before composing questions, ask yourself: **can I form the right questions
-about this domain?** A README for a code repo — yes, the domain is stable
-and well known; skip this stage. An AI voiceover pipeline — no: services,
-pricing, and licensing shift constantly, and the user cannot answer questions
-they have no landscape for. When the domain is unmapped or fast-moving, run a
-few cheap searches first (what are the options, what do they cost, what do
-they require, what are the local-vs-cloud tradeoffs) so your questions carry
-concrete options instead of blank asking. Minutes, not an hour — you are
-mapping territory, not doing the task.
+Before composing questions, ask: **can I form the right questions about
+this domain?** A README for a code repo — yes; skip. An AI voiceover
+pipeline — no: run a few cheap searches first so your questions carry
+concrete options instead of blank asking. Minutes, not an hour.
 
 ### 2. Ask (one round, batched, hard-capped)
 
-Put **every question in one message**, then build regardless of what happens.
-Never more than one round. What goes in it:
+Put **every question in one message**, then build regardless of what
+happens. What goes in it:
 
-- **Structural forks as lettered options, not open questions.** Only when the
-  flow's shape genuinely depends on the answer — "write the article from
-  research first (A), or from model knowledge and verify after (B)?" Each
-  option states what it does, what it costs/implies, and which you recommend
-  in one sentence.
-- **Environment prerequisites.** Anything the workflow cannot survive without
-  that you cannot verify from the prompt: API keys, accounts, local installs.
-  "Which voice engine?" is unanswerable without knowing what's installed.
-- **The steps they wouldn't have thought to name.** Your domain knowledge is
-  the value here: "usual for this kind of job, not mentioned: word-level
-  timestamps, per-scene voices, a music bed — want any?" This is the list the
-  user could not have written themselves. Always include it when you know of
-  candidates, even if the user enumerated their steps — enumerating steps is
-  not the same as knowing the domain.
+- **Structural forks as lettered options** — only when the flow's shape
+  genuinely depends on the answer. The **architecture choice**
+  (sequential vs event-driven) is the most common one; each option
+  states what it does, what it costs, and which you recommend in one
+  sentence.
+- **Environment prerequisites.** Anything the workflow cannot survive
+  without that you cannot verify from the prompt: API keys, accounts,
+  which SCM the target repo uses, local installs.
+- **The steps they wouldn't have thought to name.** Your domain
+  knowledge is the value here. Always include this list when you know
+  of candidates, even if the user enumerated their steps.
 
-What does **not** go in the round:
-
-- **Parameter gaps with sensible defaults** (tone, audience, length). Make
-  the assumption; it becomes a named default in the preview.
-- **Anything the prompt already answered.** Steps the user enumerated are
-  settled — build them, never re-litigate their content. Infer what you can;
-  never ask cold for something inferable.
-
-If there is genuinely nothing worth asking (the README case), skip the round
-entirely and go straight to the preview.
+What does not go in the round: parameter gaps with sensible defaults
+(assume; the default becomes a named parameter in the preview);
+anything the prompt already answered.
 
 ### 3. Preview (always)
 
-Show the workflow in chat **before writing anything** — name, the flow list
-with its loop/branch lines, parameters with their defaults, one line per step
-file. It must be readable in under a minute; that is what makes an approval
-meaningful. End with: approve, or say what to change.
-
-The preview is where users with domain knowledge catch what's missing — the
-whole point of gating the write. For users without it, approving is one word,
-and the preview stays in the transcript: a week later, "wait, can it do
-captions?" has the answer sitting above.
+Show the workflow in chat **before writing anything** — name,
+architecture, the flow list with loop/branch lines, parameters with
+defaults, one line per step file, and — for event-driven workflows —
+the session topology (who exists, who talks to whom, the fanout bound).
+Readable in under a minute. End with: approve, or say what to change.
 
 **Every judgment call surfaces here or never.** Choice-shaped facts —
-platform limits, defaults picked, an instruction baked into a step, an
-extra you considered — appear _in the preview_, where they can still change
-the thing. After approval there is nothing left to choose; announcing them
-after the write is too late and is banned (see the anti-patterns).
+defaults picked, an instruction baked into a step, an extra you
+considered — appear in the preview or they are not decisions. After
+approval there is nothing left to choose.
 
 ### 4. Write — and stop
 
-After approval — and only after — create the directory with the `write`
-tool:
-
-```
-~/.config/jinn/workflows/<name>/
-├── workflow.md          # header + the flow as an annotated list
-└── steps/
-    ├── 01-scope.md      # one self-contained prompt per step
-    ├── 02-research.md
-    └── ...
-```
-
-**The gate is the conversation's last stop.** The sequence is: preview →
-user approves → write → one closing sentence naming what was created →
-done. No follow-up menu. Not "want me to run it?", not "want me to tweak
-anything?", not "choices you may want to adjust" — those are choices, and
-choices were stage 3's job. Running the workflow is a separate decision the
-user makes (or doesn't) in their own next message, and the workflow's own
-inline scope step collects its run-time inputs. When the writes land, the
-task is over; end the turn.
+After approval — and only after — create the directory under
+`~/.config/jinn/workflows/<name>/` with the `write` tool (see the
+references for the per-architecture layout). Then one closing sentence
+naming what was created, and stop. No follow-up menu: running it,
+tweaking it — those are the user's next message, not an offer.
 
 ### Pre-approval
 
-"Just make it," "don't ask," "I don't care" — the user has pre-approved.
-Collapse stages 2 and 3: build with your best defaults, write, and report
-what you made (flow, parameters, defaults chosen) in the closing summary —
-then stop, same as any approval path. Silence after your question round is
-_not_ pre-approval; only an explicit statement is.
+"Just make it," "don't ask" — the user has pre-approved. Collapse the
+question round and the preview: build with your best defaults, write,
+report what you made in the closing summary. Silence after a question
+is _not_ pre-approval.
 
-### The format
+## Running
 
-`workflow.md` opens with `+++` TOML frontmatter stating the name and a
-one-line description — the only machine-read part (it is what makes the
-workflow appear in the `<leader>sw` picker; a `workflow.md` without valid
-frontmatter is invisible to discovery) — then the flow as an ordered list
-where **loops and conditionals are explicit lines, not prose hints**.
-`steps/NN-slug.md` files sort in execution order (zero-padded
-numbers) and each one is a complete prompt for whoever executes the step —
-assume the reader is a subagent that can see nothing else. Sketch of a
-`workflow.md` (not a shippable example — just the shape):
+Read `references/workflow-format.md` (sequential) or
+`references/event-driven-workflows.md` (event-driven) before your first
+run of that architecture. The irreducible core:
 
-```markdown
-+++
-name = "research-report"
-description = "Research a topic and deliver a cited brief."
-+++
-
-## Flow
-
-1. Scope — ask the user for the topic and depth. _(inline — conversation)_
-2. Research the topic.
-3. Draft the brief from the research notes.
-4. Review the draft against the scope.
-   - If the review found issues → step 5, then back to step 4 (repeat until clean).
-   - If the review was clean → step 6.
-5. Fix the issues the review found.
-6. Deliver the brief. _(inline — conversation)_
-```
-
-And one step file, `steps/02-research.md`:
-
-```markdown
-Research the given topic to the requested depth.
-
-Parameter: topic — provided at dispatch.
-Parameter: depth — "quick" or "thorough".
-
-Write your findings to research-notes.md in the working directory: a section
-per theme, each claim with its source URL.
-
-Done when: research-notes.md exists and every claim in it carries a source.
-```
-
-The full field-by-field spec, the loop/conditional notation, and naming
-rules are in `references/workflow-format.md`. Read it before your first
-authoring pass; after that, the shapes above are the whole format.
-
-## Stamping
-
-Instantiating a workflow means writing its steps onto the task list with
-`todo_set_list` — one task per step, one phase for the run (named after the
-workflow). **The task name is the pointer to the step file**: strip the
-number and annotations, lowercase, spaces to hyphens — `2. Research` →
-`steps/02-research.md`. Nothing else carries the pointer; keep the names
-corresponding.
-
-Stamp the flow as written, resolving nothing early:
-
-```
-Phase: research-report
-1. Scope                4. Review draft
-2. Research             5. Fix issues
-3. Draft                6. Deliver brief
-```
-
-Then the loop and conditional conventions, applied while the run is live:
-
-- **Loop iterations are instances.** When a round produces another round,
-  **you add the next instance to the task list yourself** (a `todo_set_phase`
-  rewrite) _before_ marking the current one done — the loop exists on the
-  list, not in your memory. Instance naming: step number + letter + round,
-  e.g. after round 1's review finds issues, add `4b. Review draft
-(round 2)` and `5b. Fix issues (round 2)`.
-- **Conditionals resolve in place.** When a branch decision lands, record it
-  on the list: a taken branch becomes ordinary instances; a skipped step is
-  rewritten as e.g. `5. Correction pass — skipped` with status `cancelled`.
-- The task tools know three statuses: `pending`, `completed`, `cancelled`.
-  There is no in-progress; the run's position is simply the first pending
-  task. Flip a task to `completed` the moment its step's done-when is met.
-
-## The dispatch loop
-
-For each task, in order:
-
-1. **Read the step file** (`steps/NN-slug.md`, derived from the task name)
-   with the `read` tool.
-2. **Dispatch it** with one `task` call. The prompt is the step file's body
-   verbatim, plus: parameter values for this run, and the pointer (a path)
-   to anything a prior step left behind. That is all the subagent gets — it
-   cannot see the workflow, the task list, or your conversation, so nothing
-   may live only in your head. Keep bulky handoffs in files: a step whose
-   output is more than a few sentences writes it to a file and ends with the
-   path; you pass the path to the next step.
-3. **Check done-when.** The step file's `Done when:` line says how you know
-   it finished. The subagent's final message must satisfy it (a path exists,
-   a question was answered). If the step signals `stop`, halt the run and
-   report to the user. If done-when is not met, re-dispatch the same step
-   file once with the shortfall named in the prompt; if it fails again, mark
-   the task `cancelled` and stop — do not improvise the step yourself.
-4. **Update the list** — mark the task `completed`; if the step's outcome
-   re-enters a loop, add the next instance first (above).
-5. **Move on** to the next pending task. Steps dispatch sequentially; run
-   them in the list's order.
-
-Steps marked _(inline — conversation)_ you handle yourself, in seconds, and
-then flip to `completed` like any other task: ask, get the answer, record it
-as a parameter for the next dispatch. Do not let an inline step grow work.
-
-**Model pinning:** pass `model` on a `task` call **only when the user
-explicitly pinned a step to a model** — never to pick one you prefer. The
-value is an expanded provider/model id or a configured alias name; an
-unknown name fails the dispatch without spawning a subagent.
-
-Close the run by reporting to the user: what was produced (paths), and the
-loop count if the flow iterated.
+- **Stamp the task list** — one phase, one task per flow step (or per
+  flow stage), updated the moment a decision or result lands. Loop
+  iterations are new task instances, added before the current round
+  closes.
+- **Read the step file every time** — the file is the prompt; never
+  dispatch from memory.
+- **Sequential**: one `task` call per step, prompt = step file body +
+  parameter values + input paths. Check the step's done-when against
+  the returned message; re-dispatch once with the shortfall named on a
+  miss; stop after a second miss.
+- **Event-driven**: the loop body lives in `workflow.md` (the
+  orchestrator's constitution); step files are the per-stage procedures
+  it names. End your turn whenever nothing is left to do this instant —
+  turn-end is what delivers queued reports. Workers wake you; you are
+  the only session that never waits idly.
+- **Model pinning**: pass `model` on a `task` call only when the user
+  explicitly pinned a step to a model. Never to pick one you prefer.
 
 ## Where to look next
 
-| File                            | Covers                                                                                                                                                                                                                           |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `references/workflow-format.md` | Full format spec: `workflow.md` fields, step-file anatomy, the loop/conditional notation, naming rules, the authoring dialogue (orient/ask/preview/write, question types, pre-approval), dispatch-prompt assembly, anti-patterns |
+| File                                       | Covers                                                                                                                                                                              |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `references/workflow-format.md`            | Sequential architecture, full spec: `workflow.md` fields, step-file anatomy, loop/conditional notation, naming rules, the authoring dialogue expanded, dispatch-prompt assembly, anti-patterns |
+| `references/event-driven-workflows.md`     | Event-driven architecture: session topology, attendant seed files (behavior, trigger, pins, templates), the turn-boundary wake model, lifecycle budgets, state files, the orchestrator's constitution pattern, failure and stall handling, anti-patterns |
+| `res/workflows/autodev/`                   | The shipped worked example — event-driven: orchestrator constitution, five stage procedures, three attendant seeds (planner/implementor/reviewer), an SCM crib sheet, lifecycle scripts. Read it before authoring anything with concurrency or recursion |

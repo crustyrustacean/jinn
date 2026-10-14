@@ -368,7 +368,6 @@ Regardless of the outcome, always use the `conclude` tool to record your conclus
 
 You **do not** need to evaluate whether the agent actually did the work. Your job is simply to keep the agent moving if it says that it stopped before finishing. You don't need to check the work at all.""" }]
 prep_mode = false
-reasoning_effort = "high"
 seed_template = "The previous run of this attendant reported: <prior report>."
 trigger = "parent_completed"
 tool_filter = { mode = "allow", names = ["conclude", "notify_parent", "session_fetch", "session_search"] }
@@ -458,7 +457,6 @@ Do not call `notify_parent` because the work looked risky, incomplete in a way y
 
 You do not fix anything. You do not use `notify_parent` to instruct the parent agent on how to proceed beyond naming the gap — it is a notification, not a task hand-off, and a parent that starts treating it as one will begin looping. You do not re-audit work the parent already showed passing.""" }]
 prep_mode = false
-reasoning_effort = "high"
 seed_template = "The previous run of this attendant reported: <prior report>."
 trigger = "parent_completed"
 tool_filter = { mode = "allow", names = ["bash", "conclude", "grep", "notify_parent", "read", "session_fetch", "session_search"] }
@@ -656,6 +654,15 @@ min_age = 50
 # > to the agent, not as an explanation to the user. A rule with an empty
 # > `body`, no usable `conditions`, or no usable `scopes` is skipped with a
 # > warning rather than interrupting a turn with nothing to say.
+#
+# > `disabled_rules` switches rules off by name — including shipped rules and
+# > rules from stream_rules.toml, which have no entry here to carry a flag:
+# >
+# > [stream_rules]
+# > disabled_rules = ["no-unbounded-recursive-rm"]
+# >
+# > An absent or empty list means every rule is armed. The picker
+# > (<leader>sx) maintains this list for you.
 #
 # > Use single-quoted strings for `conditions` so regex metacharacters survive
 # > without escape processing. A pattern the engine cannot compile is dropped

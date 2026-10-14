@@ -515,6 +515,18 @@ async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
     })
     .await;
 
+    // The identity entry every created session opens with: a subagent can
+    // name its own id in reports, so a parent (or a sibling, via
+    // `tell_session`) can address it again later. Pinned Top and forced
+    // into the LLM context by the shared constructor, same as every other
+    // creation path.
+    bus.publish(jinn_session_history_msg::PushChatEntry {
+        session_id: child_id.clone(),
+        entry: ChatEntry::session_identity(&child_id),
+        pin: Some(jinn_core_types::PinPosition::Top),
+    })
+    .await;
+
     // Settle gate: give the discovery actors (context files, skills, prompt
     // templates, MCP servers) a bounded chance to land so the child's first
     // prompt is complete. Only delays — never fails the spawn.

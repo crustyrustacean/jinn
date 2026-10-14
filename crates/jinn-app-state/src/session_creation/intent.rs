@@ -14,12 +14,14 @@
 
 use crate::app_state::AppState;
 use jinn_config::ConfigLayer;
-use jinn_core_types::{DEFAULT_PERSONA_NAME, SessionId, SessionProfile};
+use jinn_core_types::{DEFAULT_PERSONA_NAME, PinPosition, SessionId, SessionProfile};
 use jinn_preferences_config::schemas::SessionLifecycle;
 use jinn_session_history_msg::PushChatEntry;
+use jinn_session_lifecycle_msg::CommandTemplate;
 use jinn_session_lifecycle_msg::command::{RunSessionSetup, RunSessionTeardown};
 use jinn_session_lifecycle_msg::event::SessionCreated;
-use jinn_session_lifecycle_msg::{CommandTemplate, setup_running_msg};
+
+use jinn_core_types::ChatEntry;
 use jinn_session_msg::SessionSeed;
 use jinn_session_state::ChatSessionState;
 use jinn_session_store_msg::PersistSession;
@@ -118,6 +120,14 @@ pub fn handle_session_lifecycle_setup(
     state.frontend.scope_clear_overlays();
     state.frontend.scope_push(jinn_slices::FocusScope::Input);
 
+    // The session's identity entry: every session can name itself, so an
+    // agent addressed by `tell_session` knows its own id, and the human
+    // can copy one out of the transcript. Pinned Top and forced into the
+    // LLM context, so it is always the first thing the model reads and
+    // never falls out of the conversation. Built by the shared constructor
+    // on `ChatEntry`, so every creation path composes the same sentence.
+    let identity_entry = ChatEntry::session_identity(&new_id);
+
     // Build the session-created event.
     let created_event = SessionCreated {
         session_id: new_id.clone(),
@@ -144,8 +154,8 @@ pub fn handle_session_lifecycle_setup(
             })
             .with_message(PushChatEntry {
                 session_id: new_id.clone(),
-                entry: setup_running_msg(),
-                pin: None,
+                entry: identity_entry,
+                pin: Some(PinPosition::Top),
             })
             .with_message(RunSessionSetup {
                 session_id: new_id.clone(),
@@ -169,11 +179,24 @@ pub fn handle_session_lifecycle_setup(
     }
 
     // No setup command — the starting CWD was already set on the new session
-    // before insert (above), so there's nothing more to do here.
+    // before insert (above), so there's nothing more to do here. The
+    // identity entry rides this branch too: a blank session announces its
+    // id the same way a scripted one does.
     if !seed.has_auto_enabled_mcp() {
-        return IntentResult::new_message(created_event);
+        return IntentResult::new_message(PushChatEntry {
+            session_id: new_id.clone(),
+            entry: identity_entry,
+            pin: Some(PinPosition::Top),
+        })
+        .with_message(created_event);
     }
-    IntentResult::new_message(created_event).with_message(jinn_mcp_msg::McpEnablementChanged {
+    IntentResult::new_message(PushChatEntry {
+        session_id: new_id.clone(),
+        entry: identity_entry,
+        pin: Some(PinPosition::Top),
+    })
+    .with_message(created_event)
+    .with_message(jinn_mcp_msg::McpEnablementChanged {
         session_id: new_id,
         enabled: seed.enabled_mcp,
     })
@@ -197,42 +220,191 @@ pub fn handle_session_close(state: &mut AppState) -> IntentResult {
 ///
 /// This is the session-ID-keyed counterpart of the sidebar teardown handler —
 /// UI-coupled callers resolve the selected session's ID, then delegate here.
+///
+/// A session whose lifecycle was resolved from a workflow-local file (it
+/// carries a `lifecycle_source`) re-reads that file instead of the config —
+/// the workflow's script is the one this session's lifecycle came from, and
+/// jinn.toml never held it. A source file that cannot be read or parsed is a
+/// visible [`TeardownFailure`], not a silent skip: worktrees leak when a
+/// teardown quietly doesn't run.
 pub fn build_run_session_teardown(
     state: &AppState,
     session_id: &SessionId,
     config: &jinn_config::ConfigLayer,
-) -> Option<RunSessionTeardown> {
-    use jinn_preferences_config::schemas::LifecycleCommand;
-
-    let (teardown_command, lifecycle_args) = {
+) -> Option<Result<RunSessionTeardown, TeardownFailure>> {
+    let (name, source, args) = {
         let session = state.session.get(session_id)?;
-        let lifecycle_name = session.lifecycle_name().map(String::from);
-        let args = session.lifecycle_args().to_vec();
-        let teardown = lifecycle_name
-            .as_deref()
-            .and_then(|name| find_lifecycle(config, name))
-            .and_then(|lifecycle| lifecycle.teardown);
-        (teardown, args)
+        (
+            session.lifecycle_name().map(String::from),
+            session.lifecycle_source().map(String::from),
+            session.lifecycle_args().to_vec(),
+        )
     };
+    let name = name?;
+    lifecycle_teardown_visible(config, &name, source.as_deref()).map(|outcome| {
+        outcome.map(|command| RunSessionTeardown {
+            session_id: session_id.clone(),
+            command: render(&command, &args),
+            args,
+        })
+    })
+}
 
-    let teardown_cmd = teardown_command.as_ref()?;
-    let rendered = match teardown_cmd {
-        LifecycleCommand::Shell(cmd) => {
-            let template = CommandTemplate::parse(cmd);
-            if lifecycle_args.is_empty() {
-                cmd.clone()
-            } else {
-                template.render(&lifecycle_args)
+/// Why a recorded teardown could not be resolved, naming the source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TeardownFailure {
+    /// The session recorded a workflow-local lifecycle file that no longer
+    /// reads.
+    Unreadable {
+        /// The recorded source file.
+        source: String,
+        /// The read or parse reason.
+        reason: String,
+    },
+    /// The lifecycle source no longer defines the recorded entry name.
+    UnknownEntry {
+        /// The recorded source (a file path, or the config's name).
+        source: String,
+        /// The entry name the session recorded.
+        name: String,
+    },
+    /// The resolved entry has no teardown command.
+    NoTeardown {
+        /// Where the entry was resolved from.
+        source: String,
+        /// The entry name.
+        name: String,
+    },
+}
+
+impl std::fmt::Display for TeardownFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TeardownFailure::Unreadable { source, reason } => {
+                write!(f, "{source}: {reason}")
+            }
+            TeardownFailure::UnknownEntry { source, name } => {
+                write!(f, "{source}: no lifecycle script named \"{name}\"")
+            }
+            TeardownFailure::NoTeardown { source, name } => {
+                write!(
+                    f,
+                    "{source}: lifecycle script \"{name}\" defines no teardown command"
+                )
             }
         }
-        LifecycleCommand::Builtin(id) => id.to_string(),
-    };
+    }
+}
 
-    Some(RunSessionTeardown {
-        session_id: session_id.clone(),
-        command: rendered,
-        args: lifecycle_args,
-    })
+/// Renders a teardown command, replaying the stored args.
+fn render(command: &jinn_preferences_config::schemas::LifecycleCommand, args: &[String]) -> String {
+    match command {
+        jinn_preferences_config::schemas::LifecycleCommand::Shell(cmd) => {
+            let template = CommandTemplate::parse(cmd);
+            if args.is_empty() {
+                cmd.clone()
+            } else {
+                template.render(args)
+            }
+        }
+        jinn_preferences_config::schemas::LifecycleCommand::Builtin(id) => id.to_string(),
+    }
+}
+
+/// The teardown command of the named lifecycle, read from the recorded
+/// source: a workflow-local file when the session carries one, the
+/// `[[session_lifecycle.script]]` section otherwise.
+///
+/// The resolution-only view the lifecycle actor uses to *decide* whether a
+/// teardown exists; failures surface through [`lifecycle_teardown_visible`]
+/// on the close path, and stay silent skips here exactly where they did
+/// before (no recorded lifecycle). A source file that stopped reading
+/// yields `None`, matching the pre-source behavior of a lifecycle whose
+/// name no longer resolves.
+#[must_use]
+pub fn lifecycle_command_for(
+    config: &ConfigLayer,
+    name: &str,
+    source: Option<&str>,
+) -> Option<jinn_preferences_config::schemas::LifecycleCommand> {
+    match source {
+        Some(path) => {
+            let text = std::fs::read_to_string(path).ok()?;
+            let scripts =
+                jinn_preferences_config::schemas::session_lifecycle::parse_lifecycle_document(
+                    &text,
+                )
+                .ok()?;
+            scripts
+                .iter()
+                .find(|lifecycle| lifecycle.name == name)?
+                .teardown
+                .clone()
+        }
+        None => find_lifecycle(config, name)?.teardown,
+    }
+}
+
+/// The teardown command of the named lifecycle, read from the recorded
+/// source — with the failure that makes it visible.
+///
+/// The close-path resolver: identical source rules to
+/// [`lifecycle_command_for`] (a recorded file re-read; no source reads the
+/// config), but a *recorded* lifecycle that cannot be resolved comes back
+/// as a [`TeardownFailure`] naming the source instead of a `None`. `None`
+/// means only "nothing recorded" — no lifecycle, or a lifecycle with no
+/// teardown half — which is the silent skip every caller has always had.
+///
+/// # Errors
+///
+/// The `Err` case names the file (and entry) that stopped resolving.
+#[must_use]
+pub fn lifecycle_teardown_visible(
+    config: &ConfigLayer,
+    name: &str,
+    source: Option<&str>,
+) -> Option<Result<jinn_preferences_config::schemas::LifecycleCommand, TeardownFailure>> {
+    match source {
+        Some(path) => {
+            let text = match std::fs::read_to_string(path) {
+                Ok(text) => text,
+                Err(error) => {
+                    return Some(Err(TeardownFailure::Unreadable {
+                        source: path.to_owned(),
+                        reason: format!("cannot read: {error}"),
+                    }));
+                }
+            };
+            let scripts =
+                match jinn_preferences_config::schemas::session_lifecycle::parse_lifecycle_document(
+                    &text,
+                ) {
+                    Ok(scripts) => scripts,
+                    Err(reason) => {
+                        return Some(Err(TeardownFailure::Unreadable {
+                            source: path.to_owned(),
+                            reason,
+                        }));
+                    }
+                };
+            let Some(script) = scripts.iter().find(|lifecycle| lifecycle.name == name) else {
+                return Some(Err(TeardownFailure::UnknownEntry {
+                    source: path.to_owned(),
+                    name: name.to_owned(),
+                }));
+            };
+            script.teardown.clone().map_or_else(
+                || {
+                    Some(Err(TeardownFailure::NoTeardown {
+                        source: path.to_owned(),
+                        name: name.to_owned(),
+                    }))
+                },
+                |command| Some(Ok(command)),
+            )
+        }
+        None => lifecycle_teardown(config, name).map(Ok),
+    }
 }
 
 /// The teardown command of the named lifecycle, read from the
@@ -284,7 +456,36 @@ mod tests {
     )]
     use super::*;
     use crate::app_state::AppState;
-    use jinn_core_types::ChatEntry;
+    use jinn_core_types::ContextOverride;
+    use jinn_core_types::chat_entry::ChatEntryKind;
+    use jinn_slices::route_publish::PublishSink;
+    use std::sync::Mutex;
+
+    /// A publish sink that keeps every payload published through it.
+    #[derive(Default)]
+    struct RecordingSink {
+        published: Mutex<Vec<(String, serde_json::Value)>>,
+    }
+
+    impl PublishSink for RecordingSink {
+        fn publish_schema(
+            &self,
+            schema_id: ::trouper::schema::SchemaId,
+            payload: serde_json::Value,
+            name: &'static str,
+        ) {
+            self.published
+                .lock()
+                .expect("sink lock")
+                .push((format!("{schema_id}"), payload));
+            let _ = name;
+        }
+    }
+
+    /// The workflow-local lifecycle document shape: the bare
+    /// `[[session_lifecycle.script]]` section a workflow file ships.
+    const WORKFLOW_DOC: &str = "[[session_lifecycle.script]]\nname = \"stage\"\n\
+         setup_command = \"mkdir <dir>\"\nteardown_command = \"cleanup.sh $1\"\n";
 
     /// A layer carrying a single lifecycle, as a user's `jinn.toml` holds
     /// one under `[[session_lifecycle.script]]`.
@@ -323,9 +524,11 @@ mod tests {
         assert!(state.session.contains(&old_id));
         // And two sessions exist.
         assert_eq!(state.session.session_count(), 2);
-        // And one message emitted (SessionCreated).
-        assert_eq!(result.message_names.len(), 1);
-        assert!(result.message_names[0].contains("SessionCreated"));
+        // And two messages are emitted: the identity entry push, then
+        // SessionCreated.
+        assert_eq!(result.message_names.len(), 2);
+        assert!(result.message_names[0].contains("PushChatEntry"));
+        assert!(result.message_names[1].contains("SessionCreated"));
         // And the session has no lifecycle name.
         assert!(state.active_session().lifecycle_name().is_none());
         // And the new session inherited the active session's CWD, not the app
@@ -643,9 +846,11 @@ mod tests {
 
         // Then a new session is created (same behavior as before).
         assert_ne!(*state.session.active_session_id(), old_id);
-        // And one message emitted (SessionCreated).
-        assert_eq!(result.message_names.len(), 1);
-        assert!(result.message_names[0].contains("SessionCreated"));
+        // And two messages emitted: the identity entry push, then
+        // SessionCreated.
+        assert_eq!(result.message_names.len(), 2);
+        assert!(result.message_names[0].contains("PushChatEntry"));
+        assert!(result.message_names[1].contains("SessionCreated"));
     }
 
     #[rstest::rstest]
@@ -874,6 +1079,96 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn a_new_session_pushes_an_identity_entry_naming_its_id() {
+        use jinn_session_history_msg::PushChatEntry;
+
+        // Given a single empty session (app just started).
+        let mut state = AppState::default_with_scope_focus();
+
+        // When creating a new session.
+        let config = lifecycle_config("fossil branch", Some("echo /tmp/workdir"), None);
+        let result =
+            handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None, &config);
+
+        // Then the PushChatEntry payload is a pinned system entry naming
+        // the new session's id, forced into the LLM context — so an agent
+        // in the session can always answer "what is your session id", and
+        // the human can copy the id out of the transcript.
+        let new_id = state.active_session().session_id().clone();
+        let sink = RecordingSink::default();
+        for closure in result.messages {
+            closure(&sink);
+        }
+        let published = sink.published.lock().expect("sink lock");
+        let (_, payload) = published
+            .iter()
+            .find(|(id, _)| id.ends_with("PushChatEntry"))
+            .expect("the identity entry is published");
+        let push: PushChatEntry = serde_json::from_value(payload.clone()).expect("decodes");
+        assert_eq!(push.session_id, new_id);
+        assert_eq!(push.pin, Some(PinPosition::Top));
+        let ChatEntryKind::System(text) = &push.entry.kind else {
+            panic!("the identity entry is a system entry");
+        };
+        assert!(
+            text.contains(&new_id.to_string()),
+            "the entry names this session's own id: {text}"
+        );
+        assert_eq!(
+            push.entry.context_override(),
+            ContextOverride::ForcedInclude,
+            "the identity survives compaction and is always in the prompt"
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_blank_session_pushes_an_identity_entry_too() {
+        use jinn_session_history_msg::PushChatEntry;
+
+        // Given a single empty session (app just started).
+        let mut state = AppState::default_with_scope_focus();
+
+        // When creating a new session with NO lifecycle setup command —
+        // the plain new-session branch, which returns early.
+        let result = handle_session_lifecycle_setup(
+            &mut state,
+            "",
+            &[],
+            None,
+            jinn_config::empty_config_layer(),
+        );
+
+        // Then the branch still publishes the identity entry: pinned Top,
+        // a system entry naming the new session's own id, forced into the
+        // LLM context — the no-setup branch announces the id the same way
+        // the scripted branch does.
+        let new_id = state.active_session().session_id().clone();
+        let sink = RecordingSink::default();
+        for closure in result.messages {
+            closure(&sink);
+        }
+        let published = sink.published.lock().expect("sink lock");
+        let (_, payload) = published
+            .iter()
+            .find(|(id, _)| id.ends_with("PushChatEntry"))
+            .expect("the identity entry is published on the no-setup branch");
+        let push: PushChatEntry = serde_json::from_value(payload.clone()).expect("decodes");
+        assert_eq!(push.session_id, new_id);
+        assert_eq!(push.pin, Some(PinPosition::Top));
+        let ChatEntryKind::System(text) = &push.entry.kind else {
+            panic!("the identity entry is a system entry");
+        };
+        assert!(
+            text.contains(&new_id.to_string()),
+            "the entry names this session's own id: {text}"
+        );
+        assert_eq!(
+            push.entry.context_override(),
+            ContextOverride::ForcedInclude
+        );
+    }
+
+    #[rstest::rstest]
     fn build_run_session_teardown_renders_command_with_args() {
         // Given a session with a lifecycle that has a teardown command.
         let mut state = AppState::default_with_scope_focus();
@@ -890,7 +1185,9 @@ mod tests {
         let msg = build_run_session_teardown(&state, &session_id, &config);
 
         // Then a rendered RunSessionTeardown is returned.
-        let msg = msg.expect("teardown command should be built");
+        let msg = msg
+            .expect("teardown command should be built")
+            .expect("resolves");
         assert_eq!(msg.session_id, session_id);
         assert_eq!(msg.command, "cleanup.sh my-branch");
         assert_eq!(msg.args, vec!["my-branch".to_owned()]);
@@ -944,7 +1241,122 @@ mod tests {
         let msg = build_run_session_teardown(&state, &session_id, &config);
 
         // Then the $1 positional is rendered with the stored arg.
-        let msg = msg.expect("teardown command should be built");
+        let msg = msg
+            .expect("teardown command should be built")
+            .expect("resolves");
         assert_eq!(msg.command, "cleanup.sh feature-x");
+    }
+
+    #[rstest::rstest]
+    fn build_run_session_teardown_re_reads_a_recorded_source_file() {
+        // Given a session stamped with a workflow-local lifecycle file whose
+        // entry has a teardown — and a config layer that does NOT know the
+        // name (the source must be the only thing consulted).
+        let file = tempfile::tempdir().expect("temp dir");
+        let path = file.path().join("lifecycle.toml");
+        std::fs::write(&path, WORKFLOW_DOC).expect("write");
+        let mut state = AppState::default_with_scope_focus();
+        let session_id = state.session.active_session_id().clone();
+        state
+            .active_session_mut()
+            .set_lifecycle_name(Some("stage".to_owned()));
+        state
+            .active_session_mut()
+            .set_lifecycle_args(vec!["wt-a".to_owned()]);
+        state
+            .active_session_mut()
+            .set_lifecycle_source(Some(path.display().to_string()));
+
+        // When building the teardown command against an empty config.
+        let msg =
+            build_run_session_teardown(&state, &session_id, jinn_config::empty_config_layer());
+
+        // Then the command re-renders from the file's entry, replaying the
+        // stored args.
+        let msg = msg.expect("recorded lifecycle").expect("resolves");
+        assert_eq!(msg.command, "cleanup.sh wt-a");
+        assert_eq!(msg.args, vec!["wt-a".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn build_run_session_teardown_names_the_file_when_it_vanished() {
+        // Given a session stamped with a source file that no longer exists.
+        let mut state = AppState::default_with_scope_focus();
+        let session_id = state.session.active_session_id().clone();
+        state
+            .active_session_mut()
+            .set_lifecycle_name(Some("stage".to_owned()));
+        state
+            .active_session_mut()
+            .set_lifecycle_source(Some("/gone/workflow/lifecycle.toml".to_owned()));
+
+        // When building the teardown command.
+        let outcome =
+            build_run_session_teardown(&state, &session_id, jinn_config::empty_config_layer());
+
+        // Then the failure is visible and names the file — not the silent
+        // skip `None` produces, which would leak the session's worktree.
+        let outcome = outcome.expect("a recorded lifecycle is not a skip");
+        let failure = outcome.expect_err("the file is gone");
+        assert!(
+            failure
+                .to_string()
+                .contains("/gone/workflow/lifecycle.toml"),
+            "{failure}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn build_run_session_teardown_names_the_file_and_entry_when_the_entry_vanished() {
+        // Given a stamped source whose file exists but no longer defines
+        // the recorded entry.
+        let file = tempfile::tempdir().expect("temp dir");
+        let path = file.path().join("lifecycle.toml");
+        std::fs::write(&path, "[[session_lifecycle.script]]\nname = \"other\"\n").expect("write");
+        let mut state = AppState::default_with_scope_focus();
+        let session_id = state.session.active_session_id().clone();
+        state
+            .active_session_mut()
+            .set_lifecycle_name(Some("stage".to_owned()));
+        state
+            .active_session_mut()
+            .set_lifecycle_source(Some(path.display().to_string()));
+
+        // When building the teardown command.
+        let outcome =
+            build_run_session_teardown(&state, &session_id, jinn_config::empty_config_layer());
+
+        // Then the failure names both the file and the entry.
+        let failure = outcome
+            .expect("a recorded lifecycle is not a skip")
+            .expect_err("the entry is gone");
+        let text = failure.to_string();
+        assert!(text.contains(path.display().to_string().as_str()), "{text}");
+        assert!(text.contains("stage"), "{text}");
+    }
+
+    #[rstest::rstest]
+    fn a_source_carrying_session_bypasses_the_config_entirely() {
+        // Given a stamped source whose file defines the entry with a
+        // DIFFERENT teardown than a config entry of the same name.
+        let file = tempfile::tempdir().expect("temp dir");
+        let path = file.path().join("lifecycle.toml");
+        std::fs::write(&path, WORKFLOW_DOC).expect("write");
+        let mut state = AppState::default_with_scope_focus();
+        let session_id = state.session.active_session_id().clone();
+        state
+            .active_session_mut()
+            .set_lifecycle_name(Some("stage".to_owned()));
+        state
+            .active_session_mut()
+            .set_lifecycle_source(Some(path.display().to_string()));
+        let config = lifecycle_config("stage", None, Some("echo from-config"));
+
+        // When building the teardown command.
+        let msg = build_run_session_teardown(&state, &session_id, &config);
+
+        // Then the file's teardown rendered — the config was never read.
+        let msg = msg.expect("recorded lifecycle").expect("resolves");
+        assert_eq!(msg.command, "cleanup.sh $1");
     }
 }

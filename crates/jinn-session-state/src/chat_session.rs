@@ -595,6 +595,18 @@ impl ChatSessionState {
         self.core.attendant.reports.last()
     }
 
+    /// The workflow-local TOML file this attendant was loaded from, when
+    /// it belongs to a workflow. `None` for personal attendants.
+    #[must_use]
+    pub fn workflow_source(&self) -> Option<&jinn_core_types::AttendantSourcePath> {
+        self.core.attendant.workflow_source.as_ref()
+    }
+
+    /// Stamp this attendant as loaded from the workflow-local file `source`.
+    pub fn set_workflow_source(&mut self, source: jinn_core_types::AttendantSourcePath) {
+        self.core.attendant.workflow_source = Some(source);
+    }
+
     /// Immutable access to this session's steering buffer.
     pub fn steering_buffer(&self) -> &SteeringBuffer {
         &self.ui.steering_buffer
@@ -3568,6 +3580,17 @@ impl ChatSessionState {
     /// Set the lifecycle args.
     pub fn set_lifecycle_args(&mut self, args: Vec<String>) {
         self.core.lifecycle.lifecycle_args = args;
+    }
+
+    /// The workflow-local lifecycle file this session's lifecycle was
+    /// resolved from, if any. `None` means jinn.toml.
+    pub fn lifecycle_source(&self) -> Option<&str> {
+        self.core.lifecycle.lifecycle_source.as_deref()
+    }
+
+    /// Set the workflow-local lifecycle file the lifecycle resolved from.
+    pub fn set_lifecycle_source(&mut self, source: Option<String>) {
+        self.core.lifecycle.lifecycle_source = source;
     }
 
     /// Returns the session's memory state.

@@ -4,6 +4,8 @@
 //!
 //! - **`app_info`** — application identity constants (`APP_NAME`, `PREFS_FILE_NAME`).
 //! - **`app_paths`** — well-known filesystem paths (config dir, data dir, etc.).
+//! - **`bash_shell`** — resolving the shell scripted commands run under (always
+//!   bash semantics; never the user's login shell).
 //! - **`toml_patch`** — comment-preserving TOML document patcher for user-editable
 //!   config files.
 //! - **`process_isolation` / `process_kill`** — spawning children in their own
@@ -13,6 +15,7 @@
 
 pub mod app_info;
 pub mod app_paths;
+pub mod bash_shell;
 pub mod path_display;
 pub mod process_isolation;
 

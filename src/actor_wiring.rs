@@ -167,10 +167,12 @@ impl ActorSystemBuilder {
             project_picker: None,
         };
 
-        // The shell is read once here, at startup, and carried on the Ctx
-        // rather than consulted again: the environment is a global
-        // namespace and is not read outside of program startup.
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned());
+        // The shell is resolved once here, at startup, and carried on the
+        // Ctx rather than resolved again: the environment is a global
+        // namespace and is not consulted outside of program startup.
+        // Lifecycle scripts promise bash semantics, not the user's login
+        // shell — see `jinn_common::bash_shell`.
+        let shell = jinn_common::bash_shell::bash_shell();
 
         let mut ctx = crate::bootstrap::Ctx::new(&state, &mut services, compaction_prompt, shell);
         let Activated { boot, discord } = crate::bootstrap::slices::activate_all(&mut ctx).await?;
@@ -249,8 +251,23 @@ impl ActorSystemBuilder {
             // publish triggers the initial session's discovery through the
             // same payload path as every other session.
             bus.publish(jinn_session_lifecycle_msg::SessionCwdChanged {
-                session_id: initial_session_id,
+                session_id: initial_session_id.clone(),
                 cwd: initial_cwd,
+            })
+            .await;
+
+            // The boot session opens its transcript with the same identity
+            // entry every other creation path pushes, so the session jinn
+            // starts with can name itself to `tell_session` without any
+            // user action. Pinned Top + forced include by the shared
+            // constructor; PushChatEntry uses get_or_create on the target,
+            // so ordering against SessionCwdChanged is safe.
+            bus.publish(jinn_kernel::PushChatEntry {
+                session_id: initial_session_id,
+                entry: jinn_kernel::ChatEntry::session_identity(
+                    &state.read().session.active_session_id().clone(),
+                ),
+                pin: Some(jinn_kernel::PinPosition::Top),
             })
             .await;
         }

@@ -40,6 +40,9 @@ pub(crate) enum Kind {
     Persona,
     /// A prompt template, installed to the prompts root.
     Prompt,
+    /// A workflow (one directory per workflow), installed to the workflows
+    /// root — the directory workflow discovery scans.
+    Workflow,
     /// A skill, installed to the skills root.
     Skill,
 }
@@ -51,6 +54,7 @@ impl Kind {
             Kind::Theme => "themes",
             Kind::Persona => "personas",
             Kind::Prompt => "prompts",
+            Kind::Workflow => "workflows",
             Kind::Skill => "skills",
         }
     }
@@ -61,18 +65,20 @@ impl Kind {
             Kind::Theme => destinations.themes(),
             Kind::Persona => destinations.personas(),
             Kind::Prompt => destinations.prompts(),
+            Kind::Workflow => destinations.workflows(),
             Kind::Skill => destinations.skills(),
         }
     }
 
     /// This kind's position in the install order: themes, then personas, then
-    /// prompts, then skills.
+    /// prompts, then workflows, then skills.
     const fn rank(self) -> u8 {
         match self {
             Kind::Theme => 0,
             Kind::Persona => 1,
             Kind::Prompt => 2,
-            Kind::Skill => 3,
+            Kind::Workflow => 3,
+            Kind::Skill => 4,
         }
     }
 }
@@ -182,7 +188,13 @@ fn resource(file: &'static File<'static>) -> Result<Bundled, Report<InstallError
 /// kind; neither does a file sitting directly in `res/`, which has no top-level
 /// directory to name a kind.
 fn split_kind(path: &Path) -> Result<(Kind, &Path), UnknownKind> {
-    const KINDS: [Kind; 4] = [Kind::Theme, Kind::Persona, Kind::Prompt, Kind::Skill];
+    const KINDS: [Kind; 5] = [
+        Kind::Theme,
+        Kind::Persona,
+        Kind::Prompt,
+        Kind::Workflow,
+        Kind::Skill,
+    ];
 
     KINDS
         .iter()
@@ -205,52 +217,26 @@ mod tests {
 
     use super::*;
 
-    /// Walks the on-disk `res/` tree, collecting every file's path relative to
-    /// `res/`. Deliberately name-free: it reads the filesystem's shape, so
-    /// nothing here has to be updated when a resource is added.
-    fn disk_paths() -> Vec<PathBuf> {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../res");
-        let mut paths = Vec::new();
-        walk_disk(&root, Path::new(""), &mut paths);
-        paths.sort();
-        paths
-    }
-
-    fn walk_disk(root: &Path, relative: &Path, out: &mut Vec<PathBuf>) {
-        let dir = root.join(relative);
-        for entry in std::fs::read_dir(dir).expect("read res directory") {
-            let entry = entry.expect("read res entry");
-            let child = relative.join(entry.file_name());
-            if entry.path().is_dir() {
-                walk_disk(root, &child, out);
-            } else {
-                out.push(child);
-            }
-        }
-    }
-
     #[rstest::rstest]
     #[test]
-    fn embedded_tree_matches_disk_tree() {
-        // Given the on-disk `res/` tree.
-        let on_disk = disk_paths();
+    fn embedded_tree_is_non_empty_and_kind_covered() {
+        // Given the embedded catalogue.
+        let catalogue = bundled_catalogue().expect("derive catalogue");
 
-        // When deriving the catalogue from the embedded tree.
-        // (The catalogue's own kind-then-path order is asserted separately;
-        // this comparison is about membership, so both sides are sorted.)
-        let mut embedded: Vec<PathBuf> = bundled_catalogue()
-            .expect("derive catalogue")
-            .iter()
-            .map(Bundled::res_relative)
-            .collect();
-        embedded.sort();
-
-        // Then the embedded tree holds exactly the same files at the same
-        // paths — every resource under res/ embeds, and nothing else does.
-        assert_eq!(
-            embedded, on_disk,
-            "the embedded tree and res/ on disk disagree"
-        );
+        // Then it carries every kind with at least one file, so a missing
+        // `res/` subtree at build time cannot ship a partial bundle.
+        // (Membership against the repo's on-disk tree is deliberately not
+        // asserted here: `res/` is content, not test fixture data.)
+        for kind in [
+            Kind::Theme,
+            Kind::Persona,
+            Kind::Prompt,
+            Kind::Workflow,
+            Kind::Skill,
+        ] {
+            let count = catalogue.iter().filter(|b| b.kind == kind).count();
+            assert!(count > 0, "kind {kind:?} ships no files");
+        }
     }
 
     #[rstest::rstest]

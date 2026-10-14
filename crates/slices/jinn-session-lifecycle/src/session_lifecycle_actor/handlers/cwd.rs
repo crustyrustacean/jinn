@@ -24,9 +24,11 @@ impl SessionLifecycleActor {
 
     pub(in crate::session_lifecycle_actor) fn handle_cancel_lifecycle_command(
         &mut self,
-        _payload: &jinn_session_lifecycle_msg::CancelLifecycleCommand,
+        payload: &jinn_session_lifecycle_msg::CancelLifecycleCommand,
     ) {
-        if let Some(handle) = self.lifecycle_child.take() {
+        // Only the named session's command: another session's in-flight
+        // child is untouched.
+        if let Some(handle) = self.take_in_flight(&payload.session_id) {
             jinn_kernel::common::process_kill::kill_process_group_by_pid(handle.pid);
             handle.abort_handle.abort();
         }

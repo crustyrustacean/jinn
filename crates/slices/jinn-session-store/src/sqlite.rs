@@ -571,6 +571,10 @@ pub(crate) struct PersistableCore {
     blobs: HashMap<String, JsonValue>,
     lifecycle_name: Option<String>,
     lifecycle_args: Vec<String>,
+    /// The workflow-local lifecycle file the lifecycle resolved from.
+    /// Absent for jinn.toml lifecycles.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lifecycle_source: Option<String>,
     lifecycle_script_state: LifecycleScriptState,
     /// Phased task list for agent session planning.
     /// OWNER: tools-actor (mutated by task list tools).
@@ -600,6 +604,10 @@ pub(crate) struct PersistableCore {
     /// The attendant's append-only report log.
     #[serde(default)]
     reports: Vec<AttendantReport>,
+    /// The workflow-local TOML file a workflow attendant loaded from.
+    /// Absent for personal attendants.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    workflow_source: Option<jinn_core_types::AttendantSourcePath>,
     /// Wall-clock intervals during which this session was working.
     /// Absent in blobs written before working time was recorded.
     ///
@@ -625,6 +633,7 @@ impl From<&SessionSnapshotMetadata> for PersistableCore {
             blobs: metadata.blobs.clone(),
             lifecycle_name: metadata.lifecycle_name.clone(),
             lifecycle_args: metadata.lifecycle_args.clone(),
+            lifecycle_source: metadata.lifecycle_source.clone(),
             lifecycle_script_state: metadata.lifecycle_script_state,
             task_list: metadata.task_list.clone(),
             enabled_mcp_servers: metadata.enabled_mcp_servers.clone(),
@@ -634,6 +643,7 @@ impl From<&SessionSnapshotMetadata> for PersistableCore {
             trigger: metadata.trigger,
             seed_template: metadata.seed_template.clone(),
             reports: metadata.reports.clone(),
+            workflow_source: metadata.workflow_source.clone(),
             working_intervals: metadata.working_intervals.clone(),
         }
     }
@@ -655,6 +665,7 @@ impl From<PersistableCore> for SessionSnapshotMetadata {
             blobs: core.blobs,
             lifecycle_name: core.lifecycle_name,
             lifecycle_args: core.lifecycle_args,
+            lifecycle_source: core.lifecycle_source,
             lifecycle_script_state: core.lifecycle_script_state,
             task_list: core.task_list,
             enabled_mcp_servers: core.enabled_mcp_servers,
@@ -664,6 +675,7 @@ impl From<PersistableCore> for SessionSnapshotMetadata {
             trigger: core.trigger,
             seed_template: core.seed_template,
             reports: core.reports,
+            workflow_source: core.workflow_source,
             working_intervals: core.working_intervals,
             session_state: SessionState::Loaded,
         }

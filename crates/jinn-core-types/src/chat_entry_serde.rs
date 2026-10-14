@@ -86,6 +86,32 @@ impl Serialize for ChatEntryKind {
                 )?;
                 map.end()
             }
+            ChatEntryKind::Intersession {
+                source_session,
+                source_name,
+                target_session,
+                text,
+            } => {
+                #[derive(Serialize)]
+                struct IntersessionData {
+                    source_session: crate::session_id::SessionId,
+                    #[serde(skip_serializing_if = "Option::is_none")]
+                    source_name: Option<String>,
+                    target_session: crate::session_id::SessionId,
+                    text: String,
+                }
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
+                    "Intersession",
+                    &IntersessionData {
+                        source_session: source_session.clone(),
+                        source_name: source_name.clone(),
+                        target_session: target_session.clone(),
+                        text: text.clone(),
+                    },
+                )?;
+                map.end()
+            }
             ChatEntryKind::ToolCall {
                 id,
                 name,
@@ -286,6 +312,23 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             text: data.text,
                         })
                     }
+                    "Intersession" => {
+                        #[derive(Deserialize)]
+                        struct IntersessionData {
+                            source_session: crate::session_id::SessionId,
+                            #[serde(default)]
+                            source_name: Option<String>,
+                            target_session: crate::session_id::SessionId,
+                            text: String,
+                        }
+                        let data: IntersessionData = map.next_value()?;
+                        Ok(ChatEntryKind::Intersession {
+                            source_session: data.source_session,
+                            source_name: data.source_name,
+                            target_session: data.target_session,
+                            text: data.text,
+                        })
+                    }
                     "ToolCall" => {
                         #[derive(Deserialize)]
                         struct ToolCallData {
@@ -417,6 +460,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             "Error",
                             "Assistant",
                             "Actor",
+                            "Intersession",
                             "ToolCall",
                             "ToolResult",
                             "Thinking",

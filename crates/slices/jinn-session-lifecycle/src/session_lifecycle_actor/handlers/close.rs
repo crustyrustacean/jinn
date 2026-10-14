@@ -44,6 +44,21 @@ impl SessionLifecycleActor {
                     }
                 }
             }
+        } else if let Some(failure) = self.close_teardown_failure(&payload.session_id) {
+            // A recorded lifecycle that cannot be resolved is visible, not
+            // a silent skip: worktrees leak when a teardown quietly doesn't
+            // run. The error entry names the file (and entry); the session
+            // still closes, because refusing the close would strand the
+            // user with a session they cannot dismiss.
+            let error = jinn_core_types::ChatEntry::error(format!(
+                "Teardown could not be resolved: {failure}"
+            ));
+            self.publish(PushChatEntry {
+                session_id: payload.session_id.clone(),
+                entry: error,
+                pin: None,
+            })
+            .await;
         }
 
         self.publish(ArchiveSession {
@@ -56,7 +71,7 @@ impl SessionLifecycleActor {
         &mut self,
         payload: &FinishSessionTeardown,
     ) {
-        self.lifecycle_child = None;
+        self.take_in_flight(&payload.session_id);
         let session_exists = {
             self.state
                 .with_session(|view| view.session.map().contains(&payload.session_id))
@@ -127,13 +142,52 @@ impl SessionLifecycleActor {
         &self,
         session_id: &SessionId,
     ) -> Option<jinn_preferences_config::schemas::LifecycleCommand> {
-        let state = self.state.read();
-        let session = state.session.get(session_id)?;
-        if session.lifecycle_script_state() != LifecycleScriptState::SetupRan {
-            return None;
-        }
-        let name = session.lifecycle_name()?;
-        jinn_kernel::session_lifecycle::intent::lifecycle_teardown(&self.services.config, name)
+        self.close_teardown_outcome(session_id)
+            .and_then(|outcome| outcome.ok())
+    }
+
+    /// The resolution outcome for a closing session's lifecycle: the
+    /// command when it resolves, the named failure when a *recorded*
+    /// lifecycle cannot be resolved, `None` when nothing is recorded (no
+    /// lifecycle, nothing ran, or a name that resolves to no teardown —
+    /// the historic silent skips).
+    fn close_teardown_failure(
+        &self,
+        session_id: &SessionId,
+    ) -> Option<jinn_kernel::session_lifecycle::intent::TeardownFailure> {
+        self.close_teardown_outcome(session_id)
+            .and_then(|outcome| outcome.err())
+    }
+
+    /// Reads the session's recorded lifecycle coordinates and resolves the
+    /// teardown command through the recorded source. One read, two views —
+    /// `close_teardown` and `close_teardown_failure` — so the command and
+    /// the failure can never disagree about what the session recorded.
+    fn close_teardown_outcome(
+        &self,
+        session_id: &SessionId,
+    ) -> Option<
+        Result<
+            jinn_preferences_config::schemas::LifecycleCommand,
+            jinn_kernel::session_lifecycle::intent::TeardownFailure,
+        >,
+    > {
+        let (name, source) = {
+            let state = self.state.read();
+            let session = state.session.get(session_id)?;
+            if session.lifecycle_script_state() != LifecycleScriptState::SetupRan {
+                return None;
+            }
+            (
+                session.lifecycle_name()?.to_owned(),
+                session.lifecycle_source().map(String::from),
+            )
+        };
+        jinn_kernel::session_lifecycle::intent::lifecycle_teardown_visible(
+            &self.services.config,
+            &name,
+            source.as_deref(),
+        )
     }
 
     async fn advance_after_teardown(&self, session_id: &SessionId) {

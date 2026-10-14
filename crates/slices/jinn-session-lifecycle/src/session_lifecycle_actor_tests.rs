@@ -15,8 +15,8 @@ use jinn_session_lifecycle_msg::SessionTeardownFinished;
 use jinn_session_lifecycle_msg::TeardownSessionTree;
 use jinn_session_lifecycle_msg::builtin::{BuiltinHandler, BuiltinHandlerError, BuiltinRegistry};
 use jinn_session_lifecycle_msg::{
-    CancelLifecycleCommand, RunSessionSetup, SessionCwdChanged, SessionSetupCompleted,
-    SetSessionCwd,
+    CancelLifecycleCommand, RunSessionSetup, RunSessionTeardown, SessionCwdChanged,
+    SessionSetupCompleted, SetSessionCwd,
 };
 use jinn_session_state::ChatSessionState;
 use jinn_session_store_msg::ArchiveSession;
@@ -321,5 +321,540 @@ async fn teardown_tree_aborted_by_busy_member_reports_failure_for_every_member()
     assert!(
         reported.iter().all(|msg| msg.error.is_some()),
         "an aborted tree must not report a successful teardown"
+    );
+}
+
+// ── Concurrency and the per-session in-flight slot ────────────────────
+//
+// Sessions are independent: any number of lifecycle commands may run at
+// once, never two for the same session. A completion or a cancel touches
+// exactly its own session's entry. The actor publishes the visible
+// outcomes as events; readiness between publish and spawn is paced with
+// short sleeps, matching the harness's established pattern.
+
+/// A config layer carrying one shell lifecycle whose teardown succeeds —
+/// what a teardown replay resolves through the actor's services.config.
+fn shell_config() -> jinn_config::ConfigLayer {
+    jinn_config::testutil::config_layer(
+        "[[session_lifecycle.script]]\nname = \"shell\"\n\
+         setup_command = \"echo $PWD\"\n\
+         teardown_command = \"true\"\n",
+    )
+}
+
+/// Builds an actor fixture with the shell lifecycle config in services.
+async fn shell_fixture() -> ActorFixture {
+    let harness = TestHarness::new().await;
+    let mut services = harness.services().await;
+    services.config = shell_config();
+    let state = State::new(AppState::default());
+    SessionLifecycleActor::spawn(
+        harness.system(),
+        SessionLifecycleActorDeps {
+            state: state.clone(),
+            services,
+            builtin_registry: BuiltinRegistry::new(),
+            shell: "/bin/sh".to_owned(),
+        },
+    );
+    ActorFixture { harness, state }
+}
+
+/// Seeds one plain session into the fixture's state; returns its id.
+fn seed_session(fixture: &ActorFixture) -> jinn_core_types::SessionId {
+    let session = ChatSessionState::new();
+    let id = session.session_id().clone();
+    fixture.state.write().session.insert(session);
+    id
+}
+
+/// Advances the session past setup — the state a teardown gate accepts.
+fn advance_past_setup(fixture: &ActorFixture, session_id: &jinn_core_types::SessionId) {
+    fixture
+        .state
+        .write()
+        .session
+        .get_mut(session_id)
+        .expect("session")
+        .advance_lifecycle_after_setup();
+}
+
+/// Stamps the shell lifecycle coordinates on the session — the recorded
+/// state a teardown replay resolves.
+fn stamp_shell_lifecycle(fixture: &ActorFixture, session_id: &jinn_core_types::SessionId) {
+    fixture
+        .state
+        .write()
+        .session
+        .get_mut(session_id)
+        .expect("session")
+        .set_lifecycle_name(Some("shell".to_owned()));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn setups_for_distinct_sessions_run_independently() {
+    // Given an actor and two sessions.
+    let fixture = shell_fixture().await;
+    let setups = fixture
+        .harness
+        .spawn_recorder::<SessionSetupCompleted>()
+        .await;
+    let first = seed_session(&fixture);
+    let second = seed_session(&fixture);
+
+    // When a quick setup runs for each session.
+    for id in [&first, &second] {
+        fixture
+            .harness
+            .publish(RunSessionSetup {
+                session_id: id.clone(),
+                command: "echo $PWD".to_owned(),
+                args: Vec::new(),
+                lifecycle_command: Some(LifecycleCommand::Shell("echo $PWD".to_owned())),
+            })
+            .await;
+    }
+
+    // Then both complete with no error — neither command was dropped,
+    // clobbered, nor refused because of the other.
+    let completions = await_recorded(&setups, 2, Duration::from_secs(5)).await;
+    let errors: Vec<_> = completions
+        .iter()
+        .filter_map(|m| m.error.as_deref())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "a concurrent setup was refused or failed: {errors:?}"
+    );
+    let mut ids: Vec<_> = completions.iter().map(|m| m.session_id.clone()).collect();
+    ids.sort();
+    let mut expected = vec![first, second];
+    expected.sort();
+    assert_eq!(ids, expected, "every session's setup must complete");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_second_setup_for_a_session_with_one_in_flight_is_refused() {
+    // Given an actor with one slow setup in flight for a session.
+    let fixture = shell_fixture().await;
+    let setups = fixture
+        .harness
+        .spawn_recorder::<SessionSetupCompleted>()
+        .await;
+    let session_id = seed_session(&fixture);
+    fixture
+        .harness
+        .publish(RunSessionSetup {
+            session_id: session_id.clone(),
+            command: "sleep 2; echo $PWD".to_owned(),
+            args: Vec::new(),
+            lifecycle_command: Some(LifecycleCommand::Shell("sleep 2; echo $PWD".to_owned())),
+        })
+        .await;
+    // Give the actor time to spawn the child before the second command.
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    // When a second setup arrives for the same session while it runs.
+    fixture
+        .harness
+        .publish(RunSessionSetup {
+            session_id: session_id.clone(),
+            command: "echo $PWD".to_owned(),
+            args: Vec::new(),
+            lifecycle_command: Some(LifecycleCommand::Shell("echo $PWD".to_owned())),
+        })
+        .await;
+
+    // Then the second call is refused naming the session and the busy
+    // slot — promptly, as a completion event, not a silent no-op.
+    let completions = await_recorded(&setups, 2, Duration::from_secs(5)).await;
+    let refusals: Vec<_> = completions
+        .iter()
+        .filter(|m| m.error.as_deref().is_some_and(|e| e.contains("in flight")))
+        .collect();
+    assert_eq!(refusals.len(), 1, "one refusal for the second call");
+    assert_eq!(refusals[0].session_id, session_id);
+    assert!(
+        refusals[0]
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .contains(&session_id.to_string()),
+        "the refusal must name the session: {:?}",
+        refusals[0].error
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn cancel_kills_only_the_named_session_s_command() {
+    // Given two sessions with setups in flight: the first slow enough to
+    // still be running when the cancel lands, the second still in flight
+    // at that moment but finishing quickly after — so its completion
+    // proves the cancel never touched it.
+    let fixture = shell_fixture().await;
+    let setups = fixture
+        .harness
+        .spawn_recorder::<SessionSetupCompleted>()
+        .await;
+    let first = seed_session(&fixture);
+    let second = seed_session(&fixture);
+    fixture
+        .harness
+        .publish(RunSessionSetup {
+            session_id: first.clone(),
+            command: "sleep 30; echo $PWD".to_owned(),
+            args: Vec::new(),
+            lifecycle_command: Some(LifecycleCommand::Shell("sleep 30; echo $PWD".to_owned())),
+        })
+        .await;
+    fixture
+        .harness
+        .publish(RunSessionSetup {
+            session_id: second.clone(),
+            command: "sleep 2; echo $PWD".to_owned(),
+            args: Vec::new(),
+            lifecycle_command: Some(LifecycleCommand::Shell("sleep 2; echo $PWD".to_owned())),
+        })
+        .await;
+    // The cancel lands while both are mid-flight.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // When cancelling one session's command.
+    fixture
+        .harness
+        .publish(CancelLifecycleCommand {
+            session_id: first.clone(),
+        })
+        .await;
+
+    // Then the cancelled session reports cancellation while the other
+    // still completes normally — the cancel took exactly one slot.
+    let completions = await_recorded(&setups, 2, Duration::from_secs(6)).await;
+    let cancelled = completions
+        .iter()
+        .find(|m| m.session_id == first)
+        .expect("cancelled session must report");
+    assert!(
+        cancelled
+            .error
+            .as_deref()
+            .is_some_and(|e| e.contains("cancelled")),
+        "the cancelled session must report cancellation: {cancelled:?}"
+    );
+    let survivor = completions
+        .iter()
+        .find(|m| m.session_id == second)
+        .expect("surviving session must report");
+    assert!(
+        survivor.error.is_none(),
+        "the other session's command must survive the cancel: {survivor:?}"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_finish_releases_only_its_own_session_s_slot() {
+    // Given two sessions: the first running a slow setup, the second a
+    // quick one that finishes first.
+    let fixture = shell_fixture().await;
+    let setups = fixture
+        .harness
+        .spawn_recorder::<SessionSetupCompleted>()
+        .await;
+    let slow_id = seed_session(&fixture);
+    let quick_id = seed_session(&fixture);
+    fixture
+        .harness
+        .publish(RunSessionSetup {
+            session_id: slow_id.clone(),
+            command: "sleep 30; echo $PWD".to_owned(),
+            args: Vec::new(),
+            lifecycle_command: Some(LifecycleCommand::Shell("sleep 30; echo $PWD".to_owned())),
+        })
+        .await;
+    fixture
+        .harness
+        .publish(RunSessionSetup {
+            session_id: quick_id.clone(),
+            command: "echo $PWD".to_owned(),
+            args: Vec::new(),
+            lifecycle_command: Some(LifecycleCommand::Shell("echo $PWD".to_owned())),
+        })
+        .await;
+
+    // When the quick one completes.
+    let completions = await_recorded(&setups, 1, Duration::from_secs(5)).await;
+    assert_eq!(
+        completions[0].session_id, quick_id,
+        "the quick one finished"
+    );
+
+    // Then the slow session's slot is still held: a follow-up setup for IT
+    // is refused while the slot map still carries it — the finish removed
+    // only the quick session's entry.
+    fixture
+        .harness
+        .publish(RunSessionSetup {
+            session_id: slow_id.clone(),
+            command: "echo $PWD".to_owned(),
+            args: Vec::new(),
+            lifecycle_command: Some(LifecycleCommand::Shell("echo $PWD".to_owned())),
+        })
+        .await;
+    let later = await_recorded(&setups, 2, Duration::from_secs(5)).await;
+    let refused = later
+        .iter()
+        .find(|m| {
+            m.session_id == slow_id && m.error.as_deref().is_some_and(|e| e.contains("in flight"))
+        })
+        .expect("the slow session's slot must still be held");
+    assert_eq!(refused.session_id, slow_id);
+}
+
+// ── State gates and visible failures ──────────────────────────────────
+
+#[rstest::rstest]
+#[tokio::test]
+async fn setup_for_a_session_that_already_ran_setup_is_refused() {
+    // Given a session whose lifecycle state is setup_ran.
+    let fixture = shell_fixture().await;
+    let setups = fixture
+        .harness
+        .spawn_recorder::<SessionSetupCompleted>()
+        .await;
+    let session_id = seed_session(&fixture);
+    advance_past_setup(&fixture, &session_id);
+
+    // When a setup arrives for it.
+    fixture
+        .harness
+        .publish(RunSessionSetup {
+            session_id: session_id.clone(),
+            command: "echo $PWD".to_owned(),
+            args: Vec::new(),
+            lifecycle_command: Some(LifecycleCommand::Shell("echo $PWD".to_owned())),
+        })
+        .await;
+
+    // Then it is refused naming the state, and the state is untouched.
+    let completions = await_recorded(&setups, 1, Duration::from_secs(2)).await;
+    assert!(
+        completions[0]
+            .error
+            .as_deref()
+            .is_some_and(|e| e.contains("setup requires nothing_ran")),
+        "the refusal must name the state gate: {:?}",
+        completions[0].error
+    );
+    assert_eq!(completions[0].session_id, session_id);
+    assert_eq!(
+        fixture
+            .state
+            .read()
+            .session
+            .get(&session_id)
+            .expect("session")
+            .lifecycle_script_state(),
+        jinn_session_lifecycle_msg::LifecycleScriptState::SetupRan,
+        "a refused setup must not advance the state"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn teardown_before_setup_is_refused_naming_the_state() {
+    // Given a session whose lifecycle state is still nothing_ran — even
+    // with a lifecycle name recorded (coordinates without the run).
+    let fixture = shell_fixture().await;
+    let teardowns = fixture
+        .harness
+        .spawn_recorder::<SessionTeardownFinished>()
+        .await;
+    let session_id = seed_session(&fixture);
+    stamp_shell_lifecycle(&fixture, &session_id);
+
+    // When a teardown arrives for it.
+    fixture
+        .harness
+        .publish(RunSessionTeardown {
+            session_id: session_id.clone(),
+            command: "true".to_owned(),
+            args: Vec::new(),
+        })
+        .await;
+
+    // Then it is refused naming the state gate.
+    let finished = await_recorded(&teardowns, 1, Duration::from_secs(2)).await;
+    assert!(
+        finished[0]
+            .error
+            .as_deref()
+            .is_some_and(|e| e.contains("teardown requires setup_ran")),
+        "the refusal must name the state gate: {:?}",
+        finished[0].error
+    );
+    assert_eq!(finished[0].session_id, session_id);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn teardown_with_nothing_recorded_is_refused_naming_the_session() {
+    // Given a session past setup that recorded no lifecycle name.
+    let fixture = shell_fixture().await;
+    let teardowns = fixture
+        .harness
+        .spawn_recorder::<SessionTeardownFinished>()
+        .await;
+    let session_id = seed_session(&fixture);
+    advance_past_setup(&fixture, &session_id);
+
+    // When a teardown arrives for it.
+    fixture
+        .harness
+        .publish(RunSessionTeardown {
+            session_id: session_id.clone(),
+            command: "true".to_owned(),
+            args: Vec::new(),
+        })
+        .await;
+
+    // Then it is refused naming the missing record.
+    let finished = await_recorded(&teardowns, 1, Duration::from_secs(2)).await;
+    assert!(
+        finished[0]
+            .error
+            .as_deref()
+            .is_some_and(|e| e.contains("no lifecycle script recorded")),
+        "the refusal must name the session: {:?}",
+        finished[0].error
+    );
+    assert_eq!(finished[0].session_id, session_id);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn teardown_whose_recorded_source_vanished_fails_naming_the_source() {
+    // Given a session past setup whose lifecycle was recorded from a
+    // workflow file that no longer reads.
+    let fixture = shell_fixture().await;
+    let teardowns = fixture
+        .harness
+        .spawn_recorder::<SessionTeardownFinished>()
+        .await;
+    let session_id = seed_session(&fixture);
+    advance_past_setup(&fixture, &session_id);
+    {
+        let mut guard = fixture.state.write();
+        let session = guard.session.get_mut(&session_id).expect("session");
+        session.set_lifecycle_name(Some("stage".to_owned()));
+        session.set_lifecycle_source(Some("/gone/workflow/lifecycle.toml".to_owned()));
+    }
+
+    // When a teardown arrives for it.
+    fixture
+        .harness
+        .publish(RunSessionTeardown {
+            session_id: session_id.clone(),
+            command: "true".to_owned(),
+            args: Vec::new(),
+        })
+        .await;
+
+    // Then the failure is visible, naming the source — never a silent
+    // skip, which would leak whatever the teardown guarded.
+    let finished = await_recorded(&teardowns, 1, Duration::from_secs(2)).await;
+    assert!(
+        finished[0]
+            .error
+            .as_deref()
+            .is_some_and(|e| e.contains("/gone/workflow/lifecycle.toml")),
+        "the failure must name the source: {:?}",
+        finished[0].error
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_recorded_teardown_runs_and_releases_the_slot() {
+    // Given a session past setup with the shell lifecycle recorded.
+    let fixture = shell_fixture().await;
+    let teardowns = fixture
+        .harness
+        .spawn_recorder::<SessionTeardownFinished>()
+        .await;
+    let session_id = seed_session(&fixture);
+    advance_past_setup(&fixture, &session_id);
+    stamp_shell_lifecycle(&fixture, &session_id);
+
+    // When a teardown arrives for it.
+    fixture
+        .harness
+        .publish(RunSessionTeardown {
+            session_id: session_id.clone(),
+            command: "ignored-by-the-actor".to_owned(),
+            args: Vec::new(),
+        })
+        .await;
+
+    // Then it succeeds with no error — the actor resolved the recorded
+    // coordinates and ran them, ignoring the published command.
+    let finished = await_recorded(&teardowns, 1, Duration::from_secs(5)).await;
+    assert!(
+        finished[0].error.is_none(),
+        "the recorded teardown must run: {:?}",
+        finished[0].error
+    );
+    assert_eq!(finished[0].session_id, session_id);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn caller_refusals_push_no_child_transcript_entries() {
+    // Given sessions in the two refusal shapes — setup already ran, and
+    // teardown with nothing recorded — each with a recorder for the chat
+    // entry pushes the child transcript would show.
+    let fixture = shell_fixture().await;
+    let entries = fixture
+        .harness
+        .spawn_recorder::<jinn_session_history_msg::PushChatEntry>()
+        .await;
+    let refused_setup = seed_session(&fixture);
+    advance_past_setup(&fixture, &refused_setup);
+    let refused_teardown = seed_session(&fixture);
+    advance_past_setup(&fixture, &refused_teardown);
+
+    // When both refused calls land.
+    fixture
+        .harness
+        .publish(RunSessionSetup {
+            session_id: refused_setup.clone(),
+            command: "echo $PWD".to_owned(),
+            args: Vec::new(),
+            lifecycle_command: Some(LifecycleCommand::Shell("echo $PWD".to_owned())),
+        })
+        .await;
+    fixture
+        .harness
+        .publish(RunSessionTeardown {
+            session_id: refused_teardown.clone(),
+            command: "true".to_owned(),
+            args: Vec::new(),
+        })
+        .await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Then no chat entry was pushed for either session: caller errors
+    // ride the completion events, never the child transcript.
+    let pushed = entries.drain();
+    let leaky: Vec<_> = pushed
+        .iter()
+        .filter(|m| m.session_id == refused_setup || m.session_id == refused_teardown)
+        .collect();
+    assert!(
+        leaky.is_empty(),
+        "a refusal leaked into the child transcript: {leaky:?}"
     );
 }

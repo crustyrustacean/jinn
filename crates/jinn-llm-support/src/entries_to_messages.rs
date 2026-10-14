@@ -20,6 +20,7 @@ use jinn_provider::LlmMessage;
 /// | ToolResult | `LlmMessage::Tool` | |
 /// | System | `LlmMessage::User` with `[System]` prefix | Only when in context (pinned or forced-include) |
 /// | Actor | `LlmMessage::User` with `[Actor: source]` prefix | Only when in context |
+/// | Intersession | `LlmMessage::User` with the text verbatim | Attribution prefix is baked into the text by the sender |
 /// | Error | `LlmMessage::User` with `[Error]` prefix or actionable framing | `[Error]` prefix when `Default` (incl. pinned); actionable framing (`The user has shared...`) when `ForcedInclude` |
 /// | Thinking | `LlmMessage::User` with `[Thinking]` prefix | Only when in context |
 /// | Transient | `LlmMessage::User` with `[Transient]` prefix | Only when in context |
@@ -144,6 +145,16 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
             ChatEntryKind::Actor { source, text } => {
                 messages.push(LlmMessage::User {
                     content: format!("[Actor: {source}] {text}"),
+                    attachments: Vec::new(),
+                });
+            }
+            // Inter-session mail rides as a plain user turn: the sender
+            // bakes the `[Message from session …]: ` attribution into the
+            // text at send time, so no prefix is added here — the model sees
+            // exactly what the transcript stores.
+            ChatEntryKind::Intersession { text, .. } => {
+                messages.push(LlmMessage::User {
+                    content: text.clone(),
                     attachments: Vec::new(),
                 });
             }

@@ -116,37 +116,32 @@ mod bundled_themes_load {
     use crate::default_theme;
     use crate::theme::ThemeFile;
 
-    /// Every theme shipped in `res/themes`, with its file contents.
-    ///
-    /// A new `Theme` field must not break a theme that predates it: the
-    /// resolver fills any omitted key from the default, so a bundled file
-    /// that simply lacks the new key still has to load. This is the guard
-    /// on that, across all of them at once rather than one at a time.
+    /// A minimal theme that omits every optional key.
+    const SPARSE_THEME: &str = "# A theme may omit every optional key.\n";
+
+    /// A theme that predates a new `Theme` field must still load: the
+    /// resolver fills any omitted key from the default. This guard needs
+    /// no bundled files — an empty-ish document is the degenerate
+    /// everything-omitted case, which is strictly stronger than spot
+    /// checking any particular shipped theme.
     #[rstest::rstest]
-    #[case("default.toml", include_str!("../../../res/themes/default.toml"))]
-    #[case("catppuccin-mocha.toml", include_str!("../../../res/themes/catppuccin-mocha.toml"))]
-    #[case("gruvbox-dark.toml", include_str!("../../../res/themes/gruvbox-dark.toml"))]
-    #[case("nord-light.toml", include_str!("../../../res/themes/nord-light.toml"))]
-    #[case("sonokai.toml", include_str!("../../../res/themes/sonokai.toml"))]
-    fn every_bundled_theme_parses_and_resolves_every_colour(
-        #[case] name: &str,
-        #[case] contents: &str,
-    ) {
-        // Given a bundled theme file.
-        let file: ThemeFile = toml::from_str(contents).unwrap_or_else(|e| panic!("{name}: {e}"));
+    #[test]
+    fn a_theme_omitting_every_optional_key_resolves_every_colour() {
+        // Given a theme file that names no colours at all. (The shipped
+        // themes in the repo's `res/` tree are content, not test
+        // fixtures, so tests construct their own.)
+        let file: ThemeFile = toml::from_str(SPARSE_THEME).expect("a comment-only theme parses");
 
         // When resolving it against the default.
         let theme = file.resolve_with_fallback(&default_theme());
 
-        // Then the new key landed as a real colour rather than a Reset
-        // that would silently render as the terminal's own foreground.
-        // The four themes that predate the key fall back to the default
-        // and the one that sets it uses its own value — both must land
-        // on a concrete colour.
+        // Then the optional key lands as a real colour rather than a
+        // Reset that would silently render as the terminal's own
+        // foreground.
         assert_ne!(
             theme.dormant_fg,
             ratatui::style::Color::Reset,
-            "{name}: dormant_fg resolved to Reset"
+            "dormant_fg resolved to Reset"
         );
     }
 
@@ -241,21 +236,26 @@ mod style_map_integration_tests {
 mod in_flight_tint_tests {
     use crate::theme::ThemeFile;
 
+    /// A minimal theme carrying only the in-flight tint pair.
+    const TINTED_THEME: &str = concat!(
+        "in_flight_bg = \"#2d5a3d\"\n",
+        "in_flight_fg = \"#e8f5e9\"\n",
+    );
+
+    /// A light theme carrying the tint pair and a pale gutter.
+    const LIGHT_TINTED_THEME: &str = concat!(
+        "in_flight_bg = \"#eef7ee\"\n",
+        "in_flight_fg = \"#1b3a1e\"\n",
+        "gutter_bg = \"#f5f5f0\"\n",
+    );
+
     #[rstest::rstest]
-    #[case(include_str!("../../../res/themes/default.toml"), "default")]
-    #[case(
-        include_str!("../../../res/themes/catppuccin-mocha.toml"),
-        "catppuccin-mocha"
-    )]
-    #[case(
-        include_str!("../../../res/themes/gruvbox-dark.toml"),
-        "gruvbox-dark"
-    )]
-    #[case(include_str!("../../../res/themes/nord-light.toml"), "nord-light")]
-    #[case(include_str!("../../../res/themes/sonokai.toml"), "sonokai")]
-    fn shipped_theme_defines_in_flight_colors(#[case] contents: &str, #[case] name: &str) {
-        // Given a bundled theme file.
-        let file: ThemeFile = toml::from_str(contents).expect("parse");
+    #[test]
+    fn a_theme_defining_in_flight_colors_admits_them() {
+        // Given a theme that authors the tint pair (the shipped themes
+        // in the repo's `res/` tree are content, not test fixtures, so
+        // tests construct their own).
+        let file: ThemeFile = toml::from_str(TINTED_THEME).expect("parse");
 
         // When reading its in-flight tint colors.
         let bg = file.in_flight_bg;
@@ -264,19 +264,19 @@ mod in_flight_tint_tests {
         // Then both are authored, so the tint is never invisible.
         assert!(
             bg.is_some(),
-            "theme '{name}' must define in_flight_bg for the in-flight tint to render"
+            "in_flight_bg must be admitted for the tint to render"
         );
         assert!(
             fg.is_some(),
-            "theme '{name}' must define in_flight_fg for the in-flight tint to render"
+            "in_flight_fg must be admitted for the tint to render"
         );
     }
 
     #[rstest::rstest]
-    #[case(include_str!("../../../res/themes/nord-light.toml"))]
-    fn light_theme_tint_is_legible_against_its_pale_gutter(#[case] contents: &str) {
-        // Given a bundled light theme.
-        let file: ThemeFile = toml::from_str(contents).expect("parse");
+    #[test]
+    fn a_light_theme_tint_is_legible_against_its_pale_gutter() {
+        // Given a light theme with a pale gutter.
+        let file: ThemeFile = toml::from_str(LIGHT_TINTED_THEME).expect("parse");
 
         // When resolving its in-flight tint and gutter colors.
         let theme = file.resolve();

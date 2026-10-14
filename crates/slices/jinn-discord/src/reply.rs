@@ -25,6 +25,8 @@ pub enum FinalReply {
 /// answer. The scan stops at the first `Assistant` or `Error` entry; if a user
 /// message is encountered first (history ends with the user's own input, e.g.
 /// a turn that produced no model output before going idle), `None` is returned.
+/// Inter-session mail counts as user input: it is an inbound prompt, not a
+/// reply.
 #[must_use]
 pub fn read_final_reply(history: &[ChatEntry]) -> Option<FinalReply> {
     for entry in history.iter().rev() {
@@ -32,8 +34,9 @@ pub fn read_final_reply(history: &[ChatEntry]) -> Option<FinalReply> {
             ChatEntryKind::Assistant(text) => return Some(FinalReply::Assistant(text.clone())),
             ChatEntryKind::Error(text) => return Some(FinalReply::Error(text.clone())),
             // The user's own input is a hard barrier — history ended at the
-            // user's turn with no model output before going idle.
-            ChatEntryKind::User { .. } => return None,
+            // user's turn with no model output before going idle. Inter-session
+            // mail is user-equivalent: it is an inbound prompt, not a reply.
+            ChatEntryKind::User { .. } | ChatEntryKind::Intersession { .. } => return None,
             // Skip intermediate scaffolding entries.
             // A rule interrupt is skipped rather than treated as the user's
             // own input: an intercepted turn still produces a reply, and
@@ -123,5 +126,26 @@ mod tests {
         let reply = read_final_reply(&history);
         // Then the earlier assistant text is still found.
         assert_eq!(reply, Some(FinalReply::Assistant("done".to_owned())));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn history_ending_in_intersession_returns_none() {
+        // Given a history that ends with inter-session mail (the target woke,
+        // received the message, and produced no reply yet).
+        let history = vec![
+            ChatEntry::assistant("prev"),
+            ChatEntry::intersession(
+                jinn_core_types::SessionId::new(),
+                None,
+                jinn_core_types::SessionId::new(),
+                "[Message from session abc]: your turn",
+            ),
+        ];
+        // When reading the final reply.
+        let reply = read_final_reply(&history);
+        // Then nothing is returned: inter-session mail is user-equivalent, a
+        // barrier — never forwarded to Discord as the session's answer.
+        assert_eq!(reply, None);
     }
 }

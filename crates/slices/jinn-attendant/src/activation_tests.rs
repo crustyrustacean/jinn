@@ -34,9 +34,9 @@ const PARENT_ID: &str = "parent-1";
 #[case(
     "fixed prompt",
     "the build was green",
-    "fixed prompt\n\nthe build was green\n\nThe parent session's id is parent-1"
+    "fixed prompt\n\nThe parent session's id is parent-1"
 )]
-fn seed_rendering_substitutes_or_appends(
+fn seed_rendering_substitutes_or_drops(
     #[case] template: &str,
     #[case] prior: &str,
     #[case] expected: &str,
@@ -46,8 +46,8 @@ fn seed_rendering_substitutes_or_appends(
     // When the run's seed text is rendered.
     let rendered = render_seed_text(template, Some(prior), PARENT_ID);
 
-    // Then the placeholder is substituted, or the report is appended when
-    // the template has none.
+    // Then the placeholder is substituted, or the report is dropped when
+    // the template has no token for it: the token is the only inlet.
     assert_eq!(rendered.as_deref(), Some(expected));
 }
 

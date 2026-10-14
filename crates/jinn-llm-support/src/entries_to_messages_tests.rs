@@ -595,6 +595,32 @@ fn rule_interrupt_produces_user_message_with_its_body() {
 }
 
 #[rstest::rstest]
+fn intersession_entry_produces_user_message_with_its_text() {
+    // Given an inter-session entry whose text already carries the sender's
+    // attribution prefix.
+    let entries = vec![ChatEntry::intersession(
+        jinn_core_types::SessionId::new(),
+        None,
+        jinn_core_types::SessionId::new(),
+        "[Message from session abc-123]: orchestrator says hello",
+    )];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then a User message carries the text verbatim, with no added prefix —
+    // the attribution is already baked in.
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        LlmMessage::User {
+            content: "[Message from session abc-123]: orchestrator says hello".into(),
+            attachments: Vec::new(),
+        }
+    );
+}
+
+#[rstest::rstest]
 fn ignored_user_entry_is_skipped() {
     // Given an ignored user entry.
     let entries = vec![ChatEntry::user("hello").with_ignored(true)];

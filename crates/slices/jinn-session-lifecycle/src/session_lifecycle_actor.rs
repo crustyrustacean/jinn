@@ -1,12 +1,17 @@
 //! Session lifecycle actor — scripted setup, teardown, close, and cwd changes.
 //!
-//! The actor owns the lifecycle state machine and its cancellable child-process
-//! handle. Persistence and archiving are published as commands so the
+//! The actor owns the lifecycle state machine and one cancellable
+//! child-process handle per session: sessions are independent, so any
+//! number of lifecycle commands may run at once, never two for the same
+//! session. Persistence and archiving are published as commands so the
 //! session-store actor remains the single owner of storage and session-map
 //! removal.
 
 mod handlers;
 
+use std::collections::HashMap;
+
+use jinn_core_types::SessionId;
 use jinn_kernel::Services;
 use jinn_kernel::common::actor_deps::BusPublish;
 use jinn_kernel::common::services::BusService;
@@ -38,7 +43,8 @@ pub struct SessionLifecycleActorDeps {
     pub services: Services,
     /// Registry of compiled lifecycle handlers.
     pub builtin_registry: BuiltinRegistry,
-    /// Shell captured at startup for scripted lifecycle commands.
+    /// Shell captured at startup for scripted lifecycle commands (bash
+    /// semantics; see `jinn_common::bash_shell`).
     pub shell: String,
 }
 
@@ -48,7 +54,13 @@ pub struct SessionLifecycleActor {
     services: Services,
     builtin_registry: BuiltinRegistry,
     shell: String,
-    lifecycle_child: Option<LifecycleCancelHandle>,
+    /// The in-flight lifecycle command per session, keyed by session id.
+    ///
+    /// One command per session at a time, any number of sessions at once.
+    /// Every finish and every cancel removes exactly its own session's
+    /// entry, so one session's completion can never release another's
+    /// child and a cancel kills only the named session's command.
+    lifecycle_children: HashMap<SessionId, LifecycleCancelHandle>,
 }
 
 impl BusPublish for SessionLifecycleActor {
@@ -92,7 +104,7 @@ impl SessionLifecycleActor {
                             services: deps.services,
                             builtin_registry: deps.builtin_registry,
                             shell: deps.shell,
-                            lifecycle_child: None,
+                            lifecycle_children: HashMap::new(),
                         })
                     })
                 }
@@ -137,3 +149,27 @@ impl MsgHandler<CancelLifecycleCommand> for SessionLifecycleActor {
 forward_lifecycle_message!(SetSessionCwd, handle_set_session_cwd);
 forward_lifecycle_message!(CloseSession, handle_close_session);
 forward_lifecycle_message!(TeardownSessionTree, handle_teardown_session_tree);
+
+impl SessionLifecycleActor {
+    /// Whether a lifecycle command is already in flight for the session.
+    pub(super) fn has_in_flight(&self, session_id: &SessionId) -> bool {
+        self.lifecycle_children.contains_key(session_id)
+    }
+
+    /// Records a spawned command's cancel handle for its session.
+    pub(super) fn insert_in_flight(
+        &mut self,
+        session_id: SessionId,
+        handle: LifecycleCancelHandle,
+    ) {
+        self.lifecycle_children.insert(session_id, handle);
+    }
+
+    /// Removes and returns the session's cancel handle, if one is recorded.
+    pub(super) fn take_in_flight(
+        &mut self,
+        session_id: &SessionId,
+    ) -> Option<LifecycleCancelHandle> {
+        self.lifecycle_children.remove(session_id)
+    }
+}

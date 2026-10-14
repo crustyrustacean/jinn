@@ -3268,3 +3268,57 @@ fn a_render_publishes_the_collapse_count_the_coverage_probe_reads_back() {
         "the coverage probe reads this back; if the frame did not publish it, the probe builds different visual items than the frame did"
     );
 }
+
+#[rstest::rstest]
+fn render_intersession_message_shows_the_attributed_text_in_the_subagent_color() {
+    // Given a log holding an inter-session message whose text already
+    // carries the sender's attribution.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = normal_state();
+        s.active_session_mut().push_entry(ChatEntry::intersession(
+            jinn_core_types::SessionId::new(),
+            None,
+            jinn_core_types::SessionId::new(),
+            "[Message from session abc-123]: handing the qa stage to you",
+        ));
+        s
+    };
+
+    let (mut terminal, area) = setup_term(60, 10);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the transcript shows the attributed text, in the subagent color,
+    // with no route chrome.
+    let buffer = terminal.backend().buffer().clone();
+    let mut rendered = String::new();
+    for y in 0..area.height {
+        for x in 0..area.width {
+            if let Some(cell) = buffer.cell((x, y)) {
+                rendered.push_str(cell.symbol());
+            }
+        }
+        rendered.push('\n');
+    }
+    assert!(
+        rendered.contains("Message from session abc-123"),
+        "the attribution renders, got {rendered:?}"
+    );
+    assert!(
+        rendered.contains("handing the qa stage"),
+        "the message text renders, got {rendered:?}"
+    );
+    assert!(
+        !rendered.contains('↔'),
+        "no header arrow renders, got {rendered:?}"
+    );
+}
