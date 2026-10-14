@@ -143,7 +143,13 @@ mod tests {
         (actor, cell)
     }
 
-    /// Whether a prose delta naming the rule trips the installed matcher.
+    /// Whether a prose delta naming the rule trips the installed matcher,
+    /// probed the way production probes it: the delta runs through `check`,
+    /// and the stream's end runs `finalize` — the pair a real response always
+    /// performs.
+    ///
+    /// Without the finalize half, a rule matching the marker's tail would read
+    /// as silent here while firing in production at stream completion.
     fn fires(cell: &TypedCell<StreamRules>, marker: &str) -> Option<String> {
         let Some(set) = cell.read().installed() else {
             return None;
@@ -151,6 +157,7 @@ mod tests {
         let mut session = set.new_session(&jinn_core_types::SessionId::new());
         session
             .check(marker, StreamContext::text())
+            .or_else(|| session.finalize())
             .map(|hit| hit.name.clone())
     }
 
