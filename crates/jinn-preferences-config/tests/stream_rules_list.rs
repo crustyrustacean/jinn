@@ -78,6 +78,105 @@ fn absent_scopes_read_as_empty() {
 }
 
 #[rstest::rstest]
+fn an_absent_disabled_rules_key_reads_every_rule_armed() {
+    // Given a jinn.toml with rules and no `disabled_rules` key.
+    let (config, _path, _dir) = layer_over(
+        "[[stream_rules.entry]]\nname = \"no-todos\"\nconditions = ['TODO']\nbody = \"No TODOs.\"\n",
+    );
+
+    // When reading the section.
+    let section = config
+        .get::<jinn_preferences_config::StreamRulesConfig>()
+        .expect("section reads");
+
+    // Then the array is empty, which means every pre-existing rule stays
+    // armed, no migration.
+    assert!(section.disabled_rules.is_empty());
+}
+
+#[rstest::rstest]
+fn a_written_disabled_rules_key_gains_the_array_beside_a_kept_comment() {
+    // Given a commented jinn.toml whose section carries an entry list.
+    let original = "# keep this explanation\n[[stream_rules.entry]]\nname = \"ts-no-any\"\nconditions = [': any']\nbody = \"Use unknown.\"\n";
+    let (config, path, _dir) = layer_over(original);
+
+    // When the array is written through the narrow section-value write —
+    // the path the storage boundary uses. (`put` itself is forbidden on
+    // this section: its stale-key removal would delete the entry list the
+    // scalar type does not declare.)
+    let names = toml::Value::Array(vec![toml::Value::String("ts-no-any".to_owned())]);
+    config
+        .put_section_value::<jinn_preferences_config::StreamRulesConfig>(
+            "disabled_rules",
+            Some(&names),
+        )
+        .expect("leaf write");
+
+    // Then the file gained the array beside the comment it had to keep, and
+    // the entry list survived the write untouched.
+    let written = std::fs::read_to_string(&path).expect("read");
+    assert!(
+        written.contains("disabled_rules = [\"ts-no-any\"]"),
+        "disabled_rules key lost on save: {written}"
+    );
+    assert!(
+        written.contains("# keep this explanation"),
+        "comment lost on save: {written}"
+    );
+    let rules = config.get_list::<StreamRuleConfig>().expect("rules read");
+    assert_eq!(rules.len(), 1, "entry list disturbed by the write");
+}
+
+#[rstest::rstest]
+fn a_disabled_rule_survives_a_save_and_reread_still_disabled() {
+    // Given a jinn.toml whose section names a rule.
+    let original = "# keep\n[[stream_rules.entry]]\nname = \"ts-no-any\"\nconditions = [': any']\nbody = \"Use unknown.\"\n";
+    let (config, path, _dir) = layer_over(original);
+    let names = toml::Value::Array(vec![toml::Value::String("ts-no-any".to_owned())]);
+    config
+        .put_section_value::<jinn_preferences_config::StreamRulesConfig>(
+            "disabled_rules",
+            Some(&names),
+        )
+        .expect("leaf write");
+
+    // When the document is reread through a fresh layer — what a restart
+    // does — over the bytes that were written.
+    let reread_config = layer_for(&path);
+    let reread = reread_config
+        .get::<jinn_preferences_config::StreamRulesConfig>()
+        .expect("section reread");
+
+    // Then the rule is still named: the state survives the write, so a
+    // restart reads back the set the picker confirmed.
+    assert_eq!(reread.disabled_rules, vec!["ts-no-any".to_owned()]);
+    let written = std::fs::read_to_string(&path).expect("read");
+    assert!(written.contains("# keep"), "comment lost: {written}");
+}
+
+#[rstest::rstest]
+fn a_stray_disabled_entry_key_survives_a_list_save_untouched() {
+    // Given a jinn.toml whose entry carries the retired per-entry flag.
+    let (config, path, _dir) = layer_over(
+        "# keep\n[[stream_rules.entry]]\nname = \"ts-no-any\"\nconditions = [': any']\nbody = \"Use unknown.\"\ndisabled = true\n",
+    );
+
+    // When the list is saved back through the layer.
+    let rules = config.get_list::<StreamRuleConfig>().expect("rules read");
+    config
+        .put_list::<StreamRuleConfig>(&rules)
+        .expect("rules write");
+
+    // Then the stale key is byte-untouched: it is the user's own unknown
+    // key now — ignored, not honored, never rewritten or migrated.
+    let written = std::fs::read_to_string(&path).expect("read");
+    assert!(
+        written.contains("disabled = true"),
+        "stale key was disturbed: {written}"
+    );
+}
+
+#[rstest::rstest]
 fn put_stream_rule_list_preserves_entry_block_and_comments() {
     // Given a jinn.toml with a commented stream rule.
     let original = "# keep this explanation\n[[stream_rules.entry]]\nname = \"ts-no-any\"\ndescription = \"no any\"\nconditions = [': any']\nbody = \"Use unknown.\"\n";

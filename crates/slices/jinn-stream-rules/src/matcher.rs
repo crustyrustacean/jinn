@@ -211,6 +211,10 @@ fn is_path_key(key: &str) -> bool {
 ///
 /// Returns `None` — after warning — for an empty body, no compiling
 /// condition, or a scope that admits nothing.
+///
+/// Disabled rules never reach here: the name array that switches a rule
+/// off is applied to the assembled set in `read_rules`, before anything
+/// compiles.
 fn compile_rule(config: &StreamRuleConfig) -> Option<CompiledRule> {
     let conditions: Vec<Regex> = config
         .conditions

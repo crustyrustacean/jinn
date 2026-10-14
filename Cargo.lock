@@ -2020,7 +2020,10 @@ dependencies = [
  "jinn-slices",
  "jinn-status-bar",
  "jinn-status-bar-msg",
+ "jinn-stream-rule-picker",
+ "jinn-stream-rule-picker-msg",
  "jinn-stream-rules",
+ "jinn-stream-rules-msg",
  "jinn-term",
  "jinn-term-msg",
  "jinn-testutil",
@@ -2211,6 +2214,7 @@ dependencies = [
  "jinn-skills-msg",
  "jinn-slices",
  "jinn-status-bar-msg",
+ "jinn-stream-rule-picker-msg",
  "jinn-term-msg",
  "jinn-theme-msg",
  "jinn-token-count-msg",
@@ -3669,18 +3673,79 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-stream-rule-picker"
+version = "1.6.0"
+dependencies = [
+ "error-stack",
+ "jinn-cell-catalog",
+ "jinn-config",
+ "jinn-core-types",
+ "jinn-kernel",
+ "jinn-picker",
+ "jinn-preferences-config",
+ "jinn-selection-widget",
+ "jinn-session-history-msg",
+ "jinn-slices",
+ "jinn-stream-rule-picker-msg",
+ "jinn-stream-rules-msg",
+ "jinn-testutil",
+ "jinn-theme",
+ "ratatui",
+ "rstest",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "toml_edit 0.22.27",
+ "tracing",
+ "trouper",
+]
+
+[[package]]
+name = "jinn-stream-rule-picker-msg"
+version = "1.6.0"
+dependencies = [
+ "jinn-core-types",
+ "jinn-picker",
+ "jinn-preferences-config",
+ "jinn-selection-widget",
+ "jinn-slices",
+ "jinn-theme",
+ "ratatui",
+ "rstest",
+ "serde",
+ "serde_json",
+ "trouper",
+]
+
+[[package]]
 name = "jinn-stream-rules"
 version = "1.6.0"
 dependencies = [
+ "error-stack",
  "globset",
+ "jinn-cell-catalog",
  "jinn-config",
  "jinn-core-types",
  "jinn-preferences-config",
  "jinn-slices",
+ "jinn-stream-rules-msg",
  "regex",
  "rstest",
  "tempfile",
+ "tokio",
  "tracing",
+ "trouper",
+]
+
+[[package]]
+name = "jinn-stream-rules-msg"
+version = "1.6.0"
+dependencies = [
+ "jinn-slices",
+ "rstest",
+ "serde",
+ "serde_json",
+ "trouper",
 ]
 
 [[package]]

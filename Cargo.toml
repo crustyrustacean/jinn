@@ -67,6 +67,7 @@ jinn-context-curation-msg = { workspace = true }
 jinn-turn-dispatch = { workspace = true }
 jinn-inference = { workspace = true }
 jinn-stream-rules = { workspace = true }
+jinn-stream-rules-msg = { workspace = true }
 jinn-watchdog = { workspace = true }
 jinn-citations = { workspace = true }
 jinn-export = { workspace = true }
@@ -98,6 +99,8 @@ jinn-attendant = { workspace = true }
 jinn-skills = { workspace = true }
 jinn-workflows = { workspace = true }
 jinn-workflows-msg = { workspace = true }
+jinn-stream-rule-picker = { workspace = true }
+jinn-stream-rule-picker-msg = { workspace = true }
 jinn-tui = { workspace = true }
 jinn-kernel = { workspace = true }
 jinn-preferences-config = { workspace = true }
@@ -220,6 +223,7 @@ jinn-chat-log-view = { path = "crates/slices/jinn-chat-log-view" }
 jinn-scope-focus = { path = "crates/slices/jinn-scope-focus" }
 jinn-sidebar = { path = "crates/slices/jinn-sidebar" }
 jinn-stream-rules = { path = "crates/slices/jinn-stream-rules" }
+jinn-stream-rules-msg = { path = "crates/slices/jinn-stream-rules-msg" }
 jinn-cwd = { path = "crates/slices/jinn-cwd" }
 jinn-status-bar = { path = "crates/slices/jinn-status-bar" }
 jinn-slices = { path = "crates/jinn-slices" }
@@ -287,6 +291,8 @@ jinn-skills = { path = "crates/slices/jinn-skills" }
 jinn-skills-msg = { path = "crates/slices/jinn-skills-msg" }
 jinn-workflows = { path = "crates/slices/jinn-workflows" }
 jinn-workflows-msg = { path = "crates/slices/jinn-workflows-msg" }
+jinn-stream-rule-picker = { path = "crates/slices/jinn-stream-rule-picker" }
+jinn-stream-rule-picker-msg = { path = "crates/slices/jinn-stream-rule-picker-msg" }
 jinn-provider-selection-msg = { path = "crates/slices/jinn-provider-selection-msg" }
 jinn-provider-selection = { path = "crates/slices/jinn-provider-selection" }
 jinn-session-init-msg = { path = "crates/slices/jinn-session-init-msg" }

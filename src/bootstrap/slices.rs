@@ -141,6 +141,15 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
     // subscription must exist first, and nothing below resolves a
     // workflows cell it does not already have from the catalog.
     jinn_workflows::activate(&mut ctx.host());
+    // The stream-rule picker lists the assembled ruleset — the same one the
+    // matcher enforces — by reading it through the preferences path captured
+    // here, and writes through the same path at confirm; its cell came from
+    // the catalog. The confirm itself only publishes: the persist actor the
+    // activation spawns does the writing (off the key thread) and then asks
+    // for the matcher refresh, so the config layer rides along now.
+    let prefs_snapshot = ctx.services().paths.preferences_path();
+    let config_snapshot = ctx.services().config.clone();
+    jinn_stream_rule_picker::activate(&mut ctx.host(), prefs_snapshot, config_snapshot);
     let state_snapshot = ctx.state().clone();
     jinn_sidebar::activate(&mut ctx.host(), state_snapshot);
     let state_snapshot = ctx.state().clone();
@@ -164,7 +173,10 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
     // so a turn dispatched after boot is already guarded. Installing it after
     // inference's activation is fine — inference only *resolves* the matcher
     // when a stream starts, not at spawn — but it must precede any dispatch,
-    // which the boot tail guarantees.
+    // which the boot tail guarantees. The same activation also spawns the
+    // matcher-refresh actor, whose subscription must exist before the picker
+    // can confirm a toggle; no confirm can happen before any slice is
+    // interactive, so boot order covers it.
     let config_snapshot = ctx.services().config.clone();
     let prefs_snapshot = ctx.services().paths.preferences_path();
     jinn_stream_rules::activate(&mut ctx.host(), &config_snapshot, &prefs_snapshot);

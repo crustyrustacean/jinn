@@ -1,9 +1,12 @@
 //! Stream-rule configuration — the `jinn.toml` `[[stream_rules.entry]]`
-//! rules, and the removed `[stream_rules] max_interrupts` budget.
+//! rules, the `disabled_rules` name list under `[stream_rules]`, and the
+//! removed `[stream_rules] max_interrupts` budget.
 //!
-//! Two shapes, because the section had two jobs. The rules are a list, each
-//! entry one rule; the budget was a scalar tuning the interrupt loop's bound.
-//! The rules are live. The budget is a legacy read-only shape, kept only so a
+//! Three shapes, because the section had three jobs. The rules are a list,
+//! each entry one rule; the disabled state is a scalar list of names living
+//! beside them under the same `[stream_rules]` header; the budget was a
+//! scalar tuning the interrupt loop's bound. The rules and the name list
+//! are live. The budget is a legacy read-only shape, kept only so a
 //! file written before the budget moved to
 //! [`StreamRuleWatchdogConfig`](super::stream_rule_watchdog::StreamRuleWatchdogConfig)
 //! keeps the value the user tuned.
@@ -79,11 +82,17 @@ impl jinn_config::Configurable for LegacyStreamRulesBudget {
 /// belongs on tool arguments, not on prose.
 ///
 /// A rule missing a usable `body` is skipped with a warning rather than
-/// interrupting a turn with nothing to say.
+/// interrupting a turn with nothing to say. A rule whose `name` appears in
+/// [`StreamRulesConfig::disabled_rules`] is skipped silently — switching a
+/// rule off is deliberate, not a defect.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StreamRuleConfig {
     /// The rule's identity, unique per session, and the name the
-    /// interruption reports.
+    /// interruption reports. This is also the token
+    /// [`StreamRulesConfig::disabled_rules`] names to switch the rule off,
+    /// which is how a rule defined outside `jinn.toml` — in a standalone
+    /// `stream_rules.toml`, or converted from a removed legacy section — is
+    /// addressed: it has no entry of its own to carry a flag.
     pub name: String,
     /// Prose description of what the rule forbids. Carried for the user's
     /// own benefit — jinn reads the `body`, not this.
@@ -134,6 +143,49 @@ impl jinn_config::ConfigList for StreamRuleConfig {
         "body",
         "project",
     ];
+}
+
+/// The `[stream_rules]` section's scalar values — today, which rules are
+/// switched off.
+///
+/// A rule is disabled exactly when its `name` appears here. The array lives
+/// beside the `[[stream_rules.entry]]` list under the same header, which is
+/// what lets it address rules the entry list cannot: a shipped rule, a rule
+/// from a standalone `stream_rules.toml`, or one converted from a removed
+/// legacy section has no entry here to carry a flag, but every rule has a
+/// name.
+///
+/// An absent or empty array means every rule is armed, and an emptied array
+/// is removed from the file rather than written as `[]` — an armed rule
+/// leaves no trace. Hand-written entries naming a rule that does not exist
+/// are inert; names are matched at read time against whatever rule set
+/// assembled.
+///
+/// This shape is read-on-demand and deliberately **not** registered in
+/// [`register_all_sections`](crate::registration::register_all_sections)
+/// (the same stance as [`LegacyStreamRulesBudget`]): nothing joins the
+/// launch roster, so no whole-section write can ever delete the
+/// `[[stream_rules.entry]]` list the table also carries.
+///
+/// A `disabled = true` key inside an entry — written by an earlier build of
+/// this configuration — is **ignored, not honored and not migrated**. It
+/// survives every save untouched as the user's own unknown key (the entry
+/// field list no longer names it, so the patcher preserves it), and serde
+/// ignores it on read. Honoring it would keep two sources of truth for one
+/// concept, and a one-time rewrite of user files contradicts this project's
+/// comment-preservation stance. There is no warning, matching the removed
+/// `on_trigger` key's silent ignore.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StreamRulesConfig {
+    /// The names of the rules that never fire.
+    ///
+    /// Removing a name re-arms that rule on the next read or refresh.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub disabled_rules: Vec<String>,
+}
+
+impl jinn_config::Configurable for StreamRulesConfig {
+    const KEY: &'static str = STREAM_RULES_BUDGET_KEY;
 }
 
 /// One rule, as written in the standalone `stream_rules.toml` document.
@@ -201,6 +253,10 @@ impl StreamRuleFileEntry {
 /// The file carries the same `[[stream_rules.entry]]` key `jinn.toml` uses,
 /// which in document terms is a top-level `stream_rules` table holding an
 /// `entry` array-of-tables — hence the nesting here.
+///
+/// It carries no `disabled_rules`: the name array is a `jinn.toml`-only
+/// shape, so a stray one in a standalone rules file is just an ignored
+/// unknown key.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct StreamRulesFile {
     /// The `stream_rules` table: this file's only content.
@@ -323,5 +379,73 @@ mod tests {
         // so a file written before the removal keeps its rules.
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0].conditions, vec!["rm -rf".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn an_absent_disabled_rules_array_reads_empty() {
+        // Given a document with rules but no `disabled_rules` key.
+        let config: StreamRulesConfig = jinn_config::testutil::config_layer(
+            r#"
+            [[stream_rules.entry]]
+            name = 'no-todo'
+            conditions = ['TODO']
+            body = 'Finish it.'
+        "#,
+        )
+        .get()
+        .expect("read");
+
+        // Then every rule is armed: absence reads empty, never an error.
+        assert!(config.disabled_rules.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_written_disabled_rules_array_round_trips() {
+        // Given a document carrying the name array beside its rules.
+        let config: StreamRulesConfig = jinn_config::testutil::config_layer(
+            r#"
+            [stream_rules]
+            disabled_rules = ['no-todo', 'no-yelling']
+
+            [[stream_rules.entry]]
+            name = 'no-todo'
+            conditions = ['TODO']
+            body = 'Finish it.'
+        "#,
+        )
+        .get()
+        .expect("read");
+
+        // Then both names survive the table sharing the section with the
+        // entry list.
+        assert_eq!(
+            config.disabled_rules,
+            vec!["no-todo".to_owned(), "no-yelling".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn an_entry_carrying_the_retired_disabled_key_still_deserializes() {
+        // Given an entry written by a build that persisted the per-entry
+        // flag, beside the name array that replaced it.
+        let rules: Vec<StreamRuleConfig> = jinn_config::testutil::config_layer(
+            r#"
+            [[stream_rules.entry]]
+            name = 'no-todo'
+            conditions = ['TODO']
+            body = 'Finish it.'
+            disabled = true
+        "#,
+        )
+        .get_list()
+        .expect("read");
+
+        // Then the rule reads intact and armed: the stale key is the user's
+        // own unknown key — ignored, not honored, and never migrated.
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].name, "no-todo");
     }
 }
