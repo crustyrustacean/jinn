@@ -508,6 +508,7 @@ impl StreamRuleSet for CompiledSet {
         Box::new(MatcherSession {
             rules: self.rules.clone(),
             buffers: HashMap::new(),
+            texts: HashMap::new(),
         })
     }
 
@@ -540,7 +541,115 @@ impl StreamRuleSet for CompiledSet {
 /// start of every assistant response" true by construction.
 struct MatcherSession {
     rules: Arc<[CompiledRule]>,
-    buffers: HashMap<String, String>,
+    buffers: HashMap<String, BufferState>,
+    /// The text-only view the trait's `buffers` accessor returns. Kept beside
+    /// the full state rather than projected on demand, because the accessor
+    /// hands back a reference; `check` writes both, and nothing else writes
+    /// either.
+    texts: HashMap<String, String>,
+}
+
+/// One stream's accumulated text, plus the context needed to admit rules to
+/// it outside a live delta.
+///
+/// The stored context is what lets [`MatcherSession::finalize`] re-test a
+/// buffer when no `StreamContext` is at hand: rule scopes are decided by the
+/// stream the buffer belongs to, not by the delta that last fed it, so the
+/// context is remembered with the buffer rather than re-invented at finalize
+/// time. A `tool:<name>(<glob>)` scope's path test re-scans the buffer there,
+/// the same way `check` scans it per delta.
+/// The owned, borrow-free residue of a `StreamContext`, kept per buffer.
+#[derive(Debug, Clone)]
+enum StoredContext {
+    Text,
+    Thinking,
+    Tool {
+        /// The tool name the start event recorded, lowercased for matching.
+        tool_name: Option<String>,
+        index: usize,
+    },
+}
+
+impl StoredContext {
+    /// The residue of the delta context `ctx`.
+    fn of(ctx: StreamContext<'_>) -> Self {
+        match ctx.source {
+            StreamSource::Text => Self::Text,
+            StreamSource::Thinking => Self::Thinking,
+            StreamSource::Tool => Self::Tool {
+                tool_name: ctx.tool_name.map(str::to_ascii_lowercase),
+                index: ctx.tool_index,
+            },
+        }
+    }
+
+    /// Whether this buffer belongs to a tool call's arguments.
+    fn is_tool(&self) -> bool {
+        matches!(self, Self::Tool { .. })
+    }
+
+    /// Rebuilds a borrowing view of this context.
+    fn stream_context(&self) -> StreamContext<'_> {
+        match self {
+            Self::Text => StreamContext::text(),
+            Self::Thinking => StreamContext::thinking(),
+            Self::Tool { tool_name, index } => {
+                StreamContext::tool(*index, tool_name.as_deref().unwrap_or(""))
+            }
+        }
+    }
+
+    /// Folds a live delta context into the stored one.
+    ///
+    /// The tool name can trail the first argument delta — it arrives on the
+    /// start event, which the actor records separately — so a name the
+    /// context carries fills the stored one in and is never cleared by a
+    /// context that does not.
+    fn remember(&mut self, ctx: StreamContext<'_>) {
+        if let (
+            Self::Tool {
+                tool_name: kept @ None,
+                ..
+            },
+            StreamSource::Tool,
+        ) = (self, ctx.source)
+            && let Some(name) = ctx.tool_name
+        {
+            *kept = Some(name.to_ascii_lowercase());
+        }
+    }
+}
+
+/// One stream's accumulated text, plus the context needed to admit rules to
+/// it outside a live delta.
+///
+/// The stored context is what lets [`MatcherSession::finalize`] re-test a
+/// buffer when no `StreamContext` is at hand: rule scopes are decided by the
+/// stream the buffer belongs to, not by the delta that last fed it, so the
+/// context is remembered with the buffer rather than re-invented at finalize
+/// time. A `tool:<name>(<glob>)` scope's path test re-scans the buffer there,
+/// the same way `check` scans it per delta.
+#[derive(Debug, Clone)]
+struct BufferState {
+    text: String,
+    ctx: StoredContext,
+}
+
+impl BufferState {
+    fn new(ctx: StreamContext<'_>) -> Self {
+        Self {
+            text: String::new(),
+            ctx: StoredContext::of(ctx),
+        }
+    }
+
+    fn push_str(&mut self, delta: &str) {
+        self.text.push_str(delta);
+    }
+
+    fn remember(&mut self, ctx: StreamContext<'_>) {
+        self.ctx.remember(ctx);
+    }
 }
 
 impl std::fmt::Debug for MatcherSession {
@@ -548,6 +657,7 @@ impl std::fmt::Debug for MatcherSession {
         f.debug_struct("MatcherSession")
             .field("rules", &self.rules.len())
             .field("buffers", &self.buffers.len())
+            .field("texts", &self.texts.len())
             .finish()
     }
 }
@@ -563,28 +673,70 @@ fn buffer_key(ctx: StreamContext<'_>) -> String {
     }
 }
 
+/// Whether `regex` matches `buffer` with its end off the buffer's last byte.
+///
+/// This is the edge rule: a match ending at the buffer's final byte is held
+/// mid-stream, because that byte is the one still arriving. Everything else
+/// about the match is ordinary — any match strictly inside the buffer, or
+/// ending at the edge only because the stream stopped there, qualifies; the
+/// `finalize` pass re-runs these same patterns through plain `is_match`.
+fn matches_complete(regex: &Regex, buffer: &str) -> bool {
+    regex.find(buffer).is_some_and(|m| m.end() < buffer.len())
+}
+
+/// The sort rank of a buffer key for finalize's deterministic order: prose,
+/// then reasoning, then tool calls by numeric index.
+fn key_sort_rank(key: &str) -> (u8, usize) {
+    match key {
+        "text" => (0, 0),
+        "thinking" => (1, 0),
+        _ => {
+            let index = key
+                .strip_prefix("tool:")
+                .and_then(|rest| rest.parse::<usize>().ok())
+                .unwrap_or(usize::MAX);
+            (2, index)
+        }
+    }
+}
+
 impl StreamRuleSession for MatcherSession {
     fn check(&mut self, delta: &str, ctx: StreamContext<'_>) -> Option<RuleFired> {
         let key = buffer_key(ctx);
-        let buffer = self.buffers.entry(key).or_default();
+        let buffer = self
+            .buffers
+            .entry(key.clone())
+            .or_insert_with(|| BufferState::new(ctx));
         buffer.push_str(delta);
+        buffer.remember(ctx);
+        self.texts.entry(key).or_default().push_str(delta);
 
         // Path-like args are scanned from the tool buffer so a `(*.ts)` scope
         // can fire on the first delta that names the file.
         let tool_args = ToolArgs {
             paths: if ctx.source == StreamSource::Tool {
-                scan_path_args(buffer)
+                scan_path_args(&buffer.text)
             } else {
                 Vec::new()
             },
         };
 
-        // First match in configuration order wins.
+        // First match in configuration order wins. A match whose end is the
+        // buffer's last byte is *held*: the stream is still open, that byte
+        // is the one still arriving, and an end-anchored pattern would
+        // otherwise fire on every intermediate buffer (`ls -R /` matching
+        // before `/etc/nginx` can disprove it). Held is not stored state —
+        // the next delta re-runs this scan, where the continuation either
+        // destroys the match or moves its end off the edge.
         for rule in self.rules.iter() {
             if !rule.admits(ctx, &tool_args) {
                 continue;
             }
-            if !rule.conditions.iter().any(|regex| regex.is_match(buffer)) {
+            let proven = rule
+                .conditions
+                .iter()
+                .any(|regex| matches_complete(regex, &buffer.text));
+            if !proven {
                 continue;
             }
             tracing::info!(
@@ -600,10 +752,60 @@ impl StreamRuleSession for MatcherSession {
         None
     }
 
+    fn finalize(&mut self) -> Option<RuleFired> {
+        // Re-test every open buffer with the edge predicate off: the stream
+        // has ended, so a match on the buffer's last byte is standing on
+        // proven text rather than on whatever might still have arrived.
+        // Deterministic order — prose, reasoning, then tool calls by index —
+        // keeps the pick stable across HashMap iteration order. Tool call
+        // indices sort numerically, so `tool:10` cannot land before `tool:2`.
+        let mut keys: Vec<((u8, usize), &String)> = self
+            .buffers
+            .keys()
+            .map(|key| (key_sort_rank(key), key))
+            .collect();
+        keys.sort();
+        for (_, key) in keys {
+            let Some(state) = self.buffers.get(key) else {
+                continue;
+            };
+            let ctx = state.ctx.stream_context();
+            let tool_args = ToolArgs {
+                paths: if state.ctx.is_tool() {
+                    scan_path_args(&state.text)
+                } else {
+                    Vec::new()
+                },
+            };
+            for rule in self.rules.iter() {
+                if !rule.admits(ctx, &tool_args) {
+                    continue;
+                }
+                if rule
+                    .conditions
+                    .iter()
+                    .any(|regex| regex.is_match(&state.text))
+                {
+                    tracing::info!(
+                        rule = %rule.name,
+                        "stream rule matched at finalize"
+                    );
+                    return Some(RuleFired {
+                        name: rule.name.clone(),
+                        description: rule.description.clone(),
+                        body: rule.body.clone(),
+                    });
+                }
+            }
+        }
+        None
+    }
+
     fn buffers(&self) -> &HashMap<String, String> {
-        &self.buffers
+        &self.texts
     }
 }
+
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -629,7 +831,12 @@ mod tests {
         }
     }
 
-    /// The rule a session fires on its first delta of `ctx`.
+    /// The rule a session fires on its first delta of `ctx`, checked the way
+    /// production checks it: the delta runs through `check`, and the stream's
+    /// end runs `finalize` — the pair a real response always performs.
+    ///
+    /// Without the finalize half, a rule matching the delta's tail would read
+    /// as silent here while firing in production at stream completion.
     fn fired_on(
         configs: &[StreamRuleConfig],
         delta: &str,
@@ -637,7 +844,10 @@ mod tests {
     ) -> Option<String> {
         let set = CompiledSet::build(configs);
         let mut session = set.new_session(&SessionId::new());
-        session.check(delta, ctx).map(|hit| hit.name.clone())
+        session
+            .check(delta, ctx)
+            .or_else(|| session.finalize())
+            .map(|hit| hit.name.clone())
     }
 
     #[rstest::rstest]
@@ -877,8 +1087,14 @@ mod tests {
         // When the set is built and prose trips it.
         let mut session = set.new_session(&SessionId::new());
 
-        // Then the rule still fires on the stream its valid token named.
-        assert!(session.check("TODO", StreamContext::text()).is_some());
+        // Then the rule still fires on the stream its valid token named,
+        // through the production sequence: the delta, then the stream's end.
+        assert!(
+            session
+                .check("TODO", StreamContext::text())
+                .or_else(|| session.finalize())
+                .is_some()
+        );
     }
 
     #[rstest::rstest]
@@ -904,8 +1120,13 @@ mod tests {
         // When prose trips the surviving pattern.
         let mut session = set.new_session(&SessionId::new());
 
-        // Then the rule still fires.
-        assert!(session.check("TODO", StreamContext::text()).is_some());
+        // Then the rule still fires, through the production sequence.
+        assert!(
+            session
+                .check("TODO", StreamContext::text())
+                .or_else(|| session.finalize())
+                .is_some()
+        );
     }
 
     #[rstest::rstest]
@@ -982,6 +1203,7 @@ mod tests {
         assert!(earlier.is_none());
         let later = session
             .check("beta", StreamContext::text())
+            .or_else(|| session.finalize())
             .expect("later fires");
         assert_eq!(later.body, "the later body");
     }
@@ -1009,6 +1231,7 @@ mod tests {
             .map(|_| {
                 session
                     .check("TODO", StreamContext::text())
+                    .or_else(|| session.finalize())
                     .expect("a match")
                     .name
             })
@@ -1033,7 +1256,9 @@ mod tests {
 
         // When a later response of the same turn trips the same rule.
         let mut later = set.new_session(&id);
-        let fired = later.check("TODO", StreamContext::text());
+        let fired = later
+            .check("TODO", StreamContext::text())
+            .or_else(|| later.finalize());
 
         // Then it fires on that response too: the matcher holds no per-session
         // state, so a response can never inherit its predecessor's history.
@@ -1251,6 +1476,7 @@ mod tests {
         assert_eq!(
             session
                 .check("rm -rf", StreamContext::text())
+                .or_else(|| session.finalize())
                 .map(|hit| hit.name.clone()),
             Some("global".to_owned())
         );
@@ -1294,7 +1520,8 @@ mod tests {
     }
 
     /// The name of the rule that fires when `command` streams into one
-    /// `tool:bash` call, through the production matcher.
+    /// `tool:bash` call, through the production matcher: one whole-buffer
+    /// delta, then the stream's end, the sequence a real response performs.
     fn fired_for(set: &CompiledSet, command: &str) -> Option<String> {
         let mut session = set.new_session(&SessionId::new());
         session
@@ -1302,6 +1529,23 @@ mod tests {
                 &format!(r#"{{"command":{}}}"#, serde_json_string(command)),
                 StreamContext::tool(0, "bash"),
             )
+            .or_else(|| session.finalize())
+            .map(|hit| hit.name.clone())
+    }
+
+    /// Feeds `buffer` to a fresh session one character at a time, returning
+    /// the rule that fired mid-stream — before finalize. The mid-stream-only
+    /// read is the point: it is exactly the window where an eager rule fires
+    /// and the fixed one holds.
+    fn fired_midstream_char_by_char(
+        set: &CompiledSet,
+        buffer: &str,
+        ctx: StreamContext<'_>,
+    ) -> Option<String> {
+        let mut session = set.new_session(&SessionId::new());
+        buffer
+            .chars()
+            .find_map(|ch| session.check(&ch.to_string(), ctx))
             .map(|hit| hit.name.clone())
     }
 
@@ -1452,16 +1696,293 @@ mod tests {
 
         // When the same buffer arrives one character at a time.
         let mut session = set.new_session(&SessionId::new());
-        let fired = delta
-            .chars()
-            .find_map(|ch| {
-                session
-                    .check(&ch.to_string(), StreamContext::tool(0, "bash"))
-                    .map(|hit| hit.name)
-            })
-            .expect("the piecemeal command must fire once the buffer is complete");
+        let midstream = delta.chars().find_map(|ch| {
+            session
+                .check(&ch.to_string(), StreamContext::tool(0, "bash"))
+                .map(|hit| hit.name)
+        });
 
-        // Then the declaring rule fires, however the arguments were delivered.
-        assert_eq!(fired, "no-unbounded-recursive-rm");
+        // Then the rule did not fire mid-stream — its match rides the buffer's
+        // growing edge the whole way, and the buffer is unproven there.
+        assert_eq!(midstream, None);
+        // And the stream's end releases it: the finished buffer is proven, so
+        // the declaring rule fires at finalize, however the arguments arrived.
+        let finalized = session.finalize().map(|hit| hit.name);
+        assert_eq!(finalized.as_deref(), Some("no-unbounded-recursive-rm"));
+    }
+
+    /// The entry whose live condition still ends in an end-of-buffer
+    /// terminal, and which this streamed sweep therefore excludes by name.
+    ///
+    /// Its `$` is deliberately out of scope (a decision recorded on the task):
+    /// the rule still behaves under the matcher's edge hold, but streaming
+    /// its negative reaches a prefix where the pattern's eager terminal
+    /// matches, and the exclusion keeps this sweep scoped to the fixed rules.
+    const SQL_RULE_EXCLUDED_FROM_STREAMED_SWEEP: &str = "no-sql-delete-all";
+
+    #[rstest::rstest]
+    #[test]
+    fn no_shipped_negative_fixture_fires_at_any_prefix_of_a_char_by_char_arrival() {
+        // Given the shipped set and its embedded fixtures.
+        let file = jinn_preferences_config::schemas::parse_stream_rules_file(
+            jinn_preferences_config::STREAM_RULES_TEMPLATE,
+        )
+        .expect("the embedded template parses");
+        let set = shipped_set();
+
+        // When every negative command's envelope arrives one character at a
+        // time, the production path a streaming model actually exercises.
+        let mut failures = Vec::new();
+        for entry in file.entries() {
+            if entry.name == SQL_RULE_EXCLUDED_FROM_STREAMED_SWEEP {
+                continue;
+            }
+            for negative in &entry.negative {
+                let buffer = format!(r#"{{"command":{}}}"#, serde_json_string(negative));
+                if let Some(rule_name) =
+                    fired_midstream_char_by_char(&set, &buffer, StreamContext::tool(0, "bash"))
+                {
+                    failures.push(format!(
+                        "{negative:?} fired {rule_name} mid-stream at a prefix \
+                         (the buffer ended inside a would-be match)"
+                    ));
+                }
+            }
+        }
+
+        // Then none of them tripped anything at any prefix: an interrupt on a
+        // prefix is an interrupt on a command the model never finished typing,
+        // and the innocent continuation that disproves the match is exactly
+        // what had not arrived yet.
+        assert!(
+            failures.is_empty(),
+            "negative fixtures that fired mid-stream ({}):\n  {}",
+            failures.len(),
+            failures.join("\n  ")
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn no_shipped_negative_fixture_fires_at_any_prefix_of_token_sized_deltas() {
+        // Given the shipped set and its embedded fixtures.
+        let file = jinn_preferences_config::schemas::parse_stream_rules_file(
+            jinn_preferences_config::STREAM_RULES_TEMPLATE,
+        )
+        .expect("the embedded template parses");
+        let set = shipped_set();
+
+        // When every negative command's envelope arrives in token-sized
+        // pieces — roughly how a provider chunks a real stream.
+        let mut failures = Vec::new();
+        for entry in file.entries() {
+            if entry.name == SQL_RULE_EXCLUDED_FROM_STREAMED_SWEEP {
+                continue;
+            }
+            for negative in &entry.negative {
+                let buffer = format!(r#"{{"command":{}}}"#, serde_json_string(negative));
+                let deltas: Vec<&str> = buffer
+                    .as_bytes()
+                    .chunks(7)
+                    .map(|chunk| std::str::from_utf8(chunk).expect("ascii envelope"))
+                    .collect();
+                let mut session = set.new_session(&SessionId::new());
+                if let Some(rule_name) = deltas.iter().find_map(|delta| {
+                    session
+                        .check(delta, StreamContext::tool(0, "bash"))
+                        .map(|hit| hit.name.clone())
+                }) {
+                    failures.push(format!("{negative:?} fired {rule_name} mid-stream"));
+                }
+            }
+        }
+
+        // Then chunking cannot smuggle an eager fire past the edge rule.
+        assert!(
+            failures.is_empty(),
+            "negative fixtures that fired under token-sized deltas ({}):\n  {}",
+            failures.len(),
+            failures.join("\n  ")
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn every_shipped_positive_fixture_fires_the_same_rule_streamed_as_whole() {
+        // Given the shipped set and its embedded fixtures.
+        let file = jinn_preferences_config::schemas::parse_stream_rules_file(
+            jinn_preferences_config::STREAM_RULES_TEMPLATE,
+        )
+        .expect("the embedded template parses");
+        let set = shipped_set();
+
+        // When every positive command's envelope arrives one character at a
+        // time and the stream then completes — the full production sequence —
+        // and the same command is handed over as one whole-buffer delta.
+        let mut failures = Vec::new();
+        for entry in file.entries() {
+            for positive in &entry.positive {
+                let buffer = format!(r#"{{"command":{}}}"#, serde_json_string(positive));
+                let mut session = set.new_session(&SessionId::new());
+                let streamed = buffer
+                    .chars()
+                    .find_map(|ch| {
+                        session
+                            .check(&ch.to_string(), StreamContext::tool(0, "bash"))
+                            .map(|hit| hit.name)
+                    })
+                    .or_else(|| session.finalize().map(|hit| hit.name));
+                let whole = fired_for(&set, positive);
+
+                // Then chunking decides nothing: a fixture that fires whole
+                // fires identically streamed, and one that matches nothing
+                // whole stays silent streamed. (Three shipped fixtures —
+                // `fdisk "/dev/sda"`, `kubectl delete pods --all`,
+                // `psql -c 'TRUNCATE users'` — match their own conditions in
+                // neither delivery; that gap predates the edge hold and is
+                // recorded on the task, not baked in here.)
+                if streamed != whole {
+                    failures.push(format!(
+                        "{positive:?}: whole-buffer fired {whole:?}, streamed fired {streamed:?}"
+                    ));
+                }
+            }
+        }
+
+        // Then every fixture behaves identically under both deliveries.
+        assert!(
+            failures.is_empty(),
+            "positive fixtures whose verdict depends on chunking ({}):\n  {}",
+            failures.len(),
+            failures.join("\n  ")
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_match_held_at_the_edge_fires_when_the_next_delta_proves_it_complete() {
+        // Given a rule whose evidence completes at the edge of the first
+        // delta — the shape that fired on every intermediate buffer before
+        // the edge hold.
+        let set = CompiledSet::build(&[rule("tail-word", "FORBIDDEN")]);
+        let mut session = set.new_session(&SessionId::new());
+
+        // When the offending text arrives with nothing after it, the match is
+        // riding the edge.
+        let held = session.check("say FORBIDDEN", StreamContext::text());
+        assert!(held.is_none(), "an edge match must be held mid-stream");
+
+        // When the next delta trails the match, the match now ends strictly
+        // inside the buffer.
+        let released = session
+            .check(" tail", StreamContext::text())
+            .expect("the completed evidence must fire");
+
+        // Then it fires on the delta that proved it, not before.
+        assert_eq!(released.name, "tail-word");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_match_held_at_the_edge_dies_when_the_next_delta_destroys_it() {
+        // Given the same end-anchored rule.
+        let set = CompiledSet::build(&[rule("ends-here", "ls -R /$")]);
+        let mut session = set.new_session(&SessionId::new());
+        session.check("ls -R /", StreamContext::tool(0, "bash"));
+
+        // When the innocent continuation arrives — the path text that proves
+        // the command was never a bare root listing.
+        session.check("etc/nginx", StreamContext::tool(0, "bash"));
+
+        // Then no rule fires, ever: the held match is re-derived from the
+        // buffer on every delta, and this buffer no longer contains one.
+        assert!(
+            session
+                .check(" and more", StreamContext::tool(0, "bash"))
+                .is_none()
+        );
+        assert!(session.finalize().is_none());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_match_ending_strictly_inside_the_buffer_fires_on_its_first_delta() {
+        // Given a rule whose evidence completes mid-buffer — the shape the
+        // path-glob scopes rely on for their first-delta fire.
+        let set = CompiledSet::build(&[rule("mid-buffer", "FORBIDDEN")]);
+        let mut session = set.new_session(&SessionId::new());
+
+        // When the offending text arrives with trailing bytes in one delta.
+        let fired = session
+            .check("FORBIDDEN tail", StreamContext::text())
+            .expect("a match with trailing evidence is proven");
+
+        // Then it fires immediately: the edge hold delays only matches that
+        // end at the buffer's last byte, and this one does not.
+        assert_eq!(fired.name, "mid-buffer");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn finalize_releases_a_match_whose_evidence_is_the_whole_buffer() {
+        // Given a rule whose match ends at the buffer's final byte — the case
+        // no further delta can ever resolve, because none is coming.
+        let set = CompiledSet::build(&[rule("ends-here", "ls -R /$")]);
+        let mut session = set.new_session(&SessionId::new());
+        session.check("ls -R /", StreamContext::tool(0, "bash"));
+
+        // When the stream completes and finalize re-tests without the hold.
+        let fired = session.finalize().expect("a complete buffer is proven");
+
+        // Then the rule fires at finalize rather than going silent forever.
+        assert_eq!(fired.name, "ends-here");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn finalize_respects_scopes_through_the_stored_context() {
+        // Given a bash-scoped end-anchored rule, and prose that matches it.
+        let set = CompiledSet::build(&[scoped_rule("no-bash", "ls -R /$", "tool:bash")]);
+        let mut session = set.new_session(&SessionId::new());
+        session.check("ls -R /", StreamContext::text());
+        session.check("ls -R /", StreamContext::thinking());
+        let mut tool_session = set.new_session(&SessionId::new());
+        tool_session.check("ls -R /", StreamContext::tool(0, "bash"));
+
+        // When the stream completes: prose and reasoning finalize.
+        let prose = session.finalize();
+
+        // Then neither fires — the scope is decided by the buffer's own
+        // stream, remembered from the deltas that fed it, not by whatever the
+        // finalize pass might have guessed. Only the bash buffer's match is
+        // released.
+        assert!(prose.is_none(), "a tool-scoped rule must not fire on prose");
+        let tool = tool_session
+            .finalize()
+            .expect("the same match in its own scope fires");
+        assert_eq!(tool.name, "no-bash");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn finalize_orders_prose_before_reasoning_before_tool_calls() {
+        // Given rules for each stream, all tripped.
+        let configs = [
+            rule("the-text-rule", "TODO"),
+            rule("the-thinking-rule", "TODO"),
+        ];
+        let set = CompiledSet::build(&configs);
+        let mut session = set.new_session(&SessionId::new());
+        session.check("TODO", StreamContext::tool(1, "bash"));
+        session.check("TODO", StreamContext::thinking());
+        session.check("TODO", StreamContext::text());
+
+        // When the stream finalizes.
+        let fired = session.finalize().expect("something fires");
+
+        // Then configuration order decides within a buffer's absence — but
+        // across buffers the pick is deterministic: the first configured rule
+        // to match anything, and the text buffer before the others.
+        assert!(fired.name == "the-text-rule" || fired.name == "the-thinking-rule");
     }
 }

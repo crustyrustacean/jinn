@@ -1004,9 +1004,18 @@ async fn an_intercept_publishes_no_cancelled_completion() {
 #[tokio::test]
 async fn an_intercept_injects_the_rule_body_as_a_user_entry() {
     // Given a stream that trips the rule.
-    use jinn_provider::StreamEvent;
+    use jinn_provider::{StopReason, StreamEvent};
     let harness = TestHarness::new().await;
-    let stream = scripted_stream(vec![StreamEvent::Text("FORBIDDEN".to_owned())]);
+    // The stream completes: a rule whose evidence rides the buffer's final
+    // bytes fires at the stream's end, so the scripted response must carry
+    // its Done for the intercept to exist.
+    let stream = scripted_stream(vec![
+        StreamEvent::Text("FORBIDDEN".to_owned()),
+        StreamEvent::Done {
+            stop_reason: StopReason::EndTurn,
+            usage: None,
+        },
+    ]);
     let sid = SessionId::new();
     let entries = harness.spawn_recorder::<PushChatEntry>().await;
 
@@ -1030,9 +1039,17 @@ async fn an_intercept_injects_the_rule_body_as_a_user_entry() {
 #[tokio::test]
 async fn an_intercept_injects_guidance_the_model_can_still_read() {
     // Given a stream that trips the rule.
-    use jinn_provider::StreamEvent;
+    use jinn_provider::{StopReason, StreamEvent};
     let harness = TestHarness::new().await;
-    let stream = scripted_stream(vec![StreamEvent::Text("FORBIDDEN".to_owned())]);
+    // Completing stream, as in the guidance test above: the intercept fires
+    // at the stream's end when the held match is released.
+    let stream = scripted_stream(vec![
+        StreamEvent::Text("FORBIDDEN".to_owned()),
+        StreamEvent::Done {
+            stop_reason: StopReason::EndTurn,
+            usage: None,
+        },
+    ]);
     let sid = SessionId::new();
     let entries = harness.spawn_recorder::<PushChatEntry>().await;
 
@@ -1583,7 +1600,10 @@ async fn a_rule_scoped_to_a_project_fires_for_a_session_in_that_project() {
         .await
         .expect("a rule session");
     let mut session = session;
-    let fired = session.check("FORBIDDEN", jinn_slices::StreamContext::text());
+    // Checked the way production checks: the delta, then the stream's end.
+    let fired = session
+        .check("FORBIDDEN", jinn_slices::StreamContext::text())
+        .or_else(|| session.finalize());
 
     // Then the rule fires.
     assert!(
@@ -1627,7 +1647,10 @@ async fn a_rule_with_no_project_still_fires_for_any_session() {
         .resolve_rule_session(&SessionId::new())
         .await
         .expect("a rule session");
-    let fired = session.check("FORBIDDEN", jinn_slices::StreamContext::text());
+    // Checked the way production checks: the delta, then the stream's end.
+    let fired = session
+        .check("FORBIDDEN", jinn_slices::StreamContext::text())
+        .or_else(|| session.finalize());
 
     // Then the rule fires: an unscoped session is not a narrowed one.
     assert!(

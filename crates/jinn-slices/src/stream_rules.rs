@@ -135,11 +135,33 @@ pub trait StreamRuleSession: fmt::Debug + Send {
     /// the same delta, the one written first in `jinn.toml` wins, since that
     /// is the file the user would expect to be authoritative.
     ///
+    /// A match ending at the accumulated buffer's last byte is *held* rather
+    /// than returned: while a stream is open, its final bytes are the ones
+    /// still arriving, so an end-anchored pattern would otherwise fire on
+    /// every intermediate buffer. The held match is re-derived from scratch on
+    /// the next delta — the continuation either destroys it or completes it —
+    /// and [`Self::finalize`] is what releases the ones the stream's end
+    /// proves complete.
+    ///
     /// A fired rule is a fact and nothing more. Whether a session that has
     /// been corrected too many times in a row should be cancelled is decided
     /// by the stream-rule watchdog, from the response-completion signal an
     /// intercept already publishes.
     fn check(&mut self, delta: &str, ctx: StreamContext<'_>) -> Option<RuleFired>;
+
+    /// Re-tests every open buffer as if the stream were complete, and
+    /// returns the first rule that matches, in configuration order.
+    ///
+    /// Called exactly once per response, when the stream reports completion:
+    /// a match held at the buffer's edge mid-stream is standing on text that
+    /// was still arriving, but a finished stream has no more text coming, so
+    /// the edge is now proven. A cancelled, errored, or aborted stream is
+    /// never finalized — a dying stream must not manufacture an interrupt.
+    ///
+    /// Without this, a rule whose evidence is the buffer's last byte would
+    /// never fire at all: `check` holds it on every delta and no further
+    /// delta ever arrives to release it.
+    fn finalize(&mut self) -> Option<RuleFired>;
 
     /// The buffers' current contents, keyed by stream — for tests and
     /// diagnostics.
@@ -324,6 +346,10 @@ mod tests {
                 description: String::new(),
                 body: delta.to_owned(),
             })
+        }
+
+        fn finalize(&mut self) -> Option<RuleFired> {
+            None
         }
 
         fn buffers(&self) -> &std::collections::HashMap<String, String> {

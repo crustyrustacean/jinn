@@ -383,6 +383,18 @@ async fn process_stream_events(
                 StreamEvent::Done { stop_reason, usage } => {
                     // Terminal: `StreamCompleted` governs a stream's end, so
                     // this arm declares no liveness.
+                    //
+                    // Finalize before routing: a match held at a buffer's
+                    // edge mid-stream is proven by the stream's end, and the
+                    // intercept must preempt the tool batch the Done arm is
+                    // about to publish — an intercepted call never executes.
+                    // The error and abort paths deliberately do not
+                    // finalize: a dying stream must not manufacture an
+                    // interrupt nobody watched arrive.
+                    let finalized = rules.as_deref_mut().and_then(|session| session.finalize());
+                    if let Some(fired) = finalized {
+                        return apply_rule_match(bus, sid, &mut accum, fired, dispatched_at).await;
+                    }
                     handle_done_event(bus, sid, &mut accum, stop_reason, usage, dispatched_at)
                         .await;
                     return StreamOutcome::Completed;

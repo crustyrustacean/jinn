@@ -506,3 +506,7 @@ Entries are added or amended **only with human approval**.
 - (config) A provider alias resolves through one registry resolver to its target expanded id, an expanded id resolves to itself, and a name that is both resolves as the expanded id.
 - (tools) The `run_lifecycle` tool runs a lifecycle script by name from jinn.toml or, given a `path`, from that exact file with the name selecting the entry inside it; the two sources are never combined, and supplying neither is a tool error.
 - (sessions) A session run through a workflow-local lifecycle file persists that file and entry name, so teardown re-reads the file on close from any close path; a missing or unparseable file at teardown time fails visibly naming the file.
+- (rules) A stream rule cannot fire on a match that ends at the still-growing buffer's edge.
+- (rules) A match held at the buffer's edge becomes eligible when the next delta arrives or when the stream finalizes.
+- (rules) A stream-rule session finalizes when the stream completes, re-testing every open buffer without edge suppression; cancelled, errored, and aborted streams never finalize.
+- (rules) Shipped `tool:bash` conditions delimit a command with real boundary bytes — the envelope's closing quote or shell delimiters — never the end of the accumulated buffer.

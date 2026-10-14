@@ -108,24 +108,31 @@ negative = ['find ~/.cache -name x', 'find ./src -name x']
 # deliberately not matched, which is why the pattern carries no `(?i)`.
 # The path is a bare root reference (optionally quoted, with an optional
 # glob or trailing slash) followed by a boundary that is never a path
-# character. Double-quoted TOML string: the quoted path forms contain a
-# single quote, which a literal string cannot hold.
+# character. The boundary is a real byte -- whitespace, a shell delimiter,
+# or the envelope's closing quote -- never the end of the accumulated
+# buffer: the matcher holds a match riding the buffer's edge while the
+# stream is open, so an end-anchored terminal here would fire on every
+# intermediate buffer (`ls -R /` matching before `/etc/nginx` arrives).
+# Double-quoted TOML string: the quoted path forms contain a single quote,
+# which a literal string cannot hold.
 [[stream_rules.entry]]
 name = 'no-recursive-listing-root'
 description = 'a recursive listing of the filesystem root dumps everything'
-conditions = ["\\bls\\b\\s*(?:[^\\s;&|/~$'\\\"][^\\s;&|]*\\s+)*(-\\w*R\\w*|--recursive)\\s+(?:[^\\s;&|/~$'\\\"][^\\s;&|]*\\s+)*(?:/|'\\/'|\\\"/\\\")(?:\\*+|/+)?(?:\\s|;|&|\\||\\)|\\]|\\}|<|>|\\\"|$)"]
+conditions = ["\\bls\\b\\s*(?:[^\\s;&|/~$'\\\"][^\\s;&|]*\\s+)*(-\\w*R\\w*|--recursive)\\s+(?:[^\\s;&|/~$'\\\"][^\\s;&|]*\\s+)*(?:/|'\\/'|\\\"/\\\")(?:\\*+|/+)?(?:\\s|;|&|\\||\\)|\\]|\\}|<|>|\\\")"]
 scopes = ['tool:bash']
 body = 'Listing a bare root directory recursively dumps the whole tree into the transcript -- thousands of irrelevant lines and a slow tool call. Scope it to the directory you actually care about (`-I target` to skip build output), or search with `rg --files -g <glob>` / `fd`.'
 positive = ['ls -R /', 'ls -R / | head -5', 'ls -lR / | wc -l']
 negative = ['ls -R target/', 'ls src/', 'ls -R /etc/nginx']
 
 # source: jinn shipped defaults (default_jinn.toml, before this file);
-#   terminal boundary extended with the envelope quote as above.
+#   terminal boundary extended with the envelope quote as above (and, as in
+#   no-recursive-listing-root, no end-of-buffer terminal: the matcher holds
+#   edge-riding matches mid-stream, so `$` would fire on every prefix).
 # license: AGPL-3.0 (this project)
 [[stream_rules.entry]]
 name = 'no-recursive-listing-home'
 description = 'a recursive listing of the home root dumps everything'
-conditions = ["\\bls\\b\\s*(?:[^\\s;&|/~$'\\\"][^\\s;&|]*\\s+)*(-\\w*R\\w*|--recursive)\\s+(?:[^\\s;&|/~$'\\\"][^\\s;&|]*\\s+)*(?:~|\\$HOME|\\\"\\$HOME\\\"|'~'|'\\$HOME'|\\$\\{HOME\\}|\\\"\\$\\{HOME\\}\\\")(?:\\*+|/+)*(?:\\s|;|&|\\||\\)|\\]|\\}|<|>|\\\"|$)"]
+conditions = ["\\bls\\b\\s*(?:[^\\s;&|/~$'\\\"][^\\s;&|]*\\s+)*(-\\w*R\\w*|--recursive)\\s+(?:[^\\s;&|/~$'\\\"][^\\s;&|]*\\s+)*(?:~|\\$HOME|\\\"\\$HOME\\\"|'~'|'\\$HOME'|\\$\\{HOME\\}|\\\"\\$\\{HOME\\}\\\")(?:\\*+|/+)*(?:\\s|;|&|\\||\\)|\\]|\\}|<|>|\\\")"]
 scopes = ['tool:bash']
 body = 'Listing a bare home directory recursively dumps your whole tree -- caches, build outputs, and dotfile folders. Scope it to the directory you actually care about (`-I target` to skip build output), or search with `rg --files -g <glob>` / `fd`.'
 positive = ['ls -R ~', 'ls -R ~ | head -5', 'ls -R $HOME | wc -l']
@@ -144,13 +151,16 @@ negative = ['ls -R ~/code', 'ls -R target/']
 # here to the accidentally-lethal targets only: a bare root or home, a
 # variable operand (the Steam incident: rm -rf "$STEAMROOT/"*), or a glob
 # operand (the Bumblebee one-token class). A named directory is never
-# caught. Condition 1 is the root/home form; 2 the variable form; 3 the
-# glob form.
+# caught. Condition 1 is the root/home form -- its boundary is a real byte
+# (whitespace, a shell delimiter, or the envelope's closing quote), never
+# the end of the accumulated buffer, which the matcher holds unproven while
+# the stream is open; condition 2's `\$` is an escaped literal dollar sign
+# matching a `$VAR` operand, not an anchor; condition 3 is the glob form.
 [[stream_rules.entry]]
 name = 'no-unbounded-recursive-rm'
 description = 'a recursive rm aimed at a root, home, variable, or glob deletes far more than intended'
 conditions = [
-    '(?i)\brm\s[^;&|]*?-\w*[rR]\w*[^;&|]*?\s+\\?"?[/~](?:\*|/+)*\\?"?(?:\s|;|&|\||\}|$)',
+    '(?i)\brm\s[^;&|]*?-\w*[rR]\w*[^;&|]*?\s+\\?"?[/~](?:\*|/+)*\\?"?(?:\s|;|&|\||\})',
     '(?i)\brm\s[^;&|]*?-\w*[rR]\w*[^;&|]*?\s+\\?"?\$',
     '(?i)\brm\s[^;&|]*?-\w*[rR]\w*[^;&|]*?\s+[^;&|]*\*',
 ]
