@@ -147,10 +147,7 @@ impl MsgHandler<PersistStreamRuleDisabled> for StreamRulePersistActor {
 
 #[cfg(test)]
 mod test_support {
-    #![allow(
-        clippy::expect_used,
-        reason = "test fixture, panics are acceptable"
-    )]
+    #![allow(clippy::expect_used, reason = "test fixture, panics are acceptable")]
 
     /// The document the failing backends serve: one rule named `alpha`, so
     /// the loop reaches the write and fails *there* — not at the
