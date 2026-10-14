@@ -1,5 +1,10 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Do not make edits)**
 
+## (development)
+
+- Add `tell_session` tool for inter-session communication.
+- Add `autodev` workflow.
+
 ## 2026-10-13 v1.6.2
 
 - Stream rules will no longer trigger prematurely.
