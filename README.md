@@ -40,11 +40,10 @@ Quickly navigate and change things via Telescope-inspired pickers:
 
 ### Attendants
 
-Attach "attendants" to sessions that fire on agent turn end (or manually with `R`). Things that attendants can do:
+Attach "attendants" to sessions that fire when their parent session turn ends (or manually with `R`). Things that attendants can do:
 
-- Agent continuation when agent stops mid-task (shipped by default as `auto-nudge`)
-- Ensure implementation is done (shipped by default as `gap-check`)
-- Task completion checker
+- Restarting a session if it stops mid-task (shipped by default as `auto-nudge`)
+- Ensure implementation is actually done (shipped by default as `gap-check`)
 - Code quality gate
 
 They can be created entirely in-app by typing in the instructions in the attendant session and then turning it on. Attendants can be optionally saved to your `jinn.toml` via keybind so you can attach them to any session.
@@ -197,15 +196,17 @@ teardown_command = "fossil merge trunk --force && fossil addremove && fossil com
 
 The primary usage target for `jinn` is agentic coding, so it comes pre-packaged with features to help facilitate this.
 
-|                           | Orchestration (`autodev`)                                                               | Goal (`#goal`)                                                                   | Plan (`#plan`)                                              | Plain prompting                                    |
-| ------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------- | -------------------------------------------------- |
-| **Your effort**           | Describe the feature once; QA at the end                                                | Answer a question round; review the brief; approve                               | Author and refine the plan; approve; steer the loop         | Everything: prompt, steer, verify each step        |
-| **Human time (hands-on)** | Minutes                                                                                 | ~15–30 min across a feature                                                      | 30–60+ min across a feature                                 | The whole session                                  |
-| **Tokens (relative)**     | Highest. Contracts, reviews, and orchestration overhead on top of implementation        | Medium-high: planning + autonomous implementation                                | Medium: plan once + autonomous implementation               | Lowest: no planning or review apparatus            |
-| **Wall clock**            | High, but parallel: large features can implement concurrently                           | Medium: single-session, sequential                                               | Medium: single-session, sequential                          | Shortest per step, longest overall on big features |
-| **Autonomy**              | Fully hands-off between QA reports; concurrent implementor sessions                     | Autonomous within the approved contract                                          | Autonomous within the approved plan, skill-dependent        | You drive every turn                               |
-| **Quality control**       | Built-in: per-issue contracts, a reviewer gate, project checks at every landing         | Contract end-state + verification you approve up front; optional `#gap-analysis` | Plan review + acceptance criteria; optional `#gap-analysis` | Whatever you check yourself                        |
-| **Best for**              | Bounded, decomposable work; parallel features; letting it run while you do other things | Clear end state, fuzzy details; one focused feature                              | You know how it should be built and want it done that way   | Quick fixes, exploration, one-shot edits           |
+Here is a table of the builtin mechanisms for coding:
+
+|                           | Orchestration (`autodev`)                                                                   | Goal (`#goal`)                                                                       | Plan (`#plan`)                                                | Plain prompting                                            |
+| ------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------- | ---------------------------------------------------------- |
+| **Your effort**           | Describe the feature once; **QA at the end**                                                | Answer a question round; **review the brief; approve**                               | **Author and refine the plan; approve**; steer the loop       | **Everything**: prompt, steer, verify each step            |
+| **Human time (hands-on)** | **Minutes**                                                                                 | **~15-30 min** across a feature                                                      | **30-60+ min** across a feature                               | **The whole session**                                      |
+| **Tokens (relative)**     | **Highest**. Contracts, reviews, and orchestration overhead on top of implementation        | **Medium-high**: planning + autonomous implementation                                | **Medium**: plan once + autonomous implementation             | **Lowest**: no planning or review apparatus                |
+| **Wall clock**            | **High**, but parallel: large features can implement concurrently                           | **Medium**: single-session, sequential                                               | **Medium**: single-session, sequential                        | **Shortest** per step, **longest** overall on big features |
+| **Autonomy**              | **Fully hands-off** between QA reports; concurrent implementor sessions                     | **Autonomous** within the approved contract                                          | **Autonomous** within the approved plan, skill-dependent      | **None**: you drive every turn                             |
+| **Quality control**       | **Built-in**: per-issue contracts, a reviewer gate, project checks at every landing         | Contract end-state + verification you **approve up front**; optional `#gap-analysis` | Plan review + acceptance criteria; optional `#gap-analysis`   | **Whatever you check yourself**                            |
+| **Best for**              | **Bounded, decomposable work; parallel features**; letting it run while you do other things | **Clear end state, fuzzy details**; one focused feature                              | **You know how it should be built** and want it done that way | **Quick fixes, exploration, one-shot edits**               |
 
 ### Orchestration-Based Development
 
