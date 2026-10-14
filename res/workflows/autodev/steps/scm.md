@@ -80,19 +80,63 @@ merge stages its own changes:
     fossil branch current        # MUST print autodev-main — commits land on
                                  # whatever branch this checkout holds
     fossil merge <issue-branch>
-    grep -rl '<<<<<<<' . && { fossil undo; report the conflict as a new issue; }
+    # conflict check HERE, before the commit — see the scoped recipe below
     fossil commit -m "integrate <issue-branch>"
 
 A repeated merge of an already-integrated branch is a no-op refusal —
 safe to retry, never an error.
+
+## Conflict-marker check (scoped — read this before any grep)
+
+A conflicted merge exits zero, so you must check between merge and
+commit — but a NAIVE `grep -rl '<<<<<<<' .` is worse than no check:
+
+- `target/` build artifacts match and take minutes to scan (run 1 lost
+  six minutes to this once).
+- This repo's own `justfile` and this workflow's `scm.md` contain the
+  literal `<<<<<<<` as documented text — they match forever.
+
+The primary signal is the merge output itself: `fossil merge` names
+every file it touched (`UPDATE` / `MERGE`) and prints
+`WARNING: N merge conflicts` explicitly when a conflict exists. So the
+procedure is:
+
+1. Read the merge output. Any `MERGE` line or `WARNING` is a conflict:
+   `fossil undo`, file a new issue naming the two sides, move on.
+2. For extra confirmation only, grep the files the merge named — never
+   the whole tree:
+
+       fossil merge <issue-branch> | tee /tmp/autodev-merge.log
+       grep -oP '^(?:MERGE|EDITED|ADDED|UPDATE)\s+\K.*' /tmp/autodev-merge.log \
+         | xargs -r grep -l '<<<<<<<'
+
+   (Verified against a live conflict: the WARNING line and the `MERGE`
+   prefix are what fossil actually prints.) Expect legitimate hits in
+   `justfile` and any file whose content documents markers. Treat the
+   grep as confirmation; the merge output is the authority. On a real
+   conflict: `fossil undo`, file a new issue naming the two sides,
+   move on.
+
+## Review a branch without a checkout (reviewer; read-only, -R on the
+## repository file — never opens a checkout, never writes anything)
+
+    fossil timeline <branch> -n 1 -R <repo-file>     # the branch tip
+    fossil diff --from autodev-main --to <branch> --brief -R <repo-file>
+    fossil diff --from autodev-main --to <branch> -R <repo-file>   # full patch
+
+The full patch plus the contract is the review's entire input: end
+state vs. delivered diff, tests vs. change, scope vs. files-to-touch.
+Everything here is read-only; `-R` never opens, moves, or closes a
+checkout.
 
 ## Land the run (orchestrator, in the land checkout via a subshell,
 ## only on human OK)
 
     cd <root>-land
     fossil branch current        # MUST print the base branch
-    fossil merge autodev-main
-    grep -rl '<<<<<<<' . && { fossil undo; abort the landing; }
+    fossil merge autodev-main | tee /tmp/autodev-merge.log
+    # conflict check exactly as the integrate recipe above: WARNING or
+    # MERGE lines in the log → fossil undo, abort the landing
     fossil commit -m "autodev run: <goal summary>"
 
 ## Trash a finished run checkout (orchestrator, after landing; guarded)

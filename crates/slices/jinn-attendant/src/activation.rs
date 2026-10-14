@@ -10,8 +10,11 @@ use jinn_session_state::ChatSessionState;
 /// Builds the seed text for a run, from the seed template and the prior report.
 ///
 /// - The `<prior report>` placeholder is substituted when present.
-/// - A template without the placeholder gets the report appended on a new
-///   line — the user wrote instructions, the report is additional context.
+/// - A template without the placeholder gets **nothing** from the prior
+///   report: the token is the only inlet. A report without a token is
+///   dropped, not appended — silently applying a conclusion to work it
+///   was never about is out-of-order context, and a template that does
+///   not ask for history must not receive any.
 /// - With no prior report the placeholder becomes [`NO_PRIOR_REPORT_TEXT`],
 ///   so no run ever dispatches a raw template token.
 /// - `parent_session_id` is appended to every prompt, after the user's own
@@ -40,11 +43,9 @@ pub fn render_seed_text(
         None if template.contains(PRIOR_REPORT_PLACEHOLDER) => {
             template.replace(PRIOR_REPORT_PLACEHOLDER, NO_PRIOR_REPORT_TEXT)
         }
-        // The user wrote instructions with no placeholder; a report that
-        // exists is additional context appended beneath them.
-        Some(prior) => format!("{template}\n\n{prior}"),
-        // Nothing to add and nothing to replace.
-        None => template.to_owned(),
+        // No placeholder: the report never enters the prompt, whichever
+        // way `prior_report` came out. The token is the only inlet.
+        _ => template.to_owned(),
     };
     Some(format!(
         "{body}\n\n{PARENT_SESSION_HEADER} {parent_session_id}"
