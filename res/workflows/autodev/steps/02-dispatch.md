@@ -39,7 +39,10 @@ One session per issue. The procedure, in order:
    - `session_id` = the new session's id,
    - `dir` = a fresh checkout directory beside your own, named for the
      issue: `<your-root>-issue-<id>`,
-   - `branch` = the issue's branch: `autodev-issue-<id>`,
+   - `branch` = the issue's branch: `<your-branch>-issue-<id>`
+     (derived from your branch — never a fixed prefix. Branches named
+     after the workflow collide across runs and with a run's own
+     leftovers; a branch named after its parent cannot collide),
    - `parent` = your branch (the one recorded in the ledger at
      startup).
    The runner moves the session into its checkout.

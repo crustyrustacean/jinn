@@ -9,6 +9,7 @@
 - Add `autodev` workflow.
 - `<leader>sx` can be used to disable/enable stream rules via picker.
   - Stream rule status is saved under `[stream_rules] disabled_rules = ["foo", ...]` in `jinn.toml`
+- Workflow picker now supports same-session loading (`<enter>`) and new session loading (`<c-enter>`).
 
 ## 2026-10-13 v1.6.2
 

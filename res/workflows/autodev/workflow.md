@@ -11,6 +11,29 @@ implement it through spawned sessions, and return one QA brief. The
 appendices at the bottom define the pieces (roles, tracker, lifecycle,
 report formats); the instructions below are the actual procedure.
 
+## The feature, the participants, and human directives
+
+**Your branch is the feature.** The human created this session on their
+branch; that branch is what the feature lives on and what they will
+land to trunk themselves, after QA, by their own workflow. Every
+approved teardown merges one issue's work onto it — the feature
+assembles incrementally. There is no "land the feature" step and no
+teardown-ordering ceremony: approved issues merge in whatever order
+they approve.
+
+**The human is present at any time, in any session.** The goal ask and
+the QA brief are your scheduled contacts; they are not the only ones.
+The human can read any implementor's session live and message any
+session directly — including attendants. A message that arrives in
+*your* session is a directive; an implementor reports human messages
+it received in its next report. Treat both as authoritative.
+
+**Human sequencing remarks are quality guidance, not scheduling
+orders.** "Fix X before landing Y" means: make sure X is handled
+before the run finishes enough for QA. Read it, state your reading in
+one sentence at the top of your next turn, then proceed with your
+normal loop — never reorder into a ceremony the workflow doesn't have.
+
 ## Instructions
 
 You are the orchestrator. Read top to bottom, then loop.
@@ -40,7 +63,8 @@ You are the orchestrator. Read top to bottom, then loop.
    absolute paths from this workflow's directory. Record their session
    ids in the ledger. Neither gets a checkout (Appendix D).
 6. Stamp the task list: one task per flow stage below, one per issue as
-   it is admitted, updated the moment anything happens — never batched.
+   it is admitted (`003-fix-picker-focus`, never a bare number),
+   updated the moment anything happens — never batched.
 
 ### 1. The loop
 
@@ -65,7 +89,9 @@ contracting, or triaged. Then do the QA brief (step 6).
    back to the same implementor session; it fixes and re-reports.
 5. **Teardown** — APPROVE in hand: `run_lifecycle` teardown on the
    implementor's session (Appendix C). Success → issue `done`, session
-   gone, work on your branch. `TEARDOWN-CONFLICT` → merge-fix dispatch
+   gone, work on your branch — then `fossil update` / `git pull
+   --ff-only` in your own seat (the teardown moved the branch, not
+   your working tree). `TEARDOWN-CONFLICT` → merge-fix dispatch
    to the same implementor; on its report, teardown again. Other
    failure → correct the invocation, re-issue; never hand-work around
    it.
@@ -111,6 +137,7 @@ never committed; an existing one is this cycle's backlog):
 ```markdown
 ---
 id: NNN
+title: the issue in one line
 status: triage | open | contracting | dispatched | done | parent | closed
 parent: NNN            # absent on top-level issues
 blocked-by: NNN, NNN   # absent when nothing blocks
@@ -131,6 +158,10 @@ assignee: <session-id> # absent when unassigned
   work came from is ledger material.
 - Keep frontmatter valid TOML — verify after every write.
 - Sequential numbering is yours; you assign ids at file time.
+- **Ids carry their title everywhere**: `003-fix-picker-focus`, never
+  bare `003` — in the task list, every report, dispatch, verdict, and
+  the ledger. The human reads those surfaces; the number alone is
+  opaque. The slug is two to five kebab-case words from the title.
 
 ## Appendix B — the run ledger
 
@@ -161,7 +192,7 @@ payload lists):
 2. `run_lifecycle` setup: `path` = this workflow's `lifecycle.toml`
    (absolute), `session_id` = the new session's id, `dir` =
    `<your-root>-issue-<id>` (sibling of your checkout),
-   `branch` = `autodev-issue-<id>`, `parent` = your branch.
+   `branch` = `<your-branch>-issue-<id>`, `parent` = your branch.
 3. `tell_session` the dispatch (issue path, contract path, ids,
    checkout dir, parent branch, scm.md path, report format).
 
@@ -181,7 +212,7 @@ same-file issues serialize because parallel teardowns would fight.
   the code is the authority), investigates, saves a contract to
   `.plans/<issue-id>-<slug>/contract.md` in your checkout: end state
   (checkable facts), files to touch, approach, verification (exact
-  commands), traps. Reports `READY <issue-id> <contract-path>` (with a
+  commands), traps. Reports `READY <issue-id>-<slug> <contract-path>` (with a
   `record:` line for stale/proposed record entries) or `BLOCKED`
   (issue contradicts itself, or end state unreachable — never
   capability doubt). Writes nothing else, edits no code.
@@ -196,8 +227,8 @@ same-file issues serialize because parallel teardowns would fight.
   dispatch per DONE report, before any teardown. Reads the contract
   then the branch diff through the repository file (no checkout).
   Judges: end state delivered? tests that can fail? scope matches
-  files-to-touch? report honest? Reports `APPROVE <issue-id>` /
-  `REJECT <issue-id>` + findings. Never edits anything.
+  files-to-touch? report honest? Reports `APPROVE <issue-id>-<slug>` /
+  `REJECT <issue-id>-<slug>` + findings. Never edits anything.
 
 Dispatches are always self-contained — issue path, contract path,
 absolute paths, expected report format — paste paths, never retype

@@ -189,9 +189,17 @@ fn the_picker_binds_navigation_start_rescan_and_cancel() {
     let (_cell, routes) = wired();
     let keys: Vec<&str> = routes.rows().iter().map(|row| row.key).collect();
 
-    // Then the picker walks, pages, starts, rescans, and cancels.
+    // Then the picker walks, pages, loads, starts in a new session,
+    // rescans, and cancels.
     for key in [
-        "<up>", "<down>", "<pgup>", "<pgdn>", "<enter>", "<esc>", "<c-r>",
+        "<up>",
+        "<down>",
+        "<pgup>",
+        "<pgdn>",
+        "<enter>",
+        "<c-enter>",
+        "<esc>",
+        "<c-r>",
     ] {
         assert!(
             keys.contains(&key),
@@ -266,7 +274,7 @@ async fn backspacing_removes_the_last_filter_character() {
     assert!(filter.is_empty());
 }
 
-// ── Launch (enter) ──────────────────────────────────────────────────────
+// ── Load (enter) ────────────────────────────────────────────────────────
 
 /// A publish sink capturing `(short name, payload)` pairs, so a test can
 /// assert what a route result's closures publish without a live fabric.
@@ -313,7 +321,158 @@ impl jinn_slices::route_publish::PublishSink for RecordingSink {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn enter_creates_a_fresh_session_for_the_workflow() {
+async fn enter_loads_the_workflow_into_the_current_session() {
+    // Given an activated workflows slice with an open picker over one
+    // workflow, and a pre-existing active session that already has history.
+    let (slices, key_routes) = activated().await;
+    let cell = slices
+        .reader(&workflows_picker_slot())
+        .expect("workflow picker cell registered at activation");
+    opened(&cell, &["research-report"]);
+    let mut state = AppState::default_with_scope_focus();
+    let old_id = state.session.active_session_id().clone();
+    state
+        .active_session_mut()
+        .push_entry(jinn_core_types::ChatEntry::user("old"));
+    // The picker's own scope sits on the stack, as it would in production.
+    state
+        .frontend
+        .scope_push(jinn_slices::FocusScope::Dynamic(workflow_picker_scope()));
+
+    // When handling the picker's enter intent.
+    let result = jinn_kernel::IntentHandler::handle(
+        &jinn_kernel::KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
+            workflow_picker_scope(),
+            "load-highlighted-workflow",
+            "load-highlighted-workflow",
+        )),
+        &mut state,
+        &slices,
+        &key_routes,
+        &empty_config_layer(),
+    );
+
+    // Then the active session id is unchanged and its history is untouched
+    // — no session was created for the load.
+    assert_eq!(*state.session.active_session_id(), old_id);
+    assert_eq!(state.active_session().history().len(), 1);
+    // And the picker's scope was popped, so focus returned to the scope
+    // that sat beneath it (the input scope jinn boots into) — the handler
+    // applies the row's pop signal as it dispatches.
+    assert_eq!(
+        state.frontend.scope(),
+        jinn_slices::FocusScope::Input,
+        "the enter load must close the picker"
+    );
+    // And the result carries the launch enqueue.
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|name| name.contains("EnqueueUserMessage")),
+        "expected EnqueueUserMessage in {:?}",
+        result.message_names
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn enter_enqueues_the_start_message_into_the_active_session() {
+    // Given an activated workflows slice with an open picker over one
+    // workflow and a pre-existing active session.
+    let (slices, key_routes) = activated().await;
+    let cell = slices
+        .reader(&workflows_picker_slot())
+        .expect("workflow picker cell registered at activation");
+    opened(&cell, &["research-report"]);
+    let mut state = AppState::default_with_scope_focus();
+    let active_id = state.session.active_session_id().clone();
+
+    // When handling the picker's enter intent and running its publish
+    // closures against a recording sink.
+    let result = jinn_kernel::IntentHandler::handle(
+        &jinn_kernel::KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
+            workflow_picker_scope(),
+            "load-highlighted-workflow",
+            "load-highlighted-workflow",
+        )),
+        &mut state,
+        &slices,
+        &key_routes,
+        &empty_config_layer(),
+    );
+    let sink = RecordingSink::new();
+    for message in result.messages {
+        message(&sink);
+    }
+
+    // Then exactly one user entry crossed, reading `start <name> workflow`,
+    // addressed to the session that was active at the keypress.
+    let enqueue = sink.find("EnqueueUserMessage");
+    assert!(
+        !enqueue.is_null(),
+        "the launch enqueues one message; got {enqueue}"
+    );
+    let kind = &enqueue["entry"]["kind"];
+    let text = kind["User"]["display"]
+        .as_str()
+        .or_else(|| kind["User"]["expanded"].as_str())
+        .expect("the user entry carries its text");
+    assert_eq!(text, "start research-report workflow");
+    assert_eq!(
+        enqueue["session_id"].as_str(),
+        Some(active_id.to_string().as_str()),
+        "the enqueue must name the pre-existing active session"
+    );
+    // And the launch message is the only thing the load published.
+    assert_eq!(sink.count_matching("EnqueueUserMessage"), 1);
+    assert_eq!(result.message_names.len(), 1);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn enter_with_no_rows_does_nothing() {
+    // Given an activated workflows slice whose picker is open over nothing.
+    let (slices, key_routes) = activated().await;
+    let cell = slices
+        .reader(&workflows_picker_slot())
+        .expect("workflow picker cell registered at activation");
+    opened(&cell, &[]);
+    let mut state = AppState::default_with_scope_focus();
+    let old_id = state.session.active_session_id().clone();
+    state
+        .frontend
+        .scope_push(jinn_slices::FocusScope::Dynamic(workflow_picker_scope()));
+
+    // When handling the picker's enter intent.
+    let result = jinn_kernel::IntentHandler::handle(
+        &jinn_kernel::KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
+            workflow_picker_scope(),
+            "load-highlighted-workflow",
+            "load-highlighted-workflow",
+        )),
+        &mut state,
+        &slices,
+        &key_routes,
+        &empty_config_layer(),
+    );
+
+    // Then no message crosses, the picker stays open, and the active
+    // session id is unchanged — a picker over nothing cannot launch.
+    assert_eq!(result.message_names.len(), 0, "{:?}", result.message_names);
+    assert_eq!(
+        state.frontend.scope(),
+        jinn_slices::FocusScope::Dynamic(workflow_picker_scope()),
+        "a declined load must not close the picker"
+    );
+    assert_eq!(*state.session.active_session_id(), old_id);
+}
+
+// ── Launch in a new session (c-enter) ───────────────────────────────────
+
+#[rstest::rstest]
+#[tokio::test]
+async fn c_enter_creates_a_fresh_session_for_the_workflow() {
     // Given an activated workflows slice with an open picker over one
     // workflow, and state whose active session has history.
     let (slices, key_routes) = activated().await;
@@ -326,8 +485,12 @@ async fn enter_creates_a_fresh_session_for_the_workflow() {
     state
         .active_session_mut()
         .push_entry(jinn_core_types::ChatEntry::user("old"));
+    // The picker's own scope sits on the stack, as it would in production.
+    state
+        .frontend
+        .scope_push(jinn_slices::FocusScope::Dynamic(workflow_picker_scope()));
 
-    // When handling the picker's enter intent.
+    // When handling the picker's c-enter intent.
     let result = jinn_kernel::IntentHandler::handle(
         &jinn_kernel::KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
             workflow_picker_scope(),
@@ -344,6 +507,10 @@ async fn enter_creates_a_fresh_session_for_the_workflow() {
     // session creation's own observable change, not the message's.
     assert_ne!(*state.session.active_session_id(), old_id);
     assert!(state.active_session().history().is_empty());
+    // And the picker closed through session creation's own transition: the
+    // overlays were cleared and the Input scope pushed, with no extra close
+    // signal from the row.
+    assert_eq!(state.frontend.scope(), jinn_slices::FocusScope::Input);
     // And the result carries the launch enqueue.
     assert!(
         result
@@ -357,7 +524,7 @@ async fn enter_creates_a_fresh_session_for_the_workflow() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn enter_enqueues_the_start_message_into_the_new_session() {
+async fn c_enter_enqueues_the_start_message_into_the_new_session() {
     // Given an activated workflows slice with an open picker over one
     // workflow.
     let (slices, key_routes) = activated().await;
@@ -367,83 +534,8 @@ async fn enter_enqueues_the_start_message_into_the_new_session() {
     opened(&cell, &["research-report"]);
     let mut state = AppState::default_with_scope_focus();
 
-    // When handling the picker's enter intent.
-    let result = jinn_kernel::IntentHandler::handle(
-        &jinn_kernel::KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
-            workflow_picker_scope(),
-            "start-highlighted-workflow",
-            "start-highlighted-workflow",
-        )),
-        &mut state,
-        &slices,
-        &key_routes,
-        &empty_config_layer(),
-    );
-
-    // Then the enqueue names the session the launch created — the
-    // message-side fact, separate from the state change.
-    let expected_session = state.session.active_session_id().clone();
-    assert!(
-        result
-            .message_names
-            .iter()
-            .any(|n| n.contains("EnqueueUserMessage")),
-        "expected EnqueueUserMessage in {:?}",
-        result.message_names
-    );
-    // And the new session's lifecycle is the blank one `handle_session_new`
-    // always produces.
-    assert!(state.active_session().lifecycle_name().is_none());
-    assert_eq!(state.session.active_session_id(), &expected_session);
-}
-
-#[rstest::rstest]
-#[tokio::test]
-async fn enter_with_no_rows_does_nothing() {
-    // Given an activated workflows slice whose picker is open over nothing.
-    let (slices, key_routes) = activated().await;
-    let cell = slices
-        .reader(&workflows_picker_slot())
-        .expect("workflow picker cell registered at activation");
-    opened(&cell, &[]);
-    let mut state = AppState::default_with_scope_focus();
-    let old_id = state.session.active_session_id().clone();
-
-    // When handling the picker's enter intent.
-    let result = jinn_kernel::IntentHandler::handle(
-        &jinn_kernel::KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
-            workflow_picker_scope(),
-            "start-highlighted-workflow",
-            "start-highlighted-workflow",
-        )),
-        &mut state,
-        &slices,
-        &key_routes,
-        &empty_config_layer(),
-    );
-
-    // Then no session is created — a picker over nothing cannot launch.
-    assert_eq!(*state.session.active_session_id(), old_id);
-    assert!(
-        !result
-            .message_names
-            .iter()
-            .any(|name| name.contains("EnqueueUserMessage"))
-    );
-}
-
-#[rstest::rstest]
-#[tokio::test]
-async fn the_launch_message_carries_the_workflow_name() {
-    // Given an open picker over one workflow.
-    let (slices, key_routes) = activated().await;
-    let cell = slices
-        .reader(&workflows_picker_slot())
-        .expect("workflow picker cell registered at activation");
-    opened(&cell, &["research-report"]);
-    let mut state = AppState::default_with_scope_focus();
-
-    // When running the result's publish closures against a recording sink.
+    // When handling the picker's c-enter intent and running its publish
+    // closures against a recording sink.
     let result = jinn_kernel::IntentHandler::handle(
         &jinn_kernel::KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
             workflow_picker_scope(),
@@ -460,11 +552,18 @@ async fn the_launch_message_carries_the_workflow_name() {
         message(&sink);
     }
 
-    // Then exactly one user entry crossed, reading `start <name> workflow`.
+    // Then the enqueue names the session the launch created and reads the
+    // launch text — the message-side fact, separate from the state change.
+    let expected_session = state.session.active_session_id().clone();
     let enqueue = sink.find("EnqueueUserMessage");
     assert!(
         !enqueue.is_null(),
         "the launch enqueues one message; got {enqueue}"
+    );
+    assert_eq!(
+        enqueue["session_id"].as_str(),
+        Some(expected_session.to_string().as_str()),
+        "the enqueue must name the newly created session"
     );
     let kind = &enqueue["entry"]["kind"];
     let text = kind["User"]["display"]
@@ -475,6 +574,41 @@ async fn the_launch_message_carries_the_workflow_name() {
     // And the launch message is the only extra thing the launch published
     // beyond session creation.
     assert_eq!(sink.count_matching("EnqueueUserMessage"), 1);
+    // And the new session's lifecycle is the blank one `handle_session_new`
+    // always produces.
+    assert!(state.active_session().lifecycle_name().is_none());
+    assert_eq!(state.session.active_session_id(), &expected_session);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn c_enter_with_no_rows_does_nothing() {
+    // Given an activated workflows slice whose picker is open over nothing.
+    let (slices, key_routes) = activated().await;
+    let cell = slices
+        .reader(&workflows_picker_slot())
+        .expect("workflow picker cell registered at activation");
+    opened(&cell, &[]);
+    let mut state = AppState::default_with_scope_focus();
+    let old_id = state.session.active_session_id().clone();
+
+    // When handling the picker's c-enter intent.
+    let result = jinn_kernel::IntentHandler::handle(
+        &jinn_kernel::KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
+            workflow_picker_scope(),
+            "start-highlighted-workflow",
+            "start-highlighted-workflow",
+        )),
+        &mut state,
+        &slices,
+        &key_routes,
+        &empty_config_layer(),
+    );
+
+    // Then no session is created and no message crosses — a picker over
+    // nothing cannot launch into a new session either.
+    assert_eq!(*state.session.active_session_id(), old_id);
+    assert_eq!(result.message_names.len(), 0, "{:?}", result.message_names);
 }
 
 // ── Rescan ──────────────────────────────────────────────────────────────
