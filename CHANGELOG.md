@@ -3,8 +3,11 @@
 ## (development)
 
 - Add `tell_session` tool for inter-session communication.
+- Session ID is now displayed in the chat history when a new session is created.
+  - This is a prelim implementation so you can copy+paste the ID for `tell_session`
+- Update `workflows` skill. It should now make more reliable workflows.
 - Add `autodev` workflow.
-- `<leader>sx` can be used to disable/enable stream rules.
+- `<leader>sx` can be used to disable/enable stream rules via picker.
   - Stream rule status is saved under `[stream_rules] disabled_rules = ["foo", ...]` in `jinn.toml`
 
 ## 2026-10-13 v1.6.2
