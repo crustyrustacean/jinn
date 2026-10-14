@@ -23,6 +23,7 @@ use jinn_stream_rule_picker_msg::PersistStreamRuleDisabled;
 use jinn_stream_rule_picker_msg::{
     StreamRulePickerState, stream_rule_picker_scope, stream_rule_picker_slot,
 };
+use std::fmt::Write as _;
 use std::sync::Arc;
 
 use crate::stream_rule_picker_actions;
@@ -125,6 +126,21 @@ async fn activated_doc(
     ConfigLayer,
     std::path::PathBuf,
 ) {
+    activated_layer(config_layer(doc), prefs).await
+}
+
+/// The real [`activate`] over a caller-built config layer — the variant
+/// the instrumented-backend test needs, where the dispatched layer must
+/// wrap a backend the test owns.
+async fn activated_layer(
+    layer: ConfigLayer,
+    prefs: std::path::PathBuf,
+) -> (
+    jinn_slices::Slices,
+    KeyRoutes,
+    ConfigLayer,
+    std::path::PathBuf,
+) {
     let slices = jinn_slices::Slices::new();
     // Production boot seeds every slice cell before any slice activates;
     // `activate` resolves the picker's cell by slot key, so the harness
@@ -144,7 +160,7 @@ async fn activated_doc(
 
     crate::activate(&mut host, prefs.clone(), config_layer(TWO_RULES));
 
-    (slices, key_routes, config_layer(doc), prefs)
+    (slices, key_routes, layer, prefs)
 }
 
 /// The real [`activate`] over a specific preferences path — the variant the
@@ -1121,7 +1137,7 @@ async fn confirm_leaves_a_status_line_in_the_cell() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn confirm_publishes_no_matcher_refresh_itself() {
+async fn confirm_publishes_exactly_the_persist_command() {
     // Given an open picker with one rule toggled pending-off.
     let (slices, key_routes, config, _prefs) = activated().await;
     let mut state = AppState::default_with_scope_focus();
@@ -1149,76 +1165,14 @@ async fn confirm_publishes_no_matcher_refresh_itself() {
         &config,
     );
 
-    // Then the result carries only the persist command: the matcher refresh
-    // belongs to the persist actor, published after the writes land — a
+    // Then the result carries exactly the persist command and nothing
+    // else — in particular no matcher refresh: the refresh belongs to
+    // the persist actor, published only after every write landed, and a
     // refresh from here would recompile the matcher before the write.
-    assert!(
-        !result
-            .message_names
-            .iter()
-            .any(|name| name.contains("RefreshStreamRuleMatcher")),
-        "the confirm must not publish the matcher refresh, got {:?}",
-        result.message_names
-    );
     assert_eq!(
         result.message_names,
         vec!["PersistStreamRuleDisabled"],
         "the persist command is the only thing a confirm publishes"
-    );
-}
-
-#[rstest::rstest]
-#[tokio::test]
-async fn a_failed_confirm_publishes_no_refresh() {
-    // Given an open picker whose rows name rules the config no longer
-    // holds — the file changed underneath the picker.
-    let (slices, key_routes, config, _prefs) = activated().await;
-    let cell: TypedCell<StreamRulePickerState> = slices
-        .reader(&stream_rule_picker_slot())
-        .expect("stream-rule picker cell registered at activation");
-    let mut state = AppState::default_with_scope_focus();
-    dispatch(
-        "open-stream-rule-picker",
-        &mut state,
-        &slices,
-        &key_routes,
-        &config,
-    );
-    cell.update(|picker| {
-        let mut rules = config
-            .get_list::<jinn_preferences_config::schemas::StreamRuleConfig>()
-            .expect("read");
-        rules[0].name = "renamed-under-us".to_owned();
-        picker
-            .selection
-            .set_items(jinn_stream_rule_picker_msg::build_stream_rule_entries(
-                &rules,
-                &std::collections::HashSet::new(),
-                &picker.theme,
-            ));
-    });
-
-    // When confirming — the write targets an entry that is not there.
-    let result = dispatch(
-        "confirm-stream-rule-picker",
-        &mut state,
-        &slices,
-        &key_routes,
-        &config,
-    );
-
-    // Then nothing was published: the live matcher is only refreshed for
-    // a set that actually landed.
-    assert!(
-        result.messages.is_empty(),
-        "a failed confirm must not publish a refresh, got {:?}",
-        result.message_names
-    );
-    // And the picker stayed open over the unsaved set.
-    assert_eq!(
-        state.frontend.scope(),
-        jinn_slices::FocusScope::Dynamic(stream_rule_picker_scope()),
-        "a failed confirm must keep the picker open"
     );
 }
 
@@ -1253,9 +1207,15 @@ async fn reopening_after_a_confirm_shows_the_persisted_state() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn an_unknown_rule_fails_the_confirm_into_the_status_line_without_closing() {
+async fn a_stale_name_confirm_publishes_the_command_and_closes_the_picker() {
     // Given a picker whose rows were reseeded over a config that no longer
-    // holds them — the file changed underneath the open picker.
+    // holds them — the file changed underneath the open picker. This test
+    // pins where the old pre-check's guarantees now live: a stale-name
+    // confirm publishes the command and closes like any other confirm; the
+    // unknown-name refusal and its chat-error report are the persist
+    // actor's (covered by the storage and actor suites), never the
+    // picker's. Do not reintroduce a picker-side check "for UX" — it was
+    // the N-assemblies-per-confirm hitch this slice existed to remove.
     let (slices, key_routes, config, _prefs) = activated().await;
     let cell: TypedCell<StreamRulePickerState> = slices
         .reader(&stream_rule_picker_slot())
@@ -1289,9 +1249,9 @@ async fn an_unknown_rule_fails_the_confirm_into_the_status_line_without_closing(
         &config,
     );
 
-    // When confirming — the config's own rule list still carries the old
-    // name, so the write targets an entry that is not there.
-    dispatch(
+    // When confirming — the write targets an entry that is not there, and
+    // the failure is the actor's to report.
+    let result = dispatch(
         "confirm-stream-rule-picker",
         &mut state,
         &slices,
@@ -1299,24 +1259,222 @@ async fn an_unknown_rule_fails_the_confirm_into_the_status_line_without_closing(
         &config,
     );
 
-    // Then the confirm failed into the status line, naming the rule.
-    let status = cell.read().status.clone();
+    // Then the command rode out — the actor will refuse the unknown name
+    // off-thread and report it in chat.
+    let command =
+        persist_command_of(result).expect("a stale-name confirm must still carry the command");
     assert!(
-        status
-            .as_deref()
-            .is_some_and(|text| text.contains("renamed-under-us")),
-        "a failed confirm must name the problem in the status line, got {status:?}"
+        command
+            .changes
+            .iter()
+            .any(|change| change.name == "renamed-under-us" && change.disabled),
+        "the stale name must ride the command: {:?}",
+        command.changes
     );
-    // And the picker stayed open — a failed confirm is not a finished one.
-    assert_eq!(
+    // And the picker closed like any other confirm.
+    assert_ne!(
         state.frontend.scope(),
         jinn_slices::FocusScope::Dynamic(stream_rule_picker_scope()),
-        "a failed confirm must keep the picker open"
+        "a stale-name confirm must close the picker; its failure reports in chat"
     );
-    // And nothing was written — the unknown name has no entry to write, and
-    // the abort stopped before the sibling flag could be re-saved either.
+    // And nothing was written — the persist actor owns the write, and it
+    // will refuse this one.
     assert!(!persisted_of(&config, "no-todos"));
     assert!(!persisted_of(&config, "no-yelling"));
+}
+
+// ── Confirm cost ────────────────────────────────────────────────────────
+
+/// A backend that counts every `read` — the instrumented seam proving the
+/// confirm's zero-I/O property.
+///
+/// It delegates to an [`InMemoryConfigStorage`]: the counter observes the
+/// same call the real filesystem backend would receive, and the document
+/// behaves normally underneath.
+#[derive(Debug)]
+struct CountingStorage {
+    inner: InMemoryConfigStorage,
+    reads: std::sync::atomic::AtomicUsize,
+}
+
+impl CountingStorage {
+    fn new(doc: toml_edit::DocumentMut) -> Self {
+        Self {
+            inner: InMemoryConfigStorage::new(doc),
+            reads: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+
+    /// Reads counted so far, and the mutable view a test resets through.
+    fn reads(&self) -> usize {
+        self.reads.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn reset(&self) {
+        self.reads.store(0, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+impl jinn_config::ConfigDocumentStorage for CountingStorage {
+    fn name(&self) -> &'static str {
+        "CountingStorage"
+    }
+
+    fn read(
+        &self,
+    ) -> Result<toml_edit::DocumentMut, error_stack::Report<jinn_config::ConfigError>> {
+        self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.read()
+    }
+
+    fn write(
+        &self,
+        doc: &toml_edit::DocumentMut,
+    ) -> Result<(), error_stack::Report<jinn_config::ConfigError>> {
+        self.inner.write(doc)
+    }
+}
+
+/// A counting layer seeded over [`TWO_RULES`], with its backend returned.
+fn counting_layer() -> (ConfigLayer, Arc<CountingStorage>) {
+    let backend = Arc::new(CountingStorage::new(
+        TWO_RULES.parse().expect("test document parses"),
+    ));
+    let layer = ConfigLayer::load(backend.clone()).expect("layer loads");
+    (layer, backend)
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn confirm_never_reads_the_config_layer() {
+    // Given an activated slice whose dispatched layer wraps a counting
+    // backend, with a picker open and one rule toggled pending-off.
+    let (layer, backend) = counting_layer();
+    let (slices, key_routes, config, _prefs) = activated_layer(layer, temp_prefs()).await;
+    let mut state = AppState::default_with_scope_focus();
+    dispatch(
+        "open-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+    dispatch(
+        "toggle-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+    // The open legitimately reads through the layer; the assertion window
+    // starts after it, so the count it accrued is discarded here.
+    backend.reset();
+
+    // When confirming.
+    let result = dispatch(
+        "confirm-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // Then the backend's read was never consulted — the confirm reads the
+    // picker's own cell, builds the command, and hands off. An earlier
+    // revision assembled the whole rule set here once per pending row
+    // (a full template parse per row), which this counter would have
+    // caught as N reads.
+    assert_eq!(
+        backend.reads(),
+        0,
+        "the confirm must not read the config layer at all"
+    );
+    // And the command carried anyway — the proof is of a cheap confirm,
+    // not a broken one.
+    assert!(
+        persist_command_of(result).is_some(),
+        "a successful confirm must still carry the persist command"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn confirming_a_large_rule_set_still_closes_with_the_command() {
+    // Given an activated slice whose jinn.toml carries 120 rules — larger
+    // than the shipped set — opened over an empty sibling file so the
+    // assembled list is exactly those 120. The assertion is functional,
+    // never wall-clock: timing tests are flaky under the per-test timeout,
+    // and the zero-read proof above is the real cost guarantee.
+    let mut doc = String::new();
+    for i in 0..120 {
+        let _ = write!(
+            doc,
+            "[[stream_rules.entry]]\nname = \"bulk-rule-{i}\"\nconditions = ['FIXME']\nbody = \"Fix it.\"\n\n"
+        );
+    }
+    let (slices, key_routes, config, _prefs) =
+        activated_doc(&doc, temp_prefs_with_sibling("")).await;
+    let cell: TypedCell<StreamRulePickerState> = slices
+        .reader(&stream_rule_picker_slot())
+        .expect("stream-rule picker cell registered at activation");
+    let mut state = AppState::default_with_scope_focus();
+    dispatch(
+        "open-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+    assert_eq!(
+        visible_names(&cell).len(),
+        120,
+        "setup: the large set is listed"
+    );
+
+    // When two rules are toggled and the picker confirmed.
+    dispatch(
+        "toggle-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+    dispatch(
+        "toggle-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+    let result = dispatch(
+        "confirm-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // Then the picker closed and the command carried the whole set with
+    // exactly the two marked rules disabled — a confirm over a large set
+    // completes in one handoff, whatever the list size.
+    let command =
+        persist_command_of(result).expect("a successful confirm must carry the persist command");
+    assert_eq!(command.changes.len(), 120, "every row rides the command");
+    assert_eq!(
+        command
+            .changes
+            .iter()
+            .filter(|change| change.disabled)
+            .map(|change| change.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["bulk-rule-0", "bulk-rule-1"],
+        "exactly the two marked rules ride the command disabled"
+    );
+    assert_ne!(
+        state.frontend.scope(),
+        jinn_slices::FocusScope::Dynamic(stream_rule_picker_scope()),
+        "a large-set confirm must close the picker"
+    );
 }
 
 // ── Wiring ──────────────────────────────────────────────────────────────
