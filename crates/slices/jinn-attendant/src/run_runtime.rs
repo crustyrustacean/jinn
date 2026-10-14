@@ -16,6 +16,11 @@
 //! - A busy attendant has the seeded entry queued by the ordinary enqueue
 //!   handler; it runs when the in-flight turn finishes.
 //!
+//! The dispatched entry is a [`ChatEntryKind::Intersession`] — source the
+//! parent (the attendant itself when headless), target the attendant — so a
+//! dispatch renders like every other session→session message. The text is
+//! the composed seed, never wrapped in an attribution prefix.
+//!
 //! This module never cancels a turn. The manual path's cancel lives in
 //! `rerun` and stays there.
 
@@ -32,9 +37,9 @@ use crate::activation;
 /// to nothing (an empty template), the message *is* the prompt — an
 /// attendant with no standing instructions still receives its dispatch.
 ///
-/// The message goes in last so a session minting its title from the first
-/// line of a dispatched entry still titles itself from the seed, not from
-/// whatever one stage said to another.
+/// The message goes in last so the attendant's title — minted at dispatch
+/// from the seed's first non-empty line — describes the standing
+/// instructions, not whatever one stage said to another.
 #[must_use]
 pub fn seed_with_message(rendered: Option<String>, message: &str) -> String {
     match rendered {
@@ -51,7 +56,10 @@ pub fn seed_with_message(rendered: Option<String>, message: &str) -> String {
 /// which is the caller's cue to persist the session.
 ///
 /// This is [`activation::prepare_trigger_run`] with the message composed
-/// in: same reset, same seed pipeline, same prior-report fold.
+/// in: same reset, same seed pipeline, same prior-report fold, same
+/// Intersession entry kind — [`activation::dispatch_entry`] is the shared
+/// construction site, so kind, source fallback, and title mint cannot
+/// drift between the three paths.
 #[must_use]
 pub fn prepare_message_run(
     session: &mut ChatSessionState,
@@ -71,5 +79,5 @@ pub fn prepare_message_run(
     );
     let rendered = activation::render_seed_text(session.seed_template(), prior.as_deref(), &parent);
     let text = seed_with_message(rendered, message);
-    (Some(ChatEntry::user_expanded(text.clone(), text)), reset)
+    (Some(activation::dispatch_entry(session, &text)), reset)
 }
