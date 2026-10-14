@@ -1037,9 +1037,9 @@ fn teardown_only_emits_run_session_teardown() {
     state
         .active_session_mut()
         .set_lifecycle_name(Some("fossil branch".to_owned()));
-    state
-        .active_session_mut()
-        .set_lifecycle_args(vec!["my-branch".to_owned()]);
+    state.active_session_mut().set_lifecycle_args(
+        jinn_session_state::fields::LifecycleArgs::from_pairs([("$1", "my-branch")]),
+    );
     cursor_to_row(&mut state, 0);
     state
         .frontend
@@ -1086,9 +1086,9 @@ fn teardown_only_is_noop_when_session_busy() {
     state
         .active_session_mut()
         .set_lifecycle_name(Some("fossil branch".to_owned()));
-    state
-        .active_session_mut()
-        .set_lifecycle_args(vec!["my-branch".to_owned()]);
+    state.active_session_mut().set_lifecycle_args(
+        jinn_session_state::fields::LifecycleArgs::from_pairs([("$1", "my-branch")]),
+    );
     // Put the session mid-turn so close validation rejects it.
     state.active_session_mut().begin_streaming();
     cursor_to_row(&mut state, 0);

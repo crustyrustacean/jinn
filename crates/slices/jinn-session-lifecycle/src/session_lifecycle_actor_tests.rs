@@ -342,6 +342,54 @@ fn shell_config() -> jinn_config::ConfigLayer {
     )
 }
 
+/// A teardown whose placeholders are deliberately ordered differently from
+/// the session's recorded coordinates — the autodev incident's shape. Each
+/// `test` succeeds only when the placeholder carries its recorded value, so
+/// a positional substitution fails the command.
+fn reordered_teardown_config() -> jinn_config::ConfigLayer {
+    jinn_config::testutil::config_layer(
+        "[[session_lifecycle.script]]\nname = \"shell\"\n\
+         setup_command = \"echo $PWD\"\n\
+         teardown_command = \"test '<parent>' = 'FEATURE' && test '<branch>' = 'BRANCHY' && test '<dir>' = 'DIRTY'\"\n",
+    )
+}
+
+/// A teardown with a positional placeholder, replayed by a legacy session.
+fn positional_teardown_config() -> jinn_config::ConfigLayer {
+    jinn_config::testutil::config_layer(
+        "[[session_lifecycle.script]]\nname = \"shell\"\n\
+         setup_command = \"echo $PWD\"\n\
+         teardown_command = \"test $1 = 'legacy-first'\"\n",
+    )
+}
+
+/// A config whose teardown is a builtin reference.
+fn builtin_teardown_config() -> jinn_config::ConfigLayer {
+    jinn_config::testutil::config_layer(
+        "[[session_lifecycle.script]]\nname = \"shell\"\n\
+         setup_command = \"echo $PWD\"\n\
+         teardown_command = { builtin = \"recording-teardown\" }\n",
+    )
+}
+
+/// Builds an actor fixture with an explicit config layer in services.
+async fn config_fixture(config: jinn_config::ConfigLayer) -> ActorFixture {
+    let harness = TestHarness::new().await;
+    let mut services = harness.services().await;
+    services.config = config;
+    let state = State::new(AppState::default());
+    SessionLifecycleActor::spawn(
+        harness.system(),
+        SessionLifecycleActorDeps {
+            state: state.clone(),
+            services,
+            builtin_registry: BuiltinRegistry::new(),
+            shell: "/bin/sh".to_owned(),
+        },
+    );
+    ActorFixture { harness, state }
+}
+
 /// Builds an actor fixture with the shell lifecycle config in services.
 async fn shell_fixture() -> ActorFixture {
     let harness = TestHarness::new().await;
@@ -389,6 +437,25 @@ fn stamp_shell_lifecycle(fixture: &ActorFixture, session_id: &jinn_core_types::S
         .get_mut(session_id)
         .expect("session")
         .set_lifecycle_name(Some("shell".to_owned()));
+}
+
+/// Stamps named lifecycle coordinates on the session.
+fn stamp_named_args(
+    fixture: &ActorFixture,
+    session_id: &jinn_core_types::SessionId,
+    pairs: &[(&str, &str)],
+) {
+    fixture
+        .state
+        .write()
+        .session
+        .get_mut(session_id)
+        .expect("session")
+        .set_lifecycle_args(jinn_session_state::fields::LifecycleArgs::from_pairs(
+            pairs
+                .iter()
+                .map(|(key, value)| ((*key).to_owned(), (*value).to_owned())),
+        ));
 }
 
 #[rstest::rstest]
@@ -808,6 +875,176 @@ async fn a_recorded_teardown_runs_and_releases_the_slot() {
         finished[0].error
     );
     assert_eq!(finished[0].session_id, session_id);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn teardown_renders_by_name_when_placeholder_orders_differ() {
+    // Given a session whose recorded coordinates are ordered differently
+    // from the teardown template's placeholders — the autodev incident's
+    // shape, where a positional replay merged the wrong branch.
+    let fixture = config_fixture(reordered_teardown_config()).await;
+    let teardowns = fixture
+        .harness
+        .spawn_recorder::<SessionTeardownFinished>()
+        .await;
+    let session_id = seed_session(&fixture);
+    advance_past_setup(&fixture, &session_id);
+    fixture
+        .state
+        .write()
+        .session
+        .get_mut(&session_id)
+        .expect("session")
+        .set_lifecycle_name(Some("shell".to_owned()));
+    stamp_named_args(
+        &fixture,
+        &session_id,
+        &[
+            ("dir", "DIRTY"),
+            ("repo", "REPO"),
+            ("branch", "BRANCHY"),
+            ("parent", "FEATURE"),
+        ],
+    );
+
+    // When a teardown arrives for it.
+    fixture
+        .harness
+        .publish(RunSessionTeardown {
+            session_id: session_id.clone(),
+            command: "ignored-by-the-actor".to_owned(),
+            args: Vec::new(),
+        })
+        .await;
+
+    // Then it succeeds: every placeholder received its own recorded value,
+    // not the value at the same position.
+    let finished = await_recorded(&teardowns, 1, Duration::from_secs(5)).await;
+    assert!(
+        finished[0].error.is_none(),
+        "teardown must render by name, not position: {:?}",
+        finished[0].error
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn legacy_positional_pairs_still_tear_down_positionally() {
+    // Given a legacy session whose arguments were recorded as bare values
+    // (now stored as $n-keyed pairs) and a positional teardown template.
+    let fixture = config_fixture(positional_teardown_config()).await;
+    let teardowns = fixture
+        .harness
+        .spawn_recorder::<SessionTeardownFinished>()
+        .await;
+    let session_id = seed_session(&fixture);
+    advance_past_setup(&fixture, &session_id);
+    fixture
+        .state
+        .write()
+        .session
+        .get_mut(&session_id)
+        .expect("session")
+        .set_lifecycle_name(Some("shell".to_owned()));
+    stamp_named_args(&fixture, &session_id, &[("$1", "legacy-first")]);
+
+    // When a teardown arrives for it.
+    fixture
+        .harness
+        .publish(RunSessionTeardown {
+            session_id: session_id.clone(),
+            command: "ignored-by-the-actor".to_owned(),
+            args: Vec::new(),
+        })
+        .await;
+
+    // Then it succeeds: the values replayed positionally, as they always did.
+    let finished = await_recorded(&teardowns, 1, Duration::from_secs(5)).await;
+    assert!(
+        finished[0].error.is_none(),
+        "legacy positional replay must keep working: {:?}",
+        finished[0].error
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn builtin_teardown_receives_recorded_values_in_template_order() {
+    // Given a builtin teardown that records the values it was handed.
+    use std::sync::Mutex;
+    let received: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    struct RecordingTeardown {
+        seen: Arc<Mutex<Vec<String>>>,
+    }
+    impl BuiltinHandler for RecordingTeardown {
+        fn name(&self) -> &'static str {
+            "recording-teardown"
+        }
+        fn setup(
+            &self,
+            _session_id: &jinn_core_types::SessionId,
+            _args: &[String],
+        ) -> Result<std::path::PathBuf, Report<BuiltinHandlerError>> {
+            Ok(std::env::temp_dir())
+        }
+        fn teardown(&self, _session_id: &jinn_core_types::SessionId, args: &[String]) -> bool {
+            *self.seen.lock().expect("mutex") = args.to_vec();
+            true
+        }
+    }
+    let mut registry = BuiltinRegistry::new();
+    registry.register(
+        BuiltinId("recording-teardown".to_owned()),
+        Arc::new(RecordingTeardown {
+            seen: Arc::clone(&received),
+        }),
+    );
+    let harness = TestHarness::new().await;
+    let mut services = harness.services().await;
+    services.config = builtin_teardown_config();
+    let state = State::new(AppState::default());
+    SessionLifecycleActor::spawn(
+        harness.system(),
+        SessionLifecycleActorDeps {
+            state: state.clone(),
+            services,
+            builtin_registry: registry,
+            shell: "/bin/sh".to_owned(),
+        },
+    );
+    let fixture = ActorFixture { harness, state };
+    let teardowns = fixture
+        .harness
+        .spawn_recorder::<SessionTeardownFinished>()
+        .await;
+    let session_id = seed_session(&fixture);
+    advance_past_setup(&fixture, &session_id);
+    fixture
+        .state
+        .write()
+        .session
+        .get_mut(&session_id)
+        .expect("session")
+        .set_lifecycle_name(Some("shell".to_owned()));
+    stamp_named_args(&fixture, &session_id, &[("alpha", "ONE"), ("beta", "TWO")]);
+
+    // When the builtin teardown runs (a close carries the builtin teardown).
+    fixture
+        .harness
+        .publish(jinn_session_lifecycle_msg::CloseSession {
+            session_id: session_id.clone(),
+        })
+        .await;
+
+    // Then the handler received the values in recorded (template) order,
+    // keys dropped.
+    let delivered = poll_until(|| async { !received.lock().expect("mutex").is_empty() }).await;
+    assert!(delivered, "builtin teardown should have run");
+    assert_eq!(
+        received.lock().expect("mutex").as_slice(),
+        &["ONE".to_owned(), "TWO".to_owned()]
+    );
 }
 
 #[rstest::rstest]

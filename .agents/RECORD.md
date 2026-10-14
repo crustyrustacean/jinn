@@ -510,3 +510,6 @@ Entries are added or amended **only with human approval**.
 - (rules) A match held at the buffer's edge becomes eligible when the next delta arrives or when the stream finalizes.
 - (rules) A stream-rule session finalizes when the stream completes, re-testing every open buffer without edge suppression; cancelled, errored, and aborted streams never finalize.
 - (rules) Shipped `tool:bash` conditions delimit a command with real boundary bytes — the envelope's closing quote or shell delimiters — never the end of the accumulated buffer.
+- (lifecycle) Teardown replay renders recorded lifecycle arguments by placeholder name, not position; placeholder order between a script's setup and teardown commands is irrelevant.
+- (lifecycle) A session's lifecycle arguments persist as ordered name–value pairs, and a legacy bare-string array loads as positional `$n` pairs rendered positionally.
+- (lifecycle) Placeholder substitution shell-quotes in one pass, so a lifecycle template must not place a placeholder inside a quoted region of its own command.

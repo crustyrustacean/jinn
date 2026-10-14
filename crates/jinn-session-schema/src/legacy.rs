@@ -81,7 +81,7 @@ pub struct PersistableCoreV20 {
     pub fork_ordinal: Option<usize>,
     pub blobs: HashMap<String, serde_json::Value>,
     pub lifecycle_name: Option<String>,
-    pub lifecycle_args: Vec<String>,
+    pub lifecycle_args: Vec<(String, String)>,
     /// Serialized verbatim — the legacy column already holds the snake_case
     /// form (`nothing_ran`, `setup_ran`, `teardown_ran`) that matches the
     /// runtime `LifecycleScriptState`'s `#[serde(rename_all = "snake_case")]`.
@@ -118,9 +118,16 @@ impl PersistableCoreV20 {
             .attach("v20: failed to deserialize legacy blobs column")?;
 
         // Legacy columns hold bare JSON-ish array literals that may not be valid
-        // JSON; the original legacy load branch used unwrap_or_default. Preserve.
-        let lifecycle_args: Vec<String> =
+        // JSON; the original legacy load branch used unwrap_or_default. Preserve
+        // the tolerance here, and key bare values $1, $2, ... by index so the
+        // migrated session keeps the positional render it was recorded with.
+        let bare_args: Vec<String> =
             serde_json::from_str(&legacy.lifecycle_args).unwrap_or_default();
+        let lifecycle_args: Vec<(String, String)> = bare_args
+            .into_iter()
+            .enumerate()
+            .map(|(idx, value)| (format!("${}", idx + 1), value))
+            .collect();
 
         // Validate timestamps parse (they're written RFC 3339). Don't coerce.
         let _updated: Timestamp = legacy

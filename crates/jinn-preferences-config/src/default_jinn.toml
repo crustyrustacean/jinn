@@ -109,6 +109,15 @@ skill_filter = { mode = "deny", names = ["phased-task-loop"] }
 # > when the session is "closed" or the command can be ran manually with the `t`
 # > keyboard shortcut.
 #
+# > Placeholders are matched by NAME between the two commands: teardown receives
+# > the values recorded at setup under each placeholder's name, so the order the
+# > placeholders appear in either command is irrelevant.
+#
+# > Never place a placeholder inside a quoted region of the command. Values are
+# > shell-quoted for bare context when substituted; nested inside a quote you
+# > wrote (e.g. a `bash -c '...'` wrapper), a value carrying a quote character
+# > breaks the pairing. Run the command directly instead of wrapping it.
+#
 # > The `setup_command` can optionally end by printing the desired CWD and jinn
 # > will configure the session to use that CWD. This is useful when checking out
 # > a new branch in a new workspace and then switching to that workspace.

@@ -30,8 +30,6 @@
 
 use std::collections::BTreeMap;
 
-use unicode_segmentation::UnicodeSegmentation;
-
 use crate::lifecycle_completion_listener_actor::{
     AwaitKind, LifecycleCompletion, LifecycleCompletionListenerActor,
     LifecycleCompletionListenerDeps,
@@ -45,6 +43,7 @@ use jinn_kernel::common::state::State;
 use jinn_preferences_config::schemas::{LifecycleCommand, SessionLifecycle};
 use jinn_session_lifecycle_msg::LifecycleScriptState;
 use jinn_session_lifecycle_msg::command_template::CommandTemplate;
+use jinn_session_lifecycle_msg::command_template::Param;
 use jinn_session_lifecycle_msg::{RunSessionSetup, RunSessionTeardown};
 
 /// The `run_lifecycle` tool definition.
@@ -58,8 +57,9 @@ pub fn definition() -> ToolDefinition {
              a restart. Teardown needs only the session id: it re-runs the teardown the \
              session's stored coordinates name, and any script/path/args supplied with it \
              are ignored. Setup adopts the last path the script prints as the session's \
-             working directory. Values are shell-quoted before substitution, so they \
-             cannot alter the command."
+             working directory. Teardown re-renders by placeholder name, so placeholder \
+             order in the two commands is irrelevant. Values are shell-quoted before \
+             substitution, so they cannot alter the command."
             .to_owned(),
         prompt_snippet: Some(
             "Run a lifecycle script: `run_lifecycle` with the action and session id — \
@@ -254,7 +254,7 @@ async fn run_setup(
     // placeholders left to order against — and persist so they survive a
     // restart. Both land before the run command publishes: the actor may
     // process the command before this call returns.
-    let ordered = order_args(&CommandTemplate::parse(&raw_command), &args);
+    let ordered = pair_args(&CommandTemplate::parse(&raw_command), &args);
     {
         let mut guard = state.write();
         if let Some(session) = guard.session.get_mut(&target_id) {
@@ -286,7 +286,7 @@ async fn run_setup(
     bus.publish(RunSessionSetup {
         session_id: target_id.clone(),
         command: command.clone(),
-        args: ordered,
+        args: ordered.values(),
         lifecycle_command: Some(LifecycleCommand::Shell(command.clone())),
     })
     .await;
@@ -518,17 +518,28 @@ fn half_of<'a>(
 /// Renders the command through a single scan-and-emit pass that shell-quotes
 /// every substituted value.
 ///
-/// `CommandTemplate::render` quotes each value — but it substitutes with
-/// sequential `String::replace` passes, so a *value* carrying a later
-/// placeholder's shape (`<base> ; rm -rf /`) would be found by the next
-/// pass and substituted again, breaking out of its quotes. This renderer
-/// keeps the template's quoting (`shell_quote`) but emits left-to-right in
-/// one pass: emitted output is never re-scanned, so a value can never be
-/// mistaken for a placeholder.
+/// This is [`CommandTemplate::render_named`] plus the tool's validation: the
+/// one-pass scan (emitted output is never re-scanned, so a value carrying a
+/// later placeholder's shape is inert) lives in the contract crate, and both
+/// the tool's setup render and the teardown replay go through it.
 pub(crate) fn render_command(raw: &str, args: &BTreeMap<String, String>) -> Result<String, String> {
-    use jinn_session_lifecycle_msg::command_template::Param;
-    use jinn_session_lifecycle_msg::command_template::shell_quote;
     let template = CommandTemplate::parse(raw);
+    validate_named_params(&template, args)?;
+    template
+        .render_named(args)
+        .map_err(|error| error.to_string())
+}
+
+/// Validates that every placeholder in `template` is covered by `args`, and
+/// that the template uses only named placeholders.
+///
+/// Shared by the setup render and the pair stamping: both refuse a template
+/// naming a placeholder the call does not supply, and both refuse positional
+/// or splat placeholders the tool cannot fill.
+fn validate_named_params(
+    template: &CommandTemplate,
+    args: &BTreeMap<String, String>,
+) -> Result<(), String> {
     for param in template.params() {
         match param {
             Param::Named(name) => {
@@ -561,65 +572,26 @@ pub(crate) fn render_command(raw: &str, args: &BTreeMap<String, String>) -> Resu
             }
         }
     }
-    // Scan the source grapheme-wise, the way parse does: every `<name>`
-    // span in the original text becomes the quoted value; every other
-    // grapheme copies through. Emitted values are never revisited.
-    let mut out = String::with_capacity(raw.len());
-    let graphemes: Vec<&str> = raw.graphemes(true).collect();
-    let mut i = 0;
-    while i < graphemes.len() {
-        if graphemes[i] == "<"
-            && let Some((Param::Named(name), width)) = scan_named(&graphemes, i)
-        {
-            // Missing names were refused above.
-            let value = args.get(&name).map(String::as_str).unwrap_or_default();
-            out.push_str(&shell_quote(value));
-            i += width;
-            continue;
-        }
-        out.push_str(graphemes[i]);
-        i += 1;
-    }
-    Ok(out)
+    Ok(())
 }
 
-/// Scans one `<name>` span starting at `start`; returns the name and the
-/// span's grapheme width. Mirrors the lifecycle crate's own scan.
-fn scan_named(
-    graphemes: &[&str],
-    start: usize,
-) -> Option<(jinn_session_lifecycle_msg::command_template::Param, usize)> {
-    use jinn_session_lifecycle_msg::command_template::Param;
-    let mut end = start + 1;
-    while end < graphemes.len() && graphemes[end] != "<" {
-        if graphemes[end] == ">" {
-            let name: String = graphemes[start + 1..end].concat();
-            if name.is_empty() {
-                return None;
-            }
-            return Some((Param::Named(name), end - start + 1));
-        }
-        end += 1;
-    }
-    None
-}
-
-/// Orders the named argument map positionally the way the session's stored
-/// `lifecycle_args` expect (template parameter order).
-pub(crate) fn order_args(
+/// Pairs the named argument map into ordered name-value pairs in the
+/// template's first-appearance placeholder order.
+///
+/// Call [`validate_named_params`] first: pairing assumes every named
+/// placeholder has a supplied value.
+pub(crate) fn pair_args(
     template: &CommandTemplate,
     args: &BTreeMap<String, String>,
-) -> Vec<String> {
-    template
-        .params()
-        .iter()
-        .filter_map(|p| match p {
+) -> jinn_session_state::fields::LifecycleArgs {
+    jinn_session_state::fields::LifecycleArgs::from_pairs(template.params().iter().filter_map(
+        |p| match p {
             jinn_session_lifecycle_msg::command_template::Param::Named(name) => {
-                args.get(name).cloned()
+                args.get(name).map(|value| (name.clone(), value.clone()))
             }
             _ => None,
-        })
-        .collect()
+        },
+    ))
 }
 
 /// Reads one string argument from the call's JSON arguments.

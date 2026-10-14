@@ -241,12 +241,16 @@ impl SessionLifecycleActor {
     ) -> Option<String> {
         self.state.with_session(|view| {
             let session = view.session.map().get_mut(session_id)?;
-            let args = session.lifecycle_args().to_vec();
-            Some(if args.is_empty() {
-                command.to_owned()
-            } else {
-                CommandTemplate::parse(command).render(&args)
-            })
+            let args = session.lifecycle_args().clone();
+            // An error cannot occur for pairs stamped at write time (they
+            // covered the setup template's placeholders); if the script's
+            // placeholders changed after recording, replaying the raw command
+            // fails visibly rather than silently skipping the teardown.
+            Some(
+                CommandTemplate::parse(command)
+                    .render_stored(args.as_pairs())
+                    .unwrap_or_else(|_| command.to_owned()),
+            )
         })
     }
 
@@ -272,10 +276,10 @@ impl SessionLifecycleActor {
             state
                 .session
                 .get(session_id)
-                .map(|session| session.lifecycle_args().to_vec())
+                .map(|session| session.lifecycle_args().clone())
                 .unwrap_or_default()
         };
-        if handler.teardown(session_id, &args) {
+        if handler.teardown(session_id, &args.values()) {
             self.state.with_session(|view| {
                 if let Some(session) = view.session.map().get_mut(session_id) {
                     session.advance_lifecycle_after_teardown();
