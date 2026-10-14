@@ -136,12 +136,12 @@ async fn conclude_persists_the_session() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn notify_parent_enqueues_a_user_message_into_the_parent() {
+async fn notify_parent_enqueues_an_intersession_message_into_the_parent() {
     // Given an attendant with a live parent.
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, attendant_id, parent_id) = attendant_fixture();
-    let tool_ctx = ctx(&harness, &state, attendant_id).await;
+    let tool_ctx = ctx(&harness, &state, attendant_id.clone()).await;
 
     // When the notify tool runs.
     let result = notify_parent_execute(
@@ -150,16 +150,101 @@ async fn notify_parent_enqueues_a_user_message_into_the_parent() {
     )
     .await;
 
-    // Then the parent receives a User-kind enqueue.
+    // Then the parent receives an inter-session enqueue addressed
+    // source=attendant / target=parent, the same variant a tell_session
+    // plain delivery produces.
     assert!(result.success, "notify must succeed: {}", result.content);
     let wakes = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
     assert_eq!(wakes.len(), 1);
     assert_eq!(wakes[0].session_id, parent_id);
-    let jinn_core_types::chat_entry::ChatEntryKind::User { display, .. } = &wakes[0].entry.kind
+    let jinn_core_types::chat_entry::ChatEntryKind::Intersession {
+        source_session,
+        target_session,
+        ..
+    } = &wakes[0].entry.kind
     else {
-        panic!("the wake must be a User entry (title-derivation trap)");
+        panic!("the wake must be an Intersession entry (tell_session variant)");
     };
-    assert_eq!(display, "look at this");
+    assert_eq!(source_session, &attendant_id, "the attendant is the source");
+    assert_eq!(target_session, &parent_id, "the parent is addressed");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn notify_parent_composes_the_shared_attribution_prefix() {
+    // Given an attendant with a live parent.
+    let harness = TestHarness::new().await;
+    let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
+    let (state, attendant_id, _parent) = attendant_fixture();
+    let tool_ctx = ctx(&harness, &state, attendant_id.clone()).await;
+
+    // When the notify tool runs.
+    let result = notify_parent_execute(
+        call("notify_parent", r#"{"message":"look at this"}"#),
+        tool_ctx,
+    )
+    .await;
+
+    // Then the delivered text is the attributed format, byte-exact — the
+    // one composition site tell_session uses.
+    assert!(result.success, "{}", result.content);
+    let wakes = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
+    let jinn_core_types::chat_entry::ChatEntryKind::Intersession { text, .. } =
+        &wakes[0].entry.kind
+    else {
+        panic!("the wake must be an Intersession entry");
+    };
+    assert_eq!(
+        text.as_str(),
+        format!("[Message from session {attendant_id}]: look at this")
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn notify_parent_wake_is_included_in_the_parents_llm_context() {
+    // Given an attendant with a live parent.
+    let harness = TestHarness::new().await;
+    let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
+    let (state, attendant_id, _parent) = attendant_fixture();
+    let tool_ctx = ctx(&harness, &state, attendant_id).await;
+
+    // When the notify tool runs.
+    let result =
+        notify_parent_execute(call("notify_parent", r#"{"message":"wake up"}"#), tool_ctx).await;
+
+    // Then the delivered entry is in LLM context by default — the model
+    // reads the notification like a user message.
+    assert!(result.success, "{}", result.content);
+    let wakes = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
+    assert!(wakes[0].entry.is_in_context());
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn notify_parent_leaves_an_untitled_parent_untitled() {
+    // Given an attendant whose parent has no title.
+    let harness = TestHarness::new().await;
+    let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
+    let (state, attendant_id, parent_id) = attendant_fixture();
+    let tool_ctx = ctx(&harness, &state, attendant_id).await;
+
+    // When the notify tool runs.
+    let result = notify_parent_execute(
+        call("notify_parent", r#"{"message":"hello parent"}"#),
+        tool_ctx,
+    )
+    .await;
+
+    // Then the notification succeeded and the parent still has no title —
+    // title minting stays keyed to genuine user entries, and a stamped
+    // empty string would block every future mint.
+    assert!(result.success, "{}", result.content);
+    let wakes = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
+    assert_eq!(wakes.len(), 1);
+    let guard = state.read();
+    let parent = guard.session.get(&parent_id).expect("parent");
+    assert_eq!(parent.title(), None);
 }
 
 #[rstest::rstest]

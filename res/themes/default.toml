@@ -11,7 +11,7 @@ sidebar_resize_accent = "green"
 # Text
 primary_text = [220, 220, 220]
 muted_text = [116, 116, 116]
-subagent_fg = [152, 128, 208]
+subagent_fg = [178, 158, 240]
 subagent_bg = [70, 58, 105]
 attendant_fg = [255, 105, 180]
 attendant_bg = [56, 48, 17]

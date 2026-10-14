@@ -120,13 +120,21 @@ async fn idle_attendant_starts_a_run_seeded_with_the_message() {
     let recorded = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
     assert_eq!(recorded.len(), 1);
     assert_eq!(recorded[0].session_id, attendant_id);
-    // And the dispatched text carries the template seed and the message.
-    let jinn_core_types::chat_entry::ChatEntryKind::User { expanded, .. } = &recorded[0].entry.kind
+    // And the dispatched text carries the template seed and the message, as
+    // an Intersession dispatch attributed to the calling session.
+    let jinn_core_types::chat_entry::ChatEntryKind::Intersession {
+        source_session,
+        target_session,
+        text,
+        ..
+    } = &recorded[0].entry.kind
     else {
-        panic!("seeded run must dispatch as a user entry");
+        panic!("seeded run must dispatch as an intersession entry");
     };
-    assert!(expanded.contains("Review the diff."), "seed present");
-    assert!(expanded.contains("focus on main.rs"), "message present");
+    assert_eq!(target_session, &attendant_id);
+    assert_eq!(source_session, &user_id);
+    assert!(text.contains("Review the diff."), "seed present");
+    assert!(text.contains("focus on main.rs"), "message present");
     // And the target was marked interacted so its run persists.
     let guard = state.read();
     assert!(
@@ -158,14 +166,15 @@ async fn idle_attendant_with_empty_template_dispatches_the_message_alone() {
     )
     .await;
 
-    // Then the dispatched entry is the message alone.
+    // Then the dispatched entry is the message alone, still Intersession.
     assert!(result.success, "{}", result.content);
     let recorded = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
-    let jinn_core_types::chat_entry::ChatEntryKind::User { expanded, .. } = &recorded[0].entry.kind
+    let jinn_core_types::chat_entry::ChatEntryKind::Intersession { text, .. } =
+        &recorded[0].entry.kind
     else {
-        panic!("seeded run must dispatch as a user entry");
+        panic!("seeded run must dispatch as an intersession entry");
     };
-    assert_eq!(expanded, "just do the thing");
+    assert_eq!(text, "just do the thing");
 }
 
 #[rstest::rstest]

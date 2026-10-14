@@ -446,6 +446,60 @@ async fn dispatch_user_message_sets_title_on_first_message() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn an_intersession_first_entry_leaves_an_untitled_session_untitled() {
+    // Given a session with no title.
+    let (actor, state, _audit) = create_actor().await;
+    let sid = session_id();
+    let entry = ChatEntry::intersession(
+        SessionId::new(),
+        None,
+        sid.clone(),
+        "[Message from session abc]: stage finished",
+    );
+
+    // When dispatching the intersession entry as the first message.
+    actor
+        .dispatch_user_message(&sid, &entry, StreamOrigin::User)
+        .await;
+
+    // Then the title stays unset — a stamped empty string would flip the
+    // minting guard to `Some("")` and block every future title.
+    let state = state.read();
+    let session = state.session(&sid);
+    assert_eq!(session.title(), None);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_later_user_message_still_mints_the_title_after_an_intersession_entry() {
+    // Given a session whose first dispatch was an intersession entry.
+    let (actor, state, _audit) = create_actor().await;
+    let sid = session_id();
+    let intersession = ChatEntry::intersession(
+        SessionId::new(),
+        None,
+        sid.clone(),
+        "[Message from session abc]: stage finished",
+    );
+    actor
+        .dispatch_user_message(&sid, &intersession, StreamOrigin::User)
+        .await;
+
+    // When the user sends a real message.
+    let entry = ChatEntry::user("the real first question");
+    actor
+        .dispatch_user_message(&sid, &entry, StreamOrigin::User)
+        .await;
+
+    // Then the title mints from that user message — the intersession
+    // dispatch consumed no mint.
+    let state = state.read();
+    let session = state.session(&sid);
+    assert_eq!(session.title(), Some("the real first question"));
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn dispatch_user_message_does_not_overwrite_existing_title() {
     // Given a session with a title already set.
     let (actor, state, _audit) = create_actor().await;

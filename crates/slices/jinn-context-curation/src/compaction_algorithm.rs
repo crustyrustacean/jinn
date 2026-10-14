@@ -10,16 +10,24 @@ use jinn_llm_support::token_estimator::estimate_entry_tokens;
 /// (recent) region after compaction.
 ///
 /// The kept region must stand on its own as a valid message sequence — see
-/// [`adjust_cut_to_boundary`] Pass 3. Only `User` and `System` qualify: every
-/// other kind structurally depends on a preceding message to render validly
-/// in `entries_to_messages` (`Assistant` needs a preceding user turn; `ToolCall`
+/// [`adjust_cut_to_boundary`] Pass 3. `User`, `System`, and `Intersession`
+/// qualify: each renders as a standalone `LlmMessage::User` in
+/// `entries_to_messages`, so it is a self-sufficient first turn. Every other
+/// kind structurally depends on a preceding message to render validly
+/// (`Assistant` needs a preceding user turn; `ToolCall`
 /// attaches to a preceding `Assistant`; `ToolResult` needs a matching preceding
 /// `assistant.tool_calls[].id`). `Actor`/`Thinking`/`Transient`/`Error` render as
 /// prefixed `User` messages but are context-optional, not a guaranteed first turn.
+/// An `Intersession` must qualify because a parent→attendant dispatch — the
+/// attendant's standing instructions — is one: a cut landing on a leading
+/// dispatch would otherwise walk past and silently drop it.
 ///
 /// This is the predicate for Pass 3 of [`adjust_cut_to_boundary`].
 fn is_valid_kept_opener(kind: &ChatEntryKind) -> bool {
-    matches!(kind, ChatEntryKind::User { .. } | ChatEntryKind::System(..))
+    matches!(
+        kind,
+        ChatEntryKind::User { .. } | ChatEntryKind::System(..) | ChatEntryKind::Intersession { .. }
+    )
 }
 
 /// Adjust the token-based cut index forward to the next valid boundary.
@@ -268,6 +276,25 @@ mod tests {
         assert!(
             is_valid_kept_opener(&system.kind),
             "System should be valid opener"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn is_valid_kept_opener_accepts_an_intersession_dispatch() {
+        // Given an Intersession entry — a parent→attendant dispatch, which
+        // renders as a standalone user turn.
+        let source = jinn_core_types::SessionId::new();
+        let target = jinn_core_types::SessionId::new();
+        let dispatch = ChatEntry::intersession(source, None, target, "check the suite");
+
+        // When checking it for a valid kept-region opener.
+        // Then it is a valid opener: a compaction cut landing on a leading
+        // dispatch must keep it, or the attendant loses its standing
+        // instructions from the kept region entirely.
+        assert!(
+            is_valid_kept_opener(&dispatch.kind),
+            "an Intersession dispatch renders as a user turn and must open the kept region"
         );
     }
 

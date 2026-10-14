@@ -1,4 +1,11 @@
 //! Preparing an attendant's context and dispatching its run.
+//!
+//! Every dispatch is a [`ChatEntryKind::Intersession`](jinn_core_types::chat_entry::ChatEntryKind::Intersession) entry — source is the
+//! parent (the attendant itself when headless), target the attendant — so a
+//! run renders in the subagent color the same way every other session→session
+//! message does. The text is the composed seed, never wrapped in an
+//! attribution prefix: the seed's own `---`/`MESSAGE:` structure is the
+//! formatting.
 
 use jinn_attendant_msg::{
     NO_PARENT_SESSION_TEXT, NO_PRIOR_REPORT_TEXT, PARENT_SESSION_HEADER, PRIOR_REPORT_PLACEHOLDER,
@@ -139,8 +146,15 @@ pub fn prepare_trigger_run(
 }
 
 /// The prompt a run dispatches: the template with the prior report folded in.
+///
+/// The entry is [`ChatEntryKind::Intersession`](jinn_core_types::chat_entry::ChatEntryKind::Intersession) — source the parent session
+/// (the attendant itself when it has none), target the attendant, `source_name`
+/// always `None`: a dispatch is not an attributed message, the seed's own
+/// structure is the formatting. Building the entry is also the title mint
+/// point: an attendant never sends a genuine user message, so the queue actor's
+/// user-keyed mint would leave it untitled forever. See [`dispatch_entry`].
 #[must_use]
-fn seed_entry(session: &ChatSessionState) -> Option<ChatEntry> {
+fn seed_entry(session: &mut ChatSessionState) -> Option<ChatEntry> {
     let prior = session
         .latest_attendant_report()
         .map(|report| report.body.clone());
@@ -149,5 +163,42 @@ fn seed_entry(session: &ChatSessionState) -> Option<ChatEntry> {
         .as_ref()
         .map_or_else(|| NO_PARENT_SESSION_TEXT.to_owned(), ToString::to_string);
     render_seed_text(session.seed_template(), prior.as_deref(), &parent)
-        .map(|text| ChatEntry::user_expanded(text.clone(), text))
+        .map(|text| dispatch_entry(session, &text))
+}
+
+/// Builds the Intersession dispatch entry for `text`, minting the title.
+///
+/// One construction site shared by every dispatch path — trigger fire,
+/// manual re-run, and `tell_session` delivery — so the entry kind, the
+/// source fallback, and the title mint cannot drift between them.
+#[must_use]
+pub(crate) fn dispatch_entry(session: &mut ChatSessionState, text: &str) -> ChatEntry {
+    mint_title_from_seed(session, text);
+    let source = session
+        .parent_session()
+        .clone()
+        .unwrap_or_else(|| session.session_id().clone());
+    ChatEntry::intersession(source, None, session.session_id().clone(), text.to_owned())
+}
+
+/// Titles an untitled attendant from the seed's first non-empty line.
+///
+/// The first line of the composed text is the seed's standing instructions —
+/// [`crate::run_runtime::seed_with_message`] deliberately puts the message
+/// last so a title minted here describes the attendant, not one dispatch.
+/// Silent on a titled attendant, and never writes an empty string: a template
+/// opening with blank lines would otherwise flip the guard to `Some("")` and
+/// permanently block every later mint.
+fn mint_title_from_seed(session: &mut ChatSessionState, text: &str) {
+    if session.title().is_some() {
+        return;
+    }
+    let title = text
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(str::to_owned);
+    if let Some(title) = title {
+        session.set_title(title);
+    }
 }

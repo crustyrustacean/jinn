@@ -152,11 +152,15 @@ impl AttendantPinConfig {
     /// never reads.
     ///
     /// `None` is what keeps a tool result, system line, or actor notice out
-    /// of the spawn schema — see [`AttendantPinRole`] for why.
+    /// of the spawn schema — see [`AttendantPinRole`] for why. An
+    /// `Intersession` captures as a `User`-role pin: a parent→attendant
+    /// dispatch rides the prompt as a plain user turn, so a pinned dispatch
+    /// is a standing instruction the model reads as the user's.
     #[must_use]
     pub fn from_entry(entry: &jinn_core_types::ChatEntry) -> Option<Self> {
         let role = match &entry.kind {
-            jinn_core_types::ChatEntryKind::User { .. } => AttendantPinRole::User,
+            jinn_core_types::ChatEntryKind::User { .. }
+            | jinn_core_types::ChatEntryKind::Intersession { .. } => AttendantPinRole::User,
             jinn_core_types::ChatEntryKind::Assistant(_) => AttendantPinRole::Assistant,
             _ => return None,
         };
@@ -1028,6 +1032,29 @@ mod tests {
         // Then both pins survive, in order, with their roles intact — a
         // user instruction must not come back as an agent result.
         assert_eq!(read[0].pins, saved.pins, "document:\n{}", storage.text());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_pinned_intersession_dispatch_captures_as_a_user_role_pin_and_restores() {
+        // Given a pinned parent→attendant dispatch entry.
+        let source = jinn_core_types::SessionId::new();
+        let target = jinn_core_types::SessionId::new();
+        let dispatch =
+            jinn_core_types::ChatEntry::intersession(source, None, target, "always check tests");
+
+        // When capturing it for a saved attendant.
+        let pin = AttendantPinConfig::from_entry(&dispatch).expect("dispatch captures");
+
+        // Then it is a User-role pin — the dispatch rides the prompt as a
+        // plain user turn — and restores as a pinned user entry.
+        assert_eq!(pin.role, AttendantPinRole::User);
+        assert_eq!(pin.text, "always check tests");
+        let restored = pin.to_entry();
+        assert!(
+            matches!(restored.kind, jinn_core_types::ChatEntryKind::User { .. }),
+            "a captured dispatch restores as a user entry"
+        );
     }
 
     #[rstest::rstest]
