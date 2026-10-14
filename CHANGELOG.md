@@ -1,5 +1,9 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Do not make edits)**
 
+## 2026-10-13 v1.6.2
+
+- Stream rules will no longer trigger prematurely.
+
 ## 2026-10-13 v1.6.1
 
 - Remove unused `slate` path dependency.
