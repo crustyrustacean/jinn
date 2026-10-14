@@ -1,9 +1,11 @@
-**(Note to agents: CHANGELOG.md is human-authored only. Do not make edits)**
+**(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
 ## (development)
 
 - Add `tell_session` tool for inter-session communication.
 - Add `autodev` workflow.
+- `<leader>sx` can be used to disable/enable stream rules.
+  - Stream rule status is saved under `[stream_rules] disabled_rules = ["foo", ...]` in `jinn.toml`
 
 ## 2026-10-13 v1.6.2
 

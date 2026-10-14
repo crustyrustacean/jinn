@@ -3674,7 +3674,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-stream-rule-picker"
-version = "1.6.0"
+version = "1.6.2"
 dependencies = [
  "error-stack",
  "jinn-cell-catalog",
@@ -3702,7 +3702,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-stream-rule-picker-msg"
-version = "1.6.0"
+version = "1.6.2"
 dependencies = [
  "jinn-core-types",
  "jinn-picker",
@@ -3739,7 +3739,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-stream-rules-msg"
-version = "1.6.0"
+version = "1.6.2"
 dependencies = [
  "jinn-slices",
  "rstest",
