@@ -42,7 +42,8 @@ type WorkflowPickerCell = TypedCell<WorkflowPickerState>;
 /// key the picker actually binds — a footer that advertises a dead key is a
 /// bug.
 pub const WORKFLOW_PICKER_BINDINGS: &[(&str, &str)] = &[
-    ("<enter>", "start"),
+    ("<enter>", "load"),
+    ("<c-enter>", "new session"),
     ("<c-r>", "rescan"),
     ("<esc>", "cancel"),
 ];
@@ -124,8 +125,15 @@ pub fn attach_workflow_picker_rows(routes: &KeyRoutes, cell: &WorkflowPickerCell
     });
 
     routes.attach(row(
-        "start-highlighted-workflow",
+        "load-highlighted-workflow",
         "<enter>",
+        "general",
+        "load the highlighted workflow into the current session",
+        action(cell, load_highlighted_workflow),
+    ));
+    routes.attach(row(
+        "start-highlighted-workflow",
+        "<c-enter>",
         "general",
         "start the highlighted workflow in a new session",
         action(cell, start_highlighted_workflow),
@@ -258,7 +266,35 @@ fn open_workflow_picker(ctx: &mut ActionCtx<'_>, cell: &WorkflowPickerCell) -> I
     IntentResult::empty().with_scope_signal(ScopeSignal::Push(workflow_picker_scope()))
 }
 
-/// `<enter>`: create a new session and enqueue the workflow's launch
+/// `<enter>`: enqueue the highlighted workflow's launch message into the
+/// session that was active at the moment of the keypress.
+///
+/// The load path is the plain enqueue: a user entry, `start <name>
+/// workflow`, read by the orchestrating agent the way any prompt is. The
+/// picker closes on the load — a [`ScopeSignal::PopIf`], this picker's own
+/// cancel precedent — so focus returns to whatever sat beneath it.
+fn load_highlighted_workflow(ctx: &mut ActionCtx<'_>, cell: &WorkflowPickerCell) -> IntentResult {
+    let Some(state) = app(ctx) else {
+        return IntentResult::empty();
+    };
+
+    // Snapshot the highlighted name, then drop the guard before touching
+    // app state: the action borrows the context mutably for the rest of
+    // its body.
+    let name = cell.update(|picker| workflow_picker_actions::highlighted_name(picker));
+    let Some(name) = name else {
+        return IntentResult::empty();
+    };
+
+    let session_id = state.session.active_session_id().clone();
+    IntentResult::new_message(EnqueueUserMessage {
+        session_id,
+        entry: ChatEntry::user(format!("start {name} workflow")),
+    })
+    .with_scope_signal(ScopeSignal::PopIf(workflow_picker_scope()))
+}
+
+/// `<c-enter>`: create a new session and enqueue the workflow's launch
 /// message in it.
 ///
 /// Session creation runs through the same [`handle_session_new`] path every

@@ -20,7 +20,7 @@ in the which-key popup (`?`).
 | `<leader>sE` | Endpoint         | OpenRouter routing endpoint pin                       |
 | `<leader>sp` | Project          | Curated project dirs for quick session creation       |
 | `<leader>sl` | Lifecycle        | Lifecycle recipes for new sessions                    |
-| `<leader>sw` | Workflow         | Discovered workflows; enter starts one in a new session |
+| `<leader>sw` | Workflow         | Discovered workflows; enter loads one into the current session, ctrl+enter starts a new session |
 
 ## Inside a picker
 
