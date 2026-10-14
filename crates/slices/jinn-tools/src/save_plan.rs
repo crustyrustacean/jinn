@@ -280,6 +280,7 @@ mod tests {
         assert_eq!(result.pin_position, None);
     }
 
+    #[cfg(unix)]
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_no_pin_on_file_write_failure() {
