@@ -20,11 +20,18 @@
 # teardown. A failed teardown leaves the implementor session and checkout
 # intact; the orchestrator sends the merge-fix dispatch and re-issues
 # teardown on the same session.
+#
+# Never wrap a command in `bash -c` here: the runner already executes
+# every lifecycle command through `bash -c`, so a nested wrapper spawns
+# a second shell for nothing and its single quotes clash with the
+# shell-quoted values the runner substitutes for placeholders.
 
 # ── Fossil ────────────────────────────────────────────────────────
 # <repo>   repository file name, without extension (e.g. `jinn`)
 # <branch> the implementor's branch name (the orchestrator names it per
-#          spawn, e.g. `autodev-issue-007`)
+#          spawn, derived from the parent so runs on different feature
+#          branches can never collide: `<parent>-issue-007`, never a
+#          fixed prefix)
 # <parent> the orchestrator's current branch — the feature branch. Recorded
 #          at setup and replayed by teardown from the session's stored
 #          coordinates.
@@ -55,4 +62,4 @@ fossil branch close <branch> && cd .. && rm -rfv <dir>
 name = "autodev implementor (git)"
 description = "Worktree branched from the orchestrator's branch; teardown merges back into it"
 setup_command = "cd <repo> && git worktree add -b <branch> ../<branch> && cd .. && echo $(pwd)/<branch>"
-teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git commit -q -m "auto-commit at teardown") && git merge <parent> && if git diff --name-only --diff-filter=U | grep -q .; then echo "TEARDOWN-CONFLICT: unresolved paths; resolve and re-run" >&2; exit 1; fi && cd ../<repo> && git merge --no-ff <branch> -m "Merge <branch>" && git worktree remove ../<branch> && git branch -D <branch>'"""
+teardown_command = """git add -A && (git diff --cached --quiet || git commit -q -m "auto-commit at teardown") && git merge <parent> && if git diff --name-only --diff-filter=U | grep -q .; then echo "TEARDOWN-CONFLICT: unresolved paths; resolve and re-run" >&2; exit 1; fi && cd ../<repo> && git merge --no-ff <branch> -m "Merge <branch>" && git worktree remove ../<branch> && git branch -D <branch>"""
