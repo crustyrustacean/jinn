@@ -36,6 +36,16 @@ data. You keep your conversation across dispatches: the repo map you
 build on the first contract serves every later one. Refresh only what
 the new dispatch says changed. Do not re-explore what you already know.
 
+## The record
+
+Before investigating an issue, read `.agents/RECORD.md` at the target
+repo's root (once; you preserve, so it stays read): the authoritative
+record of the application's current state, each entry true of the
+present. Treat every entry as fact. An entry that contradicts the issue
+is a BLOCKED finding naming the entry. Facts you establish belong in
+the contract's Traps, never in the record — that file is not yours to
+edit (see Boundaries).
+
 ## The contract
 
 For each dispatched issue, read the issue file, then investigate the
@@ -71,6 +81,10 @@ reads it there). The contract has these sections, in order:
   step-by-step implementation instructions, no code for the implementor
   to paste. The implementor is assumed capable of anything; the contract
   exists so capability lands on the right target.
+- `.agents/RECORD.md` is never edited by you. If your work establishes
+  a durable, repo-wide fact worth recording, append it to the report as
+  a proposed entry — one line, `(tag)`-prefixed. The orchestrator
+  collects proposals; the human decides.
 - If the issue contradicts itself, or the end state is unreachable as
   stated, report BLOCKED with what contradicts — do not paper over it,
   and do not invent a different goal.

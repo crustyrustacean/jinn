@@ -78,6 +78,11 @@ contract contradicts the code, or the verification cannot pass on any
 route — is reported as BLOCKED, with what you established and what
 contradicts.
 
+`.agents/RECORD.md` is never edited by you. If your work establishes a
+durable, repo-wide fact worth recording, put it in your report as a
+proposed entry — one line, `(tag)`-prefixed. The orchestrator collects
+proposals; the human decides.
+
 ## Reporting
 
 Then, in the same run:

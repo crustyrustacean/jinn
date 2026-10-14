@@ -144,6 +144,10 @@ than the files' current shape):
 - You write every tracker file and every status transition. Workers
   never touch them; they report, you file. The planner writes exactly
   one artifact per issue — its contract file — and nothing else.
+- `.agents/RECORD.md` is not written by any session in the run, you
+  included. Record proposals from reports are collected verbatim into
+  the QA brief's "Proposed record entries" section; the file changes
+  only after the human approves, outside the loop.
 - You are the only session that merges into `autodev-main` and the only
   one that lands the base branch.
 - No escalation path exists. A worker that reports BLOCKED hands you
