@@ -42,3 +42,5 @@ stream_rules.toml
 .config/*
 worktrees/*
 .jinn-autocoder-trash/*
+.issues/*
+.autodev.ledger.md
