@@ -53,17 +53,21 @@ They can be created entirely in-app by typing in the instructions in the attenda
 
 ### Workflows
 
-Workflows are repeatable automated task lists that can be created and ran by `jinn`. To create a workflow, ask `jinn`:
+`jinn` can create repeatable task execution contexts using workflows. These can range from simple step-by-step processes, to orchestrated concurrent processes with inter-session communication. To build a workflow, ask `jinn`:
 
 - "I need a code review workflow"
 - "I want to burn captions into my videos, can you make a workflow to do that?
 - "Create a workflow to generate an article about a user-provided topic"
 
-`jinn` will walk you through the brief creation process and then save the workflow to your `~/.config/jinn/workflows/` directory.
+`jinn` will walk you through the workflow creation process and then save the workflow to the `~/.config/jinn/workflows/` directory.
 
-Run a workflow using `<leader>sw` and then select your workflow (a software development workflow called `autodev` is included).
+Each step in a workflow is governed by a Markdown file which can be edited to tune specific workflow steps.
 
-Each step in a workflow has a custom prompt that describes what should happen during that step. This makes it easy (ask `jinn`!) to tune specific steps to achieve the desired result.
+Included workflows:
+
+- `autodev`: concurrent software development with built-in review (see [Agentic Coding](#orchestration-based-development) for details).
+
+![Workflows](doc/screenshots/workflow.png)
 
 ### Task/todo list
 
@@ -191,13 +195,35 @@ teardown_command = "fossil merge trunk --force && fossil addremove && fossil com
 
 ## Agentic Coding
 
-The primary usage target for `jinn` is agentic coding, so it comes pre-packaged with prompts to help facilitate this.
+The primary usage target for `jinn` is agentic coding, so it comes pre-packaged with features to help facilitate this.
+
+|                           | Orchestration (`autodev`)                                                               | Goal (`#goal`)                                                                   | Plan (`#plan`)                                              | Plain prompting                                    |
+| ------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------- | -------------------------------------------------- |
+| **Your effort**           | Describe the feature once; QA at the end                                                | Answer a question round; review the brief; approve                               | Author and refine the plan; approve; steer the loop         | Everything: prompt, steer, verify each step        |
+| **Human time (hands-on)** | Minutes                                                                                 | ~15–30 min across a feature                                                      | 30–60+ min across a feature                                 | The whole session                                  |
+| **Tokens (relative)**     | Highest. Contracts, reviews, and orchestration overhead on top of implementation        | Medium-high: planning + autonomous implementation                                | Medium: plan once + autonomous implementation               | Lowest: no planning or review apparatus            |
+| **Wall clock**            | High, but parallel: large features can implement concurrently                           | Medium: single-session, sequential                                               | Medium: single-session, sequential                          | Shortest per step, longest overall on big features |
+| **Autonomy**              | Fully hands-off between QA reports; concurrent implementor sessions                     | Autonomous within the approved contract                                          | Autonomous within the approved plan, skill-dependent        | You drive every turn                               |
+| **Quality control**       | Built-in: per-issue contracts, a reviewer gate, project checks at every landing         | Contract end-state + verification you approve up front; optional `#gap-analysis` | Plan review + acceptance criteria; optional `#gap-analysis` | Whatever you check yourself                        |
+| **Best for**              | Bounded, decomposable work; parallel features; letting it run while you do other things | Clear end state, fuzzy details; one focused feature                              | You know how it should be built and want it done that way   | Quick fixes, exploration, one-shot edits           |
+
+### Orchestration-Based Development
+
+Use this when you want fully hands-off development. You'll tell the orchestrator what you want, and it will figure out what to do autonomously and then implement it. When it's done, it will generate a QA report describing what changed, how it should work, and how you can manually check that it works as expected.
+
+1. Start a new session (ideally in a new feature branch using the project picker + lifecycle script)
+2. Use the workflow picker to load `autodev`
+   - You can also tell `jinn` to `run the autodev workflow` and describe what you want done in a single prompt, without having to wait.
+3. When prompted, describe the feature you want.
+4. Once the orchestrator finishes, you'll be presented with a report.
+5. Manually test (or not) the new build.
+6. Merge your branch back into main/trunk using `X`.
 
 ### Goal-Based Feature Implementation
 
 Use this when you want an agent to arrive at a goal fully autonomously by giving it a rough idea of the end state. The agent will handle the details and is specifically instructed to replan as needed to reach the goal. Although the agent will ultimately decide how things get done, you can still configure what it should and shouldn't do before entering autonomous mode.
 
-1. Start a new session
+1. Start a new session (ideally in a new feature branch using the project picker + lifecycle script)
 2. Type `#goal` followed by what you want to do. The agent will ask questions, gather context, and eventually propose a "_Contract Brief_" in the chat.
    - The brief should be reviewed by you: it contains a summary+inventory of the end state.
 3. If you want anything changed in the brief, tell the agent now.
@@ -209,12 +235,13 @@ Use this when you want an agent to arrive at a goal fully autonomously by giving
 6. Tell the agent to begin.
 7. After the agent finishes, it will produce a report documenting any potential issues and if any followups are needed.
 8. You can optionally send a `#gap-analysis` prompt to double-check the agent's work.
+9. Merge your branch back into main/trunk using `X`.
 
 ### Plan-Based Feature Implementation
 
 Use this when you want a `plan` -> `implement` -> `verify` workflow with control over the implementation details. The agent will surface potential issues with your plan, offer alternatives, and it won't finalize a plan until all blockers have been resolved.
 
-1. Start a new session
+1. Start a new session (ideally in a new feature branch using the project picker + lifecycle script)
 2. Type `#plan` (to load the planning prompt) followed by what you want to do. The agent will ask questions to clarify things that are ambiguous, and then eventually propose a plan in the chat.
 3. You can continue to refine the plan or push back on certain elements of the plan until it looks good. Once ready, send an `#approve-plan` message to approve the plan.
    - Using the `#approve-plan` prompt causes the agent to write a detailed plan that includes code samples and the reasoning behind particular choices. This helps the implementer avoid taking a shortcut like "Oh, we can just do `foo` instead" because the plan will specifically mention why `foo` was _not_ chosen.
@@ -225,6 +252,7 @@ Use this when you want a `plan` -> `implement` -> `verify` workflow with control
    - You don't _have_ to use one of these skills to begin the coding loop, but it's recommended because they include instructions about periodically getting the latest code to reduce merge conflicts, and also how to properly manage the task list. The skills are SCM and language-agnostic and have been tested on `git`, `Fossil`, `Rust`, `Kotlin`, `Android`, and Shell scripts.
 5. After implementation is complete, you can optionally submit a `#gap-analysis` message.
    - Using the `#gap-analysis` prompt tells the agent to confirm that the implementation meets the acceptance criteria. It will produce a report explaining the acceptance criteria, if it was met, and potential resolutions for gaps.
+6. Merge your branch back into main/trunk using `X`.
 
 ## Builtin Prompts
 
