@@ -29,31 +29,83 @@ use crate::stream_rule_picker_routes::{self, STREAM_RULE_PICKER_BINDINGS};
 /// A `jinn.toml` document carrying two named rules.
 const TWO_RULES: &str = "[[stream_rules.entry]]\nname = \"no-todos\"\nconditions = ['TODO']\nbody = \"Finish it.\"\n\n[[stream_rules.entry]]\nname = \"no-yelling\"\nconditions = ['!!!']\nbody = \"Calm down.\"\n";
 
+/// The sibling `stream_rules.toml` the standard harness writes: the same
+/// two rules the config layer's `TWO_RULES` carries, so the assembled list
+/// is deterministic — the user file replaces the embedded base set, and
+/// the jinn.toml entries dedupe-replace its same-named rows in place.
+const SIBLING_RULES: &str = "[[stream_rules.entry]]\nname = 'no-todos'\nconditions = ['TODO']\nscopes = ['text']\nbody = 'Finish it.'\n\n[[stream_rules.entry]]\nname = 'no-yelling'\nconditions = ['!!!']\nscopes = ['text']\nbody = 'Calm down.'\n";
+
+/// A leaked temp dir whose `jinn.toml` path has a sibling `stream_rules.toml`
+/// holding [`SIBLING_RULES`] — the shape a run's preferences path takes when
+/// the user keeps their rule set in the standalone file. Leaked because the
+/// captured path outlives the helper and the reads never write to it.
+fn temp_prefs() -> std::path::PathBuf {
+    temp_prefs_with_sibling(SIBLING_RULES)
+}
+
+/// A leaked temp dir with a sibling `stream_rules.toml` written at `body`,
+/// for the tests that exercise the merged-list shape.
+fn temp_prefs_with_sibling(body: &str) -> std::path::PathBuf {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("jinn.toml");
+    let sibling = dir
+        .path()
+        .join(jinn_preferences_config::STREAM_RULES_FILE_NAME);
+    std::fs::write(&sibling, body).expect("write sibling rules file");
+    std::mem::forget(dir);
+    path
+}
+
 /// A picker cell wired to a fresh route table over a layer holding
-/// `TWO_RULES`.
+/// `TWO_RULES`, with the run's preferences path captured like activation
+/// captures it.
 ///
 /// The cell is minted locally on its own registry — the catalog owns the
 /// production registration — because these tests exercise picker *behavior*
 /// directly, where the registration path is incidental.
-fn wired() -> (TypedCell<StreamRulePickerState>, KeyRoutes, ConfigLayer) {
+fn wired() -> (
+    TypedCell<StreamRulePickerState>,
+    KeyRoutes,
+    ConfigLayer,
+    std::path::PathBuf,
+) {
     let routes = KeyRoutes::new();
     let cell = jinn_slices::Slices::new()
         .register(stream_rule_picker_slot(), StreamRulePickerState::default())
         .expect("stream-rule picker slot is free in a fresh registry");
-    stream_rule_picker_routes::attach_stream_rule_picker_rows(&routes, &cell);
+    let prefs = temp_prefs();
+    stream_rule_picker_routes::attach_stream_rule_picker_rows(&routes, &cell, &prefs);
     stream_rule_picker_routes::register_stream_rule_picker_input_hook(&routes, &cell);
-    (cell, routes, config_layer(TWO_RULES))
+    (cell, routes, config_layer(TWO_RULES), prefs)
 }
 
-/// A slice activated through the real [`activate`], with its registry,
-/// route table, and a config layer holding `TWO_RULES` returned for
-/// inspection.
+/// A slice activated through the real [`activate`] over `TWO_RULES`, with
+/// its registry, route table, config layer, and preferences path returned
+/// for inspection.
 ///
 /// Tests that assert *wiring* must use this, not a hand-built stand-in: a
 /// stand-in that re-implements the same calls passes even when `activate`
 /// stops making them, which is exactly the regression these tests exist to
 /// catch.
-async fn activated() -> (jinn_slices::Slices, KeyRoutes, ConfigLayer) {
+async fn activated() -> (
+    jinn_slices::Slices,
+    KeyRoutes,
+    ConfigLayer,
+    std::path::PathBuf,
+) {
+    activated_with(temp_prefs()).await
+}
+
+/// The real [`activate`] over a specific preferences path — the variant the
+/// merged-list tests need, since the sibling rules file lives beside it.
+async fn activated_with(
+    prefs: std::path::PathBuf,
+) -> (
+    jinn_slices::Slices,
+    KeyRoutes,
+    ConfigLayer,
+    std::path::PathBuf,
+) {
     let slices = jinn_slices::Slices::new();
     // Production boot seeds every slice cell before any slice activates;
     // `activate` resolves the picker's cell by slot key, so the harness
@@ -71,9 +123,9 @@ async fn activated() -> (jinn_slices::Slices, KeyRoutes, ConfigLayer) {
         &services.trouper_system,
     );
 
-    crate::activate(&mut host);
+    crate::activate(&mut host, prefs.clone());
 
-    (slices, key_routes, config_layer(TWO_RULES))
+    (slices, key_routes, config_layer(TWO_RULES), prefs)
 }
 
 /// A `ConfigLayer` over an in-memory document — the same shape a route
@@ -145,7 +197,7 @@ fn persisted_of(layer: &ConfigLayer, name: &str) -> bool {
 #[rstest::rstest]
 fn opening_the_picker_lists_every_configured_rule() {
     // Given an empty picker cell.
-    let (cell, _routes, config) = wired();
+    let (cell, _routes, config, _prefs) = wired();
 
     // When opening the picker over the configured rules.
     let rules = config
@@ -168,7 +220,7 @@ fn opening_the_picker_lists_every_configured_rule() {
 #[tokio::test]
 async fn the_opener_dispatches_through_the_route_row_and_seeds_from_the_config() {
     // Given an activated stream-rule picker slice and default state.
-    let (slices, key_routes, config) = activated().await;
+    let (slices, key_routes, config, _prefs) = activated().await;
     let cell: TypedCell<StreamRulePickerState> = slices
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");
@@ -200,7 +252,7 @@ async fn the_opener_dispatches_through_the_route_row_and_seeds_from_the_config()
 #[rstest::rstest]
 fn the_opener_binds_outside_the_picker_it_opens() {
     // Given the route rows the slice attaches.
-    let (_cell, routes, _config) = wired();
+    let (_cell, routes, _config, _prefs) = wired();
     let rows = routes.rows();
 
     // When reading the opener row.
@@ -236,7 +288,7 @@ fn every_footer_entry_is_a_key_the_picker_binds() {
 async fn the_picker_registers_a_filter_input_hook() {
     // Given the wiring activation performs — the real `activate`, not a
     // hand-built stand-in, so removing the registration here is detectable.
-    let (slices, key_routes, _config) = activated().await;
+    let (slices, key_routes, _config, _prefs) = activated().await;
 
     // When asking for the picker's input hook.
     let hook = key_routes.input_hook(&stream_rule_picker_scope());
@@ -258,7 +310,7 @@ async fn the_picker_registers_a_filter_input_hook() {
 #[tokio::test]
 async fn typing_a_character_narrows_the_visible_rules() {
     // Given an activated slice with an open picker.
-    let (slices, key_routes, config) = activated().await;
+    let (slices, key_routes, config, _prefs) = activated().await;
     let cell: TypedCell<StreamRulePickerState> = slices
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");
@@ -280,13 +332,178 @@ async fn typing_a_character_narrows_the_visible_rules() {
     assert_eq!(visible_names(&cell), vec!["no-yelling"]);
 }
 
+// ── Merged list ─────────────────────────────────────────────────────────
+
+#[rstest::rstest]
+#[tokio::test]
+async fn opening_lists_a_rule_defined_only_in_a_sibling_rules_file() {
+    // Given an activated slice whose preferences path has a sibling
+    // `stream_rules.toml` the config layer knows nothing about.
+    let prefs = temp_prefs_with_sibling(
+        "[[stream_rules.entry]]\nname = 'from-sibling'\ndescription = 'the sibling rule'\nconditions = ['TODO']\nscopes = ['text']\nbody = 'Finish it.'\n",
+    );
+    let (slices, key_routes, config, prefs) = activated_with(prefs).await;
+    let cell: TypedCell<StreamRulePickerState> = slices
+        .reader(&stream_rule_picker_slot())
+        .expect("stream-rule picker cell registered at activation");
+
+    // When the picker is opened.
+    dispatch(
+        "open-stream-rule-picker",
+        &mut AppState::default_with_scope_focus(),
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // Then the sibling-file rule is listed first — the user file's set
+    // replaces the embedded base and jinn.toml appends after — with the
+    // jinn.toml entries following in configuration order.
+    assert_eq!(
+        visible_names(&cell),
+        vec!["from-sibling", "no-todos", "no-yelling"]
+    );
+    // And it seeds at its persisted state, which is armed.
+    assert_eq!(pending_of(&cell, "from-sibling"), Some(false));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_sibling_file_rule_toggles_confirms_closes_and_persists_by_name() {
+    // Given an open picker whose first row is the sibling-file rule.
+    let prefs = temp_prefs_with_sibling(
+        "[[stream_rules.entry]]\nname = 'from-sibling'\nconditions = ['TODO']\nscopes = ['text']\nbody = 'Finish it.'\n",
+    );
+    let (slices, key_routes, config, prefs) = activated_with(prefs).await;
+    let mut state = AppState::default_with_scope_focus();
+    dispatch(
+        "open-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // When it is toggled and confirmed.
+    dispatch(
+        "toggle-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+    dispatch(
+        "confirm-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // Then the name persisted into jinn.toml's array — the persisted form
+    // is the name, whatever file defined the rule — and the picker closed.
+    assert!(persisted_of(&config, "from-sibling"));
+    assert_ne!(
+        state.frontend.scope(),
+        jinn_slices::FocusScope::Dynamic(stream_rule_picker_scope()),
+        "a successful confirm must close the picker"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn reopening_after_confirming_a_sibling_rule_shows_it_disabled() {
+    // Given a picker that confirmed a sibling-file rule's toggle.
+    let prefs = temp_prefs_with_sibling(
+        "[[stream_rules.entry]]\nname = 'from-sibling'\nconditions = ['TODO']\nscopes = ['text']\nbody = 'Finish it.'\n",
+    );
+    let (slices, key_routes, config, prefs) = activated_with(prefs).await;
+    let cell: TypedCell<StreamRulePickerState> = slices
+        .reader(&stream_rule_picker_slot())
+        .expect("stream-rule picker cell registered at activation");
+    let mut state = AppState::default_with_scope_focus();
+    dispatch(
+        "open-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+    dispatch(
+        "toggle-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+    dispatch(
+        "confirm-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // When the picker is reopened.
+    dispatch(
+        "open-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // Then the sibling rule shows its persisted disabled state — the open
+    // seeds from the same array the confirm wrote, whatever file defined
+    // the rule.
+    assert_eq!(pending_of(&cell, "from-sibling"), Some(true));
+    assert_eq!(pending_of(&cell, "no-todos"), Some(false));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_name_in_both_a_user_file_and_jinn_toml_renders_once_as_the_enforced_definition() {
+    // Given a sibling file and jinn.toml each defining `no-todos`, with
+    // distinguishable descriptions.
+    let prefs = temp_prefs_with_sibling(
+        "[[stream_rules.entry]]\nname = 'no-todos'\ndescription = 'user file version'\nconditions = ['TODO']\nscopes = ['text']\nbody = 'Finish it.'\n",
+    );
+    let (slices, key_routes, config, _prefs) = activated_with(prefs).await;
+    let cell: TypedCell<StreamRulePickerState> = slices
+        .reader(&stream_rule_picker_slot())
+        .expect("stream-rule picker cell registered at activation");
+
+    // When the picker is opened.
+    dispatch(
+        "open-stream-rule-picker",
+        &mut AppState::default_with_scope_focus(),
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // Then `no-todos` appears exactly once, showing the jinn.toml
+    // definition — the later source in assembly order, which is the one
+    // the matcher enforces (jinn.toml entries carry no description).
+    let guard = cell.read();
+    let no_todos: Vec<&jinn_picker::PickerEntry<jinn_stream_rule_picker_msg::StreamRuleEntry>> =
+        guard
+            .selection
+            .items()
+            .iter()
+            .filter(|item| item.entry().name == "no-todos")
+            .collect();
+    assert_eq!(no_todos.len(), 1, "a shared name must render once");
+    assert_eq!(no_todos[0].entry().description, "");
+}
+
 // ── Toggle (tab) ────────────────────────────────────────────────────────
 
 #[rstest::rstest]
 #[tokio::test]
 async fn tab_toggles_only_the_pending_state_and_touches_nothing_else() {
     // Given an open picker with the highlight on the first rule.
-    let (slices, key_routes, config) = activated().await;
+    let (slices, key_routes, config, _prefs) = activated().await;
     let cell: TypedCell<StreamRulePickerState> = slices
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");
@@ -325,7 +542,7 @@ async fn tab_toggles_only_the_pending_state_and_touches_nothing_else() {
 #[tokio::test]
 async fn tab_on_a_moved_highlight_toggles_that_row() {
     // Given an open picker with the highlight moved to the second rule.
-    let (slices, key_routes, config) = activated().await;
+    let (slices, key_routes, config, _prefs) = activated().await;
     let cell: TypedCell<StreamRulePickerState> = slices
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");
@@ -365,7 +582,7 @@ async fn tab_on_a_moved_highlight_toggles_that_row() {
 #[tokio::test]
 async fn cancel_closes_the_picker_and_writes_nothing() {
     // Given an open picker with one rule toggled pending-off.
-    let (slices, key_routes, config) = activated().await;
+    let (slices, key_routes, config, _prefs) = activated().await;
     let cell: TypedCell<StreamRulePickerState> = slices
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");
@@ -415,7 +632,7 @@ async fn cancel_closes_the_picker_and_writes_nothing() {
 #[tokio::test]
 async fn reopening_after_a_cancel_shows_the_persisted_state() {
     // Given a picker whose toggle was cancelled.
-    let (slices, key_routes, config) = activated().await;
+    let (slices, key_routes, config, _prefs) = activated().await;
     let cell: TypedCell<StreamRulePickerState> = slices
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");
@@ -463,7 +680,7 @@ async fn reopening_after_a_cancel_shows_the_persisted_state() {
 #[tokio::test]
 async fn confirm_persists_the_pending_set_through_the_storage_path_and_closes() {
     // Given an open picker with the first rule toggled pending-off.
-    let (slices, key_routes, config) = activated().await;
+    let (slices, key_routes, config, _prefs) = activated().await;
     let _cell: TypedCell<StreamRulePickerState> = slices
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");
@@ -508,7 +725,7 @@ async fn confirm_persists_the_pending_set_through_the_storage_path_and_closes() 
 #[tokio::test]
 async fn confirm_leaves_a_status_line_in_the_cell() {
     // Given an open picker with one rule toggled pending-off.
-    let (slices, key_routes, config) = activated().await;
+    let (slices, key_routes, config, _prefs) = activated().await;
     let cell: TypedCell<StreamRulePickerState> = slices
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");
@@ -551,7 +768,7 @@ async fn confirm_leaves_a_status_line_in_the_cell() {
 #[tokio::test]
 async fn confirm_publishes_the_matcher_refresh_command() {
     // Given an open picker with one rule toggled pending-off.
-    let (slices, key_routes, config) = activated().await;
+    let (slices, key_routes, config, _prefs) = activated().await;
     let mut state = AppState::default_with_scope_focus();
     dispatch(
         "open-stream-rule-picker",
@@ -595,7 +812,7 @@ async fn confirm_publishes_the_matcher_refresh_command() {
 async fn a_failed_confirm_publishes_no_refresh() {
     // Given an open picker whose rows name rules the config no longer
     // holds — the file changed underneath the picker.
-    let (slices, key_routes, config) = activated().await;
+    let (slices, key_routes, config, _prefs) = activated().await;
     let cell: TypedCell<StreamRulePickerState> = slices
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");
@@ -649,7 +866,7 @@ async fn a_failed_confirm_publishes_no_refresh() {
 #[tokio::test]
 async fn reopening_after_a_confirm_shows_the_persisted_state() {
     // Given a picker whose toggle was confirmed.
-    let (slices, key_routes, config) = activated().await;
+    let (slices, key_routes, config, _prefs) = activated().await;
     let cell: TypedCell<StreamRulePickerState> = slices
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");
@@ -697,7 +914,7 @@ async fn reopening_after_a_confirm_shows_the_persisted_state() {
 async fn an_unknown_rule_fails_the_confirm_into_the_status_line_without_closing() {
     // Given a picker whose rows were reseeded over a config that no longer
     // holds them — the file changed underneath the open picker.
-    let (slices, key_routes, config) = activated().await;
+    let (slices, key_routes, config, _prefs) = activated().await;
     let cell: TypedCell<StreamRulePickerState> = slices
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");
@@ -765,7 +982,7 @@ async fn an_unknown_rule_fails_the_confirm_into_the_status_line_without_closing(
 #[rstest::rstest]
 fn the_picker_binds_navigation_toggle_confirm_and_cancel() {
     // Given the route rows the slice attaches.
-    let (_cell, routes, _config) = wired();
+    let (_cell, routes, _config, _prefs) = wired();
     let keys: Vec<&str> = routes.rows().iter().map(|row| row.key).collect();
 
     // Then the picker walks, pages, toggles, confirms, and cancels.
@@ -782,7 +999,7 @@ fn the_picker_binds_navigation_toggle_confirm_and_cancel() {
 #[rstest::rstest]
 fn the_picker_state_lives_under_one_slot() {
     // Given a picker registered under its slot.
-    let (cell, _routes, _config) = wired();
+    let (cell, _routes, _config, _prefs) = wired();
 
     // When a value is written to it.
     cell.update(|picker| {
@@ -826,7 +1043,7 @@ fn rendered_screen(slices: &jinn_slices::Slices) -> String {
 #[tokio::test]
 async fn render_draws_an_armed_rule_with_its_enabled_mark() {
     // Given an activated slice whose picker holds one armed rule.
-    let (slices, _key_routes, _config) = activated().await;
+    let (slices, _key_routes, _config, _prefs) = activated().await;
     let cell: TypedCell<StreamRulePickerState> = slices
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");
@@ -859,7 +1076,7 @@ async fn render_draws_an_armed_rule_with_its_enabled_mark() {
 #[tokio::test]
 async fn render_draws_a_disabled_rule_with_its_disabled_mark() {
     // Given an activated slice whose picker holds one switched-off rule.
-    let (slices, _key_routes, _config) = activated().await;
+    let (slices, _key_routes, _config, _prefs) = activated().await;
     let cell: TypedCell<StreamRulePickerState> = slices
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");
@@ -896,7 +1113,7 @@ async fn render_draws_a_disabled_rule_with_its_disabled_mark() {
 #[tokio::test]
 async fn render_draws_the_confirm_status_line() {
     // Given an activated slice whose picker carries a confirm's status line.
-    let (slices, _key_routes, _config) = activated().await;
+    let (slices, _key_routes, _config, _prefs) = activated().await;
     let cell: TypedCell<StreamRulePickerState> = slices
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");

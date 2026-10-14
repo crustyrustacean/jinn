@@ -156,7 +156,7 @@ mod tests {
         // configuration, then the refresh command is published on the bus
         // the actor subscribes to.
         config
-            .set_stream_rule_disabled("refreshable", true)
+            .set_stream_rule_disabled(&prefs, "refreshable", true)
             .expect("the write lands");
         system
             .publish(jinn_stream_rules_msg::RefreshStreamRuleMatcher)

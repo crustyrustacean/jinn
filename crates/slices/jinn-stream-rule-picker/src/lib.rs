@@ -1,10 +1,13 @@
-//! The stream-rule picker — the `<leader>sx` picker over `[[stream_rules.entry]]`.
+//! The stream-rule picker — the `<leader>sx` picker over the enforced
+//! stream rules.
 //!
-//! Lists every configured stream rule with its armed/disabled mark, toggles
-//! the highlighted rule's pending state with `<tab>`, persists the pending
-//! set through the preferences-config storage boundary with `<enter>`, and
-//! closes with `<esc>` writing nothing. Applies globally: one keybind, no
-//! per-session state.
+//! Lists every rule the matcher enforces — the embedded shipped set, the
+//! user `stream_rules.toml` set, the jinn.toml entries, and the
+//! legacy-converted rules, deduped by name — with its armed/disabled mark,
+//! toggles the highlighted rule's pending state with `<tab>`, persists the
+//! pending set through the preferences-config storage boundary with
+//! `<enter>`, and closes with `<esc>` writing nothing. Applies globally:
+//! one keybind, no per-session state.
 //!
 //! The picker is fully slice-owned: its state is a cell, its keys are route
 //! rows attached at activation, and its renderer reads the cell. Portable
@@ -44,6 +47,13 @@ pub use jinn_stream_rule_picker_msg::stream_rule_picker_scope;
 /// Activates the slice: registers the picker's overlay and attaches its
 /// route rows.
 ///
+/// `preferences_path` is where this run's `jinn.toml` lives — captured here
+/// and handed to every route action's closure, because the open assembles
+/// the rule list from it (the user `stream_rules.toml` is its sibling) and
+/// the confirm persists through it. It is the same path the stream-rules
+/// slice activates with, so the list the picker shows and the set the
+/// matcher installs are read from one place.
+///
 /// The picker's cell is not minted here: the shared cell catalog
 /// (`jinn_cell_catalog::register_all_cells`) registers every slice cell in
 /// one place, before any slice activates, so this resolves the handle the
@@ -57,7 +67,10 @@ pub use jinn_stream_rule_picker_msg::stream_rule_picker_scope;
     clippy::expect_used,
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
 )]
-pub fn activate(host: &mut jinn_slices::SliceHost<'_, jinn_slices::RenderFacts>) {
+pub fn activate(
+    host: &mut jinn_slices::SliceHost<'_, jinn_slices::RenderFacts>,
+    preferences_path: std::path::PathBuf,
+) {
     let cell = host
         .slices()
         .reader::<jinn_stream_rule_picker_msg::StreamRulePickerState>(
@@ -79,7 +92,7 @@ pub fn activate(host: &mut jinn_slices::SliceHost<'_, jinn_slices::RenderFacts>)
     host.register_overlay_view(scope, std::sync::Arc::new(render_stream_rule_picker));
 
     // The picker's keys, and the filter's input hook, are the slice's own.
-    attach_stream_rule_picker_rows(host.key_routes(), &cell);
+    attach_stream_rule_picker_rows(host.key_routes(), &cell, &preferences_path);
     register_stream_rule_picker_input_hook(host.key_routes(), &cell);
 }
 
