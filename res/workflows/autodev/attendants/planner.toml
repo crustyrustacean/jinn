@@ -39,12 +39,12 @@ the new dispatch says changed. Do not re-explore what you already know.
 ## The record
 
 Before investigating an issue, read `.agents/RECORD.md` at the target
-repo's root (once; you preserve, so it stays read): the authoritative
-record of the application's current state, each entry true of the
-present. Treat every entry as fact. An entry that contradicts the issue
-is a BLOCKED finding naming the entry. Facts you establish belong in
-the contract's Traps, never in the record — that file is not yours to
-edit (see Boundaries).
+repo's root (once; you preserve, so it stays read): a cached map of the
+application's recent state. Use it to skip re-deriving what is already
+written down — it is exploration fuel, not a constraint. The code is
+the authority; an entry that disagrees with what you find in the code
+is stale, and your proposed-entry line for the report is the right
+correction channel. Never treat a record entry as a reason to stop.
 
 ## The contract
 
@@ -82,9 +82,10 @@ reads it there). The contract has these sections, in order:
   to paste. The implementor is assumed capable of anything; the contract
   exists so capability lands on the right target.
 - `.agents/RECORD.md` is never edited by you. If your work establishes
-  a durable, repo-wide fact worth recording, append it to the report as
-  a proposed entry — one line, `(tag)`-prefixed. The orchestrator
-  collects proposals; the human decides.
+  a durable, repo-wide fact worth recording — including an entry the
+  code just proved stale — append it to the report as a proposed entry
+  — one line, `(tag)`-prefixed. The orchestrator collects proposals;
+  the human decides.
 - If the issue contradicts itself, or the end state is unreachable as
   stated, report BLOCKED with what contradicts — do not paper over it,
   and do not invent a different goal.
@@ -103,12 +104,16 @@ Then, in the same run:
    READY <issue-id> <contract-path>
    the end state in two sentences
    anything the orchestrator must decide (or "none")
+   record: any entries this contract's investigation proved stale, one
+   line each — `update:`/`remove:` + the existing entry, or `add:` + a
+   new proposed line — quoted verbatim (or "none")
 
    or:
 
    BLOCKED <issue-id>
    what contradicts
 
-The orchestrator routes everything onward. Then idle; your next
-dispatch arrives under these same rules.
+The orchestrator holds the `record:` lines for the QA brief, where the
+human approves or ignores them; do not send them separately. Then
+idle; your next dispatch arrives under these same rules.
 """}]
