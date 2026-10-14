@@ -24,6 +24,7 @@ use jinn_session_lifecycle_msg::event::SessionCreated;
 use jinn_core_types::ChatEntry;
 use jinn_session_msg::SessionSeed;
 use jinn_session_state::ChatSessionState;
+use jinn_session_state::fields::LifecycleArgs;
 use jinn_session_store_msg::PersistSession;
 use jinn_slices::RouteResult as IntentResult;
 
@@ -77,7 +78,8 @@ pub fn handle_session_lifecycle_setup(
     } else {
         Some(lifecycle_name.to_owned())
     });
-    new_session.set_lifecycle_args(args.to_vec());
+    let stored_args = stored_setup_args(setup_command.as_ref(), args);
+    new_session.set_lifecycle_args(stored_args.clone());
 
     // Resolve the new session's starting CWD and project stamp. The CWD
     // precedence is:
@@ -98,20 +100,7 @@ pub fn handle_session_lifecycle_setup(
     //
     // A scripted lifecycle's stdout output still wins as the final CWD via the
     // session actor; this only sets the starting value.
-    let (stamped_project, starting_cwd) = {
-        let pending = state.frontend.pending_creation.take();
-        let cwd_override = cwd
-            .map(std::path::Path::to_path_buf)
-            .or_else(|| pending.as_ref().map(|p| p.starting_cwd.clone()));
-        (
-            pending.map(|p| p.project_dir),
-            cwd_override.unwrap_or_else(|| state.active_session().cwd().to_path_buf()),
-        )
-    };
-    // Defensively clear any residual stash so it can never leak into the next
-    // creation (the `.take()` above is skipped only when an explicit cwd
-    // overrides, so clear unconditionally here).
-    state.frontend.pending_creation = None;
+    let (stamped_project, starting_cwd) = resolve_creation_stash(state, cwd);
     new_session.set_cwd(starting_cwd.clone());
     new_session.set_project(stamped_project);
 
@@ -137,12 +126,13 @@ pub fn handle_session_lifecycle_setup(
     // If the lifecycle has a setup command, emit it for async execution.
     if let Some(ref setup_cmd) = setup_command {
         let rendered = match setup_cmd {
-            jinn_preferences_config::schemas::LifecycleCommand::Shell(cmd) => {
-                let template = CommandTemplate::parse(cmd);
-                if args.is_empty() {
-                    cmd.clone()
+            jinn_preferences_config::schemas::LifecycleCommand::Shell(raw) => {
+                if stored_args.is_empty() {
+                    raw.clone()
                 } else {
-                    template.render(args)
+                    CommandTemplate::parse(raw)
+                        .render_stored(stored_args.as_pairs())
+                        .unwrap_or_default()
                 }
             }
             jinn_preferences_config::schemas::LifecycleCommand::Builtin(id) => id.to_string(),
@@ -160,7 +150,7 @@ pub fn handle_session_lifecycle_setup(
             .with_message(RunSessionSetup {
                 session_id: new_id.clone(),
                 command: rendered,
-                args: args.to_vec(),
+                args: stored_args.values(),
                 lifecycle_command: Some(setup_cmd.clone()),
             })
             .with_message(created_event);
@@ -237,7 +227,7 @@ pub fn build_run_session_teardown(
         (
             session.lifecycle_name().map(String::from),
             session.lifecycle_source().map(String::from),
-            session.lifecycle_args().to_vec(),
+            session.lifecycle_args().clone(),
         )
     };
     let name = name?;
@@ -245,7 +235,7 @@ pub fn build_run_session_teardown(
         outcome.map(|command| RunSessionTeardown {
             session_id: session_id.clone(),
             command: render(&command, &args),
-            args,
+            args: args.values(),
         })
     })
 }
@@ -296,16 +286,94 @@ impl std::fmt::Display for TeardownFailure {
     }
 }
 
+/// The placeholder name of the template's `idx`-th named parameter in
+/// first-appearance order, or `None` when `idx` is past the named params.
+fn named_param_at(template: &CommandTemplate, idx: usize) -> Option<String> {
+    template
+        .params()
+        .iter()
+        .filter_map(|param| match param {
+            jinn_session_lifecycle_msg::command_template::Param::Named(name) => Some(name.clone()),
+            _ => None,
+        })
+        .nth(idx)
+}
+
+/// Resolves the new session's starting CWD and project stamp from the
+/// stashed creation.
+///
+/// The CWD precedence is:
+///   1. explicit `cwd` override (e.g. scripted callers),
+///   2. the stashed creation's starting CWD
+///      (set by the project picker then consumed here),
+///   3. inherit the active session's CWD.
+///
+/// The project stamp comes only from the stashed creation - the projects UI
+/// is the sole source of a project association. The two are independent on
+/// purpose: setup scripts may re-cwd the session later, the project never
+/// moves.
+///
+/// The stash is always cleared here so it never leaks into the next
+/// creation, even when an explicit `cwd` was supplied. A scripted
+/// lifecycle's stdout output still wins as the final CWD via the session
+/// actor; this only sets the starting value.
+fn resolve_creation_stash(
+    state: &mut AppState,
+    cwd: Option<&std::path::Path>,
+) -> (Option<std::path::PathBuf>, std::path::PathBuf) {
+    let pending = state.frontend.pending_creation.take();
+    // Defensively clear any residual stash so it can never leak into the next
+    // creation (the `.take()` above is skipped only when an explicit cwd
+    // overrides, so clear unconditionally here).
+    state.frontend.pending_creation = None;
+    let cwd_override = cwd
+        .map(std::path::Path::to_path_buf)
+        .or_else(|| pending.as_ref().map(|p| p.starting_cwd.clone()));
+    (
+        pending.map(|p| p.project_dir),
+        cwd_override.unwrap_or_else(|| state.active_session().cwd().to_path_buf()),
+    )
+}
+
+/// Pairs a creation call's positional answers against the setup template's
+/// placeholder names, for stamping on the session.
+///
+/// The template is the lifecycle's shell setup command; a caller's `idx`-th
+/// answer belongs to its `idx`-th named placeholder. Past the named params
+/// (or with no shell setup at all) the value keys positionally as `$n`.
+#[allow(
+    clippy::too_many_lines,
+    reason = "the pairing branches read best in one place"
+)]
+fn stored_setup_args(
+    setup_command: Option<&jinn_preferences_config::schemas::LifecycleCommand>,
+    args: &[String],
+) -> LifecycleArgs {
+    let template = setup_command.as_ref().and_then(|command| match command {
+        jinn_preferences_config::schemas::LifecycleCommand::Shell(cmd) => {
+            Some(CommandTemplate::parse(cmd))
+        }
+        jinn_preferences_config::schemas::LifecycleCommand::Builtin(_) => None,
+    });
+    LifecycleArgs::from_pairs(args.iter().enumerate().map(|(idx, value)| {
+        let key = template
+            .as_ref()
+            .and_then(|t| named_param_at(t, idx))
+            .unwrap_or_else(|| format!("${}", idx + 1));
+        (key, value.clone())
+    }))
+}
+
 /// Renders a teardown command, replaying the stored args.
-fn render(command: &jinn_preferences_config::schemas::LifecycleCommand, args: &[String]) -> String {
+fn render(
+    command: &jinn_preferences_config::schemas::LifecycleCommand,
+    args: &LifecycleArgs,
+) -> String {
     match command {
         jinn_preferences_config::schemas::LifecycleCommand::Shell(cmd) => {
-            let template = CommandTemplate::parse(cmd);
-            if args.is_empty() {
-                cmd.clone()
-            } else {
-                template.render(args)
-            }
+            CommandTemplate::parse(cmd)
+                .render_stored(args.as_pairs())
+                .unwrap_or_else(|_| cmd.clone())
         }
         jinn_preferences_config::schemas::LifecycleCommand::Builtin(id) => id.to_string(),
     }
@@ -740,10 +808,10 @@ mod tests {
         assert!(result.message_names[0].contains("PersistSession"));
         // And RunSessionSetup is emitted third with rendered args.
         assert!(result.message_names[2].contains("RunSessionSetup"));
-        // And the session has the args stored.
+        // And the session has the args stored under the template's names.
         assert_eq!(
             state.active_session().lifecycle_args(),
-            &["my-branch".to_owned()]
+            &LifecycleArgs::from_pairs([("$1", "my-branch")])
         );
     }
 
@@ -803,7 +871,10 @@ mod tests {
             .set_lifecycle_name(Some("fossil branch".to_owned()));
         state
             .active_session_mut()
-            .set_lifecycle_args(vec!["my-branch".to_owned()]);
+            .set_lifecycle_args(LifecycleArgs::from_pairs([(
+                "$1".to_owned(),
+                "my-branch".to_owned(),
+            )]));
 
         // When handling SessionClose.
         let result = handle_session_close(&mut state);
@@ -1179,7 +1250,10 @@ mod tests {
             .set_lifecycle_name(Some("fossil branch".to_owned()));
         state
             .active_session_mut()
-            .set_lifecycle_args(vec!["my-branch".to_owned()]);
+            .set_lifecycle_args(LifecycleArgs::from_pairs([(
+                "$1".to_owned(),
+                "my-branch".to_owned(),
+            )]));
 
         // When building the teardown command.
         let msg = build_run_session_teardown(&state, &session_id, &config);
@@ -1235,7 +1309,10 @@ mod tests {
             .set_lifecycle_name(Some("fossil branch".to_owned()));
         state
             .active_session_mut()
-            .set_lifecycle_args(vec!["feature-x".to_owned()]);
+            .set_lifecycle_args(LifecycleArgs::from_pairs([(
+                "$1".to_owned(),
+                "feature-x".to_owned(),
+            )]));
 
         // When building the teardown command.
         let msg = build_run_session_teardown(&state, &session_id, &config);
@@ -1262,7 +1339,10 @@ mod tests {
             .set_lifecycle_name(Some("stage".to_owned()));
         state
             .active_session_mut()
-            .set_lifecycle_args(vec!["wt-a".to_owned()]);
+            .set_lifecycle_args(LifecycleArgs::from_pairs([(
+                "$1".to_owned(),
+                "wt-a".to_owned(),
+            )]));
         state
             .active_session_mut()
             .set_lifecycle_source(Some(path.display().to_string()));

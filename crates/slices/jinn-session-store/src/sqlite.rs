@@ -31,7 +31,7 @@ use jinn_core_types::{ChatEntryId, ContextOverride, EntryTiming, SessionId};
 use jinn_provider::Attachment;
 use jinn_session_lifecycle_msg::LifecycleScriptState;
 use jinn_session_msg::SessionOrigin;
-use jinn_session_state::fields::default_prep_mode;
+use jinn_session_state::fields::{LifecycleArgs, default_prep_mode};
 use jinn_session_state::{SessionRevision, SessionSnapshot, SessionSnapshotMetadata};
 use jinn_session_store_msg::{
     SearchHit, SearchOutcome, SearchParams, SearchableEntry, TranscriptEntry, TranscriptWindow,
@@ -570,7 +570,7 @@ pub(crate) struct PersistableCore {
 
     blobs: HashMap<String, JsonValue>,
     lifecycle_name: Option<String>,
-    lifecycle_args: Vec<String>,
+    lifecycle_args: LifecycleArgs,
     /// The workflow-local lifecycle file the lifecycle resolved from.
     /// Absent for jinn.toml lifecycles.
     #[serde(default, skip_serializing_if = "Option::is_none")]

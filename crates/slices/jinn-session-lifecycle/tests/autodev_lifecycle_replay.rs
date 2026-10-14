@@ -1,0 +1,242 @@
+//! The autodev workflow's lifecycle scripts replay correctly.
+//!
+//! Reads `res/workflows/autodev/lifecycle.toml` from the repo root and
+//! replays each script's teardown against stored setup coordinates. This is
+//! the regression test for the incident where teardown rendered recorded
+//! arguments positionally: the fossil script's teardown lists its
+//! placeholders in a different order than its setup, and a positional
+//! replay merged the wrong branch.
+
+#![allow(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test code: a missing fixture is a failed test"
+)]
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
+
+use jinn_session_lifecycle_msg::command_template::CommandTemplate;
+
+/// The path of the autodev lifecycle file, resolved from this crate's
+/// manifest against the workspace root.
+fn autodev_lifecycle_path() -> PathBuf {
+    PathBuf::new()
+        .join(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../res/workflows/autodev/lifecycle.toml")
+}
+
+/// Extracts every `[[session_lifecycle.script]]` entry's name, setup, and
+/// teardown command from the raw TOML text.
+///
+/// Deliberately textual: the res/ tree is data, not a schema the lifecycle
+/// crate parses as a document, and a full TOML dependency for three fields
+/// would buy nothing. The scripts in this file are multi-line basic strings
+/// (`"""`), and the git teardown is a single-line basic string — both forms
+/// are extracted, along with their shell double quotes, which is what the
+/// template parser must see anyway.
+struct Script {
+    name: String,
+    setup: String,
+    teardown: String,
+}
+
+fn parse_scripts(raw: &str) -> Vec<Script> {
+    let mut scripts = Vec::new();
+    for chunk in raw.split("[[session_lifecycle.script]]").skip(1) {
+        let name = chunk
+            .split("name = \"")
+            .nth(1)
+            .and_then(|rest| rest.split('"').next())
+            .unwrap_or_default()
+            .to_owned();
+        let field = |key: &str| -> String {
+            let multi = format!("{key} = \"\"\"");
+            if let Some(rest) = chunk.split(&multi).nth(1) {
+                return rest.split("\"\"\"").next().unwrap_or_default().to_owned();
+            }
+            // Single-line basic string: everything between the quotes.
+            let marker = format!("{key} = \"");
+            chunk
+                .split(&marker)
+                .nth(1)
+                .and_then(|rest| rest.split("\"\n").next())
+                .unwrap_or_default()
+                .to_owned()
+        };
+        scripts.push(Script {
+            name,
+            setup: field("setup_command"),
+            teardown: field("teardown_command"),
+        });
+    }
+    scripts
+}
+
+/// The placeholder names a command template uses, as a set.
+fn placeholder_names(command: &str) -> BTreeSet<String> {
+    CommandTemplate::parse(command)
+        .params()
+        .iter()
+        .filter_map(|param| match param {
+            jinn_session_lifecycle_msg::command_template::Param::Named(name) => Some(name.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The template's first named placeholder in first-appearance order.
+fn first_named_placeholder(command: &str) -> Option<String> {
+    CommandTemplate::parse(command)
+        .params()
+        .iter()
+        .find_map(|param| match param {
+            jinn_session_lifecycle_msg::command_template::Param::Named(name) => Some(name.clone()),
+            _ => None,
+        })
+}
+
+#[rstest::rstest]
+#[test]
+fn autodev_scripts_exist_and_parse() {
+    // Given the shipped autodev lifecycle file.
+    let raw = std::fs::read_to_string(autodev_lifecycle_path())
+        .expect("res/workflows/autodev/lifecycle.toml exists");
+
+    // When its scripts are extracted.
+    let scripts = parse_scripts(&raw);
+
+    // Then both SCM scripts are present with setup and teardown commands.
+    let names: Vec<&str> = scripts.iter().map(|s| s.name.as_str()).collect();
+    assert!(names.contains(&"autodev implementor (fossil)"), "{names:?}");
+    assert!(names.contains(&"autodev implementor (git)"), "{names:?}");
+    for script in &scripts {
+        assert!(!script.setup.is_empty(), "{}: empty setup", script.name);
+        assert!(
+            !script.teardown.is_empty(),
+            "{}: empty teardown",
+            script.name
+        );
+    }
+}
+
+#[rstest::rstest]
+#[test]
+fn autodev_setup_and_teardown_name_the_same_placeholders() {
+    // Given every autodev script.
+    let raw = std::fs::read_to_string(autodev_lifecycle_path()).expect("lifecycle file");
+    let scripts = parse_scripts(&raw);
+    assert!(!scripts.is_empty(), "no scripts extracted");
+
+    // When each script's setup and teardown placeholders are compared.
+    let mut mismatched = Vec::new();
+    for script in &scripts {
+        let setup_names = placeholder_names(&script.setup);
+        let teardown_names = placeholder_names(&script.teardown);
+        // Teardown may use a subset — it replays only what it needs. A
+        // teardown naming a placeholder setup does not record is a data
+        // defect: by-name replay fails visibly for that script.
+        let unrecorded: Vec<&String> = teardown_names
+            .iter()
+            .filter(|name| !setup_names.contains(*name))
+            .collect();
+        if !unrecorded.is_empty() {
+            mismatched.push(format!("{}: {unrecorded:?}", script.name));
+        }
+    }
+
+    // Then every script's teardown replays from its own setup. Known data
+    // defect: the git script's teardown names <parent> its setup never
+    // records — pinned here so the defect is visible, not silent. The
+    // fossil script must be clean: it is the one the workflow dispatches.
+    for script in &scripts {
+        if script.name == "autodev implementor (git)" {
+            continue;
+        }
+        assert!(
+            !mismatched.iter().any(|m| m.starts_with(&script.name)),
+            "{}: teardown names placeholders setup does not record",
+            script.name
+        );
+    }
+    assert!(
+        mismatched
+            .iter()
+            .any(|m| m.starts_with("autodev implementor (git)") && m.contains("parent")),
+        "the known git-script defect (teardown names unrecorded <parent>) \
+         drifted — update this pin: {mismatched:?}"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn autodev_fossil_teardown_replays_the_incident_coordinates_by_name() {
+    // Given the incident's recorded coordinates: setup recorded dir, repo,
+    // branch, parent — in that order — while the fossil teardown lists
+    // parent first.
+    let raw = std::fs::read_to_string(autodev_lifecycle_path()).expect("lifecycle file");
+    let script = parse_scripts(&raw)
+        .into_iter()
+        .find(|s| s.name == "autodev implementor (fossil)")
+        .expect("fossil script exists");
+    let stored = jinn_session_state::fields::LifecycleArgs::from_pairs([
+        ("dir", "/repo/worktrees/wt-1"),
+        ("repo", "jinn"),
+        ("branch", "autodev-issue-001"),
+        ("parent", "workforce-msg-fix"),
+    ]);
+    let values = stored
+        .as_pairs()
+        .iter()
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect::<BTreeMap<_, _>>();
+
+    // When the teardown is rendered by name.
+    let rendered = CommandTemplate::parse(&script.teardown)
+        .render_named(&values)
+        .expect("setup recorded every teardown placeholder");
+
+    // Then each command carries its own value — the merge lands on the
+    // parent branch, not on a positionally-shifted wrong one.
+    assert!(
+        rendered.contains("fossil merge workforce-msg-fix"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("fossil update workforce-msg-fix"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("fossil merge autodev-issue-001"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("rm -rfv /repo/worktrees/wt-1"),
+        "{rendered}"
+    );
+    assert!(
+        !rendered.contains("jinn"),
+        "the repo value must not leak into any command: {rendered}"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn autodev_fossil_teardown_rejects_positional_replay_of_the_incident_shape() {
+    // Given the incident's positional reading — what the old code did: the
+    // teardown's FIRST placeholder receives setup's FIRST recorded value.
+    let raw = std::fs::read_to_string(autodev_lifecycle_path()).expect("lifecycle file");
+    let script = parse_scripts(&raw)
+        .into_iter()
+        .find(|s| s.name == "autodev implementor (fossil)")
+        .expect("fossil script exists");
+
+    // When the teardown's first placeholder is compared with setup's.
+    let teardown_first =
+        first_named_placeholder(&script.teardown).expect("teardown has placeholders");
+    let setup_first = first_named_placeholder(&script.setup).expect("setup has placeholders");
+
+    // Then the orders genuinely differ — this is the property the positional
+    // renderer got wrong, and what the by-name renderer must not depend on.
+    assert_ne!(teardown_first, setup_first);
+}

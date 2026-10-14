@@ -33,6 +33,94 @@ pub fn default_cwd() -> PathBuf {
     PathBuf::from(".")
 }
 
+/// A session's recorded lifecycle arguments: ordered name-value pairs.
+///
+/// Order is the setup template's first-appearance placeholder order, so the
+/// builtin teardown bridge can drop the keys and hand the values to
+/// `BuiltinHandler::teardown` in template order. Every consumer renders
+/// through `CommandTemplate::render_stored`, which keys by placeholder name.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct LifecycleArgs(
+    #[serde(deserialize_with = "deserialize_lifecycle_args")] pub Vec<(String, String)>,
+);
+
+impl LifecycleArgs {
+    /// Builds recorded arguments from name-value pairs.
+    #[must_use]
+    pub fn from_pairs<I, K, V>(pairs: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<String>,
+    {
+        Self(
+            pairs
+                .into_iter()
+                .map(|(key, value)| (key.into(), value.into()))
+                .collect(),
+        )
+    }
+
+    /// Whether every recorded key is a `$1`-style positional key.
+    ///
+    /// True only for sessions whose arguments were recorded as bare values
+    /// before pairs existed; such sessions keep today's positional render.
+    #[must_use]
+    pub fn is_legacy_positional(&self) -> bool {
+        self.0
+            .iter()
+            .all(|(key, _)| jinn_session_lifecycle_msg::command_template::is_positional_key(key))
+    }
+
+    /// The recorded values in recorded order, keys dropped.
+    ///
+    /// The builtin handlers' `&[String]` argument shape, and nothing else.
+    #[must_use]
+    pub fn values(&self) -> Vec<String> {
+        self.0.iter().map(|(_, value)| value.clone()).collect()
+    }
+
+    /// The recorded pairs.
+    #[must_use]
+    pub fn as_pairs(&self) -> &[(String, String)] {
+        &self.0
+    }
+
+    /// Whether nothing was recorded.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+/// Deserializes persisted lifecycle arguments in either persisted shape.
+///
+/// - an array of `[name, value]` arrays — the pairs form, taken as-is
+/// - an array of bare strings — the legacy form, keyed `$1`, `$2`, ... by
+///   index so the session keeps the positional render it was recorded with
+///
+/// Anything else is a real error: silently defaulting to empty would render
+/// a template full of raw placeholders into a shell.
+fn deserialize_lifecycle_args<'de, D>(deserializer: D) -> Result<Vec<(String, String)>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Raw {
+        Pairs(Vec<(String, String)>),
+        Bare(Vec<String>),
+    }
+    match Raw::deserialize(deserializer)? {
+        Raw::Pairs(pairs) => Ok(pairs),
+        Raw::Bare(values) => Ok(values
+            .into_iter()
+            .enumerate()
+            .map(|(idx, value)| (format!("${}", idx + 1), value))
+            .collect()),
+    }
+}
+
 /// Identity, tree metadata, and runtime interaction state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionIdentityMetadataFields {
@@ -99,9 +187,9 @@ pub struct SessionLifecycleLocationFields {
     /// Lifecycle selected at creation.
     #[serde(default)]
     pub lifecycle_name: Option<String>,
-    /// Arguments replayed during teardown.
+    /// Arguments replayed during teardown, as ordered name-value pairs.
     #[serde(default)]
-    pub lifecycle_args: Vec<String>,
+    pub lifecycle_args: LifecycleArgs,
     /// The workflow-local TOML file this session's lifecycle was resolved
     /// from, when it came from a workflow rather than from the user's
     /// jinn.toml.
@@ -128,7 +216,7 @@ impl Default for SessionLifecycleLocationFields {
             cwd: default_cwd(),
             home: PathBuf::from("."),
             lifecycle_name: None,
-            lifecycle_args: Vec::new(),
+            lifecycle_args: LifecycleArgs(Vec::new()),
             lifecycle_source: None,
             lifecycle_script_state: LifecycleScriptState::NothingRan,
         }
@@ -256,6 +344,7 @@ mod tests {
 
     use jinn_attendant_msg::AttendantModelSetting;
 
+    use super::LifecycleArgs;
     use super::SessionAttendantFields;
 
     #[rstest::rstest]
@@ -277,5 +366,81 @@ mod tests {
         // Then the setting reads inherit, so an attendant that predates the
         // row saves without a model key rather than pinning one.
         assert_eq!(fields.model_setting, AttendantModelSetting::Inherit);
+    }
+
+    #[rstest::rstest]
+    fn lifecycle_args_deserialize_the_pairs_form() {
+        // Given a persisted blob carrying ordered name-value pairs.
+        let blob = serde_json::json!([["dir", "/wt"], ["parent", "trunk"]]);
+
+        // When it is deserialized.
+        let args: LifecycleArgs = serde_json::from_value(blob).expect("pairs deserialize");
+
+        // Then the pairs come back in order.
+        assert_eq!(
+            args.as_pairs(),
+            &[
+                ("dir".to_owned(), "/wt".to_owned()),
+                ("parent".to_owned(), "trunk".to_owned()),
+            ]
+        );
+    }
+
+    #[rstest::rstest]
+    fn lifecycle_args_deserialize_a_legacy_bare_array_as_positional() {
+        // Given a persisted blob in the pre-pairs bare-string shape.
+        let blob = serde_json::json!(["feature-x", "--fast"]);
+
+        // When it is deserialized.
+        let args: LifecycleArgs = serde_json::from_value(blob).expect("legacy array deserializes");
+
+        // Then each value is keyed $1, $2 by position, so the session keeps
+        // the positional render it was recorded with.
+        assert!(args.is_legacy_positional());
+        assert_eq!(
+            args.as_pairs(),
+            &[
+                ("$1".to_owned(), "feature-x".to_owned()),
+                ("$2".to_owned(), "--fast".to_owned()),
+            ]
+        );
+    }
+
+    #[rstest::rstest]
+    fn lifecycle_args_reject_an_unrecognized_payload() {
+        // Given a persisted blob that is neither pairs nor bare strings.
+        let blob = serde_json::json!([{"name": "dir"}]);
+
+        // When it is deserialized.
+        let result: Result<LifecycleArgs, _> = serde_json::from_value(blob);
+
+        // Then it is a real error, not a silent empty — an empty would
+        // render a template full of raw placeholders into a shell.
+        assert!(result.is_err());
+    }
+
+    #[rstest::rstest]
+    fn lifecycle_args_serialize_back_as_pairs() {
+        // Given a legacy array deserialized into $n-keyed pairs.
+        let args: LifecycleArgs =
+            serde_json::from_value(serde_json::json!(["only"])).expect("legacy deserializes");
+
+        // When it is serialized.
+        let out = serde_json::to_value(&args).expect("serialize");
+
+        // Then it persists as the pairs form.
+        assert_eq!(out, serde_json::json!([["$1", "only"]]));
+    }
+
+    #[rstest::rstest]
+    fn lifecycle_args_values_drop_the_keys_in_order() {
+        // Given named pairs in a non-alphabetical recorded order.
+        let args = LifecycleArgs::from_pairs([("zeta", "1"), ("alpha", "2")]);
+
+        // When the values are read.
+        let values = args.values();
+
+        // Then the recorded order is preserved, keys dropped.
+        assert_eq!(values, vec!["1".to_owned(), "2".to_owned()]);
     }
 }

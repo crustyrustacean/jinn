@@ -19,7 +19,7 @@ use jinn_token_count_msg::TokenRecord;
 use jinn_tools_msg::TaskList;
 
 use crate::core::SessionCore;
-use crate::fields::default_prep_mode;
+use crate::fields::{LifecycleArgs, default_prep_mode};
 
 /// Monotonic in-process revision for one authoritative session capture.
 #[derive(
@@ -92,9 +92,9 @@ pub struct SessionSnapshotMetadata {
     /// Lifecycle selector captured at creation.
     #[serde(default)]
     pub lifecycle_name: Option<String>,
-    /// Replayed lifecycle arguments.
+    /// Replayed lifecycle arguments, as ordered name-value pairs.
     #[serde(default)]
-    pub lifecycle_args: Vec<String>,
+    pub lifecycle_args: LifecycleArgs,
     /// The workflow-local TOML file the lifecycle was resolved from.
     /// Absent for jinn.toml lifecycles.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -352,7 +352,7 @@ impl SessionSnapshot {
 
     /// Returns the lifecycle arguments.
     #[must_use]
-    pub fn lifecycle_args(&self) -> &[String] {
+    pub const fn lifecycle_args(&self) -> &LifecycleArgs {
         &self.metadata.lifecycle_args
     }
 

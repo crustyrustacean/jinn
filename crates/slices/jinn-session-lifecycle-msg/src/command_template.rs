@@ -15,8 +15,25 @@
 //!
 //! Parameters are deduplicated by identity. `$1 <foo> $1` produces `[Positional(1), Named("foo")]`
 //! and substitutes both `$1` occurrences with the same arg.
+//!
+//! # Replay contract
+//!
+//! Teardown replays a session's recorded lifecycle arguments by **placeholder
+//! name** via [`CommandTemplate::render_named`], so the placeholder order of a
+//! script's setup and teardown commands is irrelevant. The positional
+//! [`CommandTemplate::render`] remains for sessions whose arguments were
+//! recorded as bare values.
+//!
+//! # Quoting rule
+//!
+//! Never place a placeholder inside a quoted region of the template. Both
+//! renderers substitute with [`shell_quote`], which quotes for bare shell
+//! context; its output nested inside a quote the template author wrote (e.g.
+//! a `bash -c '...'` envelope) breaks quote pairing when a value carries a
+//! quote character. Placeholders belong in bare context.
 
 use regex::Regex;
+use std::collections::BTreeMap;
 use std::fmt;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -63,6 +80,15 @@ enum Span {
     Static(String),
     /// A `<...>` placeholder. Contains the inner text (e.g., `"branch"` from `<branch>`).
     Placeholder(String),
+}
+
+/// Why a named render refused to produce a command.
+#[derive(Debug, wherror::Error)]
+#[error(debug)]
+pub enum RenderNamedError {
+    /// The template names a placeholder the supplied pairs do not carry.
+    #[error("missing value for placeholder <{0}>")]
+    MissingValue(String),
 }
 
 /// A single parameter extracted from a command template.
@@ -121,10 +147,26 @@ fn try_parse_dollar(graphemes: &[&str], i: usize) -> Option<(Param, usize)> {
     }
 }
 
+/// Whether a `<name>` span's inner text is a placeholder name.
+///
+/// Names are identifier-like: ASCII alphabetic or `_` first, then ASCII
+/// alphanumeric, `_`, or `-`. Shell text between an arbitrary `<` and a
+/// later `>` — a grep pattern like `'^<<<<<<<'` closed by a `2>` redirect —
+/// must not be mistaken for a placeholder, and such spans always carry
+/// whitespace or quote characters a real name never does.
+fn is_placeholder_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first.is_ascii_alphabetic() || first == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
 /// Try to parse a `<name>` token at position `i` in `graphemes`.
 ///
 /// Returns `Some((Param::Named(name), graphemes_consumed))` if a well-formed
-/// `<name>` token is found (non-empty name, closing `>` present).
+/// `<name>` token is found (identifier-like name, closing `>` present).
 /// Returns `None` otherwise.
 fn try_parse_named(graphemes: &[&str], i: usize) -> Option<(Param, usize)> {
     if graphemes.get(i)? != &"<" {
@@ -140,10 +182,11 @@ fn try_parse_named(graphemes: &[&str], i: usize) -> Option<(Param, usize)> {
     }
     if end > start && graphemes.get(end) == Some(&">") {
         let name: String = graphemes.get(start..end)?.join("");
-        Some((Param::Named(name), end - i + 1))
-    } else {
-        None
+        if is_placeholder_name(&name) {
+            return Some((Param::Named(name), end - i + 1));
+        }
     }
+    None
 }
 
 impl CommandTemplate {
@@ -275,6 +318,103 @@ impl CommandTemplate {
         }
 
         result
+    }
+
+    /// Render the command substituting by placeholder **name**.
+    ///
+    /// This is the replay renderer for teardown: every `<name>` placeholder
+    /// receives the value keyed by that name in `args`, so the order in which
+    /// a template lists its placeholders is irrelevant. Every substituted
+    /// value passes through [`shell_quote`].
+    ///
+    /// Substitution is a single pass: the source is scanned grapheme-wise and
+    /// each recognized placeholder span becomes its quoted value; emitted
+    /// output is never re-scanned, so a value that itself looks like a
+    /// placeholder can never be substituted again.
+    ///
+    /// `$1`-style positional spans look up the key `"$1"`, substituting empty
+    /// when absent — named sessions record no positional keys. `$@`/`$*`
+    /// splat spans substitute empty; the `run_lifecycle` tool refuses scripts
+    /// that use them.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RenderNamedError::MissingValue`] when the template names a
+    /// `<placeholder>` that `args` does not carry, naming the placeholder.
+    pub fn render_named(
+        &self,
+        args: &BTreeMap<String, String>,
+    ) -> Result<String, RenderNamedError> {
+        for param in &self.params {
+            if let Param::Named(name) = param
+                && !args.contains_key(name)
+            {
+                return Err(RenderNamedError::MissingValue(name.clone()));
+            }
+        }
+
+        // Single scan pass: each placeholder span in the source becomes its
+        // quoted value; everything else copies through. Values are never
+        // revisited, so a value carrying a later placeholder's shape is inert.
+        let mut out = String::with_capacity(self.source.len());
+        let graphemes: Vec<&str> = self.source.graphemes(true).collect();
+        let mut i = 0;
+        while i < graphemes.len() {
+            let substituted = try_parse_dollar(&graphemes, i)
+                .or_else(|| try_parse_named(&graphemes, i))
+                .map(|(param, width)| {
+                    let value = match &param {
+                        Param::Named(name) => args.get(name),
+                        Param::Positional(n) => args.get(&format!("${n}")),
+                        Param::Splat => None,
+                    };
+                    let quoted = value.map(|v| shell_quote(v)).unwrap_or_default();
+                    (quoted, width)
+                });
+            match substituted {
+                Some((quoted, width)) => {
+                    out.push_str(&quoted);
+                    i += width;
+                }
+                None => {
+                    if let Some(grapheme) = graphemes.get(i) {
+                        out.push_str(grapheme);
+                    }
+                    i += 1;
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// Render the command against a session's stored lifecycle arguments.
+    ///
+    /// This is the single entry point every replay path uses. Stored
+    /// arguments are ordered name-value pairs; three shapes are handled:
+    ///
+    /// - empty pairs — the template has nothing to substitute; the raw
+    ///   command is returned unchanged
+    /// - every key a `$1`-style positional (`$` followed by digits only) —
+    ///   a legacy session whose arguments were recorded as bare values;
+    ///   rendered positionally exactly as they always were
+    /// - anything else — rendered by name via [`CommandTemplate::render_named`]
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RenderNamedError::MissingValue`] when a named render finds
+    /// a placeholder the stored pairs do not carry. Pairs stamped by the
+    /// producers are validated against the setup template at write time, so
+    /// this only fires when a script's placeholders changed after the
+    /// arguments were recorded.
+    pub fn render_stored(&self, pairs: &[(String, String)]) -> Result<String, RenderNamedError> {
+        if pairs.is_empty() {
+            return Ok(self.source.clone());
+        }
+        if pairs.iter().all(|(key, _)| is_positional_key(key)) {
+            let values: Vec<String> = pairs.iter().map(|(_, value)| value.clone()).collect();
+            return Ok(self.render(&values));
+        }
+        self.render_named(&pairs.iter().cloned().collect::<BTreeMap<String, String>>())
     }
 
     /// Render the command with display tokens.
@@ -453,6 +593,21 @@ fn substitute_spans(spans: Vec<Span>, params: &[Param], args: &[String]) -> Vec<
             }
         })
         .collect()
+}
+
+/// Whether a stored pair key denotes a legacy positional value.
+///
+/// Positional keys are `$` followed by one or more ASCII digits (`$1`,
+/// `$2`, ...) — the shape `lifecycle_args` carried before arguments were
+/// recorded as name-value pairs. A key is positional only when *every*
+/// character after the `$` is a digit, so a template placeholder genuinely
+/// named `$foo` can never be mistaken for one.
+#[must_use]
+pub fn is_positional_key(key: &str) -> bool {
+    let Some(digits) = key.strip_prefix('$') else {
+        return false;
+    };
+    !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
 }
 
 /// Shell-quote a value for safe interpolation into a `bash -c` command
@@ -2196,5 +2351,147 @@ mod tests {
 
         // Then both placeholders are extracted.
         assert_eq!(tmpl.params(), &[Param::Positional(1), Param::Positional(2)]);
+    }
+
+    #[rstest::rstest]
+    fn render_named_substitutes_by_name_regardless_of_order() {
+        // Given a teardown template whose placeholder order differs from the
+        // order the values were recorded in.
+        let tmpl = CommandTemplate::parse("fossil merge <parent> && rm -rfv <dir>");
+        let args = BTreeMap::from([
+            ("dir".to_owned(), "/wt".to_owned()),
+            ("parent".to_owned(), "feature".to_owned()),
+        ]);
+
+        // When rendering by name.
+        let rendered = tmpl.render_named(&args).expect("all names supplied");
+
+        // Then each placeholder carries its own value.
+        assert_eq!(rendered, "fossil merge feature && rm -rfv /wt".to_owned());
+    }
+
+    #[rstest::rstest]
+    fn render_named_quotes_values_and_never_rescans_them() {
+        // Given a template whose first placeholder's value contains both a
+        // later placeholder's shape and a quote character.
+        let tmpl = CommandTemplate::parse("echo <a> <b>");
+        let args = BTreeMap::from([
+            ("a".to_owned(), "<b> ; rm -rf /".to_owned()),
+            ("b".to_owned(), "it's".to_owned()),
+        ]);
+
+        // When rendering by name.
+        let rendered = tmpl.render_named(&args).expect("all names supplied");
+
+        // Then the hostile value stays quoted and inert, and the quote in the
+        // second value is shell-escaped.
+        assert_eq!(rendered, "echo '<b> ; rm -rf /' 'it'\\''s'".to_owned());
+    }
+
+    #[rstest::rstest]
+    fn render_named_repeats_one_value_at_every_occurrence() {
+        // Given a template where a placeholder occurs more than once.
+        let tmpl = CommandTemplate::parse("cd <dir> && ls <dir>");
+        let args = BTreeMap::from([("dir".to_owned(), "/wt".to_owned())]);
+
+        // When rendering by name.
+        let rendered = tmpl.render_named(&args).expect("all names supplied");
+
+        // Then every occurrence carries the same value.
+        assert_eq!(rendered, "cd /wt && ls /wt".to_owned());
+    }
+
+    #[rstest::rstest]
+    fn render_named_errors_naming_the_missing_placeholder() {
+        // Given a template naming a placeholder the pairs do not carry.
+        let tmpl = CommandTemplate::parse("fossil merge <parent>");
+        let args = BTreeMap::from([("branch".to_owned(), "feature".to_owned())]);
+
+        // When rendering by name.
+        let result = tmpl.render_named(&args);
+
+        // Then the error names the missing placeholder.
+        assert!(matches!(
+            result,
+            Err(RenderNamedError::MissingValue(name)) if name == "parent"
+        ));
+    }
+
+    #[rstest::rstest]
+    fn render_named_fills_positional_spans_from_dollar_keys() {
+        // Given a legacy positional template and $n-keyed pairs.
+        let tmpl = CommandTemplate::parse("echo $1 $2");
+        let args = BTreeMap::from([
+            ("$1".to_owned(), "first".to_owned()),
+            ("$2".to_owned(), "second".to_owned()),
+        ]);
+
+        // When rendering by name.
+        let rendered = tmpl.render_named(&args).expect("both keys present");
+
+        // Then each positional span carries its keyed value.
+        assert_eq!(rendered, "echo first second".to_owned());
+    }
+
+    #[rstest::rstest]
+    fn render_stored_renders_named_pairs_by_name() {
+        // Given stored name-value pairs in an order that differs from the
+        // teardown template's placeholder order.
+        let tmpl = CommandTemplate::parse("fossil merge <parent> && rm -rfv <dir>");
+        let pairs = vec![
+            ("dir".to_owned(), "/wt".to_owned()),
+            ("branch".to_owned(), "feature".to_owned()),
+            ("parent".to_owned(), "feature".to_owned()),
+        ];
+
+        // When rendering the stored arguments.
+        let rendered = tmpl.render_stored(&pairs).expect("all names supplied");
+
+        // Then each placeholder carries the value recorded under its name,
+        // regardless of the recorded order.
+        assert_eq!(rendered, "fossil merge feature && rm -rfv /wt".to_owned());
+    }
+
+    #[rstest::rstest]
+    fn render_stored_renders_legacy_positional_pairs_in_order() {
+        // Given stored pairs whose keys are the $n shape of a legacy session.
+        let tmpl = CommandTemplate::parse("echo $1 $2");
+        let pairs = vec![
+            ("$1".to_owned(), "first".to_owned()),
+            ("$2".to_owned(), "second".to_owned()),
+        ];
+
+        // When rendering the stored arguments.
+        let rendered = tmpl.render_stored(&pairs).expect("positional render");
+
+        // Then the values are assigned positionally, as they always were.
+        assert_eq!(rendered, "echo first second".to_owned());
+    }
+
+    #[rstest::rstest]
+    fn render_stored_returns_the_raw_command_when_nothing_is_stored() {
+        // Given a session that recorded no lifecycle arguments.
+        let tmpl = CommandTemplate::parse("echo <a>");
+        let pairs: Vec<(String, String)> = Vec::new();
+
+        // When rendering the stored arguments.
+        let rendered = tmpl.render_stored(&pairs).expect("nothing to render");
+
+        // Then the command comes back with its placeholders intact.
+        assert_eq!(rendered, "echo <a>".to_owned());
+    }
+
+    #[rstest::rstest]
+    fn is_positional_key_admits_only_dollar_digits() {
+        // Given keys that are, and are not, legacy positional keys.
+        // When testing each key.
+        // Then only $-followed-by-digits is positional.
+        assert!(is_positional_key("$1"));
+        assert!(is_positional_key("$12"));
+        assert!(!is_positional_key("dir"));
+        assert!(!is_positional_key("$"));
+        assert!(!is_positional_key("$x"));
+        assert!(!is_positional_key("$1a"));
+        assert!(!is_positional_key("a$1"));
     }
 }

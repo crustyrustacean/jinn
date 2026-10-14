@@ -46,7 +46,7 @@ use jinn_session_lifecycle_msg::LifecycleScriptState;
 use jinn_session_msg::SessionOrigin;
 
 use crate::core::SessionCore;
-use crate::fields::SessionProfile;
+use crate::fields::{LifecycleArgs, SessionProfile};
 use crate::runtime::SessionUi;
 use crate::steering_buffer::SteeringBuffer;
 
@@ -3572,13 +3572,14 @@ impl ChatSessionState {
         self.core.lifecycle.lifecycle_name = name;
     }
 
-    /// The args used during setup (replayed for teardown).
-    pub fn lifecycle_args(&self) -> &[String] {
+    /// The args used during setup (replayed for teardown), as ordered
+    /// name-value pairs.
+    pub fn lifecycle_args(&self) -> &LifecycleArgs {
         &self.core.lifecycle.lifecycle_args
     }
 
     /// Set the lifecycle args.
-    pub fn set_lifecycle_args(&mut self, args: Vec<String>) {
+    pub fn set_lifecycle_args(&mut self, args: LifecycleArgs) {
         self.core.lifecycle.lifecycle_args = args;
     }
 

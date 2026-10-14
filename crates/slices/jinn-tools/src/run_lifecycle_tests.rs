@@ -83,7 +83,9 @@ fn setup_ran_fixture() -> (State, SessionId) {
         let mut guard = state.write();
         let session = guard.session.get_mut(&id).expect("session");
         session.set_lifecycle_name(Some("worktree".to_owned()));
-        session.set_lifecycle_args(vec!["wt-a".to_owned()]);
+        session.set_lifecycle_args(jinn_session_state::fields::LifecycleArgs::from_pairs([(
+            "dir", "wt-a",
+        )]));
         session.set_lifecycle_source(None);
         session.advance_lifecycle_after_setup();
     }
@@ -149,19 +151,25 @@ fn missing_argument_fails_naming_the_placeholder() {
 
 #[rstest::rstest]
 #[test]
-fn ordering_places_named_args_in_template_parameter_order() {
+fn pairing_stamps_names_in_template_parameter_order() {
     // Given args supplied in an order different from the template's.
     let args = BTreeMap::from([
         ("base".to_owned(), "trunk".to_owned()),
         ("dir".to_owned(), "wt".to_owned()),
     ]);
 
-    // When ordering against the template (dir first, base second).
+    // When pairing against the template (dir first, base second).
     let template = CommandTemplate::parse("mkdir <dir> --branch <base>");
-    let ordered = crate::run_lifecycle::order_args(&template, &args);
+    let paired = crate::run_lifecycle::pair_args(&template, &args);
 
-    // Then the values come out positionally.
-    assert_eq!(ordered, vec!["wt".to_owned(), "trunk".to_owned()]);
+    // Then the pairs carry the name with each value, in template order.
+    assert_eq!(
+        paired.as_pairs(),
+        &[
+            ("dir".to_owned(), "wt".to_owned()),
+            ("base".to_owned(), "trunk".to_owned()),
+        ]
+    );
 }
 
 #[rstest::rstest]
@@ -203,8 +211,11 @@ async fn setup_stamps_coordinates_and_persists_before_the_run_command() {
     let session = guard.session.get(&id).expect("session");
     assert_eq!(session.lifecycle_name(), Some("worktree"));
     assert_eq!(
-        session.lifecycle_args(),
-        &["wt-a".to_owned(), "trunk".to_owned()]
+        session.lifecycle_args().as_pairs(),
+        &[
+            ("dir".to_owned(), "wt-a".to_owned()),
+            ("base".to_owned(), "trunk".to_owned()),
+        ]
     );
     assert_eq!(session.lifecycle_source(), None);
     drop(guard);
@@ -272,7 +283,10 @@ async fn teardown_ignores_supplied_options_and_replays_the_stored_coordinates() 
     let guard = state.read();
     let session = guard.session.get(&id).expect("session");
     assert_eq!(session.lifecycle_name(), Some("worktree"));
-    assert_eq!(session.lifecycle_args(), &["wt-a".to_owned()]);
+    assert_eq!(
+        session.lifecycle_args().as_pairs(),
+        &[("dir".to_owned(), "wt-a".to_owned())]
+    );
     assert_eq!(session.lifecycle_source(), None);
     drop(guard);
     let recorded =
@@ -391,7 +405,10 @@ async fn setup_on_a_session_that_already_ran_setup_fails_naming_the_state() {
     );
     let guard = state.read();
     let session = guard.session.get(&id).expect("session");
-    assert_eq!(session.lifecycle_args(), &["wt-a".to_owned()]);
+    assert_eq!(
+        session.lifecycle_args().as_pairs(),
+        &[("dir".to_owned(), "wt-a".to_owned())]
+    );
     drop(guard);
     assert!(setups.is_empty());
 }

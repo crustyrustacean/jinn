@@ -1255,7 +1255,10 @@ async fn lifecycle_metadata_round_trips() {
     let session_id = SessionId::new();
     let mut session = make_session(&session_id, "Lifecycle Session");
     session.set_lifecycle_name(Some("fossil branch".to_owned()));
-    session.set_lifecycle_args(vec!["my-branch".to_owned(), "--private".to_owned()]);
+    session.set_lifecycle_args(jinn_session_state::fields::LifecycleArgs::from_pairs([
+        ("$1", "my-branch"),
+        ("$2", "--private"),
+    ]));
 
     // When saving and loading.
     store.save(&session.capture_snapshot()).await.expect("save");
@@ -1268,8 +1271,11 @@ async fn lifecycle_metadata_round_trips() {
     // Then lifecycle metadata is preserved.
     assert_eq!(loaded.lifecycle_name(), Some("fossil branch"));
     assert_eq!(
-        loaded.lifecycle_args(),
-        &["my-branch".to_owned(), "--private".to_owned()]
+        loaded.lifecycle_args().as_pairs(),
+        &[
+            ("$1".to_owned(), "my-branch".to_owned()),
+            ("$2".to_owned(), "--private".to_owned()),
+        ]
     );
 }
 
@@ -1305,7 +1311,9 @@ async fn fork_inherits_lifecycle_metadata() {
     source.set_title("Source".to_owned());
     source.push_entry(ChatEntry::user("hello"));
     source.set_lifecycle_name(Some("fossil branch".to_owned()));
-    source.set_lifecycle_args(vec!["dev".to_owned()]);
+    source.set_lifecycle_args(jinn_session_state::fields::LifecycleArgs::from_pairs([(
+        "$1", "dev",
+    )]));
     store
         .save(&source.capture_snapshot())
         .await
@@ -1321,7 +1329,10 @@ async fn fork_inherits_lifecycle_metadata() {
 
     // Then the forked session inherits lifecycle metadata.
     assert_eq!(forked.lifecycle_name(), Some("fossil branch"));
-    assert_eq!(forked.lifecycle_args(), &["dev".to_owned()]);
+    assert_eq!(
+        forked.lifecycle_args().as_pairs(),
+        &[("$1".to_owned(), "dev".to_owned())]
+    );
 }
 
 #[rstest::rstest]
@@ -1796,7 +1807,9 @@ fn metadata_blob_is_unchanged_by_group_composition() {
     session.set_cwd(std::path::PathBuf::from("/workspace/project"));
     session.set_home(std::path::PathBuf::from("/home/developer"));
     session.set_lifecycle_name(Some("dev".to_owned()));
-    session.set_lifecycle_args(vec!["--fast".to_owned()]);
+    session.set_lifecycle_args(jinn_session_state::fields::LifecycleArgs::from_pairs([(
+        "$1", "--fast",
+    )]));
     session.advance_lifecycle_after_setup();
     session.set_session_state(jinn_session_store_msg::SessionState::Archived);
     session.set_persist(false);
@@ -1821,7 +1834,7 @@ fn metadata_blob_is_unchanged_by_group_composition() {
             r#""persona_name":"coding-assistant","#,
             r#""reasoning_effort":null},"cwd":"/workspace/project","#,
             r#""parent_session":null,"fork_ordinal":null,"origin":"user","project":null,"#,
-            r#""blobs":{},"lifecycle_name":"dev","lifecycle_args":["--fast"],"#,
+            r#""blobs":{},"lifecycle_name":"dev","lifecycle_args":[["$1","--fast"]],"#,
             r#""lifecycle_script_state":"setup_ran","task_list":{"phases":[]},"#,
             r#""enabled_mcp_servers":[],"persist":false,"#,
             r#""behavior":"reset","prep_mode":true,"trigger":"manual","#,
@@ -2040,7 +2053,10 @@ fn legacy_flat_lifecycle_blob_loads_after_group_composition() {
     assert_eq!(metadata.title.as_deref(), Some("Legacy lifecycle"));
     assert_eq!(metadata.cwd, std::path::Path::new("/legacy/project"));
     assert_eq!(metadata.lifecycle_name.as_deref(), Some("release"));
-    assert_eq!(metadata.lifecycle_args, ["--verbose"]);
+    assert_eq!(
+        metadata.lifecycle_args.as_pairs(),
+        &[("$1".to_owned(), "--verbose".to_owned())]
+    );
     assert_eq!(
         metadata.lifecycle_script_state,
         jinn_session_lifecycle_msg::LifecycleScriptState::TeardownRan

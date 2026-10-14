@@ -2099,7 +2099,10 @@ fn serde_round_trips_lifecycle_fields() {
     // Given a session with lifecycle fields set.
     let mut session = ChatSessionState::new();
     session.set_lifecycle_name(Some("fossil branch".to_owned()));
-    session.set_lifecycle_args(vec!["feature-x".to_owned()]);
+    session.set_lifecycle_args(LifecycleArgs::from_pairs([(
+        "$1".to_owned(),
+        "feature-x".to_owned(),
+    )]));
 
     // When serializing and deserializing.
     let json = serde_json::to_string(&session).expect("serialize");
@@ -2107,7 +2110,10 @@ fn serde_round_trips_lifecycle_fields() {
 
     // Then lifecycle fields are preserved.
     assert_eq!(back.lifecycle_name(), Some("fossil branch"));
-    assert_eq!(back.lifecycle_args(), &["feature-x".to_owned()]);
+    assert_eq!(
+        back.lifecycle_args(),
+        &LifecycleArgs::from_pairs([("$1", "feature-x")])
+    );
 }
 
 #[rstest::rstest]
@@ -2117,7 +2123,10 @@ fn serde_lifecycle_group_remains_flat() {
     session.set_title("Lifecycle title".to_owned());
     session.set_cwd(std::path::PathBuf::from("/workspace/project"));
     session.set_lifecycle_name(Some("dev".to_owned()));
-    session.set_lifecycle_args(vec!["--fast".to_owned()]);
+    session.set_lifecycle_args(LifecycleArgs::from_pairs([(
+        "$1".to_owned(),
+        "--fast".to_owned(),
+    )]));
     session.advance_lifecycle_after_setup();
     session.set_persist(false);
 
@@ -2141,7 +2150,7 @@ fn serde_lifecycle_group_remains_flat() {
     );
     assert_eq!(
         object.get("lifecycle_args"),
-        Some(&serde_json::json!(["--fast"]))
+        Some(&serde_json::json!([["$1", "--fast"]]))
     );
     assert_eq!(
         object.get("lifecycle_script_state"),
@@ -2160,7 +2169,7 @@ fn composed_five_group_core() -> SessionCore {
     core.identity.has_interacted = true;
     core.lifecycle.cwd = PathBuf::from("/workspace/project");
     core.lifecycle.lifecycle_name = Some("release".to_owned());
-    core.lifecycle.lifecycle_args = vec!["--verbose".to_owned()];
+    core.lifecycle.lifecycle_args = LifecycleArgs::from_pairs([("$1", "--verbose")]);
     core.lifecycle.lifecycle_script_state = LifecycleScriptState::SetupRan;
     core.restore_history(vec![ChatEntry::user("hello")]);
     core.history_work.task_list.add_phase("Ship it");

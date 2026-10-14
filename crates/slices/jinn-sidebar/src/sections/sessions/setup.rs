@@ -11,6 +11,7 @@ use jinn_session_lifecycle_msg::{
 
 use super::close::validate_session_close;
 use jinn_preferences_config::schemas::SessionLifecycle;
+use jinn_session_state::fields::LifecycleArgs;
 
 /// Re-runs setup for the selected session when its lifecycle is still unrun.
 pub fn handle_session_rerun_setup(
@@ -28,7 +29,7 @@ pub fn handle_session_rerun_setup(
             return IntentResult::empty();
         }
         let lifecycle_name = session.lifecycle_name().map(String::from);
-        let args = session.lifecycle_args().to_vec();
+        let args = session.lifecycle_args().clone();
         let setup = lifecycle_name.as_deref().and_then(|name| {
             config
                 .get_list::<SessionLifecycle>()
@@ -52,7 +53,7 @@ pub fn handle_session_rerun_setup(
         .with_message(RunSessionSetup {
             session_id: target_id,
             command: rendered,
-            args,
+            args: args.values(),
             lifecycle_command: Some(setup),
         })
 }
@@ -64,10 +65,11 @@ fn selected_idle_session(state: &AppState) -> Option<jinn_core_types::SessionId>
         .with_sections(|sections| sections.sessions.selected_id.clone(), || None)
 }
 
-fn render_setup(setup: &LifecycleCommand, args: &[String]) -> String {
+fn render_setup(setup: &LifecycleCommand, args: &LifecycleArgs) -> String {
     match setup {
-        LifecycleCommand::Shell(command) if args.is_empty() => command.clone(),
-        LifecycleCommand::Shell(command) => CommandTemplate::parse(command).render(args),
+        LifecycleCommand::Shell(command) => CommandTemplate::parse(command)
+            .render_stored(args.as_pairs())
+            .unwrap_or_else(|_| command.clone()),
         LifecycleCommand::Builtin(id) => id.to_string(),
     }
 }

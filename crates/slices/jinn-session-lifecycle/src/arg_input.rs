@@ -279,9 +279,16 @@ mod tests {
             state.kernel.session.session_count(),
             original_session_count + 1
         );
+        let stored = state.kernel.active_session().lifecycle_args().as_pairs();
+        // Then the stored pairs key each positional answer $1, $2 (the popup
+        // template is positional); pairing against names happens in the
+        // session-creation path when the template names them.
         assert_eq!(
-            state.kernel.active_session().lifecycle_args(),
-            &["two words".to_owned(), "tail".to_owned()]
+            stored,
+            &[
+                ("$1".to_owned(), "two words".to_owned()),
+                ("$2".to_owned(), "tail".to_owned()),
+            ]
         );
         assert!(cell.read().text.input.is_empty());
     }
