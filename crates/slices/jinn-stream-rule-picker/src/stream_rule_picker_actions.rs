@@ -6,22 +6,26 @@
 //! await point, and nothing reaches into the kernel — the persisted effects
 //! happen in the route layer, where the confirm has the dispatch context.
 
+use std::collections::HashSet;
+
 use jinn_preferences_config::schemas::StreamRuleConfig;
 use jinn_stream_rule_picker_msg::{StreamRulePickerState, build_stream_rule_entries};
 
 /// Opening the picker: fresh filter, selection, and status; capture the
 /// theme; and load the rows from the configured rules with each entry's
-/// pending state seeded at the persisted value.
+/// pending state seeded at the persisted value — membership in
+/// `disabled_names`, the persisted `disabled_rules` array.
 pub fn open(
     state: &mut StreamRulePickerState,
     rules: &[StreamRuleConfig],
+    disabled_names: &HashSet<String>,
     theme: &jinn_theme::Theme,
 ) {
     state.reset();
     state.theme = theme.clone();
     state
         .selection
-        .set_items(build_stream_rule_entries(rules, theme));
+        .set_items(build_stream_rule_entries(rules, disabled_names, theme));
 }
 
 /// The highlighted rule's name, if any row is selected.
@@ -98,7 +102,12 @@ mod tests {
         let mut state = StreamRulePickerState::default();
 
         // When opening the picker over them.
-        open(&mut state, &[rule("alpha"), rule("beta")], &default_theme());
+        open(
+            &mut state,
+            &[rule("alpha"), rule("beta")],
+            &HashSet::new(),
+            &default_theme(),
+        );
 
         // Then both are shown in configuration order.
         let names: Vec<String> = state
@@ -112,13 +121,17 @@ mod tests {
 
     #[rstest::rstest]
     fn open_seeds_each_row_at_its_persisted_state() {
-        // Given a configuration where the second rule is persisted disabled.
-        let mut beta = rule("beta");
-        beta.disabled = true;
+        // Given a configuration where the persisted array names one rule.
+        let disabled_names = HashSet::from(["beta".to_owned()]);
 
         // When opening the picker over it.
         let mut state = StreamRulePickerState::default();
-        open(&mut state, &[rule("alpha"), beta], &default_theme());
+        open(
+            &mut state,
+            &[rule("alpha"), rule("beta")],
+            &disabled_names,
+            &default_theme(),
+        );
 
         // Then the pending set starts at the persisted values — a fresh open
         // reflects what the file holds, not the last session's edits.
@@ -131,13 +144,23 @@ mod tests {
         // Given a picker opened once, filtered, moved off the top, and left
         // with a status line.
         let mut state = StreamRulePickerState::default();
-        open(&mut state, &[rule("alpha"), rule("beta")], &default_theme());
+        open(
+            &mut state,
+            &[rule("alpha"), rule("beta")],
+            &HashSet::new(),
+            &default_theme(),
+        );
         state.selection.insert_char('a');
         state.selection.move_down(state.results_viewport);
         state.status = Some("disabled 'beta'".to_owned());
 
         // When reopening it.
-        open(&mut state, &[rule("alpha"), rule("beta")], &default_theme());
+        open(
+            &mut state,
+            &[rule("alpha"), rule("beta")],
+            &HashSet::new(),
+            &default_theme(),
+        );
 
         // Then the filter is gone, the highlight is back on the first row,
         // and the stale status is cleared.
@@ -150,7 +173,12 @@ mod tests {
     fn toggle_flips_only_the_highlighted_row_and_persists_nothing() {
         // Given an open picker with the highlight on the first rule.
         let mut state = StreamRulePickerState::default();
-        open(&mut state, &[rule("alpha"), rule("beta")], &default_theme());
+        open(
+            &mut state,
+            &[rule("alpha"), rule("beta")],
+            &HashSet::new(),
+            &default_theme(),
+        );
 
         // When toggling.
         toggle_highlighted(&mut state);
@@ -165,7 +193,12 @@ mod tests {
     fn toggling_twice_returns_the_row_to_its_original_state() {
         // Given an open picker whose highlighted rule was toggled once.
         let mut state = StreamRulePickerState::default();
-        open(&mut state, &[rule("alpha")], &default_theme());
+        open(
+            &mut state,
+            &[rule("alpha")],
+            &HashSet::new(),
+            &default_theme(),
+        );
         toggle_highlighted(&mut state);
 
         // When toggling again.
@@ -190,7 +223,12 @@ mod tests {
     fn pending_set_reports_every_row_in_display_order() {
         // Given an open picker where the first rule was toggled off.
         let mut state = StreamRulePickerState::default();
-        open(&mut state, &[rule("alpha"), rule("beta")], &default_theme());
+        open(
+            &mut state,
+            &[rule("alpha"), rule("beta")],
+            &HashSet::new(),
+            &default_theme(),
+        );
         toggle_highlighted(&mut state);
 
         // When collecting the pending set.

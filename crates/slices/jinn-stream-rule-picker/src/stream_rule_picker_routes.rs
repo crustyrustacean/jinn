@@ -238,19 +238,27 @@ pub fn register_stream_rule_picker_input_hook(routes: &KeyRoutes, cell: &StreamR
 /// seed reads the configuration layer the dispatch hands every route
 /// action, not any session's state. A malformed section reads as no rules
 /// (`unwrap_or_default`), matching how the stream-rules slice itself treats
-/// one. Each row's pending state starts at the persisted value, so
-/// reopening after a confirm shows what the file holds.
+/// one. The `disabled_rules` array rides the same layer and seeds each
+/// row's pending state at the persisted value, so reopening after a
+/// confirm shows what the file holds.
 fn open_stream_rule_picker(ctx: &mut ActionCtx<'_>, cell: &StreamRulePickerCell) -> IntentResult {
     let rules = ctx
         .config
         .get_list::<jinn_preferences_config::schemas::StreamRuleConfig>()
         .unwrap_or_default();
+    let disabled_names: std::collections::HashSet<String> = ctx
+        .config
+        .get::<jinn_preferences_config::StreamRulesConfig>()
+        .unwrap_or_default()
+        .disabled_rules
+        .into_iter()
+        .collect();
     // The theme the rows were last painted with, so a reopen does not
     // recolor under the user's eyes; a first open falls back to the default.
     let theme = cell.read().theme.clone();
 
     cell.update(|picker| {
-        stream_rule_picker_actions::open(picker, &rules, &theme);
+        stream_rule_picker_actions::open(picker, &rules, &disabled_names, &theme);
     });
 
     IntentResult::empty().with_scope_signal(ScopeSignal::Push(stream_rule_picker_scope()))

@@ -13,6 +13,14 @@
 //! 3. `[[stream_rules.entry]]` in **`jinn.toml`** — appended after, so a
 //!    user's own rules layer on top of whichever base set won.
 //!
+//! After assembly, the `[stream_rules] disabled_rules` name list from
+//! `jinn.toml` filters the whole set in one pass. The filter sits here —
+//! after every source has contributed, not inside any one reader — because
+//! names address rules from *any* source: a shipped rule or a
+//! `stream_rules.toml` rule has no `jinn.toml` entry to carry a flag, but
+//! every rule has a name. A name matching nothing is inert; removing a
+//! name re-arms its rule on the next read or refresh.
+//!
 //! Each source is read once at activation and never cached: a reload is
 //! observed by the next launch, and a rule the user deleted is not left
 //! armed by a stale copy.
@@ -28,7 +36,7 @@ use std::path::Path;
 use jinn_config::ConfigLayer;
 use jinn_preferences_config::schemas::{
     LegacyCommandPolicyRule, LegacyProjectConfig, StreamRuleConfig, StreamRuleFileEntry,
-    parse_stream_rules_file,
+    StreamRulesConfig, parse_stream_rules_file,
 };
 use jinn_preferences_config::{STREAM_RULES_FILE_NAME, STREAM_RULES_TEMPLATE};
 
@@ -39,7 +47,8 @@ use jinn_preferences_config::{STREAM_RULES_FILE_NAME, STREAM_RULES_TEMPLATE};
 ///
 /// The assembled order is: embedded set, replaced wholesale by an existing
 /// user file (malformed → warn and keep the embedded set), then everything
-/// `jinn.toml` and the legacy sections contribute appended after.
+/// `jinn.toml` and the legacy sections contribute appended after — minus
+/// every rule `disabled_rules` names.
 pub fn read_rules(config: &ConfigLayer, preferences_path: &Path) -> Vec<StreamRuleConfig> {
     let user_file = preferences_path
         .parent()
@@ -81,6 +90,15 @@ pub fn read_rules(config: &ConfigLayer, preferences_path: &Path) -> Vec<StreamRu
     }
 
     rules.extend(jinn_toml_rules(config));
+
+    let disabled = config
+        .get::<StreamRulesConfig>()
+        .map(|section| section.disabled_rules)
+        .unwrap_or_default();
+    // Silent skip on purpose: a deliberate disable is the requested
+    // behaviour, so a name that matches nothing is inert rather than a
+    // warning the user would see on every read.
+    rules.retain(|rule| !disabled.iter().any(|name| name == &rule.name));
     rules
 }
 
@@ -190,7 +208,6 @@ fn convert(rule: &LegacyCommandPolicyRule, project: Option<&std::path::Path>) ->
         // Interrupting that call's argument stream is what stops it running.
         scopes: vec!["tool:bash".to_owned()],
         body: rule.message.clone(),
-        disabled: false,
         project: project.map(|p| p.to_string_lossy().into_owned()),
     }
 }
@@ -734,5 +751,234 @@ mod tests {
             in_project.is_some(),
             "the legacy project rule must fire in its project"
         );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_disabled_name_disarms_an_embedded_rule() {
+        // Given a jinn.toml naming a shipped rule in the disabled array.
+        let config = layer(
+            r#"
+            [stream_rules]
+            disabled_rules = ['no-unbounded-recursive-rm']
+        "#,
+        );
+
+        // When the rules are read with no user file.
+        let names = assembled_names(&config, &temp_prefs());
+
+        // Then the named shipped rule is gone and its siblings stay armed —
+        // the array reaches a rule with no jinn.toml entry of its own.
+        assert!(
+            !names.contains(&"no-unbounded-recursive-rm".to_owned()),
+            "a named shipped rule must not survive, got: {names:?}"
+        );
+        assert!(
+            names.iter().any(|n| n == "no-mkfs"),
+            "the other shipped rules must stay armed, got: {names:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_disabled_name_disarms_a_user_file_rule() {
+        // Given a user rules file and an array naming its rule.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let prefs = prefs_path_in(dir.path());
+        write_user_rules(
+            &prefs,
+            r#"
+            [[stream_rules.entry]]
+            name = 'user-only-rule'
+            conditions = ['NEVER-TYPE-this']
+            scopes = ['tool:bash']
+            body = 'Mine.'
+        "#,
+        );
+        let config = layer(
+            r#"
+            [stream_rules]
+            disabled_rules = ['user-only-rule']
+        "#,
+        );
+
+        // When the rules are read.
+        let names = assembled_names(&config, &prefs);
+
+        // Then the user-file rule is disarmed by name: the filter runs
+        // after assembly, not inside the jinn.toml reader.
+        assert!(
+            names.is_empty(),
+            "a named user-file rule must not survive, got: {names:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_disabled_name_disarms_a_jinn_toml_rule() {
+        // Given a jinn.toml rule and its own name in the array.
+        let config = layer(
+            r#"
+            [stream_rules]
+            disabled_rules = ['from-jinn-toml']
+
+            [[stream_rules.entry]]
+            name = 'from-jinn-toml'
+            conditions = ['TODO']
+            scopes = ['text']
+            body = 'Finish it.'
+        "#,
+        );
+
+        // When the rules are read.
+        let names = assembled_names(&config, &temp_prefs());
+
+        // Then only the named rule is gone; the base set stays armed.
+        assert!(
+            !names.contains(&"from-jinn-toml".to_owned()),
+            "a named jinn.toml rule must not survive, got: {names:?}"
+        );
+        assert!(
+            names.iter().any(|n| n == "no-unbounded-recursive-rm"),
+            "the embedded base set must stay armed, got: {names:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_disabled_name_disarms_a_legacy_converted_rule() {
+        // Given the removed legacy section and an array naming the rule it
+        // converts into.
+        let config = layer(
+            r#"
+            [stream_rules]
+            disabled_rules = ['bash-policy: LEGACY-MARKER-CMD']
+
+            [[tools.bash_command_policy]]
+            pattern = 'LEGACY-MARKER-CMD'
+            message = 'That is the whole filesystem.'
+        "#,
+        );
+
+        // When the rules are read.
+        let names = assembled_names(&config, &temp_prefs());
+
+        // Then the converted rule is disarmed by name too: conversions pass
+        // through the same choke point as every other source.
+        assert!(
+            !names.contains(&"bash-policy: LEGACY-MARKER-CMD".to_owned()),
+            "a named legacy rule must not survive, got: {names:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_disabled_name_matching_nothing_is_inert() {
+        // Given an array naming a rule that exists nowhere.
+        let config = layer(
+            r#"
+            [stream_rules]
+            disabled_rules = ['never-existed']
+        "#,
+        );
+
+        // When the rules are read.
+        let names = assembled_names(&config, &temp_prefs());
+
+        // Then the set is unchanged: names match at read time against
+        // whatever assembled, and a stale name is inert, not an error.
+        assert!(
+            names.iter().any(|n| n == "no-unbounded-recursive-rm"),
+            "the base set must be untouched by an unknown name, got: {names:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn removing_a_name_from_the_array_re_arms_the_rule() {
+        // Given an armed jinn.toml rule — its name no longer in any array.
+        let config = layer(
+            r#"
+            [[stream_rules.entry]]
+            name = 'from-jinn-toml'
+            conditions = ['TODO']
+            scopes = ['text']
+            body = 'Finish it.'
+        "#,
+        );
+
+        // When the rules are read.
+        let names = assembled_names(&config, &temp_prefs());
+
+        // Then the rule is back: a name's absence means armed, so removing
+        // it re-arms on the next read or refresh.
+        assert!(
+            names.contains(&"from-jinn-toml".to_owned()),
+            "the re-armed rule must be read, got: {names:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_named_rule_never_fires_on_a_matching_stream() {
+        // Given a rule the disabled array names.
+        let config = layer(
+            r#"
+            [stream_rules]
+            disabled_rules = ['from-jinn-toml']
+
+            [[stream_rules.entry]]
+            name = 'from-jinn-toml'
+            conditions = ['TODO']
+            scopes = ['text']
+            body = 'Finish it.'
+        "#,
+        );
+
+        // When the assembled set is compiled and prose matching its
+        // pattern streams.
+        let set = CompiledSet::build(&read_rules(&config, &temp_prefs()));
+        let mut session = set.new_session(&jinn_core_types::SessionId::new());
+        let fired = session
+            .check("leave a TODO here", StreamContext::text())
+            .map(|hit| hit.name.clone());
+
+        // Then nothing fires: the rule is not in the compiled set.
+        assert_eq!(fired, None);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn an_enabled_rule_still_fires_beside_a_named_disabled_one() {
+        // Given two matching rules, the first named in the array.
+        let config = layer(
+            r#"
+            [stream_rules]
+            disabled_rules = ['off']
+
+            [[stream_rules.entry]]
+            name = 'off'
+            conditions = ['TODO']
+            scopes = ['text']
+            body = 'Off.'
+
+            [[stream_rules.entry]]
+            name = 'on'
+            conditions = ['TODO']
+            scopes = ['text']
+            body = 'On.'
+        "#,
+        );
+
+        // When the delta that matches both streams.
+        let set = CompiledSet::build(&read_rules(&config, &temp_prefs()));
+        let mut session = set.new_session(&jinn_core_types::SessionId::new());
+        let fired = session
+            .check("TODO", StreamContext::text())
+            .map(|hit| hit.name.clone());
+
+        // Then the enabled one fires: disabling one rule disarms only that
+        // rule, not the set around it.
+        assert_eq!(fired, Some("on".to_owned()));
     }
 }

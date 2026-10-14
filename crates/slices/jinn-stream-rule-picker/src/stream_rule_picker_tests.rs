@@ -132,14 +132,12 @@ fn pending_of(cell: &TypedCell<StreamRulePickerState>, name: &str) -> Option<boo
         .map(|item| item.entry().disabled)
 }
 
-/// The persisted disabled flag of the named rule in `layer`, or `None`.
-fn persisted_of(layer: &ConfigLayer, name: &str) -> Option<bool> {
+/// The persisted `disabled_rules` array of `layer`.
+fn persisted_of(layer: &ConfigLayer, name: &str) -> bool {
     layer
-        .get_list::<jinn_preferences_config::schemas::StreamRuleConfig>()
-        .ok()?
-        .iter()
-        .find(|rule| rule.name == name)
-        .map(|rule| rule.disabled)
+        .get::<jinn_preferences_config::StreamRulesConfig>()
+        .map(|section| section.disabled_rules.iter().any(|held| held == name))
+        .unwrap_or(false)
 }
 
 // ── Open ────────────────────────────────────────────────────────────────
@@ -154,7 +152,12 @@ fn opening_the_picker_lists_every_configured_rule() {
         .get_list::<jinn_preferences_config::schemas::StreamRuleConfig>()
         .expect("read");
     cell.update(|picker| {
-        stream_rule_picker_actions::open(picker, &rules, &jinn_theme::default_theme());
+        stream_rule_picker_actions::open(
+            picker,
+            &rules,
+            &std::collections::HashSet::new(),
+            &jinn_theme::default_theme(),
+        );
     });
 
     // Then both rules are shown in configuration order.
@@ -309,7 +312,7 @@ async fn tab_toggles_only_the_pending_state_and_touches_nothing_else() {
     // is untouched — the write belongs to the confirm.
     assert_eq!(pending_of(&cell, "no-todos"), Some(true));
     assert_eq!(pending_of(&cell, "no-yelling"), Some(false));
-    assert_eq!(persisted_of(&config, "no-todos"), Some(false));
+    assert!(!persisted_of(&config, "no-todos"));
     // And the picker stayed open.
     assert_eq!(
         state.frontend.scope(),
@@ -404,8 +407,8 @@ async fn cancel_closes_the_picker_and_writes_nothing() {
     );
     // And nothing reached the file — the pending toggle died with the
     // picker.
-    assert_eq!(persisted_of(&config, "no-todos"), Some(false));
-    assert_eq!(persisted_of(&config, "no-yelling"), Some(false));
+    assert!(!persisted_of(&config, "no-todos"));
+    assert!(!persisted_of(&config, "no-yelling"));
 }
 
 #[rstest::rstest]
@@ -491,8 +494,8 @@ async fn confirm_persists_the_pending_set_through_the_storage_path_and_closes() 
 
     // Then the toggled rule is persisted disabled through the config layer,
     // and its armed sibling is untouched.
-    assert_eq!(persisted_of(&config, "no-todos"), Some(true));
-    assert_eq!(persisted_of(&config, "no-yelling"), Some(false));
+    assert!(persisted_of(&config, "no-todos"));
+    assert!(!persisted_of(&config, "no-yelling"));
     // And the picker closed.
     assert_ne!(
         state.frontend.scope(),
@@ -613,6 +616,7 @@ async fn a_failed_confirm_publishes_no_refresh() {
             .selection
             .set_items(jinn_stream_rule_picker_msg::build_stream_rule_entries(
                 &rules,
+                &std::collections::HashSet::new(),
                 &picker.theme,
             ));
     });
@@ -714,6 +718,7 @@ async fn an_unknown_rule_fails_the_confirm_into_the_status_line_without_closing(
             .selection
             .set_items(jinn_stream_rule_picker_msg::build_stream_rule_entries(
                 &rules,
+                &std::collections::HashSet::new(),
                 &picker.theme,
             ));
     });
@@ -751,8 +756,8 @@ async fn an_unknown_rule_fails_the_confirm_into_the_status_line_without_closing(
     );
     // And nothing was written — the unknown name has no entry to write, and
     // the abort stopped before the sibling flag could be re-saved either.
-    assert_eq!(persisted_of(&config, "no-todos"), Some(false));
-    assert_eq!(persisted_of(&config, "no-yelling"), Some(false));
+    assert!(!persisted_of(&config, "no-todos"));
+    assert!(!persisted_of(&config, "no-yelling"));
 }
 
 // ── Wiring ──────────────────────────────────────────────────────────────
@@ -835,6 +840,7 @@ async fn render_draws_an_armed_rule_with_its_enabled_mark() {
                 body: "Finish it.".to_owned(),
                 ..Default::default()
             }],
+            &std::collections::HashSet::new(),
             &jinn_theme::default_theme(),
         );
     });
@@ -865,9 +871,11 @@ async fn render_draws_a_disabled_rule_with_its_disabled_mark() {
                 description: "no !!!".to_owned(),
                 conditions: vec!["!!!".to_owned()],
                 body: "Calm down.".to_owned(),
-                disabled: true,
                 ..Default::default()
             }],
+            // The persisted array names the rule, so the row renders as
+            // switched off.
+            &std::collections::HashSet::from(["no-yelling".to_owned()]),
             &jinn_theme::default_theme(),
         );
     });
@@ -893,7 +901,12 @@ async fn render_draws_the_confirm_status_line() {
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");
     cell.update(|picker| {
-        stream_rule_picker_actions::open(picker, &[], &jinn_theme::default_theme());
+        stream_rule_picker_actions::open(
+            picker,
+            &[],
+            &std::collections::HashSet::new(),
+            &jinn_theme::default_theme(),
+        );
         picker.status = Some("stream rules: disabled no-todos (takes effect shortly)".to_owned());
     });
 

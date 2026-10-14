@@ -655,6 +655,15 @@ min_age = 50
 # > `body`, no usable `conditions`, or no usable `scopes` is skipped with a
 # > warning rather than interrupting a turn with nothing to say.
 #
+# > `disabled_rules` switches rules off by name — including shipped rules and
+# > rules from stream_rules.toml, which have no entry here to carry a flag:
+# >
+# > [stream_rules]
+# > disabled_rules = ["no-unbounded-recursive-rm"]
+# >
+# > An absent or empty list means every rule is armed. The picker
+# > (<leader>sx) maintains this list for you.
+#
 # > Use single-quoted strings for `conditions` so regex metacharacters survive
 # > without escape processing. A pattern the engine cannot compile is dropped
 # > with a warning; the rule's remaining patterns still apply.
