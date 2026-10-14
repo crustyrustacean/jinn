@@ -503,11 +503,14 @@ mod tests {
         "#,
         );
 
-        // When the delta that matches both streams.
+        // When the delta that matches both streams — probed the way
+        // production probes it: `check` per delta, then `finalize` at the
+        // stream's end, the pair a real response always performs.
         let set = CompiledSet::build(&read_rules(&config, &temp_prefs()));
         let mut session = set.new_session(&jinn_core_types::SessionId::new());
         let fired = session
             .check("TODO", StreamContext::text())
+            .or_else(|| session.finalize())
             .map(|hit| hit.name.clone());
 
         // Then the enabled one fires: disabling one rule disarms only that
