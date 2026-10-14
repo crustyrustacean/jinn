@@ -212,18 +212,10 @@ fn is_path_key(key: &str) -> bool {
 /// Returns `None` — after warning — for an empty body, no compiling
 /// condition, or a scope that admits nothing.
 ///
-/// Returns `None` **without** a warning for a rule the user disabled:
-/// switching a rule off is deliberate, so its absence from the compiled
-/// set is the requested behaviour, not a defect to report.
+/// Disabled rules never reach here: the name array that switches a rule
+/// off is applied to the assembled set in `read_rules`, before anything
+/// compiles.
 fn compile_rule(config: &StreamRuleConfig) -> Option<CompiledRule> {
-    if config.disabled {
-        tracing::debug!(
-            rule = %config.name,
-            "stream rule is disabled, leaving it out of the compiled set"
-        );
-        return None;
-    }
-
     let conditions: Vec<Regex> = config
         .conditions
         .iter()
@@ -956,64 +948,6 @@ mod tests {
         let empty = set.is_empty();
 
         // Then the rule did not survive.
-        assert!(empty);
-    }
-
-    #[rstest::rstest]
-    fn a_disabled_rule_never_fires_on_a_matching_stream() {
-        // Given a rule the user switched off.
-        let mut configs = [rule("off", "TODO")];
-        configs[0].disabled = true;
-
-        // When prose that would match its pattern streams.
-        let fired = fired_on(&configs, "leave a TODO here", StreamContext::text());
-
-        // Then nothing fires: the disabled rule is not in the compiled set.
-        assert!(fired.is_none());
-    }
-
-    #[rstest::rstest]
-    fn a_disabled_rule_is_not_compiled_into_the_set() {
-        // Given a rule the user switched off.
-        let mut configs = [rule("off", "TODO")];
-        configs[0].disabled = true;
-
-        // When the set is built.
-        let set = CompiledSet::build(&configs);
-
-        // Then the rule did not survive, so no stream can ever see it.
-        assert!(set.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn an_enabled_rule_still_fires_beside_a_disabled_one() {
-        // Given a disabled rule written before an enabled one, both matching.
-        let mut off = rule("off", "TODO");
-        off.disabled = true;
-        let configs = [off, rule("on", "TODO")];
-
-        // When the delta that matches both streams.
-        let fired = fired_on(&configs, "TODO", StreamContext::text());
-
-        // Then the enabled one fires: disabling one rule disarms only that
-        // rule, not the set around it.
-        assert_eq!(fired.as_deref(), Some("on"));
-    }
-
-    #[rstest::rstest]
-    fn a_disabled_rule_with_an_unusable_body_is_still_just_disabled() {
-        // Given a disabled rule that is also malformed.
-        let mut configs = [rule("off-and-broken", "TODO")];
-        configs[0].disabled = true;
-        configs[0].body = "   ".to_owned();
-        let set = CompiledSet::build(&configs);
-
-        // When the set is built.
-        let empty = set.is_empty();
-
-        // Then it is out of the set either way: the disable check runs
-        // before the validity checks, so a deliberately off rule is not
-        // reported as a defect.
         assert!(empty);
     }
 

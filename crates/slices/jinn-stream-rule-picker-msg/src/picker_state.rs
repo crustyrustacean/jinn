@@ -3,6 +3,8 @@
 //! The picker is owned entirely by the stream-rule-picker slice: this type
 //! is what its cell holds, so no other crate names a field for it.
 
+use std::collections::HashSet;
+
 use jinn_picker::RowCtx;
 use jinn_picker::picker_style::{active_marker, dim_style, selected_style};
 use jinn_preferences_config::schemas::StreamRuleConfig;
@@ -13,8 +15,9 @@ use ratatui::text::{Line, Span};
 /// A stream-rule entry ready for display in the stream-rule picker.
 ///
 /// `disabled` is the *pending* state the toggle edits: it starts at the
-/// persisted value when the picker opens, and reaches the file only when
-/// the picker is confirmed.
+/// persisted value — membership in the `disabled_rules` name array — when
+/// the picker opens, and reaches the file only when the picker is
+/// confirmed.
 #[derive(Debug, Clone)]
 pub struct StreamRuleEntry {
     /// The rule's name — its identity in `[[stream_rules.entry]]`, and what
@@ -29,13 +32,14 @@ pub struct StreamRuleEntry {
 }
 
 impl StreamRuleEntry {
-    /// Builds one entry from a configured rule.
+    /// Builds one entry from a configured rule, seeded at `persisted`
+    /// — whether the persisted `disabled_rules` array names the rule.
     #[must_use]
-    pub fn from_config(rule: &StreamRuleConfig, theme: &Theme) -> Self {
+    pub fn from_config(rule: &StreamRuleConfig, persisted: bool, theme: &Theme) -> Self {
         Self {
             name: rule.name.clone(),
             description: rule.description.clone(),
-            disabled: rule.disabled,
+            disabled: persisted,
             theme: theme.clone(),
         }
     }
@@ -166,15 +170,17 @@ pub fn stream_rule_search_text(entry: &StreamRuleEntry) -> String {
 
 /// Builds picker entries from the configured rules, in the order the user
 /// wrote them in `jinn.toml` — the same order the matcher fires in, so the
-/// list reads like the file it edits.
+/// list reads like the file it edits. Each row's pending state seeds at
+/// membership in `disabled_names`, the persisted `disabled_rules` array.
 #[must_use]
 pub fn build_stream_rule_entries(
     rules: &[StreamRuleConfig],
+    disabled_names: &HashSet<String>,
     theme: &Theme,
 ) -> Vec<jinn_picker::PickerEntry<StreamRuleEntry>> {
     let entries: Vec<StreamRuleEntry> = rules
         .iter()
-        .map(|rule| StreamRuleEntry::from_config(rule, theme))
+        .map(|rule| StreamRuleEntry::from_config(rule, disabled_names.contains(&rule.name), theme))
         .collect();
 
     jinn_picker::make_items_with_hooks(
@@ -210,7 +216,8 @@ mod tests {
     #[rstest::rstest]
     fn row_shows_an_armed_rule_with_the_enabled_mark() {
         // Given one armed rule entry.
-        let entry = StreamRuleEntry::from_config(&rule("no-todos", "no TODOs"), &default_theme());
+        let entry =
+            StreamRuleEntry::from_config(&rule("no-todos", "no TODOs"), false, &default_theme());
 
         // When rendering its row unselected with no filter matches.
         let line = stream_rule_row(&entry, &RowCtx::flat(false, &Vec::new()));
@@ -226,9 +233,8 @@ mod tests {
     #[rstest::rstest]
     fn row_shows_a_disabled_rule_with_the_disabled_mark() {
         // Given one switched-off rule entry.
-        let mut config = rule("no-todos", "no TODOs");
-        config.disabled = true;
-        let entry = StreamRuleEntry::from_config(&config, &default_theme());
+        let entry =
+            StreamRuleEntry::from_config(&rule("no-todos", "no TODOs"), true, &default_theme());
 
         // When rendering its row.
         let line = stream_rule_row(&entry, &RowCtx::flat(false, &Vec::new()));
@@ -242,9 +248,8 @@ mod tests {
     #[rstest::rstest]
     fn a_disabled_rule_mark_is_dormant_colored_not_error_colored() {
         // Given one switched-off rule entry.
-        let mut config = rule("no-todos", "no TODOs");
-        config.disabled = true;
-        let entry = StreamRuleEntry::from_config(&config, &default_theme());
+        let entry =
+            StreamRuleEntry::from_config(&rule("no-todos", "no TODOs"), true, &default_theme());
 
         // When rendering its row.
         let line = stream_rule_row(&entry, &RowCtx::flat(false, &Vec::new()));
@@ -261,12 +266,16 @@ mod tests {
 
     #[rstest::rstest]
     fn from_config_carries_the_rule_name_description_and_state() {
-        // Given a configured rule that is disabled.
-        let mut config = rule("no-todos", "no TODOs");
-        config.disabled = true;
+        // Given a configured rule and the persisted state that names it.
+        let config = rule("no-todos", "no TODOs");
+        let disabled_names = HashSet::from(["no-todos".to_owned()]);
 
-        // When building the picker's entry from it.
-        let entry = StreamRuleEntry::from_config(&config, &default_theme());
+        // When building the picker's entry from them.
+        let entry = StreamRuleEntry::from_config(
+            &config,
+            disabled_names.contains("no-todos"),
+            &default_theme(),
+        );
 
         // Then the entry carries everything the row and the confirm need.
         assert_eq!(entry.name, "no-todos");
@@ -280,7 +289,7 @@ mod tests {
         let rules = vec![rule("zeta", "last"), rule("alpha", "first")];
 
         // When building the picker's entries.
-        let items = build_stream_rule_entries(&rules, &default_theme());
+        let items = build_stream_rule_entries(&rules, &HashSet::new(), &default_theme());
 
         // Then they stay in configuration order — the order the matcher
         // fires in, which is the order the list should read in.
@@ -292,9 +301,25 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn build_entries_seeds_each_row_at_its_persisted_membership() {
+        // Given two rules, the persisted array naming only the second.
+        let rules = vec![rule("alpha", "armed"), rule("beta", "named")];
+        let disabled_names = HashSet::from(["beta".to_owned()]);
+
+        // When building the picker's entries.
+        let items = build_stream_rule_entries(&rules, &disabled_names, &default_theme());
+
+        // Then each row's pending state starts at the array's membership,
+        // not at a uniform default.
+        let disabled: Vec<bool> = items.iter().map(|item| item.entry().disabled).collect();
+        assert_eq!(disabled, [false, true]);
+    }
+
+    #[rstest::rstest]
     fn search_text_matches_on_name_or_description() {
         // Given one entry.
-        let entry = StreamRuleEntry::from_config(&rule("no-todos", "no TODOs"), &default_theme());
+        let entry =
+            StreamRuleEntry::from_config(&rule("no-todos", "no TODOs"), false, &default_theme());
 
         // When building its search text.
         let text = stream_rule_search_text(&entry);
@@ -310,6 +335,7 @@ mod tests {
         let mut state = StreamRulePickerState::default();
         state.selection.set_items(build_stream_rule_entries(
             &[rule("a", "x"), rule("b", "y")],
+            &HashSet::new(),
             &default_theme(),
         ));
         state.selection.insert_char('a');

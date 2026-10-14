@@ -41,6 +41,10 @@ pub use config_template::{
 };
 pub use registration::register_all_sections;
 pub use stream_rules_storage::{StreamRulesStorage, StreamRulesStorageError};
+// The stream-rule schemas: the entry list and the disabled-name array share
+// the `[stream_rules]` section, so the write side reaches both through one
+// import home.
+pub use schemas::StreamRulesConfig;
 // The `todo` + `anchored_assistant` auto-prune child configs are schema
 // types re-exported so the kernel's workers and every consumer keep one
 // import home for the `[context_curation.auto_prune]` section.

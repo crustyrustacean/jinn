@@ -467,6 +467,76 @@ impl ConfigLayer {
         Ok(())
     }
 
+    /// Writes one scalar `leaf` key inside `T`'s section table, replacing
+    /// any value there, and persists the document. `None` removes the key.
+    ///
+    /// This is the narrow write for a section that mixes a
+    /// list-of-tables with scalar values — `[stream_rules]` carries
+    /// `disabled_rules` beside its `[[stream_rules.entry]]` list. It must
+    /// not be [`Self::put`]: a section write's stale-key removal would
+    /// delete the whole entry list, which the serialized scalar section
+    /// does not declare. Only the named leaf is touched; every sibling
+    /// key — the list, another section's legacy values, a user's stray
+    /// key — survives untouched, comments and all.
+    ///
+    /// The patch is handed to the section table itself — a scalar leaf's
+    /// parent *is* the section — and the section is what
+    /// [`ensure_table`] resolves, creating it in header form when the
+    /// document carries no such table yet. The leaf's array, when one is
+    /// written, needs no patcher registry: `register_array_key` is for
+    /// arrays-of-tables, and an unregistered scalar array is
+    /// wholesale-replaced with its decor preserved — the correct shape
+    /// for a list of names.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::Patch`] when the patcher cannot apply the
+    /// value, and [`ConfigError::Storage`] when the write fails.
+    pub fn put_section_value<T: Configurable>(
+        &self,
+        leaf: &str,
+        value: Option<&toml::Value>,
+    ) -> Result<(), Report<ConfigError>> {
+        // Resolve the section's table — the leaf's parent — walking the
+        // section's whole dotted key. Both parts come out of `T::KEY`, so
+        // every segment is `&'static str`, as the patcher's registries
+        // require.
+        let (section_leaf, parent_path): (&'static str, Vec<&'static str>) =
+            match T::KEY.rsplit_once('.') {
+                Some((head, tail)) => (tail, head.split('.').collect()),
+                None => (T::KEY, Vec::new()),
+            };
+        let mut section_path = parent_path.clone();
+        section_path.push(section_leaf);
+
+        let mut doc = self.inner.doc.read().clone();
+        if let Some(value) = value {
+            let section = ensure_table(&mut doc, &section_path)
+                .change_context(PatchError::Generic)
+                .change_context(ConfigError::Patch {
+                    detail: format!("section [{}] did not apply", T::KEY),
+                })?;
+            let mut patch = toml::value::Table::new();
+            patch.insert(leaf.to_owned(), value.clone());
+            DocumentPatcher::new()
+                .apply(&patch, section)
+                .change_context(PatchError::Generic)
+                .change_context(ConfigError::Patch {
+                    detail: format!("section [{}] did not apply", T::KEY),
+                })?;
+        } else if let Some(section) = section_table_mut(&mut doc, &section_path) {
+            // A removal against an absent section has nothing to do; a
+            // present one loses only the named leaf, siblings intact.
+            section.remove(leaf);
+        }
+
+        // Disk first, then memory: a failed write leaves the in-memory
+        // document agreeing with what is actually on disk.
+        self.inner.storage.read().write(&doc)?;
+        *self.inner.doc.write() = doc;
+        Ok(())
+    }
+
     /// Walks every registered section, failing on the first malformed
     /// one in registration order.
     ///
@@ -644,6 +714,24 @@ fn ensure_table<'d>(
         cursor = entry.as_table_mut().ok_or(PatchError::Generic)?;
     }
     Ok(cursor)
+}
+
+/// Resolves the mutable table at `path` in `doc`, if that shape exists.
+///
+/// `None` means the table is absent — there is nothing to remove — while a
+/// segment that exists as a scalar or an array is a shape disagreement the
+/// caller must not silently grow a table over, so it is also `None` here:
+/// removal is best-effort by design, and a malformed section is the read
+/// path's error to report.
+fn section_table_mut<'d>(
+    doc: &'d mut DocumentMut,
+    path: &[&str],
+) -> Option<&'d mut toml_edit::Table> {
+    let mut cursor = doc.as_table_mut();
+    for segment in path {
+        cursor = cursor.get_mut(*segment)?.as_table_mut()?;
+    }
+    Some(cursor)
 }
 
 /// Removes array-of-tables entries at `key` whose `entry_field` value is
@@ -1331,6 +1419,181 @@ mod tests {
             text.contains("pattern = \"rm -rf\""),
             "sibling list lost:\n{text}"
         );
+    }
+
+    /// A section that is a scalar beside a list-of-tables — the shape
+    /// `put_section_value` exists for, where a whole-section write would
+    /// delete the list the scalar's type does not declare. The section's
+    /// own key is the table the scalars live in, and the list hangs under
+    /// it as `[section.entry]`, mirroring `[stream_rules]` and
+    /// `[[stream_rules.entry]]`.
+    #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+    struct ScalarBesideListCfg {
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        names: Vec<String>,
+    }
+
+    impl Configurable for ScalarBesideListCfg {
+        const KEY: &'static str = "mixed";
+    }
+
+    /// The list-of-tables sharing `ScalarBesideListCfg`'s table.
+    #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+    struct MixedEntry {
+        #[serde(default)]
+        name: String,
+    }
+
+    impl ConfigList for MixedEntry {
+        const KEY: &'static str = "mixed.entry";
+        const ENTRY_KEY: &'static str = "name";
+        const ENTRY_FIELDS: &'static [&'static str] = &["name"];
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn put_section_value_writes_the_leaf_beside_an_untouched_list() {
+        // Given a section whose table carries a list of entries and a
+        // comment the user wrote above its header.
+        let (layer, storage) = layer(
+            "# the user's header comment\n[[mixed.entry]]\nname = \"alpha\"\n\n[mixed]\nmax = 3\n",
+        );
+
+        // When one scalar leaf is written into the section.
+        let names = toml::Value::Array(vec![toml::Value::String("alpha".to_owned())]);
+        layer
+            .put_section_value::<ScalarBesideListCfg>("names", Some(&names))
+            .expect("leaf writes");
+
+        // Then the leaf is inside the `[mixed]` table — not a new root
+        // table — and the entry list, its comment, and the sibling scalar
+        // all survive.
+        let text = storage.text();
+        let read: Vec<MixedEntry> = layer.get_list().expect("list reads");
+        assert_eq!(read.len(), 1, "entry list disturbed:\n{text}");
+        assert_eq!(read[0].name, "alpha");
+        assert!(text.contains("max = 3"), "sibling key lost:\n{text}");
+        assert!(
+            text.contains("# the user's header comment"),
+            "comment lost:\n{text}"
+        );
+        assert!(
+            text.contains("names = [\"alpha\"]"),
+            "leaf not written:\n{text}"
+        );
+        assert_no_root_table(&text, "names");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn put_section_value_creates_the_section_when_absent() {
+        // Given a document with no such section.
+        let (layer, storage) = layer("[other]\nkey = 1\n");
+
+        // When the leaf is written.
+        let names = toml::Value::Array(vec![toml::Value::String("x".to_owned())]);
+        layer
+            .put_section_value::<ScalarBesideListCfg>("names", Some(&names))
+            .expect("leaf writes");
+
+        // Then the section appeared in header form, holding the leaf.
+        let text = storage.text();
+        assert!(text.contains("[mixed]"), "no header-form section:\n{text}");
+        assert!(
+            text.contains("names = [\"x\"]"),
+            "leaf not written:\n{text}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn put_section_value_replaces_an_existing_leaf_value() {
+        // Given a section already carrying the leaf.
+        let (layer, _storage) = layer("[mixed]\nnames = [\"old\"]\n");
+
+        // When a new value is written over it.
+        let names = toml::Value::Array(vec![
+            toml::Value::String("a".to_owned()),
+            toml::Value::String("b".to_owned()),
+        ]);
+        layer
+            .put_section_value::<ScalarBesideListCfg>("names", Some(&names))
+            .expect("leaf writes");
+
+        // Then the read sees exactly the new value.
+        let read = layer.get::<ScalarBesideListCfg>().expect("section reads");
+        assert_eq!(read.names, vec!["a".to_owned(), "b".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn put_section_value_preserves_a_comment_above_the_leaf() {
+        // Given a section whose leaf carries a comment above it.
+        let (layer, storage) = layer("# why these are off\nnames = [\"old\"]\n");
+
+        // When the leaf is rewritten.
+        let names = toml::Value::Array(vec![toml::Value::String("new".to_owned())]);
+        layer
+            .put_section_value::<ScalarBesideListCfg>("names", Some(&names))
+            .expect("leaf writes");
+
+        // Then the comment survives the wholesale value replace.
+        let text = storage.text();
+        assert!(
+            text.contains("# why these are off"),
+            "comment above the leaf lost:\n{text}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn put_section_value_removal_deletes_only_the_named_leaf() {
+        // Given a section carrying the leaf beside a sibling key.
+        let (layer, storage) = layer("[mixed]\nnames = [\"old\"]\nmax = 3\n");
+
+        // When the leaf is removed.
+        layer
+            .put_section_value::<ScalarBesideListCfg>("names", None)
+            .expect("leaf removes");
+
+        // Then only the leaf is gone; the sibling stays.
+        let text = storage.text();
+        assert!(!text.contains("names"), "leaf lingered:\n{text}");
+        assert!(text.contains("max = 3"), "sibling key lost:\n{text}");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn put_section_value_removal_on_an_absent_section_writes_nothing() {
+        // Given a document with no such section at all.
+        let (layer, storage) = layer("[other]\nkey = 1\n");
+
+        // When the leaf is removed.
+        layer
+            .put_section_value::<ScalarBesideListCfg>("names", None)
+            .expect("leaf removes");
+
+        // Then the document is untouched: there was nothing to remove, and
+        // no empty section table appears.
+        let text = storage.text();
+        assert_eq!(text, "[other]\nkey = 1\n", "absent removal wrote:\n{text}");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn put_section_value_writes_are_visible_through_the_live_layer() {
+        // Given a layer over an empty document.
+        let (layer, _storage) = layer("");
+
+        // When the leaf is written.
+        let names = toml::Value::Array(vec![toml::Value::String("x".to_owned())]);
+        layer
+            .put_section_value::<ScalarBesideListCfg>("names", Some(&names))
+            .expect("leaf writes");
+
+        // Then a read through the same handle sees it without a reload.
+        let read = layer.get::<ScalarBesideListCfg>().expect("section reads");
+        assert_eq!(read.names, vec!["x".to_owned()]);
     }
 
     #[rstest::rstest]

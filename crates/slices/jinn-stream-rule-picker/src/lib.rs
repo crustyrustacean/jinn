@@ -15,8 +15,9 @@
 //! `ActionCtx::config` — the same `jinn.toml` layer every route action
 //! carries — through
 //! [`jinn_preferences_config::StreamRulesStorage::set_stream_rule_disabled`],
-//! which patches the on-disk document entry-by-entry. A confirmed toggle is
-//! therefore on disk before the picker closes, and the confirm publishes
+//! which patches the `disabled_rules` name array in the on-disk document.
+//! A confirmed toggle is therefore on disk before the picker closes, and
+//! the confirm publishes
 //! [`jinn_stream_rules_msg::RefreshStreamRuleMatcher`] on the bus — the
 //! stream-rules slice's matcher actor answers it by recompiling the rules
 //! from the layer and reinstalling the live matcher, so the confirmed set

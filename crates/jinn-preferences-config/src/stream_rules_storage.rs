@@ -1,23 +1,26 @@
 //! Persistence for a stream rule's disabled state.
 //!
 //! [`StreamRulesStorage`] is the semantic action over the `jinn.toml`
-//! storage boundary: flip one rule's `disabled` flag by name, through the
+//! storage boundary: switch one rule off by name, through the
 //! configuration layer's comment-preserving patch path. It exists so the
-//! disable picker states what it wants ("switch `no-todos` off") instead of
-//! reading the list, mutating a field, and re-serializing the whole section
-//! at the call site — the lookup, the error on an unknown name, and the
-//! save all belong to one place.
+//! disable picker states what it wants ("switch `no-todos` off") instead
+//! of reading the section, editing a list, and re-serializing it at the
+//! call site — the lookup, the error on an unknown name, and the save all
+//! belong to one place.
 //!
-//! The write goes through [`jinn_config::ConfigLayer`]'s `put_list`, which
-//! patches the on-disk document entry-by-entry: comments, ordering, sibling
-//! entries, and unknown keys all survive, and a re-armed rule loses its
-//! `disabled` key entirely (the schema skips `false`). The layer is the
-//! same handle an `ActionCtx` already carries, so the picker needs nothing
-//! new to reach this.
+//! The persisted shape is `[stream_rules] disabled_rules = ["name", ...]`
+//! — the single source of truth for which rules are off. The write goes
+//! through [`jinn_config::ConfigLayer::put_section_value`], which touches
+//! only that one leaf of the section table: the `[[stream_rules.entry]]`
+//! list beside it, the legacy `max_interrupts` key, any user stray key,
+//! and every comment survive byte-identical. An array that empties is
+//! removed from the file rather than written as `[]` — an armed rule
+//! leaves no trace. The layer is the same handle an `ActionCtx` already
+//! carries, so the picker needs nothing new to reach this.
 
 use jinn_config::ConfigLayer;
 
-use crate::schemas::StreamRuleConfig;
+use crate::schemas::{StreamRuleConfig, StreamRulesConfig};
 
 /// Why a rule's disabled state could not be persisted.
 #[derive(Debug, PartialEq, Eq, wherror::Error)]
@@ -25,7 +28,9 @@ pub enum StreamRulesStorageError {
     /// No entry in `[[stream_rules.entry]]` carries that name.
     ///
     /// Refusing is the point of the error: silently writing nothing would
-    /// report success while the armed rule kept firing.
+    /// report success while the armed rule kept firing. The check is a
+    /// property of this write convenience — a hand-written array may name
+    /// any rule, whatever file defined it.
     #[error("no stream rule is named `{name}`")]
     UnknownRule {
         /// The name the caller asked about.
@@ -52,12 +57,13 @@ pub enum StreamRulesStorageError {
 /// test backend are both served by the one impl, and a test asserts against
 /// the exact bytes the production write produces.
 pub trait StreamRulesStorage {
-    /// Sets the `disabled` flag of the rule named `name` and persists the
-    /// document.
+    /// Adds `name` to, or removes it from, the `[stream_rules]
+    /// disabled_rules` array and persists the document.
     ///
-    /// Finding the entry by its `name` and writing only that entry back is
-    /// what keeps the rest of the user's file — per-entry comments, ordering,
-    /// unknown keys, and the sibling rules — byte-identical.
+    /// Writing only the array leaf — never the whole section — is what
+    /// keeps the rest of the user's file byte-identical, and checking
+    /// membership first is what makes a repeated no-change toggle a no-op
+    /// on the bytes.
     ///
     /// # Errors
     ///
@@ -78,26 +84,52 @@ impl StreamRulesStorage for ConfigLayer {
         name: &str,
         disabled: bool,
     ) -> Result<(), error_stack::Report<StreamRulesStorageError>> {
-        let mut rules =
+        // The name check is against the jinn.toml entry list, unchanged:
+        // the picker can only toggle names it lists.
+        let rules =
             self.get_list::<StreamRuleConfig>()
                 .map_err(|error| StreamRulesStorageError::Read {
                     detail: error.to_string(),
                 })?;
-
-        let Some(rule) = rules.iter_mut().find(|rule| rule.name == name) else {
+        if !rules.iter().any(|rule| rule.name == name) {
             return Err(error_stack::Report::new(
                 StreamRulesStorageError::UnknownRule {
                     name: name.to_owned(),
                 },
             ));
-        };
-        rule.disabled = disabled;
+        }
 
-        self.put_list::<StreamRuleConfig>(&rules).map_err(|error| {
-            error.change_context(StreamRulesStorageError::Write {
-                detail: "the patched document did not persist".to_owned(),
+        let mut disabled_rules = self
+            .get::<StreamRulesConfig>()
+            .map_err(|error| StreamRulesStorageError::Read {
+                detail: error.to_string(),
+            })?
+            .disabled_rules;
+        let held = disabled_rules.iter().any(|held| held == name);
+        if held == disabled {
+            return Ok(());
+        }
+        if disabled {
+            disabled_rules.push(name.to_owned());
+        } else {
+            disabled_rules.retain(|held| held != name);
+        }
+
+        // An emptied array removes the key: an armed set leaves no trace.
+        let value = (!disabled_rules.is_empty()).then(|| {
+            toml::Value::Array(
+                disabled_rules
+                    .iter()
+                    .map(|name| toml::Value::String(name.clone()))
+                    .collect(),
+            )
+        });
+        self.put_section_value::<StreamRulesConfig>("disabled_rules", value.as_ref())
+            .map_err(|error| {
+                error.change_context(StreamRulesStorageError::Write {
+                    detail: "the patched document did not persist".to_owned(),
+                })
             })
-        })
     }
 }
 
@@ -116,7 +148,7 @@ mod tests {
     use jinn_config::{ConfigLayer, FilesystemConfigStorage, InMemoryConfigStorage};
 
     use super::{StreamRulesStorage, StreamRulesStorageError};
-    use crate::schemas::StreamRuleConfig;
+    use crate::schemas::{StreamRuleConfig, StreamRulesConfig};
 
     /// A layer over the temp `jinn.toml` the test just wrote, plus the path.
     fn layer_over_file(body: &str) -> (ConfigLayer, std::path::PathBuf, tempfile::TempDir) {
@@ -128,9 +160,17 @@ mod tests {
         (layer, path, dir)
     }
 
+    /// The persisted `disabled_rules` array of `layer`.
+    fn persisted_array(layer: &ConfigLayer) -> Vec<String> {
+        layer
+            .get::<StreamRulesConfig>()
+            .expect("section reads")
+            .disabled_rules
+    }
+
     #[rstest::rstest]
     #[test]
-    fn disabling_a_rule_persists_to_a_commented_document() {
+    fn disabling_a_rule_writes_the_name_array_to_a_commented_document() {
         // Given a commented jinn.toml carrying an armed rule.
         let (layer, path, _dir) = layer_over_file(
             "# keep this explanation\n[[stream_rules.entry]]\nname = \"ts-no-any\"\nconditions = [': any']\nbody = \"Use unknown.\"\n",
@@ -141,12 +181,13 @@ mod tests {
             .set_stream_rule_disabled("ts-no-any", true)
             .expect("rule disables");
 
-        // Then the written file shows the flag beside the comment it had to
-        // keep — this is the write the restart will read back.
+        // Then the written file carries the name under `[stream_rules]`
+        // beside the comment it had to keep — this is the write the
+        // restart will read back.
         let written = std::fs::read_to_string(&path).expect("read");
         assert!(
-            written.contains("disabled = true"),
-            "disabled flag absent from the file:\n{written}"
+            written.contains("disabled_rules = [\"ts-no-any\"]"),
+            "disabled_rules absent from the file:\n{written}"
         );
         assert!(
             written.contains("# keep this explanation"),
@@ -156,24 +197,23 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn a_disabled_rule_rereads_disabled_while_its_siblings_keep_their_state() {
+    fn a_disabled_rule_rereads_in_the_array_while_its_siblings_stay_armed() {
         // Given a jinn.toml with three armed rules.
         let (layer, _path, _dir) = layer_over_file(
             "[[stream_rules.entry]]\nname = \"alpha\"\nconditions = ['a']\nbody = \"A.\"\n\n[[stream_rules.entry]]\nname = \"beta\"\nconditions = ['b']\nbody = \"B.\"\n\n[[stream_rules.entry]]\nname = \"gamma\"\nconditions = ['g']\nbody = \"G.\"\n",
         );
 
-        // When beta is switched off and the document is reread.
+        // When beta is switched off and the array is reread.
         layer
             .set_stream_rule_disabled("beta", true)
             .expect("rule disables");
+        let disabled_rules = persisted_array(&layer);
         let rules = layer.get_list::<StreamRuleConfig>().expect("reread");
 
-        // Then only beta is disabled; the roundtrip left alpha and gamma
-        // armed, so a restart reads back exactly the set the toggle chose.
+        // Then only beta is named; the entries themselves are untouched, so
+        // a restart reads back exactly the set the toggle chose.
         assert_eq!(rules.len(), 3, "a sibling entry was lost on save");
-        let disabled: Vec<_> = rules.iter().filter(|rule| rule.disabled).collect();
-        assert_eq!(disabled.len(), 1, "more than one rule flipped: {rules:?}");
-        assert_eq!(disabled[0].name, "beta");
+        assert_eq!(disabled_rules, vec!["beta".to_owned()]);
     }
 
     #[rstest::rstest]
@@ -236,10 +276,10 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn re_arming_a_rule_removes_its_disabled_key() {
-        // Given a jinn.toml whose rule is written disabled.
+    fn re_arming_a_rule_removes_its_name_from_the_array() {
+        // Given a jinn.toml whose array already names one rule.
         let (layer, path, _dir) = layer_over_file(
-            "[[stream_rules.entry]]\nname = \"ts-no-any\"\nconditions = [': any']\nbody = \"Use unknown.\"\ndisabled = true\n",
+            "[stream_rules]\ndisabled_rules = [\"ts-no-any\"]\n\n[[stream_rules.entry]]\nname = \"ts-no-any\"\nconditions = [': any']\nbody = \"Use unknown.\"\n",
         );
 
         // When the rule is switched back on.
@@ -247,13 +287,9 @@ mod tests {
             .set_stream_rule_disabled("ts-no-any", false)
             .expect("rule re-arms");
 
-        // Then the key is gone rather than written as false, matching the
-        // schema's convention that an armed rule's entry stays unchanged.
+        // Then the name is gone from the array, which is now empty.
+        assert!(persisted_array(&layer).is_empty());
         let written = std::fs::read_to_string(&path).expect("read");
-        assert!(
-            !written.contains("disabled"),
-            "re-arming left the key behind:\n{written}"
-        );
         assert!(
             written.contains("name = \"ts-no-any\""),
             "the rule itself was lost:\n{written}"
@@ -262,13 +298,41 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn repeating_a_no_change_toggle_does_not_churn_the_file() {
-        // Given a commented document whose rule is already disabled, and a
-        // first no-change write behind it — the first save normalizes a
-        // hand-written entry to the schema's canonical form, which is the
-        // save path's existing, pinned behavior.
+    fn re_arming_the_last_named_rule_removes_the_disabled_rules_key() {
+        // Given a jinn.toml whose array names exactly the rule to re-arm.
         let (layer, path, _dir) = layer_over_file(
-            "# kept\n[[stream_rules.entry]]\nname = \"alpha\"\nconditions = ['a']\nbody = \"A.\"\ndisabled = true\n",
+            "# section note\n[stream_rules]\ndisabled_rules = [\"alpha\"]\n\n[[stream_rules.entry]]\nname = \"alpha\"\nconditions = ['a']\nbody = \"A.\"\n",
+        );
+
+        // When that rule is re-armed.
+        layer
+            .set_stream_rule_disabled("alpha", false)
+            .expect("rule re-arms");
+
+        // Then the key is gone entirely rather than left as `[]` — an armed
+        // set leaves no trace — and the section's own comment survives.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            !written.contains("disabled_rules"),
+            "re-arming left the key behind:\n{written}"
+        );
+        assert!(
+            written.contains("# section note"),
+            "comment lost:\n{written}"
+        );
+        assert!(
+            written.contains("name = \"alpha\""),
+            "the rule itself was lost:\n{written}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn repeating_a_no_change_toggle_does_not_churn_the_file() {
+        // Given a commented document whose array already names the rule,
+        // and a first no-change write behind it.
+        let (layer, path, _dir) = layer_over_file(
+            "# kept\n[stream_rules]\ndisabled_rules = [\"alpha\"]\n\n[[stream_rules.entry]]\nname = \"alpha\"\nconditions = ['a']\nbody = \"A.\"\n",
         );
         layer
             .set_stream_rule_disabled("alpha", true)
@@ -284,6 +348,25 @@ mod tests {
         // without churning the bytes the user hand-maintains.
         let after = std::fs::read_to_string(&path).expect("read");
         assert_eq!(before, after, "a no-change toggle rewrote the file");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn an_armed_rule_keeps_a_hand_written_array_of_other_names() {
+        // Given a document whose array names two rules, one not in the
+        // entry list — a hand-written disable of a shipped rule.
+        let (layer, _path, _dir) = layer_over_file(
+            "[stream_rules]\ndisabled_rules = [\"shipped-rule\", \"alpha\"]\n\n[[stream_rules.entry]]\nname = \"alpha\"\nconditions = ['a']\nbody = \"A.\"\n",
+        );
+
+        // When alpha is re-armed.
+        layer
+            .set_stream_rule_disabled("alpha", false)
+            .expect("rule re-arms");
+
+        // Then only alpha's name went; the hand-written name for the rule
+        // no entry describes survives untouched.
+        assert_eq!(persisted_array(&layer), vec!["shipped-rule".to_owned()]);
     }
 
     #[rstest::rstest]
@@ -305,7 +388,6 @@ mod tests {
 
         // Then a read through the same handle already sees it, so the
         // picker can confirm the new state from the layer it holds.
-        let rules = layer.get_list::<StreamRuleConfig>().expect("read");
-        assert!(rules[0].disabled);
+        assert_eq!(persisted_array(&layer), vec!["alpha".to_owned()]);
     }
 }
