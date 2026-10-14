@@ -280,8 +280,11 @@ fn open_stream_rule_picker(
     IntentResult::empty().with_scope_signal(ScopeSignal::Push(stream_rule_picker_scope()))
 }
 
-/// `<tab>`: flip the highlighted rule's pending state. The picker stays
-/// open and the file is untouched — the write belongs to the confirm.
+/// `<tab>`: flip the highlighted rule's pending state, then advance the
+/// highlight one row down — the toggle-list walk, so N presses from the top
+/// mark the first N rules; the advance clamps at the last row, where the
+/// key keeps flipping it. The picker stays open and the file is untouched
+/// — the write belongs to the confirm.
 fn toggle_highlighted_rule(
     _ctx: &mut ActionCtx<'_>,
     cell: &StreamRulePickerCell,

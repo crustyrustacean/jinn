@@ -35,6 +35,11 @@ const TWO_RULES: &str = "[[stream_rules.entry]]\nname = \"no-todos\"\nconditions
 /// the jinn.toml entries dedupe-replace its same-named rows in place.
 const SIBLING_RULES: &str = "[[stream_rules.entry]]\nname = 'no-todos'\nconditions = ['TODO']\nscopes = ['text']\nbody = 'Finish it.'\n\n[[stream_rules.entry]]\nname = 'no-yelling'\nconditions = ['!!!']\nscopes = ['text']\nbody = 'Calm down.'\n";
 
+/// A `jinn.toml` document carrying three named rules — the two-rule
+/// standard set plus one more, so a test can watch the highlight walk past
+/// the end of the standard pair.
+const THREE_RULES: &str = "[[stream_rules.entry]]\nname = \"no-todos\"\nconditions = ['TODO']\nbody = \"Finish it.\"\n\n[[stream_rules.entry]]\nname = \"no-yelling\"\nconditions = ['!!!']\nbody = \"Calm down.\"\n\n[[stream_rules.entry]]\nname = \"third-rule\"\nconditions = ['FIXME']\nbody = \"Fix it.\"\n";
+
 /// A leaked temp dir whose `jinn.toml` path has a sibling `stream_rules.toml`
 /// holding [`SIBLING_RULES`] — the shape a run's preferences path takes when
 /// the user keeps their rule set in the standalone file. Leaked because the
@@ -96,9 +101,21 @@ async fn activated() -> (
     activated_with(temp_prefs()).await
 }
 
-/// The real [`activate`] over a specific preferences path — the variant the
-/// merged-list tests need, since the sibling rules file lives beside it.
-async fn activated_with(
+/// The real [`activate`] over `THREE_RULES` — the variant the toggle-list
+/// tests need, where the highlight must walk three rows.
+async fn activated_with_three_rules() -> (
+    jinn_slices::Slices,
+    KeyRoutes,
+    ConfigLayer,
+    std::path::PathBuf,
+) {
+    activated_doc(THREE_RULES, temp_prefs()).await
+}
+
+/// The real [`activate`] over a specific config document and preferences
+/// path — the fully parameterized variant both helpers above delegate to.
+async fn activated_doc(
+    doc: &str,
     prefs: std::path::PathBuf,
 ) -> (
     jinn_slices::Slices,
@@ -125,7 +142,20 @@ async fn activated_with(
 
     crate::activate(&mut host, prefs.clone());
 
-    (slices, key_routes, config_layer(TWO_RULES), prefs)
+    (slices, key_routes, config_layer(doc), prefs)
+}
+
+/// The real [`activate`] over a specific preferences path — the variant the
+/// merged-list tests need, since the sibling rules file lives beside it.
+async fn activated_with(
+    prefs: std::path::PathBuf,
+) -> (
+    jinn_slices::Slices,
+    KeyRoutes,
+    ConfigLayer,
+    std::path::PathBuf,
+) {
+    activated_doc(TWO_RULES, prefs).await
 }
 
 /// A `ConfigLayer` over an in-memory document — the same shape a route
@@ -190,6 +220,11 @@ fn persisted_of(layer: &ConfigLayer, name: &str) -> bool {
         .get::<jinn_preferences_config::StreamRulesConfig>()
         .map(|section| section.disabled_rules.iter().any(|held| held == name))
         .unwrap_or(false)
+}
+
+/// The rule name the picker's highlight currently sits on, if any.
+fn highlighted_of(cell: &TypedCell<StreamRulePickerState>) -> Option<String> {
+    stream_rule_picker_actions::highlighted_name(&cell.read())
 }
 
 // ── Open ────────────────────────────────────────────────────────────────
@@ -526,10 +561,16 @@ async fn tab_toggles_only_the_pending_state_and_touches_nothing_else() {
     );
 
     // Then only the highlighted rule's pending state flipped, and the file
-    // is untouched — the write belongs to the confirm.
+    // is untouched — the write belongs to the confirm. The highlight now
+    // advances too: TAB toggles *and* walks, so it sits on the second rule.
     assert_eq!(pending_of(&cell, "no-todos"), Some(true));
     assert_eq!(pending_of(&cell, "no-yelling"), Some(false));
     assert!(!persisted_of(&config, "no-todos"));
+    assert_eq!(
+        highlighted_of(&cell).as_deref(),
+        Some("no-yelling"),
+        "a toggle must advance the highlight as well as flip the row"
+    );
     // And the picker stayed open.
     assert_eq!(
         state.frontend.scope(),
@@ -574,6 +615,121 @@ async fn tab_on_a_moved_highlight_toggles_that_row() {
     // Then the second rule's pending state flipped and the first did not.
     assert_eq!(pending_of(&cell, "no-todos"), Some(false));
     assert_eq!(pending_of(&cell, "no-yelling"), Some(true));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn tab_twice_from_the_top_marks_the_first_two_rules_and_highlights_the_third() {
+    // Given an activated slice whose config holds three rules, opened.
+    let (slices, key_routes, config, _prefs) = activated_with_three_rules().await;
+    let cell: TypedCell<StreamRulePickerState> = slices
+        .reader(&stream_rule_picker_slot())
+        .expect("stream-rule picker cell registered at activation");
+    let mut state = AppState::default_with_scope_focus();
+    dispatch(
+        "open-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // When tab is handled twice from the top of the list.
+    dispatch(
+        "toggle-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+    dispatch(
+        "toggle-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // Then the first two rules are pending-disabled, the third is armed,
+    // and the highlight walked onto the third row.
+    assert_eq!(pending_of(&cell, "no-todos"), Some(true));
+    assert_eq!(pending_of(&cell, "no-yelling"), Some(true));
+    assert_eq!(pending_of(&cell, "third-rule"), Some(false));
+    assert_eq!(highlighted_of(&cell).as_deref(), Some("third-rule"));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn tab_at_the_last_row_toggles_it_and_the_highlight_clamps_there() {
+    // Given an open picker with the highlight moved to its last rule.
+    let (slices, key_routes, config, _prefs) = activated().await;
+    let cell: TypedCell<StreamRulePickerState> = slices
+        .reader(&stream_rule_picker_slot())
+        .expect("stream-rule picker cell registered at activation");
+    let mut state = AppState::default_with_scope_focus();
+    dispatch(
+        "open-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+    dispatch(
+        "move-stream-rule-picker-down",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // When tab is handled on that last row.
+    dispatch(
+        "toggle-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // Then the last rule's pending state flipped and the highlight clamped
+    // there — the advance is suppressed, never the toggle.
+    assert_eq!(pending_of(&cell, "no-yelling"), Some(true));
+    assert_eq!(highlighted_of(&cell).as_deref(), Some("no-yelling"));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn tab_toggles_but_arrow_navigation_never_does() {
+    // Given an open picker over the standard two rules.
+    let (slices, key_routes, config, _prefs) = activated().await;
+    let cell: TypedCell<StreamRulePickerState> = slices
+        .reader(&stream_rule_picker_slot())
+        .expect("stream-rule picker cell registered at activation");
+    let mut state = AppState::default_with_scope_focus();
+    dispatch(
+        "open-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // When walking the highlight with the navigation keys — down, up, a
+    // page down, a page up.
+    for action in [
+        "move-stream-rule-picker-down",
+        "move-stream-rule-picker-up",
+        "page-stream-rule-picker-down",
+        "page-stream-rule-picker-up",
+    ] {
+        dispatch(action, &mut state, &slices, &key_routes, &config);
+    }
+
+    // Then every row is still armed — navigation moves, it never toggles —
+    // and the highlight is back where it started.
+    assert_eq!(pending_of(&cell, "no-todos"), Some(false));
+    assert_eq!(pending_of(&cell, "no-yelling"), Some(false));
+    assert_eq!(highlighted_of(&cell).as_deref(), Some("no-todos"));
 }
 
 // ── Cancel (esc) ────────────────────────────────────────────────────────
@@ -622,10 +778,73 @@ async fn cancel_closes_the_picker_and_writes_nothing() {
         jinn_slices::FocusScope::Dynamic(stream_rule_picker_scope()),
         "cancel must close the picker"
     );
-    // And nothing reached the file — the pending toggle died with the
+    // And nothing reached the file — the pending toggles died with the
     // picker.
     assert!(!persisted_of(&config, "no-todos"));
     assert!(!persisted_of(&config, "no-yelling"));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn esc_after_two_tab_toggles_persists_nothing() {
+    // Given an activated slice whose config holds three rules, opened, and
+    // walked by two tabs.
+    let (slices, key_routes, config, _prefs) = activated_with_three_rules().await;
+    let cell: TypedCell<StreamRulePickerState> = slices
+        .reader(&stream_rule_picker_slot())
+        .expect("stream-rule picker cell registered at activation");
+    let mut state = AppState::default_with_scope_focus();
+    dispatch(
+        "open-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+    dispatch(
+        "toggle-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+    dispatch(
+        "toggle-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+    assert_eq!(
+        pending_of(&cell, "no-todos"),
+        Some(true),
+        "setup: the first tab toggled"
+    );
+    assert_eq!(
+        pending_of(&cell, "no-yelling"),
+        Some(true),
+        "setup: the second tab toggled"
+    );
+
+    // When handling the picker's esc intent.
+    dispatch(
+        "cancel-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // Then the picker closed and nothing reached the file — both pending
+    // toggles died with the picker.
+    assert_ne!(
+        state.frontend.scope(),
+        jinn_slices::FocusScope::Dynamic(stream_rule_picker_scope()),
+        "cancel must close the picker"
+    );
+    assert!(!persisted_of(&config, "no-todos"));
+    assert!(!persisted_of(&config, "no-yelling"));
+    assert!(!persisted_of(&config, "third-rule"));
 }
 
 #[rstest::rstest]
@@ -713,6 +932,57 @@ async fn confirm_persists_the_pending_set_through_the_storage_path_and_closes() 
     // and its armed sibling is untouched.
     assert!(persisted_of(&config, "no-todos"));
     assert!(!persisted_of(&config, "no-yelling"));
+    // And the picker closed.
+    assert_ne!(
+        state.frontend.scope(),
+        jinn_slices::FocusScope::Dynamic(stream_rule_picker_scope()),
+        "a successful confirm must close the picker"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn enter_after_two_tab_toggles_persists_exactly_the_two_marked_rules() {
+    // Given an activated slice whose config holds three rules, opened, and
+    // walked by two tabs from the top.
+    let (slices, key_routes, config, _prefs) = activated_with_three_rules().await;
+    let mut state = AppState::default_with_scope_focus();
+    dispatch(
+        "open-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+    dispatch(
+        "toggle-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+    dispatch(
+        "toggle-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // When handling the picker's enter intent.
+    dispatch(
+        "confirm-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // Then exactly the two marked rules persisted disabled and the third
+    // stayed armed, through the same storage boundary a single toggle uses.
+    assert!(persisted_of(&config, "no-todos"));
+    assert!(persisted_of(&config, "no-yelling"));
+    assert!(!persisted_of(&config, "third-rule"));
     // And the picker closed.
     assert_ne!(
         state.frontend.scope(),

@@ -46,12 +46,20 @@ pub fn highlighted_disabled(state: &StreamRulePickerState) -> Option<bool> {
         .map(|item| item.entry().disabled)
 }
 
-/// Toggles the highlighted rule's pending disabled state. The picker stays
-/// open and nothing is persisted — the write belongs to the confirm.
+/// Toggles the highlighted rule's pending disabled state, then advances the
+/// highlight one row down — the standard toggle-list walk, so N presses from
+/// the top mark the first N rules. The advance reads the same measured
+/// viewport the navigation keys use and clamps at the last row, where
+/// repeated toggles keep flipping that row. A list with no selected row
+/// neither toggles nor moves. The picker stays open and nothing is
+/// persisted — the write belongs to the confirm.
 pub fn toggle_highlighted(state: &mut StreamRulePickerState) {
-    state
+    let toggled = state
         .selection
         .with_selected_mut(|item| item.entry_mut().disabled = !item.entry().disabled);
+    if toggled {
+        state.selection.move_down(state.results_viewport);
+    }
 }
 
 /// Collects the pending set as `(name, disabled)` pairs, in display order.
@@ -184,28 +192,69 @@ mod tests {
         toggle_highlighted(&mut state);
 
         // Then only the highlighted rule's pending state flipped — the
-        // sibling is untouched, and nothing has left the picker's cell.
+        // sibling is untouched, nothing has left the picker's cell, and the
+        // highlight advanced onto the sibling.
         assert_eq!(pending_of(&state, "alpha"), Some(true));
         assert_eq!(pending_of(&state, "beta"), Some(false));
+        assert_eq!(highlighted_name(&state).as_deref(), Some("beta"));
     }
 
     #[rstest::rstest]
-    fn toggling_twice_returns_the_row_to_its_original_state() {
-        // Given an open picker whose highlighted rule was toggled once.
+    fn toggle_highlighted_twice_marks_the_first_two_rows_and_highlights_the_third() {
+        // Given an open picker over three rules, highlight on the first.
         let mut state = StreamRulePickerState::default();
         open(
             &mut state,
-            &[rule("alpha")],
+            &[rule("alpha"), rule("beta"), rule("gamma")],
             &HashSet::new(),
             &default_theme(),
         );
+
+        // When toggling twice from the top.
+        toggle_highlighted(&mut state);
         toggle_highlighted(&mut state);
 
-        // When toggling again.
+        // Then the first two rows are pending-disabled and the highlight
+        // sits on the third.
+        assert_eq!(pending_of(&state, "alpha"), Some(true));
+        assert_eq!(pending_of(&state, "beta"), Some(true));
+        assert_eq!(pending_of(&state, "gamma"), Some(false));
+        assert_eq!(highlighted_name(&state).as_deref(), Some("gamma"));
+    }
+
+    #[rstest::rstest]
+    fn toggle_highlighted_at_the_last_row_flips_it_and_clamps_there() {
+        // Given an open picker with the highlight moved to its last row.
+        let mut state = StreamRulePickerState::default();
+        open(
+            &mut state,
+            &[rule("alpha"), rule("beta")],
+            &HashSet::new(),
+            &default_theme(),
+        );
+        state.selection.move_down(state.results_viewport);
+
+        // When toggling.
         toggle_highlighted(&mut state);
 
-        // Then the pending state is back where it started.
-        assert_eq!(pending_of(&state, "alpha"), Some(false));
+        // Then the last row's pending state flipped and the highlight
+        // clamped there — the advance is suppressed, not the toggle.
+        assert_eq!(pending_of(&state, "beta"), Some(true));
+        assert_eq!(highlighted_name(&state).as_deref(), Some("beta"));
+    }
+
+    #[rstest::rstest]
+    fn toggle_highlighted_on_an_empty_list_neither_toggles_nor_moves() {
+        // Given a picker state with no rows at all.
+        let mut state = StreamRulePickerState::default();
+
+        // When toggling.
+        toggle_highlighted(&mut state);
+
+        // Then nothing happened: no row to flip, and the selection index
+        // never moved off zero.
+        assert_eq!(highlighted_name(&state), None);
+        assert_eq!(state.selection.selection(), 0);
     }
 
     #[rstest::rstest]
