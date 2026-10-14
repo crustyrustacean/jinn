@@ -207,7 +207,9 @@ impl AttendantTriggerActor {
     /// 3. The `reset` behavior force-excludes every non-pinned entry, so the
     ///    model sees the pins alone. The changed session is persisted.
     /// 4. A prior report is injected through the seed template, and the
-    ///    resulting entry is dispatched as a fresh user turn.
+    ///    resulting entry is dispatched as a fresh turn — an Intersession
+    ///    entry attributed to the parent, rendered like every other
+    ///    session→session message.
     fn fire(&self, attendant_id: &jinn_core_types::SessionId) -> Option<Fired> {
         {
             let mut state = self.state.write();
