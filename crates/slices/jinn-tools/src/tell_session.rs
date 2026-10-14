@@ -35,12 +35,12 @@ use super::BoxedToolFuture;
 
 /// Maximum grapheme clusters of the source title carried in the attribution
 /// prefix before it is truncated.
-const MAX_TITLE_GRAPHEMES: usize = 32;
+pub(crate) const MAX_TITLE_GRAPHEMES: usize = 32;
 
 /// The attribution prefix marking where an inter-session message came from:
 /// `[Message from session <id> (<title>)]: `. The title part is omitted when
 /// there is no usable title. The one composition site for the format.
-fn attribution_prefix(source_id: &SessionId, title: Option<&str>) -> String {
+pub(crate) fn attribution_prefix(source_id: &SessionId, title: Option<&str>) -> String {
     match title {
         Some(title) => format!("[Message from session {source_id} ({title})]: "),
         None => format!("[Message from session {source_id}]: "),
@@ -51,7 +51,7 @@ fn attribution_prefix(source_id: &SessionId, title: Option<&str>) -> String {
 /// itself an attribution prefix (a relayed message's title would nest the
 /// header inside itself); otherwise clipped to [`MAX_TITLE_GRAPHEMES`]
 /// grapheme clusters with a single ellipsis when clipped.
-fn processed_title(title: Option<&str>) -> Option<String> {
+pub(crate) fn processed_title(title: Option<&str>) -> Option<String> {
     title
         .filter(|t| !t.is_empty() && !t.starts_with("[Message"))
         .map(|t| {

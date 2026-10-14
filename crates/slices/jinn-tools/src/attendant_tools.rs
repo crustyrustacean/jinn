@@ -1,10 +1,15 @@
 //! Attendant built-in tools — `conclude` and `notify_parent`.
 //!
-//! Two direction-named, single-purpose tools. `report` records what the
+//! Two direction-named, single-purpose tools. `conclude` records what the
 //! attendant concluded, for the user; `notify_parent` starts a turn in the
 //! parent. There is deliberately no tool that *reads* another attendant's
 //! reports: a panel of judges stays independent because none can see the
 //! others' conclusions.
+//!
+//! The notification rides the inter-session variant — the same delivery a
+//! `tell_session` plain send uses — so the parent's transcript renders it
+//! as a message from another session, while every non-render consumer
+//! (LLM context, search, tokens, compaction) treats it as a user message.
 
 use crate::tool_types::ToolContext;
 use crate::tool_types::tool_error;
@@ -103,12 +108,21 @@ pub fn conclude_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     })
 }
 
-/// Executes `notify_parent`: enqueues a user message into the parent session.
+/// Executes `notify_parent`: enqueues an inter-session message into the
+/// parent session.
+///
+/// The entry is the same `Intersession` kind a `tell_session` plain send
+/// builds — the attendant as source, the parent as target, and the shared
+/// attribution prefix composed by `tell_session`'s one composition site —
+/// so the parent's transcript renders it in the inter-session color while
+/// LLM context, search, tokens, and compaction all treat it as a user
+/// message. Title minting stays keyed to genuine user entries, so an
+/// untitled parent keeps its title until the user sends a real message.
 ///
 /// Marks the parent interacted — a programmatic enqueue does not, and without
 /// the mark `is_persistable()` gates every save, so the parent's turn would
 /// run and silently never reach disk. Nothing else about the parent's turn is
-/// altered: the notification is an ordinary user turn that may complete
+/// altered: the notification is an ordinary turn that may complete
 /// however many times the agent chooses to send another.
 pub fn notify_parent_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
@@ -128,7 +142,7 @@ pub fn notify_parent_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFutur
             return tool_error(&call, "notify_parent is unavailable without a bus");
         };
 
-        let parent_id = {
+        let (parent_id, caller_title) = {
             let guard = state.read();
             let Some(caller) = guard.session.get(&session_id) else {
                 return tool_error(&call, "calling session is not live");
@@ -141,7 +155,10 @@ pub fn notify_parent_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFutur
             let Some(parent_id) = caller.parent_session().clone() else {
                 return tool_error(&call, "calling attendant has no parent session");
             };
-            parent_id
+            // The caller's title feeds the attribution prefix; clone it out
+            // before any mutable borrow of the session map.
+            let caller_title = caller.title().map(str::to_owned);
+            (parent_id, caller_title)
         };
 
         // Mark the parent interacted so its turn is persistable.
@@ -153,13 +170,19 @@ pub fn notify_parent_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFutur
             parent.mark_interacted();
         }
 
-        // Wake the parent with a normal user turn. A `User`-kind entry is
-        // deliberate: a non-User entry pushed through the Idle enqueue path
-        // would set an empty-string title on an untitled session, and the
-        // title guard would then block a real title forever.
+        // Wake the parent with an inter-session entry attributed to this
+        // attendant — the same variant and composition site a `tell_session`
+        // plain delivery uses. Title minting stays keyed to genuine user
+        // entries (the dispatch handlers skip non-User kinds), so the old
+        // reason for sending a `User` entry no longer applies.
+        let title = crate::tell_session::processed_title(caller_title.as_deref());
+        let text = format!(
+            "{}{message}",
+            crate::tell_session::attribution_prefix(&session_id, title.as_deref())
+        );
         bus.publish(EnqueueUserMessage {
-            session_id: parent_id,
-            entry: ChatEntry::user(message),
+            session_id: parent_id.clone(),
+            entry: ChatEntry::intersession(session_id, title, parent_id, text),
         })
         .await;
 
