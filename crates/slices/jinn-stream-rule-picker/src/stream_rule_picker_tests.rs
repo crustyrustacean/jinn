@@ -15,9 +15,11 @@
 
 use jinn_config::{ConfigLayer, InMemoryConfigStorage};
 use jinn_kernel::common::app_state::AppState;
+use jinn_preferences_config::StreamRulesStorage as _;
 use jinn_slices::KeyRoutes;
 use jinn_slices::cell::TypedCell;
 use jinn_slices::route::EditIntent;
+use jinn_stream_rule_picker_msg::PersistStreamRuleDisabled;
 use jinn_stream_rule_picker_msg::{
     StreamRulePickerState, stream_rule_picker_scope, stream_rule_picker_slot,
 };
@@ -123,7 +125,7 @@ async fn activated_with(
         &services.trouper_system,
     );
 
-    crate::activate(&mut host, prefs.clone());
+    crate::activate(&mut host, prefs.clone(), config_layer(TWO_RULES));
 
     (slices, key_routes, config_layer(TWO_RULES), prefs)
 }
@@ -190,6 +192,37 @@ fn persisted_of(layer: &ConfigLayer, name: &str) -> bool {
         .get::<jinn_preferences_config::StreamRulesConfig>()
         .map(|section| section.disabled_rules.iter().any(|held| held == name))
         .unwrap_or(false)
+}
+
+/// A test-local sink recording every payload published through it, so a
+/// test can assert on the command a confirm actually carried.
+#[derive(Debug, Default)]
+struct RecordingSink {
+    payloads: std::sync::Mutex<Vec<serde_json::Value>>,
+}
+
+impl jinn_slices::PublishSink for RecordingSink {
+    fn publish_schema(
+        &self,
+        _schema_id: trouper::schema::SchemaId,
+        payload: serde_json::Value,
+        _name: &'static str,
+    ) {
+        self.payloads.lock().expect("sink lock").push(payload);
+    }
+}
+
+/// Drains `result`'s publish closures into a sink and decodes the single
+/// persist command they carried, if any.
+fn persist_command_of(result: jinn_slices::RouteResult) -> Option<PersistStreamRuleDisabled> {
+    let sink = RecordingSink::default();
+    for publish in result.messages {
+        publish(&sink);
+    }
+    let payloads = sink.payloads.lock().expect("sink lock").clone();
+    payloads
+        .into_iter()
+        .find_map(|payload| serde_json::from_value(payload).ok())
 }
 
 // ── Open ────────────────────────────────────────────────────────────────
@@ -342,7 +375,7 @@ async fn opening_lists_a_rule_defined_only_in_a_sibling_rules_file() {
     let prefs = temp_prefs_with_sibling(
         "[[stream_rules.entry]]\nname = 'from-sibling'\ndescription = 'the sibling rule'\nconditions = ['TODO']\nscopes = ['text']\nbody = 'Finish it.'\n",
     );
-    let (slices, key_routes, config, prefs) = activated_with(prefs).await;
+    let (slices, key_routes, config, _prefs) = activated_with(prefs).await;
     let cell: TypedCell<StreamRulePickerState> = slices
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");
@@ -369,12 +402,12 @@ async fn opening_lists_a_rule_defined_only_in_a_sibling_rules_file() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn a_sibling_file_rule_toggles_confirms_closes_and_persists_by_name() {
+async fn a_sibling_file_rule_toggles_and_confirms_by_name_in_the_command() {
     // Given an open picker whose first row is the sibling-file rule.
     let prefs = temp_prefs_with_sibling(
         "[[stream_rules.entry]]\nname = 'from-sibling'\nconditions = ['TODO']\nscopes = ['text']\nbody = 'Finish it.'\n",
     );
-    let (slices, key_routes, config, prefs) = activated_with(prefs).await;
+    let (slices, key_routes, config, _prefs) = activated_with(prefs).await;
     let mut state = AppState::default_with_scope_focus();
     dispatch(
         "open-stream-rule-picker",
@@ -392,7 +425,7 @@ async fn a_sibling_file_rule_toggles_confirms_closes_and_persists_by_name() {
         &key_routes,
         &config,
     );
-    dispatch(
+    let result = dispatch(
         "confirm-stream-rule-picker",
         &mut state,
         &slices,
@@ -400,9 +433,19 @@ async fn a_sibling_file_rule_toggles_confirms_closes_and_persists_by_name() {
         &config,
     );
 
-    // Then the name persisted into jinn.toml's array — the persisted form
-    // is the name, whatever file defined the rule — and the picker closed.
-    assert!(persisted_of(&config, "from-sibling"));
+    // Then the command names the sibling rule — the persisted form is the
+    // name, whatever file defined the rule — and the picker closed without
+    // an inline write.
+    let command =
+        persist_command_of(result).expect("a successful confirm must carry the persist command");
+    assert!(
+        command
+            .changes
+            .iter()
+            .any(|change| change.name == "from-sibling" && change.disabled),
+        "the sibling rule must ride the command: {:?}",
+        command.changes
+    );
     assert_ne!(
         state.frontend.scope(),
         jinn_slices::FocusScope::Dynamic(stream_rule_picker_scope()),
@@ -413,11 +456,16 @@ async fn a_sibling_file_rule_toggles_confirms_closes_and_persists_by_name() {
 #[rstest::rstest]
 #[tokio::test]
 async fn reopening_after_confirming_a_sibling_rule_shows_it_disabled() {
-    // Given a picker that confirmed a sibling-file rule's toggle.
+    // Given a preferences set where a sibling-file rule is already
+    // persisted disabled — seeded directly through the layer, the way the
+    // persist actor's write would leave it.
     let prefs = temp_prefs_with_sibling(
         "[[stream_rules.entry]]\nname = 'from-sibling'\nconditions = ['TODO']\nscopes = ['text']\nbody = 'Finish it.'\n",
     );
     let (slices, key_routes, config, prefs) = activated_with(prefs).await;
+    config
+        .set_stream_rule_disabled(&prefs, "from-sibling", true)
+        .expect("seed write");
     let cell: TypedCell<StreamRulePickerState> = slices
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");
@@ -429,33 +477,10 @@ async fn reopening_after_confirming_a_sibling_rule_shows_it_disabled() {
         &key_routes,
         &config,
     );
-    dispatch(
-        "toggle-stream-rule-picker",
-        &mut state,
-        &slices,
-        &key_routes,
-        &config,
-    );
-    dispatch(
-        "confirm-stream-rule-picker",
-        &mut state,
-        &slices,
-        &key_routes,
-        &config,
-    );
-
-    // When the picker is reopened.
-    dispatch(
-        "open-stream-rule-picker",
-        &mut state,
-        &slices,
-        &key_routes,
-        &config,
-    );
 
     // Then the sibling rule shows its persisted disabled state — the open
-    // seeds from the same array the confirm wrote, whatever file defined
-    // the rule.
+    // seeds from the same array the persist actor writes, whatever file
+    // defined the rule.
     assert_eq!(pending_of(&cell, "from-sibling"), Some(true));
     assert_eq!(pending_of(&cell, "no-todos"), Some(false));
 }
@@ -678,12 +703,9 @@ async fn reopening_after_a_cancel_shows_the_persisted_state() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn confirm_persists_the_pending_set_through_the_storage_path_and_closes() {
+async fn confirm_performs_no_inline_write_and_carries_the_persist_command() {
     // Given an open picker with the first rule toggled pending-off.
-    let (slices, key_routes, config, _prefs) = activated().await;
-    let _cell: TypedCell<StreamRulePickerState> = slices
-        .reader(&stream_rule_picker_slot())
-        .expect("stream-rule picker cell registered at activation");
+    let (slices, key_routes, config, prefs) = activated().await;
     let mut state = AppState::default_with_scope_focus();
     dispatch(
         "open-stream-rule-picker",
@@ -701,6 +723,56 @@ async fn confirm_persists_the_pending_set_through_the_storage_path_and_closes() 
     );
 
     // When handling the picker's enter intent.
+    let result = dispatch(
+        "confirm-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // Then the file is byte-unchanged at that instant — the write is the
+    // persist actor's job, not the key handler's.
+    assert!(
+        !persisted_of(&config, "no-todos"),
+        "the confirm itself must not write the disabled set"
+    );
+    // And the result carries the persist command naming the toggled rule,
+    // the preferences path, and the session active at confirm time.
+    let command =
+        persist_command_of(result).expect("a successful confirm must carry the persist command");
+    assert_eq!(command.changes.len(), 2, "every row rides the command");
+    assert_eq!(command.changes[0].name, "no-todos");
+    assert!(command.changes[0].disabled);
+    assert_eq!(command.preferences_path, prefs);
+    assert_eq!(
+        command.session_id,
+        state.session.active_session_id().clone()
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn confirm_closes_the_picker_over_the_pending_set() {
+    // Given an open picker with the first rule toggled pending-off.
+    let (slices, key_routes, config, _prefs) = activated().await;
+    let mut state = AppState::default_with_scope_focus();
+    dispatch(
+        "open-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+    dispatch(
+        "toggle-stream-rule-picker",
+        &mut state,
+        &slices,
+        &key_routes,
+        &config,
+    );
+
+    // When confirming.
     dispatch(
         "confirm-stream-rule-picker",
         &mut state,
@@ -709,11 +781,8 @@ async fn confirm_persists_the_pending_set_through_the_storage_path_and_closes() 
         &config,
     );
 
-    // Then the toggled rule is persisted disabled through the config layer,
-    // and its armed sibling is untouched.
-    assert!(persisted_of(&config, "no-todos"));
-    assert!(!persisted_of(&config, "no-yelling"));
-    // And the picker closed.
+    // Then the picker closed: the confirm is finished even though the
+    // writes are still in flight in the persist actor.
     assert_ne!(
         state.frontend.scope(),
         jinn_slices::FocusScope::Dynamic(stream_rule_picker_scope()),
@@ -766,7 +835,7 @@ async fn confirm_leaves_a_status_line_in_the_cell() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn confirm_publishes_the_matcher_refresh_command() {
+async fn confirm_publishes_no_matcher_refresh_itself() {
     // Given an open picker with one rule toggled pending-off.
     let (slices, key_routes, config, _prefs) = activated().await;
     let mut state = AppState::default_with_scope_focus();
@@ -794,16 +863,21 @@ async fn confirm_publishes_the_matcher_refresh_command() {
         &config,
     );
 
-    // Then the result carries the refresh command for the bridge to
-    // publish — the live matcher's re-arm is asked for on the bus, not
-    // performed by the picker.
+    // Then the result carries only the persist command: the matcher refresh
+    // belongs to the persist actor, published after the writes land — a
+    // refresh from here would recompile the matcher before the write.
     assert!(
-        result
+        !result
             .message_names
             .iter()
             .any(|name| name.contains("RefreshStreamRuleMatcher")),
-        "a successful confirm must ask for the matcher refresh, got {:?}",
+        "the confirm must not publish the matcher refresh, got {:?}",
         result.message_names
+    );
+    assert_eq!(
+        result.message_names,
+        vec!["PersistStreamRuleDisabled"],
+        "the persist command is the only thing a confirm publishes"
     );
 }
 
@@ -865,8 +939,13 @@ async fn a_failed_confirm_publishes_no_refresh() {
 #[rstest::rstest]
 #[tokio::test]
 async fn reopening_after_a_confirm_shows_the_persisted_state() {
-    // Given a picker whose toggle was confirmed.
-    let (slices, key_routes, config, _prefs) = activated().await;
+    // Given a preferences set with `no-todos` already persisted disabled —
+    // seeded directly through the layer, the way the persist actor's write
+    // would leave it.
+    let (slices, key_routes, config, prefs) = activated().await;
+    config
+        .set_stream_rule_disabled(&prefs, "no-todos", true)
+        .expect("seed write");
     let cell: TypedCell<StreamRulePickerState> = slices
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");
@@ -878,33 +957,10 @@ async fn reopening_after_a_confirm_shows_the_persisted_state() {
         &key_routes,
         &config,
     );
-    dispatch(
-        "toggle-stream-rule-picker",
-        &mut state,
-        &slices,
-        &key_routes,
-        &config,
-    );
-    dispatch(
-        "confirm-stream-rule-picker",
-        &mut state,
-        &slices,
-        &key_routes,
-        &config,
-    );
 
-    // When the picker is reopened.
-    dispatch(
-        "open-stream-rule-picker",
-        &mut state,
-        &slices,
-        &key_routes,
-        &config,
-    );
-
-    // Then the confirmed rule shows disabled — the open seeds from the
-    // same layer the confirm wrote, so what the file holds is what the
-    // list shows.
+    // Then the persisted rule shows disabled on the fresh open — the open
+    // seeds from the same layer the persist actor writes, so what the file
+    // holds is what the list shows.
     assert_eq!(pending_of(&cell, "no-todos"), Some(true));
     assert_eq!(pending_of(&cell, "no-yelling"), Some(false));
 }

@@ -14,15 +14,13 @@
 //!   keymap synthesize the printable-character catch-all and the editing
 //!   keys for this scope automatically, so typing keeps working.
 //!
-//! A cell guard is never held across a persistence call: the confirm
-//! snapshots the pending set, drops the guard, writes through the config
-//! layer, then reports the outcome back into the cell.
+//! A cell guard is never held across a slow step: the confirm snapshots
+//! the pending set, drops the guard, pre-checks the names against the
+//! assembled set, and reports the outcome back into the cell.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use jinn_preferences_config::StreamRulesStorage;
-use jinn_preferences_config::StreamRulesStorageError;
 use jinn_slices::KeyRoutes;
 use jinn_slices::RouteId;
 use jinn_slices::RouteResult as IntentResult;
@@ -30,7 +28,11 @@ use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{
     ActionCtx, ActionFn, BindSite, EditIntent, InputHook, RouteOutcome, RouteRow, ScopeSignal,
 };
+use jinn_stream_rule_picker_msg::PersistStreamRuleDisabled;
+use jinn_stream_rule_picker_msg::StreamRuleDisabledChange;
 use jinn_stream_rule_picker_msg::StreamRulePickerState;
+use jinn_stream_rule_picker_msg::StreamRulesStorageError;
+use jinn_stream_rule_picker_msg::stream_rule_failure_line;
 use jinn_stream_rule_picker_msg::stream_rule_picker_scope;
 
 use crate::stream_rule_picker_actions;
@@ -291,77 +293,72 @@ fn toggle_highlighted_rule(
     IntentResult::empty()
 }
 
-/// `<enter>`: write the pending set through the storage boundary and close.
+/// `<enter>`: hand the pending set to the persist actor and close.
 ///
-/// Every pending flag is written by name through
-/// [`StreamRulesStorage::set_stream_rule_disabled`] — the comment-preserving
-/// patch path — so the picker states "rule X is off" rather than
-/// re-serializing the section itself. The first failure stops the write and
-/// is reported in the picker's status line, with the scope left alone: a
-/// failed confirm keeps the picker open over the state the user tried to
-/// save, rather than closing as if it had succeeded.
-///
-/// A rule dropped between open and confirm (the file edited underneath the
-/// session) surfaces as [`StreamRulesStorageError::UnknownRule`] and lands
-/// in the same status line — never a panic.
-///
-/// A successful confirm also publishes
-/// [`jinn_stream_rules_msg::RefreshStreamRuleMatcher`], which
-/// the stream-rules slice's matcher actor answers by recompiling and
-/// reinstalling the live matcher — so the confirmed set takes effect for
-/// the next stream, not the next launch. The publish rides the result's
-/// message list, so a failed confirm (which returns before this point)
-/// publishes nothing.
+/// The confirm performs **no write**: it snapshots the pending set,
+/// pre-checks every pending name against the unfiltered assembled set
+/// ([`assemble_stream_rules`] — the open path's own call), and on a miss
+/// leaves the shared failure wording in the status line with the picker
+/// open and nothing published. On a pass the status line names the
+/// confirmed set and the action returns carrying
+/// [`PersistStreamRuleDisabled`] — session, preferences path, and every
+/// pending change — with the pop signal, so the picker closes while the
+/// writes are still in flight. The command's consumer is the slice's
+/// persist actor, which does the writing off the key-handler thread and
+/// asks for the matcher refresh only after every write landed; an
+/// actor-side failure (the TOCTOU boundary — the file changed between open
+/// and write) surfaces later as a chat error, not a panic.
 fn confirm_stream_rule_picker(
     ctx: &mut ActionCtx<'_>,
     cell: &StreamRulePickerCell,
     preferences_path: &PathBuf,
 ) -> IntentResult {
-    // Snapshot the pending set and drop the guard before writing: the
-    // storage call takes its own locks on the document.
+    // Snapshot the pending set and drop the guard before anything slow.
     let pending: Vec<(String, bool)> =
         cell.update(|picker| stream_rule_picker_actions::pending_set(picker));
 
-    let config = ctx.config;
-    match write_pending_set(config, preferences_path, &pending) {
-        Ok(()) => {
-            cell.update(|picker| {
-                picker.status = Some(confirmation_status(&pending));
-            });
-            IntentResult::empty()
-                .with_message(jinn_stream_rules_msg::RefreshStreamRuleMatcher)
-                .with_scope_signal(ScopeSignal::PopIf(stream_rule_picker_scope()))
-        }
-        Err(report) => {
-            let message = failure_status(report.current_context());
-            cell.update(move |picker| picker.status = Some(message));
-            IntentResult::empty()
-        }
+    // Validate every pending name against the same assembled set the open
+    // listed and the matcher enforces. This is a pre-check, not the write:
+    // the file can still change before the actor's write lands, and that
+    // later failure is the actor's chat report — never this picker's.
+    let known = |name: &str| {
+        jinn_preferences_config::assemble_stream_rules(&ctx.config.clone(), preferences_path)
+            .iter()
+            .any(|rule| rule.name == name)
+    };
+    if let Some(name) = pending
+        .iter()
+        .find(|(name, _)| !known(name))
+        .map(|(name, _)| name)
+    {
+        let message =
+            stream_rule_failure_line(&StreamRulesStorageError::UnknownRule { name: name.clone() });
+        cell.update(move |picker| picker.status = Some(message));
+        return IntentResult::empty();
     }
+
+    cell.update(|picker| {
+        picker.status = Some(confirmation_status(&pending));
+    });
+    let changes = pending
+        .into_iter()
+        .map(|(name, disabled)| StreamRuleDisabledChange { name, disabled })
+        .collect();
+    IntentResult::empty()
+        .with_message(PersistStreamRuleDisabled {
+            session_id: ctx.state.active_session_id(),
+            preferences_path: preferences_path.clone(),
+            changes,
+        })
+        .with_scope_signal(ScopeSignal::PopIf(stream_rule_picker_scope()))
 }
 
-/// Writes every pending flag through the config layer, by name.
-///
-/// Stops at the first failure: a half-applied set is reported, not silently
-/// completed — the flags that did land are idempotent on a retry, and the
-/// user sees which confirm broke.
-fn write_pending_set(
-    config: &jinn_config::ConfigLayer,
-    preferences_path: &PathBuf,
-    pending: &[(String, bool)],
-) -> Result<(), error_stack::Report<StreamRulesStorageError>> {
-    for (name, disabled) in pending {
-        config.set_stream_rule_disabled(preferences_path, name, *disabled)?;
-    }
-    Ok(())
-}
-
-/// The status line a successful confirm leaves: what the set now is, and
+/// The status line a confirmed set leaves: what the set now is, and
 /// when it bites.
 ///
-/// "Shortly", not "on restart": the confirm publishes the matcher-refresh
-/// command after the write lands, and the stream-rules slice's matcher
-/// actor recompiles then — the next stream's rules are the confirmed ones.
+/// "Shortly", not "on restart": the confirm publishes the persist command,
+/// and the persist actor publishes the matcher-refresh command after the
+/// writes land — the stream-rules slice's matcher actor recompiles then.
 /// The refresh is eventual, so the wording claims immediacy only as far as
 /// the code guarantees it.
 fn confirmation_status(pending: &[(String, bool)]) -> String {
@@ -377,21 +374,6 @@ fn confirmation_status(pending: &[(String, bool)]) -> String {
             "stream rules: disabled {} (takes effect shortly)",
             disabled.join(", ")
         )
-    }
-}
-
-/// The status line a failed confirm leaves, naming what went wrong.
-fn failure_status(error: &StreamRulesStorageError) -> String {
-    match error {
-        StreamRulesStorageError::UnknownRule { name } => {
-            format!("no stream rule is named `{name}` — the file changed; reopen the picker")
-        }
-        StreamRulesStorageError::Read { detail } => {
-            format!("stream rules could not be read: {detail}")
-        }
-        StreamRulesStorageError::Write { detail } => {
-            format!("stream rules could not be written: {detail}")
-        }
     }
 }
 
