@@ -15,8 +15,8 @@
 //!   keys for this scope automatically, so typing keeps working.
 //!
 //! A cell guard is never held across a slow step: the confirm snapshots
-//! the pending set, drops the guard, pre-checks the names against the
-//! assembled set, and reports the outcome back into the cell.
+//! the pending set, drops the guard, and hands the set to the persist
+//! actor — the picker itself never reads a file after the open.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -31,8 +31,6 @@ use jinn_slices::route::{
 use jinn_stream_rule_picker_msg::PersistStreamRuleDisabled;
 use jinn_stream_rule_picker_msg::StreamRuleDisabledChange;
 use jinn_stream_rule_picker_msg::StreamRulePickerState;
-use jinn_stream_rule_picker_msg::StreamRulesStorageError;
-use jinn_stream_rule_picker_msg::stream_rule_failure_line;
 use jinn_stream_rule_picker_msg::stream_rule_picker_scope;
 
 use crate::stream_rule_picker_actions;
@@ -298,47 +296,33 @@ fn toggle_highlighted_rule(
 
 /// `<enter>`: hand the pending set to the persist actor and close.
 ///
-/// The confirm performs **no write**: it snapshots the pending set,
-/// pre-checks every pending name against the unfiltered assembled set
-/// ([`assemble_stream_rules`] — the open path's own call), and on a miss
-/// leaves the shared failure wording in the status line with the picker
-/// open and nothing published. On a pass the status line names the
-/// confirmed set and the action returns carrying
-/// [`PersistStreamRuleDisabled`] — session, preferences path, and every
-/// pending change — with the pop signal, so the picker closes while the
-/// writes are still in flight. The command's consumer is the slice's
-/// persist actor, which does the writing off the key-handler thread and
-/// asks for the matcher refresh only after every write landed; an
-/// actor-side failure (the TOCTOU boundary — the file changed between open
-/// and write) surfaces later as a chat error, not a panic.
+/// The confirm performs **no write and no validation I/O**: it reads the
+/// picker's own cell twice (snapshot and status line), clones the
+/// preferences path, and returns carrying [`PersistStreamRuleDisabled`] —
+/// session, preferences path, and every pending change — with the pop
+/// signal, so the picker closes while the writes are still in flight.
+/// Nothing on this path touches the config layer or the files: an
+/// earlier revision pre-checked every pending name against the assembled
+/// rule set here, one full assembly per pending row, and that read — not
+/// the handoff — was the visible hitch on confirm.
+///
+/// Name validation therefore lives solely in the slice's persist actor,
+/// against the same assembled set the open listed and the matcher
+/// enforces. A name the files no longer hold closes nothing at confirm
+/// time — the picker is already gone — and reports later as a chat error
+/// (the shared `stream_rule_failure_line` wording) with no matcher
+/// refresh: the TOCTOU boundary between open and write is the actor's
+/// to report, not this picker's.
 fn confirm_stream_rule_picker(
     ctx: &mut ActionCtx<'_>,
     cell: &StreamRulePickerCell,
     preferences_path: &PathBuf,
 ) -> IntentResult {
-    // Snapshot the pending set and drop the guard before anything slow.
+    // Snapshot the pending set and drop the guard; the only other cell
+    // touch is the status line below. Everything past this point is
+    // in-memory and O(rows).
     let pending: Vec<(String, bool)> =
         cell.update(|picker| stream_rule_picker_actions::pending_set(picker));
-
-    // Validate every pending name against the same assembled set the open
-    // listed and the matcher enforces. This is a pre-check, not the write:
-    // the file can still change before the actor's write lands, and that
-    // later failure is the actor's chat report — never this picker's.
-    let known = |name: &str| {
-        jinn_preferences_config::assemble_stream_rules(&ctx.config.clone(), preferences_path)
-            .iter()
-            .any(|rule| rule.name == name)
-    };
-    if let Some(name) = pending
-        .iter()
-        .find(|(name, _)| !known(name))
-        .map(|(name, _)| name)
-    {
-        let message =
-            stream_rule_failure_line(&StreamRulesStorageError::UnknownRule { name: name.clone() });
-        cell.update(move |picker| picker.status = Some(message));
-        return IntentResult::empty();
-    }
 
     cell.update(|picker| {
         picker.status = Some(confirmation_status(&pending));
