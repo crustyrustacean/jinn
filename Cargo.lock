@@ -3679,24 +3679,32 @@ dependencies = [
  "error-stack",
  "jinn-cell-catalog",
  "jinn-config",
+ "jinn-core-types",
  "jinn-kernel",
  "jinn-picker",
  "jinn-preferences-config",
  "jinn-selection-widget",
+ "jinn-session-history-msg",
  "jinn-slices",
  "jinn-stream-rule-picker-msg",
  "jinn-stream-rules-msg",
+ "jinn-testutil",
  "jinn-theme",
  "ratatui",
  "rstest",
+ "serde_json",
  "tempfile",
  "tokio",
+ "toml_edit 0.22.27",
+ "tracing",
+ "trouper",
 ]
 
 [[package]]
 name = "jinn-stream-rule-picker-msg"
 version = "1.6.0"
 dependencies = [
+ "jinn-core-types",
  "jinn-picker",
  "jinn-preferences-config",
  "jinn-selection-widget",
@@ -3704,6 +3712,9 @@ dependencies = [
  "jinn-theme",
  "ratatui",
  "rstest",
+ "serde",
+ "serde_json",
+ "trouper",
 ]
 
 [[package]]
