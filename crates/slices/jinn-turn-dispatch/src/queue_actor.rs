@@ -268,14 +268,16 @@ impl QueueActor {
         {
             self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(session_id);
+                // Title minting is keyed to genuine user entries: an
+                // inter-session delivery (or any other kind) leaves an
+                // untitled session untitled, so a real user message can
+                // still mint the title later. Stamping `""` here would flip
+                // the guard to `Some("")` and block every future mint.
                 if session.title().is_none() {
-                    let title = match &entry.kind {
-                        ChatEntryKind::User { display, .. } => {
-                            display.lines().next().unwrap_or("").to_owned()
-                        }
-                        _ => String::new(),
-                    };
-                    session.set_title(title);
+                    if let ChatEntryKind::User { display, .. } = &entry.kind {
+                        let title = display.lines().next().unwrap_or("").to_owned();
+                        session.set_title(title);
+                    }
                 }
                 session.push_entry(entry.clone());
                 // Normalize loop layout so committed loops never contain

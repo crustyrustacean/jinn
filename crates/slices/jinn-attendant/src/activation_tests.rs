@@ -262,12 +262,13 @@ fn reset_run_seeds_through_the_template_with_the_prior_report() {
     let (seed, _reset) = prepare_trigger_run(&mut session);
     let seed = seed.expect("reset mode with a prior report seeds");
 
-    // Then the seed entry carries the report through the template.
-    let jinn_core_types::chat_entry::ChatEntryKind::User { display, .. } = &seed.kind else {
-        panic!("seed must be a user entry");
+    // Then the seed entry carries the report through the template, as an
+    // Intersession dispatch attributed to the parent.
+    let jinn_core_types::chat_entry::ChatEntryKind::Intersession { text, .. } = &seed.kind else {
+        panic!("seed must be an intersession dispatch");
     };
-    assert!(display.contains("the tests were actually passing"));
-    assert!(!display.contains(PRIOR_REPORT_PLACEHOLDER));
+    assert!(text.contains("the tests were actually passing"));
+    assert!(!text.contains(PRIOR_REPORT_PLACEHOLDER));
 }
 
 #[rstest::rstest]
@@ -357,7 +358,7 @@ async fn succeeded_parent_turn_fires_its_triggered_attendant() {
     // must be identified by id at fixture time — a `find` over the map
     // would race the HashMap's per-process iteration order and sometimes
     // publish the completion against the wrong (default) session.
-    let parent_id = {
+    let (parent_id, attendant_id) = {
         let mut s = state.write();
         let parent = ChatSessionState::new();
         let id = parent.session_id().clone();
@@ -366,12 +367,13 @@ async fn succeeded_parent_turn_fires_its_triggered_attendant() {
             let read = s.session.get(&id).expect("parent").clone();
             composed_attendant_of(&read)
         };
+        let attendant_id = attendant.session_id().clone();
         attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
         attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
         attendant.set_seed_template("verify: <prior report>".to_owned());
         attendant.append_attendant_report("prior finding".to_owned());
         s.session.insert(attendant);
-        id
+        (id, attendant_id)
     };
     let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
         harness.system(),
@@ -384,7 +386,7 @@ async fn succeeded_parent_turn_fires_its_triggered_attendant() {
     // When the parent's turn completes successfully.
     harness
         .publish(jinn_session_msg::TurnCompleted {
-            session_id: parent_id,
+            session_id: parent_id.clone(),
             outcome: jinn_session_msg::TurnOutcome::Succeeded,
         })
         .await;
@@ -396,14 +398,26 @@ async fn succeeded_parent_turn_fires_its_triggered_attendant() {
     // Then exactly one dispatch went to the attendant, seeded through the
     // template with the prior report.
     assert_eq!(dispatches.len(), 1);
-    let jinn_core_types::chat_entry::ChatEntryKind::User { display, .. } =
-        &dispatches[0].entry.kind
+    let jinn_core_types::chat_entry::ChatEntryKind::Intersession {
+        source_session,
+        target_session,
+        text,
+        ..
+    } = &dispatches[0].entry.kind
     else {
-        panic!("seed must be a user entry");
+        panic!("seed must be an intersession dispatch");
     };
+    assert_eq!(
+        target_session, &attendant_id,
+        "the dispatch targets the attendant"
+    );
+    assert_eq!(
+        source_session, &parent_id,
+        "the dispatch is attributed to the parent"
+    );
     assert!(
-        display.starts_with("verify: prior finding"),
-        "the seeded prompt leads with the user's template: {display:?}"
+        text.starts_with("verify: prior finding"),
+        "the seeded prompt leads with the user's template: {text:?}"
     );
 }
 
@@ -543,17 +557,30 @@ async fn manual_rerun_runs_a_late_attendant_even_though_its_trigger_never_fired(
     // history — manual re-run has no trigger condition.
     assert!(cancel.is_none());
     let dispatch = dispatch.expect("reset mode dispatches");
-    let jinn_core_types::chat_entry::ChatEntryKind::User { display, .. } = &dispatch.entry.kind
+    let jinn_core_types::chat_entry::ChatEntryKind::Intersession {
+        source_session,
+        target_session,
+        text,
+        ..
+    } = &dispatch.entry.kind
     else {
-        panic!("seed must be a user entry");
+        panic!("seed must be an intersession dispatch");
     };
-    assert!(
-        display.starts_with("verify: late finding"),
-        "the seeded prompt leads with the user's template: {display:?}"
+    assert_eq!(
+        target_session, &attendant_id,
+        "the dispatch targets the attendant"
+    );
+    assert_eq!(
+        source_session, &parent_id,
+        "the manual dispatch is attributed to the parent too"
     );
     assert!(
-        display.contains(&parent_id.to_string()),
-        "the seeded prompt names the parent session: {display:?}"
+        text.starts_with("verify: late finding"),
+        "the seeded prompt leads with the user's template: {text:?}"
+    );
+    assert!(
+        text.contains(&parent_id.to_string()),
+        "the seeded prompt names the parent session: {text:?}"
     );
 }
 
@@ -1182,4 +1209,141 @@ fn a_seed_prompt_names_a_missing_parent_as_unavailable() {
             .ends_with("The parent session's id is unavailable"),
         "the parent line must still read as a sentence"
     );
+}
+
+#[rstest::rstest]
+#[test]
+fn an_untitled_attendant_takes_the_seed_s_first_non_empty_line_as_its_title_at_dispatch() {
+    // Given an untitled composed attendant whose template opens with blank
+    // lines before its instructions.
+    let parent = ChatSessionState::new();
+    let mut session = composed_attendant_of(&parent);
+    session.set_seed_template("\n\n  \nWatch the flaky suite.".to_owned());
+    assert!(session.title().is_none(), "fixture starts untitled");
+
+    // When the run's seed entry is prepared.
+    let (seed, _) = prepare_trigger_run(&mut session);
+    seed.expect("a seed dispatches");
+
+    // Then the title is the first non-empty line, trimmed — not the empty
+    // string a naive `lines().next()` would write, which would permanently
+    // block every later mint.
+    assert_eq!(session.title(), Some("Watch the flaky suite."));
+}
+
+#[rstest::rstest]
+#[test]
+fn a_titled_attendant_keeps_its_title_through_a_dispatch() {
+    // Given a composed attendant the user has already named.
+    let parent = ChatSessionState::new();
+    let mut session = composed_attendant_of(&parent);
+    session.set_title("nightly".to_owned());
+    session.set_seed_template("Watch the flaky suite.".to_owned());
+
+    // When the run's seed entry is prepared.
+    let (seed, _) = prepare_trigger_run(&mut session);
+    seed.expect("a seed dispatches");
+
+    // Then the user's title stands — the mint is only for the untitled.
+    assert_eq!(session.title(), Some("nightly"));
+}
+
+#[rstest::rstest]
+#[test]
+fn prep_mode_dispatches_nothing_and_mints_nothing() {
+    // Given an attendant still being composed, with a template that would
+    // title it if a run were prepared.
+    let parent = ChatSessionState::new();
+    let mut session = ChatSessionState::new_attendant(&parent, true);
+    session.set_seed_template("Watch the flaky suite.".to_owned());
+    assert!(session.attendant_is_prepping());
+
+    // When the run's seed entry is prepared.
+    let (seed, _) = prepare_trigger_run(&mut session);
+
+    // Then nothing dispatches and the attendant stays untitled — the user
+    // has not finished writing it, so nothing about it is settled yet.
+    assert!(seed.is_none(), "prep mode must not dispatch");
+    assert!(session.title().is_none(), "prep mode must not mint a title");
+}
+
+#[rstest::rstest]
+#[test]
+fn a_seed_template_of_only_blank_lines_mints_no_title() {
+    // Given an untitled composed attendant and a composed dispatch text
+    // that opens with no non-empty line to title from.
+    let parent = ChatSessionState::new();
+    let mut session = composed_attendant_of(&parent);
+    let text = "\n\n".to_owned();
+
+    // When a dispatch entry is built from blank-only text.
+    let entry = crate::activation::dispatch_entry(&mut session, &text);
+
+    // Then the entry is still Intersession, and the title guard is left at
+    // `None` — never flipped to `Some("")`, which would block every later
+    // mint for the life of the session.
+    assert!(session.title().is_none(), "no empty title may be written");
+    let jinn_core_types::chat_entry::ChatEntryKind::Intersession { .. } = entry.kind else {
+        panic!("dispatch must be intersession");
+    };
+}
+
+#[rstest::rstest]
+#[test]
+fn a_trigger_dispatch_entry_names_parent_and_target() {
+    // Given a composed attendant with a parent and a template.
+    let parent = ChatSessionState::new();
+    let mut session = composed_attendant_of(&parent);
+    session.set_seed_template("Watch the flaky suite.".to_owned());
+
+    // When the run's seed entry is prepared.
+    let (seed, _) = prepare_trigger_run(&mut session);
+    let seed = seed.expect("a seed dispatches");
+
+    // Then the entry is Intersession from the parent to the attendant, with
+    // no attribution name — a dispatch is not session→session mail, the
+    // seed's own structure is the formatting.
+    let jinn_core_types::chat_entry::ChatEntryKind::Intersession {
+        source_session,
+        source_name,
+        target_session,
+        text,
+    } = &seed.kind
+    else {
+        panic!("dispatch must be an intersession entry");
+    };
+    assert_eq!(source_session, parent.session_id());
+    assert_eq!(source_name, &None);
+    assert_eq!(target_session, session.session_id());
+    assert!(
+        text.starts_with("Watch the flaky suite."),
+        "the entry text is the seed, unwrapped: {text:?}"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn a_dispatch_from_a_parentless_attendant_sources_the_attendant_itself() {
+    // Given a composed attendant whose parent link was cleared.
+    let mut session = ChatSessionState::new();
+    session.set_attendant_is_prepping(false);
+    session.set_seed_template("Watch the flaky suite.".to_owned());
+    assert!(session.parent_session().is_none());
+
+    // When the run's seed entry is prepared.
+    let (seed, _) = prepare_trigger_run(&mut session);
+    let seed = seed.expect("a seed dispatches");
+
+    // Then the source falls back to the attendant's own id — `intersession`
+    // requires a source, and a headless attendant has only itself.
+    let jinn_core_types::chat_entry::ChatEntryKind::Intersession {
+        source_session,
+        target_session,
+        ..
+    } = &seed.kind
+    else {
+        panic!("dispatch must be an intersession entry");
+    };
+    assert_eq!(source_session, session.session_id());
+    assert_eq!(target_session, session.session_id());
 }

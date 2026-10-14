@@ -109,14 +109,17 @@ impl SessionPersistenceActor {
                 {
                     self.state.with_session(|view| {
                         let session = view.session.map().get_or_create(&payload.session_id);
+                        // Title minting is keyed to genuine user entries: an
+                        // inter-session delivery (or any other kind) leaves an
+                        // untitled session untitled, so a real user message
+                        // can still mint the title later. Stamping `""` here
+                        // would flip the guard to `Some("")` and block every
+                        // future mint — the sidebar would read an empty title.
                         if session.title().is_none() {
-                            let title = match &entry.kind {
-                                ChatEntryKind::User { display, .. } => {
-                                    display.lines().next().unwrap_or("").to_owned()
-                                }
-                                _ => String::new(),
-                            };
-                            session.set_title(title);
+                            if let ChatEntryKind::User { display, .. } = &entry.kind {
+                                let title = display.lines().next().unwrap_or("").to_owned();
+                                session.set_title(title);
+                            }
                         }
                         session.push_entry(entry.clone());
                     });
@@ -452,6 +455,7 @@ mod tests {
     )]
 
     use jinn_chat_input_msg::{EnqueueResumeTurn, EnqueueUserMessage};
+    use jinn_core_types::SessionId;
     use jinn_core_types::model_selection::ModelSelection;
     use jinn_kernel::common::services::BusAudit;
     use jinn_kernel::protocol::{ChatEntry, ChatEntryKind};
@@ -593,6 +597,82 @@ mod tests {
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
         assert_eq!(session.title(), Some("My First Question"));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn an_intersession_first_entry_leaves_an_untitled_session_untitled() {
+        // Given a new session with no title.
+        let (actor, state, _audit) = create_actor().await;
+        let session_id = SessionId::new();
+
+        // When enqueuing an inter-session delivery as the first entry.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::intersession(
+                    SessionId::new(),
+                    None,
+                    session_id.clone(),
+                    "[Message from session abc]: stage finished",
+                ),
+            })
+            .await;
+
+        // Then the title stays unset — a stamped empty string would flip the
+        // minting guard to `Some("")` and block every future title.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        assert_eq!(session.title(), None);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_later_user_message_still_mints_the_title_after_an_intersession_entry() {
+        // Given a session whose first entry was an inter-session delivery.
+        let (actor, state, _audit) = create_actor().await;
+        let session_id = SessionId::new();
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::intersession(
+                    SessionId::new(),
+                    None,
+                    session_id.clone(),
+                    "[Message from session abc]: stage finished",
+                ),
+            })
+            .await;
+
+        // The first dispatch left the session Streaming; settle the turn
+        // through the phase actor so the user's message dispatches fresh.
+        let settled = jinn_kernel::common::phase_command::apply_phase(
+            &actor.services,
+            jinn_session_msg::phase_command::PhaseCommand::StreamEndedFinished {
+                session_id: session_id.clone(),
+                dispatched_at: jiff::Timestamp::now(),
+            },
+        )
+        .await
+        .expect("phase actor reachable");
+        assert!(
+            settled.admitted,
+            "a live generation's finished edge must settle: {settled:?}"
+        );
+
+        // When the user sends a real message.
+        actor
+            .handle_enqueue_user_message(&EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user("the real first question"),
+            })
+            .await;
+
+        // Then the title mints from that user message — the intersession
+        // entry consumed no mint.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        assert_eq!(session.title(), Some("the real first question"));
     }
 
     #[rstest::rstest]

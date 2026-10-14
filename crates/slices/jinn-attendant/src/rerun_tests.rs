@@ -67,17 +67,26 @@ fn rerun_on_a_reset_attendant_dispatches_the_seeded_run() {
     // carries the report through the template.
     assert!(cancel.is_none());
     let dispatch = dispatch.expect("reset mode dispatches");
-    let jinn_core_types::chat_entry::ChatEntryKind::User { display, .. } = &dispatch.entry.kind
+    let jinn_core_types::chat_entry::ChatEntryKind::Intersession {
+        source_session,
+        target_session,
+        text,
+        ..
+    } = &dispatch.entry.kind
     else {
-        panic!("seed must be a user entry");
+        panic!("seed must be an intersession dispatch");
     };
+    assert_eq!(target_session, &id, "the dispatch targets the attendant");
+    let parent_id = jinn_core_types::SessionId::try_from_string(&parent_id_of(&state, &id))
+        .expect("fixture parent id parses");
+    assert_eq!(source_session, &parent_id);
     assert!(
-        display.starts_with("verify: prior finding"),
-        "the seeded prompt leads with the user's template: {display:?}"
+        text.starts_with("verify: prior finding"),
+        "the seeded prompt leads with the user's template: {text:?}"
     );
     assert!(
-        display.contains(&parent_id_of(&state, &id)),
-        "the seeded prompt names the parent session: {display:?}"
+        text.contains(&parent_id.to_string()),
+        "the seeded prompt names the parent session: {text:?}"
     );
 }
 
@@ -254,17 +263,18 @@ fn rerun_on_a_preserve_attendant_seeds_through_the_template() {
 
     // Then the seeded run dispatches with the report substituted.
     let dispatch = dispatch.expect("R must seed in every non-seed mode");
-    let jinn_core_types::chat_entry::ChatEntryKind::User { display, .. } = &dispatch.entry.kind
+    let jinn_core_types::chat_entry::ChatEntryKind::Intersession { text, .. } =
+        &dispatch.entry.kind
     else {
-        panic!("seed must be a user entry");
+        panic!("seed must be an intersession dispatch");
     };
     assert!(
-        display.starts_with("verify: prior finding"),
-        "the seeded prompt leads with the user's template: {display:?}"
+        text.starts_with("verify: prior finding"),
+        "the seeded prompt leads with the user's template: {text:?}"
     );
     assert!(
-        display.contains(&parent_id_of(&state, &id)),
-        "the seeded prompt names the parent session: {display:?}"
+        text.contains(&parent_id_of(&state, &id)),
+        "the seeded prompt names the parent session: {text:?}"
     );
 }
 
