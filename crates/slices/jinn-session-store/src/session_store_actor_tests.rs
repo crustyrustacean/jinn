@@ -39,6 +39,10 @@ struct ActorFixture {
     /// through the harness. The cell is registered on the actor's own
     /// `Services` before the spawn and carried out here for reading.
     status_bar: jinn_slices::cell::TypedCell<jinn_status_bar_msg::StatusBarState>,
+    /// The work-time cell, from the same `Slices` — the same reason as
+    /// `status_bar`. The fixture spawns the monitor against it, so a restore
+    /// publish lands in this cell exactly as production folds it.
+    work_time: jinn_slices::cell::TypedCell<jinn_work_time_msg::WorkingTimeState>,
 }
 
 async fn actor_fixture() -> ActorFixture {
@@ -69,6 +73,10 @@ async fn actor_fixture() -> ActorFixture {
         .slices
         .reader::<jinn_status_bar_msg::StatusBarState>(&jinn_status_bar_msg::status_bar_slot())
         .expect("the cell catalog registers the status-bar slot");
+    let work_time = services
+        .slices
+        .reader::<jinn_work_time_msg::WorkingTimeState>(&jinn_work_time_msg::work_time_slot())
+        .expect("the cell catalog registers the work-time slot");
     let state = State::new(AppState::default());
     let _actor = SessionStoreActor::spawn(
         harness.system(),
@@ -78,12 +86,16 @@ async fn actor_fixture() -> ActorFixture {
             session_picker_cell: session_picker_cell.clone(),
         },
     );
+    // The monitor is the work-time cell's single writer, and the load path's
+    // restore publish only shows up in the cell through it.
+    let _monitor = jinn_work_time::WorkTimeMonitorActor::spawn(harness.system(), work_time.clone());
     ActorFixture {
         _dir: dir,
         harness,
         state,
         store,
         status_bar,
+        work_time,
     }
 }
 
@@ -1984,8 +1996,307 @@ mod tree_load_tests {
 }
 
 // ---------------------------------------------------------------------------
-// Forking from a chat log entry
+// Working time across the store boundary
 // ---------------------------------------------------------------------------
+
+/// Wall time crosses the store as stamped snapshots, and comes back as
+/// restored intervals.
+///
+/// Every durable copy of a session's working intervals is stamped by the
+/// store actor at the moment of capture — the snapshot itself never carries
+/// them — and a load hands the recorded intervals back to the monitor, the
+/// cell's single writer. These tests watch the whole boundary against a real
+/// SQLite store: what lands in the blob on archive, what lands in the cell on
+/// load, and whether the reactivation write keeps what the load restored.
+mod working_time_tests {
+    #![allow(
+        unused_mut,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+    use super::*;
+
+    use jinn_core_types::WorkingInterval;
+    use jinn_work_time_msg::RestoreWorkingTime;
+
+    const T0: i64 = 1_000_000_000;
+
+    fn at(offset_secs: i64) -> jiff::Timestamp {
+        jiff::Timestamp::from_second(T0 + offset_secs).expect("valid timestamp")
+    }
+
+    /// A live, interacted session in the map, plus the 90s interval the
+    /// work-time cell records for it.
+    fn live_session_with_recorded_time(fixture: &ActorFixture) -> SessionId {
+        let session_id = SessionId::new();
+        let mut session = ChatSessionState::new();
+        session.set_session_id(session_id.clone());
+        session.mark_interacted();
+        session.push_entry(jinn_core_types::ChatEntry::user("worked"));
+        fixture.state.write().session.insert(session.clone());
+        // The monitor's own write path, folded the way a turn's events land:
+        // a stretch of recorded work, closed. Written through the cell exactly
+        // as the monitor leaves it.
+        fixture.work_time.update(|working| {
+            working.begin_working(session_id.clone(), at(0));
+            working.end_working(&session_id, at(90));
+        });
+        session_id
+    }
+
+    /// The stored snapshot's intervals, if the session is in the store.
+    async fn stored_intervals(
+        fixture: &ActorFixture,
+        session_id: &SessionId,
+    ) -> Option<Vec<WorkingInterval>> {
+        fixture
+            .store
+            .load_session(session_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|snapshot| snapshot.metadata.working_intervals)
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn archiving_a_session_stores_its_recorded_intervals() {
+        // Given a live session whose 90s of work the work-time cell records.
+        let fixture = actor_fixture().await;
+        let session_id = live_session_with_recorded_time(&fixture);
+
+        // When the session is archived.
+        fixture
+            .harness
+            .publish(ArchiveSession {
+                session_id: session_id.clone(),
+            })
+            .await;
+        let removed =
+            poll_until(|| async { !fixture.state.read().session.contains(&session_id) }).await;
+        assert!(removed, "the archive should complete");
+
+        // Then the stored blob carries the cell's record, not the empty list
+        // a bare capture holds — otherwise the next load displays 00:00:00.
+        let stored = poll_until(|| async {
+            stored_intervals(&fixture, &session_id)
+                .await
+                .is_some_and(|intervals| {
+                    jinn_core_types::total(&intervals, at(1000))
+                        == jiff::SignedDuration::from_secs(90)
+                })
+        })
+        .await;
+        assert!(
+            stored,
+            "an archive must write the session's recorded working time, got {:?}",
+            stored_intervals(&fixture, &session_id).await
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn archiving_a_session_that_never_worked_stores_no_intervals() {
+        // Given a live session the cell has no record for.
+        let fixture = actor_fixture().await;
+        let session_id = SessionId::new();
+        let mut session = ChatSessionState::new();
+        session.set_session_id(session_id.clone());
+        session.mark_interacted();
+        session.push_entry(jinn_core_types::ChatEntry::user("never worked"));
+        fixture.state.write().session.insert(session);
+
+        // When the session is archived.
+        fixture
+            .harness
+            .publish(ArchiveSession {
+                session_id: session_id.clone(),
+            })
+            .await;
+        let removed =
+            poll_until(|| async { !fixture.state.read().session.contains(&session_id) }).await;
+        assert!(removed, "the archive should complete");
+
+        // Then the blob stores none — zero is recorded as zero, not invented.
+        let stored =
+            poll_until(|| async { stored_intervals(&fixture, &session_id).await.is_some() }).await;
+        assert!(stored, "the archive should have written the session");
+        let intervals = stored_intervals(&fixture, &session_id)
+            .await
+            .expect("stored session");
+        assert!(
+            intervals.is_empty(),
+            "a session that never worked must store no intervals, got {intervals:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn loading_a_session_restores_its_recorded_time_into_the_cell() {
+        // Given an archived session whose snapshot carries a closed 90s interval.
+        let fixture = actor_fixture().await;
+        let session_id = SessionId::new();
+        let mut stored = ChatSessionState::new();
+        stored.set_session_id(session_id.clone());
+        stored.mark_interacted();
+        stored.push_entry(jinn_core_types::ChatEntry::user("earlier work"));
+        let mut snapshot = stored.capture_snapshot();
+        snapshot.metadata.working_intervals = vec![WorkingInterval::closed(at(0), at(90))];
+        snapshot.metadata.updated_at = at(90);
+        fixture.store.save(&snapshot).await.expect("save session");
+        fixture
+            .store
+            .set_archived(&session_id, true)
+            .await
+            .expect("archive session");
+
+        // When the session is loaded back.
+        fixture
+            .harness
+            .publish(SessionLoadRequested {
+                session_id: session_id.clone(),
+                content_width: Some(60),
+            })
+            .await;
+        let loaded = poll_until(|| async {
+            fixture
+                .state
+                .read()
+                .session
+                .get(&session_id)
+                .is_some_and(|s| s.session_state() == SessionState::Loaded)
+        })
+        .await;
+        assert!(loaded, "the session should load");
+
+        // Then the monitor holds the recorded time again — the status bar's
+        // source — rather than reading 00:00:00 for a session that worked.
+        let restored = poll_until(|| async {
+            fixture.work_time.read().working_time(&session_id, at(1000))
+                == jiff::SignedDuration::from_secs(90)
+        })
+        .await;
+        assert!(
+            restored,
+            "a load must repopulate the work-time cell with the recorded intervals"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn the_reactivation_save_keeps_the_intervals_a_load_restored() {
+        // Given an archived session whose snapshot carries a closed 90s interval.
+        let fixture = actor_fixture().await;
+        let session_id = SessionId::new();
+        let mut stored = ChatSessionState::new();
+        stored.set_session_id(session_id.clone());
+        stored.mark_interacted();
+        stored.push_entry(jinn_core_types::ChatEntry::user("earlier work"));
+        let mut snapshot = stored.capture_snapshot();
+        snapshot.metadata.working_intervals = vec![WorkingInterval::closed(at(0), at(90))];
+        snapshot.metadata.updated_at = at(90);
+        fixture.store.save(&snapshot).await.expect("save session");
+        fixture
+            .store
+            .set_archived(&session_id, true)
+            .await
+            .expect("archive session");
+
+        // When the session is loaded back, whose reactivation write lands
+        // while the restore publish is still in flight to the monitor.
+        fixture
+            .harness
+            .publish(SessionLoadRequested {
+                session_id: session_id.clone(),
+                content_width: Some(60),
+            })
+            .await;
+        let loaded = poll_until(|| async {
+            fixture
+                .state
+                .read()
+                .session
+                .get(&session_id)
+                .is_some_and(|s| s.session_state() == SessionState::Loaded)
+        })
+        .await;
+        assert!(loaded, "the session should load");
+
+        // Then the stored blob still totals 90s — the write that made the
+        // session live must not erase the record the load just read.
+        let kept = poll_until(|| async {
+            stored_intervals(&fixture, &session_id)
+                .await
+                .is_some_and(|intervals| {
+                    jinn_core_types::total(&intervals, at(1000))
+                        == jiff::SignedDuration::from_secs(90)
+                })
+        })
+        .await;
+        assert!(
+            kept,
+            "a reactivation save must not wipe the stored working time, got {:?}",
+            stored_intervals(&fixture, &session_id).await
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_later_persist_of_a_live_loaded_session_stamps_the_cell_it_holds() {
+        // Given a loaded session whose recorded time now sits in the cell, and
+        // whose live core is in the map so a persist has something to write.
+        let fixture = actor_fixture().await;
+        let session_id = SessionId::new();
+        let mut live = ChatSessionState::new();
+        live.set_session_id(session_id.clone());
+        live.mark_interacted();
+        live.push_entry(jinn_core_types::ChatEntry::user("earlier work"));
+        fixture.state.write().session.insert(live);
+        fixture
+            .harness
+            .publish(RestoreWorkingTime {
+                session_id: session_id.clone(),
+                intervals: vec![WorkingInterval::closed(at(0), at(90))],
+                last_active_at: at(90),
+            })
+            .await;
+        let restored = poll_until(|| async {
+            fixture.work_time.read().working_time(&session_id, at(1000))
+                == jiff::SignedDuration::from_secs(90)
+        })
+        .await;
+        assert!(restored, "the cell should hold the restored time first");
+
+        // When the session is persisted again — a session-turn save, the way
+        // an ordinary turn boundary writes it.
+        fixture
+            .harness
+            .publish(PersistSession {
+                session_id: session_id.clone(),
+            })
+            .await;
+
+        // Then the ordinary cell read stamps what the cell holds — the
+        // override is the load's crutch only, not the persist path's.
+        let stamped = poll_until(|| async {
+            stored_intervals(&fixture, &session_id)
+                .await
+                .is_some_and(|intervals| {
+                    jinn_core_types::total(&intervals, at(1000))
+                        == jiff::SignedDuration::from_secs(90)
+                })
+        })
+        .await;
+        assert!(
+            stamped,
+            "a persist after the restore landed must stamp the cell's record, got {:?}",
+            stored_intervals(&fixture, &session_id).await
+        );
+    }
+}
 
 /// A fork hands the user a new session and has to leave nothing spinning.
 ///

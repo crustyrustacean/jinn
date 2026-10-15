@@ -13,6 +13,23 @@ impl SessionStoreActor {
     /// The write lock is held only for the cheap timestamp mutation. The
     /// follow-up read lock captures durable state before store I/O runs.
     pub(crate) async fn save_active_session(&self, session_id: &SessionId) {
+        self.save_active_session_stamping(session_id, None).await;
+    }
+
+    /// Saves the session, stamping `override_intervals` onto the snapshot in
+    /// place of the work-time cell's current record.
+    ///
+    /// The one caller is the load path's reactivation write. The restore
+    /// publish it pairs with reaches the monitor asynchronously, so at this
+    /// moment the cell may still be empty; stamping from it would rewrite the
+    /// metadata blob with no intervals and erase exactly what the load just
+    /// restored. The override is the snapshot's own record — the same list the
+    /// restore publish carries — so the stored blob keeps what it already had.
+    pub(crate) async fn save_active_session_stamping(
+        &self,
+        session_id: &SessionId,
+        override_intervals: Option<Vec<WorkingInterval>>,
+    ) {
         let services = self.services.clone();
         let state = self.state.clone();
         let requested_id = session_id.clone();
@@ -20,8 +37,12 @@ impl SessionStoreActor {
 
         // Read the working intervals out of the work-time cell before the
         // blocking capture, so a running turn's open interval is written as
-        // open and closes on load rather than being frozen at save time.
-        let working = self.working_intervals(session_id);
+        // open and closes on load rather than being frozen at save time. The
+        // load path's override stands in for this read — see the variant's doc.
+        let working = match override_intervals {
+            Some(intervals) => intervals,
+            None => self.working_intervals(session_id),
+        };
         let snapshot = tokio::task::spawn_blocking(move || {
             {
                 state.with_session(|view| {
