@@ -122,6 +122,13 @@ pub fn paint(frame: &mut Frame<'_>, area: Rect, ctx: &dyn DrawContext<AppState>)
         let style = Style::default().fg(state.frontend.theme.muted_text);
         let model_cache = model_cache_of(state);
 
+        // The right side is hint-OR-model, decided before anything draws: a
+        // hint up means the override line, no hint means the model. One
+        // either/or widget is what the original bar rendered, so a short
+        // hint never leaves the tail of a longer model string beside it.
+        let right_override = transient_hint(ctx.slices())
+            .map(|hint| hint_override_line(&hint, &state.frontend.theme));
+
         render_session_cwd_line(frame, cwd_area, state.active_session(), style);
         render_tree_aggregate(frame, cwd_area, state, style, ctx.slices());
         render_session_info_line(
@@ -132,8 +139,8 @@ pub fn paint(frame: &mut Frame<'_>, area: Rect, ctx: &dyn DrawContext<AppState>)
             model_cache.as_ref(),
             active_working_time(state, ctx.slices()),
             style,
+            right_override,
         );
-        render_hint_overlay(frame, info_area, state, ctx.slices());
     }
 }
 
@@ -151,6 +158,9 @@ impl UiElement for StatusBarElement {
         let style = Style::default().fg(state.frontend.theme.muted_text);
         let model_cache = model_cache_of(state);
 
+        let right_override = transient_hint(ctx.slices())
+            .map(|hint| hint_override_line(&hint, &state.frontend.theme));
+
         render_session_cwd_line(frame, cwd_area, state.active_session(), style);
         render_tree_aggregate(frame, cwd_area, state, style, ctx.slices());
         render_session_info_line(
@@ -161,8 +171,8 @@ impl UiElement for StatusBarElement {
             model_cache.as_ref(),
             active_working_time(state, ctx.slices()),
             style,
+            right_override,
         );
-        render_hint_overlay(frame, info_area, state, ctx.slices());
     }
 }
 
@@ -281,11 +291,17 @@ fn render_tree_aggregate(
 ///
 /// The shared half of the status line: every value is read from `session`,
 /// never from any active session, so a caller describing a background
-/// session shows that session's own numbers. The transient hint is *not*
-/// part of this surface — it is active-session chrome — so the model is
-/// always the right side here; the status bar composes
-/// [`render_hint_overlay`] after this to keep its hint-replaces-model
-/// behavior.
+/// session shows that session's own numbers. The right side is the
+/// session's model unless `right_override` supplies a line — the one seam
+/// the status bar uses to keep its hint-replaces-model behavior, and the
+/// reason the override is a parameter rather than something this function
+/// reads: the hint is active-session chrome, so a preview of a background
+/// session passes `None` and always ends in *its* model.
+///
+/// The override must be a *replacement*, not an overlay: the right side is
+/// rendered as a single widget, so a short hint never leaves the tail of a
+/// longer model string beside it. Two right-aligned widgets over one row
+/// would — a `Paragraph` writes only the cells its glyphs occupy.
 ///
 /// The two inputs that are not per-session are passed in:
 /// `model_cache` (app-level, for the context limit and the modality
@@ -301,6 +317,7 @@ pub fn render_session_info_line(
     model_cache: Option<&ModelCache>,
     working_time: SignedDuration,
     style: Style,
+    right_override: Option<Line<'static>>,
 ) {
     let active_model = session.profile().model.clone();
     let token_stats = TokenStats::from_ledger(session.token_ledger());
@@ -337,37 +354,37 @@ pub fn render_session_info_line(
     };
     frame.render_widget(left_side, area);
 
-    // The model, right-aligned: the shared surface always ends in the model.
-    let right_spans = vec![Span::styled(model, style)];
-    let right_side = Paragraph::new(Line::from(right_spans)).alignment(Alignment::Right);
+    // One widget for the right side: the override when the caller supplies
+    // one (the status bar's transient hint), otherwise the model. Either/or
+    // in a single render is what keeps a shorter hint from leaving model
+    // residue beside it.
+    let right_line = right_override.unwrap_or_else(|| Line::from(Span::styled(model, style)));
+    let right_side = Paragraph::new(right_line).alignment(Alignment::Right);
     frame.render_widget(right_side, area);
 }
 
-/// Renders the transient hint (e.g. an inert overlay toggle) right-aligned
-/// over the info line, replacing the model display until the next intent.
+/// The transient hint (e.g. an inert overlay toggle) from the slice's cell.
 ///
-/// Active-session chrome, deliberately outside the shared surface: a preview
-/// of a background session must end in *that session's* model, whatever the
-/// hint cell currently carries. Warning-colored so it reads as a notice
-/// rather than ambient info. The hint lives in the slice's cell — an absent
-/// cell (slice not activated) means no hint, and this draws nothing, leaving
-/// the shared info line's model visible.
-fn render_hint_overlay(
-    frame: &mut Frame<'_>,
-    area: Rect,
-    state: &AppState,
-    slices: &jinn_slices::Slices,
-) {
-    let hint = slices
+/// Read at render time; an absent cell — the slice not activated, or a test
+/// that never ran the catalog — means no hint, so the model shows. The hint
+/// itself is *not* rendered here: the status bar composes it as the shared
+/// info line's right-side override, so hint and model are one either/or
+/// widget and a short hint cannot leave the tail of a longer model string
+/// beside it.
+fn transient_hint(slices: &jinn_slices::Slices) -> Option<String> {
+    slices
         .reader::<StatusBarState>(&status_bar_slot())
-        .and_then(|cell| cell.read().hint.clone());
-    let Some(hint) = hint else {
-        return;
-    };
-    let hint_style = Style::default().fg(state.frontend.theme.warning);
-    let widget = Paragraph::new(Line::from(vec![Span::styled(hint, hint_style)]))
-        .alignment(Alignment::Right);
-    frame.render_widget(widget, area);
+        .and_then(|cell| cell.read().hint.clone())
+}
+
+/// The hint as the status bar's right-side override line.
+///
+/// Warning-colored so it reads as a notice rather than ambient info.
+fn hint_override_line(hint: &str, theme: &Theme) -> Line<'static> {
+    Line::from(Span::styled(
+        hint.to_owned(),
+        Style::default().fg(theme.warning),
+    ))
 }
 
 /// The provider slice's model cache, if the slice is attached.

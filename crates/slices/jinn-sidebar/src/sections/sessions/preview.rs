@@ -631,6 +631,9 @@ fn render_status_line(
         width: inner_area.width,
         height: 1,
     };
+    // No right-side override: the preview's info line always ends in the
+    // previewed session's model. The override is the status bar's
+    // hint-replaces-model seam, and a hint is active-session chrome.
     render_session_info_line(
         frame,
         info_area,
@@ -639,6 +642,7 @@ fn render_status_line(
         model_cache,
         working_time,
         style,
+        None,
     );
 }
 
