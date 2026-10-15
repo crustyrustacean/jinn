@@ -11,7 +11,6 @@ pub mod session_lifecycle_actor;
 mod session_lifecycle_picker_actions;
 pub mod session_lifecycle_picker_render;
 mod session_lifecycle_picker_routes;
-mod session_lifecycle_picker_viewport;
 
 pub use command_runner::{
     LifecycleCancelHandle, LifecycleCommandError, spawn_setup_command, spawn_teardown_command,
