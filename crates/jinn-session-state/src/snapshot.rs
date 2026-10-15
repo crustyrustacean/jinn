@@ -266,7 +266,7 @@ impl SessionSnapshot {
             .tool_filter
             .clone()
             .unwrap_or_else(NameFilter::inherited);
-        forked_filter.permit(jinn_tools_msg::TASK_TOOL_NAME);
+        forked_filter.permit(jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME);
         metadata.profile.tool_filter = Some(forked_filter);
         // Working time is per-session and is not inherited: a fork is a new
         // session that has not worked yet. Inheriting the parent's span would

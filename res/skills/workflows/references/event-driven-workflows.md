@@ -161,7 +161,7 @@ attention signal, and no watchdog for wedged turns. Design for it:
 
 ## Anti-patterns
 
-- **Action verbs without a mechanism.** "Create a session" with no tool named sends the executor hunting; it improvises `task` and silently discards the attendant seed. Every prescribed action names its exact tool call.
+- **Action verbs without a mechanism.** "Create a session" with no tool named sends the executor hunting; it improvises `spawn_subagent` and silently discards the attendant seed. Every prescribed action names its exact tool call.
 - **Attendant-to-attendant messaging.** Sibling ids never enter context; routes go through the orchestrator. A workflow that wants workers to coordinate directly is missing an orchestrator stage.
 - **The held turn.** Sleeping in a loop to "wait" for reports. Turn-end is the delivery mechanism; a turn that never ends never receives them.
 - **A pool of duplicate files.** Workers are one seed; on-demand attaches load the same file per session. N copies of one TOML drift.

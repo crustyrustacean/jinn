@@ -44,7 +44,7 @@ Navigation:
 | `]u` / `[u`       | Jump to next / previous user message               |
 | `]p` / `[p`       | Jump to next / previous pinned entry               |
 | `]s` / `[s`       | Jump to next / previous Sources (annotation) entry |
-| `<enter>`         | Open the selected `task` call's subagent session   |
+| `<enter>`         | Open the selected `spawn_subagent` call's subagent session   |
 
 Context (see `context-management.md`):
 

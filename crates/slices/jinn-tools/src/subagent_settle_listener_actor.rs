@@ -13,11 +13,11 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! One-shot discovery settlement listener for the `task` tool.
+//! One-shot discovery settlement listener for the `spawn_subagent` tool.
 //!
 //! Bridges the child session's discovery bus traffic (context-files scan,
 //! skills scan, prompt-template scan, MCP server status) to the awaiting
-//! `task` future through a oneshot channel. Spawned *before* `SessionCreated`
+//! `spawn_subagent` future through a oneshot channel. Spawned *before* `SessionCreated`
 //! is published so no discovery event can slip past the subscription.
 //!
 //! The ledger settles when all three scan events have arrived for the child
@@ -40,9 +40,9 @@ use jinn_mcp_msg::{McpConnectionStatus, McpServerStatus};
 use jinn_session_init_msg::{ContextFilesLoaded, PromptTemplatesLoaded};
 use jinn_skills_msg::SkillsLoaded;
 
-/// Dependencies for spawning a [`TaskSettleListenerActor`].
+/// Dependencies for spawning a [`SubagentSettleListenerActor`].
 #[derive(Debug)]
-pub struct TaskSettleListenerDeps {
+pub struct SubagentSettleListenerDeps {
     /// The system to spawn onto (the same fabric `bus` publishes through).
     pub system: trouper::system::ActorSystem,
     /// The bus to subscribe with (topic + routed-topic resolution).
@@ -60,7 +60,7 @@ pub struct TaskSettleListenerDeps {
 /// A one-shot actor that awaits a single child session's discovery events.
 /// See the [module docs](self) for the settlement semantics.
 #[derive(Debug)]
-pub struct TaskSettleListenerActor {
+pub struct SubagentSettleListenerActor {
     child_id: SessionId,
     /// Servers still awaiting a terminal status; shrinks to empty.
     pending_servers: BTreeSet<String>,
@@ -70,28 +70,28 @@ pub struct TaskSettleListenerActor {
     prompt_templates_done: bool,
 }
 
-impl ServiceActor for TaskSettleListenerActor {
+impl ServiceActor for SubagentSettleListenerActor {
     async fn start(
         _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: spawned via `start_with` (typed deps cannot ride
         // JSON args).
         Err(error_stack::Report::new(RegistryError::InvalidSpec)
-            .attach("TaskSettleListenerActor spawns via start_with"))
+            .attach("SubagentSettleListenerActor spawns via start_with"))
     }
 }
 
-impl TaskSettleListenerActor {
+impl SubagentSettleListenerActor {
     /// Spawns the listener onto the trouper system.
     ///
-    /// Returns only after all four subscriptions are live: the `task` tool
+    /// Returns only after all four subscriptions are live: the `spawn_subagent` tool
     /// guarantees `SessionCreated` is published after this call, closing
     /// the event-ordering race.
-    pub async fn spawn(deps: TaskSettleListenerDeps) -> ActorPath {
+    pub async fn spawn(deps: SubagentSettleListenerDeps) -> ActorPath {
         use std::sync::atomic::{AtomicU64, Ordering};
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let path = ActorPath::new(format!(
-            "jinn.tools.task-settle-listener.{}",
+            "jinn.tools.subagent-settle-listener.{}",
             SEQ.fetch_add(1, Ordering::SeqCst)
         ));
         trouper::builder::spawn_service_builder::<Self>(&deps.system)
@@ -127,7 +127,7 @@ impl TaskSettleListenerActor {
     }
 }
 
-impl MsgHandler<ContextFilesLoaded> for TaskSettleListenerActor {
+impl MsgHandler<ContextFilesLoaded> for SubagentSettleListenerActor {
     async fn handle(&mut self, msg: &ContextFilesLoaded, ctx: &mut MsgCtx<'_>) {
         if self.aborted(ctx) || msg.session_id != self.child_id {
             return;
@@ -137,7 +137,7 @@ impl MsgHandler<ContextFilesLoaded> for TaskSettleListenerActor {
     }
 }
 
-impl MsgHandler<SkillsLoaded> for TaskSettleListenerActor {
+impl MsgHandler<SkillsLoaded> for SubagentSettleListenerActor {
     async fn handle(&mut self, msg: &SkillsLoaded, ctx: &mut MsgCtx<'_>) {
         if self.aborted(ctx) || msg.session_id != self.child_id {
             return;
@@ -147,7 +147,7 @@ impl MsgHandler<SkillsLoaded> for TaskSettleListenerActor {
     }
 }
 
-impl MsgHandler<PromptTemplatesLoaded> for TaskSettleListenerActor {
+impl MsgHandler<PromptTemplatesLoaded> for SubagentSettleListenerActor {
     async fn handle(&mut self, msg: &PromptTemplatesLoaded, ctx: &mut MsgCtx<'_>) {
         if self.aborted(ctx) || msg.session_id != self.child_id {
             return;
@@ -157,7 +157,7 @@ impl MsgHandler<PromptTemplatesLoaded> for TaskSettleListenerActor {
     }
 }
 
-impl MsgHandler<McpServerStatus> for TaskSettleListenerActor {
+impl MsgHandler<McpServerStatus> for SubagentSettleListenerActor {
     async fn handle(&mut self, msg: &McpServerStatus, ctx: &mut MsgCtx<'_>) {
         if self.aborted(ctx) || msg.session_id != self.child_id {
             return;
@@ -176,8 +176,8 @@ impl MsgHandler<McpServerStatus> for TaskSettleListenerActor {
     }
 }
 
-impl TaskSettleListenerActor {
-    /// Abort path: the awaiting `task` future was dropped (parent tool batch
+impl SubagentSettleListenerActor {
+    /// Abort path: the awaiting `spawn_subagent` future was dropped (parent tool batch
     /// cancelled), closing the channel. There is nothing left to signal —
     /// stop listening. Bus traffic gives us the chance to notice.
     fn aborted(&self, ctx: &mut MsgCtx<'_>) -> bool {

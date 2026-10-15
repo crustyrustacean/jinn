@@ -132,7 +132,7 @@ pub struct ToolContext {
     /// time. `None` in tests and for every tool that doesn't need it.
     pub interactive_term: Option<std::sync::Arc<dyn jinn_term_msg::TermHandle>>,
     /// In-flight subagent spawn registry — read by the stall watchdog to
-    /// skip sessions suspended on a `task` call, and written by the `task`
+    /// skip sessions suspended on a `spawn_subagent` call, and written by the `spawn_subagent`
     /// tool through its drop-guard. `None` in tests.
     pub task_spawns: Option<jinn_tools_msg::TaskSpawnRegistry>,
     /// Session store — `Some` only for the `session_search`/`session_fetch`
@@ -140,16 +140,16 @@ pub struct ToolContext {
     /// from `services.session_store` at dispatch time. `None` in tests that
     /// build a bare `ToolContext`.
     pub session_store: Option<jinn_session_state::SessionStoreService>,
-    /// The trouper fabric — `Some` only for the `task` tool, which spawns
+    /// The trouper fabric — `Some` only for the `spawn_subagent` tool, which spawns
     /// its phase/settle listeners onto it. Resolved from
     /// `services.trouper_system` at dispatch time. `None` in tests that
-    /// build a bare `ToolContext` (the `task` tool fails fast then).
+    /// build a bare `ToolContext` (the `spawn_subagent` tool fails fast then).
     pub trouper_system: Option<trouper::system::ActorSystem>,
-    /// Model-name resolver — `Some` only for the `task` tool, which
+    /// Model-name resolver — `Some` only for the `spawn_subagent` tool, which
     /// validates and resolves its `model` argument against the provider
     /// registry through it before spawning the child session. Resolved
     /// from `services.provider_registry` at dispatch time. `None` in
-    /// tests that build a bare `ToolContext` (the `task` tool then skips
+    /// tests that build a bare `ToolContext` (the `spawn_subagent` tool then skips
     /// validation and treats any given name as final).
     pub model_name_resolver: Option<std::sync::Arc<dyn jinn_core_types::ModelNameResolver>>,
 }

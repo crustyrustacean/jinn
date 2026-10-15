@@ -83,7 +83,7 @@ Both shipped default tables are in `deny` mode: `[tools]` denies `grep`,
 `[skills]` denies `phased-task-loop`.
 
 Entries are **tool names**, not display labels: a builtin is its bare name
-(`bash`, `grep`, `write`, `task`, `skill`, …), a provider-side tool keeps its
+(`bash`, `grep`, `write`, `spawn_subagent`, `skill`, …), a provider-side tool keeps its
 namespace (`openrouter:web_search`), and an MCP tool is its full namespaced
 name (`mcp__<server>__<tool>`). A name that matches nothing is simply inert.
 

@@ -2,7 +2,7 @@
 //!
 //! Every session-creation surface — plain new session, scripted lifecycle,
 //! picker-attached attendant, an attendant loaded by `load_attendant`
-//! (both through `saved_create::creation_messages`), and the `task` tool's
+//! (both through `saved_create::creation_messages`), and the `spawn_subagent` tool's
 //! subagent child
 //! child — must publish the same identity `PushChatEntry`: a pinned `Top`
 //! system entry naming that session's own id, forced into the LLM
@@ -29,7 +29,7 @@ use jinn_session_state::ChatSessionState;
 use jinn_slices::route_publish::PublishSink;
 use jinn_testutil::bus_harness::await_recorded;
 
-/// The recorder wait budget — the task tool's own tests use the same.
+/// The recorder wait budget — the spawn_subagent tool's own tests use the same.
 const AWAIT_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Drains a creation's `IntentResult` through a recording sink and
@@ -175,8 +175,8 @@ fn picker_attendant_and_workflow_loaded_attendant_publish_the_identity_entry() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_tool_child_publishes_the_identity_entry() {
-    // Given a parent session, the task tool's test wiring, and a recorder
+async fn spawn_subagent_tool_child_publishes_the_identity_entry() {
+    // Given a parent session, the spawn_subagent tool's test wiring, and a recorder
     // for the history pushes — the same harness shape the tool's own
     // tests use.
     let harness = jinn_testutil::bus_harness::TestHarness::new().await;
@@ -209,12 +209,12 @@ async fn task_tool_child_publishes_the_identity_entry() {
         .spawn_recorder::<jinn_session_lifecycle_msg::SessionCreated>()
         .await;
 
-    // When executing a task call and driving the child to a finished turn
+    // When executing a spawn_subagent call and driving the child to a finished turn
     // the way the session actor would.
-    let pending = tokio::spawn(jinn_tools::task::execute(
+    let pending = tokio::spawn(jinn_tools::spawn_subagent::execute(
         jinn_core_types::tool_types::ToolCall {
             id: "tc_identity".to_owned(),
-            name: "task".to_owned(),
+            name: "spawn_subagent".to_owned(),
             arguments: r#"{"prompt": "Explore."}"#.to_owned(),
         },
         ctx,
