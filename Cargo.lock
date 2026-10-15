@@ -3035,7 +3035,6 @@ dependencies = [
  "ratatui",
  "rstest",
  "tempfile",
- "tokio",
  "tracing",
  "unicode-segmentation",
  "uuid",

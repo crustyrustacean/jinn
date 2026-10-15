@@ -21,14 +21,11 @@ tracing = { workspace = true }
 unicode-segmentation = { workspace = true }
 
 [dev-dependencies]
-# The picker tests wire the slice the way composition does, which needs the
-# kernel's Services. Production code reaches the state through jinn-app-state
-# and never touches the kernel, which is what keeps this slice kernel-free.
+# The picker tests seed the picker cell through the shared cell catalog, the
+# way production resolves it, rather than minting a stand-in registry.
 jinn-cell-catalog = { workspace = true }
-jinn-kernel = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
-tokio = { workspace = true }
 uuid = { workspace = true }
 
 [lints]
