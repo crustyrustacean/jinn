@@ -8,6 +8,8 @@
     reason = "test code"
 )]
 
+use std::path::Path;
+
 use crate::sections::sessions::preview::{
     DEFAULT_TOOL_ENTRY_MAX_LINES, render_session_preview, render_session_preview_loading,
     session_preview_popup_rect,
@@ -454,17 +456,24 @@ fn cwd_shortens_a_home_relative_path_with_a_tilde() {
     // Given a session whose cwd is under the user's home directory.
     let mut session = ChatSessionState::new();
     let home = dirs::home_dir().expect("home dir exists");
-    session.set_cwd(home.join("projects/my-app"));
+    session.set_cwd(home.join("projects").join("my-app"));
 
     // When rendering the preview.
     let (buffer, popup_area) = render_preview(&session, 80, 40);
 
     // Then the cwd row shows the `~/…` form, the same collapse the status
-    // bar's cwd line applies.
+    // bar's cwd line applies. The collapse keeps the platform's native
+    // separators — the contract `shorten_path` itself is pinned to — so
+    // the expected label is built component-wise.
     let cwd_y = popup_area.y + popup_area.height - 3;
     let cwd_row = buffer_row(&buffer, cwd_y, popup_area.x + popup_area.width);
+    let expected = Path::new("~")
+        .join("projects")
+        .join("my-app")
+        .display()
+        .to_string();
     assert!(
-        cwd_row.contains("~/projects/my-app"),
+        cwd_row.contains(&expected),
         "cwd row should show the ~-shortened path, got: {cwd_row}"
     );
 }

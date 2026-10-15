@@ -25,6 +25,13 @@ use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 
 use crate::session_lifecycle_actor::{SessionLifecycleActor, SessionLifecycleActorDeps};
 
+/// The shell the actor under test runs commands through — the same shared
+/// resolver production wiring uses, so the tests exercise the platform's
+/// real POSIX shell instead of a Unix-only absolute path.
+fn shell_for_tests() -> String {
+    jinn_common::shell::resolve_shell()
+}
+
 struct ActorFixture {
     harness: TestHarness,
     state: State,
@@ -40,7 +47,7 @@ async fn actor_fixture(builtin_registry: BuiltinRegistry) -> ActorFixture {
             state: state.clone(),
             services: services.clone(),
             builtin_registry,
-            shell: "/bin/sh".to_owned(),
+            shell: shell_for_tests(),
         },
     );
     ActorFixture { harness, state }
@@ -337,7 +344,7 @@ async fn teardown_tree_aborted_by_busy_member_reports_failure_for_every_member()
 fn shell_config() -> jinn_config::ConfigLayer {
     jinn_config::testutil::config_layer(
         "[[session_lifecycle.script]]\nname = \"shell\"\n\
-         setup_command = \"echo $PWD\"\n\
+         setup_command = \"echo .\"\n\
          teardown_command = \"true\"\n",
     )
 }
@@ -349,7 +356,7 @@ fn shell_config() -> jinn_config::ConfigLayer {
 fn reordered_teardown_config() -> jinn_config::ConfigLayer {
     jinn_config::testutil::config_layer(
         "[[session_lifecycle.script]]\nname = \"shell\"\n\
-         setup_command = \"echo $PWD\"\n\
+         setup_command = \"echo .\"\n\
          teardown_command = \"test '<parent>' = 'FEATURE' && test '<branch>' = 'BRANCHY' && test '<dir>' = 'DIRTY'\"\n",
     )
 }
@@ -358,7 +365,7 @@ fn reordered_teardown_config() -> jinn_config::ConfigLayer {
 fn positional_teardown_config() -> jinn_config::ConfigLayer {
     jinn_config::testutil::config_layer(
         "[[session_lifecycle.script]]\nname = \"shell\"\n\
-         setup_command = \"echo $PWD\"\n\
+         setup_command = \"echo .\"\n\
          teardown_command = \"test $1 = 'legacy-first'\"\n",
     )
 }
@@ -367,7 +374,7 @@ fn positional_teardown_config() -> jinn_config::ConfigLayer {
 fn builtin_teardown_config() -> jinn_config::ConfigLayer {
     jinn_config::testutil::config_layer(
         "[[session_lifecycle.script]]\nname = \"shell\"\n\
-         setup_command = \"echo $PWD\"\n\
+         setup_command = \"echo .\"\n\
          teardown_command = { builtin = \"recording-teardown\" }\n",
     )
 }
@@ -384,7 +391,7 @@ async fn config_fixture(config: jinn_config::ConfigLayer) -> ActorFixture {
             state: state.clone(),
             services,
             builtin_registry: BuiltinRegistry::new(),
-            shell: "/bin/sh".to_owned(),
+            shell: shell_for_tests(),
         },
     );
     ActorFixture { harness, state }
@@ -402,7 +409,7 @@ async fn shell_fixture() -> ActorFixture {
             state: state.clone(),
             services,
             builtin_registry: BuiltinRegistry::new(),
-            shell: "/bin/sh".to_owned(),
+            shell: shell_for_tests(),
         },
     );
     ActorFixture { harness, state }
@@ -476,9 +483,9 @@ async fn setups_for_distinct_sessions_run_independently() {
             .harness
             .publish(RunSessionSetup {
                 session_id: id.clone(),
-                command: "echo $PWD".to_owned(),
+                command: "echo .".to_owned(),
                 args: Vec::new(),
-                lifecycle_command: Some(LifecycleCommand::Shell("echo $PWD".to_owned())),
+                lifecycle_command: Some(LifecycleCommand::Shell("echo .".to_owned())),
             })
             .await;
     }
@@ -515,9 +522,9 @@ async fn a_second_setup_for_a_session_with_one_in_flight_is_refused() {
         .harness
         .publish(RunSessionSetup {
             session_id: session_id.clone(),
-            command: "sleep 2; echo $PWD".to_owned(),
+            command: "sleep 2; echo .".to_owned(),
             args: Vec::new(),
-            lifecycle_command: Some(LifecycleCommand::Shell("sleep 2; echo $PWD".to_owned())),
+            lifecycle_command: Some(LifecycleCommand::Shell("sleep 2; echo .".to_owned())),
         })
         .await;
     // Give the actor time to spawn the child before the second command.
@@ -528,9 +535,9 @@ async fn a_second_setup_for_a_session_with_one_in_flight_is_refused() {
         .harness
         .publish(RunSessionSetup {
             session_id: session_id.clone(),
-            command: "echo $PWD".to_owned(),
+            command: "echo .".to_owned(),
             args: Vec::new(),
-            lifecycle_command: Some(LifecycleCommand::Shell("echo $PWD".to_owned())),
+            lifecycle_command: Some(LifecycleCommand::Shell("echo .".to_owned())),
         })
         .await;
 
@@ -572,18 +579,18 @@ async fn cancel_kills_only_the_named_session_s_command() {
         .harness
         .publish(RunSessionSetup {
             session_id: first.clone(),
-            command: "sleep 30; echo $PWD".to_owned(),
+            command: "sleep 30; echo .".to_owned(),
             args: Vec::new(),
-            lifecycle_command: Some(LifecycleCommand::Shell("sleep 30; echo $PWD".to_owned())),
+            lifecycle_command: Some(LifecycleCommand::Shell("sleep 30; echo .".to_owned())),
         })
         .await;
     fixture
         .harness
         .publish(RunSessionSetup {
             session_id: second.clone(),
-            command: "sleep 2; echo $PWD".to_owned(),
+            command: "sleep 2; echo .".to_owned(),
             args: Vec::new(),
-            lifecycle_command: Some(LifecycleCommand::Shell("sleep 2; echo $PWD".to_owned())),
+            lifecycle_command: Some(LifecycleCommand::Shell("sleep 2; echo .".to_owned())),
         })
         .await;
     // The cancel lands while both are mid-flight.
@@ -637,18 +644,18 @@ async fn a_finish_releases_only_its_own_session_s_slot() {
         .harness
         .publish(RunSessionSetup {
             session_id: slow_id.clone(),
-            command: "sleep 30; echo $PWD".to_owned(),
+            command: "sleep 30; echo .".to_owned(),
             args: Vec::new(),
-            lifecycle_command: Some(LifecycleCommand::Shell("sleep 30; echo $PWD".to_owned())),
+            lifecycle_command: Some(LifecycleCommand::Shell("sleep 30; echo .".to_owned())),
         })
         .await;
     fixture
         .harness
         .publish(RunSessionSetup {
             session_id: quick_id.clone(),
-            command: "echo $PWD".to_owned(),
+            command: "echo .".to_owned(),
             args: Vec::new(),
-            lifecycle_command: Some(LifecycleCommand::Shell("echo $PWD".to_owned())),
+            lifecycle_command: Some(LifecycleCommand::Shell("echo .".to_owned())),
         })
         .await;
 
@@ -666,9 +673,9 @@ async fn a_finish_releases_only_its_own_session_s_slot() {
         .harness
         .publish(RunSessionSetup {
             session_id: slow_id.clone(),
-            command: "echo $PWD".to_owned(),
+            command: "echo .".to_owned(),
             args: Vec::new(),
-            lifecycle_command: Some(LifecycleCommand::Shell("echo $PWD".to_owned())),
+            lifecycle_command: Some(LifecycleCommand::Shell("echo .".to_owned())),
         })
         .await;
     let later = await_recorded(&setups, 2, Duration::from_secs(5)).await;
@@ -700,9 +707,9 @@ async fn setup_for_a_session_that_already_ran_setup_is_refused() {
         .harness
         .publish(RunSessionSetup {
             session_id: session_id.clone(),
-            command: "echo $PWD".to_owned(),
+            command: "echo .".to_owned(),
             args: Vec::new(),
-            lifecycle_command: Some(LifecycleCommand::Shell("echo $PWD".to_owned())),
+            lifecycle_command: Some(LifecycleCommand::Shell("echo .".to_owned())),
         })
         .await;
 
@@ -1010,7 +1017,7 @@ async fn builtin_teardown_receives_recorded_values_in_template_order() {
             state: state.clone(),
             services,
             builtin_registry: registry,
-            shell: "/bin/sh".to_owned(),
+            shell: shell_for_tests(),
         },
     );
     let fixture = ActorFixture { harness, state };
@@ -1064,9 +1071,9 @@ async fn caller_refusals_push_no_child_transcript_entries() {
         .harness
         .publish(RunSessionSetup {
             session_id: refused_setup.clone(),
-            command: "echo $PWD".to_owned(),
+            command: "echo .".to_owned(),
             args: Vec::new(),
-            lifecycle_command: Some(LifecycleCommand::Shell("echo $PWD".to_owned())),
+            lifecycle_command: Some(LifecycleCommand::Shell("echo .".to_owned())),
         })
         .await;
     fixture

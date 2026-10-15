@@ -88,7 +88,11 @@ async fn load_attaches_a_workflow_attendant_and_stamps_the_marker() {
     let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
 
     // When the tool loads the file.
-    let result = execute(call(&format!(r#"{{"path":"{path}"}}"#)), tool_ctx).await;
+    let result = execute(
+        call(&serde_json::json!({ "path": path.clone() }).to_string()),
+        tool_ctx,
+    )
+    .await;
 
     // Then the tool succeeds and the attendant exists as a child.
     assert!(result.success, "load must succeed: {}", result.content);
@@ -121,7 +125,11 @@ async fn children_of_a_workflow_attendant_do_not_inherit_the_marker() {
     let (state, user_id) = fixture();
     let path = attendant_file("inherit", ATTENDANT_BODY);
     let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
-    let result = execute(call(&format!(r#"{{"path":"{path}"}}"#)), tool_ctx).await;
+    let result = execute(
+        call(&serde_json::json!({ "path": path }).to_string()),
+        tool_ctx,
+    )
+    .await;
     assert!(result.success);
 
     // When a child is created the ordinary way from that attendant
@@ -179,7 +187,11 @@ async fn malformed_attendant_file_fails_with_the_reason() {
     let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
 
     // When the tool loads it.
-    let result = execute(call(&format!(r#"{{"path":"{path}"}}"#)), tool_ctx).await;
+    let result = execute(
+        call(&serde_json::json!({ "path": path }).to_string()),
+        tool_ctx,
+    )
+    .await;
 
     // Then the tool fails explaining why.
     assert!(!result.success);
@@ -202,7 +214,11 @@ async fn attendant_caller_cannot_load_an_attendant() {
     let tool_ctx = ctx(&harness, &state, attendant_id).await;
 
     // When the attendant tries to load another attendant.
-    let result = execute(call(&format!(r#"{{"path":"{path}"}}"#)), tool_ctx).await;
+    let result = execute(
+        call(&serde_json::json!({ "path": path }).to_string()),
+        tool_ctx,
+    )
+    .await;
 
     // Then the load is refused: loaded attendants hang off non-attendant
     // parents.
@@ -282,7 +298,11 @@ async fn personal_attendants_still_save_and_workflow_attendants_refuse() {
     state.write().session.insert(personal);
     let path = attendant_file("savepath", ATTENDANT_BODY);
     let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
-    let result = execute(call(&format!(r#"{{"path":"{path}"}}"#)), tool_ctx).await;
+    let result = execute(
+        call(&serde_json::json!({ "path": path }).to_string()),
+        tool_ctx,
+    )
+    .await;
     assert!(result.success);
 
     // Then the personal one has no marker and the workflow one does.
