@@ -57,9 +57,14 @@ pub fn estimate_entry_content_tokens(estimator: &dyn TokenEstimator, entry: &Cha
             attachments,
             ..
         } => estimator.estimate(expanded) + image_attachment_tokens(attachments),
+        // Assistant, System, and Compaction estimate their bare text; so does
+        // Intersession, because inter-session mail rides as a bare user turn,
+        // matching entries_to_messages: the attribution prefix is already in
+        // the text.
         ChatEntryKind::Assistant(text)
         | ChatEntryKind::System(text)
-        | ChatEntryKind::Compaction { summary: text, .. } => estimator.estimate(text),
+        | ChatEntryKind::Compaction { summary: text, .. }
+        | ChatEntryKind::Intersession { text, .. } => estimator.estimate(text),
         ChatEntryKind::ToolCall {
             name, arguments, ..
         } => estimator.estimate(name) + estimator.estimate(arguments),
@@ -93,9 +98,6 @@ pub fn estimate_entry_content_tokens(estimator: &dyn TokenEstimator, entry: &Cha
         ChatEntryKind::Transient(text) => estimator.estimate(&format!("[Transient] {text}")),
         // Annotations are display-only and excluded from context (0 tokens).
         ChatEntryKind::Annotation { .. } => 0,
-        // Inter-session mail rides as a bare user turn, matching
-        // entries_to_messages: the attribution prefix is already in the text.
-        ChatEntryKind::Intersession { text, .. } => estimator.estimate(text),
         // Rule guidance rides as a bare user turn, matching entries_to_messages.
         ChatEntryKind::RuleInterrupt { body, .. } => estimator.estimate(body),
     }

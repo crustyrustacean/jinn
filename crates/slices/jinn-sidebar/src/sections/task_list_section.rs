@@ -269,7 +269,7 @@ impl<'a> TaskListView<'a> {
     fn header_line(&self, phase_count: usize) -> Line<'static> {
         Line::from(vec![Span::styled(
             format!(
-                " Task List \u{2014} {} phase{}",
+                " Task List - {} phase{}",
                 phase_count,
                 if phase_count == 1 { "" } else { "s" }
             ),

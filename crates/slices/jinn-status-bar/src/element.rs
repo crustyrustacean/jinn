@@ -397,9 +397,8 @@ pub fn render_session_info_line(
 /// widget and a short hint cannot leave the tail of a longer model string
 /// beside it.
 fn transient_hint(slices: &jinn_slices::Slices) -> Option<String> {
-    slices
-        .reader::<StatusBarState>(&status_bar_slot())
-        .and_then(|cell| cell.read().hint.clone())
+    let cell = slices.reader::<StatusBarState>(&status_bar_slot())?;
+    cell.read().hint.clone()
 }
 
 /// The hint as the status bar's right-side override line.

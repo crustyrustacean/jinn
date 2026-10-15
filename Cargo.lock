@@ -2717,7 +2717,6 @@ dependencies = [
  "include_dir",
  "jinn-common",
  "jinn-preferences-config",
- "jinn-skills",
  "jinn-slices",
  "rstest",
  "tempfile",

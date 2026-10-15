@@ -158,7 +158,7 @@ async fn activated_layer(
         &services.trouper_system,
     );
 
-    crate::activate(&mut host, prefs.clone(), config_layer(TWO_RULES));
+    crate::activate(&mut host, &prefs, config_layer(TWO_RULES));
 
     (slices, key_routes, layer, prefs)
 }
@@ -236,8 +236,7 @@ fn pending_of(cell: &TypedCell<StreamRulePickerState>, name: &str) -> Option<boo
 fn persisted_of(layer: &ConfigLayer, name: &str) -> bool {
     layer
         .get::<jinn_preferences_config::StreamRulesConfig>()
-        .map(|section| section.disabled_rules.iter().any(|held| held == name))
-        .unwrap_or(false)
+        .is_ok_and(|section| section.disabled_rules.iter().any(|held| held == name))
 }
 
 /// A test-local sink recording every payload published through it, so a

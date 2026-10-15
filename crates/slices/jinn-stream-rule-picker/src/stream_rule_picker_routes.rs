@@ -18,7 +18,7 @@
 //! the pending set, drops the guard, and hands the set to the persist
 //! actor — the picker itself never reads a file after the open.
 
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 
 use jinn_slices::KeyRoutes;
@@ -60,15 +60,12 @@ pub fn bound_keys() -> Vec<&'static str> {
 
 /// Wraps a picker action in an [`ActionFn`], handing it the dispatch
 /// context, the cell, and the run's preferences path captured at activation.
-fn action<F>(cell: &StreamRulePickerCell, preferences_path: &PathBuf, f: F) -> ActionFn
+fn action<F>(cell: &StreamRulePickerCell, preferences_path: &Path, f: F) -> ActionFn
 where
-    F: Fn(&mut ActionCtx<'_>, &StreamRulePickerCell, &PathBuf) -> IntentResult
-        + Send
-        + Sync
-        + 'static,
+    F: Fn(&mut ActionCtx<'_>, &StreamRulePickerCell, &Path) -> IntentResult + Send + Sync + 'static,
 {
     let cell = cell.clone();
-    let preferences_path = preferences_path.clone();
+    let preferences_path = preferences_path.to_path_buf();
     ActionFn::new(move |mut ctx| f(&mut ctx, &cell, &preferences_path))
 }
 
@@ -104,7 +101,7 @@ fn row(
 pub fn attach_stream_rule_picker_rows(
     routes: &KeyRoutes,
     cell: &StreamRulePickerCell,
-    preferences_path: &PathBuf,
+    preferences_path: &Path,
 ) {
     routes.attach(RouteRow {
         route_id: RouteId::new("stream-rule-picker:open"),
@@ -155,7 +152,7 @@ pub fn attach_stream_rule_picker_rows(
 fn attach_navigation_rows(
     routes: &KeyRoutes,
     cell: &StreamRulePickerCell,
-    preferences_path: &PathBuf,
+    preferences_path: &Path,
 ) {
     for (name, key, display, step) in [
         ("move-stream-rule-picker-up", "<up>", "move up", Nav::Up),
@@ -259,9 +256,9 @@ pub fn register_stream_rule_picker_input_hook(routes: &KeyRoutes, cell: &StreamR
 fn open_stream_rule_picker(
     ctx: &mut ActionCtx<'_>,
     cell: &StreamRulePickerCell,
-    preferences_path: &PathBuf,
+    preferences_path: &Path,
 ) -> IntentResult {
-    let rules = jinn_preferences_config::assemble_stream_rules(&ctx.config, preferences_path);
+    let rules = jinn_preferences_config::assemble_stream_rules(ctx.config, preferences_path);
     let disabled_names: std::collections::HashSet<String> = ctx
         .config
         .get::<jinn_preferences_config::StreamRulesConfig>()
@@ -288,7 +285,7 @@ fn open_stream_rule_picker(
 fn toggle_highlighted_rule(
     _ctx: &mut ActionCtx<'_>,
     cell: &StreamRulePickerCell,
-    _preferences_path: &PathBuf,
+    _preferences_path: &Path,
 ) -> IntentResult {
     cell.update(stream_rule_picker_actions::toggle_highlighted);
     IntentResult::empty()
@@ -316,7 +313,7 @@ fn toggle_highlighted_rule(
 fn confirm_stream_rule_picker(
     ctx: &mut ActionCtx<'_>,
     cell: &StreamRulePickerCell,
-    preferences_path: &PathBuf,
+    preferences_path: &Path,
 ) -> IntentResult {
     // Snapshot the pending set and drop the guard; the only other cell
     // touch is the status line below. Everything past this point is
@@ -334,7 +331,7 @@ fn confirm_stream_rule_picker(
     IntentResult::empty()
         .with_message(PersistStreamRuleDisabled {
             session_id: ctx.state.active_session_id(),
-            preferences_path: preferences_path.clone(),
+            preferences_path: preferences_path.to_path_buf(),
             changes,
         })
         .with_scope_signal(ScopeSignal::PopIf(stream_rule_picker_scope()))
@@ -372,7 +369,7 @@ fn confirmation_status(pending: &[(String, bool)]) -> String {
 fn cancel_stream_rule_picker(
     _ctx: &mut ActionCtx<'_>,
     _cell: &StreamRulePickerCell,
-    _preferences_path: &PathBuf,
+    _preferences_path: &Path,
 ) -> IntentResult {
     IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(stream_rule_picker_scope()))
 }

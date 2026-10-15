@@ -72,7 +72,7 @@ pub fn lifecycle_row(entry: &SessionLifecycleEntry, ctx: &RowCtx<'_>) -> Line<'s
     }
 
     if let Some(desc) = &entry.description {
-        spans.push(Span::styled(format!(" \u{2014} {desc}"), desc_style));
+        spans.push(Span::styled(format!(" - {desc}"), desc_style));
     }
 
     Line::from(spans)
