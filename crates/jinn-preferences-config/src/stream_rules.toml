@@ -9,33 +9,54 @@
 # switch. A user file that fails to parse is warned about and ignored in
 # favour of this embedded set, so a typo never leaves you unguarded.
 #
-# A rule pairs regex `conditions` with a `body` of corrective guidance.
-# When a condition matches a `tool:bash` call's arguments as they stream,
-# the turn is interrupted before the command runs and resumed with `body`
-# as guidance — the model is told and tries again. There is one behaviour;
-# there is no on_trigger key and no ask/confirm tier. A rule fires at most
-# once per session turn, and the stream-rule watchdog bounds how many
-# interrupts a session may take in a row.
+# What a rule does, by example:
 #
-# `scopes` narrows where a rule applies: `text`, `thinking`, `tool`, or
-# `tool:<name>(<glob>)`. Every rule in this file is scoped to `tool:bash`.
-# `project` would confine a rule to matching working directories; none of
-# these need it — these habits are not repository-specific.
+# > A rule pairs regex `conditions` with a `body` of corrective guidance.
+# > When a condition matches a `tool:bash` call's arguments as they stream,
+# > the turn is interrupted before the command runs and resumed with `body`
+# > as guidance — the model is told and tries again. There is one behaviour;
+# > there is no on_trigger key and no ask/confirm tier. A rule fires at most
+# > once per session turn, and the stream-rule watchdog bounds how many
+# > interrupts a session may take in a row.
+# >
+# > Fields:
+# >
+# >   name        unique rule id; shows up in the interrupt and in logs
+# >   description one line, human-facing: what habit the rule catches
+# >   conditions  one or more regexes; ANY match fires the rule
+# >   scopes      where the rule looks: `text`, `thinking`, `tool`, or
+# >               `tool:<name>(<glob>)`. Every rule in this file uses
+# >               `tool:bash`. `project` would confine a rule to matching
+# >               working directories; none of these need it.
+# >   body        the guidance the model resumes under. Say what is wrong
+# >               and give the working alternative.
+# >   positive    test fixtures: bare command strings that MUST trip this
+# >               rule. jinn ignores them at runtime (unknown keys to the
+# >               live schema); the test harness drives every one through
+# >               the production matcher.
+# >   negative    test fixtures: commands that must NOT trip it. Caught
+# >               false positives fail CI.
+# >
+# > Example:
+# >
+# > [[stream_rules.entry]]
+# > name = 'no-recursive-flag-rewrite'
+# > description = 'a combined ripgrep flag rewrites matches instead of listing them'
+# > conditions = ['rg -rn']
+# > scopes = ['tool:bash']
+# > body = 'ripgrep is already recursive and `-r` takes a replacement value, so combining it with `-n` rewrites every match instead of listing it, and still exits 0 -- use `-n` alone for line numbers.'
+# > positive = ['rg -rn pattern src/']
+# > negative = ['rg -n pattern src/', 'rg pattern src/']
 #
-# Use single-quoted strings so regex metacharacters survive without escape
-# processing. A pattern the regex engine cannot compile is inert (logged,
-# no interrupt) and the engine has no lookaround, so `(?<!...)` and
-# `(?=...)` will not work. The matcher sees the tool call's serialized
-# arguments, so a bash command arrives inside a JSON envelope:
-# {"command":"..."}. Patterns here are shaped for that buffer — a command
-# start is anchored on the envelope head, not `^`, and an argument that can
-# end the command ends at the envelope's closing quote, not `$`.
+# Regex constraints:
 #
-# `positive` and `negative` are test fixtures: bare command strings that
-# must / must not trip the declaring rule. jinn ignores them at runtime
-# (they are unknown keys to the live schema); the test harness reads them
-# and drives every one through the production matcher, so a shipped rule
-# that stops compiling or matching fails CI rather than guarding nothing.
+# > Use single-quoted strings so regex metacharacters survive without escape
+# > processing. A pattern the engine cannot compile is inert (logged, no
+# > interrupt). The engine has no lookaround: `(?<!...)` and `(?=...)` do
+# > not work. The matcher sees the tool call's serialized arguments, so a
+# > bash command arrives inside a JSON envelope: {"command":"..."}. A
+# > command start is anchored on the envelope head, not `^`; an argument
+# > that can end the command ends at the envelope's closing quote, not `$`.
 #
 # Curation stance: the agent running these tools is assumed innocent —
 # the guards exist for the command an agent emits by ACCIDENT while doing
@@ -770,6 +791,30 @@ scopes = ['tool:bash']
 body = 'That gdb invocation is interactive and blocks this call until it times out. Use batch mode (`gdb -batch -ex ...`) or a non-interactive debugger integration.'
 positive = ['gdb ./a.out', 'gdb target/debug/jinn']
 negative = ['gdb --version', 'rust-gdb --batch -ex run target/debug/app']
+
+# source: jinn (this project) -- agents habituate to git's `git stash` and
+#   emit the bare fossil form, which defaults to interactive mode and blocks
+#   the non-interactive tool call until it times out. `fossil stash save`,
+#   `list`, `show`, `pop`, and `drop` are non-interactive and stay silent.
+# license: AGPL-3.0 (this project)
+# Anchors on the envelope head or a chain operator so only command position
+# matches (no `git stash` false positive: the word boundary alone is not
+# enough, a preceding operator or envelope is required). The regex engine
+# here has no lookahead, so "not followed by a subcommand" is expressed
+# positively: `fossil stash` must be followed by end-of-command (the
+# envelope quote), a flag (`-...`), or a chain operator (`;`, `&`, `|`) --
+# any of which means no subcommand word came next, so the interactive
+# default would run. `fossil stash save|list|show|pop|drop` puts a
+# subcommand letter where the pattern demands a flag/operator/quote and
+# never trips.
+[[stream_rules.entry]]
+name = 'no-interactive-fossil-stash'
+description = 'a bare fossil stash defaults to interactive mode and blocks the tool call'
+conditions = ['(?:"command"\s*:\s*"|[;&|]\s*)fossil stash(?:$|(?:(?:\s+-|\s*[;&|]|")))']
+scopes = ['tool:bash']
+body = 'That `fossil stash` is interactive: without a subcommand fossil opens a prompt, and this tool call cannot answer one -- it blocks until timeout. Stash non-interactively with a message: `fossil stash save -m "<what and why>"`. (`fossil stash list|show|pop|drop` are also non-interactive.)'
+positive = ['fossil stash', 'fossil stash -m "wip"', 'cd /repo && fossil stash', 'fossil stash && fossil status', 'fossil stash; fossil status']
+negative = ['fossil stash save -m "wip"', 'fossil stash list', 'fossil stash pop', 'fossil stash show stash-1', 'git stash', 'fossil status']
 
 # ###########################################################################
 # Pipe-to-shell (the curl | sh class)
