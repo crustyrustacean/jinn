@@ -26,6 +26,18 @@ fn autodev_lifecycle_path() -> PathBuf {
         .join("../../../res/workflows/autodev/lifecycle.toml")
 }
 
+/// Reads the autodev lifecycle file with line endings normalized to `\n`.
+///
+/// The textual extractor below finds field boundaries by splitting on
+/// quote-then-newline sequences, and a checkout written with CRLF
+/// (`core.autocrlf`, or a Windows editor) puts a `\r` between them, which
+/// would silently change what each field's extraction captures.
+fn read_lifecycle() -> String {
+    std::fs::read_to_string(autodev_lifecycle_path())
+        .expect("res/workflows/autodev/lifecycle.toml exists")
+        .replace("\r\n", "\n")
+}
+
 /// Extracts every `[[session_lifecycle.script]]` entry's name, setup, and
 /// teardown command from the raw TOML text.
 ///
@@ -100,8 +112,7 @@ fn first_named_placeholder(command: &str) -> Option<String> {
 #[test]
 fn autodev_scripts_exist_and_parse() {
     // Given the shipped autodev lifecycle file.
-    let raw = std::fs::read_to_string(autodev_lifecycle_path())
-        .expect("res/workflows/autodev/lifecycle.toml exists");
+    let raw = read_lifecycle();
 
     // When its scripts are extracted.
     let scripts = parse_scripts(&raw);
@@ -124,7 +135,7 @@ fn autodev_scripts_exist_and_parse() {
 #[test]
 fn autodev_setup_and_teardown_name_the_same_placeholders() {
     // Given every autodev script.
-    let raw = std::fs::read_to_string(autodev_lifecycle_path()).expect("lifecycle file");
+    let raw = read_lifecycle();
     let scripts = parse_scripts(&raw);
     assert!(!scripts.is_empty(), "no scripts extracted");
 
@@ -174,7 +185,7 @@ fn autodev_fossil_teardown_replays_the_incident_coordinates_by_name() {
     // Given the incident's recorded coordinates: setup recorded dir, repo,
     // branch, parent — in that order — while the fossil teardown lists
     // parent first.
-    let raw = std::fs::read_to_string(autodev_lifecycle_path()).expect("lifecycle file");
+    let raw = read_lifecycle();
     let script = parse_scripts(&raw)
         .into_iter()
         .find(|s| s.name == "autodev implementor (fossil)")
@@ -225,7 +236,7 @@ fn autodev_fossil_teardown_replays_the_incident_coordinates_by_name() {
 fn autodev_fossil_teardown_rejects_positional_replay_of_the_incident_shape() {
     // Given the incident's positional reading — what the old code did: the
     // teardown's FIRST placeholder receives setup's FIRST recorded value.
-    let raw = std::fs::read_to_string(autodev_lifecycle_path()).expect("lifecycle file");
+    let raw = read_lifecycle();
     let script = parse_scripts(&raw)
         .into_iter()
         .find(|s| s.name == "autodev implementor (fossil)")

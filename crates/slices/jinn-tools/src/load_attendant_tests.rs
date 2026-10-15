@@ -88,7 +88,11 @@ async fn load_attaches_a_workflow_attendant_and_stamps_the_marker() {
     let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
 
     // When the tool loads the file.
-    let result = execute(call(&format!(r#"{{"path":"{path}"}}"#)), tool_ctx).await;
+    let result = execute(
+        call(&serde_json::json!({ "path": path.clone() }).to_string()),
+        tool_ctx,
+    )
+    .await;
 
     // Then the tool succeeds and the attendant exists as a child.
     assert!(result.success, "load must succeed: {}", result.content);
@@ -121,7 +125,11 @@ async fn children_of_a_workflow_attendant_do_not_inherit_the_marker() {
     let (state, user_id) = fixture();
     let path = attendant_file("inherit", ATTENDANT_BODY);
     let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
-    let result = execute(call(&format!(r#"{{"path":"{path}"}}"#)), tool_ctx).await;
+    let result = execute(
+        call(&serde_json::json!({ "path": path }).to_string()),
+        tool_ctx,
+    )
+    .await;
     assert!(result.success);
 
     // When a child is created the ordinary way from that attendant
@@ -179,7 +187,11 @@ async fn malformed_attendant_file_fails_with_the_reason() {
     let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
 
     // When the tool loads it.
-    let result = execute(call(&format!(r#"{{"path":"{path}"}}"#)), tool_ctx).await;
+    let result = execute(
+        call(&serde_json::json!({ "path": path }).to_string()),
+        tool_ctx,
+    )
+    .await;
 
     // Then the tool fails explaining why.
     assert!(!result.success);
@@ -202,7 +214,11 @@ async fn attendant_caller_cannot_load_an_attendant() {
     let tool_ctx = ctx(&harness, &state, attendant_id).await;
 
     // When the attendant tries to load another attendant.
-    let result = execute(call(&format!(r#"{{"path":"{path}"}}"#)), tool_ctx).await;
+    let result = execute(
+        call(&serde_json::json!({ "path": path }).to_string()),
+        tool_ctx,
+    )
+    .await;
 
     // Then the load is refused: loaded attendants hang off non-attendant
     // parents.
@@ -282,7 +298,11 @@ async fn personal_attendants_still_save_and_workflow_attendants_refuse() {
     state.write().session.insert(personal);
     let path = attendant_file("savepath", ATTENDANT_BODY);
     let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
-    let result = execute(call(&format!(r#"{{"path":"{path}"}}"#)), tool_ctx).await;
+    let result = execute(
+        call(&serde_json::json!({ "path": path }).to_string()),
+        tool_ctx,
+    )
+    .await;
     assert!(result.success);
 
     // Then the personal one has no marker and the workflow one does.
@@ -329,9 +349,7 @@ async fn set_name_relabels_the_instance_and_leaves_the_seed_name_alone() {
 
     // When the tool loads it with set_name = "implementor-002".
     let result = execute(
-        call(&format!(
-            r#"{{"path":"{path}","set_name":"implementor-002"}}"#
-        )),
+        call(&serde_json::json!({ "path": path, "set_name": "implementor-002" }).to_string()),
         ctx(&harness, &state, user_id.clone()).await,
     )
     .await;
@@ -370,7 +388,7 @@ async fn loading_the_same_seed_twice_with_different_set_names_yields_two_named_a
     // When it is loaded twice under two different labels.
     for label in ["implementor-001", "implementor-002"] {
         let result = execute(
-            call(&format!(r#"{{"path":"{path}","set_name":"{label}"}}"#)),
+            call(&serde_json::json!({ "path": path.clone(), "set_name": label }).to_string()),
             ctx(&harness, &state, user_id.clone()).await,
         )
         .await;
@@ -400,7 +418,11 @@ async fn without_set_name_the_seed_files_name_is_used() {
     let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
 
     // When the tool loads it with no set_name argument.
-    let result = execute(call(&format!(r#"{{"path":"{path}"}}"#)), tool_ctx).await;
+    let result = execute(
+        call(&serde_json::json!({ "path": path }).to_string()),
+        tool_ctx,
+    )
+    .await;
 
     // Then the attendant keeps the seed file's name.
     assert!(result.success, "load must succeed: {}", result.content);
