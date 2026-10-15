@@ -2,12 +2,14 @@
 
 ## (development)
 
-- These stream rules should now trigger less often:
+- These stream rule violations should now trigger less often:
   - no-interactive-editor
   - no-interactive-pater
   - no-tail-follow
   - no-interactive-dbg
   - no-interactive-fossil-stash
+- The cursor on pickers is now clamped to the picker view area (previously the cursor could scroll out of the picker area).
+- Multi-pane pickers now clamp the viewport when scrolling long content (previously it was possible to scroll content out of the picker area).
 
 ## 2026-10-15 v1.7.0
 
