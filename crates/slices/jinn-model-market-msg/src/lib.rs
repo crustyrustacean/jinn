@@ -20,7 +20,7 @@ mod ui_state;
 
 pub use commands::*;
 pub use data_state::{MarketDataState, MarketDetail, market_data_slot};
-pub use epoch::{EciIndex, EpochSource};
+pub use epoch::{EciIndex, EciScore, EpochSource};
 pub use row::{MarketEndpointRow, MarketRow};
 pub use ui_state::{
     MIX_PRESETS, MarketUiState, RESULTS_VIEWPORT_FALLBACK, SORT_CYCLE, SortColumn, market_ui_scope,

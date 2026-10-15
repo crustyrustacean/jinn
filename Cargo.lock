@@ -2930,6 +2930,8 @@ name = "jinn-model-market"
 version = "1.7.0"
 dependencies = [
  "csv",
+ "ctor",
+ "error-stack",
  "fuzzy-matcher",
  "jiff",
  "jinn-common",
@@ -2943,11 +2945,13 @@ dependencies = [
  "jinn-provider-selection-msg",
  "jinn-selection-widget",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-theme",
  "mockito",
  "ratatui",
  "reqwest 0.13.3",
  "rstest",
+ "rustls 0.23.45",
  "serde",
  "serde_json",
  "tempfile",
@@ -2955,6 +2959,7 @@ dependencies = [
  "tracing",
  "trouper",
  "unicode-segmentation",
+ "wherror",
  "zip",
 ]
 
