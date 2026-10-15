@@ -161,6 +161,53 @@ impl Harness {
     fn filter(&self) -> String {
         self.cell().read().tree.filter().to_owned()
     }
+
+    /// Draws one frame of the picker at `area` through the real render pass,
+    /// which is what publishes the row count the pager pages by.
+    fn draw(&self, area: Rect) {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let mut terminal =
+            Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
+        let facts = jinn_slices::RenderFacts::new(jinn_theme::default_theme(), &self.slices);
+        terminal
+            .draw(|frame| {
+                let popup = crate::session_picker_render::session_picker_overlay_rect(&area)
+                    .expect("geometry fn yields a popup rect");
+                crate::session_picker_render::render_session_picker(frame, popup, &facts);
+            })
+            .expect("draw");
+    }
+
+    /// Draws one frame through the real render pass, then re-draws the
+    /// identical widget construction into a mirror frame to learn what the
+    /// widget reported — the expectation is a widget-returned `PickerLayout`,
+    /// never hand arithmetic.
+    fn draw_and_report(&self, area: Rect) -> jinn_selection_widget::PickerLayout {
+        use std::cell::Cell;
+
+        self.draw(area);
+
+        let report = Cell::new(None);
+        let mut mirror =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(area.width, area.height))
+                .expect("terminal");
+        mirror
+            .draw(|frame| {
+                let cell = self.cell();
+                let guard = cell.read();
+                let popup = crate::session_picker_render::session_picker_overlay_rect(&area)
+                    .expect("geometry fn yields a popup rect");
+                let widget = crate::session_picker_render::session_picker_widget(
+                    &guard,
+                    &jinn_theme::default_theme(),
+                );
+                report.set(Some(widget.render(frame, popup)));
+            })
+            .expect("mirror draw");
+        report.into_inner().expect("render reports a PickerLayout")
+    }
 }
 
 /// A root-session tree row titled `title`.
@@ -563,21 +610,44 @@ async fn the_render_pass_publishes_the_measured_row_count() {
     let before = h.cell().read().results_viewport;
 
     // When the render pass draws the picker.
-    let measured = crate::session_picker_viewport::results_viewport(&Rect::new(0, 0, 60, 24));
-    h.cell().update(|picker| picker.results_viewport = measured);
+    let frame = Rect::new(0, 0, 60, 24);
+    let reported = h.draw_and_report(frame);
 
-    // Then the cell carries the measurement the navigation keys page by.
+    // Then the cell carries what the frame actually laid out, so paging
+    // moves by a page of what is on screen rather than a fixed guess.
     //
-    // Asserting against the *measurement* rather than `> 0` is the point: the
+    // Asserting against the *report* rather than `> 0` is the point: the
     // fallback is a non-zero 20, so a `> 0` guard would pass with the
     // measurement deleted — a guard that escaped mutation in an earlier
     // picker.
     let after = h.cell().read().results_viewport;
-    assert_eq!(after, measured, "the render must publish what it measured");
+    assert_eq!(
+        after,
+        usize::from(reported.inner.height),
+        "the render must publish what the widget laid out"
+    );
     assert_ne!(
         after, before,
         "the measurement must differ from the unrendered fallback"
     );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn the_published_row_count_still_matches_the_arithmetic_it_replaced() {
+    // Given a browser with rows and a popup-sized area.
+    let h = Harness::new().await;
+    h.install(rows(40));
+
+    // When the render pass draws the picker at 60x24.
+    let frame = Rect::new(0, 0, 60, 24);
+    h.draw(frame);
+
+    // Then the published count is the 16 rows the deleted arithmetic produced
+    // at this size (a 22-row popup, less borders, input, separator, and the
+    // two footer rows) — the layout report agreeing with its predecessor.
+    let published = h.cell().read().results_viewport;
+    assert_eq!(published, 16);
 }
 
 // ── The filter ──────────────────────────────────────────────────────────

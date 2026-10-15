@@ -48,6 +48,29 @@ pub fn project_picker_binds() -> Vec<jinn_picker::BindRow> {
         .collect()
 }
 
+/// The widget the project picker draws, fully configured.
+///
+/// Shared by the render pass and the tests, so a test's identical second
+/// construction is identical by construction rather than by transcription.
+#[must_use]
+pub fn project_picker_widget<'a>(
+    state: &'a ProjectPickerState,
+    theme: &jinn_theme::Theme,
+) -> jinn_selection_widget::SelectionWidget<
+    'a,
+    jinn_picker::PickerEntry<jinn_project_msg::ProjectEntry>,
+> {
+    let palette = project_picker_palette(theme);
+    let binds = project_picker_binds();
+    let keybind = jinn_picker::keybind_line(&binds, jinn_picker::Tail::Standard, &palette);
+
+    jinn_selection_widget::SelectionWidget::new(&state.selection)
+        .title(Line::from(" Projects "))
+        .title_style(Style::default().fg(theme.popup_title))
+        .footers(vec![Line::from(keybind.0)])
+        .colors(palette.selection_colors())
+}
+
 /// Draws the project picker popup for one frame.
 pub fn render_project_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFacts) {
     let Some(cell) = facts
@@ -57,23 +80,17 @@ pub fn render_project_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFa
         return;
     };
 
-    // Measure the popup's result rows and publish them for the navigation keys.
-    let measured = crate::project_picker_viewport::results_viewport(area);
-    cell.update(|state: &mut ProjectPickerState| state.results_viewport = measured);
+    // The widget reports the layout it actually solved; the guard must end
+    // before the write below (`TypedCell` is a plain `RwLock`, which is not
+    // reentrant on the same thread).
+    let layout = {
+        let guard = cell.read();
+        let state: &ProjectPickerState = &guard;
+        project_picker_widget(state, &facts.theme).render(frame, area)
+    };
 
-    let guard = cell.read();
-    let state: &ProjectPickerState = &guard;
-
-    let theme = &facts.theme;
-    let palette = project_picker_palette(theme);
-    let binds = project_picker_binds();
-    let keybind = jinn_picker::keybind_line(&binds, jinn_picker::Tail::Standard, &palette);
-
-    let widget = jinn_selection_widget::SelectionWidget::new(&state.selection)
-        .title(Line::from(" Projects "))
-        .title_style(Style::default().fg(theme.popup_title))
-        .footers(vec![Line::from(keybind.0)])
-        .colors(palette.selection_colors());
-
-    widget.render(frame, area);
+    // Publish the reported row count for the navigation keys.
+    cell.update(|state: &mut ProjectPickerState| {
+        state.results_viewport = usize::from(layout.inner.height);
+    });
 }

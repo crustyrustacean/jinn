@@ -13,14 +13,11 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! How many session rows fit in the browser's popup.
+//! The session picker's pre-render viewport fallback.
 //!
-//! The navigation keys page by half of this, so it has to be a real
-//! measurement: the kernel used to compute it per frame and write it into
-//! central state, which a slice-owned picker has no access to. Each slice
-//! measures its own rows.
-
-use ratatui::layout::Rect;
+//! The render pass measures the popup's result rows itself through the
+//! widget's `PickerLayout` report; this module only carries the value to
+//! assume before the first frame has been drawn.
 
 /// The row count to assume before the first render pass.
 ///
@@ -29,16 +26,3 @@ use ratatui::layout::Rect;
 /// `measure_active_picker_results_height` used, so paging behaves identically
 /// in the frame or two before a measurement lands.
 pub const FALLBACK_RESULTS_VIEWPORT: usize = 20;
-
-/// The rows reserved for the popup's border, filter, and footer.
-const CHROME_ROWS: u16 = 6;
-
-/// Measures the result rows available inside the popup rectangle.
-///
-/// `area` is the popup rectangle handed down by the render pass (see
-/// `jinn_selection_widget::compute_popup_rect`), not a terminal frame.
-#[must_use]
-pub fn results_viewport(area: &Rect) -> usize {
-    let inner = area.height;
-    usize::from(inner.saturating_sub(CHROME_ROWS)).max(1)
-}
