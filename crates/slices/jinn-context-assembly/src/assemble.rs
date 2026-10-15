@@ -441,11 +441,11 @@ mod tests {
         let tool_index = result
             .messages
             .iter()
-            .position(|message| matches!(message, LlmMessage::Tool { tool_call_id, .. } if tool_call_id == "call-1"))
+            .position(|message| matches!(message, LlmMessage::Tool { tool_call_id, .. } if tool_call_id.as_str() == "call-1"))
             .expect("tool result should be present");
         assert!(matches!(
             result.messages.get(tool_index.wrapping_sub(1)),
-            Some(LlmMessage::Assistant { tool_calls: Some(calls), .. }) if calls.iter().any(|call| call.id == "call-1")
+            Some(LlmMessage::Assistant { tool_calls: Some(calls), .. }) if calls.iter().any(|call| call.id.as_str() == "call-1")
         ));
     }
 
@@ -479,7 +479,7 @@ mod tests {
             .collect();
         assert!(contents.contains(&"before"));
         assert!(contents.contains(&"after"));
-        assert!(!result.messages.iter().any(|message| matches!(message, LlmMessage::Tool { tool_call_id, .. } if tool_call_id == "orphan")));
+        assert!(!result.messages.iter().any(|message| matches!(message, LlmMessage::Tool { tool_call_id, .. } if tool_call_id.as_str() == "orphan")));
     }
 
     #[rstest::rstest]
@@ -514,10 +514,10 @@ mod tests {
 
         // Then the complete tool loop is emitted in valid order.
         let assistant_index = result.messages.iter().position(|message| {
-            matches!(message, LlmMessage::Assistant { tool_calls: Some(calls), .. } if calls.iter().any(|call| call.id == "top-call"))
+            matches!(message, LlmMessage::Assistant { tool_calls: Some(calls), .. } if calls.iter().any(|call| call.id.as_str() == "top-call"))
         }).expect("tool assistant should be present");
         assert!(
-            matches!(result.messages.get(assistant_index + 1), Some(LlmMessage::Tool { tool_call_id, .. }) if tool_call_id == "top-call")
+            matches!(result.messages.get(assistant_index + 1), Some(LlmMessage::Tool { tool_call_id, .. }) if tool_call_id.as_str() == "top-call")
         );
     }
 
@@ -549,7 +549,7 @@ mod tests {
             })
             .collect();
         assert_eq!(contents, vec!["before", "after"]);
-        assert!(result.messages.windows(2).any(|window| matches!((&window[0], &window[1]), (LlmMessage::Assistant { tool_calls: Some(calls), .. }, LlmMessage::Tool { tool_call_id, .. }) if calls.iter().any(|call| call.id == "relative-call") && tool_call_id == "relative-call")));
+        assert!(result.messages.windows(2).any(|window| matches!((&window[0], &window[1]), (LlmMessage::Assistant { tool_calls: Some(calls), .. }, LlmMessage::Tool { tool_call_id, .. }) if calls.iter().any(|call| call.id.as_str() == "relative-call") && tool_call_id.as_str() == "relative-call")));
     }
 
     #[rstest::rstest]
@@ -631,7 +631,7 @@ mod tests {
             .collect();
         assert_eq!(contents, vec!["before", "after"]);
         assert!(!result.messages.iter().any(
-            |m| matches!(m, LlmMessage::Tool { tool_call_id, .. } if tool_call_id == "orphan")
+            |m| matches!(m, LlmMessage::Tool { tool_call_id, .. } if tool_call_id.as_str() == "orphan")
         ));
     }
 
@@ -657,12 +657,12 @@ mod tests {
         let tool_index = result
             .messages
             .iter()
-            .position(|m| matches!(m, LlmMessage::Tool { tool_call_id, .. } if tool_call_id == "tail-call"))
+            .position(|m| matches!(m, LlmMessage::Tool { tool_call_id, .. } if tool_call_id.as_str() == "tail-call"))
             .expect("tool result present");
         assert!(matches!(
             result.messages.get(tool_index - 1),
             Some(LlmMessage::Assistant { tool_calls: Some(calls), .. })
-                if calls.iter().any(|c| c.id == "tail-call")
+                if calls.iter().any(|c| c.id.as_str() == "tail-call")
         ));
     }
 
@@ -1680,7 +1680,7 @@ mod tests {
         let with_call = vec![LlmMessage::Assistant {
             content: "thinking".to_owned(),
             tool_calls: Some(vec![jinn_core_types::tool_types::ToolCall {
-                id: "call-1".to_owned(),
+                id: "call-1".into(),
                 name: "bash".to_owned(),
                 arguments: r#"{"command":"ls -la /tmp"}"#.to_owned(),
             }]),
@@ -1711,12 +1711,12 @@ mod tests {
     fn count_messages_counts_tool_result_name() {
         // Given two equal-content tool messages, one with a non-empty tool name.
         let plain = vec![LlmMessage::Tool {
-            tool_call_id: "call-1".to_owned(),
+            tool_call_id: "call-1".into(),
             name: String::new(),
             content: "some tool output".to_owned(),
         }];
         let named = vec![LlmMessage::Tool {
-            tool_call_id: "call-1".to_owned(),
+            tool_call_id: "call-1".into(),
             name: "bash".to_owned(),
             content: "some tool output".to_owned(),
         }];

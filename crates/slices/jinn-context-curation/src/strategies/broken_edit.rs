@@ -33,7 +33,7 @@ use crate::worker::HistoryWorker;
 use jinn_core_types::HistoryMutation;
 use jinn_core_types::SessionId;
 use jinn_core_types::ToolResultStatus;
-use jinn_core_types::{ChatEntry, ChatEntryKind};
+use jinn_core_types::{ChatEntry, ChatEntryKind, ToolCallId};
 
 /// Default minimum age for broken-edit auto-prune.
 /// Default enabled state for broken-edit auto-prune.
@@ -65,7 +65,7 @@ pub struct BrokenEditAutoPruneWorker {
 fn find_failed_edit_result(
     history: &[ChatEntry],
     call_idx: usize,
-    tool_call_id: &str,
+    tool_call_id: &ToolCallId,
 ) -> Option<(jinn_core_types::ChatEntryId, ToolResultStatus)> {
     // ToolResults appear after their ToolCall, so scan forward only.
     for entry in history.iter().skip(call_idx + 1) {

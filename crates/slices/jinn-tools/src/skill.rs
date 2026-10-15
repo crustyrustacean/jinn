@@ -246,8 +246,8 @@ mod tests {
     /// Builds a `skill` call for the named skill.
     fn skill_call(name: &str) -> ToolCall {
         ToolCall {
-            id: "call_1".to_owned(),
-            name: "skill".to_owned(),
+            id: "call_1".into(),
+            name: "skill".into(),
             arguments: serde_json::json!({ "name": name }).to_string(),
         }
     }
@@ -440,8 +440,8 @@ mod tests {
     async fn execute_returns_error_on_empty_name() {
         // Given a call with empty name.
         let call = ToolCall {
-            id: "call_1".to_owned(),
-            name: "skill".to_owned(),
+            id: "call_1".into(),
+            name: "skill".into(),
             arguments: serde_json::json!({"name": ""}).to_string(),
         };
 
@@ -458,8 +458,8 @@ mod tests {
     async fn execute_returns_error_on_bad_json() {
         // Given a call with invalid JSON.
         let call = ToolCall {
-            id: "call_1".to_owned(),
-            name: "skill".to_owned(),
+            id: "call_1".into(),
+            name: "skill".into(),
             arguments: "not json".to_owned(),
         };
 
@@ -581,8 +581,8 @@ mod tests {
         }
 
         let call = ToolCall {
-            id: "call_1".to_owned(),
-            name: "skill".to_owned(),
+            id: "call_1".into(),
+            name: "skill".into(),
             arguments: serde_json::json!({"name": "web-coder"}).to_string(),
         };
 
@@ -642,7 +642,7 @@ mod tests {
         }
 
         let call = ToolCall {
-            id: "call_1".to_owned(),
+            id: "call_1".into(),
             name: "skill".to_owned(),
             arguments: serde_json::json!({"name": "web-coder"}).to_string(),
         };

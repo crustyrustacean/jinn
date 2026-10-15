@@ -262,16 +262,20 @@ pub fn query_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         // Session state is what every family reads from; without it there is
         // nothing to report.
         let Some(session_id) = ctx.session_id.clone() else {
-            return failed(&call.id, &call.name, "no active session");
+            return failed(call.id.clone(), &call.name, "no active session");
         };
         let Some(state) = ctx.state.clone() else {
-            return failed(&call.id, &call.name, "no application state available");
+            return failed(
+                call.id.clone(),
+                &call.name,
+                "no application state available",
+            );
         };
 
         let buffer = {
             let guard = state.read();
             let Some(session) = guard.session.get(&session_id) else {
-                return failed(&call.id, &call.name, "session not found");
+                return failed(call.id.clone(), &call.name, "session not found");
             };
             compose_buffer(&guard, session, &ctx.config)
         };
@@ -294,7 +298,7 @@ pub fn apply_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
         let (Some(session_id), Some(state), Some(bus)) = publishes else {
             return failed(
-                &call.id,
+                call.id.clone(),
                 &call.name,
                 "capabilities_apply requires session state and the bus \
                  (unavailable in this context)",
@@ -305,20 +309,20 @@ pub fn apply_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         // rejected apply must leave every field and message untouched.
         let mask = match parse_mask(&call.arguments) {
             Ok(mask) => mask,
-            Err(msg) => return failed(&call.id, &call.name, msg.to_string()),
+            Err(msg) => return failed(call.id.clone(), &call.name, msg.to_string()),
         };
 
         let (off_tools, off_skills, enabled_servers) = {
             let guard = state.read();
             let Some(session) = guard.session.get(&session_id) else {
-                return failed(&call.id, &call.name, "session not found");
+                return failed(call.id.clone(), &call.name, "session not found");
             };
             let current = compose_buffer(&guard, session, &ctx.config);
             if let Err(msg) = validate_mask(&mask, &current) {
                 // The rejection carries the current buffer so the caller can
                 // re-echo it instead of making a second query call.
                 return failed(
-                    &call.id,
+                    call.id.clone(),
                     &call.name,
                     format!("{} Current buffer: {}", msg, current.to_json()),
                 );
@@ -336,7 +340,11 @@ pub fn apply_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         {
             let mut guard = state.write();
             let Some(session) = guard.session.get_mut(&session_id) else {
-                return failed(&call.id, &call.name, "session disappeared during apply");
+                return failed(
+                    call.id.clone(),
+                    &call.name,
+                    "session disappeared during apply",
+                );
             };
             session.set_tool_filter(Some(NameFilter::deny(off_tools.clone())));
             session.set_skill_filter(Some(NameFilter::deny(off_skills.clone())));

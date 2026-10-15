@@ -52,7 +52,7 @@ pub struct CitationsActorDeps {
 pub struct CitationsActor {
     services: Services,
     /// Call-rule candidates keyed by `tool_call_id`, awaiting their result.
-    pending: HashMap<String, Vec<UrlCitation>>,
+    pending: HashMap<jinn_core_types::ToolCallId, Vec<UrlCitation>>,
     /// Confirmed citations per session, deduplicated by URL, in order.
     buffer: HashMap<SessionId, Vec<UrlCitation>>,
 }
@@ -240,7 +240,7 @@ mod tests {
     /// A `ToolCall` factory.
     fn call(id: &str, name: &str, arguments: &str) -> jinn_core_types::ToolCall {
         jinn_core_types::ToolCall {
-            id: id.to_owned(),
+            id: id.to_owned().into(),
             name: name.to_owned(),
             arguments: arguments.to_owned(),
         }
@@ -249,7 +249,7 @@ mod tests {
     /// A `ToolResult` factory.
     fn result(id: &str, content: &str, success: bool) -> jinn_core_types::ToolResult {
         jinn_core_types::ToolResult {
-            tool_call_id: id.to_owned(),
+            tool_call_id: id.to_owned().into(),
             name: "web-fetch".to_owned(),
             content: content.to_owned(),
             success,

@@ -122,8 +122,8 @@ async fn execute_tool_for_namespaced_echo_returns_server_response() {
 
     // When publishing an ExecuteTool for the namespaced echo tool.
     let tool_call = ToolCall {
-        id: "tc_1".to_owned(),
-        name: "mcp__stub__echo".to_owned(),
+        id: "tc_1".into(),
+        name: "mcp__stub__echo".into(),
         arguments: r#"{"message": "hello mcp"}"#.to_owned(),
     };
     harness
@@ -189,8 +189,8 @@ async fn execute_tool_when_client_disconnected_yields_failed_result() {
 
     // When publishing an ExecuteTool for a tool the stub does not advertise.
     let tool_call = ToolCall {
-        id: "tc_2".to_owned(),
-        name: "mcp__stub__does_not_exist".to_owned(),
+        id: "tc_2".into(),
+        name: "mcp__stub__does_not_exist".into(),
         arguments: "{}".to_owned(),
     };
     harness
@@ -242,7 +242,7 @@ async fn execute_tool_truncates_large_response_to_orchestrator_limits() {
     // And a large message payload (well over the byte limit we will send).
     let big_message = "x".repeat(500);
     let tool_call = ToolCall {
-        id: "tc_3".to_owned(),
+        id: "tc_3".into(),
         name: "mcp__stub__echo".to_owned(),
         arguments: format!(r#"{{"message": "{big_message}"}}"#),
     };
@@ -534,7 +534,7 @@ async fn live_disable_cycle_call_succeeds_before_teardown() {
         .publish(ExecuteTool {
             session_id: session_id.clone(),
             tool_call: ToolCall {
-                id: "tc_live".to_owned(),
+                id: "tc_live".into(),
                 name: "mcp__stub__echo".to_owned(),
                 arguments: r#"{"message": "before disable"}"#.to_owned(),
             },
@@ -595,7 +595,7 @@ async fn disable_cycle_calls_fail_fast_after_teardown() {
         .publish(ExecuteTool {
             session_id: session_id.clone(),
             tool_call: ToolCall {
-                id: "tc_dead".to_owned(),
+                id: "tc_dead".into(),
                 name: "mcp__stub__echo".to_owned(),
                 arguments: r#"{"message": "after disable"}"#.to_owned(),
             },
@@ -720,7 +720,7 @@ async fn execute_tool_exceeding_timeout_yields_failed_result() {
 
     // When calling slow_echo with a 5-second delay.
     let tool_call = ToolCall {
-        id: "tc_slow".to_owned(),
+        id: "tc_slow".into(),
         name: "mcp__stub__slow_echo".to_owned(),
         arguments: r#"{"message": "late", "delay_ms": 5000}"#.to_owned(),
     };
@@ -740,7 +740,7 @@ async fn execute_tool_exceeding_timeout_yields_failed_result() {
             let got = await_recorded(&recorder, 1, Duration::from_secs(4)).await;
             if got
                 .first()
-                .is_some_and(|m| m.result.tool_call_id == "tc_slow")
+                .is_some_and(|m| m.result.tool_call_id.as_str() == "tc_slow")
             {
                 return got;
             }
@@ -794,7 +794,7 @@ async fn execute_tool_with_disabled_timeout_completes() {
 
     // When calling slow_echo with a 1.5-second delay.
     let tool_call = ToolCall {
-        id: "tc_unbounded".to_owned(),
+        id: "tc_unbounded".into(),
         name: "mcp__stub__slow_echo".to_owned(),
         arguments: r#"{"message": "patient", "delay_ms": 1500}"#.to_owned(),
     };

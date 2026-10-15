@@ -15,6 +15,7 @@ use futures::FutureExt;
 
 use crate::tool_types::ToolContext;
 use crate::tool_types::failed;
+use jinn_core_types::ToolCallId;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_mcp_msg::RestartError;
 
@@ -230,14 +231,14 @@ fn resolve_server(input: &str, configured: &[String]) -> Option<String> {
 // Result helpers
 // ---------------------------------------------------------------------------
 
-fn failure_future(call_id: &str, name: &str, message: &str) -> BoxedToolFuture {
-    futures::future::ready(failed(call_id, name, message)).boxed()
+fn failure_future(call_id: &ToolCallId, name: &str, message: &str) -> BoxedToolFuture {
+    futures::future::ready(failed(call_id.clone(), name, message)).boxed()
 }
 
 /// Maps a domain-level `RestartError` from the coordinator into a failure
 /// result carrying the STOP-and-wait instruction.
 fn domain_failure_result(
-    call_id: &str,
+    call_id: &ToolCallId,
     name: &str,
     server: &str,
     err: &RestartError,
@@ -259,7 +260,7 @@ fn domain_failure_result(
              **STOP and wait for user instruction.**"
             .to_owned(),
     };
-    failed(call_id, name, &content)
+    failed(call_id.clone(), name, &content)
 }
 
 #[cfg(test)]

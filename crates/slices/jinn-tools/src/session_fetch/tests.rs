@@ -194,7 +194,7 @@ fn ctx_with(store: StubStore) -> (ToolContext, std::sync::Arc<StubStore>) {
 
 async fn run(ctx: ToolContext, args: serde_json::Value) -> ToolResult {
     let call = ToolCall {
-        id: "call-1".to_owned(),
+        id: "call-1".into(),
         name: "session_fetch".to_owned(),
         arguments: args.to_string(),
     };

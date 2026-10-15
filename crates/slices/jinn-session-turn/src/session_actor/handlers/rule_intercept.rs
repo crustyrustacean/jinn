@@ -175,6 +175,7 @@ pub(super) mod tests {
     use jinn_core_types::ChatEntry;
     use jinn_core_types::ChatEntryKind;
     use jinn_core_types::SessionId;
+    use jinn_core_types::ToolCallId;
     use jinn_inference_msg::CancelTurn;
     use jinn_inference_msg::StreamCompletedReason;
     use jinn_kernel::common::phase_command::apply_phase;
@@ -420,7 +421,7 @@ pub(super) mod tests {
         {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
-            session.begin_tool_call(0, "tc_1", "bash", jiff::Timestamp::now());
+            session.begin_tool_call(0, &ToolCallId::from("tc_1"), "bash", jiff::Timestamp::now());
             session
                 .append_tool_call_delta(0, r#"{"command":"rm -rf "#)
                 .expect("append argument delta");
@@ -437,7 +438,7 @@ pub(super) mod tests {
         assert!(
             session.history().iter().any(|e| matches!(
                 &e.kind,
-                ChatEntryKind::ToolResult { id, .. } if id == "tc_1"
+                ChatEntryKind::ToolResult { id, .. } if id.as_str() == "tc_1"
             )),
             "an interrupted tool call must be paired with a result"
         );
@@ -451,7 +452,7 @@ pub(super) mod tests {
         {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
-            session.begin_tool_call(0, "tc_1", "bash", jiff::Timestamp::now());
+            session.begin_tool_call(0, &ToolCallId::from("tc_1"), "bash", jiff::Timestamp::now());
             session
                 .append_tool_call_delta(0, r#"{"command":"rm -rf "#)
                 .expect("append argument delta");
@@ -468,7 +469,7 @@ pub(super) mod tests {
         let messages =
             jinn_llm_support::entries_to_messages::entries_to_messages(session.history());
         let answered = messages.iter().any(|m| {
-            matches!(m, jinn_provider::LlmMessage::Tool { tool_call_id, .. } if tool_call_id == "tc_1")
+            matches!(m, jinn_provider::LlmMessage::Tool { tool_call_id, .. } if tool_call_id.as_str() == "tc_1")
         });
         assert!(
             answered,

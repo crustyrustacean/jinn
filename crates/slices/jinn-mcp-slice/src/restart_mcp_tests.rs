@@ -87,7 +87,7 @@ async fn spawn_coordinator(
 /// Builds a tool call targeting the given server.
 fn call(server: &str) -> ToolCall {
     ToolCall {
-        id: "tc_1".to_owned(),
+        id: "tc_1".into(),
         name: "restart_mcp_server".to_owned(),
         arguments: format!("{{\"server\": \"{server}\"}}"),
     }
@@ -243,7 +243,7 @@ async fn execute_strips_namespace_and_routes_to_ask() {
     // When executing with a namespaced tool name.
     let result = execute(
         ToolCall {
-            id: "tc_1".to_owned(),
+            id: "tc_1".into(),
             name: "restart_mcp_server".to_owned(),
             arguments: "{\"server\": \"mcp__stub__echo\"}".to_owned(),
         },

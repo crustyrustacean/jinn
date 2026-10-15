@@ -126,7 +126,7 @@ fn tool_call_entry_has_tool_call_kind() {
     assert_eq!(
         entry.kind,
         ChatEntryKind::ToolCall {
-            id: "call_123".to_owned(),
+            id: "call_123".into(),
             name: "echo".to_owned(),
             arguments: r#"{"input":"hi"}"#.to_owned(),
             child_session: None,
@@ -148,7 +148,7 @@ fn tool_result_entry_has_tool_result_kind() {
     assert_eq!(
         entry.kind,
         ChatEntryKind::ToolResult {
-            id: "call_123".to_owned(),
+            id: "call_123".into(),
             name: "echo".to_owned(),
             content: "hi".to_owned(),
             status: ToolResultStatus::Success,
@@ -487,7 +487,7 @@ fn tool_result_deserializes_old_success_true_format() {
     assert_eq!(
         entry.kind,
         ChatEntryKind::ToolResult {
-            id: "call_1".to_owned(),
+            id: "call_1".into(),
             name: "bash".to_owned(),
             content: "ok".to_owned(),
             status: ToolResultStatus::Success,
@@ -511,7 +511,7 @@ fn tool_result_deserializes_old_success_false_format() {
     assert_eq!(
         entry.kind,
         ChatEntryKind::ToolResult {
-            id: "call_1".to_owned(),
+            id: "call_1".into(),
             name: "bash".to_owned(),
             content: "err".to_owned(),
             status: ToolResultStatus::Failure,

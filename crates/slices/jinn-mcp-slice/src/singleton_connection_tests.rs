@@ -63,7 +63,7 @@ async fn spawn_singleton_actor(
 
 fn echo_call() -> ToolCall {
     ToolCall {
-        id: "tc_1".to_owned(),
+        id: "tc_1".into(),
         name: "mcp__singleton__echo".to_owned(),
         arguments: r#"{"message":"hi"}"#.to_owned(),
     }

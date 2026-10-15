@@ -28,7 +28,7 @@ use crate::tool_types::ToolContext;
 /// Builds a tool call with the given JSON arguments.
 fn call(arguments: &str) -> ToolCall {
     ToolCall {
-        id: "tc_lc_1".to_owned(),
+        id: "tc_lc_1".into(),
         name: "run_lifecycle".to_owned(),
         arguments: arguments.to_owned(),
     }

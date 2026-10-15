@@ -116,8 +116,8 @@ async fn streamed_tool_call_arguments_are_visible_before_the_call_completes() {
     bus.publish(ToolUseStarted {
         session_id: session_id.clone(),
         index: 0,
-        id: "tc-write".to_owned(),
-        name: "write".to_owned(),
+        id: "tc-write".into(),
+        name: "write".into(),
         dispatched_at: jiff::Timestamp::now(),
     })
     .await;
@@ -152,7 +152,7 @@ async fn streamed_arguments_are_visible_when_the_turn_starts_with_a_tool_call() 
     bus.publish(ToolUseStarted {
         session_id: session_id.clone(),
         index: 0,
-        id: "tc-write".to_owned(),
+        id: "tc-write".into(),
         name: "write".to_owned(),
         dispatched_at: jiff::Timestamp::now(),
     })
@@ -193,7 +193,7 @@ async fn a_streamed_delta_lands_on_the_tool_call_entry_it_started_on() {
     bus.publish(ToolUseStarted {
         session_id: session_id.clone(),
         index: 0,
-        id: "tc-write".to_owned(),
+        id: "tc-write".into(),
         name: "write".to_owned(),
         dispatched_at: jiff::Timestamp::now(),
     })
@@ -210,7 +210,7 @@ async fn a_streamed_delta_lands_on_the_tool_call_entry_it_started_on() {
     bus.publish(ToolCallReceived {
         session_id: session_id.clone(),
         tool_call: jinn_core_types::tool_types::ToolCall {
-            id: "tc-write".to_owned(),
+            id: "tc-write".into(),
             name: "write".to_owned(),
             arguments: format!("{}{}", WRITE_ARGS[0], WRITE_ARGS[1]),
         },
@@ -226,7 +226,9 @@ async fn a_streamed_delta_lands_on_the_tool_call_entry_it_started_on() {
     let call = session
         .history()
         .iter()
-        .find(|e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc-write"))
+        .find(
+            |e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id.as_str() == "tc-write"),
+        )
         .expect("tool call entry");
     let ChatEntryKind::ToolCall { arguments, .. } = &call.kind else {
         panic!("expected a ToolCall entry");
@@ -247,7 +249,7 @@ async fn the_streamed_display_grows_monotonically_as_deltas_arrive() {
     bus.publish(ToolUseStarted {
         session_id: session_id.clone(),
         index: 0,
-        id: "tc-write".to_owned(),
+        id: "tc-write".into(),
         name: "write".to_owned(),
         dispatched_at: jiff::Timestamp::now(),
     })
@@ -297,7 +299,7 @@ async fn every_streaming_tool_paints_its_arguments(#[case] tool: &str) {
     bus.publish(ToolUseStarted {
         session_id: session_id.clone(),
         index: 0,
-        id: "tc-1".to_owned(),
+        id: "tc-1".into(),
         name: tool.to_owned(),
         dispatched_at: jiff::Timestamp::now(),
     })

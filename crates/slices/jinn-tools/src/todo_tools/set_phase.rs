@@ -231,7 +231,7 @@ mod tests {
 
     fn set_phase_call(description: &str, tasks: serde_json::Value) -> ToolCall {
         ToolCall {
-            id: "call-1".to_owned(),
+            id: "call-1".into(),
             name: "todo_set_phase".to_owned(),
             arguments: serde_json::json!({ "description": description, "tasks": tasks })
                 .to_string(),

@@ -14,6 +14,7 @@ use std::time::Duration;
 use futures::FutureExt;
 
 use crate::tool_types::ToolContext;
+use jinn_core_types::ToolCallId;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_term_msg::DEFAULT_PTY_SIZE;
 use jinn_term_msg::command::SpawnTermOutcome;
@@ -28,7 +29,7 @@ pub struct StreamCtx {
     /// The chat session running the tool call.
     pub session_id: jinn_core_types::SessionId,
     /// The tool call the deltas are attributed to.
-    pub tool_call_id: String,
+    pub tool_call_id: jinn_core_types::ToolCallId,
 }
 
 /// Shared tool-call parsing across the three interactive-term tools.
@@ -253,7 +254,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 }
 
 pub(crate) fn failure_future(
-    tool_call_id: &str,
+    tool_call_id: &ToolCallId,
     tool_name: &str,
     msg: &str,
 ) -> std::pin::Pin<Box<dyn Future<Output = ToolResult> + Send>> {
@@ -262,7 +263,7 @@ pub(crate) fn failure_future(
 
 /// Builds a success [`ToolResult`] with the screen, exit info, and usage hints.
 pub(crate) fn success_result(
-    tool_call_id: &str,
+    tool_call_id: &ToolCallId,
     tool_name: &str,
     screen: &str,
     exited: Option<&jinn_term_msg::TermExitInfo>,
@@ -284,7 +285,7 @@ pub(crate) fn success_result(
     let truncated = truncate_tail(&body, DEFAULT_MAX_LINES, DEFAULT_MAX_BYTES);
     let full_content = truncated.truncated.then_some(body);
     ToolResult {
-        tool_call_id: tool_call_id.to_owned(),
+        tool_call_id: tool_call_id.clone(),
         name: tool_name.to_owned(),
         content: truncated.content,
         success: true,
@@ -303,9 +304,9 @@ pub(crate) fn usage_footer() -> String {
 }
 
 /// Builds a failure [`ToolResult`].
-pub(crate) fn failure_result(tool_call_id: &str, tool_name: &str, msg: &str) -> ToolResult {
+pub(crate) fn failure_result(tool_call_id: &ToolCallId, tool_name: &str, msg: &str) -> ToolResult {
     ToolResult {
-        tool_call_id: tool_call_id.to_owned(),
+        tool_call_id: tool_call_id.clone(),
         name: tool_name.to_owned(),
         content: msg.to_owned(),
         success: false,
@@ -368,7 +369,7 @@ mod tests {
         let (bus, audit) = jinn_kernel::common::services::bus_service::BusService::new_recording();
         let ctx = Some(StreamCtx {
             session_id: jinn_core_types::SessionId::new(),
-            tool_call_id: "call-1".to_owned(),
+            tool_call_id: "call-1".into(),
         });
 
         // When wrapping an ask that takes longer than two heartbeat ticks.

@@ -233,7 +233,7 @@ fn stub_ctx(
 
 async fn run(ctx: ToolContext, args: serde_json::Value) -> ToolResult {
     let call = ToolCall {
-        id: "call-1".to_owned(),
+        id: "call-1".into(),
         name: "session_search".to_owned(),
         arguments: args.to_string(),
     };
@@ -287,7 +287,7 @@ async fn invalid_json_arguments_are_rejected() {
 
     // When invoking with malformed JSON.
     let call = ToolCall {
-        id: "call-1".to_owned(),
+        id: "call-1".into(),
         name: "session_search".to_owned(),
         arguments: "{not json".to_owned(),
     };

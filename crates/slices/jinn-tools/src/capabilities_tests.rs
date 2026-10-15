@@ -51,7 +51,7 @@ fn bare_ctx() -> ToolContext {
 /// A tool call for one of the two tools with JSON arguments.
 fn call(name: &str, args: serde_json::Value) -> ToolCall {
     ToolCall {
-        id: format!("call_{name}"),
+        id: jinn_core_types::ToolCallId::from(format!("call_{name}")),
         name: name.to_owned(),
         arguments: args.to_string(),
     }
@@ -786,8 +786,8 @@ async fn apply_with_invalid_json_is_rejected() {
     // Given arguments that are not JSON.
     let h = Harness::new();
     let call = ToolCall {
-        id: "call_bad".to_owned(),
-        name: "capabilities_apply".to_owned(),
+        id: "call_bad".into(),
+        name: "capabilities_apply".into(),
         arguments: "not json".to_owned(),
     };
 

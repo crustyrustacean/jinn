@@ -2125,9 +2125,12 @@ fn streaming_tool_call_ids_contains_only_the_streaming_entry() {
             "{}",
         ));
     }
-    state
-        .active_session_mut()
-        .begin_tool_call(200, "tc_live", "read_file", jiff::Timestamp::now());
+    state.active_session_mut().begin_tool_call(
+        200,
+        &jinn_core_types::ToolCallId::from("tc_live"),
+        "read_file",
+        jiff::Timestamp::now(),
+    );
 
     // When reading the streaming tool-call ids.
     let ids = state.active_session().streaming_tool_call_ids();
@@ -2166,9 +2169,12 @@ fn streaming_tool_call_renders_multiline_arguments() {
     state
         .active_session_mut()
         .push_entry(ChatEntry::tool_call("tc_done", "read_file", "{}"));
-    state
-        .active_session_mut()
-        .begin_tool_call(1, "tc_live", "read_file", jiff::Timestamp::now());
+    state.active_session_mut().begin_tool_call(
+        1,
+        &jinn_core_types::ToolCallId::from("tc_live"),
+        "read_file",
+        jiff::Timestamp::now(),
+    );
     state
         .active_session_mut()
         .append_tool_call_delta(1, r#"line_one\nline_two"#)
@@ -2197,9 +2203,12 @@ fn tool_call_arguments_render_as_a_block_after_a_phase_transition_mid_stream(#[c
     // the session is still Sending, and its first argument delta has landed.
     let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().begin_sending();
-    state
-        .active_session_mut()
-        .begin_tool_call(0, "tc_live", tool, jiff::Timestamp::now());
+    state.active_session_mut().begin_tool_call(
+        0,
+        &jinn_core_types::ToolCallId::from("tc_live"),
+        tool,
+        jiff::Timestamp::now(),
+    );
     state
         .active_session_mut()
         .append_tool_call_delta(0, r#"line_one\n"#)
@@ -2250,9 +2259,12 @@ fn bash_tool_call_arguments_render_after_a_phase_transition_mid_stream() {
     // streaming while the session is still Sending.
     let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().begin_sending();
-    state
-        .active_session_mut()
-        .begin_tool_call(0, "tc_live", "bash", jiff::Timestamp::now());
+    state.active_session_mut().begin_tool_call(
+        0,
+        &jinn_core_types::ToolCallId::from("tc_live"),
+        "bash",
+        jiff::Timestamp::now(),
+    );
     state
         .active_session_mut()
         .append_tool_call_delta(0, r#"{"command":"cd"#)
@@ -2283,9 +2295,12 @@ fn completed_tool_call_renders_collapsed_after_streaming_finishes() {
     // Given a session that streamed a tool call and has since finished.
     let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().begin_streaming();
-    state
-        .active_session_mut()
-        .begin_tool_call(0, "tc_live", "read_file", jiff::Timestamp::now());
+    state.active_session_mut().begin_tool_call(
+        0,
+        &jinn_core_types::ToolCallId::from("tc_live"),
+        "read_file",
+        jiff::Timestamp::now(),
+    );
     state
         .active_session_mut()
         .append_tool_call_delta(0, r#"line_one\nline_two"#)
@@ -2328,9 +2343,12 @@ fn streaming_tool_call_renders_streaming_variant_after_many_completed_calls() {
             "{}",
         ));
     }
-    state
-        .active_session_mut()
-        .begin_tool_call(150, "tc_live", "read_file", jiff::Timestamp::now());
+    state.active_session_mut().begin_tool_call(
+        150,
+        &jinn_core_types::ToolCallId::from("tc_live"),
+        "read_file",
+        jiff::Timestamp::now(),
+    );
     state
         .active_session_mut()
         .append_tool_call_delta(150, r#"alpha\nbeta"#)
@@ -2422,11 +2440,13 @@ fn streaming_tool_output_renders_the_appended_text() {
     // Given a session streaming a bash tool result.
     let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().begin_streaming();
-    state
-        .active_session_mut()
-        .begin_tool_result("tr_live", "bash", jiff::Timestamp::now());
+    state.active_session_mut().begin_tool_result(
+        &jinn_core_types::ToolCallId::from("tr_live"),
+        "bash",
+        jiff::Timestamp::now(),
+    );
     state.active_session_mut().append_tool_result_output(
-        "tr_live",
+        &jinn_core_types::ToolCallId::from("tr_live"),
         "first chunk of output",
         jinn_tools_msg::ToolOutputKind::Normal,
     );
@@ -2444,7 +2464,7 @@ fn streaming_tool_output_renders_the_appended_text() {
 
     // When more output arrives, growing the entry's content.
     state.active_session_mut().append_tool_result_output(
-        "tr_live",
+        &jinn_core_types::ToolCallId::from("tr_live"),
         "second chunk",
         jinn_tools_msg::ToolOutputKind::Normal,
     );

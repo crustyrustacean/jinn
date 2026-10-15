@@ -28,7 +28,7 @@ use jinn_context::{PromptTemplateStore, expand_tokens};
 use jinn_core_types::model_selection::ModelSelection;
 use jinn_core_types::{
     ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, EntryTiming,
-    HistoryMutation, NameFilter, PinPosition, SessionId, ToolResultStatus,
+    HistoryMutation, NameFilter, PinPosition, SessionId, ToolCallId, ToolResultStatus,
 };
 use jinn_session_history::history_editor::{
     HistoryEditor, Priv, SessionHistoryAccess, SessionHistoryAccessPriv,
@@ -1375,7 +1375,7 @@ impl ChatSessionState {
     /// started arriving. A model that opens with a tool call and is
     /// interrupted before its first delta appears here.
     #[must_use]
-    pub fn streaming_tool_call_fragments(&self) -> Vec<(String, String, String)> {
+    pub fn streaming_tool_call_fragments(&self) -> Vec<(ToolCallId, String, String)> {
         let history = &self.core.history_work.history;
         self.core
             .ephemeral
@@ -1647,7 +1647,7 @@ impl ChatSessionState {
     pub fn begin_tool_call(
         &mut self,
         index: usize,
-        id: &str,
+        id: &ToolCallId,
         name: &str,
         dispatched_at: jiff::Timestamp,
     ) {
@@ -1664,7 +1664,7 @@ impl ChatSessionState {
             );
             return;
         }
-        let mut entry = ChatEntry::tool_call(id, name, "");
+        let mut entry = ChatEntry::tool_call(id.clone(), name, "");
         entry.timing = EntryTiming::streamed(dispatched_at);
         entry.timing.set_first_token();
         let history_index = self.push_entry(entry);
@@ -1725,7 +1725,7 @@ impl ChatSessionState {
     /// If not found (shouldn't happen in normal flow), pushes a new entry.
     /// Preserves any existing `child_session` link on the entry — only the
     /// streamed-partial fields are finalized here.
-    pub fn finalize_tool_call(&mut self, id: &str, name: &str, arguments: &str) {
+    pub fn finalize_tool_call(&mut self, id: &ToolCallId, name: &str, arguments: &str) {
         let finalized = self
             .edit_history()
             .with_last_matching_mut(
@@ -1736,7 +1736,7 @@ impl ChatSessionState {
                         _ => None,
                     };
                     entry.kind = ChatEntryKind::ToolCall {
-                        id: id.to_owned(),
+                        id: id.clone(),
                         name: name.to_owned(),
                         arguments: arguments.to_owned(),
                         child_session,
@@ -1749,7 +1749,7 @@ impl ChatSessionState {
             self.core.identity.last_provider_activity_at = Timestamp::now();
         } else {
             // If not found (shouldn't happen), push a new entry.
-            self.push_entry(ChatEntry::tool_call(id, name, arguments));
+            self.push_entry(ChatEntry::tool_call(id.clone(), name, arguments));
         }
     }
 
@@ -1767,7 +1767,7 @@ impl ChatSessionState {
     /// refused so a canceled session does not accumulate orphan entries.
     pub fn begin_tool_result(
         &mut self,
-        tool_call_id: &str,
+        tool_call_id: &ToolCallId,
         name: &str,
         dispatched_at: jiff::Timestamp,
     ) {
@@ -1778,13 +1778,14 @@ impl ChatSessionState {
         if matches!(self.core.ephemeral.machine.kind(), PhaseKind::Idle) {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
-                tool_call_id,
+                tool_call_id = %tool_call_id,
                 "begin_tool_result called while the session is not busy - ignoring"
             );
             return;
         }
 
-        let mut entry = ChatEntry::tool_result(tool_call_id, name, "", ToolResultStatus::Pending);
+        let mut entry =
+            ChatEntry::tool_result(tool_call_id.clone(), name, "", ToolResultStatus::Pending);
         entry.timing = EntryTiming::streamed(dispatched_at);
         entry.timing.set_first_token();
         let history_index = self.push_entry(entry);
@@ -1794,7 +1795,7 @@ impl ChatSessionState {
             .ephemeral
             .machine
             .active_tool_result_indices_mut()
-            .insert(tool_call_id.to_owned(), history_index);
+            .insert(tool_call_id.clone(), history_index);
     }
 
     /// Append incremental output to a pending ToolResult entry.
@@ -1806,7 +1807,7 @@ impl ChatSessionState {
     /// Panics if no pending entry exists for the given `tool_call_id`.
     pub fn append_tool_result_output(
         &mut self,
-        tool_call_id: &str,
+        tool_call_id: &ToolCallId,
         output: &str,
         kind: jinn_tools_msg::ToolOutputKind,
     ) {
@@ -1851,7 +1852,7 @@ impl ChatSessionState {
     /// In-place finalization: never reorders entries or splits a tool loop.
     fn finalize_existing_tool_result(
         &mut self,
-        tool_call_id: &str,
+        tool_call_id: &ToolCallId,
         content: &str,
         status: ToolResultStatus,
         full_content: Option<String>,
@@ -1911,7 +1912,7 @@ impl ChatSessionState {
     )]
     pub fn finalize_tool_result(
         &mut self,
-        tool_call_id: &str,
+        tool_call_id: &ToolCallId,
         name: &str,
         content: &str,
         success: bool,
@@ -1940,7 +1941,7 @@ impl ChatSessionState {
             let mut entry = if let Some(meta) = truncation {
                 let full = full_content.unwrap_or_default();
                 ChatEntry::tool_result_truncated(
-                    tool_call_id,
+                    tool_call_id.clone(),
                     name,
                     content.to_owned(),
                     full,
@@ -1948,7 +1949,7 @@ impl ChatSessionState {
                     meta,
                 )
             } else {
-                ChatEntry::tool_result(tool_call_id, name, content, status)
+                ChatEntry::tool_result(tool_call_id.clone(), name, content, status)
             };
             // Propagate tool-requested pin onto both the kind variant and
             // the entry-level field so assembly/compaction read a single source.

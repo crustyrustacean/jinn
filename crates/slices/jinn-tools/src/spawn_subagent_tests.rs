@@ -44,7 +44,7 @@ const AWAIT_TIMEOUT: Duration = Duration::from_secs(10);
 /// Builds a tool call with the given JSON arguments.
 fn spawn_subagent_call(arguments: &str) -> ToolCall {
     ToolCall {
-        id: "tc_task_1".to_owned(),
+        id: "tc_task_1".into(),
         name: jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME.to_owned(),
         arguments: arguments.to_owned(),
     }
@@ -565,7 +565,7 @@ async fn spawn_subagent_stamps_spawned_child_session_on_parent_tool_call() {
         .history()
         .iter()
         .find(
-            |entry| matches!(&entry.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc_task_1"),
+            |entry| matches!(&entry.kind, ChatEntryKind::ToolCall { id, .. } if id.as_str() == "tc_task_1"),
         )
         .expect("stamped tool call entry");
     let ChatEntryKind::ToolCall { child_session, .. } = &entry.kind else {
@@ -617,7 +617,7 @@ async fn spawn_subagent_stamp_leaves_unrelated_tool_call_entries_untouched() {
     let entry = parent
         .history()
         .iter()
-        .find(|entry| matches!(&entry.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc_other"))
+        .find(|entry| matches!(&entry.kind, ChatEntryKind::ToolCall { id, .. } if id.as_str() == "tc_other"))
         .expect("unrelated tool call entry");
     let ChatEntryKind::ToolCall { child_session, .. } = &entry.kind else {
         panic!("expected ToolCall kind");
@@ -640,7 +640,7 @@ async fn spawn_subagent_rejects_an_empty_prompt_with_a_legible_result() {
     let (success, content) = result_parts(&result);
     assert!(!success);
     assert!(content.contains("prompt"), "got: {content}");
-    assert_eq!(result.tool_call_id, "tc_task_1");
+    assert_eq!(result.tool_call_id.as_str(), "tc_task_1");
 }
 
 #[rstest::rstest]

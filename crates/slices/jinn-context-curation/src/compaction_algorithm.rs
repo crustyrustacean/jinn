@@ -122,8 +122,8 @@ fn adjust_cut_inner(history: &[ChatEntry], cut_index: usize) -> usize {
     }
 
     // Scan the tool loop group starting from this Assistant.
-    let mut tool_call_ids: Vec<String> = Vec::new();
-    let mut tool_result_ids: Vec<String> = Vec::new();
+    let mut tool_call_ids: Vec<jinn_core_types::ToolCallId> = Vec::new();
+    let mut tool_result_ids: Vec<jinn_core_types::ToolCallId> = Vec::new();
     let mut group_end = cut_index + 1;
 
     let tail = history.get(cut_index + 1..).map_or(&[][..], |s| s);

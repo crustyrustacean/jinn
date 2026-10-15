@@ -1137,7 +1137,7 @@ mod tests {
 
     fn sample_tool_call() -> ToolCall {
         ToolCall {
-            id: "tc_x".to_owned(),
+            id: "tc_x".into(),
             name: "mcp__stub__echo".to_owned(),
             arguments: "{}".to_owned(),
         }

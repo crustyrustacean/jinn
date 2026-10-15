@@ -41,6 +41,7 @@ pub mod provider_resolution;
 pub mod reasoning;
 pub mod session_id;
 pub mod session_profile;
+pub mod tool_call_id;
 pub mod tool_result_status;
 pub mod tool_types;
 pub mod url_citation;
@@ -69,6 +70,7 @@ pub use provider_resolution::ModelNameResolver;
 pub use reasoning::ReasoningEffort;
 pub use session_id::SessionId;
 pub use session_profile::{DEFAULT_PERSONA_NAME, SessionProfile};
+pub use tool_call_id::ToolCallId;
 pub use tool_result_status::ToolResultStatus;
 pub use tool_types::{
     ServerToolType, ToolCall, ToolDefinition, ToolResult, ToolResultPinPosition, TruncatedBy,

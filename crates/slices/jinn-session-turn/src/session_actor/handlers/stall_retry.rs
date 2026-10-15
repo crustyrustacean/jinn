@@ -239,7 +239,12 @@ mod tests {
                 session.finish_thinking_entry(idx);
             }
             let tool_call_index = session.history().len();
-            session.begin_tool_call(tool_call_index, "call_1", "read", jiff::Timestamp::now());
+            session.begin_tool_call(
+                tool_call_index,
+                &jinn_core_types::ToolCallId::from("call_1"),
+                "read",
+                jiff::Timestamp::now(),
+            );
         }
         (
             actor,
@@ -490,7 +495,12 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             let now = jiff::Timestamp::now();
-            session.begin_tool_call(0, "tc-partial", "bash", now);
+            session.begin_tool_call(
+                0,
+                &jinn_core_types::ToolCallId::from("tc-partial"),
+                "bash",
+                now,
+            );
             session
                 .append_tool_call_delta(0, "{\"command\":\"cd /mnt")
                 .expect("append partial delta");
@@ -504,7 +514,7 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         let has_active_partial = session.history().iter().any(|e| {
-            matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc-partial")
+            matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id.as_str() == "tc-partial")
                 && !matches!(
                     e.context_override(),
                     jinn_core_types::ContextOverride::ForcedExclude

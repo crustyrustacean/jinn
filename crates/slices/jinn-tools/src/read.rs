@@ -323,8 +323,8 @@ mod tests {
         std::fs::write(&file_path, "file contents here").expect("write temp file");
 
         let call = ToolCall {
-            id: "call_1".to_owned(),
-            name: "read".to_owned(),
+            id: "call_1".into(),
+            name: "read".into(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy()
             })
@@ -335,7 +335,7 @@ mod tests {
         let result = execute(call, test_ctx()).await;
 
         // Then the result contains the file contents.
-        assert_eq!(result.tool_call_id, "call_1");
+        assert_eq!(result.tool_call_id.as_str(), "call_1");
         assert!(result.success);
         assert!(result.content.contains("file contents here"));
         assert!(
@@ -350,8 +350,8 @@ mod tests {
     async fn execute_returns_error_on_missing_file() {
         // Given a read call for a nonexistent file.
         let call = ToolCall {
-            id: "call_2".to_owned(),
-            name: "read".to_owned(),
+            id: "call_2".into(),
+            name: "read".into(),
             arguments: serde_json::json!({
                 "path": "/nonexistent/path/to/file.txt"
             })
@@ -362,7 +362,7 @@ mod tests {
         let result = execute(call, test_ctx()).await;
 
         // Then the result indicates failure.
-        assert_eq!(result.tool_call_id, "call_2");
+        assert_eq!(result.tool_call_id.as_str(), "call_2");
         assert!(!result.success);
         assert!(result.content.contains("failed to read file"));
     }
@@ -372,8 +372,8 @@ mod tests {
     async fn execute_returns_error_on_bad_json() {
         // Given a read call with invalid JSON.
         let call = ToolCall {
-            id: "call_3".to_owned(),
-            name: "read".to_owned(),
+            id: "call_3".into(),
+            name: "read".into(),
             arguments: "not json".to_owned(),
         };
 
@@ -414,8 +414,8 @@ mod tests {
         };
 
         let call = ToolCall {
-            id: "call_4".to_owned(),
-            name: "read".to_owned(),
+            id: "call_4".into(),
+            name: "read".into(),
             arguments: serde_json::json!({
                 "path": "test.txt"
             })
@@ -444,7 +444,7 @@ mod tests {
         std::fs::write(&file_path, "a\nb\nc\nd\ne").expect("write temp file");
 
         let call = ToolCall {
-            id: "call_5".to_owned(),
+            id: "call_5".into(),
             name: "read".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -500,7 +500,7 @@ mod tests {
         };
 
         let call = ToolCall {
-            id: "call_trunc".to_owned(),
+            id: "call_trunc".into(),
             name: "read".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy()
@@ -549,7 +549,7 @@ mod tests {
         };
 
         let call = ToolCall {
-            id: "call_trunc2".to_owned(),
+            id: "call_trunc2".into(),
             name: "read".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),

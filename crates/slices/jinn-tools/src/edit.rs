@@ -406,8 +406,8 @@ mod tests {
 
     fn make_call(file_path: &str, old_string: &str, new_string: &str) -> ToolCall {
         ToolCall {
-            id: "call_edit".to_owned(),
-            name: "edit".to_owned(),
+            id: "call_edit".into(),
+            name: "edit".into(),
             arguments: serde_json::json!({
                 "file_path": file_path,
                 "old_string": old_string,
@@ -504,8 +504,8 @@ mod tests {
 
         // When replacing with replace_all.
         let call = ToolCall {
-            id: "call_ra".to_owned(),
-            name: "edit".to_owned(),
+            id: "call_ra".into(),
+            name: "edit".into(),
             arguments: serde_json::json!({
                 "file_path": file_path.to_string_lossy(),
                 "old_string": "count",
@@ -559,8 +559,8 @@ mod tests {
 
         // When calling with path/oldText/newText aliases.
         let call = ToolCall {
-            id: "call_alias".to_owned(),
-            name: "edit".to_owned(),
+            id: "call_alias".into(),
+            name: "edit".into(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
                 "oldText": "world",
@@ -658,8 +658,8 @@ mod tests {
 
         // When calling with the legacy edits[] shape.
         let call = ToolCall {
-            id: "call_legacy".to_owned(),
-            name: "edit".to_owned(),
+            id: "call_legacy".into(),
+            name: "edit".into(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
                 "edits": [{"op": "replace", "pos": "1#xx", "lines": ["x"]}]
@@ -725,7 +725,7 @@ mod tests {
     async fn execute_returns_error_on_bad_json() {
         // Given an edit call with invalid JSON.
         let call = ToolCall {
-            id: "call_bad".to_owned(),
+            id: "call_bad".into(),
             name: "edit".to_owned(),
             arguments: "not json".to_owned(),
         };
@@ -876,7 +876,7 @@ mod tests {
         let path_str = file_path.to_string_lossy().into_owned();
 
         let write_call = ToolCall {
-            id: "call_race_write".to_owned(),
+            id: "call_race_write".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "file_path": path_str,

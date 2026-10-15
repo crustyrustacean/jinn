@@ -22,7 +22,7 @@ use crate::tool_types::ToolContext;
 /// Builds a tool call with the given JSON arguments.
 fn call(arguments: &str) -> ToolCall {
     ToolCall {
-        id: "tc_msg_1".to_owned(),
+        id: "tc_msg_1".into(),
         name: "tell_session".to_owned(),
         arguments: arguments.to_owned(),
     }

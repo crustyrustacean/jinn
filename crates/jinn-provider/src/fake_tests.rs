@@ -78,7 +78,7 @@ async fn fake_service_yields_text_events_and_done() {
 async fn fake_service_emits_text_events() {
     // Given a fake factory with tool calls.
     let tool_call = ToolCall {
-        id: "call_1".to_owned(),
+        id: "call_1".into(),
         name: "echo".to_owned(),
         arguments: r#"{"input":"hi"}"#.to_owned(),
     };
@@ -104,7 +104,7 @@ async fn fake_service_emits_text_events() {
 async fn fake_service_emits_tool_events() {
     // Given a fake factory with tool calls.
     let tool_call = ToolCall {
-        id: "call_1".to_owned(),
+        id: "call_1".into(),
         name: "echo".to_owned(),
         arguments: r#"{"input":"hi"}"#.to_owned(),
     };
@@ -141,7 +141,7 @@ async fn fake_service_emits_tool_events() {
 async fn fake_service_emits_done_with_tool_use() {
     // Given a fake factory with tool calls.
     let tool_call = ToolCall {
-        id: "call_1".to_owned(),
+        id: "call_1".into(),
         name: "echo".to_owned(),
         arguments: r#"{"input":"hi"}"#.to_owned(),
     };
@@ -173,7 +173,7 @@ async fn fake_service_emits_done_with_tool_use() {
 async fn tool_loop_emits_text_token() {
     // Given a tool loop factory.
     let tool_call = ToolCall {
-        id: "call_1".to_owned(),
+        id: "call_1".into(),
         name: "echo".to_owned(),
         arguments: r#"{"input":"hi"}"#.to_owned(),
     };
@@ -204,7 +204,7 @@ async fn tool_loop_emits_text_token() {
 async fn tool_loop_emits_tool_use_start() {
     // Given a tool loop factory.
     let tool_call = ToolCall {
-        id: "call_1".to_owned(),
+        id: "call_1".into(),
         name: "echo".to_owned(),
         arguments: r#"{"input":"hi"}"#.to_owned(),
     };
@@ -238,7 +238,7 @@ async fn tool_loop_emits_tool_use_start() {
 async fn tool_loop_emits_tool_use_delta() {
     // Given a tool loop factory.
     let tool_call = ToolCall {
-        id: "call_1".to_owned(),
+        id: "call_1".into(),
         name: "echo".to_owned(),
         arguments: r#"{"input":"hi"}"#.to_owned(),
     };
@@ -272,7 +272,7 @@ async fn tool_loop_emits_tool_use_delta() {
 async fn tool_loop_emits_tool_use_complete() {
     // Given a tool loop factory.
     let tool_call = ToolCall {
-        id: "call_1".to_owned(),
+        id: "call_1".into(),
         name: "echo".to_owned(),
         arguments: r#"{"input":"hi"}"#.to_owned(),
     };
@@ -306,7 +306,7 @@ async fn tool_loop_emits_tool_use_complete() {
 async fn tool_loop_emits_done_with_tool_use() {
     // Given a tool loop factory.
     let tool_call = ToolCall {
-        id: "call_1".to_owned(),
+        id: "call_1".into(),
         name: "echo".to_owned(),
         arguments: r#"{"input":"hi"}"#.to_owned(),
     };
@@ -343,7 +343,7 @@ async fn tool_loop_emits_done_with_tool_use() {
 async fn tool_loop_second_call_returns_text_only() {
     // Given a tool loop factory.
     let tool_call = ToolCall {
-        id: "call_1".to_owned(),
+        id: "call_1".into(),
         name: "echo".to_owned(),
         arguments: r#"{"input":"hi"}"#.to_owned(),
     };
@@ -454,7 +454,7 @@ async fn non_trigger_does_not_enter_tool_loop() {
 async fn with_tool_calls_and_empty_tokens_yields_tool_events_only() {
     // Given a factory with tool calls but no text tokens.
     let tool_call = ToolCall {
-        id: "call_1".to_owned(),
+        id: "call_1".into(),
         name: "echo".to_owned(),
         arguments: r#"{"input":"hi"}"#.to_owned(),
     };
@@ -494,12 +494,12 @@ async fn with_tool_calls_and_empty_tokens_yields_tool_events_only() {
 async fn tool_loop_with_multiple_tool_calls_on_first_response() {
     // Given a tool loop factory with multiple tool calls.
     let tc1 = ToolCall {
-        id: "call_1".to_owned(),
+        id: "call_1".into(),
         name: "read_file".to_owned(),
         arguments: r#"{"path":"a.rs"}"#.to_owned(),
     };
     let tc2 = ToolCall {
-        id: "call_2".to_owned(),
+        id: "call_2".into(),
         name: "read_file".to_owned(),
         arguments: r#"{"path":"b.rs"}"#.to_owned(),
     };
@@ -605,7 +605,7 @@ async fn scripted_queue_tool_call_uses_tooluse_stop_reason() {
     factory.push_scripted_response(crate::fake::ScriptedResponse {
         tokens: vec![],
         tool_calls: vec![ToolCall {
-            id: "tc1".to_owned(),
+            id: "tc1".into(),
             name: "judgment_failed".to_owned(),
             arguments: r#"{"message":"bad"}"#.to_owned(),
         }],

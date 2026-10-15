@@ -166,7 +166,7 @@ impl StreamResponseParser {
                 state.started = true;
                 results.push(StreamEvent::ToolUseStart {
                     index,
-                    id: state.id.clone(),
+                    id: jinn_core_types::ToolCallId::from(state.id.clone()),
                     name: state.name.clone(),
                 });
             }
@@ -197,7 +197,7 @@ impl StreamResponseParser {
                 results.push(StreamEvent::ToolUseComplete {
                     index: idx,
                     tool_call: ToolCall {
-                        id: state.id,
+                        id: jinn_core_types::ToolCallId::from(state.id),
                         name: state.name,
                         arguments: state.arguments_buffer,
                     },
@@ -455,7 +455,7 @@ mod tests {
             events[0],
             StreamEvent::ToolUseStart {
                 index: 0,
-                id: "call_1".to_owned(),
+                id: "call_1".into(),
                 name: "get_weather".to_owned(),
             }
         );
