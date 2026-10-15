@@ -85,12 +85,12 @@ never committed; an existing one is this cycle's backlog):
 
 ```markdown
 ---
-id: NNN
-title: the issue in one line
-status: triage | open | contracting | dispatched | done | parent | closed
-parent: NNN            # absent on top-level issues
-blocked-by: NNN, NNN   # absent when nothing blocks
-assignee: <session-id> # absent when unassigned
+id = 1
+title = "the issue in one line"
+status = "triage"        # triage | open | contracting | dispatched | done | parent | closed
+# parent = 1            # parent issue id; absent on top-level issues
+# blocked-by = [2, 3]   # issue ids that must close first; absent when nothing blocks
+# assignee = "<session-id>"  # absent when unassigned
 ---
 
 # <title>

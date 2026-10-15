@@ -45,12 +45,12 @@ two to five words, kebab-case, from the issue's title. Frontmatter
 carries the state:
 
     ---
-    id: NNN
-    title: the issue in one line
-    status: triage | open | dispatched | done | parent | closed
-    parent: NNN            # absent on top-level issues
-    blocked-by: NNN, NNN   # absent when nothing blocks
-    assignee: <session-id> # absent when unassigned
+    id = 1
+    title = "the issue in one line"
+    status = "triage"        # triage | open | dispatched | done | parent | closed
+    # parent = 1            # parent issue id; absent on top-level issues
+    # blocked-by = [2, 3]   # issue ids that must close first; absent when nothing blocks
+    # assignee = "<session-id>"  # absent when unassigned
     ---
 
 Body: the goal, the approach when one is known, the verification to
