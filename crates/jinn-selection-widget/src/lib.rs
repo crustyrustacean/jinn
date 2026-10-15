@@ -40,6 +40,6 @@ pub use tree_item::TreeItem;
 pub use tree_state::{TreePickerState, VisibleEntry};
 pub use tree_widget::TreePickerWidget;
 pub use widget::{
-    PICKER_H_PAD_FRAC, PICKER_MAX_HEIGHT_FRAC, PICKER_MIN_WIDTH, SelectionColors, SelectionWidget,
-    compute_popup_rect,
+    PICKER_H_PAD_FRAC, PICKER_MAX_HEIGHT_FRAC, PICKER_MIN_WIDTH, PickerLayout, SelectionColors,
+    SelectionWidget, compute_popup_rect,
 };

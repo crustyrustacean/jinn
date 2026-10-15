@@ -12,6 +12,7 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
+use crate::PickerLayout;
 use crate::tree_item::TreeItem;
 use crate::tree_state::{TreePickerState, VisibleEntry};
 use crate::widget::SelectionColors;
@@ -162,7 +163,12 @@ where
     ///
     /// The caller owns the geometry: `area` is the popup rectangle the slice's
     /// overlay geometry function produced (see [`compute_popup_rect`]).
-    pub fn render(self, frame: &mut Frame<'_>, area: Rect) {
+    ///
+    /// Returns what the widget solved: `popup` is the rect handed in, `inner`
+    /// is the widget's `results_area` — below input + separator, above the
+    /// footer block, which this widget reserves at one row even when no
+    /// footer is set.
+    pub fn render(self, frame: &mut Frame<'_>, area: Rect) -> PickerLayout {
         let popup_area = area;
 
         // Clear the popup area so content behind it doesn't show through.
@@ -266,6 +272,11 @@ where
                     .right_aligned();
                 frame.render_widget(paragraph, *row_area);
             }
+        }
+
+        PickerLayout {
+            popup: popup_area,
+            inner: results_area,
         }
     }
 }
