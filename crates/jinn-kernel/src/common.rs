@@ -15,6 +15,7 @@ pub mod provider_resolution;
 pub mod render_ctx;
 pub mod request_dump;
 pub mod services;
+pub mod session_persistence;
 pub mod session_projection;
 pub mod slices;
 pub mod state;
