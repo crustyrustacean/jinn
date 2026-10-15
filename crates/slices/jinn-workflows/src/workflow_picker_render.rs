@@ -60,24 +60,40 @@ pub fn render_workflow_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderF
         return;
     };
 
-    // Measure the popup's result rows and publish them for the navigation
-    // keys, which need a real row count to keep the highlight on screen.
-    let measured = crate::workflow_picker_viewport::results_viewport(area);
-    cell.update(|state: &mut WorkflowPickerState| state.results_viewport = measured);
+    // The guard must end before the write-back below: `TypedCell` wraps a
+    // non-reentrant lock, so writing while the read guard is held would
+    // deadlock the render thread.
+    let layout = {
+        let guard = cell.read();
+        let state: &WorkflowPickerState = &guard;
+        workflow_picker_widget(state, &facts.theme).render(frame, area)
+    };
 
-    let guard = cell.read();
-    let state: &WorkflowPickerState = &guard;
+    // Publish what the widget actually solved, for the navigation keys,
+    // which need a real row count to keep the highlight on screen.
+    cell.update(|state: &mut WorkflowPickerState| {
+        state.results_viewport = usize::from(layout.inner.height);
+    });
+}
 
-    let theme = &facts.theme;
+/// Assembles the picker's widget: title, keybind footer, and palette, from
+/// the cell's state and the live theme.
+///
+/// Both the render pass and the render tests build through this helper, so
+/// a test's second construction is identical to what the frame drew.
+pub(crate) fn workflow_picker_widget<'a>(
+    state: &'a WorkflowPickerState,
+    theme: &jinn_theme::Theme,
+) -> jinn_selection_widget::SelectionWidget<
+    'a,
+    jinn_picker::PickerEntry<jinn_workflows_msg::WorkflowEntry>,
+> {
     let palette = workflow_picker_palette(theme);
     let binds = workflow_picker_binds();
     let keybind = jinn_picker::keybind_line(&binds, jinn_picker::Tail::Standard, &palette);
-
-    let widget = jinn_selection_widget::SelectionWidget::new(&state.selection)
+    jinn_selection_widget::SelectionWidget::new(&state.selection)
         .title(Line::from(" Workflows "))
         .title_style(Style::default().fg(theme.popup_title))
         .footers(vec![Line::from(keybind.0)])
-        .colors(palette.selection_colors());
-
-    widget.render(frame, area);
+        .colors(palette.selection_colors())
 }
