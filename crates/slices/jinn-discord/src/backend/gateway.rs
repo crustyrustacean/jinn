@@ -459,21 +459,46 @@ fn read_reply(data: &BotData, session_id: &SessionId) -> Option<FinalReply> {
     read_final_reply(projection.entries())
 }
 
+/// Why a thread could not be resolved from a jinn session id.
+///
+/// The lookup variant carries its rendered message: the map's error type
+/// is a unit struct whose only payload is its `Debug` text.
+#[derive(Debug, wherror::Error)]
+enum ThreadResolveError {
+    #[error("invalid thread id {thread_id}: {source}")]
+    InvalidThreadId {
+        thread_id: String,
+        #[source]
+        source: std::num::ParseIntError,
+    },
+    #[error("thread map lookup failed: {detail}")]
+    Lookup { detail: String },
+}
+
 /// Look up the Discord thread bound to a jinn session (reverse mapping).
+///
+/// # Errors
+///
+/// Returns an error when the mapping read fails or a stored thread id no
+/// longer parses as a Discord snowflake.
 async fn resolve_thread(
     data: &BotData,
     session_id: &SessionId,
-) -> Result<Option<serenity::ChannelId>, String> {
+) -> Result<Option<serenity::ChannelId>, Report<ThreadResolveError>> {
     match data.thread_map.get_thread_by_session(session_id).await {
-        Ok(Some(mapping)) => mapping
-            .thread_id
-            .as_str()
-            .parse::<u64>()
-            .map(serenity::ChannelId::new)
-            .map(Some)
-            .map_err(|e| format!("invalid thread id {}: {e}", mapping.thread_id)),
+        Ok(Some(mapping)) => mapping.thread_id.as_str().parse::<u64>().map_or_else(
+            |source| {
+                Err(Report::new(ThreadResolveError::InvalidThreadId {
+                    thread_id: mapping.thread_id.as_str().to_owned(),
+                    source,
+                }))
+            },
+            |id| Ok(Some(serenity::ChannelId::new(id))),
+        ),
         Ok(None) => Ok(None),
-        Err(e) => Err(format!("{e:?}")),
+        Err(e) => Err(Report::new(ThreadResolveError::Lookup {
+            detail: format!("{:?}", e.current_context()),
+        })),
     }
 }
 
