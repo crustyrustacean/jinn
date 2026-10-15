@@ -65,7 +65,6 @@ pub mod tool_paths;
 pub mod tool_picker_actions;
 pub mod tool_picker_render;
 pub mod tool_picker_routes;
-mod tool_picker_viewport;
 pub mod tool_types;
 pub(crate) mod visible_lines;
 pub mod write;
