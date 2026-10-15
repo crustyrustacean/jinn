@@ -10,9 +10,9 @@
 //! once, at activation. The chrome reads a registered hint instead of
 //! matching the string `"sidebar"` against a scope id.
 //!
-//! The four surfaces that overflow the column — the archive-tree prompt,
-//! the close-session prompt, the session preview, and the task-list
-//! preview — register separately, against
+//! The five surfaces that overflow the column — the archive-tree prompt,
+//! the close-session prompt, the session-ID yank banner, the session
+//! preview, and the task-list preview — register separately, against
 //! [`jinn_slices::Region::FloatingSurfaces`]. They reach left across the
 //! chat column, and the render pass draws the chat column *after* the
 //! sidebar, so painting them from the column's own draw call would put
@@ -239,7 +239,7 @@ pub fn column_draw_fn() -> jinn_slices::DrawFn<AppState> {
 /// after the columns it covers rather than under them. Each surface decides
 /// for itself whether it has anything to draw — a banner with no prompt
 /// pending and a preview with no cache entry both paint nothing — so the
-/// sequence below is unconditional and costs four cheap checks a frame.
+/// sequence below is unconditional and costs five cheap checks a frame.
 ///
 /// The order is the stacking order, bottom first: a banner is a narrower
 /// strip that a preview, sitting under the user's cursor, may cover, and
@@ -278,6 +278,12 @@ pub fn draw_floating_surfaces(
         ctx,
     );
     crate::sections::sessions::render_close_session_prompt_for_state(
+        frame,
+        sidebar_rect,
+        frame_area,
+        ctx,
+    );
+    crate::sections::sessions::render_session_id_yank_popup_for_state(
         frame,
         sidebar_rect,
         frame_area,

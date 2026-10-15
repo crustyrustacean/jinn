@@ -357,6 +357,48 @@ pub fn render_archive_tree_prompt_for_state(
     render_right_aligned_banner(frame, frame_area, prompt_y, &text, bg);
 }
 
+/// Renders the "Session ID yanked" confirmation banner as a floating surface.
+///
+/// Painted in the sidebar's floating-surface layer (`Region::FloatingSurfaces`),
+/// after every base column, so the banner may extend left over the input box.
+/// Anchored 1 row above the sidebar cursor row and right-aligned to the
+/// frame's right edge — the same geometry as the close-session prompt. The
+/// background is the theme's success color, so the banner reads as a healthy
+/// confirmation in whatever theme is in force; the fg stays the black every
+/// banner uses against a saturated bg.
+pub fn render_session_id_yank_popup_for_state(
+    frame: &mut Frame<'_>,
+    sidebar_rect: Rect,
+    frame_area: Rect,
+    ctx: &dyn DrawContext<AppState>,
+) {
+    let state = ctx.state();
+    if !state.frontend.session_id_yank_popup
+        || !state.frontend.is_sidebar()
+        || state.frontend.sidebar_section() != Some(jinn_sidebar_msg::SidebarSectionId::Sessions)
+    {
+        return;
+    }
+    if state
+        .frontend
+        .with_sections(|s| s.sessions.selected_id.is_none(), || true)
+    {
+        return;
+    }
+
+    // Shared cursor-row math: see `render_sessions_cursor_y`.
+    let prompt_y =
+        render_sessions_cursor_y(sidebar_rect, state, ctx.config()).saturating_sub(BANNER_GAP);
+    let text = " Session ID yanked ";
+    render_right_aligned_banner(
+        frame,
+        frame_area,
+        prompt_y,
+        text,
+        state.frontend.theme.success,
+    );
+}
+
 /// Computes the sidebar sessions cursor row inside the sidebar rect.
 ///
 /// Runs the same document layout the `Sidebar` container uses, so the banner
