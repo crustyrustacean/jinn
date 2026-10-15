@@ -221,13 +221,20 @@ pub fn bind_route_rows(
     keymap: &mut Keymap<KeyEvent, Scope, KernelIntent, KeyCategory>,
 ) {
     let rows = routes.rows();
-    let input_hooks = routes.input_hook_scopes();
-    let key_hooks = routes.key_hook_scopes();
     derive_groups_from_rows(&rows, keymap);
-    // Row scopes that host other slices' global toggles: every registered
-    // scope (rows + input hooks) except the row's own, where its OwnScope
-    // rows must win. Key-hook scopes are excluded: nothing from the row
-    // spread may land there (capture hermeticity).
+    let tabs = collect_tab_scopes(&rows, routes);
+    bind_static_intent_rows(routes, &rows, &tabs, keymap);
+    bind_action_rows(routes, &rows, &tabs, keymap);
+    bind_input_hook_scopes(routes, keymap);
+    bind_key_hook_scopes(routes, keymap);
+}
+
+/// Row scopes that host other slices' global toggles: every registered
+/// scope (rows + input hooks) except the row's own, where its OwnScope
+/// rows must win. Key-hook scopes are excluded: nothing from the row
+/// spread may land there (capture hermeticity).
+fn collect_tab_scopes(rows: &[RouteRow], routes: &KeyRoutes) -> Vec<SliceScopeId> {
+    let input_hooks = routes.input_hook_scopes();
     let mut tabs: Vec<SliceScopeId> = rows.iter().map(|r| r.scope.clone()).collect();
     for hook in &input_hooks {
         if !tabs.contains(hook) {
@@ -235,48 +242,85 @@ pub fn bind_route_rows(
         }
     }
     tabs.dedup();
-    for row in &rows {
+    tabs
+}
+
+/// Binds every row whose outcome is a shared-chrome static intent.
+///
+/// A row missing from the composition `static_intent` table logs a warning
+/// and leaves its key unbound — a wiring bug, not a build error.
+fn bind_static_intent_rows(
+    routes: &KeyRoutes,
+    rows: &[RouteRow],
+    tabs: &[SliceScopeId],
+    keymap: &mut Keymap<KeyEvent, Scope, KernelIntent, KeyCategory>,
+) {
+    let input_hooks = routes.input_hook_scopes();
+    let key_hooks = routes.key_hook_scopes();
+    for row in rows {
+        let RouteOutcome::StaticIntent(_) = &row.outcome else {
+            continue;
+        };
         let category = category(row.category);
-        let scopes = scopes_for_row(routes, row, &tabs, &input_hooks, &key_hooks);
-        match &row.outcome {
-            RouteOutcome::StaticIntent(_) => {
-                let Some(intent) = static_intent(row.route_id.as_str()) else {
-                    tracing::warn!(
-                        route = row.route_id.as_str(),
-                        "static route row has no composition intent mapping; key unbound"
-                    );
-                    continue;
-                };
-                for scope in scopes {
-                    keymap.bind(row.key, intent.clone(), category, scope);
-                }
-            }
-            RouteOutcome::Action {
-                action, display, ..
-            } => {
-                let intent = KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
-                    row.scope.clone(),
-                    action,
-                    display,
-                ));
-                for scope in scopes {
-                    keymap.bind(row.key, intent.clone(), category, scope);
-                }
-            }
+        let scopes = scopes_for_row(routes, row, tabs, &input_hooks, &key_hooks);
+        let Some(intent) = static_intent(row.route_id.as_str()) else {
+            tracing::warn!(
+                route = row.route_id.as_str(),
+                "static route row has no composition intent mapping; key unbound"
+            );
+            continue;
+        };
+        for scope in scopes {
+            keymap.bind(row.key, intent.clone(), category, scope);
         }
     }
-    // Typing carve-out: a slice with a registered *input* hook captures
-    // printable keystrokes in its own scope. The keymap synthesizes a
-    // dynamic intent per editing key — the char catch-all for printable
-    // keys, plus explicit binds for the six non-char editing keys
-    // (Backspace used to fall into the catch-all, resolve to nothing, and
-    // die in the which-key popup). The intent handler's hook consult (not
-    // a god-match arm) routes them to the slice's sync writer via
-    // `as_edit_intent`, which still speaks the `EditIntent` vocabulary —
-    // the kernel's own `InsertChar`/`DeleteGrapheme` variants are gone
-    // with the chat input box. Key-hook scopes are excluded: their
-    // catch-all encodes keys for the slice's own consumer.
-    for hook in input_hooks {
+}
+
+/// Binds every row whose outcome is a slice-owned action.
+fn bind_action_rows(
+    routes: &KeyRoutes,
+    rows: &[RouteRow],
+    tabs: &[SliceScopeId],
+    keymap: &mut Keymap<KeyEvent, Scope, KernelIntent, KeyCategory>,
+) {
+    let input_hooks = routes.input_hook_scopes();
+    let key_hooks = routes.key_hook_scopes();
+    for row in rows {
+        let RouteOutcome::Action {
+            action, display, ..
+        } = &row.outcome
+        else {
+            continue;
+        };
+        let category = category(row.category);
+        let scopes = scopes_for_row(routes, row, tabs, &input_hooks, &key_hooks);
+        let intent = KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
+            row.scope.clone(),
+            action,
+            display,
+        ));
+        for scope in scopes {
+            keymap.bind(row.key, intent.clone(), category, scope);
+        }
+    }
+}
+
+/// Typing carve-out: a slice with a registered *input* hook captures
+/// printable keystrokes in its own scope. The keymap synthesizes a
+/// dynamic intent per editing key — the char catch-all for printable
+/// keys, plus explicit binds for the six non-char editing keys
+/// (Backspace used to fall into the catch-all, resolve to nothing, and
+/// die in the which-key popup). The intent handler's hook consult (not
+/// a god-match arm) routes them to the slice's sync writer via
+/// `as_edit_intent`, which still speaks the `EditIntent` vocabulary —
+/// the kernel's own `InsertChar`/`DeleteGrapheme` variants are gone
+/// with the chat input box. Key-hook scopes are excluded: their
+/// catch-all encodes keys for the slice's own consumer.
+fn bind_input_hook_scopes(
+    routes: &KeyRoutes,
+    keymap: &mut Keymap<KeyEvent, Scope, KernelIntent, KeyCategory>,
+) {
+    for hook in routes.input_hook_scopes() {
         let scope = hook.clone();
         let char_scope = scope.clone();
         keymap.scope(Scope::Dynamic(hook.clone()), move |b| {
@@ -325,12 +369,18 @@ pub fn bind_route_rows(
             });
         });
     }
-    // Key-hook catch-alls: a slice key hook captures *every* unbound key
-    // in its scope (terminal capture mode forwards them to the pty).
-    // Bindings beat catch-alls, so rows bound in the scope (the toggle
-    // handback) keep priority; there is no global or chrome spread into
-    // key-hook scopes, so the hook is the only exit — capture hermetic.
-    for hook in key_hooks {
+}
+
+/// Key-hook catch-alls: a slice key hook captures *every* unbound key
+/// in its scope (terminal capture mode forwards them to the pty).
+/// Bindings beat catch-alls, so rows bound in the scope (the toggle
+/// handback) keep priority; there is no global or chrome spread into
+/// key-hook scopes, so the hook is the only exit — capture hermetic.
+fn bind_key_hook_scopes(
+    routes: &KeyRoutes,
+    keymap: &mut Keymap<KeyEvent, Scope, KernelIntent, KeyCategory>,
+) {
+    for hook in routes.key_hook_scopes() {
         let Some(hook_fn) = routes.key_hook(&hook) else {
             continue;
         };

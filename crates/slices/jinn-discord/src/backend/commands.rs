@@ -12,7 +12,6 @@ use std::time::Duration;
 
 use crate::authorize;
 use jinn_context::PromptTemplateStore;
-use jinn_core_types::SessionId;
 use jinn_kernel::Bridge;
 use jinn_session_store_msg::ArchiveSession;
 use poise::serenity_prelude as serenity;
