@@ -83,6 +83,19 @@ pub(crate) fn fuzzy_bytes_to_ranges(indices: &[usize]) -> Vec<std::ops::Range<us
     ranges
 }
 
+/// What a picker widget actually solved for one render pass.
+#[derive(Debug, Clone, Copy)]
+pub struct PickerLayout {
+    /// The full popup rect the widget drew into, borders included —
+    /// the anchor for any ad-hoc drawing around the picker (e.g.
+    /// icons on the border, a future feature).
+    pub popup: Rect,
+    /// The rect the result rows rendered into: inside the borders,
+    /// below the input + separator chrome, above the footer block.
+    /// `.height` is the true visible row count.
+    pub inner: Rect,
+}
+
 /// Computes the popup rectangle for the selection widget, centered within `area`.
 ///
 /// Uses ~20% total horizontal padding (10% each side) and centers the popup on
@@ -204,7 +217,11 @@ where
     /// draws the bordered block, filter input, separator, scrollable result
     /// rows, and optional footer into it, and sets the cursor position for the
     /// filter input.
-    pub fn render(self, frame: &mut Frame<'_>, area: Rect) {
+    ///
+    /// Returns what the widget solved: `popup` is the rect handed in, `inner`
+    /// is the results area — inside the borders, below the input +
+    /// separator chrome, above the footer block.
+    pub fn render(self, frame: &mut Frame<'_>, area: Rect) -> PickerLayout {
         let popup_area = area;
 
         // Clear the popup area so content behind it doesn't show through.
@@ -276,6 +293,11 @@ where
 
         // Footers: each line right-aligned in its own row, top to bottom.
         render_footers(frame, footer_block, &self.footers, self.colors.footer);
+
+        PickerLayout {
+            popup: popup_area,
+            inner: results_area,
+        }
     }
 }
 

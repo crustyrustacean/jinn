@@ -208,11 +208,16 @@ impl Wired {
 
     /// Draws one frame of the inspector and returns the buffer's symbols.
     fn draw(&self) -> String {
+        self.draw_at(ratatui::layout::Rect::new(0, 0, 120, 34))
+    }
+
+    /// Draws one frame of the inspector at `area` and returns the buffer's
+    /// symbols.
+    fn draw_at(&self, area: ratatui::layout::Rect) -> String {
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
 
         let facts = jinn_slices::RenderFacts::new(jinn_theme::default_theme(), &self.slices);
-        let area = ratatui::layout::Rect::new(0, 0, 120, 34);
         let mut terminal = Terminal::new(TestBackend::new(area.width, area.height))
             .expect("a test terminal allocates");
         terminal
@@ -229,6 +234,56 @@ impl Wired {
             .iter()
             .map(ratatui::buffer::Cell::symbol)
             .collect()
+    }
+
+    /// Builds the preview widget exactly as the render fn does — same state,
+    /// same footers, same colors — renders it into a fresh test terminal at
+    /// `popup`, and returns the `PickerLayout` it reports. The expectation
+    /// side of the measured-equals-cell assertions: what the widget itself
+    /// solves, never hand arithmetic.
+    fn preview_layout_for(
+        &self,
+        popup: ratatui::layout::Rect,
+    ) -> jinn_selection_widget::PickerLayout {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let theme = jinn_theme::default_theme();
+        let report = std::cell::Cell::new(None);
+        let mut terminal = Terminal::new(TestBackend::new(popup.width, popup.height))
+            .expect("a test terminal allocates");
+        let cell = self.cell();
+        let guard = cell.read();
+        let palette = crate::mcp_picker_render::mcp_picker_palette(&theme);
+        let keybind = {
+            let binds = crate::mcp_picker_render::mcp_picker_binds();
+            jinn_picker::keybind_line(&binds, jinn_picker::Tail::Standard, &palette)
+        };
+        let enabled = {
+            let state = &guard;
+            crate::mcp_picker_actions::enabled_count(state)
+        };
+        let total = guard.selection.items().len();
+        let footers = vec![
+            crate::mcp_picker_render::mcp_picker_status(enabled, total, &theme),
+            ratatui::text::Line::from(keybind.0),
+        ];
+        terminal
+            .draw(|frame| {
+                let layout = {
+                    let state = &guard;
+                    jinn_selection_widget::PreviewSelectionWidget::new(&state.selection)
+                        .title(ratatui::text::Line::from(" MCP Servers "))
+                        .title_style(ratatui::style::Style::default().fg(theme.popup_title))
+                        .footers(footers)
+                        .colors(palette.selection_colors())
+                        .preview_scroll(state.preview_scroll)
+                        .render(frame, popup)
+                };
+                report.set(Some(layout));
+            })
+            .expect("the inspector renders one frame");
+        report.into_inner().expect("render reports a PickerLayout")
     }
 }
 
@@ -657,38 +712,58 @@ async fn typing_a_character_filters_the_inspector() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn the_measured_viewport_is_the_popup_height_minus_chrome() {
-    // Given a full-screen area.
+async fn a_narrow_frame_publishes_the_stacked_viewport_into_the_cell() {
+    // Given an activated inspector and a frame whose popup is too narrow to
+    // split (100-wide frame → 80-wide popup, below the split threshold).
+    let wired = Wired::new().await;
+    let wired = wired.with_servers(&[("a", true), ("b", false)]);
     let area = ratatui::layout::Rect::new(0, 0, 100, 40);
 
-    // When measuring the result rows.
-    let rows = crate::mcp_picker_viewport::results_viewport(
-        &crate::mcp_picker_render::mcp_picker_overlay_rect(&area)
-            .expect("geometry fn yields a popup rect"),
-    );
+    // When drawing a frame, then building the expectation the way the widget
+    // itself solves the same frame — same construction as the render fn,
+    // rendered into a fresh terminal at the same popup rect.
+    let _ = wired.draw_at(area);
+    let popup = crate::mcp_picker_render::mcp_picker_overlay_rect(&area)
+        .expect("geometry fn yields a popup rect");
+    let expected = wired.preview_layout_for(popup);
 
-    // Then it is a real measurement, well clear of the unmeasured fallback.
-    assert!(
-        rows > 20,
-        "measured {rows} should exceed the 20-row fallback"
+    // Then the cell holds the widget's report for this frame: the stacked
+    // list's fixed row count, exactly as the widget's own constant spells it.
+    let measured = wired.cell().read().results_viewport;
+    assert_eq!(measured, usize::from(expected.inner.height));
+    assert_eq!(
+        expected.inner.height,
+        jinn_selection_widget::HORIZONTAL_LIST_ROWS,
+        "a narrow frame must carry the stacked list's height, which the \
+         widget itself reports"
     );
-    assert_ne!(rows, 20);
 }
 
 #[rstest::rstest]
 #[tokio::test]
-async fn a_tiny_popup_still_measures_at_least_one_row() {
-    // Given a viewport too short for any chrome.
+async fn a_degenerate_popup_publishes_the_widget_report_unclamped() {
+    // Given an activated inspector whose cell holds a sentinel viewport, and
+    // a popup too short for any chrome.
+    let wired = Wired::new().await;
+    let wired = wired.with_servers(&[("a", true)]);
     let area = ratatui::layout::Rect::new(0, 0, 20, 1);
+    wired
+        .cell()
+        .update(|state: &mut McpPickerState| state.results_viewport = 99);
+    let popup = crate::mcp_picker_render::mcp_picker_overlay_rect(&area)
+        .expect("geometry fn yields a popup rect");
 
-    // When measuring.
-    let rows = crate::mcp_picker_viewport::results_viewport(
-        &crate::mcp_picker_render::mcp_picker_overlay_rect(&area)
-            .expect("geometry fn yields a popup rect"),
-    );
+    // When drawing a frame at that popup, then building the expectation the
+    // way the widget itself solves the same frame.
+    let _ = wired.draw_at(area);
+    let expected = wired.preview_layout_for(popup);
 
-    // Then it never collapses to zero, which would freeze the highlight.
-    assert!(rows >= 1);
+    // Then the cell was overwritten with the widget's honest report — zero
+    // rows, not a clamped 1 and not the sentinel. Navigation windows against
+    // zero safely, so the clamp the old arithmetic needed is gone.
+    let measured = wired.cell().read().results_viewport;
+    assert_eq!(measured, usize::from(expected.inner.height));
+    assert_eq!(measured, 0);
 }
 
 #[rstest::rstest]
@@ -699,19 +774,47 @@ async fn a_render_publishes_the_measured_viewport_into_the_cell() {
     let wired = wired.with_servers(&[("a", true), ("b", false)]);
     let area = ratatui::layout::Rect::new(0, 0, 120, 34);
 
-    // When drawing a frame.
+    // When drawing a frame, then building the expectation the way the widget
+    // itself solves the same frame — same construction as the render fn,
+    // rendered into a fresh terminal at the same popup rect.
     let _ = wired.draw();
+    let popup = crate::mcp_picker_render::mcp_picker_overlay_rect(&area)
+        .expect("geometry fn yields a popup rect");
+    let expected = wired.preview_layout_for(popup);
 
-    // Then the cell holds the measurement, not the unmeasured fallback.
+    // Then the cell holds the widget's own report for this frame, not the
+    // unmeasured fallback of zero.
     let measured = wired.cell().read().results_viewport;
-    assert_eq!(
+    assert_eq!(measured, usize::from(expected.inner.height));
+    assert_ne!(measured, 0);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_wide_render_publishes_the_side_by_side_viewport_into_the_cell() {
+    // Given an activated inspector and a frame wide enough that the widget
+    // splits the list and preview side by side (popup width ≥ 101).
+    let wired = Wired::new().await;
+    let wired = wired.with_servers(&[("a", true), ("b", false)]);
+    let area = ratatui::layout::Rect::new(0, 0, 200, 50);
+
+    // When drawing a frame, then building the expectation the way the widget
+    // itself solves the same frame — same construction as the render fn,
+    // rendered into a fresh terminal at the same popup rect.
+    let _ = wired.draw_at(area);
+    let popup = crate::mcp_picker_render::mcp_picker_overlay_rect(&area)
+        .expect("geometry fn yields a popup rect");
+    let expected = wired.preview_layout_for(popup);
+
+    // Then the cell holds the widget's own report for this frame: the list
+    // pane's full height, not a fixed stacked-list row count.
+    let measured = wired.cell().read().results_viewport;
+    assert_eq!(measured, usize::from(expected.inner.height));
+    assert_ne!(
         measured,
-        crate::mcp_picker_viewport::results_viewport(
-            &crate::mcp_picker_render::mcp_picker_overlay_rect(&area)
-                .expect("geometry fn yields a popup rect"),
-        )
+        jinn_selection_widget::HORIZONTAL_LIST_ROWS as usize,
+        "a side-by-side frame must not carry the stacked list's fixed height"
     );
-    assert_ne!(measured, 20);
 }
 
 #[rstest::rstest]

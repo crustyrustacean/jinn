@@ -231,6 +231,56 @@ impl Wired {
     fn draw(&self) -> Vec<String> {
         draw_frame(self, ratatui::layout::Rect::new(0, 0, 120, 34))
     }
+
+    /// Draws one frame at `area` and returns the layout the widget solved.
+    ///
+    /// Mirrors the render pass (footers built from the live cells, the widget
+    /// rendered over the geometry fn's popup) with the widget's own report as
+    /// the return value, so the expected viewport in a renderer-level
+    /// assertion comes from the widget rather than recomputed arithmetic.
+    fn draw_returning_layout(
+        &self,
+        area: ratatui::layout::Rect,
+    ) -> jinn_selection_widget::PickerLayout {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let popup = crate::endpoint_picker_render::endpoint_picker_overlay_rect(&area)
+            .expect("geometry fn yields a popup rect");
+        let theme = self.state.borrow().frontend.theme.clone();
+        let palette = crate::endpoint_picker_render::endpoint_picker_palette(&theme);
+        let keybind = jinn_picker::keybind_line(
+            &crate::endpoint_picker_render::endpoint_picker_binds(),
+            jinn_picker::Tail::Standard,
+            &palette,
+        );
+        // The guard is held across the draw: the helper never writes the cell,
+        // so a write-while-read deadlock is impossible here.
+        let cell = self.cell();
+        let guard = cell.read();
+        let footers = vec![
+            crate::endpoint_picker_render::endpoint_status(&guard, &theme, false, None),
+            ratatui::text::Line::from(keybind.0),
+        ];
+        let preview_scroll = guard.preview_scroll;
+        let mut terminal = Terminal::new(TestBackend::new(area.width, area.height))
+            .expect("a test terminal allocates");
+        let mut layout = None;
+        terminal
+            .draw(|frame| {
+                layout = Some(
+                    jinn_selection_widget::PreviewSelectionWidget::new(&guard.selection)
+                        .title(ratatui::text::Line::from(" OpenRouter Endpoint "))
+                        .title_style(ratatui::style::Style::default().fg(theme.popup_title))
+                        .footers(footers)
+                        .colors(palette.selection_colors())
+                        .preview_scroll(preview_scroll)
+                        .render(frame, popup),
+                );
+            })
+            .expect("the draw closure must not panic");
+        layout.unwrap_or_else(|| panic!("the widget render ran and reported its layout"))
+    }
 }
 
 /// Draws one frame of the picker's popup into a fresh test terminal and
@@ -611,15 +661,81 @@ async fn the_render_pass_publishes_the_measured_viewport() {
     wired.open();
     wired.with_entries(sample_entries());
 
-    // When drawing a frame.
-    let _ = wired.draw();
+    // When drawing a frame at the default size.
+    draw_frame(&wired, ratatui::layout::Rect::new(0, 0, 120, 34));
 
-    // Then the cell carries the measured row count, so the navigation keys
-    // page by a real window rather than a hardcoded constant.
+    // Then the cell carries a non-zero measured row count, so the navigation
+    // keys page by a real window rather than a hardcoded constant.
     let viewport = wired.cell().read().results_viewport;
     assert!(
         viewport > 0,
         "the render pass must publish a non-zero viewport, got {viewport}"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn the_published_viewport_is_the_widget_reported_row_count() {
+    // Given the picker open with rows.
+    let wired = Wired::new().await;
+    wired.set_single_model();
+    wired.open();
+    wired.with_entries(sample_entries());
+
+    // When drawing a frame whose popup is narrower than the widget's split
+    // threshold, and asking the identical widget construction what layout it
+    // solved. The widget's split decision is on the *popup* width (80% of
+    // the frame), so the standard 120-wide test frame produces the stacked
+    // layout.
+    let narrow = ratatui::layout::Rect::new(0, 0, 120, 34);
+    let narrow_layout = wired.draw_returning_layout(narrow);
+    draw_frame(&wired, narrow);
+
+    // Then the cell carries the widget's reported result-row height — the
+    // stacked list's fixed row count.
+    let measured = wired.cell().read().results_viewport;
+    assert_eq!(measured, usize::from(narrow_layout.inner.height));
+    assert_eq!(
+        measured,
+        jinn_selection_widget::HORIZONTAL_LIST_ROWS as usize
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_wide_frame_publishes_the_side_by_side_row_count() {
+    // Given the picker open with rows.
+    let wired = Wired::new().await;
+    wired.set_single_model();
+    wired.open();
+    wired.with_entries(sample_entries());
+
+    // When drawing a frame wide enough that the widget splits the list and
+    // preview side by side, and asking the identical construction what it
+    // solved. The split decision is on the popup width, so the frame must be
+    // wide enough for the popup itself to cross the threshold.
+    let wide = ratatui::layout::Rect::new(0, 0, 130, 40);
+    let wide_layout = wired.draw_returning_layout(wide);
+    draw_frame(&wired, wide);
+
+    // Then the cell carries the side-by-side list pane's result-row height.
+    let measured = wired.cell().read().results_viewport;
+    assert_eq!(measured, usize::from(wide_layout.inner.height));
+}
+
+#[rstest::rstest]
+#[test]
+fn the_unmeasured_viewport_matches_the_msg_fallback() {
+    // Given a picker cell that has not rendered a frame yet.
+    let state = EndpointPickerState::default();
+
+    // When reading its viewport.
+    let viewport = state.results_viewport;
+
+    // Then it is the msg crate's documented pre-render fallback.
+    assert_eq!(
+        viewport,
+        jinn_provider_selection_msg::endpoint::RESULTS_VIEWPORT_FALLBACK
     );
 }
 
@@ -928,4 +1044,51 @@ async fn endpoint_picker_scrolls_the_detail_pane() {
 
     // Then it stops at the top rather than wrapping or underflowing.
     assert_eq!(wired.cell().read().preview_scroll, 0);
+}
+
+/// A draw clamps a stale oversized scroll to the pane's measured bound.
+#[rstest::rstest]
+#[tokio::test]
+async fn a_draw_clamps_an_oversized_preview_scroll_to_the_measured_bound() {
+    // Given a picker whose stored scroll is far past any real content.
+    let wired = Wired::new().await;
+    wired.with_entries(vec![entry("anthropic/claude-sonnet-4", "Anthropic", true)]);
+    wired.cell().update(|picker| picker.preview_scroll = 5000);
+
+    // When a frame is drawn through the real render fn.
+    wired.draw();
+
+    // Then the stored offset equals the measured bound, and the test is live
+    // because that bound is well under the oversized value.
+    let cell = wired.cell();
+    let guard = cell.read();
+    assert_eq!(guard.preview_scroll, guard.preview_max_scroll);
+    assert!(
+        guard.preview_max_scroll < 5000,
+        "the bound must be the measured one, not the oversized value: {}",
+        guard.preview_max_scroll
+    );
+}
+
+/// Holding the scroll-down key saturates at the bound instead of walking past it.
+#[rstest::rstest]
+#[tokio::test]
+async fn held_detail_scrolling_converges_at_the_measured_bound() {
+    // Given a picker whose bound has been measured by one drawn frame.
+    let wired = Wired::new().await;
+    wired.with_entries(vec![entry("anthropic/claude-sonnet-4", "Anthropic", true)]);
+    wired.draw();
+
+    // When the down key fires repeatedly past the bound.
+    for _ in 0..50 {
+        wired.fire("endpoint-preview-down");
+    }
+
+    // Then two more fires change nothing: the value has converged at the bound.
+    wired.fire("endpoint-preview-down");
+    let settled = wired.cell().read().preview_scroll;
+    wired.fire("endpoint-preview-down");
+    assert_eq!(wired.cell().read().preview_scroll, settled);
+    // And the settled value is the measured bound itself.
+    assert_eq!(settled, wired.cell().read().preview_max_scroll);
 }

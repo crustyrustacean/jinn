@@ -45,6 +45,11 @@ pub struct EndpointPickerState {
     /// How far the detail pane is scrolled. Separate from the list scroll:
     /// `PageUp`/`PageDown` page the list, `Ctrl+U`/`Ctrl+D` scroll the pane.
     pub preview_scroll: usize,
+    /// The render-pass-written clamp bound for `preview_scroll`: the largest
+    /// offset the detail pane's last frame could still show content at (the
+    /// widget report's `max_scroll()`). `usize::MAX` until the first frame
+    /// measures it, so scrolls before any render behave as if unbounded.
+    pub preview_max_scroll: usize,
 }
 
 impl Default for EndpointPickerState {
@@ -56,6 +61,9 @@ impl Default for EndpointPickerState {
             results_viewport: RESULTS_VIEWPORT_FALLBACK,
             theme: jinn_theme::default_theme(),
             preview_scroll: 0,
+            // No frame has measured the pane yet, so nothing clamps: the
+            // first render replaces this with the report's bound.
+            preview_max_scroll: usize::MAX,
         }
     }
 }

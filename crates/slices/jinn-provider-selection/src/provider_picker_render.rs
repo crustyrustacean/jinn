@@ -95,6 +95,11 @@ pub fn provider_status(
 }
 
 /// Draws the model picker popup for one frame.
+///
+/// The popup's result-row count is not measured here — the widget solves the
+/// layout and reports it (see `jinn_selection_widget::PickerLayout`); this
+/// writes the reported `inner.height` into the cell so the navigation keys
+/// page by what the last frame actually laid out.
 pub fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFacts) {
     let Some(cell) = facts
         .slices
@@ -102,14 +107,6 @@ pub fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderF
     else {
         return;
     };
-
-    // Publish the measured row count for the navigation keys. This is the
-    // slice-owned equivalent of the kernel's per-frame viewport write.
-    let measured = crate::provider_picker_viewport::results_viewport(&area);
-    cell.update(|state: &mut ProviderPickerState| state.results_viewport = measured);
-
-    let guard = cell.read();
-    let state: &ProviderPickerState = &guard;
 
     let theme = &facts.theme;
     let palette = provider_picker_palette(theme);
@@ -135,16 +132,30 @@ pub fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderF
         )
     });
 
-    let selected_count = crate::provider_picker_actions::selected_count(state);
-    let footers = vec![
-        provider_status(selected_count, alloy_mode, cache_age, theme),
-        Line::from(keybind.0),
-    ];
+    let footers = {
+        let guard = cell.read();
+        let state: &ProviderPickerState = &guard;
+        let selected_count = crate::provider_picker_actions::selected_count(state);
+        vec![
+            provider_status(selected_count, alloy_mode, cache_age, theme),
+            Line::from(keybind.0),
+        ]
+    };
 
-    jinn_selection_widget::SelectionWidget::new(&state.selection)
-        .title(Line::from(" Model "))
-        .title_style(Style::default().fg(theme.popup_title))
-        .footers(footers)
-        .colors(palette.selection_colors())
-        .render(frame, area);
+    // The widget solves the layout and reports it; the guard ends before the
+    // cell write because `TypedCell` is a plain RwLock and a same-thread
+    // write-while-read would deadlock. The layout is `Copy`, so it outlives
+    // the guard cleanly.
+    let layout = {
+        let guard = cell.read();
+        jinn_selection_widget::SelectionWidget::new(&guard.selection)
+            .title(Line::from(" Model "))
+            .title_style(Style::default().fg(theme.popup_title))
+            .footers(footers)
+            .colors(palette.selection_colors())
+            .render(frame, area)
+    };
+    cell.update(|state: &mut ProviderPickerState| {
+        state.results_viewport = usize::from(layout.inner.height);
+    });
 }

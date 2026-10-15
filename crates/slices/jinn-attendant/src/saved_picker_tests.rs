@@ -1062,3 +1062,59 @@ fn the_footer_calls_enter_an_attach() {
         .expect("enter is bound");
     assert_eq!(enter, "attach");
 }
+
+/// Draws one frame of the saved-attendants picker through the real render
+/// fn into a fresh test terminal, over `fx`'s cell.
+fn draw_saved_picker_frame(fx: &PickerFixture, area: ratatui::layout::Rect) {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let facts = jinn_slices::RenderFacts::new(jinn_theme::default_theme(), &fx.slices);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
+    terminal
+        .draw(|frame| {
+            let popup = crate::saved_picker_render::saved_picker_overlay_rect(&area)
+                .expect("geometry fn yields a popup rect");
+            crate::saved_picker_render::render_saved_picker(frame, popup, &facts);
+        })
+        .expect("draw");
+}
+
+#[rstest::rstest]
+#[test]
+fn rendering_writes_the_widget_solved_row_count_to_the_cell() {
+    // Given an open picker over two saved attendants, at a known frame size.
+    let mut fx = PickerFixture::new(&[configured_entry("nightly"), configured_entry("watcher")]);
+    fx.open();
+    let area = ratatui::layout::Rect::new(0, 0, 100, 30);
+    let popup = crate::saved_picker_render::saved_picker_overlay_rect(&area)
+        .expect("geometry fn yields a popup rect");
+
+    // When a frame is drawn, and an identical widget construction renders
+    // into a second terminal to learn what it solved.
+    let expected = {
+        let guard = fx.cell.read();
+        let widget =
+            crate::saved_picker_render::saved_picker_widget(&guard, &jinn_theme::default_theme());
+        let (mut terminal, _) = jinn_testutil::setup_term(area.width, area.height);
+        let report = std::cell::Cell::new(None);
+        terminal
+            .draw(|frame| {
+                report.set(Some(widget.render(frame, popup)));
+            })
+            .expect("draw");
+        report
+            .into_inner()
+            .expect("render reports a PickerLayout")
+            .inner
+            .height as usize
+    };
+    draw_saved_picker_frame(&fx, area);
+
+    // Then the cell holds what the widget solved, not a mirrored estimate.
+    assert_eq!(
+        fx.cell.read().results_viewport,
+        expected,
+        "the cell must hold the PickerLayout the frame's widget returned"
+    );
+}

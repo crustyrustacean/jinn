@@ -76,9 +76,11 @@ Entries are added or amended **only with human approval**.
 - (slices) Render slices live in per-slice typed cells behind the `Slices` facade; the owning actor, renderer, and intent router share typed handles to the registered cell.
 - (pickers) Each picker is owned by the slice that owns its domain; the picker's state lives in a slice cell, not in AppState.
 - (pickers) Picker scopes are dynamic slice scopes, so the kernel holds no per-picker scope variant, picker kind, spec, or registry.
-- (pickers) A picker measures its own results viewport in its render pass and publishes it into its cell; the kernel measures nothing.
+- (pickers) A picker measures its own results viewport in its render pass and publishes it into its cell; the kernel measures nothing. The measurement comes from the widget's returned `PickerLayout` (`jinn_selection_widget`) — `inner.height` is the visible row count for every widget — and the 16 per-slice `*_viewport.rs` measurement modules are deleted.
 - (pickers) A slice picker resets its per-open state — filter text, highlight, and rows — each time its dynamic scope is entered, so every opener shows the same fresh menu.
 - (pickers) A picker's popup rect is computed once per frame by its slice's overlay geometry function and centered on the terminal on both axes; the selection widgets render into the rect they are handed rather than recomputing it.
+- (picker-viewport) `PickerLayout.inner.height` may legitimately be 0 for degenerate frames; picker navigation is 0-safe by construction (`ensure_visible` guards `max_visible > 0`), so new picker code must not re-add a `max(1)` clamp on the reported viewport.
+- (pickers) The preview widget's pane geometry rides its own report channel (`PreviewPaneReport`) alongside `PickerLayout`, which stays result-rows-only; the widget display-clamps `preview_scroll` at the content's end regardless of what the slice stores.
 - (keybinds) Picker keybinds are route rows owned by the slice that owns the picker.
 - (keybinds) Feature keybinds are route rows carrying scope and key; keymap bindings are generated from registered rows at launch; dynamic intents and scope ids are data-carried, so an unregistered slice leaves no keymap, scope, or intent residue.
 - (keybinds) The terminal overlay's keybinds are term-slice route rows binding the dynamic scopes term:view and term:control; no static terminal scope or terminal intent variants exist in the kernel.

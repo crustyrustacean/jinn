@@ -188,8 +188,13 @@ fn scroll_detail_up(_ctx: &mut ActionCtx<'_>, cell: &EndpointPickerCell) -> Inte
 }
 
 /// Scrolls the detail pane down one line.
+///
+/// Clamps against the render pass's measured bound, so a held key converges
+/// at the last content line instead of walking the pane into blank rows.
 fn scroll_detail_down(_ctx: &mut ActionCtx<'_>, cell: &EndpointPickerCell) -> IntentResult {
-    cell.update(|p| p.preview_scroll = p.preview_scroll.saturating_add(1));
+    cell.update(|p| {
+        p.preview_scroll = p.preview_scroll.saturating_add(1).min(p.preview_max_scroll);
+    });
     IntentResult::empty()
 }
 

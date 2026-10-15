@@ -19,6 +19,11 @@
 //! The live half (connection status, stderr tail, tool list) is refreshed
 //! from the MCP runtime and tool registry cells during the render pass, so
 //! the inspector keeps ticking without the picker owning a poll loop.
+//!
+//! Each frame, the widget reports the `PickerLayout` it solved; the renderer
+//! publishes `layout.inner.height` — the list pane's true visible row count,
+//! in either split mode — into the inspector cell's `results_viewport`, so
+//! the navigation keys page by what the last frame actually showed.
 
 use jinn_mcp_msg::McpPreviewMode;
 use jinn_mcp_msg::McpServerEntry;
@@ -34,7 +39,6 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use crate::mcp_picker_actions;
-use crate::mcp_picker_viewport;
 
 /// The inspector's cell — the single home for what it shows.
 #[allow(dead_code, reason = "documents the cell type the render reads")]
@@ -236,16 +240,15 @@ pub fn render_mcp_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFacts)
         return;
     };
 
-    // Publish the measured row count for the navigation keys.
-    let measured = mcp_picker_viewport::results_viewport(&area);
-    cell.update(|state: &mut jinn_mcp_msg::McpPickerState| state.results_viewport = measured);
-
     // Refresh the highlighted server's live half from the MCP runtime and
     // the tool registry. This is the slice-owned equivalent of the kernel's
     // per-frame inspector pre-pass: the inspector keeps ticking while open,
     // with no poll loop and no app-state access.
     mcp_picker_actions::refresh_inspector_snapshot(&cell, facts);
 
+    // The colors and binds shape the footer rows, and the footer rows decide
+    // how many rows the list gets — so they come first, before the widget
+    // renders and reports the layout it solved.
     let guard = cell.read();
     let state: &jinn_mcp_msg::McpPickerState = &guard;
 
@@ -264,12 +267,28 @@ pub fn render_mcp_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFacts)
     // `PreviewSelectionWidget` because the inspector has a preview pane; the
     // pane itself comes from the item hooks, and the scroll offset stays at
     // zero — this pane has no scroll mechanism, so it holds still across
-    // cursor moves rather than jumping back to the top each time.
-    jinn_selection_widget::PreviewSelectionWidget::new(&state.selection)
-        .title(Line::from(" MCP Servers "))
-        .title_style(Style::default().fg(theme.popup_title))
-        .footers(footers)
-        .colors(palette.selection_colors())
-        .preview_scroll(state.preview_scroll)
-        .render(frame, area);
+    // cursor moves rather than jumping back to the top each time. The widget
+    // picks its split mode from the popup width and reports the list pane's
+    // results rect either way — the slice re-derives none of it. The guard
+    // must drop before the cell write below: `TypedCell` is a plain `RwLock`,
+    // and a same-thread write-while-read deadlocks.
+    let layout = {
+        let state = &guard;
+        jinn_selection_widget::PreviewSelectionWidget::new(&state.selection)
+            .title(Line::from(" MCP Servers "))
+            .title_style(Style::default().fg(theme.popup_title))
+            .footers(footers)
+            .colors(palette.selection_colors())
+            .preview_scroll(state.preview_scroll)
+            .render(frame, area)
+    };
+    drop(guard);
+
+    // Publish the row count the widget actually solved, for the navigation
+    // keys: `inner.height` is the list pane's true visible row count in both
+    // split modes. The value is the widget's own report, never a re-derived
+    // number.
+    cell.update(|state: &mut jinn_mcp_msg::McpPickerState| {
+        state.results_viewport = layout.inner.height as usize;
+    });
 }

@@ -47,7 +47,6 @@ pub mod coordinator;
 pub mod mcp_picker_actions;
 pub mod mcp_picker_render;
 pub mod mcp_picker_routes;
-pub mod mcp_picker_viewport;
 
 use jinn_mcp_msg::{McpCoordinatorHandle, McpRuntimeState, mcp_runtime_slot};
 use jinn_slices::{Slices, TypedCell};

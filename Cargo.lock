@@ -3019,6 +3019,7 @@ dependencies = [
 name = "jinn-project"
 version = "1.7.0"
 dependencies = [
+ "jinn-cell-catalog",
  "jinn-common",
  "jinn-config",
  "jinn-core-types",
@@ -4140,6 +4141,7 @@ dependencies = [
  "jinn-selection-widget",
  "jinn-session-init-msg",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-theme",
  "jinn-workflows-msg",
  "ratatui",

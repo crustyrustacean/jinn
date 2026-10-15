@@ -62,30 +62,48 @@ pub fn render_skill_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFact
         return;
     };
 
-    // Measure the popup's result rows and publish them for the navigation keys,
-    // which need a real row count to keep the highlight on screen. This is the
-    // slice-owned equivalent of the kernel's per-frame viewport write.
-    let measured = crate::skill_picker_viewport::results_viewport(area);
-    cell.update(|state: &mut SkillPickerState| state.results_viewport = measured);
-
-    let guard = cell.read();
-    let state: &SkillPickerState = &guard;
-
     let theme = &facts.theme;
     let palette = skill_picker_palette(theme);
     let binds = skill_picker_binds();
     let keybind = jinn_picker::keybind_line(&binds, jinn_picker::Tail::Standard, &palette);
-    let footers = vec![Line::from(String::new()), Line::from(keybind.0)];
 
-    let widget = PreviewSelectionWidget::new(&state.selection)
-        .title(Line::from(" Skills "))
-        .title_style(Style::default().fg(theme.popup_title))
-        .footers(footers)
-        .colors(palette.selection_colors())
-        .preview_scroll(state.preview_scroll);
+    // Render under the read guard, then publish the layout after the block
+    // ends: `TypedCell` is a plain RwLock, and a same-thread write while the
+    // read guard is alive deadlocks.
+    let (layout, preview_report) = {
+        let guard = cell.read();
+        let state: &SkillPickerState = &guard;
+        let footers = vec![Line::from(String::new()), Line::from(keybind.0)];
 
-    let cache = state.preview_cache.clone();
-    widget.preview_cache(cache.as_ref()).render(frame, area);
+        let mut report = None;
+        let widget = PreviewSelectionWidget::new(&state.selection)
+            .title(Line::from(" Skills "))
+            .title_style(Style::default().fg(theme.popup_title))
+            .footers(footers)
+            .colors(palette.selection_colors())
+            .preview_scroll(state.preview_scroll)
+            .preview_report(&mut report);
+
+        let cache = state.preview_cache.clone();
+        let layout = widget.preview_cache(cache.as_ref()).render(frame, area);
+        (layout, report)
+    };
+
+    // The widget reports the rects it actually solved, in whichever split
+    // mode it chose for this popup; the navigation keys page against that row
+    // count. This is the slice-owned equivalent of the kernel's per-frame
+    // viewport write — measured by the widget itself rather than mirrored
+    // arithmetic. The preview report rides the same update: its `max_scroll`
+    // is the clamp bound for the stored preview offset, and clamping here
+    // kills a stale oversized value (persisted session, filter narrowing) on
+    // the first frame after it appears.
+    cell.update(|state: &mut SkillPickerState| {
+        state.results_viewport = layout.inner.height as usize;
+        if let Some(report) = preview_report {
+            state.preview_max_scroll = report.max_scroll();
+            state.preview_scroll = state.preview_scroll.min(state.preview_max_scroll);
+        }
+    });
 }
 
 #[cfg(test)]

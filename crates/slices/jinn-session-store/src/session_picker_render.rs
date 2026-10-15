@@ -60,25 +60,19 @@ pub fn session_picker_binds() -> Vec<jinn_picker::BindRow> {
         .collect()
 }
 
-/// Draws the session picker popup for one frame.
-pub fn render_session_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFacts) {
-    let Some(cell) = facts
-        .slices
-        .reader::<SessionPickerState>(&jinn_session_store_msg::session_picker_slot())
-    else {
-        return;
-    };
-
-    // Publish the measured row count for the navigation keys. This is the
-    // slice-owned equivalent of the kernel's per-frame viewport write.
-    let measured = crate::session_picker_viewport::results_viewport(&area);
-    cell.update(|state: &mut SessionPickerState| state.results_viewport = measured);
-
-    let guard = cell.read();
-    let state = &guard;
-    let theme = &facts.theme;
+/// The widget the session picker draws, fully configured.
+///
+/// Shared by the render pass and the tests, so a test's identical second
+/// construction is identical by construction rather than by transcription.
+#[must_use]
+pub fn session_picker_widget<'a>(
+    state: &'a SessionPickerState,
+    theme: &jinn_theme::Theme,
+) -> jinn_selection_widget::TreePickerWidget<
+    'a,
+    jinn_picker::PickerEntry<jinn_session_store_msg::SessionTreeEntry>,
+> {
     let palette = session_picker_palette(theme);
-
     let keybind = jinn_picker::keybind_line(
         &session_picker_binds(),
         jinn_picker::Tail::Standard,
@@ -107,5 +101,28 @@ pub fn render_session_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFa
         .footers(footers)
         .colors(palette.selection_colors())
         .tree_prefix_color(theme.muted_text)
-        .render(frame, area);
+}
+
+/// Draws the session picker popup for one frame.
+pub fn render_session_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFacts) {
+    let Some(cell) = facts
+        .slices
+        .reader::<SessionPickerState>(&jinn_session_store_msg::session_picker_slot())
+    else {
+        return;
+    };
+
+    // The widget reports the layout it actually solved; the guard must end
+    // before the write below (`TypedCell` is a plain `RwLock`, which is not
+    // reentrant on the same thread).
+    let layout = {
+        let guard = cell.read();
+        let state = &guard;
+        session_picker_widget(state, &facts.theme).render(frame, area)
+    };
+
+    // Publish the reported row count for the navigation keys.
+    cell.update(|state: &mut SessionPickerState| {
+        state.results_viewport = usize::from(layout.inner.height);
+    });
 }
