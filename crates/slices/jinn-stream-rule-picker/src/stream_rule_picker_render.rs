@@ -4,6 +4,7 @@
 //! deliberately never sees `AppState` (see `RenderFacts`), so this reads
 //! `StreamRulePickerState` straight off the registered slot.
 
+use jinn_selection_widget::PickerLayout;
 use jinn_slices::RenderFacts;
 use jinn_stream_rule_picker_msg::StreamRulePickerState;
 use ratatui::Frame;
@@ -60,31 +61,52 @@ pub fn render_stream_rule_picker(frame: &mut Frame<'_>, area: Rect, facts: &Rend
         return;
     };
 
-    // Measure the popup's result rows and publish them for the navigation
-    // keys, which need a real row count to keep the highlight on screen.
-    let measured = crate::stream_rule_picker_viewport::results_viewport(area);
-    cell.update(|state: &mut StreamRulePickerState| state.results_viewport = measured);
+    let layout = render_widget_from_state(&cell, frame, area, &facts.theme);
 
-    let guard = cell.read();
-    let state: &StreamRulePickerState = &guard;
+    // Publish what the widget actually solved for the navigation keys, which
+    // need a real row count to keep the highlight on screen. The helper's
+    // read guard has died by this line, so the write cannot deadlock.
+    cell.update(|state: &mut StreamRulePickerState| {
+        state.results_viewport = usize::from(layout.inner.height);
+    });
+}
 
-    let theme = &facts.theme;
-    let palette = stream_rule_picker_palette(theme);
+/// Constructs the picker's widget from the cell's state and renders it into
+/// `area`, returning the [`PickerLayout`] the widget solved.
+///
+/// The shared construction for the render fn and its tests: both must build
+/// the identical widget (same two footer lines) so the layout a test reports
+/// is the layout a frame actually drew. The read guard dies inside the block —
+/// before the render fn writes the cell — because the std `RwLock` behind
+/// [`TypedCell`](jinn_slices::cell::TypedCell) is not reentrant; the layout
+/// (`Copy`) outlives it.
+pub(crate) fn render_widget_from_state(
+    cell: &jinn_slices::cell::TypedCell<StreamRulePickerState>,
+    frame: &mut Frame<'_>,
+    area: Rect,
+    theme: &jinn_theme::Theme,
+) -> PickerLayout {
     let binds = stream_rule_picker_binds();
-    let keybind = jinn_picker::keybind_line(&binds, jinn_picker::Tail::Standard, &palette);
+    {
+        let guard = cell.read();
+        let state: &StreamRulePickerState = &guard;
 
-    // The status line (confirm feedback, or a failure's reason) rides above
-    // the keybind line — the same two-row footer shape the preview pickers
-    // use for their preview hints. Absent status, a blank line keeps the
-    // geometry stable so a confirm does not resize the popup.
-    let status_line = state.status.clone().unwrap_or_default();
-    let footers = vec![Line::from(status_line), Line::from(keybind.0)];
+        let palette = stream_rule_picker_palette(theme);
+        let keybind = jinn_picker::keybind_line(&binds, jinn_picker::Tail::Standard, &palette);
 
-    let widget = jinn_selection_widget::SelectionWidget::new(&state.selection)
-        .title(Line::from(" Stream Rules "))
-        .title_style(Style::default().fg(theme.popup_title))
-        .footers(footers)
-        .colors(palette.selection_colors());
+        // The status line (confirm feedback, or a failure's reason) rides above
+        // the keybind line — the same two-row footer shape the preview pickers
+        // use for their preview hints. Absent status, a blank line keeps the
+        // geometry stable so a confirm does not resize the popup.
+        let status_line = state.status.clone().unwrap_or_default();
+        let footers = vec![Line::from(status_line), Line::from(keybind.0)];
 
-    widget.render(frame, area);
+        let widget = jinn_selection_widget::SelectionWidget::new(&state.selection)
+            .title(Line::from(" Stream Rules "))
+            .title_style(Style::default().fg(theme.popup_title))
+            .footers(footers)
+            .colors(palette.selection_colors());
+
+        widget.render(frame, area)
+    }
 }
