@@ -225,7 +225,7 @@ impl SessionStore for SqliteSessionStore {
             return Ok(());
         }
         let row = NewSessionRow::try_from(snapshot)?;
-        save_in_transaction(&self.pool, snapshot, &row).await?;
+        save_in_transaction(&self.pool, snapshot, &row)?.await?;
         *saved_revision = snapshot.revision;
         Ok(())
     }
@@ -294,10 +294,10 @@ impl SessionStore for SqliteSessionStore {
         &self,
         session_id: &SessionId,
     ) -> Result<Option<SessionSnapshot>, Report<SessionStoreError>> {
-        let session_id_str = session_id.to_string();
+        let session_id = session_id.clone();
         let load_context = self
             .pool
-            .with_conn(move |conn| load_context_in_transaction(conn, &session_id_str))
+            .with_conn(move |conn| load_context_in_transaction(conn, &session_id))
             .await
             .change_context(SessionStoreError)
             .attach("failed to load coherent session snapshot")?;
@@ -759,14 +759,14 @@ impl TryFrom<SessionLoadContext> for SessionSnapshot {
 )]
 fn load_context_in_transaction(
     conn: &mut rusqlite::Connection,
-    session_id: &str,
+    session_id: &SessionId,
 ) -> daow::Result<Option<SessionLoadContext>> {
     let tx = conn.transaction()?;
     let row: Option<SessionRow> = tx
         .query_row(
             "SELECT id, title, updated_at, created_at, parent_session, archived, metadata, persist \
              FROM sessions WHERE id = ?",
-            rusqlite::params![session_id],
+            rusqlite::params![session_id.to_string()],
             |row| {
                 Ok(SessionRow {
                     id: row.get("id")?,
@@ -800,6 +800,7 @@ fn load_context_in_transaction(
              WHERE session_history.session_id = ? \
              ORDER BY session_history.ordinal ASC",
         )?;
+        let session_id = session_id.to_string();
         stmt.query_map([session_id], |row| {
             Ok(JoinedEntry {
                 entry_id: row.get("entry_id")?,
@@ -824,7 +825,7 @@ fn load_context_in_transaction(
              WHERE session_history.session_id = ? \
              ORDER BY session_history.ordinal ASC, entry_blobs.ordinal ASC",
         )?;
-        stmt.query_map([session_id], |row| {
+        stmt.query_map([session_id.to_string()], |row| {
             Ok(EntryBlobRow {
                 entry_id: row.get("entry_id")?,
                 ordinal: row.get("ordinal")?,
@@ -840,7 +841,7 @@ fn load_context_in_transaction(
             "SELECT id, session_id, timestamp, tokens_sent, tokens_received, cost, model_used, \
              prompt_tokens, cached_tokens FROM token_ledger WHERE session_id = ?",
         )?;
-        stmt.query_map([session_id], |row| {
+        stmt.query_map([session_id.to_string()], |row| {
             Ok(TokenLedgerRow {
                 id: row.get("id")?,
                 session_id: row.get("session_id")?,
@@ -879,8 +880,12 @@ fn load_context_in_transaction(
 }
 
 /// Serialized data for one complete snapshot write inside a transaction.
+///
+/// `session_id` carries the typed id beside its SQL string form in `row`, so
+/// the insert helpers take `&SessionId` without re-parsing `row.id` per row.
 struct SnapshotWrite {
     row: NewSessionRow,
+    session_id: SessionId,
     entries: Vec<PersistableEntry>,
     ledger: Vec<PersistableTokenRecord>,
 }
@@ -891,7 +896,8 @@ impl TryFrom<&SessionSnapshot> for SnapshotWrite {
     fn try_from(snapshot: &SessionSnapshot) -> Result<Self, Self::Error> {
         Ok(Self {
             row: NewSessionRow::try_from(snapshot)?,
-            entries: persistable_entries(&snapshot.entries),
+            session_id: snapshot.metadata.session_id.clone(),
+            entries: persistable_entries(&snapshot.entries)?,
             ledger: persistable_ledger(&snapshot.token_ledger),
         })
     }
@@ -908,15 +914,19 @@ fn save_in_transaction(
     pool: &Pool,
     snapshot: &SessionSnapshot,
     row: &NewSessionRow,
-) -> impl std::future::Future<Output = Result<(), Report<SessionStoreError>>> + Send + 'static {
+) -> Result<
+    impl std::future::Future<Output = Result<(), Report<SessionStoreError>>> + Send + 'static,
+    Report<SessionStoreError>,
+> {
     let write = SnapshotWrite {
         row: clone_row(row),
-        entries: persistable_entries(&snapshot.entries),
+        session_id: snapshot.metadata.session_id.clone(),
+        entries: persistable_entries(&snapshot.entries)?,
         ledger: persistable_ledger(&snapshot.token_ledger),
     };
     let pool = pool.clone();
 
-    async move {
+    Ok(async move {
         pool.with_conn(move |conn| -> daow::Result<()> {
             let tx = conn.transaction()?;
             write_snapshot(&tx, &write)?;
@@ -927,7 +937,7 @@ fn save_in_transaction(
         .change_context(SessionStoreError)
         .attach("failed to save session")?;
         Ok(())
-    }
+    })
 }
 
 fn clone_row(row: &NewSessionRow) -> NewSessionRow {
@@ -963,10 +973,10 @@ fn write_snapshot(tx: &rusqlite::Transaction<'_>, write: &SnapshotWrite) -> rusq
         rusqlite::params![&write.row.id],
     )?;
     for entry in &write.entries {
-        insert_entry_and_junction(tx, &write.row.id, entry)?;
+        insert_entry_and_junction(tx, &write.session_id, entry)?;
     }
     for record in &write.ledger {
-        insert_token_ledger_row(tx, &write.row.id, record)?;
+        insert_token_ledger_row(tx, &write.session_id, record)?;
     }
     Ok(())
 }
@@ -998,7 +1008,9 @@ async fn archive_snapshots_in_transaction(
 }
 
 /// Builds the list of persistable entries (skipping transient UI hints).
-fn persistable_entries(entries: &[ChatEntry]) -> Vec<PersistableEntry> {
+fn persistable_entries(
+    entries: &[ChatEntry],
+) -> Result<Vec<PersistableEntry>, Report<SessionStoreError>> {
     entries
         .iter()
         .enumerate()
@@ -1065,7 +1077,14 @@ struct PersistableEntry {
 
 impl PersistableEntry {
     /// Serializes an entry's fields into the SQL-ready form.
-    fn build(entry: &ChatEntry, ordinal: usize) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the entry's ordinal exceeds the storage
+    /// column's width — `i64::from` of `usize` only fits while the entry
+    /// count stays under 2^31, and a session at that scale is corrupt
+    /// rather than clamped.
+    fn build(entry: &ChatEntry, ordinal: usize) -> Result<Self, Report<SessionStoreError>> {
         let timing = serde_json::to_string(&entry.timing).unwrap_or_else(|_| "{}".to_owned());
         let attachments = extract_attachments(&entry.kind);
         let kind = serialize_lean_kind(&entry.kind);
@@ -1074,18 +1093,23 @@ impl PersistableEntry {
         let pin_position = entry.pin_position.map(|p| p.to_string());
         let context_override = serde_json::to_string(&entry.context_override())
             .unwrap_or_else(|_| "\"default\"".to_owned());
-        Self {
+        Ok(Self {
             entry_id: entry.id.to_string(),
             timing,
             kind,
             context_history,
-            ordinal: ordinal as i32,
+            ordinal: i32::try_from(ordinal)
+                .change_context(SessionStoreError)
+                .attach(format!(
+                    "entry {} ordinal {ordinal} exceeds storage width",
+                    entry.id
+                ))?,
             pin_position,
             ignored: entry.ignored(),
             context_override,
             token_count: entry.token_count.map(i64::from),
             attachments,
-        }
+        })
     }
 }
 /// A pre-serialized token ledger row.
@@ -1158,7 +1182,7 @@ fn upsert_session_row(
 /// Inserts an entry row (upserting `context_history`) and its junction row.
 fn insert_entry_and_junction(
     conn: &rusqlite::Connection,
-    session_id: &str,
+    session_id: &SessionId,
     entry: &PersistableEntry,
 ) -> rusqlite::Result<()> {
     // Insert entry. On conflict (entry shared across sessions), update
@@ -1186,7 +1210,7 @@ fn insert_entry_and_junction(
          (session_id, entry_id, ordinal, pin_position, ignored, context_override) \
          VALUES (?, ?, ?, ?, ?, ?)",
         rusqlite::params![
-            session_id,
+            session_id.to_string(),
             entry.entry_id,
             entry.ordinal,
             entry.pin_position,
@@ -1208,7 +1232,7 @@ fn insert_entry_and_junction(
              VALUES (?, ?, ?, ?)",
             rusqlite::params![
                 entry.entry_id,
-                ordinal as i64,
+                i64::try_from(ordinal).unwrap_or(i64::MAX),
                 attachment.media_type(),
                 attachment.data(),
             ],
@@ -1220,7 +1244,7 @@ fn insert_entry_and_junction(
 /// Inserts a token ledger row.
 fn insert_token_ledger_row(
     conn: &rusqlite::Connection,
-    session_id: &str,
+    session_id: &SessionId,
     record: &PersistableTokenRecord,
 ) -> rusqlite::Result<()> {
     conn.execute(
@@ -1228,7 +1252,7 @@ fn insert_token_ledger_row(
          (session_id, timestamp, tokens_sent, tokens_received, cost, model_used, prompt_tokens, cached_tokens) \
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         rusqlite::params![
-            session_id,
+            session_id.to_string(),
             record.timestamp,
             record.tokens_sent,
             record.tokens_received,
@@ -1629,11 +1653,11 @@ impl FromRow for DirtyResumeRow {
 /// slower) but is logged loudly: this default once masked a migration drift
 /// bug where the `resume_offset` column itself was missing, silently
 /// restarting every partial rebuild for days.
-async fn resume_offset(pool: &Pool, session_id: &str) -> usize {
+async fn resume_offset(pool: &Pool, session_id: &SessionId) -> usize {
     let rows: Vec<DirtyResumeRow> = pool
         .query_all(
             "SELECT resume_offset AS resume_offset FROM fts_dirty WHERE session_id = ?",
-            vec![Box::new(session_id.to_owned())],
+            vec![Box::new(session_id.to_string())],
         )
         .await
         .inspect_err(|e| {
@@ -1644,8 +1668,9 @@ async fn resume_offset(pool: &Pool, session_id: &str) -> usize {
             );
         })
         .unwrap_or_default();
-    rows.first()
-        .map_or(0, |row| row.resume_offset.max(0) as usize)
+    rows.first().map_or(0, |row| {
+        usize::try_from(row.resume_offset.max(0)).unwrap_or(0)
+    })
 }
 
 /// Indexes at most `max_entries` more of one session's entries into the FTS
@@ -1666,8 +1691,8 @@ async fn reindex_session_chunk(
     session_id: &SessionId,
     max_entries: usize,
 ) -> Result<bool, Report<SessionStoreError>> {
-    let session_id = session_id.to_string();
-    let offset = resume_offset(pool, &session_id).await;
+    let session_id_str = session_id.to_string();
+    let offset = resume_offset(pool, session_id).await;
     let raw: Vec<RawIndexedEntry> = pool
         .query_all(
             "SELECT entries.id AS entry_id, entries.timing AS timing, entries.kind AS kind \
@@ -1677,9 +1702,9 @@ async fn reindex_session_chunk(
              ORDER BY session_history.ordinal ASC \
              LIMIT ? OFFSET ?",
             vec![
-                Box::new(session_id.clone()),
-                Box::new(max_entries as i64),
-                Box::new(offset as i64),
+                Box::new(session_id_str.clone()),
+                Box::new(i64::from(i32::try_from(max_entries).unwrap_or(i32::MAX))),
+                Box::new(i64::try_from(offset).unwrap_or(i64::MAX)),
             ],
         )
         .await
@@ -1703,6 +1728,9 @@ async fn reindex_session_chunk(
     // since the walk is then exhausted.)
     let finished = parsed.len() < max_entries;
     let advanced = (offset + parsed.len()) as i64;
+    // The tx stage below is a `move` closure over a spawned borrow: hand it
+    // an owned id.
+    let session_id = session_id.clone();
     pool.with_conn(move |conn| -> daow::Result<bool> {
         let tx = conn.transaction()?;
         if offset == 0 {
@@ -1716,19 +1744,19 @@ async fn reindex_session_chunk(
             // no rows for this session (a never-indexed session).
             let mapped: i64 = tx.query_row(
                 "SELECT EXISTS (SELECT 1 FROM fts_rowids WHERE session_id = ?)",
-                rusqlite::params![&session_id],
+                rusqlite::params![session_id.to_string()],
                 |row| row.get(0),
             )?;
             if mapped != 0 {
                 tx.execute(
                     "DELETE FROM session_fts WHERE rowid IN \
                      (SELECT fts_rowid FROM fts_rowids WHERE session_id = ?)",
-                    rusqlite::params![&session_id],
+                    rusqlite::params![session_id.to_string()],
                 )?;
             }
             tx.execute(
                 "DELETE FROM fts_rowids WHERE session_id = ?",
-                rusqlite::params![&session_id],
+                rusqlite::params![session_id.to_string()],
             )?;
         }
         for entry in &parsed {
@@ -1738,7 +1766,7 @@ async fn reindex_session_chunk(
                 rusqlite::params![
                     entry.body,
                     entry.role.as_str(),
-                    &session_id,
+                    session_id.to_string(),
                     entry.entry_id,
                     entry.entry_ts
                 ],
@@ -1750,7 +1778,7 @@ async fn reindex_session_chunk(
             tx.execute(
                 "INSERT INTO fts_rowids (session_id, fts_rowid) \
                  VALUES (?, last_insert_rowid())",
-                rusqlite::params![&session_id],
+                rusqlite::params![session_id.to_string()],
             )?;
         }
         if finished {
@@ -1759,12 +1787,12 @@ async fn reindex_session_chunk(
             // and the index agree.
             tx.execute(
                 "DELETE FROM fts_dirty WHERE session_id = ?",
-                rusqlite::params![&session_id],
+                rusqlite::params![session_id.to_string()],
             )?;
         } else {
             tx.execute(
                 "UPDATE fts_dirty SET resume_offset = ? WHERE session_id = ?",
-                rusqlite::params![advanced, &session_id],
+                rusqlite::params![advanced, session_id.to_string()],
             )?;
         }
         tx.commit()?;
@@ -1780,7 +1808,7 @@ async fn reindex_session_chunk(
 /// Rows whose kind JSON fails to deserialize are skipped with a warning: the
 /// FTS index is derived data, and a corrupt entry must not fail the whole
 /// reindex (it will be retried on the next save anyway).
-fn parse_searchable_rows(session_id: &str, raw: &[RawIndexedEntry]) -> Vec<SearchableEntry> {
+fn parse_searchable_rows(session_id: &SessionId, raw: &[RawIndexedEntry]) -> Vec<SearchableEntry> {
     raw.iter()
         .filter_map(|r| {
             let kind: ChatEntryKind = match serde_json::from_str(&r.kind) {
@@ -2104,21 +2132,24 @@ async fn mark_excluded_hits(
 /// Loads the session row or `None` if the session does not exist.
 async fn session_meta(
     pool: &Pool,
-    session_id: &str,
+    session_id: &SessionId,
 ) -> Result<Option<SessionRow>, Report<SessionStoreError>> {
     let dao = SessionDao::new(pool.clone());
-    dao.session_by_id(session_id.to_owned())
+    dao.session_by_id(session_id.to_string())
         .await
         .change_context(SessionStoreError)
         .attach("failed to query session metadata")
 }
 
 /// Counts the entries in a session.
-async fn count_entries(pool: &Pool, session_id: &str) -> Result<usize, Report<SessionStoreError>> {
+async fn count_entries(
+    pool: &Pool,
+    session_id: &SessionId,
+) -> Result<usize, Report<SessionStoreError>> {
     let total: Option<i64> = pool
         .query_one(
             "SELECT COUNT(*) AS total FROM session_history WHERE session_id = ?",
-            vec![Box::new(session_id.to_owned())],
+            vec![Box::new(session_id.to_string())],
         )
         .await
         .change_context(SessionStoreError)
@@ -2129,7 +2160,7 @@ async fn count_entries(pool: &Pool, session_id: &str) -> Result<usize, Report<Se
 /// Loads joined entries + ordinals for an inclusive ordinal range [lo, hi].
 async fn load_joined_range(
     pool: &Pool,
-    session_id: &str,
+    session_id: &SessionId,
     lo: i64,
     hi: i64,
 ) -> Result<Vec<JoinedWindowEntry>, Report<SessionStoreError>> {
@@ -2146,7 +2177,7 @@ async fn load_joined_range(
          WHERE session_history.session_id = ? \
          AND session_history.ordinal BETWEEN ? AND ? \
          ORDER BY session_history.ordinal ASC",
-        vec![Box::new(session_id.to_owned()), Box::new(lo), Box::new(hi)],
+        vec![Box::new(session_id.to_string()), Box::new(lo), Box::new(hi)],
     )
     .await
     .change_context(SessionStoreError)
@@ -2157,7 +2188,7 @@ async fn load_joined_range(
 /// when the entry is not part of it (wrong session, or pre-index data).
 async fn anchor_ordinal(
     pool: &Pool,
-    session_id: &str,
+    session_id: &SessionId,
     anchor: &ChatEntryId,
 ) -> Result<i64, Report<SessionStoreError>> {
     let ordinal: Option<i64> = pool
@@ -2165,7 +2196,7 @@ async fn anchor_ordinal(
             "SELECT ordinal AS ordinal FROM session_history \
              WHERE session_id = ? AND entry_id = ?",
             vec![
-                Box::new(session_id.to_owned()),
+                Box::new(session_id.to_string()),
                 Box::new(anchor.to_string()),
             ],
         )
@@ -2182,31 +2213,41 @@ async fn anchor_ordinal(
 }
 
 /// Builds a [`TranscriptWindow`] from loaded joined rows.
+///
+/// # Errors
+///
+/// Returns an error when a stored ordinal does not fit the platform's
+/// `usize` — corruption is surfaced, never clamped to a fake 0.
 fn build_window(
-    session_id: String,
+    session_id: &SessionId,
     title: Option<String>,
     total_entries: usize,
     joined: Vec<JoinedWindowEntry>,
-) -> TranscriptWindow {
+) -> Result<TranscriptWindow, Report<SessionStoreError>> {
     let entries = joined
         .into_iter()
         .map(|row| {
-            let ordinal = row.ordinal;
+            let ordinal = usize::try_from(row.ordinal)
+                .change_context(SessionStoreError)
+                .attach(format!(
+                    "entry {} has ordinal {} exceeding the platform width",
+                    row.joined.entry_id, row.ordinal
+                ))?;
             let entry = entry_from_joined(row.joined, Vec::new());
             let excluded = !entry.is_in_context();
-            TranscriptEntry {
-                ordinal: usize::try_from(ordinal).unwrap_or(0),
+            Ok(TranscriptEntry {
+                ordinal,
                 entry,
                 excluded,
-            }
+            })
         })
-        .collect();
-    TranscriptWindow {
-        session_id,
+        .collect::<Result<Vec<_>, Report<SessionStoreError>>>()?;
+    Ok(TranscriptWindow {
+        session_id: session_id.to_string(),
         title,
         total_entries,
         entries,
-    }
+    })
 }
 
 /// Fetches a window of `context` entries starting just before the anchor,
@@ -2217,20 +2258,14 @@ async fn fetch_window(
     anchor: &ChatEntryId,
     context: usize,
 ) -> Result<Option<TranscriptWindow>, Report<SessionStoreError>> {
-    let session_id_str = session_id.to_string();
-    let Some(meta) = session_meta(pool, &session_id_str).await? else {
+    let Some(meta) = session_meta(pool, session_id).await? else {
         return Ok(None);
     };
-    let anchor_ord = anchor_ordinal(pool, &session_id_str, anchor).await?;
-    let total = count_entries(pool, &session_id_str).await?;
+    let anchor_ord = anchor_ordinal(pool, session_id, anchor).await?;
+    let total = count_entries(pool, session_id).await?;
     let (lo, hi) = clamp_window(anchor_ord, context);
-    let joined = load_joined_range(pool, &session_id_str, lo, hi).await?;
-    Ok(Some(build_window(
-        session_id_str,
-        meta.title,
-        total,
-        joined,
-    )))
+    let joined = load_joined_range(pool, session_id, lo, hi).await?;
+    Ok(Some(build_window(session_id, meta.title, total, joined)?))
 }
 
 /// Fetches the last `limit` entries of a session.
@@ -2239,18 +2274,12 @@ async fn fetch_tail(
     session_id: &SessionId,
     limit: usize,
 ) -> Result<Option<TranscriptWindow>, Report<SessionStoreError>> {
-    let session_id_str = session_id.to_string();
-    let Some(meta) = session_meta(pool, &session_id_str).await? else {
+    let Some(meta) = session_meta(pool, session_id).await? else {
         return Ok(None);
     };
-    let total = count_entries(pool, &session_id_str).await?;
+    let total = count_entries(pool, session_id).await?;
     let span = i64::try_from(limit.max(1)).unwrap_or(i64::MAX);
     let lo = (i64::from(i32::try_from(total).unwrap_or(i32::MAX)) - span).max(0);
-    let joined = load_joined_range(pool, &session_id_str, lo, i64::MAX).await?;
-    Ok(Some(build_window(
-        session_id_str,
-        meta.title,
-        total,
-        joined,
-    )))
+    let joined = load_joined_range(pool, session_id, lo, i64::MAX).await?;
+    Ok(Some(build_window(session_id, meta.title, total, joined)?))
 }
