@@ -1,7 +1,7 @@
 # Attendant: planner. One per run; the contract writer.
 #
 # Loaded ONCE by the orchestrator via `load_attendant` at run start,
-# BEFORE the implementor pool (its first contract may shape issue 001's
+# BEFORE any implementor exists (its first contract may shape issue 001's
 # decomposition). The orchestrator dispatches it once per issue —
 # including the root — BEFORE that issue goes to an implementor.
 #

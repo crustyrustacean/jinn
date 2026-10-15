@@ -40,6 +40,67 @@ next message, not yours).
 
 ---
 
+## The harness primitives (both architectures)
+
+Two ways to create a worker session, defined by the one property that
+decides everything: **what the orchestrator does while the worker
+works.**
+
+- **`task` — blocking.** Spawns a one-shot subagent; the call does not
+  return until the child finishes, and the child's final message comes
+  back as the tool result. The orchestrator is **frozen** for the whole
+  child run: no other work, no mid-flight steering, and anything the
+  child queues is lost. Subagents are isolation, not compression — they
+  start from an empty context and see nothing but the prompt. Use when
+  the next orchestrator action depends on the result (sequential steps).
+- **Attendants — concurrent.** Standing child sessions created by
+  `load_attendant` from a TOML seed. The call returns immediately; the
+  orchestrator goes on with its turn (usually by ending it) and the
+  attendant's report arrives **later**, as a queued message that starts
+  the orchestrator's next turn. Several attendants run at once; each
+  survives across dispatches (see seed fields below). Use when work can
+  proceed while the orchestrator does other things, or when the same
+  session must handle multiple dispatches over time (event-driven
+  workers and specialists).
+
+Never substitute one for the other: a `task` call where an attendant
+belongs freezes the orchestrator and silently discards the attendant's
+seed; an attendant where the result is needed *now* leaves the
+orchestrator ending its turn with nothing in hand.
+
+The channels both ride:
+
+- **`tell_session`** (orchestrator → attendant): delivering to an idle
+  attendant starts a run seeded from its template plus the message;
+  delivering to a busy one **queues** behind its current turn. Nothing
+  is ever cancelled, nothing races.
+- **`notify_parent`** (attendant → orchestrator): lands as a user
+  message that starts the parent's next turn; if the parent is
+  mid-turn, the report **queues until that turn ends**.
+
+The consequence that shapes every event-driven orchestrator: **end your
+turn.** After dispatching, or whenever nothing is left to do this
+instant — that is what lets the next report land. A turn held open with
+sleeps is a turn whose queued reports never arrive.
+
+Supporting tools:
+
+- **`conclude`** — an attendant records one summary per run into a
+  history log. Its text re-enters context **only** through the
+  `<prior report>` token in the seed template; a template without the
+  token never sees reports (right for roles whose conclusions arrive
+  out of order, like a reviewer).
+- **Session lifecycle scripts** — a TOML of setup/teardown commands run
+  via `run_lifecycle`. Setup is one-shot per session and adopts the
+  last path the script prints as the session's working directory;
+  teardown replays the recorded coordinates (session id only) — which
+  is what makes it the cleanup mechanism. Placeholders are filled from
+  named args, shell-quoted. Use the pair fully or not at all.
+- **`save_plan`** — persists a file that survives context compaction.
+  The right vehicle for any artifact a later dispatch must read.
+
+---
+
 ## Authoring
 
 Authoring follows one protocol, ending in a **preview the user approves
@@ -170,27 +231,34 @@ the loop count if the flow iterated.
    (the step file or contract), the absolute paths of everything it
    reads and writes, and the expected report format. Paste paths,
    never retype them.
-3. **State lives in files, not in memory.** Anything that must survive
+3. **Every prescribed action names its tool.** "Create a session",
+   "notify the human", "record the result" — if the workflow says to do
+   it, it names the exact tool call that does it. An action verb
+   without a mechanism sends the executing agent tool-hunting, and it
+   will improvise the nearest capability instead (the bug class:
+   "create a plain new session" became a `task` subagent, silently
+   discarding the attendant seed).
+4. **State lives in files, not in memory.** Anything that must survive
    a context compaction, a turn boundary, or a session restart is a
    file with its path recorded in a known place. The orchestrator's
    memory is not a queue, not a ledger, not a cache.
-4. **The task list is the run's visible state.** Stamp it at start,
+5. **The task list is the run's visible state.** Stamp it at start,
    update it the moment anything happens — never batched. A reader
    watching the list should be able to reconstruct where the run is.
-5. **Bound the fanout.** Concurrency is bounded by the work actually
+6. **Bound the fanout.** Concurrency is bounded by the work actually
    claimable, and every recursion has a structural ceiling: only the
    orchestrator spawns, only from a fixed set of seed files, and every
    spawned session is created for a specific dispatch — never spawned
    into idleness "for later."
-6. **No silent failure.** A report format (DONE/BLOCKED, APPROVE/
+7. **No silent failure.** A report format (DONE/BLOCKED, APPROVE/
    REJECT) is part of every dispatch, and every non-success report is
    routed somewhere: re-dispatch, re-triage, or a filed issue. A
    message that arrived and changed nothing is a bug in the workflow.
-7. **The form factor is settled.** The user asked for a workflow; a
+8. **The form factor is settled.** The user asked for a workflow; a
    workflow is the deliverable even when one step would do. The only
    open question is which architecture — and that one is asked in the
    preview round, not re-litigated after.
-8. **Respect the job boundary.** Authoring ends at the write (plus one
+9. **Respect the job boundary.** Authoring ends at the write (plus one
    closing sentence); running starts at the existing directory. An
    authoring session does not launch the workflow it just wrote, and a
    running session does not edit the workflow it is running.

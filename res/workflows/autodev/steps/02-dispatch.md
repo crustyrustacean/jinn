@@ -32,7 +32,14 @@ teardown, because parallel teardowns onto the same parent would fight.
 
 One session per issue. The procedure, in order:
 
-1. Create the session (a plain new session in your run).
+1. Attach the attendant: `load_attendant` on this workflow's
+   `attendants/implementor.toml` (absolute path) with the new session
+   as its parent. That call creates the session and stamps the
+   implementor seed — the seed is where its discipline lives (report
+   formats, task-list mandate, baseline rules, record proposals).
+   **Never `task`**: a `task` subagent is a one-shot with no seed, and
+   every session this workflow creates is an attendant, without
+   exception.
 2. `run_lifecycle` setup `autodev implementor (fossil)` — or the git
    variant if the target repo is git — with:
    - `path` = this workflow's `lifecycle.toml` (absolute),

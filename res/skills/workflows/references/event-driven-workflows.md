@@ -304,6 +304,10 @@ attention signal, and no watchdog for wedged turns. Design for it:
 
 ## Anti-patterns
 
+- **Action verbs without a mechanism.** "Create a session" with no
+  tool named sends the executor hunting; it improvises `task` and
+  silently discards the attendant seed. Every prescribed action names
+  its exact tool call.
 - **Attendant-to-attendant messaging.** Sibling ids never enter
   context; routes go through the orchestrator. A workflow that wants
   workers to coordinate directly is missing an orchestrator stage.

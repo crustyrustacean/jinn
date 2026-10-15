@@ -58,7 +58,7 @@ carries the state:
     status: triage | open | dispatched | done | parent | closed
     parent: NNN            # absent on top-level issues
     blocked-by: NNN, NNN   # absent when nothing blocks
-    assignee: N            # absent when unassigned
+    assignee: <session-id> # absent when unassigned
     ---
 
 Body: the goal, the approach when one is known, the verification to
