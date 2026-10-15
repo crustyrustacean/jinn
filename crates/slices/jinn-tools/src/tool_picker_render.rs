@@ -81,32 +81,41 @@ pub fn tool_status(state: &ToolPickerState, theme: &Theme) -> Line<'static> {
 }
 
 /// Draws the tool picker popup for one frame.
+///
+/// The state is read under one guard that spans footer construction and the
+/// widget's render, and the cell's `results_viewport` is written only after
+/// that guard drops — `TypedCell` is a plain RwLock, and same-thread
+/// write-while-read deadlocks.
 pub fn render_tool_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFacts) {
     let Some(cell) = facts.slices.reader(&jinn_tools_msg::tool_picker_slot()) else {
         return;
     };
 
-    // Measure the popup's result rows and publish them for the navigation keys
-    // and the toggle's advance, which need a real row count to keep the
-    // highlight on screen. This is the slice-owned equivalent of the kernel's
-    // per-frame viewport write.
-    let measured = crate::tool_picker_viewport::results_viewport(area);
-    cell.update(|state: &mut ToolPickerState| state.results_viewport = measured);
+    let layout = {
+        let guard = cell.read();
+        let state: &ToolPickerState = &guard;
 
-    let guard = cell.read();
-    let state: &ToolPickerState = &guard;
+        let theme = &facts.theme;
+        let palette = tool_picker_palette(theme);
+        let binds = tool_picker_binds();
+        let keybind = jinn_picker::keybind_line(&binds, jinn_picker::Tail::Standard, &palette);
+        let footers = vec![tool_status(state, theme), Line::from(keybind.0)];
 
-    let theme = &facts.theme;
-    let palette = tool_picker_palette(theme);
-    let binds = tool_picker_binds();
-    let keybind = jinn_picker::keybind_line(&binds, jinn_picker::Tail::Standard, &palette);
-    let footers = vec![tool_status(state, theme), Line::from(keybind.0)];
+        let widget = jinn_selection_widget::SelectionWidget::new(&state.selection)
+            .title(Line::from(" Tools "))
+            .title_style(Style::default().fg(theme.popup_title))
+            .footers(footers)
+            .colors(palette.selection_colors());
 
-    let widget = jinn_selection_widget::SelectionWidget::new(&state.selection)
-        .title(Line::from(" Tools "))
-        .title_style(Style::default().fg(theme.popup_title))
-        .footers(footers)
-        .colors(palette.selection_colors());
+        // What the widget solved for this frame; `inner` is the rect the
+        // result rows rendered into, so `.height` is the visible row count.
+        widget.render(frame, area)
+    };
 
-    widget.render(frame, area);
+    // Publish the layout for the navigation keys and the toggle's advance,
+    // which need a real row count to keep the highlight on screen. This is
+    // the slice-owned equivalent of the kernel's per-frame viewport write.
+    cell.update(|state: &mut ToolPickerState| {
+        state.results_viewport = usize::from(layout.inner.height);
+    });
 }
