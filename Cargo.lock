@@ -3512,6 +3512,7 @@ name = "jinn-sidebar"
 version = "1.6.2"
 dependencies = [
  "async-trait",
+ "dirs",
  "error-stack",
  "jiff",
  "jinn-attendant",
@@ -3527,6 +3528,7 @@ dependencies = [
  "jinn-persona-msg",
  "jinn-picker",
  "jinn-preferences-config",
+ "jinn-provider-config",
  "jinn-session-history-msg",
  "jinn-session-lifecycle-msg",
  "jinn-session-list",
@@ -3536,10 +3538,12 @@ dependencies = [
  "jinn-sidebar-msg",
  "jinn-skills",
  "jinn-slices",
+ "jinn-status-bar",
  "jinn-term",
  "jinn-term-msg",
  "jinn-testutil",
  "jinn-theme",
+ "jinn-token-count-msg",
  "jinn-tools",
  "jinn-tools-msg",
  "parking_lot",

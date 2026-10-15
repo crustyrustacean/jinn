@@ -96,7 +96,15 @@ fn render_preview_at_cursor(
     let (mut terminal, _) = setup_term(term_width, term_height);
     terminal
         .draw(|frame| {
-            render_session_preview(frame, popup_area, session, &theme, &lines);
+            render_session_preview(
+                frame,
+                popup_area,
+                session,
+                &theme,
+                &lines,
+                None,
+                no_working_time(),
+            );
         })
         .unwrap();
 
@@ -106,7 +114,13 @@ fn render_preview_at_cursor(
 
 /// The row directly above the footer — the content area's last row.
 fn last_content_row(popup_area: Rect) -> u16 {
-    popup_area.y + popup_area.height - 2 - 3
+    popup_area.y + popup_area.height - 2 - 4
+}
+
+/// The working time a render test passes: zero, so the info line shows the
+/// never-worked clock and assertions are not chasing a live measurement.
+fn no_working_time() -> jiff::SignedDuration {
+    jiff::SignedDuration::ZERO
 }
 
 fn render_preview(
@@ -144,7 +158,15 @@ fn render_preview(
     let (mut terminal, _) = setup_term(term_width, term_height);
     terminal
         .draw(|frame| {
-            render_session_preview(frame, popup_area, session, &theme, &lines);
+            render_session_preview(
+                frame,
+                popup_area,
+                session,
+                &theme,
+                &lines,
+                None,
+                no_working_time(),
+            );
         })
         .unwrap();
 
@@ -168,8 +190,9 @@ fn empty_history_shows_title_and_keybinds_only() {
     );
 
     // And the keybinds lines appear in the footer area.
-    // Keybinds line 2 (c continue · r rename) is 3 rows above the bottom border.
-    let keybinds_y = popup_area.y + popup_area.height - 3;
+    // Keybinds line 2 (c continue · r rename) is the footer's second row: four
+    // rows above the popup's bottom border.
+    let keybinds_y = popup_area.y + popup_area.height - 4;
     let keybinds_row = buffer_row(&buffer, keybinds_y, popup_area.x + popup_area.width);
     assert!(
         keybinds_row.contains('c') || keybinds_row.contains('r'),
@@ -268,8 +291,8 @@ fn keybinds_line_one_shows_close_archive_insert() {
     // When rendering the preview.
     let (buffer, popup_area) = render_preview(&session, 80, 40);
 
-    // Then keybinds line 1 (4 rows above bottom border) contains x, a, i.
-    let line1_y = popup_area.y + popup_area.height - 4;
+    // Then keybinds line 1 (5 rows above bottom border) contains x, a, i.
+    let line1_y = popup_area.y + popup_area.height - 5;
     let line1_row = buffer_row(&buffer, line1_y, popup_area.x + popup_area.width);
 
     assert!(
@@ -294,8 +317,8 @@ fn keybinds_line_two_shows_continue_rename() {
     // When rendering the preview.
     let (buffer, popup_area) = render_preview(&session, 80, 40);
 
-    // Then keybinds line 2 (3 rows above bottom border) contains c, r.
-    let line2_y = popup_area.y + popup_area.height - 3;
+    // Then keybinds line 2 (4 rows above bottom border) contains c, r.
+    let line2_y = popup_area.y + popup_area.height - 4;
     let line2_row = buffer_row(&buffer, line2_y, popup_area.x + popup_area.width);
 
     assert!(
@@ -324,8 +347,12 @@ fn popup_title_shows_session_title() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Shared status line: cwd row + stats/model row, previewed session's own data
+// ---------------------------------------------------------------------------
+
 #[rstest::rstest]
-fn model_line_shows_provider_and_model() {
+fn model_shows_provider_and_model_on_the_info_row() {
     // Given a session with a specific model set.
     let mut session = ChatSessionState::new();
     session.set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -333,102 +360,176 @@ fn model_line_shows_provider_and_model() {
     // When rendering the preview.
     let (buffer, popup_area) = render_preview(&session, 80, 40);
 
-    // Then the bottom inner row shows the provider/model format.
-    let model_y = popup_area.y + popup_area.height - 2;
-    let model_row = buffer_row(&buffer, model_y, popup_area.x + popup_area.width);
+    // Then the info row (2 rows above the bottom border) shows the model in
+    // the status bar's format.
+    let info_y = popup_area.y + popup_area.height - 2;
+    let info_row = buffer_row(&buffer, info_y, popup_area.x + popup_area.width);
     assert!(
-        model_row.contains("(ollama)/llama3"),
-        "model line should contain '(ollama)/llama3', got: {model_row}"
+        info_row.contains("(ollama)/llama3"),
+        "info line should contain '(ollama)/llama3', got: {info_row}"
     );
 }
 
 #[rstest::rstest]
-fn model_line_shows_no_model_selected_when_unset() {
+fn model_shows_no_model_selected_when_unset() {
     // Given a default session (no provider selected).
     let session = ChatSessionState::new();
 
     // When rendering the preview.
     let (buffer, popup_area) = render_preview(&session, 80, 40);
 
-    // Then the bottom inner row shows "no model selected".
-    let model_y = popup_area.y + popup_area.height - 2;
-    let model_row = buffer_row(&buffer, model_y, popup_area.x + popup_area.width);
+    // Then the info row shows "no model selected".
+    let info_y = popup_area.y + popup_area.height - 2;
+    let info_row = buffer_row(&buffer, info_y, popup_area.x + popup_area.width);
     assert!(
-        model_row.contains("no model selected"),
-        "model line should show 'no model selected', got: {model_row}"
+        info_row.contains("no model selected"),
+        "info line should show 'no model selected', got: {info_row}"
     );
 }
 
-// ---------------------------------------------------------------------------
-// CWD display tests
-// ---------------------------------------------------------------------------
-
 #[rstest::rstest]
-fn cwd_shows_on_model_line() {
+fn cwd_shows_on_its_own_row_above_the_info_row() {
     // Given a session with a cwd and a model.
     let mut session = ChatSessionState::new();
-    session.set_cwd(std::path::PathBuf::from("/home/user/jinn"));
+    session.set_cwd(std::path::PathBuf::from("/tmp/test-project"));
     session.set_model(ModelSelection::Single("ollama/llama3".to_owned()));
 
     // When rendering the preview.
     let (buffer, popup_area) = render_preview(&session, 80, 40);
 
-    // Then the bottom inner row contains both the cwd and model.
-    let model_y = popup_area.y + popup_area.height - 2;
-    let row = buffer_row(&buffer, model_y, popup_area.x + popup_area.width);
+    // Then the cwd sits on the row directly above the info row, and the info
+    // row carries the model — two rows, not one combined line.
+    let cwd_y = popup_area.y + popup_area.height - 3;
+    let cwd_row = buffer_row(&buffer, cwd_y, popup_area.x + popup_area.width);
     assert!(
-        row.contains("jinn"),
-        "model line should contain cwd 'jinn', got: {row}"
+        cwd_row.contains("/tmp/test-project"),
+        "cwd row should contain the cwd, got: {cwd_row}"
+    );
+    let info_y = popup_area.y + popup_area.height - 2;
+    let info_row = buffer_row(&buffer, info_y, popup_area.x + popup_area.width);
+    assert!(
+        info_row.contains("(ollama)/llama3"),
+        "info row should contain the model, got: {info_row}"
     );
     assert!(
-        row.contains("(ollama)/llama3"),
-        "model line should contain model '(ollama)/llama3', got: {row}"
+        !cwd_row.contains("(ollama)"),
+        "the cwd row must not carry the model: {cwd_row}"
     );
 }
 
 #[rstest::rstest]
-fn cwd_left_truncated_when_long() {
-    // Given a session with a very long cwd.
+fn cwd_shortens_a_home_relative_path_with_a_tilde() {
+    // Given a session whose cwd is under the user's home directory.
     let mut session = ChatSessionState::new();
-    let long_cwd = "/very/long/path/that/should/be/truncated/to/fit/the/popup/jinn";
-    session.set_cwd(std::path::PathBuf::from(long_cwd));
+    let home = dirs::home_dir().expect("home dir exists");
+    session.set_cwd(home.join("projects/my-app"));
+
+    // When rendering the preview.
+    let (buffer, popup_area) = render_preview(&session, 80, 40);
+
+    // Then the cwd row shows the `~/…` form, the same collapse the status
+    // bar's cwd line applies.
+    let cwd_y = popup_area.y + popup_area.height - 3;
+    let cwd_row = buffer_row(&buffer, cwd_y, popup_area.x + popup_area.width);
+    assert!(
+        cwd_row.contains("~/projects/my-app"),
+        "cwd row should show the ~-shortened path, got: {cwd_row}"
+    );
+}
+
+#[rstest::rstest]
+fn info_row_shows_the_previewed_sessions_token_stats() {
+    // Given a session whose ledger reports sent/received counts.
+    let mut session = ChatSessionState::new();
+    session.set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+    session.push_token_record(jinn_token_count_msg::TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1500,
+        tokens_received: 750,
+        cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
+    });
+
+    // When rendering the preview.
+    let (buffer, popup_area) = render_preview(&session, 80, 40);
+
+    // Then the info row opens with the status bar's indicator arrows and the
+    // session's own counts — not the active session's (the active session
+    // here is a different, empty session).
+    let info_y = popup_area.y + popup_area.height - 2;
+    let info_row = buffer_row(&buffer, info_y, popup_area.x + popup_area.width);
+    assert!(
+        info_row.contains("\u{2191}1.5k \u{2193}750"),
+        "info line should show the previewed session's counts, got: {info_row}"
+    );
+}
+
+#[rstest::rstest]
+fn info_row_shows_the_previewed_sessions_turn_count() {
+    // Given a session with a user-and-assistant exchange.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    session.push_entry(ChatEntry::assistant("hi there"));
+
+    // When rendering the preview.
+    let (buffer, popup_area) = render_preview(&session, 80, 40);
+
+    // Then the info row carries the previewed session's turn counter.
+    let info_y = popup_area.y + popup_area.height - 2;
+    let info_row = buffer_row(&buffer, info_y, popup_area.x + popup_area.width);
+    assert!(
+        info_row.contains("\u{21BB}2"),
+        "info line should show the previewed session's turn count, got: {info_row}"
+    );
+}
+
+#[rstest::rstest]
+fn preview_renders_no_aggregate_anywhere() {
+    // Given a state whose active session is empty but whose previewed session
+    // carries a ledger — if the preview leaked aggregate (or active-session)
+    // numbers, they would show here.
+    let mut session = ChatSessionState::new();
+    session.set_model(ModelSelection::Single("ollama/llama3".to_owned()));
+    session.push_entry(ChatEntry::user("hello"));
+    session.push_entry(ChatEntry::assistant("hi there"));
+
+    // When rendering the preview.
+    let (buffer, popup_area) = render_preview(&session, 80, 40);
+
+    // Then no row of the popup carries a tree glyph or a session-count glyph:
+    // both are aggregates over the session tree, and the preview shows one
+    // session's own numbers only.
+    for y in popup_area.y..popup_area.y + popup_area.height {
+        let row = buffer_row(&buffer, y, popup_area.x + popup_area.width);
+        assert!(
+            !row.contains('\u{1F333}'),
+            "no tree aggregate glyph may appear in the preview, row {y}: {row}"
+        );
+        assert!(
+            !row.contains('\u{29C9}'),
+            "no session-count glyph may appear in the preview, row {y}: {row}"
+        );
+    }
+}
+
+#[rstest::rstest]
+fn preview_never_shows_a_transient_hint_in_place_of_the_model() {
+    // Given a previewed session with a model — the popup holds no hint cell,
+    // so nothing can replace the model on the info row.
+    let mut session = ChatSessionState::new();
     session.set_model(ModelSelection::Single("ollama/llama3".to_owned()));
 
     // When rendering the preview.
     let (buffer, popup_area) = render_preview(&session, 80, 40);
 
-    // Then the bottom inner row shows the cwd left-truncated with '…'.
-    let model_y = popup_area.y + popup_area.height - 2;
-    let row = buffer_row(&buffer, model_y, popup_area.x + popup_area.width);
+    // Then the info row ends in the model.
+    let info_y = popup_area.y + popup_area.height - 2;
+    let info_row = buffer_row(&buffer, info_y, popup_area.x + popup_area.width);
     assert!(
-        row.contains('\u{2026}'),
-        "model line should contain '…' when cwd is truncated, got: {row}"
-    );
-    assert!(
-        row.contains("jinn"),
-        "truncated cwd should preserve trailing 'jinn', got: {row}"
-    );
-}
-
-#[rstest::rstest]
-fn cwd_shows_with_no_model_selected() {
-    // Given a session with a cwd but no model.
-    let mut session = ChatSessionState::new();
-    session.set_cwd(std::path::PathBuf::from("/home/user/jinn"));
-
-    // When rendering the preview.
-    let (buffer, popup_area) = render_preview(&session, 80, 40);
-
-    // Then the bottom inner row shows both cwd and 'no model selected'.
-    let model_y = popup_area.y + popup_area.height - 2;
-    let row = buffer_row(&buffer, model_y, popup_area.x + popup_area.width);
-    assert!(
-        row.contains("jinn"),
-        "model line should contain cwd 'jinn', got: {row}"
-    );
-    assert!(
-        row.contains("no model selected"),
-        "model line should contain 'no model selected', got: {row}"
+        info_row.contains("(ollama)/llama3"),
+        "the shared info line always ends in the model, got: {info_row}"
     );
 }
 
@@ -615,7 +716,7 @@ fn an_empty_history_gets_a_full_height_popup() {
     // Then the box is the same height as one full of text, not collapsed onto
     // its chrome — the surface does not appear and disappear with the content.
     assert_eq!(
-        popup_area.height, 25,
+        popup_area.height, 26,
         "an empty history should still get the full-height popup"
     );
 }
@@ -624,10 +725,10 @@ fn an_empty_history_gets_a_full_height_popup() {
 // Geometry: the popup is a fixed-height surface anchored to the cursor
 // ---------------------------------------------------------------------------
 
-/// The content rows inside a popup rect: its inner area less the three footer
+/// The content rows inside a popup rect: its inner area less the four footer
 /// rows. Mirrors production so a test can name the rows content is drawn on.
 fn content_rows_of(popup_rect: Rect) -> u16 {
-    popup_rect.height.saturating_sub(2).saturating_sub(3)
+    popup_rect.height.saturating_sub(2).saturating_sub(4)
 }
 
 /// The rect production computes, for tests that are not about the no-room case.
@@ -705,15 +806,15 @@ fn popup_height_is_the_budget_plus_chrome() {
 
     // Then the content area is the preview's own line budget — the same constant
     // the layout worker renders to, not a second number kept alongside it — and
-    // the box adds exactly the two borders and three footer rows around it.
+    // the box adds exactly the two borders and four footer rows around it.
     assert_eq!(
         content_rows_of(popup_rect),
         u16::try_from(PREVIEW_MAX_LINES).expect("the budget fits a u16"),
         "the popup's content area must be the preview line budget"
     );
     assert_eq!(
-        popup_rect.height, 25,
-        "20 content rows + 3 footer rows + 2 borders"
+        popup_rect.height, 26,
+        "20 content rows + 4 footer rows + 2 borders"
     );
 }
 
@@ -741,14 +842,14 @@ fn popup_height_does_not_depend_on_how_much_text_it_holds() {
 fn popup_height_capped_when_cursor_near_top() {
     // Given a cursor very near the top of the terminal.
     let frame_area = Rect::new(0, 0, 80, 40);
-    let cursor_y = 7u16;
+    let cursor_y = 9u16;
 
     // When computing the popup rect.
     let popup_rect = popup_rect_or_panic(frame_area, cursor_y);
 
-    // Then the popup height is capped (max_height = 7 - 0 - 2 = 5).
+    // Then the popup height is capped (max_height = 9 - 0 - 2 = 7, the floor).
     assert_eq!(
-        popup_rect.height, 5,
+        popup_rect.height, 7,
         "popup height should be capped when cursor is near top, \
          got: {}",
         popup_rect.height
@@ -764,7 +865,7 @@ fn popup_height_capped_when_cursor_near_top() {
 #[rstest::rstest]
 fn popup_height_capped_below_the_full_height() {
     // Given a cursor with more room than the cap but less than the full popup:
-    // 20 rows above the cursor, so the cap (20 - 2) bites below the full 25.
+    // 20 rows above the cursor, so the cap (20 - 2) bites below the full 26.
     let frame_area = Rect::new(0, 0, 80, 40);
     let cursor_y = 22u16;
     let full_height = popup_rect_or_panic(frame_area, 40).height;
@@ -773,7 +874,7 @@ fn popup_height_capped_below_the_full_height() {
     let popup_rect = popup_rect_or_panic(frame_area, cursor_y);
 
     // Then the cap genuinely binds — the box is shorter than the full height,
-    // which a test at cursor_y=7 could not tell apart from the floor.
+    // which a test at the floor could not tell apart from the cap.
     assert_eq!(
         popup_rect.height, 20,
         "the cap should yield cursor_y - gap rows, got: {}",
@@ -819,24 +920,24 @@ fn no_popup_is_drawn_under_the_minimum_height_of_room() {
 
     // When computing the rect for a cursor within that space, and again with
     // exactly enough of it.
-    let with_no_room = session_preview_popup_rect(frame_area, 5);
-    let below_the_gap = session_preview_popup_rect(frame_area, 6);
-    let with_enough_room = session_preview_popup_rect(frame_area, 7);
+    let with_no_room = session_preview_popup_rect(frame_area, 7);
+    let below_the_gap = session_preview_popup_rect(frame_area, 8);
+    let with_enough_room = session_preview_popup_rect(frame_area, 9);
 
     // Then the first two draw nothing at any height, and the third draws a box
     // at the floor: the boundary is the room itself, not a tiebreak in the
     // height arithmetic.
     assert_eq!(
         with_no_room, None,
-        "a cursor 5 rows down leaves no room for a box"
+        "a cursor 7 rows down leaves no room for a box"
     );
     assert_eq!(
         below_the_gap, None,
-        "a cursor 6 rows down leaves only the gap, and no box fits in it"
+        "a cursor 8 rows down leaves only the gap, and no box fits in it"
     );
     assert_eq!(
         with_enough_room.map(|rect| rect.height),
-        Some(5),
+        Some(7),
         "the shortest drawable box is the floor, and it starts where the room does"
     );
 }
@@ -873,7 +974,14 @@ mod loading_state {
         let (mut terminal, _) = setup_term(term_width, term_height);
         terminal
             .draw(|frame| {
-                render_session_preview_loading(frame, popup_area, session, &theme);
+                render_session_preview_loading(
+                    frame,
+                    popup_area,
+                    session,
+                    &theme,
+                    None,
+                    no_working_time(),
+                );
             })
             .expect("draw");
         (terminal.backend().buffer().clone(), popup_area)
@@ -1048,6 +1156,46 @@ mod loading_state {
     }
 
     #[rstest::rstest]
+    fn the_loading_state_shows_the_previewed_sessions_cwd() {
+        // Given a session with a distinctive cwd whose preview has not rendered.
+        let mut session = make_session_with_title("busy");
+        session.set_cwd(std::path::PathBuf::from("/tmp/loadtest-cwd"));
+
+        // When drawing the loading popup.
+        let (buffer, popup_area) = draw_loading(&session, 100, 40);
+
+        // Then the loading footer already carries the shared status line — the
+        // cwd row shows the session's own directory — because loading and ready
+        // share one inner renderer, so the footer never flickers.
+        let cwd_y = popup_area.y + popup_area.height - 3;
+        let cwd_row = buffer_row(&buffer, cwd_y, popup_area.x + popup_area.width);
+        assert!(
+            cwd_row.contains("/tmp/loadtest-cwd"),
+            "the loading footer should already show the previewed session's cwd, got: {cwd_row}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn the_loading_state_shows_no_aggregate() {
+        // Given a session whose preview has not been rendered.
+        let session = make_session_with_title("busy");
+
+        // When drawing the loading popup.
+        let (buffer, popup_area) = draw_loading(&session, 100, 40);
+
+        // Then the loading footer carries no aggregate glyphs either — the
+        // loading and ready states share one footer, and that footer shows
+        // one session's own numbers only.
+        for y in popup_area.y..popup_area.y + popup_area.height {
+            let row = buffer_row(&buffer, y, popup_area.x + popup_area.width);
+            assert!(
+                !row.contains('\u{1F333}') && !row.contains('\u{29C9}'),
+                "no aggregate glyph may appear in the loading popup, row {y}: {row}"
+            );
+        }
+    }
+
+    #[rstest::rstest]
     fn the_loading_label_uses_the_streaming_color() {
         // Given a session whose preview has not been rendered.
         let session = make_session_with_title("busy");
@@ -1059,7 +1207,14 @@ mod loading_state {
         let (mut terminal, _) = setup_term(100, 40);
         terminal
             .draw(|frame| {
-                render_session_preview_loading(frame, popup_area, &session, &theme);
+                render_session_preview_loading(
+                    frame,
+                    popup_area,
+                    &session,
+                    &theme,
+                    None,
+                    no_working_time(),
+                );
             })
             .expect("draw");
         let buffer = terminal.backend().buffer().clone();
@@ -1102,15 +1257,28 @@ mod loading_state {
         let (mut terminal, _) = setup_term(100, 40);
         terminal
             .draw(|frame| {
-                render_session_preview(frame, popup_area, &session, &theme, &lines);
+                render_session_preview(
+                    frame,
+                    popup_area,
+                    &session,
+                    &theme,
+                    &lines,
+                    None,
+                    no_working_time(),
+                );
             })
             .expect("draw");
 
         // Then the popup is chrome-only — no spinner, because it is not waiting.
-        let screen = buffer_to_string(terminal.backend().buffer());
+        // Scanned over the content area only: the shared status line in the
+        // footer legitimately carries spinner-shaped glyphs (the `/` in a
+        // model name or a context ratio), which say nothing about loading.
+        let content = (0..content_rows_of(popup_area))
+            .map(|i| buffer_row(terminal.backend().buffer(), popup_area.y + 1 + i, 100))
+            .collect::<String>();
         assert!(
-            !any_spinner_glyph().iter().any(|g| screen.contains(g)),
-            "an empty preview is complete, not loading"
+            !any_spinner_glyph().iter().any(|g| content.contains(g)),
+            "an empty preview is complete, not loading: {content}"
         );
     }
 }

@@ -95,6 +95,54 @@ fn render_shows_status_hint_instead_of_model_when_set() {
 }
 
 #[rstest::rstest]
+fn render_short_hint_leaves_no_model_residue() {
+    // Given a status-bar cell carrying a hint SHORTER than the model string,
+    // on a state whose model is set to a long provider/model path.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default_with_scope_focus();
+    state.active_session_mut().set_model(ModelSelection::Single(
+        "openrouter/anthropic/claude-sonnet-4.5".to_owned(),
+    ));
+    let slices = jinn_slices::Slices::new();
+    {
+        #[expect(
+            clippy::expect_used,
+            reason = "test seam: a fresh Slices never has the status-bar cell registered"
+        )]
+        let cell = slices
+            .register(
+                jinn_status_bar_msg::status_bar_slot(),
+                jinn_status_bar_msg::StatusBarState::default(),
+            )
+            .expect("fresh Slices never has the status-bar cell registered");
+        cell.update(|s| s.hint = Some("yanked 3 lines".to_owned()));
+    }
+    let (mut terminal, area) = setup_term(60, 2);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 60);
+
+    // Then the hint replaces the model entirely — no fragment of the longer
+    // model string survives to the left of the hint. Hint and model are one
+    // either/or widget; the right-aligned hint overwrites only its own
+    // columns, so an overlay instead of a replacement would leave
+    // "(openrouter)yanked 3 lines" on the row.
+    assert!(row.contains("yanked 3 lines"), "row: {row}");
+    assert!(
+        !row.contains("(openrouter)") && !row.contains("claude"),
+        "a short hint must leave no model residue, got: {row}"
+    );
+}
+
+#[rstest::rstest]
 fn render_defaults_to_model_when_cell_absent() {
     // Given a state whose status-bar cell was never registered (slice not
     // activated) and no model selected.
