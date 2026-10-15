@@ -421,7 +421,7 @@ mod properties_tests {
     }
 
     #[rstest::rstest]
-    fn pick_moves_the_focused_choice_row_only() {
+    fn pick_moves_the_focused_trigger_row_only() {
         // Given a popup focused on the trigger with pending edits on both
         // rows and prep mode off.
         let mut popup = AttendantPropertiesState {
@@ -437,19 +437,29 @@ mod properties_tests {
 
         // Then the trigger moved to its rightmost choice.
         assert_eq!(popup.pending_trigger, AttendantTrigger::Manual);
-        // And the behavior did not move.
+        // And the unfocused behavior did not move.
         assert_eq!(popup.pending_behavior, AttendantBehavior::Preserve);
+    }
 
-        // Given the same popup refocused on the behavior.
-        popup.focus = PropertyField::Behavior;
+    #[rstest::rstest]
+    fn pick_moves_the_focused_behavior_row_only() {
+        // Given a popup focused on the behavior with pending edits on both
+        // rows and prep mode off.
+        let mut popup = AttendantPropertiesState {
+            focus: PropertyField::Behavior,
+            pending_behavior: AttendantBehavior::Preserve,
+            pending_trigger: AttendantTrigger::ParentCompleted,
+            pending_prep_mode: false,
+            ..AttendantPropertiesState::default()
+        };
 
         // When picking left.
         popup.pick(PickDirection::Left);
 
         // Then the behavior moved one choice left.
         assert_eq!(popup.pending_behavior, AttendantBehavior::Reset);
-        // And the trigger did not move.
-        assert_eq!(popup.pending_trigger, AttendantTrigger::Manual);
+        // And the unfocused trigger did not move.
+        assert_eq!(popup.pending_trigger, AttendantTrigger::ParentCompleted);
     }
 
     #[rstest::rstest]

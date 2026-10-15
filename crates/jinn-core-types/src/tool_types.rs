@@ -125,7 +125,7 @@ impl ToolDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ToolCall {
     /// Unique identifier for this tool call (assigned by the LLM provider).
-    pub id: String,
+    pub id: crate::ToolCallId,
     /// The name of the function to call.
     pub name: String,
     /// The arguments as a JSON string.
@@ -136,7 +136,7 @@ pub struct ToolCall {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ToolResult {
     /// The ID of the tool call this result is for.
-    pub tool_call_id: String,
+    pub tool_call_id: crate::ToolCallId,
     /// The name of the tool that was executed.
     pub name: String,
     /// The output content (truncated if output exceeded limits).
@@ -199,7 +199,7 @@ mod tests {
     fn tool_call_roundtrips_through_serde() {
         // Given a tool call.
         let call = ToolCall {
-            id: "call_123".to_owned(),
+            id: "call_123".into(),
             name: "echo".to_owned(),
             arguments: r#"{"input":"hi"}"#.to_owned(),
         };
@@ -216,7 +216,7 @@ mod tests {
     fn tool_result_roundtrips_through_serde() {
         // Given a tool result with no truncation.
         let result = ToolResult {
-            tool_call_id: "call_123".to_owned(),
+            tool_call_id: "call_123".into(),
             name: "echo".to_owned(),
             content: "hi".to_owned(),
             success: true,
@@ -237,7 +237,7 @@ mod tests {
     fn tool_result_with_truncation_roundtrips() {
         // Given a tool result carrying truncation metadata and a full copy.
         let result = ToolResult {
-            tool_call_id: "call_456".to_owned(),
+            tool_call_id: "call_456".into(),
             name: "bash".to_owned(),
             content: "last line".to_owned(),
             success: true,
@@ -269,7 +269,7 @@ mod tests {
         let result: ToolResult = serde_json::from_str(json).expect("deserialize");
 
         // Then the new fields default to None.
-        assert_eq!(result.tool_call_id, "call_1");
+        assert_eq!(result.tool_call_id.as_str(), "call_1");
         assert_eq!(result.content, "ok");
         assert!(result.full_content.is_none());
         assert!(result.truncation.is_none());

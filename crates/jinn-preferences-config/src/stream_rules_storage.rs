@@ -38,6 +38,9 @@ use crate::stream_rules_assembly::assemble_stream_rules;
 /// Why a rule's disabled state could not be persisted.
 #[derive(Debug, PartialEq, Eq, wherror::Error)]
 pub enum StreamRulesStorageError {
+    /// The blocking persist worker died before it could report storage-wise.
+    #[error("stream-rule persist worker panicked: {detail}")]
+    WorkerPanicked { detail: String },
     /// No entry in `[[stream_rules.entry]]` carries that name.
     ///
     /// Refusing is the point of the error: silently writing nothing would

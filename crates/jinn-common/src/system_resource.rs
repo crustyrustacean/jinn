@@ -164,6 +164,8 @@ mod tests {
         }
 
         // When loading the system resource.
+        // On Windows the assertion below is compiled out, so the binding
+        // would otherwise be unused there.
         #[cfg_attr(
             windows,
             expect(

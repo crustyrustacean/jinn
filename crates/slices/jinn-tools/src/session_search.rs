@@ -117,19 +117,103 @@ enum Scope {
     Project(String),
 }
 
+/// Why a `session_search` call could not run.
+///
+/// Variants carry everything the model needs in their message: the tool
+/// boundary renders a failure as tool-result prose, and a `Report`'s
+/// `Display` prints only the outermost context.
+#[derive(Debug, wherror::Error)]
+pub enum SessionSearchError {
+    /// The call's JSON arguments were malformed.
+    #[error("invalid JSON arguments: {detail}")]
+    InvalidArguments {
+        /// The parser's complaint.
+        detail: String,
+    },
+    /// No `query` argument, or an empty one.
+    #[error("query is required")]
+    QueryRequired,
+    /// A `session_id` argument was not a valid session id.
+    #[error("invalid session_id '{raw}'")]
+    InvalidSessionId {
+        /// The raw value.
+        raw: String,
+    },
+    /// A `fields` entry was not a string.
+    #[error("fields must be an array of strings")]
+    FieldsNotStrings,
+    /// A `fields` entry named an unindexed role.
+    #[error("unknown field '{name}': actor and thinking are never indexed")]
+    UnknownField {
+        /// The refused name.
+        name: String,
+    },
+    /// A numeric argument was not a positive integer.
+    #[error("{name} must be a positive integer")]
+    InvalidNumber {
+        /// The argument's name.
+        name: &'static str,
+    },
+    /// A `since`/`until` value was not an ISO date or datetime.
+    #[error("invalid {key} '{raw}': {detail}")]
+    InvalidDate {
+        /// The argument's name.
+        key: &'static str,
+        /// The raw value.
+        raw: String,
+        /// The parser's complaint.
+        detail: String,
+    },
+    /// The `scope` value matched none of the three accepted forms.
+    #[error(
+        "invalid scope '{raw}': use \"current\", \"all\", or \"project:<name>\" \
+             (known projects are listed in the error when a name is unknown)"
+    )]
+    InvalidScope {
+        /// The raw value.
+        raw: String,
+    },
+    /// The store refused the summary load.
+    #[error("session store failed: {detail}")]
+    Store {
+        /// The store's report.
+        detail: String,
+    },
+    /// No session is current and none was passed.
+    #[error("no current session; pass scope:\"all\" or a session_id")]
+    NoCurrentSession,
+    /// No session carries a project, so `project:` cannot resolve.
+    #[error("no sessions belong to any project; scope \"project:<name>\" cannot resolve")]
+    NoProjects,
+    /// The project name matched zero or several sessions.
+    #[error("unknown project '{want}'; known projects: {known}")]
+    UnknownProject {
+        /// The refused name.
+        want: String,
+        /// The resolvable names, comma-joined.
+        known: String,
+    },
+    /// A matched project name disappeared between filter and select —
+    /// unreachable by construction, kept so the `?` path stays total.
+    #[error("project match vanished between filter and select")]
+    ProjectVanished,
+}
+
 /// Parses and validates raw JSON arguments.
-fn parse_args(raw: &str) -> Result<SearchArgs, String> {
+fn parse_args(raw: &str) -> Result<SearchArgs, error_stack::Report<SessionSearchError>> {
     let args: trouper::json::Json =
-        serde_json::from_str(raw).map_err(|e| format!("invalid JSON arguments: {e}"))?;
+        serde_json::from_str(raw).map_err(|e| SessionSearchError::InvalidArguments {
+            detail: e.to_string(),
+        })?;
 
     let query = args
         .get("query")
         .and_then(serde_json::Value::as_str)
-        .ok_or("query is required")?
+        .ok_or(SessionSearchError::QueryRequired)?
         .trim()
         .to_owned();
     if query.is_empty() {
-        return Err("query is required".to_owned());
+        return Err(SessionSearchError::QueryRequired.into());
     }
 
     let scope = match args.get("scope").and_then(serde_json::Value::as_str) {
@@ -149,21 +233,25 @@ fn parse_args(raw: &str) -> Result<SearchArgs, String> {
         Some(serde_json::Value::Array(items)) => {
             let mut roles = Vec::with_capacity(items.len());
             for item in items {
-                let name = item.as_str().ok_or("fields must be an array of strings")?;
+                let name = item.as_str().ok_or(SessionSearchError::FieldsNotStrings)?;
                 let role = SearchableRole::parse(name).ok_or_else(|| {
-                    format!("unknown field '{name}': actor and thinking are never indexed")
+                    SessionSearchError::UnknownField {
+                        name: name.to_owned(),
+                    }
                 })?;
                 roles.push(role);
             }
             roles
         }
-        Some(_) => return Err("fields must be an array of strings".to_owned()),
+        Some(_) => return Err(SessionSearchError::FieldsNotStrings.into()),
     };
 
     let limit = match args.get("limit") {
         None | Some(serde_json::Value::Null) => DEFAULT_LIMIT,
         Some(v) => {
-            let n = v.as_u64().ok_or("limit must be a positive integer")?;
+            let n = v
+                .as_u64()
+                .ok_or(SessionSearchError::InvalidNumber { name: "limit" })?;
             n.clamp(1, MAX_LIMIT)
         }
     };
@@ -185,8 +273,8 @@ fn parse_args(raw: &str) -> Result<SearchArgs, String> {
 /// Parses an optional ISO date/datetime string argument into a UTC instant.
 fn parse_date_arg(
     args: &trouper::json::Json,
-    key: &str,
-) -> Result<Option<jiff::Timestamp>, String> {
+    key: &'static str,
+) -> Result<Option<jiff::Timestamp>, error_stack::Report<SessionSearchError>> {
     let Some(raw) = args.get(key).and_then(serde_json::Value::as_str) else {
         return Ok(None);
     };
@@ -197,12 +285,20 @@ fn parse_date_arg(
     let ts: jiff::Timestamp = match raw.parse::<jiff::Timestamp>() {
         Ok(ts) => ts,
         Err(_) => {
-            let date = raw
-                .parse::<jiff::civil::Date>()
-                .map_err(|e| format!("invalid {key} '{raw}': {e}"))?;
-            let zoned = date
-                .to_zoned(jiff::tz::TimeZone::UTC)
-                .map_err(|e| format!("invalid {key} '{raw}': {e}"))?;
+            let date =
+                raw.parse::<jiff::civil::Date>()
+                    .map_err(|e| SessionSearchError::InvalidDate {
+                        key,
+                        raw: raw.to_owned(),
+                        detail: e.to_string(),
+                    })?;
+            let zoned = date.to_zoned(jiff::tz::TimeZone::UTC).map_err(|e| {
+                SessionSearchError::InvalidDate {
+                    key,
+                    raw: raw.to_owned(),
+                    detail: e.to_string(),
+                }
+            })?;
             jiff::Timestamp::from(zoned)
         }
     };
@@ -210,7 +306,7 @@ fn parse_date_arg(
 }
 
 /// Parses a scope string into a [`Scope`].
-fn parse_scope(raw: &str) -> Result<Scope, String> {
+fn parse_scope(raw: &str) -> Result<Scope, error_stack::Report<SessionSearchError>> {
     match raw {
         "current" | "" => Ok(Scope::Current),
         "all" => Ok(Scope::All),
@@ -219,10 +315,10 @@ fn parse_scope(raw: &str) -> Result<Scope, String> {
             .filter(|name| !name.is_empty())
             .map(|name| Scope::Project(name.to_owned()))
             .ok_or_else(|| {
-                format!(
-                    "invalid scope '{raw}': use \"current\", \"all\", or \"project:<name>\" \
- (known projects are listed in the error when a name is unknown)"
-                )
+                SessionSearchError::InvalidScope {
+                    raw: raw.to_owned(),
+                }
+                .into()
             }),
     }
 }
@@ -230,8 +326,8 @@ fn parse_scope(raw: &str) -> Result<Scope, String> {
 /// The resolved session-id set for a search, with titles for output.
 #[derive(Debug, Default)]
 struct ResolvedSessions {
-    ids: Vec<String>,
-    titles: std::collections::HashMap<String, String>,
+    ids: Vec<SessionId>,
+    titles: std::collections::HashMap<SessionId, String>,
 }
 
 /// Resolves the scope to a concrete session-id set.
@@ -245,8 +341,10 @@ async fn resolve_sessions(
     explicit: Option<String>,
     current: Option<&SessionId>,
     store: &jinn_session_state::SessionStoreService,
-) -> Result<ResolvedSessions, String> {
-    if let Some(id) = explicit {
+) -> Result<ResolvedSessions, error_stack::Report<SessionSearchError>> {
+    if let Some(raw) = explicit {
+        let id = SessionId::try_from_string(&raw)
+            .ok_or_else(|| SessionSearchError::InvalidSessionId { raw: raw.clone() })?;
         return {
             let mut titles = std::collections::HashMap::new();
             titles.insert(id.clone(), String::new());
@@ -257,24 +355,30 @@ async fn resolve_sessions(
         };
     }
 
-    let summaries: Vec<SessionSummary> = store.load_summaries().await.map_err(|e| e.to_string())?;
+    let summaries: Vec<SessionSummary> =
+        store
+            .load_summaries()
+            .await
+            .map_err(|e| SessionSearchError::Store {
+                detail: e.to_string(),
+            })?;
     let mut titles = std::collections::HashMap::new();
     for summary in &summaries {
-        titles.insert(summary.session_id.to_string(), summary.title.clone());
+        titles.insert(summary.session_id.clone(), summary.title.clone());
     }
 
     match scope {
         Scope::Current => {
             let Some(current) = current else {
-                return Err("no current session; pass scope:\"all\" or a session_id".to_owned());
+                return Err(SessionSearchError::NoCurrentSession.into());
             };
             Ok(ResolvedSessions {
-                ids: vec![current.to_string()],
+                ids: vec![current.clone()],
                 titles,
             })
         }
         Scope::All => Ok(ResolvedSessions {
-            ids: summaries.iter().map(|s| s.session_id.to_string()).collect(),
+            ids: summaries.iter().map(|s| s.session_id.clone()).collect(),
             titles,
         }),
         Scope::Project(want) => {
@@ -296,18 +400,16 @@ async fn resolve_sessions(
                 .collect();
             if matched.len() != 1 {
                 return Err(if known.is_empty() {
-                    "no sessions belong to any project; scope \"project:<name>\" cannot resolve"
-                        .to_owned()
+                    SessionSearchError::NoProjects.into()
                 } else {
-                    format!(
-                        "unknown project '{want}'; known projects: {}",
-                        known.join(", ")
-                    )
+                    SessionSearchError::UnknownProject {
+                        want,
+                        known: known.join(", "),
+                    }
+                    .into()
                 });
             }
-            let name = matched
-                .first()
-                .ok_or("project match vanished between filter and select")?;
+            let name = matched.first().ok_or(SessionSearchError::ProjectVanished)?;
             Ok(ResolvedSessions {
                 ids: summaries
                     .iter()
@@ -317,7 +419,7 @@ async fn resolve_sessions(
                             .and_then(|p| p.file_name())
                             .is_some_and(|n| n.eq_ignore_ascii_case(name))
                     })
-                    .map(|s| s.session_id.to_string())
+                    .map(|s| s.session_id.clone())
                     .collect(),
                 titles,
             })
@@ -401,7 +503,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
         let args = match parse_args(&args_str) {
             Ok(v) => v,
-            Err(e) => return fail(e),
+            Err(e) => return fail(e.to_string()),
         };
 
         let Some(store) = ctx.session_store else {
@@ -414,7 +516,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             .map_or(Ok(Scope::Current), parse_scope);
         let scope = match scope {
             Ok(s) => s,
-            Err(e) => return fail(e),
+            Err(e) => return fail(e.to_string()),
         };
 
         let sessions = match resolve_sessions(
@@ -426,7 +528,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         .await
         {
             Ok(v) => v,
-            Err(e) => return fail(e),
+            Err(e) => return fail(e.to_string()),
         };
         if sessions.ids.is_empty() {
             return fail("scope resolved to no sessions".to_owned());
@@ -442,7 +544,14 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         };
         let outcome = match store.search(params).await {
             Ok(v) => v,
-            Err(e) => return fail(format!("{e:?}")),
+            Err(e) => {
+                return fail(
+                    SessionSearchError::Store {
+                        detail: format!("{e:?}"),
+                    }
+                    .to_string(),
+                );
+            }
         };
 
         ToolResult {

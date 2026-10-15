@@ -49,7 +49,8 @@ pub struct ScanOutputs {
     /// The merged discovered skills.
     pub skills: Vec<jinn_skills_msg::Skill>,
     /// The merged prompt-template store.
-    pub prompts: Result<PromptTemplateStore, String>,
+    pub prompts:
+        Result<PromptTemplateStore, error_stack::Report<jinn_context::PromptTemplateStoreError>>,
     /// The bounded-walk context files with contents read.
     pub context: Vec<ContextFile>,
 }
@@ -77,13 +78,14 @@ fn read_one_context_file(path: &std::path::Path) -> Option<ContextFile> {
 
 /// Loads the prompt-template store from the user/system/project dirs.
 ///
-/// The store's error is returned verbatim so the worker's event
-/// carries a description identical to the published summary.
+/// # Errors
+///
+/// Returns the store's own error, so the worker's event carries a
+/// description identical to the published summary.
 pub fn load_prompts(
     user_dir: &std::path::Path,
     system_dir: &std::path::Path,
     project_dirs: &[std::path::PathBuf],
-) -> Result<PromptTemplateStore, String> {
+) -> Result<PromptTemplateStore, error_stack::Report<jinn_context::PromptTemplateStoreError>> {
     PromptTemplateStore::load_from_dirs_ordered(user_dir, system_dir, project_dirs)
-        .map_err(|e| format!("{e:?}"))
 }

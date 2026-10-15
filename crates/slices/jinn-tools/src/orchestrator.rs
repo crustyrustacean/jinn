@@ -22,6 +22,7 @@ use std::pin::Pin;
 
 use crate::tool_types::ToolContext;
 use jiff::Timestamp;
+use jinn_core_types::ToolCallId;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_core_types::{ServerToolType, SessionId};
 use jinn_kernel::common::actor_deps::{ActorDeps, BusPublish};
@@ -316,7 +317,7 @@ impl ToolOrchestratorActor {
                 execute: |_call, _ctx| {
                     // Server tool - handled by OpenRouter, never dispatched locally.
                     Box::pin(std::future::ready(ToolResult {
-                        tool_call_id: String::new(),
+                        tool_call_id: ToolCallId::from(String::new()),
                         name: "openrouter:web_search".to_owned(),
                         content: "server tool should not be dispatched".to_owned(),
                         success: false,
@@ -1033,10 +1034,10 @@ impl ToolOrchestratorActor {
 /// Constructs a failed [`ToolResult`] for a tool that panicked.
 ///
 /// Ensures a panicking tool still publishes a completion so the batch always finishes.
-fn panicked_tool_result(tool_call_id: &str, name: &str) -> ToolResult {
+fn panicked_tool_result(tool_call_id: &ToolCallId, name: &str) -> ToolResult {
     tracing::error!(tool = %name, tool_call_id = %tool_call_id, "tool execution panicked");
     ToolResult {
-        tool_call_id: tool_call_id.to_owned(),
+        tool_call_id: tool_call_id.clone(),
         name: name.to_owned(),
         content: "tool execution panicked".to_owned(),
         success: false,
@@ -1146,8 +1147,8 @@ mod timeout_tests {
 
     fn make_call() -> ToolCall {
         ToolCall {
-            id: "call_1".to_owned(),
-            name: "slow_tool".to_owned(),
+            id: "call_1".into(),
+            name: "slow_tool".into(),
             arguments: "{}".to_owned(),
         }
     }
@@ -1178,7 +1179,7 @@ mod timeout_tests {
         Box::pin(async {
             tokio::time::sleep(Duration::from_millis(500)).await;
             ToolResult {
-                tool_call_id: "call_1".to_owned(),
+                tool_call_id: "call_1".into(),
                 name: "slow_tool".to_owned(),
                 content: "done".to_owned(),
                 success: true,
@@ -1193,7 +1194,7 @@ mod timeout_tests {
     fn fast_execute(_call: ToolCall, _ctx: ToolContext) -> BoxedToolFuture {
         Box::pin(async {
             ToolResult {
-                tool_call_id: "call_1".to_owned(),
+                tool_call_id: "call_1".into(),
                 name: "slow_tool".to_owned(),
                 content: "done".to_owned(),
                 success: true,
@@ -1386,6 +1387,7 @@ mod panic_safety_tests {
     use std::panic::AssertUnwindSafe;
 
     use futures::FutureExt as _;
+    use jinn_core_types::ToolCallId;
 
     use super::panicked_tool_result;
     use jinn_core_types::tool_types::{ToolCall, ToolResult};
@@ -1401,8 +1403,8 @@ mod panic_safety_tests {
         }
 
         let tool_call = ToolCall {
-            id: "call_panic".to_owned(),
-            name: "boom".to_owned(),
+            id: "call_panic".into(),
+            name: "boom".into(),
             arguments: "{}".to_owned(),
         };
         // When the builtin future panics and is caught.
@@ -1439,7 +1441,7 @@ mod panic_safety_tests {
         // Then a failed ToolResult is produced (not a silent hang).
         assert!(!result.success, "panicked tool must report failure");
         assert_eq!(result.content, "tool execution panicked");
-        assert_eq!(result.tool_call_id, "call_panic");
+        assert_eq!(result.tool_call_id.as_str(), "call_panic");
         assert_eq!(result.name, "boom");
     }
 
@@ -1454,13 +1456,13 @@ mod panic_safety_tests {
         // When the future panics and is caught.
         let result: ToolResult = match AssertUnwindSafe(panicking_future).catch_unwind().await {
             Ok(r) => r,
-            Err(_) => panicked_tool_result("call_future", "future_tool"),
+            Err(_) => panicked_tool_result(&ToolCallId::from("call_future"), "future_tool"),
         };
 
         // Then a failed ToolResult is produced (not a silent hang).
         assert!(!result.success, "panicking future must report failure");
         assert_eq!(result.content, "tool execution panicked");
-        assert_eq!(result.tool_call_id, "call_future");
+        assert_eq!(result.tool_call_id.as_str(), "call_future");
         assert_eq!(result.name, "future_tool");
     }
 }
@@ -1634,7 +1636,7 @@ mod mcp_dispatch_gate_tests {
 
     fn echo_call() -> ToolCall {
         ToolCall {
-            id: "tc_1".to_owned(),
+            id: "tc_1".into(),
             name: "mcp__stub__echo".to_owned(),
             arguments: "{}".to_owned(),
         }

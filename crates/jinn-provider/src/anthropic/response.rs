@@ -103,7 +103,11 @@ impl AnthropicStreamParser {
                 },
             );
 
-            Some(StreamEvent::ToolUseStart { index, id, name })
+            Some(StreamEvent::ToolUseStart {
+                index,
+                id: jinn_core_types::ToolCallId::from(id),
+                name,
+            })
         } else {
             None
         }
@@ -154,7 +158,7 @@ impl AnthropicStreamParser {
             StreamEvent::ToolUseComplete {
                 index,
                 tool_call: ToolCall {
-                    id: state.id,
+                    id: jinn_core_types::ToolCallId::from(state.id),
                     name: state.name,
                     arguments,
                 },
@@ -249,7 +253,7 @@ mod tests {
             event,
             Some(StreamEvent::ToolUseStart {
                 index: 1,
-                id: "toolu_01".to_owned(),
+                id: "toolu_01".into(),
                 name: "get_weather".to_owned(),
             })
         );

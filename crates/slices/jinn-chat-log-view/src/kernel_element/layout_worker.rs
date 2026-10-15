@@ -685,7 +685,7 @@ impl From<&LayoutChatSession> for MeasureJob {
 /// Measures a single entry's wrapped line count.
 fn measure_entry(
     entry: &jinn_core_types::ChatEntry,
-    tool_result_statuses: &HashMap<String, jinn_core_types::ToolResultStatus>,
+    tool_result_statuses: &HashMap<jinn_core_types::ToolCallId, jinn_core_types::ToolResultStatus>,
     inputs: &LayoutInputs,
     job: &MeasureJob,
 ) -> MeasuredLineCount {
@@ -745,7 +745,7 @@ fn wrapped_line_count(lines: &[ratatui::text::Line<'static>], content_width: u16
 /// background by the result's status.
 fn pair_tool_results(
     entries: &[jinn_core_types::ChatEntry],
-) -> HashMap<String, jinn_core_types::ToolResultStatus> {
+) -> HashMap<jinn_core_types::ToolCallId, jinn_core_types::ToolResultStatus> {
     entries
         .iter()
         .filter_map(|entry| match &entry.kind {

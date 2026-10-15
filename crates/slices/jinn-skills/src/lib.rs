@@ -29,7 +29,7 @@ pub use jinn_skills_msg::SkillPreviewCache;
 pub use jinn_skills_msg::loaded_skill_summary_label;
 pub use jinn_skills_msg::parse_loaded_skill_name;
 pub use jinn_skills_msg::{Skill, SkillFrontmatter, SkillSource};
-pub use scan::scan_skills;
+pub use scan::{scan_skills, scan_skills_merged};
 pub use skill_picker_actions::{
     cancel_filter, confirm, highlighted_name, open, toggle_highlighted,
 };

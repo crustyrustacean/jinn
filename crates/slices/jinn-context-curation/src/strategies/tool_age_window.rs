@@ -51,7 +51,7 @@ use crate::worker::HistoryWorker;
 use jinn_core_types::HistoryMutation;
 use jinn_core_types::SessionId;
 use jinn_core_types::ToolResultStatus;
-use jinn_core_types::{ChatEntry, ChatEntryId, ChatEntryKind};
+use jinn_core_types::{ChatEntry, ChatEntryId, ChatEntryKind, ToolCallId};
 
 use super::worker_skeleton::prune_mutation;
 
@@ -101,7 +101,7 @@ pub struct ToolAgeWindowAutoPruneWorker {
 fn find_completed_matching_result(
     history: &[ChatEntry],
     call_idx: usize,
-    tool_call_id: &str,
+    tool_call_id: &ToolCallId,
 ) -> Option<ChatEntryId> {
     // ToolResults appear after their ToolCall, so scan forward only.
     for entry in history.iter().skip(call_idx + 1) {
@@ -227,7 +227,7 @@ impl HistoryWorker for ToolAgeWindowAutoPruneWorker {
         clippy::unnecessary_literal_bound,
         reason = "lifetime elision makes bound redundant"
     )]
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "auto-prune-tool-age-window"
     }
 

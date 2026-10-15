@@ -840,7 +840,12 @@ fn begin_tool_call_creates_entry_with_empty_arguments() {
     session.begin_streaming();
 
     // When beginning a tool call.
-    session.begin_tool_call(0, "call_1", "echo", jiff::Timestamp::now());
+    session.begin_tool_call(
+        0,
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "echo",
+        jiff::Timestamp::now(),
+    );
 
     // Then history has an assistant entry and a tool call entry with empty arguments.
     assert_eq!(session.history().len(), 2);
@@ -851,8 +856,8 @@ fn begin_tool_call_creates_entry_with_empty_arguments() {
     assert_eq!(
         session.history()[1].kind,
         ChatEntryKind::ToolCall {
-            id: "call_1".to_owned(),
-            name: "echo".to_owned(),
+            id: "call_1".into(),
+            name: "echo".into(),
             arguments: String::new(),
             child_session: None,
         }
@@ -864,7 +869,12 @@ fn append_tool_call_delta_accumulates_arguments() {
     // Given a streaming session with a tool call entry.
     let mut session = attached_session();
     session.begin_streaming();
-    session.begin_tool_call(0, "call_1", "echo", jiff::Timestamp::now());
+    session.begin_tool_call(
+        0,
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "echo",
+        jiff::Timestamp::now(),
+    );
 
     // When appending tool call deltas.
     session
@@ -878,7 +888,7 @@ fn append_tool_call_delta_accumulates_arguments() {
     assert_eq!(
         session.history()[1].kind,
         ChatEntryKind::ToolCall {
-            id: "call_1".to_owned(),
+            id: "call_1".into(),
             name: "echo".to_owned(),
             arguments: r#"{"input":"hello"}"#.to_owned(),
             child_session: None,
@@ -891,19 +901,28 @@ fn finalize_tool_call_overwrites_arguments() {
     // Given a streaming session with a tool call that has partial arguments.
     let mut session = attached_session();
     session.begin_streaming();
-    session.begin_tool_call(0, "call_1", "echo", jiff::Timestamp::now());
+    session.begin_tool_call(
+        0,
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "echo",
+        jiff::Timestamp::now(),
+    );
     session
         .append_tool_call_delta(0, r#"{"input":"#)
         .expect("ok");
 
     // When finalizing the tool call with the complete arguments.
-    session.finalize_tool_call("call_1", "echo", r#"{"input":"world"}"#);
+    session.finalize_tool_call(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "echo",
+        r#"{"input":"world"}"#,
+    );
 
     // Then the arguments are overwritten with the final value.
     assert_eq!(
         session.history()[1].kind,
         ChatEntryKind::ToolCall {
-            id: "call_1".to_owned(),
+            id: "call_1".into(),
             name: "echo".to_owned(),
             arguments: r#"{"input":"world"}"#.to_owned(),
             child_session: None,
@@ -918,14 +937,18 @@ fn finalize_tool_call_pushes_new_entry_when_not_found() {
     session.begin_streaming();
 
     // When finalizing a tool call that was never started (shouldn't happen normally).
-    session.finalize_tool_call("call_99", "echo", r#"{"input":"hi"}"#);
+    session.finalize_tool_call(
+        &jinn_core_types::ToolCallId::from("call_99"),
+        "echo",
+        r#"{"input":"hi"}"#,
+    );
 
     // Then a new entry is pushed (no assistant entry yet \xe2\x80\x94 lazy creation).
     assert_eq!(session.history().len(), 1); // tool call only
     assert_eq!(
         session.history()[0].kind,
         ChatEntryKind::ToolCall {
-            id: "call_99".to_owned(),
+            id: "call_99".into(),
             name: "echo".to_owned(),
             arguments: r#"{"input":"hi"}"#.to_owned(),
             child_session: None,
@@ -940,14 +963,19 @@ fn first_tool_call_tracks_arguments() {
     session.begin_streaming();
 
     // When beginning a tool call and appending a delta.
-    session.begin_tool_call(0, "call_1", "echo", jiff::Timestamp::now());
+    session.begin_tool_call(
+        0,
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "echo",
+        jiff::Timestamp::now(),
+    );
     session.append_tool_call_delta(0, r#"{"a":1}"#).expect("ok");
 
     // Then the tool call entry tracks its own arguments.
     assert_eq!(
         session.history()[1].kind,
         ChatEntryKind::ToolCall {
-            id: "call_1".to_owned(),
+            id: "call_1".into(),
             name: "echo".to_owned(),
             arguments: r#"{"a":1}"#.to_owned(),
             child_session: None,
@@ -960,18 +988,28 @@ fn second_tool_call_tracks_independent_arguments() {
     // Given a streaming session with one tool call already started.
     let mut session = attached_session();
     session.begin_streaming();
-    session.begin_tool_call(0, "call_1", "echo", jiff::Timestamp::now());
+    session.begin_tool_call(
+        0,
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "echo",
+        jiff::Timestamp::now(),
+    );
     session.append_tool_call_delta(0, r#"{"a":1}"#).expect("ok");
 
     // When beginning a second tool call with a different index.
-    session.begin_tool_call(1, "call_2", "get_time", jiff::Timestamp::now());
+    session.begin_tool_call(
+        1,
+        &jinn_core_types::ToolCallId::from("call_2"),
+        "get_time",
+        jiff::Timestamp::now(),
+    );
     session.append_tool_call_delta(1, "{}").expect("ok");
 
     // Then the second tool call entry tracks its own arguments independently.
     assert_eq!(
         session.history()[2].kind,
         ChatEntryKind::ToolCall {
-            id: "call_2".to_owned(),
+            id: "call_2".into(),
             name: "get_time".to_owned(),
             arguments: "{}".to_owned(),
             child_session: None,
@@ -984,7 +1022,12 @@ fn finish_streaming_clears_tool_call_indices() {
     // Given a streaming session with a tool call entry.
     let mut session = attached_session();
     session.begin_streaming();
-    session.begin_tool_call(0, "call_1", "echo", jiff::Timestamp::now());
+    session.begin_tool_call(
+        0,
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "echo",
+        jiff::Timestamp::now(),
+    );
 
     // When finishing streaming.
     session.finalize_entries_for_finish(true, jiff::Timestamp::now());
@@ -1000,7 +1043,12 @@ fn cancel_streaming_clears_tool_call_indices() {
     // Given a streaming session with a tool call entry.
     let mut session = attached_session();
     session.begin_streaming();
-    session.begin_tool_call(0, "call_1", "echo", jiff::Timestamp::now());
+    session.begin_tool_call(
+        0,
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "echo",
+        jiff::Timestamp::now(),
+    );
 
     // When cancelling streaming.
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
@@ -2315,7 +2363,11 @@ fn begin_tool_result_creates_pending_entry() {
     session.begin_streaming();
 
     // When beginning a tool result.
-    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
+    session.begin_tool_result(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "bash",
+        jiff::Timestamp::now(),
+    );
 
     // Then the history has a pending ToolResult entry.
     assert_eq!(session.history().len(), 1);
@@ -2328,7 +2380,7 @@ fn begin_tool_result_creates_pending_entry() {
             status,
             ..
         } => {
-            assert_eq!(id, "call_1");
+            assert_eq!(id.as_str(), "call_1");
             assert_eq!(name, "bash");
             assert_eq!(content, "");
             assert_eq!(*status, ToolResultStatus::Pending);
@@ -2347,7 +2399,11 @@ fn begin_tool_result_tracks_history_index() {
     session.begin_streaming();
 
     // When beginning a tool result.
-    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
+    session.begin_tool_result(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "bash",
+        jiff::Timestamp::now(),
+    );
 
     // Then the tracking index points to the second entry.
     assert!(
@@ -2356,14 +2412,14 @@ fn begin_tool_result_tracks_history_index() {
             .ephemeral
             .machine
             .streaming_tool_result_indices()
-            .contains_key("call_1")
+            .contains_key(&jinn_core_types::ToolCallId::from("call_1"))
     );
     assert_eq!(
         session
             .core
             .ephemeral
             .machine
-            .streaming_tool_result_indices()["call_1"],
+            .streaming_tool_result_indices()[&jinn_core_types::ToolCallId::from("call_1")],
         1
     );
 }
@@ -2375,11 +2431,23 @@ fn append_tool_result_output_appends_to_pending_entry() {
     let mut session = ChatSessionState::new();
     session.begin_sending();
     session.begin_streaming();
-    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
+    session.begin_tool_result(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "bash",
+        jiff::Timestamp::now(),
+    );
 
     // When appending output.
-    session.append_tool_result_output("call_1", "line 1\n", jinn_tools_msg::ToolOutputKind::Normal);
-    session.append_tool_result_output("call_1", "line 2\n", jinn_tools_msg::ToolOutputKind::Normal);
+    session.append_tool_result_output(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "line 1\n",
+        jinn_tools_msg::ToolOutputKind::Normal,
+    );
+    session.append_tool_result_output(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "line 2\n",
+        jinn_tools_msg::ToolOutputKind::Normal,
+    );
 
     // Then the entry content has both outputs.
     match &session.history()[0].kind {
@@ -2402,7 +2470,11 @@ fn append_tool_result_output_bumps_history_activity_timestamp() {
     let mut session = ChatSessionState::new();
     session.begin_sending();
     session.begin_streaming();
-    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
+    session.begin_tool_result(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "bash",
+        jiff::Timestamp::now(),
+    );
     session.core.identity.last_history_activity_at = jiff::Timestamp::now()
         .checked_sub(jiff::Span::new().hours(1))
         .expect("past");
@@ -2410,7 +2482,11 @@ fn append_tool_result_output_bumps_history_activity_timestamp() {
     // When appending streaming output.
     let before = session.core.identity.last_history_activity_at;
     std::thread::sleep(std::time::Duration::from_millis(10));
-    session.append_tool_result_output("call_1", "tick", jinn_tools_msg::ToolOutputKind::Normal);
+    session.append_tool_result_output(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "tick",
+        jinn_tools_msg::ToolOutputKind::Normal,
+    );
 
     // Then the activity timestamp advanced past its pre-append value.
     assert!(session.core.identity.last_history_activity_at > before);
@@ -2424,7 +2500,11 @@ fn append_tool_result_output_ignores_unknown_call_id() {
 
     // When appending output for an unknown call ID.
     // Then it does not panic (defensive).
-    session.append_tool_result_output("unknown", "output", jinn_tools_msg::ToolOutputKind::Normal);
+    session.append_tool_result_output(
+        &jinn_core_types::ToolCallId::from("unknown"),
+        "output",
+        jinn_tools_msg::ToolOutputKind::Normal,
+    );
     assert!(session.history().is_empty());
 }
 
@@ -2435,15 +2515,27 @@ fn finalize_tool_result_completes_pending_entry() {
     let mut session = ChatSessionState::new();
     session.begin_sending();
     session.begin_streaming();
-    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
+    session.begin_tool_result(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "bash",
+        jiff::Timestamp::now(),
+    );
     session.append_tool_result_output(
-        "call_1",
+        &jinn_core_types::ToolCallId::from("call_1"),
         "building...\n",
         jinn_tools_msg::ToolOutputKind::Normal,
     );
 
     // When finalizing with success.
-    session.finalize_tool_result("call_1", "bash", "final output", true, None, None, None);
+    session.finalize_tool_result(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "bash",
+        "final output",
+        true,
+        None,
+        None,
+        None,
+    );
 
     // Then the entry is updated with final content and Success status.
     assert_eq!(session.history().len(), 1);
@@ -2463,7 +2555,7 @@ fn finalize_tool_result_completes_pending_entry() {
             .ephemeral
             .machine
             .streaming_tool_result_indices()
-            .contains_key("call_1")
+            .contains_key(&jinn_core_types::ToolCallId::from("call_1"))
     );
 }
 
@@ -2474,16 +2566,30 @@ fn tool_result_entry_gets_finished_at_on_finalize() {
     let mut session = ChatSessionState::new();
     session.begin_sending();
     session.begin_streaming();
-    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
+    session.begin_tool_result(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "bash",
+        jiff::Timestamp::now(),
+    );
 
     // When finalizing the tool result.
-    session.finalize_tool_result("call_1", "bash", "done", true, None, None, None);
+    session.finalize_tool_result(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "bash",
+        "done",
+        true,
+        None,
+        None,
+        None,
+    );
 
     // Then the ToolResult entry has finished_at set.
     let entry = session
         .history()
         .iter()
-        .find(|e| matches!(&e.kind, ChatEntryKind::ToolResult { id, .. } if id == "call_1"))
+        .find(
+            |e| matches!(&e.kind, ChatEntryKind::ToolResult { id, .. } if id.as_str() == "call_1"),
+        )
         .expect("tool result entry");
     match &entry.timing {
         EntryTiming::Streamed { finished_at, .. } => {
@@ -2503,7 +2609,15 @@ fn finalize_tool_result_pushes_new_entry_for_unknown_id() {
     let mut session = ChatSessionState::new();
 
     // When finalizing for a tool that never streamed.
-    session.finalize_tool_result("call_1", "bash", "output", true, None, None, None);
+    session.finalize_tool_result(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "bash",
+        "output",
+        true,
+        None,
+        None,
+        None,
+    );
 
     // Then a new entry is pushed.
     assert_eq!(session.history().len(), 1);
@@ -2515,7 +2629,7 @@ fn finalize_tool_result_pushes_new_entry_for_unknown_id() {
             status,
             ..
         } => {
-            assert_eq!(id, "call_1");
+            assert_eq!(id.as_str(), "call_1");
             assert_eq!(name, "bash");
             assert_eq!(content, "output");
             assert_eq!(*status, ToolResultStatus::Success);
@@ -2531,7 +2645,11 @@ fn begin_tool_result_does_not_push_when_not_streaming() {
     let mut session = ChatSessionState::new();
 
     // When beginning a tool result.
-    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
+    session.begin_tool_result(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "bash",
+        jiff::Timestamp::now(),
+    );
 
     // Then no entry is pushed (the early return prevented it).
     assert!(
@@ -2550,7 +2668,11 @@ fn begin_tool_result_in_sending_creates_a_pending_entry() {
     session.begin_sending();
 
     // When beginning a tool result.
-    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
+    session.begin_tool_result(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "bash",
+        jiff::Timestamp::now(),
+    );
 
     // Then the pending entry is created rather than dropped.
     assert_eq!(
@@ -2565,7 +2687,7 @@ fn begin_tool_result_in_sending_creates_a_pending_entry() {
             status,
             ..
         } => {
-            assert_eq!(id, "call_1");
+            assert_eq!(id.as_str(), "call_1");
             assert_eq!(content, "");
             assert_eq!(*status, ToolResultStatus::Pending);
         }
@@ -2579,10 +2701,18 @@ fn tool_result_output_appends_in_sending_phase() {
     // Given a pending tool result created in Sending phase.
     let mut session = ChatSessionState::new();
     session.begin_sending();
-    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
+    session.begin_tool_result(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "bash",
+        jiff::Timestamp::now(),
+    );
 
     // When streaming output arrives.
-    session.append_tool_result_output("call_1", "line 1\n", jinn_tools_msg::ToolOutputKind::Normal);
+    session.append_tool_result_output(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "line 1\n",
+        jinn_tools_msg::ToolOutputKind::Normal,
+    );
 
     // Then the output lands in that same entry.
     match &session.history()[0].kind {
@@ -2602,11 +2732,27 @@ fn tool_result_finalizes_in_place_in_sending_phase() {
     // Given a pending tool result created in Sending phase with streamed output.
     let mut session = ChatSessionState::new();
     session.begin_sending();
-    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
-    session.append_tool_result_output("call_1", "partial", jinn_tools_msg::ToolOutputKind::Normal);
+    session.begin_tool_result(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "bash",
+        jiff::Timestamp::now(),
+    );
+    session.append_tool_result_output(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "partial",
+        jinn_tools_msg::ToolOutputKind::Normal,
+    );
 
     // When the tool finishes.
-    session.finalize_tool_result("call_1", "bash", "final output", true, None, None, None);
+    session.finalize_tool_result(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "bash",
+        "final output",
+        true,
+        None,
+        None,
+        None,
+    );
 
     // Then it is finalized in place — one entry, no duplicate pushed at the end.
     assert_eq!(
@@ -2638,10 +2784,22 @@ fn tool_result_in_sending_stays_adjacent_to_its_tool_call() {
         r#"{"command":"ls"}"#,
     ));
     session.begin_sending();
-    session.begin_tool_result("call_1", "bash", jiff::Timestamp::now());
+    session.begin_tool_result(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "bash",
+        jiff::Timestamp::now(),
+    );
 
     // When the tool finishes.
-    session.finalize_tool_result("call_1", "bash", "file.txt", true, None, None, None);
+    session.finalize_tool_result(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "bash",
+        "file.txt",
+        true,
+        None,
+        None,
+        None,
+    );
 
     // Then the result sits directly after its call — the pairing the user
     // sees in the chat log, and that context assembly depends on.
@@ -2673,7 +2831,15 @@ fn finalize_tool_result_updates_existing_pending_by_kind_id() {
     assert_eq!(session.history().len(), 1);
 
     // When finalizing the tool result (no streaming index available).
-    session.finalize_tool_result("call_1", "bash", "actual output", true, None, None, None);
+    session.finalize_tool_result(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "bash",
+        "actual output",
+        true,
+        None,
+        None,
+        None,
+    );
 
     // Then the existing entry was updated in-place (same ChatEntryId).
     assert_eq!(
@@ -2716,7 +2882,7 @@ fn finalize_tool_result_updates_existing_with_truncation() {
         output_bytes: 500,
     };
     session.finalize_tool_result(
-        "call_1",
+        &jinn_core_types::ToolCallId::from("call_1"),
         "bash",
         "truncated output",
         true,
@@ -2760,7 +2926,7 @@ fn finalize_tool_result_pushes_new_with_truncation_when_no_existing() {
         output_bytes: 500,
     };
     session.finalize_tool_result(
-        "call_1",
+        &jinn_core_types::ToolCallId::from("call_1"),
         "bash",
         "truncated",
         true,
@@ -3077,7 +3243,12 @@ fn is_tool_call_streaming_returns_true_for_active_streaming_entry() {
     // Given a streaming session with an active tool call.
     let mut session = attached_session();
     session.begin_streaming();
-    session.begin_tool_call(0, "tc-1", "write", jiff::Timestamp::now());
+    session.begin_tool_call(
+        0,
+        &jinn_core_types::ToolCallId::from("tc-1"),
+        "write",
+        jiff::Timestamp::now(),
+    );
 
     // When checking if the tool call entry is streaming.
     let entry_id = session.history()[1].id.clone();
@@ -3094,7 +3265,12 @@ fn is_tool_call_streaming_returns_false_after_finish_streaming() {
     // Given a streaming session with a tool call that has been finalized.
     let mut session = attached_session();
     session.begin_streaming();
-    session.begin_tool_call(0, "tc-1", "write", jiff::Timestamp::now());
+    session.begin_tool_call(
+        0,
+        &jinn_core_types::ToolCallId::from("tc-1"),
+        "write",
+        jiff::Timestamp::now(),
+    );
     let entry_id = session.history()[1].id.clone();
 
     // When finishing streaming.
@@ -4240,7 +4416,7 @@ fn insert_entry_at_shifts_tool_result_indices() {
         .ephemeral
         .machine
         .streaming_tool_result_indices_mut()
-        .insert("tr-1".to_owned(), 4);
+        .insert(jinn_core_types::ToolCallId::from("tr-1"), 4);
 
     // When inserting at index 2.
     session.insert_entry_at(2, ChatEntry::system("inserted"));
@@ -4252,7 +4428,7 @@ fn insert_entry_at_shifts_tool_result_indices() {
             .ephemeral
             .machine
             .streaming_tool_result_indices()
-            .get("tr-1"),
+            .get(&jinn_core_types::ToolCallId::from("tr-1")),
         Some(&5)
     );
 }
@@ -4275,7 +4451,7 @@ fn insert_entry_at_does_not_shift_tool_result_indices_before_insertion() {
         .ephemeral
         .machine
         .streaming_tool_result_indices_mut()
-        .insert("tr-1".to_owned(), 1);
+        .insert(jinn_core_types::ToolCallId::from("tr-1"), 1);
 
     // When inserting at index 2 (after the tool result).
     session.insert_entry_at(2, ChatEntry::system("inserted"));
@@ -4287,7 +4463,7 @@ fn insert_entry_at_does_not_shift_tool_result_indices_before_insertion() {
             .ephemeral
             .machine
             .streaming_tool_result_indices()
-            .get("tr-1"),
+            .get(&jinn_core_types::ToolCallId::from("tr-1")),
         Some(&1)
     );
 }
@@ -5801,7 +5977,7 @@ fn tool_call_entry_gets_dispatched_at_from_tool_use_started() {
     let da = dispatched_at();
 
     // When beginning a tool call.
-    session.begin_tool_call(0, "call_1", "echo", da);
+    session.begin_tool_call(0, &jinn_core_types::ToolCallId::from("call_1"), "echo", da);
 
     // Then the tool call entry has dispatched_at from the event.
     let entry = session
@@ -5876,7 +6052,12 @@ fn reset_streaming_entries_for_retry_keeps_a_discarded_attempt_from_collapsing_a
         .expect("append thinking token");
     session.finish_thinking_entry(session.streaming_thinking_entry_index().unwrap());
     let tool_call_history_len = session.history().len();
-    session.begin_tool_call(tool_call_history_len, "call_1", "read", dispatched_at());
+    session.begin_tool_call(
+        tool_call_history_len,
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "read",
+        dispatched_at(),
+    );
     let excluded_ids = session
         .reset_streaming_entries_for_retry()
         .into_iter()
@@ -5938,7 +6119,12 @@ fn reset_streaming_entries_for_retry_block_can_still_be_collapsed_by_the_user() 
         .expect("append thinking token");
     session.finish_thinking_entry(session.streaming_thinking_entry_index().unwrap());
     let tool_call_history_len = session.history().len();
-    session.begin_tool_call(tool_call_history_len, "call_1", "read", dispatched_at());
+    session.begin_tool_call(
+        tool_call_history_len,
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "read",
+        dispatched_at(),
+    );
     let excluded_ids = session.reset_streaming_entries_for_retry();
     for n in 0..8 {
         session.push_entry(ChatEntry::assistant(format!("retry{n}")));
@@ -6050,7 +6236,12 @@ fn reset_streaming_entries_for_retry_excludes_a_partial_tool_call() {
     // Given a stream that built a tool call before dying — the tool call is
     // in flight, so there is no result to match it.
     let mut session = streaming_session();
-    session.begin_tool_call(0, "call_1", "read", dispatched_at());
+    session.begin_tool_call(
+        0,
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "read",
+        dispatched_at(),
+    );
     assert_eq!(session.history().len(), 2, "assistant + tool call");
 
     // When resetting streaming entries for retry.
@@ -6988,11 +7179,16 @@ fn a_history_removal_ahead_of_a_streaming_tool_call_does_not_strand_its_delta() 
         "write",
         r#"{"content":"first"}"#,
     ));
-    session.begin_tool_call(0, "tc-live", "write", jiff::Timestamp::now());
+    session.begin_tool_call(
+        0,
+        &jinn_core_types::ToolCallId::from("tc-live"),
+        "write",
+        jiff::Timestamp::now(),
+    );
     let live = session
         .history()
         .iter()
-        .position(|e| matches!(&e.kind, jinn_core_types::ChatEntryKind::ToolCall { id, .. } if id == "tc-live"))
+        .position(|e| matches!(&e.kind, jinn_core_types::ChatEntryKind::ToolCall { id, .. } if id.as_str() == "tc-live"))
         .expect("live tool call entry");
 
     // When an entry ahead of it is removed, shrinking every later index.
@@ -7004,7 +7200,7 @@ fn a_history_removal_ahead_of_a_streaming_tool_call_does_not_strand_its_delta() 
     let moved = session
         .history()
         .iter()
-        .position(|e| matches!(&e.kind, jinn_core_types::ChatEntryKind::ToolCall { id, .. } if id == "tc-live"))
+        .position(|e| matches!(&e.kind, jinn_core_types::ChatEntryKind::ToolCall { id, .. } if id.as_str() == "tc-live"))
         .expect("live tool call entry after removal");
     assert_eq!(moved, live - 1, "the entry did not move with the removal");
     if let jinn_core_types::ChatEntryKind::ToolCall { arguments, .. } =
@@ -7021,7 +7217,12 @@ fn streaming_tool_call_session(id: &str, name: &str) -> ChatSessionState {
     let mut session = ChatSessionState::new();
     session.begin_sending();
     session.begin_streaming();
-    session.begin_tool_call(0, id, name, jiff::Timestamp::now());
+    session.begin_tool_call(
+        0,
+        &jinn_core_types::ToolCallId::from(id),
+        name,
+        jiff::Timestamp::now(),
+    );
     session
         .append_tool_call_delta(0, r#"{"command":"rm -rf "#)
         .expect("append argument delta");
@@ -7041,7 +7242,7 @@ fn an_interrupted_call_is_paired_with_a_result() {
     let result = session
         .history()
         .iter()
-        .find(|e| matches!(&e.kind, ChatEntryKind::ToolResult { id, .. } if id == "tc_1"))
+        .find(|e| matches!(&e.kind, ChatEntryKind::ToolResult { id, .. } if id.as_str() == "tc_1"))
         .expect("a result for the interrupted call");
     assert!(
         matches!(
@@ -7085,7 +7286,9 @@ fn an_interrupted_result_quotes_the_arguments_truncated() {
         .history()
         .iter()
         .find_map(|e| match &e.kind {
-            ChatEntryKind::ToolResult { id, content, .. } if id == "tc_1" => Some(content.clone()),
+            ChatEntryKind::ToolResult { id, content, .. } if id.as_str() == "tc_1" => {
+                Some(content.clone())
+            }
             _ => None,
         })
         .expect("a result for the interrupted call");
@@ -7112,7 +7315,9 @@ fn an_interrupted_result_names_the_tool() {
         .history()
         .iter()
         .find_map(|e| match &e.kind {
-            ChatEntryKind::ToolResult { id, content, .. } if id == "tc_1" => Some(content.clone()),
+            ChatEntryKind::ToolResult { id, content, .. } if id.as_str() == "tc_1" => {
+                Some(content.clone())
+            }
             _ => None,
         })
         .expect("a result for the interrupted call");
@@ -7150,7 +7355,7 @@ fn an_interrupted_call_stays_in_context_on_retry() {
     // Then the call is still in context, so the model can read its failure.
     assert!(
         session.history().iter().any(
-            |e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc_1")
+            |e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id.as_str() == "tc_1")
                 && e.is_in_context()
         ),
         "an explained call must stay in the resumed request"
@@ -7215,7 +7420,7 @@ fn reasoning_beside_a_retained_call_is_still_excluded_on_retry() {
     // would have done regardless.
     assert!(
         session.history().iter().any(
-            |e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc_1")
+            |e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id.as_str() == "tc_1")
                 && e.is_in_context()
         ),
         "the call and its result stay"
@@ -7234,7 +7439,7 @@ fn an_unanswered_call_is_still_excluded_on_retry() {
     // reject a request whose calls have no results.
     assert!(
         session.history().iter().all(
-            |e| !matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc_1")
+            |e| !matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id.as_str() == "tc_1")
                 || !e.is_in_context()
         ),
         "an unanswered call cannot be sent to a provider"
@@ -7277,7 +7482,7 @@ fn an_interrupted_call_reaches_the_model_with_its_own_prose() {
     assert!(
         tool_calls
             .as_ref()
-            .is_some_and(|calls| calls.iter().any(|c| c.id == "tc_1")),
+            .is_some_and(|calls| calls.iter().any(|c| c.id.as_str() == "tc_1")),
         "the interrupted call must ride on the same message"
     );
 }

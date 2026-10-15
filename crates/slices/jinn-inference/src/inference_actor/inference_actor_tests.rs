@@ -635,7 +635,7 @@ fn tool_only_stream() -> jinn_provider::ToolStream {
     scripted_stream(vec![
         StreamEvent::ToolUseStart {
             index: 0,
-            id: "tc-1".to_owned(),
+            id: "tc-1".into(),
             name: "read".to_owned(),
         },
         StreamEvent::ToolUseInputDelta {
@@ -648,7 +648,7 @@ fn tool_only_stream() -> jinn_provider::ToolStream {
         },
         StreamEvent::ToolUseComplete {
             tool_call: ToolCall {
-                id: "tc-1".to_owned(),
+                id: "tc-1".into(),
                 name: "read".to_owned(),
                 arguments: r#"{"path":"a.rs"}"#.to_owned(),
             },
@@ -830,7 +830,7 @@ async fn handle_done_event_publishes_stream_completed_before_execute_tool_batch(
     // And an accumulator carrying one tool call.
     let mut accum = StreamAccumulator::new("test-model");
     accum.tool_calls.push(ToolCall {
-        id: "tc-1".to_owned(),
+        id: "tc-1".into(),
         name: "read".to_owned(),
         arguments: "{}".to_owned(),
     });
@@ -1103,7 +1103,7 @@ async fn an_intercepted_tool_call_still_reaches_the_chat_log() {
     let stream = scripted_stream(vec![
         StreamEvent::ToolUseStart {
             index: 0,
-            id: "tc-1".to_owned(),
+            id: "tc-1".into(),
             name: "bash".to_owned(),
         },
         StreamEvent::ToolUseInputDelta {
@@ -1112,7 +1112,7 @@ async fn an_intercepted_tool_call_still_reaches_the_chat_log() {
         },
         StreamEvent::ToolUseComplete {
             tool_call: ToolCall {
-                id: "tc-1".to_owned(),
+                id: "tc-1".into(),
                 name: "bash".to_owned(),
                 arguments: r#"{"command":"echo FORBIDDEN"}"#.to_owned(),
             },
@@ -1173,7 +1173,7 @@ async fn an_intercept_aborts_the_stream_before_the_done_event() {
         StreamEvent::Text("FORBIDDEN".to_owned()),
         StreamEvent::ToolUseComplete {
             tool_call: jinn_core_types::tool_types::ToolCall {
-                id: "call_1".to_owned(),
+                id: "call_1".into(),
                 name: "read".to_owned(),
                 arguments: "{}".to_owned(),
             },

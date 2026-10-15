@@ -31,8 +31,8 @@ use std::path::PathBuf;
 
 fn call(command: &str) -> ToolCall {
     ToolCall {
-        id: "call-1".to_owned(),
-        name: "interactive_term".to_owned(),
+        id: "call-1".into(),
+        name: "interactive_term".into(),
         arguments: serde_json::json!({ "command": command }).to_string(),
     }
 }
@@ -96,8 +96,8 @@ async fn spawn_without_a_command_is_rejected() {
     // Given a context with a chat session but a call missing `command`.
     let ctx = ctx_with(Some(SessionId::new()), "/tmp");
     let call = ToolCall {
-        id: "call-2".to_owned(),
-        name: "interactive_term".to_owned(),
+        id: "call-2".into(),
+        name: "interactive_term".into(),
         arguments: serde_json::json!({}).to_string(),
     };
 
@@ -125,7 +125,7 @@ fn started_result_surfaces_the_kill_notice() {
 
     // When formatting the success result with the kill notice.
     let result = super::interactive_term::success_result(
-        "call-1",
+        &jinn_core_types::ToolCallId::from("call-1"),
         "interactive_term",
         "screen text",
         None,
@@ -147,7 +147,7 @@ fn started_result_without_a_kill_has_no_notice() {
 
     // When formatting the success result without a kill notice.
     let result = super::interactive_term::success_result(
-        "call-1",
+        &jinn_core_types::ToolCallId::from("call-1"),
         "interactive_term",
         "screen text",
         None,
@@ -169,7 +169,7 @@ fn started_result_has_no_model_facing_session_id() {
 
     // When formatting the success result.
     let result = super::interactive_term::success_result(
-        "call-1",
+        &jinn_core_types::ToolCallId::from("call-1"),
         "interactive_term",
         "screen text",
         None,
@@ -191,8 +191,8 @@ async fn send_requires_a_chat_session_context() {
     // Given a tool context with no chat session.
     let ctx = ctx_with(None, "/tmp");
     let call = ToolCall {
-        id: "call-3".to_owned(),
-        name: "interactive_term_send".to_owned(),
+        id: "call-3".into(),
+        name: "interactive_term_send".into(),
         arguments: serde_json::json!({}).to_string(),
     };
 
@@ -214,8 +214,8 @@ async fn kill_requires_a_chat_session_context() {
     // Given a tool context with no chat session.
     let ctx = ctx_with(None, "/tmp");
     let call = ToolCall {
-        id: "call-4".to_owned(),
-        name: "interactive_term_kill".to_owned(),
+        id: "call-4".into(),
+        name: "interactive_term_kill".into(),
         arguments: serde_json::json!({}).to_string(),
     };
 
@@ -237,8 +237,8 @@ async fn send_without_a_coordinator_reports_unavailable() {
     // Given a context with a chat session but no coordinator.
     let ctx = ctx_with(Some(SessionId::new()), "/tmp");
     let call = ToolCall {
-        id: "call-5".to_owned(),
-        name: "interactive_term_send".to_owned(),
+        id: "call-5".into(),
+        name: "interactive_term_send".into(),
         arguments: serde_json::json!({ "text": "hi" }).to_string(),
     };
 
@@ -420,8 +420,8 @@ async fn kill_tool_uses_the_term_handle_trait() {
     let mut ctx = ctx_with(Some(SessionId::new()), "/tmp");
     ctx.interactive_term = Some(std::sync::Arc::new(fake.clone()));
     let call = ToolCall {
-        id: "call-2".to_owned(),
-        name: "interactive_term_kill".to_owned(),
+        id: "call-2".into(),
+        name: "interactive_term_kill".into(),
         arguments: serde_json::json!({}).to_string(),
     };
 

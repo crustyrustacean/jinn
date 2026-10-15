@@ -232,11 +232,7 @@ async fn handle_create_thread(
     title: String,
 ) {
     // 1. Already-bound guard: refuse to rebind, never orphan an existing thread.
-    let existing_binding = match data
-        .thread_map
-        .get_thread_by_session(&session_id.to_string())
-        .await
-    {
+    let existing_binding = match data.thread_map.get_thread_by_session(&session_id).await {
         Ok(Some(_)) => true,
         Ok(None) => false,
         Err(e) => {
@@ -311,13 +307,13 @@ async fn handle_create_thread(
 
     // 4. Record the thread→session mapping. guild_id is unknown on the reverse
     //    path (we never saw a poise ctx), matching the /new fallback of None.
-    let thread_id = channel.id.get().to_string();
+    let thread_id = crate::thread_map::ThreadId::new(channel.id.get().to_string());
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64);
     if let Err(e) = data
         .thread_map
-        .set(&thread_id, &session_id.to_string(), None, now)
+        .set(&thread_id, &session_id, None, now)
         .await
     {
         tracing::warn!(error = ?e, %session_id, "mapping write failed (thread exists but unbound)");
@@ -330,7 +326,7 @@ async fn handle_create_thread(
     }
 
     // 5. Success — tell the feedback actor to confirm in chat.
-    tracing::info!(%session_id, thread_id, "created discord thread for session");
+    tracing::info!(%session_id, thread_id = %thread_id, "created discord thread for session");
     publish(&data.bridge, DiscordThreadCreated { session_id, title });
 }
 
@@ -463,24 +459,46 @@ fn read_reply(data: &BotData, session_id: &SessionId) -> Option<FinalReply> {
     read_final_reply(projection.entries())
 }
 
+/// Why a thread could not be resolved from a jinn session id.
+///
+/// The lookup variant carries its rendered message: the map's error type
+/// is a unit struct whose only payload is its `Debug` text.
+#[derive(Debug, wherror::Error)]
+enum ThreadResolveError {
+    #[error("invalid thread id {thread_id}: {source}")]
+    InvalidThreadId {
+        thread_id: String,
+        #[source]
+        source: std::num::ParseIntError,
+    },
+    #[error("thread map lookup failed: {detail}")]
+    Lookup { detail: String },
+}
+
 /// Look up the Discord thread bound to a jinn session (reverse mapping).
+///
+/// # Errors
+///
+/// Returns an error when the mapping read fails or a stored thread id no
+/// longer parses as a Discord snowflake.
 async fn resolve_thread(
     data: &BotData,
     session_id: &SessionId,
-) -> Result<Option<serenity::ChannelId>, String> {
-    match data
-        .thread_map
-        .get_thread_by_session(&session_id.to_string())
-        .await
-    {
-        Ok(Some(mapping)) => mapping
-            .thread_id
-            .parse::<u64>()
-            .map(serenity::ChannelId::new)
-            .map(Some)
-            .map_err(|e| format!("invalid thread id {}: {e}", mapping.thread_id)),
+) -> Result<Option<serenity::ChannelId>, Report<ThreadResolveError>> {
+    match data.thread_map.get_thread_by_session(session_id).await {
+        Ok(Some(mapping)) => mapping.thread_id.as_str().parse::<u64>().map_or_else(
+            |source| {
+                Err(Report::new(ThreadResolveError::InvalidThreadId {
+                    thread_id: mapping.thread_id.as_str().to_owned(),
+                    source,
+                }))
+            },
+            |id| Ok(Some(serenity::ChannelId::new(id))),
+        ),
         Ok(None) => Ok(None),
-        Err(e) => Err(format!("{e:?}")),
+        Err(e) => Err(Report::new(ThreadResolveError::Lookup {
+            detail: format!("{:?}", e.current_context()),
+        })),
     }
 }
 
@@ -575,7 +593,7 @@ async fn handle_inbound_message(
     msg: &serenity::Message,
     data: &BotData,
 ) -> Result<(), BotError> {
-    let thread_id = msg.channel_id.get().to_string();
+    let thread_id = crate::thread_map::ThreadId::new(msg.channel_id.get().to_string());
     let Some(session_id) = data
         .thread_map
         .get_session_by_thread(&thread_id)
@@ -585,8 +603,6 @@ async fn handle_inbound_message(
         // Unbound channel: silent no-op. See `classify_inbound::UnboundNoOp`.
         return Ok(());
     };
-
-    let session_id: SessionId = session_id.into();
 
     // Read the phase under a short-lived read lock, then drop the lock before
     // any publish. Holding the lock across a `Bridge::send` can deadlock if the

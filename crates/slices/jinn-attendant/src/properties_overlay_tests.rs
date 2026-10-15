@@ -482,7 +482,7 @@ fn leaving_the_popup_restores_the_model_setting_it_opened_with(#[case] leave: &'
 
 #[rstest::rstest]
 #[test]
-fn h_and_l_pick_choices_in_place() {
+fn picking_left_moves_the_trigger_one_choice_left() {
     // Given an open popup focused on the trigger row, whose pending value
     // is the rightmost choice (a fresh attendant's `manual`).
     let mut fx = PopupFixture::new();
@@ -499,6 +499,16 @@ fn h_and_l_pick_choices_in_place() {
         fx.cell.read().pending_trigger,
         AttendantTrigger::ParentCompleted
     );
+}
+
+#[rstest::rstest]
+#[test]
+fn picking_right_after_a_left_pick_restores_the_choice() {
+    // Given an open popup focused on the trigger row, picked left once.
+    let mut fx = PopupFixture::new();
+    fx.finish_composing();
+    fx.open();
+    fx.press("attendant-properties-pick-left");
 
     // When picking right again.
     fx.press("attendant-properties-pick-right");
@@ -796,7 +806,7 @@ fn editor_escape_restores_pre_editor_text() {
 
 #[rstest::rstest]
 #[test]
-fn editor_ctrl_c_clears_then_leaves_when_empty() {
+fn editor_ctrl_c_clears_text_and_stays_open() {
     // Given an open editor with text.
     let mut fx = PopupFixture::new();
     fx.open_on_the_template_field();
@@ -814,8 +824,28 @@ fn editor_ctrl_c_clears_then_leaves_when_empty() {
         fx.state.frontend.scope(),
         jinn_slices::FocusScope::Dynamic(attendant_seed_template_scope())
     );
+}
 
-    // When pressing ctrl-c again on the empty draft.
+#[rstest::rstest]
+#[test]
+fn editor_ctrl_c_on_an_empty_draft_leaves_the_editor() {
+    // Given an open editor whose draft is already empty (the default
+    // template was wiped inside the editor).
+    let mut fx = PopupFixture::new();
+    fx.finish_composing();
+    fx.open();
+    // Walk the cursor to the template row; a composing attendant's cage
+    // stops `j` above the tool rows, so the walk is field-specific.
+    loop {
+        if fx.cell.read().focus == PropertyField::SeedTemplate {
+            break;
+        }
+        fx.press("attendant-properties-field-next");
+    }
+    fx.press("attendant-properties-edit-template");
+    fx.cell.update(|p| p.seed_template.input = String::new());
+
+    // When pressing ctrl-c.
     let result = fx.press_editor("attendant-template-clear-or-leave");
 
     // Then the editor pops.

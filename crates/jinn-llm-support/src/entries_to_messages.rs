@@ -116,7 +116,7 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                 ..
             } => {
                 let tool_call = ToolCall {
-                    id: id.clone(),
+                    id: id.clone().into(),
                     name: name.clone(),
                     arguments: arguments.clone(),
                 };
@@ -126,7 +126,7 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                 id, name, content, ..
             } => {
                 messages.push(LlmMessage::Tool {
-                    tool_call_id: id.clone(),
+                    tool_call_id: id.clone().into(),
                     name: name.clone(),
                     content: content.clone(),
                 });
@@ -220,7 +220,11 @@ pub(super) fn enforce_valid_tool_sequences(messages: &mut Vec<LlmMessage>) {
     let mut out: Vec<LlmMessage> = Vec::with_capacity(messages.len());
     // Open batch: (declaring assistant's index in `out`, unresolved call ids,
     // resolved tool messages held until the batch validates).
-    let mut open_batch: Option<(usize, std::collections::HashSet<String>, Vec<LlmMessage>)> = None;
+    let mut open_batch: Option<(
+        usize,
+        std::collections::HashSet<jinn_core_types::ToolCallId>,
+        Vec<LlmMessage>,
+    )> = None;
 
     let source: Vec<LlmMessage> = std::mem::take(messages);
     for message in source {
@@ -262,7 +266,7 @@ pub(super) fn enforce_valid_tool_sequences(messages: &mut Vec<LlmMessage>) {
                 tool_calls: Some(calls),
             } => {
                 close_batch(&mut out, &mut open_batch);
-                let ids: std::collections::HashSet<String> =
+                let ids: std::collections::HashSet<_> =
                     calls.iter().map(|c| c.id.clone()).collect();
                 if calls.is_empty() || ids.len() != calls.len() {
                     tracing::warn!(
@@ -305,7 +309,11 @@ pub(super) fn enforce_valid_tool_sequences(messages: &mut Vec<LlmMessage>) {
 /// results are discarded.
 fn close_batch(
     out: &mut Vec<LlmMessage>,
-    open_batch: &mut Option<(usize, std::collections::HashSet<String>, Vec<LlmMessage>)>,
+    open_batch: &mut Option<(
+        usize,
+        std::collections::HashSet<jinn_core_types::ToolCallId>,
+        Vec<LlmMessage>,
+    )>,
 ) {
     if let Some((index, remaining, resolved)) = open_batch.take() {
         if remaining.is_empty() {

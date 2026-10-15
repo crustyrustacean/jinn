@@ -15,6 +15,7 @@ use futures::FutureExt;
 
 use crate::tool_types::ToolContext;
 use crate::tool_types::failed;
+use jinn_core_types::ToolCallId;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_mcp_msg::RestartError;
 
@@ -82,7 +83,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
     let server = match parse_args(&args_str, &ctx.config) {
         Ok(server) => server,
-        Err(msg) => return failure_future(&tool_call_id, &tool_name, &msg),
+        Err(msg) => return failure_future(&tool_call_id, &tool_name, &msg.to_string()),
     };
 
     async move {
@@ -140,22 +141,60 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 // Server-name resolution + arg parsing
 // ---------------------------------------------------------------------------
 
-/// Parses the tool's `server` argument and resolves it to a configured server.
+/// Why restart arguments could not be resolved to a configured server.
 ///
+/// The call boundary renders the message into tool-result prose; a `Report`'s
+/// `Display` prints only the outermost context, so each variant's message
+/// stands alone.
+#[derive(Debug, wherror::Error)]
+pub enum RestartArgsError {
+    /// The call named no `server` argument.
+    #[error("missing `server` argument")]
+    MissingServer,
+    /// The call's JSON arguments were malformed.
+    #[error("invalid arguments: {detail}")]
+    InvalidArguments {
+        /// The parser's complaint.
+        detail: String,
+    },
+    /// The `server` argument was not a string.
+    #[error("`server` argument must be a string")]
+    ServerNotAString,
+    /// The named server is not in the configuration.
+    #[error("unknown MCP server `{input}`")]
+    UnknownServer {
+        /// The refused name.
+        input: String,
+    },
+}
+
 /// Accepts either a bare server name (`excalimate`) or a full
 /// `mcp__<server>__<tool>` tool name (the namespace is stripped silently).
-/// Returns `Err(message)` on missing/invalid args or an unknown server.
-fn parse_args(args_str: &str, config: &jinn_config::ConfigLayer) -> Result<String, String> {
+///
+/// # Errors
+///
+/// Returns [`RestartArgsError`] on missing/invalid args or an unknown server.
+fn parse_args(
+    args_str: &str,
+    config: &jinn_config::ConfigLayer,
+) -> Result<String, error_stack::Report<RestartArgsError>> {
     let value: serde_json::Value = if args_str.trim().is_empty() {
-        return Err("missing `server` argument".to_owned());
+        return Err(RestartArgsError::MissingServer.into());
     } else {
-        serde_json::from_str(args_str).map_err(|e| format!("invalid arguments: {e}"))?
+        serde_json::from_str(args_str).map_err(|e| RestartArgsError::InvalidArguments {
+            detail: e.to_string(),
+        })?
     };
     let Some(input) = value.get("server").and_then(serde_json::Value::as_str) else {
-        return Err("`server` argument must be a string".to_owned());
+        return Err(RestartArgsError::ServerNotAString.into());
     };
     let configured = configured_server_names(config);
-    resolve_server(input, &configured).ok_or_else(|| format!("unknown MCP server `{input}`"))
+    resolve_server(input, &configured).ok_or_else(|| {
+        RestartArgsError::UnknownServer {
+            input: input.to_owned(),
+        }
+        .into()
+    })
 }
 
 /// Reads the configured server names from application state.
@@ -192,14 +231,14 @@ fn resolve_server(input: &str, configured: &[String]) -> Option<String> {
 // Result helpers
 // ---------------------------------------------------------------------------
 
-fn failure_future(call_id: &str, name: &str, message: &str) -> BoxedToolFuture {
-    futures::future::ready(failed(call_id, name, message)).boxed()
+fn failure_future(call_id: &ToolCallId, name: &str, message: &str) -> BoxedToolFuture {
+    futures::future::ready(failed(call_id.clone(), name, message)).boxed()
 }
 
 /// Maps a domain-level `RestartError` from the coordinator into a failure
 /// result carrying the STOP-and-wait instruction.
 fn domain_failure_result(
-    call_id: &str,
+    call_id: &ToolCallId,
     name: &str,
     server: &str,
     err: &RestartError,
@@ -221,7 +260,7 @@ fn domain_failure_result(
              **STOP and wait for user instruction.**"
             .to_owned(),
     };
-    failed(call_id, name, &content)
+    failed(call_id.clone(), name, &content)
 }
 
 #[cfg(test)]
@@ -295,7 +334,7 @@ mod tests {
         // Then it errors with a clear message.
         assert!(result.is_err());
         assert!(
-            result.unwrap_err().contains("server"),
+            result.unwrap_err().to_string().contains("server"),
             "error should mention server"
         );
     }
@@ -320,7 +359,7 @@ mod tests {
 
         // Then it errors with the server name in the message.
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("ghost"));
+        assert!(result.unwrap_err().to_string().contains("ghost"));
     }
 
     #[rstest::rstest]

@@ -31,6 +31,7 @@ use jinn_chat_log_view_msg::{
 };
 use jinn_core_types::EntryTiming;
 use jinn_core_types::SessionId;
+use jinn_core_types::ToolCallId;
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_kernel::common::ui_element::UiElement;
@@ -150,7 +151,7 @@ impl LayoutInputs {
     pub(crate) fn is_task_waiting(
         &self,
         entry: &ChatEntry,
-        tool_result_statuses: &HashMap<String, ToolResultStatus>,
+        tool_result_statuses: &HashMap<ToolCallId, ToolResultStatus>,
     ) -> bool {
         let ChatEntryKind::ToolCall {
             id,
@@ -402,7 +403,7 @@ pub fn is_session_measured(
 /// below reads as a single pass over the visual items.
 struct CoverageProbe<'a> {
     history: &'a [ChatEntry],
-    tool_result_statuses: HashMap<String, ToolResultStatus>,
+    tool_result_statuses: HashMap<ToolCallId, ToolResultStatus>,
     streaming_tool_call_ids: HashSet<ChatEntryId>,
     running_children: HashSet<SessionId>,
     expanded: HashSet<ChatEntryId>,
@@ -479,7 +480,7 @@ impl<'a> CoverageProbe<'a> {
 }
 
 /// Pairs tool call IDs with their result status for background coloring.
-fn tool_result_statuses_of(history: &[ChatEntry]) -> HashMap<String, ToolResultStatus> {
+fn tool_result_statuses_of(history: &[ChatEntry]) -> HashMap<ToolCallId, ToolResultStatus> {
     history
         .iter()
         .filter_map(|entry| match &entry.kind {
@@ -502,7 +503,7 @@ fn running_session_ids(state: &AppState) -> HashSet<SessionId> {
 /// The paired tool result status for an entry, if it has one.
 fn paired_status_for(
     entry: &ChatEntry,
-    tool_result_statuses: &HashMap<String, ToolResultStatus>,
+    tool_result_statuses: &HashMap<ToolCallId, ToolResultStatus>,
 ) -> Option<ToolResultStatus> {
     match &entry.kind {
         ChatEntryKind::ToolCall { id, .. } => tool_result_statuses.get(id).copied(),
@@ -539,7 +540,7 @@ fn is_streaming_tool_call(entry: &ChatEntry, streaming: &HashSet<ChatEntryId>) -
 /// session is loaded and actively running.
 fn is_task_waiting(
     entry: &ChatEntry,
-    tool_result_statuses: &HashMap<String, ToolResultStatus>,
+    tool_result_statuses: &HashMap<ToolCallId, ToolResultStatus>,
     running_children: &HashSet<SessionId>,
 ) -> bool {
     let ChatEntryKind::ToolCall {
@@ -598,7 +599,7 @@ struct HistoryRender<'a> {
     /// The collapse threshold `compute_visual_items` resolved, published to
     /// the session so the off-thread coverage probe can match it.
     min_collapse_count: usize,
-    tool_result_statuses: HashMap<String, ToolResultStatus>,
+    tool_result_statuses: HashMap<ToolCallId, ToolResultStatus>,
     /// Ids of the `ToolCall` entries streaming arguments right now.
     ///
     /// Snapshotted once per frame so layout can test membership per entry instead of

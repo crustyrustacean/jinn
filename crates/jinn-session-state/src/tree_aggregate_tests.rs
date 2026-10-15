@@ -929,7 +929,7 @@ fn tree_working_time_sums_members_that_worked_apart() {
 #[rstest::rstest]
 fn archiving_a_member_does_not_change_the_trees_working_time() {
     // Given a parent that worked 10 seconds with a child that worked the
-    // same 10 seconds, entirely inside it.
+    // same 10 seconds, entirely inside it, aggregated with both live.
     let parent_id = SessionId::new();
     let child_id = SessionId::new();
     let shared = WorkingInterval::closed(at(0), at(10));
@@ -941,20 +941,16 @@ fn archiving_a_member_does_not_change_the_trees_working_time() {
     let mut sessions = HashMap::new();
     sessions.insert(parent_id.clone(), make_session(parent_id.clone()));
     sessions.insert(child_id.clone(), make_session(child_id.clone()));
-
-    // When aggregating with both members live.
     let before = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id, &live);
 
-    // And then the child is archived, becoming a frozen node that carries the
-    // intervals it contributed.
+    // When the child is archived — a frozen node that carries the intervals
+    // it contributed — and the tree aggregates again.
     sessions.remove(&child_id);
     let mut frozen = HashMap::new();
     frozen.insert(
         child_id.clone(),
         frozen_with_working(&child_id, Some(parent_id.clone()), vec![shared]),
     );
-
-    // When aggregating again.
     let after = aggregate_tree_stats(&sessions, &frozen, &parent_id, &live);
 
     // Then the tree's working time is unchanged by the archive.

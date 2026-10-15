@@ -2693,6 +2693,7 @@ dependencies = [
  "tokio",
  "tracing",
  "trouper",
+ "wherror",
 ]
 
 [[package]]
@@ -2897,6 +2898,7 @@ dependencies = [
  "tracing",
  "trouper",
  "unicode-segmentation",
+ "wherror",
 ]
 
 [[package]]
@@ -3704,6 +3706,7 @@ dependencies = [
  "toml_edit 0.22.27",
  "tracing",
  "trouper",
+ "wherror",
 ]
 
 [[package]]

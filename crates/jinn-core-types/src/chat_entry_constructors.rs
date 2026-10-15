@@ -218,7 +218,7 @@ impl ChatEntry {
     #[must_use]
     pub fn tool_call<S1, S2, S3>(id: S1, name: S2, arguments: S3) -> Self
     where
-        S1: Into<String>,
+        S1: Into<crate::ToolCallId>,
         S2: Into<String>,
         S3: Into<String>,
     {
@@ -242,7 +242,7 @@ impl ChatEntry {
     #[must_use]
     pub fn tool_result<S1, S2, S3>(id: S1, name: S2, content: S3, status: ToolResultStatus) -> Self
     where
-        S1: Into<String>,
+        S1: Into<crate::ToolCallId>,
         S2: Into<String>,
         S3: Into<String>,
     {
@@ -320,7 +320,7 @@ impl ChatEntry {
         truncation: crate::tool_types::TruncationMeta,
     ) -> Self
     where
-        S1: Into<String>,
+        S1: Into<crate::ToolCallId>,
         S2: Into<String>,
     {
         Self {

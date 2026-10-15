@@ -213,7 +213,7 @@ pub enum ChatEntryKind {
     /// A tool call requested by the LLM.
     ToolCall {
         /// Unique ID assigned by the LLM provider.
-        id: String,
+        id: crate::ToolCallId,
         /// The function name.
         name: String,
         /// The JSON arguments string.
@@ -226,7 +226,7 @@ pub enum ChatEntryKind {
     /// The result of executing a tool call.
     ToolResult {
         /// The ID of the tool call this result is for.
-        id: String,
+        id: crate::ToolCallId,
         /// The function name.
         name: String,
         /// The output content.

@@ -528,3 +528,4 @@ Entries are added or amended **only with human approval**.
 - (sessions) Every durable session save funnels through one kernel-module stamped-save flow (touch, capture, stamp from the work-time cell or an explicit override, write), shared by the session-store and session-turn actors.
 - (sessions) The tree aggregate's wall-clock total is the union of member intervals across live and frozen members, joined from the work-time cell for live members and the frozen node's carried copy for archived ones; it is pinned by aggregate-level behavior tests.
 - (testing) A flip-check on an RwLock-release test must hold the WRITE guard across the guarded region and capture through it — a held read guard blocks no readers, and nesting read-inside-write deadlocks parking_lot on the same thread.
+- (arch) Core id newtypes reject unparseable strings through try_from and never fabricate an id from a parse failure.

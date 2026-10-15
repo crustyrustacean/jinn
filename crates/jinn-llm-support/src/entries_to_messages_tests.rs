@@ -266,7 +266,7 @@ fn entries_to_messages_resolves_results_by_id_not_name() {
         [
             LlmMessage::Assistant { tool_calls: Some(calls), .. },
             LlmMessage::Tool { tool_call_id, .. },
-        ] if calls.len() == 1 && tool_call_id == "call_1"
+        ] if calls.len() == 1 && tool_call_id.as_str() == "call_1"
     ));
 }
 
@@ -1028,14 +1028,14 @@ fn forced_exclude_preserves_complete_tool_loop_in_messages() {
         LlmMessage::Assistant { tool_calls, .. } => {
             let tc = tool_calls.as_ref().expect("expected tool_calls");
             assert_eq!(tc.len(), 1);
-            assert_eq!(tc[0].id, "tc-1");
+            assert_eq!(tc[0].id.as_str(), "tc-1");
         }
         _ => panic!("expected Assistant message"),
     }
     // Tool result for tc-1.
     match &messages[2] {
         LlmMessage::Tool { tool_call_id, .. } => {
-            assert_eq!(tool_call_id, "tc-1");
+            assert_eq!(tool_call_id.as_str(), "tc-1");
         }
         _ => panic!("expected Tool message"),
     }
@@ -1072,8 +1072,8 @@ fn no_dangling_tool_calls_in_messages_after_hard_cancel() {
     let messages = entries_to_messages(&entries);
 
     // Then every Assistant message with tool_calls has a matching Tool message for each.
-    let mut tool_call_ids: Vec<String> = Vec::new();
-    let mut tool_result_ids: Vec<String> = Vec::new();
+    let mut tool_call_ids: Vec<jinn_core_types::ToolCallId> = Vec::new();
+    let mut tool_result_ids: Vec<jinn_core_types::ToolCallId> = Vec::new();
 
     for msg in &messages {
         match msg {
@@ -1214,7 +1214,7 @@ fn retry_excluded_loop_does_not_disturb_prior_complete_loop() {
     assert!(
         messages.iter().any(|m| matches!(
             m,
-            LlmMessage::Tool { tool_call_id, .. } if tool_call_id == "tc-1"
+            LlmMessage::Tool { tool_call_id, .. } if tool_call_id.as_str() == "tc-1"
         )),
         "the committed tool result must survive the exclusion"
     );
@@ -1242,8 +1242,8 @@ fn complete_tool_batch_produces_valid_messages() {
     let messages = entries_to_messages(&entries);
 
     // Then every Assistant message with tool_calls has a matching Tool message for each.
-    let mut tool_call_ids: Vec<String> = Vec::new();
-    let mut tool_result_ids: Vec<String> = Vec::new();
+    let mut tool_call_ids: Vec<jinn_core_types::ToolCallId> = Vec::new();
+    let mut tool_result_ids: Vec<jinn_core_types::ToolCallId> = Vec::new();
 
     for msg in &messages {
         match msg {
@@ -1300,7 +1300,7 @@ fn excluded_empty_assistant_synthesizes_valid_parent_for_complete_loop() {
             [
                 LlmMessage::Assistant { content, tool_calls: Some(calls) },
                 LlmMessage::Tool { tool_call_id, .. },
-            ] if content.is_empty() && calls.len() == 1 && tool_call_id == "tc-1"
+            ] if content.is_empty() && calls.len() == 1 && tool_call_id.as_str() == "tc-1"
         ),
         "unexpected messages: {messages:?}"
     );
@@ -1324,7 +1324,7 @@ fn assert_message_sequence_is_valid(messages: &[LlmMessage]) {
         messages.first()
     );
 
-    let mut pending_calls: Vec<(String, String)> = Vec::new();
+    let mut pending_calls: Vec<(jinn_core_types::ToolCallId, String)> = Vec::new();
     for message in messages {
         match message {
             LlmMessage::Assistant {
@@ -1351,10 +1351,9 @@ fn assert_message_sequence_is_valid(messages: &[LlmMessage]) {
             LlmMessage::Tool {
                 tool_call_id, name, ..
             } => {
-                let Some(index) = pending_calls
-                    .iter()
-                    .position(|(id, expected_name)| id == tool_call_id && expected_name == name)
-                else {
+                let Some(index) = pending_calls.iter().position(|(id, expected_name)| {
+                    id.as_str() == tool_call_id.as_str() && expected_name == name
+                }) else {
                     panic!(
                         "tool result {tool_call_id}/{name} has no matching preceding call: {pending_calls:?}"
                     );
@@ -1418,7 +1417,7 @@ fn message_sequence_validator_accepts_complete_multi_call_batch_in_order() {
                 tool_call_id: second_id,
                 ..
             }
-        ] if calls.len() == 2 && tool_call_id == "call-1" && second_id == "call-2"
+        ] if calls.len() == 2 && tool_call_id.as_str() == "call-1" && second_id.as_str() == "call-2"
     ));
 }
 
@@ -1445,7 +1444,7 @@ fn message_sequence_validator_accepts_real_empty_assistant_tool_parent() {
         } => {
             assert_eq!(content, "");
             assert_eq!(calls.len(), 1);
-            assert_eq!(calls[0].id, "call-1");
+            assert_eq!(calls[0].id.as_str(), "call-1");
         }
         other => panic!("expected empty Assistant tool parent, got {other:?}"),
     }
@@ -1559,8 +1558,8 @@ fn assert_messages_are_structurally_valid(messages: &[LlmMessage]) {
 
     // Collect every tool_call_id emitted by an assistant, and every tool_call_id
     // resolved by a Tool message.
-    let mut tool_call_ids: Vec<String> = Vec::new();
-    let mut tool_result_ids: Vec<String> = Vec::new();
+    let mut tool_call_ids: Vec<jinn_core_types::ToolCallId> = Vec::new();
+    let mut tool_result_ids: Vec<jinn_core_types::ToolCallId> = Vec::new();
     for msg in messages {
         match msg {
             LlmMessage::Assistant {
@@ -1677,7 +1676,7 @@ use jinn_core_types::tool_types::ToolCall;
 
 fn call(id: &str) -> ToolCall {
     ToolCall {
-        id: id.to_owned(),
+        id: id.to_owned().into(),
         name: "echo".to_owned(),
         arguments: "{}".to_owned(),
     }
@@ -1685,7 +1684,7 @@ fn call(id: &str) -> ToolCall {
 
 fn tool_msg(id: &str, content: &str) -> LlmMessage {
     LlmMessage::Tool {
-        tool_call_id: id.to_owned(),
+        tool_call_id: id.to_owned().into(),
         name: "echo".to_owned(),
         content: content.to_owned(),
     }

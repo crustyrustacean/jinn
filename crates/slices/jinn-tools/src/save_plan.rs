@@ -197,8 +197,8 @@ mod tests {
         let file_path = dir.path().join("plan.md");
 
         let call = ToolCall {
-            id: "call_1".to_owned(),
-            name: "save_plan".to_owned(),
+            id: "call_1".into(),
+            name: "save_plan".into(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
                 "content": "# Plan\nDo the thing."
@@ -223,8 +223,8 @@ mod tests {
         let file_path = dir.path().join("plan.md");
 
         let call = ToolCall {
-            id: "call_2".to_owned(),
-            name: "save_plan".to_owned(),
+            id: "call_2".into(),
+            name: "save_plan".into(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
                 "content": "plan text"
@@ -245,8 +245,8 @@ mod tests {
     async fn execute_no_pin_on_bad_json() {
         // Given a call with invalid JSON.
         let call = ToolCall {
-            id: "call_3".to_owned(),
-            name: "save_plan".to_owned(),
+            id: "call_3".into(),
+            name: "save_plan".into(),
             arguments: "not json".to_owned(),
         };
 
@@ -269,8 +269,8 @@ mod tests {
         let file_path = blocking_file.join("plan.md");
 
         let call = ToolCall {
-            id: "call_4".to_owned(),
-            name: "save_plan".to_owned(),
+            id: "call_4".into(),
+            name: "save_plan".into(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
                 "content": "will fail"
@@ -302,7 +302,7 @@ mod tests {
         let file_path = readonly.join("plan.md");
 
         let call = ToolCall {
-            id: "call_4b".to_owned(),
+            id: "call_4b".into(),
             name: "save_plan".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -328,7 +328,7 @@ mod tests {
         let plan_body = "# My Secret Plan\nStep 1: Do the thing.";
 
         let call = ToolCall {
-            id: "call_5".to_owned(),
+            id: "call_5".into(),
             name: "save_plan".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -367,7 +367,7 @@ mod tests {
         let file_path = dir.path().join(".plans").join("my-task").join("plan.md");
 
         let call = ToolCall {
-            id: "call_6".to_owned(),
+            id: "call_6".into(),
             name: "save_plan".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -411,7 +411,7 @@ mod tests {
         };
 
         let call = ToolCall {
-            id: "call_7".to_owned(),
+            id: "call_7".into(),
             name: "save_plan".to_owned(),
             arguments: serde_json::json!({
                 "path": "relative.md",
@@ -435,7 +435,7 @@ mod tests {
     async fn execute_returns_error_on_bad_json() {
         // Given a save_plan call with invalid JSON.
         let call = ToolCall {
-            id: "call_8".to_owned(),
+            id: "call_8".into(),
             name: "save_plan".to_owned(),
             arguments: "not json".to_owned(),
         };

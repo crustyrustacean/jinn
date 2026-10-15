@@ -590,7 +590,7 @@ mod tests {
     /// Builds the tool result a tool run reports back for one call.
     fn tool_result(tool_call_id: &str, name: &str, content: &str, success: bool) -> ToolResult {
         ToolResult {
-            tool_call_id: tool_call_id.to_owned(),
+            tool_call_id: tool_call_id.to_owned().into(),
             name: name.to_owned(),
             content: content.to_owned(),
             success,
@@ -1036,7 +1036,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.session.get_mut(&session_id).expect("session exists");
             session.buffer_tool_results(vec![ToolResult {
-                tool_call_id: "tc-1".to_owned(),
+                tool_call_id: "tc-1".into(),
                 name: "read".to_owned(),
                 content: "file".to_owned(),
                 success: true,
@@ -1103,7 +1103,7 @@ mod tests {
             reason: StreamCompletedReason::ToolUse,
             assistant_content: Some("checking".to_owned()),
             tool_calls: Some(vec![ToolCall {
-                id: "tc-1".to_owned(),
+                id: "tc-1".into(),
                 name: "bash".to_owned(),
                 arguments: r#"{"command":"ls -la /very/long/path"}"#.to_owned(),
             }]),
@@ -1185,7 +1185,7 @@ mod tests {
         let event = jinn_tools_msg::ToolExecutionCompleted {
             session_id: session_id.clone(),
             result: jinn_core_types::tool_types::ToolResult {
-                tool_call_id: "tc-1".to_owned(),
+                tool_call_id: "tc-1".into(),
                 name: "bash".to_owned(),
                 content: "file1.txt".to_owned(),
                 success: true,
@@ -1203,7 +1203,7 @@ mod tests {
             let tr = session
                 .history()
                 .iter()
-                .find(|e| matches!(&e.kind, ChatEntryKind::ToolResult { id, .. } if id == "tc-1"));
+                .find(|e| matches!(&e.kind, ChatEntryKind::ToolResult { id, .. } if id.as_str() == "tc-1"));
             assert!(
                 tr.is_none(),
                 "expected no finalized ToolResult entry for tc-1 after drop"
@@ -1240,7 +1240,7 @@ mod tests {
         let event = ToolBatchCompleted {
             session_id: session_id.clone(),
             results: vec![ToolResult {
-                tool_call_id: "tc-1".to_owned(),
+                tool_call_id: "tc-1".into(),
                 name: "bash".to_owned(),
                 content: "file1.txt".to_owned(),
                 success: true,
@@ -1351,7 +1351,7 @@ mod tests {
         actor.on_tool_use_started(&ToolUseStarted {
             session_id: session_id.clone(),
             index: 0,
-            id: "tc-1".to_owned(),
+            id: "tc-1".into(),
             name: "bash".to_owned(),
             dispatched_at: jiff::Timestamp::now(),
         });
@@ -1359,10 +1359,9 @@ mod tests {
         // Then a ToolCall entry with that id is in the history.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session");
-        let tc = session
-            .history()
-            .iter()
-            .find(|e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc-1"));
+        let tc = session.history().iter().find(
+            |e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id.as_str() == "tc-1"),
+        );
         assert!(tc.is_some(), "expected ToolCall entry with id tc-1");
     }
 
@@ -1383,7 +1382,7 @@ mod tests {
         actor.on_tool_use_started(&ToolUseStarted {
             session_id: session_id.clone(),
             index: 0,
-            id: "tc-dispatch".to_owned(),
+            id: "tc-dispatch".into(),
             name: "bash".to_owned(),
             dispatched_at: dispatched,
         });
@@ -1394,7 +1393,7 @@ mod tests {
         let tc = session
             .history()
             .iter()
-            .find(|e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc-dispatch"))
+            .find(|e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id.as_str() == "tc-dispatch"))
             .expect("tool call entry");
         match &tc.timing {
             jinn_core_types::EntryTiming::Streamed { dispatched_at, .. } => {
@@ -1413,7 +1412,12 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.begin_streaming();
-            session.begin_tool_call(0, "tc-1", "bash", jiff::Timestamp::now());
+            session.begin_tool_call(
+                0,
+                &jinn_core_types::ToolCallId::from("tc-1"),
+                "bash",
+                jiff::Timestamp::now(),
+            );
             state.session.active_session_id().clone()
         };
 
@@ -1421,7 +1425,7 @@ mod tests {
         actor.on_tool_call_received(&ToolCallReceived {
             session_id: session_id.clone(),
             tool_call: ToolCall {
-                id: "tc-1".to_owned(),
+                id: "tc-1".into(),
                 name: "bash".to_owned(),
                 arguments: r#"{"command":"ls"}
 "#
@@ -1436,7 +1440,9 @@ mod tests {
         let tc = session
             .history()
             .iter()
-            .find(|e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc-1"))
+            .find(
+                |e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id.as_str() == "tc-1"),
+            )
             .expect("tool call entry");
         if let ChatEntryKind::ToolCall { arguments, .. } = &tc.kind {
             assert!(
@@ -1455,7 +1461,12 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.begin_streaming();
-            session.begin_tool_call(0, "tc-1", "bash", jiff::Timestamp::now());
+            session.begin_tool_call(
+                0,
+                &jinn_core_types::ToolCallId::from("tc-1"),
+                "bash",
+                jiff::Timestamp::now(),
+            );
             state.session.active_session_id().clone()
         };
 
@@ -1477,7 +1488,9 @@ mod tests {
         let tc = session
             .history()
             .iter()
-            .find(|e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc-1"))
+            .find(
+                |e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id.as_str() == "tc-1"),
+            )
             .expect("tool call entry");
         if let ChatEntryKind::ToolCall { arguments, .. } = &tc.kind {
             assert_eq!(arguments, "{\"command\":\"ls\"}");
@@ -1583,7 +1596,7 @@ mod tests {
         // When a tool execution starts.
         actor.on_tool_execution_started(&ToolExecutionStarted {
             session_id: session_id.clone(),
-            tool_call_id: "tc-1".to_owned(),
+            tool_call_id: "tc-1".into(),
             name: "bash".to_owned(),
             dispatched_at: jiff::Timestamp::now(),
         });
@@ -1591,10 +1604,9 @@ mod tests {
         // Then a pending ToolResult entry with that id is in the history.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session");
-        let tr = session
-            .history()
-            .iter()
-            .find(|e| matches!(&e.kind, ChatEntryKind::ToolResult { id, .. } if id == "tc-1"));
+        let tr = session.history().iter().find(
+            |e| matches!(&e.kind, ChatEntryKind::ToolResult { id, .. } if id.as_str() == "tc-1"),
+        );
         assert!(tr.is_some(), "expected ToolResult entry with id tc-1");
     }
 
@@ -1608,20 +1620,24 @@ mod tests {
             let session = state.active_session_mut();
             session.begin_sending();
             session.begin_streaming();
-            session.begin_tool_result("tc-1", "bash", jiff::Timestamp::now());
+            session.begin_tool_result(
+                &jinn_core_types::ToolCallId::from("tc-1"),
+                "bash",
+                jiff::Timestamp::now(),
+            );
             state.session.active_session_id().clone()
         };
 
         // When two output chunks arrive for that tool result.
         actor.on_tool_execution_output(&ToolExecutionOutput {
             session_id: session_id.clone(),
-            tool_call_id: "tc-1".to_owned(),
+            tool_call_id: "tc-1".into(),
             output: "file1.txt\n".to_owned(),
             kind: ToolOutputKind::default(),
         });
         actor.on_tool_execution_output(&ToolExecutionOutput {
             session_id: session_id.clone(),
-            tool_call_id: "tc-1".to_owned(),
+            tool_call_id: "tc-1".into(),
             output: "file2.txt\n".to_owned(),
             kind: ToolOutputKind::default(),
         });
@@ -1632,7 +1648,7 @@ mod tests {
         let tr = session
             .history()
             .iter()
-            .find(|e| matches!(&e.kind, ChatEntryKind::ToolResult { id, .. } if id == "tc-1"))
+            .find(|e| matches!(&e.kind, ChatEntryKind::ToolResult { id, .. } if id.as_str() == "tc-1"))
             .expect("tool result");
         if let ChatEntryKind::ToolResult { content, .. } = &tr.kind {
             assert_eq!(content, "file1.txt\nfile2.txt\n");

@@ -34,7 +34,63 @@
 //! progress update costs nothing. Coercion is silent — the rendered list shows
 //! the status that was stored, so there is nothing to report back.
 
+use error_stack::Report;
 use jinn_tools_msg::{PhaseInput, TaskStatus};
+
+/// Why a todo payload could not be parsed.
+///
+/// Variants carry everything the model needs in their message: the tool
+/// boundary renders a failure as tool-result prose, and a `Report`'s
+/// `Display` prints only the outermost context.
+#[derive(Debug, wherror::Error)]
+pub enum TaskPayloadError {
+    /// A field held a number, boolean, or otherwise unusable shape.
+    #[error("{message}")]
+    NotAnArray {
+        /// The ready-to-render complaint naming `field`.
+        message: String,
+    },
+    /// A task entry carried a `status` that was not a string.
+    #[error("{label} has a 'status' but it must be a string")]
+    StatusNotAString {
+        /// The entry's position label.
+        label: String,
+    },
+    /// A status word matched none of the three declarable statuses.
+    #[error("{label}: unknown status \"{key}\" (expected pending, completed, or cancelled)")]
+    UnknownStatus {
+        /// The entry's position label.
+        label: String,
+        /// The normalized, unrecognized word.
+        key: String,
+    },
+    /// A task entry was neither a string nor a description object.
+    #[error("{label} must be a string or an object with 'description'")]
+    MalformedEntry {
+        /// The entry's position label.
+        label: String,
+    },
+    /// A task entry named no description.
+    #[error("{label} is missing 'description'")]
+    MissingDescription {
+        /// The entry's position label.
+        label: String,
+    },
+    /// A phase description was present but empty after trimming.
+    #[error("{label} must have a non-empty description")]
+    EmptyDescription {
+        /// The phase's position label.
+        label: String,
+    },
+    /// A nested failure, prefixed with the position it occurred at.
+    #[error("{label}: {detail}")]
+    At {
+        /// The phase's or task's position label.
+        label: String,
+        /// The nested payload error's message.
+        detail: String,
+    },
+}
 
 /// Keys a model reaches for when it wraps an array payload in a single
 /// envelope object instead of emitting the array directly. `item`/`items` are
@@ -83,7 +139,7 @@ fn wrapper_value<'a>(
 pub fn normalize_array(
     value: &serde_json::Value,
     field: &str,
-) -> Result<Vec<serde_json::Value>, String> {
+) -> Result<Vec<serde_json::Value>, Report<TaskPayloadError>> {
     match value {
         serde_json::Value::Array(items) => Ok(items.clone()),
         serde_json::Value::Null => Ok(Vec::new()),
@@ -96,13 +152,18 @@ pub fn normalize_array(
             None if object.is_empty() => Ok(Vec::new()),
             None => Ok(vec![value.clone()]),
         },
-        _ => Err(not_an_array_error(field)),
+        _ => Err(Report::new(TaskPayloadError::NotAnArray {
+            message: not_an_array_error(field),
+        })),
     }
 }
 
 /// Normalizes a string field: empty means nothing here, a JSON-encoded
 /// payload is decoded once, anything else is a single entry.
-fn normalize_text(text: &str, field: &str) -> Result<Vec<serde_json::Value>, String> {
+fn normalize_text(
+    text: &str,
+    field: &str,
+) -> Result<Vec<serde_json::Value>, Report<TaskPayloadError>> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
         return Ok(Vec::new());
@@ -185,9 +246,15 @@ fn normalize_status_key(text: &str) -> String {
 /// [`STATUS_ALIASES`], so the model vocabulary around `pending`, `completed`,
 /// and `cancelled` is accepted and coerced silently; anything else is rejected
 /// with the accepted vocabulary named.
-fn parse_status(raw: &serde_json::Value, label: &str) -> Result<TaskStatus, String> {
+fn parse_status(
+    raw: &serde_json::Value,
+    label: &str,
+) -> Result<TaskStatus, Report<TaskPayloadError>> {
     let Some(text) = raw.as_str() else {
-        return Err(format!("{label} has a 'status' but it must be a string"));
+        return Err(TaskPayloadError::StatusNotAString {
+            label: label.to_owned(),
+        }
+        .into());
     };
     let key = normalize_status_key(text);
     if key.is_empty() {
@@ -198,7 +265,11 @@ fn parse_status(raw: &serde_json::Value, label: &str) -> Result<TaskStatus, Stri
         .find(|(alias, _)| *alias == key)
         .map(|(_, status)| *status)
         .ok_or_else(|| {
-            format!("{label}: unknown status \"{key}\" (expected pending, completed, or cancelled)")
+            TaskPayloadError::UnknownStatus {
+                label: label.to_owned(),
+                key: key.to_owned(),
+            }
+            .into()
         })
 }
 
@@ -209,13 +280,18 @@ fn parse_status(raw: &serde_json::Value, label: &str) -> Result<TaskStatus, Stri
 fn parse_task_entry(
     value: &serde_json::Value,
     label: &str,
-) -> Result<(String, TaskStatus), String> {
+) -> Result<(String, TaskStatus), Report<TaskPayloadError>> {
     match value {
         serde_json::Value::String(text) => Ok((text.trim().to_owned(), TaskStatus::Pending)),
         serde_json::Value::Object(_) => {
             let description = match value.get("description").and_then(serde_json::Value::as_str) {
                 Some(text) => text.trim().to_owned(),
-                None => return Err(format!("{label} is missing 'description'")),
+                None => {
+                    return Err(TaskPayloadError::MissingDescription {
+                        label: label.to_owned(),
+                    }
+                    .into());
+                }
             };
             let status = match value.get("status") {
                 Some(v) if !v.is_null() => parse_status(v, label)?,
@@ -223,9 +299,10 @@ fn parse_task_entry(
             };
             Ok((description, status))
         }
-        _ => Err(format!(
-            "{label} must be a string or an object with 'description'"
-        )),
+        _ => Err(TaskPayloadError::MalformedEntry {
+            label: label.to_owned(),
+        }
+        .into()),
     }
 }
 
@@ -244,19 +321,31 @@ fn parse_task_entry(
 ///
 /// Returns the payload error message when the phase lacks a usable
 /// `description`, or when any task entry is malformed.
-pub fn parse_phase_body(value: &serde_json::Value, label: &str) -> Result<PhaseInput, String> {
+pub fn parse_phase_body(
+    value: &serde_json::Value,
+    label: &str,
+) -> Result<PhaseInput, Report<TaskPayloadError>> {
     let Some(description) = value.get("description").and_then(serde_json::Value::as_str) else {
-        return Err(format!("{label} is missing 'description'"));
+        return Err(TaskPayloadError::MissingDescription {
+            label: label.to_owned(),
+        }
+        .into());
     };
     let description = description.trim().to_owned();
     if description.is_empty() {
-        return Err(format!("{label} must have a non-empty description"));
+        return Err(TaskPayloadError::EmptyDescription {
+            label: label.to_owned(),
+        }
+        .into());
     }
 
     let tasks = match value.get("tasks") {
         Some(entries_val) => {
             let entries =
-                normalize_array(entries_val, "tasks").map_err(|msg| format!("{label}: {msg}"))?;
+                normalize_array(entries_val, "tasks").map_err(|report| TaskPayloadError::At {
+                    label: label.to_owned(),
+                    detail: report.to_string(),
+                })?;
             entries
                 .iter()
                 .enumerate()
@@ -276,11 +365,18 @@ pub fn parse_phase_body(value: &serde_json::Value, label: &str) -> Result<PhaseI
 /// # Errors
 ///
 /// Returns the payload error message of the first malformed phase.
-pub fn parse_phases_array(entries: &[serde_json::Value]) -> Result<Vec<PhaseInput>, String> {
+pub fn parse_phases_array(
+    entries: &[serde_json::Value],
+) -> Result<Vec<PhaseInput>, Report<TaskPayloadError>> {
     let mut phases = Vec::with_capacity(entries.len());
     for (i, value) in entries.iter().enumerate() {
         let label = format!("phase at index {i}");
-        phases.push(parse_phase_body(value, &label)?);
+        phases.push(parse_phase_body(value, &label).map_err(|report| {
+            error_stack::Report::new(TaskPayloadError::At {
+                label,
+                detail: report.to_string(),
+            })
+        })?);
     }
     Ok(phases)
 }
@@ -394,7 +490,7 @@ mod tests {
         // When normalizing it.
         let result = normalize_array(&json!(42), "tasks");
         // Then the error names the expectation and shows an example.
-        let msg = result.expect_err("rejected");
+        let msg = result.expect_err("rejected").to_string();
         assert!(
             msg.contains("must be an array of task objects"),
             "got: {msg}"
@@ -425,7 +521,7 @@ mod tests {
         let result = parse_phase_body(&payload, "phase at index 0");
 
         // Then the error locates the offending phase.
-        let msg = result.expect_err("rejected");
+        let msg = result.expect_err("rejected").to_string();
         assert!(msg.starts_with("phase at index 0"), "got: {msg}");
     }
 
@@ -488,7 +584,7 @@ mod tests {
         let result = parse_phase_body(&payload, "phase at index 0");
 
         // Then it is rejected as an unknown status, like any unrecognised value.
-        let msg = result.expect_err("rejected");
+        let msg = result.expect_err("rejected").to_string();
         assert!(
             msg.contains(&format!("unknown status \"{status}\"")),
             "got: {msg}"
@@ -519,7 +615,7 @@ mod tests {
         let result = parse_phase_body(&payload, "phase");
 
         // Then it is rejected rather than coerced to the nearest status.
-        let msg = result.expect_err("rejected");
+        let msg = result.expect_err("rejected").to_string();
         assert!(
             msg.contains(&format!("unknown status \"{status}\"")),
             "got: {msg}"
@@ -630,7 +726,7 @@ mod tests {
         let result = parse_phase_body(&payload, "phase at index 0, task at index 0");
 
         // Then the error quotes the word and names the accepted statuses.
-        let msg = result.expect_err("rejected");
+        let msg = result.expect_err("rejected").to_string();
         assert!(msg.contains("unknown status \"nonsense\""), "got: {msg}");
         assert!(
             msg.contains("expected pending, completed, or cancelled"),

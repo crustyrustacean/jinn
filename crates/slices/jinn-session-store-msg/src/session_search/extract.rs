@@ -5,6 +5,7 @@
 //! index. Kinds with no prose worth searching (`Actor`, `Thinking`,
 //! `Transient`, `Annotation`) yield `None` and never get an FTS row.
 
+use jinn_core_types::ChatEntryId;
 use jinn_core_types::ChatEntryKind;
 
 use super::model::SearchableRole;
@@ -13,7 +14,7 @@ use super::model::SearchableRole;
 #[derive(Debug, Clone)]
 pub struct SearchableEntry {
     /// Stable entry id (the FTS row's `entry_id` column).
-    pub entry_id: String,
+    pub entry_id: ChatEntryId,
     /// The role label (FTS `role` column).
     pub role: SearchableRole,
     /// The searchable prose (FTS `body` column).

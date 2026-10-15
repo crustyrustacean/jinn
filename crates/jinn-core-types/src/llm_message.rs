@@ -30,7 +30,7 @@ pub enum LlmMessage {
     /// A tool result message.
     Tool {
         /// The ID of the tool call this result is for.
-        tool_call_id: String,
+        tool_call_id: crate::ToolCallId,
         /// The name of the tool that was executed.
         name: String,
         /// The output content.
@@ -83,7 +83,7 @@ mod tests {
     fn tool_message_roundtrips() {
         // Given a tool message.
         let msg = LlmMessage::Tool {
-            tool_call_id: "call_1".to_owned(),
+            tool_call_id: "call_1".into(),
             name: "echo".to_owned(),
             content: "result text".to_owned(),
         };
@@ -102,7 +102,7 @@ mod tests {
         let msg = LlmMessage::Assistant {
             content: "Let me check.".to_owned(),
             tool_calls: Some(vec![ToolCall {
-                id: "call_1".to_owned(),
+                id: "call_1".into(),
                 name: "echo".to_owned(),
                 arguments: r#"{\"input\":\"hi\"}"#.to_owned(),
             }]),

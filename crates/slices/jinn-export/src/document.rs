@@ -308,7 +308,7 @@ mod tests {
     fn tool_result_exports_full_content_not_the_truncated_head() {
         // Given a tool result whose display content was truncated.
         let entry = entry(ChatEntryKind::ToolResult {
-            id: "call-1".to_owned(),
+            id: "call-1".into(),
             name: "read".to_owned(),
             content: "head...".to_owned(),
             status: ToolResultStatus::Success,
@@ -329,7 +329,7 @@ mod tests {
     fn tool_result_without_full_content_exports_its_content() {
         // Given a tool result that was never truncated.
         let entry = entry(ChatEntryKind::ToolResult {
-            id: "call-1".to_owned(),
+            id: "call-1".into(),
             name: "read".to_owned(),
             content: "complete".to_owned(),
             status: ToolResultStatus::Success,
@@ -350,7 +350,7 @@ mod tests {
     fn tool_call_is_a_disclosure_with_a_one_line_summary() {
         // Given a tool call with multi-line arguments.
         let entry = entry(ChatEntryKind::ToolCall {
-            id: "call-1".to_owned(),
+            id: "call-1".into(),
             name: "bash".to_owned(),
             arguments: "{\n  \"cmd\": \"ls\"\n}".to_owned(),
             child_session: None,

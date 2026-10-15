@@ -20,7 +20,7 @@ use crate::tool_types::ToolContext;
 /// Builds a tool call with the given JSON arguments.
 fn call(arguments: &str) -> ToolCall {
     ToolCall {
-        id: "tc_load_1".to_owned(),
+        id: "tc_load_1".into(),
         name: "load_attendant".to_owned(),
         arguments: arguments.to_owned(),
     }
@@ -247,7 +247,7 @@ fn parse_refuses_a_wrapped_file_carrying_several_entries() {
 
     // Then it refuses with a reason naming the count.
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("2 entries"));
+    assert!(result.unwrap_err().to_string().contains("2 entries"));
 }
 
 #[rstest::rstest]
