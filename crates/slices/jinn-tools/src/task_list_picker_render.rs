@@ -19,6 +19,11 @@
 //! `SelectionWidget` — that is what gives phases their roots, tasks their
 //! indent, and the connector between them.
 //!
+//! Each frame, the widget reports the `PickerLayout` it solved; the renderer
+//! publishes `layout.inner.height` — the true visible row count — into the
+//! picker cell's `results_viewport`, so the navigation keys page by what the
+//! last frame actually showed.
+//!
 //! The render context deliberately never sees `AppState` (see `RenderFacts`),
 //! so this reads `TaskListPickerState` straight off the registered slot.
 
@@ -70,22 +75,20 @@ pub fn task_list_picker_binds() -> Vec<jinn_picker::BindRow> {
 
 /// Draws the task-list picker popup for one frame.
 pub fn render_task_list_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFacts) {
+    // The task-list picker's cell — the single home for what it shows. Held
+    // across footer construction and the tree render, dropped before the
+    // viewport write that follows the render.
     let Some(cell) = facts
         .slices
         .reader::<TaskListPickerState>(&jinn_tools_msg::task_list_picker_slot())
     else {
         return;
     };
-
-    // Measure the popup's result rows and publish them for the navigation keys,
-    // which need a real row count to keep the highlight on screen. This is the
-    // slice-owned equivalent of the kernel's per-frame viewport write.
-    let measured = crate::task_list_picker_viewport::results_viewport(area);
-    cell.update(|state: &mut TaskListPickerState| state.results_viewport = measured);
-
     let guard = cell.read();
-    let state = &guard;
 
+    // The colors and binds shape the footer rows, and the footer rows decide
+    // how many rows the tree gets — so they come first, before the widget
+    // renders and reports the layout it solved.
     let theme = &facts.theme;
     let palette = task_list_picker_palette(theme);
     let binds = task_list_picker_binds();
@@ -96,7 +99,7 @@ pub fn render_task_list_picker(frame: &mut Frame<'_>, area: Rect, facts: &Render
     // this is the total rather than the filter's current subset — which is
     // what a reader wants from a status line ("24 tasks"), not the count of
     // whatever they happen to have typed.
-    let (roots, children) = phase_and_task_counts(state);
+    let (roots, children) = phase_and_task_counts(&guard);
     let status = Line::from(Span::styled(
         format!("{roots} phases, {children} tasks"),
         Style::default().fg(theme.muted_text),
@@ -104,13 +107,29 @@ pub fn render_task_list_picker(frame: &mut Frame<'_>, area: Rect, facts: &Render
 
     let footers = vec![status, Line::from(keybind.0)];
 
-    jinn_selection_widget::TreePickerWidget::new(&state.tree)
-        .title(Line::from(" Task List "))
-        .title_style(Style::default().fg(theme.popup_title))
-        .footers(footers)
-        .colors(palette.selection_colors())
-        .tree_prefix_color(theme.muted_text)
-        .render(frame, area);
+    // Render the tree and take the layout back — `inner.height` is the true
+    // visible row count, chrome and footer block included in the widget's own
+    // arithmetic, so the slice mirrors nothing. The guard must drop before the
+    // cell write below: `TypedCell` is a plain `RwLock`, and a same-thread
+    // write-while-read deadlocks.
+    let layout = {
+        let state = &guard;
+        jinn_selection_widget::TreePickerWidget::new(&state.tree)
+            .title(Line::from(" Task List "))
+            .title_style(Style::default().fg(theme.popup_title))
+            .footers(footers)
+            .colors(palette.selection_colors())
+            .tree_prefix_color(theme.muted_text)
+            .render(frame, area)
+    };
+    drop(guard);
+
+    // Measure the popup's result rows and publish them for the navigation keys,
+    // which need a real row count to keep the highlight on screen. The value is
+    // the widget's own report, never a re-derived number.
+    cell.update(|state: &mut TaskListPickerState| {
+        state.results_viewport = layout.inner.height as usize;
+    });
 }
 
 use ratatui::text::Span;

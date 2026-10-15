@@ -132,13 +132,87 @@ fn section_rows_exclude_non_attendant_sessions() {
 
 #[rstest::rstest]
 #[test]
-fn viewport_measurement_never_windows_against_zero() {
-    // Given a popup too small to hold its chrome.
-    let popup = ratatui::layout::Rect::new(0, 0, 4, 3);
+fn rendering_a_tiny_frame_still_leaves_at_least_one_visible_row() {
+    // Given the picker's cell on a fresh registry, over one report.
+    let slices = jinn_slices::Slices::new();
+    let cell = slices
+        .register(
+            jinn_attendant_msg::attendant_report_picker_slot(),
+            jinn_attendant_msg::AttendantReportPickerState::default(),
+        )
+        .expect("unclaimed slot");
+    actions::open(&mut cell.update(std::mem::take), vec![report(1, "one")]);
+    let facts = jinn_slices::RenderFacts::new(jinn_theme::default_theme(), &slices);
+    let area = ratatui::layout::Rect::new(0, 0, 20, 8);
+    let mut terminal =
+        ratatui::Terminal::new(ratatui::backend::TestBackend::new(area.width, area.height))
+            .expect("terminal");
 
-    // When the visible row count is measured.
-    let viewport = crate::report_picker_viewport::results_viewport(popup);
+    // When a frame the popup can barely fit in is drawn.
+    terminal
+        .draw(|frame| {
+            let popup = crate::report_picker_render::report_picker_overlay_rect(&area)
+                .expect("geometry fn yields a popup rect");
+            crate::report_picker_render::render_report_picker(frame, popup, &facts);
+        })
+        .expect("draw");
 
     // Then at least one row is visible, so paging keeps working.
-    assert!(viewport >= 1);
+    assert!(
+        cell.read().results_viewport >= 1,
+        "viewport after a 20x8 frame"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn rendering_writes_the_widget_solved_row_count_to_the_cell() {
+    // Given the picker's cell on a fresh registry, over one report, at a
+    // known frame size.
+    let slices = jinn_slices::Slices::new();
+    let cell = slices
+        .register(
+            jinn_attendant_msg::attendant_report_picker_slot(),
+            jinn_attendant_msg::AttendantReportPickerState::default(),
+        )
+        .expect("unclaimed slot");
+    actions::open(&mut cell.update(std::mem::take), vec![report(1, "one")]);
+    let facts = jinn_slices::RenderFacts::new(jinn_theme::default_theme(), &slices);
+    let area = ratatui::layout::Rect::new(0, 0, 100, 30);
+    let popup = crate::report_picker_render::report_picker_overlay_rect(&area)
+        .expect("geometry fn yields a popup rect");
+
+    // When a frame is drawn, and an identical widget construction renders
+    // into a second terminal to learn what it solved.
+    let expected = {
+        let guard = cell.read();
+        let widget = crate::report_picker_render::report_picker_widget(&guard, &facts.theme);
+        let (mut terminal, _) = jinn_testutil::setup_term(area.width, area.height);
+        let report = std::cell::Cell::new(None);
+        terminal
+            .draw(|frame| {
+                report.set(Some(widget.render(frame, popup)));
+            })
+            .expect("draw");
+        report
+            .into_inner()
+            .expect("render reports a PickerLayout")
+            .inner
+            .height as usize
+    };
+    let mut terminal =
+        ratatui::Terminal::new(ratatui::backend::TestBackend::new(area.width, area.height))
+            .expect("terminal");
+    terminal
+        .draw(|frame| {
+            crate::report_picker_render::render_report_picker(frame, popup, &facts);
+        })
+        .expect("draw");
+
+    // Then the cell holds what the widget solved, not a mirrored estimate.
+    assert_eq!(
+        cell.read().results_viewport,
+        expected,
+        "the cell must hold the PickerLayout the frame's widget returned"
+    );
 }

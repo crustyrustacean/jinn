@@ -70,6 +70,11 @@ pub fn reasoning_picker_binds() -> Vec<jinn_picker::BindRow> {
 }
 
 /// Draws the reasoning picker popup for one frame.
+///
+/// The popup's result-row count is not measured here — the widget solves the
+/// layout and reports it (see `jinn_selection_widget::PickerLayout`); this
+/// writes the reported `inner.height` into the cell so the navigation keys
+/// page by what the last frame actually laid out.
 pub fn render_reasoning_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFacts) {
     let Some(cell) = facts
         .slices
@@ -78,29 +83,32 @@ pub fn render_reasoning_picker(frame: &mut Frame<'_>, area: Rect, facts: &Render
         return;
     };
 
-    // Measure the popup's result rows and publish them for the navigation keys,
-    // which need a real row count to keep the highlight on screen. This is the
-    // slice-owned equivalent of the kernel's per-frame viewport write.
-    let measured = crate::reasoning_picker_viewport::results_viewport(area);
-    cell.update(|state: &mut ReasoningPickerState| state.results_viewport = measured);
-
-    let guard = cell.read();
-    let state: &ReasoningPickerState = &guard;
-
     let theme = &facts.theme;
     let palette = reasoning_picker_palette(theme);
     let binds = reasoning_picker_binds();
     let keybind = jinn_picker::keybind_line(&binds, jinn_picker::Tail::Standard, &palette);
-    let footers = vec![
-        crate::reasoning_picker_actions::reasoning_status(state, theme),
-        Line::from(keybind.0),
-    ];
+    let footers = {
+        let guard = cell.read();
+        vec![
+            crate::reasoning_picker_actions::reasoning_status(&guard, theme),
+            Line::from(keybind.0),
+        ]
+    };
 
-    let widget = jinn_selection_widget::SelectionWidget::new(&state.selection)
-        .title(Line::from(" Reasoning Effort "))
-        .title_style(Style::default().fg(theme.popup_title))
-        .footers(footers)
-        .colors(palette.selection_colors());
-
-    widget.render(frame, area);
+    // The widget solves the layout and reports it; the guard ends before the
+    // cell write because `TypedCell` is a plain RwLock and a same-thread
+    // write-while-read would deadlock. The layout is `Copy`, so it outlives
+    // the guard cleanly.
+    let layout = {
+        let guard = cell.read();
+        jinn_selection_widget::SelectionWidget::new(&guard.selection)
+            .title(Line::from(" Reasoning Effort "))
+            .title_style(Style::default().fg(theme.popup_title))
+            .footers(footers)
+            .colors(palette.selection_colors())
+            .render(frame, area)
+    };
+    cell.update(|state: &mut ReasoningPickerState| {
+        state.results_viewport = usize::from(layout.inner.height);
+    });
 }
