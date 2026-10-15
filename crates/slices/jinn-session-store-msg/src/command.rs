@@ -42,6 +42,24 @@ pub struct SessionForkRequested {
 
 impl jinn_slices::BusMessage for SessionForkRequested {}
 
+/// Request to make a session's whole tree live: every ancestor up to the
+/// root and every descendant at every level.
+///
+/// The picker's plain activation loads one session; this one restores the
+/// tree *around* a session, so the user can navigate to its parents and
+/// spawned children without loading each node by hand. Which node the
+/// request names does not matter — the actor resolves the tree the named
+/// session belongs to from the store's summaries, where archived and
+/// never-hydrated members are still visible.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Load every session in the named session's tree.")]
+pub struct LoadSessionTree {
+    /// A session in the tree to load. Any member resolves the same tree.
+    pub session_id: SessionId,
+}
+
+impl jinn_slices::BusMessage for LoadSessionTree {}
+
 /// Load entries for the session picker.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
 #[schema(description = "Load session picker entries from the session store.")]
@@ -84,8 +102,8 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, reason = "test code")]
 
     use super::{
-        ArchiveSession, ArchiveSessionTree, LoadSessionPickerEntries, PersistSession,
-        SessionForkRequested, SessionLoadRequested,
+        ArchiveSession, ArchiveSessionTree, LoadSessionPickerEntries, LoadSessionTree,
+        PersistSession, SessionForkRequested, SessionLoadRequested,
     };
     use jinn_core_types::SessionId;
 
@@ -105,6 +123,9 @@ mod tests {
                 at_ordinal: 7,
             },
             LoadSessionPickerEntries,
+            LoadSessionTree {
+                session_id: id.clone(),
+            },
             ArchiveSession {
                 session_id: id.clone(),
             },
@@ -120,6 +141,7 @@ mod tests {
             SessionLoadRequested,
             SessionForkRequested,
             LoadSessionPickerEntries,
+            LoadSessionTree,
             ArchiveSession,
             ArchiveSessionTree,
             PersistSession,
@@ -132,7 +154,8 @@ mod tests {
         assert_eq!(round.1.source_session_id, id);
         assert_eq!(round.1.at_ordinal, 7);
         assert_eq!(round.3.session_id, id);
-        assert_eq!(round.4.root, id);
-        assert_eq!(round.5.session_id, other_id);
+        assert_eq!(round.4.session_id, id);
+        assert_eq!(round.5.root, id);
+        assert_eq!(round.6.session_id, other_id);
     }
 }

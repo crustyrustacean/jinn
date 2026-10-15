@@ -13,7 +13,8 @@ use jinn_kernel::protocol::system::ActiveSessionChanged;
 use jinn_session_state::SessionStoreService;
 use jinn_session_state::{ChatSessionState, SessionSnapshot, snapshot_frozen_node_from_snapshot};
 use jinn_session_store_msg::SessionForkRequested;
-use jinn_session_store_msg::{SessionLoadCompleted, SessionLoadRequested, SessionState};
+use jinn_session_store_msg::{LoadSessionTree, SessionLoadRequested};
+use jinn_session_store_msg::{SessionLoadCompleted, SessionState};
 use jinn_work_time_msg::RestoreWorkingTime;
 use trouper::actor::{ActorPath, MsgHandler};
 use trouper::context::MsgCtx;
@@ -444,6 +445,160 @@ impl SessionStoreActor {
                 self.clear_load(&payload.session_id);
             }
         }
+    }
+
+    /// Loads the named session's whole tree live: ancestors and descendants.
+    ///
+    /// The picker's plain activation restores one node; this restores the
+    /// tree *around* it, so the user can move to its parents and spawned
+    /// children without loading each node by hand. Which member the request
+    /// names does not matter — the tree is resolved from the store's
+    /// summaries, where archived and never-hydrated members are still
+    /// visible, and every member missing from the live map is restored as a
+    /// background session: marked interacted, forced `Loaded`, unarchived on
+    /// disk, its working time handed back to the monitor, and a
+    /// [`SessionLoadCompleted`] published per member. Members already live
+    /// are skipped untouched — a live session can hold history the store has
+    /// not seen, so re-reading one would regress it.
+    ///
+    /// The named member ends as the active, measured session, whatever the
+    /// rest of the tree did: if it was absent it goes through
+    /// [`Self::restore_loaded_session`] (active, layout hand-off, events),
+    /// and if it was already live a `set_active` re-assertion plus the
+    /// normal measurement path covers it — the two arrivals of a
+    /// `SessionLoadRequested` racing this command from the same keypress
+    /// both converge here.
+    ///
+    /// A member id missing from the store is skipped: a gap in the store
+    /// must not fail the rest of the load.
+    pub(crate) async fn on_load_tree_requested(
+        &self,
+        ctx: &mut MsgCtx<'_>,
+        payload: &LoadSessionTree,
+    ) {
+        let store = self.services.session_store.clone();
+        // Resolved from the store, not from memory: the summary is the only
+        // place a member that was archived or never hydrated is still named.
+        let Some(summary_map) = self.summary_parent_map(&store).await else {
+            return;
+        };
+        let tree_ids = collect_tree_ids(&payload.session_id, &summary_map);
+
+        // Background members first, so the picked member's restore — which
+        // reads and writes the active pointer — runs last and wins.
+        for member_id in &tree_ids {
+            if member_id == &payload.session_id {
+                continue;
+            }
+            // Already live: skip untouched. In-memory history can be newer
+            // than the store; this is not an optimization but the point.
+            if self.state.read().session.contains(member_id) {
+                continue;
+            }
+            match store.load_session(member_id).await {
+                Ok(Some(snapshot)) => {
+                    if let Err(error) = store.set_archived(member_id, false).await {
+                        tracing::warn!(?error, session_id = %member_id, "failed to unarchive tree member");
+                    }
+                    self.restore_background_member(snapshot).await;
+                }
+                Ok(None) => {
+                    tracing::debug!(
+                        session_id = %member_id,
+                        "session in tree not found in store, skipping tree member"
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        ?error,
+                        session_id = %member_id,
+                        "failed to load tree member; loading the rest of the tree"
+                    );
+                }
+            }
+        }
+
+        // The picked member lands last: active, measured, and on screen.
+        if self.state.read().session.get(&payload.session_id).is_some() {
+            // Already live — the racing `SessionLoadRequested` (or an earlier
+            // load) did the work. Re-assert active in case a background
+            // restore moved it, and let the normal measure path run: the
+            // guard `activate_session` armed is cleared by the completion
+            // actor against whichever measurement lands.
+            self.state.with_session(|view| {
+                view.session.map().set_active(payload.session_id.clone());
+            });
+            self.on_activate_in_memory(
+                ctx,
+                &SessionLoadRequested {
+                    session_id: payload.session_id.clone(),
+                    content_width: None,
+                },
+            );
+            return;
+        }
+        match store.load_session(&payload.session_id).await {
+            Ok(Some(snapshot)) => {
+                if let Err(error) = store.set_archived(&payload.session_id, false).await {
+                    tracing::warn!(?error, "failed to unarchive session on tree load");
+                }
+                self.restore_loaded_session(ctx, snapshot).await;
+                self.hydrate_tree_frozen_nodes(&store, &payload.session_id)
+                    .await;
+            }
+            Ok(None) => {
+                tracing::warn!(
+                    session_id = ?payload.session_id,
+                    "tree load named a session absent from the store"
+                );
+                self.clear_load(&payload.session_id);
+            }
+            Err(error) => {
+                tracing::warn!(?error, "failed to load the picked tree member");
+                self.clear_load(&payload.session_id);
+            }
+        }
+    }
+
+    /// Restores one non-picked tree member as a live background session.
+    ///
+    /// This is the hydrate-completion branch of
+    /// [`Self::on_hydrate_completed`] plus the unarchive fixups of
+    /// [`Self::restore_loaded_session`], minus everything an *activated*
+    /// session gets: no model fallback (the snapshot's own model stands),
+    /// no active-pointer move, no layout dispatch (the completion actor
+    /// discards results for non-active sessions, so eager measurement would
+    /// burn a full-history clone per member for nothing — background
+    /// members measure lazily on first activation, exactly like
+    /// startup-hydrated sessions), and no cwd replacement.
+    async fn restore_background_member(&self, snapshot: SessionSnapshot) {
+        let session_id = snapshot.metadata.session_id.clone();
+        let working_intervals = snapshot.metadata.working_intervals.clone();
+        let updated_at = snapshot.metadata.updated_at;
+        let session = {
+            let mut session = self.restore_seeded(snapshot).await;
+            session.mark_interacted();
+            // Loading a member makes it live again, and the sidebar lists
+            // only `Loaded` sessions.
+            session.set_session_state(SessionState::Loaded);
+            session
+        };
+        self.state.with_frontend_state(|ops| {
+            ops.frontend().update_sections(|sections| {
+                sections
+                    .sessions
+                    .visual_parents
+                    .retain(|_id, parent| parent != &session_id);
+            });
+        });
+        self.insert_loaded_session(session);
+        self.publish(RestoreWorkingTime {
+            session_id: session_id.clone(),
+            intervals: working_intervals,
+            last_active_at: updated_at,
+        })
+        .await;
+        self.publish(SessionLoadCompleted { session_id }).await;
     }
 
     /// Forks the source and restores the child as the active session.
