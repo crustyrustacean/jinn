@@ -21,6 +21,7 @@ pub mod render;
 pub mod setup;
 pub mod state;
 pub mod teardown;
+pub mod yank;
 
 #[cfg(test)]
 mod attendant_actions_tests;
@@ -54,6 +55,7 @@ pub use reconcile::{reconcile_after_session_removal, reconcile_split};
 pub use render::SessionsSection;
 pub use render::render_archive_tree_prompt_for_state;
 pub use render::render_close_session_prompt_for_state;
+pub use render::render_session_id_yank_popup_for_state;
 pub use setup::handle_session_rerun_setup;
 pub use state::SessionsSectionState;
 #[allow(
@@ -64,6 +66,7 @@ pub(crate) use state::sorted_open_sessions;
 pub use state::{clear_visual_parents_on_load, clear_visual_parents_on_load_split};
 pub use state::{update_visual_parents_on_removal, update_visual_parents_on_removal_split};
 pub use teardown::handle_session_teardown;
+pub use yank::{SessionYankError, handle_session_yank_id, validate_session_yank_id};
 
 // ---------------------------------------------------------------------------
 // Constants - shared across submodules.
