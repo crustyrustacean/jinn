@@ -95,6 +95,54 @@ fn render_shows_status_hint_instead_of_model_when_set() {
 }
 
 #[rstest::rstest]
+fn render_short_hint_leaves_no_model_residue() {
+    // Given a status-bar cell carrying a hint SHORTER than the model string,
+    // on a state whose model is set to a long provider/model path.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default_with_scope_focus();
+    state.active_session_mut().set_model(ModelSelection::Single(
+        "openrouter/anthropic/claude-sonnet-4.5".to_owned(),
+    ));
+    let slices = jinn_slices::Slices::new();
+    {
+        #[expect(
+            clippy::expect_used,
+            reason = "test seam: a fresh Slices never has the status-bar cell registered"
+        )]
+        let cell = slices
+            .register(
+                jinn_status_bar_msg::status_bar_slot(),
+                jinn_status_bar_msg::StatusBarState::default(),
+            )
+            .expect("fresh Slices never has the status-bar cell registered");
+        cell.update(|s| s.hint = Some("yanked 3 lines".to_owned()));
+    }
+    let (mut terminal, area) = setup_term(60, 2);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 60);
+
+    // Then the hint replaces the model entirely — no fragment of the longer
+    // model string survives to the left of the hint. Hint and model are one
+    // either/or widget; the right-aligned hint overwrites only its own
+    // columns, so an overlay instead of a replacement would leave
+    // "(openrouter)yanked 3 lines" on the row.
+    assert!(row.contains("yanked 3 lines"), "row: {row}");
+    assert!(
+        !row.contains("(openrouter)") && !row.contains("claude"),
+        "a short hint must leave no model residue, got: {row}"
+    );
+}
+
+#[rstest::rstest]
 fn render_defaults_to_model_when_cell_absent() {
     // Given a state whose status-bar cell was never registered (slice not
     // activated) and no model selected.
@@ -925,6 +973,185 @@ fn render_shows_context_limit_with_usage_and_percentage() {
 
     // Then the status bar shows the percentage and formatted max.
     assert!(row.contains("2.5%/200k"), "expected 2.5%/200k, got: {row}");
+}
+
+#[rstest::rstest]
+fn render_falls_back_to_last_ledger_tokens_when_no_cached_context_size() {
+    // Given a session with a ledger but no cached context size — a background
+    // session the context-size actor has never recalculated.
+    use jinn_token_count_msg::TokenRecord;
+    let mut element = StatusBarElement;
+    let mut state = AppState::default_with_scope_focus();
+    state.active_session_mut().set_model(ModelSelection::Single(
+        "openrouter/anthropic/claude-sonnet-4".to_owned(),
+    ));
+    state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 10_000,
+        tokens_received: 0,
+        cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
+    });
+    // No set_context_size — the fallback must supply the used side.
+    attach_model_cache(
+        &mut state,
+        "openrouter",
+        "anthropic/claude-sonnet-4",
+        Some(200_000),
+    );
+    let (mut terminal, area) = setup_term(100, 2);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 100);
+
+    // Then the percentage derives from the last record's tokens_sent, not a
+    // ledger sum: 10_000/200_000 = 5.0%, where summing two turns of 10k would
+    // claim double.
+    assert!(row.contains("5.0%/200k"), "expected 5.0%/200k, got: {row}");
+}
+
+#[rstest::rstest]
+fn render_uses_the_last_ledger_record_not_a_sum() {
+    // Given a session whose ledger grows per turn — each record carries that
+    // dispatch's whole context, so record two (20k) is the current figure and
+    // 10k + 20k would be wrong.
+    use jinn_token_count_msg::TokenRecord;
+    let mut element = StatusBarElement;
+    let mut state = AppState::default_with_scope_focus();
+    state.active_session_mut().set_model(ModelSelection::Single(
+        "openrouter/anthropic/claude-sonnet-4".to_owned(),
+    ));
+    for tokens_sent in [10_000, 20_000] {
+        state.active_session_mut().push_token_record(TokenRecord {
+            model_used: None,
+            timestamp: jiff::Timestamp::now(),
+            tokens_sent,
+            tokens_received: 0,
+            cost: None,
+            prompt_tokens: None,
+            cached_tokens: None,
+        });
+    }
+    attach_model_cache(
+        &mut state,
+        "openrouter",
+        "anthropic/claude-sonnet-4",
+        Some(200_000),
+    );
+    let (mut terminal, area) = setup_term(100, 2);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 100);
+
+    // Then the display is the last record only: 20_000/200_000 = 10.0% — not
+    // 15% (half the 30k sum) and not 30k.
+    assert!(
+        row.contains("10.0%/200k"),
+        "expected 10.0%/200k, got: {row}"
+    );
+    assert!(
+        row.contains("\u{2191}30.0k"),
+        "the ↑ token total stays the ledger sum (30k), got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn render_prefers_cached_context_size_over_the_ledger_fallback() {
+    // Given a session with both a cached context size and a ledger whose last
+    // estimate differs — the actor's value reflects pins, overrides, and
+    // pruning, so it must win.
+    use jinn_token_count_msg::TokenRecord;
+    let mut element = StatusBarElement;
+    let mut state = AppState::default_with_scope_focus();
+    state.active_session_mut().set_model(ModelSelection::Single(
+        "openrouter/anthropic/claude-sonnet-4".to_owned(),
+    ));
+    state.active_session_mut().push_token_record(TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 10_000,
+        tokens_received: 0,
+        cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
+    });
+    state.active_session_mut().set_context_size(6_000);
+    attach_model_cache(
+        &mut state,
+        "openrouter",
+        "anthropic/claude-sonnet-4",
+        Some(200_000),
+    );
+    let (mut terminal, area) = setup_term(100, 2);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 100);
+
+    // Then the cached size is shown: 6_000/200_000 = 3.0%, not the ledger's 5%.
+    assert!(row.contains("3.0%/200k"), "expected 3.0%/200k, got: {row}");
+}
+
+#[rstest::rstest]
+fn render_shows_zero_percent_when_ledger_empty_and_no_cached_size() {
+    // Given a session that has never dispatched — no ledger records, no cached
+    // context size — with a known context limit.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default_with_scope_focus();
+    state.active_session_mut().set_model(ModelSelection::Single(
+        "openrouter/anthropic/claude-sonnet-4".to_owned(),
+    ));
+    attach_model_cache(
+        &mut state,
+        "openrouter",
+        "anthropic/claude-sonnet-4",
+        Some(200_000),
+    );
+    let (mut terminal, area) = setup_term(100, 2);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let slices = jinn_slices::Slices::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 100);
+
+    // Then the display stays 0.0%/<max>: an unactivated session that has never
+    // dispatched is genuinely zero.
+    assert!(row.contains("0.0%/200k"), "expected 0.0%/200k, got: {row}");
 }
 
 #[rstest::rstest]

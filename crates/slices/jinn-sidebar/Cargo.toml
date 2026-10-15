@@ -21,6 +21,8 @@ jinn-session-lifecycle-msg = { workspace = true }
 jinn-session-state = { workspace = true }
 jinn-session-msg = { workspace = true }
 jinn-session-store-msg = { workspace = true }
+# The model cache the shared status line reads the context limit from.
+jinn-provider-config = { workspace = true }
 jinn-term = { workspace = true }
 jinn-term-msg = { workspace = true }
 jinn-theme = { workspace = true }
@@ -32,6 +34,9 @@ trouper = { workspace = true }
 # feature helpers. The kernel never depends back on this crate.
 jinn-core-types = { workspace = true }
 jinn-skills = { workspace = true }
+# The session preview popup's footer renders the shared status line
+# the status bar under the chat input draws.
+jinn-status-bar = { workspace = true }
 jinn-kernel = { workspace = true }
 jinn-preferences-config = { workspace = true }
 jinn-tools = { workspace = true }
@@ -55,4 +60,7 @@ async-trait = { workspace = true }
 jinn-config = { workspace = true }
 jinn-kernel = { workspace = true }
 jinn-testutil = { workspace = true }
+# The preview tests assert the ~-shortened cwd form and seed token records.
+dirs = { workspace = true }
+jinn-token-count-msg = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "time"] }

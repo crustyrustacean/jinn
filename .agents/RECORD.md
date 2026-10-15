@@ -323,6 +323,7 @@ Entries are added or amended **only with human approval**.
 - (preview) The session preview popup is omitted entirely when the cursor row leaves less than its minimum height of space above it, rather than being drawn over the cursor row.
 - (preview) Session preview content is anchored to the bottom of the popup's content area, with overflow dropped from the front, so the newest entry is always the last visible row.
 - (preview) The session preview popup draws its loading indicator on the last row of its content area, horizontally centred, matching the chat log's session-load line.
+- (preview) A background session's context usage in the sidebar session preview derives from its last token-ledger record's per-dispatch sent estimate; the cached assembled size exists only for sessions the context-size actor has recalculated (the active one).
 - (session) Session activation is one command: the session store actor skips the disk read for a session already in memory and measures its chat log instead, so the sidebar, the session picker, and subagent entry all behave alike.
 - (ui) The spinner animation interval is a single shared constant, but the animation _state_ is per widget: the three loading indicators render through `throbber-widgets-tui`'s stateful widget, and only the session preview derives its glyph from elapsed time, because it is a bare paragraph with no widget to hold state.
 - (slices) The chat input box is owned by the `jinn-chat-input` slice: its element, validation, autocomplete rendering, directory-lister actor, and keybinds.
