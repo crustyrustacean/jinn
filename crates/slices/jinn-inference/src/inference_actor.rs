@@ -904,9 +904,14 @@ impl InferenceActor {
         // Resolve the factory: per-request if provider_id is set, global fallback otherwise.
         let factory = match self.resolve_factory(payload) {
             Ok(f) => f,
-            Err(msg) => {
-                emit_stream_error(&self.services.bus, &session_id, msg, payload.dispatched_at)
-                    .await;
+            Err(report) => {
+                emit_stream_error(
+                    &self.services.bus,
+                    &session_id,
+                    report.to_string(),
+                    payload.dispatched_at,
+                )
+                .await;
                 return;
             }
         };
@@ -952,7 +957,7 @@ impl InferenceActor {
     fn resolve_factory(
         &self,
         payload: &SendToLlmProvider,
-    ) -> Result<LlmServiceFactoryService, String> {
+    ) -> Result<LlmServiceFactoryService, Report<LlmResolveError>> {
         if let Some(pid) = payload.provider_id.clone() {
             let id = jinn_provider_config::ProviderId::new(pid.clone());
             let api_keys = self.services.api_keys.read();
@@ -968,7 +973,9 @@ impl InferenceActor {
                 }
                 Err(e) => {
                     tracing::error!(err = ?e, provider_id = %pid, "failed to create per-request factory");
-                    Err(format!("LLM factory creation failed for {pid}: {e:?}"))
+                    Err(Report::from(LlmResolveError(format!(
+                        "LLM factory creation failed for {pid}: {e:?}"
+                    ))))
                 }
             }
         } else {
@@ -1101,8 +1108,8 @@ async fn run_stream(
 ) {
     let service = match build_streaming_service(&factory, &retry_config, &bus, &sid) {
         Ok(s) => s,
-        Err(message) => {
-            emit_stream_error(&bus, &sid, message, dispatched_at).await;
+        Err(report) => {
+            emit_stream_error(&bus, &sid, report.to_string(), dispatched_at).await;
             return;
         }
     };
@@ -1148,16 +1155,26 @@ async fn run_stream(
     );
 }
 
+/// Error for provider-service resolution inside the inference actor.
+///
+/// The failure is consumed as `Display` text at the `emit_stream_error`
+/// boundary; the type exists so signatures carry a domain, not a string.
+#[derive(Debug, wherror::Error)]
+#[error("{0}")]
+struct LlmResolveError(String);
+
 /// Constructs a fresh retrying service for one streaming attempt.
 fn build_streaming_service(
     factory: &LlmServiceFactoryService,
     retry_config: &RequestRetryConfig,
     bus: &BusService,
     sid: &SessionId,
-) -> Result<RetryingLlmService, String> {
+) -> Result<RetryingLlmService, Report<LlmResolveError>> {
     let service: Box<dyn LlmService> = factory.create().map_err(|e| {
         tracing::error!(err = ?e, "failed to create LLM service");
-        format!("LLM service creation failed: {e:?}")
+        Report::from(LlmResolveError(format!(
+            "LLM service creation failed: {e:?}"
+        )))
     })?;
     Ok(RetryingLlmService::new(
         service,

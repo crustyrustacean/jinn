@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use jinn_config::ConfigLayer;
 use jinn_core_types::SessionId;
 use jinn_preferences_config::StreamRulesStorage;
+use jinn_preferences_config::StreamRulesStorageError;
 use jinn_session_history_msg::PushChatEntry;
 use jinn_stream_rules_msg::RefreshStreamRuleMatcher;
 use trouper::actor::ActorPath;
@@ -104,16 +105,30 @@ impl StreamRulePersistActor {
         };
         let result = tokio::task::spawn_blocking(move || persist_blocking(&config, &job))
             .await
-            .unwrap_or_else(|error| Err(format!("stream-rule persist worker panicked: {error}")));
+            .unwrap_or_else(|error| {
+                Err(error_stack::Report::from(
+                    StreamRulesStorageError::WorkerPanicked {
+                        detail: error.to_string(),
+                    },
+                ))
+            });
 
         match result {
             Ok(()) => ctx.publish(RefreshStreamRuleMatcher),
-            Err(line) => Self::report_error(&msg.session_id, &line, ctx),
+            Err(failure) => Self::report_error(&msg.session_id, &failure, ctx),
         }
     }
 
     /// Pushes an `Error` entry naming why the persist failed.
-    fn report_error(session_id: &SessionId, line: &str, ctx: &mut MsgCtx<'_>) {
+    ///
+    /// A storage failure renders through the shared
+    /// [`stream_rule_failure_line`] wording, matching every other surface.
+    fn report_error(
+        session_id: &SessionId,
+        failure: &error_stack::Report<StreamRulesStorageError>,
+        ctx: &mut MsgCtx<'_>,
+    ) {
+        let line = stream_rule_failure_line(failure.current_context());
         tracing::warn!(%line, "stream-rule persist failed");
         ctx.publish(PushChatEntry {
             session_id: session_id.clone(),
@@ -128,12 +143,15 @@ impl StreamRulePersistActor {
 /// Runs on a blocking worker: each write patches and rewrites the user's
 /// `jinn.toml`. The loop stops at the first failure — partial writes stay
 /// on disk, the refresh does not run, and the chat names what went wrong.
-fn persist_blocking(config: &ConfigLayer, job: &PersistJob) -> Result<(), String> {
+fn persist_blocking(
+    config: &ConfigLayer,
+    job: &PersistJob,
+) -> Result<(), error_stack::Report<StreamRulesStorageError>> {
     for change in &job.changes {
         if let Err(error) =
             config.set_stream_rule_disabled(&job.preferences_path, &change.name, change.disabled)
         {
-            return Err(stream_rule_failure_line(error.current_context()));
+            return Err(error);
         }
     }
     Ok(())
@@ -247,7 +265,8 @@ mod tests {
 
         // Then it fails with the shared formatter's wording, naming the
         // unknown rule — the same string the status line would have shown.
-        let line = result.expect_err("the ghost rule must fail the loop");
+        let report = result.expect_err("the ghost rule must fail the loop");
+        let line = stream_rule_failure_line(report.current_context());
         assert!(
             line.contains("`ghost`") && line.contains("reopen the picker"),
             "was: {line}"
@@ -297,7 +316,8 @@ mod tests {
         // Then the failure carries the Write family through the shared
         // formatter — the boundary summarizes a failed persistence as
         // "did not persist", and that summary is what the chat entry shows.
-        let line = result.expect_err("the failing backend must fail the loop");
+        let report = result.expect_err("the failing backend must fail the loop");
+        let line = stream_rule_failure_line(report.current_context());
         assert!(
             line.contains("could not be written") && line.contains("did not persist"),
             "was: {line}"

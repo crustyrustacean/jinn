@@ -5,8 +5,18 @@
 //! provides efficient lookup for filling in missing `context_length` values
 //! during model discovery and cache merge.
 
+use error_stack::ResultExt as _;
 use std::collections::HashMap;
 use std::path::Path;
+
+/// Why a models.dev lookup file could not be parsed.
+#[derive(Debug, Clone, Copy, wherror::Error)]
+enum ModelsDevError {
+    #[error("failed to read models.dev file")]
+    Read,
+    #[error("models.dev file is not valid JSON")]
+    Parse,
+}
 
 /// A lookup table mapping model IDs to their context window size in tokens.
 ///
@@ -124,11 +134,18 @@ impl ModelsDevData {
     }
 
     /// Parses a models.dev JSON file and builds the lookup table.
-    fn parse_file(path: &Path) -> Result<Self, String> {
-        let content = std::fs::read_to_string(path).map_err(|e| format!("failed to read: {e}"))?;
-
-        let providers: serde_json::Map<String, serde_json::Value> =
-            serde_json::from_str(&content).map_err(|e| format!("invalid JSON: {e}"))?;
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file cannot be read or is not the
+    /// models.dev JSON shape.
+    fn parse_file(path: &Path) -> Result<Self, error_stack::Report<ModelsDevError>> {
+        let content = std::fs::read_to_string(path)
+            .change_context(ModelsDevError::Read)
+            .attach(format!("failed to read {}", path.display()))?;
+        let providers: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&content)
+            .change_context(ModelsDevError::Parse)
+            .attach("invalid models.dev JSON")?;
 
         let mut context_lengths = HashMap::new();
         let mut image_support = HashMap::new();

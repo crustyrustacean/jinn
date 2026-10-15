@@ -2,6 +2,38 @@
 
 use std::collections::HashMap;
 
+/// Why a session's teardown is refused before anything spawns.
+///
+/// The refusal rides `SessionTeardownFinished.error` as `Display` text;
+/// the enum exists so each guard names its own variant at the guard site.
+#[derive(Debug, wherror::Error)]
+enum TeardownRefusal {
+    #[error("teardown refused for session {session_id}: a lifecycle command is already in flight")]
+    AlreadyInFlight { session_id: SessionId },
+    #[error("teardown refused: unknown session {session_id}")]
+    UnknownSession { session_id: SessionId },
+    #[error(
+        "teardown refused for session {session_id}: lifecycle state is {state}, \
+         teardown requires setup_ran"
+    )]
+    WrongState {
+        session_id: SessionId,
+        state: LifecycleScriptState,
+    },
+    #[error("teardown refused for session {session_id}: no lifecycle script recorded")]
+    NoScriptRecorded { session_id: SessionId },
+    #[error("teardown could not be resolved for session {session_id}: {detail}")]
+    Unresolved {
+        session_id: SessionId,
+        detail: String,
+    },
+    #[error(
+        "teardown could not be resolved for session {session_id}: no teardown \
+         command for lifecycle script \"{name}\""
+    )]
+    NoTeardownCommand { session_id: SessionId, name: String },
+}
+
 use jinn_core_types::SessionId;
 use jinn_kernel::common::actor_deps::BusPublish;
 use jinn_session_history_msg::PushChatEntry;
@@ -33,10 +65,10 @@ impl SessionLifecycleActor {
         // hanging out its whole wait budget on a silent no-op.
         let teardown = match self.teardown_for_session(&payload.session_id) {
             Ok(teardown) => teardown,
-            Err(reason) => {
+            Err(refusal) => {
                 self.publish(SessionTeardownFinished {
                     session_id: payload.session_id.clone(),
-                    error: Some(reason),
+                    error: Some(refusal.to_string()),
                 })
                 .await;
                 return;
@@ -90,16 +122,18 @@ impl SessionLifecycleActor {
     fn teardown_for_session(
         &self,
         session_id: &SessionId,
-    ) -> Result<jinn_preferences_config::schemas::LifecycleCommand, String> {
+    ) -> Result<jinn_preferences_config::schemas::LifecycleCommand, TeardownRefusal> {
         if self.has_in_flight(session_id) {
-            return Err(format!(
-                "teardown refused for session {session_id}: a lifecycle command is already in flight"
-            ));
+            return Err(TeardownRefusal::AlreadyInFlight {
+                session_id: session_id.clone(),
+            });
         }
         let (current, name, source) = {
             let state = self.state.read();
             let Some(session) = state.session.get(session_id) else {
-                return Err(format!("teardown refused: unknown session {session_id}"));
+                return Err(TeardownRefusal::UnknownSession {
+                    session_id: session_id.clone(),
+                });
             };
             (
                 session.lifecycle_script_state(),
@@ -108,15 +142,15 @@ impl SessionLifecycleActor {
             )
         };
         if current != LifecycleScriptState::SetupRan {
-            return Err(format!(
-                "teardown refused for session {session_id}: lifecycle state is {current}, \
-                 teardown requires setup_ran"
-            ));
+            return Err(TeardownRefusal::WrongState {
+                session_id: session_id.clone(),
+                state: current,
+            });
         }
         let Some(name) = name else {
-            return Err(format!(
-                "teardown refused for session {session_id}: no lifecycle script recorded"
-            ));
+            return Err(TeardownRefusal::NoScriptRecorded {
+                session_id: session_id.clone(),
+            });
         };
         match jinn_kernel::session_lifecycle::intent::lifecycle_teardown_visible(
             &self.services.config,
@@ -124,16 +158,17 @@ impl SessionLifecycleActor {
             source.as_deref(),
         ) {
             Some(Ok(command)) => Ok(command),
-            Some(Err(failure)) => Err(format!(
-                "teardown could not be resolved for session {session_id}: {failure}"
-            )),
+            Some(Err(failure)) => Err(TeardownRefusal::Unresolved {
+                session_id: session_id.clone(),
+                detail: failure.to_string(),
+            }),
             // A recorded name with no source resolves through jinn.toml; a
             // miss there — or an entry without a teardown half — is the
             // same visible failure the file-sourced path produces.
-            None => Err(format!(
-                "teardown could not be resolved for session {session_id}: no teardown \
-                 command for lifecycle script \"{name}\""
-            )),
+            None => Err(TeardownRefusal::NoTeardownCommand {
+                session_id: session_id.clone(),
+                name,
+            }),
         }
     }
 
