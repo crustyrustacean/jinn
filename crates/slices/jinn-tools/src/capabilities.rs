@@ -155,6 +155,11 @@ impl CapabilityBuffer {
     /// `serde_json::Map` is a `BTreeMap` under the `preserve_order = false`
     /// default, so each family's names arrive sorted; the family order below
     /// is the one `to_json` writes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a declared capability family's section is
+    /// absent or malformed.
     fn from_json(value: &serde_json::Value) -> Result<Self, Report<CapabilitiesError>> {
         let mut entries = Vec::new();
         let mut push_all = |kind: CapabilityKind,

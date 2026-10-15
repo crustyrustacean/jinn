@@ -646,6 +646,11 @@ fn half_of<'a>(
 /// one-pass scan (emitted output is never re-scanned, so a value carrying a
 /// later placeholder's shape is inert) lives in the contract crate, and both
 /// the tool's setup render and the teardown replay go through it.
+///
+/// # Errors
+///
+/// Returns an error when a template names a placeholder the supplied
+/// arguments do not carry, or when the contract render fails.
 pub(crate) fn render_command(
     raw: &str,
     args: &BTreeMap<String, String>,
