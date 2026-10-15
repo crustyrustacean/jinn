@@ -10,7 +10,8 @@ mod project_add;
 pub mod project_picker_actions;
 pub mod project_picker_render;
 pub mod project_picker_routes;
-pub mod project_picker_viewport;
+#[cfg(test)]
+mod project_picker_tests;
 pub mod scope_resolver;
 
 use jinn_slices::SliceHost;

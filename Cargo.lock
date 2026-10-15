@@ -3019,6 +3019,7 @@ dependencies = [
 name = "jinn-project"
 version = "1.7.0"
 dependencies = [
+ "jinn-cell-catalog",
  "jinn-common",
  "jinn-config",
  "jinn-core-types",
@@ -3034,6 +3035,7 @@ dependencies = [
  "ratatui",
  "rstest",
  "tempfile",
+ "tokio",
  "tracing",
  "unicode-segmentation",
  "uuid",
