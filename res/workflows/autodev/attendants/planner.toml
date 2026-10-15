@@ -71,7 +71,14 @@ reads it there). The contract has these sections, in order:
    change. Keep it short; the implementor is competent.
 4. **Verification** — the exact commands that prove the end state, from
    the target repo's own recipes, and what each must show. Include the
-   targeted test filter and the full gate. **Baseline**: before writing
+   targeted test filter and the full gate. **Done-gate**: resolve the
+   repo's `test` and `lint` roles from its AGENTS.md and name them here
+   as the completion condition — zero errors and zero warnings,
+   including pre-existing warnings in files the change touches. Warnings
+   are unmet completion conditions, not observations. **Skills**: if the
+   available skills list contains one matching the repo's language or
+   domain, name it here — the implementor loads it before its first tool
+   call. **Baseline**: before writing
    this section, run the full gate once on the parent branch and record
    its pre-existing failures here, by name (check + failing test
    clusters). The implementor's green is measured against this

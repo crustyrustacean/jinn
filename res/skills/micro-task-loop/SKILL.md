@@ -1,6 +1,6 @@
 ---
 name: micro-task-loop
-description: Straight-through phased execution for simple, low-risk plans with few moving parts. Runs every phase back to back with no per-phase verification, builds, or commits; tests, lints, and a single commit happen once at the end. Agents MUST continue through all phases autonomously without stopping between phases.
+description: Straight-through phased execution for simple, low-risk plans with few moving parts. Runs every phase back to back with no per-phase verification, builds, or commits; tests, lints, and a single commit happen once at the end. Agents MUST continue through all phases autonomously without stopping between phases. Only load if explicitly asked.
 ---
 
 # Micro Task Loop

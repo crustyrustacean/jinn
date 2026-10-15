@@ -168,8 +168,8 @@ A project skill with the same name as a global shadows the global. Discovery
 walks from the session's cwd up to the project root, stopping at the VCS root
 (`.git`, `.fslckout`) or `$HOME`. Closer files win.
 
-`jinn install` writes bundled skills to `~/.agents/skills/`. The four it ships:
-`jinn-usage`, `simple-task-loop`, `phased-task-loop`, `micro-task-loop`.
+`jinn install` writes bundled skills to `~/.agents/skills/`. The three it ships:
+`jinn-usage`, `simple-task-loop`, `micro-task-loop`.
 
 ### Installing one
 

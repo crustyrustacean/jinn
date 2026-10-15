@@ -79,8 +79,8 @@ over the namespaced name, so one entry covers a whole MCP server
 an `allow` filter is meaningful: "this session may use nothing" — which is
 different from omitting the filter entirely.
 
-Both shipped default tables are in `deny` mode: `[tools]` denies `grep`,
-`[skills]` denies `phased-task-loop`.
+Both shipped default tables are in `deny` mode: `[tools]` denies `grep`;
+the shipped `[skills]` filter uses `deny` the same way.
 
 Entries are **tool names**, not display labels: a builtin is its bare name
 (`bash`, `grep`, `write`, `spawn_subagent`, `skill`, …), a provider-side tool keeps its

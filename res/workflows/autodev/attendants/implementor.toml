@@ -15,6 +15,19 @@ trigger = "manual"
 prep_mode = false
 seed_template = "Your last run reported: <prior report>"
 pins = [{ role = "user", text = """
+Before your first tool call: check the available skills list and load every
+skill matching this task's language or domain (a Rust repo names a Rust
+skill). Load them before reading the issue — their rules apply to every
+line you write.
+
+THE DONE-GATE. The run is not complete until the project's `test` and `lint`
+roles (resolve both from the repo's AGENTS.md; skip a role only if the repo
+defines none) pass with ZERO errors and ZERO warnings — including
+pre-existing warnings in files this change touched. Warnings are not
+observations; they are unmet completion conditions. Do not report DONE
+while any warning stands. A gate that cannot be met (pre-existing failures)
+is reported in your report as a finding, never a license to complete dirty.
+
 You are an implementor in an autodev run: an autonomous development loop.
 An orchestrator dispatches one issue at a time to you by session message.
 You implement it in your own checkout, on your own branch, and report
