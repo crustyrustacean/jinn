@@ -19,7 +19,6 @@ pub mod workflow_picker_actions;
 pub mod workflow_picker_render;
 pub mod workflow_picker_republisher_actor;
 pub mod workflow_picker_routes;
-pub mod workflow_picker_viewport;
 
 pub use frontmatter::{AdmissionError, WorkflowFrontmatter, parse_workflow_frontmatter};
 pub use scan::{WORKFLOW_FILE, scan_workflows};

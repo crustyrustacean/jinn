@@ -79,25 +79,40 @@ pub fn render_session_lifecycle_picker(frame: &mut Frame<'_>, area: Rect, facts:
         return;
     };
 
-    // Measure the popup's result rows and publish them for the navigation keys,
-    // which need a real row count to keep the highlight on screen. This is the
-    // slice-owned equivalent of the kernel's per-frame viewport write.
-    let measured = crate::session_lifecycle_picker_viewport::results_viewport(area);
-    cell.update(|state: &mut SessionLifecyclePickerState| state.results_viewport = measured);
+    // The guard must end before the write-back below: `TypedCell` wraps a
+    // non-reentrant lock, so writing while the read guard is held would
+    // deadlock the render thread.
+    let layout = {
+        let guard = cell.read();
+        let state: &SessionLifecyclePickerState = &guard;
+        session_lifecycle_picker_widget(state, &facts.theme).render(frame, area)
+    };
 
-    let guard = cell.read();
-    let state: &SessionLifecyclePickerState = &guard;
+    // Publish what the widget actually solved, for the navigation keys,
+    // which need a real row count to keep the highlight on screen.
+    cell.update(|state: &mut SessionLifecyclePickerState| {
+        state.results_viewport = usize::from(layout.inner.height);
+    });
+}
 
-    let theme = &facts.theme;
+/// Assembles the picker's widget: title, keybind footer, and palette, from
+/// the cell's state and the live theme.
+///
+/// Both the render pass and the render tests build through this helper, so
+/// a test's second construction is identical to what the frame drew.
+pub(crate) fn session_lifecycle_picker_widget<'a>(
+    state: &'a SessionLifecyclePickerState,
+    theme: &jinn_theme::Theme,
+) -> jinn_selection_widget::SelectionWidget<
+    'a,
+    jinn_picker::PickerEntry<jinn_session_lifecycle_msg::SessionLifecycleEntry>,
+> {
     let palette = session_lifecycle_picker_palette(theme);
     let binds = session_lifecycle_picker_binds();
     let keybind = jinn_picker::keybind_line(&binds, jinn_picker::Tail::Standard, &palette);
-
-    let widget = jinn_selection_widget::SelectionWidget::new(&state.selection)
+    jinn_selection_widget::SelectionWidget::new(&state.selection)
         .title(Line::from(" Session Lifecycle "))
         .title_style(Style::default().fg(theme.popup_title))
         .footers(vec![Line::from(keybind.0)])
-        .colors(palette.selection_colors());
-
-    widget.render(frame, area);
+        .colors(palette.selection_colors())
 }

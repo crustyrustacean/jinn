@@ -78,26 +78,32 @@ pub fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFa
         return;
     };
 
-    // Measure the popup's result rows and publish them for the navigation keys,
-    // which need a real row count to keep the highlight on screen. This is the
-    // slice-owned equivalent of the kernel's per-frame viewport write.
-    let measured = crate::persona_picker_viewport::results_viewport(area);
-    cell.update(|state: &mut PersonaPickerState| state.results_viewport = measured);
-
-    let guard = cell.read();
-    let state: &PersonaPickerState = &guard;
-
     let theme = &facts.theme;
     let palette = persona_picker_palette(theme);
     let binds = persona_picker_binds();
     let keybind = jinn_picker::keybind_line(&binds, jinn_picker::Tail::Standard, &palette);
-    let footers = vec![Line::from(String::new()), Line::from(keybind.0)];
 
-    let widget = jinn_selection_widget::SelectionWidget::new(&state.selection)
-        .title(Line::from(" Personas "))
-        .title_style(Style::default().fg(theme.popup_title))
-        .footers(footers)
-        .colors(palette.selection_colors());
+    // Render under the read guard, then publish the layout after the block
+    // ends: `TypedCell` is a plain RwLock, and a same-thread write while the
+    // read guard is alive deadlocks.
+    let layout = {
+        let guard = cell.read();
+        let state: &PersonaPickerState = &guard;
+        let footers = vec![Line::from(String::new()), Line::from(keybind.0)];
 
-    widget.render(frame, area);
+        jinn_selection_widget::SelectionWidget::new(&state.selection)
+            .title(Line::from(" Personas "))
+            .title_style(Style::default().fg(theme.popup_title))
+            .footers(footers)
+            .colors(palette.selection_colors())
+            .render(frame, area)
+    };
+
+    // The widget reports the rects it actually solved; the navigation keys
+    // page against that row count. This is the slice-owned equivalent of the
+    // kernel's per-frame viewport write — measured by the widget itself
+    // rather than mirrored arithmetic.
+    cell.update(|state: &mut PersonaPickerState| {
+        state.results_viewport = layout.inner.height as usize;
+    });
 }
