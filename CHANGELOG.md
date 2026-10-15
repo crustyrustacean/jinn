@@ -16,6 +16,7 @@
 - Bugfix: `k` keybind will now properly transition from the Attendants section to the Persona section in the sidebar.
 - `task` tool renamed to `spawn_subagent`
   - Impacted docs/skills also updated.
+- `phased-task-loop` skill removed. Superseded by `#goal` prompt and `autodev` workflow.
 
 ## 2026-10-13 v1.6.2
 
