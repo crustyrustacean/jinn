@@ -25,6 +25,8 @@ wherror = { workspace = true }
 # `activate` resolves the workflows picker cell the catalog owns, so the
 # tests seed their registry through the same list production boot uses.
 jinn-cell-catalog = { workspace = true }
+# The render tests draw through `setup_term`'s TestBackend terminal.
+jinn-testutil = { workspace = true }
 rstest = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
