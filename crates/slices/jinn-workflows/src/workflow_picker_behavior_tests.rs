@@ -133,7 +133,7 @@ async fn the_opener_dispatches_through_the_route_row() {
         &mut state,
         &slices,
         &key_routes,
-        &empty_config_layer(),
+        empty_config_layer(),
     );
 
     // Then the picker's scope is on the focus stack — the handler applies
@@ -271,7 +271,7 @@ async fn backspacing_removes_the_last_filter_character() {
 
     // Then the filter is empty again.
     let filter = cell.read().selection.filter().to_owned();
-    assert!(filter.is_empty());
+    assert_eq!(filter, "");
 }
 
 // ── Load (enter) ────────────────────────────────────────────────────────
@@ -291,8 +291,7 @@ impl RecordingSink {
             .expect("recording sink lock")
             .iter()
             .find(|(n, _)| n.contains(name))
-            .map(|(_, payload)| payload.clone())
-            .unwrap_or(serde_json::Value::Null)
+            .map_or(serde_json::Value::Null, |(_, payload)| payload.clone())
     }
 
     fn count_matching(&self, name: &str) -> usize {
@@ -349,7 +348,7 @@ async fn enter_loads_the_workflow_into_the_current_session() {
         &mut state,
         &slices,
         &key_routes,
-        &empty_config_layer(),
+        empty_config_layer(),
     );
 
     // Then the active session id is unchanged and its history is untouched
@@ -399,7 +398,7 @@ async fn enter_enqueues_the_start_message_into_the_active_session() {
         &mut state,
         &slices,
         &key_routes,
-        &empty_config_layer(),
+        empty_config_layer(),
     );
     let sink = RecordingSink::new();
     for message in result.messages {
@@ -454,7 +453,7 @@ async fn enter_with_no_rows_does_nothing() {
         &mut state,
         &slices,
         &key_routes,
-        &empty_config_layer(),
+        empty_config_layer(),
     );
 
     // Then no message crosses, the picker stays open, and the active
@@ -500,7 +499,7 @@ async fn c_enter_creates_a_fresh_session_for_the_workflow() {
         &mut state,
         &slices,
         &key_routes,
-        &empty_config_layer(),
+        empty_config_layer(),
     );
 
     // Then the active session is new and its history is empty — the
@@ -545,7 +544,7 @@ async fn c_enter_enqueues_the_start_message_into_the_new_session() {
         &mut state,
         &slices,
         &key_routes,
-        &empty_config_layer(),
+        empty_config_layer(),
     );
     let sink = RecordingSink::new();
     for message in result.messages {
@@ -602,7 +601,7 @@ async fn c_enter_with_no_rows_does_nothing() {
         &mut state,
         &slices,
         &key_routes,
-        &empty_config_layer(),
+        empty_config_layer(),
     );
 
     // Then no session is created and no message crosses — a picker over
@@ -630,7 +629,7 @@ async fn rescan_publishes_only_the_workflows_trigger() {
         &mut state,
         &slices,
         &key_routes,
-        &empty_config_layer(),
+        empty_config_layer(),
     );
 
     // Then exactly one message goes out, and it is the workflows trigger.

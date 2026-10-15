@@ -115,7 +115,10 @@ impl TuiApp {
                             "key event received"
                         );
 
-                        let intent_opt = self.which_key.handle_key(protocol_key);
+                        let intent_opt = crate::keymap_gen::handle_key_with_shift_fallback(
+                            &mut self.which_key,
+                            protocol_key,
+                        );
                         let Some(intent) = intent_opt else {
                             // The key fed the which-key sequence instead of
                             // resolving to an intent, so the handler never
@@ -285,7 +288,9 @@ impl TuiApp {
                 jinn_kernel::protocol::CwdRoot::Session => {
                     self.core.state.read().active_session().cwd().to_owned()
                 }
-                jinn_kernel::protocol::CwdRoot::Home => dirs::home_dir().unwrap_or_default(),
+                jinn_kernel::protocol::CwdRoot::Home => {
+                    jinn_kernel::AppPaths::default().home_dir().to_path_buf()
+                }
             };
             self.suspend
                 .request(SuspendAction::ChangeCwd { search_root });

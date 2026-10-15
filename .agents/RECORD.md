@@ -516,3 +516,9 @@ Entries are added or amended **only with human approval**.
 - (lifecycle) A session's lifecycle arguments persist as ordered name–value pairs, and a legacy bare-string array loads as positional `$n` pairs rendered positionally.
 - (lifecycle) Placeholder substitution shell-quotes in one pass, so a lifecycle template must not place a placeholder inside a quoted region of its own command.
 - (sidebar) A per-section navigate fn's contract is to report `SectionNavResult::Exhausted` at its list edges without mutating its cursor; `navigate_sidebar` (`sections/sidebar.rs`) owns all section-crossing, walking `prev_section`/`next_section` past empty sections via `section_has_content`.
+- (arch) All application filesystem paths derive from AppPaths, whose default constructor is the only configuration-source reader of dirs::* and honors a JINN_PATHS_ROOT env override read once at startup; the remaining dirs readers are display-layer home lookups (path tilde compression) that take an injected home.
+- (windows) Canonicalized paths are stripped of Windows verbatim \?\ prefixes by one shared helper before they are stored, compared, or displayed.
+- (tools) Shell resolution for command execution is one shared helper preferring git-bash on Windows, used by both the bash tool and the session-lifecycle command runner.
+- (term) PTY liveness on Windows is driven by observed child exit, not read-EOF: ConPTY's master read never returns EOF while the master handle is alive, so the ExitWatcher publishes child death and the screen task drains one quiet tick before finishing; Unix still settles on EOF first.
+- (testing) The workspace test suite passes on both Windows and Linux; tests requiring Unix process semantics are cfg(unix)-gated, and PTY tests run a portable Windows subset.
+- (testing) Integration tests that spawn the jinn binary point it at a temp root through JINN_PATHS_ROOT, so no test writes to the real user config, data, or home directories.

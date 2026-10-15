@@ -25,7 +25,7 @@ fn install_rustls_provider_for_tests() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod dispatch_roundtrip_tests;
 #[cfg(test)]
 mod header_expansion_tests;
