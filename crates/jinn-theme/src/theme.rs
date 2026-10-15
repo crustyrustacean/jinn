@@ -748,7 +748,7 @@ mod tests {
             user_block_bg: Some(ThemeColor(Color::Rgb(52, 53, 65))),
             // Dark purple: near-black like the user block but purple-biased,
             // so inter-session traffic reads as machine-sent at a glance.
-            intersession_bg: Some(ThemeColor(Color::Rgb(62, 31, 71))),
+            intersession_bg: Some(ThemeColor(Color::Rgb(59, 42, 65))),
             tool_fg: Some(ThemeColor(Color::Rgb(88, 95, 106))),
             tool_success_bg: Some(ThemeColor(Color::Rgb(40, 50, 40))),
             tool_failure_bg: Some(ThemeColor(Color::Rgb(60, 40, 40))),
