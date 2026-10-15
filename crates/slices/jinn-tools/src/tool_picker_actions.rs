@@ -65,7 +65,7 @@ pub fn tool_row(entry: &ToolEntry, ctx: &jinn_picker::RowCtx<'_>) -> Line<'stati
         entry.theme.picker_highlight_bg,
     );
     let desc_style = dim_style(ctx.is_selected, &entry.theme);
-    let sep_span = Span::styled(" \u{2014} ".to_owned(), desc_style);
+    let sep_span = Span::styled(" - ".to_owned(), desc_style);
     let desc_spans = highlight_text_with_bg(
         &entry.description,
         desc_style,

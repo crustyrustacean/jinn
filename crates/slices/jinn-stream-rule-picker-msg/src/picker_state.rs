@@ -83,7 +83,7 @@ pub fn stream_rule_row(entry: &StreamRuleEntry, ctx: &RowCtx<'_>) -> Line<'stati
     }
 
     spans.push(Span::styled(
-        format!(" \u{2014} {}", entry.description),
+        format!(" - {}", entry.description),
         desc_style,
     ));
 
