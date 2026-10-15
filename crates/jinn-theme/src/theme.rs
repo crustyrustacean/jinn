@@ -70,6 +70,12 @@ pub struct Theme {
     pub gutter_context_included: Color,
     /// User message block background.
     pub user_block_bg: Color,
+    /// Inter-session message block background — messages exchanged between
+    /// sessions (dispatches, reports, deliveries) rather than typed by the
+    /// human. Deliberately close to `user_block_bg` in luminance but separated
+    /// by hue (purple vs slate): they render through the same user renderer,
+    /// and the tint is what keeps machine-sent traffic visually distinct.
+    pub intersession_bg: Color,
     /// Tool entry text foreground (tool calls, tool results, skills).
     pub tool_fg: Color,
     /// Tool result success block background.
@@ -203,6 +209,7 @@ impl Theme {
             "gutter_bg" => gutter_bg,
             "gutter_context_included" => gutter_context_included,
             "user_block_bg" => user_block_bg,
+            "intersession_bg" => intersession_bg,
             "tool_fg" => tool_fg,
             "tool_success_bg" => tool_success_bg,
             "tool_failure_bg" => tool_failure_bg,
@@ -295,6 +302,10 @@ pub struct ThemeFile {
     pub gutter_context_included: Option<ThemeColor>,
     #[serde(default)]
     pub user_block_bg: Option<ThemeColor>,
+    /// Inter-session message block background (subagent dispatches, reports,
+    /// `tell_session` deliveries).
+    #[serde(default)]
+    pub intersession_bg: Option<ThemeColor>,
     #[serde(default)]
     pub tool_fg: Option<ThemeColor>,
     #[serde(default)]
@@ -455,6 +466,9 @@ impl ThemeFile {
             user_block_bg: self
                 .user_block_bg
                 .map_or(fallback.user_block_bg, crate::color::ThemeColor::inner),
+            intersession_bg: self
+                .intersession_bg
+                .map_or(fallback.intersession_bg, crate::color::ThemeColor::inner),
             tool_fg: self
                 .tool_fg
                 .map_or(fallback.tool_fg, crate::color::ThemeColor::inner),
@@ -600,6 +614,7 @@ impl ThemeFile {
             gutter_bg: Self::resolve_field(self.gutter_bg),
             gutter_context_included: Self::resolve_field(self.gutter_context_included),
             user_block_bg: Self::resolve_field(self.user_block_bg),
+            intersession_bg: Self::resolve_field(self.intersession_bg),
             tool_fg: Self::resolve_field(self.tool_fg),
             tool_success_bg: Self::resolve_field(self.tool_success_bg),
             tool_failure_bg: Self::resolve_field(self.tool_failure_bg),
@@ -671,6 +686,7 @@ mod tests {
             gutter_bg: None,
             gutter_context_included: None,
             user_block_bg: None,
+            intersession_bg: None,
             tool_fg: None,
             tool_success_bg: None,
             tool_failure_bg: None,
@@ -730,6 +746,9 @@ mod tests {
             gutter_bg: Some(ThemeColor(Color::Rgb(25, 27, 30))),
             gutter_context_included: Some(ThemeColor(Color::Rgb(30, 50, 110))),
             user_block_bg: Some(ThemeColor(Color::Rgb(52, 53, 65))),
+            // Dark purple: near-black like the user block but purple-biased,
+            // so inter-session traffic reads as machine-sent at a glance.
+            intersession_bg: Some(ThemeColor(Color::Rgb(59, 42, 65))),
             tool_fg: Some(ThemeColor(Color::Rgb(88, 95, 106))),
             tool_success_bg: Some(ThemeColor(Color::Rgb(40, 50, 40))),
             tool_failure_bg: Some(ThemeColor(Color::Rgb(60, 40, 40))),
