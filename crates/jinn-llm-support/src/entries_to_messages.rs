@@ -116,7 +116,7 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                 ..
             } => {
                 let tool_call = ToolCall {
-                    id: id.clone().into(),
+                    id: id.clone(),
                     name: name.clone(),
                     arguments: arguments.clone(),
                 };
@@ -126,7 +126,7 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                 id, name, content, ..
             } => {
                 messages.push(LlmMessage::Tool {
-                    tool_call_id: id.clone().into(),
+                    tool_call_id: id.clone(),
                     name: name.clone(),
                     content: content.clone(),
                 });

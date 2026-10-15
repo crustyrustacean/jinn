@@ -82,10 +82,6 @@ fn find_failed_edit_result(
 
 #[async_trait::async_trait]
 impl HistoryWorker for BrokenEditAutoPruneWorker {
-    #[expect(
-        clippy::unnecessary_literal_bound,
-        reason = "lifetime elision makes bound redundant"
-    )]
     fn name(&self) -> &'static str {
         "auto-prune-broken-edit"
     }

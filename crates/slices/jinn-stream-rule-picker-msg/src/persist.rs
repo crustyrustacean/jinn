@@ -71,10 +71,8 @@ pub fn stream_rule_failure_line(error: &StreamRulesStorageError) -> String {
         StreamRulesStorageError::Read { detail } => {
             format!("stream rules could not be read: {detail}")
         }
-        StreamRulesStorageError::Write { detail } => {
-            format!("stream rules could not be written: {detail}")
-        }
-        StreamRulesStorageError::WorkerPanicked { detail } => {
+        StreamRulesStorageError::Write { detail }
+        | StreamRulesStorageError::WorkerPanicked { detail } => {
             format!("stream rules could not be written: {detail}")
         }
     }

@@ -73,10 +73,6 @@ mod tests {
     /// this harness, so the test registers it itself and keeps the handle
     /// for seeding. The save reads the cell through `services.slices`, so a
     /// cell from any other registry would make the assertions vacuous.
-    #[allow(
-        clippy::type_complexity,
-        reason = "the four-tuple is the fixture; naming it would obscure the test"
-    )]
     async fn actor_with_work_time_cell() -> (
         super::super::super::SessionPersistenceActor,
         std::sync::Arc<super::super::super::helpers::PopulatedFakeStore>,

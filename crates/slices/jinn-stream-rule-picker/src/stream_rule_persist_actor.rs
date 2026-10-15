@@ -148,11 +148,7 @@ fn persist_blocking(
     job: &PersistJob,
 ) -> Result<(), error_stack::Report<StreamRulesStorageError>> {
     for change in &job.changes {
-        if let Err(error) =
-            config.set_stream_rule_disabled(&job.preferences_path, &change.name, change.disabled)
-        {
-            return Err(error);
-        }
+        config.set_stream_rule_disabled(&job.preferences_path, &change.name, change.disabled)?;
     }
     Ok(())
 }

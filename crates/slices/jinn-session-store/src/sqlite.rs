@@ -867,7 +867,7 @@ fn load_context_in_transaction(
                 .get(&joined.entry_id)
                 .cloned()
                 .unwrap_or_default();
-            entry_from_joined(joined, attachments)
+            entry_from_joined(&joined, attachments)
                 .map_err(|report| daow::Error::Custom(report.to_string()))
         })
         .collect::<daow::Result<Vec<_>>>()?;
@@ -1433,7 +1433,7 @@ fn summary_from_row(row: SessionRow) -> Result<SessionSummary, Report<SessionSto
 ///
 /// Returns an error when the row's `entry_id` is not a parseable entry id.
 fn entry_from_joined(
-    joined: JoinedEntry,
+    joined: &JoinedEntry,
     attachments: Vec<Attachment>,
 ) -> Result<ChatEntry, Report<SessionStoreError>> {
     let mut kind: ChatEntryKind = serde_json::from_str(&joined.kind).unwrap_or_else(|e| {
@@ -2030,40 +2030,8 @@ async fn search_index(
     pool: &Pool,
     params: SearchParams,
 ) -> Result<SearchOutcome, Report<SessionStoreError>> {
-    // Collect the dynamic WHERE clauses; ?1 is always the MATCH expression.
-    let mut clauses: Vec<String> = vec!["session_fts MATCH ?1".to_owned()];
-    let mut binds: Vec<Bind> = vec![Bind::Text(params.query.clone())];
-
-    if !params.session_ids.is_empty() {
-        let placeholders = repeat_placeholders(params.session_ids.len());
-        clauses.push(format!("f.session_id IN ({placeholders})"));
-        binds.extend(
-            params
-                .session_ids
-                .iter()
-                .map(|id| Bind::Text(id.to_string())),
-        );
-    }
-    if !params.roles.is_empty() {
-        let placeholders = repeat_placeholders(params.roles.len());
-        clauses.push(format!("f.role IN ({placeholders})"));
-        binds.extend(
-            params
-                .roles
-                .iter()
-                .map(|r| Bind::Text(r.as_str().to_owned())),
-        );
-    }
-    if let Some(since) = params.since {
-        clauses.push(format!("f.entry_ts >= ?{}", binds.len() + 1));
-        binds.push(Bind::Text(since.to_string()));
-    }
-    if let Some(until) = params.until {
-        clauses.push(format!("f.entry_ts <= ?{}", binds.len() + 1));
-        binds.push(Bind::Text(until.to_string()));
-    }
-
-    let where_clause = clauses.join(" AND ");
+    let (where_clause, mut binds) = build_fts_filter(&params);
+    binds.insert(0, Bind::Text(params.query.clone()));
     let limit_placeholder = format!("?{}", binds.len() + 1);
 
     let hits_sql = format!(
@@ -2144,6 +2112,44 @@ async fn search_index(
             .collect::<Result<Vec<_>, _>>()?,
         hits,
     })
+}
+
+/// Builds the shared FTS WHERE clause and its positional binds. ?1 is the
+/// MATCH expression, which the caller prepends last so the hits, count,
+/// and rollup queries share one bind vector.
+fn build_fts_filter(params: &SearchParams) -> (String, Vec<Bind>) {
+    let mut clauses: Vec<String> = vec!["session_fts MATCH ?1".to_owned()];
+    let mut binds: Vec<Bind> = Vec::new();
+
+    if !params.session_ids.is_empty() {
+        let placeholders = repeat_placeholders(params.session_ids.len());
+        clauses.push(format!("f.session_id IN ({placeholders})"));
+        binds.extend(
+            params
+                .session_ids
+                .iter()
+                .map(|id| Bind::Text(id.to_string())),
+        );
+    }
+    if !params.roles.is_empty() {
+        let placeholders = repeat_placeholders(params.roles.len());
+        clauses.push(format!("f.role IN ({placeholders})"));
+        binds.extend(
+            params
+                .roles
+                .iter()
+                .map(|r| Bind::Text(r.as_str().to_owned())),
+        );
+    }
+    if let Some(since) = params.since {
+        clauses.push(format!("f.entry_ts >= ?{}", binds.len() + 2));
+        binds.push(Bind::Text(since.to_string()));
+    }
+    if let Some(until) = params.until {
+        clauses.push(format!("f.entry_ts <= ?{}", binds.len() + 2));
+        binds.push(Bind::Text(until.to_string()));
+    }
+    (clauses.join(" AND "), binds)
 }
 
 /// Sets the `excluded` flag on each hit from its persisted context signals.
@@ -2303,7 +2309,7 @@ fn build_window(
                     "entry {} has ordinal {} exceeding the platform width",
                     row.joined.entry_id, row.ordinal
                 ))?;
-            let entry = entry_from_joined(row.joined, Vec::new())?;
+            let entry = entry_from_joined(&row.joined, Vec::new())?;
             let excluded = !entry.is_in_context();
             Ok(TranscriptEntry {
                 ordinal,

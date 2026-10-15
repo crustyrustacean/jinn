@@ -122,6 +122,13 @@ fn collect_tree_members<'a, S: ::std::hash::BuildHasher>(
         if !visited.insert(id.clone()) {
             continue;
         }
+        // A member absent from both maps cannot be enqueued by
+        // `enqueue_children_of`, so the fallthrough below is unreachable;
+        // matching with an else would be dead code.
+        #[expect(
+            clippy::else_if_without_else,
+            reason = "no-op on fallthrough is intentional"
+        )]
         if let Some(session) = sessions.get(&id) {
             members.live.push(session);
             if let Some(intervals) = live_intervals.get(&id) {
