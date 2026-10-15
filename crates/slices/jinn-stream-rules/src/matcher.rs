@@ -190,6 +190,8 @@ fn scan_path_args(json: &str) -> Vec<String> {
                     key = value;
                 } else if is_path_key(&key) {
                     paths.push(value);
+                } else {
+                    // Neither a key nor under a path-like key: dropped.
                 }
             }
             _ => {}
@@ -351,11 +353,7 @@ fn parse_tool_scope(token: &str) -> Option<ToolScope> {
     let inner = token.strip_prefix("tool:").or_else(|| {
         // A bare `<name>(<glob>)` with no `tool:` prefix is also accepted,
         // matching the bare-tool-name case in the grammar.
-        if token.contains('(') {
-            Some(token)
-        } else {
-            None
-        }
+        token.contains('(').then_some(token)
     })?;
     let inner = inner.trim();
 
@@ -1302,7 +1300,7 @@ mod tests {
         let paths = scan_path_args(partial);
 
         // Then nothing is retained.
-        assert!(paths.is_empty());
+        assert_eq!(paths, [] as [std::string::String; 0]);
     }
 
     /// A rule scoped to `scope`.

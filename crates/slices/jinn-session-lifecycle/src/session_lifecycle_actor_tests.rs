@@ -1014,10 +1014,6 @@ async fn builtin_teardown_receives_recorded_values_in_template_order() {
         },
     );
     let fixture = ActorFixture { harness, state };
-    let teardowns = fixture
-        .harness
-        .spawn_recorder::<SessionTeardownFinished>()
-        .await;
     let session_id = seed_session(&fixture);
     advance_past_setup(&fixture, &session_id);
     fixture

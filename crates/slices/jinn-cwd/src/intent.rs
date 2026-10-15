@@ -309,8 +309,14 @@ mod tests {
         // When the opener action runs.
         open_cwd_input(cx.state, &cell);
 
-        // Then the seeded input is the tilde-compressed form.
-        assert_eq!(cell.read().text.input, "~/projects/my-app");
+        // Then the seeded input is the tilde-compressed form, with the
+        // platform's native separators (PathBuf-built expectation).
+        let expected = std::path::Path::new("~")
+            .join("projects")
+            .join("my-app")
+            .display()
+            .to_string();
+        assert_eq!(cell.read().text.input, expected);
     }
 
     #[rstest::rstest]
@@ -396,7 +402,7 @@ mod tests {
 
         // Then the input clears without leaving the popup.
         assert!(result.scope_signal.is_none());
-        assert!(cell.read().text.input.is_empty());
+        assert_eq!(cell.read().text.input, "");
     }
 
     #[rstest::rstest]
@@ -409,7 +415,7 @@ mod tests {
 
         // Then the popup requests its own conditional pop.
         assert_eq!(result.scope_signal, Some(ScopeSignal::PopIf(cwd_scope())));
-        assert!(cell.read().text.input.is_empty());
+        assert_eq!(cell.read().text.input, "");
     }
 
     #[rstest::rstest]

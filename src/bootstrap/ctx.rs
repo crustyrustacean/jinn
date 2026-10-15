@@ -97,7 +97,7 @@ impl<'a> Ctx<'a> {
     }
 
     /// The shell scripted commands run under (bash semantics; see
-    /// `jinn_common::bash_shell`), resolved once at startup.
+    /// `jinn_common::shell`), resolved once at startup.
     pub(crate) fn shell(&self) -> String {
         self.shell.clone()
     }

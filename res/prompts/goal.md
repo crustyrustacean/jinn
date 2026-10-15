@@ -393,6 +393,19 @@ ritual it does not need. Choose each element because this task calls for it:
 - **Autonomy.** What the implementer may decide without asking, and — for a
   non-autonomous run — exactly when they are expected to stop and check in.
   **The default disposition is that all runs are autonomous unless stated otherwise.**
+- **Environment and the done-gate.** State what the implementer loads and what
+  _completion_ means, as a gate — not as steps:
+    - **Skills.** Name any skills the implementer must load at start, derived
+      from the task's domain (a Rust task names the project's Rust skill, if
+      one exists).
+    - **The done-gate.** Completion requires the project's `test` and `lint`
+      roles (resolved from its `AGENTS.md`; skip only if the project defines
+      none) to pass with **zero errors and zero warnings** — including
+      pre-existing warnings in files the change touched. Warnings are not
+      observations; they are unmet completion conditions. _Do not signal
+      completion while any warning stands._ A gate that cannot be met
+      (pre-existing failures) is a finding to surface in the report, never a
+      license to complete dirty.
 
 **Surface a protocol choice in the dialectic when it changes what the work
 looks like.** Cadence and checkpoint placement are not clerical: in a mass

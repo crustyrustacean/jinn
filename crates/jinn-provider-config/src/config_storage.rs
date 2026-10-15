@@ -44,7 +44,7 @@ pub trait ConfigStorage: Send + Sync + 'static {
 /// Filesystem-backed config storage.
 ///
 /// Reads from and writes to `providers.toml` at a configurable path.
-/// Production uses `dirs::config_dir()`.
+/// Production derives the default path from `AppPaths`.
 pub struct FilesystemConfigStorage {
     /// Path to the config file.
     path: PathBuf,
@@ -213,7 +213,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::config::ProviderEntry;
+    use crate::config::{AliasEntry, ProviderEntry};
 
     #[rstest::rstest]
     fn in_memory_load_returns_default_when_empty() {
@@ -225,7 +225,7 @@ mod tests {
 
         // Then an empty config is returned.
         assert!(config.providers.is_empty());
-        assert!(config.aliases.is_empty());
+        assert_eq!(config.aliases, [] as [AliasEntry; 0]);
         assert!(config.default_provider.is_none());
     }
 

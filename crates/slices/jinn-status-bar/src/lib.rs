@@ -6,6 +6,13 @@
 //! code and the hint cell; everything else it draws is read-only state
 //! from the kernel (session ledger, provider cache, theme).
 //!
+//! The per-session two-line presentation is exported
+//! ([`render_session_cwd_line`], [`render_session_info_line`],
+//! [`session_working_time`]) so other surfaces — the sidebar's session
+//! preview — draw the identical lines for the session they describe.
+//! The tree aggregate and the transient hint stay private: both are
+//! active-session chrome, and the shared surface excludes them.
+//!
 //! There is no actor: the only writable state (the hint) is written by
 //! the kernel's synchronous IntentHandler, which is an exempt writer by
 //! route-table design. The element reads the cell at render time and
@@ -21,6 +28,10 @@ use jinn_kernel::common::ui_registry::UiRegistry;
 use jinn_slices::SliceHost;
 
 pub use element::StatusBarElement;
+pub use element::model_cache_of;
+pub use element::render_session_cwd_line;
+pub use element::render_session_info_line;
+pub use element::session_working_time;
 pub use jinn_status_bar_msg::StatusBarState;
 pub use jinn_status_bar_msg::status_bar_slot;
 

@@ -66,7 +66,15 @@ four questions, in order:
 3. **Scope.** Does the diff touch files outside the contract's
    files-to-touch list without saying why in its report? Unexplained
    scope is a REJECT finding — note it; the orchestrator decides.
-4. **Honesty.** Does the report's claims match the diff? Verification
+4. **Gate.** Is the contract's done-gate met — zero errors and zero
+   warnings from the repo's `test` and `lint` roles, including
+   pre-existing warnings in touched files? Lint warnings are not
+   observations; they are unmet completion conditions. A report that
+   claims DONE while any warning stands is a REJECT finding, and a
+   recommendation to fix warnings "in a future round" is itself wrong —
+   the fix belongs to this diff. (Pre-existing *failures* on the
+   contract's baseline are different: see Honesty.)
+5. **Honesty.** Does the report's claims match the diff? Verification
    claimed but not evidenced, divergences hidden, proposed issues that
    are actually core requirements — all REJECT findings. Baseline
    accounting included: failures the contract records as pre-existing

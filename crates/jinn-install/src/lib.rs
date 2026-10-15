@@ -335,7 +335,7 @@ mod tests {
         );
         // And the file exists with non-empty contents.
         let written = std::fs::read_to_string(outcome.path()).expect("read");
-        assert!(!written.is_empty());
+        assert_ne!(written, "");
     }
 
     #[rstest::rstest]
@@ -488,11 +488,7 @@ mod tests {
         );
         // And the file exists at the nested path with non-empty contents.
         assert!(outcome.path().is_file());
-        assert!(
-            !std::fs::read_to_string(outcome.path())
-                .expect("read")
-                .is_empty()
-        );
+        assert_ne!(std::fs::read_to_string(outcome.path()).expect("read"), "");
     }
 
     #[rstest::rstest]
@@ -535,7 +531,7 @@ mod tests {
             "every outcome must carry an absolute path"
         );
         // And the install covered at least one bundled resource.
-        assert!(!report.outcomes.is_empty());
+        assert_ne!(report.outcomes, [] as [InstallOutcome; 0]);
     }
 
     #[rstest::rstest]
@@ -886,7 +882,7 @@ mod tests {
             .iter()
             .find(|s| s.name == "jinn-usage")
             .expect("jinn-usage must be discovered by the skill scanner");
-        assert!(!usage.description.trim().is_empty());
+        assert_ne!(usage.description.trim(), "");
         // And its base_dir holds the router's reference files.
         assert!(usage.base_dir.join("references").is_dir());
     }

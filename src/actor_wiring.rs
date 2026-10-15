@@ -171,8 +171,8 @@ impl ActorSystemBuilder {
         // Ctx rather than resolved again: the environment is a global
         // namespace and is not consulted outside of program startup.
         // Lifecycle scripts promise bash semantics, not the user's login
-        // shell — see `jinn_common::bash_shell`.
-        let shell = jinn_common::bash_shell::bash_shell();
+        // shell — see `jinn_common::shell`.
+        let shell = jinn_common::shell::resolve_shell();
 
         let mut ctx = crate::bootstrap::Ctx::new(&state, &mut services, compaction_prompt, shell);
         let Activated { boot, discord } = crate::bootstrap::slices::activate_all(&mut ctx).await?;

@@ -5,8 +5,10 @@
 //! edge of the terminal (just left of the sidebar), and its bottom edge sits
 //! just above the sessions section. Displays the last 5 entries rendered using
 //! the same entry pipeline as the real chat log, truncated to the last 20 lines.
-//! A footer at the bottom shows keybinds across two lines and the session's
-//! active cwd and provider/model on the same line.
+//! A footer at the bottom shows keybinds across two lines, then the shared
+//! status line the chat input's status bar draws — the previewed session's
+//! cwd, then its stats and model — with every value taken from the
+//! *previewed* session, never the active one.
 //!
 //! The lines themselves are *not* built here. They arrive already rendered from
 //! the layout worker, keyed by the settled entries' content rather than by
@@ -18,6 +20,7 @@
 
 use std::sync::Arc;
 
+use jiff::SignedDuration;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Modifier, Style};
@@ -36,32 +39,35 @@ use jinn_chat_log_view_msg::PREVIEW_ENTRY_COUNT;
 use jinn_chat_log_view_msg::PREVIEW_MAX_LINES;
 use jinn_chat_log_view_msg::PREVIEW_REQUEST_ENTRY_COUNT;
 use jinn_kernel::common::app_state::AppState;
+use jinn_provider_config::ModelCache;
 use jinn_session_msg::SessionOrigin;
 use jinn_session_state::ChatSessionState;
 use jinn_slices::DrawContext;
+use jinn_status_bar::{model_cache_of, render_session_cwd_line, render_session_info_line};
 use jinn_theme::Theme;
 
 /// Default max lines for tool entries when no preference is set.
 pub(crate) const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
-/// Rows the popup spends on its footer: two keybinds lines and the model line.
+/// Rows the popup spends on its footer: two keybinds lines and the shared
+/// two-line status line (cwd, then stats + model).
 ///
 /// The bottom strip of the popup's inner area. The content area is whatever is
 /// left of the inner area after these rows, which is what makes the popup's
 /// height a fixed number rather than a function of how much text it happens to
 /// hold.
-pub(crate) const POPUP_FOOTER_ROWS: u16 = 3;
+pub(crate) const POPUP_FOOTER_ROWS: u16 = 4;
 /// Rows between the popup and the cursor row it describes.
 ///
 /// Two rows leaves a one-row gap, so the popup reads as a separate surface
 /// rather than colliding with the highlighted session row.
 const POPUP_GAP: u16 = 2;
-/// The shortest popup worth drawing: two borders, three footer rows, and at
+/// The shortest popup worth drawing: two borders, four footer rows, and at
 /// least one row of content — a box with nothing in it says nothing.
 ///
 /// Also the room the cursor must leave above it. A box shorter than this would
 /// have no content row at all, so a cursor with less room than this above it
 /// gets no popup rather than one drawn over itself.
-const MIN_POPUP_HEIGHT: u16 = 5;
+const MIN_POPUP_HEIGHT: u16 = 7;
 
 /// Renders the session preview popup when the sidebar sessions section is focused.
 ///
@@ -166,16 +172,72 @@ pub fn render_session_preview_for_state(
         return;
     };
 
+    // The status line's two non-session inputs, resolved where the draw
+    // context is in reach and passed down: the popup itself holds no cell
+    // lookup. The working time is the *previewed* session's clock, measured
+    // live so a session that worked ticks in its own preview.
+    let model_cache = model_cache_of(state);
+    let working_time = jinn_status_bar::session_working_time(session.session_id(), ctx.slices());
+
     let Some(lines) = cached else {
         // Nothing has ever been drawn for this session, at any content or width.
         // `cached` returning `None` is what distinguishes loading from empty — an
         // empty session renders zero lines but is still a cache hit, so it takes
         // the branch below and shows the empty state rather than spinning forever.
-        render_session_preview_loading(frame, popup_rect, session, theme);
+        render_session_preview_loading(
+            frame,
+            popup_rect,
+            session,
+            theme,
+            model_cache.as_ref(),
+            working_time,
+        );
         return;
     };
 
-    render_session_preview(frame, popup_rect, session, theme, &lines);
+    render_session_preview(
+        frame,
+        popup_rect,
+        session,
+        theme,
+        &lines,
+        model_cache.as_ref(),
+        working_time,
+    );
+}
+
+/// Renders the session preview popup into the given frame area.
+///
+/// Shows a bordered popup with:
+/// - Session title in the top border
+/// - Up to 20 lines of content from the last 5 entries
+/// - A footer with two lines of keybinds and the shared two-line status
+///   (cwd; then stats left, model right) for the previewed session
+///
+/// The status line's two non-session inputs arrive as parameters because the
+/// popup holds no cell lookups of its own: `model_cache` is the app-level
+/// provider cache (context limit, modality indicator; `None` degrades to
+/// `???`/text-only exactly as the status bar does without a provider cell),
+/// and `working_time` is the previewed session's clock, measured by the
+/// caller through its draw context.
+pub fn render_session_preview(
+    frame: &mut Frame<'_>,
+    popup_area: Rect,
+    session: &ChatSessionState,
+    theme: &Theme,
+    lines: &[Line<'static>],
+    model_cache: Option<&ModelCache>,
+    working_time: SignedDuration,
+) {
+    render_session_preview_inner(
+        frame,
+        popup_area,
+        session,
+        theme,
+        lines,
+        model_cache,
+        working_time,
+    );
 }
 
 /// Computes the popup width: 60% of frame area, min 30, max frame width.
@@ -221,12 +283,15 @@ fn spinner_elapsed() -> std::time::Duration {
 /// which is the row content arrives on.
 ///
 /// The chrome, title, badge, and footer are identical to the ready state, so
-/// only the content area changes.
+/// only the content area changes — the loading popup carries the same shared
+/// status line for the session, so the footer never flickers either.
 pub fn render_session_preview_loading(
     frame: &mut Frame<'_>,
     popup_area: Rect,
     session: &ChatSessionState,
     theme: &Theme,
+    model_cache: Option<&ModelCache>,
+    working_time: SignedDuration,
 ) {
     let inner_width = popup_area.width.saturating_sub(2);
     if inner_width == 0 || popup_area.height == 0 {
@@ -260,23 +325,15 @@ pub fn render_session_preview_loading(
     spans.push(Span::styled(text, Style::default().fg(theme.streaming)));
     let content = Line::from(spans);
 
-    render_session_preview_inner(frame, popup_area, session, theme, &[content]);
-}
-
-/// Renders the session preview popup into the given frame area.
-///
-/// Shows a bordered popup with:
-/// - Session title in the top border
-/// - Up to 20 lines of content from the last 5 entries
-/// - A footer with two lines of keybinds and a provider/model status line
-pub fn render_session_preview(
-    frame: &mut Frame<'_>,
-    popup_area: Rect,
-    session: &ChatSessionState,
-    theme: &Theme,
-    lines: &[Line<'static>],
-) {
-    render_session_preview_inner(frame, popup_area, session, theme, lines);
+    render_session_preview_inner(
+        frame,
+        popup_area,
+        session,
+        theme,
+        &[content],
+        model_cache,
+        working_time,
+    );
 }
 
 /// The color the popup's border is drawn in.
@@ -410,6 +467,8 @@ fn render_session_preview_inner(
     session: &ChatSessionState,
     theme: &Theme,
     lines: &[Line<'static>],
+    model_cache: Option<&ModelCache>,
+    working_time: SignedDuration,
 ) {
     let inner_width = popup_area.width.saturating_sub(2);
     if inner_width == 0 || popup_area.height == 0 {
@@ -487,9 +546,9 @@ fn render_session_preview_inner(
         }
     }
 
-    // Footer: keybinds + model line at the bottom of the inner area.
+    // Footer: keybinds + the shared status line at the bottom of the inner area.
     render_keybinds_bar(frame, inner_area, theme);
-    render_model_line(frame, inner_area, session, theme);
+    render_status_line(frame, inner_area, session, theme, model_cache, working_time);
 }
 
 /// Renders the keybinds bar at the bottom of the popup.
@@ -504,7 +563,7 @@ fn render_keybinds_bar(frame: &mut Frame<'_>, inner_area: Rect, theme: &Theme) {
     let sep_style = Style::default().fg(theme.muted_text);
 
     // Line 1: x close · a archive · i insert
-    let line1_y = inner_area.y + inner_area.height.saturating_sub(3);
+    let line1_y = inner_area.y + inner_area.height.saturating_sub(4);
     let line1_spans = vec![
         Span::styled("x", key_style),
         Span::styled(" close", sep_style),
@@ -524,7 +583,7 @@ fn render_keybinds_bar(frame: &mut Frame<'_>, inner_area: Rect, theme: &Theme) {
     frame.render_widget(Paragraph::new(Line::from(line1_spans)), line1_area);
 
     // Line 2: c continue · r rename
-    let line2_y = inner_area.y + inner_area.height.saturating_sub(2);
+    let line2_y = inner_area.y + inner_area.height.saturating_sub(3);
     let line2_spans = vec![
         Span::styled("c", key_style),
         Span::styled(" continue", sep_style),
@@ -541,84 +600,50 @@ fn render_keybinds_bar(frame: &mut Frame<'_>, inner_area: Rect, theme: &Theme) {
     frame.render_widget(Paragraph::new(Line::from(line2_spans)), line2_area);
 }
 
-/// Renders the cwd and provider/model status line at the very bottom of the popup.
+/// Renders the shared status line at the very bottom of the popup.
 ///
-/// Shows the cwd left-aligned and the model right-aligned on the same line.
-/// Long cwd paths are left-truncated with a `…` prefix to fit available space.
-/// Model display uses the same format as the main status bar:
-/// `({provider})/{model}` or `no model selected` when unset.
-/// Both use `muted_text` style.
-fn render_model_line(
+/// The same two lines the status bar under the chat input draws, for the
+/// *previewed* session: the cwd on the first row (home collapsed to `~`),
+/// then the session's stats left-aligned and its model right-aligned. No
+/// aggregate is ever rendered here — the tree aggregate and the transient
+/// hint are active-session chrome and stay on the status bar — so every
+/// value on these rows is the previewed session's own.
+fn render_status_line(
     frame: &mut Frame<'_>,
     inner_area: Rect,
     session: &ChatSessionState,
     theme: &Theme,
+    model_cache: Option<&ModelCache>,
+    working_time: SignedDuration,
 ) {
-    let line_y = inner_area.y + inner_area.height.saturating_sub(1);
-    let line_area = Rect {
+    let style = Style::default().fg(theme.muted_text);
+    let cwd_area = Rect {
         x: inner_area.x,
-        y: line_y,
+        y: inner_area.y + inner_area.height.saturating_sub(2),
         width: inner_area.width,
         height: 1,
     };
+    render_session_cwd_line(frame, cwd_area, session, style);
 
-    let model = session.model_selection();
-    let model_display = if model.is_no_provider() {
-        "no model selected".to_owned()
-    } else if let Some(single) = model.as_single() {
-        if let Some((provider, model_suffix)) = single.split_once('/') {
-            format!("({provider})/{model_suffix}")
-        } else {
-            single.to_owned()
-        }
-    } else {
-        // Alloy — show "alloy (N models)"
-        model.as_alloy().map_or("alloy".to_owned(), |a| {
-            format!("alloy ({} models)", a.models.len())
-        })
+    let info_area = Rect {
+        x: inner_area.x,
+        y: inner_area.y + inner_area.height.saturating_sub(1),
+        width: inner_area.width,
+        height: 1,
     };
-
-    let cwd_raw = session.cwd().to_string_lossy();
-    let model_len = UnicodeSegmentation::graphemes(model_display.as_str(), true).count();
-    let available = usize::from(inner_area.width);
-    let min_gap = 2;
-
-    let cwd_display = {
-        let max_cwd_len = available.saturating_sub(model_len).saturating_sub(min_gap);
-        if max_cwd_len == 0 {
-            String::new()
-        } else {
-            let cwd_graphemes: Vec<&str> =
-                UnicodeSegmentation::graphemes(cwd_raw.as_ref(), true).collect();
-            if cwd_graphemes.len() <= max_cwd_len {
-                cwd_raw.into_owned()
-            } else {
-                let take = max_cwd_len - 1; // 1 for the '…' prefix
-                let truncated: String = cwd_graphemes
-                    .iter()
-                    .rev()
-                    .take(take)
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .copied()
-                    .rev()
-                    .collect();
-                format!("\u{2026}{truncated}")
-            }
-        }
-    };
-
-    let style = Style::default().fg(theme.muted_text);
-    let cwd_len = UnicodeSegmentation::graphemes(cwd_display.as_str(), true).count();
-    let padding_len = available.saturating_sub(cwd_len).saturating_sub(model_len);
-    let padding = " ".repeat(padding_len);
-
-    let spans = vec![
-        Span::styled(cwd_display, style),
-        Span::styled(padding, style),
-        Span::styled(model_display, style),
-    ];
-    frame.render_widget(Paragraph::new(Line::from(spans)), line_area);
+    // No right-side override: the preview's info line always ends in the
+    // previewed session's model. The override is the status bar's
+    // hint-replaces-model seam, and a hint is active-session chrome.
+    render_session_info_line(
+        frame,
+        info_area,
+        session,
+        theme,
+        model_cache,
+        working_time,
+        style,
+        None,
+    );
 }
 
 /// Computes the popup rectangle for the session preview overlay.
@@ -628,7 +653,7 @@ fn render_model_line(
 /// the frame.
 ///
 /// Height is *fixed*: the content area is [`PREVIEW_MAX_LINES`] rows, plus the
-/// two borders and the three footer rows. It is deliberately not derived from
+/// two borders and the four footer rows. It is deliberately not derived from
 /// how many lines the content happens to render to. A preview that grew and
 /// shrank with its text made the surface move under the cursor while scrolling
 /// the list and re-shaped on every token of a streaming reply; the box now
@@ -650,7 +675,7 @@ pub fn session_preview_popup_rect(frame_area: Rect, cursor_y: u16) -> Option<Rec
     // the box is exactly as tall as the preview it was sized for. Not a second
     // constant: a number asserted twice is a number that will disagree.
     let content_rows = u16::try_from(PREVIEW_MAX_LINES).unwrap_or(u16::MAX);
-    // Total height: content + footer (3) + top border (1) + bottom border (1).
+    // Total height: content + footer (4) + top border (1) + bottom border (1).
     let desired_height = content_rows
         .saturating_add(POPUP_FOOTER_ROWS)
         .saturating_add(2);

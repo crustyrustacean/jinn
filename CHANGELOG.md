@@ -3,18 +3,23 @@
 ## (development)
 
 - Entire session trees can now be loaded using `<c-enter>` keybind in the session picker.
-- Add `tell_session` tool for inter-session communication.
+- Add `tell_session` tool for intersession communication.
   - Intersession messages now use a dark lavender color with standard white text + Markdown rendering.
-- Added keybind `y` (yank session ID) to session list.
+- Added keybind `y` (yank session ID) to session sidebar section.
+  - Use this to initiate ad-hoc intersession messaging or for session searches.
 - Update `workflows` skill. It should now make more reliable workflows.
-- Add `autodev` workflow.
+- Add `autodev` workflow. See README for details.
 - `<leader>sx` can be used to disable/enable stream rules via picker.
   - Stream rule status is saved under `[stream_rules] disabled_rules = ["foo", ...]` in `jinn.toml`
-- Workflow picker now supports "load in session" (`<enter>`) and "load in _new_ session" (`<c-enter>`).
-- Bugfix: lifecycle arg ordering can now change between startup and shutdown (previously they had to be in the same order, causing confusing bugs triggered by incorrect substitution).
-- Bugfix: `k` will now properly transition from the Attendants section to the Persona section in the sidebar.
+- Workflow picker now supports "load in _current_ session" (`<enter>`) and "load in _new_ session" (`<c-enter>`).
+- Session previews now show statistics in the status line.
 - `task` tool renamed to `spawn_subagent`
   - Impacted docs/skills also updated.
+- `phased-task-loop` skill removed. Superseded by `#goal` prompt and `autodev` workflow.
+- Add `fossil stash` stream rule to block agents from incorrect stash usage.
+- Test suite is now green on Windows (contributed by @crustyrustacean)
+- Bugfix: lifecycle arg ordering can now change between startup and shutdown (previously the args had to be in the same order, causing confusing bugs triggered by incorrect substitution).
+- Bugfix: `k` keybind will now properly transition from the Attendants section to the Persona section in the sidebar.
 
 ## 2026-10-13 v1.6.2
 

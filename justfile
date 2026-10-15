@@ -15,13 +15,17 @@ export RSTEST_TIMEOUT := "10"
 COPYRIGHT_NAME := "Jayson Lennon"
 COPYRIGHT_YEAR := "2026"
 
+# Open a new Fossil branch with an empty marker commit.
 fossil-branch NAME:
     fossil commit -m "Open {{NAME}}" --branch {{NAME}} --allow-empty
 
-# Commit changes (ONE LINE ONLY): stage all adds/removes (with `--dotfiles`) and commit.
+# Stage all adds/removes and commit (one-line message)
 commit MSG:
     fossil addremove --dotfiles && fossil commit -m "{{MSG}}"
 
+# One suite run: fail-fast disabled, full output captured to target/test-output.log
+# with a summary and failing test names — details via `just test-failures`, never re-runs.
+[doc("Run the workspace test suite once, capturing full output to target/test-output.log.")]
 test:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -58,16 +62,17 @@ test-failures:
         echo "Last run passed — no failures in $LOG."
     fi
 
-# Run only tests whose name matches FILTER, across the whole workspace.
 # Sanctioned iterate-on-failure loop: fix code, re-run `just test-one <name>`,
 # then confirm with a final `just test` before committing.
+[doc("Run only tests matching FILTER across the whole workspace.")]
 test-one FILTER:
     cargo test --workspace --no-fail-fast {{FILTER}}
 
+# Fast compile check of the whole workspace (no codegen).
 check:
     cargo check --workspace
 
-# Report release-binary size: bytes, section table, per-crate .text (cargo-bloat), upx size
+# Report release-binary size and per-crate .text breakdown
 size-report:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -103,12 +108,15 @@ size-report:
         echo '    (upx not installed; skipping packed-size estimate)'
     fi
 
+# Run clippy across the workspace.
 clippy:
     cargo clippy --workspace --all-targets
 
+# Check formatting without writing changes.
 fmt:
     cargo fmt -- --check
 
+# Apply formatting fixes.
 fmt-fix:
     cargo fmt
 
@@ -119,7 +127,7 @@ lint:
     cargo fmt -- --check
     just lint-testattr
 
-# Fail on bare #[test]/#[tokio::test] lacking an rstest attr (escapes the rstest timeout)
+[doc("Fail on bare test attributes missing their rstest companion.")]
 lint-testattr:
    #!/usr/bin/env python3
    import os
@@ -200,15 +208,19 @@ ci: lint test
 docs:
     cargo doc --workspace --no-deps --open
 
+# Generate lcov coverage data (coverage.lcov).
 coverage:
     cargo llvm-cov --lcov --output-path coverage.lcov
 
+# Generate and open an HTML coverage report from coverage.lcov.
 coverage-report:
     cargo llvm-cov report --html
 
+# Run debtmap analysis and write debt.json.
 debt: coverage
     debtmap analyze . --lcov coverage.lcov
 
+# Apply the project license header to source files missing it.
 apply-license:
    #!/bin/bash
 
@@ -532,16 +544,18 @@ sync-github:
 export GH_REPO := "jayson-lennon/jinn"
 GH_PR_STATE_DIR := "target/gh-pr"
 
-# One-time: export GH_REPO so gh works outside git (gh repo set-default refuses fossil-only workspaces)
+# One-time gh setup: export GH_REPO for fossil-only workspaces
 gh-setup:
     @echo "GH_REPO={{GH_REPO}} (exported by the justfile; no setup needed)"
     @GH_REPO={{GH_REPO}} gh auth status && echo "gh is ready"
 
+# List GitHub PRs for the mirror (default: open).
 gh-pr-list STATE="open":
     gh pr list --state {{STATE}} --limit 30 \
         --json number,title,author,headRefName \
         --jq '.[] | "#\(.number)  \(.author.login)  [\(.headRefName)]  \(.title)"'
 
+# Show a GitHub PR's title, body, and branch in the terminal.
 gh-pr-view N:
     gh pr view {{N}} \
         --json number,title,url,author,headRefName,headRefOid,additions,deletions,changedFiles \
@@ -584,10 +598,10 @@ gh-pr-fetch N:
     fi
     echo "==> Saved: $dir/{meta.json,pr.patch,identity}"
 
-# Apply the fetched patch to the working tree. Refuses a dirty tree.
-# Clean apply: patch goes straight in. Conflicting hunks are written into
-# the files as `<<<<<<<`/`=======`/`>>>>>>>` markers (--merge) — resolve
-# them by hand or hand them to an agent (they're greppable), then land.
+# Apply a fetched PR patch to the working tree (refuses a dirty tree). Conflicting
+# hunks land as inline conflict markers — resolve them by hand or hand them to an
+# agent (they're greppable), then land with `just gh-pr-land`.
+[doc("Apply a fetched PR patch to the working tree (refuses a dirty tree).")]
 gh-pr-apply N:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -628,6 +642,7 @@ gh-pr-apply N:
 
 # Commit the applied patch attributed to the contributor (auto-provisions a fossil user).
 # Refuses to run while unresolved conflict markers remain in the tree.
+[doc("Commit an applied PR patch attributed to its contributor, refusing on unresolved conflict markers.")]
 gh-pr-land N:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -677,7 +692,7 @@ gh-pr-land N:
     echo '    then: just sync-github'
     echo "    then: just gh-pr-close {{N}} 'Landed in Fossil as $hash; mirrored shortly.'"
 
-# Opt-in: close the PR on GitHub (pass COMMENT for a ready-made message from gh-pr-land output)
+# Opt-in: close the PR on GitHub after landing
 gh-pr-close N COMMENT="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -687,7 +702,7 @@ gh-pr-close N COMMENT="":
     fi
     gh pr close {{N}} "${args[@]}"
 
-# Prune merged branches from the git mirror (preview default; PRUNE_ALL=1 also deletes unmerged)
+# Prune merged branches from the git mirror (preview default)
 mirror-prune MODE="preview" PRUNE_ALL="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -861,9 +876,9 @@ pkg:
 # Prerequisite: install the GitHub CLI and authenticate once:
 #     https://cli.github.com/   then   gh auth login
 
-# Build the release binary and package it into a cargo-binstall tarball.
-# TARGET defaults to the native linux release target; pass x86_64-pc-windows-msvc
-# to cross-build the Windows tarball (needs cargo-xwin — run just setup-windows-cross).
+# Cross-build the release tarball for TARGET. Requires cargo-xwin:
+# run `just setup-windows-cross` once before first use.
+[doc("Cross-build the release tarball for TARGET.")]
 build-release-tarball TARGET="x86_64-unknown-linux-gnu":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -937,6 +952,7 @@ build-release-tarball TARGET="x86_64-unknown-linux-gnu":
 # (idempotent; safe to re-run). Installs the rustup target, the cargo-xwin
 # driver (clang-cl for C, lld-link for link), and prefetches the MSVC CRT +
 # Windows SDK subsets xwin needs.
+[doc("One-time setup for cross-building Windows release tarballs from Linux.")]
 setup-windows-cross:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -976,7 +992,7 @@ setup-windows-cross:
     rm -rf "${PREFETCH_DIR}"
     echo "==> Windows cross toolchain ready (target ${TARGET})"
 
-# Release to GitHub + smoke-test cargo-binstall (after `just bump`; needs gh auth + cargo-binstall)
+# Release TAG to GitHub + smoke-test cargo-binstall (after `just bump`)
 release TAG:
     #!/usr/bin/env bash
     set -euo pipefail

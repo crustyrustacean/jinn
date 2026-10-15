@@ -1,6 +1,6 @@
 ---
 name: simple-task-loop
-description: Structured phased implementation workflow for multi-phase coding tasks. Use when the user wants to execute a phased plan. Agents MUST continue through all phases autonomously without stopping between phases.
+description: Structured phased implementation workflow for multi-phase coding tasks. Use when the user wants to execute a phased plan. Agents MUST continue through all phases autonomously without stopping between phases. Only load if explicitly asked.
 ---
 
 # Simple Task Loop
