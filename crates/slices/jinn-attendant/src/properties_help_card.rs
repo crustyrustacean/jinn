@@ -12,11 +12,11 @@
 //! that does any of that. It reads the form's state and draws; it never writes.
 
 use jinn_attendant_msg::{AttendantPropertiesState, PropertyField};
-use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use ratatui::Frame;
 
 /// The help card's body, for the focused field.
 ///
@@ -113,7 +113,7 @@ fn help_body(field: PropertyField, theme: &jinn_theme::Theme) -> Vec<Line<'stati
             Line::from(""),
             line(
                 "<prior report>",
-                "replacement token you can optionally add to the see template",
+                "replacement token you can optionally add to the seed template",
             ),
         ],
     }
