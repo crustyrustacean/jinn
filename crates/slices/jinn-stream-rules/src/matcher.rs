@@ -1858,19 +1858,30 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn a_match_held_at_the_edge_fires_when_the_next_delta_proves_it_complete() {
+    fn a_match_ending_at_the_buffer_edge_is_held_mid_stream() {
         // Given a rule whose evidence completes at the edge of the first
         // delta — the shape that fired on every intermediate buffer before
         // the edge hold.
         let set = CompiledSet::build(&[rule("tail-word", "FORBIDDEN")]);
         let mut session = set.new_session(&SessionId::new());
 
-        // When the offending text arrives with nothing after it, the match is
-        // riding the edge.
+        // When the offending text arrives with nothing after it.
         let held = session.check("say FORBIDDEN", StreamContext::text());
-        assert!(held.is_none(), "an edge match must be held mid-stream");
 
-        // When the next delta trails the match, the match now ends strictly
+        // Then the match is held: it ends at the buffer's last byte, so its
+        // completeness is not yet proven.
+        assert!(held.is_none(), "an edge match must be held mid-stream");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_match_held_at_the_edge_fires_when_the_next_delta_proves_it_complete() {
+        // Given a rule whose first delta ended in an edge-held match.
+        let set = CompiledSet::build(&[rule("tail-word", "FORBIDDEN")]);
+        let mut session = set.new_session(&SessionId::new());
+        session.check("say FORBIDDEN", StreamContext::text());
+
+        // When the next delta trails the match, so it now ends strictly
         // inside the buffer.
         let released = session
             .check(" tail", StreamContext::text())

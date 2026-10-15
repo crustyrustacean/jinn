@@ -426,14 +426,13 @@ mod tests {
             X-Api-Key = "${OTHER_KEY}"
         "#;
 
-        // When deserializing the enclosing preferences document.
+        // When deserializing the enclosing preferences document and reading
+        // the server's headers.
         #[derive(Deserialize)]
         struct Probe {
             mcp_server: BTreeMap<String, McpServerConfig>,
         }
         let probe: Probe = toml::from_str(toml).expect("parse");
-
-        // When reading the server's headers.
         let server = &probe.mcp_server["headers-table-probe"];
 
         // Then both headers survive as configured.

@@ -2162,13 +2162,10 @@ fn streaming_tool_call_ids_is_empty_when_not_streaming() {
 
 #[rstest::rstest]
 fn streaming_tool_call_renders_multiline_arguments() {
-    // Given a session with a completed tool call and a streaming one whose
-    // arguments contain an escaped newline.
+    // Given a session with a streaming tool call whose arguments contain an
+    // escaped newline.
     let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().begin_streaming();
-    state
-        .active_session_mut()
-        .push_entry(ChatEntry::tool_call("tc_done", "read_file", "{}"));
     state.active_session_mut().begin_tool_call(
         1,
         &jinn_core_types::ToolCallId::from("tc_live"),
@@ -2215,7 +2212,7 @@ fn tool_call_arguments_render_as_a_block_after_a_phase_transition_mid_stream(#[c
         .expect("first delta should land on a registered call");
 
     // When a prose token drives Sending -> Streaming between two deltas of the
-    // same call, and the rest of the arguments arrive.
+    // same call, the rest of the arguments arrive, and the session renders.
     state.active_session_mut().begin_streaming();
     state
         .active_session_mut()
@@ -2225,8 +2222,6 @@ fn tool_call_arguments_render_as_a_block_after_a_phase_transition_mid_stream(#[c
         .active_session_mut()
         .append_tool_call_delta(0, r#"line_three"#)
         .expect("third delta should survive the transition");
-
-    // When rendered.
     let rows = rendered_content_rows(&state, 60, 20);
 
     // Then every argument line occupies its own row, which only the streaming
