@@ -3283,7 +3283,7 @@ fn a_render_publishes_the_collapse_count_the_coverage_probe_reads_back() {
 }
 
 #[rstest::rstest]
-fn render_intersession_message_shows_the_attributed_text_in_the_subagent_color() {
+fn render_intersession_message_shows_attributed_text_on_intersession_block() {
     // Given a log holding an inter-session message whose text already
     // carries the sender's attribution.
     let mut element = ChatLogElement::new();
@@ -3310,14 +3310,17 @@ fn render_intersession_message_shows_the_attributed_text_in_the_subagent_color()
         })
         .unwrap();
 
-    // Then the transcript shows the attributed text, in the subagent color,
-    // with no route chrome.
+    // Then the transcript shows the attributed text on the inter-session
+    // block background, with no route chrome.
+    let theme = jinn_theme::default_theme();
     let buffer = terminal.backend().buffer().clone();
     let mut rendered = String::new();
+    let mut saw_block_bg = false;
     for y in 0..area.height {
         for x in 0..area.width {
             if let Some(cell) = buffer.cell((x, y)) {
                 rendered.push_str(cell.symbol());
+                saw_block_bg |= cell.style().bg == Some(theme.intersession_bg);
             }
         }
         rendered.push('\n');
@@ -3333,5 +3336,9 @@ fn render_intersession_message_shows_the_attributed_text_in_the_subagent_color()
     assert!(
         !rendered.contains('↔'),
         "no header arrow renders, got {rendered:?}"
+    );
+    assert!(
+        saw_block_bg,
+        "the entry renders on the intersession block background"
     );
 }

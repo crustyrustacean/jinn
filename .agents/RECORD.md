@@ -514,3 +514,4 @@ Entries are added or amended **only with human approval**.
 - (lifecycle) Teardown replay renders recorded lifecycle arguments by placeholder name, not position; placeholder order between a script's setup and teardown commands is irrelevant.
 - (lifecycle) A session's lifecycle arguments persist as ordered name–value pairs, and a legacy bare-string array loads as positional `$n` pairs rendered positionally.
 - (lifecycle) Placeholder substitution shell-quotes in one pass, so a lifecycle template must not place a placeholder inside a quoted region of its own command.
+- (sidebar) A per-section navigate fn's contract is to report `SectionNavResult::Exhausted` at its list edges without mutating its cursor; `navigate_sidebar` (`sections/sidebar.rs`) owns all section-crossing, walking `prev_section`/`next_section` past empty sections via `section_has_content`.

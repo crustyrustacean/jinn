@@ -173,7 +173,13 @@ pub(crate) fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionN
     let current = selected_row(state).unwrap_or(0);
     match intent {
         SidebarIntent::MoveDown => select_row(state, current.saturating_add(1), max_index),
-        SidebarIntent::MoveUp => select_row(state, current.saturating_sub(1), max_index),
+        SidebarIntent::MoveUp => {
+            if current == 0 {
+                SectionNavResult::Exhausted
+            } else {
+                select_row(state, current - 1, max_index)
+            }
+        }
         SidebarIntent::Action(_) => SectionNavResult::Moved,
     }
 }
