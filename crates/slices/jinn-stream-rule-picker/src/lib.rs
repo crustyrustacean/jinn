@@ -33,7 +33,6 @@ pub mod stream_rule_persist_actor;
 pub mod stream_rule_picker_actions;
 pub mod stream_rule_picker_render;
 pub mod stream_rule_picker_routes;
-pub mod stream_rule_picker_viewport;
 
 pub use stream_rule_persist_actor::StreamRulePersistActor;
 pub use stream_rule_picker_actions::{highlighted_name, open};

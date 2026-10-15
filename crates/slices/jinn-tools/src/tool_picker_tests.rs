@@ -535,13 +535,12 @@ async fn page_down_steps_by_the_rows_the_last_frame_actually_laid_out() {
     wired.open();
     // A short frame: the laid-out list pane holds far fewer rows than the
     // pre-render fallback, so a picker that paged by the fallback would move a
-    // visibly different distance.
+    // visibly different distance. The cell's value after the draw is what the
+    // renderer published from the frame's PickerLayout — its provenance is
+    // pinned by drawing_a_frame_publishes_the_measured_row_count_for_paging.
     let frame = ratatui::layout::Rect::new(0, 0, 100, 16);
     draw_frame(&wired, frame);
-    let on_screen = crate::tool_picker_viewport::results_viewport(
-        crate::tool_picker_render::tool_picker_overlay_rect(&frame)
-            .expect("geometry fn yields a popup rect"),
-    );
+    let on_screen = wired.cell().read().results_viewport;
 
     // When page down is pressed.
     wired.fire("page-tool-picker-down");
@@ -924,19 +923,65 @@ async fn drawing_a_frame_publishes_the_measured_row_count_for_paging() {
     let frame = ratatui::layout::Rect::new(0, 0, 100, 16);
     draw_frame(&wired, frame);
 
-    // Then the cell carries what the frame actually laid out, so paging and
-    // the tab advance move by a page of what is on screen rather than a fixed
-    // guess.
+    // Then the cell carries the height of the results rect from the
+    // `PickerLayout` the widget returns for that same geometry — pinned by a
+    // second, identical construction (same state, same footer count, same
+    // geometry fn) rendered into a throwaway terminal, so paging and the tab
+    // advance move by a page of what is on screen rather than a fixed guess.
     let measured = wired.cell().read().results_viewport;
-    let popup = crate::tool_picker_render::tool_picker_overlay_rect(&frame)
-        .expect("geometry fn yields a popup rect");
-    let expected = crate::tool_picker_viewport::results_viewport(popup);
-    assert_eq!(measured, expected);
+    let expected = expected_layout(&wired, frame);
+    assert_eq!(measured, usize::from(expected.inner.height));
     assert_ne!(
         measured, fallback,
         "a narrow popup lays out far fewer rows than the fallback, so the \
          measurement must replace it rather than sit beside it"
     );
+}
+
+/// Renders the picker's widget a second time, into a throwaway terminal, and
+/// returns the `PickerLayout` it reports.
+///
+/// Mirrors `draw_frame` (terminal sized to `area`) and `render_tool_picker`
+/// (widget built from the same guarded cell state, the same binds-derived
+/// footers, and the same overlay geometry fn), so the returned layout is the
+/// solve the widget hands the real renderer for the frame that was drawn.
+/// The cell itself is only read here — writing it is the renderer's job, and
+/// a second render of the widget must not touch it.
+fn expected_layout(
+    wired: &Wired,
+    area: ratatui::layout::Rect,
+) -> jinn_selection_widget::PickerLayout {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let mut layout = None;
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
+    let facts =
+        jinn_slices::RenderFacts::new(wired.state.borrow().frontend.theme.clone(), &wired.slices);
+    terminal
+        .draw(|frame| {
+            let popup = crate::tool_picker_render::tool_picker_overlay_rect(&area)
+                .expect("geometry fn yields a popup rect");
+            let cell = wired.cell();
+            let guard = cell.read();
+            let state: &ToolPickerState = &guard;
+            let theme = &facts.theme;
+            let palette = crate::tool_picker_render::tool_picker_palette(theme);
+            let binds = crate::tool_picker_render::tool_picker_binds();
+            let keybind = jinn_picker::keybind_line(&binds, jinn_picker::Tail::Standard, &palette);
+            let footers = vec![
+                crate::tool_picker_render::tool_status(state, theme),
+                ratatui::text::Line::from(keybind.0),
+            ];
+            let widget = jinn_selection_widget::SelectionWidget::new(&state.selection)
+                .title(ratatui::text::Line::from(" Tools "))
+                .title_style(ratatui::style::Style::default().fg(theme.popup_title))
+                .footers(footers)
+                .colors(palette.selection_colors());
+            layout = Some(widget.render(frame, popup));
+        })
+        .expect("draw");
+    layout.expect("the draw closure always renders the widget")
 }
 
 // ── 6. Every advertised key is bound ────────────────────────────────────

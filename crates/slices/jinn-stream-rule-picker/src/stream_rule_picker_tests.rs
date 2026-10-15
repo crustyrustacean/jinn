@@ -1636,3 +1636,72 @@ async fn render_draws_the_confirm_status_line() {
         "the confirm's status must render; got {screen:?}"
     );
 }
+
+// ── Viewport ────────────────────────────────────────────────────────────
+
+#[rstest::rstest]
+fn the_unrendered_state_viewport_matches_the_msg_fallback() {
+    // Given a picker state that has not rendered a frame yet.
+    // When asking for the viewport its paging will window against.
+    // Then it is the documented fallback from the `-msg` contract crate.
+    assert_eq!(
+        StreamRulePickerState::default().results_viewport,
+        jinn_stream_rule_picker_msg::RESULTS_VIEWPORT_FALLBACK
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn the_rendered_cell_viewport_equals_the_widget_reported_inner_height() {
+    // Given an activated slice whose open picker has drawn one real frame
+    // through the registered overlay view — the draw is the point, the
+    // screen text is discarded.
+    let (slices, _key_routes, _config, _prefs) = activated().await;
+    let cell: TypedCell<StreamRulePickerState> = slices
+        .reader(&stream_rule_picker_slot())
+        .expect("stream-rule picker cell registered at activation");
+    cell.update(|picker| {
+        stream_rule_picker_actions::open(
+            picker,
+            &[jinn_preferences_config::schemas::StreamRuleConfig {
+                name: "no-todos".to_owned(),
+                description: "no TODOs".to_owned(),
+                conditions: vec!["TODO".to_owned()],
+                body: "Finish it.".to_owned(),
+                ..Default::default()
+            }],
+            &std::collections::HashSet::new(),
+            &jinn_theme::default_theme(),
+        );
+    });
+    let _screen = rendered_screen(&slices);
+
+    // When the identical widget construction renders again from the same
+    // cell state, into the overlay geometry, and reports its own solution.
+    let area = ratatui::layout::Rect::new(0, 0, 100, 30);
+    let popup = crate::stream_rule_picker_overlay_rect(&area).expect("geometry yields a rect");
+    let mut terminal =
+        ratatui::Terminal::new(ratatui::backend::TestBackend::new(area.width, area.height))
+            .expect("terminal");
+    let layout = {
+        let mut report = None;
+        terminal
+            .draw(|frame| {
+                report = Some(crate::stream_rule_picker_render::render_widget_from_state(
+                    &cell,
+                    frame,
+                    popup,
+                    &jinn_theme::default_theme(),
+                ));
+            })
+            .expect("draw");
+        report.expect("the helper returns the widget's PickerLayout")
+    };
+
+    // Then the cell holds exactly what the widget reported for that frame —
+    // the render published the widget's report, not a mirrored measurement.
+    assert_eq!(
+        cell.read().results_viewport,
+        usize::from(layout.inner.height)
+    );
+}
