@@ -452,4 +452,6 @@ Lots of inspiration from other projects went into the design of `jinn`:
 
 This project includes third-party software under separate licenses. See [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES) for details.
 
+The model-market popup's performance data (the Epoch Capabilities Index) comes from [Epoch AI](https://epoch.ai/benchmarks/use-this-data), used under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); a bundled snapshot ships in `crates/slices/jinn-model-market/src/seed/`, and the required attribution text is in [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES).
+
 Copyright 2026 Jayson Lennon.
