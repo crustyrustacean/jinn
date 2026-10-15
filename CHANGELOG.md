@@ -3,13 +3,14 @@
 ## (development)
 
 - Add `tell_session` tool for inter-session communication.
+- All inter-session communication is now displayed using light purple text.
 - Session ID is now displayed in the chat history when a new session is created.
-  - This is a prelim implementation so you can copy+paste the ID for `tell_session`
 - Update `workflows` skill. It should now make more reliable workflows.
 - Add `autodev` workflow.
 - `<leader>sx` can be used to disable/enable stream rules via picker.
   - Stream rule status is saved under `[stream_rules] disabled_rules = ["foo", ...]` in `jinn.toml`
 - Workflow picker now supports same-session loading (`<enter>`) and new session loading (`<c-enter>`).
+- Bugfix: lifecycle arg ordering can now change between startup and shutdown (previously they had to be in the same order, causing confusing bugs triggered by incorrect substitution).
 
 ## 2026-10-13 v1.6.2
 

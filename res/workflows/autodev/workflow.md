@@ -78,11 +78,11 @@ contracting, or triaged. Then do the QA brief (step 6).
    issue: dispatch the planner, mark `contracting`, end your turn. Its
    READY report wakes you; mark `open`.
 3. **Spawn** — read `steps/02-dispatch.md`. For each contract-ready,
-   claimable issue: create a session, apply the lifecycle setup
-   (Appendix C), send the implementor dispatch, mark `dispatched` with
-   the session id as `assignee`. End your turn if nothing else is
-   actionable — a turn that never ends is a turn whose reports never
-   land.
+   claimable issue: `load_attendant` the implementor seed (never
+   `task` — Appendix C), apply the lifecycle setup, send the
+   implementor dispatch, mark `dispatched` with the session id as
+   `assignee`. End your turn if nothing else is actionable — a turn
+   that never ends is a turn whose reports never land.
 4. **Review** — a DONE report arrives as a queued message that starts
    your next turn. Read `steps/03-integrate.md`, dispatch the reviewer
    (Appendix D), end your turn. APPROVE → teardown. REJECT → findings
@@ -188,7 +188,8 @@ is the landing; there is no integration branch.
 Spawn procedure, per issue (steps/02-dispatch.md carries the full
 payload lists):
 
-1. Create a plain new session.
+1. `load_attendant` on `attendants/implementor.toml` (absolute path) —
+   this creates the session and stamps the seed. Never `task`.
 2. `run_lifecycle` setup: `path` = this workflow's `lifecycle.toml`
    (absolute), `session_id` = the new session's id, `dir` =
    `<your-root>-issue-<id>` (sibling of your checkout),
