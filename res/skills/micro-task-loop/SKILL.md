@@ -95,6 +95,10 @@ All phases are done and the task list is clean. Now verify everything in one pas
 
     **NEVER commit broken code.** The commit happens only after tests and lints pass. If an unrecoverable failure blocks verification, stop and report instead of committing.
 
-4.  **Sync.** Run the project's `sync-trunk` command once (resolve conflicts, re-test, commit).
+4.  **Sync.** Run the project's `sync-trunk` command once, after the commit. Run it
+    unconditionally — do not defer, skip, or ask about syncing because other sessions
+    are working in the repo; concurrent work is normal and is the reason the sync
+    exists. Conflicts, if any, are yours to resolve here (resolve, re-test, commit
+    the resolution), never the human's.
 
     Never merge your branch onto the project's main line.

@@ -12,7 +12,11 @@ A disciplined workflow for implementing multi-phase coding tasks. The task list 
 ## Constraints
 
 1.  **Stay on your branch.** Never commit to the project's main line (e.g. `trunk`/`main`/`master`). Your environment is on the correct branch.
-2.  **Sync before next phase.** Run the project's `sync-trunk` command before moving to the next phase.
+2.  **Sync before next phase.** Run the project's `sync-trunk` command before moving to
+    the next phase. Run it unconditionally — do not defer, skip, or ask about syncing
+    because other sessions are working in the repo; concurrent work is normal and is
+    the reason the sync exists. Conflicts, if any, are yours to resolve here (resolve,
+    re-test, commit the resolution), never the human's.
 3.  **No reverse merge.** Never merge your branch onto the main line.
 4.  **Continuous execution.** Proceed from one phase to the next without stopping. Only stop when all phases are complete or an unrecoverable error blocks progress.
 5.  **Stay in `.plans/<task>/`.** All execution plans go here. Do not create new directories.
@@ -78,8 +82,14 @@ Update the todo list **at the moment a decision is made**, never retroactively:
 
     ```
     <commit command> "<TASK> Phase N: <one sentence description>"   # the project's `commit` command
-    <sync command>                                           # the project's `sync-trunk` command (resolve conflicts, re-test, commit)
+    <sync command>                                           # the project's `sync-trunk` command
+    <commit command> "<TASK> Phase N: sync <branch>"                # the project's `commit` command (only if the sync merged something)
     ```
+
+    Order is commit → sync → commit: land your work first, then bring trunk in, then
+    commit the resolution if the sync merged anything. Run the sync unconditionally —
+    concurrent work in the repo is normal and is the reason the sync exists; conflicts
+    are yours to resolve, never the human's.
 
     Never merge your branch onto the project's main line.
 
