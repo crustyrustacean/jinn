@@ -13,7 +13,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use std::sync::Arc;
 
 use crate::preview_content::{PreviewCache, PreviewContent};
-use crate::{PickerItem, SelectionColors, SelectionState};
+use crate::{PickerItem, PickerLayout, SelectionColors, SelectionState};
 
 /// Popup width threshold for vertical (side-by-side) split.
 /// Below this, the layout switches to horizontal (stacked) split.
@@ -139,7 +139,11 @@ where
     ///
     /// The caller owns the geometry: `area` is the popup rectangle the slice's
     /// overlay geometry function produced (see [`compute_popup_rect`]).
-    pub fn render(self, frame: &mut Frame<'_>, area: Rect) {
+    ///
+    /// Returns what the widget solved: `popup` is the rect handed in, `inner`
+    /// is the list pane's results rect — the pane's own input + separator
+    /// rows are chrome and are excluded — in both split modes.
+    pub fn render(self, frame: &mut Frame<'_>, area: Rect) -> PickerLayout {
         let popup_area = area;
         frame.render_widget(Clear, popup_area);
 
@@ -184,13 +188,18 @@ where
             preview_scroll,
         };
 
-        if popup_area.width >= VERTICAL_SPLIT_MIN_WIDTH {
-            borrowed.render_vertical_split(frame, content_area, preview_cache);
+        let results_area = if popup_area.width >= VERTICAL_SPLIT_MIN_WIDTH {
+            borrowed.render_vertical_split(frame, content_area, preview_cache)
         } else {
-            borrowed.render_horizontal_split(frame, content_area, preview_cache);
-        }
+            borrowed.render_horizontal_split(frame, content_area, preview_cache)
+        };
 
         borrowed.render_footer(frame, footer_area);
+
+        PickerLayout {
+            popup: popup_area,
+            inner: results_area,
+        }
     }
 
     // Forward to RenderCtx methods below are replaced by the RenderCtx struct.
@@ -210,20 +219,20 @@ struct RenderCtx<'a, T: PickerItem + PreviewContent> {
 }
 
 impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
-    /// Renders the list and preview stacked vertically (narrow terminals).
+    /// Renders the list and preview side by side (wide terminals).
     fn render_vertical_split(
         &self,
         frame: &mut Frame<'_>,
         inner: Rect,
         cache: Option<&dyn PreviewCache>,
-    ) {
+    ) -> Rect {
         let [list_area, preview_area] = Layout::horizontal([
             Constraint::Percentage(LIST_FRACTION),
             Constraint::Percentage(100 - LIST_FRACTION),
         ])
         .areas(inner);
 
-        self.render_list(frame, list_area);
+        let results_area = self.render_list(frame, list_area);
 
         // Vertical separator as the first column of the preview area.
         let [sep_area, preview_body] =
@@ -238,15 +247,17 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
         frame.render_widget(sep_paragraph, sep_area);
 
         self.render_preview(frame, preview_body, cache);
+
+        results_area
     }
 
-    /// Renders the list and preview stacked vertically (narrow terminals).
+    /// Renders the list on top and the preview below (narrow terminals).
     fn render_horizontal_split(
         &self,
         frame: &mut Frame<'_>,
         inner: Rect,
         cache: Option<&dyn PreviewCache>,
-    ) {
+    ) -> Rect {
         let list_height = HORIZONTAL_LIST_ROWS + 2;
         let [list_area, sep_area, preview_area] = Layout::vertical([
             Constraint::Length(list_height),
@@ -255,7 +266,7 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
         ])
         .areas(inner);
 
-        self.render_list(frame, list_area);
+        let results_area = self.render_list(frame, list_area);
 
         let separator = HORIZONTAL_SEPARATOR
             .to_string()
@@ -265,10 +276,14 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
         frame.render_widget(sep_paragraph, sep_area);
 
         self.render_preview(frame, preview_area, cache);
+
+        results_area
     }
 
-    /// Render the filter input and result list.
-    fn render_list(&self, frame: &mut Frame<'_>, area: Rect) {
+    /// Render the filter input and result list, returning the results
+    /// sub-rect the rows rendered into (the input + separator rows are
+    /// chrome and are not part of it).
+    fn render_list(&self, frame: &mut Frame<'_>, area: Rect) -> Rect {
         let [input_area, sep_area, results_area] = Layout::vertical([
             Constraint::Length(1),
             Constraint::Length(1),
@@ -289,6 +304,8 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
         frame.render_widget(sep_paragraph, sep_area);
 
         self.render_results(frame, results_area);
+
+        results_area
     }
 
     /// Render the filtered result rows.
@@ -618,5 +635,117 @@ mod tests {
 
         // Then no lines are returned.
         assert_eq!(lines, [] as [ratatui::prelude::Line<'_>; 0]);
+    }
+
+    #[rstest::rstest]
+    fn picker_layout_popup_is_the_rect_handed_in() {
+        // Given a preview widget rendered into an explicit popup rect.
+        let state = cached_state();
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("terminal should build");
+        let popup = Rect::new(4, 2, 30, 10);
+        let report = std::cell::Cell::new(None);
+
+        // When rendering into that rect.
+        terminal
+            .draw(|frame| {
+                report.set(Some(
+                    PreviewSelectionWidget::new(&state).render(frame, popup),
+                ));
+            })
+            .expect("draw should succeed");
+
+        // Then the report's popup is the rect handed in, verbatim.
+        let layout = report.into_inner().expect("render reports a PickerLayout");
+        assert_eq!(layout.popup, popup);
+    }
+
+    #[rstest::rstest]
+    fn picker_layout_inner_height_is_the_list_rows_in_stacked_mode() {
+        // Given a state rendered into the popup computed on a narrow terminal.
+        let state = cached_state();
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("terminal should build");
+        let popup = compute_popup_rect(Rect::new(0, 0, 80, 24));
+        assert!(
+            popup.width < VERTICAL_SPLIT_MIN_WIDTH,
+            "the solve must be the stacked mode"
+        );
+        let report = std::cell::Cell::new(None);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                report.set(Some(
+                    PreviewSelectionWidget::new(&state).render(frame, popup),
+                ));
+            })
+            .expect("draw should succeed");
+        let layout = report.into_inner().expect("render reports a PickerLayout");
+
+        // Then inner is the fixed pane's result rows: the pane's input and
+        // separator rows are chrome, so the height is HORIZONTAL_LIST_ROWS,
+        // not the pane's full HORIZONTAL_LIST_ROWS + 2.
+        assert_eq!(layout.inner.height, HORIZONTAL_LIST_ROWS);
+    }
+
+    #[rstest::rstest]
+    fn picker_layout_inner_height_excludes_pane_chrome_in_side_by_side_mode() {
+        // Given a state rendered into the popup computed on a wide terminal.
+        let state = cached_state();
+        let backend = TestBackend::new(140, 30);
+        let mut terminal = Terminal::new(backend).expect("terminal should build");
+        let popup = compute_popup_rect(Rect::new(0, 0, 140, 30));
+        assert!(
+            popup.width >= VERTICAL_SPLIT_MIN_WIDTH,
+            "the solve must be the side-by-side mode"
+        );
+        let report = std::cell::Cell::new(None);
+
+        // When rendering with no footers.
+        terminal
+            .draw(|frame| {
+                report.set(Some(
+                    PreviewSelectionWidget::new(&state).render(frame, popup),
+                ));
+            })
+            .expect("draw should succeed");
+        let layout = report.into_inner().expect("render reports a PickerLayout");
+
+        // Then inner is the left pane's result rows: the popup borders (2)
+        // and the pane's own input + separator chrome (2) are excluded.
+        assert_eq!(layout.inner.height, popup.height - 4);
+    }
+
+    #[rstest::rstest]
+    fn picker_layout_inner_contains_the_drawn_result_rows() {
+        // Given a state whose first item is selected.
+        let state = cached_state();
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("terminal should build");
+        let popup = compute_popup_rect(Rect::new(0, 0, 80, 24));
+        let report = std::cell::Cell::new(None);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                report.set(Some(
+                    PreviewSelectionWidget::new(&state).render(frame, popup),
+                ));
+            })
+            .expect("draw should succeed");
+        let layout = report.into_inner().expect("render reports a PickerLayout");
+
+        // Then the drawn result rows land inside inner: the selected item's
+        // name starts on inner's first row.
+        let buffer = terminal.backend().buffer().clone();
+        let first_row_cell = buffer
+            .cell((layout.inner.x, layout.inner.y))
+            .expect("first results cell");
+        assert_eq!(
+            first_row_cell.symbol(),
+            "r",
+            "the item 'rust' starts the rows"
+        );
     }
 }

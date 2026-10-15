@@ -388,3 +388,80 @@ fn buffer_to_string(buffer: &Buffer) -> String {
     }
     s
 }
+
+#[rstest::rstest]
+#[test]
+fn picker_layout_popup_is_the_rect_handed_in() {
+    // Given a tree widget rendered into an explicit popup rect.
+    let state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("create terminal");
+    let popup = Rect::new(4, 2, 30, 10);
+    let report = std::cell::Cell::new(None);
+
+    // When rendering into that rect.
+    terminal
+        .draw(|frame| {
+            report.set(Some(TreePickerWidget::new(&state).render(frame, popup)));
+        })
+        .expect("draw");
+
+    // Then the report's popup is the rect handed in, verbatim.
+    let layout = report.into_inner().expect("render reports a PickerLayout");
+    assert_eq!(layout.popup, popup);
+}
+
+#[rstest::rstest]
+#[test]
+fn picker_layout_inner_height_excludes_chrome_and_the_reserved_footer_row() {
+    // Given a tree widget rendered into the computed popup rect.
+    let state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("create terminal");
+    let popup = compute_popup_rect(Rect::new(0, 0, 80, 24));
+    let report = std::cell::Cell::new(None);
+
+    // When rendering with no footers set.
+    terminal
+        .draw(|frame| {
+            report.set(Some(TreePickerWidget::new(&state).render(frame, popup)));
+        })
+        .expect("draw");
+    let layout = report.into_inner().expect("render reports a PickerLayout");
+
+    // Then inner is the results rows: the borders (2), the input row, the
+    // separator row, and the footer row this widget reserves even when
+    // empty are all excluded.
+    assert_eq!(layout.inner.height, popup.height - 5);
+}
+
+#[rstest::rstest]
+#[test]
+fn picker_layout_inner_contains_the_drawn_result_rows() {
+    // Given a tree whose single root item renders its label.
+    let state = TreePickerState::with_items(vec![item("a", None, "Alpha")]);
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("create terminal");
+    let popup = compute_popup_rect(Rect::new(0, 0, 80, 24));
+    let report = std::cell::Cell::new(None);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            report.set(Some(TreePickerWidget::new(&state).render(frame, popup)));
+        })
+        .expect("draw");
+    let layout = report.into_inner().expect("render reports a PickerLayout");
+
+    // Then the drawn result rows land inside inner: the item's label
+    // starts on inner's first row.
+    let buffer = terminal.backend().buffer().clone();
+    let first_row_cell = buffer
+        .cell((layout.inner.x, layout.inner.y))
+        .expect("first results cell");
+    assert_eq!(
+        first_row_cell.symbol(),
+        "A",
+        "the item 'Alpha' starts the rows"
+    );
+}
