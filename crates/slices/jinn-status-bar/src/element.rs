@@ -107,6 +107,31 @@ fn resolve_modalities(
     resolve_model_info(model_cache, active_model).map(|m| m.input_modalities)
 }
 
+/// The context size the shared info line displays for a session.
+///
+/// A session's cached assembled size is only written for the active session —
+/// the context-size actor recalculates `active_session_id()` on
+/// context-affecting events — so a background session read straight from the
+/// session map carries `None` and would render `0.0%/<max>` even though it has
+/// dispatched turns. The last token-ledger record is the fallback: both
+/// dispatch writers push the dispatch's `assembled.estimated_tokens()` into
+/// `tokens_sent`, which is the same per-dispatch whole-context estimate the
+/// actor caches (an estimate of that request's entire prompt, not an increment
+/// — so it must be read from one record, never summed across the ledger).
+///
+/// Cached wins when present: the actor re-assembles with pins, overrides, and
+/// pruning applied, which the raw dispatch estimate does not reflect. A
+/// session with no cached size and an empty ledger has genuinely never
+/// dispatched, so `None` — and the zero display is correct.
+fn displayed_context_size(session: &ChatSessionState) -> Option<u32> {
+    session.context_size().or_else(|| {
+        session
+            .token_ledger()
+            .last()
+            .map(|record| record.tokens_sent)
+    })
+}
+
 /// Paints the status bar into `area`.
 ///
 /// Registered as this slice's draw function for
@@ -412,7 +437,7 @@ fn build_token_info_string(
         format_tokens(token_stats.total_received),
     );
 
-    let ctx_size = session.context_size();
+    let ctx_size = displayed_context_size(session);
     let ctx_limit = resolve_context_limit(model_cache, active_model.display_str());
     let context_display = match (ctx_size, ctx_limit) {
         (Some(used), Some(max)) => {

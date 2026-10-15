@@ -128,6 +128,38 @@ fn render_preview(
     term_width: u16,
     term_height: u16,
 ) -> (ratatui::buffer::Buffer, Rect) {
+    render_preview_with_cache(session, term_width, term_height, None)
+}
+
+/// A model cache naming one model under `provider` with a context length, so
+/// an info-row test can produce the `NN.N%/<max>` shape rather than degrading
+/// to `???`.
+fn model_cache_with_context_length(
+    provider: &str,
+    model_id: &str,
+    context_length: u32,
+) -> jinn_provider_config::ModelCache {
+    let mut entries = std::collections::HashMap::new();
+    entries.insert(
+        provider.to_owned(),
+        vec![jinn_provider_config::ModelInfo {
+            id: model_id.to_owned(),
+            context_length: Some(context_length),
+            input_modalities: jinn_provider_config::InputModalities::text(),
+        }],
+    );
+    jinn_provider_config::ModelCache {
+        entries,
+        last_updated_at: None,
+    }
+}
+
+fn render_preview_with_cache(
+    session: &ChatSessionState,
+    term_width: u16,
+    term_height: u16,
+    model_cache: Option<&jinn_provider_config::ModelCache>,
+) -> (ratatui::buffer::Buffer, Rect) {
     let theme = default_theme();
     let frame_area = Rect::new(0, 0, term_width, term_height);
     // Simulate cursor at row 30 (sessions section starts at row 30, cursor on first item).
@@ -164,7 +196,7 @@ fn render_preview(
                 session,
                 &theme,
                 &lines,
-                None,
+                model_cache,
                 no_working_time(),
             );
         })
@@ -463,6 +495,45 @@ fn info_row_shows_the_previewed_sessions_token_stats() {
     assert!(
         info_row.contains("\u{2191}1.5k \u{2193}750"),
         "info line should show the previewed session's counts, got: {info_row}"
+    );
+}
+
+#[rstest::rstest]
+fn info_row_shows_nonzero_context_percent_for_an_unactivated_session() {
+    // Given a session that was never activated this run — its in-memory state
+    // carries no cached context size, but its ledger records a dispatch whose
+    // whole-context estimate was 10k tokens — and a model cache naming that
+    // model's 200k context length.
+    let mut session = ChatSessionState::new();
+    session.set_model(ModelSelection::Single(
+        "openrouter/anthropic/claude-sonnet-4".to_owned(),
+    ));
+    session.push_token_record(jinn_token_count_msg::TokenRecord {
+        model_used: None,
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 10_000,
+        tokens_received: 0,
+        cost: None,
+        prompt_tokens: None,
+        cached_tokens: None,
+    });
+    let model_cache =
+        model_cache_with_context_length("openrouter", "anthropic/claude-sonnet-4", 200_000);
+
+    // When rendering the preview. (Wide frame: the popup is 60% of it, and the
+    // full info row — counts, context percentage, cost, turns, model — needs
+    // the room to render unclipped.)
+    let (buffer, popup_area) = render_preview_with_cache(&session, 160, 40, Some(&model_cache));
+
+    // Then the info row shows a non-zero percentage in the status bar's
+    // NN.N%/<max> format — 10k/200k = 5.0% — instead of the 0.0% a session
+    // without a cached assembled size used to read.
+    let info_y = popup_area.y + popup_area.height - 2;
+    let info_row = buffer_row(&buffer, info_y, popup_area.x + popup_area.width);
+    assert!(
+        info_row.contains("5.0%/200k"),
+        "info line should show a non-zero context percentage for an unactivated \
+         session, got: {info_row}"
     );
 }
 
