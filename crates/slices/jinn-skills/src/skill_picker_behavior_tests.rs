@@ -33,7 +33,7 @@ use jinn_core_types::{ChatEntry, NameFilter};
 use jinn_skills_msg::{Skill, SkillPickerState, SkillSource, skill_picker_slot};
 use jinn_slices::KeyRoutes;
 use jinn_slices::cell::TypedCell;
-use jinn_slices::route::EditIntent;
+use jinn_slices::route::{ActionCtx, EditIntent};
 
 use crate::skill_picker_actions;
 use crate::skill_picker_routes::{self, SKILL_PICKER_BINDINGS};
@@ -109,6 +109,42 @@ fn visible_names(cell: &TypedCell<SkillPickerState>) -> Vec<String> {
         .iter()
         .map(|item| item.entry().name.clone())
         .collect()
+}
+
+/// A discovered skill whose body is `lines` markdown lines, as the discovery
+/// scan would produce.
+///
+/// The `skill()` helper's one-line bodies never overflow the preview pane;
+/// the clamp tests need a body long enough that the widget-reported bound
+/// sits far below a deliberately oversized scroll offset.
+fn tall_skill(name: &str, lines: usize) -> Skill {
+    let body = (0..lines).fold(String::new(), |acc, i| format!("{acc}line {i} of {name}\n"));
+    Skill {
+        name: name.to_owned(),
+        description: format!("the {name} skill"),
+        file_path: PathBuf::from(format!("/skills/{name}/SKILL.md")),
+        body,
+        base_dir: PathBuf::from(format!("/skills/{name}")),
+        source: SkillSource::Global,
+    }
+}
+
+/// Fires the picker's real route action, the way the kernel's intent handler
+/// would: the dynamic intent through the attached rows.
+fn dispatch(routes: &KeyRoutes, action: &str) {
+    let intent = jinn_slices::DynamicIntent::new(skill_picker_scope(), action, action);
+    let mut state = jinn_kernel::AppState::default();
+    routes
+        .action_for(
+            &intent,
+            ActionCtx {
+                state: &mut state,
+                slices: &jinn_slices::Slices::new(),
+                config: jinn_slices::empty_config_layer(),
+                key_bytes: Vec::new(),
+            },
+        )
+        .unwrap_or_else(|| panic!("`{action}` must be a bound route row in the picker scope"));
 }
 
 /// Opens the picker over `names` with `disabled` already off.
@@ -662,6 +698,79 @@ fn scrolling_the_preview_up_at_the_top_does_not_underflow() {
     // Then the offset stays at zero rather than wrapping.
     let guard = cell.read();
     assert_eq!(guard.preview_scroll, 0);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn drawing_a_frame_clamps_an_oversized_preview_scroll_to_the_reported_bound() {
+    // Given an activated skills slice whose open picker highlights a
+    // long-body skill, with the stored offset pushed far past any bound.
+    let (slices, _routes, _system) = activated().await;
+    let cell = slices
+        .reader(&skill_picker_slot())
+        .expect("skill picker cell registered at activation");
+    let discovered = vec![tall_skill("alpha", 60)];
+    let theme = jinn_theme::default_theme();
+    cell.update(|picker| {
+        skill_picker_actions::open(picker, &discovered, None, &theme);
+    });
+    cell.update(|picker| picker.preview_scroll = 5000);
+
+    // When a frame is drawn through the picker's real render pass.
+    draw_skill_picker(&slices, ratatui::layout::Rect::new(0, 0, 100, 30));
+
+    // Then the stored offset converged to the bound the render pass itself
+    // wrote — cell against cell, never a hand-computed line count.
+    let guard = cell.read();
+    assert_eq!(guard.preview_scroll, guard.preview_max_scroll);
+    // And the bound is a real measurement, far below the oversized offset.
+    assert!(guard.preview_max_scroll < 5000, "the bound must be live");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn holding_preview_down_saturates_at_the_reported_bound() {
+    // Given an activated skills slice whose open picker highlights a
+    // long-body skill and has drawn one frame, so the cell holds the
+    // render pass-measured bound.
+    let (slices, routes, _system) = activated().await;
+    let cell = slices
+        .reader(&skill_picker_slot())
+        .expect("skill picker cell registered at activation");
+    let discovered = vec![tall_skill("alpha", 60)];
+    let theme = jinn_theme::default_theme();
+    cell.update(|picker| {
+        skill_picker_actions::open(picker, &discovered, None, &theme);
+    });
+    draw_skill_picker(&slices, ratatui::layout::Rect::new(0, 0, 100, 30));
+    let bound = cell.read().preview_max_scroll;
+    assert!(bound > 0, "the long body must overflow the pane to be live");
+
+    // When the preview-down action fires repeatedly, well past the bound.
+    (0..20).for_each(|_| dispatch(&routes, "scroll-skill-preview-down"));
+    let saturated = cell.read().preview_scroll;
+
+    // Then the offset converged to the measured bound, not past it.
+    assert_eq!(saturated, bound);
+    // And two further presses leave it there — the held key stops moving.
+    dispatch(&routes, "scroll-skill-preview-down");
+    dispatch(&routes, "scroll-skill-preview-down");
+    assert_eq!(cell.read().preview_scroll, saturated);
+}
+
+#[rstest::rstest]
+fn moving_the_selection_resets_the_preview_scroll() {
+    // Given an open picker whose preview has been scrolled down.
+    let (cell, routes) = wired();
+    opened(&cell, &["alpha", "beta"], &[]);
+    dispatch(&routes, "scroll-skill-preview-down");
+    assert_eq!(cell.read().preview_scroll, 10);
+
+    // When the highlight moves to the next skill through its route action.
+    dispatch(&routes, "move-skill-picker-down");
+
+    // Then the offset is back at the top — the preview follows the cursor.
+    assert_eq!(cell.read().preview_scroll, 0);
 }
 
 // ── Slot ─────────────────────────────────────────────────────────────────
