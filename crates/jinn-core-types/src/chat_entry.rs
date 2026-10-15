@@ -1044,19 +1044,16 @@ mod intersession_tests {
         // Then both ids, the name, and the text survive — and the tag is
         // the kind's own.
         assert!(json.contains("Intersession"), "tagged: {json}");
-        let ChatEntryKind::Intersession {
-            source_session,
-            source_name,
-            target_session,
-            text,
-        } = round.kind
-        else {
-            panic!("kind must round-trip");
-        };
-        assert_eq!(source_session, source);
-        assert_eq!(source_name.as_deref(), Some("implementer"));
-        assert_eq!(target_session, target);
-        assert_eq!(text, "stage finished");
+        assert_eq!(
+            round.kind,
+            ChatEntryKind::Intersession {
+                source_session: source,
+                source_name: Some("implementer".to_owned()),
+                target_session: target,
+                text: "stage finished".to_owned(),
+            },
+            "kind must round-trip",
+        );
     }
 
     #[rstest::rstest]
@@ -1065,17 +1062,23 @@ mod intersession_tests {
         // Given an inter-session entry with an unnamed source.
         let source = crate::session_id::SessionId::new();
         let target = crate::session_id::SessionId::new();
-        let entry = ChatEntry::intersession(source, None, target, "ping");
+        let entry = ChatEntry::intersession(source.clone(), None, target.clone(), "ping");
 
         // When serializing and deserializing.
         let json = serde_json::to_string(&entry).expect("serialize");
         let round: ChatEntry = serde_json::from_str(&json).expect("deserialize");
 
         // Then the absent name survives as absent.
-        let ChatEntryKind::Intersession { source_name, .. } = round.kind else {
-            panic!("kind must round-trip");
-        };
-        assert_eq!(source_name, None);
+        assert_eq!(
+            round.kind,
+            ChatEntryKind::Intersession {
+                source_session: source,
+                source_name: None,
+                target_session: target,
+                text: "ping".to_owned(),
+            },
+            "kind must round-trip",
+        );
     }
 
     #[rstest::rstest]

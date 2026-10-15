@@ -313,10 +313,6 @@ fn resolve_creation_stash(
 /// The template is the lifecycle's shell setup command; a caller's `idx`-th
 /// answer belongs to its `idx`-th named placeholder. Past the named params
 /// (or with no shell setup at all) the value keys positionally as `$n`.
-#[allow(
-    clippy::too_many_lines,
-    reason = "the pairing branches read best in one place"
-)]
 fn stored_setup_args(
     setup_command: Option<&jinn_preferences_config::schemas::LifecycleCommand>,
     args: &[String],

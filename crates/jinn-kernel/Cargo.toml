@@ -17,6 +17,9 @@ jinn-provider-selection-msg = { workspace = true }
 jinn-session-init-msg = { workspace = true }
 jinn-session-lifecycle-msg = { workspace = true }
 jinn-session-store-msg = { workspace = true }
+# The shared stamped-save flow reads the work-time cell. The kernel
+# references slice families only through `-msg` crates.
+jinn-work-time-msg = { workspace = true }
 jinn-mcp-msg = { workspace = true }
 # Internal deps
 jinn-common = { workspace = true }

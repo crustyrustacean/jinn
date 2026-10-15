@@ -194,10 +194,20 @@ impl SessionStoreActor {
         for session_id in members {
             let mut snapshot = {
                 let state = self.state.read();
-                state
-                    .session
-                    .get(session_id)
-                    .map(ChatSessionState::capture_snapshot)
+                state.session.get(session_id).map(|session| {
+                    let mut snapshot = session.capture_snapshot();
+                    // Stamped here rather than read off the session core,
+                    // the same way the kernel's stamped save stamps its
+                    // write: a capture deliberately carries no intervals,
+                    // and the work-time cell is their only home until this
+                    // durable copy lands in the store.
+                    snapshot.metadata.working_intervals =
+                        jinn_kernel::common::session_persistence::working_intervals(
+                            &self.services,
+                            session_id,
+                        );
+                    snapshot
+                })
             };
             if snapshot.is_none() {
                 snapshot = match self.services.session_store.load_session(session_id).await {

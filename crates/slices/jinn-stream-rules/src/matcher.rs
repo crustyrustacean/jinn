@@ -1225,15 +1225,15 @@ mod tests {
         let mut session = set.new_session(&SessionId::new());
 
         // When it is tripped well past any plausible budget.
-        let fired: Vec<String> = (0..8)
-            .map(|_| {
-                session
-                    .check("TODO", StreamContext::text())
-                    .or_else(|| session.finalize())
-                    .expect("a match")
-                    .name
-            })
-            .collect();
+        let fired: Vec<String> = std::iter::repeat_with(|| {
+            session
+                .check("TODO", StreamContext::text())
+                .or_else(|| session.finalize())
+                .expect("a match")
+                .name
+        })
+        .take(8)
+        .collect();
 
         // Then every one fired. This matcher holds no count and decides nothing
         // about cancelling: going silent would disarm the rule entirely, and

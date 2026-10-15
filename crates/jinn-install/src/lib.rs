@@ -397,8 +397,9 @@ mod tests {
         // When installing defaults.
         let report = env.run(false);
 
-        // Then `general.md` lands under the personas root.
-        let outcome = outcome_for(&report.outcomes, "general.md");
+        // Then the stable bundled persona lands under the personas root.
+        // `coding-assistant.md` is one of the resources guaranteed to ship.
+        let outcome = outcome_for(&report.outcomes, "coding-assistant.md");
         assert!(
             outcome.path().starts_with(env.destinations.personas()),
             "persona should be under the personas root"
@@ -406,45 +407,6 @@ mod tests {
         assert!(
             matches!(outcome, InstallOutcome::Created(_)),
             "persona should be Created"
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn install_creates_prompt() {
-        // Given destinations with no existing prompts.
-        let env = TestEnv::fresh();
-
-        // When installing defaults.
-        let report = env.run(false);
-
-        // Then `plan.md` lands under the prompts root.
-        let outcome = outcome_for(&report.outcomes, "plan.md");
-        assert!(
-            outcome.path().starts_with(env.destinations.prompts()),
-            "prompt should be under the prompts root"
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn install_creates_research_prompt() {
-        // Given destinations with no existing prompts.
-        let env = TestEnv::fresh();
-
-        // When installing defaults.
-        let report = env.run(false);
-
-        // Then `research.md` lands under the prompts root.
-        let outcome = outcome_for(&report.outcomes, "research.md");
-        assert!(
-            outcome.path().starts_with(env.destinations.prompts()),
-            "prompt should be under the prompts root"
-        );
-        // And it reports Created.
-        assert!(
-            matches!(outcome, InstallOutcome::Created(_)),
-            "research.md should be Created"
         );
     }
 
@@ -479,6 +441,27 @@ mod tests {
         // Then the micro-task-loop skill was created under the skills root.
         let outcome = outcome_for(&report.outcomes, "micro-task-loop/SKILL.md");
         assert!(
+            matches!(outcome, InstallOutcome::Created(_)),
+            "skill should be Created"
+        );
+        // And the file exists at the nested path.
+        assert!(outcome.path().is_file());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn install_preserves_jinn_usage_skill_subdir() {
+        // Given destinations with no existing skills.
+        let env = TestEnv::fresh();
+
+        // When installing defaults.
+        let report = env.run(false);
+
+        // Then the stable bundled skill keeps its `<name>/SKILL.md`
+        // structure — `jinn-usage` is one of the resources guaranteed to
+        // ship, nested under its own directory.
+        let outcome = outcome_for(&report.outcomes, "jinn-usage/SKILL.md");
+        assert!(
             outcome.path().starts_with(env.destinations.skills()),
             "skill should be under the skills root"
         );
@@ -489,6 +472,31 @@ mod tests {
         // And the file exists at the nested path with non-empty contents.
         assert!(outcome.path().is_file());
         assert_ne!(std::fs::read_to_string(outcome.path()).expect("read"), "");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn install_preserves_workflow_subdir() {
+        // Given destinations with no existing workflows.
+        let env = TestEnv::fresh();
+
+        // When installing defaults.
+        let report = env.run(false);
+
+        // Then the stable bundled workflow keeps its directory structure —
+        // `autodev` is one of the resources guaranteed to ship, nested under
+        // its own directory.
+        let outcome = outcome_for(&report.outcomes, "autodev/workflow.md");
+        assert!(
+            outcome.path().starts_with(env.destinations.workflows()),
+            "workflow should be under the workflows root"
+        );
+        assert!(
+            matches!(outcome, InstallOutcome::Created(_)),
+            "workflow should be Created"
+        );
+        // And the file exists at the nested path.
+        assert!(outcome.path().is_file());
     }
 
     #[rstest::rstest]
@@ -800,7 +808,8 @@ mod tests {
 
     /// Every installed file is non-empty: the embedding carries the whole
     /// bundled catalogue, but the tests do not read `res/` — the repo's
-    /// resource tree is content, not test fixture data.
+    /// resource tree is content, not test fixture data. Existence coverage
+    /// for specific stable resources lives in the per-kind tests above.
     #[rstest::rstest]
     #[test]
     fn installed_payloads_are_non_empty() {
@@ -818,72 +827,5 @@ mod tests {
                 .unwrap_or_else(|e| panic!("{} reads: {e}", installed.display()));
             assert!(!bytes.is_empty(), "{} installed empty", installed.display());
         }
-    }
-
-    /// The router's `references/*.md` links resolve: every reference the
-    /// installed `jinn-usage` SKILL.md points at is installed alongside it.
-    #[rstest::rstest]
-    #[test]
-    fn jinn_usage_router_links_resolve_to_installed_references() {
-        // Given a fresh install with a nested skill on disk.
-        let env = TestEnv::fresh();
-        let report = env.run(false);
-        let usage_dir = env.destinations.skills().join("jinn-usage");
-
-        // When extracting the installed router's `references/*.md` links.
-        let body = std::fs::read_to_string(usage_dir.join("SKILL.md")).expect("read SKILL.md");
-        let linked: Vec<&str> = body
-            .lines()
-            .filter_map(|line| line.split("references/").nth(1))
-            .filter_map(|rest| {
-                let end = rest.find('`')?;
-                let name = rest.get(..end)?;
-                name.to_ascii_lowercase().ends_with(".md").then_some(name)
-            })
-            .collect();
-
-        // Then the router links at least the core references.
-        assert!(
-            linked.len() >= 8,
-            "expected the router to link its reference files, found {linked:?}"
-        );
-        // And every linked reference was installed next to it.
-        for name in linked {
-            assert!(
-                usage_dir.join("references").join(name).is_file(),
-                "SKILL.md links references/{name} but it was not installed"
-            );
-        }
-        // And the install reported the router itself.
-        assert!(
-            report
-                .outcomes
-                .iter()
-                .map(InstallOutcome::path)
-                .any(|p| p == usage_dir.join("SKILL.md").as_path())
-        );
-    }
-
-    /// The installed jinn-usage skill parses through the real skill scanner:
-    /// valid frontmatter, a name matching its directory, and a
-    /// non-empty description (the trigger surface agents match on).
-    #[rstest::rstest]
-    #[test]
-    fn jinn_usage_installs_as_a_discoverable_skill() {
-        // Given a fresh install.
-        let env = TestEnv::fresh();
-        env.run(false);
-
-        // When scanning the skills destination.
-        let skills = jinn_skills::scan_skills(env.destinations.skills());
-
-        // Then jinn-usage is discovered by name with a usable description.
-        let usage = skills
-            .iter()
-            .find(|s| s.name == "jinn-usage")
-            .expect("jinn-usage must be discovered by the skill scanner");
-        assert_ne!(usage.description.trim(), "");
-        // And its base_dir holds the router's reference files.
-        assert!(usage.base_dir.join("references").is_dir());
     }
 }

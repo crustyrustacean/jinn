@@ -522,4 +522,10 @@ Entries are added or amended **only with human approval**.
 - (term) PTY liveness on Windows is driven by observed child exit, not read-EOF: ConPTY's master read never returns EOF while the master handle is alive, so the ExitWatcher publishes child death and the screen task drains one quiet tick before finishing; Unix still settles on EOF first.
 - (testing) The workspace test suite passes on both Windows and Linux; tests requiring Unix process semantics are cfg(unix)-gated, and PTY tests run a portable Windows subset.
 - (testing) Integration tests that spawn the jinn binary point it at a temp root through JINN_PATHS_ROOT, so no test writes to the real user config, data, or home directories.
+- (sessions) Working-time intervals live only in the work-time slice's cell; the session-store actor reads them to stamp durable copies at persist and archive and never writes the cell.
+- (sessions) A session loaded from storage returns its recorded working time to the monitor via a RestoreWorkingTime publish, which closes an interval the previous process left open at the snapshot's last-update time.
+- (sessions) The session-turn actor's save path stores session snapshots on turn events (enqueue, stream completion, tool calls, pins, task lists, steering) directly, without a PersistSession command.
+- (sessions) Every durable session save funnels through one kernel-module stamped-save flow (touch, capture, stamp from the work-time cell or an explicit override, write), shared by the session-store and session-turn actors.
+- (sessions) The tree aggregate's wall-clock total is the union of member intervals across live and frozen members, joined from the work-time cell for live members and the frozen node's carried copy for archived ones; it is pinned by aggregate-level behavior tests.
+- (testing) A flip-check on an RwLock-release test must hold the WRITE guard across the guarded region and capture through it — a held read guard blocks no readers, and nesting read-inside-write deadlocks parking_lot on the same thread.
 - (arch) Core id newtypes reject unparseable strings through try_from and never fabricate an id from a parse failure.

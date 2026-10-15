@@ -524,24 +524,29 @@ impl ConfigLayer {
         section_path.push(section_leaf);
 
         let mut doc = self.inner.doc.read().clone();
-        if let Some(value) = value {
-            let section = ensure_table(&mut doc, &section_path)
-                .change_context(PatchError::Generic)
-                .change_context(ConfigError::Patch {
-                    detail: format!("section [{}] did not apply", T::KEY),
-                })?;
-            let mut patch = toml::value::Table::new();
-            patch.insert(leaf.to_owned(), value.clone());
-            DocumentPatcher::new()
-                .apply(&patch, section)
-                .change_context(PatchError::Generic)
-                .change_context(ConfigError::Patch {
-                    detail: format!("section [{}] did not apply", T::KEY),
-                })?;
-        } else if let Some(section) = section_table_mut(&mut doc, &section_path) {
-            // A removal against an absent section has nothing to do; a
-            // present one loses only the named leaf, siblings intact.
-            section.remove(leaf);
+        match value {
+            Some(value) => {
+                let section = ensure_table(&mut doc, &section_path)
+                    .change_context(PatchError::Generic)
+                    .change_context(ConfigError::Patch {
+                        detail: format!("section [{}] did not apply", T::KEY),
+                    })?;
+                let mut patch = toml::value::Table::new();
+                patch.insert(leaf.to_owned(), value.clone());
+                DocumentPatcher::new()
+                    .apply(&patch, section)
+                    .change_context(PatchError::Generic)
+                    .change_context(ConfigError::Patch {
+                        detail: format!("section [{}] did not apply", T::KEY),
+                    })?;
+            }
+            None => {
+                // A removal against an absent section has nothing to do; a
+                // present one loses only the named leaf, siblings intact.
+                if let Some(section) = section_table_mut(&mut doc, &section_path) {
+                    section.remove(leaf);
+                }
+            }
         }
 
         // Disk first, then memory: a failed write leaves the in-memory
@@ -743,7 +748,7 @@ fn section_table_mut<'d>(
 ) -> Option<&'d mut toml_edit::Table> {
     let mut cursor = doc.as_table_mut();
     for segment in path {
-        cursor = cursor.get_mut(*segment)?.as_table_mut()?;
+        cursor = cursor.get_mut(segment)?.as_table_mut()?;
     }
     Some(cursor)
 }

@@ -58,10 +58,11 @@ impl ChatEntry {
             | ChatEntryKind::Transient(t)
             | ChatEntryKind::Compaction { summary: t, .. } => Some(t.as_str()),
             ChatEntryKind::RuleInterrupt { body, .. } => Some(body.as_str()),
-            ChatEntryKind::Actor { text, .. } => Some(text.as_str()),
+            ChatEntryKind::Actor { text, .. } | ChatEntryKind::Intersession { text, .. } => {
+                Some(text.as_str())
+            }
             ChatEntryKind::ToolCall { arguments, .. } => Some(arguments.as_str()),
             ChatEntryKind::ToolResult { content, .. } => Some(content.as_str()),
-            ChatEntryKind::Intersession { text, .. } => Some(text.as_str()),
             // Annotations are display-only: no prompt contribution.
             ChatEntryKind::Annotation { .. } => None,
         }

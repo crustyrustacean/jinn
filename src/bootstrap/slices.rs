@@ -149,7 +149,7 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
     // for the matcher refresh, so the config layer rides along now.
     let prefs_snapshot = ctx.services().paths.preferences_path();
     let config_snapshot = ctx.services().config.clone();
-    jinn_stream_rule_picker::activate(&mut ctx.host(), prefs_snapshot, config_snapshot);
+    jinn_stream_rule_picker::activate(&mut ctx.host(), &prefs_snapshot, config_snapshot);
     let state_snapshot = ctx.state().clone();
     jinn_sidebar::activate(&mut ctx.host(), state_snapshot);
     let state_snapshot = ctx.state().clone();

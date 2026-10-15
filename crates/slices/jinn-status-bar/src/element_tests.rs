@@ -2279,6 +2279,34 @@ fn tree_block_shows_working_time_beside_the_turn_counter() {
 }
 
 #[rstest::rstest]
+fn tree_block_shows_the_union_when_a_member_is_frozen() {
+    // Given a live parent that worked 0..20 (intervals in the work-time cell)
+    // and an archived child that worked 10..30 (intervals on its frozen node,
+    // stamped through the same freeze path production uses).
+    let mut state = AppState::default_with_scope_focus();
+    let parent_id = state.session.active_session_id().clone();
+    let child = jinn_session_state::ChatSessionState::new_child(&parent_id, true);
+    let frozen_child = jinn_session_state::snapshot_frozen_node(
+        &child,
+        vec![WorkingInterval::closed(at(10), at(30))],
+    );
+    state.session.insert_frozen_node(frozen_child);
+
+    let slices = jinn_slices::Slices::new();
+    let cell = slices
+        .register(work_time_slot(), WorkingTimeState::default())
+        .expect("fresh Slices never has the work-time cell registered");
+    cell.update(|s| s.restore(parent_id, vec![WorkingInterval::closed(at(0), at(20))]));
+
+    // When rendering.
+    let rows = render_rows(&state, &slices, 120, 2);
+
+    // Then the tree block shows the union of the cell's live intervals and
+    // the node's frozen ones — 0..30, thirty seconds, not the 40-second sum.
+    assert!(rows[0].contains("00:00:30"), "row was: {}", rows[0]);
+}
+
+#[rstest::rstest]
 fn a_single_session_tree_renders_no_tree_working_time() {
     // Given a lone session that has worked, so the tree block is suppressed.
     let state = AppState::default_with_scope_focus();
