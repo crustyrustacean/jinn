@@ -995,3 +995,230 @@ fn a_tree_with_no_recorded_working_time_totals_zero() {
     // Then the total is zero.
     assert_eq!(stats.total_working, jiff::SignedDuration::ZERO);
 }
+
+#[rstest::rstest]
+fn tree_working_time_unions_a_three_generation_chain() {
+    // Given a three-generation tree: root 0..10, child 5..15, grandchild
+    // 12..20 — each overlapping the previous.
+    let root_id = SessionId::new();
+    let child = ChatSessionState::new_child(&root_id, true);
+    let child_id = child.session_id().clone();
+    let grandchild = ChatSessionState::new_child(&child_id, true);
+    let grandchild_id = grandchild.session_id().clone();
+
+    let mut sessions = HashMap::new();
+    sessions.insert(root_id.clone(), make_session(root_id.clone()));
+    sessions.insert(child_id.clone(), child);
+    sessions.insert(grandchild_id.clone(), grandchild);
+
+    let mut live = HashMap::new();
+    live.insert(
+        root_id.clone(),
+        vec![WorkingInterval::closed(at(0), at(10))],
+    );
+    live.insert(
+        child_id.clone(),
+        vec![WorkingInterval::closed(at(5), at(15))],
+    );
+    live.insert(
+        grandchild_id.clone(),
+        vec![WorkingInterval::closed(at(12), at(20))],
+    );
+
+    // When aggregating from the grandchild (the deepest member).
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &grandchild_id, &live);
+
+    // Then the three intervals merge into one 0..20 span — 20 seconds, not a
+    // per-member sum of 28.
+    assert_eq!(stats.total_working, jiff::SignedDuration::from_secs(20));
+}
+
+#[rstest::rstest]
+fn tree_working_time_bills_only_the_working_leaf() {
+    // Given a three-generation tree where only the grandchild ever worked,
+    // 8..11.
+    let root_id = SessionId::new();
+    let child = ChatSessionState::new_child(&root_id, true);
+    let child_id = child.session_id().clone();
+    let grandchild = ChatSessionState::new_child(&child_id, true);
+    let grandchild_id = grandchild.session_id().clone();
+
+    let mut sessions = HashMap::new();
+    sessions.insert(root_id.clone(), make_session(root_id.clone()));
+    sessions.insert(child_id.clone(), child);
+    sessions.insert(grandchild_id.clone(), grandchild);
+
+    let mut live = HashMap::new();
+    live.insert(
+        grandchild_id.clone(),
+        vec![WorkingInterval::closed(at(8), at(11))],
+    );
+
+    // When aggregating from the root.
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &root_id, &live);
+
+    // Then the total is the leaf's span alone — idle ancestors contribute
+    // zero, not their mere presence.
+    assert_eq!(stats.total_working, jiff::SignedDuration::from_secs(3));
+}
+
+#[rstest::rstest]
+fn tree_working_time_merges_touching_children_in_a_wide_tree() {
+    // Given a parent working 0..10 with three children: 2..8 (inside the
+    // parent), 9..21 (gap −1s, overlap), and 30..40 (a real 19s gap).
+    let parent_id = SessionId::new();
+    let child = ChatSessionState::new_child(&parent_id, true);
+    let child1_id = child.session_id().clone();
+    let child2 = ChatSessionState::new_child(&parent_id, true);
+    let child2_id = child2.session_id().clone();
+    let child3 = ChatSessionState::new_child(&parent_id, true);
+    let child3_id = child3.session_id().clone();
+
+    let mut sessions = HashMap::new();
+    sessions.insert(parent_id.clone(), make_session(parent_id.clone()));
+    sessions.insert(child1_id.clone(), child);
+    sessions.insert(child2_id.clone(), child2);
+    sessions.insert(child3_id.clone(), child3);
+
+    let mut live = HashMap::new();
+    live.insert(
+        parent_id.clone(),
+        vec![WorkingInterval::closed(at(0), at(10))],
+    );
+    live.insert(child1_id, vec![WorkingInterval::closed(at(2), at(8))]);
+    live.insert(child2_id, vec![WorkingInterval::closed(at(9), at(21))]);
+    live.insert(child3_id, vec![WorkingInterval::closed(at(30), at(40))]);
+
+    // When aggregating from the parent.
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id, &live);
+
+    // Then the parent, child 1, and child 2 merge into one 0..21 stretch
+    // (21s) while child 3 stands apart (10s) — 31 seconds, not a per-member
+    // sum of 48.
+    assert_eq!(stats.total_working, jiff::SignedDuration::from_secs(31));
+}
+
+#[rstest::rstest]
+fn tree_working_time_bills_an_open_interval_monotonically() {
+    // Given a frozen member that worked 0..10 and a live member that opened
+    // an interval just now and has not stopped — the frozen span is the exact
+    // closed prefix, the live one bills only up to each read's `now`.
+    let root_id = SessionId::new();
+    let live_child = ChatSessionState::new_child(&root_id, true);
+    let live_child_id = live_child.session_id().clone();
+
+    let mut sessions = HashMap::new();
+    sessions.insert(live_child_id.clone(), live_child);
+
+    let mut live = HashMap::new();
+    live.insert(
+        live_child_id.clone(),
+        vec![WorkingInterval::open(jiff::Timestamp::now())],
+    );
+
+    let mut frozen = HashMap::new();
+    frozen.insert(
+        root_id.clone(),
+        frozen_with_working(&root_id, None, vec![WorkingInterval::closed(at(0), at(10))]),
+    );
+
+    // When aggregating from the live child, then again after a measurable
+    // moment has passed.
+    let first = aggregate_tree_stats(&sessions, &frozen, &live_child_id, &live);
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let second = aggregate_tree_stats(&sessions, &frozen, &live_child_id, &live);
+
+    // Then every read carries the frozen ten seconds under the live tail:
+    // dropping the closed prefix is visible, and the open interval keeps
+    // billing as `now` moves rather than settling on a fixed moment.
+    assert!(
+        first.total_working >= jiff::SignedDuration::from_secs(10),
+        "frozen prefix missing: {}",
+        first.total_working
+    );
+    assert!(
+        second.total_working > first.total_working,
+        "open interval stopped tracking now: {} then {}",
+        first.total_working,
+        second.total_working
+    );
+    // And the growth between the reads is the live tail alone — the frozen
+    // span is not being re-billed.
+    assert!(
+        second.total_working - first.total_working < jiff::SignedDuration::from_secs(1),
+        "total jumped by more than the live tail could: {} then {}",
+        first.total_working,
+        second.total_working
+    );
+}
+
+#[rstest::rstest]
+fn tree_working_time_joins_frozen_and_live_at_depth() {
+    // Given a frozen grandparent working 0..30, a live child working 5..12,
+    // and a live grandchild working 10..40.
+    let gp_id = SessionId::new();
+    let child = ChatSessionState::new_child(&gp_id, true);
+    let child_id = child.session_id().clone();
+    let grandchild = ChatSessionState::new_child(&child_id, true);
+    let grandchild_id = grandchild.session_id().clone();
+
+    let mut sessions = HashMap::new();
+    sessions.insert(child_id.clone(), child);
+    sessions.insert(grandchild_id.clone(), grandchild);
+
+    let mut live = HashMap::new();
+    live.insert(
+        child_id.clone(),
+        vec![WorkingInterval::closed(at(5), at(12))],
+    );
+    live.insert(
+        grandchild_id.clone(),
+        vec![WorkingInterval::closed(at(10), at(40))],
+    );
+
+    let mut frozen = HashMap::new();
+    frozen.insert(
+        gp_id.clone(),
+        frozen_with_working(&gp_id, None, vec![WorkingInterval::closed(at(0), at(30))]),
+    );
+
+    // When aggregating from the grandchild, so the walk crosses the frozen
+    // node in the middle.
+    let stats = aggregate_tree_stats(&sessions, &frozen, &grandchild_id, &live);
+
+    // Then all three members are collected (count 3) and the union is one
+    // 0..40 span — 40 seconds, not a per-member sum of 67.
+    assert_eq!(stats.session_count, 3);
+    assert_eq!(stats.total_working, jiff::SignedDuration::from_secs(40));
+}
+
+#[rstest::rstest]
+fn tree_working_time_totals_a_frozen_root_over_live_descendants() {
+    // Given a frozen root that worked 0..30 and a live child working 10..20,
+    // entirely inside it.
+    let root_id = SessionId::new();
+    let child = ChatSessionState::new_child(&root_id, true);
+    let child_id = child.session_id().clone();
+
+    let mut sessions = HashMap::new();
+    sessions.insert(child_id.clone(), child);
+
+    let mut live = HashMap::new();
+    live.insert(
+        child_id.clone(),
+        vec![WorkingInterval::closed(at(10), at(20))],
+    );
+
+    let mut frozen = HashMap::new();
+    frozen.insert(
+        root_id.clone(),
+        frozen_with_working(&root_id, None, vec![WorkingInterval::closed(at(0), at(30))]),
+    );
+
+    // When aggregating from the live child.
+    let stats = aggregate_tree_stats(&sessions, &frozen, &child_id, &live);
+
+    // Then the total is the root's 30-second span — the child's work adds
+    // nothing, and the frozen root's time is not lost.
+    assert_eq!(stats.total_working, jiff::SignedDuration::from_secs(30));
+}
