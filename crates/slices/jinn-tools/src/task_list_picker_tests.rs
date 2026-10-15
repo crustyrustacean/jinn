@@ -653,18 +653,20 @@ async fn render_measures_the_result_viewport_into_the_cell() {
     // When rendering at this height.
     let _ = draw_frame(&h, area);
 
-    // Then the cell holds the row count this frame actually measured, which is
-    // what makes paging follow the window rather than a fixed constant.
+    // Then the cell holds the row count this frame actually showed, which is
+    // what makes paging follow the window rather than a fixed constant. The
+    // expectation is the widget's own report for the same frame — built by an
+    // identical construction, never hand arithmetic.
     let popup = crate::task_list_picker_render::task_list_picker_overlay_rect(&area)
         .expect("geometry fn yields a popup rect");
-    let measured = crate::task_list_picker_viewport::results_viewport(popup);
+    let expected = tree_layout_for(&h, popup);
     assert_eq!(
         h.read().results_viewport,
-        measured,
-        "paging must use the measured row count, not a constant"
+        usize::from(expected.inner.height),
+        "paging must use the row count the widget reported, not a constant"
     );
     assert_ne!(
-        measured,
+        usize::from(expected.inner.height),
         jinn_tools_msg::TASK_LIST_PICKER_RESULTS_VIEWPORT_FALLBACK,
         "the test is only meaningful if this frame measures something other \
          than the fallback — a taller popup must not be indistinguishable \
@@ -723,4 +725,60 @@ fn draw_frame(h: &Harness, area: Rect) -> Vec<String> {
                 .collect::<String>()
         })
         .collect()
+}
+
+/// Builds the tree widget exactly as the render fn does — same state, same
+/// footers, same colors — renders it into a fresh test terminal at `popup`,
+/// and returns the `PickerLayout` it reports. The expectation side of the
+/// measured-equals-cell assertion: what the widget itself solves, never
+/// hand arithmetic.
+fn tree_layout_for(h: &Harness, popup: Rect) -> jinn_selection_widget::PickerLayout {
+    let report = std::cell::Cell::new(None);
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(
+        popup.width,
+        popup.height,
+    ))
+    .expect("terminal");
+    let cell = h.cell();
+    let guard = cell.read();
+    let theme = &h.state.borrow().frontend.theme;
+    let palette = crate::task_list_picker_render::task_list_picker_palette(theme);
+    let keybind = {
+        let binds = crate::task_list_picker_render::task_list_picker_binds();
+        jinn_picker::keybind_line(&binds, jinn_picker::Tail::Standard, &palette)
+    };
+    let (roots, children) = {
+        let state = &guard;
+        let mut roots = 0;
+        let mut children = 0;
+        for item in state.tree.items() {
+            if item.entry().parent_id().is_some() {
+                children += 1;
+            } else {
+                roots += 1;
+            }
+        }
+        (roots, children)
+    };
+    let status = ratatui::text::Line::from(ratatui::text::Span::styled(
+        format!("{roots} phases, {children} tasks"),
+        ratatui::style::Style::default().fg(theme.muted_text),
+    ));
+    let footers = vec![status, ratatui::text::Line::from(keybind.0)];
+    terminal
+        .draw(|frame| {
+            let layout = {
+                let state = &guard;
+                jinn_selection_widget::TreePickerWidget::new(&state.tree)
+                    .title(ratatui::text::Line::from(" Task List "))
+                    .title_style(ratatui::style::Style::default().fg(theme.popup_title))
+                    .footers(footers)
+                    .colors(palette.selection_colors())
+                    .tree_prefix_color(theme.muted_text)
+                    .render(frame, popup)
+            };
+            report.set(Some(layout));
+        })
+        .expect("draw");
+    report.into_inner().expect("render reports a PickerLayout")
 }

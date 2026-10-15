@@ -59,7 +59,6 @@ pub mod subagent_settle_listener_actor;
 pub mod task_list_picker_actions;
 pub mod task_list_picker_render;
 pub mod task_list_picker_routes;
-pub mod task_list_picker_viewport;
 pub mod todo_tools;
 pub mod tool_paths;
 pub mod tool_picker_actions;
