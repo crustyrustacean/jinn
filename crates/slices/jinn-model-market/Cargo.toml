@@ -1,0 +1,39 @@
+[package]
+name = "jinn-model-market"
+version.workspace = true
+edition.workspace = true
+description = "The OpenRouter model-market popup: cost projection under adjustable mix presets, Epoch ECI quality join, per-endpoint detail, all fetched through actors with explicit TTL caches."
+
+[dependencies]
+jinn-common = { workspace = true }
+jinn-core-types = { workspace = true }
+jinn-kernel = { workspace = true }
+jinn-model-market-msg = { workspace = true }
+jinn-picker = { workspace = true }
+jinn-preferences-config = { workspace = true }
+jinn-provider = { workspace = true }
+jinn-provider-config = { workspace = true }
+jinn-provider-selection-msg = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-slices = { workspace = true }
+jinn-theme = { workspace = true }
+csv = { workspace = true }
+fuzzy-matcher = { workspace = true }
+jiff = { workspace = true }
+ratatui = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+trouper = { workspace = true }
+unicode-segmentation = { workspace = true }
+zip = { workspace = true }
+
+[dev-dependencies]
+mockito = { workspace = true }
+rstest = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true
