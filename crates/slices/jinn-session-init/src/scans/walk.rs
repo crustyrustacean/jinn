@@ -17,6 +17,8 @@
 
 use std::path::{Path, PathBuf};
 
+use jinn_common::canonicalize_display;
+
 use super::vcs::is_vcs_root;
 use super::{CONTEXT_FILE_CANDIDATES, PROMPTS_SUBDIR, SKILLS_SUBDIR};
 
@@ -79,39 +81,58 @@ fn collect_bounded(cwd: &Path, home: &Path) -> Vec<PathBuf> {
     dirs
 }
 
-/// Canonicalizes `path`, falling back to the input on failure.
+/// Canonicalizes `path` into jinn's plain path form, falling back to the
+/// input on failure.
 ///
 /// Discovery must be robust to nonexistent or non-canonical paths (e.g. a cwd
-/// that was just typed and not yet entered). When `canonicalize` fails we use the
-/// literal input so the walk proceeds against the given path rather than
-/// aborting.
+/// that was just typed and not yet entered). Canonicalization goes through
+/// [`jinn_common::canonicalize_display`] so cwd and home land in the same
+/// (non-verbatim) form — on Windows, std's canonicalization returns verbatim
+/// `\\?\`-prefixed paths that never compare equal to the plain parents the
+/// walk rebuilds, so the home bound would never fire. When canonicalization
+/// fails we use the literal input so the walk proceeds against the given path
+/// rather than aborting.
 fn canonicalize_or_input(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    canonicalize_display(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 /// Returns the `.agents/skills` directory under each project dir for `cwd`.
 ///
 /// Order matches [`project_dirs`]: least-local first, cwd last. Directories are
 /// returned even if they don't exist yet — the scan actor filters nonexistent
-/// dirs.
+/// dirs. The `.agents/skills` suffix is joined one segment at a time so the
+/// result uses the platform's own separators throughout — never a
+/// mixed-separator path such as `C:\proj\.agents/skills` on Windows.
 #[must_use]
 pub fn project_skills_dirs(cwd: &Path, home: &Path) -> Vec<PathBuf> {
     project_dirs(cwd, home)
         .into_iter()
-        .map(|dir| dir.join(SKILLS_SUBDIR))
+        .map(|dir| join_segments(dir, SKILLS_SUBDIR))
         .collect()
 }
 
 /// Returns the `.agents/prompts` directory under each project dir for `cwd`.
 ///
 /// Order matches [`project_dirs`]: least-local first, cwd last. Directories are
-/// returned even if they don't exist yet.
+/// returned even if they don't exist yet. The suffix is joined one segment at
+/// a time, exactly as [`project_skills_dirs`] does.
 #[must_use]
 pub fn project_prompts_dirs(cwd: &Path, home: &Path) -> Vec<PathBuf> {
     project_dirs(cwd, home)
         .into_iter()
-        .map(|dir| dir.join(PROMPTS_SUBDIR))
+        .map(|dir| join_segments(dir, PROMPTS_SUBDIR))
         .collect()
+}
+
+/// Folds `segments` onto `base` one component at a time.
+///
+/// Joining a multi-segment suffix (`.agents/skills`) as a single string
+/// would bake `/` separators into a `\`-separated Windows path; folding
+/// one segment per [`Path::join`] keeps every separator native.
+fn join_segments(base: PathBuf, segments: &[&str]) -> PathBuf {
+    segments
+        .iter()
+        .fold(base, |path, segment| path.join(segment))
 }
 
 /// Returns the context files (AGENTS.md / CLAUDE.md) present in each project dir.
@@ -329,9 +350,13 @@ mod tests {
         // When resolving skills dirs.
         let dirs = project_skills_dirs(&tree.leaf, Path::new("/nonexistent/home"));
 
-        // Then each project dir has the .agents/skills suffix.
+        // Then each project dir has the .agents/skills suffix with native
+        // separators, computed from a PathBuf join.
         assert_eq!(dirs.len(), 3);
-        assert!(dirs.iter().all(|d| d.ends_with(".agents/skills")));
+        assert!(
+            dirs.iter()
+                .all(|d| d.ends_with(Path::new(".agents").join("skills")))
+        );
     }
 
     #[rstest::rstest]
@@ -342,9 +367,40 @@ mod tests {
         // When resolving prompts dirs.
         let dirs = project_prompts_dirs(&tree.leaf, Path::new("/nonexistent/home"));
 
-        // Then each project dir has the .agents/prompts suffix.
+        // Then each project dir has the .agents/prompts suffix with native
+        // separators, computed from a PathBuf join.
         assert_eq!(dirs.len(), 3);
-        assert!(dirs.iter().all(|d| d.ends_with(".agents/prompts")));
+        assert!(
+            dirs.iter()
+                .all(|d| d.ends_with(Path::new(".agents").join("prompts")))
+        );
+    }
+
+    /// The skills suffix must never mix separators inside one path: joining
+    /// `.agents/skills` as a single string baked `/` into Windows paths
+    /// (`C:\proj\.agents/skills`), which flowed into skill `base_dir`/
+    /// `file_path` and the `skill` tool's user-visible result header.
+    #[rstest::rstest]
+    fn project_skills_dirs_string_form_is_native_separated() {
+        // Given a VCS-rooted tree.
+        let tree = Tree::new(Some(".git"));
+
+        // When resolving skills dirs.
+        let dirs = project_skills_dirs(&tree.leaf, Path::new("/nonexistent/home"));
+
+        // Then the rendered string of every dir contains no separator other
+        // than the platform's own.
+        let native_sep = std::path::MAIN_SEPARATOR;
+        for d in &dirs {
+            let s = d.to_string_lossy();
+            let has_foreign_sep = ['/', '\\']
+                .into_iter()
+                .any(|sep| sep != native_sep && s.contains(sep));
+            assert!(
+                !has_foreign_sep,
+                "skills dir mixes separators: {s} (native is {native_sep:?})"
+            );
+        }
     }
 
     #[rstest::rstest]
@@ -395,9 +451,12 @@ mod tests {
         let tmp = tempfile::tempdir().expect("temp dir");
         let real = tmp.path().join("real");
         std::fs::create_dir(&real).expect("mkdir");
-        let link = tmp.path().join("link");
         #[cfg(unix)]
-        std::os::unix::fs::symlink(&real, &link).expect("symlink");
+        let link = {
+            let link = tmp.path().join("link");
+            std::os::unix::fs::symlink(&real, &link).expect("symlink");
+            link
+        };
         #[cfg(not(unix))]
         let link = real.clone(); // symlink test is unix-only; no-op elsewhere.
 

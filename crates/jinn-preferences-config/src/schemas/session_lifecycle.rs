@@ -34,7 +34,7 @@ impl fmt::Display for BuiltinId {
 /// that use bare strings for `setup_command` and `teardown_command`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LifecycleCommand {
-    /// A shell command to execute via `bash -c` (see `jinn_common::bash_shell`).
+    /// A shell command to execute via `bash -c` (see `jinn_common::shell`).
     Shell(String),
     /// A reference to a compiled-in lifecycle handler.
     Builtin(BuiltinId),

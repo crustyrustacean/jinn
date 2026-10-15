@@ -91,7 +91,7 @@ fn entries_to_messages_empty_input() {
     let messages = entries_to_messages(&entries);
 
     // Then no messages are produced.
-    assert!(messages.is_empty());
+    assert_eq!(messages, [] as [jinn_core_types::LlmMessage; 0]);
 }
 
 #[rstest::rstest]
@@ -103,7 +103,7 @@ fn entries_to_messages_drops_orphan_tool_call() {
     let messages = entries_to_messages(&entries);
 
     // Then no synthetic assistant is emitted.
-    assert!(messages.is_empty());
+    assert_eq!(messages, [] as [jinn_core_types::LlmMessage; 0]);
 }
 
 #[rstest::rstest]
@@ -141,7 +141,7 @@ fn entries_to_messages_drops_orphan_tool_result() {
     let messages = entries_to_messages(&entries);
 
     // Then the orphan result is omitted.
-    assert!(messages.is_empty());
+    assert_eq!(messages, [] as [jinn_core_types::LlmMessage; 0]);
 }
 
 #[rstest::rstest]
@@ -379,7 +379,7 @@ fn unpinned_system_entry_still_skipped() {
     let messages = entries_to_messages(&entries);
 
     // Then no messages are produced.
-    assert!(messages.is_empty());
+    assert_eq!(messages, [] as [jinn_core_types::LlmMessage; 0]);
 }
 
 #[rstest::rstest]
@@ -391,7 +391,7 @@ fn unpinned_actor_entry_still_skipped() {
     let messages = entries_to_messages(&entries);
 
     // Then no messages are produced.
-    assert!(messages.is_empty());
+    assert_eq!(messages, [] as [jinn_core_types::LlmMessage; 0]);
 }
 
 #[rstest::rstest]
@@ -629,7 +629,7 @@ fn ignored_user_entry_is_skipped() {
     let messages = entries_to_messages(&entries);
 
     // Then no messages are produced.
-    assert!(messages.is_empty());
+    assert_eq!(messages, [] as [jinn_core_types::LlmMessage; 0]);
 }
 
 #[rstest::rstest]
@@ -641,7 +641,7 @@ fn ignored_assistant_entry_is_skipped() {
     let messages = entries_to_messages(&entries);
 
     // Then no messages are produced.
-    assert!(messages.is_empty());
+    assert_eq!(messages, [] as [jinn_core_types::LlmMessage; 0]);
 }
 
 #[rstest::rstest]
@@ -758,7 +758,7 @@ fn error_entry_default_is_skipped() {
     let messages = entries_to_messages(&entries);
 
     // Then no messages are produced (Error is excluded from context by default).
-    assert!(messages.is_empty());
+    assert_eq!(messages, [] as [jinn_core_types::LlmMessage; 0]);
 }
 
 #[rstest::rstest]
@@ -803,7 +803,7 @@ fn error_entry_forced_exclude_is_skipped() {
     let messages = entries_to_messages(&entries);
 
     // Then no messages are produced.
-    assert!(messages.is_empty());
+    assert_eq!(messages, [] as [jinn_core_types::LlmMessage; 0]);
 }
 
 #[rstest::rstest]
@@ -1443,7 +1443,7 @@ fn message_sequence_validator_accepts_real_empty_assistant_tool_parent() {
             content,
             tool_calls: Some(calls),
         } => {
-            assert!(content.is_empty());
+            assert_eq!(content, "");
             assert_eq!(calls.len(), 1);
             assert_eq!(calls[0].id, "call-1");
         }
@@ -1917,5 +1917,5 @@ fn tripwire_end_of_list_closes_open_batch() {
     enforce_valid_tool_sequences(&mut messages);
 
     // Then the empty assistant is removed.
-    assert!(messages.is_empty());
+    assert_eq!(messages, [] as [jinn_core_types::LlmMessage; 0]);
 }

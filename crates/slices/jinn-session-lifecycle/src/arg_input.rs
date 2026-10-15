@@ -255,7 +255,7 @@ mod tests {
         let result = confirm_arg_input(&mut ctx, &cell);
 
         // Then the input is consumed as invalid and remains available for correction.
-        assert!(result.message_names.is_empty());
+        assert_eq!(result.message_names, [] as [&str; 0]);
         assert_eq!(cell.read().text.input, "only-one");
     }
 
@@ -290,7 +290,7 @@ mod tests {
                 ("$2".to_owned(), "tail".to_owned()),
             ]
         );
-        assert!(cell.read().text.input.is_empty());
+        assert_eq!(cell.read().text.input, "");
     }
 
     #[rstest::rstest]
@@ -378,7 +378,7 @@ mod tests {
 
         // Then the text clears without requesting a scope pop.
         assert!(result.scope_signal.is_none());
-        assert!(cell.read().text.input.is_empty());
+        assert_eq!(cell.read().text.input, "");
     }
 
     #[rstest::rstest]
@@ -409,6 +409,6 @@ mod tests {
             result.scope_signal,
             Some(ScopeSignal::PopIf(arg_input_scope()))
         );
-        assert!(cell.read().text.input.is_empty());
+        assert_eq!(cell.read().text.input, "");
     }
 }

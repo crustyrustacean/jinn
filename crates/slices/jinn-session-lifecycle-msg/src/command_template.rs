@@ -611,7 +611,7 @@ pub fn is_positional_key(key: &str) -> bool {
 }
 
 /// Shell-quote a value for safe interpolation into a `bash -c` command
-/// (the shell lifecycle commands run under — see `jinn_common::bash_shell`).
+/// (the shell lifecycle commands run under — see `jinn_common::shell`).
 ///
 /// Uses single-quote wrapping with `\'\'\'` escape for embedded single quotes.
 /// Only applies quoting when the value contains spaces or shell-special characters.
@@ -798,7 +798,7 @@ mod tests {
         // Then it reports having no parameters.
         assert!(!tmpl.has_params());
         // And its parameter list is empty.
-        assert!(tmpl.params().is_empty());
+        assert_eq!(tmpl.params(), []);
         // And its parameter count is zero.
         assert_eq!(tmpl.param_count(), 0);
     }
@@ -2047,7 +2047,7 @@ mod tests {
         // When tokenizing.
         let spans = tokenize_spans("");
         // Then no spans are produced.
-        assert!(spans.is_empty());
+        assert_eq!(spans, [] as [Span; 0]);
     }
 
     #[rstest::rstest]

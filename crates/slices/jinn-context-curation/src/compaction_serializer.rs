@@ -100,7 +100,7 @@ mod tests {
         let result = serialize_entries_for_compaction(&entries);
 
         // Then it produces no output (tool calls are skipped).
-        assert!(result.is_empty());
+        assert_eq!(result, "");
     }
 
     #[rstest::rstest]
@@ -140,7 +140,7 @@ mod tests {
         let result = serialize_entries_for_compaction(&entries);
 
         // Then it produces no output.
-        assert!(result.is_empty());
+        assert_eq!(result, "");
     }
 
     #[rstest::rstest]
@@ -153,7 +153,7 @@ mod tests {
         let result = serialize_entries_for_compaction(&entries);
 
         // Then it produces no output.
-        assert!(result.is_empty());
+        assert_eq!(result, "");
     }
 
     #[rstest::rstest]
@@ -166,7 +166,7 @@ mod tests {
         let result = serialize_entries_for_compaction(&entries);
 
         // Then it produces no output.
-        assert!(result.is_empty());
+        assert_eq!(result, "");
     }
 
     #[rstest::rstest]
@@ -217,7 +217,7 @@ mod tests {
         let result = serialize_entries_for_compaction(&entries);
 
         // Then it produces no output (tool results are skipped).
-        assert!(result.is_empty());
+        assert_eq!(result, "");
     }
 
     #[rstest::rstest]
@@ -237,7 +237,7 @@ mod tests {
         let result = serialize_entries_for_compaction(&entries);
 
         // Then it produces no output (tool results are skipped).
-        assert!(result.is_empty());
+        assert_eq!(result, "");
     }
 
     #[rstest::rstest]
@@ -255,6 +255,6 @@ mod tests {
         let result = serialize_entries_for_compaction(&entries);
 
         // Then no output is produced.
-        assert!(result.is_empty());
+        assert_eq!(result, "");
     }
 }

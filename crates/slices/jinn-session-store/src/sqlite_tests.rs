@@ -3036,7 +3036,7 @@ async fn dirty_session_ids_skips_unparseable_marker() {
     let ids = store.dirty_session_ids().await.expect("dirty ids");
 
     // Then the corrupt marker is not returned (it could never be reindexed).
-    assert!(ids.is_empty());
+    assert_eq!(ids, [] as [jinn_core_types::SessionId; 0]);
 }
 
 #[rstest::rstest]
