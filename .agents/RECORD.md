@@ -80,6 +80,7 @@ Entries are added or amended **only with human approval**.
 - (pickers) A slice picker resets its per-open state — filter text, highlight, and rows — each time its dynamic scope is entered, so every opener shows the same fresh menu.
 - (pickers) A picker's popup rect is computed once per frame by its slice's overlay geometry function and centered on the terminal on both axes; the selection widgets render into the rect they are handed rather than recomputing it.
 - (picker-viewport) `PickerLayout.inner.height` may legitimately be 0 for degenerate frames; picker navigation is 0-safe by construction (`ensure_visible` guards `max_visible > 0`), so new picker code must not re-add a `max(1)` clamp on the reported viewport.
+- (pickers) The preview widget's pane geometry rides its own report channel (`PreviewPaneReport`) alongside `PickerLayout`, which stays result-rows-only; the widget display-clamps `preview_scroll` at the content's end regardless of what the slice stores.
 - (keybinds) Picker keybinds are route rows owned by the slice that owns the picker.
 - (keybinds) Feature keybinds are route rows carrying scope and key; keymap bindings are generated from registered rows at launch; dynamic intents and scope ids are data-carried, so an unregistered slice leaves no keymap, scope, or intent residue.
 - (keybinds) The terminal overlay's keybinds are term-slice route rows binding the dynamic scopes term:view and term:control; no static terminal scope or terminal intent variants exist in the kernel.
