@@ -164,6 +164,54 @@ impl Wired {
     fn draw(&self) -> Vec<String> {
         draw_frame(self, ratatui::layout::Rect::new(0, 0, 100, 30))
     }
+
+    /// Draws one frame at `area` and returns the layout the widget solved.
+    ///
+    /// Mirrors the render pass (footers built from the live cell, the widget
+    /// rendered over the geometry fn's popup) with the widget's own report as
+    /// the return value, so the expected viewport in a renderer-level
+    /// assertion comes from the widget rather than recomputed arithmetic.
+    fn draw_returning_layout(
+        &self,
+        area: ratatui::layout::Rect,
+    ) -> jinn_selection_widget::PickerLayout {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let popup = crate::reasoning_picker_render::reasoning_picker_overlay_rect(&area)
+            .expect("geometry fn yields a popup rect");
+        let theme = self.state.borrow().frontend.theme.clone();
+        let palette = crate::reasoning_picker_render::reasoning_picker_palette(&theme);
+        let keybind = jinn_picker::keybind_line(
+            &crate::reasoning_picker_render::reasoning_picker_binds(),
+            jinn_picker::Tail::Standard,
+            &palette,
+        );
+        // The guard is held across the draw: the helper never writes the cell,
+        // so a write-while-read deadlock is impossible here.
+        let cell = self.cell();
+        let guard = cell.read();
+        let footers = vec![
+            crate::reasoning_picker_actions::reasoning_status(&guard, &theme),
+            ratatui::text::Line::from(keybind.0),
+        ];
+        let mut terminal = Terminal::new(TestBackend::new(area.width, area.height))
+            .expect("a test terminal allocates");
+        let mut layout = None;
+        terminal
+            .draw(|frame| {
+                layout = Some(
+                    jinn_selection_widget::SelectionWidget::new(&guard.selection)
+                        .title(ratatui::text::Line::from(" Reasoning Effort "))
+                        .title_style(ratatui::style::Style::default().fg(theme.popup_title))
+                        .footers(footers)
+                        .colors(palette.selection_colors())
+                        .render(frame, popup),
+                );
+            })
+            .expect("the draw closure must not panic");
+        layout.unwrap_or_else(|| panic!("the widget render ran and reported its layout"))
+    }
 }
 
 /// Draws one frame of the picker's popup into a fresh test terminal and
@@ -388,14 +436,15 @@ async fn up_arrow_stops_at_the_first_row() {
 #[tokio::test]
 async fn page_down_steps_by_the_rows_the_last_frame_actually_laid_out() {
     // Given an open picker, and a frame drawn so the cell learns how many
-    // rows are on screen.
+    // rows are on screen. The frame is smaller than the default draw so the
+    // measured viewport differs from the pre-render fallback (at 100x30 the
+    // widget reports 20 rows, which coincides with the fallback).
     let wired = Wired::new().await;
     wired.open();
-    let frame = ratatui::layout::Rect::new(0, 0, 100, 30);
+    let frame = ratatui::layout::Rect::new(0, 0, 100, 18);
+    let layout = wired.draw_returning_layout(frame);
     draw_frame(&wired, frame);
-    let popup = crate::reasoning_picker_render::reasoning_picker_overlay_rect(&frame)
-        .expect("geometry fn yields a popup rect");
-    let on_screen = crate::reasoning_picker_viewport::results_viewport(popup);
+    let on_screen = layout.inner.height;
 
     // When page down is pressed.
     wired.fire("page-reasoning-picker-down");
@@ -410,8 +459,11 @@ async fn page_down_steps_by_the_rows_the_last_frame_actually_laid_out() {
         jinn_provider_selection_msg::reasoning::RESULTS_VIEWPORT_FALLBACK,
         "the frame must measure fewer rows than the pre-render fallback, or this test cannot detect a broken measurement"
     );
-    assert_eq!(measured, on_screen);
-    assert_eq!(wired.highlighted(), (measured / 2).max(1));
+    assert_eq!(measured, usize::from(on_screen));
+    let expected = (measured / 2)
+        .min(wired.cell().read().selection.filtered_count() - 1)
+        .max(1);
+    assert_eq!(wired.highlighted(), expected);
 }
 
 #[rstest::rstest]
@@ -712,20 +764,38 @@ async fn drawing_a_frame_publishes_the_measured_row_count_for_paging() {
         jinn_provider_selection_msg::reasoning::RESULTS_VIEWPORT_FALLBACK
     );
 
-    // When a frame is drawn.
-    wired.draw();
+    // When a frame is drawn through the real render pass — at a size whose
+    // widget-reported row count differs from the fallback (at 100x30 the
+    // widget reports 20 rows, which coincides with the fallback).
+    let area = ratatui::layout::Rect::new(0, 0, 120, 34);
+    let layout = wired.draw_returning_layout(area);
+    draw_frame(&wired, area);
 
-    // Then the cell carries what the frame actually laid out, so paging
-    // moves by a page of what is on screen rather than a fixed guess.
+    // Then the cell carries what the frame actually laid out — the widget's
+    // own report — so paging moves by a page of what is on screen rather
+    // than a fixed guess.
     let measured = wired.cell().read().results_viewport;
-    let expected = crate::reasoning_picker_viewport::results_viewport(ratatui::layout::Rect::new(
-        0, 0, 100, 30,
-    ));
-    assert_eq!(measured, expected);
+    assert_eq!(measured, usize::from(layout.inner.height));
     assert_ne!(
         measured, fallback,
         "a narrow popup lays out far fewer rows than the fallback, so the \
          measurement must replace it rather than sit beside it"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn the_unmeasured_viewport_matches_the_msg_fallback() {
+    // Given a picker cell that has not rendered a frame yet.
+    let state = ReasoningPickerState::default();
+
+    // When reading its viewport.
+    let viewport = state.results_viewport;
+
+    // Then it is the msg crate's documented pre-render fallback.
+    assert_eq!(
+        viewport,
+        jinn_provider_selection_msg::reasoning::RESULTS_VIEWPORT_FALLBACK
     );
 }
 
