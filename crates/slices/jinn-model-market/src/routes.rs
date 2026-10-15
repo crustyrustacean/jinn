@@ -1,20 +1,21 @@
 //! The model-market popup's route rows and input hook.
 //!
 //! Every key the popup responds to is either a [`RouteRow`] this slice
-//! attaches or part of the filter's typing carve-out. The split follows
-//! the dispatch order the kernel guarantees — **route rows resolve
-//! before the input hook for bound keys** — so:
+//! attaches or a hook case. The split follows the dispatch order the
+//! kernel guarantees — **bound route rows resolve before the input
+//! hook** — and, decisively, the popup lives in an input-hook scope:
+//! every printable key is owned by the hook, so *any* character key
+//! would be unreachable as a row inside the popup's own scope. The
+//! non-character keys are rows:
 //!
-//! - every non-typing key (navigation, `<esc>`, `<enter>`, sort, mix,
-//!   help, refresh) is a bound row;
-//! - `f`/`i` and every printable character are NOT rows. The hook owns
-//!   them: when the filter is focused they type into it, and when it is
-//!   not, `f`/`i` focus it. If they were rows, typing `f` into a
-//!   focused filter would re-trigger "focus filter" forever.
-//!
-//! `?` is a hook case too: the keymap's `?` binding is scoped to
-//! `Normal` only, so in this dynamic scope the hook gets it and toggles
-//! the help card.
+//! - `<enter>`/`<esc>`/`<c-r>` and the four navigation keys bind as
+//!   rows (`<up>`/`<down>` plus their `j`/`k` twins);
+//! - every printable character is a hook case: with the filter focused
+//!   it types into the filter; with the table focused, `f`/`i` focus
+//!   the filter, `?` toggles the help card, and `h`/`l`/`s`/`m` run
+//!   their sort/mix actions. If those were rows, route dispatch would
+//!   consume them before the hook and typing "mistral" into a focused
+//!   filter would flip sorts and cycle mixes instead of filtering.
 
 use std::sync::Arc;
 
@@ -68,26 +69,30 @@ fn highlighted(ui: &MarketUiCell, data: &MarketDataCell) -> Option<MarketRow> {
         .cloned()
 }
 
-/// The popup's rows as data: the keys it binds, in footer order.
+/// The popup's keys as data: the keybind footer's content, in display
+/// order.
 ///
-/// The footer renders from this, and a test asserts every entry here is
-/// a key the popup actually binds — a footer that advertises a dead key
-/// is a bug. `f`/`i`/typing are deliberately absent: they are the
-/// hook's, not rows, and the filter bar labels them itself. `?` is the
-/// hook's too — the keymap's `?` binding is Normal-scoped, so a help
-/// row here would never fire; the help card names the key instead.
+/// The footer renders from this, and the composition tests assert every
+/// entry here is a key the popup actually honors — a footer that
+/// advertises a dead key is a bug. The arrow keys are deliberately
+/// absent (`j`/`k` are the advertised twins; the arrows stay unadvertised
+/// but bound), and the character keys name their hook-owned meanings:
+/// the advertised *behavior* is what the popup honors for each key,
+/// whichever mechanism binds it.
 pub const MARKET_BINDINGS: &[(&str, &str)] = &[
-    ("<enter>", "switch model"),
-    ("<esc>", "table: close \u{b7} filter: back"),
-    ("<up>", "up"),
-    ("<down>", "down"),
+    ("<enter>", "switch"),
+    ("<esc>", "close/back"),
+    ("k", "up"),
+    ("j", "down"),
     ("<pgup>", "page up"),
-    ("<pgdn>", "page down"),
-    ("<c-r>", "refresh all"),
-    ("h", "sort col"),
-    ("l", "sort col"),
-    ("s", "sort dir"),
-    ("m", "mix preset"),
+    ("<pgdn>", "page dn"),
+    ("<c-r>", "refresh"),
+    ("h", "col \u{2190}"),
+    ("l", "col \u{2192}"),
+    ("s", "dir"),
+    ("m", "mix"),
+    ("f", "filter"),
+    ("?", "help"),
 ];
 
 /// The kernel's application state behind an [`ActionCtx`].
@@ -135,7 +140,8 @@ fn row(
 ///
 /// The opener binds in the `Normal` static scope rather than the popup's
 /// own: a key that opens the popup cannot live inside the scope it
-/// opens.
+/// opens. The four sort/mix actions are deliberately *not* rows — they
+/// are hook cases, so a focused filter can own their letters.
 pub fn attach_market_rows(routes: &KeyRoutes, ui: &MarketUiCell, data: &MarketDataCell) {
     routes.attach(RouteRow {
         route_id: RouteId::new("model-market:open"),
@@ -172,58 +178,22 @@ pub fn attach_market_rows(routes: &KeyRoutes, ui: &MarketUiCell, data: &MarketDa
         "drop every cache and refetch",
         action(ui, data, refresh_market),
     ));
-    routes.attach(row(
-        "sort-model-market-prev-col",
-        "h",
-        "navigation",
-        "sort by the previous column",
-        action(ui, data, |_ctx, ui, _data| {
-            ui.update(|s| {
-                s.sort_col = s.sort_col.prev();
-            });
-            IntentResult::empty()
-        }),
-    ));
-    routes.attach(row(
-        "sort-model-market-next-col",
-        "l",
-        "navigation",
-        "sort by the next column",
-        action(ui, data, |_ctx, ui, _data| {
-            ui.update(|s| {
-                s.sort_col = s.sort_col.next();
-            });
-            IntentResult::empty()
-        }),
-    ));
-    routes.attach(row(
-        "sort-model-market-toggle-dir",
-        "s",
-        "navigation",
-        "flip the sort direction",
-        action(ui, data, |_ctx, ui, _data| {
-            ui.update(|s| {
-                s.sort_desc = !s.sort_desc;
-            });
-            IntentResult::empty()
-        }),
-    ));
-    routes.attach(row(
-        "cycle-model-market-mix",
-        "m",
-        "general",
-        "next mix preset",
-        action(ui, data, cycle_mix),
-    ));
 
     attach_navigation_rows(routes, ui, data);
 }
 
-/// Attaches the four navigation rows.
+/// Attaches the six navigation rows: arrows and their `j`/`k` twins,
+/// plus the two page keys.
 ///
-/// Not `StaticIntent` rows: composition's `static_intent` table knows
-/// only six route ids, none of them popup intents, and a row naming an
-/// unknown id is silently dropped with a warning.
+/// None are `StaticIntent` rows: composition's `static_intent` table
+/// knows only six route ids, none of them popup intents, and a row
+/// naming an unknown id is silently dropped with a warning. `j`/`k`
+/// are rows (not hook cases) because they are non-ambiguous under
+/// either focus — but they are character keys, and the popup's scope is
+/// an input-hook scope whose printable catch-all binds `j`/`k` to
+/// insert-char intents first. The hook therefore re-serves them: a
+/// table-focused `j`/`k` moves the selection through
+/// [`edit_intent_nav`], a focused one types.
 fn attach_navigation_rows(routes: &KeyRoutes, ui: &MarketUiCell, data: &MarketDataCell) {
     for (name, key, display, step) in [
         ("move-model-market-up", "<up>", "move up", Nav::Up),
@@ -241,30 +211,34 @@ fn attach_navigation_rows(routes: &KeyRoutes, ui: &MarketUiCell, data: &MarketDa
             key,
             "navigation",
             display,
-            action(ui, data, move |_ctx, ui, data| {
-                let count = visible_count(ui, data);
-                match step {
-                    Nav::Up => ui.update(ui_state::move_up),
-                    Nav::Down => ui.update(|s| ui_state::move_down(s, count)),
-                    Nav::PageUp => ui.update(ui_state::page_up),
-                    Nav::PageDown => ui.update(|s| ui_state::page_down(s, count)),
-                }
-                let mut result = IntentResult::empty();
-                if let Some(fetch) = maybe_fetch_endpoints(ui, data) {
-                    result = result.with_message(fetch);
-                }
-                result
-            }),
+            action(ui, data, move |_ctx, ui, data| apply_nav(ui, data, step)),
         ));
     }
+}
+
+/// Applies one navigation step and follows it with the debounced
+/// endpoint fetch when the newly highlighted row has no detail yet.
+fn apply_nav(ui: &MarketUiCell, data: &MarketDataCell, step: Nav) -> IntentResult {
+    let count = visible_count(ui, data);
+    match step {
+        Nav::Up => ui.update(ui_state::move_up),
+        Nav::Down => ui.update(|s| ui_state::move_down(s, count)),
+        Nav::PageUp => ui.update(ui_state::page_up),
+        Nav::PageDown => ui.update(|s| ui_state::page_down(s, count)),
+    }
+    let mut result = IntentResult::empty();
+    if let Some(fetch) = maybe_fetch_endpoints(ui, data) {
+        result = result.with_message(fetch);
+    }
+    result
 }
 
 /// Which navigation key was pressed.
 #[derive(Debug, Clone, Copy)]
 enum Nav {
-    /// `<up>` — one row.
+    /// `<up>`/`k` — one row.
     Up,
-    /// `<down>` — one row.
+    /// `<down>`/`j` — one row.
     Down,
     /// `<pgup>` — one viewport.
     PageUp,
@@ -272,41 +246,44 @@ enum Nav {
     PageDown,
 }
 
-/// Registers the filter's typing carve-out.
+/// Registers the popup's input hook: the typing carve-out plus every
+/// character-key action.
 ///
 /// The composition keymap turns this registration into the scope's
-/// printable-character catch-all plus the editing keys. The hook:
+/// printable-character catch-all plus the editing keys — and because
+/// the keymap's bindings beat hook consults, `j`/`k` arrive here as
+/// insert-char intents and the hook serves navigation for them (they
+/// cannot be rows: a row would never win the binding race against the
+/// catch-all, and removing the catch-all for two keys is not possible
+/// per-scope). The hook:
 ///
-/// - with the filter focused, types into it (and serves the editing
-///   intents);
-/// - with the table focused, claims `f`/`i` to focus the filter and `?`
-///   to toggle the help card (the keymap's `?` is Normal-scoped, so
-///   nothing else owns it here);
+/// - with the filter focused: types every character into the filter
+///   (and serves the editing intents);
+/// - with the table focused: `f`/`i` focus the filter, `?` toggles the
+///   help card, `j`/`k` move the selection, `h`/`l` cycle the sort
+///   column, `s` flips the sort direction, `m` cycles the mix preset;
 /// - returns `None` otherwise — the key does nothing.
 pub fn register_market_input_hook(routes: &KeyRoutes, ui: &MarketUiCell, _data: &MarketDataCell) {
     let owned_ui = ui.clone();
     let hook: InputHook = Arc::new(move |intent: &EditIntent| {
-        // `?` travels as an insert-char editing intent; decide by the
-        // character, not by the intent kind.
-        if let EditIntent::InsertChar('?') = intent
-            && !owned_ui.read().filter_focused
-        {
-            owned_ui.update(|s| s.help_visible = !s.help_visible);
-            return Some(IntentResult::empty());
-        }
         let focus = owned_ui.read().filter_focused;
+        // Every character key classifies through one place, so the
+        // "rows steal filter typing" trap is structurally impossible:
+        // no character key is a route row.
+        if let EditIntent::InsertChar(ch) = intent {
+            return match table_char_action(&owned_ui, *ch) {
+                CharAction::Acted => Some(IntentResult::empty()),
+                CharAction::Type => {
+                    owned_ui.update(|s| {
+                        s.filter.push(*ch);
+                        s.selection = 0;
+                    });
+                    Some(IntentResult::empty())
+                }
+                CharAction::Unclaimed => None,
+            };
+        }
         match intent {
-            EditIntent::InsertChar(ch) if !focus && (*ch == 'f' || *ch == 'i') => {
-                owned_ui.update(|s| s.filter_focused = true);
-                Some(IntentResult::empty())
-            }
-            EditIntent::InsertChar(ch) if focus => {
-                owned_ui.update(|s| {
-                    s.filter.push(*ch);
-                    s.selection = 0;
-                });
-                Some(IntentResult::empty())
-            }
             EditIntent::DeleteBackward | EditIntent::DeleteForward if focus => {
                 owned_ui.update(|s| {
                     s.filter.pop();
@@ -324,6 +301,67 @@ pub fn register_market_input_hook(routes: &KeyRoutes, ui: &MarketUiCell, _data: 
         }
     });
     routes.register_input_hook(&market_ui_scope(), hook);
+}
+
+/// What the hook should do with a character.
+#[derive(Debug)]
+enum CharAction {
+    /// A table-mode action fired; the keystroke is consumed.
+    Acted,
+    /// The filter is focused: the character is typing.
+    Type,
+    /// Nobody wants this character; let the intent fall through.
+    Unclaimed,
+}
+
+/// Classifies one character and runs its table-mode action.
+///
+/// Table-focused `h`/`l`/`s`/`m` mutate the sort/mix cell exactly as
+/// their pre-hook-route ancestors did; `j`/`k` navigate because the
+/// keymap's insert-char catch-all owns those keys in this scope.
+fn table_char_action(ui: &MarketUiCell, ch: char) -> CharAction {
+    if ui.read().filter_focused {
+        return CharAction::Type;
+    }
+    match ch {
+        'f' | 'i' => {
+            ui.update(|s| s.filter_focused = true);
+            CharAction::Acted
+        }
+        '?' => {
+            ui.update(|s| s.help_visible = !s.help_visible);
+            CharAction::Acted
+        }
+        'k' => {
+            ui.update(ui_state::move_up);
+            CharAction::Acted
+        }
+        'j' => {
+            ui.update(|s| ui_state::move_down(s, s.results_viewport.max(1)));
+            CharAction::Acted
+        }
+        'h' => {
+            ui.update(|s| {
+                s.sort_col = s.sort_col.prev();
+            });
+            CharAction::Acted
+        }
+        'l' => {
+            ui.update(|s| {
+                s.sort_col = s.sort_col.next();
+            });
+            CharAction::Acted
+        }
+        's' => {
+            ui.update(|s| s.sort_desc = !s.sort_desc);
+            CharAction::Acted
+        }
+        'm' => {
+            ui.update(MarketUiState::cycle_mix);
+            CharAction::Acted
+        }
+        _ => CharAction::Unclaimed,
+    }
 }
 
 // ── Actions ─────────────────────────────────────────────────────────────
@@ -394,13 +432,6 @@ fn refresh_market(
     _data: &MarketDataCell,
 ) -> IntentResult {
     IntentResult::new_message(RefreshAll)
-}
-
-/// `m`: cycle the mix preset; PROJ re-sorts live because it is computed
-/// at render time from this cell.
-fn cycle_mix(_ctx: &mut ActionCtx<'_>, ui: &MarketUiCell, _data: &MarketDataCell) -> IntentResult {
-    ui.update(MarketUiState::cycle_mix);
-    IntentResult::empty()
 }
 
 /// Builds the `FetchEndpoints` request for the highlighted row when its

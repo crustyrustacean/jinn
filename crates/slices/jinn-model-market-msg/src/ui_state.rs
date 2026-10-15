@@ -97,9 +97,11 @@ pub struct MarketUiState {
     pub selection: usize,
     /// The filter text (`f`/`i` focuses the bar; typing narrows rows).
     pub filter: String,
-    /// Whether the filter bar owns typing. Route rows yield to the hook
-    /// while this is set, so `f`, `s`, `h` type into the filter instead
-    /// of triggering their table actions.
+    /// Whether the filter bar owns typing. While this is set the input
+    /// hook claims every printable character, so `h`/`l`/`s`/`m`/`f`
+    /// type into the filter instead of firing their table actions —
+    /// the table actions are hook cases, not route rows, and the hook
+    /// decides by focus.
     pub filter_focused: bool,
     /// The sort key; `h`/`l` cycle it, `s` flips direction.
     pub sort_col: SortColumn,
