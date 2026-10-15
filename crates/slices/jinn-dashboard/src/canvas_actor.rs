@@ -532,7 +532,7 @@ mod tests {
         // The census also lists the dashboard actor itself, so this
         // pins the transient rows' absence rather than a total count.
         let transient: Vec<String> = (0..5)
-            .map(|i| format!("jinn.tools.task-settle-listener.{i}"))
+            .map(|i| format!("jinn.tools.subagent-settle-listener.{i}"))
             .collect();
 
         // When five transient actors each start and then stop cleanly.

@@ -74,7 +74,7 @@ pub fn handle_new_attendant(state: &mut AppState, config: &ConfigLayer) -> Inten
 
     // The attendant is meaningfully created even though no keystroke has
     // landed in it, so it survives a save that runs before its first turn
-    // (the `task` tool's `build_child` marks its child for the same reason).
+    // (the `spawn_subagent` tool's `build_child` marks its child for the same reason).
     if let Some(a) = state.session.get_mut(&attendant_id) {
         a.mark_interacted();
     }
@@ -108,16 +108,6 @@ pub fn handle_new_attendant(state: &mut AppState, config: &ConfigLayer) -> Inten
         .with_message(SessionCreated {
             session_id: attendant_id.clone(),
             cwd: attendant_cwd,
-        })
-        // The identity entry every created session opens with: the
-        // attendant can name itself to `tell_session`, and the pinned
-        // Top + forced-include construction means it reads it back after a
-        // reload or compaction. It rides ahead of the prep-mode notice so
-        // the transcript's first line is the id.
-        .with_message(jinn_session_history_msg::PushChatEntry {
-            session_id: attendant_id.clone(),
-            entry: ChatEntry::session_identity(&attendant_id),
-            pin: Some(jinn_core_types::PinPosition::Top),
         })
         .with_message(jinn_session_history_msg::PushChatEntry {
             session_id: attendant_id.clone(),

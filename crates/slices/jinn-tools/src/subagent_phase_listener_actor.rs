@@ -13,9 +13,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! One-shot completion listener for the `task` tool.
+//! One-shot completion listener for the `spawn_subagent` tool.
 //!
-//! Bridges `SessionPhaseChanged` bus traffic to the awaiting `task` future
+//! Bridges `SessionPhaseChanged` bus traffic to the awaiting `spawn_subagent` future
 //! through a oneshot channel. Spawned *before* the child session is published
 //! so no completion event can slip past the subscription. Forwards the first
 //! `Idle` signal for its child session and then stops itself.
@@ -31,9 +31,9 @@ use jinn_kernel::common::services::bus_service::BusService;
 use jinn_session_msg::PhaseKind;
 use jinn_session_msg::SessionPhaseChanged;
 
-/// Dependencies for spawning a [`TaskPhaseListenerActor`].
+/// Dependencies for spawning a [`SubagentPhaseListenerActor`].
 #[derive(Debug)]
-pub struct TaskPhaseListenerDeps {
+pub struct SubagentPhaseListenerDeps {
     /// The system to spawn onto (the same fabric `bus` publishes through).
     pub system: trouper::system::ActorSystem,
     /// The bus to subscribe with (topic + routed-topic resolution).
@@ -48,33 +48,33 @@ pub struct TaskPhaseListenerDeps {
 /// A one-shot actor that awaits a single child session's transition to
 /// [`PhaseKind::Idle`]. See the [module docs](self) for the lifecycle.
 #[derive(Debug)]
-pub struct TaskPhaseListenerActor {
+pub struct SubagentPhaseListenerActor {
     child_id: SessionId,
     completion: Option<tokio::sync::oneshot::Sender<()>>,
 }
 
-impl ServiceActor for TaskPhaseListenerActor {
+impl ServiceActor for SubagentPhaseListenerActor {
     async fn start(
         _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: spawned via `start_with` (typed deps cannot ride
         // JSON args).
         Err(error_stack::Report::new(RegistryError::InvalidSpec)
-            .attach("TaskPhaseListenerActor spawns via start_with"))
+            .attach("SubagentPhaseListenerActor spawns via start_with"))
     }
 }
 
-impl TaskPhaseListenerActor {
+impl SubagentPhaseListenerActor {
     /// Spawns the listener onto the trouper system.
     ///
-    /// Returns only after the subscription is live: the `task` tool
+    /// Returns only after the subscription is live: the `spawn_subagent` tool
     /// guarantees `SessionCreated` is published after this call, closing
     /// the event-ordering race.
-    pub async fn spawn(deps: TaskPhaseListenerDeps) -> ActorPath {
+    pub async fn spawn(deps: SubagentPhaseListenerDeps) -> ActorPath {
         use std::sync::atomic::{AtomicU64, Ordering};
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let path = ActorPath::new(format!(
-            "jinn.tools.task-phase-listener.{}",
+            "jinn.tools.subagent-phase-listener.{}",
             SEQ.fetch_add(1, Ordering::SeqCst)
         ));
         let child_id = deps.child_id.clone();
@@ -94,15 +94,15 @@ impl TaskPhaseListenerActor {
             .handles::<SessionPhaseChanged>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
-        // The declaration is the readiness point: the `task` tool
+        // The declaration is the readiness point: the `spawn_subagent` tool
         // publishes phase events only after this returns.
         path
     }
 }
 
-impl MsgHandler<SessionPhaseChanged> for TaskPhaseListenerActor {
+impl MsgHandler<SessionPhaseChanged> for SubagentPhaseListenerActor {
     async fn handle(&mut self, msg: &SessionPhaseChanged, ctx: &mut MsgCtx<'_>) {
-        // Abort path: the awaiting `task` future was dropped (parent tool
+        // Abort path: the awaiting `spawn_subagent` future was dropped (parent tool
         // batch cancelled), closing the channel. There is nothing left to
         // signal — stop listening. Bus traffic gives us the chance to notice.
         if self

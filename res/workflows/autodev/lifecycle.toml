@@ -1,6 +1,8 @@
 # Session lifecycle scripts for autodev runs.
 #
-# Applied via the `run_lifecycle` tool: setup branches the ORCHESTRATOR'S
+# Applied via the `run_lifecycle` tool. The implementor session is created
+# by `load_attendant` on attendants/implementor.toml; this script then
+# seats it: setup branches the ORCHESTRATOR'S
 # CURRENT BRANCH (the feature branch the human started the run on), opens
 # the implementor's checkout, and moves the session there; teardown merges
 # the implementor's work back onto that same branch, closes the checkout,
@@ -29,7 +31,7 @@
 # ── Fossil ────────────────────────────────────────────────────────
 # <repo>   repository file name, without extension (e.g. `jinn`)
 # <branch> the implementor's branch name (the orchestrator names it per
-#          spawn, derived from the parent so runs on different feature
+#          attach, derived from the parent so runs on different feature
 #          branches can never collide: `<parent>-issue-007`, never a
 #          fixed prefix)
 # <parent> the orchestrator's current branch — the feature branch. Recorded

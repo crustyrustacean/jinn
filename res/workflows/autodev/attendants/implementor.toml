@@ -1,7 +1,7 @@
 # Attendant: implementor. Spawned on demand, one session per issue.
 #
-# The orchestrator creates a session for each contract-ready issue,
-# applies this seed via `load_attendant`, gives it its lifecycle setup
+# The orchestrator attaches this seed via `load_attendant` for each
+# contract-ready issue, gives it its lifecycle setup
 # (branch from the orchestrator's branch, own checkout), and addresses it
 # by `tell_session`. behavior = preserve: the session survives review
 # rounds and teardown-conflict fix loops, so it keeps knowing the code it

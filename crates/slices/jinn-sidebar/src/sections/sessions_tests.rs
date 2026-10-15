@@ -2871,6 +2871,11 @@ fn sidebar_routes() -> jinn_slices::route::KeyRoutes {
     routes
 }
 
+/// An empty route table, for handler tests that pass an unmapped intent.
+fn empty_routes() -> jinn_slices::route::KeyRoutes {
+    jinn_slices::route::KeyRoutes::new()
+}
+
 /// The dynamic intent the sidebar's archive-tree route rows mint for the
 /// given action string (what the `A`/`X` keys actually produce).
 fn tree_intent(action: &'static str) -> KernelIntent {
@@ -3156,6 +3161,282 @@ fn render_sessions_with_close_prompt(state: &AppState, sidebar_width: u16) -> Ve
 /// width inside a 60-wide frame and returns the full buffer text.
 fn render_archive_tree_prompt_overlay(state: &AppState, sidebar_width: u16) -> String {
     render_archive_tree_prompt_rows(state, sidebar_width).concat()
+}
+
+// ---------------------------------------------------------------------------
+// Session ID yank - intent flow
+// ---------------------------------------------------------------------------
+
+/// The dynamic intent the sidebar's yank route row mints for the `y` key
+/// (what the key actually produces).
+fn yank_intent() -> KernelIntent {
+    KernelIntent::Dynamic(jinn_slices::route::DynamicIntent::new(
+        jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id(),
+        "session-yank-id",
+        "session-yank-id",
+    ))
+}
+
+#[rstest::rstest]
+fn session_yank_dispatch_stashes_the_selected_sessions_id() {
+    // Given the sessions section focused with the tree root highlighted.
+    let (mut state, [root_id, ..]) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+
+    // When handling the yank intent the `y` key produces.
+    let _result = IntentHandler::handle(
+        &yank_intent(),
+        &mut state,
+        &empty_slices(),
+        &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
+    );
+
+    // Then the clipboard signal carries that session's UUID string.
+    assert_eq!(
+        state.frontend.signals_snapshot().yank_text,
+        Some(root_id.to_string()),
+        "`y` must stash the highlighted session's ID on the yank signal"
+    );
+}
+
+#[rstest::rstest]
+fn session_yank_dispatch_arms_the_confirmation_banner() {
+    // Given the sessions section focused with a session highlighted.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+
+    // When handling the yank intent the `y` key produces.
+    let _result = IntentHandler::handle(
+        &yank_intent(),
+        &mut state,
+        &empty_slices(),
+        &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
+    );
+
+    // Then the "Session ID yanked" banner is armed.
+    assert!(
+        state.frontend.session_id_yank_popup,
+        "`y` must arm the yank banner"
+    );
+}
+
+#[rstest::rstest]
+fn session_yank_over_no_selection_is_a_no_op() {
+    // Given the sessions section focused with nothing highlighted.
+    let (mut state, _) = state_with_archive_tree();
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+
+    // When handling the yank intent the `y` key produces.
+    let _result = IntentHandler::handle(
+        &yank_intent(),
+        &mut state,
+        &empty_slices(),
+        &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
+    );
+
+    // Then nothing happened: no clipboard signal, no banner.
+    assert!(state.frontend.signals_snapshot().yank_text.is_none());
+    assert!(!state.frontend.session_id_yank_popup);
+}
+
+#[rstest::rstest]
+fn session_yank_outside_the_sessions_section_is_a_no_op() {
+    // Given a selection present but the sessions section not focused.
+    let (mut state, _) = state_with_archive_tree();
+    cursor_to_row(&mut state, 0);
+
+    // When handling the yank intent the `y` key produces.
+    let _result = IntentHandler::handle(
+        &yank_intent(),
+        &mut state,
+        &empty_slices(),
+        &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
+    );
+
+    // Then nothing happened: no clipboard signal, no banner.
+    assert!(state.frontend.signals_snapshot().yank_text.is_none());
+    assert!(!state.frontend.session_id_yank_popup);
+}
+
+#[rstest::rstest]
+fn any_keypress_after_a_yank_hides_the_banner() {
+    // Given the banner armed by a yank press.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    IntentHandler::handle(
+        &yank_intent(),
+        &mut state,
+        &empty_slices(),
+        &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
+    );
+
+    // When handling an unrelated, unmapped intent (NoOp).
+    let _result = IntentHandler::handle(
+        &KernelIntent::NoOp,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+        jinn_slices::empty_config_layer(),
+    );
+
+    // Then the banner is hidden.
+    assert!(
+        !state.frontend.session_id_yank_popup,
+        "the banner must hide on any subsequent keypress"
+    );
+}
+
+#[rstest::rstest]
+fn yank_after_a_dismissal_rearms_the_banner() {
+    // Given the banner was armed and then dismissed by another keypress.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    IntentHandler::handle(
+        &yank_intent(),
+        &mut state,
+        &empty_slices(),
+        &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
+    );
+    IntentHandler::handle(
+        &KernelIntent::NoOp,
+        &mut state,
+        &empty_slices(),
+        &empty_routes(),
+        jinn_slices::empty_config_layer(),
+    );
+
+    // When handling the yank intent again.
+    let _result = IntentHandler::handle(
+        &yank_intent(),
+        &mut state,
+        &empty_slices(),
+        &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
+    );
+
+    // Then the banner is armed again.
+    assert!(
+        state.frontend.session_id_yank_popup,
+        "pressing `y` again must re-arm the banner"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Session ID yank - render
+// ---------------------------------------------------------------------------
+
+/// Helper: renders the sessions section then the yank banner overlay (the
+/// same two-pass render jinn-tui performs) and returns the terminal, so a
+/// test can read both the rows and the cells' styles. Goes through the
+/// `Sidebar` container so the sessions section gets the same bottom-anchored
+/// sub-rect the production render gives it.
+fn render_sessions_with_yank_banner(state: &AppState, sidebar_width: u16) -> Terminal<TestBackend> {
+    let (width, height) = (60, 20);
+    let frame_area = ratatui::layout::Rect {
+        x: 0,
+        y: 0,
+        width,
+        height,
+    };
+    let sidebar_rect = ratatui::layout::Rect {
+        x: width - sidebar_width,
+        y: 0,
+        width: sidebar_width,
+        height,
+    };
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
+    let slices = jinn_slices::Slices::new();
+    let overlay_views = jinn_slices::OverlayViews::new();
+    let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
+    let mut sidebar = crate::sections::Sidebar::default();
+    sidebar.register(Box::new(SessionsSection::new()));
+    terminal
+        .draw(|frame| {
+            sidebar.render(frame, sidebar_rect, &ctx);
+            crate::sections::sessions::render_session_id_yank_popup_for_state(
+                frame,
+                sidebar_rect,
+                frame_area,
+                &ctx,
+            );
+        })
+        .expect("draw");
+    terminal
+}
+
+#[rstest::rstest]
+fn yank_banner_renders_the_confirmation_text() {
+    // Given a focused selection with the yank banner armed.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    state.frontend.session_id_yank_popup = true;
+
+    // When rendering the sessions section plus the banner overlay.
+    let rows = buffer_rows(&render_sessions_with_yank_banner(&state, 30), 60, 20);
+
+    // Then the confirmation text appears.
+    assert!(
+        rows.iter().any(|row| row.contains("Session ID yanked")),
+        "rendered: {rows:?}"
+    );
+}
+
+#[rstest::rstest]
+fn yank_banner_background_tracks_the_theme_success_key() {
+    // Given a focused selection with the banner armed and a distinctive
+    // success color no other surface uses.
+    let (mut state, _) = state_with_archive_tree();
+    focus_sessions_and_select(&mut state, "tree root");
+    state.frontend.session_id_yank_popup = true;
+    let distinctive = Color::Rgb(12, 200, 34);
+    state.frontend.theme.success = distinctive;
+
+    // When rendering the sessions section plus the banner overlay.
+    let terminal = render_sessions_with_yank_banner(&state, 30);
+    let rows = buffer_rows(&terminal, 60, 20);
+
+    // Then the banner row's cells carry the theme's success color as their
+    // background — the banner reads the theme key, not a hardcoded color.
+    let banner_row = rows
+        .iter()
+        .position(|row| row.contains("Session ID yanked"))
+        .expect("banner is rendered");
+    let last_banner_cell = terminal
+        .backend()
+        .buffer()
+        .cell((59, banner_row as u16))
+        .expect("banner reaches the frame's right edge");
+    assert_eq!(
+        last_banner_cell.style().bg,
+        Some(distinctive),
+        "banner bg must come from theme.success"
+    );
+}
+
+#[rstest::rstest]
+fn yank_banner_renders_nothing_when_the_sessions_section_is_not_focused() {
+    // Given the banner flag armed but the chat pane holding focus (the
+    // floating-surface draw runs every frame regardless of focus).
+    let (mut state, _) = state_with_archive_tree();
+    cursor_to_row(&mut state, 0);
+    state.frontend.session_id_yank_popup = true;
+
+    // When rendering the sessions section plus the banner overlay.
+    let rows = buffer_rows(&render_sessions_with_yank_banner(&state, 30), 60, 20);
+
+    // Then no banner is painted.
+    assert!(
+        !rows.iter().any(|row| row.contains("Session ID yanked")),
+        "the banner must not paint while the chat pane is focused: {rows:?}"
+    );
 }
 
 #[rstest::rstest]

@@ -19,18 +19,10 @@ keeps a worker busy that a chain would idle.
 
 When decomposing:
 
-1. Dispatch the planner on the issue FIRST (see 02-dispatch.md,
-   contract-then-implement). Its contract pass sharpens the split:
-   decompose along the boundaries its investigation found, not the
-   ones a first read guesses at.
-2. Write each sub-issue as a new tracker file: parent = this issue,
-   dependencies stated in `blocked-by`. Sub-issues cover the whole
-   goal with nothing left unowned; anything the parent said that no
-   sub-issue owns is a bug in your decomposition.
-3. Set the parent's status to `parent` (it closes when all children
-   close). Never delete the parent's body — children may quote it.
-4. Order the children: foundation first, then the areas in dependency
-   order. `blocked-by` carries that order.
+1. Dispatch the planner on the issue FIRST (see 02-dispatch.md, contract-then-implement). Its contract pass sharpens the split: decompose along the boundaries its investigation found, not the ones a first read guesses at.
+2. Write each sub-issue as a new tracker file: parent = this issue, dependencies stated in `blocked-by`. Sub-issues cover the whole goal with nothing left unowned; anything the parent said that no sub-issue owns is a bug in your decomposition.
+3. Set the parent's status to `parent` (it closes when all children close). Never delete the parent's body — children may quote it.
+4. Order the children: foundation first, then the areas in dependency order. `blocked-by` carries that order.
 
 When implementing as one issue, set status `open` (from `triage`).
 
@@ -53,12 +45,12 @@ two to five words, kebab-case, from the issue's title. Frontmatter
 carries the state:
 
     ---
-    id: NNN
-    title: the issue in one line
-    status: triage | open | dispatched | done | parent | closed
-    parent: NNN            # absent on top-level issues
-    blocked-by: NNN, NNN   # absent when nothing blocks
-    assignee: N            # absent when unassigned
+    id = 1
+    title = "the issue in one line"
+    status = "triage"        # triage | open | dispatched | done | parent | closed
+    # parent = 1            # parent issue id; absent on top-level issues
+    # blocked-by = [2, 3]   # issue ids that must close first; absent when nothing blocks
+    # assignee = "<session-id>"  # absent when unassigned
     ---
 
 Body: the goal, the approach when one is known, the verification to

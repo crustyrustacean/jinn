@@ -1,7 +1,7 @@
 //! In-flight subagent registry — tracks which parent sessions are blocked on a
-//! `task` tool call, and which child sessions those calls spawned.
+//! `spawn_subagent` tool call, and which child sessions those calls spawned.
 //!
-//! The `task` tool registers each parent→child pair when it spawns the child
+//! The `spawn_subagent` tool registers each parent→child pair when it spawns the child
 //! and removes the pair when the call resolves (success, failure, or abort).
 //! The confirmed-cancel cascade reads the registry to find the running
 //! subagents a cancel must stop.
@@ -19,7 +19,7 @@ use jinn_core_types::SessionId;
 /// Shared map of parent session → set of in-flight child sessions.
 ///
 /// Cheap to clone (all clones share the same inner map). Written only by the
-/// `task` tool through its [`TaskSpawnGuard`]; read by the confirmed-cancel
+/// `spawn_subagent` tool through its [`TaskSpawnGuard`]; read by the confirmed-cancel
 /// cascade.
 #[derive(Debug, Clone, Default)]
 pub struct TaskSpawnRegistry {
@@ -27,7 +27,7 @@ pub struct TaskSpawnRegistry {
 }
 
 impl TaskSpawnRegistry {
-    /// Records a parent→child pair for an in-flight `task` call.
+    /// Records a parent→child pair for an in-flight `spawn_subagent` call.
     ///
     /// # Panics
     ///
@@ -57,7 +57,7 @@ impl TaskSpawnRegistry {
         }
     }
 
-    /// Whether the given session has at least one in-flight `task` call.
+    /// Whether the given session has at least one in-flight `spawn_subagent` call.
     ///
     /// # Panics
     ///

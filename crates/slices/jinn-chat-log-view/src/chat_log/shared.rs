@@ -26,7 +26,7 @@ pub struct RenderContext {
     pub paired_status: Option<ToolResultStatus>,
     /// Whether this entry is still actively streaming (arguments still arriving).
     pub is_streaming: bool,
-    /// `task` call whose linked child session is loaded and still running.
+    /// `spawn_subagent` call whose linked child session is loaded and still running.
     pub is_waiting_on_subagent: bool,
 }
 

@@ -102,17 +102,9 @@ scope vs. files-to-touch.
 `fossil merge` and `git merge` both **exit 0 on conflict** — the
 failure is in the output and the files, never the exit code.
 
-- The primary signal is the merge output itself: fossil prints
-  `WARNING: N merge conflicts` and prefixes conflicted files with
-  `MERGE`; git prints `CONFLICT` lines and leaves the index conflicted
-  (`git diff --name-only --diff-filter=U` lists them).
-- For confirmation, grep **only the files the merge named**. A naive
-  tree-wide `grep -rl '<<<<<<<' .` matches build artifacts (`target/`,
-  minutes of scanning) and this repo's own documented marker text.
-- The lifecycle teardown script performs this check itself and exits
-  `TEARDOWN-CONFLICT` before any irreversible step. When a manual
-  merge (not teardown) hits a conflict: `fossil undo` restores the
-  tree (git: `git merge --abort`). Never commit markers.
+- The primary signal is the merge output itself: fossil prints `WARNING: N merge conflicts` and prefixes conflicted files with `MERGE`; git prints `CONFLICT` lines and leaves the index conflicted (`git diff --name-only --diff-filter=U` lists them).
+- For confirmation, grep **only the files the merge named**. A naive tree-wide `grep -rl '<<<<<<<' .` matches build artifacts (`target/`, minutes of scanning) and this repo's own documented marker text.
+- The lifecycle teardown script performs this check itself and exits `TEARDOWN-CONFLICT` before any irreversible step. When a manual merge (not teardown) hits a conflict: `fossil undo` restores the tree (git: `git merge --abort`). Never commit markers.
 
 ## Retiring a finished implementor's branch
 

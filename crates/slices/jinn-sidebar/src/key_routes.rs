@@ -448,6 +448,14 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "activate + insert",
         sync(sessions::handle_session_activate_insert),
     ));
+    routes.attach(row(
+        "session-yank-id",
+        sessions_scope.clone(),
+        "y",
+        "general",
+        "yank session id",
+        sync(sessions::handle_session_yank_id),
+    ));
 
     // ---- Attendants section ----
     routes.attach(row(
@@ -778,6 +786,27 @@ mod tests {
                 && matches!(
                     &row.outcome,
                     RouteOutcome::Action { action, .. } if *action == "attendant-open-properties"
+                )
+        }));
+    }
+
+    /// `y` in the sessions section yanks the highlighted session's ID.
+    #[rstest::rstest]
+    #[test]
+    fn attach_sidebar_rows_binds_y_for_session_id_yank_in_the_sessions_scope() {
+        // Given an empty shared route table.
+        let routes = KeyRoutes::new();
+
+        // When the sidebar's rows are attached.
+        attach_sidebar_rows(&routes);
+
+        // Then `y` in the sessions scope resolves to the yank action.
+        assert!(routes.rows().iter().any(|row| {
+            row.scope == jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id()
+                && row.key == "y"
+                && matches!(
+                    &row.outcome,
+                    RouteOutcome::Action { action, .. } if *action == "session-yank-id"
                 )
         }));
     }
