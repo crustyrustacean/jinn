@@ -209,7 +209,7 @@ fn reset_attendant(
     attendant
 }
 
-/// A busy session the cascade can reach as a `task`-spawned subagent.
+/// A busy session the cascade can reach as a `spawn_subagent`-spawned subagent.
 ///
 /// Built through `new_child` so it carries the `Subagent` origin the walk
 /// recurses on, and registered in the spawn registry, which is where the

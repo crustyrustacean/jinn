@@ -21,18 +21,7 @@ Never pre-empt the verdict yourself: no self-REJECT, no self-APPROVE,
 no teardown before the reviewer speaks.
 
 - **APPROVE** → proceed to teardown below.
-- **REJECT** → re-dispatch the SAME implementor session (preserve keeps
-  it warm on its own code): the findings verbatim, the contract path,
-  the instruction to fix, re-verify per the contract, and re-report
-  DONE. Do not edit the issue file beyond a review-round count if you
-  keep one. If the same issue takes four consecutive REJECTs, stop
-  cycling it: the implementor's work sits on its own branch, harming
-  nothing — set the issue back to `open`, file the findings as a new
-  issue, and let the tracker re-triage. The branch and its checkout
-  wait for whichever issue eventually consumes them; teardown only
-  ever follows an APPROVE. Never resolve a finding by hand, never
-  teardown on a REJECT, never skip the review because a fix looks
-  small.
+- **REJECT** → re-dispatch the SAME implementor session (preserve keeps it warm on its own code): the findings verbatim, the contract path, the instruction to fix, re-verify per the contract, and re-report DONE. Do not edit the issue file beyond a review-round count if you keep one. If the same issue takes four consecutive REJECTs, stop cycling it: the implementor's work sits on its own branch, harming nothing — set the issue back to `open`, file the findings as a new issue, and let the tracker re-triage. The branch and its checkout wait for whichever issue eventually consumes them; teardown only ever follows an APPROVE. Never resolve a finding by hand, never teardown on a REJECT, never skip the review because a fix looks small.
 
 ## The teardown
 
@@ -53,13 +42,8 @@ A teardown that exits with `TEARDOWN-CONFLICT` changed nothing
 irreversible: the implementor's session and checkout are exactly as
 they were. The fix loop:
 
-1. Re-dispatch the SAME implementor: which files conflicted (from the
-   script's output), that these are merge conflicts against your
-   branch's current content, and the instruction to resolve, verify
-   per the contract, commit, and report DONE.
-2. On its report, re-issue teardown. The re-run's merge is incremental
-   — previously-merged content is a no-op, only the newly fixed files
-   are at stake.
+1. Re-dispatch the SAME implementor: which files conflicted (from the script's output), that these are merge conflicts against your branch's current content, and the instruction to resolve, verify per the contract, commit, and report DONE.
+2. On its report, re-issue teardown. The re-run's merge is incremental — previously-merged content is a no-op, only the newly fixed files are at stake.
 
 Do not fix conflicts yourself, do not file them as tracker issues, and
 do not abandon the session over one: the implementor knows the code it

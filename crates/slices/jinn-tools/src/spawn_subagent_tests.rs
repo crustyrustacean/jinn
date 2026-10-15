@@ -1,4 +1,4 @@
-// Tool-level tests for the `task` tool's spawn and await behavior.
+// Tool-level tests for the `spawn_subagent` tool's spawn and await behavior.
 //
 // These tests exercise `execute()` directly against a real bus (via
 // `TestHarness`) and the same shared `State` wiring the tool orchestrator
@@ -16,12 +16,13 @@
 
 use std::time::Duration;
 
-use crate::task::execute;
+use crate::spawn_subagent::execute;
 use crate::tool_types::ToolContext;
 use jinn_chat_input_msg::EnqueueUserMessage;
 use jinn_core_types::SessionId;
 use jinn_core_types::model_selection::{AlloyStrategy, ModelSelection};
 use jinn_core_types::tool_types::{ToolCall, ToolResult};
+use jinn_core_types::{ContextOverride, PinPosition};
 use jinn_inference_msg::CancelTurn;
 use jinn_kernel::common::app_paths::AppPaths;
 use jinn_kernel::common::app_state::AppState;
@@ -42,10 +43,10 @@ use std::collections::BTreeSet;
 const AWAIT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Builds a tool call with the given JSON arguments.
-fn task_call(arguments: &str) -> ToolCall {
+fn spawn_subagent_call(arguments: &str) -> ToolCall {
     ToolCall {
         id: "tc_task_1".to_owned(),
-        name: crate::task::TASK_TOOL_NAME.to_owned(),
+        name: jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME.to_owned(),
         arguments: arguments.to_owned(),
     }
 }
@@ -55,7 +56,7 @@ fn task_call(arguments: &str) -> ToolCall {
 /// `seed_registry`, also seeds the provider registry and wires the
 /// registry-backed model-name resolver, the production wiring for the
 /// `model` argument.
-async fn task_ctx_with(
+async fn spawn_subagent_ctx_with(
     harness: &TestHarness,
     state: &State,
     session_id: SessionId,
@@ -87,19 +88,23 @@ async fn task_ctx_with(
     }
 }
 
-/// [`task_ctx`] without the model-name resolver — the bare-fixture wiring.
-async fn task_ctx(harness: &TestHarness, state: &State, session_id: SessionId) -> ToolContext {
-    task_ctx_with(harness, state, session_id, false).await
-}
-
-/// [`task_ctx`] carrying the registry-backed resolver over a seeded
-/// provider registry — the production wiring for the `model` argument.
-async fn task_ctx_with_resolver(
+/// [`spawn_subagent_ctx`] without the model-name resolver — the bare-fixture wiring.
+async fn spawn_subagent_ctx(
     harness: &TestHarness,
     state: &State,
     session_id: SessionId,
 ) -> ToolContext {
-    task_ctx_with(harness, state, session_id, true).await
+    spawn_subagent_ctx_with(harness, state, session_id, false).await
+}
+
+/// [`spawn_subagent_ctx`] carrying the registry-backed resolver over a seeded
+/// provider registry — the production wiring for the `model` argument.
+async fn spawn_subagent_ctx_with_resolver(
+    harness: &TestHarness,
+    state: &State,
+    session_id: SessionId,
+) -> ToolContext {
+    spawn_subagent_ctx_with(harness, state, session_id, true).await
 }
 
 /// Seeds a parent session with a distinctive model, cwd, persona, disabled
@@ -277,15 +282,15 @@ async fn settle_child_discovery(
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_spawns_child_linked_and_inheriting() {
+async fn spawn_subagent_spawns_child_linked_and_inheriting() {
     // Given a parent session with distinctive config and recorders on the bus.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
-    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
 
-    // When executing a task call with a description.
-    let call = task_call(r#"{"prompt": "Do the thing.", "description": "Do the thing"}"#);
+    // When executing a spawn_subagent call with a description.
+    let call = spawn_subagent_call(r#"{"prompt": "Do the thing.", "description": "Do the thing"}"#);
     let pending = tokio::spawn(execute(call, ctx));
 
     // And the child finishing its run.
@@ -332,8 +337,8 @@ async fn task_spawns_child_linked_and_inheriting() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_child_has_task_tool_suppressed() {
-    // Given a parent session whose disabled set does not include the task
+async fn spawn_subagent_child_has_spawn_subagent_tool_suppressed() {
+    // Given a parent session whose disabled set does not include the spawn_subagent
     // tool (it is enabled: this session could spawn).
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
@@ -341,15 +346,18 @@ async fn task_child_has_task_tool_suppressed() {
         let snapshot = state.read();
         let parent = snapshot.session.get(&parent_id).expect("parent seeded");
         assert!(
-            parent.is_tool_enabled(crate::task::TASK_TOOL_NAME),
-            "fixture parent must have task enabled"
+            parent.is_tool_enabled(jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME),
+            "fixture parent must have spawn_subagent enabled"
         );
     }
-    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
 
-    // When executing a task call and finishing the child.
-    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Explore."}"#), ctx));
+    // When executing a spawn_subagent call and finishing the child.
+    let pending = tokio::spawn(execute(
+        spawn_subagent_call(r#"{"prompt": "Explore."}"#),
+        ctx,
+    ));
     let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
     let child_id = created[0].session_id.clone();
     let servers = parent_servers();
@@ -358,22 +366,22 @@ async fn task_child_has_task_tool_suppressed() {
     let result = pending.await.expect("task join");
     assert!(result.success, "expected success; got: {}", result.content);
 
-    // Then the child's tool filter withholds task — stamped at spawn.
+    // Then the child's tool filter withholds spawn_subagent — stamped at spawn.
     let snapshot = state.read();
     let child = snapshot
         .session
         .get(&child_id)
         .expect("child present in state");
     assert!(
-        !child.is_tool_enabled(crate::task::TASK_TOOL_NAME),
-        "spawned child must start with the task tool suppressed, got: {:?}",
+        !child.is_tool_enabled(jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME),
+        "spawned child must start with the spawn_subagent tool suppressed, got: {:?}",
         child.tool_filter()
     );
 }
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_child_inherits_parent_project() {
+async fn spawn_subagent_child_inherits_parent_project() {
     // Given a parent session stamped with a project.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
@@ -382,11 +390,14 @@ async fn task_child_inherits_parent_project() {
         let parent = w.session.get_mut(&parent_id).expect("parent seeded");
         parent.set_project(Some(std::path::PathBuf::from("/home/user/projects/jinn")));
     }
-    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
 
-    // When executing a task call and finishing the child.
-    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Explore."}"#), ctx));
+    // When executing a spawn_subagent call and finishing the child.
+    let pending = tokio::spawn(execute(
+        spawn_subagent_call(r#"{"prompt": "Explore."}"#),
+        ctx,
+    ));
     let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
     let child_id = created[0].session_id.clone();
     let servers = parent_servers();
@@ -409,7 +420,7 @@ async fn task_child_inherits_parent_project() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_child_task_list_starts_empty() {
+async fn spawn_subagent_child_task_list_starts_empty() {
     // Given a parent session with a seeded task list.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
@@ -427,11 +438,14 @@ async fn task_child_task_list_starts_empty() {
             },
         ]);
     }
-    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
 
-    // When executing a task call and finishing the child.
-    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Explore."}"#), ctx));
+    // When executing a spawn_subagent call and finishing the child.
+    let pending = tokio::spawn(execute(
+        spawn_subagent_call(r#"{"prompt": "Explore."}"#),
+        ctx,
+    ));
     let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
     let child_id = created[0].session_id.clone();
     let servers = parent_servers();
@@ -448,13 +462,16 @@ async fn task_child_task_list_starts_empty() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_child_task_list_does_not_propagate_to_parent() {
+async fn spawn_subagent_child_task_list_does_not_propagate_to_parent() {
     // Given a parent session and a spawned child.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
-    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
-    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Explore."}"#), ctx));
+    let pending = tokio::spawn(execute(
+        spawn_subagent_call(r#"{"prompt": "Explore."}"#),
+        ctx,
+    ));
     let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
     let child_id = created[0].session_id.clone();
     let servers = parent_servers();
@@ -481,16 +498,60 @@ async fn task_child_task_list_does_not_propagate_to_parent() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_publishes_session_created_then_enqueue_user_message() {
+async fn spawn_subagent_publishes_the_childs_identity_entry() {
+    // Given a parent session and a recorder for the history pushes.
+    let harness = TestHarness::new().await;
+    let (state, parent_id) = parent_fixture();
+    let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone()).await;
+    let created_rec = harness.spawn_recorder::<SessionCreated>().await;
+    let push_rec = harness
+        .spawn_recorder::<jinn_session_history_msg::PushChatEntry>()
+        .await;
+
+    // When executing a spawn_subagent call and finishing the child.
+    let pending = tokio::spawn(execute(
+        spawn_subagent_call(r#"{"prompt": "Explore."}"#),
+        ctx,
+    ));
+    let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
+    let child_id = created[0].session_id.clone();
+    settle_child_discovery(&harness.bus(), &child_id, &parent_servers()).await;
+    finish_child_like_session_actor(&harness.bus(), &state, &child_id, "Found it.").await;
+    let _ = pending.await;
+
+    // Then the child's transcript is opened by the identity entry: pinned
+    // Top, a system entry naming the child's own id, forced into the LLM
+    // context — the same construction every other creation path publishes.
+    let pushes = await_recorded(&push_rec, 1, AWAIT_TIMEOUT).await;
+    let push = pushes
+        .iter()
+        .find(|push| push.session_id == child_id && push.pin == Some(PinPosition::Top))
+        .expect("the identity entry is published for the child");
+    assert!(matches!(
+        &push.entry.kind,
+        ChatEntryKind::System(text) if text.contains(&child_id.to_string())
+    ));
+    assert_eq!(
+        push.entry.context_override(),
+        ContextOverride::ForcedInclude
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn spawn_subagent_publishes_session_created_then_enqueue_user_message() {
     // Given a parent session and recorders on the bus.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
-    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
     let enqueue_rec = harness.spawn_recorder::<EnqueueUserMessage>().await;
 
-    // When executing a task call and finishing the child.
-    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Explore."}"#), ctx));
+    // When executing a spawn_subagent call and finishing the child.
+    let pending = tokio::spawn(execute(
+        spawn_subagent_call(r#"{"prompt": "Explore."}"#),
+        ctx,
+    ));
     let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
     settle_child_discovery(&harness.bus(), &created[0].session_id, &parent_servers()).await;
     finish_child_like_session_actor(&harness.bus(), &state, &created[0].session_id, "Found it.")
@@ -508,7 +569,7 @@ async fn task_publishes_session_created_then_enqueue_user_message() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_stamps_spawned_child_session_on_parent_tool_call() {
+async fn spawn_subagent_stamps_spawned_child_session_on_parent_tool_call() {
     // Given a parent session whose history holds the tool call being executed.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
@@ -517,15 +578,18 @@ async fn task_stamps_spawned_child_session_on_parent_tool_call() {
         let parent = w.session.get_mut(&parent_id).expect("parent seeded");
         parent.push_entry(ChatEntry::tool_call(
             "tc_task_1",
-            crate::task::TASK_TOOL_NAME,
+            jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME,
             r#"{"prompt": "Explore."}"#,
         ));
     }
-    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
 
-    // When executing the task call and finishing the child.
-    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Explore."}"#), ctx));
+    // When executing the spawn_subagent call and finishing the child.
+    let pending = tokio::spawn(execute(
+        spawn_subagent_call(r#"{"prompt": "Explore."}"#),
+        ctx,
+    ));
     let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
     let child_id = created[0].session_id.clone();
     settle_child_discovery(&harness.bus(), &child_id, &parent_servers()).await;
@@ -554,7 +618,7 @@ async fn task_stamps_spawned_child_session_on_parent_tool_call() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_stamp_leaves_unrelated_tool_call_entries_untouched() {
+async fn spawn_subagent_stamp_leaves_unrelated_tool_call_entries_untouched() {
     // Given a parent session holding the executed call and an unrelated call.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
@@ -563,7 +627,7 @@ async fn task_stamp_leaves_unrelated_tool_call_entries_untouched() {
         let parent = w.session.get_mut(&parent_id).expect("parent seeded");
         parent.push_entry(ChatEntry::tool_call(
             "tc_task_1",
-            crate::task::TASK_TOOL_NAME,
+            jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME,
             r#"{"prompt": "Explore."}"#,
         ));
         parent.push_entry(ChatEntry::tool_call(
@@ -572,11 +636,14 @@ async fn task_stamp_leaves_unrelated_tool_call_entries_untouched() {
             r#"{"path": "a.rs"}"#,
         ));
     }
-    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
 
-    // When executing the task call and finishing the child.
-    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Explore."}"#), ctx));
+    // When executing the spawn_subagent call and finishing the child.
+    let pending = tokio::spawn(execute(
+        spawn_subagent_call(r#"{"prompt": "Explore."}"#),
+        ctx,
+    ));
     let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
     settle_child_discovery(&harness.bus(), &created[0].session_id, &parent_servers()).await;
     finish_child_like_session_actor(&harness.bus(), &state, &created[0].session_id, "Done.").await;
@@ -602,14 +669,14 @@ async fn task_stamp_leaves_unrelated_tool_call_entries_untouched() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_rejects_an_empty_prompt_with_a_legible_result() {
+async fn spawn_subagent_rejects_an_empty_prompt_with_a_legible_result() {
     // Given a parent session.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
-    let ctx = task_ctx(&harness, &state, parent_id).await;
+    let ctx = spawn_subagent_ctx(&harness, &state, parent_id).await;
 
-    // When executing a task call with a blank prompt.
-    let result = execute(task_call(r#"{"prompt": "   "}"#), ctx).await;
+    // When executing a spawn_subagent call with a blank prompt.
+    let result = execute(spawn_subagent_call(r#"{"prompt": "   "}"#), ctx).await;
 
     // Then the tool fails without spawning any session.
     let (success, content) = result_parts(&result);
@@ -620,16 +687,16 @@ async fn task_rejects_an_empty_prompt_with_a_legible_result() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_title_falls_back_to_the_prompt_first_line() {
+async fn spawn_subagent_title_falls_back_to_the_prompt_first_line() {
     // Given a parent session.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
-    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
 
-    // When executing a task call without a description.
+    // When executing a spawn_subagent call without a description.
     let pending = tokio::spawn(execute(
-        task_call(r#"{"prompt": "Search the tree for the answer."}"#),
+        spawn_subagent_call(r#"{"prompt": "Search the tree for the answer."}"#),
         ctx,
     ));
     let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
@@ -649,20 +716,20 @@ async fn task_title_falls_back_to_the_prompt_first_line() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_model_unknown_name_fails_without_spawning() {
+async fn spawn_subagent_model_unknown_name_fails_without_spawning() {
     // Given a parent session with the production resolver wiring and
     // recorders on the bus.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
     let baseline_sessions = state.read().session.session_count();
-    let ctx = task_ctx_with_resolver(&harness, &state, parent_id).await;
+    let ctx = spawn_subagent_ctx_with_resolver(&harness, &state, parent_id).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
     let enqueue_rec = harness.spawn_recorder::<EnqueueUserMessage>().await;
 
-    // When executing a task call whose model names neither an expanded id
+    // When executing a spawn_subagent call whose model names neither an expanded id
     // nor an alias.
     let result = execute(
-        task_call(r#"{"prompt": "Ghost run.", "model": "no-such-model"}"#),
+        spawn_subagent_call(r#"{"prompt": "Ghost run.", "model": "no-such-model"}"#),
         ctx,
     )
     .await;
@@ -687,17 +754,17 @@ async fn task_model_unknown_name_fails_without_spawning() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_model_alias_spawns_child_on_alias_target() {
+async fn spawn_subagent_model_alias_spawns_child_on_alias_target() {
     // Given a parent session with the production resolver wiring over a
     // registry that configures `fast` → `ollama/llama3`.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
-    let ctx = task_ctx_with_resolver(&harness, &state, parent_id.clone()).await;
+    let ctx = spawn_subagent_ctx_with_resolver(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
 
-    // When executing a task call with the alias name.
+    // When executing a spawn_subagent call with the alias name.
     let pending = tokio::spawn(execute(
-        task_call(r#"{"prompt": "Run fast.", "model": "fast"}"#),
+        spawn_subagent_call(r#"{"prompt": "Run fast.", "model": "fast"}"#),
         ctx,
     ));
     let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
@@ -719,16 +786,18 @@ async fn task_model_alias_spawns_child_on_alias_target() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_model_expanded_id_spawns_child_on_that_id() {
+async fn spawn_subagent_model_expanded_id_spawns_child_on_that_id() {
     // Given a parent session with the production resolver wiring.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
-    let ctx = task_ctx_with_resolver(&harness, &state, parent_id.clone()).await;
+    let ctx = spawn_subagent_ctx_with_resolver(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
 
-    // When executing a task call with an expanded provider/model id.
+    // When executing a spawn_subagent call with an expanded provider/model id.
     let pending = tokio::spawn(execute(
-        task_call(r#"{"prompt": "Run big.", "model": "openrouter/anthropic/claude-sonnet-4"}"#),
+        spawn_subagent_call(
+            r#"{"prompt": "Run big.", "model": "openrouter/anthropic/claude-sonnet-4"}"#,
+        ),
         ctx,
     ));
     let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
@@ -749,7 +818,7 @@ async fn task_model_expanded_id_spawns_child_on_that_id() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_without_model_inherits_parent_whole_model_selection() {
+async fn spawn_subagent_without_model_inherits_parent_whole_model_selection() {
     // Given a parent session running an alloy.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
@@ -762,11 +831,14 @@ async fn task_without_model_inherits_parent_whole_model_selection() {
         let parent = w.session.get_mut(&parent_id).expect("parent seeded");
         parent.set_model(alloy.clone());
     }
-    let ctx = task_ctx_with_resolver(&harness, &state, parent_id.clone()).await;
+    let ctx = spawn_subagent_ctx_with_resolver(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
 
-    // When executing a task call with no model argument.
-    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Explore."}"#), ctx));
+    // When executing a spawn_subagent call with no model argument.
+    let pending = tokio::spawn(execute(
+        spawn_subagent_call(r#"{"prompt": "Explore."}"#),
+        ctx,
+    ));
     let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
     let child_id = created[0].session_id.clone();
     settle_child_discovery(&harness.bus(), &child_id, &parent_servers()).await;
@@ -786,16 +858,16 @@ async fn task_without_model_inherits_parent_whole_model_selection() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_blank_model_argument_inherits_parent_model() {
+async fn spawn_subagent_blank_model_argument_inherits_parent_model() {
     // Given a parent session on a single model with the resolver wired.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
-    let ctx = task_ctx_with_resolver(&harness, &state, parent_id.clone()).await;
+    let ctx = spawn_subagent_ctx_with_resolver(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
 
-    // When executing a task call whose model argument is blank.
+    // When executing a spawn_subagent call whose model argument is blank.
     let pending = tokio::spawn(execute(
-        task_call(r#"{"prompt": "Explore.", "model": "   "}"#),
+        spawn_subagent_call(r#"{"prompt": "Explore.", "model": "   "}"#),
         ctx,
     ));
     let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
@@ -816,17 +888,17 @@ async fn task_blank_model_argument_inherits_parent_model() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_without_resolver_takes_explicit_model_name_as_final() {
+async fn spawn_subagent_without_resolver_takes_explicit_model_name_as_final() {
     // Given a bare test context carrying no resolver — the fixture wiring,
     // which production never produces.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
-    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
 
-    // When executing a task call with an explicit model argument.
+    // When executing a spawn_subagent call with an explicit model argument.
     let pending = tokio::spawn(execute(
-        task_call(r#"{"prompt": "Unverified.", "model": "some/model"}"#),
+        spawn_subagent_call(r#"{"prompt": "Unverified.", "model": "some/model"}"#),
         ctx,
     ));
     let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
@@ -852,15 +924,18 @@ async fn task_without_resolver_takes_explicit_model_name_as_final() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_result_is_child_last_entry() {
+async fn spawn_subagent_result_is_child_last_entry() {
     // Given a parent session.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
-    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
 
     // When the child finishes with an assistant entry.
-    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Summarize."}"#), ctx));
+    let pending = tokio::spawn(execute(
+        spawn_subagent_call(r#"{"prompt": "Summarize."}"#),
+        ctx,
+    ));
     let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
     settle_child_discovery(&harness.bus(), &created[0].session_id, &parent_servers()).await;
     finish_child_like_session_actor(
@@ -879,15 +954,18 @@ async fn task_result_is_child_last_entry() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_child_cancel_forwards_error_entry() {
+async fn spawn_subagent_child_cancel_forwards_error_entry() {
     // Given a parent session.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
-    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
 
     // When the user cancels the child (Error("Cancelled") + Idle).
-    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Long research."}"#), ctx));
+    let pending = tokio::spawn(execute(
+        spawn_subagent_call(r#"{"prompt": "Long research."}"#),
+        ctx,
+    ));
     let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
     settle_child_discovery(&harness.bus(), &created[0].session_id, &parent_servers()).await;
     cancel_child_like_user(&harness.bus(), &state, &created[0].session_id).await;
@@ -901,17 +979,17 @@ async fn task_child_cancel_forwards_error_entry() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_timeout_cancels_child_and_fails() {
+async fn spawn_subagent_timeout_cancels_child_and_fails() {
     // Given a parent session and a recorder for cancel commands.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
-    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
     let cancel_rec = harness.spawn_recorder::<CancelTurn>().await;
 
     // When the child never finishes and the budget expires.
     let pending = tokio::spawn(execute(
-        task_call(r#"{"prompt": "Never finishes.", "max_duration_secs": 1}"#),
+        spawn_subagent_call(r#"{"prompt": "Never finishes.", "max_duration_secs": 1}"#),
         ctx,
     ));
     let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
@@ -940,16 +1018,22 @@ async fn task_timeout_cancels_child_and_fails() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn concurrent_task_calls_resolve_independently() {
-    // Given a parent session and two in-flight task calls.
+async fn concurrent_spawn_subagent_calls_resolve_independently() {
+    // Given a parent session and two in-flight spawn_subagent calls.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
-    let ctx_a = task_ctx(&harness, &state, parent_id.clone()).await;
-    let ctx_b = task_ctx(&harness, &state, parent_id.clone()).await;
+    let ctx_a = spawn_subagent_ctx(&harness, &state, parent_id.clone()).await;
+    let ctx_b = spawn_subagent_ctx(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
 
-    let pending_a = tokio::spawn(execute(task_call(r#"{"prompt": "Task A."}"#), ctx_a));
-    let pending_b = tokio::spawn(execute(task_call(r#"{"prompt": "Task B."}"#), ctx_b));
+    let pending_a = tokio::spawn(execute(
+        spawn_subagent_call(r#"{"prompt": "Task A."}"#),
+        ctx_a,
+    ));
+    let pending_b = tokio::spawn(execute(
+        spawn_subagent_call(r#"{"prompt": "Task B."}"#),
+        ctx_b,
+    ));
     let created = await_recorded(&created_rec, 2, AWAIT_TIMEOUT).await;
     assert_ne!(created[0].session_id, created[1].session_id);
 
@@ -969,15 +1053,18 @@ async fn concurrent_task_calls_resolve_independently() {
 #[rstest::rstest]
 #[tokio::test]
 async fn parent_cancel_leaves_child_running_and_unregisters_pair() {
-    // GIVEN an in-flight task call awaiting its child.
+    // GIVEN an in-flight spawn_subagent call awaiting its child.
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
-    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
-    // The registry inside the ctx is the one to observe — `task_ctx` clones
+    let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone()).await;
+    // The registry inside the ctx is the one to observe — `spawn_subagent_ctx` clones
     // it out of the harness services, so they share the Arc'd inner map.
     let registry = ctx.task_spawns.clone().expect("ctx carries the registry");
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
-    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Still going."}"#), ctx));
+    let pending = tokio::spawn(execute(
+        spawn_subagent_call(r#"{"prompt": "Still going."}"#),
+        ctx,
+    ));
     let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
     let child_id = created[0].session_id.clone();
     // Settle, then drive the child into Streaming so it is mid-run when the
@@ -1025,14 +1112,14 @@ async fn parent_cancel_leaves_child_running_and_unregisters_pair() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_fails_when_parent_session_is_missing() {
+async fn spawn_subagent_fails_when_parent_session_is_missing() {
     // Given a context naming a session that was never seeded.
     let harness = TestHarness::new().await;
     let state = State::new(AppState::default_with_scope_focus());
-    let ctx = task_ctx(&harness, &state, SessionId::new()).await;
+    let ctx = spawn_subagent_ctx(&harness, &state, SessionId::new()).await;
 
-    // When executing a task call.
-    let result = execute(task_call(r#"{"prompt": "Ghost."}"#), ctx).await;
+    // When executing a spawn_subagent call.
+    let result = execute(spawn_subagent_call(r#"{"prompt": "Ghost."}"#), ctx).await;
 
     // Then the tool fails naming the missing parent.
     let (success, content) = result_parts(&result);
@@ -1051,8 +1138,8 @@ async fn listener_signals_on_idle_to_idle_transition() {
     let harness = TestHarness::new().await;
     let (tx, rx) = tokio::sync::oneshot::channel();
     let child_id = SessionId::new();
-    let _listener = crate::task_phase_listener_actor::TaskPhaseListenerActor::spawn(
-        crate::task_phase_listener_actor::TaskPhaseListenerDeps {
+    let _listener = crate::subagent_phase_listener_actor::SubagentPhaseListenerActor::spawn(
+        crate::subagent_phase_listener_actor::SubagentPhaseListenerDeps {
             system: harness.system().clone(),
             bus: harness.bus(),
             child_id: child_id.clone(),
@@ -1097,15 +1184,18 @@ async fn spawned_settle_wait(
     let child_id = child_id.clone();
     let servers = servers.clone();
     let wait = tokio::spawn(async move {
-        crate::task::await_discovery_settlement(&system, &bus, &child_id, &servers, budget).await;
+        crate::spawn_subagent::await_discovery_settlement(
+            &system, &bus, &child_id, &servers, budget,
+        )
+        .await;
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
     wait
 }
 
-/// An in-flight `task` call whose child session has been created, with
+/// An in-flight `spawn_subagent` call whose child session has been created, with
 /// recorders for `SessionCreated` and `EnqueueUserMessage`.
-struct InFlightTask {
+struct InFlightSubagentCall {
     harness: TestHarness,
     state: State,
     child_id: SessionId,
@@ -1113,21 +1203,24 @@ struct InFlightTask {
     pending: tokio::task::JoinHandle<jinn_core_types::tool_types::ToolResult>,
 }
 
-/// Starts a `task` call, settles the child's context/skills/prompt discovery,
+/// Starts a `spawn_subagent` call, settles the child's context/skills/prompt discovery,
 /// and waits for the child's `SessionCreated`. Discovery is settled here so
 /// every caller starts from a gate that has been opened at least once; the MCP
 /// leg stays pending, so the gate still holds until a server reports status.
-async fn in_flight_task() -> InFlightTask {
+async fn in_flight_subagent_call() -> InFlightSubagentCall {
     let harness = TestHarness::new().await;
     let (state, parent_id) = parent_fixture();
-    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
+    let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
     let enqueue_rec = harness.spawn_recorder::<EnqueueUserMessage>().await;
-    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Explore."}"#), ctx));
+    let pending = tokio::spawn(execute(
+        spawn_subagent_call(r#"{"prompt": "Explore."}"#),
+        ctx,
+    ));
     let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
     let child_id = created[0].session_id.clone();
     settle_child_discovery(&harness.bus(), &child_id, &BTreeSet::new()).await;
-    InFlightTask {
+    InFlightSubagentCall {
         harness,
         state,
         child_id,
@@ -1138,10 +1231,10 @@ async fn in_flight_task() -> InFlightTask {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_holds_first_dispatch_while_the_mcp_leg_is_pending() {
-    // Given an in-flight task call whose child session has been created and
+async fn spawn_subagent_holds_first_dispatch_while_the_mcp_leg_is_pending() {
+    // Given an in-flight spawn_subagent call whose child session has been created and
     // whose discovery has settled with no MCP servers reporting a status.
-    let task = in_flight_task().await;
+    let task = in_flight_subagent_call().await;
 
     // When the enqueue is observed without any server reaching a status.
     // Then the enqueue has not been published: the gate holds for "stub".
@@ -1155,9 +1248,9 @@ async fn task_holds_first_dispatch_while_the_mcp_leg_is_pending() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn task_dispatches_the_child_once_the_mcp_leg_settles() {
-    // Given an in-flight task call still gated on its pending MCP leg.
-    let task = in_flight_task().await;
+async fn spawn_subagent_dispatches_the_child_once_the_mcp_leg_settles() {
+    // Given an in-flight spawn_subagent call still gated on its pending MCP leg.
+    let task = in_flight_subagent_call().await;
 
     // When the server reaches its terminal status and the child finishes.
     task.harness
@@ -1314,7 +1407,7 @@ async fn settle_waiter_budget_expiry_proceeds() {
     let started = tokio::time::Instant::now();
 
     // When the budget expires with no events at all.
-    crate::task::await_discovery_settlement(
+    crate::spawn_subagent::await_discovery_settlement(
         &harness.system().clone(),
         &harness.bus(),
         &child_id,
@@ -1339,14 +1432,14 @@ async fn settle_waiter_budget_expiry_proceeds() {
 #[tokio::test]
 async fn listener_stops_on_channel_close() {
     // Given a settle listener whose receiver was already consumed (the
-    // awaiting task future aborted).
+    // awaiting spawn_subagent future aborted).
     let harness = TestHarness::new().await;
     let child_id = SessionId::new();
     let servers = BTreeSet::from(["stub".to_owned()]);
     let (settled_tx, settled_rx) = tokio::sync::oneshot::channel::<()>();
     drop(settled_rx);
-    let listener = crate::task_settle_listener_actor::TaskSettleListenerActor::spawn(
-        crate::task_settle_listener_actor::TaskSettleListenerDeps {
+    let listener = crate::subagent_settle_listener_actor::SubagentSettleListenerActor::spawn(
+        crate::subagent_settle_listener_actor::SubagentSettleListenerDeps {
             system: harness.system().clone(),
             bus: harness.bus(),
             child_id: child_id.clone(),

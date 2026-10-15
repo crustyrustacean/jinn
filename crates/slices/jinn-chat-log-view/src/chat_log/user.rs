@@ -16,6 +16,22 @@ pub fn to_lines(
     outcome: &AttachmentOutcome,
     ctx: &RenderContext,
 ) -> Vec<Line<'static>> {
+    text_block_lines(text, outcome, ctx.theme.user_block_bg, ctx)
+}
+
+/// Renders a markdown block entry — the shared core behind the user and
+/// inter-session adapters, which differ only in block background and in
+/// whether `@token` recoloring applies.
+///
+/// The sequence: markdown render → optional `@token` recolor → background
+/// patch over every span → pad each line to full width → blank padding rows
+/// above and below, all carrying the block background.
+pub(crate) fn text_block_lines(
+    text: &str,
+    outcome: &AttachmentOutcome,
+    block_bg: ratatui::style::Color,
+    ctx: &RenderContext,
+) -> Vec<Line<'static>> {
     let text = super::shared::strip_ansi(text);
     let mut lines = render_markdown(&text, ctx.content_width, &ctx.theme);
 
@@ -30,10 +46,10 @@ pub fn to_lines(
         color_at_path_tokens(&mut line.spans, &token_colors);
     }
 
-    // Apply user block background to every line and pad to full width.
-    let bg = Style::default().bg(ctx.theme.user_block_bg);
+    // Apply the block background to every line and pad to full width.
+    let bg = Style::default().bg(block_bg);
     for line in &mut lines {
-        // Patch each span to include the user block background while preserving
+        // Patch each span to include the block background while preserving
         // inline markdown styling (bold, code, etc.).
         for span in &mut line.spans {
             span.style = span.style.patch(bg);
@@ -41,9 +57,8 @@ pub fn to_lines(
         pad_line_to_width(line, ctx.content_width, bg);
     }
 
-    // Add padding above and below with the user block background.
-    let pad_bg = Style::default().bg(ctx.theme.user_block_bg);
-    let pad_line = Line::from(Span::styled(" ".repeat(ctx.content_width as usize), pad_bg));
+    // Add padding above and below with the block background.
+    let pad_line = Line::from(Span::styled(" ".repeat(ctx.content_width as usize), bg));
     pad_entry_with(&mut lines, Pad::Both, pad_line);
     lines
 }

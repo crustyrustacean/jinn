@@ -4,7 +4,7 @@
 
 - Add `tell_session` tool for inter-session communication.
 - All inter-session communication is now displayed using light purple text.
-- Session ID is now displayed in the chat history when a new session is created.
+- Added keybind `y` (yank session ID) to session list.
 - Update `workflows` skill. It should now make more reliable workflows.
 - Add `autodev` workflow.
 - `<leader>sx` can be used to disable/enable stream rules via picker.

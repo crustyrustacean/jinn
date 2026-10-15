@@ -30,7 +30,7 @@ Say what the existing options rule out, then proceed. Do not stall on a round tr
 
 ## Step 2: Give each subagent a different constraint
 
-**2 subagents**, spawned in parallel with the `task` tool. Each gets a different constraint. Say how
+**2 subagents**, spawned in parallel with the `spawn_subagent` tool. Each gets a different constraint. Say how
 many you're spawning before spawning them.
 
 The two constraints have to push in genuinely different directions. Two that both say "think
@@ -55,7 +55,7 @@ those don't make ideas more novel — saying "think outside the box" works bette
 
 ## Step 3: Brief the subagents
 
-One `task` call per constraint — two calls. `description` names the constraint:
+One `spawn_subagent` call per constraint — two calls. `description` names the constraint:
 `diverge-categories` and `diverge-negative`, or whatever pair you picked.
 
 ```
