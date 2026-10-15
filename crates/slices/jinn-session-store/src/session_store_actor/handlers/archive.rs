@@ -197,11 +197,15 @@ impl SessionStoreActor {
                 state.session.get(session_id).map(|session| {
                     let mut snapshot = session.capture_snapshot();
                     // Stamped here rather than read off the session core,
-                    // the same way `save_active_session` stamps its write:
-                    // a capture deliberately carries no intervals, and the
-                    // work-time cell is their only home until this durable
-                    // copy lands in the store.
-                    snapshot.metadata.working_intervals = self.working_intervals(session_id);
+                    // the same way the kernel's stamped save stamps its
+                    // write: a capture deliberately carries no intervals,
+                    // and the work-time cell is their only home until this
+                    // durable copy lands in the store.
+                    snapshot.metadata.working_intervals =
+                        jinn_kernel::common::session_persistence::working_intervals(
+                            &self.services,
+                            session_id,
+                        );
                     snapshot
                 })
             };
