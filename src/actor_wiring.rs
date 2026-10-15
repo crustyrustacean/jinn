@@ -255,21 +255,6 @@ impl ActorSystemBuilder {
                 cwd: initial_cwd,
             })
             .await;
-
-            // The boot session opens its transcript with the same identity
-            // entry every other creation path pushes, so the session jinn
-            // starts with can name itself to `tell_session` without any
-            // user action. Pinned Top + forced include by the shared
-            // constructor; PushChatEntry uses get_or_create on the target,
-            // so ordering against SessionCwdChanged is safe.
-            bus.publish(jinn_kernel::PushChatEntry {
-                session_id: initial_session_id,
-                entry: jinn_kernel::ChatEntry::session_identity(
-                    &state.read().session.active_session_id().clone(),
-                ),
-                pin: Some(jinn_kernel::PinPosition::Top),
-            })
-            .await;
         }
 
         // Block until SystemReadyActor confirms readiness.
