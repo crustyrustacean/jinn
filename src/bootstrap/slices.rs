@@ -136,6 +136,12 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
     jinn_citations::activate(&mut ctx.host(), services_snapshot.clone());
     jinn_skills::activate(&mut ctx.host());
     jinn_project::activate(&mut ctx.host());
+    // The model-market popup resolves both of its cells from the catalog
+    // (registered in Block 0), so nothing here reads what it provides —
+    // an independent. Its actors are spawned by the activation itself,
+    // in later territories; the bus subscriptions they need exist by the
+    // time any consumer can open the popup.
+    jinn_model_market::activate(&mut ctx.host());
     // The workflows picker repaints from `WorkflowsLoaded`, which the
     // session-init discovery worker (activated below) publishes; its
     // subscription must exist first, and nothing below resolves a

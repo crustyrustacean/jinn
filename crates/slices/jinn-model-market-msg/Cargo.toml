@@ -1,0 +1,19 @@
+[package]
+name = "jinn-model-market-msg"
+version.workspace = true
+edition.workspace = true
+description = "Model-market crossing contracts: the data and UI cell payloads, slot keys, scope id, and the fetch/refresh commands and events."
+
+[dependencies]
+jinn-core-types = { workspace = true }
+jinn-slices = { workspace = true }
+jiff = { workspace = true }
+serde = { workspace = true }
+trouper = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
