@@ -30,6 +30,9 @@ const SUPPORTED_EXTENSIONS: &[&str] = &["html", "htm", "md", "markdown"];
 /// knows nothing about paths, the filesystem, or the session: it is a pure
 /// function from document to bytes-as-text.
 pub trait ExportFormat {
+    /// The backend name for logging and diagnostics.
+    fn name(&self) -> &'static str;
+
     /// The canonical file extension for this format, without the dot.
     fn extension(&self) -> &'static str;
 

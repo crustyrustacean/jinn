@@ -66,7 +66,7 @@ impl HistoryWorker for EditReadAutoPruneWorker {
         clippy::unnecessary_literal_bound,
         reason = "lifetime elision makes bound redundant"
     )]
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "auto-prune-edit-read"
     }
 

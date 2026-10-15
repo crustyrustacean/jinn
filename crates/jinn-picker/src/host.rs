@@ -49,6 +49,9 @@ pub struct Palette {
 /// borrow this host through the action contexts; the crate never depends on
 /// the kernel crate.
 pub trait PickerHost {
+    /// The host's name for logging and diagnostics.
+    fn name(&self) -> &'static str;
+
     /// Mutable lend of the picker's selection storage (the kernel dispatches
     /// `PickerId` → its typed field and hands it out as `dyn Any`).
     fn selection_state(&mut self, id: PickerId) -> Option<&mut dyn std::any::Any>;

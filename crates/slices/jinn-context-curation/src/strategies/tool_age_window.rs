@@ -227,7 +227,7 @@ impl HistoryWorker for ToolAgeWindowAutoPruneWorker {
         clippy::unnecessary_literal_bound,
         reason = "lifetime elision makes bound redundant"
     )]
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "auto-prune-tool-age-window"
     }
 

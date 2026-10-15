@@ -15,7 +15,7 @@ use jinn_core_types::SessionId;
 #[async_trait::async_trait]
 pub trait HistoryWorker: Send + Sync + 'static {
     /// Human-readable name for logging and diagnostics.
-    fn name(&self) -> &str;
+    fn name(&self) -> &'static str;
 
     /// Inspect the history snapshot and optionally produce mutations.
     ///
