@@ -522,3 +522,4 @@ Entries are added or amended **only with human approval**.
 - (term) PTY liveness on Windows is driven by observed child exit, not read-EOF: ConPTY's master read never returns EOF while the master handle is alive, so the ExitWatcher publishes child death and the screen task drains one quiet tick before finishing; Unix still settles on EOF first.
 - (testing) The workspace test suite passes on both Windows and Linux; tests requiring Unix process semantics are cfg(unix)-gated, and PTY tests run a portable Windows subset.
 - (testing) Integration tests that spawn the jinn binary point it at a temp root through JINN_PATHS_ROOT, so no test writes to the real user config, data, or home directories.
+- (arch) Core id newtypes reject unparseable strings through try_from and never fabricate an id from a parse failure.
