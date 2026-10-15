@@ -167,6 +167,11 @@ impl SessionStoreActor {
         snapshot: SessionSnapshot,
     ) {
         let session_id = snapshot.metadata.session_id.clone();
+        // Read out before `restore_seeded` consumes the snapshot: these are
+        // both the restore publish's payload and the reactivation save's
+        // stamp — see the save below.
+        let working_intervals = snapshot.metadata.working_intervals.clone();
+        let last_active_at = snapshot.metadata.updated_at;
         let model = if snapshot.metadata.profile.model.is_no_provider() {
             self.state
                 .read()
@@ -217,11 +222,29 @@ impl SessionStoreActor {
             self.restore_missing_cwd(&session_id, &original_cwd);
         }
 
+        // Hand the recorded working intervals to the work-time monitor before
+        // the reactivation save below — which would otherwise snapshot the
+        // still-empty cell — so the status bar reads the session's recorded
+        // time the moment the session is on screen. Publishing rather than
+        // writing the cell keeps the monitor the only writer. An interval left
+        // open by a killed session closes at the snapshot's own last-update
+        // time, so the hours the app spent closed are not billed.
+        self.publish(RestoreWorkingTime {
+            session_id: session_id.clone(),
+            intervals: working_intervals.clone(),
+            last_active_at,
+        })
+        .await;
         self.publish(ActiveSessionChanged {
             session_id: session_id.clone(),
         })
         .await;
-        self.save_active_session(&session_id).await;
+        // The stamp override, not the cell read: the restore publish above
+        // reaches the monitor asynchronously, so the cell may still be empty
+        // here, and a stamp from it would rewrite the stored blob with no
+        // intervals — erasing exactly what this load restored.
+        self.save_active_session_stamping(&session_id, Some(working_intervals))
+            .await;
         self.publish(SessionLoadCompleted { session_id }).await;
     }
 
