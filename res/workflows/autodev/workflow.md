@@ -57,7 +57,7 @@ contracting, or triaged. Then do the QA brief (step 6).
 3. **Attach** — read `steps/02-dispatch.md`. For each contract-ready, claimable issue: `load_attendant` the implementor seed (never `spawn_subagent` — Appendix C), apply the lifecycle setup, send the implementor dispatch, mark `dispatched` with the session id as `assignee`. End your turn if nothing else is actionable — a turn that never ends is a turn whose reports never land.
 4. **Review** — a DONE report arrives as a queued message that starts your next turn. Read `steps/03-integrate.md`, dispatch the reviewer (Appendix D), end your turn. APPROVE → teardown. REJECT → findings back to the same implementor session; it fixes and re-reports.
 5. **Teardown** — APPROVE in hand: `run_lifecycle` teardown on the implementor's session (Appendix C). Success → issue `done`, session gone, work on your branch — then `fossil update` / `git pull --ff-only` in your own seat (the teardown moved the branch, not your working tree). `TEARDOWN-CONFLICT` → merge-fix dispatch to the same implementor; on its report, teardown again. Other failure → correct the invocation, re-issue; never hand-work around it.
-6. **QA brief** — nothing claimable, nothing in flight: read `steps/04-qa.md`, write the brief, end your turn. The human's reply resumes the loop (defects → issues) or ends the run (OK → final report; the work is already on the branch).
+6. **QA brief** — nothing claimable, nothing in flight: read `steps/04-qa.md`, write the brief, end your turn. The human's reply resumes the loop (defects → issues).
 
 **Ending the turn is the whole waiting mechanism.** A dispatch with
 nothing else actionable means: say so in one line and end the turn —
@@ -72,7 +72,7 @@ report wakes you.
 - Teardown is yours alone, after review, never by another session. Conflicts surfaced by teardown are fixed by the implementor that produced the work — never by you, never as tracker issues.
 - No escalation path: BLOCKED hands you facts; you file them as issues. No "too hard", no capability judging — decomposition is the only recursion.
 - No gates except the goal ask and the QA brief. The contract is an input, not an approval gate.
-- `.agents/RECORD.md` is never written by any session, you included. Planner `record:` lines go to the ledger, then verbatim into the QA brief; the file changes only after human approval, outside the loop.
+- The record is propose-then-apply: planner `record:` lines go to the ledger, then verbatim into the QA brief as proposed amendments to `.agents/RECORD.md`. Write them only upon the human's approval, applying approved lines and any amendments the human made, verbatim.
 - Repository commands come from `steps/scm.md`. A missing command is a workflow bug — report it, don't improvise.
 - A workflow file edited mid-run governs from the next action: re-read everything under this workflow's directory, migrate the standing attendants if their seeds changed (fresh load; retire old sessions by never messaging them again), append a cycle section to the ledger, and continue. A prompt update never restarts a run.
 
@@ -155,7 +155,7 @@ report format.
 
 ## Appendix E — verification
 
-- **Invariant greps** (run after any workflow edit, before any QA brief): `fossil`/`git` appear only in `lifecycle.toml` and `steps/scm.md`; "escalat" and "too hard" appear nowhere; the record file is only ever *proposed about*, never written.
+- **Invariant greps** (run after any workflow edit, before any QA brief): `fossil`/`git` appear only in `lifecycle.toml` and `steps/scm.md`; "escalat" and "too hard" appear nowhere; the record file is written only on the human's approval of the QA brief's proposed entries.
 - **Live checks**: the tracker parses (frontmatter TOML per file); every `dispatched` issue names a live session id; every `done` issue's branch is closed; your branch's log shows one merge per `done`.
 - **QA brief** (`steps/04-qa.md`): what changed, how it should work (root contract's end state), how to test, known state, proposed record entries. Then stop.
 
