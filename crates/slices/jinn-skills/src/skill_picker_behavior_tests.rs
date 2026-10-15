@@ -462,7 +462,7 @@ fn a_rescan_keeps_the_highlight_on_the_skill_being_looked_at() {
     cell.update(|picker| {
         picker
             .selection
-            .move_down(crate::skill_picker_viewport::unmeasured_viewport());
+            .move_down(jinn_skills_msg::RESULTS_VIEWPORT_FALLBACK);
     });
 
     // When a rescan republishes the same three skills.
@@ -495,19 +495,102 @@ fn a_rescan_replaces_the_visible_skills() {
 // ── Viewport ─────────────────────────────────────────────────────────────
 
 #[rstest::rstest]
-fn the_render_pass_publishes_the_measured_viewport() {
-    // Given a picker state that has not rendered a frame yet.
-    let mut state = SkillPickerState::default();
+#[tokio::test]
+async fn the_render_pass_publishes_the_widget_solved_viewport() {
+    // Given an activated skills slice whose open picker has not rendered a
+    // frame yet, so the cell still holds the pre-render fallback.
+    let (slices, _routes, _system) = activated().await;
+    let cell = slices
+        .reader(&skill_picker_slot())
+        .expect("skill picker cell registered at activation");
+    opened(&cell, &["alpha"], &[]);
+    assert_eq!(
+        cell.read().results_viewport,
+        jinn_skills_msg::RESULTS_VIEWPORT_FALLBACK
+    );
 
-    // When the renderer measures a frame.
-    let measured =
-        crate::skill_picker_viewport::results_viewport(ratatui::layout::Rect::new(0, 0, 200, 50));
-    state.results_viewport = measured;
+    // When a frame is drawn through the picker's real render pass.
+    let area = ratatui::layout::Rect::new(0, 0, 200, 50);
+    draw_skill_picker(&slices, area);
 
-    // Then paging has a real row count rather than the fallback.
-    assert!(state.results_viewport > 0);
-    // And a wide frame's list pane is taller than the stacked layout's.
-    assert!(state.results_viewport > jinn_selection_widget::HORIZONTAL_LIST_ROWS as usize);
+    // Then the cell carries the row count the widget solved for that frame —
+    // the same `PickerLayout.inner.height` an identical second construction
+    // returns — so paging has a real row count rather than the fallback.
+    let measured = cell.read().results_viewport;
+    let expected = widget_layout(&slices, area).inner.height as usize;
+    assert_eq!(measured, expected);
+    // And a wide frame's vertical split gives a taller list pane than the
+    // stacked layout's fixed row count.
+    assert!(measured > jinn_selection_widget::HORIZONTAL_LIST_ROWS as usize);
+}
+
+/// Draws one frame of the skill picker through its real render pass into a
+/// fresh test terminal.
+///
+/// This is the harness for renderer-level viewport assertions: the cell write
+/// under test happens inside the render pass, so the assertion reads the cell
+/// after the draw.
+fn draw_skill_picker(slices: &jinn_slices::Slices, area: ratatui::layout::Rect) {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
+    let facts = jinn_slices::RenderFacts::new(jinn_theme::default_theme(), slices);
+    terminal
+        .draw(|frame| {
+            let popup = crate::skill_picker_render::skill_picker_overlay_rect(&area)
+                .expect("geometry fn yields a popup rect");
+            crate::skill_picker_render::render_skill_picker(frame, popup, &facts);
+        })
+        .expect("draw");
+}
+
+/// Renders the same widget the skill picker's render pass draws, into a
+/// fresh test terminal, and returns the [`jinn_selection_widget::PickerLayout`]
+/// the widget solved.
+///
+/// This is the expected-value source for renderer-level viewport assertions:
+/// the layout comes from the widget, never from hand arithmetic.
+fn widget_layout(
+    slices: &jinn_slices::Slices,
+    area: ratatui::layout::Rect,
+) -> jinn_selection_widget::PickerLayout {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let cell = slices
+        .reader(&skill_picker_slot())
+        .expect("skill picker cell registered at activation");
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
+    let theme = jinn_theme::default_theme();
+    let popup = crate::skill_picker_render::skill_picker_overlay_rect(&area)
+        .expect("geometry fn yields a popup rect");
+    let report = std::cell::Cell::new(None);
+    terminal
+        .draw(|frame| {
+            let guard = cell.read();
+            let state: &SkillPickerState = &guard;
+            let palette = crate::skill_picker_render::skill_picker_palette(&theme);
+            let binds = crate::skill_picker_render::skill_picker_binds();
+            let keybind = jinn_picker::keybind_line(&binds, jinn_picker::Tail::Standard, &palette);
+            let footers = vec![
+                ratatui::text::Line::from(String::new()),
+                ratatui::text::Line::from(keybind.0),
+            ];
+
+            let widget = jinn_selection_widget::PreviewSelectionWidget::new(&state.selection)
+                .title(ratatui::text::Line::from(" Skills "))
+                .title_style(ratatui::style::Style::default().fg(theme.popup_title))
+                .footers(footers)
+                .colors(palette.selection_colors())
+                .preview_scroll(state.preview_scroll);
+            let cache = state.preview_cache.clone();
+            report.set(Some(
+                widget.preview_cache(cache.as_ref()).render(frame, popup),
+            ));
+        })
+        .expect("draw");
+    report.into_inner().expect("render reports a PickerLayout")
 }
 
 // ── Load ─────────────────────────────────────────────────────────────────
