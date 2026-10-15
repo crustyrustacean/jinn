@@ -19,6 +19,38 @@ use crate::{PickerItem, PickerLayout, SelectionColors, SelectionState};
 /// Below this, the layout switches to horizontal (stacked) split.
 pub const VERTICAL_SPLIT_MIN_WIDTH: u16 = 101;
 
+/// What the preview pane solved on the last render: the selected item's
+/// total preview line count and the pane's visible row count.
+///
+/// This is the ground truth a consumer clamps its stored scroll offset
+/// against — the widget is the only component that knows how many lines
+/// the pane actually draws (post-wrap, at the pane's real width), so the
+/// report is filled per [`PreviewSelectionWidget::render`] rather than
+/// re-derived by the consumer. `total_lines` counts drawn content only;
+/// the pane's padding blanks are not content and are never counted. When
+/// nothing is selected the pane draws nothing, so `total_lines` is 0.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PreviewPaneReport {
+    /// Total preview lines the pane draws from for the selected item,
+    /// post-wrap, including placeholder lines an item renders for its own
+    /// empty content. 0 when nothing is selected.
+    pub total_lines: usize,
+    /// Visible rows in the preview pane's body — the height the pane
+    /// solved with, in both split modes.
+    pub visible_rows: usize,
+}
+
+impl PreviewPaneReport {
+    /// The largest scroll offset that still shows content: scrolling to
+    /// this offset leaves the pane's last row on the last content line.
+    /// This is the clamp bound for a consumer's stored scroll offset —
+    /// clamping with it keeps at least one content line on screen.
+    #[must_use]
+    pub fn max_scroll(&self) -> usize {
+        self.total_lines.saturating_sub(self.visible_rows)
+    }
+}
+
 /// Fraction of the list area allocated to the list in vertical split.
 pub const LIST_FRACTION: u16 = 20;
 
@@ -61,6 +93,9 @@ where
     /// [`PreviewContent::preview_lines_cached`] to skip re-rendering lines
     /// already stored under the selected item's cache key.
     preview_cache: Option<&'a dyn PreviewCache>,
+    /// Optional slot the render fills with the preview pane's geometry
+    /// report. Set via [`Self::preview_report`].
+    preview_report: Option<&'a mut Option<PreviewPaneReport>>,
 }
 
 impl<'a, T> PreviewSelectionWidget<'a, T>
@@ -77,6 +112,7 @@ where
             title_style: None,
             preview_scroll: 0,
             preview_cache: None,
+            preview_report: None,
         }
     }
 
@@ -135,6 +171,19 @@ where
         self
     }
 
+    /// Supplies the slot [`render`](Self::render) fills with the preview
+    /// pane's geometry report ([`PreviewPaneReport`]).
+    ///
+    /// The widget writes one report per render — the frame's preview solve
+    /// for the selected item — into `*out`. Pass `&mut Option::None` per
+    /// frame and read it after `render` returns. Without this builder the
+    /// render behaves exactly as before and writes nothing.
+    #[must_use]
+    pub fn preview_report(mut self, out: &'a mut Option<PreviewPaneReport>) -> Self {
+        self.preview_report = Some(out);
+        self
+    }
+
     /// Renders the preview selection popup into the given popup rectangle.
     ///
     /// The caller owns the geometry: `area` is the popup rectangle the slice's
@@ -156,6 +205,7 @@ where
             title_style,
             preview_scroll,
             preview_cache,
+            preview_report,
         } = self;
 
         let block = {
@@ -181,11 +231,12 @@ where
             Layout::vertical([Constraint::Min(0), Constraint::Length(footer_rows)]).areas(inner);
 
         // Build a temporary struct holding the remaining fields for the split renderers.
-        let borrowed = RenderCtx::<T> {
+        let mut borrowed = RenderCtx::<T> {
             state,
             footers: &footers,
             colors: &colors,
             preview_scroll,
+            preview_report,
         };
 
         let results_area = if popup_area.width >= VERTICAL_SPLIT_MIN_WIDTH {
@@ -216,12 +267,15 @@ struct RenderCtx<'a, T: PickerItem + PreviewContent> {
     colors: &'a SelectionColors,
     /// Scroll offset for the preview pane.
     preview_scroll: usize,
+    /// Slot the preview pane fills with its geometry report, if the caller
+    /// asked for one.
+    preview_report: Option<&'a mut Option<PreviewPaneReport>>,
 }
 
 impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
     /// Renders the list and preview side by side (wide terminals).
     fn render_vertical_split(
-        &self,
+        &mut self,
         frame: &mut Frame<'_>,
         inner: Rect,
         cache: Option<&dyn PreviewCache>,
@@ -253,7 +307,7 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
 
     /// Renders the list on top and the preview below (narrow terminals).
     fn render_horizontal_split(
-        &self,
+        &mut self,
         frame: &mut Frame<'_>,
         inner: Rect,
         cache: Option<&dyn PreviewCache>,
@@ -331,7 +385,16 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
 
     /// Renders the preview pane for the currently selected item, consulting
     /// the optional `cache` to avoid re-rendering unchanged content.
-    fn render_preview(&self, frame: &mut Frame<'_>, area: Rect, cache: Option<&dyn PreviewCache>) {
+    ///
+    /// Fills the caller's report slot (when set) from the same lines the
+    /// pane is about to draw, before any scroll clamping — the report
+    /// describes the content's extent, not what the clamp chose to show.
+    fn render_preview(
+        &mut self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        cache: Option<&dyn PreviewCache>,
+    ) {
         let width = area.width as usize;
         let max_visible = area.height as usize;
 
@@ -341,12 +404,22 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
             Arc::new(Vec::new())
         };
 
-        let visible: Vec<Line<'static>> = lines
-            .iter()
-            .skip(self.preview_scroll)
-            .take(max_visible)
-            .cloned()
-            .collect();
+        // Report from the unclamped content: the pane's own display clamp
+        // below only chooses which slice shows, and must not shrink the
+        // reported extent as the user scrolls.
+        if let Some(out) = self.preview_report.as_deref_mut() {
+            *out = Some(PreviewPaneReport {
+                total_lines: lines.len(),
+                visible_rows: max_visible,
+            });
+        }
+
+        // Display clamp: never draw past the end of the content. The slice
+        // clamps its stored scroll itself; this only guards the frame.
+        let skip = self.preview_scroll.min(lines.len().saturating_sub(1));
+
+        let visible: Vec<Line<'static>> =
+            lines.iter().skip(skip).take(max_visible).cloned().collect();
 
         let mut padded = visible;
         while padded.len() < max_visible {
@@ -463,6 +536,115 @@ mod tests {
             name: "rust".to_owned(),
             body: "# Rust rules\n\nUse `wherror` for errors.".to_owned(),
         }])
+    }
+
+    /// A test item whose preview wraps at exactly the pane's width: one
+    /// line per `width` characters, as a stand-in for word-wrapping.
+    /// Proves the report reflects the pane's actual width.
+    #[derive(Debug, Clone)]
+    struct WidthTestItem {
+        text: String,
+    }
+
+    impl PickerItem for WidthTestItem {
+        fn display_label(&self) -> &'static str {
+            "width item"
+        }
+        fn render_row(&self, _is_selected: bool) -> Line<'static> {
+            Line::from("width item")
+        }
+    }
+
+    impl PreviewContent for WidthTestItem {
+        fn preview_lines(&self, width: usize) -> Vec<Line<'static>> {
+            self.text
+                .chars()
+                .collect::<Vec<_>>()
+                .chunks(width.max(1))
+                .map(|chunk| Line::from(chunk.iter().collect::<String>()))
+                .collect()
+        }
+        fn cache_key(&self) -> Option<String> {
+            Some("width-item".to_owned())
+        }
+    }
+
+    /// Renders with a fresh report slot and returns what the render filled.
+    fn render_with_report<T>(
+        state: &SelectionState<T>,
+        backend: ratatui::backend::TestBackend,
+        preview_scroll: usize,
+    ) -> PreviewPaneReport
+    where
+        T: PickerItem + PreviewContent,
+    {
+        let report = std::cell::RefCell::new(None);
+        {
+            let mut terminal = Terminal::new(backend).expect("terminal should build");
+            terminal
+                .draw(|frame| {
+                    let popup = compute_popup_rect(frame.area());
+                    let filled = PreviewSelectionWidget::new(state)
+                        .preview_scroll(preview_scroll)
+                        .preview_report(&mut report.borrow_mut())
+                        .render(frame, popup);
+                    // Keep the PickerLayout return alive to document that the
+                    // report rides its own channel, not the render's return.
+                    let _ = filled;
+                })
+                .expect("draw should succeed");
+        }
+        report
+            .into_inner()
+            .expect("render should fill the report slot")
+    }
+
+    /// Renders the popup on the given backend, returning the report and the
+    /// drawn buffer so a test can check what the pane actually drew.
+    fn render_report_and_buffer<T>(
+        state: &SelectionState<T>,
+        backend: ratatui::backend::TestBackend,
+        preview_scroll: usize,
+    ) -> (PreviewPaneReport, ratatui::buffer::Buffer)
+    where
+        T: PickerItem + PreviewContent,
+    {
+        let report = std::cell::RefCell::new(None);
+        let mut terminal = Terminal::new(backend).expect("terminal should build");
+        terminal
+            .draw(|frame| {
+                let popup = compute_popup_rect(frame.area());
+                let _filled = PreviewSelectionWidget::new(state)
+                    .preview_scroll(preview_scroll)
+                    .preview_report(&mut report.borrow_mut())
+                    .render(frame, popup);
+            })
+            .expect("draw should succeed");
+        let buffer = terminal.backend().buffer().clone();
+        let filled = report
+            .into_inner()
+            .expect("render should fill the report slot");
+        (filled, buffer)
+    }
+
+    /// An item that always renders one placeholder line, standing in for
+    /// items whose empty content still draws a "(no preview)" placeholder.
+    #[derive(Debug, Clone)]
+    struct PlaceholderItem;
+
+    impl PickerItem for PlaceholderItem {
+        fn display_label(&self) -> &'static str {
+            "placeholder"
+        }
+        fn render_row(&self, _is_selected: bool) -> Line<'static> {
+            Line::from("placeholder")
+        }
+    }
+
+    impl PreviewContent for PlaceholderItem {
+        fn preview_lines(&self, _width: usize) -> Vec<Line<'static>> {
+            vec![Line::from("(no preview)")]
+        }
     }
 
     #[rstest::rstest]
@@ -747,5 +929,219 @@ mod tests {
             "r",
             "the item 'rust' starts the rows"
         );
+    }
+
+    #[rstest::rstest]
+    fn preview_report_total_lines_match_the_drawn_wrapped_lines() {
+        // Given an item whose preview wraps at exactly the pane's width.
+        let text = "a".repeat(200);
+        let state = SelectionState::with_items(vec![WidthTestItem { text: text.clone() }]);
+        let backend = TestBackend::new(140, 40);
+        let popup = compute_popup_rect(Rect::new(0, 0, 140, 40));
+        assert!(
+            popup.width >= VERTICAL_SPLIT_MIN_WIDTH,
+            "the solve must be the side-by-side mode"
+        );
+
+        // When rendering with a report slot.
+        let (report, buffer) = render_report_and_buffer(&state, backend, 0);
+
+        // Then total_lines is exactly what the pane draws at its width: the
+        // text chunked at the pane body's own column count — the popup
+        // inner minus borders, the list's 80/20 share, and the separator.
+        let inner_width = usize::from(popup.width) - 2;
+        let pane_width = inner_width * usize::from(100 - LIST_FRACTION) / 100 - 1;
+        let expected = text.chars().count().div_ceil(pane_width);
+        assert_eq!(
+            report.total_lines, expected,
+            "total_lines must be the wrapped count at the pane's width"
+        );
+        // And every pane row after the wrapped body is padding, proving the
+        // count came from drawn content, not the padded buffer.
+        let pad_row =
+            usize::from(popup.y + popup.height) - 1 - (report.visible_rows - expected).max(1);
+        let pad_cell = buffer
+            .cell((
+                popup.x + popup.width - 2,
+                u16::try_from(pad_row).expect("u16 row"),
+            ))
+            .expect("padding cell");
+        assert_eq!(pad_cell.symbol(), " ", "below the body the pane pads");
+    }
+
+    #[rstest::rstest]
+    fn preview_report_wrap_count_depends_on_the_pane_width() {
+        // Given one long item rendered on a wide frame and a narrow frame,
+        // so the pane body width differs between the two renders.
+        let state = SelectionState::with_items(vec![WidthTestItem {
+            text: "a".repeat(200),
+        }]);
+        let wide = render_with_report(&state, TestBackend::new(140, 40), 0);
+        let narrow = render_with_report(&state, TestBackend::new(70, 24), 0);
+
+        // When reading each report's line count.
+        let counts = [wide.total_lines, narrow.total_lines];
+
+        // Then the counts differ — the report reflects the pane's actual
+        // width, not a fixed line count.
+        assert_ne!(
+            counts[0], counts[1],
+            "the same item must report different counts at different pane widths"
+        );
+    }
+
+    #[rstest::rstest]
+    fn preview_report_total_lines_match_short_content() {
+        // Given a single-line item.
+        let state = make_state(vec![TestItem {
+            name: "test".to_owned(),
+            body: "Hello preview".to_owned(),
+        }]);
+        let backend = TestBackend::new(80, 24);
+
+        // When rendering with a report slot.
+        let (report, _) = render_report_and_buffer(&state, backend, 0);
+
+        // Then total_lines is 1 and max_scroll is 0 — the content is shorter
+        // than any pane, so nothing is scrollable.
+        assert_eq!(report.total_lines, 1, "one drawn content line");
+        assert_eq!(report.max_scroll(), 0, "short content never scrolls");
+    }
+
+    #[rstest::rstest]
+    fn preview_report_is_zero_when_nothing_is_selected() {
+        // Given a state with no items at all.
+        let state = SelectionState::<TestItem>::new();
+        let backend = TestBackend::new(80, 24);
+
+        // When rendering with a report slot.
+        let (report, _) = render_report_and_buffer(&state, backend, 0);
+
+        // Then the report names 0 content lines and max_scroll 0.
+        assert_eq!(report.total_lines, 0, "no selection draws no content");
+        assert_eq!(report.max_scroll(), 0, "no content means nothing to scroll");
+        // And the pane still reports its real body height.
+        assert_eq!(report.visible_rows, 12, "the pane keeps its body rows");
+    }
+
+    #[rstest::rstest]
+    fn preview_report_counts_placeholder_lines_an_item_draws() {
+        // Given an item whose empty content still renders one placeholder line.
+        let state = SelectionState::with_items(vec![PlaceholderItem]);
+        let backend = TestBackend::new(80, 24);
+
+        // When rendering with a report slot.
+        let (report, _) = render_report_and_buffer(&state, backend, 0);
+
+        // Then the placeholder counts as drawn content.
+        assert_eq!(report.total_lines, 1, "a drawn placeholder is content");
+    }
+
+    #[rstest::rstest]
+    fn preview_report_visible_rows_match_pane_height_in_stacked_mode() {
+        // Given a narrow frame solving the horizontal split.
+        let state = cached_state();
+        let backend = TestBackend::new(70, 24);
+        let popup = compute_popup_rect(Rect::new(0, 0, 70, 24));
+        assert!(
+            popup.width < VERTICAL_SPLIT_MIN_WIDTH,
+            "the solve must be the stacked mode"
+        );
+
+        // When rendering with a report slot.
+        let (report, _) = render_report_and_buffer(&state, backend, 0);
+
+        // Then visible_rows is the preview pane body's height: the popup
+        // inner height minus the list pane's full band (HORIZONTAL_LIST_ROWS
+        // + 2 — its input and separator chrome live inside that band) and
+        // the separator row.
+        assert_eq!(report.visible_rows, 12);
+        assert_eq!(
+            report.visible_rows,
+            usize::from(popup.height) - 2 - usize::from(HORIZONTAL_LIST_ROWS) - 2 - 1
+        );
+    }
+
+    #[rstest::rstest]
+    fn preview_report_visible_rows_match_pane_height_in_side_by_side_mode() {
+        // Given a wide frame solving the vertical split.
+        let state = cached_state();
+        let backend = TestBackend::new(140, 40);
+        let popup = compute_popup_rect(Rect::new(0, 0, 140, 40));
+        assert!(
+            popup.width >= VERTICAL_SPLIT_MIN_WIDTH,
+            "the solve must be the side-by-side mode"
+        );
+
+        // When rendering with a report slot.
+        let (report, _) = render_report_and_buffer(&state, backend, 0);
+
+        // Then visible_rows is the preview pane body's height: the popup
+        // inner height. The separator is a column, so it narrows the pane's
+        // width and takes none of its height.
+        assert_eq!(report.visible_rows, 32);
+        assert_eq!(report.visible_rows, usize::from(popup.height) - 2);
+    }
+
+    #[rstest::rstest]
+    fn preview_report_zero_lines_when_nothing_is_selected_in_both_modes() {
+        // Given an empty state rendered once per split mode.
+        let empty = SelectionState::<TestItem>::new();
+        let stacked = render_with_report(&empty, TestBackend::new(70, 24), 0);
+        let side_by_side = render_with_report(&empty, TestBackend::new(140, 40), 0);
+
+        // When comparing the two reports' line counts.
+        let lines = [stacked.total_lines, side_by_side.total_lines];
+
+        // Then both are 0 — no selection draws no content in either mode.
+        assert!(
+            lines.iter().all(|&l| l == 0),
+            "no selection must report 0 lines in both split modes"
+        );
+    }
+
+    #[rstest::rstest]
+    fn preview_pane_display_clamp_holds_with_an_oversized_scroll() {
+        // Given a 1-line item with a scroll offset far past the content.
+        let state = make_state(vec![TestItem {
+            name: "test".to_owned(),
+            body: "only line".to_owned(),
+        }]);
+        let backend = TestBackend::new(80, 24);
+
+        // When rendering with an oversized scroll.
+        let (report, buffer) = render_report_and_buffer(&state, backend, 5_000);
+
+        // Then the clamp shows the content instead of blank rows: the only
+        // content line is drawn inside the pane body.
+        let popup = compute_popup_rect(Rect::new(0, 0, 80, 24));
+        let pane_body_row =
+            popup.y + popup.height - 1 - u16::try_from(report.visible_rows).expect("u16 rows");
+        let first_body_cell = buffer
+            .cell((popup.x + 1, pane_body_row))
+            .expect("pane body cell");
+        assert_eq!(
+            first_body_cell.symbol(),
+            "o",
+            "the clamped pane's top row is the content line"
+        );
+    }
+
+    #[rstest::rstest]
+    fn preview_report_is_unaffected_by_the_display_clamp() {
+        // Given a long item (two lines) with an oversized scroll.
+        let state = make_state(vec![TestItem {
+            name: "test".to_owned(),
+            body: "first\nsecond".to_owned(),
+        }]);
+        let backend = TestBackend::new(80, 24);
+
+        // When rendering with an oversized scroll.
+        let (report, _) = render_report_and_buffer(&state, backend, 5_000);
+
+        // Then the report still names the content's full extent — the clamp
+        // chooses what shows, it does not shrink what is reported.
+        assert_eq!(report.total_lines, 2, "report reflects content, not clamp");
+        assert_eq!(report.max_scroll(), 0, "max_scroll is the unclamped bound");
     }
 }
