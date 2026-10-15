@@ -101,7 +101,7 @@ pub struct Theme {
     pub sources_header_fg: Color,
     /// Tool result truncation indicator foreground.
     pub truncation_fg: Color,
-    /// Subagent band background — the padding rows above and below `task`
+    /// Subagent band background — the padding rows above and below `spawn_subagent`
     /// tool calls and their results, marking the subagent card. A dark,
     /// low-contrast purple so status tints stay readable inside the card.
 
@@ -272,7 +272,7 @@ pub struct ThemeFile {
     pub muted_text: Option<ThemeColor>,
     #[serde(default)]
     pub subagent_fg: Option<ThemeColor>,
-    /// Subagent block background shown on `task` tool calls and their results.
+    /// Subagent block background shown on `spawn_subagent` tool calls and their results.
     #[serde(default)]
     pub subagent_bg: Option<ThemeColor>,
     /// Attendant session rows in the session tree.

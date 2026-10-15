@@ -31,7 +31,7 @@ does. Show it, then proceed. Do not stall on a round trip.
 
 ## Step 2: Brief the falsifiers
 
-**3 falsifiers**, spawned in parallel with the `task` tool. `description` is `falsify-1`, `falsify-2`,
+**3 falsifiers**, spawned in parallel with the `spawn_subagent` tool. `description` is `falsify-1`, `falsify-2`,
 `falsify-3`.
 
 Every falsifier gets the **same brief**. You're after three independent tries at the same thing, not

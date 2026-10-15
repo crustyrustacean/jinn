@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! `task` built-in tool — delegate a sub-task to a fresh subagent session.
+//! `spawn_subagent` built-in tool — delegate a sub-task to a fresh subagent session.
 //!
 //! Spawns a regular session linked to the caller (empty history, empty task
 //! list, inheriting the parent's model, CWD, persona, tools, skills, and MCP
@@ -53,8 +53,10 @@
 use std::time::Duration;
 
 use crate::BoxedToolFuture;
-use crate::task_phase_listener_actor::{TaskPhaseListenerActor, TaskPhaseListenerDeps};
-use crate::task_settle_listener_actor::{TaskSettleListenerActor, TaskSettleListenerDeps};
+use crate::subagent_phase_listener_actor::{SubagentPhaseListenerActor, SubagentPhaseListenerDeps};
+use crate::subagent_settle_listener_actor::{
+    SubagentSettleListenerActor, SubagentSettleListenerDeps,
+};
 use crate::tool_types::ToolContext;
 use crate::tool_types::tool_error;
 use jinn_chat_input_msg::EnqueueUserMessage;
@@ -63,20 +65,16 @@ use jinn_core_types::{ChatEntry, ChatEntryKind, ModelSelection, NameFilter, Sess
 use jinn_inference_msg::CancelTurn;
 use jinn_session_lifecycle_msg::SessionCreated;
 use jinn_session_state::ChatSessionState;
+use jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME;
 
-/// The `task` tool's registration name, shared by the registry and the
-/// suppression sites: subagent spawn stamps it into the child's
-/// `tool_filter`, fork strips it from the fork's set.
-pub const TASK_TOOL_NAME: &str = "task";
-
-/// Returns the tool definition for `task`.
+/// Returns the tool definition for `spawn_subagent`.
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
-        name: TASK_TOOL_NAME.to_owned(),
+        name: SPAWN_SUBAGENT_TOOL_NAME.to_owned(),
         description: r#"
 Delegate a self-contained task to a fresh subagent session.
 
-Each call creates one subagent. To use multiple subagents, make multiple task
+Each call creates one subagent. To use multiple subagents, make multiple spawn_subagent
 calls in the same assistant turn. Subagents inherit the model, cwd, tools,
 skills, and MCP servers, but not the parent conversation history or the parent
 task list — a subagent starts with an empty task list and receives its entire
@@ -97,11 +95,11 @@ For requests containing two or more independent workstreams, the default is
 to delegate each workstream to a separate subagent and launch the first wave
 concurrently.
 
-Before making the first task call:
+Before making the first spawn_subagent call:
  1. Identify the relevant workstreams.
  2. Separate independent work from dependent work.
  3. For each independent workstream, write a distinct, self-contained brief.
- 4. Emit all first-wave task calls in the same assistant turn.
+ 4. Emit all first-wave spawn_subagent calls in the same assistant turn.
 
 Do not default to one subagent merely because this tool creates one subagent
 per call. Multiple calls are the mechanism for fan-out.
@@ -134,11 +132,11 @@ read-only investigation when ownership is unclear; let the parent integrate
 the changes.
 
 EXAMPLES:
- - "Find relevant implementation files" + "Find relevant tests" -> two concurrent task calls.
- - "Review correctness" + "Review security" + "Review test coverage" -> three concurrent task calls.
+ - "Find relevant implementation files" + "Find relevant tests" -> two concurrent spawn_subagent calls.
+ - "Review correctness" + "Review security" + "Review test coverage" -> three concurrent spawn_subagent calls.
  - "Investigate possible causes A and B" -> two concurrent calls, followed by parent synthesis.
  - "Implement A, then use A's result to implement B" -> sequential waves.
- - "Make changes to files A, B, C" -> three concurrent task calls.
+ - "Make changes to files A, B, C" -> three concurrent spawn_subagent calls.
 
 PROMPT REQUIREMENTS:
  - The prompt must be self-contained: the subagent cannot see this conversation
@@ -153,12 +151,12 @@ subagent; on expiry the subagent is cancelled and a failure is returned.
 
 
      prompt_snippet: Some(
-       r#"Delegate one self-contained workstream to a fresh subagent. For multiple independent workstreams, make multiple task calls in the same assistant turn."#
+       r#"Delegate one self-contained workstream to a fresh subagent. For multiple independent workstreams, make multiple spawn_subagent calls in the same assistant turn."#
             .to_owned(),
     ),
 
     prompt_guidelines: vec![
-       r#"Before delegating, identify independent workstreams and their dependencies. If two or more workstreams can proceed without waiting for each other, launch them concurrently as separate task calls in the same assistant turn."#
+       r#"Before delegating, identify independent workstreams and their dependencies. If two or more workstreams can proceed without waiting for each other, launch them concurrently as separate spawn_subagent calls in the same assistant turn."#
             .to_owned(),
 
        r#"Treat fan-out as the default for multi-part work. Do not stop after one subagent when the request contains additional independent concerns. Use one subagent only when the work is tiny, indivisible, strictly sequential, or not worth coordinating."#
@@ -204,8 +202,8 @@ subagent; on expiry the subagent is cancelled and a failure is returned.
     }
 }
 
-/// Parsed `task` tool arguments.
-struct TaskArgs {
+/// Parsed `spawn_subagent` tool arguments.
+struct SpawnSubagentArgs {
     /// The self-contained brief for the subagent.
     prompt: String,
     /// Optional 3-5 word title for the child session.
@@ -217,7 +215,7 @@ struct TaskArgs {
 }
 
 /// Parses the tool call arguments.
-fn parse_args(raw: &str) -> Result<TaskArgs, String> {
+fn parse_args(raw: &str) -> Result<SpawnSubagentArgs, String> {
     let v: serde_json::Value =
         serde_json::from_str(raw).map_err(|e| format!("invalid JSON arguments: {e}"))?;
     let prompt = v
@@ -242,7 +240,7 @@ fn parse_args(raw: &str) -> Result<TaskArgs, String> {
         .filter(|d| !d.is_empty())
         .map(str::to_owned);
     let max_duration_secs = crate::orchestrator::extract_max_duration(raw);
-    Ok(TaskArgs {
+    Ok(SpawnSubagentArgs {
         prompt,
         description,
         model,
@@ -250,7 +248,7 @@ fn parse_args(raw: &str) -> Result<TaskArgs, String> {
     })
 }
 
-/// Executes the `task` tool.
+/// Executes the `spawn_subagent` tool.
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move { run(call, ctx).await })
 }
@@ -269,7 +267,7 @@ enum ChildOutcome {
 fn build_child(
     parent: &ChatSessionState,
     parent_id: &SessionId,
-    args: &TaskArgs,
+    args: &SpawnSubagentArgs,
     app_home: &std::path::Path,
 ) -> ChatSessionState {
     let mut child = ChatSessionState::new_child(parent_id, true);
@@ -284,7 +282,7 @@ fn build_child(
         p.persona_name.clone_from(&profile.persona_name);
         p.reasoning_effort = profile.reasoning_effort;
         // A child has to carry a filter either way: the parent's may be
-        // absent, and "no filter" cannot be edited to withhold the task tool.
+        // absent, and "no filter" cannot be edited to withhold the spawn_subagent tool.
         let mut child_filter = profile
             .tool_filter
             .clone()
@@ -296,7 +294,7 @@ fn build_child(
         // this reads correctly whichever mode the parent carried — inserting
         // into an allow list would instead strip the child of that one tool
         // while leaving everything else permitted.
-        child_filter.withhold(crate::task::TASK_TOOL_NAME);
+        child_filter.withhold(SPAWN_SUBAGENT_TOOL_NAME);
         p.tool_filter = Some(child_filter);
         p.skill_filter.clone_from(&profile.skill_filter);
     }
@@ -305,7 +303,7 @@ fn build_child(
     // parent's creation; the child's cwd may differ but the project does not).
     child.set_project(parent.project().map(std::path::Path::to_path_buf));
     // Home resolves fresh at creation in every other path (runtime-only,
-    // not persisted); the `task` tool's ctx carries the app paths.
+    // not persisted); the `spawn_subagent` tool's ctx carries the app paths.
     child.set_home(app_home.to_path_buf());
     child.set_enabled_mcp_servers(parent.enabled_mcp_servers().clone());
     let title = args
@@ -338,7 +336,7 @@ const SETTLE_BUDGET: Duration = Duration::from_secs(15);
 /// Waits until the child's discovery quorum settles, or `budget` expires —
 /// whichever comes first. Either way the caller proceeds to enqueue.
 ///
-/// Spawns a [`TaskSettleListenerActor`] subscribed to the child's discovery
+/// Spawns a [`SubagentSettleListenerActor`] subscribed to the child's discovery
 /// events (context files, skills, prompt templates, MCP server statuses) and
 /// races its oneshot against the budget. Must be called *after* the actor's
 /// subscriptions are live but *before* `EnqueueUserMessage` is published.
@@ -350,7 +348,7 @@ pub(crate) async fn await_discovery_settlement(
     budget: Duration,
 ) {
     let (settled_tx, settled_rx) = tokio::sync::oneshot::channel();
-    let listener = TaskSettleListenerActor::spawn(TaskSettleListenerDeps {
+    let listener = SubagentSettleListenerActor::spawn(SubagentSettleListenerDeps {
         system: system.clone(),
         bus: bus.clone(),
         child_id: child_id.clone(),
@@ -498,7 +496,7 @@ async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
     let Some(system) = ctx.trouper_system.clone() else {
         return tool_error(&call, "no actor system available");
     };
-    let _phase_listener = TaskPhaseListenerActor::spawn(TaskPhaseListenerDeps {
+    let _phase_listener = SubagentPhaseListenerActor::spawn(SubagentPhaseListenerDeps {
         system: system.clone(),
         bus: bus.clone(),
         child_id: child_id.clone(),

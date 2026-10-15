@@ -349,9 +349,9 @@ async fn a_pre_disabled_tool_renders_off_when_the_picker_opens() {
 #[rstest::rstest]
 #[tokio::test]
 async fn a_subagent_stamped_tool_renders_off_when_the_picker_opens() {
-    // Given a subagent session, whose spawn stamp suppresses the task tool.
+    // Given a subagent session, whose spawn stamp suppresses the spawn_subagent tool.
     let wired = Wired::new(vec![Def::plain(
-        jinn_tools_msg::TASK_TOOL_NAME,
+        jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME,
         "Delegate a sub-task",
     )])
     .await;
@@ -360,14 +360,17 @@ async fn a_subagent_stamped_tool_renders_off_when_the_picker_opens() {
         .borrow_mut()
         .active_session_mut()
         .set_tool_filter(Some(NameFilter::deny([
-            jinn_tools_msg::TASK_TOOL_NAME.to_owned()
+            jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME.to_owned(),
         ])));
 
     // When the picker is opened.
     wired.open();
 
-    // Then the task tool's row renders disabled, so the stamp is visible.
-    assert_eq!(wired.enabled(jinn_tools_msg::TASK_TOOL_NAME), Some(false));
+    // Then the spawn_subagent tool's row renders disabled, so the stamp is visible.
+    assert_eq!(
+        wired.enabled(jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME),
+        Some(false)
+    );
 }
 
 // ── 2. The filter narrows ───────────────────────────────────────────────

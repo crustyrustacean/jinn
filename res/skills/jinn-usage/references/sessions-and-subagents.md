@@ -85,27 +85,27 @@ branching a conversation: "try it the other way from that message."
 3. `F` instead seeds a **new session with just that entry** (no inherited
    history).
 
-Forks always get fork origin; a fork of a subagent always has the `task` tool
+Forks always get fork origin; a fork of a subagent always has the `spawn_subagent` tool
 enabled.
 
-## Subagents (the `task` tool)
+## Subagents (the `spawn_subagent` tool)
 
-Ask the agent to "spawn a subagent for X" — it calls the `task` tool, which
+Ask the agent to "spawn a subagent for X" — it calls the `spawn_subagent` tool, which
 creates a **regular session** linked as a child:
 
 - Fresh history; inherits your model, cwd, tools, skills, and MCP servers. It
   starts with an **empty task list** — your list is not copied, so the whole
   assignment has to arrive in the prompt. Give a subagent the context it
   needs; don't assume it can see what you were doing.
-- The parent's `task` tool call blocks until the child finishes and forwards
+- The parent's `spawn_subagent` tool call blocks until the child finishes and forwards
   the child's final message as the tool result.
 - While it runs you can steer it: switch to the child session in the sidebar
   (it's marked with the subagent symbol) and send messages — mid-turn steering
   queues into the child like any session.
-- A `task` call in your history renders as a purple block; press `<enter>` on
+- A `spawn_subagent` call in your history renders as a purple block; press `<enter>` on
   it to jump into that child session (archived children are unarchived
   automatically).
-- Subagents cannot spawn further subagents: the `task` tool starts disabled in
+- Subagents cannot spawn further subagents: the `spawn_subagent` tool starts disabled in
   their session. Re-enable it via the tool picker (`<leader>st`) if you really
   want nested agents.
 - Cancellations forward to the parent as a failure result.

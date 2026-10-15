@@ -85,7 +85,7 @@ impl TuiAppBuilder {
         };
 
         // The in-flight subagent registry: the same handle `Services`
-        // carries, so the confirmed-cancel cascade reads what the `task`
+        // carries, so the confirmed-cancel cascade reads what the `spawn_subagent`
         // tool writes (production wiring mirrors this in actor_wiring).
         core.state.write().task_spawns = services.task_spawns.clone();
 

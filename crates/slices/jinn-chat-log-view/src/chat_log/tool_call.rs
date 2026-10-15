@@ -14,17 +14,17 @@
 //! - **Finalized + Expanded** (`ctx.is_expanded`): Full arguments with
 //!   newlines rendered, no truncation.
 //!
-//! A `task` tool call still awaiting its result while its linked child
+//! A `spawn_subagent` tool call still awaiting its result while its linked child
 //! session runs (`ctx.is_waiting_on_subagent`) renders an additional status
 //! line beneath the call, purple on the subagent block background.
 //!
-//! Task calls (tool name `task`) render on the light purple subagent block
+//! `spawn_subagent` calls (tool name `spawn_subagent`) render on the light purple subagent block
 //! background; their result closes the block with a status row.
 //!
 //! Background color is determined by the paired tool result's status:
 //! no background while pending, green on success, red on failure.
 
-use jinn_tools_msg::TASK_TOOL_NAME;
+use jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
@@ -33,7 +33,7 @@ use super::shared::{
     status_background, truncate_to_width,
 };
 
-/// Status line shown under a `task` call whose subagent session is running.
+/// Status line shown under a `spawn_subagent` call whose subagent session is running.
 const WAITING_TEXT: &str = "Waiting for subagent session to complete";
 
 /// Hint appended to the waiting and outcome lines — the enter-key affordance.
@@ -43,11 +43,11 @@ pub(crate) const ENTER_HINT: &str = " · press enter to open";
 ///
 /// Dispatches to the appropriate sub-function based on tool name and context.
 ///
-/// A `task` call renders on [`jinn_theme::Theme::subagent_bg`] — the light
+/// A `spawn_subagent` call renders on [`jinn_theme::Theme::subagent_bg`] — the light
 /// purple subagent block — and its waiting line carries that background too.
 /// All other tools render with the usual status-derived backgrounds.
 pub fn to_lines(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
-    if name == TASK_TOOL_NAME {
+    if name == SPAWN_SUBAGENT_TOOL_NAME {
         return to_lines_task(name, arguments, ctx);
     }
     if name == "bash" {
@@ -249,7 +249,7 @@ mod tests {
     use super::*;
     use crate::chat_log::shared::RenderContext;
     use jinn_core_types::ToolResultStatus;
-    use jinn_tools_msg::TASK_TOOL_NAME;
+    use jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME;
 
     fn render_context(max_lines: u16, is_expanded: bool) -> RenderContext {
         RenderContext {
@@ -751,13 +751,13 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn task_call_lines_carry_subagent_background() {
-        // Given a task tool call.
+    fn spawn_subagent_call_lines_carry_subagent_background() {
+        // Given a `spawn_subagent` tool call.
         let ctx = render_context(6, false);
         let theme = ctx.theme.clone();
 
         // When converting to lines.
-        let lines = to_lines(TASK_TOOL_NAME, r#"{"prompt":"hi"}"#, &ctx);
+        let lines = to_lines(SPAWN_SUBAGENT_TOOL_NAME, r#"{"prompt":"hi"}"#, &ctx);
 
         // Then the call line uses the subagent block background, padded to
         // the full content width.
@@ -765,14 +765,14 @@ mod tests {
         let spans = &lines[0].spans;
         assert!(
             spans.iter().all(|s| s.style.bg == Some(theme.subagent_bg)),
-            "task call should render on subagent_bg"
+            "spawn_subagent call should render on subagent_bg"
         );
         assert_eq!(lines[0].width(), ctx.content_width as usize);
     }
 
     #[rstest::rstest]
-    fn non_task_call_keeps_status_backgrounds() {
-        // Given a non-task tool call paired with a successful result.
+    fn non_spawn_subagent_call_keeps_status_backgrounds() {
+        // Given a non-spawn_subagent tool call paired with a successful result.
         let ctx = render_context_with_status(Some(ToolResultStatus::Success));
         let theme = ctx.theme.clone();
 
@@ -785,26 +785,26 @@ mod tests {
                 .spans
                 .iter()
                 .any(|s| s.style.bg == Some(theme.tool_success_bg)),
-            "non-task call should keep status backgrounds"
+            "non-spawn_subagent call should keep status backgrounds"
         );
         assert!(
             !lines[0]
                 .spans
                 .iter()
                 .any(|s| s.style.bg == Some(theme.subagent_bg)),
-            "non-task call should not use subagent_bg"
+            "non-spawn_subagent call should not use subagent_bg"
         );
     }
 
     #[rstest::rstest]
-    fn waiting_line_on_task_call_uses_block_background() {
-        // Given a waiting task call.
+    fn waiting_line_on_spawn_subagent_call_uses_block_background() {
+        // Given a waiting `spawn_subagent` call.
         let mut ctx = render_context(6, false);
         ctx.is_waiting_on_subagent = true;
         let theme = ctx.theme.clone();
 
         // When converting to lines.
-        let lines = to_lines(TASK_TOOL_NAME, r#"{"prompt":"hi"}"#, &ctx);
+        let lines = to_lines(SPAWN_SUBAGENT_TOOL_NAME, r#"{"prompt":"hi"}"#, &ctx);
 
         // Then the waiting line is the last line, purple on subagent_bg.
         let waiting = lines.last().expect("lines");
@@ -828,13 +828,13 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn task_call_status_background_is_replaced_by_block() {
-        // Given a task call paired with a failed result.
+    fn spawn_subagent_call_status_background_is_replaced_by_block() {
+        // Given a `spawn_subagent` call paired with a failed result.
         let ctx = render_context_with_status(Some(ToolResultStatus::Failure));
         let theme = ctx.theme.clone();
 
         // When converting to lines.
-        let lines = to_lines(TASK_TOOL_NAME, r#"{"prompt":"hi"}"#, &ctx);
+        let lines = to_lines(SPAWN_SUBAGENT_TOOL_NAME, r#"{"prompt":"hi"}"#, &ctx);
 
         // Then the call renders on subagent_bg, not the failure background —
         // the outcome is reported by the result's status row instead.
@@ -843,7 +843,7 @@ mod tests {
                 .spans
                 .iter()
                 .all(|s| s.style.bg == Some(theme.subagent_bg)),
-            "task call should ignore status backgrounds"
+            "spawn_subagent call should ignore status backgrounds"
         );
     }
 }

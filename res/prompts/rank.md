@@ -31,7 +31,7 @@ Show the list, then proceed. Do not stall on a round trip.
 
 ## Step 2: Brief two comparators
 
-**2 comparators**, spawned in parallel with the `task` tool. `description` is `rank-1` and
+**2 comparators**, spawned in parallel with the `spawn_subagent` tool. `description` is `rank-1` and
 `rank-2`.
 
 Both get the **same brief**, and each one runs the whole comparison on its own. Do not spawn a

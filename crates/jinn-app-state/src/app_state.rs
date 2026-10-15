@@ -42,7 +42,7 @@ pub struct AppState {
     /// The in-flight subagent registry, shared with the tool orchestrator.
     ///
     /// Composition stamps the same handle `Services` carries, so the
-    /// confirmed-cancel cascade reads exactly what the `task` tool writes.
+    /// confirmed-cancel cascade reads exactly what the `spawn_subagent` tool writes.
     /// Cheap to clone (Arc-backed); test states carry an empty registry,
     /// which the cascade reads as "no running subagents".
     pub task_spawns: jinn_tools_msg::TaskSpawnRegistry,

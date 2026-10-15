@@ -67,7 +67,7 @@ pub(crate) enum ToolRegistration {
         /// When `true`, the dispatcher's timeout wrapper is bypassed: the
         /// tool receives the per-call budget in `ToolContext.timeout` and
         /// enforces it itself. Required for tools that must not be aborted
-        /// by a dropped future (`task` would orphan its child session).
+        /// by a dropped future (`spawn_subagent` would orphan its child session).
         self_managed_timeout: bool,
     },
     /// An actor-provided tool routed via [`ExecuteTool`] command.

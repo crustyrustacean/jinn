@@ -1,10 +1,10 @@
-//! Opens the child subagent session linked to the selected `task` entry.
+//! Opens the child subagent session linked to the selected `spawn_subagent` entry.
 
 use jinn_chat_log_view::kernel_element::activate_session;
 use jinn_core_types::{ChatEntryKind, SessionId};
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::protocol::IntentResult;
-use jinn_tools_msg::TASK_TOOL_NAME;
+use jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME;
 
 use wherror::Error;
 
@@ -14,17 +14,17 @@ use wherror::Error;
 pub enum LoadSubagentError {
     /// Nothing is selected in the chat history.
     NoSelection,
-    /// The selected entry is not a `task` tool call or its result.
+    /// The selected entry is not a `spawn_subagent` tool call or its result.
     NotTaskCall,
-    /// The selected `task` call/result carries no child-session link.
+    /// The selected `spawn_subagent` call/result carries no child-session link.
     NoChildLink,
 }
 
-/// Resolves the child session linked to the selected `task` entry.
+/// Resolves the child session linked to the selected `spawn_subagent` entry.
 ///
 /// # Errors
 ///
-/// Returns [`LoadSubagentError`] when no task pair is selected or its call
+/// Returns [`LoadSubagentError`] when no subagent call pair is selected or its call
 /// carries no child-session link.
 pub fn validate_load_subagent_session(state: &AppState) -> Result<SessionId, LoadSubagentError> {
     let entry = state
@@ -32,8 +32,8 @@ pub fn validate_load_subagent_session(state: &AppState) -> Result<SessionId, Loa
         .selected_entry()
         .ok_or(LoadSubagentError::NoSelection)?;
     let call_id = match &entry.kind {
-        ChatEntryKind::ToolCall { id, name, .. } if name == TASK_TOOL_NAME => id,
-        ChatEntryKind::ToolResult { id, name, .. } if name == TASK_TOOL_NAME => id,
+        ChatEntryKind::ToolCall { id, name, .. } if name == SPAWN_SUBAGENT_TOOL_NAME => id,
+        ChatEntryKind::ToolResult { id, name, .. } if name == SPAWN_SUBAGENT_TOOL_NAME => id,
         _ => return Err(LoadSubagentError::NotTaskCall),
     };
     state
@@ -79,8 +79,8 @@ mod tests {
     use super::*;
     use jinn_core_types::{ChatEntry, ToolResultStatus};
 
-    fn task_call(child_session: Option<SessionId>) -> ChatEntry {
-        let mut entry = ChatEntry::tool_call("task-call", TASK_TOOL_NAME, "{}");
+    fn spawn_subagent_call(child_session: Option<SessionId>) -> ChatEntry {
+        let mut entry = ChatEntry::tool_call("subagent-call", SPAWN_SUBAGENT_TOOL_NAME, "{}");
         if let ChatEntryKind::ToolCall {
             child_session: link,
             ..
@@ -113,14 +113,14 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn validate_resolves_linked_task_result_to_child_session() {
-        // Given a selected task result whose call links to a child.
+    fn validate_resolves_linked_spawn_subagent_result_to_child_session() {
+        // Given a selected `spawn_subagent` result whose call links to a child.
         let child_id = SessionId::new();
         let state = state_with_selected([
-            task_call(Some(child_id.clone())),
+            spawn_subagent_call(Some(child_id.clone())),
             ChatEntry::tool_result(
-                "task-call",
-                TASK_TOOL_NAME,
+                "subagent-call",
+                SPAWN_SUBAGENT_TOOL_NAME,
                 "done",
                 ToolResultStatus::Success,
             ),
@@ -130,14 +130,14 @@ mod tests {
         let result = validate_load_subagent_session(&state);
 
         // Then the child session is resolved.
-        assert_eq!(result.expect("linked task"), child_id);
+        assert_eq!(result.expect("linked spawn_subagent call"), child_id);
     }
 
     #[rstest::rstest]
     fn handle_activates_in_memory_child_session() {
-        // Given a selected task call whose child is loaded.
+        // Given a selected `spawn_subagent` call whose child is loaded.
         let child_id = SessionId::new();
-        let mut state = state_with_selected([task_call(Some(child_id.clone()))]);
+        let mut state = state_with_selected([spawn_subagent_call(Some(child_id.clone()))]);
         state.session.get_or_create(&child_id);
 
         // When opening the subagent.
@@ -150,9 +150,9 @@ mod tests {
 
     #[rstest::rstest]
     fn handle_requests_disk_load_for_unloaded_child() {
-        // Given a selected task call whose child is not loaded.
+        // Given a selected `spawn_subagent` call whose child is not loaded.
         let child_id = SessionId::new();
-        let mut state = state_with_selected([task_call(Some(child_id.clone()))]);
+        let mut state = state_with_selected([spawn_subagent_call(Some(child_id.clone()))]);
 
         // When opening the subagent.
         let result = handle_load_subagent_session(&mut state);
@@ -164,14 +164,14 @@ mod tests {
 
     #[rstest::rstest]
     fn handle_measures_an_in_memory_child() {
-        // Given a selected task call whose child is already in memory.
+        // Given a selected `spawn_subagent` call whose child is already in memory.
         //
         // This used to switch to the child with no measurement at all, which put
         // its whole history on the render thread for a frame — the freeze the
         // layout workers exist to prevent, reachable by pressing Enter on a
         // subagent call.
         let child_id = SessionId::new();
-        let mut state = state_with_selected([task_call(Some(child_id.clone()))]);
+        let mut state = state_with_selected([spawn_subagent_call(Some(child_id.clone()))]);
         let mut child = jinn_session_state::ChatSessionState::new();
         child.set_session_id(child_id.clone());
         child.push_entry(jinn_core_types::ChatEntry::user("subagent work"));
@@ -195,9 +195,9 @@ mod tests {
 
     #[rstest::rstest]
     fn handle_makes_the_in_memory_child_active() {
-        // Given a selected task call whose child is already in memory.
+        // Given a selected `spawn_subagent` call whose child is already in memory.
         let child_id = SessionId::new();
-        let mut state = state_with_selected([task_call(Some(child_id.clone()))]);
+        let mut state = state_with_selected([spawn_subagent_call(Some(child_id.clone()))]);
         let mut child = jinn_session_state::ChatSessionState::new();
         child.set_session_id(child_id.clone());
         child.push_entry(jinn_core_types::ChatEntry::user("subagent work"));
