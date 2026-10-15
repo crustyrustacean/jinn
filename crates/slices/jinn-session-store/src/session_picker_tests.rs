@@ -25,6 +25,10 @@
 //! once the store has published them.
 
 #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+#![allow(
+    clippy::indexing_slicing,
+    reason = "test code: fixed-shape fixtures index their own known lengths"
+)]
 
 use jinn_kernel::AppState;
 use jinn_session_store_msg::SessionPickerState;
@@ -358,6 +362,132 @@ async fn confirm_before_the_rows_arrive_does_nothing() {
     );
 }
 
+// ── Ctrl-Enter: the whole tree ──────────────────────────────────────────
+
+/// A publish sink that keeps every payload published through it, so a
+/// route result's typed closures can be decoded and inspected.
+#[derive(Default)]
+struct RecordingSink {
+    published: std::sync::Mutex<Vec<(String, serde_json::Value)>>,
+}
+
+impl jinn_slices::route_publish::PublishSink for RecordingSink {
+    fn publish_schema(
+        &self,
+        schema_id: trouper::schema::SchemaId,
+        payload: serde_json::Value,
+        name: &'static str,
+    ) {
+        self.published
+            .lock()
+            .expect("sink lock")
+            .push((format!("{schema_id}"), payload));
+        let _ = name;
+    }
+}
+
+/// Drains a result's closures into a sink and decodes every published
+/// payload of type `M`.
+fn published_of<M>(result: IntentResult) -> Vec<M>
+where
+    M: serde::de::DeserializeOwned,
+{
+    let sink = RecordingSink::default();
+    for closure in result.messages {
+        closure(&sink);
+    }
+    sink.published
+        .lock()
+        .expect("sink lock")
+        .iter()
+        .filter(|(id, _)| {
+            id.ends_with(std::any::type_name::<M>().rsplit("::").next().unwrap_or(""))
+        })
+        .filter_map(|(_, payload)| serde_json::from_value(payload.clone()).ok())
+        .collect()
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn ctrl_enter_publishes_a_tree_load_for_the_highlighted_session() {
+    // Given a browser with two rows, the second highlighted.
+    let h = Harness::new().await;
+    let rows = vec![entry("first"), entry("second")];
+    let picked = rows[1].session_id.clone();
+    h.install(rows);
+    h.dispatch("move-session-picker-down");
+
+    // When pressing Ctrl-Enter.
+    let result = h.dispatch("confirm-session-tree-picker");
+
+    // Then the tree load names the highlighted session.
+    let loads = published_of::<jinn_session_store_msg::LoadSessionTree>(result);
+    assert_eq!(
+        loads.len(),
+        1,
+        "ctrl-enter must request exactly one tree load"
+    );
+    assert_eq!(loads[0].session_id, picked);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn ctrl_enter_closes_the_browser_and_activates_the_picked_node() {
+    // Given a browser with a row highlighted whose session is already live —
+    // the map only switches to sessions it holds, and a store row lands
+    // active when the store actor restores it instead.
+    let h = Harness::new().await;
+    let rows = vec![entry("first")];
+    let picked = rows[0].session_id.clone();
+    h.install(rows);
+    {
+        let mut state = h.state.borrow_mut();
+        let mut live = jinn_session_state::ChatSessionState::new();
+        live.set_session_id(picked.clone());
+        state.session.insert(live);
+    }
+
+    // When pressing Ctrl-Enter.
+    let result = h.dispatch("confirm-session-tree-picker");
+
+    // Then the browser is popped and the picked node is the active session —
+    // the switch itself is the shared activation's, not this key's.
+    assert_eq!(
+        result.scope_signal,
+        Some(ScopeSignal::PopIf(
+            jinn_session_store_msg::session_picker_scope()
+        )),
+        "ctrl-enter must close the browser"
+    );
+    assert_eq!(
+        h.state.borrow().session.active_session_id(),
+        &picked,
+        "the picked node must be the session on screen"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn ctrl_enter_before_the_rows_arrive_does_nothing() {
+    // Given a browser whose history read is still in flight.
+    let h = Harness::new().await;
+    h.dispatch("open-session-picker");
+
+    // When pressing ctrl-enter in that window.
+    let result = h.dispatch("confirm-session-tree-picker");
+
+    // Then nothing is requested and the browser stays open — same contract
+    // as Enter's empty-tree test.
+    assert!(
+        result.messages.is_empty(),
+        "ctrl-enter on an empty browser must not request anything"
+    );
+    assert!(
+        result.scope_signal.is_none(),
+        "ctrl-enter on an empty browser must not close it"
+    );
+}
+
 // ── Navigating ──────────────────────────────────────────────────────────
 
 #[rstest::rstest]
@@ -599,6 +729,7 @@ fn action_for_key(notation: &str) -> &'static str {
     match notation {
         "<esc>" => "close-session-picker",
         "<enter>" => "confirm-session-picker",
+        "<c-enter>" => "confirm-session-tree-picker",
         "<c-n>" => "new-session-from-session-picker",
         other => panic!("`{other}` is advertised but no action is mapped to it"),
     }
