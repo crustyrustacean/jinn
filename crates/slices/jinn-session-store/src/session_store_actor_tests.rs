@@ -2099,6 +2099,41 @@ mod working_time_tests {
 
     #[rstest::rstest]
     #[tokio::test]
+    async fn persisting_a_session_stores_its_recorded_intervals() {
+        // Given a live session whose 90s of work the work-time cell records.
+        let fixture = actor_fixture().await;
+        let session_id = live_session_with_recorded_time(&fixture);
+
+        // When the rename path persists the session — the `PersistSession`
+        // publish that lands on the store actor's own save.
+        fixture
+            .harness
+            .publish(PersistSession {
+                session_id: session_id.clone(),
+            })
+            .await;
+
+        // Then the stored blob carries the cell's record, the same stamp an
+        // archive writes — the two actors share one stamped-save flow, so no
+        // trigger can store an un-stamped snapshot.
+        let stored = poll_until(|| async {
+            stored_intervals(&fixture, &session_id)
+                .await
+                .is_some_and(|intervals| {
+                    jinn_core_types::total(&intervals, at(1000))
+                        == jiff::SignedDuration::from_secs(90)
+                })
+        })
+        .await;
+        assert!(
+            stored,
+            "a rename-persist must write the session's recorded working time, got {:?}",
+            stored_intervals(&fixture, &session_id).await
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
     async fn archiving_a_session_that_never_worked_stores_no_intervals() {
         // Given a live session the cell has no record for.
         let fixture = actor_fixture().await;
