@@ -1045,3 +1045,50 @@ async fn endpoint_picker_scrolls_the_detail_pane() {
     // Then it stops at the top rather than wrapping or underflowing.
     assert_eq!(wired.cell().read().preview_scroll, 0);
 }
+
+/// A draw clamps a stale oversized scroll to the pane's measured bound.
+#[rstest::rstest]
+#[tokio::test]
+async fn a_draw_clamps_an_oversized_preview_scroll_to_the_measured_bound() {
+    // Given a picker whose stored scroll is far past any real content.
+    let wired = Wired::new().await;
+    wired.with_entries(vec![entry("anthropic/claude-sonnet-4", "Anthropic", true)]);
+    wired.cell().update(|picker| picker.preview_scroll = 5000);
+
+    // When a frame is drawn through the real render fn.
+    wired.draw();
+
+    // Then the stored offset equals the measured bound, and the test is live
+    // because that bound is well under the oversized value.
+    let cell = wired.cell();
+    let guard = cell.read();
+    assert_eq!(guard.preview_scroll, guard.preview_max_scroll);
+    assert!(
+        guard.preview_max_scroll < 5000,
+        "the bound must be the measured one, not the oversized value: {}",
+        guard.preview_max_scroll
+    );
+}
+
+/// Holding the scroll-down key saturates at the bound instead of walking past it.
+#[rstest::rstest]
+#[tokio::test]
+async fn held_detail_scrolling_converges_at_the_measured_bound() {
+    // Given a picker whose bound has been measured by one drawn frame.
+    let wired = Wired::new().await;
+    wired.with_entries(vec![entry("anthropic/claude-sonnet-4", "Anthropic", true)]);
+    wired.draw();
+
+    // When the down key fires repeatedly past the bound.
+    for _ in 0..50 {
+        wired.fire("endpoint-preview-down");
+    }
+
+    // Then two more fires change nothing: the value has converged at the bound.
+    wired.fire("endpoint-preview-down");
+    let settled = wired.cell().read().preview_scroll;
+    wired.fire("endpoint-preview-down");
+    assert_eq!(wired.cell().read().preview_scroll, settled);
+    // And the settled value is the measured bound itself.
+    assert_eq!(settled, wired.cell().read().preview_max_scroll);
+}
