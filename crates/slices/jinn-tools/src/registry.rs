@@ -9,7 +9,7 @@ use jinn_core_types::tool_types::{ToolCall, ToolDefinition};
 use super::{
     BoxedToolFuture, attendant_tools, bash, capabilities, edit, get_time, grep, interactive_term,
     interactive_term_kill, interactive_term_send, load_attendant, read, restart_mcp, run_lifecycle,
-    save_plan, session_fetch, session_search, skill, task, tell_session, write,
+    save_plan, session_fetch, session_search, skill, spawn_subagent, tell_session, write,
 };
 
 /// A built-in tool entry: its definition paired with its execute function,
@@ -17,7 +17,7 @@ use super::{
 ///
 /// `self_managed_timeout` must be `true` for tools that outlive a dropped
 /// future: the dispatcher's outer timeout wrapper *aborts* its inner future
-/// on expiry, which for a tool like `task` would orphan the spawned child.
+/// on expiry, which for a tool like `spawn_subagent` would orphan the spawned child.
 /// A self-managed tool receives the per-call `max_duration_secs` (peeked via
 /// `extract_max_duration`) inside its `ToolContext.timeout` instead, and is
 /// responsible for enforcing (or ignoring) that budget itself.
@@ -107,9 +107,9 @@ pub fn builtin_tools(default_timeout_secs: u64) -> Vec<BuiltinToolEntry> {
             false,
         ),
         (
-            task::definition(),
-            task::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
-            // `task` blocks on a child session; the dispatcher's outer
+            spawn_subagent::definition(),
+            spawn_subagent::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+            // `spawn_subagent` blocks on a child session; the dispatcher's outer
             // timeout would drop its future and orphan the child.
             true,
         ),
@@ -213,7 +213,7 @@ mod tests {
             "load_attendant",
             "run_lifecycle",
             "grep",
-            "task",
+            "spawn_subagent",
             "interactive_term",
             "interactive_term_send",
             "interactive_term_kill",

@@ -453,7 +453,7 @@ mod tests {
         use crate::protocol::ChatEntryKind;
         use jinn_core_types::SessionId;
         use jinn_session_state::ChatSessionState;
-        use jinn_tools_msg::TASK_TOOL_NAME;
+        use jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME;
 
         let mut state = AppState::default_with_scope_focus();
         let first_id = state.session.active_session_id().clone();
@@ -461,7 +461,7 @@ mod tests {
         let mut child = ChatSessionState::new_child(&first_id, false);
         child.set_session_id(child_id.clone());
         state.session.insert(child);
-        let mut entry = ChatEntry::tool_call(entry_id, TASK_TOOL_NAME, "{}");
+        let mut entry = ChatEntry::tool_call(entry_id, SPAWN_SUBAGENT_TOOL_NAME, "{}");
         let ChatEntryKind::ToolCall { child_session, .. } = &mut entry.kind else {
             panic!("expected ToolCall kind");
         };
@@ -839,7 +839,7 @@ mod tests {
         use jinn_core_types::SessionId;
         use jinn_session_state::ChatSessionState;
         use jinn_term_msg::command::ControlHolder;
-        use jinn_tools_msg::TASK_TOOL_NAME;
+        use jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME;
         let mut state = AppState::default_with_scope_focus();
         let first_id = state.session.active_session_id().clone();
         let child_id = SessionId::new();
@@ -847,7 +847,7 @@ mod tests {
         child.set_session_id(child_id.clone());
         state.session.insert(child);
 
-        let mut entry = ChatEntry::tool_call("tc_guard_test2", TASK_TOOL_NAME, "{}");
+        let mut entry = ChatEntry::tool_call("tc_guard_test2", SPAWN_SUBAGENT_TOOL_NAME, "{}");
         let ChatEntryKind::ToolCall { child_session, .. } = &mut entry.kind else {
             panic!("expected ToolCall kind");
         };

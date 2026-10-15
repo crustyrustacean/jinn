@@ -104,7 +104,7 @@ pub struct Services {
     pub request_dump: RequestDumpService,
 
     /// In-flight subagent registry: parent → child sessions spawned by the
-    /// `task` tool. Read by the stall watchdog to skip waiting parents.
+    /// `spawn_subagent` tool. Read by the stall watchdog to skip waiting parents.
     #[debug(skip)]
     pub task_spawns: jinn_tools_msg::TaskSpawnRegistry,
 

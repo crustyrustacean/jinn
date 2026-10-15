@@ -1693,18 +1693,18 @@ fn render_annotation_entry_expanded_shows_source_title_and_url() {
 // Subagent waiting line
 // ---------------------------------------------------------------------------
 
-/// Seeds a `task` tool call entry (linked to `child_id` when given) plus an
+/// Seeds a `spawn_subagent` tool call entry (linked to `child_id` when given) plus an
 /// optional child session in the given phase.
-fn task_waiting_fixture(
+fn spawn_subagent_waiting_fixture(
     child_id: Option<jinn_core_types::SessionId>,
     child_phase: Option<jinn_session_msg::PhaseKind>,
 ) -> AppState {
     use jinn_kernel::protocol::ChatEntryKind;
-    use jinn_tools_msg::TASK_TOOL_NAME;
+    use jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME;
 
     let mut state = AppState::default_with_scope_focus();
-    let call_id = "tc_task_render";
-    let entry = ChatEntry::tool_call(call_id, TASK_TOOL_NAME, r#"{"prompt": "hi"}"#);
+    let call_id = "tc_subagent_render";
+    let entry = ChatEntry::tool_call(call_id, SPAWN_SUBAGENT_TOOL_NAME, r#"{"prompt": "hi"}"#);
     let entry = {
         let mut e = entry;
         if let Some(child) = &child_id
@@ -1736,13 +1736,13 @@ fn buffer_contains(buffer: &ratatui::buffer::Buffer, needle: &str) -> bool {
 }
 
 #[rstest::rstest]
-fn waiting_line_renders_for_pending_task_call_with_running_child() {
+fn waiting_line_renders_for_pending_spawn_subagent_call_with_running_child() {
     use jinn_session_msg::PhaseKind;
 
-    // Given a pending task call linked to an in-memory child in Sending phase.
+    // Given a pending `spawn_subagent` call linked to an in-memory child in Sending phase.
     let mut element = ChatLogElement::new();
     let child_id = jinn_core_types::SessionId::new();
-    let state = task_waiting_fixture(Some(child_id), Some(PhaseKind::Sending));
+    let state = spawn_subagent_waiting_fixture(Some(child_id), Some(PhaseKind::Sending));
 
     let (mut terminal, area) = setup_term(80, 12);
 
@@ -1765,8 +1765,8 @@ fn waiting_line_renders_for_pending_task_call_with_running_child() {
 }
 
 #[rstest::rstest]
-fn waiting_line_absent_for_non_task_tool_call() {
-    // Given a pending non-task tool call entry.
+fn waiting_line_absent_for_non_spawn_subagent_tool_call() {
+    // Given a pending non-`spawn_subagent` tool call entry.
     let mut element = ChatLogElement::new();
     let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().push_entry(ChatEntry::tool_call(
@@ -1791,23 +1791,27 @@ fn waiting_line_absent_for_non_task_tool_call() {
     let buffer = terminal.backend().buffer();
     assert!(
         !buffer_contains(buffer, "Waiting for subagent session"),
-        "non-task call should not show a waiting line: {buffer:?}"
+        "non-spawn_subagent call should not show a waiting line: {buffer:?}"
     );
 }
 
 #[rstest::rstest]
-fn waiting_line_absent_when_task_call_has_paired_result() {
-    use jinn_tools_msg::TASK_TOOL_NAME;
+fn waiting_line_absent_when_spawn_subagent_call_has_paired_result() {
+    use jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME;
 
-    // Given a task call with its completed (paired) result.
+    // Given a `spawn_subagent` call with its completed (paired) result.
     let mut element = ChatLogElement::new();
     let mut state = AppState::default_with_scope_focus();
     {
         let s = state.active_session_mut();
-        s.push_entry(ChatEntry::tool_call("tc_done", TASK_TOOL_NAME, "{}"));
+        s.push_entry(ChatEntry::tool_call(
+            "tc_done",
+            SPAWN_SUBAGENT_TOOL_NAME,
+            "{}",
+        ));
         s.push_entry(ChatEntry::tool_result(
             "tc_done",
-            TASK_TOOL_NAME,
+            SPAWN_SUBAGENT_TOOL_NAME,
             "done",
             ToolResultStatus::Success,
         ));
@@ -1829,19 +1833,19 @@ fn waiting_line_absent_when_task_call_has_paired_result() {
     let buffer = terminal.backend().buffer();
     assert!(
         !buffer_contains(buffer, "Waiting for subagent session"),
-        "completed task call should not show a waiting line: {buffer:?}"
+        "completed spawn_subagent call should not show a waiting line: {buffer:?}"
     );
 }
 
 #[rstest::rstest]
 fn waiting_line_absent_when_child_not_in_memory() {
-    use jinn_tools_msg::TASK_TOOL_NAME;
+    use jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME;
 
-    // Given a linked task call whose child session is not loaded.
+    // Given a linked `spawn_subagent` call whose child session is not loaded.
     let mut element = ChatLogElement::new();
     let state = {
         let mut s = AppState::default_with_scope_focus();
-        let entry = ChatEntry::tool_call("tc_orphan", TASK_TOOL_NAME, "{}");
+        let entry = ChatEntry::tool_call("tc_orphan", SPAWN_SUBAGENT_TOOL_NAME, "{}");
         let entry = {
             use jinn_kernel::protocol::ChatEntryKind;
             let mut e = entry;
@@ -1876,10 +1880,10 @@ fn waiting_line_absent_when_child_not_in_memory() {
 
 #[rstest::rstest]
 fn waiting_line_disappears_when_child_finishes_without_manual_invalidation() {
-    // Given a rendered pending task call whose linked child is running.
+    // Given a rendered pending `spawn_subagent` call whose linked child is running.
     let mut element = ChatLogElement::new();
     let child_id = jinn_core_types::SessionId::new();
-    let mut state = task_waiting_fixture(
+    let mut state = spawn_subagent_waiting_fixture(
         Some(child_id.clone()),
         Some(jinn_session_msg::PhaseKind::Streaming),
     );
@@ -1940,15 +1944,17 @@ fn content_row(
 }
 
 #[rstest::rstest]
-fn task_call_entry_renders_on_subagent_block() {
-    use jinn_tools_msg::TASK_TOOL_NAME;
+fn spawn_subagent_call_entry_renders_on_subagent_block() {
+    use jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME;
 
-    // Given a session containing only a pending task call.
+    // Given a session containing only a pending `spawn_subagent` call.
     let mut element = ChatLogElement::new();
     let mut state = AppState::default_with_scope_focus();
-    state
-        .active_session_mut()
-        .push_entry(ChatEntry::tool_call("tc_block", TASK_TOOL_NAME, "{}"));
+    state.active_session_mut().push_entry(ChatEntry::tool_call(
+        "tc_block",
+        SPAWN_SUBAGENT_TOOL_NAME,
+        "{}",
+    ));
     let theme = jinn_theme::default_theme();
 
     let (mut terminal, area) = setup_term(80, 12);
@@ -1974,18 +1980,18 @@ fn task_call_entry_renders_on_subagent_block() {
             .collect()
     };
     let call_y = (area.y..area.bottom())
-        .find(|&y| row_text(y).contains("task"))
-        .expect("task call text should render");
+        .find(|&y| row_text(y).contains("spawn_subagent"))
+        .expect("spawn_subagent call text should render");
     let row = content_row(&buffer, content_x, call_y);
     assert!(
         row.iter().all(|c| c.style().bg == Some(theme.subagent_bg)),
-        "task call row should be fully on subagent_bg"
+        "spawn_subagent call row should be fully on subagent_bg"
     );
 }
 
 #[rstest::rstest]
-fn non_task_call_entry_does_not_use_subagent_block() {
-    // Given a session containing a non-task tool call.
+fn non_spawn_subagent_call_entry_does_not_use_subagent_block() {
+    // Given a session containing a non-spawn_subagent tool call.
     let mut element = ChatLogElement::new();
     let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().push_entry(ChatEntry::tool_call(
@@ -2015,22 +2021,29 @@ fn non_task_call_entry_does_not_use_subagent_block() {
             .iter()
             .any(|c| c.style().bg == Some(theme.subagent_bg))
     });
-    assert!(!uses_block, "non-task call should not use subagent_bg");
+    assert!(
+        !uses_block,
+        "non-spawn_subagent call should not use subagent_bg"
+    );
 }
 
 #[rstest::rstest]
-fn completed_task_result_shows_finished_status_row() {
-    use jinn_tools_msg::TASK_TOOL_NAME;
+fn completed_spawn_subagent_result_shows_finished_status_row() {
+    use jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME;
 
-    // Given a task call with its completed success result.
+    // Given a `spawn_subagent` call with its completed success result.
     let mut element = ChatLogElement::new();
     let mut state = AppState::default_with_scope_focus();
     {
         let s = state.active_session_mut();
-        s.push_entry(ChatEntry::tool_call("tc_status", TASK_TOOL_NAME, "{}"));
+        s.push_entry(ChatEntry::tool_call(
+            "tc_status",
+            SPAWN_SUBAGENT_TOOL_NAME,
+            "{}",
+        ));
         s.push_entry(ChatEntry::tool_result(
             "tc_status",
-            TASK_TOOL_NAME,
+            SPAWN_SUBAGENT_TOOL_NAME,
             "done",
             ToolResultStatus::Success,
         ));
@@ -2177,7 +2190,7 @@ fn streaming_tool_call_renders_multiline_arguments() {
 }
 
 #[rstest::rstest]
-#[case("task")]
+#[case("spawn_subagent")]
 #[case("write")]
 fn tool_call_arguments_render_as_a_block_after_a_phase_transition_mid_stream(#[case] tool: &str) {
     // Given a turn that opened with a tool call: the call is registered while

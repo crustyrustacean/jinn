@@ -3,9 +3,9 @@
 //! This slice owns the whole tool family: the orchestrator actor that
 //! dispatches `ExecuteToolBatch` requests, every built-in tool (file
 //! editing, shell, search, plans, skills, sessions, terminals), the todo
-//! tools that drive the session task list, and the `task` subagent
-//! machinery with its phase/settle listeners. Protocol contracts and
-//! payload types live in `jinn-tools-msg`; the tool nouns
+//! tools that drive the session task list, and the `spawn_subagent`
+//! subagent machinery with its phase/settle listeners. Protocol contracts
+//! and payload types live in `jinn-tools-msg`; the tool nouns
 //! (`ToolDefinition`/`ToolCall`/`ToolResult`) live in `jinn-core-types`.
 //!
 //! The orchestrator maintains a registry of available tools (built-in and
@@ -53,13 +53,13 @@ pub mod save_plan;
 pub mod session_fetch;
 pub mod session_search;
 pub mod skill;
-pub mod task;
+pub mod spawn_subagent;
+pub mod subagent_phase_listener_actor;
+pub mod subagent_settle_listener_actor;
 pub mod task_list_picker_actions;
 pub mod task_list_picker_render;
 pub mod task_list_picker_routes;
 pub mod task_list_picker_viewport;
-pub mod task_phase_listener_actor;
-pub mod task_settle_listener_actor;
 pub mod todo_tools;
 pub mod tool_paths;
 pub mod tool_picker_actions;
@@ -78,9 +78,9 @@ mod interactive_term_tests;
 #[path = "orchestrator_filter_tests.rs"]
 mod orchestrator_filter_tests;
 #[cfg(test)]
-mod task_list_picker_tests;
+mod spawn_subagent_tests;
 #[cfg(test)]
-mod task_tests;
+mod task_list_picker_tests;
 #[cfg(test)]
 mod tool_picker_tests;
 #[cfg(test)]

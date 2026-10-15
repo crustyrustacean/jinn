@@ -54,7 +54,7 @@ contracting, or triaged. Then do the QA brief (step 6).
 
 1. **Triage** — read `steps/01-triage.md`. For each `triage` issue: decompose (ceiling: ~500 lines or 3+ independent areas) or set `open`. Update the task list.
 2. **Contract** — read `steps/02-dispatch.md`. For each claimable issue: dispatch the planner, mark `contracting`, end your turn. Its READY report wakes you; mark `open`.
-3. **Attach** — read `steps/02-dispatch.md`. For each contract-ready, claimable issue: `load_attendant` the implementor seed (never `task` — Appendix C), apply the lifecycle setup, send the implementor dispatch, mark `dispatched` with the session id as `assignee`. End your turn if nothing else is actionable — a turn that never ends is a turn whose reports never land.
+3. **Attach** — read `steps/02-dispatch.md`. For each contract-ready, claimable issue: `load_attendant` the implementor seed (never `spawn_subagent` — Appendix C), apply the lifecycle setup, send the implementor dispatch, mark `dispatched` with the session id as `assignee`. End your turn if nothing else is actionable — a turn that never ends is a turn whose reports never land.
 4. **Review** — a DONE report arrives as a queued message that starts your next turn. Read `steps/03-integrate.md`, dispatch the reviewer (Appendix D), end your turn. APPROVE → teardown. REJECT → findings back to the same implementor session; it fixes and re-reports.
 5. **Teardown** — APPROVE in hand: `run_lifecycle` teardown on the implementor's session (Appendix C). Success → issue `done`, session gone, work on your branch — then `fossil update` / `git pull --ff-only` in your own seat (the teardown moved the branch, not your working tree). `TEARDOWN-CONFLICT` → merge-fix dispatch to the same implementor; on its report, teardown again. Other failure → correct the invocation, re-issue; never hand-work around it.
 6. **QA brief** — nothing claimable, nothing in flight: read `steps/04-qa.md`, write the brief, end your turn. The human's reply resumes the loop (defects → issues) or ends the run (OK → final report; the work is already on the branch).
@@ -129,7 +129,7 @@ is the landing; there is no integration branch.
 Spawn procedure, per issue (steps/02-dispatch.md carries the full
 payload lists):
 
-1. `load_attendant` on `attendants/implementor.toml` (absolute path) — this creates the session and stamps the seed. Never `task`.
+1. `load_attendant` on `attendants/implementor.toml` (absolute path) — this creates the session and stamps the seed. Never `spawn_subagent`.
 2. `run_lifecycle` setup: `path` = this workflow's `lifecycle.toml` (absolute), `session_id` = the new session's id, `dir` = `<your-root>-issue-<id>` (sibling of your checkout), `branch` = `<your-branch>-issue-<id>`, `parent` = your branch.
 3. `tell_session` the dispatch (issue path, contract path, ids, checkout dir, parent branch, scm.md path, report format).
 

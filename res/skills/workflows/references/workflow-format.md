@@ -271,7 +271,7 @@ already on the list tell the whole story.
 
 ## Dispatch-prompt assembly
 
-One `task` call per step. The prompt:
+One `spawn_subagent` call per step. The prompt:
 
 1. The step file's body, verbatim.
 2. A parameter block for this run — every parameter the step consumes, with its value for this run.

@@ -74,7 +74,7 @@ pub fn handle_new_attendant(state: &mut AppState, config: &ConfigLayer) -> Inten
 
     // The attendant is meaningfully created even though no keystroke has
     // landed in it, so it survives a save that runs before its first turn
-    // (the `task` tool's `build_child` marks its child for the same reason).
+    // (the `spawn_subagent` tool's `build_child` marks its child for the same reason).
     if let Some(a) = state.session.get_mut(&attendant_id) {
         a.mark_interacted();
     }
