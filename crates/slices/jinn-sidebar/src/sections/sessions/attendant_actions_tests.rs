@@ -209,7 +209,7 @@ fn reset_attendant(
     attendant
 }
 
-/// A busy session the cascade can reach as a `task`-spawned subagent.
+/// A busy session the cascade can reach as a `spawn_subagent`-spawned subagent.
 ///
 /// Built through `new_child` so it carries the `Subagent` origin the walk
 /// recurses on, and registered in the spawn registry, which is where the
@@ -231,71 +231,6 @@ fn busy_nested_attendant(
     nested.set_title("zzz-nested".to_owned());
     nested.begin_streaming();
     nested
-}
-
-#[rstest::rstest]
-#[tokio::test]
-async fn a_created_attendant_pushes_an_identity_entry() {
-    // Given a recording sink on the bus and the sessions section focused.
-    let sink = IdentitySink::default();
-
-    // Given the sessions section focused with a session highlighted.
-    let mut state = state_with_selected_session();
-
-    // When creating an attendant with `N` and draining its messages.
-    let result = handle_new_attendant(&mut state, &empty_config());
-    let attendant_id = state.session.active_session_id().clone();
-    for closure in result.messages {
-        closure(&sink);
-    }
-
-    // Then the pushes aimed at the attendant carry the identity entry:
-    // pinned Top, a system entry naming the attendant's own id, forced
-    // into the LLM context — the `N` path announces the id the same way
-    // the scripted-lifecycle path does.
-    let published = sink.published.lock().expect("sink lock");
-    let identity: Vec<jinn_session_history_msg::PushChatEntry> = published
-        .iter()
-        .filter(|(id, _)| id.ends_with("PushChatEntry"))
-        .filter_map(|(_, payload)| serde_json::from_value(payload.clone()).ok())
-        .filter(|push: &jinn_session_history_msg::PushChatEntry| push.session_id == attendant_id)
-        .collect();
-    let identity = identity
-        .iter()
-        .find(|push| push.pin == Some(jinn_core_types::PinPosition::Top))
-        .expect("the identity entry is pinned Top on the new attendant");
-    let jinn_core_types::chat_entry::ChatEntryKind::System(text) = &identity.entry.kind else {
-        panic!("the identity entry is a system entry");
-    };
-    assert!(
-        text.contains(&attendant_id.to_string()),
-        "the entry names the attendant's own id: {text}"
-    );
-    assert_eq!(
-        identity.entry.context_override(),
-        jinn_core_types::ContextOverride::ForcedInclude
-    );
-}
-
-/// A sink that keeps every payload published through it, keyed by schema id.
-#[derive(Default)]
-struct IdentitySink {
-    published: Mutex<Vec<(String, serde_json::Value)>>,
-}
-
-impl jinn_slices::route_publish::PublishSink for IdentitySink {
-    fn publish_schema(
-        &self,
-        schema_id: trouper::schema::SchemaId,
-        payload: serde_json::Value,
-        name: &'static str,
-    ) {
-        let _ = name;
-        self.published
-            .lock()
-            .expect("sink lock")
-            .push((format!("{schema_id}"), payload));
-    }
 }
 
 #[rstest::rstest]

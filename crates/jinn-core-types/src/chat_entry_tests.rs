@@ -1299,10 +1299,10 @@ fn yank_text_strips_ansi_escapes() {
 }
 
 #[rstest::rstest]
-fn task_tool_call_with_child_session_roundtrips_through_serde() {
-    // Given a task ToolCall entry linked to a child session.
+fn spawn_subagent_tool_call_with_child_session_roundtrips_through_serde() {
+    // Given a `spawn_subagent` ToolCall entry linked to a child session.
     let child = SessionId::new();
-    let mut entry = ChatEntry::tool_call("call_1", "task", "{}"); // "task" = tools slice TASK_TOOL_NAME
+    let mut entry = ChatEntry::tool_call("call_1", "spawn_subagent", "{}"); // "spawn_subagent" = tools slice SPAWN_SUBAGENT_TOOL_NAME
     let ChatEntryKind::ToolCall { child_session, .. } = &mut entry.kind else {
         panic!("expected ToolCall kind");
     };
@@ -1349,8 +1349,8 @@ fn tool_call_without_child_session_key_deserializes_to_none() {
 
 #[rstest::rstest]
 fn tool_call_without_link_omits_child_session_key() {
-    // Given a task ToolCall entry with no link.
-    let entry = ChatEntry::tool_call("call_1", "task", "{}"); // "task" = tools slice TASK_TOOL_NAME
+    // Given a `spawn_subagent` ToolCall entry with no link.
+    let entry = ChatEntry::tool_call("call_1", "spawn_subagent", "{}"); // "spawn_subagent" = tools slice SPAWN_SUBAGENT_TOOL_NAME
 
     // When serializing.
     let json = serde_json::to_string(&entry.kind).expect("serialize");

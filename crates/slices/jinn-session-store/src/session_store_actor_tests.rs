@@ -1622,6 +1622,368 @@ mod activation_tests {
 }
 
 // ---------------------------------------------------------------------------
+// Whole-tree load (ctrl+enter)
+// ---------------------------------------------------------------------------
+
+/// A whole-tree load restores a family, not a node.
+///
+/// The tree is resolved from the store's summaries, so these tests cross the
+/// whole boundary — a real SQLite store seeded with a five-level tree — and
+/// watch what lands in the session map. Each test asserts one behavior of the
+/// load; the fixtures are duplicated rather than shared so a failure names
+/// the behavior that broke.
+mod tree_load_tests {
+    #![allow(
+        unused_mut,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+    use super::*;
+
+    use jinn_session_store_msg::LoadSessionTree;
+
+    /// One persisted session with `parent` (or none), saved to `store`.
+    ///
+    /// An entry is pushed so the snapshot has real history, and the write is
+    /// repeated so the store's revision floor is above the snapshot's fresh
+    /// capture counter — the same shape the fork tests seed.
+    async fn seed(
+        fixture: &ActorFixture,
+        session_id: &SessionId,
+        parent: Option<&SessionId>,
+        entry_text: &str,
+    ) {
+        let mut session = match parent {
+            Some(parent_id) => ChatSessionState::new_child(parent_id, true),
+            None => ChatSessionState::new(),
+        };
+        session.set_session_id(session_id.clone());
+        session.mark_interacted();
+        session.push_entry(jinn_core_types::ChatEntry::user(entry_text));
+        for _ in 0..3 {
+            fixture
+                .store
+                .save(&session.capture_snapshot())
+                .await
+                .expect("save session");
+        }
+    }
+
+    /// All five tree members live in the map as `Loaded`.
+    async fn all_loaded(fixture: &ActorFixture, ids: &[&SessionId]) -> bool {
+        let state = fixture.state.read();
+        ids.iter().all(|id| {
+            state
+                .session
+                .get(id)
+                .is_some_and(|s| s.session_state() == SessionState::Loaded)
+        })
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_five_level_tree_loads_completely_with_the_picked_node_active() {
+        // Given a five-level tree — grandparent → parent → self → child →
+        // grandchild — every member only in the store.
+        let fixture = actor_fixture().await;
+        let grandparent_id = SessionId::new();
+        let parent_id = SessionId::new();
+        let self_id = SessionId::new();
+        let child_id = SessionId::new();
+        let grandchild_id = SessionId::new();
+        seed(&fixture, &grandparent_id, None, "grandparent").await;
+        seed(&fixture, &parent_id, Some(&grandparent_id), "parent").await;
+        seed(&fixture, &self_id, Some(&parent_id), "self").await;
+        seed(&fixture, &child_id, Some(&self_id), "child").await;
+        seed(&fixture, &grandchild_id, Some(&child_id), "grandchild").await;
+
+        // When the tree load names the middle node.
+        let completed = fixture
+            .harness
+            .spawn_recorder::<SessionLoadCompleted>()
+            .await;
+        fixture
+            .harness
+            .publish(LoadSessionTree {
+                session_id: self_id.clone(),
+            })
+            .await;
+        let completed = await_recorded(&completed, 5, Duration::from_secs(2)).await;
+
+        // Then all five are live, and the completion events name each member.
+        let ids = [
+            &grandparent_id,
+            &parent_id,
+            &self_id,
+            &child_id,
+            &grandchild_id,
+        ];
+        let loaded = poll_until(|| async { all_loaded(&fixture, &ids).await }).await;
+        assert!(loaded, "every tree member must land live and Loaded");
+        // And the picked node is the one on screen.
+        assert_eq!(
+            fixture.state.read().session.active_session_id(),
+            &self_id,
+            "the picked node must be the active session"
+        );
+        // And a completion was published per member — five, not four plus a
+        // double for the picked node.
+        let mut completed_ids = completed
+            .iter()
+            .map(|msg| msg.session_id.clone())
+            .collect::<Vec<_>>();
+        completed_ids.sort();
+        let mut expected = ids.iter().map(|id| (*id).clone()).collect::<Vec<_>>();
+        expected.sort();
+        assert_eq!(completed_ids, expected);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_sibling_subtree_of_the_picked_node_loads_too() {
+        // Given the five-level tree plus a second child of the picked node's
+        // parent, with its own child — a subtree hanging off a sibling.
+        let fixture = actor_fixture().await;
+        let grandparent_id = SessionId::new();
+        let parent_id = SessionId::new();
+        let self_id = SessionId::new();
+        let child_id = SessionId::new();
+        let grandchild_id = SessionId::new();
+        let sibling_id = SessionId::new();
+        let nephew_id = SessionId::new();
+        seed(&fixture, &grandparent_id, None, "grandparent").await;
+        seed(&fixture, &parent_id, Some(&grandparent_id), "parent").await;
+        seed(&fixture, &self_id, Some(&parent_id), "self").await;
+        seed(&fixture, &child_id, Some(&self_id), "child").await;
+        seed(&fixture, &grandchild_id, Some(&child_id), "grandchild").await;
+        seed(&fixture, &sibling_id, Some(&parent_id), "sibling").await;
+        seed(&fixture, &nephew_id, Some(&sibling_id), "nephew").await;
+
+        // When the tree load names the middle node.
+        fixture
+            .harness
+            .publish(LoadSessionTree {
+                session_id: self_id.clone(),
+            })
+            .await;
+        let ids = [
+            &grandparent_id,
+            &parent_id,
+            &self_id,
+            &child_id,
+            &grandchild_id,
+            &sibling_id,
+            &nephew_id,
+        ];
+        let loaded = poll_until(|| async { all_loaded(&fixture, &ids).await }).await;
+
+        // Then the whole connected tree is live, not just the picked spine.
+        assert!(
+            loaded,
+            "the sibling's subtree is part of the tree and must load too"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn an_archived_member_lands_loaded_and_unarchived() {
+        // Given the five-level tree with the grandparent archived on disk.
+        let fixture = actor_fixture().await;
+        let grandparent_id = SessionId::new();
+        let parent_id = SessionId::new();
+        let self_id = SessionId::new();
+        let child_id = SessionId::new();
+        let grandchild_id = SessionId::new();
+        seed(&fixture, &grandparent_id, None, "grandparent").await;
+        seed(&fixture, &parent_id, Some(&grandparent_id), "parent").await;
+        seed(&fixture, &self_id, Some(&parent_id), "self").await;
+        seed(&fixture, &child_id, Some(&self_id), "child").await;
+        seed(&fixture, &grandchild_id, Some(&child_id), "grandchild").await;
+        fixture
+            .store
+            .set_archived(&grandparent_id, true)
+            .await
+            .expect("archive grandparent");
+
+        // When the tree load names the middle node.
+        fixture
+            .harness
+            .publish(LoadSessionTree {
+                session_id: self_id.clone(),
+            })
+            .await;
+        let ids = [
+            &grandparent_id,
+            &parent_id,
+            &self_id,
+            &child_id,
+            &grandchild_id,
+        ];
+        let loaded = poll_until(|| async { all_loaded(&fixture, &ids).await }).await;
+        assert!(loaded, "the archived member must land live and Loaded");
+
+        // Then the store no longer holds it as archived either — a tree load
+        // unarchives every member it restores, exactly as a single load does.
+        let summaries = fixture.store.load_summaries().await.expect("summaries");
+        let grandparent = summaries
+            .iter()
+            .find(|summary| summary.session_id == grandparent_id)
+            .expect("grandparent summary");
+        assert_eq!(
+            grandparent.session_state,
+            SessionState::Loaded,
+            "a restored tree member must be unarchived on disk"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_member_already_live_keeps_its_in_memory_history() {
+        // Given a five-level tree whose parent is already live, carrying an
+        // entry the store has not seen.
+        let fixture = actor_fixture().await;
+        let grandparent_id = SessionId::new();
+        let parent_id = SessionId::new();
+        let self_id = SessionId::new();
+        let child_id = SessionId::new();
+        let grandchild_id = SessionId::new();
+        seed(&fixture, &grandparent_id, None, "grandparent").await;
+        seed(&fixture, &parent_id, Some(&grandparent_id), "parent").await;
+        seed(&fixture, &self_id, Some(&parent_id), "self").await;
+        seed(&fixture, &child_id, Some(&self_id), "child").await;
+        seed(&fixture, &grandchild_id, Some(&child_id), "grandchild").await;
+        {
+            let mut state = fixture.state.write();
+            let mut live = ChatSessionState::new();
+            live.set_session_id(parent_id.clone());
+            live.mark_interacted();
+            live.push_entry(jinn_core_types::ChatEntry::user("only in memory"));
+            state.session.insert(live);
+        }
+
+        // When the tree load names the middle node.
+        fixture
+            .harness
+            .publish(LoadSessionTree {
+                session_id: self_id.clone(),
+            })
+            .await;
+        let ids = [
+            &grandparent_id,
+            &parent_id,
+            &self_id,
+            &child_id,
+            &grandchild_id,
+        ];
+        let loaded = poll_until(|| async { all_loaded(&fixture, &ids).await }).await;
+        assert!(loaded, "the rest of the tree must still land");
+
+        // Then the live member was not re-read: its unsaved entry is intact.
+        let texts: Vec<String> = fixture
+            .state
+            .read()
+            .session
+            .get(&parent_id)
+            .expect("live parent")
+            .history()
+            .iter()
+            .map(jinn_core_types::ChatEntry::text)
+            .collect();
+        assert!(
+            texts.contains(&"only in memory".to_owned()),
+            "a live member's in-memory history must survive the tree load, got {texts:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn the_picked_member_is_measured_and_background_members_are_not() {
+        // Given a five-level tree, with a layout-job recorder on the bus.
+        let fixture = actor_fixture().await;
+        let jobs = fixture.harness.spawn_recorder::<LayoutChatSession>().await;
+        let grandparent_id = SessionId::new();
+        let parent_id = SessionId::new();
+        let self_id = SessionId::new();
+        let child_id = SessionId::new();
+        let grandchild_id = SessionId::new();
+        seed(&fixture, &grandparent_id, None, "grandparent").await;
+        seed(&fixture, &parent_id, Some(&grandparent_id), "parent").await;
+        seed(&fixture, &self_id, Some(&parent_id), "self").await;
+        seed(&fixture, &child_id, Some(&self_id), "child").await;
+        seed(&fixture, &grandchild_id, Some(&child_id), "grandchild").await;
+
+        // When the tree load names the middle node.
+        fixture
+            .harness
+            .publish(LoadSessionTree {
+                session_id: self_id.clone(),
+            })
+            .await;
+        let jobs = await_recorded(&jobs, 1, Duration::from_secs(2)).await;
+        let ids = [
+            &grandparent_id,
+            &parent_id,
+            &self_id,
+            &child_id,
+            &grandchild_id,
+        ];
+        let loaded = poll_until(|| async { all_loaded(&fixture, &ids).await }).await;
+        assert!(loaded, "the tree must land before judging the jobs");
+
+        // Then exactly the picked member was handed to the layout workers:
+        // background members measure lazily on first activation, and the
+        // completion actor would discard eager measurements for them anyway.
+        assert_eq!(jobs.len(), 1, "only the picked member may dispatch layout");
+        assert_eq!(jobs[0].session_id, self_id);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_member_missing_from_the_store_is_skipped_without_failing_the_rest() {
+        // Given a five-level tree whose grandparent was deleted from the
+        // store after the parent's parent link was written.
+        let fixture = actor_fixture().await;
+        let grandparent_id = SessionId::new();
+        let parent_id = SessionId::new();
+        let self_id = SessionId::new();
+        let child_id = SessionId::new();
+        let grandchild_id = SessionId::new();
+        seed(&fixture, &grandparent_id, None, "grandparent").await;
+        seed(&fixture, &parent_id, Some(&grandparent_id), "parent").await;
+        seed(&fixture, &self_id, Some(&parent_id), "self").await;
+        seed(&fixture, &child_id, Some(&self_id), "child").await;
+        seed(&fixture, &grandchild_id, Some(&child_id), "grandchild").await;
+        fixture
+            .store
+            .delete(&grandparent_id)
+            .await
+            .expect("delete grandparent");
+
+        // When the tree load names the middle node.
+        fixture
+            .harness
+            .publish(LoadSessionTree {
+                session_id: self_id.clone(),
+            })
+            .await;
+        let ids = [&parent_id, &self_id, &child_id, &grandchild_id];
+        let loaded = poll_until(|| async { all_loaded(&fixture, &ids).await }).await;
+
+        // Then the surviving members all land despite the gap.
+        assert!(
+            loaded,
+            "a member missing from the store must not fail the rest of the load"
+        );
+        assert!(
+            !fixture.state.read().session.contains(&grandparent_id),
+            "a member the store does not have cannot land live"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Forking from a chat log entry
 // ---------------------------------------------------------------------------
 

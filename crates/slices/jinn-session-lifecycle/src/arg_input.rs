@@ -274,7 +274,7 @@ mod tests {
         let result = confirm_arg_input(&mut ctx, &cell);
 
         // Then session creation emits the existing ordered setup messages and stores parsed args.
-        assert_eq!(result.message_names.len(), 4);
+        assert_eq!(result.message_names.len(), 3);
         assert_eq!(
             state.kernel.session.session_count(),
             original_session_count + 1

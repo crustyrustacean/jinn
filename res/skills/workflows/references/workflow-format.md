@@ -25,38 +25,23 @@ below are the minimal shape.
 ```
 
 - One directory per workflow, named in kebab-case (`research-report`).
-- `workflow.md` is required; `steps/` is required (a workflow with no steps
-  is a note, not a workflow).
-- `workflow.md` opens with `+++` TOML frontmatter (`name`, `description`) —
-  the only machine-read part of a workflow. Everything else is plain
-  markdown.
+- `workflow.md` is required; `steps/` is required (a workflow with no steps is a note, not a workflow).
+- `workflow.md` opens with `+++` TOML frontmatter (`name`, `description`) — the only machine-read part of a workflow. Everything else is plain markdown.
 
 ## The authoring dialogue
 
 The SKILL.md protocol — orient, ask, preview, write — expanded. The gates:
 
-- **One question round, ever.** Every question in a single message. After it,
-  build — unanswered items become named defaults in the artifact, visible and
-  editable later. Nothing is ever held hostage to a missing answer.
-- **Nothing is written before preview approval.** The user sees the whole
-  workflow — flow, parameters with defaults, step list — before the first
-  `write`. A user with domain knowledge catches gaps here; a user without it
-  approves in one word.
-- **Pre-approval collapses the gates.** An explicit "just make it" means
-  build with best defaults and write immediately, reporting the choices made.
-  Silence is never pre-approval.
-- **The skill never questions the form factor.** The user asked for a
-  workflow; a workflow is the deliverable, even if one step would do. Burned
-  tokens on a trivial workflow are the user's explicit choice, and
-  repeat-runs are the point of the surface.
+- **One question round, ever.** Every question in a single message. After it, build — unanswered items become named defaults in the artifact, visible and editable later. Nothing is ever held hostage to a missing answer.
+- **Nothing is written before preview approval.** The user sees the whole workflow — flow, parameters with defaults, step list — before the first `write`. A user with domain knowledge catches gaps here; a user without it approves in one word.
+- **Pre-approval collapses the gates.** An explicit "just make it" means build with best defaults and write immediately, reporting the choices made. Silence is never pre-approval.
+- **The skill never questions the form factor.** The user asked for a workflow; a workflow is the deliverable, even if one step would do. Burned tokens on a trivial workflow are the user's explicit choice, and repeat-runs are the point of the surface.
 
 ### What a question may be
 
 Three kinds of content earn a place in the round; everything else defaults:
 
-1. **Structural forks** — answers that change which steps exist, not just
-   what values they get. Presented as lettered options with cost/implication
-   and a one-sentence recommendation:
+1. **Structural forks** — answers that change which steps exist, not just what values they get. Presented as lettered options with cost/implication and a one-sentence recommendation:
 
    > 1. Voice engine — A: cloud service (best quality, paid per character,
    >    needs an API key from you, adds a key-setup step); B: local engine
@@ -66,12 +51,9 @@ Three kinds of content earn a place in the round; everything else defaults:
    The test for "structural": could no later edit of a parameter value
    produce this option? Then it is a fork, and it belongs in the round.
 
-2. **Environment prerequisites** — API keys, accounts, local installs,
-   anything the workflow dies without that the prompt cannot confirm. Each
-   option above names its prerequisite so the choice carries it.
+2. **Environment prerequisites** — API keys, accounts, local installs, anything the workflow dies without that the prompt cannot confirm. Each option above names its prerequisite so the choice carries it.
 
-3. **The steps the user would not have thought to name** — the additive
-   menu drawn from domain knowledge:
+3. **The steps the user would not have thought to name** — the additive menu drawn from domain knowledge:
 
    > Usual for this kind of job, not mentioned: word-level timestamps for
    > captions, per-scene voice changes, a background music bed. Want any?
@@ -148,8 +130,7 @@ declined, so nothing needs re-asking.
 
 Three parts, in order:
 
-1. **Frontmatter** — a `+++`-fenced TOML block naming the workflow and
-   describing it:
+1. **Frontmatter** — a `+++`-fenced TOML block naming the workflow and describing it:
 
    ```markdown
    +++
@@ -166,16 +147,11 @@ Three parts, in order:
    the directory (the directory is the on-disk identity; the name is what
    the picker displays and what the launch message uses).
 
-2. **Flow** — an ordered list. One entry per step. Plain entries are prose
-   phrases; two entry kinds are special and both are **explicit lines**:
-   - `*(inline — conversation)*` — the step runs in the orchestrator
-     session because its entire body is talking to the user.
-   - Loop/branch lines, indented under the step they follow, written as
-     `- If <condition> → <target step>, then back to <step> (repeat until
+2. **Flow** — an ordered list. One entry per step. Plain entries are prose phrases; two entry kinds are special and both are **explicit lines**:
+   - `*(inline — conversation)*` — the step runs in the orchestrator session because its entire body is talking to the user.
+   - Loop/branch lines, indented under the step they follow, written as `- If <condition> → <target step>, then back to <step> (repeat until
 <condition>)` or `- If <condition> → <target step>`.
-3. **Parameters** (optional) — a short list of values the workflow needs at
-   run time (a topic, a path, a depth). If present, each parameter names the
-   step that consumes it.
+3. **Parameters** (optional) — a short list of values the workflow needs at run time (a topic, a path, a depth). If present, each parameter names the step that consumes it.
 
 The notation is fixed — one style, always written this way. Loop lines
 always name both the target and the return edge; "repeat until" always
@@ -217,25 +193,14 @@ other steps, not the conversation that dispatched it.
 
 Structure of a step file:
 
-1. **Body** — the instructions. Where the step reads its inputs (parameters,
-   files from earlier steps) and what it must produce.
-2. **Output location** — steps whose output feeds a later step say where the
-   output lands (a file path in the working directory is the default
-   vehicle). A step whose output is short can end with it in the final
-   message instead.
-3. **Done when** — the last line, one sentence, stating how the runner knows
-   the step finished: `Done when: research-notes.md exists and every claim
-in it carries a source.`
+1. **Body** — the instructions. Where the step reads its inputs (parameters, files from earlier steps) and what it must produce.
+2. **Output location** — steps whose output feeds a later step say where the output lands (a file path in the working directory is the default vehicle). A step whose output is short can end with it in the final message instead.
+3. **Done when** — the last line, one sentence, stating how the runner knows the step finished: `Done when: research-notes.md exists and every claim in it carries a source.`
 
 Two control conventions live inside step files, as plain lines:
 
-- `stop` — if the step's situation makes the rest of the run pointless, the
-  step reports `stop` in its final message; the orchestrator halts the run
-  and tells the user.
-- User confirmation — a step that must not proceed without the user's
-  explicit yes ends by asking, and the orchestrator relays the answer at
-  dispatch time. Confirmation is a convention recorded in prose, not a
-  mechanism.
+- `stop` — if the step's situation makes the rest of the run pointless, the step reports `stop` in its final message; the orchestrator halts the run and tells the user.
+- User confirmation — a step that must not proceed without the user's explicit yes ends by asking, and the orchestrator relays the answer at dispatch time. Confirmation is a convention recorded in prose, not a mechanism.
 
 ### Step-file sketch
 
@@ -261,21 +226,14 @@ of issues.
 The task name stamped on the task list is the **only** pointer to the step
 file. The derivation, both directions:
 
-- Stamp: `workflow.md` flow entry `3. Draft` → task name `3. Draft` →
-  step file `steps/03-draft.md`.
-- Derive: task name `4b. Review draft (round 2)` → strip the round
-  annotation → `4. Review draft` → `steps/04-review.md`.
+- Stamp: `workflow.md` flow entry `3. Draft` → task name `3. Draft` → step file `steps/03-draft.md`.
+- Derive: task name `4b. Review draft (round 2)` → strip the round annotation → `4. Review draft` → `steps/04-review.md`.
 
 Rules that keep this derivable:
 
-- Step filenames are `NN-<slug>.md` where the slug lowercases the task name
-  and hyphenates it (`4. Review draft` → `04-review-draft.md`).
-- Instance letters (`4b`) and round annotations (`(round 2)`) are list-side
-  only — never part of a filename. Every iteration of a loop dispatches the
-  same step file.
-- Slugs are stable once a workflow has been run: renaming a step file breaks
-  nothing mechanically, but a task name that no longer derives to a real
-  file dead-ends the run.
+- Step filenames are `NN-<slug>.md` where the slug lowercases the task name and hyphenates it (`4. Review draft` → `04-review-draft.md`).
+- Instance letters (`4b`) and round annotations (`(round 2)`) are list-side only — never part of a filename. Every iteration of a loop dispatches the same step file.
+- Slugs are stable once a workflow has been run: renaming a step file breaks nothing mechanically, but a task name that no longer derives to a real file dead-ends the run.
 
 ## Stamping the task list
 
@@ -287,9 +245,7 @@ Statuses and their meaning on a run:
 
 - `pending` — not yet run. The run's position is the first pending task.
 - `completed` — done-when met. Set the moment the step finishes.
-- `cancelled` — a step the run skipped (a conditional branch not taken), or
-  a step abandoned after a `stop`. Rewrite its name with `— skipped` or
-  `— abandoned after stop` so the list reads as a record.
+- `cancelled` — a step the run skipped (a conditional branch not taken), or a step abandoned after a `stop`. Rewrite its name with `— skipped` or `— abandoned after stop` so the list reads as a record.
 
 ## Loop instances
 
@@ -315,11 +271,10 @@ already on the list tell the whole story.
 
 ## Dispatch-prompt assembly
 
-One `task` call per step. The prompt:
+One `spawn_subagent` call per step. The prompt:
 
 1. The step file's body, verbatim.
-2. A parameter block for this run — every parameter the step consumes, with
-   its value for this run.
+2. A parameter block for this run — every parameter the step consumes, with its value for this run.
 3. The paths of prior steps' outputs the step reads.
 
 Nothing else. In particular: do not paste prior steps' output into the
@@ -330,45 +285,17 @@ task list, and returns only its final message.
 
 ## Anti-patterns
 
-- **Executing a step in the orchestrator session.** Researching, drafting,
-  reviewing, or refactoring inline. Dispatch instead — the only inline work
-  is conversation with the user.
-- **Dispatching without the step file.** Writing the prompt from memory or
-  from the task name alone. The file is the prompt; read it every time.
-- **Pasting step output into dispatch prompts.** Bulky handoffs go through
-  files; paths go through prompts.
-- **Holding the loop in memory.** A round that produces another round must
-  put the next instance on the task list before the round closes. A loop
-  that exists only in the orchestrator's head does not survive a compacted
-  context and is invisible to the user.
-- **Silent skips.** A branch not taken must land on the list as
-  `— skipped`/`cancelled`, not quietly vanish.
-- **Renaming step files mid-run** or inventing slugs at dispatch time. The
-  derivation rule is the loader.
-- **Growing the format.** Adding schema fields, a manifest, or status
-  vocabulary a runner would have to implement. The format is markdown and
-  naming conventions; its executor is a disciplined session.
-- **Questioning the form factor.** "This is simple enough to not need a
-  workflow" — the user asked for one; build it.
-- **Writing before approval.** Creating the directory because the flow
-  "seems settled." The preview gate is the only place a user with domain
-  knowledge can catch a gap; writing first deletes that chance.
-- **The open-ended interview.** More than one question round, or open
-  questions ("what tone do you want?") where a named default would do.
-  Interrogation is this skill's cost center; defaults are free.
-- **Blank asking on unmapped domains.** "Which service do you want to use?"
-  without having searched what the services are. The user cannot answer
-  what no option has made answerable; orient first.
-- **The silent omission.** Leaving out a step the domain says is usual
-  (an SEO pass, caption timestamps) without offering it. The user does not
-  know what they do not know; the extras menu exists so that not knowing
-  costs nothing.
-- **The trailing menu.** "Want me to run it?", "tweaks you may want to
-  adjust", a bulleted list of choices after the writes landed. Every such
-  choice belonged in the preview, where it could still change the thing;
-  surfacing it after completion is too late by construction and reopens a
-  conversation that approval closed. End one sentence after the write.
-- **Post-hoc disclosure.** "Heads up, I also decided X" in the completion
-  message. A decision made during authoring was either previewed (then it
-  is not news) or it was not (then it was made outside the gate). Disclose
-  at the gate or do not decide.
+- **Executing a step in the orchestrator session.** Researching, drafting, reviewing, or refactoring inline. Dispatch instead — the only inline work is conversation with the user.
+- **Dispatching without the step file.** Writing the prompt from memory or from the task name alone. The file is the prompt; read it every time.
+- **Pasting step output into dispatch prompts.** Bulky handoffs go through files; paths go through prompts.
+- **Holding the loop in memory.** A round that produces another round must put the next instance on the task list before the round closes. A loop that exists only in the orchestrator's head does not survive a compacted context and is invisible to the user.
+- **Silent skips.** A branch not taken must land on the list as `— skipped`/`cancelled`, not quietly vanish.
+- **Renaming step files mid-run** or inventing slugs at dispatch time. The derivation rule is the loader.
+- **Growing the format.** Adding schema fields, a manifest, or status vocabulary a runner would have to implement. The format is markdown and naming conventions; its executor is a disciplined session.
+- **Questioning the form factor.** "This is simple enough to not need a workflow" — the user asked for one; build it.
+- **Writing before approval.** Creating the directory because the flow "seems settled." The preview gate is the only place a user with domain knowledge can catch a gap; writing first deletes that chance.
+- **The open-ended interview.** More than one question round, or open questions ("what tone do you want?") where a named default would do. Interrogation is this skill's cost center; defaults are free.
+- **Blank asking on unmapped domains.** "Which service do you want to use?" without having searched what the services are. The user cannot answer what no option has made answerable; orient first.
+- **The silent omission.** Leaving out a step the domain says is usual (an SEO pass, caption timestamps) without offering it. The user does not know what they do not know; the extras menu exists so that not knowing costs nothing.
+- **The trailing menu.** "Want me to run it?", "tweaks you may want to adjust", a bulleted list of choices after the writes landed. Every such choice belonged in the preview, where it could still change the thing; surfacing it after completion is too late by construction and reopens a conversation that approval closed. End one sentence after the write.
+- **Post-hoc disclosure.** "Heads up, I also decided X" in the completion message. A decision made during authoring was either previewed (then it is not news) or it was not (then it was made outside the gate). Disclose at the gate or do not decide.

@@ -13,6 +13,7 @@ A TUI agent harness with multi-session support and Vim-style keybinds.
 Run any number of concurrent sessions, with live preview session navigation.
 
 - First-class forking and subagent support
+- Inter-session communication via the `tell_session` tool, so agents can hand work between sessions
 - Cache hit %, tokens up/down, context usage/max, total spend, and number of turns tracked per session and aggregated across forks, subagents, and attendants.
 
 ![Multisession](doc/screenshots/multi-session.png)

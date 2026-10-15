@@ -14,7 +14,7 @@ pub mod session_state;
 pub mod session_tree_entry;
 
 pub use command::{
-    ArchiveSession, ArchiveSessionTree, LoadSessionPickerEntries, PersistSession,
+    ArchiveSession, ArchiveSessionTree, LoadSessionPickerEntries, LoadSessionTree, PersistSession,
     SessionForkRequested, SessionLoadRequested,
 };
 pub use event::SessionLoadCompleted;

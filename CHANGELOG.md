@@ -2,15 +2,19 @@
 
 ## (development)
 
+- Entire session trees can now be loaded using `<c-enter>` keybind in the session picker.
 - Add `tell_session` tool for inter-session communication.
-- All inter-session communication is now displayed using light purple text.
-- Session ID is now displayed in the chat history when a new session is created.
+  - Intersession messages now use a dark lavender color with standard white text + Markdown rendering.
+- Added keybind `y` (yank session ID) to session list.
 - Update `workflows` skill. It should now make more reliable workflows.
 - Add `autodev` workflow.
 - `<leader>sx` can be used to disable/enable stream rules via picker.
   - Stream rule status is saved under `[stream_rules] disabled_rules = ["foo", ...]` in `jinn.toml`
-- Workflow picker now supports same-session loading (`<enter>`) and new session loading (`<c-enter>`).
+- Workflow picker now supports "load in session" (`<enter>`) and "load in _new_ session" (`<c-enter>`).
 - Bugfix: lifecycle arg ordering can now change between startup and shutdown (previously they had to be in the same order, causing confusing bugs triggered by incorrect substitution).
+- Bugfix: `k` will now properly transition from the Attendants section to the Persona section in the sidebar.
+- `task` tool renamed to `spawn_subagent`
+  - Impacted docs/skills also updated.
 
 ## 2026-10-13 v1.6.2
 

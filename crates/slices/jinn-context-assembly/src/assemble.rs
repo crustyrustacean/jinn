@@ -326,7 +326,7 @@ mod tests {
     use jinn_kernel::protocol::ToolResultStatus;
     use jinn_llm_support::token_estimator::TiktokenCounter;
     use jinn_skills_msg::Skill;
-    use jinn_tools_msg::TASK_TOOL_NAME;
+    use jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME;
 
     /// Test bridge: build inputs from an AppState the way production
     /// callers do (via the kernel snapshot builder) and run the pure
@@ -1177,8 +1177,8 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn parent_linked_session_keeps_task_tool_when_not_disabled() {
-        // Given a state whose context advertises the task tool, and a child
+    fn parent_linked_session_keeps_spawn_subagent_tool_when_not_disabled() {
+        // Given a state whose context advertises the spawn_subagent tool, and a child
         // session linked to a parent with nothing disabled.
         let state = State::new(AppState::default_with_scope_focus());
         let parent_id = SessionId::new();
@@ -1191,8 +1191,10 @@ mod tests {
                     .expect("registry cell attached")
             };
             cell.update(|r| {
-                r.global
-                    .insert(TASK_TOOL_NAME.to_owned(), make_tool(TASK_TOOL_NAME));
+                r.global.insert(
+                    SPAWN_SUBAGENT_TOOL_NAME.to_owned(),
+                    make_tool(SPAWN_SUBAGENT_TOOL_NAME),
+                );
             });
             let child = jinn_session_state::ChatSessionState::new_child(&parent_id, true);
             child_id = child.session_id().clone();
@@ -1204,13 +1206,13 @@ mod tests {
         let snapshot = state.read();
         let result = assemble_prompt(&snapshot, &child_id, &counter());
 
-        // Then the tool definitions include task.
+        // Then the tool definitions include spawn_subagent.
         assert!(
             result
                 .tool_definitions
                 .iter()
-                .any(|def| def.name == TASK_TOOL_NAME),
-            "a parent-linked session without the tool disabled keeps the task tool, got: {:?}",
+                .any(|def| def.name == SPAWN_SUBAGENT_TOOL_NAME),
+            "a parent-linked session without the tool disabled keeps the spawn_subagent tool, got: {:?}",
             result
                 .tool_definitions
                 .iter()

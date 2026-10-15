@@ -9,7 +9,6 @@
 
 use jinn_attendant_msg::AttendantModelSetting;
 use jinn_core_types::ChatEntry;
-use jinn_core_types::PinPosition;
 use jinn_preferences_config::schemas::AttendantEntryConfig;
 use jinn_session_lifecycle_msg::event::SessionCreated;
 use jinn_session_state::ChatSessionState;
@@ -92,12 +91,9 @@ fn attached_notice(name: &str) -> String {
 /// and a parent that has never been written is an attendant pointing at a
 /// session the store has never heard of.
 ///
-/// The three log entries shape the sequence — the new attendant is told
-/// what it is (its identity line first, then its notice), and the session
-/// it was created under is told what it gained. The identity line is the
-/// same `ChatEntry::session_identity` entry every creation path pushes, so
-/// a restored or loaded attendant can name itself to `tell_session`
-/// exactly as a fresh session can.
+/// The log entries shape the sequence — the new attendant is told what it
+/// is (its notice), and the session it was created under is told what it
+/// gained.
 #[must_use]
 pub fn creation_messages(
     parent_id: &jinn_core_types::SessionId,
@@ -115,11 +111,6 @@ pub fn creation_messages(
         .with_message(SessionCreated {
             session_id: attendant_id.clone(),
             cwd,
-        })
-        .with_message(jinn_session_history_msg::PushChatEntry {
-            session_id: attendant_id.clone(),
-            entry: ChatEntry::session_identity(&attendant_id),
-            pin: Some(PinPosition::Top),
         })
         .with_message(jinn_session_history_msg::PushChatEntry {
             session_id: attendant_id,
@@ -176,13 +167,10 @@ pub fn create_in_state(
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
-    use std::sync::Mutex;
-
     use jinn_attendant_msg::AttendantModelSetting;
     use jinn_core_types::{FilterMode, ModelSelection, NameFilter};
     use jinn_preferences_config::schemas::AttendantEntryConfig;
     use jinn_session_state::ChatSessionState;
-    use jinn_slices::route_publish::PublishSink;
 
     use super::build;
 
@@ -377,73 +365,5 @@ mod tests {
             attendant.attendant_model_setting(),
             AttendantModelSetting::Inherit
         );
-    }
-
-    #[rstest::rstest]
-    fn creation_messages_push_the_attendants_identity_entry() {
-        // Given a created attendant and its parent.
-        let parent = ChatSessionState::new();
-        let attendant = build(&entry_with(None, None), &parent);
-
-        // When the creation's messages are built and run through a sink.
-        let result = super::creation_messages(parent.session_id(), &attendant);
-        let sink = RecordingSink::default();
-        for closure in result.messages {
-            closure(&sink);
-        }
-
-        // Then the pushes aimed at the attendant carry the identity entry:
-        // pinned Top, a system entry naming the attendant's own id, forced
-        // into the LLM context — a restored attendant names itself to
-        // `tell_session` exactly as a fresh session does.
-        let attendant_id = attendant.session_id().clone();
-        let published = sink.published.lock().expect("sink lock");
-        let identity: Vec<jinn_session_history_msg::PushChatEntry> = published
-            .iter()
-            .filter(|(id, _)| id.ends_with("PushChatEntry"))
-            .filter_map(|(_, payload)| serde_json::from_value(payload.clone()).ok())
-            .filter(|push: &jinn_session_history_msg::PushChatEntry| {
-                push.session_id == attendant_id
-            })
-            .collect();
-        let identity = identity
-            .iter()
-            .find(|push| push.pin == Some(jinn_core_types::PinPosition::Top))
-            .expect("the identity entry is pinned Top on the attendant");
-        let jinn_core_types::chat_entry::ChatEntryKind::System(text) = &identity.entry.kind else {
-            panic!("the identity entry is a system entry");
-        };
-        assert!(
-            text.contains(&attendant_id.to_string()),
-            "the entry names the attendant's own id: {text}"
-        );
-        assert_eq!(
-            identity.entry.context_override(),
-            jinn_core_types::ContextOverride::ForcedInclude,
-            "the identity survives compaction and is always in the prompt"
-        );
-    }
-
-    /// A publish sink that keeps every payload published through it — the
-    /// same recording shape the lifecycle-setup tests use to assert on
-    /// payloads.
-    #[derive(Default)]
-    struct RecordingSink {
-        published: Mutex<Vec<(String, serde_json::Value)>>,
-    }
-
-    impl PublishSink for RecordingSink {
-        fn publish_schema(
-            &self,
-            schema_id: ::trouper::schema::SchemaId,
-            payload: serde_json::Value,
-            name: &'static str,
-        ) {
-            self.published
-                .lock()
-                .expect("sink lock")
-                .push((format!("{schema_id}"), payload));
-            let _ = name;
-        }
     }
 }

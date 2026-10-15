@@ -34,7 +34,7 @@ Show the criteria, then proceed. Do not stall on a round trip.
 
 ## Step 2: Brief the reviewers
 
-**3 reviewers**, spawned in parallel with the `task` tool. `description` is `judge-1`, `judge-2`,
+**3 reviewers**, spawned in parallel with the `spawn_subagent` tool. `description` is `judge-1`, `judge-2`,
 `judge-3`.
 
 Every reviewer gets the **same brief**. You're after three independent readings of the same thing,

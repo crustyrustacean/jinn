@@ -40,7 +40,7 @@ use jinn_session_msg::PhaseKind;
 use jinn_session_state::ChatSessionState;
 use jinn_slices::DrawContext;
 use jinn_theme::Theme;
-use jinn_tools_msg::TASK_TOOL_NAME;
+use jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -146,7 +146,7 @@ impl LayoutInputs {
         is_streaming_tool_call(entry, &self.streaming)
     }
 
-    /// Whether this `task` call is waiting on a loaded, running child session.
+    /// Whether this `spawn_subagent` call is waiting on a loaded, running child session.
     pub(crate) fn is_task_waiting(
         &self,
         entry: &ChatEntry,
@@ -161,7 +161,7 @@ impl LayoutInputs {
         else {
             return false;
         };
-        if name != TASK_TOOL_NAME {
+        if name != SPAWN_SUBAGENT_TOOL_NAME {
             return false;
         }
         // A paired result means the tool already finished.
@@ -523,7 +523,7 @@ fn is_streaming_tool_call(entry: &ChatEntry, streaming: &HashSet<ChatEntryId>) -
         && !entry.is_in_context()
 }
 
-/// Whether this `task` call is still awaiting its result while its linked child
+/// Whether this `spawn_subagent` call is still awaiting its result while its linked child
 /// session is loaded and actively running.
 fn is_task_waiting(
     entry: &ChatEntry,
@@ -539,7 +539,7 @@ fn is_task_waiting(
     else {
         return false;
     };
-    if name != TASK_TOOL_NAME {
+    if name != SPAWN_SUBAGENT_TOOL_NAME {
         return false;
     }
     // A paired result means the tool already finished.
@@ -873,7 +873,7 @@ impl<'a> HistoryRender<'a> {
         paired_status_for(entry, &self.tool_result_statuses)
     }
 
-    /// Whether this entry is a `task` tool call still awaiting its result
+    /// Whether this entry is a `spawn_subagent` tool call still awaiting its result
     /// while its linked child session is loaded in memory and actively
     /// running (sending or streaming).
     ///

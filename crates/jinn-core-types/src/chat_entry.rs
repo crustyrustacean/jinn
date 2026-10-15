@@ -218,7 +218,7 @@ pub enum ChatEntryKind {
         name: String,
         /// The JSON arguments string.
         arguments: String,
-        /// The child session this call spawned (`task` tool only; `None`
+        /// The child session this call spawned (`spawn_subagent` tool only; `None`
         /// otherwise). Persisted with the entry so the link survives
         /// restarts; serde-defaulted so pre-link sessions round-trip.
         child_session: Option<SessionId>,

@@ -10,8 +10,8 @@
 //! **Expanded:** shows all output lines without truncation.
 //!
 //! Background color is determined by `ctx.paired_status`: no background for
-//! pending, green for success, red for failure. Task results (tool name
-//! `task`) render on the light purple subagent block background, closed by a
+//! pending, green for success, red for failure. `spawn_subagent` results (tool name
+//! `spawn_subagent`) render on the light purple subagent block background, closed by a
 //! status row — green "Subagent task finished" or red "Subagent task failed".
 //!
 //! Collapsed format:
@@ -25,7 +25,7 @@
 use jinn_core_types::ToolResultStatus;
 use jinn_core_types::tool_types::TruncationMeta;
 use jinn_skills_msg::loaded_skill_summary_label;
-use jinn_tools_msg::TASK_TOOL_NAME;
+use jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME;
 use jinn_tools_msg::truncation::format_size;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
@@ -36,10 +36,10 @@ use super::shared::{
 };
 use super::tool_call::ENTER_HINT;
 
-/// Text shown on the outcome row of a successful task result.
+/// Text shown on the outcome row of a successful `spawn_subagent` result.
 const FINISHED_TEXT: &str = "Subagent task finished";
 
-/// Text shown on the outcome row of a failed task result.
+/// Text shown on the outcome row of a failed `spawn_subagent` result.
 const FAILED_TEXT: &str = "Subagent task failed";
 
 pub fn to_lines(
@@ -50,7 +50,7 @@ pub fn to_lines(
     is_alert: bool,
     ctx: &RenderContext,
 ) -> Vec<Line<'static>> {
-    if name == TASK_TOOL_NAME {
+    if name == SPAWN_SUBAGENT_TOOL_NAME {
         return to_lines_task(content, status, truncation, is_alert, ctx);
     }
 
@@ -69,7 +69,7 @@ pub fn to_lines(
     to_lines_collapsed(content, truncation, ctx)
 }
 
-/// Task result: content on the subagent block background, closed by a
+/// `spawn_subagent` result: content on the subagent block background, closed by a
 /// full-width status row — green "Subagent task finished" or red "Subagent
 /// task failed" — with white text.
 fn to_lines_task(
@@ -1092,14 +1092,14 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn successful_task_result_shows_finished_status_row() {
-        // Given a task tool result paired with success.
+    fn successful_spawn_subagent_result_shows_finished_status_row() {
+        // Given a `spawn_subagent` tool result paired with success.
         let ctx = render_context_with_status(Some(ToolResultStatus::Success));
         let theme = ctx.theme.clone();
 
         // When converting to lines.
         let lines = to_lines(
-            TASK_TOOL_NAME,
+            SPAWN_SUBAGENT_TOOL_NAME,
             "child output",
             ToolResultStatus::Success,
             None,
@@ -1113,7 +1113,7 @@ mod tests {
                 .spans
                 .iter()
                 .all(|s| s.style.bg == Some(theme.subagent_bg)),
-            "task result content should render on subagent_bg"
+            "spawn_subagent result content should render on subagent_bg"
         );
 
         // And the status row reads "Subagent task finished" (with the
@@ -1141,14 +1141,14 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn failed_task_result_shows_failed_status_row() {
-        // Given a task tool result paired with failure.
+    fn failed_spawn_subagent_result_shows_failed_status_row() {
+        // Given a `spawn_subagent` tool result paired with failure.
         let ctx = render_context_with_status(Some(ToolResultStatus::Failure));
         let theme = ctx.theme.clone();
 
         // When converting to lines.
         let lines = to_lines(
-            TASK_TOOL_NAME,
+            SPAWN_SUBAGENT_TOOL_NAME,
             "child error",
             ToolResultStatus::Failure,
             None,
@@ -1174,14 +1174,14 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn pending_task_result_status_row_uses_block_background() {
-        // Given a task tool result without a paired status yet.
+    fn pending_spawn_subagent_result_status_row_uses_block_background() {
+        // Given a `spawn_subagent` tool result without a paired status yet.
         let ctx = render_context(5, false);
         let theme = ctx.theme.clone();
 
         // When converting to lines.
         let lines = to_lines(
-            TASK_TOOL_NAME,
+            SPAWN_SUBAGENT_TOOL_NAME,
             "running",
             ToolResultStatus::Pending,
             None,
@@ -1206,8 +1206,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn non_task_result_has_no_status_row_or_block() {
-        // Given a non-task tool result with a success background.
+    fn non_spawn_subagent_result_has_no_status_row_or_block() {
+        // Given a non-spawn_subagent tool result with a success background.
         let ctx = render_context_with_status(Some(ToolResultStatus::Success));
         let theme = ctx.theme.clone();
 
@@ -1232,7 +1232,7 @@ mod tests {
                 .spans
                 .iter()
                 .any(|s| s.style.bg == Some(theme.subagent_bg))),
-            "non-task result should not use subagent_bg"
+            "non-spawn_subagent result should not use subagent_bg"
         );
     }
 }

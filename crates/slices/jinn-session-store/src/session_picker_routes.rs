@@ -32,6 +32,7 @@ type SessionPickerCell = TypedCell<jinn_session_store_msg::SessionPickerState>;
 pub const SESSION_PICKER_BINDINGS: &[(&str, &str)] = &[
     ("<esc>", "close"),
     ("<enter>", "open session"),
+    ("<c-enter>", "open whole tree"),
     ("<c-n>", "new session"),
 ];
 
@@ -103,6 +104,13 @@ pub fn attach_session_picker_rows(routes: &KeyRoutes, cell: &SessionPickerCell) 
         "general",
         "open the highlighted session",
         action(cell, confirm_session_picker),
+    ));
+    routes.attach(row(
+        "confirm-session-tree-picker",
+        "<c-enter>",
+        "general",
+        "open the highlighted session's whole tree",
+        action(cell, confirm_session_tree_picker),
     ));
     routes.attach(row(
         "new-session-from-session-picker",
@@ -239,6 +247,39 @@ fn confirm_session_picker(ctx: &mut ActionCtx<'_>, cell: &SessionPickerCell) -> 
             jinn_session_store_msg::session_picker_scope(),
         )),
     )
+}
+
+/// Ctrl-Enter: load the highlighted session's whole tree and switch to it.
+///
+/// The picked node is activated through the same single entry point Enter
+/// uses — the width-captured-before-switch rule and the load guard are its,
+/// not ours — and the tree command rides the same result as a second
+/// message, so the store actor restores every ancestor and descendant
+/// around the node the user picked. Nothing highlighted is a no-op, for the
+/// same reason Enter is: the tree is empty while the history read is in
+/// flight, and the key must not close the picker or load a tree for a
+/// session the user never chose.
+fn confirm_session_tree_picker(ctx: &mut ActionCtx<'_>, cell: &SessionPickerCell) -> IntentResult {
+    let session_id = {
+        let guard = cell.read();
+        session_picker_actions::highlighted_session(&guard)
+    };
+    let Some(session_id) = session_id else {
+        return IntentResult::empty();
+    };
+    let Some(state) = app(ctx) else {
+        return IntentResult::empty();
+    };
+    // The picked node goes through the one activation path; the tree load
+    // around it is this key's own addition to the same result.
+    jinn_chat_log_view::kernel_element::activate_session(
+        state,
+        session_id.clone(),
+        IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(
+            jinn_session_store_msg::session_picker_scope(),
+        )),
+    )
+    .with_message(jinn_session_store_msg::LoadSessionTree { session_id })
 }
 
 /// Ctrl-N: start a new session.

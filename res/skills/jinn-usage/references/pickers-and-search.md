@@ -10,7 +10,7 @@ in the which-key popup (`?`).
 | Key          | Picker           | What it changes                                       |
 | ------------ | ---------------- | ----------------------------------------------------- |
 | `<leader>sm` | Model/provider   | Active model (and provider) for the session           |
-| `<leader>ss` | Session          | Switch / resume any session (incl. archived)          |
+| `<leader>ss` | Session          | Switch / resume any session (incl. archived); `<c-enter>` opens the highlighted session's **whole tree** |
 | `<leader>se` | Persona          | Session persona                                       |
 | `<leader>st` | Tool             | Enable/disable tools for this session                 |
 | `<leader>sk` | Skill            | Enable/disable skills; load skill bodies into context |

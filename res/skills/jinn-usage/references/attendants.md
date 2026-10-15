@@ -8,7 +8,7 @@ reasoning effort), and enabled MCP servers — and nothing else. The attendant
 starts with an empty history and builds its own.
 
 That is the whole distinction from a subagent (see
-`sessions-and-subagents.md`): a `task` subagent is a session the user asks for
+`sessions-and-subagents.md`): a `spawn_subagent` subagent is a session the user asks for
 once and which inherits the parent's working context, while an attendant runs
 on a condition, re-reads the parent each time, and reports back.
 
@@ -180,6 +180,17 @@ from every other session's tool list:
   - Task list incomplete
   - Retried: 3 times
 - `notify_parent`: send a message to the parent session.
+
+## Messaging an attendant (`tell_session`)
+
+`tell_session` (available in every session) delivers a text message to any
+session by id. On attendants it is the dispatch mechanism:
+
+- An **idle** attendant starts a run immediately, seeded from its template
+  plus the message.
+- A **busy** attendant queues the message and runs it when its current turn
+  finishes. Nothing is cancelled; nothing races.
+- Any other session receives it as a new user turn.
 
 ## The Attendants sidebar section
 
