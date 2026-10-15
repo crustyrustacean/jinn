@@ -183,6 +183,7 @@ async fn a_triggered_attendant_fires_on_the_parent_completing() {
     assert_eq!(first.len(), 1);
 }
 
+#[rstest::rstest]
 #[tokio::test]
 async fn a_triggered_attendant_fires_again_after_a_prior_fire() {
     // Given a parent with a dispatchable parent-completed attendant, the

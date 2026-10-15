@@ -14,7 +14,7 @@ pub struct ToolCallId(String);
 impl ToolCallId {
     /// Wraps a provider-assigned id string.
     #[must_use]
-    pub fn new(id: impl Into<String>) -> Self {
+    pub fn new<S: Into<String>>(id: S) -> Self {
         Self(id.into())
     }
 
