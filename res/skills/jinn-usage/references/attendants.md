@@ -181,6 +181,17 @@ from every other session's tool list:
   - Retried: 3 times
 - `notify_parent`: send a message to the parent session.
 
+## Messaging an attendant (`tell_session`)
+
+`tell_session` (available in every session) delivers a text message to any
+session by id. On attendants it is the dispatch mechanism:
+
+- An **idle** attendant starts a run immediately, seeded from its template
+  plus the message.
+- A **busy** attendant queues the message and runs it when its current turn
+  finishes. Nothing is cancelled; nothing races.
+- Any other session receives it as a new user turn.
+
 ## The Attendants sidebar section
 
 Attached attendants are displayed in the sidebar for the active session. Moving

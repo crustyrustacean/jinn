@@ -163,6 +163,7 @@ to every section:
 | --------- | ------------------------------------------------------------------------ |
 | `<enter>` | Switch to the selected session                                           |
 | `i`       | Switch and enter input mode                                              |
+| `y`       | Yank (copy) the session's ID to the clipboard                            |
 | `r`       | Rename the session                                                       |
 | `a` / `A` | Archive the session / archive it and its subtree                         |
 | `x`       | Close (archive) the selected session                                     |
