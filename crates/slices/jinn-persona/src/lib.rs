@@ -18,7 +18,6 @@ pub mod persona_picker_render;
 mod persona_picker_routes;
 #[cfg(test)]
 mod persona_picker_tests;
-mod persona_picker_viewport;
 pub use jinn_persona_msg::persona_picker_scope;
 
 pub use jinn_persona_msg::Personas;

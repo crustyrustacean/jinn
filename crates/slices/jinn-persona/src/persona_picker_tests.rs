@@ -486,21 +486,77 @@ async fn page_down_steps_by_the_rows_the_last_frame_actually_laid_out() {
     // move a visibly different distance.
     let frame = ratatui::layout::Rect::new(0, 0, 100, 30);
     draw_frame(&wired, frame);
-    let popup = crate::persona_picker_render::persona_picker_overlay_rect(&frame)
-        .expect("geometry fn yields a popup rect");
-    let on_screen = crate::persona_picker_viewport::results_viewport(popup);
+    let on_screen = wired.cell().read().results_viewport;
 
     // When page down is pressed.
     wired.fire("page-persona-picker-down");
 
     // Then the highlight advanced by half a screen of rows — a page of what
     // the user can see, not of a fixed guess about how much that is.
-    assert_ne!(
-        on_screen,
-        jinn_persona_msg::RESULTS_VIEWPORT_FALLBACK,
-        "the frame must measure fewer rows than the pre-render fallback, or this test cannot detect a broken measurement"
-    );
     assert_eq!(wired.highlighted(), (on_screen / 2).max(1));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn drawing_a_frame_publishes_the_widget_solved_row_count_for_paging() {
+    // Given an open picker whose cell starts on the pre-render fallback.
+    let wired = Wired::new(vec![("coder", "a")]).await;
+    wired.open();
+    let fallback = wired.cell().read().results_viewport;
+    assert_eq!(fallback, jinn_persona_msg::RESULTS_VIEWPORT_FALLBACK);
+
+    // When a frame is drawn through the picker's real render pass.
+    let area = ratatui::layout::Rect::new(0, 0, 100, 30);
+    draw_frame(&wired, area);
+
+    // Then the cell carries the row count the widget solved for that frame —
+    // the same `PickerLayout.inner.height` an identical second construction
+    // returns — so paging moves by a page of what is on screen.
+    let measured = wired.cell().read().results_viewport;
+    let expected = widget_layout(&wired, area).inner.height as usize;
+    assert_eq!(measured, expected);
+}
+
+/// Renders the same widget the persona picker's render pass draws, into a
+/// fresh test terminal, and returns the [`jinn_selection_widget::PickerLayout`]
+/// the widget solved.
+///
+/// This is the expected-value source for renderer-level viewport assertions:
+/// the layout comes from the widget, never from hand arithmetic.
+fn widget_layout(
+    wired: &Wired,
+    area: ratatui::layout::Rect,
+) -> jinn_selection_widget::PickerLayout {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
+    let theme = jinn_theme::default_theme();
+    let popup = crate::persona_picker_render::persona_picker_overlay_rect(&area)
+        .expect("geometry fn yields a popup rect");
+    let report = std::cell::Cell::new(None);
+    terminal
+        .draw(|frame| {
+            let cell = wired.cell();
+            let guard = cell.read();
+            let state: &PersonaPickerState = &guard;
+            let palette = crate::persona_picker_render::persona_picker_palette(&theme);
+            let binds = crate::persona_picker_render::persona_picker_binds();
+            let keybind = jinn_picker::keybind_line(&binds, jinn_picker::Tail::Standard, &palette);
+            let footers = vec![
+                ratatui::text::Line::from(String::new()),
+                ratatui::text::Line::from(keybind.0),
+            ];
+
+            let widget = jinn_selection_widget::SelectionWidget::new(&state.selection)
+                .title(ratatui::text::Line::from(" Personas "))
+                .title_style(ratatui::style::Style::default().fg(theme.popup_title))
+                .footers(footers)
+                .colors(palette.selection_colors());
+            report.set(Some(widget.render(frame, popup)));
+        })
+        .expect("draw");
+    report.into_inner().expect("render reports a PickerLayout")
 }
 
 // ── 5. Confirm ──────────────────────────────────────────────────────────
