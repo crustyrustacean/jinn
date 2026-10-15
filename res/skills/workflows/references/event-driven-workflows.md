@@ -67,12 +67,17 @@ instant, the orchestrator ends its turn — that is what lets the next
 report land. A turn held open with sleeps is a turn whose queued
 reports never arrive; a turn that never ends is a wedged run. The
 orchestrator's turn ends are not pauses to be optimized away; they are
-the delivery mechanism.
+the delivery mechanism. "End your turn" is literal: announce it and
+stop calling tools. Sleep loops, `tail -f`, file-watching, and polling
+are all turn-holding in disguise — the orchestrator that "waits" with
+tools is the orchestrator whose reports never arrive.
 
-A scan timer, if the workflow wants one, is plain shell inside the
-turn — sleep, rescan state files, act, end turn — not a held turn.
-Its only job is detecting silence (a worker that went quiet with work
-in flight); events do the actual waking.
+A scan timer is a stall detector, not a waiting mechanism, and most
+workflows should not have one: a run whose workers always report needs
+no scan at all. If a workflow does want one (workers known to die
+silently), it is plain shell inside the turn — sleep, rescan state
+files, act, end turn — bounded, and named in the instructions as the
+stall detector it is. Events do the actual waking.
 
 ## Attendant seed files
 

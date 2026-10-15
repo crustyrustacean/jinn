@@ -100,9 +100,12 @@ contracting, or triaged. Then do the QA brief (step 6).
    resumes the loop (defects → issues) or ends the run (OK → final
    report; the work is already on the branch).
 
-While work is in flight and you have nothing actionable: sleep 60
-seconds, rescan, act or end your turn. Reports wake you; the sleep is
-only a stall detector.
+**Ending the turn is the whole waiting mechanism.** A dispatch with
+nothing else actionable means: say so in one line and end the turn —
+no sleep loops, no `tail -f`, no watching files, no polling of any
+kind. Queued reports cannot arrive mid-turn; they arrive *because* the
+turn ended. The only loop that exists is stage 1, re-entered when a
+report wakes you.
 
 ### 2. Hard rules
 

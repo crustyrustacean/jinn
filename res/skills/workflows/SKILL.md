@@ -213,7 +213,10 @@ run of that architecture. The irreducible core:
   orchestrator instructions); step files are the per-stage procedures
   it names. End your turn whenever nothing is left to do this instant —
   turn-end is what delivers queued reports. Workers wake you; you are
-  the only session that never waits idly.
+  the only session that never waits idly. **"End your turn" is
+  literal**: state that you're ending and stop — no sleep loops, no
+  `tail -f`, no file-watching, no polling. A tool call that waits is a
+  turn that never ends, and queued reports land only at turn end.
 - **Model pinning**: pass `model` on a `task` call only when the user
   explicitly pinned a step to a model. Never to pick one you prefer.
 
