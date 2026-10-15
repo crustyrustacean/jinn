@@ -266,17 +266,28 @@ pub fn render_endpoint_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderF
     // reports it; the guard ends before the cell write because `TypedCell` is
     // a plain RwLock and a same-thread write-while-read would deadlock. The
     // layout is `Copy`, so it outlives the guard cleanly.
-    let layout = {
+    let (layout, report) = {
         let guard = cell.read();
-        jinn_selection_widget::PreviewSelectionWidget::new(&guard.selection)
+        let mut report = None;
+        let layout = jinn_selection_widget::PreviewSelectionWidget::new(&guard.selection)
             .title(Line::from(" OpenRouter Endpoint "))
             .title_style(Style::default().fg(theme.popup_title))
             .footers(footers)
             .colors(palette.selection_colors())
             .preview_scroll(preview_scroll)
-            .render(frame, area)
+            .preview_report(&mut report)
+            .render(frame, area);
+        (layout, report)
     };
     cell.update(|state: &mut EndpointPickerState| {
         state.results_viewport = usize::from(layout.inner.height);
+        // The pane's measured geometry is this frame's clamp bound; clamping
+        // the stored offset here is what keeps a stale oversized scroll —
+        // including one held over from a shorter detail list — from
+        // surviving past the first frame that shows the new content.
+        if let Some(report) = report {
+            state.preview_max_scroll = report.max_scroll();
+            state.preview_scroll = state.preview_scroll.min(state.preview_max_scroll);
+        }
     });
 }
