@@ -133,6 +133,12 @@ pub enum SessionSearchError {
     /// No `query` argument, or an empty one.
     #[error("query is required")]
     QueryRequired,
+    /// A `session_id` argument was not a valid session id.
+    #[error("invalid session_id '{raw}'")]
+    InvalidSessionId {
+        /// The raw value.
+        raw: String,
+    },
     /// A `fields` entry was not a string.
     #[error("fields must be an array of strings")]
     FieldsNotStrings,
@@ -320,8 +326,8 @@ fn parse_scope(raw: &str) -> Result<Scope, error_stack::Report<SessionSearchErro
 /// The resolved session-id set for a search, with titles for output.
 #[derive(Debug, Default)]
 struct ResolvedSessions {
-    ids: Vec<String>,
-    titles: std::collections::HashMap<String, String>,
+    ids: Vec<SessionId>,
+    titles: std::collections::HashMap<SessionId, String>,
 }
 
 /// Resolves the scope to a concrete session-id set.
@@ -336,7 +342,9 @@ async fn resolve_sessions(
     current: Option<&SessionId>,
     store: &jinn_session_state::SessionStoreService,
 ) -> Result<ResolvedSessions, error_stack::Report<SessionSearchError>> {
-    if let Some(id) = explicit {
+    if let Some(raw) = explicit {
+        let id = SessionId::try_from_string(&raw)
+            .ok_or_else(|| SessionSearchError::InvalidSessionId { raw: raw.clone() })?;
         return {
             let mut titles = std::collections::HashMap::new();
             titles.insert(id.clone(), String::new());
@@ -356,7 +364,7 @@ async fn resolve_sessions(
             })?;
     let mut titles = std::collections::HashMap::new();
     for summary in &summaries {
-        titles.insert(summary.session_id.to_string(), summary.title.clone());
+        titles.insert(summary.session_id.clone(), summary.title.clone());
     }
 
     match scope {
@@ -365,12 +373,12 @@ async fn resolve_sessions(
                 return Err(SessionSearchError::NoCurrentSession.into());
             };
             Ok(ResolvedSessions {
-                ids: vec![current.to_string()],
+                ids: vec![current.clone()],
                 titles,
             })
         }
         Scope::All => Ok(ResolvedSessions {
-            ids: summaries.iter().map(|s| s.session_id.to_string()).collect(),
+            ids: summaries.iter().map(|s| s.session_id.clone()).collect(),
             titles,
         }),
         Scope::Project(want) => {
@@ -411,7 +419,7 @@ async fn resolve_sessions(
                             .and_then(|p| p.file_name())
                             .is_some_and(|n| n.eq_ignore_ascii_case(name))
                     })
-                    .map(|s| s.session_id.to_string())
+                    .map(|s| s.session_id.clone())
                     .collect(),
                 titles,
             })

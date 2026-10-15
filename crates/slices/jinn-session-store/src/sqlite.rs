@@ -287,7 +287,7 @@ impl SessionStore for SqliteSessionStore {
             .await
             .change_context(SessionStoreError)
             .attach("failed to query summaries")?;
-        Ok(rows.into_iter().map(summary_from_row).collect())
+        rows.into_iter().map(summary_from_row).collect()
     }
 
     async fn load_session(
@@ -365,7 +365,7 @@ impl SessionStore for SqliteSessionStore {
             .await
             .change_context(SessionStoreError)
             .attach("failed to query unarchived summaries")?;
-        Ok(rows.into_iter().map(summary_from_row).collect())
+        rows.into_iter().map(summary_from_row).collect()
     }
 
     async fn dirty_session_ids(&self) -> Result<Vec<SessionId>, Report<SessionStoreError>> {
@@ -868,8 +868,9 @@ fn load_context_in_transaction(
                 .cloned()
                 .unwrap_or_default();
             entry_from_joined(joined, attachments)
+                .map_err(|report| daow::Error::Custom(report.to_string()))
         })
-        .collect();
+        .collect::<daow::Result<Vec<_>>>()?;
     let ledger = ledger_rows.into_iter().map(record_from_row).collect();
 
     Ok(Some(SessionLoadContext {
@@ -1377,7 +1378,13 @@ fn set_archived_many_in_transaction(
 // ── Row → domain conversions ─────────────────────────────────────────────
 
 /// Builds a `SessionSummary` from a loaded `SessionRow`.
-fn summary_from_row(row: SessionRow) -> SessionSummary {
+///
+/// # Errors
+///
+/// Returns an error when the row's `id` column is not a parseable session
+/// id — a malformed primary key is corruption, and a summary carrying it
+/// would silently poison every consumer that keys on the id.
+fn summary_from_row(row: SessionRow) -> Result<SessionSummary, Report<SessionStoreError>> {
     // The project association lives only in the metadata blob; parse failure
     // (corrupt/legacy row) yields `None`, i.e. a blank project column.
     let project = row
@@ -1385,8 +1392,22 @@ fn summary_from_row(row: SessionRow) -> SessionSummary {
         .as_deref()
         .and_then(|json| serde_json::from_str::<PersistableCore>(json).ok())
         .and_then(|core| core.project);
-    SessionSummary {
-        session_id: SessionId::from(row.id),
+    let session_id = SessionId::try_from_string(&row.id)
+        .ok_or(SessionStoreError)
+        .attach(format!("sessions row carries a malformed id: {}", row.id))?;
+    let parent_session = row
+        .parent_session
+        .as_deref()
+        .map(|id| {
+            SessionId::try_from_string(id)
+                .ok_or(SessionStoreError)
+                .attach(format!(
+                    "sessions row carries a malformed parent_session: {id}"
+                ))
+        })
+        .transpose()?;
+    Ok(SessionSummary {
+        session_id,
         title: row.title.unwrap_or_else(|| "Untitled".to_owned()),
         updated_at: row
             .updated_at
@@ -1401,13 +1422,20 @@ fn summary_from_row(row: SessionRow) -> SessionSummary {
         } else {
             SessionState::Loaded
         },
-        parent_session: row.parent_session.map(SessionId::from),
+        parent_session,
         project,
-    }
+    })
 }
 
 /// Reconstructs a `ChatEntry` from a joined entry/junction row.
-fn entry_from_joined(joined: JoinedEntry, attachments: Vec<Attachment>) -> ChatEntry {
+///
+/// # Errors
+///
+/// Returns an error when the row's `entry_id` is not a parseable entry id.
+fn entry_from_joined(
+    joined: JoinedEntry,
+    attachments: Vec<Attachment>,
+) -> Result<ChatEntry, Report<SessionStoreError>> {
     let mut kind: ChatEntryKind = serde_json::from_str(&joined.kind).unwrap_or_else(|e| {
         tracing::warn!(entry_id = %joined.entry_id, error = %e, "failed to deserialize entry kind");
         ChatEntryKind::Error(format!("corrupt entry: {e}"))
@@ -1441,12 +1469,13 @@ fn entry_from_joined(joined: JoinedEntry, attachments: Vec<Attachment>) -> ChatE
                 |at| jinn_core_types::EntryTiming::Instant { at },
             )
         });
-    let mut chat_entry = ChatEntry::new_with_kind(
-        ChatEntryId::from(joined.entry_id),
-        timing,
-        kind,
-        pin_position,
-    );
+    let entry_id = ChatEntryId::try_from_string(&joined.entry_id)
+        .ok_or(SessionStoreError)
+        .attach(format!(
+            "entry row carries a malformed entry id: {}",
+            joined.entry_id
+        ))?;
+    let mut chat_entry = ChatEntry::new_with_kind(entry_id, timing, kind, pin_position);
     // Restored from DB - no audit event recorded.
     let override_value: ContextOverride = serde_json::from_str(&joined.context_override)
         .unwrap_or_else(|e| {
@@ -1482,7 +1511,7 @@ fn entry_from_joined(joined: JoinedEntry, attachments: Vec<Attachment>) -> ChatE
             );
             Vec::new()
         });
-    chat_entry
+    Ok(chat_entry)
 }
 
 /// Reconstructs a `TokenRecord` from a `TokenLedgerRow`.
@@ -1767,7 +1796,7 @@ async fn reindex_session_chunk(
                     entry.body,
                     entry.role.as_str(),
                     session_id.to_string(),
-                    entry.entry_id,
+                    entry.entry_id.to_string(),
                     entry.entry_ts
                 ],
             )?;
@@ -1831,7 +1860,16 @@ fn parse_searchable_rows(session_id: &SessionId, raw: &[RawIndexedEntry]) -> Vec
                 }
             });
             Some(SearchableEntry {
-                entry_id: r.entry_id.clone(),
+                entry_id: match ChatEntryId::try_from_string(&r.entry_id.clone()) {
+                    Some(id) => id,
+                    None => {
+                        tracing::warn!(
+                            entry_id = %r.entry_id,
+                            "skipping FTS reindex of row with malformed entry id"
+                        );
+                        return None;
+                    }
+                },
                 role,
                 body,
                 entry_ts: entry_ts_key(&timing),
@@ -1999,7 +2037,12 @@ async fn search_index(
     if !params.session_ids.is_empty() {
         let placeholders = repeat_placeholders(params.session_ids.len());
         clauses.push(format!("f.session_id IN ({placeholders})"));
-        binds.extend(params.session_ids.iter().cloned().map(Bind::Text));
+        binds.extend(
+            params
+                .session_ids
+                .iter()
+                .map(|id| Bind::Text(id.to_string())),
+        );
     }
     if !params.roles.is_empty() {
         let placeholders = repeat_placeholders(params.roles.len());
@@ -2061,23 +2104,44 @@ async fn search_index(
 
     let mut hits: Vec<SearchHit> = rows
         .into_iter()
-        .map(|r| SearchHit {
-            session_id: r.session_id,
-            entry_id: r.entry_id,
-            role: r.role,
-            snippet: collapse_whitespace(&r.snippet),
-            entry_ts: r.entry_ts,
-            excluded: false,
+        .map(|r| -> Result<SearchHit, Report<SessionStoreError>> {
+            Ok(SearchHit {
+                session_id: SessionId::try_from_string(&r.session_id)
+                    .ok_or(SessionStoreError)
+                    .attach(format!(
+                        "FTS row carries a malformed session id: {}",
+                        r.session_id
+                    ))?,
+                entry_id: ChatEntryId::try_from_string(&r.entry_id.clone())
+                    .ok_or(SessionStoreError)
+                    .attach(format!(
+                        "FTS row carries a malformed entry id: {}",
+                        r.entry_id
+                    ))?,
+                role: r.role,
+                snippet: collapse_whitespace(&r.snippet),
+                entry_ts: r.entry_ts,
+                excluded: false,
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
     mark_excluded_hits(pool, &mut hits).await?;
 
     Ok(SearchOutcome {
         total_matches: total.unwrap_or(0) as u64,
         per_session: rollup
             .into_iter()
-            .map(|r| (r.session_id, r.matches as u64))
-            .collect(),
+            .map(|r| {
+                SessionId::try_from_string(&r.session_id)
+                    .map(|id| (id, r.matches as u64))
+                    .ok_or_else(|| {
+                        Report::new(SessionStoreError).attach(format!(
+                            "FTS rollup row carries a malformed session id: {}",
+                            r.session_id
+                        ))
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?,
         hits,
     })
 }
@@ -2095,7 +2159,7 @@ async fn mark_excluded_hits(
     if hits.is_empty() {
         return Ok(());
     }
-    let entry_ids: Vec<String> = hits.iter().map(|h| h.entry_id.clone()).collect();
+    let entry_ids: Vec<String> = hits.iter().map(|h| h.entry_id.to_string()).collect();
     let placeholders = repeat_placeholders(entry_ids.len());
     let sql = format!(
         "SELECT e.id AS entry_id, h.ignored AS ignored, \
@@ -2113,13 +2177,19 @@ async fn mark_excluded_hits(
         .await
         .change_context(SessionStoreError)
         .attach("failed to read exclusion signals for hits")?;
-    let by_entry: HashMap<String, bool> = rows
+    let by_entry: HashMap<ChatEntryId, bool> = rows
         .into_iter()
         .map(|r| {
             let excluded = r.is_excluded();
-            (r.entry_id, excluded)
+            let id = ChatEntryId::try_from_string(&r.entry_id)
+                .ok_or(SessionStoreError)
+                .attach(format!(
+                    "exclusion row carries a malformed entry id: {}",
+                    r.entry_id
+                ))?;
+            Ok::<_, Report<SessionStoreError>>((id, excluded))
         })
-        .collect();
+        .collect::<Result<HashMap<_, _>, Report<SessionStoreError>>>()?;
 
     for hit in hits {
         hit.excluded = by_entry.get(&hit.entry_id).copied().unwrap_or(false);
@@ -2233,7 +2303,7 @@ fn build_window(
                     "entry {} has ordinal {} exceeding the platform width",
                     row.joined.entry_id, row.ordinal
                 ))?;
-            let entry = entry_from_joined(row.joined, Vec::new());
+            let entry = entry_from_joined(row.joined, Vec::new())?;
             let excluded = !entry.is_in_context();
             Ok(TranscriptEntry {
                 ordinal,
@@ -2243,7 +2313,7 @@ fn build_window(
         })
         .collect::<Result<Vec<_>, Report<SessionStoreError>>>()?;
     Ok(TranscriptWindow {
-        session_id: session_id.to_string(),
+        session_id: session_id.clone(),
         title,
         total_entries,
         entries,

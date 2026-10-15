@@ -23,7 +23,7 @@ use jinn_theme::default_theme;
 /// `SessionId`. Session IDs are `Uuid` newtypes, so opaque test tags must
 /// be projected onto valid UUIDs.
 fn sid(tag: &str) -> SessionId {
-    SessionId::from(uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, tag.as_bytes()).to_string())
+    SessionId::new_v5_tag(tag)
 }
 
 /// Helper to create a timestamp from a Unix epoch second offset.

@@ -160,7 +160,7 @@ fn entry(ordinal: usize, kind: ChatEntry) -> TranscriptEntry {
 
 fn window(entries: Vec<TranscriptEntry>) -> TranscriptWindow {
     TranscriptWindow {
-        session_id: "0199aaaa-0000-7000-8000-000000000009".to_owned(),
+        session_id: SessionId::try_from_string("0199aaaa-0000-7000-8000-000000000009").unwrap(),
         title: Some("migrate auth flow".to_owned()),
         total_entries: 1_204,
         entries,
@@ -174,9 +174,9 @@ fn ctx_with(store: StubStore) -> (ToolContext, std::sync::Arc<StubStore>) {
         config: jinn_config::testutil::config_layer(""),
         timeout: None,
         state: None,
-        session_id: Some(SessionId::from(
-            "0199aaaa-0000-7000-8000-000000000001".to_owned(),
-        )),
+        session_id: Some(
+            SessionId::try_from_string("0199aaaa-0000-7000-8000-000000000001").unwrap(),
+        ),
         app_paths: AppPaths::new_in(std::path::Path::new("/tmp")),
         bus: None,
         max_output_lines: None,
@@ -436,9 +436,9 @@ async fn outer_truncated_result_carries_full_content() {
             config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state: None,
-            session_id: Some(SessionId::from(
-                "0199aaaa-0000-7000-8000-000000000001".to_owned(),
-            )),
+            session_id: Some(
+                SessionId::try_from_string("0199aaaa-0000-7000-8000-000000000001").unwrap(),
+            ),
             app_paths: AppPaths::new_in(std::path::Path::new("/tmp")),
             bus: None,
             max_output_lines: Some(10),

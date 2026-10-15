@@ -128,7 +128,7 @@ mod tests {
     fn id(n: u8) -> ChatEntryId {
         // Deterministic, valid (8-4-4-4-12) UUID strings so dedup tests share stable ids.
         // n must stay 0..=9 so the final group stays exactly 12 hex chars.
-        ChatEntryId::from(format!("00000000-0000-0000-0000-00000000000{n}"))
+        ChatEntryId::try_from_string(&format!("00000000-0000-0000-0000-00000000000{n}")).unwrap()
     }
     fn worker() -> ChangeSource {
         ChangeSource::Worker {

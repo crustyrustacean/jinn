@@ -33,17 +33,24 @@ impl ChatEntryId {
     pub fn try_from_string(id: &str) -> Option<Self> {
         uuid::Uuid::parse_str(id).ok().map(Self)
     }
+
+    /// Derives a deterministic entry id from a stable tag.
+    ///
+    /// Tests (and any consumer needing a stable, valid id from a label) use
+    /// this instead of parsing an arbitrary tag, which would fail on a
+    /// non-UUID string.
+    #[must_use]
+    pub fn new_v5_tag(tag: &str) -> Self {
+        Self(uuid::Uuid::new_v5(
+            &uuid::Uuid::NAMESPACE_URL,
+            tag.as_bytes(),
+        ))
+    }
 }
 
 impl Default for ChatEntryId {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl From<String> for ChatEntryId {
-    fn from(s: String) -> Self {
-        Self(uuid::Uuid::parse_str(&s).unwrap_or_else(|_| uuid::Uuid::now_v7()))
     }
 }
 
@@ -83,15 +90,23 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn chat_entry_id_from_valid_string_roundtrips() {
+    fn chat_entry_id_try_from_string_roundtrips() {
         // Given a new entry ID rendered as a string.
         let id = ChatEntryId::new();
         let rendered = id.to_string();
 
         // When parsing it back.
-        let parsed = ChatEntryId::from(rendered.clone());
+        let parsed = ChatEntryId::try_from_string(&rendered).expect("valid id parses");
 
         // Then it equals the original.
         assert_eq!(parsed, id);
+    }
+
+    #[rstest::rstest]
+    fn chat_entry_id_try_from_string_rejects_garbage() {
+        // Given a string that is not a UUID.
+        // When parsing it.
+        // Then the parse fails instead of fabricating an id.
+        assert!(ChatEntryId::try_from_string("not-a-uuid").is_none());
     }
 }

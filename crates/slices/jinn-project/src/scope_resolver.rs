@@ -192,7 +192,7 @@ mod tests {
     /// Deterministically maps a mnemonic tag (e.g. "s-a", "s-child") to a valid
     /// `SessionId` (a `Uuid` newtype).
     fn sid(tag: &str) -> SessionId {
-        SessionId::from(uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, tag.as_bytes()).to_string())
+        SessionId::new_v5_tag(tag)
     }
 
     fn cand(id: &str, cwd: &str, parent: Option<&str>, updated_at_unix: i64) -> CandidateSession {

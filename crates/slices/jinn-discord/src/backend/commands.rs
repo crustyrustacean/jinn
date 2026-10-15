@@ -141,8 +141,8 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
     if let Err(e) = data
         .thread_map
         .set(
-            &thread_id,
-            &new_session_id.to_string(),
+            &crate::thread_map::ThreadId::new(thread_id),
+            &new_session_id,
             guild_id.as_deref(),
             now,
         )
@@ -182,14 +182,13 @@ pub async fn teardown(ctx: BotContext<'_>) -> Result<(), BotError> {
         return Ok(());
     }
     let data = ctx.data().clone();
-    let thread_id = ctx.channel_id().get().to_string();
+    let thread_id = crate::thread_map::ThreadId::new(ctx.channel_id().get().to_string());
 
-    let Some(session_id_str) = resolve_bound_session(&data, &thread_id).await? else {
+    let Some(session_id) = resolve_bound_session(&data, &thread_id).await? else {
         ctx.say("No session bound to this thread. Use `/new` first.")
             .await?;
         return Ok(());
     };
-    let session_id = SessionId::from(session_id_str);
 
     // Resolve + render under a short-lived read guard so it never spans an await.
     let outcome = jinn_kernel::session_lifecycle::intent::build_run_session_teardown(
@@ -234,14 +233,13 @@ pub async fn archive(ctx: BotContext<'_>) -> Result<(), BotError> {
         return Ok(());
     }
     let data = ctx.data().clone();
-    let thread_id = ctx.channel_id().get().to_string();
+    let thread_id = crate::thread_map::ThreadId::new(ctx.channel_id().get().to_string());
 
-    let Some(session_id_str) = resolve_bound_session(&data, &thread_id).await? else {
+    let Some(session_id) = resolve_bound_session(&data, &thread_id).await? else {
         ctx.say("No session bound to this thread. Use `/new` first.")
             .await?;
         return Ok(());
     };
-    let session_id = SessionId::from(session_id_str);
 
     data.bridge.send(Bridge::publish_closure(ArchiveSession {
         session_id: session_id.clone(),
@@ -261,8 +259,8 @@ pub async fn archive(ctx: BotContext<'_>) -> Result<(), BotError> {
 /// Returns [`BotError`] if the thread-map lookup fails.
 async fn resolve_bound_session(
     data: &crate::backend::gateway::BotData,
-    thread_id: &str,
-) -> Result<Option<String>, BotError> {
+    thread_id: &crate::thread_map::ThreadId,
+) -> Result<Option<jinn_core_types::SessionId>, BotError> {
     data.thread_map
         .get_session_by_thread(thread_id)
         .await
@@ -300,10 +298,9 @@ pub async fn prompts(ctx: BotContext<'_>) -> Result<(), BotError> {
     // 1. Resolve channel → session via the thread map (same lookup as the
     //    inbound message handler). Unbound channels get an ephemeral hint
     //    rather than the silent no-op used on the message path.
-    let thread_id = channel_id.get().to_string();
+    let thread_id = crate::thread_map::ThreadId::new(channel_id.get().to_string());
     let reply = match data.thread_map.get_session_by_thread(&thread_id).await {
-        Ok(Some(id)) => {
-            let session_id: jinn_core_types::SessionId = id.into();
+        Ok(Some(session_id)) => {
             // 2. Read the session's prompt store under a single short-lived
             //    read lock. The decision (list / empty / missing) is captured
             //    as a `Lookup` so the guard is dropped before the await on

@@ -232,11 +232,7 @@ async fn handle_create_thread(
     title: String,
 ) {
     // 1. Already-bound guard: refuse to rebind, never orphan an existing thread.
-    let existing_binding = match data
-        .thread_map
-        .get_thread_by_session(&session_id.to_string())
-        .await
-    {
+    let existing_binding = match data.thread_map.get_thread_by_session(&session_id).await {
         Ok(Some(_)) => true,
         Ok(None) => false,
         Err(e) => {
@@ -311,13 +307,13 @@ async fn handle_create_thread(
 
     // 4. Record the thread→session mapping. guild_id is unknown on the reverse
     //    path (we never saw a poise ctx), matching the /new fallback of None.
-    let thread_id = channel.id.get().to_string();
+    let thread_id = crate::thread_map::ThreadId::new(channel.id.get().to_string());
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64);
     if let Err(e) = data
         .thread_map
-        .set(&thread_id, &session_id.to_string(), None, now)
+        .set(&thread_id, &session_id, None, now)
         .await
     {
         tracing::warn!(error = ?e, %session_id, "mapping write failed (thread exists but unbound)");
@@ -330,7 +326,7 @@ async fn handle_create_thread(
     }
 
     // 5. Success — tell the feedback actor to confirm in chat.
-    tracing::info!(%session_id, thread_id, "created discord thread for session");
+    tracing::info!(%session_id, thread_id = %thread_id, "created discord thread for session");
     publish(&data.bridge, DiscordThreadCreated { session_id, title });
 }
 
@@ -468,13 +464,10 @@ async fn resolve_thread(
     data: &BotData,
     session_id: &SessionId,
 ) -> Result<Option<serenity::ChannelId>, String> {
-    match data
-        .thread_map
-        .get_thread_by_session(&session_id.to_string())
-        .await
-    {
+    match data.thread_map.get_thread_by_session(session_id).await {
         Ok(Some(mapping)) => mapping
             .thread_id
+            .as_str()
             .parse::<u64>()
             .map(serenity::ChannelId::new)
             .map(Some)
@@ -575,7 +568,7 @@ async fn handle_inbound_message(
     msg: &serenity::Message,
     data: &BotData,
 ) -> Result<(), BotError> {
-    let thread_id = msg.channel_id.get().to_string();
+    let thread_id = crate::thread_map::ThreadId::new(msg.channel_id.get().to_string());
     let Some(session_id) = data
         .thread_map
         .get_session_by_thread(&thread_id)
@@ -585,8 +578,6 @@ async fn handle_inbound_message(
         // Unbound channel: silent no-op. See `classify_inbound::UnboundNoOp`.
         return Ok(());
     };
-
-    let session_id: SessionId = session_id.into();
 
     // Read the phase under a short-lived read lock, then drop the lock before
     // any publish. Holding the lock across a `Bridge::send` can deadlock if the

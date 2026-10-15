@@ -164,7 +164,8 @@ mod tests {
         }
 
         // When loading the system resource.
-        #[cfg_attr(unix, expect(unused_variables, reason = "Unix asserts below"))]
+        // On Windows the assertion below is compiled out, so the binding
+        // would otherwise be unused there.
         #[cfg_attr(
             windows,
             expect(

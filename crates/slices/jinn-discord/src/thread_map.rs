@@ -11,6 +11,35 @@
 
 use async_trait::async_trait;
 use daow::{Entity, Pool, dao};
+use jinn_core_types::SessionId;
+
+/// A Discord forum-thread id (stringified snowflake).
+///
+/// Wraps the raw Discord id so a thread id can never be passed where a
+/// session id is wanted — the two are adjacent `String`s in every call into
+/// the map, and the DAO's positional arguments cannot catch a transposition.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ThreadId(String);
+
+impl ThreadId {
+    /// Wraps a raw Discord thread id.
+    #[must_use]
+    pub fn new(raw: impl Into<String>) -> Self {
+        Self(raw.into())
+    }
+
+    /// Returns the id in its Discord (snowflake string) form.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for ThreadId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
 
 /// A row of the `discord_thread` mapping table.
 ///
@@ -69,9 +98,9 @@ pub struct DiscordThreadMapError;
 #[derive(Debug, Clone)]
 pub struct ThreadMapping {
     /// Discord forum-thread id (stringified snowflake).
-    pub thread_id: String,
+    pub thread_id: ThreadId,
     /// Jinn session id bound to this thread.
-    pub session_id: String,
+    pub session_id: SessionId,
     /// Guild the thread lives in (`None` for DM threads).
     pub guild_id: Option<String>,
     /// When the mapping was first recorded (unix seconds).
@@ -104,15 +133,15 @@ impl DiscordThreadMap {
     /// Returns [`DiscordThreadMapError`] if the write fails.
     pub async fn set(
         &self,
-        thread_id: &str,
-        session_id: &str,
+        thread_id: &ThreadId,
+        session_id: &SessionId,
         guild_id: Option<&str>,
         created_at: i64,
     ) -> Result<(), Report<DiscordThreadMapError>> {
         let dao = DiscordThreadDao::new(self.pool.clone());
         dao.upsert(
-            thread_id.to_owned(),
-            session_id.to_owned(),
+            thread_id.as_str().to_owned(),
+            session_id.to_string(),
             guild_id.map(str::to_owned),
             created_at,
         )
@@ -129,15 +158,15 @@ impl DiscordThreadMap {
     /// Returns [`DiscordThreadMapError`] if the read fails.
     pub async fn get_session_by_thread(
         &self,
-        thread_id: &str,
-    ) -> Result<Option<String>, Report<DiscordThreadMapError>> {
+        thread_id: &ThreadId,
+    ) -> Result<Option<SessionId>, Report<DiscordThreadMapError>> {
         let dao = DiscordThreadDao::new(self.pool.clone());
         let row = dao
-            .session_by_thread(thread_id.to_owned())
+            .session_by_thread(thread_id.as_str().to_owned())
             .await
             .change_context(DiscordThreadMapError)
             .attach("failed to read discord_thread mapping")?
-            .map(|r| r.session_id);
+            .and_then(|r| SessionId::try_from_string(&r.session_id));
         Ok(row)
     }
 
@@ -148,15 +177,16 @@ impl DiscordThreadMap {
     /// Returns [`DiscordThreadMapError`] if the read fails.
     pub async fn get_thread_by_session(
         &self,
-        session_id: &str,
+        session_id: &SessionId,
     ) -> Result<Option<ThreadMapping>, Report<DiscordThreadMapError>> {
         let dao = DiscordThreadDao::new(self.pool.clone());
         let row = dao
-            .row_by_session(session_id.to_owned())
+            .row_by_session(session_id.to_string())
             .await
             .change_context(DiscordThreadMapError)
             .attach("failed to read discord_thread mapping")?
-            .map(ThreadMapping::from);
+            .map(ThreadMapping::try_from)
+            .transpose()?;
         Ok(row)
     }
 }
@@ -169,14 +199,22 @@ impl std::fmt::Debug for DiscordThreadMap {
     }
 }
 
-impl From<DiscordThreadRow> for ThreadMapping {
-    fn from(row: DiscordThreadRow) -> Self {
-        Self {
-            thread_id: row.thread_id,
-            session_id: row.session_id,
+impl TryFrom<DiscordThreadRow> for ThreadMapping {
+    type Error = Report<DiscordThreadMapError>;
+
+    fn try_from(row: DiscordThreadRow) -> Result<Self, Self::Error> {
+        let session_id = SessionId::try_from_string(&row.session_id)
+            .ok_or(DiscordThreadMapError)
+            .attach(format!(
+                "discord_thread row carries a malformed session id: {}",
+                row.session_id
+            ))?;
+        Ok(Self {
+            thread_id: ThreadId::new(row.thread_id),
+            session_id,
             guild_id: row.guild_id,
             created_at: row.created_at,
-        }
+        })
     }
 }
 
@@ -187,7 +225,8 @@ mod tests {
         reason = "test code: assertion helpers are fine to panic"
     )]
 
-    use super::DiscordThreadMap;
+    use super::{DiscordThreadMap, ThreadId};
+    use jinn_core_types::SessionId;
     use jinn_session_store::sqlite::SqliteSessionStore;
     use tempfile::TempDir;
 
@@ -203,15 +242,26 @@ mod tests {
     async fn dao_set_then_forward_lookup_returns_session_id() {
         // Given an empty map with one mapping inserted.
         let (_dir, map) = make_map().await;
-        map.set("thread-1", "session-1", Some("guild-1"), 1_700_000_000)
-            .await
-            .expect("set");
+        map.set(
+            &ThreadId::new("thread-1"),
+            &SessionId::try_from_string("0199bbbb-0000-7000-8000-000000000001").unwrap(),
+            Some("guild-1"),
+            1_700_000_000,
+        )
+        .await
+        .expect("set");
 
         // When doing the forward lookup.
-        let session = map.get_session_by_thread("thread-1").await.expect("lookup");
+        let session = map
+            .get_session_by_thread(&ThreadId::new("thread-1"))
+            .await
+            .expect("lookup");
 
         // Then the stored session id is returned.
-        assert_eq!(session.as_deref(), Some("session-1"));
+        assert_eq!(
+            session,
+            Some(SessionId::try_from_string("0199bbbb-0000-7000-8000-000000000001").unwrap())
+        );
     }
 
     #[rstest::rstest]
@@ -219,20 +269,30 @@ mod tests {
     async fn dao_set_then_reverse_lookup_returns_mapping() {
         // Given a map with one mapping.
         let (_dir, map) = make_map().await;
-        map.set("thread-1", "session-1", Some("guild-1"), 1_700_000_000)
-            .await
-            .expect("set");
+        let session_id =
+            SessionId::try_from_string("0199bbbb-0000-7000-8000-000000000001").unwrap();
+        map.set(
+            &ThreadId::new("thread-1"),
+            &session_id,
+            Some("guild-1"),
+            1_700_000_000,
+        )
+        .await
+        .expect("set");
 
         // When doing the reverse lookup.
         let mapping = map
-            .get_thread_by_session("session-1")
+            .get_thread_by_session(&session_id)
             .await
             .expect("lookup");
 
         // Then the full mapping is returned.
         let mapping = mapping.expect("mapping exists");
-        assert_eq!(mapping.thread_id, "thread-1");
-        assert_eq!(mapping.session_id, "session-1");
+        assert_eq!(mapping.thread_id.as_str(), "thread-1");
+        assert_eq!(
+            mapping.session_id,
+            SessionId::try_from_string("0199bbbb-0000-7000-8000-000000000001").unwrap()
+        );
         assert_eq!(mapping.guild_id.as_deref(), Some("guild-1"));
         assert_eq!(mapping.created_at, 1_700_000_000);
     }
@@ -245,7 +305,7 @@ mod tests {
 
         // When looking up a thread that was never recorded.
         let session = map
-            .get_session_by_thread("never-seen")
+            .get_session_by_thread(&ThreadId::new("never-seen"))
             .await
             .expect("lookup");
 
@@ -258,17 +318,22 @@ mod tests {
     async fn dao_set_rebinds_existing_thread_to_new_session() {
         // Given a thread already mapped to session-1.
         let (_dir, map) = make_map().await;
-        map.set("thread-1", "session-1", None, 1)
+        let first = SessionId::try_from_string("0199bbbb-0000-7000-8000-000000000001").unwrap();
+        let second = SessionId::try_from_string("0199bbbb-0000-7000-8000-000000000002").unwrap();
+        map.set(&ThreadId::new("thread-1"), &first, None, 1)
             .await
             .expect("first set");
 
         // When re-running set for the same thread with a new session.
-        map.set("thread-1", "session-2", None, 2)
+        map.set(&ThreadId::new("thread-1"), &second, None, 2)
             .await
             .expect("rebind");
 
         // Then the forward lookup returns the new session.
-        let session = map.get_session_by_thread("thread-1").await.expect("lookup");
-        assert_eq!(session.as_deref(), Some("session-2"));
+        let session = map
+            .get_session_by_thread(&ThreadId::new("thread-1"))
+            .await
+            .expect("lookup");
+        assert_eq!(session, Some(second));
     }
 }

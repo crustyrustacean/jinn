@@ -1696,9 +1696,7 @@ async fn legacy_automated_row_loads_as_normal_session() {
     // When loading the session through the store.
     let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
     let loaded = store
-        .load_session(&SessionId::from(
-            "10000000-0000-0000-0000-000000000099".to_owned(),
-        ))
+        .load_session(&SessionId::try_from_string("10000000-0000-0000-0000-000000000099").unwrap())
         .await
         .expect("load_session")
         .expect("session should exist");
@@ -1737,9 +1735,7 @@ async fn legacy_065_blob_loads_after_v19() {
     // (The store re-runs migrations on open; v19 repairs the blob, v20 drops zombies.)
     let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
     let loaded = store
-        .load_session(&SessionId::from(
-            "10000000-0000-0000-0000-000000000065".to_owned(),
-        ))
+        .load_session(&SessionId::try_from_string("10000000-0000-0000-0000-000000000065").unwrap())
         .await
         .expect("load_session")
         .expect("session should exist");
@@ -1778,9 +1774,7 @@ async fn current_066_blob_loads_unchanged() {
     // When loading the session through the store.
     let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
     let loaded = store
-        .load_session(&SessionId::from(
-            "10000000-0000-0000-0000-000000000066".to_owned(),
-        ))
+        .load_session(&SessionId::try_from_string("10000000-0000-0000-0000-000000000066").unwrap())
         .await
         .expect("load_session")
         .expect("session should exist");
@@ -1797,9 +1791,9 @@ async fn current_066_blob_loads_unchanged() {
 fn metadata_blob_is_unchanged_by_group_composition() {
     // Given a session with every lifecycle field set to a non-default value.
     let mut session = ChatSessionState::new();
-    session.set_session_id(SessionId::from(
-        "10000000-0000-0000-0000-000000000067".to_owned(),
-    ));
+    session.set_session_id(
+        SessionId::try_from_string("10000000-0000-0000-0000-000000000067").unwrap(),
+    );
     let timestamp = jiff::Timestamp::new(1_704_067_200, 0).expect("valid timestamp");
     session.restore_updated_at(timestamp);
     session.restore_created_at(timestamp);
@@ -1868,9 +1862,7 @@ async fn legacy_pre_v8_row_loads_after_v20_backfill() {
     // When loading the session through the store (which runs v19 + v20 on open).
     let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
     let loaded = store
-        .load_session(&SessionId::from(
-            "10000000-0000-0000-0000-000000000008".to_owned(),
-        ))
+        .load_session(&SessionId::try_from_string("10000000-0000-0000-0000-000000000008").unwrap())
         .await
         .expect("load_session")
         .expect("session should exist");
@@ -2476,7 +2468,7 @@ async fn reindex_honors_default_field_visibility_via_roles() {
     let all = store
         .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
-            session_ids: vec![session_id.to_string()],
+            session_ids: vec![session_id.clone()],
             roles: Vec::new(),
             since: None,
             until: None,
@@ -2488,7 +2480,7 @@ async fn reindex_honors_default_field_visibility_via_roles() {
     let tool_only = store
         .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
-            session_ids: vec![session_id.to_string()],
+            session_ids: vec![session_id.clone()],
             roles: vec![SearchableRole::ToolResult],
             since: None,
             until: None,
@@ -2568,9 +2560,9 @@ async fn search_reports_per_session_rollup() {
 
     // Then both sessions appear in the rollup with their counts.
     assert_eq!(outcome.total_matches, 4);
-    let mut counted: Vec<(String, u64)> = outcome.per_session.clone();
+    let mut counted: Vec<(SessionId, u64)> = outcome.per_session.clone();
     counted.sort();
-    let mut expected: Vec<(String, u64)> = vec![(a.to_string(), 2), (b.to_string(), 2)];
+    let mut expected: Vec<(SessionId, u64)> = vec![(a.clone(), 2), (b.clone(), 2)];
     expected.sort();
     assert_eq!(counted, expected);
 }
@@ -2603,7 +2595,7 @@ async fn search_limits_hits_but_reports_full_totals() {
     // Then only one hit is returned but the total is complete.
     assert_eq!(outcome.hits.len(), 1);
     assert_eq!(outcome.total_matches, 2);
-    assert_eq!(outcome.per_session, vec![(session_id.to_string(), 2)]);
+    assert_eq!(outcome.per_session, vec![(session_id.clone(), 2)]);
 }
 
 #[rstest::rstest]
@@ -2627,7 +2619,7 @@ async fn search_filters_by_session_ids() {
     let outcome = store
         .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
-            session_ids: vec![b.to_string()],
+            session_ids: vec![b.clone()],
             roles: Vec::new(),
             since: None,
             until: None,
@@ -2638,7 +2630,7 @@ async fn search_filters_by_session_ids() {
 
     // Then only session b's entries match.
     assert_eq!(outcome.total_matches, 2);
-    assert!(outcome.hits.iter().all(|h| h.session_id == b.to_string()));
+    assert!(outcome.hits.iter().all(|h| h.session_id == b));
 }
 
 #[rstest::rstest]
@@ -3230,7 +3222,7 @@ async fn reindexed_rebuild_replaces_rows_via_rowid_map() {
     let outcome = store
         .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
-            session_ids: vec![session_id.to_string()],
+            session_ids: vec![session_id.clone()],
             roles: Vec::new(),
             since: None,
             until: None,
