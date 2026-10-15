@@ -11,6 +11,7 @@
 - `<leader>sx` can be used to disable/enable stream rules via picker.
   - Stream rule status is saved under `[stream_rules] disabled_rules = ["foo", ...]` in `jinn.toml`
 - Workflow picker now supports "load in session" (`<enter>`) and "load in _new_ session" (`<c-enter>`).
+- Session previews now show statistics in the status line.
 - Bugfix: lifecycle arg ordering can now change between startup and shutdown (previously they had to be in the same order, causing confusing bugs triggered by incorrect substitution).
 - Bugfix: `k` will now properly transition from the Attendants section to the Persona section in the sidebar.
 - `task` tool renamed to `spawn_subagent`
