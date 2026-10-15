@@ -53,7 +53,7 @@ fn metadata_without_a_marker_roundtrips_as_none() {
 #[rstest::rstest]
 fn pre_marker_metadata_loads_with_no_marker() {
     // Given metadata JSON written before the marker existed.
-    let mut value = serde_json::to_value(&metadata()).expect("serialize");
+    let mut value = serde_json::to_value(metadata()).expect("serialize");
     let value = value.as_object_mut().expect("object").clone();
     debug_assert!(!value.contains_key("workflow_source"));
 

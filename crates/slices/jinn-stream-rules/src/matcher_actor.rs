@@ -151,9 +151,7 @@ mod tests {
     /// Without the finalize half, a rule matching the marker's tail would read
     /// as silent here while firing in production at stream completion.
     fn fires(cell: &TypedCell<StreamRules>, marker: &str) -> Option<String> {
-        let Some(set) = cell.read().installed() else {
-            return None;
-        };
+        let set = cell.read().installed()?;
         let mut session = set.new_session(&jinn_core_types::SessionId::new());
         session
             .check(marker, StreamContext::text())

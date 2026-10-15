@@ -108,13 +108,6 @@ impl Bundled {
     pub(crate) fn contents(&self) -> &'static [u8] {
         self.contents
     }
-
-    /// This resource's path relative to the root of `res/`, reconstructing the
-    /// top-level directory its [`Kind`] came from.
-    #[cfg(test)]
-    pub(crate) fn res_relative(&self) -> PathBuf {
-        Path::new(self.kind.dir_name()).join(&self.relative)
-    }
 }
 
 /// A resource's top-level directory under `res/` named no known kind, so it has

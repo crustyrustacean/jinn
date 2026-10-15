@@ -390,7 +390,9 @@ async fn process_stream_events(
                     // The error and abort paths deliberately do not
                     // finalize: a dying stream must not manufacture an
                     // interrupt nobody watched arrive.
-                    let finalized = rules.as_deref_mut().and_then(|session| session.finalize());
+                    let finalized = rules
+                        .as_deref_mut()
+                        .and_then(jinn_slices::StreamRuleSession::finalize);
                     if let Some(fired) = finalized {
                         return apply_rule_match(bus, sid, &mut accum, fired, dispatched_at).await;
                     }

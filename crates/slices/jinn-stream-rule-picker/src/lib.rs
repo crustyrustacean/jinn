@@ -76,7 +76,7 @@ pub use jinn_stream_rule_picker_msg::stream_rule_picker_scope;
 )]
 pub fn activate(
     host: &mut jinn_slices::SliceHost<'_, jinn_slices::RenderFacts>,
-    preferences_path: std::path::PathBuf,
+    preferences_path: &std::path::Path,
     config: jinn_config::ConfigLayer,
 ) {
     let cell = host
@@ -100,7 +100,7 @@ pub fn activate(
     host.register_overlay_view(scope, std::sync::Arc::new(render_stream_rule_picker));
 
     // The picker's keys, and the filter's input hook, are the slice's own.
-    attach_stream_rule_picker_rows(host.key_routes(), &cell, &preferences_path);
+    attach_stream_rule_picker_rows(host.key_routes(), &cell, preferences_path);
     register_stream_rule_picker_input_hook(host.key_routes(), &cell);
 
     // The persist actor consumes the confirm's command; it must be
