@@ -1,8 +1,15 @@
 //! Status bar - displays the session CWD, active prompt strategy, and current model.
 //!
 //! Shows the session's working directory on line 1, and status information
-//! on line 2: strategy, pinned count, token stats, turn count, and model.
-//! The model shows `({provider})/{model}` when set, or "no model selected" otherwise.
+//! on line 2: token stats, turn count, and model. The model shows
+//! `({provider})/{model}` when set, or "no model selected" otherwise.
+//!
+//! The per-session presentation is shared: [`render_session_cwd_line`] and
+//! [`render_session_info_line`] draw the two lines for *any* session, not
+//! just the active one, so other surfaces (the sidebar's session preview)
+//! render the identical status line. The element composes them with the two
+//! active-session-only extras — the tree aggregate and the transient hint —
+//! which are deliberately not part of the shared surface.
 
 use std::collections::HashMap;
 
@@ -17,6 +24,7 @@ use jinn_kernel::resolve_effort;
 use jinn_provider_config::InputModalities;
 use jinn_provider_config::ModelCache;
 use jinn_provider_config::ModelInfo;
+use jinn_session_state::ChatSessionState;
 use jinn_session_state::aggregate_tree_stats;
 use jinn_slices::DrawContext;
 use jinn_theme::Theme;
@@ -112,10 +120,20 @@ pub fn paint(frame: &mut Frame<'_>, area: Rect, ctx: &dyn DrawContext<AppState>)
             Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(area);
 
         let style = Style::default().fg(state.frontend.theme.muted_text);
+        let model_cache = model_cache_of(state);
 
-        render_cwd_line(frame, cwd_area, state, style);
+        render_session_cwd_line(frame, cwd_area, state.active_session(), style);
         render_tree_aggregate(frame, cwd_area, state, style, ctx.slices());
-        render_token_info_line(frame, info_area, state, ctx, style);
+        render_session_info_line(
+            frame,
+            info_area,
+            state.active_session(),
+            &state.frontend.theme,
+            model_cache.as_ref(),
+            active_working_time(state, ctx.slices()),
+            style,
+        );
+        render_hint_overlay(frame, info_area, state, ctx.slices());
     }
 }
 
@@ -131,16 +149,35 @@ impl UiElement for StatusBarElement {
             Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(area);
 
         let style = Style::default().fg(state.frontend.theme.muted_text);
+        let model_cache = model_cache_of(state);
 
-        render_cwd_line(frame, cwd_area, state, style);
+        render_session_cwd_line(frame, cwd_area, state.active_session(), style);
         render_tree_aggregate(frame, cwd_area, state, style, ctx.slices());
-        render_token_info_line(frame, info_area, state, ctx, style);
+        render_session_info_line(
+            frame,
+            info_area,
+            state.active_session(),
+            &state.frontend.theme,
+            model_cache.as_ref(),
+            active_working_time(state, ctx.slices()),
+            style,
+        );
+        render_hint_overlay(frame, info_area, state, ctx.slices());
     }
 }
 
-/// Renders the CWD line (left-aligned) for the active session.
-fn render_cwd_line(frame: &mut Frame<'_>, area: Rect, state: &AppState, style: Style) {
-    let cwd = state.active_session().cwd();
+/// Renders the CWD line (left-aligned) for `session`.
+///
+/// The shared half of the status line: the sidebar's session preview calls
+/// this with the *previewed* session, so both surfaces draw the identical
+/// line — home collapsed to `~`, left-aligned, muted.
+pub fn render_session_cwd_line(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    session: &ChatSessionState,
+    style: Style,
+) {
+    let cwd = session.cwd();
     let cwd_display = shorten_path(cwd);
     let cwd_widget = Paragraph::new(Line::from(Span::styled(cwd_display, style)))
         .style(style)
@@ -162,13 +199,27 @@ fn live_working_intervals(
         .map_or_else(HashMap::new, |cell| cell.read().snapshot())
 }
 
-/// This session's working time, measured live so a running turn ticks.
+/// The active session's working time, measured live so a running turn ticks.
 fn active_working_time(state: &AppState, slices: &jinn_slices::Slices) -> SignedDuration {
-    let id = state.session.active_session_id();
+    session_working_time(state.session.active_session_id(), slices)
+}
+
+/// A session's working time, read live from the work-time cell.
+///
+/// The shared counterpart of [`active_working_time`]: keyed by the caller's
+/// session id rather than the active one, so a surface describing a
+/// background session (the sidebar's session preview) clocks *that*
+/// session's working time. An absent cell — the slice not activated, or a
+/// test that never ran the catalog — degrades to zero rather than panicking,
+/// so the caller still renders a clock.
+pub fn session_working_time(
+    session_id: &SessionId,
+    slices: &jinn_slices::Slices,
+) -> SignedDuration {
     slices
         .reader::<WorkingTimeState>(&work_time_slot())
         .map_or(SignedDuration::ZERO, |cell| {
-            cell.read().working_time(id, Timestamp::now())
+            cell.read().working_time(session_id, Timestamp::now())
         })
 }
 
@@ -227,25 +278,40 @@ fn render_tree_aggregate(
 }
 
 /// Renders the token/model info line (left: token stats + cost + turns; right: model).
-fn render_token_info_line(
+///
+/// The shared half of the status line: every value is read from `session`,
+/// never from any active session, so a caller describing a background
+/// session shows that session's own numbers. The transient hint is *not*
+/// part of this surface — it is active-session chrome — so the model is
+/// always the right side here; the status bar composes
+/// [`render_hint_overlay`] after this to keep its hint-replaces-model
+/// behavior.
+///
+/// The two inputs that are not per-session are passed in:
+/// `model_cache` (app-level, for the context limit and the modality
+/// indicator — absent degrades to `???` and text-only exactly as the status
+/// bar degrades with no provider cell) and `working_time` (precomputed by
+/// the caller via [`session_working_time`], because the cell it reads lives
+/// behind a `Slices` handle render chains don't all carry).
+pub fn render_session_info_line(
     frame: &mut Frame<'_>,
     area: Rect,
-    state: &AppState,
-    ctx: &dyn DrawContext<AppState>,
+    session: &ChatSessionState,
+    theme: &Theme,
+    model_cache: Option<&ModelCache>,
+    working_time: SignedDuration,
     style: Style,
 ) {
-    let active_model = state.active_session().profile().model.clone();
-    let token_stats = TokenStats::from_ledger(state.active_session().token_ledger());
-    let token_info = build_token_info_string(state, &active_model, &token_stats);
+    let active_model = session.profile().model.clone();
+    let token_stats = TokenStats::from_ledger(session.token_ledger());
+    let token_info = build_token_info_string(model_cache, session, &active_model, &token_stats);
 
-    let model = build_model_string(state, &active_model);
-    let total_cost = TokenStats::total_cost(state.active_session().token_ledger());
+    let model = build_model_string(model_cache, session, &active_model);
+    let total_cost = TokenStats::total_cost(session.token_ledger());
 
     let left_side = {
-        let turn_count = turn_counter::compute_turn_count(
-            state.active_session().history(),
-            state.active_session().fork_ordinal(),
-        );
+        let turn_count =
+            turn_counter::compute_turn_count(session.history(), session.fork_ordinal());
         let turn_symbol = '\u{21BB}';
         let mut left_spans: Vec<Span> = Vec::new();
         // Cache-hit percentage — leftmost, shown only when there are cache hits.
@@ -253,7 +319,7 @@ fn render_token_info_line(
             let cache_glyph = '\u{2B22}'; // ⬢
             left_spans.push(Span::styled(
                 format!("{cache_glyph} {pct}% "),
-                cache_hit_style(&state.frontend.theme, pct),
+                cache_hit_style(theme, pct),
             ));
         }
         left_spans.push(Span::styled(token_info, style));
@@ -261,7 +327,7 @@ fn render_token_info_line(
         left_spans.push(Span::styled(
             format!(
                 " {turn_symbol}{turn_count} {}",
-                format_working_duration(&active_working_time(state, ctx.slices()))
+                format_working_duration(&working_time)
             ),
             style,
         ));
@@ -271,32 +337,53 @@ fn render_token_info_line(
     };
     frame.render_widget(left_side, area);
 
-    // A transient hint (e.g. an inert overlay toggle) replaces the model
-    // display until the next intent; it is warning-colored so it reads as a
-    // notice rather than ambient info. The hint lives in the slice's cell —
-    // absent cell (slice not activated) means no hint, model shows.
-    let hint = ctx
-        .slices()
-        .reader::<StatusBarState>(&status_bar_slot())
-        .and_then(|cell| cell.read().hint.clone());
-    let right_side = if let Some(hint) = hint {
-        let hint_style = Style::default().fg(state.frontend.theme.warning);
-        Paragraph::new(Line::from(vec![Span::styled(hint, hint_style)])).alignment(Alignment::Right)
-    } else {
-        let right_spans = vec![Span::styled(model, style)];
-        Paragraph::new(Line::from(right_spans)).alignment(Alignment::Right)
-    };
+    // The model, right-aligned: the shared surface always ends in the model.
+    let right_spans = vec![Span::styled(model, style)];
+    let right_side = Paragraph::new(Line::from(right_spans)).alignment(Alignment::Right);
     frame.render_widget(right_side, area);
 }
 
-/// Builds the left-side token info string: sent/received counts + context budget.
-/// The model cache from the provider cell, if the slice is attached.
-fn model_cache_of(state: &AppState) -> Option<jinn_provider_config::ModelCache> {
+/// Renders the transient hint (e.g. an inert overlay toggle) right-aligned
+/// over the info line, replacing the model display until the next intent.
+///
+/// Active-session chrome, deliberately outside the shared surface: a preview
+/// of a background session must end in *that session's* model, whatever the
+/// hint cell currently carries. Warning-colored so it reads as a notice
+/// rather than ambient info. The hint lives in the slice's cell — an absent
+/// cell (slice not activated) means no hint, and this draws nothing, leaving
+/// the shared info line's model visible.
+fn render_hint_overlay(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    state: &AppState,
+    slices: &jinn_slices::Slices,
+) {
+    let hint = slices
+        .reader::<StatusBarState>(&status_bar_slot())
+        .and_then(|cell| cell.read().hint.clone());
+    let Some(hint) = hint else {
+        return;
+    };
+    let hint_style = Style::default().fg(state.frontend.theme.warning);
+    let widget = Paragraph::new(Line::from(vec![Span::styled(hint, hint_style)]))
+        .alignment(Alignment::Right);
+    frame.render_widget(widget, area);
+}
+
+/// The provider slice's model cache, if the slice is attached.
+///
+/// App-level, not per-session: one provider catalog shared by every
+/// session. Exported because the shared info line takes the cache as a
+/// parameter, and a caller with an `AppState` in hand (the sidebar's
+/// production render path) resolves it the same way the status bar does.
+#[must_use]
+pub fn model_cache_of(state: &AppState) -> Option<ModelCache> {
     state.provider_state()?.read().model_cache.clone()
 }
 
 fn build_token_info_string(
-    state: &AppState,
+    model_cache: Option<&ModelCache>,
+    session: &ChatSessionState,
     active_model: &ModelSelection,
     token_stats: &TokenStats,
 ) -> String {
@@ -308,9 +395,8 @@ fn build_token_info_string(
         format_tokens(token_stats.total_received),
     );
 
-    let ctx_size = state.active_session().context_size();
-    let model_cache = model_cache_of(state);
-    let ctx_limit = resolve_context_limit(model_cache.as_ref(), active_model.display_str());
+    let ctx_size = session.context_size();
+    let ctx_limit = resolve_context_limit(model_cache, active_model.display_str());
     let context_display = match (ctx_size, ctx_limit) {
         (Some(used), Some(max)) => {
             let ctx_used = u64::from(used);
@@ -363,7 +449,11 @@ fn cache_hit_style(theme: &Theme, pct: u32) -> Style {
 }
 
 /// Builds the right-side model display string: resolved name + reasoning effort.
-fn build_model_string(state: &AppState, active_model: &ModelSelection) -> String {
+fn build_model_string(
+    model_cache: Option<&ModelCache>,
+    session: &ChatSessionState,
+    active_model: &ModelSelection,
+) -> String {
     let (model, resolved_for_lookup) = {
         // For an Alloy, the bar surfaces the last-rotated member (which one
         // actually answered) from the token ledger, falling back to the first
@@ -375,8 +465,7 @@ fn build_model_string(state: &AppState, active_model: &ModelSelection) -> String
         // `&str` borrows only `active_model` and a local, avoiding a lifetime
         // clash between the ledger borrow and the `active_model` borrow.
         let last_dispatched = active_model.as_alloy().and_then(|_| {
-            state
-                .active_session()
+            session
                 .token_ledger()
                 .last()
                 .and_then(|r| r.model_used.clone())
@@ -404,7 +493,7 @@ fn build_model_string(state: &AppState, active_model: &ModelSelection) -> String
 
     // Append the resolved reasoning effort as `[<mode>]`.
     // Omitted entirely when no effort is resolved (no `[none]` noise).
-    let resolved_effort = resolve_effort(state.active_session().profile().reasoning_effort);
+    let resolved_effort = resolve_effort(session.profile().reasoning_effort);
     let model = match resolved_effort {
         Some(effort) => format!("{model} [{}]", effort.as_str()),
         None => model,
@@ -414,9 +503,8 @@ fn build_model_string(state: &AppState, active_model: &ModelSelection) -> String
     // using the SAME resolved model the name surfaces (last-dispatched for
     // alloys, else selection). Conservative: an unknown / not-in-cache model
     // shows `<t>` (text is always available); "no model selected" shows nothing.
-    let model_cache = model_cache_of(state);
     let modalities = resolved_for_lookup.map(|resolved| {
-        resolve_modalities(model_cache.as_ref(), &resolved).unwrap_or_else(InputModalities::text)
+        resolve_modalities(model_cache, &resolved).unwrap_or_else(InputModalities::text)
     });
     match modalities {
         Some(m) => format!("{model} <{}>", m.display()),
