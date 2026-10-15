@@ -1,6 +1,6 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
-## (development)
+## 2026-10-15 v1.7.0
 
 - Entire session trees can now be loaded using `<c-enter>` keybind in the session picker.
 - Add `tell_session` tool for intersession communication.
