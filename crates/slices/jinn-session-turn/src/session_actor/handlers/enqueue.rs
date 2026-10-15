@@ -115,11 +115,11 @@ impl SessionPersistenceActor {
                         // can still mint the title later. Stamping `""` here
                         // would flip the guard to `Some("")` and block every
                         // future mint — the sidebar would read an empty title.
-                        if session.title().is_none() {
-                            if let ChatEntryKind::User { display, .. } = &entry.kind {
-                                let title = display.lines().next().unwrap_or("").to_owned();
-                                session.set_title(title);
-                            }
+                        if session.title().is_none()
+                            && let ChatEntryKind::User { display, .. } = &entry.kind
+                        {
+                            let title = display.lines().next().unwrap_or("").to_owned();
+                            session.set_title(title);
                         }
                         session.push_entry(entry.clone());
                     });

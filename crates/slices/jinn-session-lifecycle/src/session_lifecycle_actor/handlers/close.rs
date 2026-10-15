@@ -20,9 +20,8 @@ impl SessionLifecycleActor {
         if !self.state.read().session.contains(&payload.session_id) {
             return;
         }
-        let teardown = self.close_teardown(&payload.session_id);
-        if let Some(teardown) = teardown {
-            match teardown {
+        match self.close_teardown_outcome(&payload.session_id) {
+            Some(Ok(command)) => match command {
                 jinn_preferences_config::schemas::LifecycleCommand::Shell(command) => {
                     let Some(rendered) = self.begin_teardown(&payload.session_id, &command) else {
                         return;
@@ -43,22 +42,26 @@ impl SessionLifecycleActor {
                         return;
                     }
                 }
+            },
+            Some(Err(failure)) => {
+                // A recorded lifecycle that cannot be resolved is visible, not
+                // a silent skip: worktrees leak when a teardown quietly doesn't
+                // run. The error entry names the file (and entry); the session
+                // still closes, because refusing the close would strand the
+                // user with a session they cannot dismiss.
+                let error = jinn_core_types::ChatEntry::error(format!(
+                    "Teardown could not be resolved: {failure}"
+                ));
+                self.publish(PushChatEntry {
+                    session_id: payload.session_id.clone(),
+                    entry: error,
+                    pin: None,
+                })
+                .await;
             }
-        } else if let Some(failure) = self.close_teardown_failure(&payload.session_id) {
-            // A recorded lifecycle that cannot be resolved is visible, not
-            // a silent skip: worktrees leak when a teardown quietly doesn't
-            // run. The error entry names the file (and entry); the session
-            // still closes, because refusing the close would strand the
-            // user with a session they cannot dismiss.
-            let error = jinn_core_types::ChatEntry::error(format!(
-                "Teardown could not be resolved: {failure}"
-            ));
-            self.publish(PushChatEntry {
-                session_id: payload.session_id.clone(),
-                entry: error,
-                pin: None,
-            })
-            .await;
+            // Nothing recorded — no lifecycle, nothing ran, or a name that
+            // resolves to no teardown: the historic silent skip.
+            None => {}
         }
 
         self.publish(ArchiveSession {
@@ -138,31 +141,13 @@ impl SessionLifecycleActor {
         }
     }
 
-    fn close_teardown(
-        &self,
-        session_id: &SessionId,
-    ) -> Option<jinn_preferences_config::schemas::LifecycleCommand> {
-        self.close_teardown_outcome(session_id)
-            .and_then(|outcome| outcome.ok())
-    }
-
-    /// The resolution outcome for a closing session's lifecycle: the
-    /// command when it resolves, the named failure when a *recorded*
-    /// lifecycle cannot be resolved, `None` when nothing is recorded (no
-    /// lifecycle, nothing ran, or a name that resolves to no teardown —
-    /// the historic silent skips).
-    fn close_teardown_failure(
-        &self,
-        session_id: &SessionId,
-    ) -> Option<jinn_kernel::session_lifecycle::intent::TeardownFailure> {
-        self.close_teardown_outcome(session_id)
-            .and_then(|outcome| outcome.err())
-    }
-
     /// Reads the session's recorded lifecycle coordinates and resolves the
-    /// teardown command through the recorded source. One read, two views —
-    /// `close_teardown` and `close_teardown_failure` — so the command and
-    /// the failure can never disagree about what the session recorded.
+    /// teardown command through the recorded source: the command when it
+    /// resolves, the named failure when a *recorded* lifecycle cannot be
+    /// resolved, `None` when nothing is recorded (no lifecycle, nothing
+    /// ran, or a name that resolves to no teardown — the historic silent
+    /// skips). One read, one match — the command and the failure can never
+    /// disagree about what the session recorded.
     fn close_teardown_outcome(
         &self,
         session_id: &SessionId,

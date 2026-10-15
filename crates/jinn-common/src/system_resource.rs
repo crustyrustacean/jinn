@@ -164,7 +164,6 @@ mod tests {
         }
 
         // When loading the system resource.
-        #[cfg_attr(unix, expect(unused_variables, reason = "Unix asserts below"))]
         #[cfg_attr(
             windows,
             expect(

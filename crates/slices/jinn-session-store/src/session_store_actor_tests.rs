@@ -1672,7 +1672,7 @@ mod tree_load_tests {
     }
 
     /// All five tree members live in the map as `Loaded`.
-    async fn all_loaded(fixture: &ActorFixture, ids: &[&SessionId]) -> bool {
+    fn all_loaded(fixture: &ActorFixture, ids: &[&SessionId]) -> bool {
         let state = fixture.state.read();
         ids.iter().all(|id| {
             state
@@ -1720,7 +1720,7 @@ mod tree_load_tests {
             &child_id,
             &grandchild_id,
         ];
-        let loaded = poll_until(|| async { all_loaded(&fixture, &ids).await }).await;
+        let loaded = poll_until(|| async { all_loaded(&fixture, &ids) }).await;
         assert!(loaded, "every tree member must land live and Loaded");
         // And the picked node is the one on screen.
         assert_eq!(
@@ -1777,7 +1777,7 @@ mod tree_load_tests {
             &sibling_id,
             &nephew_id,
         ];
-        let loaded = poll_until(|| async { all_loaded(&fixture, &ids).await }).await;
+        let loaded = poll_until(|| async { all_loaded(&fixture, &ids) }).await;
 
         // Then the whole connected tree is live, not just the picked spine.
         assert!(
@@ -1821,7 +1821,7 @@ mod tree_load_tests {
             &child_id,
             &grandchild_id,
         ];
-        let loaded = poll_until(|| async { all_loaded(&fixture, &ids).await }).await;
+        let loaded = poll_until(|| async { all_loaded(&fixture, &ids) }).await;
         assert!(loaded, "the archived member must land live and Loaded");
 
         // Then the store no longer holds it as archived either — a tree load
@@ -1877,7 +1877,7 @@ mod tree_load_tests {
             &child_id,
             &grandchild_id,
         ];
-        let loaded = poll_until(|| async { all_loaded(&fixture, &ids).await }).await;
+        let loaded = poll_until(|| async { all_loaded(&fixture, &ids) }).await;
         assert!(loaded, "the rest of the tree must still land");
 
         // Then the live member was not re-read: its unsaved entry is intact.
@@ -1929,7 +1929,7 @@ mod tree_load_tests {
             &child_id,
             &grandchild_id,
         ];
-        let loaded = poll_until(|| async { all_loaded(&fixture, &ids).await }).await;
+        let loaded = poll_until(|| async { all_loaded(&fixture, &ids) }).await;
         assert!(loaded, "the tree must land before judging the jobs");
 
         // Then exactly the picked member was handed to the layout workers:
@@ -1969,7 +1969,7 @@ mod tree_load_tests {
             })
             .await;
         let ids = [&parent_id, &self_id, &child_id, &grandchild_id];
-        let loaded = poll_until(|| async { all_loaded(&fixture, &ids).await }).await;
+        let loaded = poll_until(|| async { all_loaded(&fixture, &ids) }).await;
 
         // Then the surviving members all land despite the gap.
         assert!(

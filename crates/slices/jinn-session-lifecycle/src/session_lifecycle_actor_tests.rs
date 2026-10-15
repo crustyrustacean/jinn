@@ -972,8 +972,6 @@ async fn legacy_positional_pairs_still_tear_down_positionally() {
 #[tokio::test]
 async fn builtin_teardown_receives_recorded_values_in_template_order() {
     // Given a builtin teardown that records the values it was handed.
-    use std::sync::Mutex;
-    let received: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     struct RecordingTeardown {
         seen: Arc<Mutex<Vec<String>>>,
     }
@@ -993,6 +991,8 @@ async fn builtin_teardown_receives_recorded_values_in_template_order() {
             true
         }
     }
+    use std::sync::Mutex;
+    let received: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let mut registry = BuiltinRegistry::new();
     registry.register(
         BuiltinId("recording-teardown".to_owned()),
