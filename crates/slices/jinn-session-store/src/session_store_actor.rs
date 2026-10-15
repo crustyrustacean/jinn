@@ -15,7 +15,7 @@ use jinn_kernel::common::state::State;
 use jinn_session_store_msg::PersistSession;
 use jinn_session_store_msg::SessionLoadRequested;
 use jinn_session_store_msg::{ArchiveSession, ArchiveSessionTree};
-use jinn_session_store_msg::{LoadSessionPickerEntries, SessionForkRequested};
+use jinn_session_store_msg::{LoadSessionPickerEntries, LoadSessionTree, SessionForkRequested};
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
@@ -89,7 +89,7 @@ impl ServiceActor for SessionStoreActor {
 }
 
 impl SessionStoreActor {
-    /// Spawns the store actor and installs its seven typed subscriptions.
+    /// Spawns the store actor and installs its eight typed subscriptions.
     #[expect(
         clippy::needless_pass_by_value,
         reason = "port convention: spawn takes owned deps and clones into start_with"
@@ -116,6 +116,7 @@ impl SessionStoreActor {
             })
             .handles::<SessionLoadRequested>()
             .handles::<LoadSessionPickerEntries>()
+            .handles::<LoadSessionTree>()
             .handles::<SessionForkRequested>()
             .handles::<PersistSession>()
             .handles::<ArchiveSession>()
@@ -166,6 +167,12 @@ impl MsgHandler<SessionLoadRequested> for SessionStoreActor {
 impl MsgHandler<LoadSessionPickerEntries> for SessionStoreActor {
     async fn handle(&mut self, msg: &LoadSessionPickerEntries, _ctx: &mut MsgCtx<'_>) {
         self.handle_load_session_picker_entries(msg).await;
+    }
+}
+
+impl MsgHandler<LoadSessionTree> for SessionStoreActor {
+    async fn handle(&mut self, msg: &LoadSessionTree, ctx: &mut MsgCtx<'_>) {
+        self.on_load_tree_requested(ctx, msg).await;
     }
 }
 
