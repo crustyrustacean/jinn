@@ -247,7 +247,7 @@ fn parse_refuses_a_wrapped_file_carrying_several_entries() {
 
     // Then it refuses with a reason naming the count.
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("2 entries"));
+    assert!(result.unwrap_err().to_string().contains("2 entries"));
 }
 
 #[rstest::rstest]

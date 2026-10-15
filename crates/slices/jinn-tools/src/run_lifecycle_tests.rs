@@ -146,7 +146,7 @@ fn missing_argument_fails_naming_the_placeholder() {
 
     // Then it fails naming <dir>.
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("<dir>"));
+    assert!(result.unwrap_err().to_string().contains("<dir>"));
 }
 
 #[rstest::rstest]

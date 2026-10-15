@@ -20,6 +20,7 @@
 
 use std::collections::BTreeSet;
 
+use error_stack::Report;
 use jinn_core_types::NameFilter;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_mcp_msg::McpEnablementChanged;
@@ -28,6 +29,63 @@ use jinn_session_store_msg::PersistSession;
 
 use super::BoxedToolFuture;
 use crate::tool_types::{ToolContext, failed};
+
+/// Why a capabilities call could not run.
+///
+/// The call boundary renders the message into tool-result prose; a `Report`'s
+/// `Display` prints only the outermost context, so each variant's message
+/// stands alone.
+#[derive(Debug, wherror::Error)]
+pub enum CapabilitiesError {
+    /// The call's JSON arguments were malformed.
+    #[error("invalid arguments: {detail}")]
+    InvalidArguments {
+        /// The parser's complaint.
+        detail: String,
+    },
+    /// The arguments were not a JSON object.
+    #[error("arguments must be a JSON object")]
+    NotAnObject,
+    /// The mask omitted one of the three buffer sections.
+    #[error("missing `{section}` section")]
+    MissingSection {
+        /// The missing section's wire token.
+        section: &'static str,
+    },
+    /// A buffer entry's state was not a boolean.
+    #[error("`{name}` state must be true or false")]
+    InvalidState {
+        /// The offending entry's name.
+        name: String,
+    },
+    /// The apply named no `capabilities` argument.
+    #[error("missing `capabilities` argument")]
+    MissingCapabilities,
+    /// The mask named an entry the current buffer does not carry.
+    #[error(
+        "unknown or stale {kind} `{name}`: re-run `capabilities_query` and \
+             echo its whole buffer back with states flipped"
+    )]
+    UnknownEntry {
+        /// The entry's kind token.
+        kind: &'static str,
+        /// The refused name.
+        name: String,
+    },
+    /// The mask's entry count differed from the current buffer's.
+    #[error(
+        "mask has {mask_len} {mask_plural} but this session has {current_len}: the mask \
+             must cover every entry `capabilities_query` returns, changed or not"
+    )]
+    EntryCountMismatch {
+        /// Entries in the submitted mask.
+        mask_len: usize,
+        /// "y" when one, "ies" otherwise.
+        mask_plural: &'static str,
+        /// Entries in the current buffer.
+        current_len: usize,
+    },
+}
 
 /// The kind of capability a buffer entry describes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,24 +155,24 @@ impl CapabilityBuffer {
     /// `serde_json::Map` is a `BTreeMap` under the `preserve_order = false`
     /// default, so each family's names arrive sorted; the family order below
     /// is the one `to_json` writes.
-    fn from_json(value: &serde_json::Value) -> Result<Self, String> {
+    fn from_json(value: &serde_json::Value) -> Result<Self, Report<CapabilitiesError>> {
         let mut entries = Vec::new();
         let mut push_all = |kind: CapabilityKind,
                             map: Option<&serde_json::Map<String, serde_json::Value>>|
-         -> Result<(), String> {
+         -> Result<(), Report<CapabilitiesError>> {
             let Some(map) = map else {
-                return Err(format!(
-                    "missing `{}` section",
-                    match kind {
+                return Err(CapabilitiesError::MissingSection {
+                    section: match kind {
                         CapabilityKind::Tool => "tools",
                         CapabilityKind::Skill => "skills",
                         CapabilityKind::McpServer => "mcp_servers",
-                    }
-                ));
+                    },
+                }
+                .into());
             };
             for (name, state) in map {
                 let Some(enabled) = state.as_bool() else {
-                    return Err(format!("`{name}` state must be true or false"));
+                    return Err(CapabilitiesError::InvalidState { name: name.clone() }.into());
                 };
                 entries.push(CapabilityEntry {
                     kind,
@@ -124,9 +182,7 @@ impl CapabilityBuffer {
             }
             Ok(())
         };
-        let obj = value
-            .as_object()
-            .ok_or_else(|| "arguments must be a JSON object".to_owned())?;
+        let obj = value.as_object().ok_or(CapabilitiesError::NotAnObject)?;
         push_all(
             CapabilityKind::Tool,
             obj.get("tools").and_then(|v| v.as_object()),
@@ -249,7 +305,7 @@ pub fn apply_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         // rejected apply must leave every field and message untouched.
         let mask = match parse_mask(&call.arguments) {
             Ok(mask) => mask,
-            Err(msg) => return failed(&call.id, &call.name, &msg),
+            Err(msg) => return failed(&call.id, &call.name, msg.to_string()),
         };
 
         let (off_tools, off_skills, enabled_servers) = {
@@ -384,40 +440,43 @@ fn configured_server_names(config: &jinn_config::ConfigLayer) -> Vec<String> {
 // ---------------------------------------------------------------------------
 
 /// Parses the apply arguments into a `CapabilityBuffer` mask.
-fn parse_mask(args: &str) -> Result<CapabilityBuffer, String> {
+fn parse_mask(args: &str) -> Result<CapabilityBuffer, Report<CapabilitiesError>> {
     let value: serde_json::Value =
-        serde_json::from_str(args).map_err(|e| format!("invalid arguments: {e}"))?;
+        serde_json::from_str(args).map_err(|e| CapabilitiesError::InvalidArguments {
+            detail: e.to_string(),
+        })?;
     let capabilities = value
         .get("capabilities")
-        .ok_or_else(|| "missing `capabilities` argument".to_owned())?;
+        .ok_or(CapabilitiesError::MissingCapabilities)?;
     CapabilityBuffer::from_json(capabilities)
 }
 
 /// Validates the mask against the current buffer: exact same entry set, names
 /// matched exactly per family. One mismatch rejects the whole apply.
-fn validate_mask(mask: &CapabilityBuffer, current: &CapabilityBuffer) -> Result<(), String> {
+fn validate_mask(
+    mask: &CapabilityBuffer,
+    current: &CapabilityBuffer,
+) -> Result<(), Report<CapabilitiesError>> {
     for entry in &mask.entries {
         let matches = current
             .entries
             .iter()
             .any(|c| c.kind == entry.kind && c.name == entry.name);
         if !matches {
-            return Err(format!(
-                "unknown or stale {} entry `{name}`: re-run `capabilities_query` and \
-                 echo its whole buffer back with states flipped",
-                entry.kind.as_str(),
-                name = entry.name,
-            ));
+            return Err(CapabilitiesError::UnknownEntry {
+                kind: entry.kind.as_str(),
+                name: entry.name.clone(),
+            }
+            .into());
         }
     }
     if mask.entries.len() != current.entries.len() {
-        return Err(format!(
-            "mask has {} entr{} but this session has {}: the mask must cover every \
-             entry `capabilities_query` returns, changed or not",
-            mask.entries.len(),
-            if mask.entries.len() == 1 { "y" } else { "ies" },
-            current.entries.len(),
-        ));
+        return Err(CapabilitiesError::EntryCountMismatch {
+            mask_len: mask.entries.len(),
+            mask_plural: if mask.entries.len() == 1 { "y" } else { "ies" },
+            current_len: current.entries.len(),
+        }
+        .into());
     }
     Ok(())
 }

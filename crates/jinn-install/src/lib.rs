@@ -458,7 +458,7 @@ mod tests {
         let report = env.run(false);
 
         // Then the nested skill keeps its `<name>/SKILL.md` structure.
-        let outcome = outcome_for(&report.outcomes, "phased-task-loop/SKILL.md");
+        let outcome = outcome_for(&report.outcomes, "simple-task-loop/SKILL.md");
         assert!(
             matches!(outcome, InstallOutcome::Created(_)),
             "skill should be Created"

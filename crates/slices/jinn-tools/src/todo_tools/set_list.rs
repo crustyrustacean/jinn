@@ -128,7 +128,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         };
         let phases_arr = match super::task_payload::normalize_array(phases_val, "phases") {
             Ok(entries) => entries,
-            Err(msg) => return tool_error(&call, &msg),
+            Err(report) => return tool_error(&call, &report.to_string()),
         };
 
         // Parse into declarative phase inputs (bare strings → Pending; objects
@@ -139,7 +139,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             let parsed = super::task_payload::parse_phases_array(&phases_arr);
             match parsed {
                 Ok(inputs) => inputs,
-                Err(msg) => return tool_error(&call, &msg),
+                Err(report) => return tool_error(&call, &report.to_string()),
             }
         };
 

@@ -113,7 +113,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         // payload error aborts before task list state is touched.
         let phase_input = match super::task_payload::parse_phase_body(&args, "phase") {
             Ok(input) => input,
-            Err(msg) => return tool_error(&call, &msg),
+            Err(report) => return tool_error(&call, &report.to_string()),
         };
 
         let phase_description = phase_input.description.clone();

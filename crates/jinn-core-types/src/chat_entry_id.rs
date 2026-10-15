@@ -22,6 +22,17 @@ impl ChatEntryId {
     pub fn as_uuid(&self) -> &uuid::Uuid {
         &self.0
     }
+
+    /// Parses an entry ID from its string form without panicking and
+    /// without fabricating.
+    ///
+    /// For untrusted input (e.g. a tool argument): an unparseable string
+    /// yields `None` rather than a fresh id that silently resolves to no
+    /// entry.
+    #[must_use]
+    pub fn try_from_string(id: &str) -> Option<Self> {
+        uuid::Uuid::parse_str(id).ok().map(Self)
+    }
 }
 
 impl Default for ChatEntryId {

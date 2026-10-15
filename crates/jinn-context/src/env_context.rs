@@ -99,10 +99,18 @@ pub async fn load_project_context_files(cwd: &Path) -> Vec<ContextFile> {
 async fn load_context_file_from_dir(dir: &Path) -> Option<ContextFile> {
     for filename in CONTEXT_FILE_CANDIDATES {
         let path = dir.join(filename);
-        if path.exists()
-            && let Ok(content) = tokio::fs::read_to_string(&path).await
-        {
-            return Some(ContextFile { path, content });
+        if !path.exists() {
+            continue;
+        }
+        match tokio::fs::read_to_string(&path).await {
+            Ok(content) => return Some(ContextFile { path, content }),
+            // Best-effort discovery, but a file that exists and cannot be
+            // read is worth naming rather than silently skipping.
+            Err(error) => tracing::warn!(
+                path = %path.display(),
+                %error,
+                "context file exists but could not be read"
+            ),
         }
     }
     None
@@ -141,10 +149,16 @@ pub fn load_project_context_files_sync(cwd: &Path) -> Vec<ContextFile> {
 fn load_context_file_from_dir_sync(dir: &Path) -> Option<ContextFile> {
     for filename in CONTEXT_FILE_CANDIDATES {
         let path = dir.join(filename);
-        if path.exists()
-            && let Ok(content) = std::fs::read_to_string(&path)
-        {
-            return Some(ContextFile { path, content });
+        if !path.exists() {
+            continue;
+        }
+        match std::fs::read_to_string(&path) {
+            Ok(content) => return Some(ContextFile { path, content }),
+            Err(error) => tracing::warn!(
+                path = %path.display(),
+                %error,
+                "context file exists but could not be read"
+            ),
         }
     }
     None

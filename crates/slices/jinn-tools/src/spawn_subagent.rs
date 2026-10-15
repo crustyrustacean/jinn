@@ -214,10 +214,30 @@ struct SpawnSubagentArgs {
     max_duration_secs: Option<u64>,
 }
 
+/// Why spawn arguments could not be parsed.
+///
+/// The call boundary renders the message into tool-result prose; a `Report`'s
+/// `Display` prints only the outermost context, so each variant's message
+/// stands alone.
+#[derive(Debug, wherror::Error)]
+pub enum SpawnArgsError {
+    /// The call's JSON arguments were malformed.
+    #[error("invalid JSON arguments: {detail}")]
+    InvalidArguments {
+        /// The parser's complaint.
+        detail: String,
+    },
+    /// The `prompt` argument was missing or empty.
+    #[error("prompt is empty; provide a self-contained brief for the subagent")]
+    EmptyPrompt,
+}
+
 /// Parses the tool call arguments.
-fn parse_args(raw: &str) -> Result<SpawnSubagentArgs, String> {
+fn parse_args(raw: &str) -> Result<SpawnSubagentArgs, error_stack::Report<SpawnArgsError>> {
     let v: serde_json::Value =
-        serde_json::from_str(raw).map_err(|e| format!("invalid JSON arguments: {e}"))?;
+        serde_json::from_str(raw).map_err(|e| SpawnArgsError::InvalidArguments {
+            detail: e.to_string(),
+        })?;
     let prompt = v
         .get("prompt")
         .and_then(serde_json::Value::as_str)
@@ -225,7 +245,7 @@ fn parse_args(raw: &str) -> Result<SpawnSubagentArgs, String> {
         .trim()
         .to_owned();
     if prompt.is_empty() {
-        return Err("prompt is empty; provide a self-contained brief for the subagent".to_owned());
+        return Err(SpawnArgsError::EmptyPrompt.into());
     }
     let model = v
         .get("model")
@@ -417,7 +437,7 @@ async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
     };
     let mut args = match parse_args(&call.arguments) {
         Ok(args) => args,
-        Err(msg) => return tool_error(&call, &msg),
+        Err(msg) => return tool_error(&call, &msg.to_string()),
     };
 
     // Resolve the model override before anything exists to roll back: an

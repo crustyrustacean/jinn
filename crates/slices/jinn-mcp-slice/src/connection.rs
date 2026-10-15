@@ -781,11 +781,11 @@ impl MsgHandler<ExecuteTool> for McpActor {
 
         let arguments = match parse_arguments(&tool_call.arguments) {
             Ok(args) => args,
-            Err(err_msg) => {
+            Err(report) => {
                 self.deps
                     .publish(ToolExecutionCompleted {
                         session_id,
-                        result: failure_result(&tool_call, err_msg),
+                        result: failure_result(&tool_call, report.to_string()),
                     })
                     .await;
                 return;
@@ -870,19 +870,51 @@ impl MsgHandler<McpConnectionStateProbe> for McpActor {
     }
 }
 
+/// Why a tool call's arguments string could not be parsed.
+///
+/// The call boundary renders the message into tool-result prose; a `Report`'s
+/// `Display` prints only the outermost context, so each variant's message
+/// stands alone.
+#[derive(Debug, wherror::Error)]
+pub enum ToolArgumentsError {
+    /// The arguments string was not valid JSON.
+    #[error("invalid arguments: {detail}")]
+    InvalidJson {
+        /// The parser's complaint.
+        detail: String,
+    },
+    /// The arguments parsed but were not a JSON object.
+    #[error("expected JSON object for arguments, got {got}")]
+    NotAnObject {
+        /// The JSON value that arrived instead.
+        got: String,
+    },
+}
+
 /// Parses a tool call's JSON arguments string into an MCP `JsonObject`.
 ///
 /// Returns `Ok(None)` for an empty/blank argument string (valid — the tool
-/// takes no arguments) and `Err(message)` for malformed JSON.
-fn parse_arguments(raw: &str) -> Result<Option<JsonObject>, String> {
+/// takes no arguments) and an error for malformed JSON.
+///
+/// # Errors
+///
+/// Returns [`ToolArgumentsError`] for malformed JSON or a non-object body.
+fn parse_arguments(
+    raw: &str,
+) -> Result<Option<JsonObject>, error_stack::Report<ToolArgumentsError>> {
     if raw.trim().is_empty() {
         return Ok(None);
     }
     let value: serde_json::Value =
-        serde_json::from_str(raw).map_err(|e| format!("invalid arguments: {e}"))?;
+        serde_json::from_str(raw).map_err(|e| ToolArgumentsError::InvalidJson {
+            detail: e.to_string(),
+        })?;
     match value {
         serde_json::Value::Object(map) => Ok(Some(map)),
-        other => Err(format!("expected JSON object for arguments, got {other}")),
+        other => Err(ToolArgumentsError::NotAnObject {
+            got: other.to_string(),
+        }
+        .into()),
     }
 }
 

@@ -172,8 +172,22 @@ impl ConfigDocumentStorage for FilesystemConfigStorage {
         // A missing document is a fresh install, not a failure: the
         // caller materializes an empty one and every section reads its
         // default.
-        let Ok(text) = std::fs::read_to_string(&self.path) else {
-            return Ok(DocumentMut::new());
+        let text = match std::fs::read_to_string(&self.path) {
+            Ok(text) => text,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(DocumentMut::new());
+            }
+            // The live config path failing to read is not best-effort:
+            // silently continuing would run on defaults the user never
+            // chose.
+            Err(error) => {
+                tracing::warn!(
+                    path = %self.path.display(),
+                    %error,
+                    "config document exists but could not be read; falling back to an empty document"
+                );
+                return Ok(DocumentMut::new());
+            }
         };
         text.parse::<DocumentMut>()
             .change_context(ConfigError::Malformed {

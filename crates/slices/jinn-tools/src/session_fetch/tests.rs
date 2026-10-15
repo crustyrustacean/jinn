@@ -359,13 +359,14 @@ async fn unknown_session_or_anchor_is_a_legible_error() {
     // Given a stub store that returns no window.
     let (ctx, _stub) = ctx_with(StubStore::default());
 
-    // When fetching by entry id.
+    // When fetching by a non-UUID entry id.
     let result = run(ctx, serde_json::json!({ "entry_id": "e-1" })).await;
 
-    // Then the error points back at search and mentions the session.
+    // Then the error refuses the id and points back at search: a malformed
+    // id is a malformed call, never silently resolved to nothing.
     assert!(!result.success);
     assert!(
-        result.content.contains("not found") && result.content.contains("session_search"),
+        result.content.contains("invalid entry_id") && result.content.contains("session_search"),
         "{}",
         result.content
     );
