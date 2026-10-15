@@ -22,7 +22,6 @@ use jinn_chat_input_msg::EnqueueUserMessage;
 use jinn_core_types::SessionId;
 use jinn_core_types::model_selection::{AlloyStrategy, ModelSelection};
 use jinn_core_types::tool_types::{ToolCall, ToolResult};
-use jinn_core_types::{ContextOverride, PinPosition};
 use jinn_inference_msg::CancelTurn;
 use jinn_kernel::common::app_paths::AppPaths;
 use jinn_kernel::common::app_state::AppState;
@@ -478,44 +477,6 @@ async fn task_child_task_list_does_not_propagate_to_parent() {
     let snapshot = state.read();
     let parent = snapshot.session.get(&parent_id).expect("parent present");
     assert!(parent.task_list().is_empty());
-}
-
-#[rstest::rstest]
-#[tokio::test]
-async fn task_publishes_the_childs_identity_entry() {
-    // Given a parent session and a recorder for the history pushes.
-    let harness = TestHarness::new().await;
-    let (state, parent_id) = parent_fixture();
-    let ctx = task_ctx(&harness, &state, parent_id.clone()).await;
-    let created_rec = harness.spawn_recorder::<SessionCreated>().await;
-    let push_rec = harness
-        .spawn_recorder::<jinn_session_history_msg::PushChatEntry>()
-        .await;
-
-    // When executing a task call and finishing the child.
-    let pending = tokio::spawn(execute(task_call(r#"{"prompt": "Explore."}"#), ctx));
-    let created = await_recorded(&created_rec, 1, AWAIT_TIMEOUT).await;
-    let child_id = created[0].session_id.clone();
-    settle_child_discovery(&harness.bus(), &child_id, &parent_servers()).await;
-    finish_child_like_session_actor(&harness.bus(), &state, &child_id, "Found it.").await;
-    let _ = pending.await;
-
-    // Then the child's transcript is opened by the identity entry: pinned
-    // Top, a system entry naming the child's own id, forced into the LLM
-    // context — the same construction every other creation path publishes.
-    let pushes = await_recorded(&push_rec, 1, AWAIT_TIMEOUT).await;
-    let push = pushes
-        .iter()
-        .find(|push| push.session_id == child_id && push.pin == Some(PinPosition::Top))
-        .expect("the identity entry is published for the child");
-    assert!(matches!(
-        &push.entry.kind,
-        ChatEntryKind::System(text) if text.contains(&child_id.to_string())
-    ));
-    assert_eq!(
-        push.entry.context_override(),
-        ContextOverride::ForcedInclude
-    );
 }
 
 #[rstest::rstest]

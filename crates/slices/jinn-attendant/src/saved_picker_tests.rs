@@ -421,15 +421,14 @@ fn confirming_publishes_the_creation_in_order() {
     let result = fx.press("confirm-attendant-saved-picker");
 
     // Then the whole creation reads as one sequence: both sessions saved,
-    // the attendant announced, its identity line, its restored notice, and
-    // the parent's line.
+    // the attendant announced with its restored notice, and the parent's
+    // line.
     assert_eq!(
         result.message_names,
         [
             "PersistSession",
             "PersistSession",
             "SessionCreated",
-            "PushChatEntry",
             "PushChatEntry",
             "PushChatEntry",
         ]
@@ -756,15 +755,13 @@ fn keeping_open_publishes_the_same_creation_as_the_confirm() {
     let result = fx.press("attach-attendant-saved-picker-keeping-it-open");
 
     // Then it is the same creation the confirm performs — the only
-    // difference is where the picker ends up. The identity push rides
-    // exactly as it does on confirm.
+    // difference is where the picker ends up.
     assert_eq!(
         result.message_names,
         [
             "PersistSession",
             "PersistSession",
             "SessionCreated",
-            "PushChatEntry",
             "PushChatEntry",
             "PushChatEntry",
         ]

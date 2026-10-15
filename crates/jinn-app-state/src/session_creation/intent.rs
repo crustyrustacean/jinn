@@ -14,14 +14,12 @@
 
 use crate::app_state::AppState;
 use jinn_config::ConfigLayer;
-use jinn_core_types::{DEFAULT_PERSONA_NAME, PinPosition, SessionId, SessionProfile};
+use jinn_core_types::{DEFAULT_PERSONA_NAME, SessionId, SessionProfile};
 use jinn_preferences_config::schemas::SessionLifecycle;
-use jinn_session_history_msg::PushChatEntry;
 use jinn_session_lifecycle_msg::CommandTemplate;
 use jinn_session_lifecycle_msg::command::{RunSessionSetup, RunSessionTeardown};
 use jinn_session_lifecycle_msg::event::SessionCreated;
 
-use jinn_core_types::ChatEntry;
 use jinn_session_msg::SessionSeed;
 use jinn_session_state::ChatSessionState;
 use jinn_session_state::fields::LifecycleArgs;
@@ -109,14 +107,6 @@ pub fn handle_session_lifecycle_setup(
     state.frontend.scope_clear_overlays();
     state.frontend.scope_push(jinn_slices::FocusScope::Input);
 
-    // The session's identity entry: every session can name itself, so an
-    // agent addressed by `tell_session` knows its own id, and the human
-    // can copy one out of the transcript. Pinned Top and forced into the
-    // LLM context, so it is always the first thing the model reads and
-    // never falls out of the conversation. Built by the shared constructor
-    // on `ChatEntry`, so every creation path composes the same sentence.
-    let identity_entry = ChatEntry::session_identity(&new_id);
-
     // Build the session-created event.
     let created_event = SessionCreated {
         session_id: new_id.clone(),
@@ -142,11 +132,6 @@ pub fn handle_session_lifecycle_setup(
             .with_message(PersistSession {
                 session_id: new_id.clone(),
             })
-            .with_message(PushChatEntry {
-                session_id: new_id.clone(),
-                entry: identity_entry,
-                pin: Some(PinPosition::Top),
-            })
             .with_message(RunSessionSetup {
                 session_id: new_id.clone(),
                 command: rendered,
@@ -169,24 +154,11 @@ pub fn handle_session_lifecycle_setup(
     }
 
     // No setup command — the starting CWD was already set on the new session
-    // before insert (above), so there's nothing more to do here. The
-    // identity entry rides this branch too: a blank session announces its
-    // id the same way a scripted one does.
+    // before insert (above), so there's nothing more to do here.
     if !seed.has_auto_enabled_mcp() {
-        return IntentResult::new_message(PushChatEntry {
-            session_id: new_id.clone(),
-            entry: identity_entry,
-            pin: Some(PinPosition::Top),
-        })
-        .with_message(created_event);
+        return IntentResult::new_message(created_event);
     }
-    IntentResult::new_message(PushChatEntry {
-        session_id: new_id.clone(),
-        entry: identity_entry,
-        pin: Some(PinPosition::Top),
-    })
-    .with_message(created_event)
-    .with_message(jinn_mcp_msg::McpEnablementChanged {
+    IntentResult::new_message(created_event).with_message(jinn_mcp_msg::McpEnablementChanged {
         session_id: new_id,
         enabled: seed.enabled_mcp,
     })
@@ -524,31 +496,7 @@ mod tests {
     )]
     use super::*;
     use crate::app_state::AppState;
-    use jinn_core_types::ContextOverride;
-    use jinn_core_types::chat_entry::ChatEntryKind;
-    use jinn_slices::route_publish::PublishSink;
-    use std::sync::Mutex;
-
-    /// A publish sink that keeps every payload published through it.
-    #[derive(Default)]
-    struct RecordingSink {
-        published: Mutex<Vec<(String, serde_json::Value)>>,
-    }
-
-    impl PublishSink for RecordingSink {
-        fn publish_schema(
-            &self,
-            schema_id: ::trouper::schema::SchemaId,
-            payload: serde_json::Value,
-            name: &'static str,
-        ) {
-            self.published
-                .lock()
-                .expect("sink lock")
-                .push((format!("{schema_id}"), payload));
-            let _ = name;
-        }
-    }
+    use jinn_core_types::ChatEntry;
 
     /// The workflow-local lifecycle document shape: the bare
     /// `[[session_lifecycle.script]]` section a workflow file ships.
@@ -592,11 +540,9 @@ mod tests {
         assert!(state.session.contains(&old_id));
         // And two sessions exist.
         assert_eq!(state.session.session_count(), 2);
-        // And two messages are emitted: the identity entry push, then
-        // SessionCreated.
-        assert_eq!(result.message_names.len(), 2);
-        assert!(result.message_names[0].contains("PushChatEntry"));
-        assert!(result.message_names[1].contains("SessionCreated"));
+        // And one message is emitted: SessionCreated.
+        assert_eq!(result.message_names.len(), 1);
+        assert!(result.message_names[0].contains("SessionCreated"));
         // And the session has no lifecycle name.
         assert!(state.active_session().lifecycle_name().is_none());
         // And the new session inherited the active session's CWD, not the app
@@ -781,12 +727,11 @@ mod tests {
             state.active_session().lifecycle_name(),
             Some("fossil branch")
         );
-        // And PersistSession, PushChatEntry, RunSessionSetup, SessionCreated are emitted.
-        assert_eq!(result.message_names.len(), 4);
+        // And PersistSession, RunSessionSetup, SessionCreated are emitted.
+        assert_eq!(result.message_names.len(), 3);
         assert!(result.message_names[0].contains("PersistSession"));
-        assert!(result.message_names[1].contains("PushChatEntry"));
-        assert!(result.message_names[2].contains("RunSessionSetup"));
-        assert!(result.message_names[3].contains("SessionCreated"));
+        assert!(result.message_names[1].contains("RunSessionSetup"));
+        assert!(result.message_names[2].contains("SessionCreated"));
     }
 
     #[rstest::rstest]
@@ -806,8 +751,8 @@ mod tests {
 
         // Then PersistSession is emitted first.
         assert!(result.message_names[0].contains("PersistSession"));
-        // And RunSessionSetup is emitted third with rendered args.
-        assert!(result.message_names[2].contains("RunSessionSetup"));
+        // And RunSessionSetup is emitted second with rendered args.
+        assert!(result.message_names[1].contains("RunSessionSetup"));
         // And the session has the args stored under the template's names.
         assert_eq!(
             state.active_session().lifecycle_args(),
@@ -917,11 +862,9 @@ mod tests {
 
         // Then a new session is created (same behavior as before).
         assert_ne!(*state.session.active_session_id(), old_id);
-        // And two messages emitted: the identity entry push, then
-        // SessionCreated.
-        assert_eq!(result.message_names.len(), 2);
-        assert!(result.message_names[0].contains("PushChatEntry"));
-        assert!(result.message_names[1].contains("SessionCreated"));
+        // And one message emitted: SessionCreated.
+        assert_eq!(result.message_names.len(), 1);
+        assert!(result.message_names[0].contains("SessionCreated"));
     }
 
     #[rstest::rstest]
@@ -1143,100 +1086,9 @@ mod tests {
             state.active_session().lifecycle_name(),
             Some("fossil branch")
         );
-        // And PersistSession, PushChatEntry, then RunSessionSetup are emitted.
+        // And PersistSession, then RunSessionSetup are emitted.
         assert!(result.message_names[0].contains("PersistSession"));
-        assert!(result.message_names[1].contains("PushChatEntry"));
-        assert!(result.message_names[2].contains("RunSessionSetup"));
-    }
-
-    #[rstest::rstest]
-    fn a_new_session_pushes_an_identity_entry_naming_its_id() {
-        use jinn_session_history_msg::PushChatEntry;
-
-        // Given a single empty session (app just started).
-        let mut state = AppState::default_with_scope_focus();
-
-        // When creating a new session.
-        let config = lifecycle_config("fossil branch", Some("echo /tmp/workdir"), None);
-        let result =
-            handle_session_lifecycle_setup(&mut state, "fossil branch", &[], None, &config);
-
-        // Then the PushChatEntry payload is a pinned system entry naming
-        // the new session's id, forced into the LLM context — so an agent
-        // in the session can always answer "what is your session id", and
-        // the human can copy the id out of the transcript.
-        let new_id = state.active_session().session_id().clone();
-        let sink = RecordingSink::default();
-        for closure in result.messages {
-            closure(&sink);
-        }
-        let published = sink.published.lock().expect("sink lock");
-        let (_, payload) = published
-            .iter()
-            .find(|(id, _)| id.ends_with("PushChatEntry"))
-            .expect("the identity entry is published");
-        let push: PushChatEntry = serde_json::from_value(payload.clone()).expect("decodes");
-        assert_eq!(push.session_id, new_id);
-        assert_eq!(push.pin, Some(PinPosition::Top));
-        let ChatEntryKind::System(text) = &push.entry.kind else {
-            panic!("the identity entry is a system entry");
-        };
-        assert!(
-            text.contains(&new_id.to_string()),
-            "the entry names this session's own id: {text}"
-        );
-        assert_eq!(
-            push.entry.context_override(),
-            ContextOverride::ForcedInclude,
-            "the identity survives compaction and is always in the prompt"
-        );
-    }
-
-    #[rstest::rstest]
-    fn a_blank_session_pushes_an_identity_entry_too() {
-        use jinn_session_history_msg::PushChatEntry;
-
-        // Given a single empty session (app just started).
-        let mut state = AppState::default_with_scope_focus();
-
-        // When creating a new session with NO lifecycle setup command —
-        // the plain new-session branch, which returns early.
-        let result = handle_session_lifecycle_setup(
-            &mut state,
-            "",
-            &[],
-            None,
-            jinn_config::empty_config_layer(),
-        );
-
-        // Then the branch still publishes the identity entry: pinned Top,
-        // a system entry naming the new session's own id, forced into the
-        // LLM context — the no-setup branch announces the id the same way
-        // the scripted branch does.
-        let new_id = state.active_session().session_id().clone();
-        let sink = RecordingSink::default();
-        for closure in result.messages {
-            closure(&sink);
-        }
-        let published = sink.published.lock().expect("sink lock");
-        let (_, payload) = published
-            .iter()
-            .find(|(id, _)| id.ends_with("PushChatEntry"))
-            .expect("the identity entry is published on the no-setup branch");
-        let push: PushChatEntry = serde_json::from_value(payload.clone()).expect("decodes");
-        assert_eq!(push.session_id, new_id);
-        assert_eq!(push.pin, Some(PinPosition::Top));
-        let ChatEntryKind::System(text) = &push.entry.kind else {
-            panic!("the identity entry is a system entry");
-        };
-        assert!(
-            text.contains(&new_id.to_string()),
-            "the entry names this session's own id: {text}"
-        );
-        assert_eq!(
-            push.entry.context_override(),
-            ContextOverride::ForcedInclude
-        );
+        assert!(result.message_names[1].contains("RunSessionSetup"));
     }
 
     #[rstest::rstest]
