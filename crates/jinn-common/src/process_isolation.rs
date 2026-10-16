@@ -103,26 +103,19 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn isolation_child_runs_in_new_session() {
-        // Given an isolated child that reports its own session id.
-        let output = isolated_sh("ps -o sid= -p $$")
-            .output()
+        // Given an isolated child that stays alive long enough to inspect.
+        let mut child = isolated_sh("sleep 5")
+            .spawn()
             .expect("spawn should succeed");
-        let child_sid: libc::pid_t = String::from_utf8_lossy(&output.stdout)
-            .trim()
-            .parse()
-            .expect("ps should print a numeric sid");
 
-        // When reading the test process's session id via the same tool.
-        let own_sid: libc::pid_t = {
-            let out = std::process::Command::new("ps")
-                .args(["-o", "sid=", "-p", &std::process::id().to_string()])
-                .output()
-                .expect("ps should run");
-            String::from_utf8_lossy(&out.stdout)
-                .trim()
-                .parse()
-                .expect("ps should print a numeric sid for the test process")
-        };
+        // When reading the session ids of the test process and the child
+        // via libc. `ps` cannot be used here: procps has `sid`, BSD ps has
+        // no working equivalent (`sess` reports 0), and `getsid(2)` needs
+        // neither.
+        let own_sid = unsafe { libc::getsid(0) };
+        let child_sid = unsafe { libc::getsid(child.id() as libc::pid_t) };
+        let _ = child.kill();
+        let _ = child.wait();
 
         // Then the child runs in a different session from the test process.
         assert_ne!(
