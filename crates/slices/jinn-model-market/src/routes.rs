@@ -451,8 +451,9 @@ fn table_char_action(ui: &MarketUiCell, data: &MarketDataCell, ch: char) -> Char
 
 /// Classifies one character in detail mode: `j`/`k` move the detail
 /// highlight, `h`/`l` cycle the detail sort columns, `s` flips the
-/// detail direction, `?` toggles the help card. There is no filter in
-/// detail mode — `f`/`i` are unclaimed here and fall through.
+/// detail direction, `m` toggles the projection mix (the detail table's
+/// PROJ reads the active mix), `?` toggles the help card. There is no
+/// filter in detail mode — `f`/`i` are unclaimed here and fall through.
 fn detail_char_action(ui: &MarketUiCell, data: &MarketDataCell, ch: char) -> CharAction {
     match ch {
         '?' => {
@@ -484,6 +485,13 @@ fn detail_char_action(ui: &MarketUiCell, data: &MarketDataCell, ch: char) -> Cha
         }
         's' => {
             ui.update(|s| s.detail_sort_desc = !s.detail_sort_desc);
+            CharAction::Acted(IntentResult::empty())
+        }
+        'm' => {
+            // The same mix toggle as table mode: the detail table's PROJ
+            // column and its sort read the frame's active mix too, so
+            // the flip re-projects the endpoints in place.
+            ui.update(MarketUiState::toggle_mix_source);
             CharAction::Acted(IntentResult::empty())
         }
         _ => CharAction::Unclaimed,

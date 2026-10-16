@@ -1920,6 +1920,108 @@ fn m_with_seeded_usage_projects_under_the_tree_mix() {
 }
 
 #[rstest::rstest]
+fn m_toggles_from_detail_mode_and_the_status_line_reflects_it() {
+    // Given detail mode over a landed detail projection — the fixed mix
+    // active.
+    let mut wired = Wired::new();
+    drill_in(&mut wired);
+    let area = ratatui::layout::Rect::new(0, 0, 120, 40);
+    let popup = jinn_model_market::view::market_overlay_rect(&area).expect("frame fits the popup");
+    let status_row = popup.y + popup.height - 3;
+    let buffer = render_to_buffer(&wired, 120, 40);
+    let status = row_text(&buffer, status_row, popup.width);
+    assert!(
+        status.contains("mix: fixed 10M\u{b7}98%\u{b7}50k"),
+        "fixed mix shows in detail mode before the toggle, got: {status:?}"
+    );
+
+    // When `m` fires in detail mode.
+    wired.handle(edit_intent("insert-char", 'm'));
+
+    // Then the source flipped — the same cell flag table mode toggles,
+    // and the detail table still renders (its PROJ now re-projects
+    // under the resolved mix, degraded to fixed with no usage facts).
+    assert_eq!(
+        wired.ui().read().mix_source,
+        jinn_model_market_msg::MixSource::Usage,
+        "the toggle flipped the source from detail mode"
+    );
+    let buffer = render_to_buffer(&wired, 120, 40);
+    let header = row_text(&buffer, popup.y + 3, popup.width);
+    assert!(
+        header.contains("ENDPOINT") && header.contains("PROJ"),
+        "the detail table still renders, got: {header:?}"
+    );
+}
+
+#[rstest::rstest]
+fn mix_source_word_wears_success_green_numbers_stay_muted() {
+    // Given an open popup over a seeded table (fixed mix active).
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "search openrouter models");
+    seeded(&mut wired);
+    let area = ratatui::layout::Rect::new(0, 0, 120, 40);
+    let popup = jinn_model_market::view::market_overlay_rect(&area).expect("frame fits the popup");
+    let status_row = popup.y + popup.height - 3;
+    let theme = jinn_theme::default_theme();
+    let buffer = render_to_buffer(&wired, 120, 40);
+
+    // Then the status row's "fixed" cells wear success green and the
+    // number cells beside it do not. The word starts after `mix: `.
+    let mix_x = (popup.x..popup.x + popup.width)
+        .find(|x| {
+            buffer
+                .cell((*x, status_row))
+                .is_some_and(|c| c.symbol() == "m")
+        })
+        .and_then(|x| {
+            (x..popup.x + popup.width).find(|x2| {
+                buffer
+                    .cell((*x2, status_row))
+                    .is_some_and(|c| c.symbol() == "i")
+            })
+        })
+        .expect("the mix label renders");
+    let word: Vec<(u16, ratatui::buffer::Cell)> = (mix_x..popup.x + popup.width)
+        .filter_map(|x| buffer.cell((x, status_row)).map(|c| (x, c.clone())))
+        .take_while(|(_, c)| c.symbol() != "\u{b7}" || true)
+        .collect();
+    let fixed_start = word
+        .iter()
+        .position(|(_, c)| c.symbol() == "f")
+        .expect("the source word renders");
+    let cells: Vec<&ratatui::buffer::Cell> = word
+        .iter()
+        .skip(fixed_start)
+        .map(|(_, c)| c)
+        .take("fixed".len())
+        .collect();
+    assert_eq!(
+        cells.iter().map(|c| c.symbol()).collect::<String>(),
+        "fixed",
+        "the source word renders contiguously"
+    );
+    for cell in &cells {
+        assert_eq!(
+            cell.style().fg,
+            Some(theme.success),
+            "the source word wears success green"
+        );
+    }
+    // And a number cell after the word stays muted.
+    let number_cell = word
+        .iter()
+        .skip(fixed_start + "fixed".len() + 1)
+        .find(|(_, c)| c.symbol() != " ")
+        .expect("the numbers render");
+    assert_eq!(
+        number_cell.1.style().fg,
+        Some(theme.muted_text),
+        "the numbers stay muted"
+    );
+}
+
+#[rstest::rstest]
 fn m_with_an_unmeasured_tree_degrades_to_the_fixed_mix() {
     // Given an open popup flipped to the usage source over a tree with
     // zero measured-sent tokens (a fresh session).

@@ -732,24 +732,37 @@ fn render_status_line(
     // are computed under, so a flipped source is visible at a glance.
     // Resolved to the fixed display whenever the value equals the
     // constant (including the usage fallback on an unmeasured tree).
+    // The source word alone carries the green (`success`) — the numbers
+    // stay muted beside it.
     let (input, hit, output) = ui.active_mix;
-    let mix_display =
+    let (source_word, numbers) =
         if input == PROJECTION_MIX.0 && hit == PROJECTION_MIX.1 && output == PROJECTION_MIX.2 {
-            format!(
-                "fixed {}M·{}%·{}k",
-                PROJECTION_MIX.0 / 1_000_000,
-                (PROJECTION_MIX.1 * 100.0) as u32,
-                PROJECTION_MIX.2 / 1_000
+            (
+                "fixed",
+                format!(
+                    " {}M·{}%·{}k",
+                    PROJECTION_MIX.0 / 1_000_000,
+                    (PROJECTION_MIX.1 * 100.0) as u32,
+                    PROJECTION_MIX.2 / 1_000
+                ),
             )
         } else {
-            format!(
-                "tree {}M·{}%·{}k",
-                input / 1_000_000,
-                (hit * 100.0) as u32,
-                output / 1_000
+            (
+                "tree",
+                format!(
+                    " {}M·{}%·{}k",
+                    input / 1_000_000,
+                    (hit * 100.0) as u32,
+                    output / 1_000
+                ),
             )
         };
-    spans.push(Span::styled(format!("mix: {mix_display} · "), muted));
+    spans.push(Span::styled("mix: ", muted));
+    spans.push(Span::styled(
+        source_word,
+        Style::default().fg(theme.success),
+    ));
+    spans.push(Span::styled(format!("{numbers} · "), muted));
     if data.models_loading || data.endpoints_loading || data.epoch_loading {
         spans.push(Span::styled(" \u{b7} loading\u{2026}", muted));
     }
