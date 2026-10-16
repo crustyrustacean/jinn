@@ -12,7 +12,7 @@ use crate::epoch::EciScore;
 
 #[rstest::rstest]
 fn ui_state_reset_restores_the_opener_defaults() {
-    // Given UI state moved away from every default.
+    // Given UI state moved away from every default, detail mode included.
     let mut state = MarketUiState {
         selection: 7,
         filter: "sonnet".to_owned(),
@@ -22,13 +22,17 @@ fn ui_state_reset_restores_the_opener_defaults() {
         help_visible: true,
         results_viewport: 42,
         fetch_seq: 9,
+        detail_model: Some("openrouter/a/model".to_owned()),
+        detail_selection: 3,
+        detail_sort_col: DetailSort::Tp,
+        detail_sort_desc: true,
     };
 
     // When the opener resets it.
     state.reset();
 
     // Then every display field is back to the defaults the contract
-    // names: table focused, filter empty, PROJ ascending.
+    // names: table mode, table focused, filter empty, PROJ ascending.
     assert_eq!(state.selection, 0);
     assert!(state.filter.is_empty());
     assert!(!state.filter_focused);
@@ -40,6 +44,68 @@ fn ui_state_reset_restores_the_opener_defaults() {
     // sequence restarts.
     assert_eq!(state.results_viewport, RESULTS_VIEWPORT_FALLBACK);
     assert_eq!(state.fetch_seq, 0);
+    // And the detail-mode fields reset to table mode: no pin, the
+    // detail sort on its PROJ-ascending default.
+    assert_eq!(state.detail_model, None);
+    assert_eq!(state.detail_selection, 0);
+    assert_eq!(state.detail_sort_col, DetailSort::Proj);
+    assert!(!state.detail_sort_desc);
+}
+
+#[rstest::rstest]
+fn enter_detail_pins_the_model_and_resets_the_detail_side_only() {
+    // Given UI state with table-side state the round trip must preserve.
+    let mut state = MarketUiState {
+        filter: "son".to_owned(),
+        filter_focused: true,
+        sort_col: SortColumn::Eci,
+        sort_desc: true,
+        selection: 2,
+        detail_selection: 5,
+        detail_sort_col: DetailSort::Tp,
+        detail_sort_desc: true,
+        ..MarketUiState::default()
+    };
+
+    // When detail mode is entered for a model.
+    state.enter_detail("openrouter/a/model".to_owned());
+
+    // Then the mode is pinned, and the detail-side state is on its
+    // defaults.
+    assert_eq!(state.detail_model, Some("openrouter/a/model".to_owned()));
+    assert_eq!(state.detail_selection, 0);
+    assert_eq!(state.detail_sort_col, DetailSort::Proj);
+    assert!(!state.detail_sort_desc);
+    // And the table side is untouched.
+    assert_eq!(state.filter, "son");
+    assert!(state.filter_focused);
+    assert_eq!(state.sort_col, SortColumn::Eci);
+    assert!(state.sort_desc);
+    assert_eq!(state.selection, 2);
+}
+
+#[rstest::rstest]
+fn leave_detail_clears_the_pin_and_keeps_the_table_state() {
+    // Given detail mode holding table-side state.
+    let mut state = MarketUiState {
+        detail_model: Some("openrouter/a/model".to_owned()),
+        detail_selection: 4,
+        detail_sort_desc: true,
+        filter: "son".to_owned(),
+        sort_col: SortColumn::In,
+        selection: 1,
+        ..MarketUiState::default()
+    };
+
+    // When detail mode is left.
+    state.leave_detail();
+
+    // Then the pin is gone: table mode again.
+    assert_eq!(state.detail_model, None);
+    // And the table side is untouched.
+    assert_eq!(state.filter, "son");
+    assert_eq!(state.sort_col, SortColumn::In);
+    assert_eq!(state.selection, 1);
 }
 
 #[rstest::rstest]
@@ -67,6 +133,38 @@ fn sort_cycle_advances_left_to_right_wrapping(#[case] from: SortColumn, #[case] 
     assert_eq!(from.next(), to);
     // And the cycle is symmetric.
     assert_eq!(to.prev(), from);
+}
+
+#[rstest::rstest]
+#[case(DetailSort::Endpoint, DetailSort::In)]
+#[case(DetailSort::In, DetailSort::Out)]
+#[case(DetailSort::Out, DetailSort::Cache)]
+#[case(DetailSort::Cache, DetailSort::Proj)]
+#[case(DetailSort::Proj, DetailSort::Lat)]
+#[case(DetailSort::Lat, DetailSort::Tp)]
+#[case(DetailSort::Tp, DetailSort::Up)]
+#[case(DetailSort::Up, DetailSort::Endpoint)]
+fn detail_sort_cycle_advances_in_header_order_wrapping(
+    #[case] from: DetailSort,
+    #[case] to: DetailSort,
+) {
+    assert_eq!(from.next(), to);
+    // And the cycle is symmetric.
+    assert_eq!(to.prev(), from);
+}
+
+#[rstest::rstest]
+fn detail_sort_headers_name_the_eight_detail_columns() {
+    // Given the eight detail sorts in cycle order.
+    let headers: Vec<&str> = DETAIL_SORT_CYCLE.iter().map(|col| col.header()).collect();
+
+    // Then each names its detail column, in header order.
+    assert_eq!(
+        headers,
+        vec![
+            "ENDPOINT", "IN /M", "OUT /M", "CACHE /M", "PROJ", "LAT p50", "TP p50", "UP 1d"
+        ]
+    );
 }
 
 #[rstest::rstest]

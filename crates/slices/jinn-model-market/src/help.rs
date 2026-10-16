@@ -4,9 +4,9 @@
 //! `?` flips [`MarketUiState::help_visible`] (the input hook owns the
 //! key); while it is set the popup's view places this card below itself
 //! and draws it: Clear, then the bordered card surface, then the text.
-//! The card documents the table's columns and the detail pane's fields
-//! — the on-screen facts, not the key inventory (the footer carries
-//! that).
+//! The card documents the table's columns and the detail mode's
+//! columns and semantics — the on-screen facts, not the key inventory
+//! (the footer carries that).
 //!
 //! The shape follows the attendant's properties help card: a
 //! variable-height document measured against the popup's inner width,
@@ -131,37 +131,53 @@ fn column_section(theme: &Theme) -> Vec<Line<'static>> {
     lines
 }
 
-/// The Detail pane section: the fields the highlighted row's endpoints
-/// render, and the auth-gated ones.
+/// The Detail mode section: how to enter and leave, the eight detail
+/// columns and their units, Default-vs-provider ENTER semantics, and
+/// the auth-gated note.
 fn detail_section(theme: &Theme) -> Vec<Line<'static>> {
-    let mut lines = section("Detail pane (the highlighted model)", theme);
+    let mut lines = section("Detail mode", theme);
     lines.extend([
         entry(
-            "endpoints",
-            "one row per endpoint: routing tag, provider name, and that endpoint's \
-             IN/M, OUT/M, CACHE/M.",
+            "enter/leave",
+            "<enter> on a model row drills in; <esc> or <backspace> returns to the table \
+             with the filter, sort, and selection untouched.",
             theme,
         ),
         entry(
-            "LAT p50",
-            "median time-to-first-token over the last 30m, in ms.",
+            "ENDPOINT",
+            "one row per provider endpoint: provider name and routing tag — plus the \
+             Default row (auto-route), always first.",
             theme,
         ),
         entry(
-            "TP p50",
-            "median output throughput over the last 30m, in tok/s.",
+            "IN/M, OUT/M, CACHE/M",
+            "the endpoint's own prices, $ per million; the Default row prices from the \
+             model's listing. \u{2014} means unpublished (every input token bills at IN/M).",
+            theme,
+        ),
+        entry(
+            "PROJ",
+            "projected $/turn under the same fixed mix as the table, per endpoint.",
+            theme,
+        ),
+        entry(
+            "LAT p50, TP p50",
+            "median time-to-first-token (ms) and output throughput (tok/s) over the \
+             last 30m.",
             theme,
         ),
         entry("UP 1d", "the endpoint's uptime over the last day.", theme),
         entry(
-            "ECI \u{b1} CI",
-            "the capability index with its bootstrap confidence interval.",
+            "<enter>",
+            "on Default: switch the model and let OpenRouter auto-route (clears any \
+             pinned endpoint). On a provider row: switch and pin that endpoint as the \
+             model's default — reflected in <leader>sE.",
             theme,
         ),
         entry(
             "overrides",
-            "conditional price rows above a minimum-prompt-token threshold \
-             (the table's \u{2020} flag).",
+            "conditional price rows above a minimum-prompt-token threshold (the \
+             table's \u{2020} flag) apply on OpenRouter's side; they are not columns here.",
             theme,
         ),
         note(

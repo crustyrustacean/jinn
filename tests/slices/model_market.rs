@@ -155,8 +155,40 @@ fn seeded(wired: &mut Wired) {
 
 /// Decodes the first published message of type `M` out of a route
 /// result, draining the closures with a payload-collecting sink — the
-/// typed twin of the `message_names` assertions. Publish closures are
-/// `FnOnce`, so the result is consumed.
+/// Decodes every published message out of a route result as
+/// `(type-suffix, payload)` pairs, draining the closures with a
+/// payload-collecting sink — one pass reads every message, so tests
+/// asserting several payloads drain once and filter per type. Publish
+/// closures are `FnOnce`, so the result is consumed.
+fn drain_payloads(result: &mut RouteResult) -> Vec<(&'static str, serde_json::Value)> {
+    let mut found: Vec<(&'static str, serde_json::Value)> = Vec::new();
+    for closure in std::mem::take(&mut result.messages) {
+        let cell: std::cell::RefCell<Option<(&'static str, serde_json::Value)>> =
+            std::cell::RefCell::new(None);
+        struct Collect<'a> {
+            found: &'a std::cell::RefCell<Option<(&'static str, serde_json::Value)>>,
+        }
+        impl PublishSink for Collect<'_> {
+            fn publish_schema(
+                &self,
+                _schema_id: trouper::schema::SchemaId,
+                payload: serde_json::Value,
+                name: &'static str,
+            ) {
+                let short = name.rsplit("::").next().unwrap_or(name);
+                *self.found.borrow_mut() = Some((short, payload));
+            }
+        }
+        closure(&Collect { found: &cell });
+        if let Some(pair) = cell.into_inner() {
+            found.push(pair);
+        }
+    }
+    found
+}
+
+/// Decodes the first published message of type `M` out of a route
+/// result — the typed twin of the `message_names` assertions.
 fn first_message<M>(result: &mut RouteResult) -> Option<M>
 where
     M: jinn_slices::BusMessage
@@ -168,39 +200,12 @@ where
         + Sync
         + trouper::envelope::PayloadValue,
 {
-    let full_name = std::any::type_name::<M>();
-    let mut found: Option<serde_json::Value> = None;
-    for closure in std::mem::take(&mut result.messages) {
-        if found.is_some() {
-            break;
-        }
-        let cell: std::cell::RefCell<Option<serde_json::Value>> = std::cell::RefCell::new(None);
-        struct Collect<'a> {
-            want: &'a str,
-            found: &'a std::cell::RefCell<Option<serde_json::Value>>,
-        }
-        impl PublishSink for Collect<'_> {
-            fn publish_schema(
-                &self,
-                _schema_id: trouper::schema::SchemaId,
-                payload: serde_json::Value,
-                name: &'static str,
-            ) {
-                // `RouteResult::push_message` records the full type
-                // name; match on the suffix so the test reads the same
-                // message the `message_names` assertions see.
-                if name.ends_with(self.want) {
-                    *self.found.borrow_mut() = Some(payload);
-                }
-            }
-        }
-        closure(&Collect {
-            want: full_name.rsplit("::").next().unwrap_or(full_name),
-            found: &cell,
-        });
-        found = cell.into_inner();
-    }
-    found.and_then(|payload| serde_json::from_value::<M>(payload).ok())
+    let want = std::any::type_name::<M>().rsplit("::").next().unwrap_or("");
+    let payloads = drain_payloads(result);
+    payloads
+        .iter()
+        .find(|(name, _)| *name == want)
+        .and_then(|(_, payload)| serde_json::from_value::<M>(payload.clone()).ok())
 }
 
 /// The editing intent the composition keymap's hook catch-all mints for
@@ -693,59 +698,220 @@ fn paste_while_the_table_is_focused_is_declined() {
     assert!(ui.read().filter.is_empty());
 }
 
-// ── ENTER triple ────────────────────────────────────────────────────────
+// ── ENTER: drill-in + detail confirm ────────────────────────────────────
 
 #[rstest::rstest]
-fn enter_publishes_the_confirm_triple() {
-    // Given a seeded table with the first row highlighted.
+fn enter_from_table_mode_opens_detail_and_publishes_one_fetch() {
+    // Given a seeded table with the first row highlighted, no detail
+    // loaded.
     let mut wired = Wired::new();
     wired.press("open-model-market", "model market");
     seeded(&mut wired);
 
     // When ENTER fires.
-    let result = wired.press("confirm-model-market", "switch model");
+    let mut result = wired.press("confirm-model-market", "switch/pin");
 
-    // Then all three legs of the triple are present, and the handler
-    // popped the popup's scope (the signal is consumed).
+    // Then the UI cell is pinned to the highlighted row, the scope is
+    // still pushed (the popup stays open), and the only published
+    // message is the row's endpoint fetch.
+    let ui = wired.ui();
+    assert_eq!(
+        ui.read().detail_model,
+        Some("openrouter/a/small".to_owned()),
+        "the mode pins the highlighted row"
+    );
+    assert_eq!(
+        wired.state.frontend.scope(),
+        jinn_slices::FocusScope::Dynamic(market_ui_scope()),
+        "the popup stays open"
+    );
+    assert_eq!(result.message_names, vec!["FetchEndpoints"]);
+    let fetches = first_message::<jinn_model_market_msg::FetchEndpoints>(&mut result)
+        .expect("the drill-in fetches the pinned model");
+    assert_eq!(fetches.model_id, "openrouter/a/small");
+    assert_eq!(fetches.seq, wired.ui().read().fetch_seq);
+}
+
+#[rstest::rstest]
+fn enter_into_a_cached_detail_publishes_nothing() {
+    // Given a seeded table whose highlighted row's detail is already in
+    // the data cell.
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "model market");
+    seeded(&mut wired);
+    wired.data().update(|d| {
+        d.detail = Some(jinn_model_market_msg::MarketDetail {
+            model_id: "openrouter/a/small".to_owned(),
+            endpoints: vec![],
+        });
+    });
+
+    // When ENTER fires.
+    let result = wired.press("confirm-model-market", "switch/pin");
+
+    // Then the mode flips with zero messages — the cached detail
+    // renders instantly.
+    assert_eq!(
+        wired.ui().read().detail_model,
+        Some("openrouter/a/small".to_owned())
+    );
+    assert!(result.messages.is_empty());
+}
+
+/// A detail-mode fixture: detail for `openrouter/a/small` with two
+/// endpoints — one tagged, one with an empty tag — distinct prices, a
+/// missing cache price, and absent percentiles on the tagged one.
+fn detail_fixture(wired: &mut Wired) {
+    wired.data().update(|d| {
+        d.detail = Some(jinn_model_market_msg::MarketDetail {
+            model_id: "openrouter/a/small".to_owned(),
+            endpoints: vec![
+                jinn_model_market_msg::MarketEndpointRow {
+                    tag: "azure/us-east".to_owned(),
+                    provider_name: "Azure".to_owned(),
+                    prompt_price: 0.000_002,
+                    completion_price: 0.000_004,
+                    cache_read_price: None,
+                    latency_p50_ms: None,
+                    throughput_p50: None,
+                    uptime_1d: Some(0.99),
+                    quantization: None,
+                    overrides: Vec::new(),
+                },
+                jinn_model_market_msg::MarketEndpointRow {
+                    tag: String::new(),
+                    provider_name: "Lambda".to_owned(),
+                    prompt_price: 0.000_000_5,
+                    completion_price: 0.000_001,
+                    cache_read_price: Some(0.000_000_05),
+                    latency_p50_ms: Some(300.0),
+                    throughput_p50: Some(90.0),
+                    uptime_1d: Some(0.98),
+                    quantization: None,
+                    overrides: Vec::new(),
+                },
+            ],
+        });
+    });
+}
+
+/// Puts the wired popup into detail mode with the fixture's detail
+/// landed, and the table-side state the round trip preserves seeded
+/// alongside.
+fn drill_in(wired: &mut Wired) {
+    wired.press("open-model-market", "model market");
+    seeded(wired);
+    detail_fixture(wired);
+    // Enter detail with the detail already cached (publishes nothing).
+    wired.ui().update(|s| {
+        s.filter = "son".to_owned();
+        s.sort_col = SortColumn::In;
+        s.sort_desc = true;
+        s.selection = 1;
+        s.enter_detail("openrouter/a/small".to_owned());
+    });
+}
+
+#[rstest::rstest]
+fn enter_on_the_default_row_publishes_the_model_only_triple() {
+    // Given detail mode with the Default sentinel highlighted.
+    let mut wired = Wired::new();
+    drill_in(&mut wired);
+    assert_eq!(wired.ui().read().detail_selection, 0);
+
+    // When ENTER fires.
+    let mut result = wired.press("confirm-model-market", "switch/pin");
+
+    // Then the quad publishes: the pinned model's ProviderSwitch, the
+    // SetLastModel update, the pin-clearing SetEndpointDefault (tag
+    // None), and the handler popped the scope. The write-back, save,
+    // and registry round-trip behind that command are
+    // `openrouter_actor.rs`'s existing `SetEndpointDefault` tests; the
+    // picker-side reflection of the pin is
+    // `endpoint_loader.rs::build_endpoint_entries_prepends_sentinel_and_marks_pinned_active`.
     assert_eq!(
         result.message_names,
-        vec!["ProviderSwitch", "UpdateAppState"]
+        vec!["ProviderSwitch", "UpdateAppState", "SetEndpointDefault"]
+    );
+    // Both payload asserts decode from one drain — the closures are
+    // `FnOnce`, so a single pass reads every message, filtered per type.
+    let drained = drain_payloads(&mut result);
+    let switch_payload = drained
+        .iter()
+        .find(|(name, _)| *name == "ProviderSwitch")
+        .map(|(_, payload)| payload.clone())
+        .expect("ProviderSwitch publishes");
+    let switch_decodes: jinn_provider_selection_msg::ProviderSwitch =
+        serde_json::from_value(switch_payload).expect("ProviderSwitch decodes");
+    assert_eq!(
+        switch_decodes.provider_id,
+        jinn_core_types::model_selection::ModelSelection::Single("openrouter/a/small".to_owned())
+    );
+    let pin_payload = drained
+        .iter()
+        .find(|(name, _)| *name == "SetEndpointDefault")
+        .map(|(_, payload)| payload.clone())
+        .expect("SetEndpointDefault publishes");
+    let pinned: jinn_provider_selection_msg::SetEndpointDefault =
+        serde_json::from_value(pin_payload).expect("SetEndpointDefault decodes");
+    assert_eq!(pinned.model, "openrouter/a/small");
+    assert_eq!(pinned.tag, None, "the Default row clears any pin");
+    assert_eq!(wired.state.frontend.scope(), jinn_slices::FocusScope::Input);
+}
+
+#[rstest::rstest]
+fn enter_on_a_provider_row_pins_that_endpoint() {
+    // Given detail mode with the highlight on the second (untagged)
+    // endpoint row.
+    let mut wired = Wired::new();
+    drill_in(&mut wired);
+    wired.ui().update(|s| s.detail_selection = 2);
+
+    // When ENTER fires.
+    let mut result = wired.press("confirm-model-market", "switch/pin");
+
+    // Then the same triple publishes but the pin carries the
+    // endpoint's routing tag (empty string is still Some).
+    assert_eq!(
+        result.message_names,
+        vec!["ProviderSwitch", "UpdateAppState", "SetEndpointDefault"]
+    );
+    let pins = drain_payloads(&mut result);
+    let pin_payload = pins
+        .iter()
+        .find(|(name, _)| *name == "SetEndpointDefault")
+        .map(|(_, payload)| payload.clone())
+        .expect("SetEndpointDefault publishes");
+    let pinned: jinn_provider_selection_msg::SetEndpointDefault =
+        serde_json::from_value(pin_payload).expect("SetEndpointDefault decodes");
+    assert_eq!(pinned.model, "openrouter/a/small");
+    assert_eq!(
+        pinned.tag,
+        Some(String::new()),
+        "the provider row pins its routing tag"
     );
     assert_eq!(wired.state.frontend.scope(), jinn_slices::FocusScope::Input);
 }
 
 #[rstest::rstest]
-fn enter_carries_the_highlighted_row_and_this_session() {
-    // Given a seeded table with the first row highlighted.
+fn esc_in_detail_mode_returns_to_table_with_state_preserved() {
+    // Given detail mode entered over table state (filter `son`, IN
+    // desc, selection 1), with the detail highlight moved off 0.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
-    seeded(&mut wired);
+    drill_in(&mut wired);
+    wired.ui().update(|s| s.detail_selection = 1);
 
-    // When ENTER fires.
-    let mut result = wired.press("confirm-model-market", "switch model");
+    // When ESC fires.
+    let result = wired.press("close-model-market", "close");
 
-    // Then the ProviderSwitch leg decodes with the highlighted row's id
-    // and this session's id.
-    let switch: jinn_provider_selection_msg::ProviderSwitch =
-        first_message(&mut result).expect("ProviderSwitch publishes");
-    let session_id = jinn_slices::route::SliceActionState::active_session_id(&wired.state);
-    assert_eq!(switch.session_id, session_id);
-    assert_eq!(
-        switch.provider_id,
-        jinn_core_types::model_selection::ModelSelection::Single("openrouter/a/small".to_owned())
-    );
-}
-
-#[rstest::rstest]
-fn enter_without_a_highlighted_row_is_a_no_op() {
-    // Given an open popup over an empty table.
-    let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
-
-    // When ENTER fires.
-    let result = wired.press("confirm-model-market", "switch model");
-
-    // Then nothing publishes and the popup stays open.
+    // Then the pin is gone, everything table-side is exactly as it was,
+    // nothing published, and the popup stays open.
+    let ui = wired.ui();
+    assert_eq!(ui.read().detail_model, None, "the pin cleared");
+    assert_eq!(ui.read().filter, "son");
+    assert_eq!(ui.read().sort_col, SortColumn::In);
+    assert!(ui.read().sort_desc);
+    assert_eq!(ui.read().selection, 1);
     assert!(result.messages.is_empty());
     assert_eq!(
         wired.state.frontend.scope(),
@@ -754,25 +920,17 @@ fn enter_without_a_highlighted_row_is_a_no_op() {
 }
 
 #[rstest::rstest]
-fn enter_accepts_a_focused_filter_and_returns_focus_to_the_table() {
-    // Given an open popup with the filter focused and "son" typed.
+fn backspace_in_detail_mode_returns_to_the_table() {
+    // Given detail mode with the filter unfocused.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
-    seeded(&mut wired);
-    wired.ui().update(|s| {
-        s.filter_focused = true;
-        s.filter = "son".to_owned();
-    });
+    drill_in(&mut wired);
 
-    // When ENTER fires.
-    let result = wired.press("confirm-model-market", "switch model");
+    // When delete-backward arrives (the intent the composition keymap's
+    // `bind_input_hook_scopes` mints for `<backspace>`).
+    wired.handle(edit_intent("delete-backward", '\u{8}'));
 
-    // Then the filter stays applied, focus returns to the table, and
-    // the popup stays open — no switch published.
-    let ui = wired.ui();
-    assert_eq!(ui.read().filter, "son");
-    assert!(!ui.read().filter_focused);
-    assert!(!result.message_names.contains(&"ProviderSwitch"));
+    // Then the mode cleared and the popup stays open.
+    assert_eq!(wired.ui().read().detail_model, None);
     assert_eq!(
         wired.state.frontend.scope(),
         jinn_slices::FocusScope::Dynamic(market_ui_scope())
@@ -780,27 +938,119 @@ fn enter_accepts_a_focused_filter_and_returns_focus_to_the_table() {
 }
 
 #[rstest::rstest]
-fn enter_on_a_focused_filter_fetches_the_filtered_sets_row_zero() {
-    // Given an open popup with the filter focused and "small" typed —
-    // a filter matching exactly one row of the seeded table.
+fn backspace_in_table_mode_still_declines() {
+    // Given table mode with the filter unfocused.
     let mut wired = Wired::new();
     wired.press("open-model-market", "model market");
     seeded(&mut wired);
-    wired.ui().update(|s| {
-        s.filter_focused = true;
-        s.filter = "small".to_owned();
-    });
 
-    // When ENTER fires.
-    let mut result = wired.press("confirm-model-market", "switch model");
+    // When delete-backward arrives.
+    let result = wired.handle(edit_intent("delete-backward", '\u{8}'));
 
-    // Then the accept publishes the fetch for the filtered set's
-    // highlighted row 0, stamped with the UI cell's incremented
-    // sequence.
-    let fetches = first_message::<jinn_model_market_msg::FetchEndpoints>(&mut result)
-        .expect("accepting a filter fetches the narrowed highlight");
-    assert_eq!(fetches.model_id, "openrouter/a/small");
-    assert_eq!(fetches.seq, wired.ui().read().fetch_seq);
+    // Then the hook declined: the pin was never set, nothing published.
+    assert!(result.scope_signal.is_none() && result.messages.is_empty());
+    assert_eq!(wired.ui().read().detail_model, None);
+}
+
+#[rstest::rstest]
+fn detail_navigation_moves_and_clamps() {
+    // Given detail mode over the three-row detail projection.
+    let mut wired = Wired::new();
+    drill_in(&mut wired);
+
+    // When `j` and `<down>` fire, then `<pgdn>` far past the end.
+    wired.handle(edit_intent("insert-char", 'j'));
+    let after_j = wired.ui().read().detail_selection;
+    wired.press("move-model-market-down", "down");
+    let after_down = wired.ui().read().detail_selection;
+    wired.press("page-model-market-down", "page dn");
+    let after_page = wired.ui().read().detail_selection;
+
+    // Then the highlight moved and clamped at the last row (index 2).
+    assert_eq!(after_j, 1);
+    assert_eq!(after_down, 2);
+    assert_eq!(after_page, 2, "paging clamps at the projection's end");
+    // And `k` steps back and clamps at 0.
+    wired.handle(edit_intent("insert-char", 'k'));
+    assert_eq!(wired.ui().read().detail_selection, 1);
+    wired.handle(edit_intent("insert-char", 'k'));
+    wired.handle(edit_intent("insert-char", 'k'));
+    assert_eq!(wired.ui().read().detail_selection, 0, "`k` clamps at 0");
+}
+
+#[rstest::rstest]
+fn detail_navigation_publishes_nothing() {
+    // Given detail mode over a landed detail projection.
+    let mut wired = Wired::new();
+    drill_in(&mut wired);
+
+    // When every detail-mode navigation and sort key fires.
+    let results = [
+        wired.handle(edit_intent("insert-char", 'j')),
+        wired.handle(edit_intent("insert-char", 'k')),
+        wired.handle(edit_intent("insert-char", 'l')),
+        wired.handle(edit_intent("insert-char", 'h')),
+        wired.handle(edit_intent("insert-char", 's')),
+        wired.press("move-model-market-down", "down"),
+    ];
+
+    // Then none of them publish a thing: the mode never mints fetches.
+    for result in results {
+        assert!(
+            result.messages.is_empty(),
+            "detail-mode keys publish nothing"
+        );
+    }
+}
+
+#[rstest::rstest]
+fn detail_sort_cycles_the_eight_columns_and_the_highlight_follows() {
+    // Given detail mode on its default sort (Proj ascending).
+    let mut wired = Wired::new();
+    drill_in(&mut wired);
+
+    // When `l` fires once.
+    wired.handle(edit_intent("insert-char", 'l'));
+    let after_l = wired.ui().read().detail_sort_col;
+
+    // Then the detail sort cycled to the next header column (Proj's
+    // cycle successor is Lat) and the table's own sort is untouched.
+    use jinn_model_market_msg::DetailSort;
+    assert_eq!(after_l, DetailSort::Lat);
+    assert_eq!(
+        wired.ui().read().sort_col,
+        SortColumn::In,
+        "table sort untouched"
+    );
+    assert!(!wired.ui().read().detail_sort_desc);
+
+    // And the render shows the sorted header cell wearing the focus
+    // pairing with its arrow — `h` cycles back to Proj first, so the
+    // sorted cell is PROJ again.
+    wired.handle(edit_intent("insert-char", 'h'));
+    assert_eq!(wired.ui().read().detail_sort_col, DetailSort::Proj);
+    let buffer = render_to_buffer(&wired, 120, 40);
+    let popup =
+        jinn_model_market::view::market_overlay_rect(&ratatui::layout::Rect::new(0, 0, 120, 40))
+            .expect("frame fits the popup");
+    let theme = jinn_theme::default_theme();
+    let header_y = (popup.y..popup.y + popup.height)
+        .find(|y| row_text(&buffer, *y, popup.width).contains("ENDPOINT"))
+        .expect("the detail header renders");
+    // Find "PROJ" as a run of styled cells, not a lone glyph: the
+    // header row also carries "ENDPOINT", whose "P" would false-match.
+    let header = row_text(&buffer, header_y, popup.width);
+    let proj_x = header
+        .find("PROJ")
+        .map(|col| popup.x + col as u16)
+        .expect("the PROJ header renders");
+    let proj_cell = buffer.cell((proj_x, header_y)).expect("cell exists");
+    assert_eq!(proj_cell.style().fg, Some(theme.gutter_bg));
+    assert_eq!(proj_cell.style().bg, Some(theme.focus_accent));
+    assert!(
+        header[(proj_x - popup.x) as usize..].starts_with("PROJ \u{2191}"),
+        "the ascending arrow rides the sorted cell, got: {header:?}"
+    );
 }
 
 // ── Sort / navigation ────────────────────────────────────────────────
@@ -1239,11 +1489,11 @@ fn focused_filter_shows_a_visible_filter_line() {
     let title = row_text(&buffer, popup.y, popup.width);
     let filter_line = row_text(&buffer, popup.y + 1, popup.width);
 
-    // Then the filter lives on its own line — text plus cursor block —
-    // and the title is always the popup's plain name.
+    // Then the filter lives on its own line — glyph, text plus cursor
+    // block — and the title is always the popup's plain name.
     assert!(
-        filter_line.contains("filter: son"),
-        "the focused filter line shows the filter, got: {filter_line:?}"
+        filter_line.contains(" > son"),
+        "the focused filter line shows the glyph and filter, got: {filter_line:?}"
     );
     assert!(
         filter_line.contains('\u{2588}'),
@@ -1254,7 +1504,7 @@ fn focused_filter_shows_a_visible_filter_line() {
         "the title stays plain, got: {title:?}"
     );
     assert!(
-        !title.contains("filter:"),
+        !title.contains('>'),
         "the filter never renders into the titlebar, got: {title:?}"
     );
     // And a separator row of dashes sits under the filter line (the
@@ -1570,4 +1820,293 @@ fn highlight_on_a_long_list_never_parks_under_the_status_rows() {
             "the status/footer row {y} must never carry the selection bg"
         );
     }
+}
+
+// ── Detail mode: composition-level render facts ─────────────────────────
+
+#[rstest::rstest]
+fn detail_mode_renders_the_eight_column_headers() {
+    // Given detail mode over a landed detail projection.
+    let mut wired = Wired::new();
+    drill_in(&mut wired);
+
+    // When the popup renders.
+    let buffer = render_to_buffer(&wired, 120, 40);
+    let popup =
+        jinn_model_market::view::market_overlay_rect(&ratatui::layout::Rect::new(0, 0, 120, 40))
+            .expect("frame fits the popup");
+    let header_y = (popup.y..popup.y + popup.height)
+        .find(|y| row_text(&buffer, *y, popup.width).contains("ENDPOINT"))
+        .expect("the detail header renders");
+    let header = row_text(&buffer, header_y, popup.width);
+
+    // Then the header row carries all eight names in order.
+    let mut cursor = 0usize;
+    for name in [
+        "ENDPOINT", "IN /M", "OUT /M", "CACHE /M", "PROJ", "LAT p50", "TP p50", "UP 1d",
+    ] {
+        let at = header[cursor..]
+            .find(name)
+            .unwrap_or_else(|| panic!("header must carry {name} in order, got: {header:?}"));
+        cursor += at + name.len();
+    }
+}
+
+#[rstest::rstest]
+fn the_default_row_is_first_and_labeled_default() {
+    // Given detail mode over a landed detail projection.
+    let mut wired = Wired::new();
+    drill_in(&mut wired);
+
+    // When the popup renders.
+    let buffer = render_to_buffer(&wired, 120, 40);
+    let popup =
+        jinn_model_market::view::market_overlay_rect(&ratatui::layout::Rect::new(0, 0, 120, 40))
+            .expect("frame fits the popup");
+    let header_y = (popup.y..popup.y + popup.height)
+        .find(|y| row_text(&buffer, *y, popup.width).contains("ENDPOINT"))
+        .expect("the detail header renders");
+
+    // Then the first data row reads `Default` and the provider
+    // endpoints follow — under the default PROJ-ascending sort the
+    // cheaper endpoint (Lambda) leads them.
+    let first = row_text(&buffer, header_y + 1, popup.width);
+    assert!(
+        first.contains("Default"),
+        "the sentinel is the first row, got: {first:?}"
+    );
+    let second = row_text(&buffer, header_y + 2, popup.width);
+    assert!(
+        second.contains("Lambda"),
+        "the endpoints follow the sentinel, sorted, got: {second:?}"
+    );
+}
+
+#[rstest::rstest]
+fn detail_loading_renders_a_loading_line_and_no_header() {
+    // Given detail mode pinned while the data cell holds detail for
+    // another model.
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "model market");
+    seeded(&mut wired);
+    wired
+        .ui()
+        .update(|s| s.enter_detail("openrouter/a/small".to_owned()));
+    wired.data().update(|d| {
+        d.detail = Some(jinn_model_market_msg::MarketDetail {
+            model_id: "openrouter/b/big".to_owned(),
+            endpoints: vec![],
+        });
+    });
+
+    // When the popup renders.
+    let buffer = render_to_buffer(&wired, 120, 40);
+
+    // Then the table area carries the muted loading line — no header,
+    // no rows.
+    let text: String = buffer
+        .content
+        .iter()
+        .map(ratatui::buffer::Cell::symbol)
+        .collect();
+    assert!(
+        text.contains("loading endpoints"),
+        "the loading line renders, got: {text:?}"
+    );
+    assert!(
+        !text.contains("ENDPOINT") && !text.contains("Azure"),
+        "no header and no stale rows render, got: {text:?}"
+    );
+}
+
+#[rstest::rstest]
+fn title_in_detail_mode_carries_the_model_in_focus_accent() {
+    // Given detail mode pinned to `openrouter/a/small`.
+    let mut wired = Wired::new();
+    drill_in(&mut wired);
+
+    // When the popup renders.
+    let buffer = render_to_buffer(&wired, 120, 40);
+    let popup =
+        jinn_model_market::view::market_overlay_rect(&ratatui::layout::Rect::new(0, 0, 120, 40))
+            .expect("frame fits the popup");
+    let theme = jinn_theme::default_theme();
+    let title = row_text(&buffer, popup.y, popup.width);
+
+    // Then the title reads the prefix and the model name, the
+    // `openrouter/` prefix stripped.
+    assert!(
+        title.contains(" Model Market ") && title.contains("\u{b7} a/small"),
+        "the title carries the model, got: {title:?}"
+    );
+
+    // And the model-name cells wear the focus accent while the prefix
+    // cells wear the popup title color. The name starts after the `·`
+    // separator and its following space.
+    let separator_x = (popup.x..popup.x + popup.width)
+        .find(|x| {
+            buffer
+                .cell((*x, popup.y))
+                .is_some_and(|c| c.symbol() == "\u{b7}")
+        })
+        .expect("the separator dot renders");
+    let model_cell = (separator_x + 1..popup.x + popup.width)
+        .filter_map(|x| buffer.cell((x, popup.y)))
+        .find(|c| c.symbol() != " ")
+        .expect("the model name renders in the title");
+    assert_eq!(
+        model_cell.style().fg,
+        Some(theme.focus_accent),
+        "the model name renders in focus_accent"
+    );
+    let prefix_cell = buffer
+        .cell((popup.x + 2, popup.y))
+        .expect("prefix cell exists");
+    assert_eq!(
+        prefix_cell.style().fg,
+        Some(theme.popup_title),
+        "the prefix renders in popup_title"
+    );
+}
+
+#[rstest::rstest]
+fn filter_glyph_renders_gt_with_and_without_the_cursor() {
+    // Given an open popup with filter text, once focused and once not.
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "model market");
+    seeded(&mut wired);
+    wired.ui().update(|s| {
+        s.filter = "sonnet".to_owned();
+        s.filter_focused = true;
+    });
+
+    // When rendering focused, then unfocused.
+    let focused = render_to_buffer(&wired, 120, 40);
+    wired.ui().update(|s| s.filter_focused = false);
+    let unfocused = render_to_buffer(&wired, 120, 40);
+    let row = |buffer: &ratatui::buffer::Buffer, y: u16| {
+        (0..120)
+            .filter_map(|x| buffer.cell((x, y)).map(Cell::symbol))
+            .collect::<String>()
+    };
+
+    // Then the focused line reads ` > sonnet` with the cursor block and
+    // the unfocused one reads ` > sonnet` without it.
+    let popup =
+        jinn_model_market::view::market_overlay_rect(&ratatui::layout::Rect::new(0, 0, 120, 40))
+            .expect("frame fits the popup");
+    let focused_line = row(&focused, popup.y + 1);
+    let unfocused_line = row(&unfocused, popup.y + 1);
+    assert!(
+        focused_line.contains(" > sonnet") && focused_line.contains('\u{2588}'),
+        "focused reads the glyph, text, and cursor, got: {focused_line:?}"
+    );
+    assert!(
+        unfocused_line.contains(" > sonnet") && !unfocused_line.contains('\u{2588}'),
+        "unfocused reads the glyph and text, no cursor, got: {unfocused_line:?}"
+    );
+    // And the titlebar stays plain in both.
+    for buffer in [&focused, &unfocused] {
+        assert!(
+            !row(buffer, popup.y).contains('>'),
+            "the titlebar stays plain"
+        );
+    }
+}
+
+#[rstest::rstest]
+fn footer_in_detail_mode_advertises_switch_pin() {
+    // Given detail mode.
+    let mut wired = Wired::new();
+    drill_in(&mut wired);
+
+    // When the popup renders (a wide frame — the footer is a long line
+    // and `<enter> switch/pin` sits past where 120 columns truncate).
+    let buffer = render_to_buffer(&wired, 160, 50);
+    let popup =
+        jinn_model_market::view::market_overlay_rect(&ratatui::layout::Rect::new(0, 0, 160, 50))
+            .expect("frame fits the popup");
+    let footer = row_text(&buffer, popup.y + popup.height - 2, popup.width);
+
+    // Then the enter entry reads `switch/pin` — truthful in both modes
+    // — and no bare `switch` label stands alone.
+    assert!(
+        footer.contains("<enter> switch/pin"),
+        "the footer advertises switch/pin, got: {footer:?}"
+    );
+    assert!(
+        !footer.contains("switch "),
+        "no bare `switch` label remains, got: {footer:?}"
+    );
+}
+
+#[rstest::rstest]
+fn table_mode_uses_the_full_height_after_the_pane_gone() {
+    // Given an 80-row table with detail landed for the pinned row, then
+    // the round trip back to table mode — enough rows to overflow the
+    // viewport.
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "model market");
+    wired.data().update(|d| {
+        d.rows = (0..80)
+            .map(|i| {
+                row(
+                    &format!("openrouter/m/model{i}"),
+                    "m",
+                    &format!("model{i}"),
+                    1e-6 + f64::from(i) * 1e-8,
+                    2e-6,
+                    Some(1e-7),
+                )
+            })
+            .collect();
+        d.detail = Some(jinn_model_market_msg::MarketDetail {
+            model_id: "openrouter/m/model0".to_owned(),
+            endpoints: vec![jinn_model_market_msg::MarketEndpointRow {
+                tag: "azure/us-east".to_owned(),
+                provider_name: "Azure".to_owned(),
+                prompt_price: 1.2e-6,
+                completion_price: 4.5e-6,
+                cache_read_price: Some(0.9e-7),
+                latency_p50_ms: Some(320.0),
+                throughput_p50: Some(88.0),
+                uptime_1d: Some(0.992),
+                quantization: None,
+                overrides: Vec::new(),
+            }],
+        });
+    });
+    wired
+        .ui()
+        .update(|s| s.enter_detail("openrouter/m/model0".to_owned()));
+    wired.ui().update(MarketUiState::leave_detail);
+
+    // When the popup renders in table mode.
+    let buffer = render_to_buffer(&wired, 120, 40);
+    let popup =
+        jinn_model_market::view::market_overlay_rect(&ratatui::layout::Rect::new(0, 0, 120, 40))
+            .expect("frame fits the popup");
+    let status_y = popup.y + popup.height - 3;
+
+    // Then rows render down to the row just above the status line: no
+    // band sits reserved under the table.
+    let found = (popup.y..status_y)
+        .rev()
+        .find(|y| row_text(&buffer, *y, popup.width).contains("m/model"))
+        .expect("rows render");
+    assert_eq!(
+        found,
+        status_y - 1,
+        "a data row renders directly above the status line, got {found:?}"
+    );
+    // And no endpoint text renders anywhere: the pane is gone.
+    let text: String = buffer
+        .content
+        .iter()
+        .map(ratatui::buffer::Cell::symbol)
+        .collect();
+    assert!(
+        !text.contains("Azure"),
+        "no pane text renders in table mode, got: {text:?}"
+    );
 }
