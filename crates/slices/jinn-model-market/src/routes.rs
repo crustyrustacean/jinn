@@ -263,15 +263,16 @@ enum Nav {
 ///   help card, `j`/`k` move the selection, `h`/`l` cycle the sort
 ///   column, `s` flips the sort direction, `m` cycles the mix preset;
 /// - returns `None` otherwise — the key does nothing.
-pub fn register_market_input_hook(routes: &KeyRoutes, ui: &MarketUiCell, _data: &MarketDataCell) {
+pub fn register_market_input_hook(routes: &KeyRoutes, ui: &MarketUiCell, data: &MarketDataCell) {
     let owned_ui = ui.clone();
+    let owned_data = data.clone();
     let hook: InputHook = Arc::new(move |intent: &EditIntent| {
         let focus = owned_ui.read().filter_focused;
         // Every character key classifies through one place, so the
         // "rows steal filter typing" trap is structurally impossible:
         // no character key is a route row.
         if let EditIntent::InsertChar(ch) = intent {
-            return match table_char_action(&owned_ui, *ch) {
+            return match table_char_action(&owned_ui, &owned_data, *ch) {
                 CharAction::Acted => Some(IntentResult::empty()),
                 CharAction::Type => {
                     owned_ui.update(|s| {
@@ -284,6 +285,18 @@ pub fn register_market_input_hook(routes: &KeyRoutes, ui: &MarketUiCell, _data: 
             };
         }
         match intent {
+            EditIntent::Paste(text) if focus => {
+                // Pasted text lands in the filter at its end (the filter
+                // is a plain string, not a cursor buffer — the same
+                // shape the insert/delete cases edit). Table-focused,
+                // the arm does not match and the hook declines, so the
+                // paste falls to the next surface in the routing chain.
+                owned_ui.update(|s| {
+                    s.filter.push_str(text);
+                    s.selection = 0;
+                });
+                Some(IntentResult::empty())
+            }
             EditIntent::DeleteBackward | EditIntent::DeleteForward if focus => {
                 owned_ui.update(|s| {
                     s.filter.pop();
@@ -319,7 +332,7 @@ enum CharAction {
 /// Table-focused `h`/`l`/`s`/`m` mutate the sort/mix cell exactly as
 /// their pre-hook-route ancestors did; `j`/`k` navigate because the
 /// keymap's insert-char catch-all owns those keys in this scope.
-fn table_char_action(ui: &MarketUiCell, ch: char) -> CharAction {
+fn table_char_action(ui: &MarketUiCell, data: &MarketDataCell, ch: char) -> CharAction {
     if ui.read().filter_focused {
         return CharAction::Type;
     }
@@ -337,7 +350,11 @@ fn table_char_action(ui: &MarketUiCell, ch: char) -> CharAction {
             CharAction::Acted
         }
         'j' => {
-            ui.update(|s| ui_state::move_down(s, s.results_viewport.max(1)));
+            // Clamp against the live visible count, not the measured
+            // viewport: a filter can shrink the list below the window,
+            // and a highlight past the list end simply vanishes.
+            let count = visible_count(ui, data);
+            ui.update(|s| ui_state::move_down(s, count));
             CharAction::Acted
         }
         'h' => {

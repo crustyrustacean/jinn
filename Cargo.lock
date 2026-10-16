@@ -5341,6 +5341,7 @@ dependencies = [
  "pest",
  "pest_derive",
  "ratatui",
+ "rstest",
  "serde_json",
  "toml",
  "tree-sitter",

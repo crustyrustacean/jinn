@@ -283,6 +283,87 @@ fn pane_renders_pricing_override_rows() {
 }
 
 #[rstest::rstest]
+fn pane_renders_a_thresholdless_override_as_a_wildcard_row() {
+    // Given an endpoint carrying a pricing override with NO minimum
+    // prompt-token threshold — the shape the upstream publishes for
+    // "any prompt above the endpoint's base price".
+    let harness = Harness::new();
+    harness.ui.update(|s| s.selection = 0);
+    let mut endpoint = full_endpoint();
+    endpoint.overrides = vec![(None, 6e-6, 1.2e-5)];
+    harness.data.update(|d| {
+        d.rows = vec![listed_row("openrouter/a/model")];
+        d.detail = Some(detail_for("openrouter/a/model", vec![endpoint]));
+    });
+    let popup = ratatui::layout::Rect::new(5, 2, 130, 16);
+
+    // When the popup renders.
+    let buffer = harness.render(popup, 140, 100);
+
+    // Then the override renders its own row under the `*` wildcard —
+    // a thresholdless override must not be silently dropped.
+    let text = buffer_text(&buffer);
+    assert!(
+        text.contains("*: in $6.00/M / out $12.0/M / cch \u{2014}"),
+        "the thresholdless override renders as a wildcard row, got: {text:?}"
+    );
+}
+
+#[rstest::rstest]
+fn page_down_keeps_the_selected_row_above_the_detail_pane() {
+    // Given a long table with a multi-endpoint detail pane visible —
+    // the pane covers the table's tail rows.
+    let harness = Harness::new();
+    let mut endpoint = full_endpoint();
+    endpoint.overrides = vec![(Some(200_000), 6e-6, 1.2e-5), (None, 5e-6, 1.0e-5)];
+    let rows: Vec<MarketRow> = (0..30)
+        .map(|i| listed_row(&format!("openrouter/m/model{i}")))
+        .collect();
+    harness.data.update(|d| {
+        d.rows = rows;
+        d.detail = Some(detail_for("openrouter/m/model0", vec![endpoint]));
+    });
+    harness.ui.update(|s| s.selection = 0);
+    let popup = ratatui::layout::Rect::new(5, 2, 130, 40);
+
+    // When a frame renders (publishing the pane-aware measurement) and
+    // the selection then pages down, with the detail following it (the
+    // debounce caught up) so the pane stays visible.
+    harness.render(popup, 140, 100);
+    let viewport = harness.ui.read().results_viewport;
+    assert!(viewport > 0, "a frame measured the paging window");
+    let rows = harness.data.read().rows.len();
+    let landed = viewport.min(rows - 1);
+    harness.ui.update(|s| s.selection = landed);
+    harness.data.update(|d| {
+        if let Some(detail) = &mut d.detail {
+            detail.model_id = format!("openrouter/m/model{landed}");
+        }
+    });
+
+    // Then the selected row renders ABOVE the pane's top edge — the
+    // paging window never lands the highlight in the covered zone.
+    let buffer = harness.render(popup, 140, 100);
+    let pane_top = (popup.y..popup.y + popup.height)
+        .find(|y| row_text(&buffer, *y, popup.width).contains("endpoints"))
+        .expect("the pane renders");
+    let selected_y = (popup.y..popup.y + popup.height)
+        .find(|y| {
+            row_text(&buffer, *y, popup.width).contains("m/model")
+                && (popup.x..popup.x + popup.width).any(|x| {
+                    buffer
+                        .cell((x, *y))
+                        .is_some_and(|c| c.bg == jinn_theme::default_theme().picker_selected_bg)
+                })
+        })
+        .expect("a selected row renders");
+    assert!(
+        selected_y < pane_top,
+        "the selection ({selected_y}) must sit above the pane ({pane_top})"
+    );
+}
+
+#[rstest::rstest]
 fn pane_suppresses_stale_detail_for_a_row_the_user_left() {
     // Given a data cell still holding the previous model's endpoints
     // while the highlight has moved on — the debounce has not caught up.
