@@ -1,7 +1,7 @@
 //! The model-market popup's overlay rendering: the centered full-table
 //! geometry, the table itself, the filter bar, the status line, the
-//! keybind footer, and the `?` help card the view draws below itself
-//! while it is toggled on.
+//! keybind footer, the highlighted model's detail pane, and the `?`
+//! help card the view draws below itself while it is toggled on.
 //!
 //! The render pass reads the cells only — no IO, no actor pokes, no
 //! messages published from render. PROJ is computed here from the live
@@ -14,6 +14,7 @@
 use std::ops::Range;
 
 use jinn_model_market_msg::MarketDataState;
+use jinn_model_market_msg::MarketDetail;
 use jinn_model_market_msg::MarketUiState;
 use jinn_model_market_msg::SortColumn;
 use jinn_slices::RenderFacts;
@@ -29,6 +30,8 @@ use ratatui::text::Span;
 use ratatui::widgets::Block;
 use ratatui::widgets::Borders;
 use ratatui::widgets::Cell;
+use ratatui::widgets::Clear;
+use ratatui::widgets::Paragraph;
 use ratatui::widgets::Row;
 use ratatui::widgets::Table;
 use ratatui::widgets::TableState;
@@ -38,9 +41,20 @@ use crate::help::market_help_card;
 use crate::routes::MARKET_BINDINGS;
 use crate::ui_state;
 
+/// The rows the table always keeps visible above the detail pane, so a
+/// pane can never swallow the table whole.
+const TABLE_KEEP_ROWS: u16 = 4;
+/// The rows the status line and footer occupy at the popup's bottom —
+/// the pane's floor sits above them.
+const STATUS_ROWS: u16 = 2;
+
 #[cfg(test)]
 #[path = "view_tests.rs"]
 mod view_tests;
+
+#[cfg(test)]
+#[path = "view_detail_tests.rs"]
+mod view_detail_tests;
 
 /// One table column: its header, which [`SortColumn`] keys its sort,
 /// whether the sort marker rides this column, its width, and the cell
@@ -204,6 +218,14 @@ pub fn render_market_popup(frame: &mut Frame<'_>, area: Rect, facts: &RenderFact
     // keys clamp against.
     let mut table_state = TableState::default().with_selected(Some(ui.selection));
     frame.render_stateful_widget(table, area, &mut table_state);
+
+    // The detail pane is the highlighted row's second region under the
+    // table — the contract's sketch. It draws before the status line
+    // because its budget is the rows above the status line.
+    let detail = detail_for_highlight(&data, &ui);
+    if let Some((detail, eci)) = &detail {
+        render_detail_pane(frame, inner, detail, *eci, &theme);
+    }
 
     render_status_line(frame, inner, &ui, &data, &theme);
     render_footer(frame, inner, &theme);
@@ -421,6 +443,188 @@ fn render_footer(frame: &mut Frame<'_>, inner: Rect, theme: &Theme) {
         spans.push(Span::styled(format!(" {desc}"), desc_style));
     }
     frame.render_widget(Line::from(spans), footer_area);
+}
+
+/// The pane's data iff the cell's detail belongs to the highlighted row:
+/// the detail plus the row's ECI score and confidence interval.
+///
+/// The cell can hold detail for a model the user has already navigated
+/// away from — a `j`/`k` crossed rows faster than the debounce refetched
+/// — and a pane showing the previous row's endpoints under the new
+/// highlight is a lie on screen. The stale rows are dropped here, at the
+/// only place that knows which row is highlighted.
+type PaneData = (MarketDetail, Option<(f64, Option<(f64, f64)>)>);
+
+fn detail_for_highlight(data: &MarketDataState, ui: &MarketUiState) -> Option<PaneData> {
+    let detail = data.detail.as_ref()?;
+    let highlighted = ui_state::highlighted_row(data, ui)?;
+    (detail.model_id == highlighted.id).then(|| {
+        (
+            detail.clone(),
+            highlighted.eci.map(|eci| (eci, highlighted.eci_ci)),
+        )
+    })
+}
+
+/// The pane's budget above the status line: the header, the rows the
+/// table keeps, and the pane's own lines. The pane never asks for a
+/// fixed share of the popup — it takes what its content needs, up to a
+/// floor that leaves the table usable, so a one-endpoint model loses no
+/// table rows a three-endpoint model keeps.
+fn detail_pane_budget(inner: Rect, lines: usize) -> u16 {
+    let pane_height = inner.height.saturating_sub(1 + TABLE_KEEP_ROWS);
+    u16::try_from(lines)
+        .unwrap_or(u16::MAX)
+        .min(pane_height)
+        .max(1)
+}
+
+/// The highlighted model's detail pane: endpoint rows, the model's ECI
+/// ± CI, and the pricing-override rows, laid out under the table and
+/// above the status line.
+///
+/// The pane is an overlay, not a table region: the table keeps its own
+/// geometry, and the pane paints over the rows its budget allows,
+/// transparently sharing the table's grid so column positions line up
+/// with the header above. Clear first — the table's selected-row
+/// background underneath must not bleed through the pane's own.
+fn render_detail_pane(
+    frame: &mut Frame<'_>,
+    inner: Rect,
+    detail: &MarketDetail,
+    eci: Option<(f64, Option<(f64, f64)>)>,
+    theme: &Theme,
+) {
+    let lines = detail_lines(detail, eci, theme);
+    let height = detail_pane_budget(inner, lines.len());
+    let area = Rect::new(
+        inner.x,
+        inner.y + inner.height.saturating_sub(height + STATUS_ROWS),
+        inner.width,
+        height,
+    );
+    frame.render_widget(Clear, area);
+    frame.render_widget(Paragraph::new(lines), area);
+}
+
+/// One endpoint's line: `name (tag)  IN $x/M  OUT $x/M  CACHE —/$x/M  LAT
+/// p50 —/Nms  TP p50 —/N tok/s  UP 1d N%`.
+///
+/// Columns are space-joined fragments, not a `Table`: the pane is an
+/// overlay over the table's own grid and a second constraint set would
+/// fight the header's. The fragment widths are padded by the paragraph's
+/// alignment, and each fragment carries its own style.
+fn endpoint_line(
+    endpoint: &jinn_model_market_msg::MarketEndpointRow,
+    theme: &Theme,
+) -> Line<'static> {
+    let muted = Style::default().fg(theme.muted_text);
+    let value = Style::default().fg(theme.primary_text);
+    let lat = endpoint
+        .latency_p50_ms
+        .map_or_else(|| "\u{2014}".to_owned(), |ms| format!("{ms:.0}ms"));
+    let tp = endpoint
+        .throughput_p50
+        .map_or_else(|| "\u{2014}".to_owned(), |t| format!("{t:.0} tok/s"));
+    let uptime = endpoint.uptime_1d.map_or_else(
+        || "\u{2014}".to_owned(),
+        |frac| format!("{:.1}%", frac * 100.0),
+    );
+    let tag = if endpoint.tag.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", endpoint.tag)
+    };
+    Line::from(vec![
+        Span::styled(
+            format!("  {}{tag}", endpoint.provider_name),
+            Style::default().fg(theme.popup_title),
+        ),
+        Span::styled("  IN ", muted),
+        Span::styled(format::price_per_million(endpoint.prompt_price), value),
+        Span::styled("  OUT ", muted),
+        Span::styled(format::price_per_million(endpoint.completion_price), value),
+        Span::styled("  CACHE ", muted),
+        Span::styled(format::cache_column(endpoint.cache_read_price), value),
+        Span::styled("  LAT p50 ", muted),
+        Span::styled(lat, value),
+        Span::styled("  TP p50 ", muted),
+        Span::styled(tp, value),
+        Span::styled("  UP 1d ", muted),
+        Span::styled(uptime, value),
+    ])
+}
+
+/// The model's ECI ± CI line, or `None` when the row is unmatched — an
+/// absent ECI is already stated by the table's `#` flag and the `—` in
+/// its ECI column; the pane does not repeat it.
+fn eci_line(eci: Option<(f64, Option<(f64, f64)>)>, theme: &Theme) -> Option<Line<'static>> {
+    let (eci, ci_interval) = eci?;
+    let muted = Style::default().fg(theme.muted_text);
+    let ci = ci_interval.map_or_else(String::new, |(low, high)| {
+        format!(" \u{b1} [{low:.1}, {high:.1}]")
+    });
+    Some(Line::from(vec![
+        Span::styled("  ECI", muted),
+        Span::styled(
+            format!(" {eci:.1}{ci}"),
+            Style::default().fg(theme.primary_text),
+        ),
+    ]))
+}
+
+/// One pricing-override row: `>Nk ctx: in X / out Y / cch Z`.
+///
+/// Thresholds are `Option` (the upstream publishes rows without one);
+/// the tokens render in `k` when present, and an absent threshold reads
+/// as `*` — "any prompt above the endpoint's base price" is a row the
+/// pane must not silently drop.
+fn override_line(
+    (min_prompt_tokens, prompt, completion): (Option<u32>, f64, f64),
+) -> Line<'static> {
+    let threshold = min_prompt_tokens.map_or_else(
+        || "*".to_owned(),
+        |tokens| format!(">{}k ctx", tokens / 1_000),
+    );
+    Line::from(format!(
+        "    {threshold}: in {} / out {} / cch \u{2014}",
+        format::price_per_million(prompt),
+        format::price_per_million(completion),
+    ))
+}
+
+/// The pane's lines: the model header, one line per endpoint, the ECI
+/// line, then the override rows.
+fn detail_lines(
+    detail: &MarketDetail,
+    eci: Option<(f64, Option<(f64, f64)>)>,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let mut lines = vec![header_line(detail, theme)];
+    for endpoint in &detail.endpoints {
+        lines.push(endpoint_line(endpoint, theme));
+    }
+    if let Some(eci) = eci_line(eci, theme) {
+        lines.push(eci);
+    }
+    let overrides: Vec<Line<'static>> = detail
+        .endpoints
+        .iter()
+        .flat_map(|endpoint| endpoint.overrides.iter().map(|&row| override_line(row)))
+        .collect();
+    lines.extend(overrides);
+    lines
+}
+
+/// The pane's header: the model id the detail was fetched for, so the
+/// pane states whose endpoints these are, in the accent.
+fn header_line(detail: &MarketDetail, theme: &Theme) -> Line<'static> {
+    Line::from(Span::styled(
+        format!("  {} endpoints", detail.model_id),
+        Style::default()
+            .fg(theme.popup_title)
+            .add_modifier(Modifier::BOLD),
+    ))
 }
 
 /// The popup's result-row count for a frame of the given size: the popup
