@@ -5,6 +5,8 @@ edition.workspace = true
 description = "The OpenRouter model-market popup: cost projection under adjustable mix presets, Epoch ECI quality join, per-endpoint detail, all fetched through actors with explicit TTL caches."
 
 [dependencies]
+error-stack = { workspace = true }
+wherror = { workspace = true }
 jinn-common = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-kernel = { workspace = true }
@@ -18,16 +20,17 @@ jinn-selection-widget = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-theme = { workspace = true }
 csv = { workspace = true }
-error-stack = { workspace = true }
 fuzzy-matcher = { workspace = true }
 jiff = { workspace = true }
 ratatui = { workspace = true }
-reqwest = { workspace = true }
+# Pinned to jinn-provider's reqwest (0.12): `list_endpoints` takes that
+# version's `Client`, and the workspace default is 0.13.
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+tokio = { workspace = true }
 tracing = { workspace = true }
 trouper = { workspace = true }
-wherror = { workspace = true }
 unicode-segmentation = { workspace = true }
 zip = { workspace = true }
 

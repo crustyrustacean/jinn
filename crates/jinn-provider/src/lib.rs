@@ -43,8 +43,8 @@ pub use jinn_core_types::tool_types::{ServerToolType, ToolCall, ToolDefinition, 
 pub use jinn_core_types::url_citation::UrlCitation;
 pub use no_providers::NoProvidersAvailableFactory;
 pub use openai_compat::{
-    EndpointInfo, OpenAiCompatibleFactory, OpenAiCompatibleService, ProviderConfig, list_endpoints,
-    list_endpoints_default_client,
+    EndpointInfo, OpenAiCompatibleFactory, OpenAiCompatibleService, PricingOverride,
+    ProviderConfig, list_endpoints, list_endpoints_default_client,
 };
 pub use sample::SampleLlmServiceFactory;
 pub use service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory, ToolStream};
