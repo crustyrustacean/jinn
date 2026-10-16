@@ -91,40 +91,33 @@ fn column_section(theme: &Theme) -> Vec<Line<'static>> {
     lines.extend([
         entry(
             "MODEL",
-            "author/slug, plus a dimmed :variant — the full id is what <enter> switches to.",
+            "author/slug, plus a dimmed :variant",
             theme,
         ),
-        entry("IN/M", "prompt price, $ per million input tokens.", theme),
+        entry("IN/M", "prompt price, $ per 1 million input tokens.", theme),
         entry(
             "OUT/M",
-            "completion price, $ per million output tokens.",
+            "completion price, $ per 1 million output tokens.",
             theme,
         ),
         entry(
             "CACHE/M",
-            "cached-input read price. \u{2014} means the listing publishes no cache price: \
-             every input token bills at the IN/M prompt price, and PROJ still costs the \
-             row fully.",
+            "cached-input read price. No listing means no advertised cache pricing (assume IN/M price)",
             theme,
         ),
         entry(
             "PROJ",
-            "projected $/turn under the fixed mix (10M input tokens, 98% cache hit, \
-             50k output tokens; a cache miss bills at the prompt price): \
-             I\u{b7}(hit\u{b7}cache + (1\u{2212}hit)\u{b7}prompt) + O\u{b7}completion, \
-             recomputed every frame.",
+            "projected cost per task, using fixed values (10M input tokens, 98% cache hit, 50k output tokens)",
             theme,
         ),
         entry(
             "ECI",
-            "the Epoch Capabilities Index — Epoch AI's cross-benchmark capability score. \
-             \u{2014} means the listing matched no ECI row (flagged #).",
+            "Epoch Capabilities Index cross-benchmark capability score.",
             theme,
         ),
         entry(
             "FLAGS",
-            "\u{2020} conditional pricing overrides \u{b7} f a :free listing \u{b7} \
-             # no ECI data for this model.",
+            "\u{2020} conditional pricing overrides \u{b7} f a :free listing \u{b7} # no ECI data for this model.",
             theme,
         ),
     ]);
@@ -138,53 +131,26 @@ fn detail_section(theme: &Theme) -> Vec<Line<'static>> {
     let mut lines = section("Detail mode", theme);
     lines.extend([
         entry(
-            "enter/leave",
-            "<enter> on a model row drills in; <esc> or <backspace> returns to the table \
-             with the filter, sort, and selection untouched.",
-            theme,
-        ),
-        entry(
             "ENDPOINT",
-            "one row per provider endpoint: provider name and routing tag — plus the \
-             Default row (auto-route), always first.",
+            "Provider hosting the model. DEFAULT (OpenRouter auto-picks) is always at the top.",
             theme,
         ),
         entry(
             "IN/M, OUT/M, CACHE/M",
-            "the endpoint's own prices, $ per million; the Default row prices from the \
-             model's listing. \u{2014} means unpublished (every input token bills at IN/M).",
+            "the specific endpoint's prices in $ per 1 million. DEFAULT row prices from the model's front page listing.",
             theme,
         ),
         entry(
             "PROJ",
-            "projected $/turn under the same fixed mix as the table, per endpoint.",
+            "projected $/task using the selected mix, per endpoint.",
             theme,
         ),
         entry(
             "LAT p50, TP p50",
-            "median time-to-first-token (ms) and output throughput (tok/s) over the \
-             last 30m.",
+            "median time-to-first-token (ms) and output throughput (tok/s) over the last 30m.",
             theme,
         ),
         entry("UP 1d", "the endpoint's uptime over the last day.", theme),
-        entry(
-            "<enter>",
-            "on Default: switch the model and let OpenRouter auto-route (clears any \
-             pinned endpoint). On a provider row: switch and pin that endpoint as the \
-             model's default — reflected in <leader>sE.",
-            theme,
-        ),
-        entry(
-            "overrides",
-            "conditional price rows above a minimum-prompt-token threshold (the \
-             table's \u{2020} flag) apply on OpenRouter's side; they are not columns here.",
-            theme,
-        ),
-        note(
-            "LAT and TP read \u{2014} without an OPENROUTER_API_KEY: the percentile \
-             metrics are auth-gated.",
-            theme,
-        ),
     ]);
     lines
 }
