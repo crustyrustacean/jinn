@@ -127,7 +127,7 @@ const MARKET_COLUMNS: &[MarketColumn] = &[
         header: "MODEL",
         sort: SortColumn::Model,
         keyed: true,
-        width: 28,
+        width: 38,
         cell: model_column,
     },
     MarketColumn {
