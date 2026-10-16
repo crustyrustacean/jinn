@@ -545,7 +545,7 @@ fn esc_in_filter_mode_clears_the_filter_and_returns_focus_to_the_table() {
 }
 
 #[rstest::rstest]
-fn esc_clearing_a_focused_filter_fetches_after_the_clear() {
+fn esc_clearing_a_focused_filter_publishes_nothing() {
     // Given an open popup with the filter focused, "small" narrowing
     // the seeded table to one row.
     let mut wired = Wired::new();
@@ -557,15 +557,15 @@ fn esc_clearing_a_focused_filter_fetches_after_the_clear() {
     });
 
     // When ESC fires.
-    let mut result = wired.press("close-model-market", "close");
+    let result = wired.press("close-model-market", "close");
 
-    // Then the clear publishes the fetch for the widened set's
-    // highlighted row 0, stamped with the UI cell's incremented
-    // sequence.
-    let fetches = first_message::<jinn_model_market_msg::FetchEndpoints>(&mut result)
-        .expect("clearing a filter fetches the restored highlight");
-    assert_eq!(fetches.model_id, "openrouter/a/small");
-    assert_eq!(fetches.seq, wired.ui().read().fetch_seq);
+    // Then the filter cleared, focus handed back, the selection reset
+    // to the widened set's top — and nothing published.
+    let ui = wired.ui();
+    assert!(ui.read().filter.is_empty());
+    assert!(!ui.read().filter_focused);
+    assert_eq!(ui.read().selection, 0);
+    assert!(result.messages.is_empty());
 }
 
 // ── Filter focus (the hook) ─────────────────────────────────────────────
@@ -861,8 +861,8 @@ fn enter_on_the_default_row_publishes_the_model_only_triple() {
 
 #[rstest::rstest]
 fn enter_on_a_provider_row_pins_that_endpoint() {
-    // Given detail mode with the highlight on the second (untagged)
-    // endpoint row.
+    // Given detail mode with the highlight on the second displayed
+    // provider row.
     let mut wired = Wired::new();
     drill_in(&mut wired);
     wired.ui().update(|s| s.detail_selection = 2);
@@ -887,10 +887,69 @@ fn enter_on_a_provider_row_pins_that_endpoint() {
     assert_eq!(pinned.model, "openrouter/a/small");
     assert_eq!(
         pinned.tag,
-        Some(String::new()),
-        "the provider row pins its routing tag"
+        Some("azure/us-east".to_owned()),
+        "the pin follows the RENDERED row: the fixture's fetch order is [Azure, \
+         Lambda] but the PROJ-ascending view renders [Default, Lambda, Azure], \
+         so cursor index 2 is Azure"
     );
     assert_eq!(wired.state.frontend.scope(), jinn_slices::FocusScope::Input);
+}
+
+#[rstest::rstest]
+fn confirm_detail_pins_the_row_the_cursor_names_not_the_fetch_order() {
+    // Given detail mode over the detail_fixture — fetch order [Azure,
+    // Lambda], rendered PROJ-ascending order [Default, Lambda, Azure] —
+    // with the cursor on index 2. Fetch order names Lambda there; the
+    // rendered projection names Azure.
+    let mut wired = Wired::new();
+    drill_in(&mut wired);
+    wired.ui().update(|s| s.detail_selection = 2);
+
+    // When ENTER fires.
+    let mut result = wired.press("confirm-model-market", "switch/pin");
+
+    // Then the pin carries Azure's tag — the row the cursor sat on.
+    let drained = drain_payloads(&mut result);
+    let pin_payload = drained
+        .iter()
+        .find(|(name, _)| *name == "SetEndpointDefault")
+        .map(|(_, payload)| payload.clone())
+        .expect("SetEndpointDefault publishes");
+    let pinned: jinn_provider_selection_msg::SetEndpointDefault =
+        serde_json::from_value(pin_payload).expect("SetEndpointDefault decodes");
+    assert_eq!(
+        pinned.tag,
+        Some("azure/us-east".to_owned()),
+        "the pin names the rendered row, not the fetch-order row"
+    );
+}
+
+#[rstest::rstest]
+fn confirm_detail_at_the_fetch_order_twin_pins_the_untagged_row() {
+    // Given the same fixture with the cursor on index 1 — Lambda in the
+    // rendered order, Azure in fetch order.
+    let mut wired = Wired::new();
+    drill_in(&mut wired);
+    wired.ui().update(|s| s.detail_selection = 1);
+
+    // When ENTER fires.
+    let mut result = wired.press("confirm-model-market", "switch/pin");
+
+    // Then the pin carries Lambda's EMPTY tag — proving the projection
+    // (not the fixture layout) decides which endpoint pins.
+    let drained = drain_payloads(&mut result);
+    let pin_payload = drained
+        .iter()
+        .find(|(name, _)| *name == "SetEndpointDefault")
+        .map(|(_, payload)| payload.clone())
+        .expect("SetEndpointDefault publishes");
+    let pinned: jinn_provider_selection_msg::SetEndpointDefault =
+        serde_json::from_value(pin_payload).expect("SetEndpointDefault decodes");
+    assert_eq!(
+        pinned.tag,
+        Some(String::new()),
+        "index 1 in the rendered order is Lambda (untagged)"
+    );
 }
 
 #[rstest::rstest]
@@ -1147,45 +1206,24 @@ fn j_clamps_against_the_live_filtered_count_not_the_viewport() {
 }
 
 #[rstest::rstest]
-fn navigation_into_an_unfetched_row_publishes_a_debounced_fetch() {
+fn navigation_publishes_nothing() {
     // Given a seeded table with no detail loaded.
     let mut wired = Wired::new();
     wired.press("open-model-market", "model market");
     seeded(&mut wired);
 
     // When moving down.
-    let mut result = wired.press("move-model-market-down", "down");
-
-    // Then a FetchEndpoints rides the result, stamped with the UI
-    // cell's incremented sequence.
-    let fetches = first_message::<jinn_model_market_msg::FetchEndpoints>(&mut result)
-        .expect("navigation into an unfetched row fetches");
-    assert_eq!(fetches.model_id, "openrouter/b/big");
-    assert_eq!(fetches.seq, wired.ui().read().fetch_seq);
-}
-
-#[rstest::rstest]
-fn navigation_with_detail_already_present_publishes_nothing() {
-    // Given a seeded table whose second row's detail is already loaded.
-    let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
-    seeded(&mut wired);
-    wired.data().update(|d| {
-        d.detail = Some(jinn_model_market_msg::MarketDetail {
-            model_id: "openrouter/b/big".to_owned(),
-            endpoints: vec![],
-        });
-    });
-
-    // When moving down.
     let result = wired.press("move-model-market-down", "down");
 
-    // Then no fetch publishes.
+    // Then the highlight actually moved — the behavior that must
+    // survive — and nothing published: table-mode motion fetches only
+    // on drill-in ENTER.
+    assert_eq!(wired.ui().read().selection, 1);
     assert!(result.messages.is_empty());
 }
 
 #[rstest::rstest]
-fn hook_j_moves_and_fetches_the_newly_highlighted_row() {
+fn hook_j_moves_without_publishing() {
     // Given a seeded table with no detail loaded, table focused.
     let mut wired = Wired::new();
     wired.press("open-model-market", "model market");
@@ -1193,14 +1231,11 @@ fn hook_j_moves_and_fetches_the_newly_highlighted_row() {
 
     // When `j` arrives as the insert-char intent the keymap's catch-all
     // mints (route rows cannot own char keys in a hook scope).
-    let mut result = wired.handle(edit_intent("insert-char", 'j'));
+    let result = wired.handle(edit_intent("insert-char", 'j'));
 
-    // Then the fetch for the newly highlighted row rides the hook's
-    // result, stamped with the UI cell's incremented sequence.
-    let fetches = first_message::<jinn_model_market_msg::FetchEndpoints>(&mut result)
-        .expect("hook navigation into an unfetched row fetches");
-    assert_eq!(fetches.model_id, "openrouter/b/big");
-    assert_eq!(fetches.seq, wired.ui().read().fetch_seq);
+    // Then the highlight moved and nothing published.
+    assert_eq!(wired.ui().read().selection, 1);
+    assert!(result.messages.is_empty());
 }
 
 /// A two-row table whose highlighted row changes under every sort key:
@@ -1227,7 +1262,7 @@ fn reorder_fixture(wired: &mut Wired) {
 #[case('h')]
 #[case('l')]
 #[case('s')]
-fn sort_keys_fetch_the_row_their_reorder_promotes(#[case] key: char) {
+fn sort_keys_publish_nothing(#[case] key: char) {
     // Given a table whose default highlight (`z/dear`, cheapest PROJ)
     // every sort key reorders away, no detail loaded.
     let mut wired = Wired::new();
@@ -1236,14 +1271,17 @@ fn sort_keys_fetch_the_row_their_reorder_promotes(#[case] key: char) {
 
     // When the sort key arrives as the insert-char intent the keymap's
     // catch-all mints.
-    let mut result = wired.handle(edit_intent("insert-char", key));
+    let result = wired.handle(edit_intent("insert-char", key));
 
-    // Then the fetch names the row the reorder promoted to the
-    // highlight, stamped with the UI cell's incremented sequence.
-    let fetches = first_message::<jinn_model_market_msg::FetchEndpoints>(&mut result)
-        .expect("a sort reorder that moves the highlight fetches");
-    assert_eq!(fetches.model_id, "openrouter/a/cheap");
-    assert_eq!(fetches.seq, wired.ui().read().fetch_seq);
+    // Then the highlight moved onto the row the reorder promoted — the
+    // highlight index stays 0, the row under it changed — and nothing
+    // published.
+    let highlighted =
+        jinn_model_market::ui_state::highlighted_row(&wired.data().read(), &wired.ui().read())
+            .expect("the reordered projection still highlights a row");
+    assert_eq!(highlighted.id, "openrouter/a/cheap", "a/cheap now leads");
+    assert_eq!(wired.ui().read().selection, 0);
+    assert!(result.messages.is_empty());
 }
 
 #[rstest::rstest]
@@ -1292,6 +1330,60 @@ fn question_mark_types_while_the_filter_is_focused() {
     // Then it typed into the filter instead of toggling the card.
     assert_eq!(wired.ui().read().filter, "?");
     assert!(!wired.ui().read().help_visible);
+}
+
+#[rstest::rstest]
+fn question_mark_still_toggles_help_in_detail_mode() {
+    // Given detail mode over a landed detail projection.
+    let mut wired = Wired::new();
+    drill_in(&mut wired);
+
+    // When `?` arrives.
+    wired.handle(edit_intent("insert-char", '?'));
+
+    // Then the help card is showing in detail mode too.
+    assert!(wired.ui().read().help_visible);
+    // And `?` again hides it.
+    wired.handle(edit_intent("insert-char", '?'));
+    assert!(!wired.ui().read().help_visible);
+}
+
+// ── Detail mode: f/i are inert ──────────────────────────────────────────
+
+#[rstest::rstest]
+fn f_in_detail_mode_does_not_focus_the_filter() {
+    // Given detail mode over a landed detail projection (the drill-in
+    // fixture's table state carries filter text).
+    let mut wired = Wired::new();
+    drill_in(&mut wired);
+
+    // When `f` arrives as the insert-char intent.
+    wired.handle(edit_intent("insert-char", 'f'));
+
+    // Then the filter stayed unfocused and its text unchanged — the key
+    // is inert in detail mode.
+    let ui = wired.ui();
+    assert!(!ui.read().filter_focused);
+    assert_eq!(ui.read().filter, "son");
+    // And the mode is still open.
+    assert!(ui.read().detail_model.is_some());
+}
+
+#[rstest::rstest]
+fn i_in_detail_mode_does_not_focus_the_filter() {
+    // Given detail mode over a landed detail projection.
+    let mut wired = Wired::new();
+    drill_in(&mut wired);
+
+    // When `i` arrives as the insert-char intent.
+    wired.handle(edit_intent("insert-char", 'i'));
+
+    // Then the filter stayed unfocused and its text unchanged.
+    let ui = wired.ui();
+    assert!(!ui.read().filter_focused);
+    assert_eq!(ui.read().filter, "son");
+    // And the mode is still open.
+    assert!(ui.read().detail_model.is_some());
 }
 
 // ── Refresh ─────────────────────────────────────────────────────────────
@@ -1619,6 +1711,46 @@ fn filter_matches_are_highlighted_in_the_model_column() {
         .filter_map(|x| buffer.cell((x, y)).map(Cell::symbol))
         .collect();
     assert_eq!(glyphs, "small");
+}
+
+#[rstest::rstest]
+fn multi_term_filter_narrows_the_table() {
+    // Given the seeded two-row table (`a/small`, `b/big`) and a
+    // multi-term filter that only `a/small` can satisfy — typed through
+    // the real hook: `f` focuses, then the letters.
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "model market");
+    seeded(&mut wired);
+    wired.handle(edit_intent("insert-char", 'f'));
+    assert!(wired.ui().read().filter_focused, "`f` focused the filter");
+    for ch in "sm l".chars() {
+        wired.handle(edit_intent("insert-char", ch));
+    }
+
+    // When the popup renders.
+    let area = ratatui::layout::Rect::new(0, 0, 120, 40);
+    let popup = jinn_model_market::view::market_overlay_rect(&area).expect("frame fits the popup");
+    let buffer = render_to_buffer(&wired, 120, 40);
+
+    // Then the AND-narrowed set renders: only `a/small` — `sm l` needs
+    // `sm` AND `l`, and `b/big` has neither term fully.
+    let popup_rows: Vec<String> = (popup.y + 4..popup.y + 8)
+        .map(|y| row_text(&buffer, y, popup.width))
+        .collect();
+    assert!(
+        popup_rows.iter().any(|r| r.contains("a/small")),
+        "the AND-matching row renders: {popup_rows:?}"
+    );
+    assert!(
+        !popup_rows.iter().any(|r| r.contains("b/big")),
+        "the row missing a term is filtered out: {popup_rows:?}"
+    );
+    // And the filter line carries the typed terms verbatim.
+    let filter_line = row_text(&buffer, popup.y + 1, popup.width);
+    assert!(
+        filter_line.contains("sm l"),
+        "the filter line shows the multi-term query, got: {filter_line:?}"
+    );
 }
 
 #[rstest::rstest]
