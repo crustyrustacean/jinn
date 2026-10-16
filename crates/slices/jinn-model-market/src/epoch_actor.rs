@@ -34,7 +34,6 @@ use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
 use crate::epoch;
-use crate::epoch_cache;
 
 /// The epoch actor's static trouper path.
 pub const EPOCH_ACTOR_PATH: &str = "model-market-epoch";
@@ -49,9 +48,9 @@ pub struct EpochMarketActorDeps {
     pub deps: ActorDeps,
     /// The market data cell — this actor is its epoch-fields writer.
     pub data_cell: TypedCell<MarketDataState>,
-    /// The shared cache root (`AppPaths::cache_dir()`); the epoch dir
-    /// sits one level down (`jinn/epoch`).
-    pub cache_root: std::path::PathBuf,
+    /// The resolved epoch cache directory (`AppPaths::epoch_cache_dir()`),
+    /// passed directly so the actor cannot re-derive a divergent path.
+    pub epoch_cache_dir: std::path::PathBuf,
     /// The HTTP client for the zip download (tests point it at a mock).
     pub client: reqwest::Client,
     /// The epoch zip URL (tests point it at a mock server).
@@ -67,7 +66,7 @@ pub struct EpochMarketActor {
     deps: ActorDeps,
     /// The market data cell — the only cell this actor writes.
     data_cell: TypedCell<MarketDataState>,
-    /// Resolved epoch cache dir (`cache_root/jinn/epoch`).
+    /// Resolved epoch cache dir (the deps' `epoch_cache_dir`).
     cache_dir: std::path::PathBuf,
     /// The HTTP client for the zip download.
     client: reqwest::Client,
@@ -114,11 +113,10 @@ impl EpochMarketActor {
                 move || {
                     let actor_deps = actor_deps.clone();
                     Box::pin(async move {
-                        let cache_dir = epoch_cache::epoch_cache_dir(&actor_deps.cache_root);
                         Ok(Self {
                             deps: actor_deps.deps,
                             data_cell: actor_deps.data_cell,
-                            cache_dir,
+                            cache_dir: actor_deps.epoch_cache_dir,
                             client: actor_deps.client,
                             zip_url: actor_deps.zip_url,
                             now_ms: actor_deps.now_ms,

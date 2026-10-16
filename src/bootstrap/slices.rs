@@ -147,7 +147,7 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
     // `FetchModels` would race it.
     jinn_model_market::activate(&mut ctx.host());
     let services_snapshot = ctx.services().clone();
-    jinn_model_market::activate_actors(&services_snapshot);
+    jinn_model_market::activate_actors(&services_snapshot).await;
     // The workflows picker repaints from `WorkflowsLoaded`, which the
     // session-init discovery worker (activated below) publishes; its
     // subscription must exist first, and nothing below resolves a

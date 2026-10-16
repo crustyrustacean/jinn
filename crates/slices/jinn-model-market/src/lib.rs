@@ -110,15 +110,18 @@ pub fn activate(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
 /// returns, so composition must call it before any user interaction can
 /// open the popup; within the boot list the whole independents block sits
 /// ahead of the interactive tail, which is the guarantee the popup's
-/// keys ride.
+/// keys ride. The tail also publishes `RefreshEpoch`: the ECI column has
+/// data before the popup can open (001 §1), warm cache within the TTL
+/// serves with no request, and an expired one downloads — the lazy
+/// weekly check is real for the epoch half.
 ///
 /// # Panics
 ///
 /// Panics if the catalog has not run (the actors would write into
 /// absent cells) or an actor's path is already taken — both are
 /// composition bugs that must abort launch, not continue degraded.
-pub fn activate_actors(services: &jinn_kernel::Services) {
-    activate_actors_with(services, ActorEndpoints::production());
+pub async fn activate_actors(services: &jinn_kernel::Services) {
+    activate_actors_with(services, ActorEndpoints::production()).await;
 }
 
 /// The outbound endpoints the two market actors talk to.
@@ -145,7 +148,9 @@ impl ActorEndpoints {
     }
 }
 
-/// [`activate_actors`] with explicit endpoints — the test seam.
+/// [`activate_actors`] with explicit endpoints — the test seam. Ends
+/// with the same boot `RefreshEpoch` kick the production entry point
+/// publishes.
 ///
 /// # Panics
 ///
@@ -156,7 +161,7 @@ impl ActorEndpoints {
     clippy::expect_used,
     reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
 )]
-pub fn activate_actors_with(services: &jinn_kernel::Services, endpoints: ActorEndpoints) {
+pub async fn activate_actors_with(services: &jinn_kernel::Services, endpoints: ActorEndpoints) {
     let actor_deps = jinn_kernel::common::actor_deps::ActorDeps {
         services: services.clone(),
     };
@@ -170,14 +175,16 @@ pub fn activate_actors_with(services: &jinn_kernel::Services, endpoints: ActorEn
         .expect("the cell catalog registers the model-market UI slot before any actor spawns");
 
     // Epoch first: its `EpochLoaded` event is what the OpenRouter actor
-    // consumes to re-join cached rows, so its subscription must exist
-    // before the sibling spawns.
+    // consumes to re-join rows, so the event finds a subscriber whether
+    // or not this load lands before the sibling spawns (bus publishes
+    // are unordered; the OR actor handles the event arriving early or
+    // late either way).
     let _epoch = epoch_actor::EpochMarketActor::spawn(
         &services.trouper_system,
         epoch_actor::EpochMarketActorDeps {
             deps: actor_deps.clone(),
             data_cell: data_cell.clone(),
-            cache_root: services.paths.app_cache_root(),
+            epoch_cache_dir: services.paths.epoch_cache_dir(),
             client: reqwest::Client::new(),
             zip_url: endpoints.zip_url,
             now_ms: epoch_actor::epoch_market_clock(),
@@ -193,4 +200,10 @@ pub fn activate_actors_with(services: &jinn_kernel::Services, endpoints: ActorEn
             cache_dir: std::path::PathBuf::new(),
         },
     );
+    // The boot kick. Published after both spawns return — the epoch
+    // subscription is live by then, so the load cannot drop.
+    services
+        .bus
+        .publish(jinn_model_market_msg::RefreshEpoch)
+        .await;
 }
