@@ -592,15 +592,41 @@ mod tests {
         assert_eq!(shape(&first), shape(&second));
     }
 
+    /// Count of cached configurations for `language`.
+    ///
+    /// The cache is process-global and shared with every other highlighting
+    /// test in this binary, so assertions on it must be relative (a delta)
+    /// rather than absolute counts.
+    fn cached_config_count_for(language: &tree_sitter::Language) -> usize {
+        config_cache()
+            .lock()
+            .keys()
+            .filter(|(lang, _)| lang == language)
+            .count()
+    }
+
     #[test]
     fn a_query_that_fails_to_build_is_not_cached() {
-        // Given an entry whose query does not compile.
-        let entry = LangEntry {
+        // Given the valid rust configuration primed by this test itself — the
+        // cache is process-global, so it cannot assume another test got there
+        // first — and its entry count captured.
+        let valid = LangEntry {
+            language: tree_sitter_rust::LANGUAGE.into(),
+            highlights_query: tree_sitter_rust::HIGHLIGHTS_QUERY,
+        };
+        assert!(
+            cached_config(&valid).is_some(),
+            "the valid rust query must build"
+        );
+        let cached_before = cached_config_count_for(&valid.language);
+
+        // And an entry whose query does not compile.
+        let failing = LangEntry {
             language: tree_sitter_rust::LANGUAGE.into(),
             highlights_query: "(does_not_exist) @comment",
         };
-        let first = cached_config(&entry);
-        let second = cached_config(&entry);
+        let first = cached_config(&failing);
+        let second = cached_config(&failing);
 
         // Then both attempts fail, so the failure path degrades on every call
         // rather than being memoised into a permanent miss.
@@ -608,13 +634,9 @@ mod tests {
         assert!(second.is_none());
         // And nothing was stored for it.
         assert_eq!(
-            config_cache()
-                .lock()
-                .keys()
-                .filter(|(lang, _)| *lang == entry.language)
-                .count(),
-            1,
-            "only the valid rust query should be cached for this grammar"
+            cached_config_count_for(&valid.language),
+            cached_before,
+            "a failing query must not add a cache entry for this grammar"
         );
     }
 
