@@ -64,7 +64,7 @@ The implementor's checkout holds only its own work, so a sweeping add
 there is safe.
 
 **Never sweep-add in the orchestrator's checkout.** That tree holds the
-run state — the tracker (`.issues/`), contracts (`.plans/`), and the
+run state — the tracker (`.issues/`), plans (`.plans/`), and the
 ledger (`.autodev.ledger.md`) — which the orchestrator ignored at
 startup (fossil: `.fossil-settings/ignore-glob`; git:
 `.git/info/exclude`). Ignored or not, never `addremove` / `git add -A`
@@ -93,7 +93,7 @@ fossil diff --from <parent> --to <branch> -R <repo-file>  # full patch
 
 `-R` is read-only: it never opens, moves, or closes a checkout. (git:
 `git diff <parent>..<branch>` from the orchestrator's checkout reads
-local branches directly.) The full patch plus the contract is the
+local branches directly.) The full patch plus the execution plan is the
 review's entire input: end state vs. delivered diff, tests vs. change,
 scope vs. files-to-touch.
 

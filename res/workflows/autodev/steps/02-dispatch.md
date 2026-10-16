@@ -1,15 +1,18 @@
-# Dispatch — attach an implementor for contract-ready work.
+# Dispatch — attach an implementor for execution-plan-ready work.
 
-## Contract first, always
+## Execution plan first, always
 
-Every issue flows through the planner before any implementor session
+_Every_ issue flows through the planner before any implementor session
 exists for it:
 
-1. **Contract dispatch.** `tell_session` to the planner: the issue file's absolute path, your checkout path (where it saves the contract), the issue id. Mark the issue `status: contracting` while it runs.
-2. **Spawn.** When the planner reports READY, the issue is claimable: mark it `open`, then attach an implementor per the procedure below. **Every freshly-attached implementor must have something the planner generated behind it** — the contract is what makes the run bounded. The two legal flows without a new contract round are: a REJECT sending work back to its existing implementor (the review is the plan), and a teardown conflict re-dispatch (same contract, same worker). Any *new* issue — reviewer finding, implementor proposal, defect — that gets its own implementor goes through the planner first, every time, however small: the planner is `preserve`, so a follow-up contract is cheap — it already holds the map. The implementor enforces this gate from its side: an implementor dispatched with no contract reports `BLOCKED no-contract`, and that BLOCKED is your signal to run the contract round you skipped.
+1. **Plan dispatch.** `tell_session` to the planner: the issue file's absolute path, your checkout path (where it saves the execution plan), the issue id. Mark the issue `status: planning` while it runs.
+2. **Spawn.** When the planner reports READY, the issue is claimable: mark it `open`, then attach an implementor per the procedure below. **Every freshly-attached implementor must have something the planner generated behind it** — the execution plan is what makes the run bounded. The two legal flows without a new planner round are: a REJECT sending work back to its existing implementor (the review is the execution plan), and a teardown conflict re-dispatch (same execution plan, same worker). Any _new_ issue — reviewer finding, implementor proposal, defect — that gets its own implementor goes through the planner first, every time, however small. The implementor enforces this gate from its side: an implementor dispatched with no plan reports `BLOCKED no-execution-plan`, and that BLOCKED is your signal to run the planner round you skipped.
 
-One exception: triage of a decomposable root dispatches the planner
-first too (01-triage.md) — the contract pass informs the split.
+Triage of a decomposable issue is the same dispatch (01-triage.md):
+DECOMPOSE returns children; you transcribe them into tracker files and
+dispatch each child back to the planner in plan mode. Never split an
+issue yourself — the planner is the only session that has read the
+code.
 
 ## Find claimable work
 
@@ -17,8 +20,9 @@ Scan the tracker. An issue is claimable when its status is `open` and
 every issue named in its `blocked-by` is closed. Order claimable issues
 by dependency (least blocked first), then by number (oldest first).
 Concurrent implementors are fine when the issues are file-disjoint —
-triage's contracts fence territories (each contract names the files it
-owns), so disjointness is already on disk. When two claimable issues
+each execution plan fences its territory (names the files it owns), so
+disjointness is already on disk. DECOMPOSE children carry their
+boundaries in the verdict, which become their issue bodies. When two claimable issues
 touch the same files, serialize them: the second waits for the first's
 teardown, because parallel teardowns onto the same parent would fight.
 
@@ -47,7 +51,7 @@ own, even though the session remembers the previous one. For a fresh
 attach:
 
 - the issue file's absolute path,
-- the contract file's absolute path (`.plans/<issue>/contract.md` in your checkout),
+- the execution plan file's absolute path (`.plans/<issue>/execution-plan.md` in your checkout),
 - the issue's id and its branch name,
 - the implementor's checkout directory (absolute path — the lifecycle setup printed it; it is also the session's working directory),
 - your branch name (the parent its teardown will merge into),
@@ -68,7 +72,7 @@ fields.
 
 - the issue file's absolute path,
 - the issue's id,
-- your checkout's absolute path (the contract is saved under it, `.plans/<issue-id>-<slug>/contract.md`),
+- your checkout's absolute path (the execution plan is saved under it, `.plans/<issue-id>-<slug>/execution-plan.md`),
 - the absolute paths of `steps/scm.md` and the target repo's conventions file,
 - the reminder that its repo map persists (`preserve`) — refresh only what the dispatch says changed.
 
@@ -79,8 +83,8 @@ review gate). The reviewer has no checkout — it reads the branch
 through the repository file:
 
 - the issue's id and its branch name,
-- the contract file's absolute path,
+- the execution plan file's absolute path,
 - the absolute path of `steps/scm.md` (its review section tells it how to read a branch without a checkout),
 - the repository file's absolute path (recorded in your ledger at startup),
 - the target repo's conventions file, if it has one,
-- the report's contract-divergences line, if any (the reviewer judges whether the divergence was honest).
+- the report's execution plan divergences line, if any (the reviewer judges whether the divergence was honest).
