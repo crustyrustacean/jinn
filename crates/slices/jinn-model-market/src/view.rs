@@ -1,6 +1,7 @@
 //! The model-market popup's overlay rendering: the centered full-table
-//! geometry, the table itself, the filter bar, the status line, and the
-//! keybind footer.
+//! geometry, the table itself, the filter bar, the status line, the
+//! keybind footer, and the `?` help card the view draws below itself
+//! while it is toggled on.
 //!
 //! The render pass reads the cells only — no IO, no actor pokes, no
 //! messages published from render. PROJ is computed here from the live
@@ -10,6 +11,8 @@
 //! header, every data row, and the layout constraints all derive from
 //! it, so a header cannot sit over the wrong data column.
 
+use std::ops::Range;
+
 use jinn_model_market_msg::MarketDataState;
 use jinn_model_market_msg::MarketUiState;
 use jinn_model_market_msg::SortColumn;
@@ -18,6 +21,7 @@ use jinn_theme::Theme;
 use ratatui::Frame;
 use ratatui::layout::Constraint;
 use ratatui::layout::Rect;
+use ratatui::style::Color;
 use ratatui::style::Modifier;
 use ratatui::style::Style;
 use ratatui::text::Line;
@@ -30,12 +34,20 @@ use ratatui::widgets::Table;
 use ratatui::widgets::TableState;
 
 use crate::format;
+use crate::help::market_help_card;
 use crate::routes::MARKET_BINDINGS;
 use crate::ui_state;
 
+#[cfg(test)]
+#[path = "view_tests.rs"]
+mod view_tests;
+
 /// One table column: its header, which [`SortColumn`] keys its sort,
 /// whether the sort marker rides this column, its width, and the cell
-/// renderer for a listing row.
+/// renderer for a listing row. A renderer receives the row, the UI
+/// state (the filter's match ranges), and the theme — the MODEL column
+/// needs all three to draw its variant suffix dimmed under the filter's
+/// highlight.
 struct MarketColumn {
     header: &'static str,
     sort: SortColumn,
@@ -43,7 +55,7 @@ struct MarketColumn {
     /// display-only column sharing another column's sort key.
     keyed: bool,
     width: u16,
-    cell: fn(&jinn_model_market_msg::MarketRow) -> String,
+    cell: fn(&jinn_model_market_msg::MarketRow, &MarketUiState, &Theme) -> Line<'static>,
 }
 
 /// The columns in table order — the same order as the `h`/`l` sort
@@ -56,9 +68,9 @@ const MARKET_COLUMNS: &[MarketColumn] = &[
         sort: SortColumn::Proj,
         keyed: true,
         width: 9,
-        cell: |row| {
+        cell: |row, _ui, _theme| {
             let mix = MarketUiState::default().active_mix();
-            format::cents(ui_state::projected_cents(row, mix))
+            Line::from(format::cents(ui_state::projected_cents(row, mix)))
         },
     },
     MarketColumn {
@@ -66,28 +78,28 @@ const MARKET_COLUMNS: &[MarketColumn] = &[
         sort: SortColumn::In,
         keyed: true,
         width: 9,
-        cell: |row| format::price_per_million(row.prompt_price),
+        cell: |row, _ui, _theme| Line::from(format::price_per_million(row.prompt_price)),
     },
     MarketColumn {
         header: "OUT/M",
         sort: SortColumn::Out,
         keyed: true,
         width: 9,
-        cell: |row| format::price_per_million(row.completion_price),
+        cell: |row, _ui, _theme| Line::from(format::price_per_million(row.completion_price)),
     },
     MarketColumn {
         header: "CACHE/M",
         sort: SortColumn::Cache,
         keyed: true,
         width: 9,
-        cell: |row| format::cache_column(row.cache_read_price),
+        cell: |row, _ui, _theme| Line::from(format::cache_column(row.cache_read_price)),
     },
     MarketColumn {
         header: "ECI",
         sort: SortColumn::Eci,
         keyed: true,
         width: 7,
-        cell: |row| format::eci_column(row.eci),
+        cell: |row, _ui, _theme| Line::from(format::eci_column(row.eci)),
     },
     MarketColumn {
         header: "MODEL",
@@ -101,7 +113,7 @@ const MARKET_COLUMNS: &[MarketColumn] = &[
         sort: SortColumn::Model,
         keyed: false,
         width: 5,
-        cell: flags_column,
+        cell: |row, _ui, _theme| Line::from(flags_column(row)),
     },
 ];
 
@@ -119,7 +131,8 @@ pub fn market_overlay_rect(area: &Rect) -> Option<Rect> {
     Some(Rect::new(x, y, width, height))
 }
 
-/// Draws the popup for one frame: table, filter bar, status line, footer.
+/// Draws the popup for one frame: table, filter bar, status line,
+/// footer, then the `?` help card when it is toggled on.
 pub fn render_market_popup(frame: &mut Frame<'_>, area: Rect, facts: &RenderFacts) {
     let Some(ui_cell) = facts
         .slices
@@ -194,6 +207,13 @@ pub fn render_market_popup(frame: &mut Frame<'_>, area: Rect, facts: &RenderFact
 
     render_status_line(frame, inner, &ui, &data, &theme);
     render_footer(frame, inner, &theme);
+
+    // The help card draws last, over the table behind it — the same
+    // order the properties popup's help overlay composes in: surface
+    // first, then the card that floats over it.
+    if let Some(card) = market_help_card(&ui, area, inner, frame.area(), &theme) {
+        card.draw(frame);
+    }
 }
 
 /// The table header row, with the active sort column marked.
@@ -231,13 +251,7 @@ fn table_row(
 ) -> Row<'static> {
     let cells: Vec<Cell<'static>> = MARKET_COLUMNS
         .iter()
-        .map(|col| {
-            if col.header == "MODEL" {
-                Cell::from(highlighted_model_line(row, ui, theme))
-            } else {
-                Cell::from((col.cell)(row))
-            }
-        })
+        .map(|col| Cell::from((col.cell)(row, ui, theme)))
         .collect();
     let mut rendered = Row::new(cells);
     if selected {
@@ -250,35 +264,77 @@ fn table_row(
     rendered
 }
 
-/// The MODEL column as a line with the filter's match spans highlighted
-/// through the selection widget's shared highlighter.
-fn highlighted_model_line(
+/// The MODEL column as a line: `author/slug` in the row's base style,
+/// then the `:variant` suffix dimmed — the card's MODEL entry calls the
+/// suffix a dimmed one, so the table renders one. The filter's match
+/// highlight rides over both parts: a matched glyph wears the highlight
+/// whatever segment it sits in, exactly as the unsplit render did.
+fn model_column(
     row: &jinn_model_market_msg::MarketRow,
     ui: &MarketUiState,
     theme: &Theme,
 ) -> Line<'static> {
-    let name = ui_state::row_name(row);
-    let spans: Vec<Span<'static>> = match ui_state::match_ranges(row, ui) {
-        Some(ranges) => jinn_selection_widget::highlight_text_with_bg(
-            &name,
-            Style::default(),
-            &ranges,
-            theme.picker_highlight_bg,
-        )
-        .into_iter()
-        .map(|span| Span::styled(span.content.into_owned(), span.style))
-        .collect(),
-        None => vec![Span::styled(name, Style::default())],
+    // Built from the fields rather than sliced off `row_name`: the
+    // segments are the name's two halves, and `base.len()` is where the
+    // name's byte offsets split between them.
+    let base = format!("{}/{}", row.author, row.slug);
+    let suffix = match &row.variant {
+        Some(variant) => format!(":{variant}"),
+        None => String::new(),
     };
+    let base_len = base.len();
+    let dim = Style::default().fg(theme.muted_text);
+    let ranges = ui_state::match_ranges(row, ui);
+
+    let mut spans = highlighted_segment(
+        &base,
+        Style::default(),
+        ranges.as_deref(),
+        0,
+        theme.picker_highlight_bg,
+    );
+    spans.extend(highlighted_segment(
+        &suffix,
+        dim,
+        ranges.as_deref(),
+        base_len,
+        theme.picker_highlight_bg,
+    ));
     Line::from(spans)
 }
 
-/// The MODEL column: `author/slug` plus a dimmed `:variant`.
-fn model_column(row: &jinn_model_market_msg::MarketRow) -> String {
-    match &row.variant {
-        Some(variant) => format!("{}/{}:{variant}", row.author, row.slug),
-        None => format!("{}/{}", row.author, row.slug),
+/// One segment of the MODEL column as styled spans: `text` starts at
+/// byte `name_offset` within the row's display name, so the filter's
+/// match ranges (offsets into the whole name) rebasing to the segment
+/// is a subtraction. A range cannot straddle a segment boundary — every
+/// range is one byte wide and the boundary sits on a character edge.
+fn highlighted_segment(
+    text: &str,
+    base_style: Style,
+    ranges: Option<&[Range<usize>]>,
+    name_offset: usize,
+    highlight_bg: Color,
+) -> Vec<Span<'static>> {
+    let Some(ranges) = ranges else {
+        return if text.is_empty() {
+            Vec::new()
+        } else {
+            vec![Span::styled(text.to_owned(), base_style)]
+        };
+    };
+    if text.is_empty() {
+        return Vec::new();
     }
+    let segment_end = name_offset + text.len();
+    let within: Vec<Range<usize>> = ranges
+        .iter()
+        .filter(|r| r.start >= name_offset && r.end <= segment_end)
+        .map(|r| (r.start - name_offset)..(r.end - name_offset))
+        .collect();
+    jinn_selection_widget::highlight_text_with_bg(text, base_style, &within, highlight_bg)
+        .into_iter()
+        .map(|span| Span::styled(span.content.into_owned(), span.style))
+        .collect()
 }
 
 /// The FLAGS column: `†` pricing overrides, `f` `:free`, `#` no ECI.
